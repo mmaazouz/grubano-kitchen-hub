@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoyaltyRouteImport } from './routes/loyalty'
 import { Route as BrandsRouteImport } from './routes/brands'
 import { Route as IndexRouteImport } from './routes/index'
 
+const LoyaltyRoute = LoyaltyRouteImport.update({
+  id: '/loyalty',
+  path: '/loyalty',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrandsRoute = BrandsRouteImport.update({
   id: '/brands',
   path: '/brands',
@@ -26,31 +32,42 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
+  '/loyalty': typeof LoyaltyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
+  '/loyalty': typeof LoyaltyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
+  '/loyalty': typeof LoyaltyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/brands'
+  fullPaths: '/' | '/brands' | '/loyalty'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/brands'
-  id: '__root__' | '/' | '/brands'
+  to: '/' | '/brands' | '/loyalty'
+  id: '__root__' | '/' | '/brands' | '/loyalty'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrandsRoute: typeof BrandsRoute
+  LoyaltyRoute: typeof LoyaltyRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/loyalty': {
+      id: '/loyalty'
+      path: '/loyalty'
+      fullPath: '/loyalty'
+      preLoaderRoute: typeof LoyaltyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/brands': {
       id: '/brands'
       path: '/brands'
@@ -71,6 +88,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrandsRoute: BrandsRoute,
+  LoyaltyRoute: LoyaltyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
