@@ -26,6 +26,7 @@ const features = [
   { to: "/wallet", label: "Client Wallet", desc: "QR loyalty (PWA)", icon: QrCode },
   { to: "/notifications", label: "Notifications", desc: "Alerts & thresholds", icon: Bell },
   { to: "/marketplace", label: "Ghostos Market", desc: "License brands", icon: Store },
+  { to: "/dinein", label: "Sur place", desc: "QR menu & paiement", icon: QrCode },
 ] as const;
 
 function MorePage() {
