@@ -1,12 +1,12 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { LayoutDashboard, Store, Award, Package, Building2 } from "lucide-react";
+import { LayoutDashboard, Store, Award, Package, LayoutGrid } from "lucide-react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/brands", label: "Brands", icon: Store },
   { to: "/loyalty", label: "Loyalty", icon: Award },
   { to: "/stocks", label: "Stocks", icon: Package },
-  { to: "/franchise", label: "Franchise", icon: Building2 },
+  { to: "/more", label: "More", icon: LayoutGrid },
 ] as const;
 
 export function BottomNav() {
@@ -27,7 +27,7 @@ export function BottomNav() {
                   active ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30" : "text-muted-foreground group-hover:text-foreground"
                 }`}
               >
-                <Icon className="h-4.5 w-4.5" size={18} />
+                <Icon size={18} />
               </div>
               <span className={active ? "text-foreground" : "text-muted-foreground"}>{label}</span>
             </Link>
