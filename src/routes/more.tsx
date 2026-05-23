@@ -36,21 +36,25 @@ function MorePage() {
         <p className="text-sm text-muted-foreground">15 tools to run your dark kitchen</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        {features.map((f) => (
-          <Link
-            key={f.to}
-            to={f.to}
-            className={`group rounded-2xl border p-3.5 transition hover:-translate-y-0.5 hover:shadow-lg ${
-              f.tone === "primary" ? "border-transparent bg-navy text-navy-foreground" : "border-border bg-card"
-            }`}
-          >
-            <div className={`grid h-9 w-9 place-items-center rounded-xl ${f.tone === "primary" ? "bg-primary text-primary-foreground" : "bg-accent text-primary"}`}>
-              <f.icon size={16} />
-            </div>
-            <p className="mt-3 text-sm font-bold">{f.label}</p>
-            <p className={`mt-0.5 text-[11px] ${f.tone === "primary" ? "text-navy-foreground/60" : "text-muted-foreground"}`}>{f.desc}</p>
-          </Link>
-        ))}
+        {features.map((f) => {
+          const primary = (f as { tone?: string }).tone === "primary";
+          return (
+            <Link
+              key={f.to}
+              to={f.to}
+              className={`group rounded-2xl border p-3.5 transition hover:-translate-y-0.5 hover:shadow-lg ${
+                primary ? "border-transparent bg-navy text-navy-foreground" : "border-border bg-card"
+              }`}
+            >
+              <div className={`grid h-9 w-9 place-items-center rounded-xl ${primary ? "bg-primary text-primary-foreground" : "bg-accent text-primary"}`}>
+                <f.icon size={16} />
+              </div>
+              <p className="mt-3 text-sm font-bold">{f.label}</p>
+              <p className={`mt-0.5 text-[11px] ${primary ? "text-navy-foreground/60" : "text-muted-foreground"}`}>{f.desc}</p>
+            </Link>
+          );
+        })}
+
       </div>
     </AppShell>
   );
