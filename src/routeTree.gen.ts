@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as StocksRouteImport } from './routes/stocks'
 import { Route as LoyaltyRouteImport } from './routes/loyalty'
 import { Route as BrandsRouteImport } from './routes/brands'
 import { Route as IndexRouteImport } from './routes/index'
 
+const StocksRoute = StocksRouteImport.update({
+  id: '/stocks',
+  path: '/stocks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoyaltyRoute = LoyaltyRouteImport.update({
   id: '/loyalty',
   path: '/loyalty',
@@ -33,34 +39,45 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
   '/loyalty': typeof LoyaltyRoute
+  '/stocks': typeof StocksRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
   '/loyalty': typeof LoyaltyRoute
+  '/stocks': typeof StocksRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
   '/loyalty': typeof LoyaltyRoute
+  '/stocks': typeof StocksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/brands' | '/loyalty'
+  fullPaths: '/' | '/brands' | '/loyalty' | '/stocks'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/brands' | '/loyalty'
-  id: '__root__' | '/' | '/brands' | '/loyalty'
+  to: '/' | '/brands' | '/loyalty' | '/stocks'
+  id: '__root__' | '/' | '/brands' | '/loyalty' | '/stocks'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrandsRoute: typeof BrandsRoute
   LoyaltyRoute: typeof LoyaltyRoute
+  StocksRoute: typeof StocksRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/stocks': {
+      id: '/stocks'
+      path: '/stocks'
+      fullPath: '/stocks'
+      preLoaderRoute: typeof StocksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/loyalty': {
       id: '/loyalty'
       path: '/loyalty'
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrandsRoute: BrandsRoute,
   LoyaltyRoute: LoyaltyRoute,
+  StocksRoute: StocksRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
