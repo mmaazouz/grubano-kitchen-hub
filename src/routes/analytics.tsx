@@ -1,4 +1,6 @@
+import { Fragment } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+
 import { FeaturePage, Card, SectionTitle } from "@/components/FeaturePage";
 import { TrendingDown, TrendingUp, Users } from "lucide-react";
 
@@ -52,8 +54,8 @@ function AnalyticsPage() {
             <div key={h} className="text-center text-[8px] font-medium text-muted-foreground">{h}</div>
           ))}
           {days.map((d, di) => (
-            <>
-              <div key={`d${di}`} className="text-[10px] font-semibold text-muted-foreground">{d}</div>
+            <Fragment key={`row-${di}`}>
+              <div className="text-[10px] font-semibold text-muted-foreground">{d}</div>
               {hours.map((_, hi) => {
                 const v = Math.abs(Math.sin((di + 1) * (hi + 3)));
                 return (
@@ -64,8 +66,9 @@ function AnalyticsPage() {
                   />
                 );
               })}
-            </>
+            </Fragment>
           ))}
+
         </div>
         <p className="mt-3 text-[11px] text-muted-foreground">Peak: Friday 19h–21h · Worst: Monday 15h</p>
       </Card>
