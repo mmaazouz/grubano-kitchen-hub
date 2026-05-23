@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { TrendingUp, ShoppingBag, Star, Users, AlertTriangle, ChefHat } from "lucide-react";
+import { TrendingUp, ShoppingBag, Star, Users, AlertTriangle, ChefHat, Sparkles, CloudRain, ArrowRight } from "lucide-react";
+
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -39,6 +40,26 @@ function Dashboard() {
         <p className="text-sm text-muted-foreground">Tuesday, 18 November</p>
       </div>
 
+      <Link to="/briefing" className="mb-4 block rounded-2xl bg-navy p-4 text-navy-foreground">
+        <div className="flex items-start gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <Sparkles size={15} />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">AI briefing</p>
+              <span className="inline-flex items-center gap-1 rounded-full bg-navy-elevated px-1.5 py-0.5 text-[9px] text-navy-foreground/70">
+                <CloudRain size={9} /> Rain 19h
+              </span>
+            </div>
+            <p className="mt-1 text-sm font-semibold leading-snug">
+              Prep <span className="text-primary">3.2 L</span> Butter Chicken & <span className="text-primary">2.4 L</span> Bolognaise. +20% orders expected tonight.
+            </p>
+          </div>
+          <ArrowRight size={16} className="mt-1 text-navy-foreground/60" />
+        </div>
+      </Link>
+
       <div className="mb-4 flex items-start gap-3 rounded-2xl border border-primary/20 bg-accent p-3.5">
         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
           <AlertTriangle size={15} />
@@ -48,6 +69,7 @@ function Dashboard() {
           <p className="mt-0.5 text-[11px] text-muted-foreground">Prepare 4.5L before 11:30 to cover today's forecast.</p>
         </div>
       </div>
+
 
       <div className="grid grid-cols-2 gap-3">
         <KpiCard icon={TrendingUp} label="Revenue today" value="€2,847" change="+12%" tone="primary" />
