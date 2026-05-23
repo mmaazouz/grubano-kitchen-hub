@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WalletRouteImport } from './routes/wallet'
+import { Route as TablesRouteImport } from './routes/tables'
 import { Route as SuppliersRouteImport } from './routes/suppliers'
 import { Route as StocksRouteImport } from './routes/stocks'
 import { Route as ReviewsRouteImport } from './routes/reviews'
@@ -23,6 +24,7 @@ import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as LoyaltyRouteImport } from './routes/loyalty'
 import { Route as FranchiseRouteImport } from './routes/franchise'
 import { Route as FinanceRouteImport } from './routes/finance'
+import { Route as DineinRouteImport } from './routes/dinein'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as CashflowRouteImport } from './routes/cashflow'
 import { Route as BriefingRouteImport } from './routes/briefing'
@@ -33,6 +35,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const WalletRoute = WalletRouteImport.update({
   id: '/wallet',
   path: '/wallet',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TablesRoute = TablesRouteImport.update({
+  id: '/tables',
+  path: '/tables',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SuppliersRoute = SuppliersRouteImport.update({
@@ -100,6 +107,11 @@ const FinanceRoute = FinanceRouteImport.update({
   path: '/finance',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DineinRoute = DineinRouteImport.update({
+  id: '/dinein',
+  path: '/dinein',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CustomersRoute = CustomersRouteImport.update({
   id: '/customers',
   path: '/customers',
@@ -138,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/briefing': typeof BriefingRoute
   '/cashflow': typeof CashflowRoute
   '/customers': typeof CustomersRoute
+  '/dinein': typeof DineinRoute
   '/finance': typeof FinanceRoute
   '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
@@ -151,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/reviews': typeof ReviewsRoute
   '/stocks': typeof StocksRoute
   '/suppliers': typeof SuppliersRoute
+  '/tables': typeof TablesRoute
   '/wallet': typeof WalletRoute
 }
 export interface FileRoutesByTo {
@@ -160,6 +174,7 @@ export interface FileRoutesByTo {
   '/briefing': typeof BriefingRoute
   '/cashflow': typeof CashflowRoute
   '/customers': typeof CustomersRoute
+  '/dinein': typeof DineinRoute
   '/finance': typeof FinanceRoute
   '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
@@ -173,6 +188,7 @@ export interface FileRoutesByTo {
   '/reviews': typeof ReviewsRoute
   '/stocks': typeof StocksRoute
   '/suppliers': typeof SuppliersRoute
+  '/tables': typeof TablesRoute
   '/wallet': typeof WalletRoute
 }
 export interface FileRoutesById {
@@ -183,6 +199,7 @@ export interface FileRoutesById {
   '/briefing': typeof BriefingRoute
   '/cashflow': typeof CashflowRoute
   '/customers': typeof CustomersRoute
+  '/dinein': typeof DineinRoute
   '/finance': typeof FinanceRoute
   '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
@@ -196,6 +213,7 @@ export interface FileRoutesById {
   '/reviews': typeof ReviewsRoute
   '/stocks': typeof StocksRoute
   '/suppliers': typeof SuppliersRoute
+  '/tables': typeof TablesRoute
   '/wallet': typeof WalletRoute
 }
 export interface FileRouteTypes {
@@ -207,6 +225,7 @@ export interface FileRouteTypes {
     | '/briefing'
     | '/cashflow'
     | '/customers'
+    | '/dinein'
     | '/finance'
     | '/franchise'
     | '/loyalty'
@@ -220,6 +239,7 @@ export interface FileRouteTypes {
     | '/reviews'
     | '/stocks'
     | '/suppliers'
+    | '/tables'
     | '/wallet'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -229,6 +249,7 @@ export interface FileRouteTypes {
     | '/briefing'
     | '/cashflow'
     | '/customers'
+    | '/dinein'
     | '/finance'
     | '/franchise'
     | '/loyalty'
@@ -242,6 +263,7 @@ export interface FileRouteTypes {
     | '/reviews'
     | '/stocks'
     | '/suppliers'
+    | '/tables'
     | '/wallet'
   id:
     | '__root__'
@@ -251,6 +273,7 @@ export interface FileRouteTypes {
     | '/briefing'
     | '/cashflow'
     | '/customers'
+    | '/dinein'
     | '/finance'
     | '/franchise'
     | '/loyalty'
@@ -264,6 +287,7 @@ export interface FileRouteTypes {
     | '/reviews'
     | '/stocks'
     | '/suppliers'
+    | '/tables'
     | '/wallet'
   fileRoutesById: FileRoutesById
 }
@@ -274,6 +298,7 @@ export interface RootRouteChildren {
   BriefingRoute: typeof BriefingRoute
   CashflowRoute: typeof CashflowRoute
   CustomersRoute: typeof CustomersRoute
+  DineinRoute: typeof DineinRoute
   FinanceRoute: typeof FinanceRoute
   FranchiseRoute: typeof FranchiseRoute
   LoyaltyRoute: typeof LoyaltyRoute
@@ -287,6 +312,7 @@ export interface RootRouteChildren {
   ReviewsRoute: typeof ReviewsRoute
   StocksRoute: typeof StocksRoute
   SuppliersRoute: typeof SuppliersRoute
+  TablesRoute: typeof TablesRoute
   WalletRoute: typeof WalletRoute
 }
 
@@ -297,6 +323,13 @@ declare module '@tanstack/react-router' {
       path: '/wallet'
       fullPath: '/wallet'
       preLoaderRoute: typeof WalletRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tables': {
+      id: '/tables'
+      path: '/tables'
+      fullPath: '/tables'
+      preLoaderRoute: typeof TablesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/suppliers': {
@@ -390,6 +423,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FinanceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dinein': {
+      id: '/dinein'
+      path: '/dinein'
+      fullPath: '/dinein'
+      preLoaderRoute: typeof DineinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/customers': {
       id: '/customers'
       path: '/customers'
@@ -442,6 +482,7 @@ const rootRouteChildren: RootRouteChildren = {
   BriefingRoute: BriefingRoute,
   CashflowRoute: CashflowRoute,
   CustomersRoute: CustomersRoute,
+  DineinRoute: DineinRoute,
   FinanceRoute: FinanceRoute,
   FranchiseRoute: FranchiseRoute,
   LoyaltyRoute: LoyaltyRoute,
@@ -455,18 +496,9 @@ const rootRouteChildren: RootRouteChildren = {
   ReviewsRoute: ReviewsRoute,
   StocksRoute: StocksRoute,
   SuppliersRoute: SuppliersRoute,
+  TablesRoute: TablesRoute,
   WalletRoute: WalletRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
