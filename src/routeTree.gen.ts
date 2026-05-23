@@ -9,15 +9,80 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WalletRouteImport } from './routes/wallet'
+import { Route as SuppliersRouteImport } from './routes/suppliers'
 import { Route as StocksRouteImport } from './routes/stocks'
+import { Route as ReviewsRouteImport } from './routes/reviews'
+import { Route as PricingRouteImport } from './routes/pricing'
+import { Route as PrepRouteImport } from './routes/prep'
+import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as MoreRouteImport } from './routes/more'
+import { Route as MenuRouteImport } from './routes/menu'
+import { Route as MarketplaceRouteImport } from './routes/marketplace'
 import { Route as LoyaltyRouteImport } from './routes/loyalty'
 import { Route as FranchiseRouteImport } from './routes/franchise'
+import { Route as FinanceRouteImport } from './routes/finance'
+import { Route as CustomersRouteImport } from './routes/customers'
+import { Route as CashflowRouteImport } from './routes/cashflow'
+import { Route as BriefingRouteImport } from './routes/briefing'
 import { Route as BrandsRouteImport } from './routes/brands'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 
+const WalletRoute = WalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SuppliersRoute = SuppliersRouteImport.update({
+  id: '/suppliers',
+  path: '/suppliers',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StocksRoute = StocksRouteImport.update({
   id: '/stocks',
   path: '/stocks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReviewsRoute = ReviewsRouteImport.update({
+  id: '/reviews',
+  path: '/reviews',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrepRoute = PrepRouteImport.update({
+  id: '/prep',
+  path: '/prep',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrdersRoute = OrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotificationsRoute = NotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MoreRoute = MoreRouteImport.update({
+  id: '/more',
+  path: '/more',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MenuRoute = MenuRouteImport.update({
+  id: '/menu',
+  path: '/menu',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketplaceRoute = MarketplaceRouteImport.update({
+  id: '/marketplace',
+  path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoyaltyRoute = LoyaltyRouteImport.update({
@@ -30,9 +95,34 @@ const FranchiseRoute = FranchiseRouteImport.update({
   path: '/franchise',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FinanceRoute = FinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomersRoute = CustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CashflowRoute = CashflowRouteImport.update({
+  id: '/cashflow',
+  path: '/cashflow',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BriefingRoute = BriefingRouteImport.update({
+  id: '/briefing',
+  path: '/briefing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BrandsRoute = BrandsRouteImport.update({
   id: '/brands',
   path: '/brands',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -43,49 +133,240 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/brands': typeof BrandsRoute
+  '/briefing': typeof BriefingRoute
+  '/cashflow': typeof CashflowRoute
+  '/customers': typeof CustomersRoute
+  '/finance': typeof FinanceRoute
   '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
+  '/marketplace': typeof MarketplaceRoute
+  '/menu': typeof MenuRoute
+  '/more': typeof MoreRoute
+  '/notifications': typeof NotificationsRoute
+  '/orders': typeof OrdersRoute
+  '/prep': typeof PrepRoute
+  '/pricing': typeof PricingRoute
+  '/reviews': typeof ReviewsRoute
   '/stocks': typeof StocksRoute
+  '/suppliers': typeof SuppliersRoute
+  '/wallet': typeof WalletRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/brands': typeof BrandsRoute
+  '/briefing': typeof BriefingRoute
+  '/cashflow': typeof CashflowRoute
+  '/customers': typeof CustomersRoute
+  '/finance': typeof FinanceRoute
   '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
+  '/marketplace': typeof MarketplaceRoute
+  '/menu': typeof MenuRoute
+  '/more': typeof MoreRoute
+  '/notifications': typeof NotificationsRoute
+  '/orders': typeof OrdersRoute
+  '/prep': typeof PrepRoute
+  '/pricing': typeof PricingRoute
+  '/reviews': typeof ReviewsRoute
   '/stocks': typeof StocksRoute
+  '/suppliers': typeof SuppliersRoute
+  '/wallet': typeof WalletRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/brands': typeof BrandsRoute
+  '/briefing': typeof BriefingRoute
+  '/cashflow': typeof CashflowRoute
+  '/customers': typeof CustomersRoute
+  '/finance': typeof FinanceRoute
   '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
+  '/marketplace': typeof MarketplaceRoute
+  '/menu': typeof MenuRoute
+  '/more': typeof MoreRoute
+  '/notifications': typeof NotificationsRoute
+  '/orders': typeof OrdersRoute
+  '/prep': typeof PrepRoute
+  '/pricing': typeof PricingRoute
+  '/reviews': typeof ReviewsRoute
   '/stocks': typeof StocksRoute
+  '/suppliers': typeof SuppliersRoute
+  '/wallet': typeof WalletRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/brands' | '/franchise' | '/loyalty' | '/stocks'
+  fullPaths:
+    | '/'
+    | '/analytics'
+    | '/brands'
+    | '/briefing'
+    | '/cashflow'
+    | '/customers'
+    | '/finance'
+    | '/franchise'
+    | '/loyalty'
+    | '/marketplace'
+    | '/menu'
+    | '/more'
+    | '/notifications'
+    | '/orders'
+    | '/prep'
+    | '/pricing'
+    | '/reviews'
+    | '/stocks'
+    | '/suppliers'
+    | '/wallet'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/brands' | '/franchise' | '/loyalty' | '/stocks'
-  id: '__root__' | '/' | '/brands' | '/franchise' | '/loyalty' | '/stocks'
+  to:
+    | '/'
+    | '/analytics'
+    | '/brands'
+    | '/briefing'
+    | '/cashflow'
+    | '/customers'
+    | '/finance'
+    | '/franchise'
+    | '/loyalty'
+    | '/marketplace'
+    | '/menu'
+    | '/more'
+    | '/notifications'
+    | '/orders'
+    | '/prep'
+    | '/pricing'
+    | '/reviews'
+    | '/stocks'
+    | '/suppliers'
+    | '/wallet'
+  id:
+    | '__root__'
+    | '/'
+    | '/analytics'
+    | '/brands'
+    | '/briefing'
+    | '/cashflow'
+    | '/customers'
+    | '/finance'
+    | '/franchise'
+    | '/loyalty'
+    | '/marketplace'
+    | '/menu'
+    | '/more'
+    | '/notifications'
+    | '/orders'
+    | '/prep'
+    | '/pricing'
+    | '/reviews'
+    | '/stocks'
+    | '/suppliers'
+    | '/wallet'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRoute
   BrandsRoute: typeof BrandsRoute
+  BriefingRoute: typeof BriefingRoute
+  CashflowRoute: typeof CashflowRoute
+  CustomersRoute: typeof CustomersRoute
+  FinanceRoute: typeof FinanceRoute
   FranchiseRoute: typeof FranchiseRoute
   LoyaltyRoute: typeof LoyaltyRoute
+  MarketplaceRoute: typeof MarketplaceRoute
+  MenuRoute: typeof MenuRoute
+  MoreRoute: typeof MoreRoute
+  NotificationsRoute: typeof NotificationsRoute
+  OrdersRoute: typeof OrdersRoute
+  PrepRoute: typeof PrepRoute
+  PricingRoute: typeof PricingRoute
+  ReviewsRoute: typeof ReviewsRoute
   StocksRoute: typeof StocksRoute
+  SuppliersRoute: typeof SuppliersRoute
+  WalletRoute: typeof WalletRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/wallet': {
+      id: '/wallet'
+      path: '/wallet'
+      fullPath: '/wallet'
+      preLoaderRoute: typeof WalletRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/suppliers': {
+      id: '/suppliers'
+      path: '/suppliers'
+      fullPath: '/suppliers'
+      preLoaderRoute: typeof SuppliersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/stocks': {
       id: '/stocks'
       path: '/stocks'
       fullPath: '/stocks'
       preLoaderRoute: typeof StocksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reviews': {
+      id: '/reviews'
+      path: '/reviews'
+      fullPath: '/reviews'
+      preLoaderRoute: typeof ReviewsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/prep': {
+      id: '/prep'
+      path: '/prep'
+      fullPath: '/prep'
+      preLoaderRoute: typeof PrepRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders': {
+      id: '/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof OrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notifications': {
+      id: '/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof NotificationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/more': {
+      id: '/more'
+      path: '/more'
+      fullPath: '/more'
+      preLoaderRoute: typeof MoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/menu': {
+      id: '/menu'
+      path: '/menu'
+      fullPath: '/menu'
+      preLoaderRoute: typeof MenuRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketplace': {
+      id: '/marketplace'
+      path: '/marketplace'
+      fullPath: '/marketplace'
+      preLoaderRoute: typeof MarketplaceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/loyalty': {
@@ -102,11 +383,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FranchiseRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/finance': {
+      id: '/finance'
+      path: '/finance'
+      fullPath: '/finance'
+      preLoaderRoute: typeof FinanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/customers': {
+      id: '/customers'
+      path: '/customers'
+      fullPath: '/customers'
+      preLoaderRoute: typeof CustomersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cashflow': {
+      id: '/cashflow'
+      path: '/cashflow'
+      fullPath: '/cashflow'
+      preLoaderRoute: typeof CashflowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/briefing': {
+      id: '/briefing'
+      path: '/briefing'
+      fullPath: '/briefing'
+      preLoaderRoute: typeof BriefingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/brands': {
       id: '/brands'
       path: '/brands'
       fullPath: '/brands'
       preLoaderRoute: typeof BrandsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -121,11 +437,36 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRoute,
   BrandsRoute: BrandsRoute,
+  BriefingRoute: BriefingRoute,
+  CashflowRoute: CashflowRoute,
+  CustomersRoute: CustomersRoute,
+  FinanceRoute: FinanceRoute,
   FranchiseRoute: FranchiseRoute,
   LoyaltyRoute: LoyaltyRoute,
+  MarketplaceRoute: MarketplaceRoute,
+  MenuRoute: MenuRoute,
+  MoreRoute: MoreRoute,
+  NotificationsRoute: NotificationsRoute,
+  OrdersRoute: OrdersRoute,
+  PrepRoute: PrepRoute,
+  PricingRoute: PricingRoute,
+  ReviewsRoute: ReviewsRoute,
   StocksRoute: StocksRoute,
+  SuppliersRoute: SuppliersRoute,
+  WalletRoute: WalletRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
