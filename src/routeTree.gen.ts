@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StocksRouteImport } from './routes/stocks'
 import { Route as LoyaltyRouteImport } from './routes/loyalty'
+import { Route as FranchiseRouteImport } from './routes/franchise'
 import { Route as BrandsRouteImport } from './routes/brands'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -22,6 +23,11 @@ const StocksRoute = StocksRouteImport.update({
 const LoyaltyRoute = LoyaltyRouteImport.update({
   id: '/loyalty',
   path: '/loyalty',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FranchiseRoute = FranchiseRouteImport.update({
+  id: '/franchise',
+  path: '/franchise',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrandsRoute = BrandsRouteImport.update({
@@ -38,12 +44,14 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
+  '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
   '/stocks': typeof StocksRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
+  '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
   '/stocks': typeof StocksRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/brands': typeof BrandsRoute
+  '/franchise': typeof FranchiseRoute
   '/loyalty': typeof LoyaltyRoute
   '/stocks': typeof StocksRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/brands' | '/loyalty' | '/stocks'
+  fullPaths: '/' | '/brands' | '/franchise' | '/loyalty' | '/stocks'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/brands' | '/loyalty' | '/stocks'
-  id: '__root__' | '/' | '/brands' | '/loyalty' | '/stocks'
+  to: '/' | '/brands' | '/franchise' | '/loyalty' | '/stocks'
+  id: '__root__' | '/' | '/brands' | '/franchise' | '/loyalty' | '/stocks'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrandsRoute: typeof BrandsRoute
+  FranchiseRoute: typeof FranchiseRoute
   LoyaltyRoute: typeof LoyaltyRoute
   StocksRoute: typeof StocksRoute
 }
@@ -83,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/loyalty'
       fullPath: '/loyalty'
       preLoaderRoute: typeof LoyaltyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/franchise': {
+      id: '/franchise'
+      path: '/franchise'
+      fullPath: '/franchise'
+      preLoaderRoute: typeof FranchiseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/brands': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrandsRoute: BrandsRoute,
+  FranchiseRoute: FranchiseRoute,
   LoyaltyRoute: LoyaltyRoute,
   StocksRoute: StocksRoute,
 }
