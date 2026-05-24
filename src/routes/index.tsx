@@ -93,7 +93,7 @@ function Dashboard() {
       </div>
 
       {/* Update stocks - AI */}
-      <Link to="/stocks" search={{ chat: true } as never} className="mt-4 flex items-center gap-3 rounded-2xl bg-navy p-4 text-navy-foreground">
+      <Link to="/stocks" className="mt-4 flex items-center gap-3 rounded-2xl bg-navy p-4 text-navy-foreground">
         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
           <Sparkles size={18} />
         </div>
