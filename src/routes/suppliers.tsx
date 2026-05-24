@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { FeaturePage, Card, SectionTitle } from "@/components/FeaturePage";
-import { Truck, Check, Clock, ShoppingBasket, Send, FileDown, Star, ChevronRight, Minus, Plus, Share2 } from "lucide-react";
+import { Truck, Check, Clock, ShoppingBasket, FileDown, Star, ChevronRight, Minus, Plus, Share2 } from "lucide-react";
 import { useState } from "react";
 
 export const Route = createFileRoute("/suppliers")({
