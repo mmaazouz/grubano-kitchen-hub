@@ -2,39 +2,41 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import {
   BarChart3, Sparkles, UserCircle2, Radio, ChefHat, TrendingUp, Truck,
-  PieChart, Building2, MessageSquare, RefreshCw, Calendar, QrCode, Bell, Store,
+  PieChart, Building2, MessageSquare, RefreshCw, Calendar, QrCode, Bell, Store, Crown, Rocket,
 } from "lucide-react";
 
 export const Route = createFileRoute("/more")({
   component: MorePage,
-  head: () => ({ meta: [{ title: "Grubano — Features" }] }),
+  head: () => ({ meta: [{ title: "Grubano — Fonctionnalités" }] }),
 });
 
 const features = [
-  { to: "/analytics", label: "Intelligence", desc: "Real margin & forecasts", icon: BarChart3, tone: "primary" },
-  { to: "/briefing", label: "AI Briefing", desc: "Daily prep & weather", icon: Sparkles, tone: "primary" },
-  { to: "/customers", label: "Customers", desc: "Profiles beyond UberEats", icon: UserCircle2 },
-  { to: "/orders", label: "Live Orders", desc: "All platforms unified", icon: Radio },
-  { to: "/prep", label: "Prep Station", desc: "Kitchen fullscreen", icon: ChefHat },
-  { to: "/pricing", label: "Smart Pricing", desc: "Surge & A/B", icon: TrendingUp },
-  { to: "/suppliers", label: "Suppliers", desc: "Order via WhatsApp", icon: Truck },
-  { to: "/finance", label: "Revenue Split", desc: "Net margin per brand", icon: PieChart },
-  { to: "/franchise", label: "Franchise", desc: "Partner portal", icon: Building2 },
-  { to: "/reviews", label: "Reviews", desc: "AI reply drafts", icon: MessageSquare },
-  { to: "/menu", label: "Menu Sync", desc: "Edit once, push all", icon: RefreshCw },
-  { to: "/cashflow", label: "Cash Flow", desc: "Payout calendar", icon: Calendar },
-  { to: "/wallet", label: "Client Wallet", desc: "QR loyalty (PWA)", icon: QrCode },
-  { to: "/notifications", label: "Notifications", desc: "Alerts & thresholds", icon: Bell },
-  { to: "/marketplace", label: "Ghostos Market", desc: "License brands", icon: Store },
+  { to: "/premium", label: "Grubano Pro", desc: "Multi-plateforme", icon: Crown, tone: "primary" },
+  { to: "/onboarding", label: "Reconfigurer", desc: "Onboarding 8 étapes", icon: Rocket, tone: "primary" },
+  { to: "/analytics", label: "Intelligence", desc: "Marge & prévisions", icon: BarChart3 },
+  { to: "/briefing", label: "Briefing IA", desc: "Prep journalier", icon: Sparkles },
+  { to: "/customers", label: "Clients", desc: "Profils & fidélité", icon: UserCircle2 },
+  { to: "/orders", label: "Commandes", desc: "Feed temps réel", icon: Radio },
+  { to: "/prep", label: "Cuisine", desc: "Mode plein écran", icon: ChefHat },
+  { to: "/pricing", label: "Prix dynamiques", desc: "Surge & A/B", icon: TrendingUp },
+  { to: "/suppliers", label: "Fournisseurs", desc: "Partenaires & courses", icon: Truck },
+  { to: "/finance", label: "Marges nettes", desc: "Par marque", icon: PieChart },
+  { to: "/franchise", label: "Franchise", desc: "Portail partenaires", icon: Building2 },
+  { to: "/reviews", label: "Avis", desc: "Réponses IA", icon: MessageSquare },
+  { to: "/menu", label: "Menu", desc: "Sync toutes plateformes", icon: RefreshCw },
+  { to: "/cashflow", label: "Trésorerie", desc: "Calendrier des paiements", icon: Calendar },
+  { to: "/wallet", label: "Portefeuille client", desc: "QR fidélité", icon: QrCode },
+  { to: "/notifications", label: "Notifications", desc: "Alertes & seuils", icon: Bell },
+  { to: "/marketplace", label: "Marketplace", desc: "Licences de marques", icon: Store },
   { to: "/dinein", label: "Sur place", desc: "QR menu & paiement", icon: QrCode },
 ] as const;
 
 function MorePage() {
   return (
-    <AppShell operator="Mohammed" subtitle="Operator">
+    <AppShell operator="Mohammed" subtitle="Opérateur">
       <div className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight">Features</h1>
-        <p className="text-sm text-muted-foreground">15 tools to run your dark kitchen</p>
+        <h1 className="text-2xl font-bold tracking-tight">Plus</h1>
+        <p className="text-sm text-muted-foreground">Tous les outils Grubano</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {features.map((f) => {
@@ -55,7 +57,6 @@ function MorePage() {
             </Link>
           );
         })}
-
       </div>
     </AppShell>
   );

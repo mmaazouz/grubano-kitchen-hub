@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { Calculator, Package, AlertTriangle, Send, FileDown, Mail, Plus, Minus, Check, Clock } from "lucide-react";
+import {
+  Package, AlertTriangle, Check, Clock, Sparkles, Send, CloudRain, Trophy, Filter, X, Mic,
+} from "lucide-react";
+
 import { useState, useMemo } from "react";
 
 export const Route = createFileRoute("/stocks")({
@@ -15,17 +18,18 @@ type Item = {
   min: number;
   dlc: string;
   price: number;
+  category: "Frais" | "Sec" | "Sauce" | "Packaging";
 };
 
 const inventory: Item[] = [
-  { name: "Poulet mariné", qty: 2.1, unit: "kg", min: 5, dlc: "Demain", price: 8.5 },
-  { name: "Sauce tomate", qty: 3.2, unit: "L", min: 4, dlc: "Aujourd'hui 22:00", price: 4.2 },
-  { name: "Sauce butter chicken", qty: 0.4, unit: "L", min: 2, dlc: "Aujourd'hui 18:00", price: 6.1 },
-  { name: "Mozzarella", qty: 1.8, unit: "kg", min: 2, dlc: "Dans 2 jours", price: 9.0 },
-  { name: "Riz basmati", qty: 12, unit: "kg", min: 5, dlc: "Dans 14 jours", price: 2.3 },
-  { name: "Pesto verde", qty: 2.1, unit: "L", min: 1, dlc: "Demain", price: 5.4 },
-  { name: "Mayo épicée", qty: 2.3, unit: "L", min: 1, dlc: "Dans 5 jours", price: 3.1 },
-  { name: "Champignons", qty: 0.6, unit: "kg", min: 1.5, dlc: "Demain", price: 6.8 },
+  { name: "Poulet mariné", qty: 2.1, unit: "kg", min: 5, dlc: "Demain", price: 8.5, category: "Frais" },
+  { name: "Sauce tomate", qty: 3.2, unit: "L", min: 4, dlc: "Aujourd'hui 22h", price: 4.2, category: "Sauce" },
+  { name: "Sauce butter chicken", qty: 0.4, unit: "L", min: 2, dlc: "Aujourd'hui 18h", price: 6.1, category: "Sauce" },
+  { name: "Mozzarella", qty: 1.8, unit: "kg", min: 2, dlc: "Dans 2 jours", price: 9.0, category: "Frais" },
+  { name: "Riz basmati", qty: 12, unit: "kg", min: 5, dlc: "Dans 14 jours", price: 2.3, category: "Sec" },
+  { name: "Pesto verde", qty: 2.1, unit: "L", min: 1, dlc: "Demain", price: 5.4, category: "Sauce" },
+  { name: "Boîtes kraft", qty: 220, unit: "u", min: 100, dlc: "—", price: 0.18, category: "Packaging" },
+  { name: "Champignons", qty: 0.6, unit: "kg", min: 1.5, dlc: "Demain", price: 6.8, category: "Frais" },
 ];
 
 function statusOf(i: Item): "ok" | "soon" | "urgent" {
@@ -41,13 +45,28 @@ const orderHistory = [
 ];
 
 function StocksPage() {
-  const [tab, setTab] = useState<"inventory" | "orders">("inventory");
+  const [tab, setTab] = useState<"inventory" | "forecast" | "history">("inventory");
+  const [chat, setChat] = useState(false);
   const lowItems = inventory.filter((i) => statusOf(i) !== "ok");
 
   return (
     <AppShell operator="Mohammed">
       <h1 className="mb-1 text-2xl font-bold tracking-tight">Stocks</h1>
-      <p className="mb-4 text-sm text-muted-foreground">Inventaire & commandes fournisseurs</p>
+      <p className="mb-4 text-sm text-muted-foreground">Inventaire, IA & historique</p>
+
+      <button
+        onClick={() => setChat(true)}
+        className="mb-4 flex w-full items-center gap-3 rounded-2xl bg-navy p-4 text-navy-foreground"
+      >
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+          <Sparkles size={18} />
+        </div>
+        <div className="flex-1 text-left">
+          <p className="text-sm font-bold">Mettre à jour mes stocks</p>
+          <p className="mt-0.5 text-[11px] text-navy-foreground/70">Parlez ou écrivez à l'IA · fin de service</p>
+        </div>
+        <Mic size={18} className="text-primary" />
+      </button>
 
       {lowItems.length > 0 && (
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-3.5">
@@ -55,69 +74,77 @@ function StocksPage() {
             <AlertTriangle size={15} />
           </div>
           <div className="flex-1">
-            <p className="text-xs font-semibold text-foreground">{lowItems.length} ingrédients sous le seuil</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Commande suggérée prête pour ce soir.</p>
+            <p className="text-xs font-semibold">{lowItems.length} ingrédients sous le seuil</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">L'IA recommande une commande pour jeudi.</p>
           </div>
-          <button onClick={() => setTab("orders")} className="rounded-lg bg-destructive px-2.5 py-1 text-[11px] font-semibold text-destructive-foreground">Commander</button>
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-muted p-1">
-        {([["inventory", "Inventaire"], ["orders", "Commandes"]] as const).map(([k, l]) => (
+      <div className="mb-4 grid grid-cols-3 gap-1 rounded-2xl bg-muted p-1">
+        {([["inventory", "Mes stocks"], ["forecast", "IA forecast"], ["history", "Historique"]] as const).map(([k, l]) => (
           <button
             key={k}
             onClick={() => setTab(k)}
-            className={`rounded-xl py-2 text-xs font-semibold transition ${tab === k ? "bg-card text-foreground shadow" : "text-muted-foreground"}`}
+            className={`rounded-xl py-2 text-[11px] font-semibold transition ${tab === k ? "bg-card text-foreground shadow" : "text-muted-foreground"}`}
           >
             {l}
           </button>
         ))}
       </div>
 
-      {tab === "inventory" ? <InventoryView /> : <SupplierOrdersView items={lowItems} />}
+      {tab === "inventory" && <InventoryView />}
+      {tab === "forecast" && <ForecastView />}
+      {tab === "history" && <HistoryView />}
+
+      {chat && <AIChatModal onClose={() => setChat(false)} />}
     </AppShell>
   );
 }
 
 function InventoryView() {
-  const [orders, setOrders] = useState(180);
-  const liters = useMemo(() => (orders * 0.045).toFixed(2), [orders]);
+  const [filter, setFilter] = useState<"all" | "low" | "ok">("all");
+  const [cat, setCat] = useState<string>("Tout");
+  const cats = ["Tout", "Frais", "Sec", "Sauce", "Packaging"];
+
+  const filtered = useMemo(() => inventory.filter((i) => {
+    const s = statusOf(i);
+    if (filter === "low" && s === "ok") return false;
+    if (filter === "ok" && s !== "ok") return false;
+    if (cat !== "Tout" && i.category !== cat) return false;
+    return true;
+  }), [filter, cat]);
 
   return (
     <>
-      <section className="overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-3">
-          <Calculator size={15} className="text-primary" />
-          <h2 className="text-sm font-bold">Calculateur de sauce</h2>
-        </div>
-        <div className="p-4">
-          <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Commandes prévues
-          </label>
-          <div className="mt-2 flex items-center gap-3">
-            <button onClick={() => setOrders((o) => Math.max(0, o - 10))} className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-background text-lg font-bold hover:bg-accent">−</button>
-            <input
-              type="number"
-              value={orders}
-              onChange={(e) => setOrders(Number(e.target.value) || 0)}
-              className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-center text-lg font-bold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-            <button onClick={() => setOrders((o) => o + 10)} className="grid h-10 w-10 place-items-center rounded-xl border border-border bg-background text-lg font-bold hover:bg-accent">+</button>
-          </div>
-          <div className="mt-4 rounded-xl bg-navy p-4 text-navy-foreground">
-            <p className="text-[10px] uppercase tracking-wider text-navy-foreground/60">Sauce à préparer</p>
-            <p className="mt-1 text-3xl font-bold">{liters} <span className="text-base text-primary">L</span></p>
-            <p className="mt-1 text-[11px] text-navy-foreground/70">≈ 45 ml par commande</p>
-          </div>
-        </div>
-      </section>
-
-      <div className="mb-3 mt-5 flex items-center justify-between">
-        <h2 className="text-sm font-bold">Inventaire</h2>
-        <span className="text-[11px] text-muted-foreground">{inventory.length} ingrédients</span>
+      <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
+        <Filter size={13} className="shrink-0 text-muted-foreground" />
+        {([["all", "Tous"], ["low", "Bas/Critique"], ["ok", "OK"]] as const).map(([k, l]) => (
+          <button
+            key={k}
+            onClick={() => setFilter(k)}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
+              filter === k ? "bg-navy text-navy-foreground" : "border border-border bg-card text-muted-foreground"
+            }`}
+          >
+            {l}
+          </button>
+        ))}
+        <span className="mx-1 h-3 w-px bg-border" />
+        {cats.map((c) => (
+          <button
+            key={c}
+            onClick={() => setCat(c)}
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
+              cat === c ? "bg-primary text-primary-foreground" : "border border-border bg-card text-muted-foreground"
+            }`}
+          >
+            {c}
+          </button>
+        ))}
       </div>
+
       <div className="space-y-2">
-        {inventory.map((i) => {
+        {filtered.map((i) => {
           const s = statusOf(i);
           return (
             <div key={i.name} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
@@ -137,11 +164,9 @@ function InventoryView() {
               </div>
               <div className="text-right">
                 <p className="text-sm font-bold">{i.qty} <span className="text-[10px] text-muted-foreground">{i.unit}</span></p>
-                <span
-                  className={`text-[10px] font-semibold uppercase ${
-                    s === "urgent" ? "text-destructive" : s === "soon" ? "text-warning" : "text-success"
-                  }`}
-                >
+                <span className={`text-[10px] font-semibold uppercase ${
+                  s === "urgent" ? "text-destructive" : s === "soon" ? "text-warning" : "text-success"
+                }`}>
                   {s === "urgent" ? "Critique" : s === "soon" ? "Bas" : "OK"}
                 </span>
               </div>
@@ -153,91 +178,51 @@ function InventoryView() {
   );
 }
 
-function SupplierOrdersView({ items }: { items: Item[] }) {
-  const [draft, setDraft] = useState<Record<string, number>>(() =>
-    Object.fromEntries(items.map((i) => [i.name, Math.max(0, Math.ceil(i.min * 2 - i.qty))])),
-  );
-  const adjust = (n: string, d: number) => setDraft((s) => ({ ...s, [n]: Math.max(0, (s[n] || 0) + d) }));
-  const total = items.reduce((sum, i) => sum + (draft[i.name] || 0) * i.price, 0);
-
-  const waMessage = encodeURIComponent(
-    `Bonjour, commande Grubano pour demain:\n${items
-      .filter((i) => (draft[i.name] || 0) > 0)
-      .map((i) => `• ${i.name} — ${draft[i.name]} ${i.unit}`)
-      .join("\n")}\nTotal estimé: €${total.toFixed(2)}`,
-  );
+function ForecastView() {
+  const days = [
+    { d: "Mer", w: "☀️", evt: null, pct: 0, sauce: 3.2 },
+    { d: "Jeu", w: "☀️", evt: null, pct: 5, sauce: 3.4 },
+    { d: "Ven", w: "🌧️", evt: "Match PSG 21h", pct: 35, sauce: 4.6 },
+    { d: "Sam", w: "🌧️", evt: "Match PSG 21h", pct: 42, sauce: 5.1 },
+    { d: "Dim", w: "⛅", evt: null, pct: 18, sauce: 4.0 },
+    { d: "Lun", w: "☀️", evt: null, pct: -5, sauce: 2.9 },
+    { d: "Mar", w: "☀️", evt: null, pct: 0, sauce: 3.1 },
+  ];
 
   return (
     <>
-      <section className="overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 py-3">
-          <h2 className="text-sm font-bold">Commande suggérée</h2>
-          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-primary">{items.length} articles</span>
+      <div className="mb-4 rounded-2xl bg-navy p-4 text-navy-foreground">
+        <div className="flex items-center gap-2">
+          <CloudRain size={14} className="text-primary" />
+          <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Recommandation IA</p>
         </div>
-        <div className="divide-y divide-border">
-          {items.length === 0 && (
-            <div className="p-6 text-center text-sm text-muted-foreground">
-              <Check size={20} className="mx-auto mb-2 text-success" />
-              Tous les stocks sont OK
-            </div>
-          )}
-          {items.map((i) => (
-            <div key={i.name} className="flex items-center gap-3 px-4 py-3">
-              <div className="flex-1">
-                <p className="text-sm font-semibold">{i.name}</p>
-                <p className="text-[11px] text-muted-foreground">€{i.price.toFixed(2)}/{i.unit} · stock {i.qty}/{i.min}</p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => adjust(i.name, -1)} className="grid h-7 w-7 place-items-center rounded-lg border border-border"><Minus size={12} /></button>
-                <span className="w-10 text-center text-sm font-bold">{draft[i.name] || 0} <span className="text-[9px] text-muted-foreground">{i.unit}</span></span>
-                <button onClick={() => adjust(i.name, 1)} className="grid h-7 w-7 place-items-center rounded-lg border border-border"><Plus size={12} /></button>
-              </div>
-            </div>
-          ))}
-        </div>
-        {items.length > 0 && (
-          <div className="border-t border-border bg-muted/20 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Total estimé</span>
-              <span className="text-lg font-bold">€{total.toFixed(2)}</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <a
-                href={`https://wa.me/?text=${waMessage}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center justify-center gap-1 rounded-xl bg-success py-2.5 text-[11px] font-semibold text-success-foreground"
-              >
-                <Send size={13} /> WhatsApp
-              </a>
-              <button className="flex items-center justify-center gap-1 rounded-xl border border-border bg-card py-2.5 text-[11px] font-semibold">
-                <Mail size={13} /> Email
-              </button>
-              <button className="flex items-center justify-center gap-1 rounded-xl border border-border bg-card py-2.5 text-[11px] font-semibold">
-                <FileDown size={13} /> PDF
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <div className="mb-3 mt-5 flex items-center justify-between">
-        <h2 className="text-sm font-bold">Historique</h2>
-        <span className="text-[11px] text-muted-foreground">{orderHistory.length} commandes</span>
+        <p className="mt-2 text-sm font-semibold leading-snug">
+          Ce week-end : <span className="text-primary">+35% de demande</span> attendue (pluie + match PSG).
+        </p>
+        <p className="mt-1 text-[11px] text-navy-foreground/70">
+          Commandez 4 kg poulet + 3 L bolognaise <span className="text-primary">avant jeudi 12h</span> pour livraison vendredi matin.
+        </p>
+        <button className="mt-3 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground">
+          Préparer la commande
+        </button>
       </div>
+
+      <h2 className="mb-3 text-sm font-bold">Prévision 7 jours</h2>
       <div className="space-y-2">
-        {orderHistory.map((o) => (
-          <div key={o.date} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+        {days.map((d) => (
+          <div key={d.d} className="rounded-xl border border-border bg-card p-3">
             <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-primary"><Clock size={14} /></div>
-              <div>
-                <p className="text-sm font-semibold">{o.supplier}</p>
-                <p className="text-[11px] text-muted-foreground">{o.date}</p>
+              <div className="grid h-10 w-10 place-items-center rounded-lg bg-muted text-lg">{d.w}</div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold">{d.d}</p>
+                  {d.evt && <span className="inline-flex items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-semibold text-primary"><Trophy size={9} /> {d.evt}</span>}
+                </div>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Sauce à prévoir · {d.sauce} L</p>
               </div>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-bold">€{o.total}</p>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-success"><Check size={10} /> {o.status}</span>
+              <span className={`text-sm font-bold ${d.pct > 20 ? "text-destructive" : d.pct > 0 ? "text-warning" : d.pct < 0 ? "text-muted-foreground" : "text-success"}`}>
+                {d.pct > 0 ? "+" : ""}{d.pct}%
+              </span>
             </div>
           </div>
         ))}
@@ -245,3 +230,104 @@ function SupplierOrdersView({ items }: { items: Item[] }) {
     </>
   );
 }
+
+function HistoryView() {
+  return (
+    <div className="space-y-2">
+      {orderHistory.map((o) => (
+        <div key={o.date} className="flex items-center justify-between rounded-xl border border-border bg-card p-3">
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-primary"><Clock size={14} /></div>
+            <div>
+              <p className="text-sm font-semibold">{o.supplier}</p>
+              <p className="text-[11px] text-muted-foreground">{o.date}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-bold">€{o.total}</p>
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-success"><Check size={10} /> {o.status}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AIChatModal({ onClose }: { onClose: () => void }) {
+  const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
+    { role: "ai", text: "Bonsoir Mohammed 👋 Comment se sont passés les stocks ce soir ?" },
+  ]);
+  const [input, setInput] = useState("");
+  const [step, setStep] = useState<"chat" | "confirm">("chat");
+
+  const send = () => {
+    if (!input.trim()) return;
+    setMessages((m) => [...m, { role: "user", text: input }]);
+    setInput("");
+    setTimeout(() => {
+      setMessages((m) => [...m, {
+        role: "ai",
+        text: "Compris. J'ai mis à jour : poulet 2 kg, bolognaise 0,3 L, riz plein, base carbonara à 0. D'après les prévisions de samedi (pluie + match), il vous faut 4 kg de poulet et 3 L de bolognaise en plus. Commande à passer avant jeudi.",
+      }]);
+      setStep("confirm");
+    }, 700);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-4 pb-4 pt-16">
+      <div className="flex h-full max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-card shadow-2xl">
+        <div className="flex items-center gap-3 border-b border-border bg-navy px-4 py-3 text-navy-foreground">
+          <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <Sparkles size={15} />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold">Assistant Stocks</p>
+            <p className="text-[10px] text-navy-foreground/70">Décrivez vos stocks en langage naturel</p>
+          </div>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg bg-navy-foreground/10"><X size={14} /></button>
+        </div>
+
+        <div className="flex-1 space-y-3 overflow-y-auto p-4">
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-snug ${
+                m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+              }`}>
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {step === "confirm" && (
+            <div className="rounded-2xl border border-primary/30 bg-accent p-3">
+              <p className="text-[11px] font-bold text-foreground">Stocks mis à jour automatiquement</p>
+              <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                <li>• Poulet mariné : 2,0 kg</li>
+                <li>• Sauce bolognaise : 0,3 L</li>
+                <li>• Base carbonara : 0 L</li>
+              </ul>
+              <button onClick={onClose} className="mt-3 w-full rounded-xl bg-primary py-2.5 text-xs font-bold text-primary-foreground">
+                Valider et préparer la commande
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border bg-card p-3">
+          <div className="flex items-center gap-2">
+            <button className="grid h-10 w-10 place-items-center rounded-xl bg-muted text-foreground"><Mic size={16} /></button>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              placeholder="Ex : 2 kg de poulet, plus de carbonara…"
+              className="flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-[13px] focus:border-primary focus:outline-none"
+            />
+            <button onClick={send} className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground"><Send size={16} /></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+

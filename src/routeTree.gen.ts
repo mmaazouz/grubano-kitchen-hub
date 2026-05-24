@@ -16,7 +16,9 @@ import { Route as StocksRouteImport } from './routes/stocks'
 import { Route as ReviewsRouteImport } from './routes/reviews'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrepRouteImport } from './routes/prep'
+import { Route as PremiumRouteImport } from './routes/premium'
 import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as MoreRouteImport } from './routes/more'
 import { Route as MenuRouteImport } from './routes/menu'
@@ -67,9 +69,19 @@ const PrepRoute = PrepRouteImport.update({
   path: '/prep',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PremiumRoute = PremiumRouteImport.update({
+  id: '/premium',
+  path: '/premium',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrdersRoute = OrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NotificationsRoute = NotificationsRouteImport.update({
@@ -158,7 +170,9 @@ export interface FileRoutesByFullPath {
   '/menu': typeof MenuRoute
   '/more': typeof MoreRoute
   '/notifications': typeof NotificationsRoute
+  '/onboarding': typeof OnboardingRoute
   '/orders': typeof OrdersRoute
+  '/premium': typeof PremiumRoute
   '/prep': typeof PrepRoute
   '/pricing': typeof PricingRoute
   '/reviews': typeof ReviewsRoute
@@ -182,7 +196,9 @@ export interface FileRoutesByTo {
   '/menu': typeof MenuRoute
   '/more': typeof MoreRoute
   '/notifications': typeof NotificationsRoute
+  '/onboarding': typeof OnboardingRoute
   '/orders': typeof OrdersRoute
+  '/premium': typeof PremiumRoute
   '/prep': typeof PrepRoute
   '/pricing': typeof PricingRoute
   '/reviews': typeof ReviewsRoute
@@ -207,7 +223,9 @@ export interface FileRoutesById {
   '/menu': typeof MenuRoute
   '/more': typeof MoreRoute
   '/notifications': typeof NotificationsRoute
+  '/onboarding': typeof OnboardingRoute
   '/orders': typeof OrdersRoute
+  '/premium': typeof PremiumRoute
   '/prep': typeof PrepRoute
   '/pricing': typeof PricingRoute
   '/reviews': typeof ReviewsRoute
@@ -233,7 +251,9 @@ export interface FileRouteTypes {
     | '/menu'
     | '/more'
     | '/notifications'
+    | '/onboarding'
     | '/orders'
+    | '/premium'
     | '/prep'
     | '/pricing'
     | '/reviews'
@@ -257,7 +277,9 @@ export interface FileRouteTypes {
     | '/menu'
     | '/more'
     | '/notifications'
+    | '/onboarding'
     | '/orders'
+    | '/premium'
     | '/prep'
     | '/pricing'
     | '/reviews'
@@ -281,7 +303,9 @@ export interface FileRouteTypes {
     | '/menu'
     | '/more'
     | '/notifications'
+    | '/onboarding'
     | '/orders'
+    | '/premium'
     | '/prep'
     | '/pricing'
     | '/reviews'
@@ -306,7 +330,9 @@ export interface RootRouteChildren {
   MenuRoute: typeof MenuRoute
   MoreRoute: typeof MoreRoute
   NotificationsRoute: typeof NotificationsRoute
+  OnboardingRoute: typeof OnboardingRoute
   OrdersRoute: typeof OrdersRoute
+  PremiumRoute: typeof PremiumRoute
   PrepRoute: typeof PrepRoute
   PricingRoute: typeof PricingRoute
   ReviewsRoute: typeof ReviewsRoute
@@ -367,11 +393,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrepRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/premium': {
+      id: '/premium'
+      path: '/premium'
+      fullPath: '/premium'
+      preLoaderRoute: typeof PremiumRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/orders': {
       id: '/orders'
       path: '/orders'
       fullPath: '/orders'
       preLoaderRoute: typeof OrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/notifications': {
@@ -490,7 +530,9 @@ const rootRouteChildren: RootRouteChildren = {
   MenuRoute: MenuRoute,
   MoreRoute: MoreRoute,
   NotificationsRoute: NotificationsRoute,
+  OnboardingRoute: OnboardingRoute,
   OrdersRoute: OrdersRoute,
+  PremiumRoute: PremiumRoute,
   PrepRoute: PrepRoute,
   PricingRoute: PricingRoute,
   ReviewsRoute: ReviewsRoute,
