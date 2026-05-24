@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import {
-  Package, AlertTriangle, Check, Clock, Sparkles, Send, CloudRain, Trophy, Filter, X, Mic, ChevronRight,
+  Package, AlertTriangle, Check, Clock, Sparkles, Send, CloudRain, Trophy, Filter, X, Mic,
 } from "lucide-react";
+
 import { useState, useMemo } from "react";
 
 export const Route = createFileRoute("/stocks")({
@@ -329,5 +330,4 @@ function AIChatModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// Re-export for potential future use
-export { ChevronRight };
+
