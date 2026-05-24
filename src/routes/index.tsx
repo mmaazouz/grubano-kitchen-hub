@@ -1,29 +1,39 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { TrendingUp, ShoppingBag, Star, Users, AlertTriangle, ChefHat, Sparkles, CloudRain, ArrowRight } from "lucide-react";
-
+import {
+  TrendingUp, ShoppingBag, Star, Users, AlertTriangle, Power, EyeOff, CalendarDays, Truck,
+  Sparkles, ChevronRight, Lock,
+} from "lucide-react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
-  head: () => ({ meta: [{ title: "Grubano — Dashboard" }] }),
+  head: () => ({ meta: [{ title: "Grubano — Tableau de bord" }] }),
 });
 
-const brands = [
-  { name: "Gnocchi Bar", color: "oklch(0.66 0.18 35)", values: [320, 410, 380, 450, 520, 610, 580] },
-  { name: "Riz Gourmand", color: "oklch(0.55 0.14 240)", values: [180, 210, 240, 290, 260, 310, 340] },
-  { name: "Pasta Fresca", color: "oklch(0.65 0.16 152)", values: [220, 260, 290, 270, 330, 360, 390] },
-  { name: "Rollix", color: "oklch(0.7 0.16 75)", values: [140, 170, 160, 200, 240, 220, 280] },
-];
-const days = ["M", "T", "W", "T", "F", "S", "S"];
+const alerts = [
+  { type: "stock", icon: AlertTriangle, title: "Sauce butter chicken critique", desc: "Commandez avant 10h00", tone: "destructive", to: "/stocks" },
+  { type: "review", icon: Star, title: "1 avis négatif sans réponse", desc: "Sarah K. · 2★ · il y a 1h", tone: "warning", to: "/reviews" },
+  { type: "reservation", icon: CalendarDays, title: "Table 4 dans 2h", desc: "3 couverts · allergie fruits à coque", tone: "navy", to: "/tables" },
+] as const;
+
+const recentOrders = [
+  { id: "#GR-2241", brand: "Gnocchi Bar", amount: 24.5, status: "En préparation", time: "il y a 2 min", tone: "primary" },
+  { id: "#GR-2240", brand: "Pasta Fresca", amount: 31.2, status: "Confirmée", time: "il y a 5 min", tone: "success" },
+  { id: "#GR-2239", brand: "Rollix", amount: 18.9, status: "Livrée", time: "il y a 12 min", tone: "muted" },
+  { id: "#GR-2238", brand: "Riz Gourmand", amount: 22.0, status: "Livrée", time: "il y a 18 min", tone: "muted" },
+  { id: "#GR-2237", brand: "Gnocchi Bar", amount: 27.4, status: "Livrée", time: "il y a 24 min", tone: "muted" },
+] as const;
 
 function KpiCard({ icon: Icon, label, value, change, tone = "default" }: { icon: React.ElementType; label: string; value: string; change: string; tone?: "default" | "primary" }) {
+  const positive = change.startsWith("+");
   return (
     <div className={`rounded-2xl border p-3.5 ${tone === "primary" ? "border-transparent bg-navy text-navy-foreground" : "border-border bg-card"}`}>
       <div className="flex items-center justify-between">
         <div className={`grid h-8 w-8 place-items-center rounded-lg ${tone === "primary" ? "bg-primary text-primary-foreground" : "bg-accent text-primary"}`}>
           <Icon size={15} />
         </div>
-        <span className={`text-[10px] font-semibold ${tone === "primary" ? "text-primary" : "text-success"}`}>{change}</span>
+        <span className={`text-[10px] font-semibold ${tone === "primary" ? "text-primary" : positive ? "text-success" : "text-destructive"}`}>{change}</span>
       </div>
       <p className={`mt-3 text-[10px] uppercase tracking-wider ${tone === "primary" ? "text-navy-foreground/60" : "text-muted-foreground"}`}>{label}</p>
       <p className="mt-0.5 text-xl font-bold tracking-tight">{value}</p>
@@ -32,125 +42,129 @@ function KpiCard({ icon: Icon, label, value, change, tone = "default" }: { icon:
 }
 
 function Dashboard() {
-  const max = Math.max(...brands.flatMap((b) => b.values));
+  const [open, setOpen] = useState(true);
   return (
-    <AppShell operator="Mohammed" subtitle="Good morning">
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight">Today's overview</h1>
-        <p className="text-sm text-muted-foreground">Tuesday, 18 November</p>
+    <AppShell operator="Mohammed" subtitle="Bonjour">
+      <div className="mb-4 flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Aujourd'hui</h1>
+          <p className="text-sm text-muted-foreground">Mardi 18 novembre</p>
+        </div>
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${open ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${open ? "bg-success animate-pulse" : "bg-muted-foreground"}`} />
+          {open ? "Ouvert" : "Fermé"}
+        </span>
       </div>
 
-      <Link to="/briefing" className="mb-4 block rounded-2xl bg-navy p-4 text-navy-foreground">
-        <div className="flex items-start gap-3">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <Sparkles size={15} />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">AI briefing</p>
-              <span className="inline-flex items-center gap-1 rounded-full bg-navy-elevated px-1.5 py-0.5 text-[9px] text-navy-foreground/70">
-                <CloudRain size={9} /> Rain 19h
-              </span>
+      {/* Alertes critiques */}
+      <div className="mb-5 space-y-2">
+        {alerts.map((a) => (
+          <Link
+            key={a.type}
+            to={a.to}
+            className={`flex items-start gap-3 rounded-2xl border p-3.5 ${
+              a.tone === "destructive" ? "border-destructive/30 bg-destructive/10" :
+              a.tone === "warning" ? "border-warning/30 bg-warning/10" :
+              "border-navy/20 bg-navy text-navy-foreground"
+            }`}
+          >
+            <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+              a.tone === "destructive" ? "bg-destructive text-destructive-foreground" :
+              a.tone === "warning" ? "bg-warning text-warning-foreground" :
+              "bg-primary text-primary-foreground"
+            }`}>
+              <a.icon size={15} />
             </div>
-            <p className="mt-1 text-sm font-semibold leading-snug">
-              Prep <span className="text-primary">3.2 L</span> Butter Chicken & <span className="text-primary">2.4 L</span> Bolognaise. +20% orders expected tonight.
-            </p>
-          </div>
-          <ArrowRight size={16} className="mt-1 text-navy-foreground/60" />
-        </div>
-      </Link>
+            <div className="flex-1">
+              <p className={`text-xs font-bold ${a.tone === "navy" ? "" : "text-foreground"}`}>{a.title}</p>
+              <p className={`mt-0.5 text-[11px] ${a.tone === "navy" ? "text-navy-foreground/70" : "text-muted-foreground"}`}>{a.desc}</p>
+            </div>
+            <ChevronRight size={16} className={a.tone === "navy" ? "text-navy-foreground/50" : "text-muted-foreground"} />
+          </Link>
+        ))}
+      </div>
 
-      <div className="mb-4 flex items-start gap-3 rounded-2xl border border-primary/20 bg-accent p-3.5">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
-          <AlertTriangle size={15} />
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-3">
+        <KpiCard icon={TrendingUp} label="Revenu vs hier" value="€2 847" change="+12%" tone="primary" />
+        <KpiCard icon={ShoppingBag} label="Commandes" value="184" change="+8%" />
+        <KpiCard icon={Star} label="Note (30j)" value="4.8★" change="+0.2" />
+        <KpiCard icon={Users} label="Fidèles" value="1 247" change="+23" />
+      </div>
+
+      {/* Update stocks - AI */}
+      <Link to="/stocks" search={{ chat: true } as never} className="mt-4 flex items-center gap-3 rounded-2xl bg-navy p-4 text-navy-foreground">
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+          <Sparkles size={18} />
         </div>
         <div className="flex-1">
-          <p className="text-xs font-semibold text-foreground">Tomato sauce running low</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">Prepare 4.5L before 11:30 to cover today's forecast.</p>
+          <p className="text-sm font-bold">Mettre à jour mes stocks</p>
+          <p className="mt-0.5 text-[11px] text-navy-foreground/70">Parlez à l'IA en fin de service</p>
         </div>
+        <ChevronRight size={18} className="text-navy-foreground/60" />
+      </Link>
+
+      {/* Actions rapides */}
+      <h2 className="mb-2 mt-6 text-sm font-bold">Actions rapides</h2>
+      <div className="grid grid-cols-4 gap-2">
+        <QuickAction icon={Power} label={open ? "Fermer" : "Ouvrir"} active={open} onClick={() => setOpen((o) => !o)} />
+        <QuickAction icon={EyeOff} label="Rupture" to="/menu" />
+        <QuickAction icon={CalendarDays} label="Résas" to="/tables" />
+        <QuickAction icon={Truck} label="Commander" to="/suppliers" />
       </div>
 
-
-      <div className="grid grid-cols-2 gap-3">
-        <KpiCard icon={TrendingUp} label="Revenue today" value="€2,847" change="+12%" tone="primary" />
-        <KpiCard icon={ShoppingBag} label="Orders today" value="184" change="+8%" />
-        <KpiCard icon={Star} label="Avg. rating" value="4.8★" change="+0.2" />
-        <KpiCard icon={Users} label="Loyalty members" value="1,247" change="+23" />
+      {/* Commandes */}
+      <div className="mb-3 mt-6 flex items-center justify-between">
+        <h2 className="text-sm font-bold">Dernières commandes</h2>
+        <Link to="/orders" className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary">
+          Voir tout <ChevronRight size={12} />
+        </Link>
       </div>
-
-      <section className="mt-6 rounded-2xl border border-border bg-card p-4">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold">Weekly revenue</h2>
-            <p className="text-[11px] text-muted-foreground">By brand · last 7 days</p>
+      <div className="space-y-2">
+        {recentOrders.map((o) => (
+          <div key={o.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold">{o.brand}</p>
+                <span className="text-[10px] text-muted-foreground">{o.id}</span>
+              </div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">{o.time}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-bold">€{o.amount.toFixed(2)}</p>
+              <span className={`text-[10px] font-semibold ${
+                o.tone === "primary" ? "text-primary" : o.tone === "success" ? "text-success" : "text-muted-foreground"
+              }`}>{o.status}</span>
+            </div>
           </div>
-          <span className="rounded-full bg-accent px-2.5 py-1 text-[10px] font-semibold text-primary">€18.4k</span>
-        </div>
+        ))}
+      </div>
 
-        <div className="flex h-36 items-end gap-1.5">
-          {days.map((d, i) => (
-            <div key={i} className="flex flex-1 flex-col items-center gap-1.5">
-              <div className="flex w-full items-end justify-center gap-0.5">
-                {brands.map((b) => {
-                  const h = (b.values[i] / max) * 100;
-                  return (
-                    <div
-                      key={b.name}
-                      className="w-1.5 rounded-t-sm transition-all hover:opacity-80"
-                      style={{ height: `${h}%`, backgroundColor: b.color, minHeight: 4 }}
-                    />
-                  );
-                })}
-              </div>
-              <span className="text-[10px] font-medium text-muted-foreground">{d}</span>
-            </div>
-          ))}
+      {/* Premium hint */}
+      <Link to="/premium" className="mt-5 flex items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-accent p-3.5">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+          <Lock size={14} />
         </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-3">
-          {brands.map((b) => (
-            <div key={b.name} className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
-              <span className="text-[11px] text-foreground">{b.name}</span>
-            </div>
-          ))}
+        <div className="flex-1">
+          <p className="text-xs font-bold text-foreground">Connecter UberEats, Deliveroo, Just Eat</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">Multi-plateforme · Grubano Pro</p>
         </div>
-      </section>
-
-      <section className="mt-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-bold">Today's prep</h2>
-          <span className="text-[11px] text-muted-foreground">Sauces & bases</span>
-        </div>
-        <div className="space-y-2">
-          {[
-            { name: "Tomato sauce", qty: "4.5 L", urgency: "urgent" },
-            { name: "Pesto verde", qty: "2.0 L", urgency: "soon" },
-            { name: "Carbonara base", qty: "3.2 L", urgency: "ok" },
-            { name: "Soy-ginger", qty: "1.5 L", urgency: "ok" },
-          ].map((s) => (
-            <div key={s.name} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-primary">
-                <ChefHat size={16} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">{s.name}</p>
-                <p className="text-[11px] text-muted-foreground">Prep before 11:30</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-bold">{s.qty}</p>
-                <span
-                  className={`text-[10px] font-semibold ${
-                    s.urgency === "urgent" ? "text-destructive" : s.urgency === "soon" ? "text-warning" : "text-success"
-                  }`}
-                >
-                  {s.urgency === "urgent" ? "Urgent" : s.urgency === "soon" ? "Soon" : "On track"}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+        <span className="rounded-full bg-primary px-2.5 py-1 text-[10px] font-bold text-primary-foreground">29€/mois</span>
+      </Link>
     </AppShell>
   );
+}
+
+function QuickAction({ icon: Icon, label, to, onClick, active }: { icon: React.ElementType; label: string; to?: string; onClick?: () => void; active?: boolean }) {
+  const cls = `flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-border bg-card py-3 transition active:scale-95 ${active ? "border-primary/40 bg-accent" : ""}`;
+  const inner = (
+    <>
+      <div className={`grid h-9 w-9 place-items-center rounded-xl ${active ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
+        <Icon size={15} />
+      </div>
+      <span className="text-[10px] font-semibold">{label}</span>
+    </>
+  );
+  if (to) return <Link to={to} className={cls}>{inner}</Link>;
+  return <button onClick={onClick} className={cls}>{inner}</button>;
 }
