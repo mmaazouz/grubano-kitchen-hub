@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import {
-  BarChart3, Sparkles, UserCircle2, Radio, ChefHat, TrendingUp, Truck,
-  PieChart, Building2, MessageSquare, RefreshCw, Calendar, QrCode, Bell, Store, Crown, Rocket,
+  BarChart3, Sparkles, UserCircle2, ChefHat, TrendingUp, Truck, Package,
+  PieChart, Building2, MessageSquare, Calendar, QrCode, Bell, Store, Crown, Rocket, Gift,
 } from "lucide-react";
 
 export const Route = createFileRoute("/more")({
@@ -13,19 +13,20 @@ export const Route = createFileRoute("/more")({
 const features = [
   { to: "/premium", label: "Grubano Pro", desc: "Multi-plateforme", icon: Crown, tone: "primary" },
   { to: "/onboarding", label: "Reconfigurer", desc: "Onboarding 8 étapes", icon: Rocket, tone: "primary" },
+  { to: "/stocks", label: "Stocks", desc: "Inventaire & IA forecast", icon: Package },
+  { to: "/suppliers", label: "Fournisseurs", desc: "Catalogue multi-pros", icon: Truck },
+  { to: "/brands", label: "Marques", desc: "4 marques fantômes", icon: Store },
+  { to: "/franchise", label: "Franchise", desc: "Portail partenaires", icon: Building2 },
+  { to: "/loyalty", label: "Fidélité", desc: "Programme clients", icon: Gift },
   { to: "/analytics", label: "Intelligence", desc: "Marge & prévisions", icon: BarChart3 },
   { to: "/briefing", label: "Briefing IA", desc: "Prep journalier", icon: Sparkles },
   { to: "/customers", label: "Clients", desc: "Profils & fidélité", icon: UserCircle2 },
-  { to: "/orders", label: "Commandes", desc: "Feed temps réel", icon: Radio },
   { to: "/prep", label: "Cuisine", desc: "Mode plein écran", icon: ChefHat },
   { to: "/pricing", label: "Prix dynamiques", desc: "Surge & A/B", icon: TrendingUp },
-  { to: "/suppliers", label: "Fournisseurs", desc: "Partenaires & courses", icon: Truck },
   { to: "/finance", label: "Marges nettes", desc: "Par marque", icon: PieChart },
-  { to: "/franchise", label: "Franchise", desc: "Portail partenaires", icon: Building2 },
   { to: "/reviews", label: "Avis", desc: "Réponses IA", icon: MessageSquare },
-  { to: "/menu", label: "Menu", desc: "Sync toutes plateformes", icon: RefreshCw },
-  { to: "/cashflow", label: "Trésorerie", desc: "Calendrier des paiements", icon: Calendar },
-  { to: "/wallet", label: "Portefeuille client", desc: "QR fidélité", icon: QrCode },
+  { to: "/cashflow", label: "Trésorerie", desc: "Calendrier", icon: Calendar },
+  { to: "/wallet", label: "Portefeuille", desc: "QR fidélité", icon: QrCode },
   { to: "/notifications", label: "Notifications", desc: "Alertes & seuils", icon: Bell },
   { to: "/marketplace", label: "Marketplace", desc: "Licences de marques", icon: Store },
   { to: "/dinein", label: "Sur place", desc: "QR menu & paiement", icon: QrCode },
