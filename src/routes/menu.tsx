@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { FeaturePage, Card, SectionTitle } from "@/components/FeaturePage";
 import { useState, useEffect } from "react";
 import {
-  Sparkles, Camera, Image as ImageIcon, Plus, GripVertical, Clock, Eye, EyeOff,
+  Sparkles, Image as ImageIcon, Plus, GripVertical, Clock, Eye, EyeOff,
   Tag, Percent, Flame, Leaf, WheatOff, Star, X, Check, RotateCcw, Wand2, ChevronRight,
   ChevronLeft, Upload, Settings2, BadgeCheck,
 } from "lucide-react";
