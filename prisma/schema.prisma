@@ -1,0 +1,284 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Core ──────────────────────────────────────────────────────────────────────
+
+model Operator {
+  id        String    @id @default(cuid())
+  name      String
+  email     String    @unique
+  phone     String?
+  city      String?
+  status    String    @default("active")
+  role      String    @default("restaurant")   // restaurant | franchise | creator | consumer | admin
+  createdAt DateTime  @default(now())
+  brands    Brand[]
+  accounts  Account[]
+  sessions  Session[]
+}
+
+model Brand {
+  id         String         @id @default(cuid())
+  operatorId String
+  operator   Operator       @relation(fields: [operatorId], references: [id])
+  name       String
+  emoji      String         @default("🍴")
+  platform   String         @default("ubereats")
+  status     String         @default("active")
+  createdAt  DateTime       @default(now())
+  orders     LoyaltyOrder[]
+  menuItems  MenuItem[]
+  promotions Promotion[]
+  stockItems StockItem[]
+}
+
+// ── Loyalty ───────────────────────────────────────────────────────────────────
+
+model LoyaltyCustomer {
+  id            String         @id @default(cuid())
+  name          String
+  email         String         @unique
+  phone         String?
+  pointsBalance Int            @default(10)
+  tier          String         @default("bronze")
+  referralCode  String         @unique @default(cuid())
+  referredBy    String?
+  createdAt     DateTime       @default(now())
+  orders        LoyaltyOrder[]
+  rewards       Reward[]
+}
+
+model LoyaltyOrder {
+  id              String          @id @default(cuid())
+  customerId      String
+  customer        LoyaltyCustomer @relation(fields: [customerId], references: [id])
+  brandId         String
+  brand           Brand           @relation(fields: [brandId], references: [id])
+  uberOrderNumber String          @unique
+  amount          Float
+  pointsEarned    Int
+  validatedAt     DateTime        @default(now())
+}
+
+model Reward {
+  id         String          @id @default(cuid())
+  customerId String
+  customer   LoyaltyCustomer @relation(fields: [customerId], references: [id])
+  type       String
+  promoCode  String          @unique @default(cuid())
+  redeemed   Boolean         @default(false)
+  createdAt  DateTime        @default(now())
+}
+
+// ── Menu ──────────────────────────────────────────────────────────────────────
+
+model MenuItem {
+  id            String   @id @default(cuid())
+  brandId       String
+  brand         Brand    @relation(fields: [brandId], references: [id])
+  name          String
+  description   String?  @db.Text
+  price         Float
+  comparePrice  Float?
+  category      String
+  calories      Int?
+  allergens     Json     @default("[]")
+  labels        Json     @default("[]")
+  photos        Json     @default("[]")
+  options       Json     @default("[]")
+  available     Boolean  @default(true)
+  isPopular     Boolean  @default(false)
+  prepTime      Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Promotion {
+  id         String   @id @default(cuid())
+  brandId    String
+  brand      Brand    @relation(fields: [brandId], references: [id])
+  name       String
+  type       String   // percent | fixed | bundle | flash
+  discount   Float
+  conditions Json     @default("{}")
+  startDate  DateTime
+  endDate    DateTime
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+// ── Stocks ────────────────────────────────────────────────────────────────────
+
+model StockItem {
+  id           String    @id @default(cuid())
+  brandId      String
+  brand        Brand     @relation(fields: [brandId], references: [id])
+  name         String
+  quantity     Float     @default(0)
+  unit         String    @default("kg")
+  minThreshold Float     @default(0)
+  dlc          DateTime?
+  lastUpdated  DateTime  @default(now()) @updatedAt
+}
+
+// ── Suppliers ─────────────────────────────────────────────────────────────────
+
+model Supplier {
+  id        String            @id @default(cuid())
+  name      String
+  specialty String?
+  zone      String?
+  leadTime  String            @default("24h")
+  minOrder  Float             @default(0)
+  rating    Float             @default(5.0)
+  apiEnabled Boolean          @default(false)
+  phone     String?
+  email     String?
+  createdAt DateTime          @default(now())
+  products  SupplierProduct[]
+  orders    SupplierOrder[]
+}
+
+model SupplierProduct {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  name       String
+  unit       String   @default("kg")
+  price      Float
+  stock      String   @default("in") // in | low | out
+  updatedAt  DateTime @updatedAt
+}
+
+model SupplierOrder {
+  id         String   @id @default(cuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  items      Json
+  total      Float
+  status     String   @default("pending") // pending | sent | confirmed | delivered
+  sentAt     DateTime @default(now())
+  deliveredAt DateTime?
+}
+
+// ── Tables & reservations ─────────────────────────────────────────────────────
+
+model RestaurantTable {
+  id           String        @id @default(cuid())
+  name         String
+  seats        Int
+  x            Float         @default(50)
+  y            Float         @default(50)
+  active       Boolean       @default(true)
+  reservations Reservation[]
+}
+
+model Reservation {
+  id           String          @id @default(cuid())
+  tableId      String
+  table        RestaurantTable @relation(fields: [tableId], references: [id])
+  customerName String
+  phone        String?
+  email        String?
+  guests       Int
+  date         DateTime
+  endTime      DateTime
+  type         String          @default("standard") // quick | standard | full
+  status       String          @default("confirmed") // confirmed | arrived | overrun | cancelled | noshow
+  allergies    Json            @default("[]")
+  preOrder     Json            @default("[]")
+  depositAmount Float          @default(0)
+  depositPaid  Boolean         @default(false)
+  noShowPenalty Float          @default(0)
+  notes        String?         @db.Text
+  createdAt    DateTime        @default(now())
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  user              Operator @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         Operator @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── Email audit log ───────────────────────────────────────────────────────────
+
+model EmailLog {
+  id           String   @id @default(cuid())
+  recipient    String
+  subject      String
+  trigger      String
+  status       String   @default("sent")
+  claudeTokens Int?
+  sentAt       DateTime @default(now())
+}
+
+// ── Creator economy ───────────────────────────────────────────────────────────
+
+model Creator {
+  id            String        @id @default(cuid())
+  name          String
+  email         String        @unique
+  bio           String?       @db.Text
+  instagram     String?
+  tiktok        String?
+  youtube       String?
+  followers     Int           @default(0)
+  verified      Boolean       @default(false)
+  totalEarnings Float         @default(0)
+  dishes        CreatorDish[]
+  createdAt     DateTime      @default(now())
+}
+
+model CreatorDish {
+  id             String   @id @default(cuid())
+  creatorId      String
+  creator        Creator  @relation(fields: [creatorId], references: [id])
+  name           String
+  description    String   @db.Text
+  photo          String?
+  ingredients    Json
+  suggestedPrice Float
+  cuisineType    String
+  status         String   @default("pending")   // pending | approved | rejected
+  adoptedBy      Json     @default("[]")
+  commission     Float    @default(0.04)
+  totalSales     Int      @default(0)
+  createdAt      DateTime @default(now())
+}

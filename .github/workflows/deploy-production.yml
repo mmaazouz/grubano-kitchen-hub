@@ -1,0 +1,184 @@
+name: 🚀 Deploy → Production (grubano.com)
+
+# Triggers on every push to main — and can be manually triggered
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_health_check:
+        description: 'Skip post-deploy health check'
+        type: boolean
+        default: false
+
+# Cancel any in-progress deploy for the same branch
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # never cancel a production deploy mid-flight
+
+env:
+  NODE_VERSION: '20'
+  DEPLOY_ZIP: grubano-prod.zip
+
+# ── Job ───────────────────────────────────────────────────────────────────────
+jobs:
+  build-and-deploy:
+    name: Build & Deploy → grubano.com
+    runs-on: ubuntu-latest
+    environment: production        # enables GitHub Environment protection rules
+
+    steps:
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js + npm cache ───────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # ── 3. Install dependencies ──────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── 4. Generate Prisma client (Linux binaries — correct for o2switch) ───
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+
+      # ── 5. Build Next.js standalone ──────────────────────────────────────────
+      - name: Build Next.js
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+          NEXT_TELEMETRY_DISABLED: 1
+
+      # ── 6. Validate server.js (no-op on Linux CI — guards against regressions)
+      - name: Validate server.js paths
+        run: node scripts/fix-server.js
+
+      # ── 7. Write .env.local from GitHub Secrets ──────────────────────────────
+      - name: Write .env.local
+        run: |
+          cat > .env.local << 'ENVEOF'
+          DATABASE_URL=${{ secrets.DATABASE_URL_PROD }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
+          NEXTAUTH_URL=https://grubano.com
+          NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
+          NODE_ENV=production
+          ENVEOF
+
+      # ── 8. Assemble deployment package ───────────────────────────────────────
+      - name: Assemble deployment package
+        run: |
+          PKG=deploy-package
+          mkdir -p "$PKG/.next"
+
+          # Standalone output (trimmed node_modules + .next/server + package.json)
+          cp -r .next/standalone/. "$PKG/"
+
+          # Static assets — CSS/JS chunks (NOT in standalone by default)
+          cp -r .next/static "$PKG/.next/static"
+
+          # Passenger wrapper (overwrites the Next.js-generated server.js which
+          # may contain hardcoded CI runner paths like /home/runner/work/...)
+          cp server.js "$PKG/server.js"
+
+          # Environment + Prisma schema
+          cp .env.local       "$PKG/.env.local"
+          cp -r prisma        "$PKG/prisma"
+
+          # Public assets (favicon, images, etc.)
+          [ -d public ] && cp -r public "$PKG/public" || true
+
+          # .htaccess — tells Passenger how to start the app
+          cat > "$PKG/.htaccess" << 'HTEOF'
+          PassengerEnabled on
+          PassengerAppRoot /home/deyi0010/grubano.com
+          PassengerAppType node
+          PassengerStartupFile server.js
+          PassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node
+          PassengerMaxPoolSize 2
+          PassengerMaxRequests 1000
+          PassengerStartTimeout 120
+          HTEOF
+
+          # Compress (exclude source maps to reduce size)
+          cd "$PKG"
+          zip -r "../${{ env.DEPLOY_ZIP }}" . --exclude "*.map" --exclude "*.d.ts"
+          cd ..
+
+          echo "Package: $(du -sh ${{ env.DEPLOY_ZIP }} | cut -f1)  |  $(unzip -l ${{ env.DEPLOY_ZIP }} | tail -1 | awk '{print $2}') files"
+
+      # ── 9. Upload ZIP to server ───────────────────────────────────────────────
+      - name: Upload ZIP to o2switch
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host:     ${{ secrets.O2SWITCH_HOST }}
+          username: ${{ secrets.O2SWITCH_USER }}
+          key:      ${{ secrets.O2SWITCH_SSH_KEY }}
+          source:   ${{ env.DEPLOY_ZIP }}
+          target:   /home/deyi0010/
+
+      # ── 10. Extract, chmod, push schema, restart Passenger ───────────────────
+      - name: Deploy on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:     ${{ secrets.O2SWITCH_HOST }}
+          username: ${{ secrets.O2SWITCH_USER }}
+          key:      ${{ secrets.O2SWITCH_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            DEPLOY_PATH="${{ secrets.O2SWITCH_PROD_PATH }}"
+            ZIP="/home/deyi0010/${{ env.DEPLOY_ZIP }}"
+
+            echo "→ Deploying to $DEPLOY_PATH"
+
+            # Backup current .next/server (fast rollback if needed)
+            BACKUP_DIR="$HOME/backups/prod-$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            [ -d "$DEPLOY_PATH/.next/server" ] && \
+              cp -r "$DEPLOY_PATH/.next/server" "$BACKUP_DIR/" || true
+
+            # Extract ZIP into deployment directory
+            mkdir -p "$DEPLOY_PATH"
+            unzip -o "$ZIP" -d "$DEPLOY_PATH/"
+
+            # Fix permissions (Passenger runs as restricted user)
+            chmod -R 755 "$DEPLOY_PATH/.next/"
+            chmod -R 755 "$DEPLOY_PATH/public/"  2>/dev/null || true
+            chmod 644    "$DEPLOY_PATH/server.js"
+            chmod 600    "$DEPLOY_PATH/.env.local"
+
+            # Push schema changes to DB
+            source "$HOME/nodevenv/grubano.com/24/bin/activate"
+            cd "$DEPLOY_PATH"
+            npx prisma db push --accept-data-loss 2>&1 | tail -10
+
+            # Restart Passenger
+            mkdir -p "$DEPLOY_PATH/tmp"
+            touch "$DEPLOY_PATH/tmp/restart.txt"
+
+            # Cleanup
+            rm -f "$ZIP"
+
+            echo "✅ Production deploy complete!"
+
+      # ── 11. Health check ─────────────────────────────────────────────────────
+      - name: Health check
+        if: ${{ !inputs.skip_health_check }}
+        run: |
+          echo "Waiting 15s for Passenger to restart..."
+          sleep 15
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://grubano.com/dashboard)
+          echo "grubano.com/dashboard → HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Health check failed — check Passenger logs on the server"
+            exit 1
+          fi
+          echo "✅ Site is live!"
