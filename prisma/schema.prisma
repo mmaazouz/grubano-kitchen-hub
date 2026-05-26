@@ -17,11 +17,12 @@ model Operator {
   phone     String?
   city      String?
   status    String    @default("active")
-  role      String    @default("restaurant")   // restaurant | franchise | creator | consumer | admin
-  createdAt DateTime  @default(now())
-  brands    Brand[]
-  accounts  Account[]
-  sessions  Session[]
+  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin
+  createdAt  DateTime   @default(now())
+  brands     Brand[]
+  accounts   Account[]
+  sessions   Session[]
+  restaurant Restaurant?
 }
 
 model Brand {
@@ -281,4 +282,49 @@ model CreatorDish {
   commission     Float    @default(0.04)
   totalSales     Int      @default(0)
   createdAt      DateTime @default(now())
+}
+
+// ── Consumer app ──────────────────────────────────────────────────────────────
+
+model Restaurant {
+  id           String   @id @default(cuid())
+  operatorId   String   @unique
+  operator     Operator @relation(fields: [operatorId], references: [id])
+  name         String
+  description  String?  @db.Text
+  coverPhoto   String?
+  logo         String?
+  // MySQL has no native array type → store as JSON array of strings
+  cuisine      Json     @default("[]")
+  rating       Float    @default(0)
+  reviewCount  Int      @default(0)
+  deliveryTime Int      @default(30)
+  minOrder     Float    @default(0)
+  deliveryFee  Float    @default(1.99)
+  city         String
+  address      String
+  lat          Float?
+  lng          Float?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  orders       Order[]
+}
+
+model Order {
+  id              String     @id @default(cuid())
+  consumerId      String                          // Operator.id with role=consumer
+  restaurantId    String
+  restaurant      Restaurant @relation(fields: [restaurantId], references: [id])
+  items           Json                            // [{ itemId, name, qty, price, options }]
+  subtotal        Float
+  deliveryFee     Float      @default(1.99)
+  total           Float
+  status          String     @default("received") // received|preparing|ready|picked_up|delivered|cancelled
+  deliveryAddress String
+  paymentMethod   String     @default("card")
+  pointsEarned    Int        @default(0)
+  estimatedTime   Int        @default(30)
+  trackingUrl     String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 }
