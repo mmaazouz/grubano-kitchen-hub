@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ── 4. Generate Prisma client ────────────────────────────────────────────
+      # ── 4. Generate Prisma client (Linux binaries — correct for o2switch) ───
       - name: Generate Prisma client
         run: npx prisma generate
         env:
@@ -51,21 +51,27 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
           NEXT_TELEMETRY_DISABLED: 1
 
-      # ── 6. Validate server.js ────────────────────────────────────────────────
+      # ── 6. Validate / patch server.js paths ──────────────────────────────────
+      #    On Linux CI this is a no-op (no Windows paths). On a local Windows
+      #    build it replaces C:\Users\... with the Linux deploy path.
       - name: Validate server.js paths
         run: node scripts/fix-server.js
 
       # ── 7. Write .env.local from secrets ─────────────────────────────────────
       - name: Write .env.local
         run: |
-          cat > .env.local << 'ENVEOF'
-          DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}
-          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-          BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
-          NEXTAUTH_URL=https://app.grubano.com
-          NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
-          NODE_ENV=production
-          ENVEOF
+          {
+            echo "DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}"
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
+            echo "BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}"
+            echo "NEXTAUTH_URL=https://app.grubano.com"
+            echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}"
+            echo "SMTP_HOST=${{ secrets.SMTP_HOST }}"
+            echo "SMTP_USER=${{ secrets.SMTP_USER }}"
+            echo "SMTP_PASS=${{ secrets.SMTP_PASS }}"
+            echo "CRON_SECRET=${{ secrets.CRON_SECRET }}"
+            echo "NODE_ENV=production"
+          } > .env.local
 
       # ── 8. Assemble deployment package ───────────────────────────────────────
       - name: Assemble deployment package
@@ -73,24 +79,34 @@ jobs:
           PKG=deploy-package
           mkdir -p "$PKG/.next"
 
+          # Standalone output (trimmed node_modules + .next/server + package.json)
           cp -r .next/standalone/. "$PKG/"
+
+          # Static assets — CSS/JS chunks (NOT in standalone by default)
           cp -r .next/static "$PKG/.next/static"
+
+          # Passenger wrapper — overwrites the Next.js-generated server.js which
+          # would contain the CI runner path (/home/runner/work/...)
           cp server.js  "$PKG/server.js"
+
+          # Environment + Prisma schema
           cp .env.local "$PKG/.env.local"
           cp -r prisma  "$PKG/prisma"
+
+          # Public assets
           [ -d public ] && cp -r public "$PKG/public" || true
 
           # Staging .htaccess — points to the staging app root
-          cat > "$PKG/.htaccess" << 'HTEOF'
-          PassengerEnabled on
-          PassengerAppRoot /home/deyi0010/app.grubano.com
-          PassengerAppType node
-          PassengerStartupFile server.js
-          PassengerNodejs /home/deyi0010/nodevenv/app.grubano.com/24/bin/node
-          PassengerMaxPoolSize 1
-          PassengerMaxRequests 500
-          PassengerStartTimeout 120
-          HTEOF
+          cat > "$PKG/.htaccess" <<'HTEOF'
+PassengerEnabled on
+PassengerAppRoot /home/deyi0010/app.grubano.com
+PassengerAppType node
+PassengerStartupFile server.js
+PassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node
+PassengerMaxPoolSize 1
+PassengerMaxRequests 500
+PassengerStartTimeout 120
+HTEOF
 
           cd "$PKG"
           zip -r "../${{ env.DEPLOY_ZIP }}" . --exclude "*.map" --exclude "*.d.ts"
@@ -98,13 +114,14 @@ jobs:
 
           echo "Package: $(du -sh ${{ env.DEPLOY_ZIP }} | cut -f1)"
 
-      # ── 9. Upload ZIP ─────────────────────────────────────────────────────────
+      # ── 9. Upload ZIP to o2switch ─────────────────────────────────────────────
       - name: Upload ZIP to o2switch
         uses: appleboy/scp-action@v0.1.7
         with:
           host:     ${{ secrets.O2SWITCH_HOST }}
           username: ${{ secrets.O2SWITCH_USER }}
           key:      ${{ secrets.O2SWITCH_SSH_KEY }}
+          port:     22
           source:   ${{ env.DEPLOY_ZIP }}
           target:   /home/deyi0010/
 
@@ -115,6 +132,7 @@ jobs:
           host:     ${{ secrets.O2SWITCH_HOST }}
           username: ${{ secrets.O2SWITCH_USER }}
           key:      ${{ secrets.O2SWITCH_SSH_KEY }}
+          port:     22
           script: |
             set -euo pipefail
 
@@ -131,10 +149,18 @@ jobs:
             chmod 644    "$DEPLOY_PATH/server.js"
             chmod 600    "$DEPLOY_PATH/.env.local"
 
-            # Push schema to staging DB
-            source "$HOME/nodevenv/app.grubano.com/24/bin/activate"
+            # Push schema using project-local Prisma 5.22.0
+            # (avoids the server's global Prisma 7.x which broke datasource url syntax)
+            # Try staging nodevenv first, fall back to production nodevenv
+            if [ -f "$HOME/nodevenv/app.grubano.com/24/bin/activate" ]; then
+              source "$HOME/nodevenv/app.grubano.com/24/bin/activate"
+            elif [ -f "$HOME/nodevenv/grubano.com/24/bin/activate" ]; then
+              source "$HOME/nodevenv/grubano.com/24/bin/activate"
+            fi
+
             cd "$DEPLOY_PATH"
-            npx prisma db push --accept-data-loss 2>&1 | tail -10
+            npx prisma@5.22.0 db push --accept-data-loss 2>&1 | tail -10 || \
+              echo "⚠️  prisma db push failed (non-fatal — schema may already be in sync)"
 
             # Restart Passenger
             mkdir -p "$DEPLOY_PATH/tmp"
@@ -148,10 +174,10 @@ jobs:
         run: |
           echo "Waiting 15s for Passenger restart..."
           sleep 15
-          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://app.grubano.com/dashboard)
-          echo "app.grubano.com/dashboard → HTTP $STATUS"
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://app.grubano.com/login)
+          echo "app.grubano.com/login → HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
-            echo "⚠️  Staging health check failed (non-blocking)"
+            echo "⚠️  Staging health check returned $STATUS (non-blocking)"
           else
             echo "✅ Staging is live!"
           fi

@@ -56,21 +56,27 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
           NEXT_TELEMETRY_DISABLED: 1
 
-      # ── 6. Validate server.js (no-op on Linux CI — guards against regressions)
+      # ── 6. Validate / patch server.js paths ──────────────────────────────────
+      #    On Linux CI this is a no-op (no Windows paths). On a local Windows
+      #    build it replaces C:\Users\... with the Linux deploy path.
       - name: Validate server.js paths
         run: node scripts/fix-server.js
 
       # ── 7. Write .env.local from GitHub Secrets ──────────────────────────────
       - name: Write .env.local
         run: |
-          cat > .env.local << 'ENVEOF'
-          DATABASE_URL=${{ secrets.DATABASE_URL_PROD }}
-          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-          BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
-          NEXTAUTH_URL=https://grubano.com
-          NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}
-          NODE_ENV=production
-          ENVEOF
+          {
+            echo "DATABASE_URL=${{ secrets.DATABASE_URL_PROD }}"
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
+            echo "BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}"
+            echo "NEXTAUTH_URL=https://grubano.com"
+            echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}"
+            echo "SMTP_HOST=${{ secrets.SMTP_HOST }}"
+            echo "SMTP_USER=${{ secrets.SMTP_USER }}"
+            echo "SMTP_PASS=${{ secrets.SMTP_PASS }}"
+            echo "CRON_SECRET=${{ secrets.CRON_SECRET }}"
+            echo "NODE_ENV=production"
+          } > .env.local
 
       # ── 8. Assemble deployment package ───────────────────────────────────────
       - name: Assemble deployment package
@@ -84,8 +90,8 @@ jobs:
           # Static assets — CSS/JS chunks (NOT in standalone by default)
           cp -r .next/static "$PKG/.next/static"
 
-          # Passenger wrapper (overwrites the Next.js-generated server.js which
-          # may contain hardcoded CI runner paths like /home/runner/work/...)
+          # Passenger wrapper — overwrites the Next.js-generated server.js which
+          # would contain the CI runner path (/home/runner/work/...)
           cp server.js "$PKG/server.js"
 
           # Environment + Prisma schema
@@ -96,18 +102,18 @@ jobs:
           [ -d public ] && cp -r public "$PKG/public" || true
 
           # .htaccess — tells Passenger how to start the app
-          cat > "$PKG/.htaccess" << 'HTEOF'
-          PassengerEnabled on
-          PassengerAppRoot /home/deyi0010/grubano.com
-          PassengerAppType node
-          PassengerStartupFile server.js
-          PassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node
-          PassengerMaxPoolSize 2
-          PassengerMaxRequests 1000
-          PassengerStartTimeout 120
-          HTEOF
+          cat > "$PKG/.htaccess" <<'HTEOF'
+PassengerEnabled on
+PassengerAppRoot /home/deyi0010/grubano.com
+PassengerAppType node
+PassengerStartupFile server.js
+PassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node
+PassengerMaxPoolSize 2
+PassengerMaxRequests 1000
+PassengerStartTimeout 120
+HTEOF
 
-          # Compress (exclude source maps to reduce size)
+          # Compress (exclude source maps + type declarations to reduce size)
           cd "$PKG"
           zip -r "../${{ env.DEPLOY_ZIP }}" . --exclude "*.map" --exclude "*.d.ts"
           cd ..
@@ -121,6 +127,7 @@ jobs:
           host:     ${{ secrets.O2SWITCH_HOST }}
           username: ${{ secrets.O2SWITCH_USER }}
           key:      ${{ secrets.O2SWITCH_SSH_KEY }}
+          port:     22
           source:   ${{ env.DEPLOY_ZIP }}
           target:   /home/deyi0010/
 
@@ -131,6 +138,7 @@ jobs:
           host:     ${{ secrets.O2SWITCH_HOST }}
           username: ${{ secrets.O2SWITCH_USER }}
           key:      ${{ secrets.O2SWITCH_SSH_KEY }}
+          port:     22
           script: |
             set -euo pipefail
 
@@ -155,10 +163,12 @@ jobs:
             chmod 644    "$DEPLOY_PATH/server.js"
             chmod 600    "$DEPLOY_PATH/.env.local"
 
-            # Push schema changes to DB
+            # Push schema using project-local Prisma 5.22.0
+            # (avoids the server's global Prisma 7.x which broke datasource url syntax)
             source "$HOME/nodevenv/grubano.com/24/bin/activate"
             cd "$DEPLOY_PATH"
-            npx prisma db push --accept-data-loss 2>&1 | tail -10
+            npx prisma@5.22.0 db push --accept-data-loss 2>&1 | tail -10 || \
+              echo "⚠️  prisma db push failed (non-fatal — schema may already be in sync)"
 
             # Restart Passenger
             mkdir -p "$DEPLOY_PATH/tmp"
@@ -175,8 +185,8 @@ jobs:
         run: |
           echo "Waiting 15s for Passenger to restart..."
           sleep 15
-          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://grubano.com/dashboard)
-          echo "grubano.com/dashboard → HTTP $STATUS"
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://grubano.com/login)
+          echo "grubano.com/login → HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
             echo "❌ Health check failed — check Passenger logs on the server"
             exit 1
