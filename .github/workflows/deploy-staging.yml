@@ -1,183 +1,97 @@
-name: 🧪 Deploy → Staging (app.grubano.com)
+name: Deploy to Staging
 
-# Triggers on every push to develop
 on:
   push:
     branches: [develop]
   workflow_dispatch:
 
-# Only one staging deploy at a time; cancel the older one if a new push arrives
 concurrency:
   group: deploy-staging
   cancel-in-progress: true
 
-env:
-  NODE_VERSION: '20'
-  DEPLOY_ZIP: grubano-staging.zip
-
-# ── Job ───────────────────────────────────────────────────────────────────────
 jobs:
-  build-and-deploy:
-    name: Build & Deploy → app.grubano.com
+  deploy:
     runs-on: ubuntu-latest
-    environment: staging
 
     steps:
-      # ── 1. Checkout ─────────────────────────────────────────────────────────
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── 2. Node.js + npm cache ───────────────────────────────────────────────
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+          node-version: '20'
+          cache: 'npm'
 
-      # ── 3. Install dependencies ──────────────────────────────────────────────
       - name: Install dependencies
         run: npm ci
 
-      # ── 4. Generate Prisma client (Linux binaries — correct for o2switch) ───
       - name: Generate Prisma client
         run: npx prisma generate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
 
-      # ── 5. Build Next.js standalone ──────────────────────────────────────────
-      - name: Build Next.js
+      - name: Build
         run: npm run build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: https://app.grubano.com
           NEXT_TELEMETRY_DISABLED: 1
 
-      # ── 6. Validate / patch server.js paths ──────────────────────────────────
-      #    On Linux CI this is a no-op (no Windows paths). On a local Windows
-      #    build it replaces C:\Users\... with the Linux deploy path.
-      - name: Validate server.js paths
+      - name: Patch server.js for Linux
         run: node scripts/fix-server.js
 
-      # ── 7. Write .env.local from secrets ─────────────────────────────────────
-      - name: Write .env.local
+      - name: Prepare deploy folder
         run: |
+          mkdir -p deploy-temp/.next
+          cp -r .next/standalone/. deploy-temp/
+          cp -r .next/static deploy-temp/.next/static
+          cp server.js deploy-temp/server.js
+          cp -r prisma deploy-temp/prisma
+          [ -d public ] && cp -r public deploy-temp/public || true
+          printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/app.grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node\nPassengerMaxPoolSize 1\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
           {
             echo "DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}"
-            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
-            echo "BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}"
-            echo "NEXTAUTH_URL=https://app.grubano.com"
             echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}"
+            echo "NEXTAUTH_URL=https://app.grubano.com"
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
             echo "SMTP_HOST=${{ secrets.SMTP_HOST }}"
             echo "SMTP_USER=${{ secrets.SMTP_USER }}"
             echo "SMTP_PASS=${{ secrets.SMTP_PASS }}"
             echo "CRON_SECRET=${{ secrets.CRON_SECRET }}"
             echo "NODE_ENV=production"
-          } > .env.local
+          } > deploy-temp/.env.local
+          echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
 
-      # ── 8. Assemble deployment package ───────────────────────────────────────
-      - name: Assemble deployment package
-        run: |
-          PKG=deploy-package
-          mkdir -p "$PKG/.next"
-
-          # Standalone output (trimmed node_modules + .next/server + package.json)
-          cp -r .next/standalone/. "$PKG/"
-
-          # Static assets — CSS/JS chunks (NOT in standalone by default)
-          cp -r .next/static "$PKG/.next/static"
-
-          # Passenger wrapper — overwrites the Next.js-generated server.js which
-          # would contain the CI runner path (/home/runner/work/...)
-          cp server.js  "$PKG/server.js"
-
-          # Environment + Prisma schema
-          cp .env.local "$PKG/.env.local"
-          cp -r prisma  "$PKG/prisma"
-
-          # Public assets
-          [ -d public ] && cp -r public "$PKG/public" || true
-
-          # Staging .htaccess — points to the staging app root
-          cat > "$PKG/.htaccess" <<'HTEOF'
-PassengerEnabled on
-PassengerAppRoot /home/deyi0010/app.grubano.com
-PassengerAppType node
-PassengerStartupFile server.js
-PassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node
-PassengerMaxPoolSize 1
-PassengerMaxRequests 500
-PassengerStartTimeout 120
-HTEOF
-
-          cd "$PKG"
-          zip -r "../${{ env.DEPLOY_ZIP }}" . --exclude "*.map" --exclude "*.d.ts"
-          cd ..
-
-          echo "Package: $(du -sh ${{ env.DEPLOY_ZIP }} | cut -f1)"
-
-      # ── 9. Upload ZIP to o2switch ─────────────────────────────────────────────
-      - name: Upload ZIP to o2switch
-        uses: appleboy/scp-action@v0.1.7
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          host:     ${{ secrets.O2SWITCH_HOST }}
-          username: ${{ secrets.O2SWITCH_USER }}
-          key:      ${{ secrets.O2SWITCH_SSH_KEY }}
-          port:     22
-          source:   ${{ env.DEPLOY_ZIP }}
-          target:   /home/deyi0010/
+          server: ${{ secrets.O2SWITCH_HOST }}
+          username: ${{ secrets.O2SWITCH_FTP_USER }}
+          password: ${{ secrets.O2SWITCH_FTP_PASS }}
+          local-dir: ./deploy-temp/
+          server-dir: /app.grubano.com/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
 
-      # ── 10. Deploy on server ──────────────────────────────────────────────────
-      - name: Deploy on server
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Fix permissions and restart
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
         with:
-          host:     ${{ secrets.O2SWITCH_HOST }}
+          host: ${{ secrets.O2SWITCH_HOST }}
           username: ${{ secrets.O2SWITCH_USER }}
-          key:      ${{ secrets.O2SWITCH_SSH_KEY }}
-          port:     22
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
           script: |
-            set -euo pipefail
+            chmod -R 755 ~/app.grubano.com/.next/ 2>/dev/null || true
+            chmod 600 ~/app.grubano.com/.env.local 2>/dev/null || true
+            mkdir -p ~/app.grubano.com/tmp
+            touch ~/app.grubano.com/tmp/restart.txt
+            echo "✅ Staging restarted"
 
-            DEPLOY_PATH="${{ secrets.O2SWITCH_STAGING_PATH }}"
-            ZIP="/home/deyi0010/${{ env.DEPLOY_ZIP }}"
-
-            echo "→ Deploying to $DEPLOY_PATH"
-
-            mkdir -p "$DEPLOY_PATH"
-            unzip -o "$ZIP" -d "$DEPLOY_PATH/"
-
-            chmod -R 755 "$DEPLOY_PATH/.next/"
-            chmod -R 755 "$DEPLOY_PATH/public/" 2>/dev/null || true
-            chmod 644    "$DEPLOY_PATH/server.js"
-            chmod 600    "$DEPLOY_PATH/.env.local"
-
-            # Push schema using project-local Prisma 5.22.0
-            # (avoids the server's global Prisma 7.x which broke datasource url syntax)
-            # Try staging nodevenv first, fall back to production nodevenv
-            if [ -f "$HOME/nodevenv/app.grubano.com/24/bin/activate" ]; then
-              source "$HOME/nodevenv/app.grubano.com/24/bin/activate"
-            elif [ -f "$HOME/nodevenv/grubano.com/24/bin/activate" ]; then
-              source "$HOME/nodevenv/grubano.com/24/bin/activate"
-            fi
-
-            cd "$DEPLOY_PATH"
-            npx prisma@5.22.0 db push --accept-data-loss 2>&1 | tail -10 || \
-              echo "⚠️  prisma db push failed (non-fatal — schema may already be in sync)"
-
-            # Restart Passenger
-            mkdir -p "$DEPLOY_PATH/tmp"
-            touch "$DEPLOY_PATH/tmp/restart.txt"
-
-            rm -f "$ZIP"
-            echo "✅ Staging deploy complete!"
-
-      # ── 11. Health check ─────────────────────────────────────────────────────
       - name: Health check
         run: |
-          echo "Waiting 15s for Passenger restart..."
-          sleep 15
-          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://app.grubano.com/login)
-          echo "app.grubano.com/login → HTTP $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "⚠️  Staging health check returned $STATUS (non-blocking)"
-          else
-            echo "✅ Staging is live!"
-          fi
+          sleep 20
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://app.grubano.com/eat || echo "000")
+          echo "app.grubano.com/eat → HTTP $STATUS"
