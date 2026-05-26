@@ -43,12 +43,36 @@ jobs:
       - name: Prepare deploy folder
         run: |
           mkdir -p deploy-temp/.next
+
+          # Copy standalone output
           cp -r .next/standalone/. deploy-temp/
+
+          # ── CRITICAL: remove node_modules from deploy-temp ──────────────────
+          # CloudLinux on o2switch blocks FTP writes to node_modules silently.
+          # node_modules will be installed on the server via "npm ci --omit=dev"
+          # in the SSH step below (SSH runs as the hosting user who has write access).
+          rm -rf deploy-temp/node_modules
+
+          # Static assets (CSS/JS bundles — not in standalone by default)
           cp -r .next/static deploy-temp/.next/static
+
+          # Passenger wrapper (overwrites Next.js-generated server.js)
           cp server.js deploy-temp/server.js
+
+          # package.json + lock needed for npm ci on the server
+          cp package.json      deploy-temp/package.json
+          cp package-lock.json deploy-temp/package-lock.json
+
+          # Prisma schema for db push
           cp -r prisma deploy-temp/prisma
+
+          # Public assets
           [ -d public ] && cp -r public deploy-temp/public || true
+
+          # .htaccess — Passenger config (staging uses grubano.com nodevenv as fallback)
           printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/app.grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node\nPassengerMaxPoolSize 1\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
+
+          # .env.local — ALL required runtime variables
           {
             echo "DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}"
             echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}"
@@ -60,7 +84,15 @@ jobs:
             echo "CRON_SECRET=${{ secrets.CRON_SECRET }}"
             echo "NODE_ENV=production"
           } > deploy-temp/.env.local
-          echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
+
+          # Sanity check: ensure no node_modules snuck in
+          if [ -d deploy-temp/node_modules ]; then
+            echo "ERROR: node_modules found in deploy-temp — CloudLinux will block this!"
+            exit 1
+          fi
+
+          echo "deploy-temp size (no node_modules): $(du -sh deploy-temp | cut -f1)"
+          echo "Files to upload: $(find deploy-temp -type f | wc -l)"
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -75,6 +107,28 @@ jobs:
             **/.git*/**
             **/node_modules/**
 
+      # ── SSH step 1: install dependencies ──────────────────────────────────────
+      # SSH (hosting user) CAN write to node_modules; FTP (ftpd process) cannot.
+      - name: Install dependencies on server
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          host: ${{ secrets.O2SWITCH_HOST }}
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            # Activate Node 24 virtualenv
+            source ~/nodevenv/grubano.com/24/bin/activate 2>/dev/null || true
+
+            cd ~/app.grubano.com
+            echo "Node: $(node --version) | npm: $(npm --version)"
+
+            # Install production deps (bcryptjs, next-auth, prisma client, etc.)
+            npm ci --omit=dev --prefer-offline 2>&1 | tail -5
+            echo "✅ npm ci complete ($(ls node_modules | wc -l) packages)"
+
+      # ── SSH step 2: chmod + Passenger restart ─────────────────────────────────
       - name: Fix permissions and restart
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
@@ -84,14 +138,20 @@ jobs:
           key: ${{ secrets.O2SWITCH_SSH_KEY }}
           port: 22
           script: |
-            chmod -R 755 ~/app.grubano.com/.next/ 2>/dev/null || true
-            chmod 600 ~/app.grubano.com/.env.local 2>/dev/null || true
+            chmod -R 755 ~/app.grubano.com/.next/    2>/dev/null || true
+            chmod 600    ~/app.grubano.com/.env.local 2>/dev/null || true
+            chmod 644    ~/app.grubano.com/server.js  2>/dev/null || true
             mkdir -p ~/app.grubano.com/tmp
             touch ~/app.grubano.com/tmp/restart.txt
             echo "✅ Staging restarted"
 
       - name: Health check
         run: |
-          sleep 20
+          sleep 25
           STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://app.grubano.com/eat || echo "000")
           echo "app.grubano.com/eat → HTTP $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Staging is live!"
+          else
+            echo "⚠️  Health check returned $STATUS (non-blocking)"
+          fi

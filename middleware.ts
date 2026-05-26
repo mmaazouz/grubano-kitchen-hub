@@ -7,7 +7,8 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public routes — no auth required
-  const publicRoutes = ['/', '/login', '/register', '/api/auth']
+  // /eat/* is the consumer-facing app; auth is handled per-page (account, checkout)
+  const publicRoutes = ['/', '/login', '/register', '/api/auth', '/eat']
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     return NextResponse.next()
   }
