@@ -1,66 +1,183 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Sparkles, Image as ImageIcon, Plus, GripVertical, Clock, Eye, EyeOff,
-  Tag, Percent, Flame, Leaf, WheatOff, Star, X, Check, RotateCcw, Wand2,
-  ChevronRight, ChevronLeft, Upload, Settings2, BadgeCheck,
+  Sparkles, Plus, Clock, Eye, EyeOff, Percent, Flame, Leaf, WheatOff, Star,
+  Tag, X, Check, ChevronLeft, Upload, GripVertical, RefreshCw, Trash2,
+  Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle,
 } from 'lucide-react'
 import { Card } from '@/components/grubano/Card'
 import { SectionTitle } from '@/components/grubano/SectionTitle'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Dish = {
-  id: string; name: string; desc: string; price: number; cat: string
-  avail: boolean; calories?: number; tags?: string[]; isNew?: boolean; bestseller?: boolean
+type MenuItem = {
+  id:          string
+  brandId:     string
+  name:        string
+  description: string | null
+  price:       number
+  category:    string
+  calories:    number | null
+  allergens:   string[]
+  labels:      string[]
+  available:   boolean
+  isPopular:   boolean
 }
-type Category = { id: string; name: string; emoji: string; hours?: string; visible: boolean }
 
-// ── Initial data ──────────────────────────────────────────────────────────────
+type Brand = { id: string; name: string; emoji: string }
 
-const initialCats: Category[] = [
-  { id: 'c1', name: 'Entrées',           emoji: '🥗', hours: '11h-23h', visible: true },
-  { id: 'c2', name: 'Plats',             emoji: '🍝', hours: '11h-23h', visible: true },
-  { id: 'c3', name: 'Desserts',          emoji: '🍰', hours: '11h-23h', visible: true },
-  { id: 'c4', name: 'Boissons',          emoji: '🥤', hours: '11h-23h', visible: true },
-  { id: 'c5', name: 'Suggestions du jour', emoji: '⭐', hours: '18h-23h', visible: true },
+type ScanResult = {
+  name:             string
+  description:      string
+  ingredients:      string[]
+  allergens:        string[]
+  calories_min:     number
+  calories_max:     number
+  category:         string
+  suggested_labels: string[]
+}
+
+const ALL_EU = ['Gluten','Lactose','Œuf','Soja','Arachide','Fruits à coque','Poisson','Crustacés','Mollusques','Céleri','Moutarde','Sésame','Sulfites','Lupin']
+const ALL_LABELS = [
+  { name: 'Veggie',      icon: Leaf      },
+  { name: 'Halal',       icon: BadgeCheck },
+  { name: 'Sans gluten', icon: WheatOff  },
+  { name: 'Épicé',       icon: Flame     },
 ]
 
-const initialDishes: Dish[] = [
-  { id: 'd1', name: 'Gnocchi pesto',       desc: 'Gnocchi maison, pesto basilic frais, parmesan affiné.',            price: 10.9, cat: 'c2', avail: true,  calories: 520, tags: ['Veggie'],           bestseller: true },
-  { id: 'd2', name: 'Butter chicken bowl', desc: 'Poulet mariné 24h, sauce crémeuse au beurre épicée, riz basmati.', price: 13.5, cat: 'c2', avail: true,  calories: 680, tags: ['Halal', 'Épicé']                     },
-  { id: 'd3', name: 'Tiramisu maison',     desc: 'Mascarpone fouetté, café espresso, cacao amer.',                   price: 4.9,  cat: 'c3', avail: false, calories: 420                                               },
-  { id: 'd4', name: 'Chicken roll',        desc: 'Wrap croustillant, poulet grillé, sauce yaourt menthe.',           price: 7.9,  cat: 'c2', avail: true,  calories: 560, tags: ['Halal'],             isNew: true      },
-  { id: 'd5', name: 'Bruschetta tomate',   desc: 'Pain grillé, tomates fraîches, basilic, huile d\'olive vierge.',  price: 6.5,  cat: 'c1', avail: true,  calories: 280, tags: ['Veggie']                             },
+const EMOJI_FOR_CAT: Record<string, string> = {
+  'Entrées': '🥗', 'Plats': '🍝', 'Desserts': '🍰', 'Boissons': '🥤',
+}
+const emojiFor = (cat: string) => EMOJI_FOR_CAT[cat] ?? '🍴'
+
+// ── Mock promotions (Phase 2 — not yet in DB scope) ───────────────────────────
+
+const PROMOS = [
+  { name: 'Happy hour',        desc: '-20% entre 14h–17h',          active: true  },
+  { name: 'Bundle midi',       desc: '2 plats + 2 boissons = -15%', active: true  },
+  { name: 'Première commande', desc: '-5€ nouveaux clients',         active: false },
 ]
 
-const promotions = [
-  { name: 'Happy hour',        desc: '-20% entre 14h–17h',          active: true,  color: 'primary' },
-  { name: 'Bundle midi',       desc: '2 plats + 2 boissons = -15%', active: true,  color: 'navy'    },
-  { name: 'Première commande', desc: '-5€ nouveaux clients',         active: false, color: 'success' },
-]
-
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function MenuBuilder() {
   const [tab,     setTab]     = useState<'items' | 'categories' | 'promos'>('items')
-  const [dishes,  setDishes]  = useState<Dish[]>(initialDishes)
-  const [cats,    setCats]    = useState<Category[]>(initialCats)
+  const [items,   setItems]   = useState<MenuItem[]>([])
+  const [brands,  setBrands]  = useState<Brand[]>([])
+  const [brandId, setBrandId] = useState<string>('')
+  const [loading, setLoading] = useState(true)
   const [scanner, setScanner] = useState(false)
-  const [editing, setEditing] = useState<Dish | null>(null)
+  const [editing, setEditing] = useState<MenuItem | null>(null)
+
+  const loadItems = useCallback(async (bId: string) => {
+    if (!bId) return
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/menu?brandId=${bId}`)
+      if (r.ok) {
+        const d = await r.json()
+        setItems(d.items ?? [])
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/brands')
+      .then(r => r.json())
+      .then(d => {
+        const list: Brand[] = d.brands ?? []
+        setBrands(list)
+        if (list.length > 0) {
+          setBrandId(list[0].id)
+          loadItems(list[0].id)
+        } else {
+          setLoading(false)
+        }
+      })
+      .catch(() => setLoading(false))
+  }, [loadItems])
+
+  const categories = [...new Set(items.map(i => i.category))].sort()
+
+  async function toggleAvail(item: MenuItem) {
+    const newAvail = !item.available
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, available: newAvail } : i))
+    await fetch('/api/menu', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id: item.id, available: newAvail }),
+    })
+  }
+
+  async function saveItem(item: MenuItem) {
+    if (item.id === 'new') {
+      const r = await fetch('/api/menu', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ ...item, brandId, id: undefined }),
+      })
+      if (r.ok) {
+        const d = await r.json()
+        setItems(prev => [d.item, ...prev])
+      }
+    } else {
+      const r = await fetch('/api/menu', {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(item),
+      })
+      if (r.ok) {
+        const d = await r.json()
+        setItems(prev => prev.map(i => i.id === item.id ? d.item : i))
+      }
+    }
+    setEditing(null)
+  }
+
+  async function deleteItem(id: string) {
+    await fetch(`/api/menu?id=${id}`, { method: 'DELETE' })
+    setItems(prev => prev.filter(i => i.id !== id))
+    setEditing(null)
+  }
+
+  const newItem = (): MenuItem => ({
+    id: 'new', brandId, name: '', description: '', price: 0,
+    category: categories[0] ?? 'Plats', calories: null,
+    allergens: [], labels: [], available: true, isPopular: false,
+  })
 
   return (
     <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
+
+      {/* Header */}
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-display font-bold tracking-tight">Menu</h1>
           <p className="text-sm text-muted-foreground">Carte, options &amp; promotions</p>
         </div>
         <span className="rounded-full bg-primary px-3 py-1 text-sm font-bold text-primary-foreground">
-          {dishes.length} plats
+          {items.length} plats
         </span>
       </div>
+
+      {/* Brand selector */}
+      {brands.length > 1 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
+          {brands.map(b => (
+            <button key={b.id} onClick={() => setBrandId(b.id)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                brandId === b.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border bg-card text-muted-foreground'
+              }`}>
+              {b.emoji} {b.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Quick actions */}
       <div className="mb-4 grid grid-cols-2 gap-2">
@@ -74,9 +191,11 @@ export default function MenuBuilder() {
             <p className="text-[10px] text-navy-foreground/60">Ajouter par photo</p>
           </div>
         </button>
-        <button onClick={() => setEditing({ id: 'new', name: '', desc: '', price: 0, cat: cats[0].id, avail: true })}
+        <button onClick={() => setEditing(newItem())}
           className="flex items-center gap-2.5 rounded-2xl border border-border bg-card p-3 text-left transition active:scale-[0.99]">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-primary"><Plus size={16} /></div>
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-primary">
+            <Plus size={16} />
+          </div>
           <div>
             <p className="text-[12px] font-bold">Manuel</p>
             <p className="text-[10px] text-muted-foreground">Créer un plat</p>
@@ -86,44 +205,41 @@ export default function MenuBuilder() {
 
       {/* Tabs */}
       <div className="mb-4 flex gap-1 rounded-xl bg-muted p-1">
-        {([['items', 'Plats'], ['categories', 'Catégories'], ['promos', 'Promos']] as const).map(([k, l]) => (
+        {(['items', 'categories', 'promos'] as const).map(k => (
           <button key={k} onClick={() => setTab(k)}
             className={`flex-1 rounded-lg py-1.5 text-[11px] font-bold transition ${
               tab === k ? 'bg-card shadow text-foreground' : 'text-muted-foreground'
             }`}>
-            {l}
+            {k === 'items' ? 'Plats' : k === 'categories' ? 'Catégories' : 'Promos'}
           </button>
         ))}
       </div>
 
       {tab === 'items' && (
-        <ItemsTab
-          dishes={dishes}
-          cats={cats}
-          onToggle={(id) => setDishes(dishes.map(d => d.id === id ? { ...d, avail: !d.avail } : d))}
-          onEdit={setEditing}
-        />
+        loading
+          ? <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+              <RefreshCw size={16} className="animate-spin" /> Chargement…
+            </div>
+          : <ItemsTab items={items} categories={categories} onToggle={toggleAvail} onEdit={setEditing} />
       )}
-      {tab === 'categories' && <CategoriesTab cats={cats} setCats={setCats} />}
+      {tab === 'categories' && <CategoriesTab items={items} categories={categories} />}
       {tab === 'promos'     && <PromosTab />}
 
       {scanner && (
         <AIScannerOverlay
-          cats={cats}
+          brandId={brandId}
+          categories={categories}
           onClose={() => setScanner(false)}
-          onAdd={(d) => { setDishes([d, ...dishes]); setScanner(false) }}
+          onAdd={(item) => { setItems(prev => [item, ...prev]); setScanner(false) }}
         />
       )}
       {editing && (
         <DishEditor
-          dish={editing}
-          cats={cats}
+          item={editing}
+          categories={categories}
           onClose={() => setEditing(null)}
-          onSave={(d) => {
-            if (d.id === 'new') setDishes([{ ...d, id: `d${Date.now()}`, isNew: true }, ...dishes])
-            else setDishes(dishes.map(x => x.id === d.id ? d : x))
-            setEditing(null)
-          }}
+          onSave={saveItem}
+          onDelete={deleteItem}
         />
       )}
     </div>
@@ -133,66 +249,72 @@ export default function MenuBuilder() {
 // ── Items tab ─────────────────────────────────────────────────────────────────
 
 function ItemsTab({
-  dishes, cats, onToggle, onEdit,
+  items, categories, onToggle, onEdit,
 }: {
-  dishes: Dish[]; cats: Category[]
-  onToggle: (id: string) => void; onEdit: (d: Dish) => void
+  items:      MenuItem[]
+  categories: string[]
+  onToggle:   (item: MenuItem) => void
+  onEdit:     (item: MenuItem) => void
 }) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
+        <p className="text-sm text-muted-foreground">Aucun plat dans cette marque</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">Utilisez « Scan IA » ou « Manuel » pour ajouter</p>
+      </div>
+    )
+  }
+
+  const cats = categories.length > 0 ? categories : [...new Set(items.map(i => i.category))].sort()
+
   return (
     <div className="space-y-4">
-      {cats.map((c) => {
-        const list = dishes.filter(d => d.cat === c.id)
+      {cats.map(cat => {
+        const list = items.filter(i => i.category === cat)
         if (!list.length) return null
         return (
-          <div key={c.id}>
+          <div key={cat}>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                {c.emoji} {c.name}
+                {emojiFor(cat)} {cat}
               </p>
-              <span className="text-[10px] text-muted-foreground">{list.length} plats</span>
+              <span className="text-[10px] text-muted-foreground">{list.length} plat{list.length > 1 ? 's' : ''}</span>
             </div>
             <div className="space-y-2">
-              {list.map((d) => (
-                <button key={d.id} onClick={() => onEdit(d)}
+              {list.map(item => (
+                <button key={item.id} onClick={() => onEdit(item)}
                   className="w-full rounded-2xl border border-border bg-card p-3 text-left transition active:scale-[0.99]">
                   <div className="flex items-start gap-3">
                     <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent to-primary/10 text-2xl">
-                      {c.emoji}
+                      {emojiFor(cat)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-bold leading-tight">{d.name}</p>
-                        <p className="shrink-0 text-sm font-bold text-primary">€{d.price.toFixed(2)}</p>
+                        <p className="text-sm font-bold leading-tight">{item.name}</p>
+                        <p className="shrink-0 text-sm font-bold text-primary">€{item.price.toFixed(2)}</p>
                       </div>
-                      <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{d.desc}</p>
+                      <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">
+                        {item.description ?? '—'}
+                      </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                        {d.bestseller && (
-                          <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold text-warning">
-                            ★ Best
-                          </span>
+                        {item.isPopular && (
+                          <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold text-warning">★ Best</span>
                         )}
-                        {d.isNew && (
-                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary">
-                            Nouveau
-                          </span>
-                        )}
-                        {d.tags?.map(t => (
-                          <span key={t} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
-                            {t}
-                          </span>
+                        {item.labels.map(l => (
+                          <span key={l} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{l}</span>
                         ))}
-                        {d.calories && (
-                          <span className="text-[10px] text-muted-foreground">· {d.calories} kcal</span>
+                        {item.calories && (
+                          <span className="text-[10px] text-muted-foreground">· {item.calories} kcal</span>
                         )}
                       </div>
                     </div>
                     <div
-                      onClick={(e) => { e.stopPropagation(); onToggle(d.id) }}
+                      onClick={(e) => { e.stopPropagation(); onToggle(item) }}
                       className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition ${
-                        d.avail ? 'bg-success' : 'bg-muted'
+                        item.available ? 'bg-success' : 'bg-muted'
                       }`}>
                       <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-                        d.avail ? 'left-5' : 'left-0.5'
+                        item.available ? 'left-5' : 'left-0.5'
                       }`} />
                     </div>
                   </div>
@@ -208,35 +330,37 @@ function ItemsTab({
 
 // ── Categories tab ────────────────────────────────────────────────────────────
 
-function CategoriesTab({ cats, setCats }: { cats: Category[]; setCats: (c: Category[]) => void }) {
+function CategoriesTab({ items, categories }: { items: MenuItem[]; categories: string[] }) {
+  const cats = categories.length > 0 ? categories : [...new Set(items.map(i => i.category))].sort()
+
+  if (cats.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
+        <p className="text-sm text-muted-foreground">Aucune catégorie — ajoutez des plats d&apos;abord</p>
+      </div>
+    )
+  }
+
   return (
-    <div>
-      <div className="space-y-2">
-        {cats.map((c) => (
-          <Card key={c.id} className="!p-3">
+    <div className="space-y-2">
+      {cats.map(cat => {
+        const count = items.filter(i => i.category === cat).length
+        const avail = items.filter(i => i.category === cat && i.available).length
+        return (
+          <Card key={cat} className="!p-3">
             <div className="flex items-center gap-3">
-              <GripVertical size={14} className="text-muted-foreground" />
-              <span className="text-xl">{c.emoji}</span>
+              <span className="text-xl">{emojiFor(cat)}</span>
               <div className="flex-1">
-                <p className="text-sm font-bold">{c.name}</p>
-                <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <Clock size={9} /> {c.hours}
+                <p className="text-sm font-bold">{cat}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {count} plat{count > 1 ? 's' : ''} · {avail} disponible{avail > 1 ? 's' : ''}
                 </p>
               </div>
-              <button
-                onClick={() => setCats(cats.map(x => x.id === c.id ? { ...x, visible: !x.visible } : x))}
-                className={`grid h-8 w-8 place-items-center rounded-lg ${
-                  c.visible ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'
-                }`}>
-                {c.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-              </button>
+              <span className={`h-2 w-2 rounded-full ${avail > 0 ? 'bg-success' : 'bg-muted-foreground'}`} />
             </div>
           </Card>
-        ))}
-      </div>
-      <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-card/50 py-3 text-sm font-bold text-muted-foreground transition hover:border-primary hover:text-primary">
-        <Plus size={14} /> Nouvelle catégorie
-      </button>
+        )
+      })}
     </div>
   )
 }
@@ -248,14 +372,10 @@ function PromosTab() {
     <div>
       <SectionTitle hint="Actives & planifiées">Promotions</SectionTitle>
       <div className="space-y-2">
-        {promotions.map((p) => (
+        {PROMOS.map(p => (
           <Card key={p.name} className="!p-3">
             <div className="flex items-center gap-3">
-              <div className={`grid h-10 w-10 place-items-center rounded-xl ${
-                p.color === 'primary' ? 'bg-primary text-primary-foreground'
-                : p.color === 'navy'  ? 'bg-navy text-navy-foreground'
-                :                       'bg-success text-success-foreground'
-              }`}>
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground">
                 <Percent size={16} />
               </div>
               <div className="flex-1">
@@ -280,7 +400,8 @@ function PromosTab() {
           [Flame,    'Flash deal'],
           [Star,     'Plat du chef'],
         ] as const).map(([Icon, l]) => (
-          <button key={l} className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card p-3 transition active:scale-[0.99]">
+          <button key={l}
+            className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card p-3 transition active:scale-[0.99]">
             <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-primary"><Icon size={14} /></div>
             <span className="text-[11px] font-bold">{l}</span>
           </button>
@@ -293,118 +414,147 @@ function PromosTab() {
 // ── AI Scanner overlay ────────────────────────────────────────────────────────
 
 function AIScannerOverlay({
-  cats, onClose, onAdd,
+  brandId, categories, onClose, onAdd,
 }: {
-  cats: Category[]
-  onClose: () => void
-  onAdd: (d: Dish) => void
+  brandId:    string
+  categories: string[]
+  onClose:    () => void
+  onAdd:      (item: MenuItem) => void
 }) {
-  const [step,     setStep]     = useState<'camera' | 'analyzing' | 'result'>('camera')
-  const [progress, setProgress] = useState(0)
+  const [step,       setStep]       = useState<'upload' | 'analyzing' | 'result'>('upload')
+  const [imageB64,   setImageB64]   = useState<string>('')
+  const [mediaType,  setMediaType]  = useState<'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'>('image/jpeg')
+  const [preview,    setPreview]    = useState<string>('')
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
+  const [error,      setError]      = useState<string>('')
+  const fileRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (step !== 'analyzing') return
-    setProgress(0)
-    const id = setInterval(() => {
-      setProgress(p => {
-        if (p >= 100) { clearInterval(id); setStep('result'); return 100 }
-        return p + 8
+  function handleFile(file: File) {
+    const type = file.type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+    setMediaType(type)
+    setPreview(URL.createObjectURL(file))
+    const reader = new FileReader()
+    reader.onload = e => {
+      const result = e.target?.result as string
+      setImageB64(result.split(',')[1])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function analyze() {
+    if (!imageB64) return
+    setStep('analyzing')
+    setError('')
+    try {
+      const r = await fetch('/api/menu/scan-dish', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ imageBase64: imageB64, mediaType }),
       })
-    }, 120)
-    return () => clearInterval(id)
-  }, [step])
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? 'Erreur analyse')
+      setScanResult(data)
+      setStep('result')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur inconnue')
+      setStep('upload')
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-navy">
-      <div className="mx-auto h-full max-w-md">
-        {step === 'camera'    && <CameraStep onClose={onClose} onShoot={() => setStep('analyzing')} />}
-        {step === 'analyzing' && <AnalyzingStep progress={progress} />}
-        {step === 'result'    && (
-          <ResultStep cats={cats} onClose={onClose} onConfirm={onAdd} onRetake={() => setStep('camera')} />
+      <div className="mx-auto h-full max-w-md flex flex-col">
+
+        {/* Top bar */}
+        <div className="flex items-center justify-between p-4">
+          <button onClick={onClose}
+            className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur">
+            <X size={18} />
+          </button>
+          <div className="rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
+            Scan IA
+          </div>
+          <div className="h-10 w-10" />
+        </div>
+
+        {step === 'upload' && (
+          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            <input
+              ref={fileRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+            />
+            {preview ? (
+              <div className="w-full space-y-4">
+                <img src={preview} alt="Photo plat" className="w-full rounded-2xl object-cover max-h-60" />
+                {error && (
+                  <div className="flex items-center gap-2 rounded-xl bg-destructive/20 px-3 py-2 text-[11px] text-destructive">
+                    <AlertCircle size={12} /> {error}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => fileRef.current?.click()}
+                    className="flex-1 rounded-xl border border-white/20 py-3 text-sm font-semibold text-white">
+                    Changer
+                  </button>
+                  <button onClick={analyze}
+                    className="flex-1 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground">
+                    Analyser avec l&apos;IA
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full space-y-4">
+                <div className="grid h-32 w-32 place-items-center rounded-2xl bg-white/10 mx-auto">
+                  <ImageIcon size={40} className="text-white/50" />
+                </div>
+                <p className="text-white font-semibold">Choisissez une photo du plat</p>
+                <p className="text-[11px] text-white/60">
+                  L&apos;IA détecte automatiquement le nom, les ingrédients, les allergènes et les calories
+                </p>
+                <button onClick={() => fileRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground">
+                  <Upload size={16} /> Choisir une photo
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 'analyzing' && <AnalyzingStep />}
+
+        {step === 'result' && scanResult && (
+          <ResultStep
+            scanResult={scanResult}
+            preview={preview}
+            brandId={brandId}
+            categories={categories}
+            onClose={onClose}
+            onRetake={() => setStep('upload')}
+            onAdd={onAdd}
+          />
         )}
       </div>
     </div>
   )
 }
 
-function CameraStep({ onClose, onShoot }: { onClose: () => void; onShoot: () => void }) {
-  return (
-    <div className="relative flex h-full flex-col">
-      {/* Top bar */}
-      <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between p-4">
-        <button onClick={onClose}
-          className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur">
-          <X size={18} />
-        </button>
-        <div className="rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
-          Scan IA
-        </div>
-        <button className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur">
-          <Settings2 size={16} />
-        </button>
-      </div>
-
-      {/* Viewfinder */}
-      <div className="relative flex-1 overflow-hidden bg-gradient-to-br from-navy-elevated via-navy to-black">
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[120px] opacity-30">🍝</div>
-        <div className="absolute inset-0 flex items-center justify-center p-8">
-          <div className="relative aspect-square w-full max-w-xs">
-            {/* Corner brackets */}
-            {[
-              ['top-0 left-0',    'border-l-4 border-t-4 rounded-tl-2xl'],
-              ['top-0 right-0',   'border-r-4 border-t-4 rounded-tr-2xl'],
-              ['bottom-0 left-0', 'border-l-4 border-b-4 rounded-bl-2xl'],
-              ['bottom-0 right-0','border-r-4 border-b-4 rounded-br-2xl'],
-            ].map(([pos, b]) => (
-              <div key={pos} className={`absolute h-12 w-12 ${pos} ${b} border-primary`} />
-            ))}
-            {/* Scan line */}
-            <div
-              className="absolute inset-x-4 top-1/2 h-px bg-primary"
-              style={{ boxShadow: '0 0 12px 2px rgb(232 89 60)' }}
-            />
-          </div>
-        </div>
-        <p className="absolute bottom-32 left-0 right-0 text-center text-sm font-semibold text-white">
-          Placez le plat dans le cadre
-        </p>
-      </div>
-
-      {/* Bottom controls */}
-      <div className="bg-navy p-6">
-        <div className="flex items-center justify-around">
-          <button className="grid h-12 w-12 place-items-center rounded-2xl bg-navy-elevated text-white">
-            <ImageIcon size={20} />
-          </button>
-          <button onClick={onShoot}
-            className="group relative grid h-20 w-20 place-items-center rounded-full bg-white transition active:scale-95">
-            <div className="absolute inset-1.5 rounded-full border-4 border-navy" />
-            <div className="h-14 w-14 rounded-full bg-primary" />
-          </button>
-          <button className="grid h-12 w-12 place-items-center rounded-2xl bg-navy-elevated text-white">
-            <Upload size={20} />
-          </button>
-        </div>
-        <p className="mt-4 text-center text-[10px] text-navy-foreground/60">
-          L&apos;IA détecte automatiquement plat, allergènes &amp; calories
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function AnalyzingStep({ progress }: { progress: number }) {
+function AnalyzingStep() {
   const stages = [
-    { p: 20,  l: 'Détection du plat...' },
-    { p: 45,  l: 'Identification des ingrédients...' },
-    { p: 70,  l: 'Calcul nutritionnel...' },
-    { p: 90,  l: 'Recherche prix concurrents...' },
-    { p: 100, l: 'Génération de la fiche...' },
+    'Détection du plat…',
+    'Identification des ingrédients…',
+    'Calcul nutritionnel…',
+    'Recherche allergènes…',
+    'Génération de la fiche…',
   ]
-  const current = stages.find(s => progress <= s.p) || stages[stages.length - 1]
+  const [idx, setIdx] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setIdx(i => Math.min(i + 1, stages.length - 1)), 900)
+    return () => clearInterval(id)
+  }, [])
 
   return (
-    <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
       <div className="relative">
         <div className="grid h-28 w-28 place-items-center rounded-full bg-primary/20">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-primary text-primary-foreground animate-pulse">
@@ -413,43 +563,59 @@ function AnalyzingStep({ progress }: { progress: number }) {
         </div>
         <div className="absolute -inset-2 animate-spin rounded-full border-2 border-primary/40 border-t-primary" />
       </div>
-      <h2 className="mt-8 text-2xl font-bold text-white">L&apos;IA analyse...</h2>
-      <p className="mt-2 text-sm text-navy-foreground/70">{current.l}</p>
-      <div className="mt-6 w-full max-w-xs">
-        <div className="h-1.5 overflow-hidden rounded-full bg-navy-elevated">
-          <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-        </div>
-        <p className="mt-2 text-[11px] font-bold text-navy-foreground/60">{progress}%</p>
-      </div>
+      <h2 className="mt-8 text-2xl font-bold text-white">L&apos;IA analyse…</h2>
+      <p className="mt-2 text-sm text-navy-foreground/70">{stages[idx]}</p>
     </div>
   )
 }
 
 function ResultStep({
-  cats, onClose, onConfirm, onRetake,
+  scanResult, preview, brandId, categories, onClose, onRetake, onAdd,
 }: {
-  cats: Category[]
-  onClose: () => void
-  onConfirm: (d: Dish) => void
-  onRetake: () => void
+  scanResult: ScanResult
+  preview:    string
+  brandId:    string
+  categories: string[]
+  onClose:    () => void
+  onRetake:   () => void
+  onAdd:      (item: MenuItem) => void
 }) {
-  const [name,      setName]      = useState('Pasta cremosa truffe')
-  const [desc,      setDesc]      = useState('Tagliatelles fraîches nappées d\'une crème onctueuse à la truffe noire et copeaux de parmesan affiné 24 mois.')
-  const [cat,       setCat]       = useState(cats[1]?.id || cats[0].id)
-  const [price,     setPrice]     = useState(13.9)
-  const [allergens, setAllergens] = useState<string[]>(['Gluten', 'Lactose', 'Œuf'])
+  const [name,      setName]      = useState(scanResult.name)
+  const [desc,      setDesc]      = useState(scanResult.description)
+  const [category,  setCategory]  = useState(
+    categories.includes(scanResult.category) ? scanResult.category : (categories[0] ?? 'Plats'),
+  )
+  const [price,     setPrice]     = useState(
+    Math.round((scanResult.calories_min / 100 + 7) * 10) / 10,
+  )
+  const [allergens, setAllergens] = useState<string[]>(scanResult.allergens)
+  const [labels,    setLabels]    = useState<string[]>(scanResult.suggested_labels)
+  const [calories,  setCalories]  = useState(
+    Math.round((scanResult.calories_min + scanResult.calories_max) / 2),
+  )
+  const [saving, setSaving] = useState(false)
 
-  const allEU = ['Gluten','Lactose','Œuf','Soja','Arachide','Fruits à coque','Poisson','Crustacés','Mollusques','Céleri','Moutarde','Sésame','Sulfites','Lupin']
-  const labels = [
-    { name: 'Veggie',     icon: Leaf,       on: true  },
-    { name: 'Halal',      icon: BadgeCheck, on: false },
-    { name: 'Sans gluten',icon: WheatOff,   on: false },
-    { name: 'Épicé',      icon: Flame,      on: false },
-  ]
+  const allCats = categories.length > 0 ? categories : ['Entrées', 'Plats', 'Desserts', 'Boissons']
+
+  async function confirm() {
+    setSaving(true)
+    const r = await fetch('/api/menu', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        brandId, name, description: desc, price, category,
+        calories, allergens, labels, available: true, isPopular: false,
+      }),
+    })
+    if (r.ok) {
+      const d = await r.json()
+      onAdd(d.item)
+    }
+    setSaving(false)
+  }
 
   return (
-    <div className="flex h-full flex-col bg-background">
-      {/* Header */}
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
       <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
         <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl bg-muted">
           <X size={16} />
@@ -463,118 +629,56 @@ function ResultStep({
         </button>
       </div>
 
-      {/* Scrollable form */}
       <div className="flex-1 space-y-4 overflow-y-auto p-4 pb-32">
-        {/* Photo */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 to-accent">
-          <div className="flex aspect-video items-center justify-center text-7xl">🍝</div>
-          <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[9px] font-bold text-white backdrop-blur">
-            <Wand2 size={10} /> Photo améliorée
-          </div>
-          <div className="absolute bottom-3 right-3 flex gap-1.5">
-            <button className="rounded-lg bg-white/90 px-2 py-1 text-[10px] font-bold">Reprendre</button>
-            <button className="rounded-lg bg-primary px-2 py-1 text-[10px] font-bold text-primary-foreground">Générer IA</button>
-          </div>
-        </div>
+        {preview && (
+          <img src={preview} alt={name} className="w-full rounded-2xl object-cover max-h-48" />
+        )}
 
-        {/* Name */}
         <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nom du plat</label>
-          <input value={name} onChange={(e) => setName(e.target.value)}
+          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nom</label>
+          <input value={name} onChange={e => setName(e.target.value)}
             className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold focus:border-primary focus:outline-none" />
         </div>
 
-        {/* Description */}
         <div>
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description (SEO)</label>
-            <button className="inline-flex items-center gap-1 text-[10px] font-bold text-primary">
-              <Sparkles size={10} /> Régénérer
-            </button>
-          </div>
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3}
+          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</label>
+          <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3}
             className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
         </div>
 
-        {/* Category */}
         <div>
           <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Catégorie</label>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {cats.map((c) => (
-              <button key={c.id} onClick={() => setCat(c.id)}
+            {allCats.map(c => (
+              <button key={c} onClick={() => setCategory(c)}
                 className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                  cat === c.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  category === c ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                 }`}>
-                {c.emoji} {c.name}
+                {emojiFor(c)} {c}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Smart Pricing */}
-        <Card className="!p-3.5 !bg-navy !text-navy-foreground border-transparent">
-          <div className="mb-2 flex items-center gap-2">
-            <Sparkles size={14} className="text-primary" />
-            <p className="text-[11px] font-bold uppercase tracking-wider">Prix intelligent</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Prix €</label>
+            <input type="number" step="0.1" min="0" value={price}
+              onChange={e => setPrice(Number(e.target.value))}
+              className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold focus:border-primary focus:outline-none" />
           </div>
-          <p className="text-[11px] text-navy-foreground/70">
-            Basé sur 12 plats similaires à Paris 75011 · Restaurant standard
-          </p>
-          <div className="mt-4">
-            <div className="relative h-2 rounded-full bg-navy-elevated">
-              <div className="absolute inset-y-0 left-[20%] right-[15%] rounded-full bg-gradient-to-r from-success via-primary to-destructive opacity-50" />
-              <div
-                className="absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-primary bg-white shadow-lg"
-                style={{ left: `${((price - 9) / (18 - 9)) * 100}%` }}
-              />
-            </div>
-            <input
-              type="range" min={9} max={18} step={0.1} value={price}
-              onChange={(e) => setPrice(Number(e.target.value))}
-              className="mt-1 h-2 w-full cursor-pointer opacity-0"
-              style={{ marginTop: '-0.5rem' }}
-            />
-            <div className="mt-2 flex justify-between text-[10px] text-navy-foreground/60">
-              <span>Min €9</span>
-              <span className="font-bold text-primary">Suggéré €13.90</span>
-              <span>Max €18</span>
-            </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Calories</label>
+            <input type="number" min="0" value={calories ?? ''}
+              onChange={e => setCalories(Number(e.target.value))}
+              className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
           </div>
-          <div className="mt-3 flex items-center justify-between rounded-xl bg-navy-elevated p-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-navy-foreground/60">Votre prix</p>
-              <p className="text-2xl font-bold">€{price.toFixed(2)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] text-navy-foreground/60">Moyenne zone</p>
-              <p className="text-sm font-bold">€12.50 – €15.00</p>
-            </div>
-          </div>
-          <p className="mt-2 text-[10px] text-navy-foreground/60">
-            <span className="font-bold text-primary">Best-sellers à ce prix :</span> La Crémosa (€14.90), Gnocchi Teriyaki (€13.50)
-          </p>
-        </Card>
+        </div>
 
-        {/* Nutrition */}
-        <Card className="!p-3">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nutrition (estimée)</p>
-          <div className="mt-2 grid grid-cols-4 gap-2 text-center">
-            {[['Calories','520 kcal'],['Protéines','18g'],['Glucides','62g'],['Lipides','22g']].map(([k, v]) => (
-              <div key={k}>
-                <p className="text-sm font-bold">{v}</p>
-                <p className="text-[9px] text-muted-foreground">{k}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        {/* Allergens */}
         <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Allergènes (UE 14)
-          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Allergènes (UE 14)</label>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {allEU.map((a) => {
+            {ALL_EU.map(a => {
               const on = allergens.includes(a)
               return (
                 <button key={a}
@@ -591,29 +695,31 @@ function ResultStep({
           </div>
         </div>
 
-        {/* Labels */}
         <div>
           <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Labels</label>
           <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-            {labels.map((l) => (
-              <button key={l.name}
-                className={`flex flex-col items-center gap-1 rounded-xl border p-2 transition ${
-                  l.on ? 'border-primary bg-accent text-primary' : 'border-border bg-card text-muted-foreground'
-                }`}>
-                <l.icon size={14} />
-                <span className="text-[9px] font-bold">{l.name}</span>
-              </button>
-            ))}
+            {ALL_LABELS.map(l => {
+              const on = labels.includes(l.name)
+              return (
+                <button key={l.name}
+                  onClick={() => setLabels(on ? labels.filter(x => x !== l.name) : [...labels, l.name])}
+                  className={`flex flex-col items-center gap-1 rounded-xl border p-2 transition ${
+                    on ? 'border-primary bg-accent text-primary' : 'border-border bg-card text-muted-foreground'
+                  }`}>
+                  <l.icon size={14} />
+                  <span className="text-[9px] font-bold">{l.name}</span>
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
 
-      {/* Sticky footer */}
       <div className="absolute bottom-0 left-0 right-0 border-t border-border bg-card p-4">
-        <button
-          onClick={() => onConfirm({ id: 'new', name, desc, price, cat, avail: true, calories: 520, tags: ['Veggie'] })}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground transition active:scale-[0.99]">
-          <Check size={16} /> Ajouter au menu · Toutes plateformes
+        <button onClick={confirm} disabled={saving || !name}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground disabled:opacity-60">
+          {saving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={16} />}
+          {saving ? 'Enregistrement…' : 'Ajouter au menu'}
         </button>
       </div>
     </div>
@@ -623,12 +729,25 @@ function ResultStep({
 // ── Dish editor ───────────────────────────────────────────────────────────────
 
 function DishEditor({
-  dish, cats, onClose, onSave,
+  item, categories, onClose, onSave, onDelete,
 }: {
-  dish: Dish; cats: Category[]; onClose: () => void; onSave: (d: Dish) => void
+  item:       MenuItem
+  categories: string[]
+  onClose:    () => void
+  onSave:     (item: MenuItem) => void
+  onDelete:   (id: string) => void
 }) {
-  const [d, setD] = useState<Dish>(dish)
-  const isNew = dish.id === 'new'
+  const [d, setD] = useState<MenuItem>(item)
+  const [saving, setSaving] = useState(false)
+  const isNew = item.id === 'new'
+
+  const allCats = categories.length > 0 ? categories : ['Entrées', 'Plats', 'Desserts', 'Boissons']
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(d)
+    setSaving(false)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
@@ -638,32 +757,32 @@ function DishEditor({
             <ChevronLeft size={16} />
           </button>
           <p className="text-base font-bold">{isNew ? 'Nouveau plat' : 'Modifier'}</p>
-          <button onClick={() => onSave(d)}
-            className="rounded-xl bg-primary px-4 py-2 text-[12px] font-bold text-primary-foreground">
-            Enregistrer
+          <button onClick={handleSave} disabled={saving || !d.name}
+            className="rounded-xl bg-primary px-4 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60">
+            {saving ? '…' : 'Enregistrer'}
           </button>
         </div>
 
         <div className="space-y-3">
-          <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })}
+          <input value={d.name} onChange={e => setD({ ...d, name: e.target.value })}
             placeholder="Nom du plat"
             className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold focus:border-primary focus:outline-none" />
 
-          <textarea value={d.desc} onChange={(e) => setD({ ...d, desc: e.target.value })}
+          <textarea value={d.description ?? ''} onChange={e => setD({ ...d, description: e.target.value })}
             placeholder="Description" rows={3}
             className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
 
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Prix €</label>
-              <input type="number" step="0.1" value={d.price}
-                onChange={(e) => setD({ ...d, price: Number(e.target.value) })}
+              <input type="number" step="0.1" min="0" value={d.price}
+                onChange={e => setD({ ...d, price: Number(e.target.value) })}
                 className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold focus:border-primary focus:outline-none" />
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Calories</label>
-              <input type="number" value={d.calories ?? ''}
-                onChange={(e) => setD({ ...d, calories: Number(e.target.value) })}
+              <input type="number" min="0" value={d.calories ?? ''}
+                onChange={e => setD({ ...d, calories: e.target.value ? Number(e.target.value) : null })}
                 className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
             </div>
           </div>
@@ -671,44 +790,67 @@ function DishEditor({
           <div>
             <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Catégorie</label>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {cats.map((c) => (
-                <button key={c.id} onClick={() => setD({ ...d, cat: c.id })}
+              {allCats.map(c => (
+                <button key={c} onClick={() => setD({ ...d, category: c })}
                   className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                    d.cat === c.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                    d.category === c ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
                   }`}>
-                  {c.emoji} {c.name}
+                  {emojiFor(c)} {c}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Options groups */}
-          <Card className="!p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-bold">Options &amp; suppléments</p>
-              <button className="inline-flex items-center gap-1 text-[10px] font-bold text-primary">
-                <Plus size={10} /> Ajouter
-              </button>
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Allergènes</label>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {ALL_EU.map(a => {
+                const on = d.allergens.includes(a)
+                return (
+                  <button key={a}
+                    onClick={() => setD({ ...d, allergens: on ? d.allergens.filter(x => x !== a) : [...d.allergens, a] })}
+                    className={`rounded-full border px-2.5 py-1 text-[10px] font-bold transition ${
+                      on ? 'border-destructive/30 bg-destructive/15 text-destructive' : 'border-transparent bg-muted text-muted-foreground'
+                    }`}>
+                    {on && '✓ '}{a}
+                  </button>
+                )
+              })}
             </div>
-            <div className="mt-2 space-y-1.5 text-[11px]">
-              {[
-                'Choix de sauce · Obligatoire · choisir 1',
-                'Extras · Facultatif · multi',
-                'Taille · S/M/L',
-              ].map((opt) => (
-                <div key={opt} className="flex items-center justify-between rounded-lg bg-muted px-2.5 py-1.5">
-                  <span dangerouslySetInnerHTML={{
-                    __html: opt.replace(/^([^·]+)/, '<span class="font-bold">$1</span>'),
-                  }} />
-                  <ChevronRight size={12} className="text-muted-foreground" />
-                </div>
-              ))}
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Labels</label>
+            <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+              {ALL_LABELS.map(l => {
+                const on = d.labels.includes(l.name)
+                return (
+                  <button key={l.name}
+                    onClick={() => setD({ ...d, labels: on ? d.labels.filter(x => x !== l.name) : [...d.labels, l.name] })}
+                    className={`flex flex-col items-center gap-1 rounded-xl border p-2 transition ${
+                      on ? 'border-primary bg-accent text-primary' : 'border-border bg-card text-muted-foreground'
+                    }`}>
+                    <l.icon size={14} />
+                    <span className="text-[9px] font-bold">{l.name}</span>
+                  </button>
+                )
+              })}
             </div>
-          </Card>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5">
+            <span className="text-sm font-semibold">Best-seller</span>
+            <div
+              onClick={() => setD({ ...d, isPopular: !d.isPopular })}
+              className={`relative h-6 w-11 cursor-pointer rounded-full transition ${d.isPopular ? 'bg-warning' : 'bg-muted'}`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${d.isPopular ? 'left-5' : 'left-0.5'}`} />
+            </div>
+          </div>
 
           {!isNew && (
-            <button className="w-full rounded-xl border border-destructive/30 py-2.5 text-[12px] font-bold text-destructive">
-              Supprimer ce plat
+            <button onClick={() => onDelete(item.id)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 py-2.5 text-[12px] font-bold text-destructive">
+              <Trash2 size={13} /> Supprimer ce plat
             </button>
           )}
         </div>
