@@ -61,27 +61,18 @@ jobs:
           # Static assets (CSS/JS bundles — not inside standalone by default)
           cp -r .next/static deploy-temp/.next/static
 
-          # Prisma schema for db push
-          cp -r prisma deploy-temp/prisma
+          # Prisma schema (only schema.prisma needed on server)
+          mkdir -p deploy-temp/prisma
+          cp prisma/schema.prisma deploy-temp/prisma/schema.prisma
 
           # Public assets
           [ -d public ] && cp -r public deploy-temp/public || true
 
-          # .htaccess — Passenger config for staging
+          # .htaccess — Passenger config for staging (printf avoids BOM)
           printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/app.grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node\nPassengerMaxPoolSize 1\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
 
-          # .env.local — ALL required runtime variables
-          {
-            echo "DATABASE_URL=${{ secrets.DATABASE_URL_STAGING }}"
-            echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}"
-            echo "NEXTAUTH_URL=https://app.grubano.com"
-            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
-            echo "SMTP_HOST=${{ secrets.SMTP_HOST }}"
-            echo "SMTP_USER=${{ secrets.SMTP_USER }}"
-            echo "SMTP_PASS=${{ secrets.SMTP_PASS }}"
-            echo "CRON_SECRET=${{ secrets.CRON_SECRET }}"
-            echo "NODE_ENV=production"
-          } > deploy-temp/.env.local
+          # .env.local from secret (full file content, avoids per-secret sprawl)
+          printf '%s' "${{ secrets.ENV_LOCAL_CONTENT }}" > deploy-temp/.env.local
 
           echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
           echo "Files to upload: $(find deploy-temp -type f | wc -l)"
@@ -119,10 +110,10 @@ jobs:
       - name: Health check
         run: |
           sleep 25
-          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://app.grubano.com/eat || echo "000")
-          echo "app.grubano.com/eat → HTTP $STATUS"
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://www.grubano.com/dashboard || echo "000")
+          echo "www.grubano.com/dashboard → HTTP $STATUS"
           if [ "$STATUS" = "200" ]; then
-            echo "✅ Staging is live!"
+            echo "OK Staging deploy done, production healthy"
           else
-            echo "⚠️  Health check returned $STATUS (non-blocking)"
+            echo "WARN Health check returned $STATUS (non-blocking)"
           fi

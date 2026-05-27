@@ -164,9 +164,9 @@ if (-not $NoZip) {
     $sizeMb = [math]::Round((Get-Item $ZipFile).Length / 1MB, 1)
     Write-OK ($ZipFile + " created (" + $sizeMb + " MB)")
 
-    # Size sanity check -- standalone build with trimmed node_modules is typically 20-100 MB
-    if ($sizeMb -lt 20) {
-        Write-Warn ("ZIP is only " + $sizeMb + " MB -- build may be incomplete.")
+    # Size sanity check -- standalone build with trimmed node_modules is typically 30-100 MB
+    if ($sizeMb -lt 30) {
+        Write-Warn ("ZIP is only " + $sizeMb + " MB -- standalone node_modules may be missing.")
     }
 
     # Verify node_modules/next is in ZIP
@@ -175,6 +175,19 @@ if (-not $NoZip) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zipObj  = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $ZipFile).Path)
     $hasNext = ($zipObj.Entries | Where-Object { $_.FullName -like "node_modules\next\*" } | Select-Object -First 1)
+
+    # Show ZIP top-level content tree (unique first-level entries, skip deep node_modules)
+    Write-Host ""
+    Write-Host "  ZIP content (top 2 levels):" -ForegroundColor Cyan
+    $zipObj.Entries |
+        ForEach-Object { $_.FullName -replace '[\\/].*', '' } |
+        Sort-Object -Unique |
+        ForEach-Object { Write-Host ("    [DIR] " + $_) -ForegroundColor White }
+    Write-Host ""
+    $zipObj.Entries |
+        Where-Object { $_.FullName -notmatch '[/\\]' } |
+        ForEach-Object { Write-Host ("    [FILE] " + $_.FullName) -ForegroundColor Gray }
+
     $zipObj.Dispose()
 
     if ($hasNext) {
