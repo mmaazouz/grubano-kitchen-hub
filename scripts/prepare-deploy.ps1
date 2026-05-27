@@ -6,11 +6,10 @@
 #   .\scripts\prepare-deploy.ps1 -SkipBuild   -> reuse existing build
 #   .\scripts\prepare-deploy.ps1 -NoZip       -> prepare deploy/ without zipping
 #
-# NOTE (CloudLinux o2switch):
-#   node_modules is EXCLUDED from the ZIP.
-#   After extraction on the server, run:
-#     source ~/nodevenv/grubano.com/24/bin/activate
-#     cd ~/grubano.com && npm ci --omit=dev
+# NOTE:
+#   .next/standalone/ has its own trimmed node_modules (contains next, etc.).
+#   This is NOT the root node_modules. We copy it as-is into the ZIP.
+#   No npm ci needed on server -- everything is bundled by standalone build.
 # =============================================================================
 
 param(
@@ -21,10 +20,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 # -- Config -------------------------------------------------------------------
-$BuildDir  = ".next\standalone"
-$StaticDir = ".next\static"
-$DeployDir = "deploy"
-$ZipFile   = "grubano-deploy.zip"
+$StandaloneDir = ".next\standalone"
+$StaticDir     = ".next\static"
+$DeployDir     = "deploy-temp"
+$ZipFile       = "grubano-deploy.zip"
 
 # -- Helpers ------------------------------------------------------------------
 function Write-Step { param($msg) Write-Host ("`n>> " + $msg) -ForegroundColor Cyan }
@@ -36,7 +35,7 @@ function Write-Info { param($msg) Write-Host ("  ->     " + $msg) -ForegroundCol
 # =============================================================================
 # 1. BUILD
 # =============================================================================
-Write-Step "Build Next.js 14 (standalone)"
+Write-Step "Build Next.js (standalone)"
 
 if (-not (Test-Path ".env.local")) {
     Write-Err ".env.local missing. Copy .env.local.example and fill in values."
@@ -44,21 +43,27 @@ if (-not (Test-Path ".env.local")) {
 
 if ($SkipBuild) {
     Write-Warn "Build skipped (-SkipBuild)"
-    if (-not (Test-Path $BuildDir)) { Write-Err ("Folder " + $BuildDir + " not found. Run without -SkipBuild.") }
+    if (-not (Test-Path $StandaloneDir)) {
+        Write-Err ("Folder " + $StandaloneDir + " not found. Run without -SkipBuild.")
+    }
 } else {
     Write-Info "Running npm run build..."
     npm run build
-    if ($LASTEXITCODE -ne 0) { Write-Err ("npm run build failed (exit code " + $LASTEXITCODE + ").") }
-    if (-not (Test-Path $BuildDir)) { Write-Err ("Folder " + $BuildDir + " not found after build.") }
-    Write-OK ("Build complete -> " + $BuildDir)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err ("npm run build failed (exit code " + $LASTEXITCODE + ").")
+    }
+    if (-not (Test-Path $StandaloneDir)) {
+        Write-Err ("Folder " + $StandaloneDir + " not found after build. Check next.config.js has output: standalone.")
+    }
+    Write-OK ("Build complete -> " + $StandaloneDir)
 }
 
 # =============================================================================
-# 1b. PATCH server.js -- replace hardcoded Windows paths
+# 1b. PATCH server.js -- replace hardcoded Windows paths with Linux paths
 # =============================================================================
 Write-Step "Patch server.js (Windows paths -> Linux)"
 
-$serverJsPath = $BuildDir + "\server.js"
+$serverJsPath = $StandaloneDir + "\server.js"
 if (-not (Test-Path $serverJsPath)) {
     Write-Err ($serverJsPath + " not found. Standalone build is incomplete.")
 }
@@ -73,88 +78,72 @@ $serverContent = Get-Content $serverJsPath -Raw
 if ($serverContent -match 'C:\\\\Users|C:\\Users') {
     Write-Err ("Windows path still present in " + $serverJsPath + "! Aborting.")
 } else {
-    Write-OK "server.js is clean for Linux (no Windows paths)"
-}
-
-$match = [regex]::Match($serverContent, '"outputFileTracingRoot"\s*:\s*"([^"]*)"')
-if ($match.Success) {
-    Write-Info ("outputFileTracingRoot = " + $match.Groups[1].Value)
+    Write-OK "server.js is clean (no Windows paths)"
 }
 
 # =============================================================================
-# 2. PREPARE deploy/ FOLDER
+# 2. PREPARE deploy-temp/ FOLDER
 # =============================================================================
 Write-Step ("Preparing " + $DeployDir + "\")
 
-if (Test-Path $DeployDir) {
-    Write-Info ("Removing old " + $DeployDir + "\")
-    Remove-Item -Recurse -Force $DeployDir
+# Clean slate
+Remove-Item -Recurse -Force $DeployDir -ErrorAction SilentlyContinue
+Remove-Item -Force $ZipFile -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $DeployDir | Out-Null
+
+# 2a. Copy entire standalone output -- INCLUDING its own node_modules
+# .next/standalone/node_modules is a trimmed set built by Next.js standalone.
+# It contains next, react, and all runtime packages. It is NOT the root
+# node_modules. The server REQUIRES this to start. Do not delete it.
+Write-Info ("Copying " + $StandaloneDir + "\* -> " + $DeployDir + "\ (including standalone node_modules)")
+Copy-Item -Recurse -Force ($StandaloneDir + "\*") ($DeployDir + "\")
+Write-OK "Standalone output copied (with node_modules)"
+
+# Verify node_modules/next is present
+if (-not (Test-Path ($DeployDir + "\node_modules\next"))) {
+    Write-Err ("node_modules\next missing from standalone output. Build may have failed or output is not standalone mode.")
 }
-New-Item -ItemType Directory -Force $DeployDir | Out-Null
+Write-OK "node_modules\next verified present"
 
-# 2a. Copy standalone content -- EXCLUDE node_modules
-# CloudLinux on o2switch blocks extraction of node_modules from ZIP silently.
-# node_modules must be installed on the server via: npm ci --omit=dev
-Write-Info ("Copying " + $BuildDir + "\* -> " + $DeployDir + "\ (excluding node_modules)")
-Get-ChildItem -Path $BuildDir -Force | Where-Object { $_.Name -ne "node_modules" } | ForEach-Object {
-    Copy-Item -Path $_.FullName -Destination $DeployDir -Recurse -Force
-}
-
-if (Test-Path ($DeployDir + "\node_modules")) {
-    Remove-Item -Recurse -Force ($DeployDir + "\node_modules")
-    Write-OK "node_modules removed from deploy folder (CloudLinux: use npm ci on server)"
-}
-
-# 2b. Passenger wrapper server.js
-Write-Info "Copying server.js (Passenger wrapper)"
-Copy-Item "server.js" ($DeployDir + "\server.js") -Force
-
-# 2c. .next\static\ (CSS/JS bundles -- critical to avoid blank page)
+# 2b. .next/static/ -- CSS/JS bundles (not inside standalone by default)
 if (Test-Path $StaticDir) {
     Write-Info ("Copying " + $StaticDir + "\ -> " + $DeployDir + "\.next\static\")
-    $dest = $DeployDir + "\.next\static"
-    New-Item -ItemType Directory -Force $dest | Out-Null
-    Copy-Item -Path ($StaticDir + "\*") -Destination $dest -Recurse -Force
-    Write-OK ".next\static\ copied"
+    New-Item -ItemType Directory -Force -Path ($DeployDir + "\.next\static") | Out-Null
+    Copy-Item -Recurse -Force ($StaticDir + "\*") ($DeployDir + "\.next\static\")
+    Write-OK ".next\static copied"
 } else {
     Write-Warn ($StaticDir + " not found -- blank page likely. Run npm run build first.")
 }
 
-# 2d. public\ (favicon, images...)
-if (Test-Path "public") {
-    Write-Info "Copying public\"
-    $pub = $DeployDir + "\public"
-    if (-not (Test-Path $pub)) { New-Item -ItemType Directory -Force $pub | Out-Null }
-    Copy-Item -Path "public\*" -Destination $pub -Recurse -Force
-}
-
-# 2e. .env.local (contains NEXTAUTH_SECRET, NEXTAUTH_URL, DATABASE_URL...)
+# 2c. .env.local (runtime secrets: NEXTAUTH_SECRET, DATABASE_URL, etc.)
 Write-Info "Copying .env.local"
-Copy-Item ".env.local" ($DeployDir + "\.env.local") -Force
+Copy-Item -Force ".env.local" ($DeployDir + "\.env.local")
+Write-OK ".env.local copied"
 
-# 2f. package.json + package-lock.json (required for npm ci on server)
-Write-Info "Copying package.json + package-lock.json"
-Copy-Item "package.json"      ($DeployDir + "\package.json")      -Force
-Copy-Item "package-lock.json" ($DeployDir + "\package-lock.json") -Force
-Write-OK "package.json / package-lock.json copied"
-
-# 2g. prisma/schema.prisma (for prisma db push on server)
+# 2d. prisma/schema.prisma (for prisma db push on server)
 Write-Info "Copying prisma\schema.prisma"
-$prismaDir = $DeployDir + "\prisma"
-New-Item -ItemType Directory -Force $prismaDir | Out-Null
-Copy-Item "prisma\schema.prisma" ($prismaDir + "\schema.prisma") -Force
+New-Item -ItemType Directory -Force -Path ($DeployDir + "\prisma") | Out-Null
+Copy-Item -Force "prisma\schema.prisma" ($DeployDir + "\prisma\schema.prisma")
 Write-OK "prisma\schema.prisma copied"
 
-# 2h. .htaccess (Passenger config)
+# 2e. public/ (favicon, images, static assets)
+if (Test-Path "public") {
+    Write-Info "Copying public\"
+    New-Item -ItemType Directory -Force -Path ($DeployDir + "\public") | Out-Null
+    Copy-Item -Recurse -Force "public\*" ($DeployDir + "\public\")
+    Write-OK "public\ copied"
+}
+
+# 2f. .htaccess (Passenger config) -- ASCII, no BOM
 Write-Info "Generating .htaccess"
-$htaccess = "PassengerEnabled on`r`n" +
-            "PassengerAppRoot /home/deyi0010/grubano.com`r`n" +
-            "PassengerAppType node`r`n" +
-            "PassengerStartupFile server.js`r`n" +
-            "PassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node`r`n" +
-            "PassengerMaxPoolSize 2`r`n" +
-            "PassengerMaxRequests 1000`r`n" +
-            "PassengerStartTimeout 120`r`n"
+$htaccess = "PassengerEnabled on`n" +
+            "PassengerAppRoot /home/deyi0010/grubano.com`n" +
+            "PassengerAppType node`n" +
+            "PassengerStartupFile server.js`n" +
+            "PassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node`n" +
+            "PassengerMaxPoolSize 2`n" +
+            "PassengerMaxRequests 1000`n" +
+            "PassengerStartTimeout 120`n"
 [System.IO.File]::WriteAllText(
     (Join-Path (Get-Location) ($DeployDir + "\.htaccess")),
     $htaccess,
@@ -162,62 +151,60 @@ $htaccess = "PassengerEnabled on`r`n" +
 )
 Write-OK ".htaccess generated"
 
-# Safety check: no node_modules in deploy folder
-if (Test-Path ($DeployDir + "\node_modules")) {
-    Write-Err ("SAFETY: node_modules detected in " + $DeployDir + " -- CloudLinux will block extraction. Aborting.")
-} else {
-    Write-OK "Safety check passed: no node_modules in deploy folder"
-}
-
-Write-OK ("Folder " + $DeployDir + "\ ready")
+Write-OK ($DeployDir + "\ ready")
 
 # =============================================================================
 # 3. CREATE grubano-deploy.zip
 # =============================================================================
 if (-not $NoZip) {
-    Write-Step ("Creating " + $ZipFile + " (no node_modules)")
-
-    if (Test-Path $ZipFile) { Remove-Item $ZipFile -Force }
+    Write-Step ("Creating " + $ZipFile)
 
     Compress-Archive -Path ($DeployDir + "\*") -DestinationPath $ZipFile -Force
+
     $sizeMb = [math]::Round((Get-Item $ZipFile).Length / 1MB, 1)
     Write-OK ($ZipFile + " created (" + $sizeMb + " MB)")
 
-    # Verify: no node_modules entries in ZIP
-    Write-Info "Verifying ZIP contents..."
+    # Size sanity check -- standalone build with trimmed node_modules is typically 20-100 MB
+    if ($sizeMb -lt 20) {
+        Write-Warn ("ZIP is only " + $sizeMb + " MB -- build may be incomplete.")
+    }
+
+    # Verify node_modules/next is in ZIP
+    # Compress-Archive on Windows uses backslashes in ZIP entry paths.
+    Write-Info "Verifying ZIP contains node_modules\next..."
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zipObj  = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $ZipFile).Path)
-    $nmCount = ($zipObj.Entries | Where-Object { $_.FullName -match "node_modules" }).Count
+    $hasNext = ($zipObj.Entries | Where-Object { $_.FullName -like "node_modules\next\*" } | Select-Object -First 1)
     $zipObj.Dispose()
 
-    if ($nmCount -gt 0) {
-        Write-Err ("SAFETY: " + $nmCount + " node_modules entries found in ZIP. CloudLinux will block extraction.")
+    if ($hasNext) {
+        Write-OK ("ZIP verified: node_modules\next present (" + $sizeMb + " MB)")
     } else {
-        Write-OK ("ZIP verified: 0 node_modules entries")
+        Write-Err ("node_modules\next NOT found in ZIP. Standalone build may be missing its node_modules.")
     }
 }
 
 # =============================================================================
-# 4. SHOW FINAL STRUCTURE
+# 4. SHOW FINAL STRUCTURE (top 3 levels, no deep node_modules)
 # =============================================================================
 Write-Step ("Final structure of " + $DeployDir + "\")
 
 function Show-Tree {
-    param($Dir, $Depth = 0, $MaxDepth = 3)
+    param($Dir, $Depth = 0, $MaxDepth = 2)
     if ($Depth -gt $MaxDepth) { return }
     $indent = "  " * $Depth
     Get-ChildItem -Path $Dir -Force |
-        Where-Object { $_.Name -ne "node_modules" } |
         ForEach-Object {
             $tag   = if ($_.PSIsContainer) { "[DIR] " } else { "[FILE]" }
             $color = if ($_.PSIsContainer) { "White" } else { "Gray" }
             Write-Host ($indent + $tag + " " + $_.Name) -ForegroundColor $color
-            if ($_.PSIsContainer) { Show-Tree -Dir $_.FullName -Depth ($Depth + 1) -MaxDepth $MaxDepth }
+            if ($_.PSIsContainer -and $_.Name -ne "node_modules") {
+                Show-Tree -Dir $_.FullName -Depth ($Depth + 1) -MaxDepth $MaxDepth
+            }
         }
 }
 
 Show-Tree -Dir $DeployDir
-Write-Host "  (node_modules excluded -- install via npm ci on server)" -ForegroundColor DarkGray
 
 # =============================================================================
 # 5. SERVER INSTRUCTIONS
@@ -232,20 +219,17 @@ Write-Host "    1. cPanel > File Manager > /home/deyi0010/" -ForegroundColor Dar
 Write-Host ("    2. Upload " + $ZipFile) -ForegroundColor DarkCyan
 Write-Host "    3. Extract to grubano.com/" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host "  STEP 2 -- Install dependencies (cPanel > Terminal):" -ForegroundColor White
-Write-Host "    source ~/nodevenv/grubano.com/24/bin/activate" -ForegroundColor DarkCyan
-Write-Host "    cd ~/grubano.com" -ForegroundColor DarkCyan
-Write-Host "    npm ci --omit=dev" -ForegroundColor DarkCyan
+Write-Host "  STEP 2 -- Set permissions (cPanel > Terminal):" -ForegroundColor White
+Write-Host "    chmod -R 755 ~/grubano.com/.next/" -ForegroundColor DarkCyan
+Write-Host "    chmod 600    ~/grubano.com/.env.local" -ForegroundColor DarkCyan
+Write-Host "    touch        ~/grubano.com/tmp/restart.txt" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host "  STEP 3 -- Push Prisma schema:" -ForegroundColor White
+Write-Host "  STEP 3 -- Push Prisma schema (first deploy or schema changes):" -ForegroundColor White
 Write-Host "    bash ~/grubano.com/scripts/server/prisma-push.sh" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host "  STEP 4 -- Restart app:" -ForegroundColor White
-Write-Host "    chmod -R 755 ~/grubano.com/.next/" -ForegroundColor DarkCyan
-Write-Host "    touch ~/grubano.com/tmp/restart.txt" -ForegroundColor DarkCyan
-Write-Host ""
-Write-Host "  STEP 5 -- Verify:" -ForegroundColor White
+Write-Host "  STEP 4 -- Verify:" -ForegroundColor White
 Write-Host "    curl -I https://grubano.com/eat" -ForegroundColor DarkCyan
 Write-Host ""
-Write-Host "  [WARN] NEXTAUTH_SECRET and NEXTAUTH_URL must be in .env.local!" -ForegroundColor Yellow
+Write-Host "  NOTE: node_modules is bundled inside the ZIP (standalone build)." -ForegroundColor Yellow
+Write-Host "  No npm ci needed on the server." -ForegroundColor Yellow
 Write-Host ""
