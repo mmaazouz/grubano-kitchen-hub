@@ -285,6 +285,38 @@ model CreatorDish {
   createdAt      DateTime @default(now())
 }
 
+// ── Franchise applications ────────────────────────────────────────────────────
+
+model FranchiseApplication {
+  id          String   @id @default(cuid())
+  operatorId  String?
+  name        String
+  city        String
+  phone       String
+  email       String
+  siret       String?
+  rib         String?
+  hasKitchen  Boolean  @default(false)
+  brandName   String
+  motivation  String   @db.Text
+  status      String   @default("pending")  // pending | approved | rejected
+  createdAt   DateTime @default(now())
+}
+
+model CreatorApplication {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  bio          String   @db.Text
+  instagram    String?
+  tiktok       String?
+  youtube      String?
+  followers    Int      @default(0)
+  dishConcepts Json     @default("[]")
+  status       String   @default("pending")
+  createdAt    DateTime @default(now())
+}
+
 // ── Consumer app ──────────────────────────────────────────────────────────────
 
 model Restaurant {

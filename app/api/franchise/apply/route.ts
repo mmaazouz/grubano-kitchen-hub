@@ -1,0 +1,40 @@
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { z } from 'zod'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+
+const applySchema = z.object({
+  name:       z.string().min(2),
+  city:       z.string().min(2),
+  phone:      z.string().min(8),
+  email:      z.string().email(),
+  siret:      z.string().optional(),
+  rib:        z.string().optional(),
+  hasKitchen: z.boolean().default(false),
+  brandName:  z.string().min(1),
+  motivation: z.string().min(10),
+})
+
+export async function POST(req: Request) {
+  try {
+    const session = await getServerSession(authOptions)
+    const body    = await req.json()
+    const data    = applySchema.parse(body)
+
+    const application = await prisma.franchiseApplication.create({
+      data: {
+        ...data,
+        operatorId: session?.user ? (session.user as { id?: string }).id : undefined,
+      },
+    })
+
+    return NextResponse.json({ application }, { status: 201 })
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
+    }
+    console.error('[POST /api/franchise/apply]', err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}
