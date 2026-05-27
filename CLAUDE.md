@@ -1,124 +1,353 @@
+# GRUBANO — Claude Code Reference
+> Read this file before starting any task. All decisions here are frozen unless the user explicitly says otherwise.
+
 ---
-# GHOSTOS / GRUBANO — Guide Claude Code
 
-## Contexte du projet
-Application web de gestion de dark kitchens multi-marques pour Mohammed Maazouz.
-Nom de l'app : Grubano (domaine : app.grubano.com)
-Hébergement : o2switch (shared hosting, cPanel, Phusion Passenger)
+## 1. Project Overview
 
-## Stack technique
-- Framework : Next.js 14 avec output standalone
-- Base de données : MySQL sur o2switch (via Prisma ORM)
-- Auth : NextAuth.js avec adapter Prisma MySQL
-- Styles : Tailwind CSS + shadcn/ui
-- IA : API Anthropic Claude (claude-sonnet-4-20250514)
-- SMS/Emails : Brevo API
-- Déploiement : scripts/prepare-deploy.ps1 (Windows) ou scripts/deploy.sh (Linux/WSL)
+Multi-brand dark kitchen management platform for Mohammed Maazouz.
+- **Operator app** (restaurant dashboard): `grubano.com` and `app.grubano.com`
+- **Consumer app** (food ordering): `/eat/*` routes on the same domain
+- **Hosting**: o2switch shared hosting, cPanel, Phusion Passenger, Node 24 via nodevenv virtualenv
 
-## Structure du projet
-/app              — Pages et layouts Next.js 14 (App Router)
-/app/api          — Routes API (backend)
-  /dashboard      — GET : KPIs du jour (CA, commandes, clients fidélité)
-  /loyalty
-    /register     — POST : inscription client fidélité
-    /validate     — POST : validation commande UberEats + crédit points
-  /stocks         — GET/POST : journal de stock (quantités mL, DLC)
-/components       — Composants React réutilisables
-  Sidebar.tsx     — Navigation latérale (desktop fixe / mobile drawer)
-  SidebarContext.tsx — Contexte open/close sidebar
-  MobileHeader.tsx   — Barre hamburger mobile
-/lib              — Utilitaires
-  prisma.ts       — Singleton PrismaClient
-/prisma           — Schéma MySQL (Operator, Brand, LoyaltyCustomer, LoyaltyOrder, StockItem…)
-/public           — Assets statiques
-/scripts
-  deploy.sh           — Déploiement SSH (Linux/WSL)
-  prepare-deploy.ps1  — Préparation ZIP/deploy (Windows PowerShell)
-CLAUDE.md         — Ce fichier
+---
 
-## Variables d'environnement (.env.local)
-DATABASE_URL="mysql://USER:PASSWORD@localhost:3306/grubano_db"
-ANTHROPIC_API_KEY="sk-ant-..."
-BREVO_API_KEY="..."
-NEXTAUTH_SECRET="..."
-NEXTAUTH_URL="https://app.grubano.com"
+## 2. Stack — FROZEN, do not upgrade without explicit instruction
 
-## Déploiement o2switch (Phusion Passenger)
+| Layer | Choice | Version / Note |
+|---|---|---|
+| Framework | Next.js App Router | 14.2.35, `output: 'standalone'` |
+| Database | MySQL on o2switch | via Prisma ORM |
+| ORM | Prisma | **5.22.0 pinned** — no `^` caret. Server has global Prisma v7 which breaks things. Always use `./node_modules/.bin/prisma` on server. |
+| Auth | NextAuth.js | v4, JWT strategy, CredentialsProvider, bcryptjs |
+| Styling | Tailwind CSS + shadcn/ui | Radix primitives |
+| AI | Anthropic SDK | `@anthropic-ai/sdk`, model `claude-sonnet-4-5` |
+| Email/SMS | Brevo | `@getbrevo/brevo` |
+| Validation | Zod | all API routes |
+| Password | bcryptjs | cost 12, never bcrypt (native) |
+| Forms | react-hook-form + zod | |
 
-### Pourquoi un server.js custom ?
-Le `server.js` généré par `next build` (standalone) contient des chemins ABSOLUS
-codés en dur pointant vers le poste de build (ex. C:\Users\Lenovo\grubano\...).
-Sur o2switch ces chemins n'existent pas → page blanche silencieuse.
+---
 
-Notre `server.js` racine appelle `startServer` de Next.js avec `dir: __dirname`
-et remplace le généré à chaque deploy.
+## 3. Design System — FROZEN
 
-### Processus de déploiement Windows
-```powershell
-# 1. Préparer + zipper
-.\scripts\prepare-deploy.ps1
+| Token | Value |
+|---|---|
+| Primary orange | `#E8593C` — Tailwind: `orange-500` equivalent |
+| Dark navy | `#1a1a2e` — sidebar, headers |
+| Font | Inter (system stack fallback) |
+| Component library | shadcn/ui — DO NOT add other UI libraries |
+| Mobile-first | Max-width 480px centered for `/eat/*` consumer app |
+| Icon library | lucide-react only |
 
-# 2a. Upload via SSH (WSL recommandé)
-rsync -avz --delete deploy/ deyi0010@<IP>:/home/deyi0010/grubano.com/
+---
 
-# 2b. Ou upload deploy.zip via cPanel > Gestionnaire de fichiers
+## 4. Branch Rules — CRITICAL
+
+```
+develop  →  staging   (app.grubano.com)   — all development happens here
+main     →  production (grubano.com)      — merge only when staging is verified
 ```
 
-### Processus de déploiement Linux/WSL
+- **NEVER push broken code to main**
+- **NEVER commit `.env.local`** — it is in `.gitignore`
+- **NEVER commit private keys** — `deploy_key`, `deploy_key.pub` are in `.gitignore`
+- All work goes to `develop`. When staging is confirmed working, user merges to `main`.
+- GitHub Actions auto-deploys: push to `develop` → staging CI; push to `main` → production CI.
+
+---
+
+## 5. Agent Territories
+
+### Operator App (restaurant/admin only)
+Pages under `/app/(root)` — authenticated, role-gated by `middleware.ts`
+
+| Route | Purpose |
+|---|---|
+| `/dashboard` | KPIs: revenue, orders, loyalty stats |
+| `/menu` | Menu item CRUD, AI dish scan |
+| `/orders` | Order management |
+| `/stocks` | Stock journal (quantities, DLC, AI suggestions) |
+| `/loyalty` | Loyalty program admin |
+| `/analytics` | Charts and performance |
+| `/brands` | Multi-brand management |
+| `/reviews` | Customer reviews |
+| `/wallet` | Financial wallet |
+| `/suppliers` | Supplier management + orders |
+| `/tables` | Table layout + reservations |
+| `/customers` | Customer list |
+| `/notifications` | Notification center |
+| `/cashflow` | Cash flow tracking |
+| `/prep` | Prep sheet generator |
+| `/onboarding` | Operator onboarding flow |
+| `/finance` | Finance overview |
+| `/pricing` | Pricing strategy |
+| `/marketplace` | B2B marketplace |
+| `/dinein` | Dine-in order management |
+| `/more` | Settings / more menu |
+| `/briefing` | Daily AI briefing |
+| `/premium` | Premium plan upsell |
+| `/franchise` | Franchise management (role: `franchise`) |
+| `/creators` | Creator economy (role: `creator`) |
+| `/account` | Account settings (role: `consumer`) |
+
+### Consumer App (`/eat/*`) — PUBLIC, no auth required to browse
+Mobile-optimised (max-width 480px). Wrapped in `EatSessionProvider` via `app/eat/layout.tsx`.
+
+| Route | Purpose |
+|---|---|
+| `/eat` | Home: restaurant list, categories, hero search |
+| `/eat/search` | Search + filter (cuisine, delivery time, rating) |
+| `/eat/r/[id]` | Restaurant menu, add-to-cart, cart sheet |
+| `/eat/cart` | Cart review, address, payment, place order |
+| `/eat/track/[orderId]` | Live order tracking with 15s polling |
+| `/eat/account` | Consumer loyalty wallet, order history |
+| `/eat/auth` | Login / Register (tabs) |
+
+### Auth Pages
+| Route | Purpose |
+|---|---|
+| `/login` | Operator login → redirects by role |
+| `/register` | (currently unused — consumers register via `/eat/auth`) |
+
+---
+
+## 6. API Routes
+
+| Route | Methods | Auth | Purpose |
+|---|---|---|---|
+| `/api/auth/[...nextauth]` | GET, POST | — | NextAuth handler |
+| `/api/auth/register` | POST | — | Consumer registration (bcrypt, role: consumer) |
+| `/api/dashboard` | GET | session | KPI aggregates |
+| `/api/brands` | GET, POST | session | Brand CRUD |
+| `/api/menu` | GET, POST, PATCH, DELETE | session | Menu item CRUD |
+| `/api/menu/scan-dish` | POST | session | AI-assisted dish creation |
+| `/api/orders` | GET, POST | session/public | Consumer orders |
+| `/api/orders/[id]` | GET | session | Single order |
+| `/api/orders/[id]/status` | PATCH | session | Order status update (state machine) |
+| `/api/restaurants` | GET | public | Restaurant list (supports q, city, cuisine, sort, take, skip) |
+| `/api/restaurants/[id]` | GET | public | Restaurant detail + menu grouped by category |
+| `/api/stocks` | GET, POST | session | Stock journal |
+| `/api/stocks/update-ai` | POST | session | AI stock suggestions |
+| `/api/loyalty/register` | POST | — | Loyalty customer registration |
+| `/api/loyalty/validate` | POST | — | UberEats order validation + points credit |
+| `/api/loyalty/wallet` | GET | session | Consumer loyalty wallet |
+| `/api/reservations` | GET, POST, PATCH | session | Table reservations |
+| `/api/email-agent` | POST | CRON_SECRET | Cron-triggered AI email agent |
+
+---
+
+## 7. Database
+
+**MySQL** on o2switch. **Prisma 5.22.0 — pinned, no caret.**
+
+```
+binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x", "linux-musl-openssl-3.0.x"]
+```
+
+### Models summary
+
+| Model | Purpose |
+|---|---|
+| `Operator` | All users: restaurant/franchise/creator/consumer/admin. Has `password String?` (bcrypt, null for SSO). |
+| `Brand` | Multi-brand per operator |
+| `LoyaltyCustomer` | Loyalty programme members |
+| `LoyaltyOrder` | Points-earning orders (UberEats) |
+| `Reward` | Redeemable rewards |
+| `MenuItem` | Menu items per brand |
+| `Promotion` | Promotions (percent/fixed/bundle/flash) |
+| `StockItem` | Stock journal entries |
+| `Supplier` / `SupplierProduct` / `SupplierOrder` | Supplier management |
+| `RestaurantTable` / `Reservation` | Table management |
+| `Account` / `Session` / `VerificationToken` | NextAuth tables |
+| `EmailLog` | Email audit log |
+| `Creator` / `CreatorDish` | Creator economy |
+| `Restaurant` | Consumer-facing restaurant profile (1-to-1 with Operator) |
+| `Order` | Consumer orders (state machine: received→preparing→ready→picked_up→delivered→cancelled) |
+
+**MySQL note**: no native array types. Use `Json @default("[]")` for arrays (cuisine, allergens, labels, etc.).
+
+### Schema changes
+Always use `./node_modules/.bin/prisma db push` on the server (never global `prisma`):
 ```bash
-export GRUBANO_SSH_HOST=<IP_O2SWITCH>
-./scripts/deploy.sh
+bash ~/grubano.com/scripts/server/prisma-push.sh
 ```
 
-### Configuration cPanel > Setup Node.js App
-- Node.js version  : 18.x / 20.x (LTS)
-- App root         : /home/deyi0010/grubano.com
-- App startup file : server.js   ← notre wrapper (PAS le généré par Next.js)
-- App URL          : app.grubano.com
-- Cliquer "Restart" après chaque déploiement
-
-### Structure remote après déploiement
-```
-/home/deyi0010/grubano.com/
-  server.js          ← wrapper Passenger (dir: __dirname, startServer)
-  node_modules/      ← depuis .next/standalone (trimmed)
-  package.json
-  .next/
-    server/          ← code serveur Next.js (depuis standalone)
-    static/          ← bundles CSS/JS (CRITIQUE — copiés par deploy)
-  public/            ← assets publics (copiés par deploy)
-  .env.local         ← variables d'environnement
-```
-
-### Diagnostic page blanche
-1. Vérifier que `.next/static/` existe sur le remote (cause #1 de page blanche)
-2. Vérifier les logs Passenger dans cPanel > Errors
-3. Vérifier que `server.js` n'est pas le généré (doit appeler `startServer`)
-4. Redémarrer l'app dans cPanel > Setup Node.js App > Restart
-
-## Règles de code
-- TypeScript strict partout
-- Composants server-side par défaut (Next.js 14 App Router)
-- 'use client' uniquement si nécessaire (formulaires, état, effets)
-- Prisma pour toutes les requêtes DB (jamais de SQL brut)
-- Toujours valider les inputs avec Zod dans les API routes
-- Messages d'erreur en français
-- Design : Tailwind + shadcn/ui, couleurs Grubano (#E8593C orange, #1a1a2e marine)
-
-## Marques Grubano actuelles
-- Gnocchi Bar (best-seller, ~66 % du CA)
-- Le Riz Gourmand
-- Pasta Fresca
-- Rollix (wraps, nouveau)
-- Bowl Healthy (à lancer)
-- Mac & Cheese Co (à lancer)
-
-## Programme fidélité
-- 1 point = 1 € dépensé (arrondi à l'entier inférieur)
-- Bonus inscription : 10 points
-- Bronze  50 pts → boisson offerte
-- Silver 100 pts → dessert offert
-- Gold   200 pts → plat offert
-- Platine 400 pts → repas complet offert
-- Tier calculé automatiquement sur le solde total
 ---
+
+## 8. Auth / Role System
+
+**Strategy**: NextAuth.js v4, JWT, CredentialsProvider (bcrypt password check).
+
+| Role | Accessible routes |
+|---|---|
+| `restaurant` | `/dashboard/*` |
+| `franchise` | `/franchise/*` |
+| `creator` | `/creators/*` |
+| `consumer` | `/account/*`, `/eat/*` |
+| `admin` | all routes |
+
+**Public routes** (no auth required — defined in `middleware.ts`):
+```
+/    /login    /register    /api/auth    /eat
+```
+The entire `/eat/*` tree is public. Auth within `/eat/*` is optional and handled per-page via `useSession()`.
+
+---
+
+## 9. Key Files
+
+| File | Role |
+|---|---|
+| `server.js` (root) | Passenger entry point — loads `.env.local`, chmod `.next/`, calls `next/dist/server/lib/start-server`. This is the startup file, NOT `.next/standalone/server.js`. |
+| `.next/standalone/server.js` | Auto-generated by build — patched by `fix-server.js` to replace Windows paths. |
+| `scripts/fix-server.js` | Patches `outputFileTracingRoot` in `.next/standalone/server.js` from `C:\Users\...` to `/home/deyi0010/grubano.com`. No-op on Linux CI. |
+| `scripts/prepare-deploy.ps1` | Windows deploy script: build → patch → copy standalone (with node_modules) → copy .next/static → ZIP. |
+| `scripts/server/prisma-push.sh` | Run on server after deploy to sync schema. Uses `./node_modules/.bin/prisma`. |
+| `lib/auth.ts` | NextAuth `authOptions` — CredentialsProvider, JWT callbacks injecting `role`. |
+| `lib/prisma.ts` | Prisma singleton (global to avoid hot-reload leaks in dev). |
+| `middleware.ts` | Route auth + role enforcement. Uses `getToken()` — requires `NEXTAUTH_SECRET`. |
+| `components/EatSessionProvider.tsx` | `'use client'` SessionProvider wrapper for `/eat/*` layout. |
+| `app/eat/layout.tsx` | Consumer app shell: `EatSessionProvider` + bottom nav (Home/Search/Orders/Account). |
+| `next.config.js` | `output: standalone`. No `outputFileTracingRoot` — fix-server.js handles it post-build. |
+
+---
+
+## 10. Deployment Process
+
+### Correct deploy structure
+```
+deploy-temp/
+├── server.js             ← from .next/standalone/server.js (patched)
+├── package.json          ← from .next/standalone/package.json
+├── node_modules/         ← from .next/standalone/node_modules/ — DO NOT DELETE
+│   ├── next/             ← Next.js runtime (required)
+│   └── ...               ← ~17 trimmed runtime packages
+├── .next/
+│   ├── server/           ← from .next/standalone/.next/server/
+│   └── static/           ← from .next/static/ (CSS/JS bundles)
+├── prisma/
+│   └── schema.prisma
+├── public/
+├── .env.local            ← runtime secrets
+└── .htaccess             ← Passenger config (ASCII, no BOM)
+```
+
+### Critical: standalone node_modules
+`.next/standalone/node_modules/` is a **trimmed runtime set** (~17 packages) built by Next.js standalone mode. It is NOT the root `node_modules`. **Never delete it.** The server cannot start without it (`Cannot find module 'next'`).
+
+### Windows local deploy
+```powershell
+npm run build
+# (fix-server.js is called automatically inside prepare-deploy.ps1)
+.\scripts\prepare-deploy.ps1
+# ZIP size should be 30-100 MB with node_modules/next verified
+```
+
+### GitHub Actions (automated)
+- Push to `develop` → `.github/workflows/deploy-staging.yml` → FTP to `app.grubano.com`
+- Push to `main` → `.github/workflows/deploy-production.yml` → FTP to `grubano.com`
+- Both workflows: copy full standalone (with node_modules) → no `npm ci` on server
+
+### Post-deploy steps (manual, via cPanel Terminal)
+```bash
+chmod -R 755 ~/grubano.com/.next/
+chmod 600    ~/grubano.com/.env.local
+mkdir -p ~/grubano.com/tmp
+touch ~/grubano.com/tmp/restart.txt
+```
+
+### Schema sync (only when schema changed)
+```bash
+bash ~/grubano.com/scripts/server/prisma-push.sh
+```
+
+### Health check
+```bash
+curl -I https://grubano.com/eat
+# Expect: HTTP 200
+```
+
+---
+
+## 11. Environment Variables
+
+Names only — values live in `.env.local` (never committed) and GitHub Secrets.
+
+### Runtime (`.env.local` on server)
+```
+DATABASE_URL          MySQL connection string
+NEXTAUTH_SECRET       Required for JWT + middleware.ts getToken()
+NEXTAUTH_URL          https://grubano.com (prod) or https://app.grubano.com (staging)
+ANTHROPIC_API_KEY     Claude API
+SMTP_HOST             Email sending
+SMTP_USER
+SMTP_PASS
+CRON_SECRET           Protects /api/email-agent endpoint
+NODE_ENV              production
+```
+
+### GitHub Secrets (CI/CD)
+```
+DATABASE_URL_PROD        Production DB
+DATABASE_URL_STAGING     Staging DB
+NEXTAUTH_SECRET
+ENV_LOCAL_CONTENT        Full .env.local file content (replaces per-secret sprawl)
+ANTHROPIC_API_KEY
+SMTP_HOST / SMTP_USER / SMTP_PASS
+CRON_SECRET
+O2SWITCH_HOST            FTP + SSH hostname
+O2SWITCH_FTP_USER        FTP username
+O2SWITCH_FTP_PASS        FTP password
+O2SWITCH_USER            SSH username
+O2SWITCH_SSH_KEY         SSH private key (PEM)
+```
+
+---
+
+## 12. Code Rules
+
+- **TypeScript strict** everywhere — no `any` without comment
+- **Server components by default** — only add `'use client'` when the component needs state, effects, or browser APIs
+- **Never raw SQL** — use Prisma for all DB access
+- **Zod** for all API route input validation
+- **`useSearchParams()` requires `<Suspense>`** wrapper in Next.js 14 App Router (build fails without it)
+- **bcryptjs** (not `bcrypt`) — cost 12 for registration, `bcrypt.compare()` for login
+- Error messages in French (UI-facing), English in comments and logs
+- No new UI libraries — use existing shadcn/ui components
+
+---
+
+## 13. Loyalty Programme
+
+- 1 point = 1 € spent (floor)
+- Signup bonus: 10 points
+- Tiers: Bronze 50 pts → Silver 100 pts → Gold 200 pts → Platinum 400 pts
+- Points credited on `Order.status = 'delivered'` via `loyaltyCustomer.updateMany`
+
+---
+
+## 14. Brands
+
+| Brand | Status |
+|---|---|
+| Gnocchi Bar | Active (~66% revenue) |
+| Le Riz Gourmand | Active |
+| Pasta Fresca | Active |
+| Rollix (wraps) | Active, new |
+| Bowl Healthy | Launching |
+| Mac & Cheese Co | Launching |
+
+---
+
+## 15. Common Gotchas
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `Cannot find module 'next'` | Standalone `node_modules` was deleted from deploy | Copy `.next/standalone/` entirely — never delete its `node_modules` |
+| Server 500 on every request | `NEXTAUTH_SECRET` missing from `.env.local` | Ensure `.env.local` on server has all required vars |
+| Blank page (styles missing) | `.next/static/` not copied to deploy | Deploy script copies `.next/static/` separately — standalone does not include it |
+| Windows path in server.js on Linux | Build run on Windows embeds `C:\Users\...` | `scripts/fix-server.js` patches it post-build |
+| `prisma: command not found` or wrong version | Server has global Prisma v7 | Always use `./node_modules/.bin/prisma` (see `scripts/server/prisma-push.sh`) |
+| `useSearchParams()` build error | Missing `<Suspense>` boundary | Wrap component using `useSearchParams()` in `<Suspense fallback={...}>` |
+| FTP blocks node_modules | CloudLinux o2switch restriction | Resolved — standalone node_modules is now uploaded via FTP (it's trimmed, not the full root node_modules) |
