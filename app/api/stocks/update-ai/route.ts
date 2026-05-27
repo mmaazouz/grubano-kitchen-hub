@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
@@ -7,46 +8,57 @@ const schema = z.object({
   brandId: z.string().optional(),
 })
 
-// ── Simple NLP parser (no LLM required — can upgrade later) ──────────────────
-// Parses lines like "poulet 3 kg", "sauce tomate: 2L", "riz 5kg restant"
-function parseStockText(text: string): Array<{ name: string; quantity: number; unit: string }> {
-  const lines = text.split(/[\n,;]+/).map(l => l.trim()).filter(Boolean)
-  const results: Array<{ name: string; quantity: number; unit: string }> = []
+const claude = new Anthropic()
 
-  const unitMap: Record<string, string> = {
-    kg: 'kg', kilo: 'kg', kilos: 'kg',
-    g:  'g',  gr: 'g', gram: 'g', grammes: 'g',
-    l:  'L',  litre: 'L', litres: 'L',
-    ml: 'mL', millilitre: 'mL',
-    u:  'u',  unite: 'u', unites: 'u', piece: 'u', pieces: 'u', boite: 'u', boites: 'u',
-  }
+type ParsedItem = { name: string; quantity: number; unit: string }
 
-  for (const line of lines) {
-    // Match: optional number + name + number + unit  OR  name + number + unit
-    const m = line.match(
-      /^(?:\d+[.,]?\d*\s*)?(.+?)\s*[:\-–]?\s*(\d+[.,]?\d*)\s*([a-zA-Zé]+)/i,
-    )
-    if (m) {
-      const name = m[1].replace(/[:\-–]/g, '').trim().toLowerCase()
-      const qty  = parseFloat(m[2].replace(',', '.'))
-      const raw  = m[3].toLowerCase()
-      const unit = unitMap[raw] ?? raw
+async function parseWithClaude(text: string): Promise<ParsedItem[]> {
+  const msg = await claude.messages.create({
+    model:      'claude-sonnet-4-20250514',
+    max_tokens: 512,
+    messages: [{
+      role: 'user',
+      content: `Parse this restaurant stock update text and return ONLY valid JSON array (no markdown, no extra text).
+Each item: {"name":"ingredient name in lowercase French","quantity":number,"unit":"kg|g|L|mL|u"}.
+Use unit "u" for pieces/boxes. If quantity is 0 or "finished/vide/terminé", use 0.
+Text: "${text}"`,
+    }],
+  })
 
-      if (name && !isNaN(qty)) {
-        results.push({ name, quantity: qty, unit })
-      }
+  const raw   = (msg.content[0] as { text: string }).text
+  const clean = raw.replace(/```json\n?|\n?```/g, '').trim()
+  return JSON.parse(clean) as ParsedItem[]
+}
+
+function forecast(items: ParsedItem[]) {
+  const DAILY_USE: Record<string, number> = { kg: 0.7, L: 0.5, g: 500, mL: 300, u: 5 }
+  return items.map(i => {
+    const daily    = DAILY_USE[i.unit] ?? 1
+    const daysLeft = i.quantity > 0 ? Math.floor(i.quantity / daily) : 0
+    return {
+      name:       i.name,
+      unit:       i.unit,
+      daysLeft,
+      runoutDate: new Date(Date.now() + daysLeft * 86_400_000).toISOString().split('T')[0],
+      status:     daysLeft <= 1 ? 'critique' : daysLeft <= 3 ? 'bas' : 'ok',
     }
-  }
-
-  return results
+  })
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    const body          = await req.json()
     const { text, brandId } = schema.parse(body)
 
-    const parsed = parseStockText(text)
+    let parsed: ParsedItem[]
+    try {
+      parsed = await parseWithClaude(text)
+    } catch {
+      return NextResponse.json(
+        { error: 'Impossible d\'analyser ce texte. Exemple : "poulet 3 kg, riz 5 kg, sauce tomate terminée"' },
+        { status: 422 },
+      )
+    }
 
     if (!parsed.length) {
       return NextResponse.json(
@@ -56,7 +68,6 @@ export async function POST(req: Request) {
     }
 
     if (!brandId) {
-      // Return parsed preview without writing to DB
       return NextResponse.json({
         preview:       true,
         updated_items: parsed.map(p => ({ ...p, status: 'preview' })),
@@ -64,7 +75,7 @@ export async function POST(req: Request) {
       })
     }
 
-    const updatedItems: Array<{ name: string; quantity: number; unit: string; action: string }> = []
+    const updatedItems: Array<ParsedItem & { action: string }> = []
 
     for (const item of parsed) {
       const existing = await prisma.stockItem.findFirst({
@@ -85,29 +96,14 @@ export async function POST(req: Request) {
       }
     }
 
-    // Simple 7-day forecast (mock — can be replaced with real AI later)
-    const forecast_next_7_days = updated_items_to_forecast(updatedItems)
-
-    return NextResponse.json({ updated_items: updatedItems, forecast_next_7_days })
+    return NextResponse.json({
+      updated_items:      updatedItems,
+      forecast_next_7_days: forecast(updatedItems),
+    })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
     }
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
-}
-
-function updated_items_to_forecast(items: Array<{ name: string; quantity: number; unit: string }>) {
-  // Simple linear depletion estimate: assume 0.7kg/day usage for kg items
-  const DAILY_USE: Record<string, number> = { kg: 0.7, L: 0.5, g: 500, mL: 300, u: 5 }
-  return items.map(i => {
-    const daily = DAILY_USE[i.unit] ?? 1
-    const daysLeft = Math.floor(i.quantity / daily)
-    return {
-      name:      i.name,
-      unit:      i.unit,
-      daysLeft,
-      runoutDate: new Date(Date.now() + daysLeft * 86_400_000).toISOString().split('T')[0],
-    }
-  })
 }
