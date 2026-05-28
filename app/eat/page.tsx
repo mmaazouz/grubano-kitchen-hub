@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Search, Star, Clock, ShoppingBag } from 'lucide-react'
+import { Search, Star, Clock } from 'lucide-react'
+import FoodImage from '@/components/eat/FoodImage'
 
 const CATEGORIES = [
   { emoji: '🍕', label: 'Italien',   value: 'italian' },
@@ -11,6 +12,7 @@ const CATEGORIES = [
   { emoji: '🥙', label: 'Wraps',     value: 'wraps' },
   { emoji: '🥗', label: 'Healthy',   value: 'healthy' },
   { emoji: '🍰', label: 'Desserts',  value: 'desserts' },
+  { emoji: '🍔', label: 'Burgers',   value: 'burgers' },
 ]
 
 interface Restaurant {
@@ -29,57 +31,73 @@ interface Restaurant {
 function RestaurantCard({ r }: { r: Restaurant }) {
   const cuisineLabel = Array.isArray(r.cuisine) ? r.cuisine[0] ?? '' : ''
   return (
-    <Link href={`/eat/r/${r.id}`} className="block rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-      {/* Cover */}
-      <div
-        className="h-36 w-full relative"
-        style={r.coverPhoto
-          ? { backgroundImage: `url(${r.coverPhoto})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-          : { background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }
-        }
-      >
+    <Link
+      href={`/eat/r/${r.id}`}
+      className="block overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all duration-200 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] active:scale-[0.98]"
+    >
+      <div className="relative">
+        <FoodImage
+          name={r.name}
+          src={r.coverPhoto}
+          className="h-40 w-full rounded-t-2xl"
+          glyphClassName="text-5xl"
+        />
         {r.logo && (
-          <img src={r.logo} alt={r.name} className="absolute bottom-2 left-3 w-10 h-10 rounded-xl border-2 border-white object-cover shadow" />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={r.logo}
+            alt={r.name}
+            className="absolute -bottom-4 left-3 h-11 w-11 rounded-xl border-2 border-white object-cover shadow-md"
+          />
         )}
+        <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-white/95 px-2 py-1 text-xs font-semibold text-gray-800 shadow-sm backdrop-blur">
+          <Star size={12} className="fill-amber-400 text-amber-400" />
+          {r.rating.toFixed(1)}
+        </span>
       </div>
-      {/* Info */}
-      <div className="p-3">
-        <h3 className="font-semibold text-gray-900 truncate">{r.name}</h3>
-        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-          <span className="flex items-center gap-0.5">
-            <Star size={12} className="fill-amber-400 text-amber-400" />
-            {r.rating.toFixed(1)}
-            <span className="text-gray-400">({r.reviewCount})</span>
-          </span>
-          <span className="flex items-center gap-0.5">
+      <div className="p-3 pt-4">
+        <h3 className="truncate text-base font-bold text-[#1a1a2e]">{r.name}</h3>
+        <div className="mt-1.5 flex items-center gap-2 text-xs text-gray-500">
+          <span className="flex items-center gap-1">
             <Clock size={12} />
             {r.deliveryTime} min
           </span>
-          <span className="ml-auto bg-orange-50 text-orange-600 font-medium px-1.5 py-0.5 rounded-full text-[10px]">
-            min. {r.minOrder.toFixed(0)}€
-          </span>
+          <span className="text-gray-300">·</span>
+          <span>min. {r.minOrder.toFixed(0)}€</span>
+          {cuisineLabel && (
+            <span className="ml-auto rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-medium capitalize text-[#E8593C]">
+              {cuisineLabel}
+            </span>
+          )}
         </div>
-        {cuisineLabel && (
-          <span className="mt-1.5 inline-block text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-            {cuisineLabel}
-          </span>
-        )}
       </div>
     </Link>
   )
 }
 
+function CardSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white">
+      <div className="h-40 w-full animate-pulse bg-gray-200" />
+      <div className="space-y-2 p-3 pt-4">
+        <div className="h-4 w-2/3 animate-pulse rounded bg-gray-200" />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-gray-100" />
+      </div>
+    </div>
+  )
+}
+
 export default function EatHomePage() {
   const router = useRouter()
-  const [city, setCity]         = useState('')
-  const [cuisine, setCuisine]   = useState('')
+  const [query, setQuery] = useState('')
+  const [cuisine, setCuisine] = useState('')
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
-  const [loading, setLoading]   = useState(true)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch('/api/restaurants?take=12&sort=rating')
-      .then(r => r.json())
-      .then(d => setRestaurants(d.restaurants ?? []))
+      .then((r) => r.json())
+      .then((d) => setRestaurants(d.restaurants ?? []))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -87,120 +105,122 @@ export default function EatHomePage() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
     const params = new URLSearchParams()
-    if (city)    params.set('city', city)
-    if (cuisine) params.set('cuisine', cuisine)
+    if (query) params.set('q', query)
     router.push(`/eat/search?${params}`)
   }
 
-  function filterByCuisine(val: string) {
-    const next = val === cuisine ? '' : val
-    setCuisine(next)
+  function pickCuisine(val: string) {
     const params = new URLSearchParams()
-    if (next) params.set('cuisine', next)
+    params.set('cuisine', val)
     router.push(`/eat/search?${params}`)
   }
 
   return (
     <div>
       {/* Hero */}
-      <div className="bg-gradient-to-br from-orange-500 to-orange-700 px-5 pt-12 pb-8 text-white">
-        <h1 className="text-2xl font-bold leading-tight">
-          Commander local.<br />Livré vite.
+      <div className="bg-gradient-to-br from-[#E8593C] to-[#C2341B] px-5 pb-7 pt-12 text-white">
+        <h1 className="text-[28px] font-bold leading-tight tracking-tight">
+          Commander local.
+          <br />
+          Livré vite.
         </h1>
-        <p className="text-orange-100 text-sm mt-1">Les meilleurs restos près de chez vous</p>
+        <p className="mt-1.5 text-sm text-white/85">
+          Les meilleurs restos près de chez vous
+        </p>
 
-        <form onSubmit={handleSearch} className="mt-5 flex gap-2">
-          <div className="flex-1 relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <form onSubmit={handleSearch} className="mt-5">
+          <div className="relative">
+            <Search
+              size={18}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+            />
             <input
-              value={city}
-              onChange={e => setCity(e.target.value)}
-              placeholder="Ville, quartier…"
-              className="w-full pl-8 pr-3 py-2.5 rounded-xl text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher un plat, un resto…"
+              className="w-full rounded-xl bg-white py-3.5 pl-11 pr-4 text-sm text-gray-900 shadow-[0_4px_16px_rgba(0,0,0,0.12)] transition focus:outline-none focus:ring-2 focus:ring-white/60"
             />
           </div>
-          <button
-            type="submit"
-            className="bg-white text-orange-600 font-semibold px-4 rounded-xl text-sm hover:bg-orange-50 transition-colors"
-          >
-            Go
-          </button>
         </form>
       </div>
 
-      {/* Categories */}
-      <div className="px-4 py-4 overflow-x-auto">
-        <div className="flex gap-2 w-max">
-          {CATEGORIES.map(cat => (
+      {/* Category pills */}
+      <div className="no-scrollbar overflow-x-auto px-4 py-4">
+        <div className="flex w-max gap-2.5">
+          {CATEGORIES.map((cat) => (
             <button
               key={cat.value}
-              onClick={() => filterByCuisine(cat.value)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border transition-colors whitespace-nowrap ${
+              onClick={() => pickCuisine(cat.value)}
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm font-semibold transition-all duration-200 active:scale-95 ${
                 cuisine === cat.value
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-gray-700 border-gray-200 hover:border-orange-300'
+                  ? 'border-[#E8593C] bg-[#E8593C] text-white shadow-[0_2px_8px_rgba(232,89,60,0.35)]'
+                  : 'border-black/[0.06] bg-white text-gray-700 shadow-sm hover:border-orange-200'
               }`}
             >
-              <span>{cat.emoji}</span>
+              <span className="text-base">{cat.emoji}</span>
               {cat.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Restaurant grid */}
-      <div className="px-4 pb-4">
-        <h2 className="text-base font-semibold text-gray-900 mb-3">
-          {loading ? 'Chargement…' : `${restaurants.length} restaurants`}
+      {/* Popular restaurants */}
+      <div className="px-4 pb-2">
+        <h2 className="mb-3 text-lg font-bold text-[#1a1a2e]">
+          Populaires près de vous
         </h2>
 
         {loading ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-44 rounded-2xl bg-gray-100 animate-pulse" />
+              <CardSkeleton key={i} />
             ))}
           </div>
         ) : restaurants.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <ShoppingBag size={40} className="mx-auto mb-3 text-gray-300" />
-            <p className="font-medium">Aucun restaurant disponible</p>
+          <div className="py-14 text-center">
+            <div className="mb-3 text-5xl">🍽️</div>
+            <p className="font-semibold text-gray-700">Aucun restaurant disponible</p>
+            <p className="mt-1 text-sm text-gray-400">Revenez bientôt !</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {restaurants.map(r => <RestaurantCard key={r.id} r={r} />)}
+          <div className="grid grid-cols-1 gap-4">
+            {restaurants.map((r) => (
+              <RestaurantCard key={r.id} r={r} />
+            ))}
           </div>
         )}
       </div>
 
       {/* How it works */}
-      <div className="mx-4 my-6 bg-orange-50 rounded-2xl p-5">
-        <h2 className="text-base font-semibold text-gray-900 mb-4 text-center">Comment ça marche</h2>
-        <div className="flex justify-around gap-2">
+      <div className="mx-4 my-6 rounded-2xl bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-black/[0.06]">
+        <h2 className="mb-5 text-center text-base font-bold text-[#1a1a2e]">
+          Comment ça marche
+        </h2>
+        <div className="flex justify-around gap-3">
           {[
             { icon: '🔍', step: '1', title: 'Cherchez', desc: 'Trouvez un resto' },
             { icon: '🛒', step: '2', title: 'Commandez', desc: 'Ajoutez au panier' },
-            { icon: '🚀', step: '3', title: 'Recevez', desc: 'Livré chez vous' },
-          ].map(s => (
-            <div key={s.step} className="flex flex-col items-center text-center flex-1">
-              <span className="text-2xl mb-1">{s.icon}</span>
-              <span className="text-xs font-semibold text-orange-600 bg-orange-100 rounded-full w-5 h-5 flex items-center justify-center mb-1">
-                {s.step}
-              </span>
-              <span className="text-xs font-semibold text-gray-800">{s.title}</span>
-              <span className="text-[10px] text-gray-500">{s.desc}</span>
+            { icon: '🛵', step: '3', title: 'Recevez', desc: 'Livré chez vous' },
+          ].map((s) => (
+            <div key={s.step} className="flex flex-1 flex-col items-center text-center">
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-orange-50 text-2xl">
+                {s.icon}
+              </div>
+              <span className="text-sm font-bold text-[#1a1a2e]">{s.title}</span>
+              <span className="mt-0.5 text-xs text-gray-400">{s.desc}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* Footer */}
-      <footer className="px-5 pb-4 pt-2 border-t border-gray-100 text-center text-[11px] text-gray-400">
-        <div className="flex justify-center gap-4 mb-1">
-          <Link href="/eat" className="hover:text-orange-500">Accueil</Link>
-          <Link href="/eat/search" className="hover:text-orange-500">Recherche</Link>
-          <Link href="/eat/auth" className="hover:text-orange-500">Connexion</Link>
+      <footer className="border-t border-black/[0.06] px-5 pb-4 pt-4 text-center text-[11px] text-gray-400">
+        <div className="mb-1.5 flex justify-center gap-4">
+          <Link href="/eat" className="font-medium hover:text-[#E8593C]">Accueil</Link>
+          <Link href="/eat/search" className="font-medium hover:text-[#E8593C]">Recherche</Link>
+          <Link href="/eat/auth" className="font-medium hover:text-[#E8593C]">Connexion</Link>
         </div>
-        © 2026 Grubano
+        © 2026 Grubano · Livraison locale
       </footer>
     </div>
   )
