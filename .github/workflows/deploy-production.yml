@@ -89,6 +89,17 @@ jobs:
           server: ${{ secrets.O2SWITCH_HOST }}
           username: ${{ secrets.O2SWITCH_FTP_USER }}
           password: ${{ secrets.O2SWITCH_FTP_PASS }}
+          # o2switch Pure-FTPd enforces explicit FTPS (FTP over TLS) on port 21.
+          # Plain `ftp` (the action default) hangs and times out — this is why
+          # no deploy had ever succeeded. ftps = explicit AUTH TLS.
+          protocol: ftps
+          port: 21
+          # Raise from the 30s default: TLS handshake + the many small files in
+          # the standalone node_modules push past 30s on shared hosting.
+          timeout: 120000
+          # Verbose so the exact FTP error is visible in the run log next time
+          # (job logs are admin-gated via the API).
+          log-level: verbose
           local-dir: ./deploy-temp/
           server-dir: /grubano.com/
           exclude: |
