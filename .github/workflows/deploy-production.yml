@@ -14,6 +14,11 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+# Opt JS actions into Node 24 now (checkout/setup-node/FTP-Deploy-Action still
+# ship Node 20, deprecated on the runner from 2026-06-02). Silences the warning.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -86,7 +91,10 @@ jobs:
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.O2SWITCH_HOST }}
+          # FTP host is the o2switch FTP hostname — NOT the SSH IP. The shared
+          # O2SWITCH_HOST secret is an IP that does not resolve over FTP
+          # (getaddrinfo ENOTFOUND). FTP and SSH use different endpoints here.
+          server: ftp.deyi0010.odns.fr
           username: ${{ secrets.O2SWITCH_FTP_USER }}
           password: ${{ secrets.O2SWITCH_FTP_PASS }}
           # o2switch Pure-FTPd enforces explicit FTPS (FTP over TLS) on port 21.
