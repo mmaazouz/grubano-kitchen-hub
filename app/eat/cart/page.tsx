@@ -18,7 +18,7 @@ interface CartData {
 const PAYMENT_METHODS = [
   { value: 'card' as const, label: 'Carte', icon: '💳' },
   { value: 'wallet' as const, label: 'Apple Pay', icon: '' },
-  { value: 'cash' as const, label: 'Google Pay', icon: '🅖' },
+  { value: 'cash' as const, label: 'Google Pay', icon: 'G' },
 ]
 
 export default function CartPage() {
@@ -118,23 +118,23 @@ export default function CartPage() {
 
   if (!hydrated) {
     return (
-      <div className="space-y-4 p-4">
-        <div className="h-6 w-1/3 animate-pulse rounded bg-gray-200" />
-        <div className="h-24 animate-pulse rounded-2xl bg-gray-200" />
-        <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />
+      <div className="space-y-4 p-5">
+        <div className="h-6 w-1/3 animate-pulse rounded-full bg-gray-200" />
+        <div className="h-28 animate-pulse rounded-[20px] bg-gray-200" />
+        <div className="h-36 animate-pulse rounded-[20px] bg-gray-100" />
       </div>
     )
   }
 
   if (!cart || cart.items.length === 0) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[#FAFAFA] p-6 text-center">
         <div className="text-6xl">🛒</div>
         <p className="text-lg font-bold text-[#1a1a2e]">Votre panier est vide</p>
-        <p className="-mt-2 text-sm text-gray-400">Ajoutez des plats pour commencer</p>
+        <p className="-mt-2 text-sm text-gray-400">Ajoutez de bons petits plats pour commencer</p>
         <button
           onClick={() => router.push('/eat')}
-          className="mt-2 rounded-xl bg-[#E8593C] px-6 py-3 text-sm font-bold text-white shadow-[0_4px_16px_rgba(232,89,60,0.35)] transition active:scale-95"
+          className="mt-2 rounded-2xl bg-[#E8593C] px-6 py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(232,89,60,0.35)] transition active:scale-95"
         >
           Parcourir les restaurants
         </button>
@@ -143,35 +143,30 @@ export default function CartPage() {
   }
 
   return (
-    <div className="pb-28">
+    <div className="bg-[#FAFAFA] pb-28">
       {/* Header */}
-      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-black/[0.06] bg-[#FAFAFA]/95 px-4 py-3 backdrop-blur-lg">
+      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-black/[0.05] bg-[#FAFAFA]/95 px-4 py-3 backdrop-blur-lg">
         <button
           onClick={() => router.back()}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-sm transition active:scale-90"
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm transition active:scale-90"
         >
-          <ArrowLeft size={18} className="text-gray-800" />
+          <ArrowLeft size={19} className="text-gray-800" />
         </button>
         <div>
-          <h1 className="text-base font-bold text-[#1a1a2e]">Mon panier</h1>
+          <h1 className="text-[17px] font-bold tracking-tight text-[#1a1a2e]">Mon panier</h1>
           <p className="text-xs text-gray-400">{cart.restaurant.name}</p>
         </div>
       </div>
 
-      <div className="space-y-4 p-4">
+      <div className="space-y-4 p-5">
         {/* Items */}
-        <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+        <div className="overflow-hidden rounded-[20px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           {cart.items.map(({ item, qty }) => (
-            <div key={item.id} className="flex items-center gap-3 border-b border-gray-50 p-3 last:border-0">
-              <FoodImage
-                name={item.name}
-                src={item.photos?.[0]}
-                className="h-14 w-14 flex-shrink-0 rounded-xl"
-                glyphClassName="text-xl"
-              />
+            <div key={item.id} className="flex items-center gap-3 border-b border-gray-50 p-3.5 last:border-0">
+              <FoodImage name={item.name} src={item.photos?.[0]} className="h-16 w-16 shrink-0 rounded-2xl" glyphClassName="text-2xl" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[#1a1a2e]">{item.name}</p>
-                <p className="text-sm font-bold text-[#E8593C]">{(item.price * qty).toFixed(2)}€</p>
+                <p className="truncate text-sm font-bold text-[#1a1a2e]">{item.name}</p>
+                <p className="mt-0.5 text-sm font-bold text-[#E8593C]">{(item.price * qty).toFixed(2)}€</p>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
@@ -196,7 +191,7 @@ export default function CartPage() {
         </div>
 
         {/* Delivery address */}
-        <div className="space-y-2 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+        <div className="space-y-2 rounded-[20px] bg-white p-4 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           <label className="flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
             <MapPin size={16} className="text-[#E8593C]" />
             Adresse de livraison
@@ -206,21 +201,21 @@ export default function CartPage() {
             onChange={(e) => setAddress(e.target.value)}
             placeholder="Numéro, rue, ville, code postal…"
             rows={2}
-            className="w-full resize-none rounded-xl border border-black/[0.06] bg-[#FAFAFA] p-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+            className="w-full resize-none rounded-2xl border border-black/[0.06] bg-[#FAFAFA] p-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
           />
         </div>
 
         {/* Payment methods */}
-        <div className="space-y-2 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+        <div className="space-y-2 rounded-[20px] bg-white p-4 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           <p className="text-sm font-bold text-[#1a1a2e]">Paiement</p>
           <div className="flex gap-2">
             {PAYMENT_METHODS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setPaymentMethod(opt.value)}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all duration-200 active:scale-95 ${
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-2xl border py-3 text-sm font-semibold transition-all duration-200 active:scale-95 ${
                   paymentMethod === opt.value
-                    ? 'border-[#E8593C] bg-orange-50 text-[#E8593C]'
+                    ? 'border-[#E8593C] bg-[#FFF7F3] text-[#E8593C]'
                     : 'border-black/[0.06] bg-white text-gray-600'
                 }`}
               >
@@ -232,47 +227,45 @@ export default function CartPage() {
         </div>
 
         {/* Points preview */}
-        <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 p-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
-            <Gift size={18} className="text-amber-500" />
+        <div className="flex items-center gap-3 rounded-[20px] bg-gradient-to-r from-[#FFF7F3] to-amber-50 p-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white shadow-sm">
+            <Gift size={19} className="text-amber-500" />
           </div>
-          <p className="text-sm text-amber-800">
+          <p className="text-sm text-amber-900">
             Vous gagnerez <strong>{pointsEarned} points</strong> fidélité 🎁
           </p>
         </div>
 
         {/* Summary */}
-        <div className="space-y-2 rounded-2xl border border-black/[0.06] bg-white p-4 text-sm shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-          <div className="flex justify-between text-gray-600">
+        <div className="space-y-2 rounded-[20px] bg-white p-4 text-sm shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
+          <div className="flex justify-between text-gray-500">
             <span>Sous-total</span>
-            <span>{subtotal.toFixed(2)}€</span>
+            <span className="font-medium text-gray-700">{subtotal.toFixed(2)}€</span>
           </div>
-          <div className="flex justify-between text-gray-600">
-            <span>Livraison</span>
-            <span>{deliveryFee.toFixed(2)}€</span>
+          <div className="flex justify-between text-gray-500">
+            <span>Frais de livraison</span>
+            <span className="font-medium text-gray-700">{deliveryFee.toFixed(2)}€</span>
           </div>
-          <div className="mt-1 flex justify-between border-t border-gray-100 pt-2 text-base font-bold text-[#1a1a2e]">
+          <div className="mt-1 flex justify-between border-t border-gray-100 pt-3 text-base font-bold text-[#1a1a2e]">
             <span>Total</span>
             <span>{total.toFixed(2)}€</span>
           </div>
         </div>
 
         {belowMin && (
-          <p className="rounded-xl bg-amber-50 p-3 text-center text-xs font-medium text-amber-700">
+          <p className="rounded-2xl bg-amber-50 p-3 text-center text-xs font-medium text-amber-700">
             Commande minimum {minOrder.toFixed(2)}€ — ajoutez encore {(minOrder - subtotal).toFixed(2)}€
           </p>
         )}
-        {error && (
-          <p className="rounded-xl bg-red-50 p-3 text-center text-sm text-red-600">{error}</p>
-        )}
+        {error && <p className="rounded-2xl bg-red-50 p-3 text-center text-sm text-red-600">{error}</p>}
       </div>
 
       {/* Fixed CTA */}
-      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-black/[0.06] bg-white/95 px-4 py-3 backdrop-blur-lg">
+      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-black/[0.05] bg-white/95 px-5 py-3.5 backdrop-blur-lg">
         <button
           onClick={placeOrder}
           disabled={submitting || belowMin}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-4 text-base font-bold text-white shadow-[0_4px_16px_rgba(232,89,60,0.35)] transition active:scale-[0.98] disabled:bg-orange-300"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-4 text-base font-bold text-white shadow-[0_4px_24px_rgba(232,89,60,0.35)] transition active:scale-[0.98] disabled:bg-orange-300"
         >
           {submitting ? (
             <>
