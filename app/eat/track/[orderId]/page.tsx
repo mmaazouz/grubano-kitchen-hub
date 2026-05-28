@@ -6,12 +6,11 @@ import { Clock, MapPin, Phone, Home, ChevronRight, Check } from 'lucide-react'
 
 const STEPS = [
   { key: 'received', label: 'Reçu', emoji: '✅', desc: 'Commande confirmée' },
-  { key: 'preparing', label: 'En préparation', emoji: '🍳', desc: 'Le restaurant cuisine' },
-  { key: 'picked_up', label: 'En route', emoji: '🛵', desc: 'Le livreur arrive' },
+  { key: 'preparing', label: 'En préparation', emoji: '🍳', desc: 'Le restaurant cuisine pour vous' },
+  { key: 'picked_up', label: 'En route', emoji: '🛵', desc: 'Le livreur arrive vers vous' },
   { key: 'delivered', label: 'Livré', emoji: '🏠', desc: 'Bon appétit !' },
 ] as const
 
-// Map raw statuses → index in the 4-step display.
 const STATUS_TO_STEP: Record<string, number> = {
   received: 0,
   preparing: 1,
@@ -56,14 +55,12 @@ export default function TrackPage() {
     }
   }, [orderId, router])
 
-  // Initial fetch + poll every 15s
   useEffect(() => {
     fetchOrder()
     const poll = setInterval(fetchOrder, 15_000)
     return () => clearInterval(poll)
   }, [fetchOrder])
 
-  // ETA countdown
   useEffect(() => {
     if (!order) return
     const created = new Date(order.createdAt).getTime()
@@ -80,17 +77,17 @@ export default function TrackPage() {
 
   function etaText() {
     if (isDelivered) return 'Livré'
-    if (secondsLeft <= 0) return 'Arrivée imminente'
+    if (secondsLeft <= 0) return 'Bientôt'
     const m = Math.ceil(secondsLeft / 60)
     return `~${m} min`
   }
 
   if (loading) {
     return (
-      <div className="space-y-4 p-4">
-        <div className="h-8 w-1/2 animate-pulse rounded bg-gray-200" />
-        <div className="h-40 animate-pulse rounded-2xl bg-gray-200" />
-        <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />
+      <div className="space-y-4 p-5">
+        <div className="h-36 animate-pulse rounded-[24px] bg-gray-200" />
+        <div className="h-32 animate-pulse rounded-[20px] bg-gray-100" />
+        <div className="h-40 animate-pulse rounded-[20px] bg-gray-100" />
       </div>
     )
   }
@@ -108,27 +105,30 @@ export default function TrackPage() {
   }
 
   return (
-    <div className="p-4 pb-8">
+    <div className="bg-[#FAFAFA] p-5 pb-8">
       {/* Hero ETA */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1a1a2e] to-[#252547] p-6 text-white">
+      <div className="relative overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1a1a2e] to-[#2D3561] p-6 text-white shadow-[0_8px_32px_rgba(26,26,46,0.25)]">
+        <div
+          className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full opacity-20"
+          style={{ background: 'radial-gradient(circle, #E8593C, transparent 65%)' }}
+        />
         <div className="relative z-10">
-          <p className="text-sm text-white/70">
+          <p className="text-sm text-white/60">
             {isCancelled ? 'Commande annulée' : isDelivered ? 'Commande livrée' : 'Arrivée estimée'}
           </p>
-          <div className="mt-1 flex items-center gap-2">
-            <Clock size={26} className="text-[#E8593C]" />
-            <span className="text-3xl font-bold">{etaText()}</span>
+          <div className="mt-1.5 flex items-center gap-2.5">
+            <Clock size={28} className="text-[#E8593C]" />
+            <span className="text-[34px] font-bold leading-none tracking-tight">{etaText()}</span>
           </div>
-          <p className="mt-1 text-xs text-white/50">Commande #{order.id.slice(-8).toUpperCase()}</p>
+          <p className="mt-2 text-xs text-white/40">Commande #{order.id.slice(-8).toUpperCase()}</p>
         </div>
-        {/* Animated emoji */}
-        <div className="absolute -bottom-2 right-2 text-7xl opacity-90">
+        <div className="absolute -bottom-3 right-3 text-7xl">
           <span className="inline-block animate-bounce">{STEPS[currentStep]?.emoji}</span>
         </div>
       </div>
 
       {/* Step progress */}
-      <div className="mt-5 rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+      <div className="mt-5 rounded-[20px] bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
         <div className="flex items-start justify-between">
           {STEPS.map((step, i) => {
             const done = i < currentStep || isDelivered
@@ -136,85 +136,78 @@ export default function TrackPage() {
             return (
               <div key={step.key} className="flex flex-1 flex-col items-center">
                 <div className="relative flex w-full items-center justify-center">
-                  {/* connector left */}
                   {i > 0 && (
                     <div
-                      className={`absolute right-1/2 top-1/2 h-0.5 w-full -translate-y-1/2 ${
-                        i <= currentStep || isDelivered ? 'bg-[#E8593C]' : 'bg-gray-200'
+                      className={`absolute right-1/2 top-1/2 h-[3px] w-full -translate-y-1/2 rounded-full ${
+                        i <= currentStep || isDelivered ? 'bg-[#E8593C]' : 'bg-gray-100'
                       }`}
                     />
                   )}
                   <div
-                    className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-full text-lg transition-all duration-300 ${
+                    className={`relative z-10 flex h-12 w-12 items-center justify-center rounded-full text-lg transition-all duration-300 ${
                       done
-                        ? 'bg-[#E8593C] text-white shadow-[0_2px_8px_rgba(232,89,60,0.4)]'
+                        ? 'bg-[#E8593C] text-white shadow-[0_4px_16px_rgba(232,89,60,0.4)]'
                         : active
-                          ? 'bg-orange-100 ring-2 ring-[#E8593C]'
-                          : 'bg-gray-100'
+                          ? 'bg-[#FFF7F3] ring-2 ring-[#E8593C]'
+                          : 'bg-gray-50'
                     } ${active ? 'animate-pulse' : ''}`}
                   >
-                    {done ? <Check size={20} strokeWidth={3} /> : step.emoji}
+                    {done ? <Check size={21} strokeWidth={3} /> : step.emoji}
                   </div>
                 </div>
-                <p
-                  className={`mt-2 text-center text-[11px] font-semibold leading-tight ${
-                    done || active ? 'text-[#1a1a2e]' : 'text-gray-400'
-                  }`}
-                >
+                <p className={`mt-2.5 text-center text-[11px] font-semibold leading-tight ${done || active ? 'text-[#1a1a2e]' : 'text-gray-300'}`}>
                   {step.label}
                 </p>
               </div>
             )
           })}
         </div>
-        <p className="mt-4 text-center text-sm font-medium text-gray-500">
+        <p className="mt-5 text-center text-sm font-medium text-gray-500">
           {isCancelled ? 'Cette commande a été annulée.' : STEPS[currentStep]?.desc}
         </p>
       </div>
 
       {/* Delivered celebration */}
       {isDelivered && (
-        <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-center">
-          <p className="text-2xl">🎉</p>
-          <p className="font-bold text-green-700">Commande livrée !</p>
+        <div className="mt-4 rounded-[20px] border border-green-100 bg-green-50 p-5 text-center">
+          <p className="text-3xl">🎉</p>
+          <p className="mt-1 font-bold text-green-700">Régalez-vous bien !</p>
           <p className="mt-0.5 text-xs text-green-600">+{order.pointsEarned} points fidélité crédités</p>
         </div>
       )}
 
       {/* Order summary */}
-      <div className="mt-4 space-y-3 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-bold text-[#1a1a2e]">{order.restaurant.name}</h2>
-        </div>
+      <div className="mt-4 space-y-3 rounded-[20px] bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
+        <h2 className="text-base font-bold tracking-tight text-[#1a1a2e]">{order.restaurant.name}</h2>
         <div className="flex items-start gap-2 text-xs text-gray-500">
-          <MapPin size={13} className="mt-0.5 flex-shrink-0 text-[#E8593C]" />
+          <MapPin size={14} className="mt-0.5 shrink-0 text-[#E8593C]" />
           <span>{order.deliveryAddress}</span>
         </div>
         <div className="divide-y divide-gray-50 border-t border-gray-100 pt-1">
           {order.items.map((item, i) => (
-            <div key={i} className="flex justify-between py-1.5 text-sm">
-              <span className="text-gray-700">
-                {item.qty}× {item.name}
+            <div key={i} className="flex justify-between py-2 text-sm">
+              <span className="text-gray-600">
+                <span className="font-semibold text-[#1a1a2e]">{item.qty}×</span> {item.name}
               </span>
               <span className="font-medium text-[#1a1a2e]">{(item.price * item.qty).toFixed(2)}€</span>
             </div>
           ))}
         </div>
-        <div className="flex justify-between border-t border-gray-100 pt-2 text-sm font-bold">
+        <div className="flex justify-between border-t border-gray-100 pt-3 text-sm font-bold">
           <span>Total payé</span>
           <span className="text-[#E8593C]">{order.total.toFixed(2)}€</span>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="mt-4 space-y-2">
-        <button className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[#E8593C] bg-white py-3.5 text-sm font-bold text-[#E8593C] transition active:scale-[0.98]">
+      <div className="mt-4 space-y-2.5">
+        <button className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-[#E8593C] bg-white py-3.5 text-sm font-bold text-[#E8593C] transition active:scale-[0.98]">
           <Phone size={16} /> Contacter le restaurant
         </button>
         {(isDelivered || isCancelled) && (
           <button
             onClick={() => router.push('/eat')}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-3.5 text-sm font-bold text-white shadow-[0_4px_16px_rgba(232,89,60,0.35)] transition active:scale-[0.98]"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(232,89,60,0.35)] transition active:scale-[0.98]"
           >
             <Home size={16} /> Commander à nouveau
           </button>
