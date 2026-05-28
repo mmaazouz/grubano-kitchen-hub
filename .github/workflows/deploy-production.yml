@@ -114,6 +114,25 @@ jobs:
             **/.git*
             **/.git*/**
 
+      # ── SSH: generate Prisma client on the server ─────────────────────────────
+      # The uploaded standalone node_modules carries a Prisma client built for the
+      # CI runner. Regenerate it on the server (correct binaryTarget) so runtime
+      # queries don't fail even when the schema/DB is already synced.
+      - name: Generate Prisma client on server
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            source ~/nodevenv/grubano.com/24/bin/activate
+            cd ~/grubano.com
+            export DATABASE_URL='${{ secrets.DATABASE_URL_PROD }}'
+            npx prisma@5.22.0 generate || true
+            touch tmp/restart.txt
+
       # ── SSH: chmod + Passenger restart ────────────────────────────────────────
       # node_modules is bundled in the standalone output — no npm ci needed.
       - name: Fix permissions and restart
