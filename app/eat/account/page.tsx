@@ -68,13 +68,14 @@ export default function AccountPage() {
   const tier = tierFor(points)
   const span = tier.next - tier.floor
   const progress = tier.label === 'Platine' ? 100 : Math.min(100, ((points - tier.floor) / span) * 100)
+  const firstName = session?.user?.name?.split(' ')[0] ?? 'gourmand'
 
   if (loading || status === 'loading') {
     return (
-      <div className="space-y-4 p-4">
-        <div className="h-40 animate-pulse rounded-3xl bg-gray-200" />
-        <div className="h-20 animate-pulse rounded-2xl bg-gray-100" />
-        <div className="h-20 animate-pulse rounded-2xl bg-gray-100" />
+      <div className="space-y-4 p-5">
+        <div className="h-44 animate-pulse rounded-[24px] bg-gray-200" />
+        <div className="h-20 animate-pulse rounded-[20px] bg-gray-100" />
+        <div className="h-20 animate-pulse rounded-[20px] bg-gray-100" />
       </div>
     )
   }
@@ -82,71 +83,64 @@ export default function AccountPage() {
   if (status === 'unauthenticated') return null
 
   return (
-    <div className="pb-4">
+    <div className="bg-[#FAFAFA] pb-4">
       {/* Wallet card */}
-      <div className="px-4 pt-4">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1a1a2e] to-[#252547] p-5 text-white shadow-[0_8px_24px_rgba(26,26,46,0.25)]">
-          <div className="flex items-start justify-between">
+      <div className="px-5 pt-5">
+        <div className="relative overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1a1a2e] to-[#2D3561] p-6 text-white shadow-[0_8px_32px_rgba(26,26,46,0.25)]">
+          <div
+            className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-20"
+            style={{ background: 'radial-gradient(circle, #E8593C, transparent 65%)' }}
+          />
+          <div className="relative z-10 flex items-start justify-between">
             <div>
-              <p className="text-xs text-white/60">Fidélité Grubano</p>
-              <p className="mt-1 text-4xl font-bold leading-none">
+              <p className="text-xs text-white/60">Bonjour {firstName} 👋</p>
+              <p className="mt-2 text-[40px] font-bold leading-none tracking-tight">
                 {points}
-                <span className="ml-1 text-base font-normal text-white/70">pts</span>
+                <span className="ml-1.5 text-base font-normal text-white/70">pts</span>
               </p>
             </div>
-            <span className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold backdrop-blur">
+            <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold backdrop-blur">
               {tier.emoji} {tier.label}
             </span>
           </div>
-
-          {/* Progress */}
-          <div className="mt-5">
+          <div className="relative z-10 mt-6">
             <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/15">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-[#E8593C] to-[#F7971E] transition-all duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-[#E8593C] to-[#FF8A3D] transition-all duration-700"
                 style={{ width: `${progress}%` }}
               />
             </div>
             <p className="mt-2 text-xs text-white/60">
-              {tier.label === 'Platine'
-                ? 'Niveau maximum atteint 🎉'
-                : `${tier.next - points} pts pour le niveau suivant`}
+              {tier.label === 'Platine' ? 'Niveau maximum atteint 🎉' : `Plus que ${tier.next - points} pts pour le niveau suivant`}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="space-y-5 p-4">
+      <div className="space-y-6 p-5">
         {/* Active orders */}
         {activeOrders.length > 0 && (
           <section>
-            <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
-              <Clock size={15} className="text-[#E8593C]" />
-              Commandes en cours
+            <h2 className="mb-3 flex items-center gap-2 text-base font-bold tracking-tight text-[#1a1a2e]">
+              <Clock size={16} className="text-[#E8593C]" />
+              En cours
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {activeOrders.map((order) => {
                 const st = STATUS_LABELS[order.status] ?? { label: order.status, color: 'bg-gray-100 text-gray-600' }
                 return (
                   <Link
                     key={order.id}
                     href={`/eat/track/${order.id}`}
-                    className="flex items-center gap-3 rounded-2xl border border-orange-100 bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition active:scale-[0.98]"
+                    className="flex items-center gap-3 rounded-[20px] bg-white p-3.5 shadow-[0_4px_24px_rgba(0,0,0,0.05)] transition active:scale-[0.98]"
                   >
-                    <FoodImage
-                      name={order.restaurant.name}
-                      src={order.restaurant.logo}
-                      className="h-11 w-11 flex-shrink-0 rounded-xl"
-                      glyphClassName="text-lg"
-                    />
+                    <FoodImage name={order.restaurant.name} src={order.restaurant.logo} className="h-12 w-12 shrink-0 rounded-2xl" glyphClassName="text-lg" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[#1a1a2e]">{order.restaurant.name}</p>
-                      <p className="text-xs text-gray-500">{order.total.toFixed(2)}€</p>
+                      <p className="truncate text-sm font-bold text-[#1a1a2e]">{order.restaurant.name}</p>
+                      <p className="text-xs text-gray-400">{order.total.toFixed(2)}€</p>
                     </div>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${st.color}`}>
-                      {st.label}
-                    </span>
-                    <ChevronRight size={15} className="text-gray-300" />
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${st.color}`}>{st.label}</span>
+                    <ChevronRight size={16} className="text-gray-300" />
                   </Link>
                 )
               })}
@@ -156,53 +150,40 @@ export default function AccountPage() {
 
         {/* History */}
         <section>
-          <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
-            <Package size={15} className="text-gray-500" />
+          <h2 className="mb-3 flex items-center gap-2 text-base font-bold tracking-tight text-[#1a1a2e]">
+            <Package size={16} className="text-gray-400" />
             Historique
           </h2>
           {historyOrders.length === 0 ? (
-            <div className="rounded-2xl border border-black/[0.06] bg-white py-10 text-center">
-              <div className="mb-2 text-4xl">🍽️</div>
-              <p className="text-sm text-gray-500">Aucune commande passée</p>
-              <button
-                onClick={() => router.push('/eat')}
-                className="mt-2 text-sm font-semibold text-[#E8593C] active:scale-95"
-              >
-                Commander maintenant →
+            <div className="rounded-[20px] bg-white py-12 text-center shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
+              <div className="mb-2 text-4xl">🍜</div>
+              <p className="text-sm font-semibold text-[#1a1a2e]">Vous nous manquez !</p>
+              <p className="mt-0.5 text-sm text-gray-400">Passez votre première commande.</p>
+              <button onClick={() => router.push('/eat')} className="mt-3 text-sm font-semibold text-[#E8593C] active:scale-95">
+                Découvrir les restos →
               </button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {historyOrders.map((order) => {
-                const st = STATUS_LABELS[order.status] ?? { label: order.status, color: 'bg-gray-100 text-gray-600' }
                 const date = new Date(order.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
                 return (
-                  <div
-                    key={order.id}
-                    className="flex items-center gap-3 rounded-2xl border border-black/[0.06] bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
-                  >
-                    <FoodImage
-                      name={order.restaurant.name}
-                      src={order.restaurant.logo}
-                      className="h-11 w-11 flex-shrink-0 rounded-xl"
-                      glyphClassName="text-lg"
-                    />
+                  <div key={order.id} className="flex items-center gap-3 rounded-[20px] bg-white p-3.5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
+                    <FoodImage name={order.restaurant.name} src={order.restaurant.logo} className="h-12 w-12 shrink-0 rounded-2xl" glyphClassName="text-lg" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[#1a1a2e]">{order.restaurant.name}</p>
+                      <p className="truncate text-sm font-bold text-[#1a1a2e]">{order.restaurant.name}</p>
                       <p className="text-xs text-gray-400">
                         {date} · {order.total.toFixed(2)}€
                         {order.pointsEarned > 0 && <span className="text-amber-600"> · +{order.pointsEarned} pts</span>}
                       </p>
                     </div>
-                    {order.restaurant.id ? (
+                    {order.restaurant.id && (
                       <Link
                         href={`/eat/r/${order.restaurant.id}`}
-                        className="flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1.5 text-[11px] font-semibold text-[#E8593C] transition active:scale-95"
+                        className="flex items-center gap-1 rounded-full bg-[#FFF7F3] px-3 py-1.5 text-[11px] font-bold text-[#E8593C] transition active:scale-95"
                       >
                         <RotateCcw size={11} /> Recommander
                       </Link>
-                    ) : (
-                      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${st.color}`}>{st.label}</span>
                     )}
                   </div>
                 )
@@ -212,25 +193,25 @@ export default function AccountPage() {
         </section>
 
         {/* Profile */}
-        <section className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+        <section className="overflow-hidden rounded-[20px] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
           <div className="flex items-center gap-3 border-b border-gray-50 p-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-orange-100">
-              <User size={20} className="text-[#E8593C]" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF7F3]">
+              <User size={21} className="text-[#E8593C]" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-[#1a1a2e]">{session?.user?.name ?? '—'}</p>
               <p className="truncate text-xs text-gray-400">{session?.user?.email ?? '—'}</p>
             </div>
-            <button className="text-xs font-semibold text-[#E8593C] active:scale-95">Modifier</button>
+            <button className="text-xs font-bold text-[#E8593C] active:scale-95">Modifier</button>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: '/eat/auth' })}
-            className="flex w-full items-center justify-between px-4 py-3.5 text-sm font-medium text-red-500 transition active:scale-[0.99]"
+            className="flex w-full items-center justify-between px-4 py-4 text-sm font-medium text-red-500 transition active:scale-[0.99]"
           >
             <span className="flex items-center gap-2">
-              <LogOut size={15} /> Déconnexion
+              <LogOut size={16} /> Déconnexion
             </span>
-            <ChevronRight size={15} />
+            <ChevronRight size={16} />
           </button>
         </section>
       </div>
