@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MapPin, Star, Minus, Plus, Trash2, ChevronRight, Loader2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Minus, Plus, Trash2, Gift, Loader2 } from 'lucide-react'
+import FoodImage from '@/components/eat/FoodImage'
 
 interface CartItem {
   item: { id: string; name: string; price: number; photos: string[] }
@@ -14,9 +15,16 @@ interface CartData {
   restaurant: { name: string; deliveryFee: number; minOrder: number }
 }
 
+const PAYMENT_METHODS = [
+  { value: 'card' as const, label: 'Carte', icon: '💳' },
+  { value: 'wallet' as const, label: 'Apple Pay', icon: '' },
+  { value: 'cash' as const, label: 'Google Pay', icon: '🅖' },
+]
+
 export default function CartPage() {
   const router = useRouter()
   const [cart, setCart] = useState<CartData | null>(null)
+  const [hydrated, setHydrated] = useState(false)
   const [address, setAddress] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'wallet'>('card')
   const [submitting, setSubmitting] = useState(false)
@@ -26,33 +34,44 @@ export default function CartPage() {
     try {
       const raw = sessionStorage.getItem('grubano_cart')
       if (raw) setCart(JSON.parse(raw))
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    } finally {
+      setHydrated(true)
+    }
   }, [])
 
+  function persist(updated: CartData) {
+    sessionStorage.setItem('grubano_cart', JSON.stringify(updated))
+  }
+
   function updateQty(itemId: string, delta: number) {
-    setCart(prev => {
+    setCart((prev) => {
       if (!prev) return prev
       const items = prev.items
-        .map(c => c.item.id === itemId ? { ...c, qty: c.qty + delta } : c)
-        .filter(c => c.qty > 0)
+        .map((c) => (c.item.id === itemId ? { ...c, qty: c.qty + delta } : c))
+        .filter((c) => c.qty > 0)
       const updated = { ...prev, items }
-      sessionStorage.setItem('grubano_cart', JSON.stringify(updated))
+      persist(updated)
       return updated
     })
   }
 
   function removeItem(itemId: string) {
-    setCart(prev => {
+    setCart((prev) => {
       if (!prev) return prev
-      const updated = { ...prev, items: prev.items.filter(c => c.item.id !== itemId) }
-      sessionStorage.setItem('grubano_cart', JSON.stringify(updated))
+      const updated = { ...prev, items: prev.items.filter((c) => c.item.id !== itemId) }
+      persist(updated)
       return updated
     })
   }
 
   async function placeOrder() {
     if (!cart) return
-    if (!address.trim()) { setError('Veuillez entrer une adresse de livraison'); return }
+    if (!address.trim()) {
+      setError('Veuillez entrer une adresse de livraison')
+      return
+    }
     setError('')
     setSubmitting(true)
     try {
@@ -61,19 +80,26 @@ export default function CartPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           restaurantId: cart.restaurantId,
-          items: cart.items.map(c => ({
+          items: cart.items.map((c) => ({
             itemId: c.item.id,
-            name:   c.item.name,
-            qty:    c.qty,
-            price:  c.item.price,
+            name: c.item.name,
+            qty: c.qty,
+            price: c.item.price,
             options: [],
           })),
           deliveryAddress: address,
           paymentMethod,
         }),
       })
+      if (res.status === 401) {
+        router.push('/eat/auth')
+        return
+      }
       const data = await res.json()
-      if (!res.ok) { setError(data.error ?? 'Erreur lors de la commande'); return }
+      if (!res.ok) {
+        setError(data.error ?? 'Erreur lors de la commande')
+        return
+      }
       sessionStorage.removeItem('grubano_cart')
       router.push(`/eat/track/${data.orderId}`)
     } catch {
@@ -83,17 +109,33 @@ export default function CartPage() {
     }
   }
 
-  const subtotal     = cart?.items.reduce((s, c) => s + c.item.price * c.qty, 0) ?? 0
-  const deliveryFee  = cart?.restaurant.deliveryFee ?? 0
-  const total        = subtotal + deliveryFee
+  const subtotal = cart?.items.reduce((s, c) => s + c.item.price * c.qty, 0) ?? 0
+  const deliveryFee = cart?.restaurant.deliveryFee ?? 1.99
+  const total = subtotal + deliveryFee
   const pointsEarned = Math.floor(total)
+  const minOrder = cart?.restaurant.minOrder ?? 0
+  const belowMin = subtotal < minOrder
+
+  if (!hydrated) {
+    return (
+      <div className="space-y-4 p-4">
+        <div className="h-6 w-1/3 animate-pulse rounded bg-gray-200" />
+        <div className="h-24 animate-pulse rounded-2xl bg-gray-200" />
+        <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />
+      </div>
+    )
+  }
 
   if (!cart || cart.items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-4 text-gray-500 p-6">
-        <span className="text-5xl">🛒</span>
-        <p className="font-semibold text-gray-700 text-center">Votre panier est vide</p>
-        <button onClick={() => router.push('/eat')} className="text-orange-500 font-medium text-sm">
+      <div className="flex h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+        <div className="text-6xl">🛒</div>
+        <p className="text-lg font-bold text-[#1a1a2e]">Votre panier est vide</p>
+        <p className="-mt-2 text-sm text-gray-400">Ajoutez des plats pour commencer</p>
+        <button
+          onClick={() => router.push('/eat')}
+          className="mt-2 rounded-xl bg-[#E8593C] px-6 py-3 text-sm font-bold text-white shadow-[0_4px_16px_rgba(232,89,60,0.35)] transition active:scale-95"
+        >
           Parcourir les restaurants
         </button>
       </div>
@@ -101,80 +143,88 @@ export default function CartPage() {
   }
 
   return (
-    <div>
+    <div className="pb-28">
       {/* Header */}
-      <div className="sticky top-0 bg-white z-10 flex items-center gap-3 px-4 py-3 border-b border-gray-100">
-        <button onClick={() => router.back()} className="p-1.5">
-          <ArrowLeft size={20} className="text-gray-700" />
+      <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-black/[0.06] bg-[#FAFAFA]/95 px-4 py-3 backdrop-blur-lg">
+        <button
+          onClick={() => router.back()}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-sm transition active:scale-90"
+        >
+          <ArrowLeft size={18} className="text-gray-800" />
         </button>
-        <h1 className="font-bold text-gray-900">Mon panier</h1>
-        <span className="ml-auto text-xs text-gray-400">{cart.restaurant.name}</span>
+        <div>
+          <h1 className="text-base font-bold text-[#1a1a2e]">Mon panier</h1>
+          <p className="text-xs text-gray-400">{cart.restaurant.name}</p>
+        </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-4">
         {/* Items */}
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
           {cart.items.map(({ item, qty }) => (
-            <div key={item.id} className="flex items-center gap-3 p-3 border-b last:border-0 border-gray-50">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-100 to-orange-200 flex-shrink-0 flex items-center justify-center text-xl overflow-hidden">
-                {item.photos[0]
-                  ? <img src={item.photos[0]} alt={item.name} className="w-full h-full object-cover" />
-                  : '🍽️'
-                }
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 truncate">{item.name}</p>
-                <p className="text-sm text-gray-700 font-medium">{(item.price * qty).toFixed(2)}€</p>
+            <div key={item.id} className="flex items-center gap-3 border-b border-gray-50 p-3 last:border-0">
+              <FoodImage
+                name={item.name}
+                src={item.photos?.[0]}
+                className="h-14 w-14 flex-shrink-0 rounded-xl"
+                glyphClassName="text-xl"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-[#1a1a2e]">{item.name}</p>
+                <p className="text-sm font-bold text-[#E8593C]">{(item.price * qty).toFixed(2)}€</p>
               </div>
               <div className="flex items-center gap-1.5">
-                <button onClick={() => updateQty(item.id, -1)} className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
-                  <Minus size={11} />
+                <button
+                  onClick={() => updateQty(item.id, -1)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-gray-700 transition active:scale-90"
+                >
+                  <Minus size={13} strokeWidth={3} />
                 </button>
-                <span className="text-sm font-bold w-4 text-center">{qty}</span>
-                <button onClick={() => updateQty(item.id, 1)} className="w-6 h-6 bg-orange-500 text-white rounded-full flex items-center justify-center">
-                  <Plus size={11} />
+                <span className="w-5 text-center text-sm font-bold">{qty}</span>
+                <button
+                  onClick={() => updateQty(item.id, 1)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E8593C] text-white transition active:scale-90"
+                >
+                  <Plus size={13} strokeWidth={3} />
                 </button>
               </div>
-              <button onClick={() => removeItem(item.id)} className="p-1 ml-1">
-                <Trash2 size={14} className="text-red-400" />
+              <button onClick={() => removeItem(item.id)} className="ml-1 p-1 transition active:scale-90">
+                <Trash2 size={15} className="text-gray-300 hover:text-red-400" />
               </button>
             </div>
           ))}
         </div>
 
         {/* Delivery address */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2">
-          <label className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <MapPin size={15} className="text-orange-500" />
+        <div className="space-y-2 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+          <label className="flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
+            <MapPin size={16} className="text-[#E8593C]" />
             Adresse de livraison
           </label>
           <textarea
             value={address}
-            onChange={e => setAddress(e.target.value)}
+            onChange={(e) => setAddress(e.target.value)}
             placeholder="Numéro, rue, ville, code postal…"
             rows={2}
-            className="w-full text-sm border border-gray-200 rounded-xl p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
+            className="w-full resize-none rounded-xl border border-black/[0.06] bg-[#FAFAFA] p-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
           />
         </div>
 
-        {/* Payment method */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2">
-          <p className="text-sm font-semibold text-gray-900">Paiement</p>
+        {/* Payment methods */}
+        <div className="space-y-2 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+          <p className="text-sm font-bold text-[#1a1a2e]">Paiement</p>
           <div className="flex gap-2">
-            {[
-              { value: 'card' as const,   label: '💳 Carte' },
-              { value: 'cash' as const,   label: '💵 Espèces' },
-              { value: 'wallet' as const, label: '👛 Wallet' },
-            ].map(opt => (
+            {PAYMENT_METHODS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setPaymentMethod(opt.value)}
-                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-sm font-semibold transition-all duration-200 active:scale-95 ${
                   paymentMethod === opt.value
-                    ? 'bg-orange-500 text-white border-orange-500'
-                    : 'bg-white text-gray-600 border-gray-200'
+                    ? 'border-[#E8593C] bg-orange-50 text-[#E8593C]'
+                    : 'border-black/[0.06] bg-white text-gray-600'
                 }`}
               >
+                <span>{opt.icon}</span>
                 {opt.label}
               </button>
             ))}
@@ -182,41 +232,54 @@ export default function CartPage() {
         </div>
 
         {/* Points preview */}
-        <div className="bg-amber-50 rounded-2xl p-3 flex items-center gap-2">
-          <Star size={16} className="text-amber-500 fill-amber-500 flex-shrink-0" />
-          <span className="text-sm text-amber-700">
-            Vous gagnerez <strong>{pointsEarned} points</strong> fidélité avec cette commande
-          </span>
+        <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 p-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
+            <Gift size={18} className="text-amber-500" />
+          </div>
+          <p className="text-sm text-amber-800">
+            Vous gagnerez <strong>{pointsEarned} points</strong> fidélité 🎁
+          </p>
         </div>
 
-        {/* Totals */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-1.5 text-sm">
+        {/* Summary */}
+        <div className="space-y-2 rounded-2xl border border-black/[0.06] bg-white p-4 text-sm shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
           <div className="flex justify-between text-gray-600">
-            <span>Sous-total</span><span>{subtotal.toFixed(2)}€</span>
+            <span>Sous-total</span>
+            <span>{subtotal.toFixed(2)}€</span>
           </div>
           <div className="flex justify-between text-gray-600">
-            <span>Livraison</span><span>{deliveryFee.toFixed(2)}€</span>
+            <span>Livraison</span>
+            <span>{deliveryFee.toFixed(2)}€</span>
           </div>
-          <div className="flex justify-between font-bold text-base pt-1 border-t border-gray-100 mt-1">
-            <span>Total</span><span className="text-orange-600">{total.toFixed(2)}€</span>
+          <div className="mt-1 flex justify-between border-t border-gray-100 pt-2 text-base font-bold text-[#1a1a2e]">
+            <span>Total</span>
+            <span>{total.toFixed(2)}€</span>
           </div>
         </div>
 
-        {/* Error */}
-        {error && (
-          <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3 text-center">{error}</p>
+        {belowMin && (
+          <p className="rounded-xl bg-amber-50 p-3 text-center text-xs font-medium text-amber-700">
+            Commande minimum {minOrder.toFixed(2)}€ — ajoutez encore {(minOrder - subtotal).toFixed(2)}€
+          </p>
         )}
+        {error && (
+          <p className="rounded-xl bg-red-50 p-3 text-center text-sm text-red-600">{error}</p>
+        )}
+      </div>
 
-        {/* CTA */}
+      {/* Fixed CTA */}
+      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-black/[0.06] bg-white/95 px-4 py-3 backdrop-blur-lg">
         <button
           onClick={placeOrder}
-          disabled={submitting || cart.items.length === 0}
-          className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 transition-colors text-base"
+          disabled={submitting || belowMin}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-4 text-base font-bold text-white shadow-[0_4px_16px_rgba(232,89,60,0.35)] transition active:scale-[0.98] disabled:bg-orange-300"
         >
           {submitting ? (
-            <><Loader2 size={18} className="animate-spin" /> Envoi en cours…</>
+            <>
+              <Loader2 size={18} className="animate-spin" /> Envoi en cours…
+            </>
           ) : (
-            <>Commander ({total.toFixed(2)}€) <ChevronRight size={18} /></>
+            <>Commander · {total.toFixed(2)}€</>
           )}
         </button>
       </div>
