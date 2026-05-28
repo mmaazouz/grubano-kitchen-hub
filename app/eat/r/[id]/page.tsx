@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Star, Clock, Plus, Minus, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Star, Clock, Plus, Minus, ShoppingBag, Bike } from 'lucide-react'
 import FoodImage from '@/components/eat/FoodImage'
 
 interface MenuItem {
@@ -72,7 +72,7 @@ export default function RestaurantPage() {
     setActiveCategory(cat)
     const el = categoryRefs.current[cat]
     if (el) {
-      const y = el.getBoundingClientRect().top + window.scrollY - 64
+      const y = el.getBoundingClientRect().top + window.scrollY - 60
       window.scrollTo({ top: y, behavior: 'smooth' })
     }
   }
@@ -98,29 +98,26 @@ export default function RestaurantPage() {
 
   function goToCart() {
     if (!restaurant) return
-    sessionStorage.setItem(
-      'grubano_cart',
-      JSON.stringify({ restaurantId: id, items: cart, restaurant }),
-    )
+    sessionStorage.setItem('grubano_cart', JSON.stringify({ restaurantId: id, items: cart, restaurant }))
     router.push('/eat/cart')
   }
 
   if (loading) {
     return (
       <div>
-        <div className="h-56 w-full animate-pulse bg-gray-200" />
-        <div className="space-y-3 p-4">
-          <div className="h-7 w-2/3 animate-pulse rounded bg-gray-200" />
-          <div className="h-4 w-1/2 animate-pulse rounded bg-gray-100" />
-          <div className="mt-4 space-y-3">
+        <div className="h-60 w-full animate-pulse bg-gray-200" />
+        <div className="space-y-3 p-5">
+          <div className="h-7 w-2/3 animate-pulse rounded-full bg-gray-200" />
+          <div className="h-4 w-1/2 animate-pulse rounded-full bg-gray-100" />
+          <div className="mt-5 space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex gap-3">
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 w-1/2 animate-pulse rounded bg-gray-200" />
-                  <div className="h-3 w-3/4 animate-pulse rounded bg-gray-100" />
-                  <div className="h-3 w-1/4 animate-pulse rounded bg-gray-100" />
+                <div className="flex-1 space-y-2 py-1">
+                  <div className="h-4 w-1/2 animate-pulse rounded-full bg-gray-200" />
+                  <div className="h-3 w-3/4 animate-pulse rounded-full bg-gray-100" />
+                  <div className="h-3 w-1/4 animate-pulse rounded-full bg-gray-100" />
                 </div>
-                <div className="h-20 w-20 animate-pulse rounded-xl bg-gray-200" />
+                <div className="h-24 w-24 animate-pulse rounded-2xl bg-gray-200" />
               </div>
             ))}
           </div>
@@ -142,73 +139,71 @@ export default function RestaurantPage() {
   }
 
   return (
-    <div className={cartCount > 0 ? 'pb-24' : ''}>
+    <div className={cartCount > 0 ? 'bg-[#FAFAFA] pb-28' : 'bg-[#FAFAFA]'}>
       {/* Cover */}
       <div className="relative">
-        <FoodImage
-          name={restaurant.name}
-          src={restaurant.coverPhoto}
-          className="h-56 w-full"
-          glyphClassName="text-6xl"
-        />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+        <FoodImage name={restaurant.name} src={restaurant.coverPhoto} className="h-60 w-full" glyphClassName="text-7xl" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10" />
         <button
           onClick={() => router.back()}
-          className="absolute left-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur transition active:scale-90"
+          className="absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur transition active:scale-90"
         >
-          <ArrowLeft size={18} className="text-gray-800" />
+          <ArrowLeft size={19} className="text-gray-800" />
         </button>
       </div>
 
       {/* Info card overlapping cover */}
-      <div className="relative -mt-8 rounded-t-3xl bg-[#FAFAFA] px-4 pt-4">
+      <div className="relative -mt-10 rounded-t-[28px] bg-[#FAFAFA] px-5 pt-5">
         {restaurant.logo && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={restaurant.logo}
             alt={restaurant.name}
-            className="absolute -top-8 left-4 h-16 w-16 rounded-2xl border-4 border-white object-cover shadow-lg"
+            className="absolute -top-9 left-5 h-[72px] w-[72px] rounded-2xl border-4 border-[#FAFAFA] object-cover shadow-lg"
           />
         )}
-        <div className={restaurant.logo ? 'pt-10' : ''}>
-          <h1 className="text-2xl font-bold text-[#1a1a2e]">{restaurant.name}</h1>
-          {restaurant.description && (
-            <p className="mt-1 line-clamp-2 text-sm text-gray-500">{restaurant.description}</p>
-          )}
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-            <span className="flex items-center gap-1 font-semibold text-[#1a1a2e]">
-              <Star size={14} className="fill-amber-400 text-amber-400" />
+        <div className={restaurant.logo ? 'pt-11' : ''}>
+          <h1 className="text-[26px] font-bold leading-tight tracking-tight text-[#1a1a2e]">{restaurant.name}</h1>
+          {restaurant.description && <p className="mt-1 line-clamp-2 text-sm text-gray-500">{restaurant.description}</p>}
+
+          {/* Stat chips */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[13px] font-semibold text-[#1a1a2e] shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+              <Star size={13} className="fill-amber-400 text-amber-400" />
               {restaurant.rating.toFixed(1)}
               <span className="font-normal text-gray-400">({restaurant.reviewCount})</span>
             </span>
-            <span className="flex items-center gap-1 text-gray-600">
-              <Clock size={14} />
+            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+              <Clock size={13} />
               {restaurant.deliveryTime} min
             </span>
-            <span className="text-gray-600">Livraison {restaurant.deliveryFee.toFixed(2)}€</span>
-            <span className="text-gray-600">min. {restaurant.minOrder.toFixed(0)}€</span>
+            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+              <Bike size={13} />
+              {restaurant.deliveryFee.toFixed(2)}€
+            </span>
           </div>
-          <p className="mt-1.5 text-xs text-gray-400">
-            {restaurant.address}, {restaurant.city}
+          <p className="mt-2 text-xs text-gray-400">
+            {restaurant.address}, {restaurant.city} · min. {restaurant.minOrder.toFixed(0)}€
           </p>
         </div>
       </div>
 
       {/* Sticky category tabs */}
       {menu.length > 0 && (
-        <div className="no-scrollbar sticky top-0 z-20 mt-3 overflow-x-auto border-b border-black/[0.06] bg-[#FAFAFA]/95 backdrop-blur-lg">
-          <div className="flex w-max px-2">
+        <div className="no-scrollbar sticky top-0 z-20 mt-4 overflow-x-auto border-b border-black/[0.05] bg-[#FAFAFA]/95 backdrop-blur-lg">
+          <div className="flex w-max gap-1 px-3">
             {menu.map((cat) => (
               <button
                 key={cat.category}
                 onClick={() => scrollToCategory(cat.category)}
-                className={`whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold transition-colors duration-200 ${
-                  activeCategory === cat.category
-                    ? 'border-[#E8593C] text-[#E8593C]'
-                    : 'border-transparent text-gray-500'
+                className={`relative whitespace-nowrap px-3 py-3.5 text-sm font-semibold transition-colors duration-200 ${
+                  activeCategory === cat.category ? 'text-[#E8593C]' : 'text-gray-400'
                 }`}
               >
                 {cat.category}
+                {activeCategory === cat.category && (
+                  <span className="absolute inset-x-3 bottom-0 h-[3px] rounded-full bg-[#E8593C]" />
+                )}
               </button>
             ))}
           </div>
@@ -216,80 +211,70 @@ export default function RestaurantPage() {
       )}
 
       {/* Menu */}
-      <div className="px-4 pb-6">
+      <div className="px-5 pb-6">
         {menu.map((cat) => (
           <div
             key={cat.category}
             ref={(el) => {
               categoryRefs.current[cat.category] = el
             }}
-            className="scroll-mt-16 pt-5"
+            className="scroll-mt-16 pt-6"
           >
-            <h2 className="mb-3 text-lg font-bold text-[#1a1a2e]">{cat.category}</h2>
+            <h2 className="mb-3 text-xl font-bold tracking-tight text-[#1a1a2e]">{cat.category}</h2>
             <div className="space-y-3">
               {cat.items.map((item) => {
                 const cartItem = cart.find((c) => c.item.id === item.id)
                 return (
                   <div
                     key={item.id}
-                    className="flex gap-3 rounded-2xl border border-black/[0.06] bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+                    className="flex gap-4 rounded-[20px] bg-white p-3.5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         <p className="text-[15px] font-bold leading-tight text-[#1a1a2e]">{item.name}</p>
                         {item.isPopular && (
-                          <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#E8593C]">
+                          <span className="rounded-full bg-[#FFF7F3] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#E8593C]">
                             Populaire
                           </span>
                         )}
                       </div>
                       {item.description && (
-                        <p className="mt-1 line-clamp-2 text-[13px] text-gray-500">{item.description}</p>
+                        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-gray-400">{item.description}</p>
                       )}
                       <div className="mt-2 flex items-center gap-2">
                         <span className="text-[15px] font-bold text-[#1a1a2e]">{item.price.toFixed(2)}€</span>
                         {item.comparePrice && item.comparePrice > item.price && (
-                          <span className="text-xs text-gray-400 line-through">
-                            {item.comparePrice.toFixed(2)}€
-                          </span>
+                          <span className="text-xs text-gray-400 line-through">{item.comparePrice.toFixed(2)}€</span>
                         )}
-                        {item.calories ? (
-                          <span className="text-[11px] text-gray-400">{item.calories} kcal</span>
-                        ) : null}
+                        {item.calories ? <span className="text-[11px] text-gray-400">· {item.calories} kcal</span> : null}
                       </div>
                     </div>
 
-                    {/* Image + add button */}
-                    <div className="relative flex-shrink-0">
-                      <FoodImage
-                        name={item.name}
-                        src={item.photos?.[0]}
-                        className="h-20 w-20 rounded-xl"
-                        glyphClassName="text-2xl"
-                      />
+                    <div className="relative shrink-0">
+                      <FoodImage name={item.name} src={item.photos?.[0]} className="h-24 w-24 rounded-2xl" glyphClassName="text-3xl" />
                       {cartItem ? (
-                        <div className="absolute -bottom-2 right-0 flex items-center gap-1 rounded-full bg-white p-0.5 shadow-md">
+                        <div className="absolute -bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white p-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
                           <button
                             onClick={() => removeFromCart(item.id)}
-                            className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-[#E8593C] transition active:scale-90"
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FFF7F3] text-[#E8593C] transition active:scale-90"
                           >
-                            <Minus size={12} strokeWidth={3} />
+                            <Minus size={13} strokeWidth={3} />
                           </button>
                           <span className="w-4 text-center text-sm font-bold text-[#1a1a2e]">{cartItem.qty}</span>
                           <button
                             onClick={() => addToCart(item)}
-                            className="flex h-6 w-6 items-center justify-center rounded-full bg-[#E8593C] text-white transition active:scale-90"
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E8593C] text-white transition active:scale-90"
                           >
-                            <Plus size={12} strokeWidth={3} />
+                            <Plus size={13} strokeWidth={3} />
                           </button>
                         </div>
                       ) : (
                         <button
                           onClick={() => addToCart(item)}
-                          className="absolute -bottom-2 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-[#E8593C] text-white shadow-md transition active:scale-90"
+                          className="absolute -bottom-2.5 right-1 flex h-9 w-9 items-center justify-center rounded-full bg-[#E8593C] text-white shadow-[0_4px_16px_rgba(232,89,60,0.4)] transition active:scale-90"
                           aria-label={`Ajouter ${item.name}`}
                         >
-                          <Plus size={16} strokeWidth={3} />
+                          <Plus size={17} strokeWidth={3} />
                         </button>
                       )}
                     </div>
@@ -302,24 +287,24 @@ export default function RestaurantPage() {
         {menu.length === 0 && (
           <div className="py-16 text-center">
             <div className="mb-2 text-4xl">🍽️</div>
-            <p className="text-sm text-gray-500">Aucun plat disponible pour le moment</p>
+            <p className="text-sm text-gray-500">Le menu arrive bientôt</p>
           </div>
         )}
       </div>
 
       {/* Floating cart bar */}
       {cartCount > 0 && (
-        <div className="fixed bottom-0 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 px-4 pb-4">
+        <div className="fixed bottom-0 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 px-5 pb-5">
           <button
             onClick={goToCart}
             disabled={cartSubtotal < restaurant.minOrder}
-            className="flex w-full items-center justify-between rounded-2xl bg-[#E8593C] px-5 py-4 text-white shadow-[0_8px_24px_rgba(232,89,60,0.4)] transition-all duration-200 active:scale-[0.98] disabled:opacity-60"
+            className="flex w-full items-center justify-between rounded-2xl bg-[#E8593C] px-5 py-4 text-white shadow-[0_8px_32px_rgba(232,89,60,0.45)] transition active:scale-[0.98] disabled:opacity-70"
           >
-            <span className="flex items-center gap-2.5">
-              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white px-1.5 text-xs font-bold text-[#E8593C]">
+            <span className="flex items-center gap-3">
+              <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-1.5 text-sm font-bold text-[#E8593C]">
                 {cartCount}
               </span>
-              <span className="font-semibold">
+              <span className="font-bold">
                 {cartSubtotal < restaurant.minOrder
                   ? `Encore ${(restaurant.minOrder - cartSubtotal).toFixed(2)}€`
                   : 'Voir le panier'}
@@ -327,7 +312,7 @@ export default function RestaurantPage() {
             </span>
             <span className="flex items-center gap-2 font-bold">
               {cartSubtotal.toFixed(2)}€
-              <ShoppingBag size={18} />
+              <ShoppingBag size={19} />
             </span>
           </button>
         </div>
