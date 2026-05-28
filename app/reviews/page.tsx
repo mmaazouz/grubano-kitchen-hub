@@ -66,7 +66,7 @@ export default function ReviewsPage() {
   }
 
   function sendReply(reviewId: string) {
-    setSent(prev => new Set([...prev, reviewId]))
+    setSent(prev => { const next = new Set(prev); next.add(reviewId); return next })
     setReviews(prev => prev.map(r => r.id === reviewId ? { ...r, answered: true } : r))
   }
 

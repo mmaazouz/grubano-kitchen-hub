@@ -92,7 +92,7 @@ export default function AnalyticsPage() {
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} tickFormatter={v => `€${v}`} />
               <Tooltip
-                formatter={(v: number) => [`€${v.toFixed(2)}`, 'Revenu']}
+                formatter={(v) => [typeof v === 'number' ? `€${v.toFixed(2)}` : `€${v}`, 'Revenu']}
                 contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)' }}
               />
               <Bar dataKey="amount" fill="var(--primary)" radius={[4, 4, 0, 0]} />

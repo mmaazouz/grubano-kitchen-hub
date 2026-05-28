@@ -100,7 +100,7 @@ export default function MenuBuilder() {
       .catch(() => setLoading(false))
   }, [loadItems])
 
-  const categories = [...new Set(items.map(i => i.category))].sort()
+  const categories = Array.from(new Set(items.map(i => i.category))).sort()
 
   async function toggleAvail(item: MenuItem) {
     const newAvail = !item.available
@@ -265,7 +265,7 @@ function ItemsTab({
     )
   }
 
-  const cats = categories.length > 0 ? categories : [...new Set(items.map(i => i.category))].sort()
+  const cats = categories.length > 0 ? categories : Array.from(new Set(items.map(i => i.category))).sort()
 
   return (
     <div className="space-y-4">
@@ -331,7 +331,7 @@ function ItemsTab({
 // ── Categories tab ────────────────────────────────────────────────────────────
 
 function CategoriesTab({ items, categories }: { items: MenuItem[]; categories: string[] }) {
-  const cats = categories.length > 0 ? categories : [...new Set(items.map(i => i.category))].sort()
+  const cats = categories.length > 0 ? categories : Array.from(new Set(items.map(i => i.category))).sort()
 
   if (cats.length === 0) {
     return (
