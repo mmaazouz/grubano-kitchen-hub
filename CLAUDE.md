@@ -26,7 +26,11 @@ Read the output fully. Check for:
 # 1. Write your session summary to Notion
 node scripts/notion-sync.js write <your-agent-id> "What you built. Commits: abc123. Next task: X. HTTP status: 200."
 
-# 2. Commit and push
+# 2. Report cross-agent info / decisions / blockers to the shared inbox
+node scripts/notion-sync.js write inbox "[AGENT X] [INFO/DECISION/BLOCKER] message. Action required: yes/no"
+# Inbox page ID: 36efd2c9-8146-8195-a65a-d146cfed0642
+
+# 3. Commit and push
 git add .
 git commit -m "feat|fix|docs: description"
 git push origin develop
