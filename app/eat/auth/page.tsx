@@ -55,7 +55,6 @@ export default function AuthPage() {
   }
 
   function handleGoogle() {
-    // Google provider not yet configured in lib/auth.ts — graceful fallback.
     setError('')
     setNotice('Connexion Google bientôt disponible. Utilisez votre email pour le moment.')
   }
@@ -63,17 +62,23 @@ export default function AuthPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#FAFAFA]">
       {/* Brand header */}
-      <div className="bg-gradient-to-br from-[#E8593C] to-[#C2341B] px-6 pb-10 pt-14 text-center text-white">
-        <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 text-4xl backdrop-blur">
-          🍽️
+      <div className="relative overflow-hidden rounded-b-[28px] bg-gradient-to-br from-[#E8593C] to-[#B11E2F] px-6 pb-12 pt-16 text-center text-white">
+        <div
+          className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-30"
+          style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.6), transparent 60%)' }}
+        />
+        <div className="relative">
+          <div className="mx-auto mb-3 flex h-[68px] w-[68px] items-center justify-center rounded-3xl bg-white/15 text-4xl backdrop-blur">
+            🍽️
+          </div>
+          <h1 className="text-[26px] font-bold tracking-tight">Grubano</h1>
+          <p className="mt-1 text-sm text-white/85">Vos restos préférés, livrés vite</p>
         </div>
-        <h1 className="text-2xl font-bold">Grubano</h1>
-        <p className="mt-1 text-sm text-white/85">Commander n&apos;a jamais été aussi simple</p>
       </div>
 
       {/* Card */}
       <div className="flex-1 px-5 pt-6">
-        <div className="mx-auto max-w-sm rounded-3xl border border-black/[0.06] bg-white p-5 shadow-[0_4px_16px_rgba(0,0,0,0.06)]">
+        <div className="mx-auto max-w-sm rounded-[24px] bg-white p-5 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
           {/* Tabs */}
           <div className="mb-5 flex rounded-2xl bg-gray-100 p-1">
             {(['login', 'register'] as Tab[]).map((t) => (
@@ -84,7 +89,7 @@ export default function AuthPage() {
                   setError('')
                   setNotice('')
                 }}
-                className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition-all duration-200 ${
+                className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition-all duration-200 ${
                   tab === t ? 'bg-white text-[#E8593C] shadow-sm' : 'text-gray-500'
                 }`}
               >
@@ -103,7 +108,7 @@ export default function AuthPage() {
                   onChange={(e) => setName(e.target.value)}
                   required
                   placeholder="Jean Dupont"
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#FAFAFA] px-4 py-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  className="w-full rounded-2xl border border-black/[0.06] bg-[#FAFAFA] px-4 py-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
                 />
               </div>
             )}
@@ -117,7 +122,7 @@ export default function AuthPage() {
                 required
                 placeholder="jean@example.com"
                 autoComplete="email"
-                className="w-full rounded-xl border border-black/[0.08] bg-[#FAFAFA] px-4 py-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                className="w-full rounded-2xl border border-black/[0.06] bg-[#FAFAFA] px-4 py-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
               />
             </div>
 
@@ -132,7 +137,7 @@ export default function AuthPage() {
                   minLength={tab === 'register' ? 8 : 1}
                   placeholder={tab === 'register' ? 'Min. 8 caractères' : '••••••••'}
                   autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
-                  className="w-full rounded-xl border border-black/[0.08] bg-[#FAFAFA] px-4 py-3 pr-10 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  className="w-full rounded-2xl border border-black/[0.06] bg-[#FAFAFA] px-4 py-3 pr-10 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
                 />
                 <button
                   type="button"
@@ -144,13 +149,13 @@ export default function AuthPage() {
               </div>
             </div>
 
-            {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-sm text-red-600">{error}</p>}
-            {notice && <p className="rounded-xl bg-amber-50 px-3 py-2 text-center text-sm text-amber-700">{notice}</p>}
+            {error && <p className="rounded-2xl bg-red-50 px-3 py-2.5 text-center text-sm text-red-600">{error}</p>}
+            {notice && <p className="rounded-2xl bg-amber-50 px-3 py-2.5 text-center text-sm text-amber-700">{notice}</p>}
 
             <button
               type="submit"
               disabled={loading}
-              className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-[#E8593C] py-3.5 text-base font-bold text-white shadow-[0_4px_16px_rgba(232,89,60,0.35)] transition active:scale-[0.98] disabled:bg-orange-300"
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-3.5 text-base font-bold text-white shadow-[0_4px_24px_rgba(232,89,60,0.35)] transition active:scale-[0.98] disabled:bg-orange-300"
             >
               {loading ? (
                 <>
@@ -174,7 +179,7 @@ export default function AuthPage() {
           {/* Google */}
           <button
             onClick={handleGoogle}
-            className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-black/[0.1] bg-white py-3 text-sm font-semibold text-gray-700 transition active:scale-[0.98]"
+            className="flex w-full items-center justify-center gap-2.5 rounded-2xl border border-black/[0.1] bg-white py-3 text-sm font-semibold text-gray-700 transition active:scale-[0.98]"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
               <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
@@ -190,14 +195,14 @@ export default function AuthPage() {
           {tab === 'login' ? (
             <>
               Pas encore de compte ?{' '}
-              <button onClick={() => setTab('register')} className="font-semibold text-[#E8593C]">
+              <button onClick={() => setTab('register')} className="font-bold text-[#E8593C]">
                 S&apos;inscrire
               </button>
             </>
           ) : (
             <>
               Déjà un compte ?{' '}
-              <button onClick={() => setTab('login')} className="font-semibold text-[#E8593C]">
+              <button onClick={() => setTab('login')} className="font-bold text-[#E8593C]">
                 Se connecter
               </button>
             </>
@@ -205,7 +210,7 @@ export default function AuthPage() {
         </p>
 
         {tab === 'register' && (
-          <p className="mx-auto mt-4 max-w-sm text-center text-[10px] leading-relaxed text-gray-400">
+          <p className="mx-auto mt-4 max-w-sm pb-6 text-center text-[10px] leading-relaxed text-gray-400">
             En créant un compte vous acceptez nos conditions d&apos;utilisation et notre politique de confidentialité.
           </p>
         )}
