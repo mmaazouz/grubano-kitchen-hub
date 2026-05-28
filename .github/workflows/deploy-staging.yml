@@ -74,7 +74,7 @@ jobs:
           [ -d public ] && cp -r public deploy-temp/public || true
 
           # .htaccess — Passenger config for staging (printf avoids BOM)
-          printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/app.grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node\nPassengerMaxPoolSize 1\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
+          printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/app.grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/app.grubano.com/24/bin/node\nPassengerMaxPoolSize 1\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
 
           # .env.local from secret (full file content, avoids per-secret sprawl)
           printf '%s' "${{ secrets.ENV_LOCAL_CONTENT }}" > deploy-temp/.env.local
