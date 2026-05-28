@@ -85,10 +85,10 @@ jobs:
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          # FTP host is the o2switch FTP hostname — NOT the SSH IP. The shared
-          # O2SWITCH_HOST secret is an IP that does not resolve over FTP
-          # (getaddrinfo ENOTFOUND). FTP and SSH use different endpoints here.
-          server: ftp.deyi0010.odns.fr
+          # O2SWITCH_HOST secret now holds the o2switch FTP hostname
+          # (ftp.deyi0010.odns.fr). The SSH step below uses the IP directly,
+          # because FTP and SSH use different endpoints on o2switch.
+          server: ${{ secrets.O2SWITCH_HOST }}
           username: ${{ secrets.O2SWITCH_FTP_USER }}
           password: ${{ secrets.O2SWITCH_FTP_PASS }}
           # o2switch Pure-FTPd enforces explicit FTPS (FTP over TLS) on port 21.
@@ -114,7 +114,9 @@ jobs:
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
-          host: ${{ secrets.O2SWITCH_HOST }}
+          # SSH uses the IP directly — O2SWITCH_HOST now holds the FTP hostname,
+          # which is not the SSH endpoint. Restart is non-critical (continue-on-error).
+          host: 109.234.165.222
           username: ${{ secrets.O2SWITCH_USER }}
           key: ${{ secrets.O2SWITCH_SSH_KEY }}
           port: 22
