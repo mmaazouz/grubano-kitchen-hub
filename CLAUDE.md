@@ -3,6 +3,56 @@
 
 ---
 
+## SYNC PROTOCOL (mandatory)
+
+### START of every session
+
+```bash
+# 1. Set your token (or add NOTION_TOKEN to .env.local permanently)
+export NOTION_TOKEN=ntn_xxxx   # ask Mohammed for the token
+
+# 2. Read all agent pages before touching anything
+node scripts/notion-sync.js read
+```
+
+Read the output fully. Check for:
+- Any agent that modified `prisma/schema.prisma` → pull latest + coordinate before touching schema
+- Any agent that modified `middleware.ts` → coordinate before touching middleware
+- What each agent built last session → avoid duplicating work
+
+### END of every session
+
+```bash
+# 1. Write your session summary to Notion
+node scripts/notion-sync.js write <your-agent-id> "What you built. Commits: abc123. Next task: X. HTTP status: 200."
+
+# 2. Commit and push
+git add .
+git commit -m "feat|fix|docs: description"
+git push origin develop
+```
+
+### Agent IDs
+
+| ID | Territory |
+|---|---|
+| `agent1` | DevOps — CI/CD, deploy scripts, infra |
+| `agent2` | Dashboard — operator app (`/dashboard`, `/menu`, `/orders`, `/stocks`, etc.) |
+| `agent3` | Consumer — consumer app (`/eat/*`, consumer API routes) |
+| `agent4` | Portails — franchise, creators, onboarding portals |
+
+### Notion page IDs (for reference)
+
+```
+brain:  36dfd2c9-8146-81ae-bfab-e5e09076ea8e
+agent1: 36dfd2c9-8146-8143-9d64-f7efde1029e3
+agent2: 36dfd2c9-8146-8106-8049-cc92a50a9112
+agent3: 36dfd2c9-8146-81b4-91ec-ecdc8013bad0
+agent4: 36dfd2c9-8146-8132-9fd0-f53fc6e12226
+```
+
+---
+
 ## 1. Project Overview
 
 Multi-brand dark kitchen management platform for Mohammed Maazouz.
@@ -285,6 +335,7 @@ SMTP_USER
 SMTP_PASS
 CRON_SECRET           Protects /api/email-agent endpoint
 NODE_ENV              production
+NOTION_TOKEN          Notion integration token — for scripts/notion-sync.js (dev only, not deployed)
 ```
 
 ### GitHub Secrets (CI/CD)
