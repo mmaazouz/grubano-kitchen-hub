@@ -53,6 +53,7 @@ agent1: 36dfd2c9-8146-8143-9d64-f7efde1029e3
 agent2: 36dfd2c9-8146-8106-8049-cc92a50a9112
 agent3: 36dfd2c9-8146-81b4-91ec-ecdc8013bad0
 agent4: 36dfd2c9-8146-8132-9fd0-f53fc6e12226
+inbox:  36efd2c9-8146-8195-a65a-d146cfed0642
 ```
 
 ---

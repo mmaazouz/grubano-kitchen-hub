@@ -76,7 +76,10 @@
       "Bash(node -e \"const pkg = require\\('./node_modules/nextra/package.json'\\); console.log\\(pkg.version\\)\")",
       "Bash(git -C /c/Users/Lenovo/grubano status --short)",
       "Bash(node -e \"const d = JSON.parse\\(require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\)\\); console.log\\('exports:', JSON.stringify\\(Object.keys\\(d.exports||{}\\), null, 2\\)\\); console.log\\('peerDeps:', JSON.stringify\\(d.peerDependencies, null, 2\\)\\)\")",
-      "Bash(rm \"/c/Users/Lenovo/grubano/C:UsersLenovogrubanoscriptsnotion-sync.js\" && echo \"deleted\")"
+      "Bash(rm \"/c/Users/Lenovo/grubano/C:UsersLenovogrubanoscriptsnotion-sync.js\" && echo \"deleted\")",
+      "Bash(node -e \"const d = require\\('./node_modules/nextra/package.json'\\); console.log\\('version:', d.version\\); console.log\\('peerDeps:', JSON.stringify\\(d.peerDependencies, null, 2\\)\\); console.log\\('main:', d.main || d.exports\\)\")",
+      "Bash(node -e \"const d = require\\('./node_modules/nextra-theme-docs/package.json'\\); console.log\\('version:', d.version\\); console.log\\('exports:', JSON.stringify\\(Object.keys\\(d.exports||{}\\), null, 2\\)\\)\")",
+      "Bash(Get-Content \"C:\\\\Users\\\\Lenovo\\\\grubano-docs\\\\node_modules\\\\nextra-theme-docs\\\\dist\\\\layout.js\" -TotalCount 30)"
     ]
   }
 }

@@ -51,6 +51,7 @@ const PAGE_IDS = {
   agent2: '36dfd2c9-8146-8106-8049-cc92a50a9112',  // Dashboard
   agent3: '36dfd2c9-8146-81b4-91ec-ecdc8013bad0',  // Consumer
   agent4: '36dfd2c9-8146-8132-9fd0-f53fc6e12226',  // Portails
+  inbox:  '36efd2c9-8146-8195-a65a-d146cfed0642',  // Shared inbox
 }
 
 const AGENT_NAMES = {
@@ -58,6 +59,7 @@ const AGENT_NAMES = {
   agent2: 'Dashboard',
   agent3: 'Consumer',
   agent4: 'Portails',
+  inbox:  'Inbox',
 }
 
 // ---------------------------------------------------------------------------
