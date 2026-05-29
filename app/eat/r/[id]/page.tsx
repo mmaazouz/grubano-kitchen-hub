@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Star, Clock, Plus, Minus, ShoppingBag, Bike } from 'lucide-react'
+import { ArrowLeft, Heart, Share2, Star, Clock, MapPin, Search, Plus, Minus, ShoppingBag } from 'lucide-react'
 import FoodImage from '@/components/eat/FoodImage'
+import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
 
 interface MenuItem {
   id: string
@@ -12,14 +13,8 @@ interface MenuItem {
   price: number
   comparePrice?: number
   category: string
-  calories?: number
-  allergens: string[]
-  labels: string[]
   photos: string[]
   isPopular: boolean
-  prepTime?: number
-  brandId: string
-  brandName: string
 }
 interface MenuCategory {
   category: string
@@ -40,21 +35,29 @@ interface RestaurantInfo {
   city: string
   address: string
 }
-interface CartItem {
-  item: MenuItem
-  qty: number
-}
 
-export default function RestaurantPage() {
+const TABS = ['Menu', 'À propos', 'Galerie', 'Avis'] as const
+type Tab = (typeof TABS)[number]
+
+const SAMPLE_REVIEWS = [
+  { name: 'Marie D.', text: 'Excellent service, plats délicieux !', rating: 5, date: 'il y a 2 j' },
+  { name: 'Jean-Luc M.', text: 'Livraison rapide et nourriture chaude.', rating: 4, date: 'il y a 5 j' },
+  { name: 'Sophie B.', text: 'Portions généreuses et prix raisonnables.', rating: 5, date: 'il y a 1 sem' },
+]
+
+export default function RestaurantScreen() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
   const [restaurant, setRestaurant] = useState<RestaurantInfo | null>(null)
   const [menu, setMenu] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeCategory, setActiveCategory] = useState('')
-  const [cart, setCart] = useState<CartItem[]>([])
-  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [activeTab, setActiveTab] = useState<Tab>('Menu')
+  const [menuSearch, setMenuSearch] = useState('')
+  const [menuFilter, setMenuFilter] = useState('Tout')
+  const [fav, setFav] = useState(false)
+  // qty per menu-item id
+  const [qty, setQty] = useState<Record<string, number>>({})
 
   useEffect(() => {
     fetch(`/api/restaurants/${id}`)
@@ -62,63 +65,71 @@ export default function RestaurantPage() {
       .then((d) => {
         setRestaurant(d.restaurant)
         setMenu(d.menu ?? [])
-        setActiveCategory(d.menu?.[0]?.category ?? '')
+        // hydrate qty from an existing cart for this same restaurant
+        const existing = readCart()
+        if (existing && existing.restaurantId === id) {
+          const map: Record<string, number> = {}
+          existing.items.forEach((l) => (map[l.item.id] = l.qty))
+          setQty(map)
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [id])
 
-  function scrollToCategory(cat: string) {
-    setActiveCategory(cat)
-    const el = categoryRefs.current[cat]
-    if (el) {
-      const y = el.getBoundingClientRect().top + window.scrollY - 60
-      window.scrollTo({ top: y, behavior: 'smooth' })
-    }
-  }
+  const allItems = menu.flatMap((c) => c.items)
+  const categories = ['Tout', ...menu.map((c) => c.category)]
 
-  function addToCart(item: MenuItem) {
-    setCart((prev) => {
-      const existing = prev.find((c) => c.item.id === item.id)
-      if (existing) return prev.map((c) => (c.item.id === item.id ? { ...c, qty: c.qty + 1 } : c))
-      return [...prev, { item, qty: 1 }]
-    })
-  }
-  function removeFromCart(itemId: string) {
-    setCart((prev) => {
-      const existing = prev.find((c) => c.item.id === itemId)
-      if (!existing) return prev
-      if (existing.qty <= 1) return prev.filter((c) => c.item.id !== itemId)
-      return prev.map((c) => (c.item.id === itemId ? { ...c, qty: c.qty - 1 } : c))
-    })
-  }
-
-  const cartCount = cart.reduce((s, c) => s + c.qty, 0)
-  const cartSubtotal = cart.reduce((s, c) => s + c.item.price * c.qty, 0)
-
-  function goToCart() {
+  function persistCart(nextQty: Record<string, number>) {
     if (!restaurant) return
-    sessionStorage.setItem('grubano_cart', JSON.stringify({ restaurantId: id, items: cart, restaurant }))
-    router.push('/eat/cart')
+    const items = allItems
+      .filter((m) => nextQty[m.id] > 0)
+      .map((m) => ({ item: { id: m.id, name: m.name, price: m.price, photos: m.photos ?? [] }, qty: nextQty[m.id] }))
+    const data: EatCartData = {
+      restaurantId: restaurant.id,
+      items,
+      restaurant: { name: restaurant.name, deliveryFee: restaurant.deliveryFee, minOrder: restaurant.minOrder },
+    }
+    writeCart(items.length ? data : null)
   }
+
+  function add(m: MenuItem) {
+    setQty((prev) => {
+      const next = { ...prev, [m.id]: (prev[m.id] ?? 0) + 1 }
+      persistCart(next)
+      return next
+    })
+    showToast(`${m.name} ajouté au panier`)
+  }
+  function remove(m: MenuItem) {
+    setQty((prev) => {
+      const cur = prev[m.id] ?? 0
+      const next = { ...prev }
+      if (cur <= 1) delete next[m.id]
+      else next[m.id] = cur - 1
+      persistCart(next)
+      return next
+    })
+  }
+
+  const cartCount = Object.values(qty).reduce((s, n) => s + n, 0)
+  const cartTotal = allItems.reduce((s, m) => s + (qty[m.id] ?? 0) * m.price, 0)
+
+  const filtered = allItems
+    .filter((m) => menuFilter === 'Tout' || m.category === menuFilter)
+    .filter((m) => menuSearch === '' || m.name.toLowerCase().includes(menuSearch.toLowerCase()))
+  const galleryItems = allItems.slice(0, 9)
 
   if (loading) {
     return (
-      <div>
-        <div className="h-60 w-full animate-pulse bg-gray-200" />
-        <div className="space-y-3 p-5">
-          <div className="h-7 w-2/3 animate-pulse rounded-full bg-gray-200" />
-          <div className="h-4 w-1/2 animate-pulse rounded-full bg-gray-100" />
-          <div className="mt-5 space-y-4">
+      <div className="bg-white">
+        <div className="h-[280px] w-full animate-pulse bg-gray-200" />
+        <div className="space-y-3 p-4">
+          <div className="h-6 w-2/3 animate-pulse rounded bg-gray-200" />
+          <div className="h-4 w-1/2 animate-pulse rounded bg-gray-100" />
+          <div className="grid grid-cols-2 gap-3 pt-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex gap-3">
-                <div className="flex-1 space-y-2 py-1">
-                  <div className="h-4 w-1/2 animate-pulse rounded-full bg-gray-200" />
-                  <div className="h-3 w-3/4 animate-pulse rounded-full bg-gray-100" />
-                  <div className="h-3 w-1/4 animate-pulse rounded-full bg-gray-100" />
-                </div>
-                <div className="h-24 w-24 animate-pulse rounded-2xl bg-gray-200" />
-              </div>
+              <div key={i} className="h-[180px] animate-pulse rounded-2xl bg-gray-100" />
             ))}
           </div>
         </div>
@@ -128,195 +139,252 @@ export default function RestaurantPage() {
 
   if (!restaurant) {
     return (
-      <div className="flex h-[70vh] flex-col items-center justify-center gap-3 text-gray-500">
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-white text-[#888]">
         <div className="text-5xl">😕</div>
-        <p className="font-semibold">Restaurant introuvable</p>
-        <button onClick={() => router.back()} className="text-sm font-semibold text-[#E8593C] active:scale-95">
-          Retour
-        </button>
+        <p>Restaurant introuvable</p>
+        <button onClick={() => router.back()} className="text-sm font-bold text-[#F97316]">Retour</button>
       </div>
     )
   }
 
   return (
-    <div className={cartCount > 0 ? 'bg-[#FAFAFA] pb-28' : 'bg-[#FAFAFA]'}>
-      {/* Cover */}
+    <div className={`min-h-screen bg-white ${cartCount > 0 ? 'pb-24' : 'pb-24'}`}>
+      {/* Hero */}
       <div className="relative">
-        <FoodImage name={restaurant.name} src={restaurant.coverPhoto} className="h-60 w-full" glyphClassName="text-7xl" />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/10" />
+        <FoodImage name={restaurant.name} src={restaurant.coverPhoto} className="h-[280px] w-full" glyphClassName="text-7xl" />
         <button
           onClick={() => router.back()}
-          className="absolute left-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 shadow-md backdrop-blur transition active:scale-90"
+          className="absolute left-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.12)] active:scale-90"
         >
-          <ArrowLeft size={19} className="text-gray-800" />
+          <ArrowLeft size={18} className="text-[#1a1a1a]" />
         </button>
-      </div>
-
-      {/* Info card overlapping cover */}
-      <div className="relative -mt-10 rounded-t-[28px] bg-[#FAFAFA] px-5 pt-5">
-        {restaurant.logo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={restaurant.logo}
-            alt={restaurant.name}
-            className="absolute -top-9 left-5 h-[72px] w-[72px] rounded-2xl border-4 border-[#FAFAFA] object-cover shadow-lg"
-          />
-        )}
-        <div className={restaurant.logo ? 'pt-11' : ''}>
-          <h1 className="text-[26px] font-bold leading-tight tracking-tight text-[#1a1a2e]">{restaurant.name}</h1>
-          {restaurant.description && <p className="mt-1 line-clamp-2 text-sm text-gray-500">{restaurant.description}</p>}
-
-          {/* Stat chips */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[13px] font-semibold text-[#1a1a2e] shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <Star size={13} className="fill-amber-400 text-amber-400" />
-              {restaurant.rating.toFixed(1)}
-              <span className="font-normal text-gray-400">({restaurant.reviewCount})</span>
-            </span>
-            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <Clock size={13} />
-              {restaurant.deliveryTime} min
-            </span>
-            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[13px] font-medium text-gray-600 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-              <Bike size={13} />
-              {restaurant.deliveryFee.toFixed(2)}€
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-gray-400">
-            {restaurant.address}, {restaurant.city} · min. {restaurant.minOrder.toFixed(0)}€
-          </p>
+        <div className="absolute right-4 top-4 flex gap-2.5">
+          <button
+            onClick={() => { setFav((v) => !v); showToast(fav ? 'Retiré des favoris' : 'Ajouté aux favoris') }}
+            className={`flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-[0_2px_6px_rgba(0,0,0,0.12)] active:scale-90 ${fav ? 'bg-[#EF4444]' : 'bg-white'}`}
+          >
+            <Heart size={16} className={fav ? 'fill-white text-white' : 'fill-[#EF4444] text-[#EF4444]'} />
+          </button>
+          <button className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.12)] active:scale-90">
+            <Share2 size={16} className="text-[#1a1a1a]" />
+          </button>
         </div>
-      </div>
-
-      {/* Sticky category tabs */}
-      {menu.length > 0 && (
-        <div className="no-scrollbar sticky top-0 z-20 mt-4 overflow-x-auto border-b border-black/[0.05] bg-[#FAFAFA]/95 backdrop-blur-lg">
-          <div className="flex w-max gap-1 px-3">
-            {menu.map((cat) => (
-              <button
-                key={cat.category}
-                onClick={() => scrollToCategory(cat.category)}
-                className={`relative whitespace-nowrap px-3 py-3.5 text-sm font-semibold transition-colors duration-200 ${
-                  activeCategory === cat.category ? 'text-[#E8593C]' : 'text-gray-400'
-                }`}
-              >
-                {cat.category}
-                {activeCategory === cat.category && (
-                  <span className="absolute inset-x-3 bottom-0 h-[3px] rounded-full bg-[#E8593C]" />
+        {/* Thumbnail strip */}
+        {allItems.length > 0 && (
+          <div className="absolute inset-x-0 bottom-0 flex gap-2 bg-black/35 px-4 py-2.5">
+            {allItems.slice(0, 5).map((d, i) => (
+              <div key={d.id} className="relative">
+                <FoodImage name={d.name} src={d.photos?.[0]} className="h-[50px] w-[50px] rounded-[10px] border-2 border-white" glyphClassName="text-base" />
+                {i === 4 && allItems.length > 5 && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-[10px] bg-black/50 text-[13px] font-bold text-white">
+                    +{allItems.length - 5}
+                  </div>
                 )}
-              </button>
+              </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Menu */}
-      <div className="px-5 pb-6">
-        {menu.map((cat) => (
-          <div
-            key={cat.category}
-            ref={(el) => {
-              categoryRefs.current[cat.category] = el
-            }}
-            className="scroll-mt-16 pt-6"
+      {/* Sticky tabs */}
+      <div className="sticky top-0 z-20 flex border-b border-[#f0f0f0] bg-white">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 border-b-[2.5px] py-3.5 text-[13px] ${
+              activeTab === tab ? 'border-[#F97316] font-extrabold text-[#F97316]' : 'border-transparent font-semibold text-[#aaa]'
+            }`}
           >
-            <h2 className="mb-3 text-xl font-bold tracking-tight text-[#1a1a2e]">{cat.category}</h2>
-            <div className="space-y-3">
-              {cat.items.map((item) => {
-                const cartItem = cart.find((c) => c.item.id === item.id)
-                return (
-                  <div
-                    key={item.id}
-                    className="flex gap-4 rounded-[20px] bg-white p-3.5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[15px] font-bold leading-tight text-[#1a1a2e]">{item.name}</p>
-                        {item.isPopular && (
-                          <span className="rounded-full bg-[#FFF7F3] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#E8593C]">
-                            Populaire
-                          </span>
-                        )}
-                      </div>
-                      {item.description && (
-                        <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-gray-400">{item.description}</p>
-                      )}
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-[15px] font-bold text-[#1a1a2e]">{item.price.toFixed(2)}€</span>
-                        {item.comparePrice && item.comparePrice > item.price && (
-                          <span className="text-xs text-gray-400 line-through">{item.comparePrice.toFixed(2)}€</span>
-                        )}
-                        {item.calories ? <span className="text-[11px] text-gray-400">· {item.calories} kcal</span> : null}
-                      </div>
-                    </div>
+            {tab}
+          </button>
+        ))}
+      </div>
 
-                    <div className="relative shrink-0">
-                      <FoodImage name={item.name} src={item.photos?.[0]} className="h-24 w-24 rounded-2xl" glyphClassName="text-3xl" />
-                      {cartItem ? (
-                        <div className="absolute -bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white p-1 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
-                          <button
-                            onClick={() => removeFromCart(item.id)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FFF7F3] text-[#E8593C] transition active:scale-90"
-                          >
-                            <Minus size={13} strokeWidth={3} />
+      {/* Info section */}
+      <div className="px-4 pb-2 pt-4">
+        <div className="mb-1.5 flex justify-end">
+          <span className="flex items-center gap-1">
+            <Star size={14} className="fill-[#F97316] text-[#F97316]" />
+            <span className="text-[15px] font-extrabold text-[#1a1a1a]">{restaurant.rating.toFixed(1)}</span>
+            <span className="text-[13px] text-[#888]">({(restaurant.reviewCount / 1000).toFixed(1)}K)</span>
+          </span>
+        </div>
+        <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{restaurant.name}</h1>
+        <p className="mb-1.5 text-[13px] text-[#555]">{Array.isArray(restaurant.cuisine) ? restaurant.cuisine.join(', ') : ''}</p>
+        <div className="mb-2 flex items-center gap-1">
+          <MapPin size={13} className="text-[#888]" />
+          <span className="truncate text-[13px] text-[#555]">{restaurant.address}, {restaurant.city}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <span className="flex items-center gap-1 text-xs text-[#888]">
+            <MapPin size={12} /> {restaurant.deliveryFee === 0 ? 'Livraison gratuite' : `${restaurant.deliveryFee.toFixed(2)} €`}
+          </span>
+          <span className="flex items-center gap-1 text-xs text-[#888]">
+            <Clock size={12} /> {restaurant.deliveryTime} Min
+          </span>
+          <button onClick={() => setActiveTab('Avis')} className="text-[13px] font-semibold text-[#F97316]">Avis</button>
+        </div>
+      </div>
+
+      {/* Menu tab */}
+      {activeTab === 'Menu' && (
+        <div className="px-4 pt-3">
+          <p className="mb-3 text-[17px] font-extrabold text-[#1a1a1a]">
+            Menu <span className="text-[#F97316]">({allItems.length} Articles)</span>
+          </p>
+
+          <div className="mb-3 flex items-center gap-2.5">
+            <div className="flex flex-1 items-center gap-2 rounded-xl bg-[#f5f5f5] px-3 py-2.5">
+              <Search size={14} className="text-[#bbb]" />
+              <input
+                value={menuSearch}
+                onChange={(e) => setMenuSearch(e.target.value)}
+                placeholder="Chercher des articles"
+                className="flex-1 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {categories.length > 1 && (
+            <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
+              {categories.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setMenuFilter(f)}
+                  className={`shrink-0 rounded-[20px] border-[1.5px] px-3.5 py-2 text-xs font-semibold active:scale-95 ${
+                    menuFilter === f ? 'border-[#F97316] bg-[#F97316] text-white' : 'border-transparent bg-[#f5f5f5] text-[#555]'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {filtered.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[#888]">Aucun article trouvé</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 pb-2">
+              {filtered.map((dish) => {
+                const q = qty[dish.id] ?? 0
+                return (
+                  <div key={dish.id} className="rounded-[14px] bg-white pb-2.5 shadow-bolt-card">
+                    <div className="relative">
+                      <FoodImage name={dish.name} src={dish.photos?.[0]} className="h-[115px] w-full rounded-t-[14px]" glyphClassName="text-3xl" />
+                      {dish.comparePrice && dish.comparePrice > dish.price && (
+                        <span className="absolute left-1.5 top-1.5 rounded-lg bg-[#22C55E] px-1.5 py-[3px] text-[9px] font-bold text-white">
+                          PROMO
+                        </span>
+                      )}
+                      {q > 0 ? (
+                        <div className="absolute -bottom-3 right-2 flex items-center gap-1 rounded-full bg-white p-1 shadow-[0_2px_8px_rgba(0,0,0,0.15)]">
+                          <button onClick={() => remove(dish)} className="flex h-6 w-6 items-center justify-center rounded-full bg-[#FFF3ED] text-[#F97316] active:scale-90">
+                            <Minus size={12} strokeWidth={3} />
                           </button>
-                          <span className="w-4 text-center text-sm font-bold text-[#1a1a2e]">{cartItem.qty}</span>
-                          <button
-                            onClick={() => addToCart(item)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E8593C] text-white transition active:scale-90"
-                          >
-                            <Plus size={13} strokeWidth={3} />
+                          <span className="w-4 text-center text-xs font-bold">{q}</span>
+                          <button onClick={() => add(dish)} className="flex h-6 w-6 items-center justify-center rounded-full bg-[#F97316] text-white active:scale-90">
+                            <Plus size={12} strokeWidth={3} />
                           </button>
                         </div>
                       ) : (
                         <button
-                          onClick={() => addToCart(item)}
-                          className="absolute -bottom-2.5 right-1 flex h-9 w-9 items-center justify-center rounded-full bg-[#E8593C] text-white shadow-[0_4px_16px_rgba(232,89,60,0.4)] transition active:scale-90"
-                          aria-label={`Ajouter ${item.name}`}
+                          onClick={() => add(dish)}
+                          className="absolute -bottom-3 right-2 flex h-8 w-8 items-center justify-center rounded-full border border-[#f0f0f0] bg-white text-[#F97316] shadow-[0_2px_8px_rgba(0,0,0,0.12)] active:scale-90"
+                          aria-label={`Ajouter ${dish.name}`}
                         >
-                          <Plus size={17} strokeWidth={3} />
+                          <Plus size={16} strokeWidth={3} />
                         </button>
                       )}
+                    </div>
+                    <div className="px-2.5 pt-3.5">
+                      <p className="truncate text-[13px] font-bold text-[#1a1a1a]">{dish.name}</p>
+                      <div className="mt-1 flex items-center gap-1 text-[10px] text-[#aaa]">
+                        <Star size={11} className="fill-[#F97316] text-[#F97316]" />
+                        {restaurant.rating.toFixed(1)}
+                      </div>
+                      <p className="mt-1 text-sm font-extrabold text-[#F97316]">{dish.price.toFixed(2)} €</p>
                     </div>
                   </div>
                 )
               })}
             </div>
-          </div>
-        ))}
-        {menu.length === 0 && (
-          <div className="py-16 text-center">
-            <div className="mb-2 text-4xl">🍽️</div>
-            <p className="text-sm text-gray-500">Le menu arrive bientôt</p>
-          </div>
-        )}
-      </div>
-
-      {/* Floating cart bar */}
-      {cartCount > 0 && (
-        <div className="fixed bottom-0 left-1/2 z-40 w-full max-w-[480px] -translate-x-1/2 px-5 pb-5">
-          <button
-            onClick={goToCart}
-            disabled={cartSubtotal < restaurant.minOrder}
-            className="flex w-full items-center justify-between rounded-2xl bg-[#E8593C] px-5 py-4 text-white shadow-[0_8px_32px_rgba(232,89,60,0.45)] transition active:scale-[0.98] disabled:opacity-70"
-          >
-            <span className="flex items-center gap-3">
-              <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white px-1.5 text-sm font-bold text-[#E8593C]">
-                {cartCount}
-              </span>
-              <span className="font-bold">
-                {cartSubtotal < restaurant.minOrder
-                  ? `Encore ${(restaurant.minOrder - cartSubtotal).toFixed(2)}€`
-                  : 'Voir le panier'}
-              </span>
-            </span>
-            <span className="flex items-center gap-2 font-bold">
-              {cartSubtotal.toFixed(2)}€
-              <ShoppingBag size={19} />
-            </span>
-          </button>
+          )}
         </div>
       )}
+
+      {/* About tab */}
+      {activeTab === 'À propos' && (
+        <div className="p-4">
+          <h2 className="mb-2.5 text-[17px] font-extrabold text-[#1a1a1a]">À propos de {restaurant.name}</h2>
+          <p className="mb-4 text-sm leading-relaxed text-[#555]">{restaurant.description || 'Restaurant partenaire Grubano.'}</p>
+          <div className="space-y-3 rounded-[14px] bg-[#f8f8f8] p-4">
+            <div className="flex items-center gap-2.5"><MapPin size={15} className="text-[#F97316]" /><span className="text-sm text-[#444]">{restaurant.address}, {restaurant.city}</span></div>
+            <div className="flex items-center gap-2.5"><Clock size={15} className="text-[#F97316]" /><span className="text-sm text-[#444]">Lun–Dim : 10h00 – 23h00</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* Gallery tab */}
+      {activeTab === 'Galerie' && (
+        <div className="grid grid-cols-3 gap-1 p-2">
+          {galleryItems.map((d) => (
+            <FoodImage key={d.id} name={d.name} src={d.photos?.[0]} className="aspect-square w-full rounded-lg" glyphClassName="text-2xl" />
+          ))}
+          {galleryItems.length === 0 && <p className="col-span-3 py-12 text-center text-sm text-[#888]">Galerie bientôt disponible</p>}
+        </div>
+      )}
+
+      {/* Reviews tab */}
+      {activeTab === 'Avis' && (
+        <div className="p-4">
+          <div className="mb-4 flex flex-col items-center rounded-2xl bg-[#f8f8f8] py-5">
+            <span className="text-[48px] font-extrabold text-[#1a1a1a]">{restaurant.rating.toFixed(1)}</span>
+            <div className="my-1.5 flex gap-1">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star key={s} size={18} className={s <= Math.round(restaurant.rating) ? 'fill-[#F97316] text-[#F97316]' : 'text-[#ddd]'} />
+              ))}
+            </div>
+            <span className="text-[13px] text-[#888]">{restaurant.reviewCount.toLocaleString()} avis</span>
+          </div>
+          {SAMPLE_REVIEWS.map((r, i) => (
+            <div key={i} className="mb-2.5 rounded-[14px] bg-[#f8f8f8] p-3.5">
+              <div className="mb-2 flex items-center gap-2.5">
+                <div className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-[#F97316] text-base font-bold text-white">{r.name[0]}</div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-[#1a1a1a]">{r.name}</p>
+                  <p className="text-[11px] text-[#aaa]">{r.date}</p>
+                </div>
+                <span className="flex items-center gap-1 text-[13px] font-bold"><Star size={12} className="fill-[#F97316] text-[#F97316]" />{r.rating}</span>
+              </div>
+              <p className="text-[13px] leading-5 text-[#555]">{r.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Bottom bar: cart (if items) else book a table */}
+      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-[#f0f0f0] bg-white px-4 py-3.5">
+        {cartCount > 0 ? (
+          <button
+            onClick={() => router.push('/eat/cart')}
+            className="flex w-full items-center justify-between rounded-[30px] bg-[#F97316] px-6 py-4 text-white shadow-bolt-cta active:scale-[0.98]"
+          >
+            <span className="flex items-center gap-2.5">
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white px-1.5 text-xs font-bold text-[#F97316]">{cartCount}</span>
+              <span className="font-bold">Voir le panier</span>
+            </span>
+            <span className="flex items-center gap-2 font-bold">{cartTotal.toFixed(2)} € <ShoppingBag size={18} /></span>
+          </button>
+        ) : (
+          <button
+            onClick={() => showToast('Réservation de table bientôt disponible')}
+            className="w-full rounded-[30px] bg-[#F97316] py-4 text-base font-bold text-white shadow-bolt-cta active:scale-[0.98]"
+          >
+            Réserver une table
+          </button>
+        )}
+      </div>
     </div>
   )
 }
