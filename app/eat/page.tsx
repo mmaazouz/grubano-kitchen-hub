@@ -121,6 +121,17 @@ export default function HomeScreen() {
   const [activeCat, setActiveCat] = useState('Burger')
   const bannerRef = useRef<HTMLDivElement>(null)
 
+  // First visit of the session → play the splash once.
+  useEffect(() => {
+    try {
+      if (!sessionStorage.getItem('grubano_splash_seen')) {
+        router.replace('/eat/splash')
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [router])
+
   useEffect(() => {
     fetch('/api/restaurants?take=20&sort=rating')
       .then((r) => r.json())

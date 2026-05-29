@@ -23,7 +23,7 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 // Deep / immersive screens that hide the tab bar (Bolt = Stack screens).
-const HIDDEN_PREFIXES = ['/eat/r/', '/eat/track', '/eat/dish/']
+const HIDDEN_PREFIXES = ['/eat/r/', '/eat/track', '/eat/dish/', '/eat/splash']
 
 export default function BottomNav() {
   const pathname = usePathname()
