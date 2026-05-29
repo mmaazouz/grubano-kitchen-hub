@@ -72,11 +72,23 @@ if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
 export const authOptions: NextAuthOptions = {
   adapter:   PrismaAdapter(prisma) as NextAuthOptions['adapter'],
   session:   { strategy: 'jwt' },
-  pages:     { signIn: '/login' },
+  // Single unified sign-in page (Bolt consumer design) handles ALL roles.
+  pages:     { signIn: '/eat/auth' },
 
   providers,
 
   callbacks: {
+    // Keep OAuth (e.g. Google) redirects inside the app; default consumers to /eat.
+    async redirect({ url, baseUrl }) {
+      // Relative callbackUrl → resolve against baseUrl
+      if (url.startsWith('/')) return `${baseUrl}${url}`
+      try {
+        if (new URL(url).origin === baseUrl) return url
+      } catch {
+        /* ignore malformed url */
+      }
+      return `${baseUrl}/eat`
+    },
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role?: string }).role ?? 'consumer'

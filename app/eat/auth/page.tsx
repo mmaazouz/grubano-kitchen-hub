@@ -8,6 +8,25 @@ import { showToast } from '@/lib/eat-cart'
 
 type Tab = 'login' | 'register'
 
+// One unified sign-in for every role → route by role after login.
+const ROLE_REDIRECTS: Record<string, string> = {
+  restaurant: '/dashboard',
+  admin: '/dashboard',
+  franchise: '/franchise',
+  creator: '/creators',
+  consumer: '/eat',
+}
+
+async function routeByRole(router: ReturnType<typeof useRouter>) {
+  try {
+    const session = await fetch('/api/auth/session').then((r) => r.json())
+    const role = session?.user?.role ?? 'consumer'
+    router.push(ROLE_REDIRECTS[role] ?? '/eat')
+  } catch {
+    router.push('/eat')
+  }
+}
+
 export default function AuthScreen() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('login')
@@ -56,12 +75,30 @@ export default function AuthScreen() {
     }
 
     const result = await signIn('credentials', { email, password, redirect: false })
-    setLoading(false)
     if (result?.error) {
       setError('Email ou mot de passe incorrect')
+      setLoading(false)
       return
     }
-    router.push('/eat')
+    await routeByRole(router)
+    setLoading(false)
+  }
+
+  async function demoLogin() {
+    setError('')
+    setLoading(true)
+    const result = await signIn('credentials', {
+      email: 'test@grubano.com',
+      password: 'Test1234!',
+      redirect: false,
+    })
+    if (result?.error) {
+      setError("Compte démo indisponible. Lancez le seed sur le serveur (prisma/seed-test-user.js).")
+      setLoading(false)
+      return
+    }
+    await routeByRole(router)
+    setLoading(false)
   }
 
   function social(provider: 'google' | 'apple') {
@@ -168,6 +205,15 @@ export default function AuthScreen() {
           Apple
         </button>
       </div>
+
+      {/* Demo account */}
+      <button
+        onClick={demoLogin}
+        disabled={loading}
+        className="mt-4 w-full rounded-[14px] border-[1.5px] border-dashed border-[#F97316] bg-[#FFF3ED] py-3 text-sm font-bold text-[#F97316] active:scale-[0.98] disabled:opacity-60"
+      >
+        🚀 Tester avec un compte démo
+      </button>
 
       {/* Switch */}
       <p className="mt-7 text-center text-sm text-[#555]">
