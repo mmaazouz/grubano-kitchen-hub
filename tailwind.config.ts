@@ -43,6 +43,29 @@ const config: Config = {
           marine:        '#1a1a2e',
           'marine-light':'#252547',
         },
+
+        // ── Bolt consumer-app design tokens (/eat only) ──────────────────────
+        bolt: {
+          primary:     '#F97316',
+          'primary-dark': '#EA6A0C',
+          tint:        '#FFF3ED',
+          ink:         '#1a1a1a',
+          bg:          '#f5f5f5',
+          surface:     '#ffffff',
+          muted:       '#888888',
+          faint:       '#aaaaaa',
+          line:        '#f0f0f0',
+          success:     '#22C55E',
+          danger:      '#EF4444',
+          'danger-bg': '#FEE2E2',
+        },
+      },
+
+      // ── Bolt soft shadows (/eat only) ──────────────────────────────────
+      boxShadow: {
+        'bolt-card': '0 2px 8px rgba(0,0,0,0.06)',
+        'bolt-soft': '0 2px 8px rgba(0,0,0,0.05)',
+        'bolt-cta':  '0 4px 10px rgba(249,115,22,0.3)',
       },
 
       // ── Border radius ──────────────────────────────────────────────────
