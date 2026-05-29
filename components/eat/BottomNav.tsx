@@ -7,13 +7,20 @@ import { Home, Compass, Heart, ShoppingBag, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { cartCount, CART_EVENT } from '@/lib/eat-cart'
 
-const NAV_ITEMS = [
+interface NavItem {
+  href: string
+  icon: typeof Home
+  label: string
+  isCart?: boolean
+}
+
+const NAV_ITEMS: NavItem[] = [
   { href: '/eat', icon: Home, label: 'Accueil' },
   { href: '/eat/search', icon: Compass, label: 'Explorer' },
   { href: '/eat/favorites', icon: Heart, label: 'Favoris' },
   { href: '/eat/cart', icon: ShoppingBag, label: 'Panier', isCart: true },
   { href: '/eat/account', icon: User, label: 'Profil' },
-] as const
+]
 
 // Deep / immersive screens that hide the tab bar (Bolt = Stack screens).
 const HIDDEN_PREFIXES = ['/eat/r/', '/eat/track', '/eat/dish/']
