@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
-import { Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, User as UserIcon, ArrowLeft } from 'lucide-react'
+import { showToast } from '@/lib/eat-cart'
 
 type Tab = 'login' | 'register'
 
-export default function AuthPage() {
+export default function AuthScreen() {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('login')
   const [name, setName] = useState('')
@@ -16,12 +17,22 @@ export default function AuthPage() {
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [providers, setProviders] = useState<Record<string, unknown>>({})
+
+  useEffect(() => {
+    fetch('/api/auth/providers')
+      .then((r) => r.json())
+      .then((p) => setProviders(p ?? {}))
+      .catch(() => setProviders({}))
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    setNotice('')
+    if (!email || !password || (tab === 'register' && !name)) {
+      setError('Veuillez remplir tous les champs.')
+      return
+    }
     setLoading(true)
 
     if (tab === 'register') {
@@ -46,175 +57,126 @@ export default function AuthPage() {
 
     const result = await signIn('credentials', { email, password, redirect: false })
     setLoading(false)
-
     if (result?.error) {
       setError('Email ou mot de passe incorrect')
       return
     }
-    router.push('/eat/account')
+    router.push('/eat')
   }
 
-  function handleGoogle() {
-    setError('')
-    setNotice('Connexion Google bientôt disponible. Utilisez votre email pour le moment.')
+  function social(provider: 'google' | 'apple') {
+    if (providers[provider]) {
+      signIn(provider, { callbackUrl: '/eat' })
+    } else {
+      showToast(`Connexion ${provider === 'google' ? 'Google' : 'Apple'} bientôt disponible`)
+    }
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#FAFAFA]">
-      {/* Brand header */}
-      <div className="relative overflow-hidden rounded-b-[28px] bg-gradient-to-br from-[#E8593C] to-[#B11E2F] px-6 pb-12 pt-16 text-center text-white">
-        <div
-          className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-30"
-          style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.6), transparent 60%)' }}
-        />
-        <div className="relative">
-          <div className="mx-auto mb-3 flex h-[68px] w-[68px] items-center justify-center rounded-3xl bg-white/15 text-4xl backdrop-blur">
-            🍽️
-          </div>
-          <h1 className="text-[26px] font-bold tracking-tight">Grubano</h1>
-          <p className="mt-1 text-sm text-white/85">Vos restos préférés, livrés vite</p>
-        </div>
+    <div className="min-h-screen bg-white px-6 pb-10 pt-4">
+      <button onClick={() => router.push('/eat')} className="mb-6 flex h-10 w-10 items-center justify-center rounded-xl bg-[#f5f5f5] active:scale-90">
+        <ArrowLeft size={22} className="text-[#1a1a1a]" />
+      </button>
+
+      {/* Logo */}
+      <div className="mb-7 flex flex-col items-center">
+        <div className="mb-2.5 flex h-[70px] w-[70px] items-center justify-center rounded-full bg-[#FFF3ED] text-[32px]">🍽️</div>
+        <p className="text-[22px] font-extrabold text-[#F97316]">Grubano</p>
       </div>
 
-      {/* Card */}
-      <div className="flex-1 px-5 pt-6">
-        <div className="mx-auto max-w-sm rounded-[24px] bg-white p-5 shadow-[0_8px_32px_rgba(0,0,0,0.08)]">
-          {/* Tabs */}
-          <div className="mb-5 flex rounded-2xl bg-gray-100 p-1">
-            {(['login', 'register'] as Tab[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  setTab(t)
-                  setError('')
-                  setNotice('')
-                }}
-                className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition-all duration-200 ${
-                  tab === t ? 'bg-white text-[#E8593C] shadow-sm' : 'text-gray-500'
-                }`}
-              >
-                {t === 'login' ? 'Connexion' : 'Inscription'}
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-3.5">
-            {tab === 'register' && (
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-700">Prénom & nom</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  placeholder="Jean Dupont"
-                  className="w-full rounded-2xl border border-black/[0.06] bg-[#FAFAFA] px-4 py-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-gray-700">Adresse email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="jean@example.com"
-                autoComplete="email"
-                className="w-full rounded-2xl border border-black/[0.06] bg-[#FAFAFA] px-4 py-3 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-gray-700">Mot de passe</label>
-              <div className="relative">
-                <input
-                  type={showPwd ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={tab === 'register' ? 8 : 1}
-                  placeholder={tab === 'register' ? 'Min. 8 caractères' : '••••••••'}
-                  autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
-                  className="w-full rounded-2xl border border-black/[0.06] bg-[#FAFAFA] px-4 py-3 pr-10 text-sm transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-200"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                >
-                  {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            {error && <p className="rounded-2xl bg-red-50 px-3 py-2.5 text-center text-sm text-red-600">{error}</p>}
-            {notice && <p className="rounded-2xl bg-amber-50 px-3 py-2.5 text-center text-sm text-amber-700">{notice}</p>}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-3.5 text-base font-bold text-white shadow-[0_4px_24px_rgba(232,89,60,0.35)] transition active:scale-[0.98] disabled:bg-orange-300"
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" /> Chargement…
-                </>
-              ) : tab === 'login' ? (
-                'Se connecter'
-              ) : (
-                'Créer mon compte'
-              )}
-            </button>
-          </form>
-
-          {/* Divider */}
-          <div className="my-4 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-100" />
-            <span className="text-xs text-gray-400">ou</span>
-            <div className="h-px flex-1 bg-gray-100" />
-          </div>
-
-          {/* Google */}
+      {/* Tabs */}
+      <div className="mb-6 flex rounded-2xl bg-[#f5f5f5] p-1">
+        {(['login', 'register'] as Tab[]).map((t) => (
           <button
-            onClick={handleGoogle}
-            className="flex w-full items-center justify-center gap-2.5 rounded-2xl border border-black/[0.1] bg-white py-3 text-sm font-semibold text-gray-700 transition active:scale-[0.98]"
+            key={t}
+            onClick={() => { setTab(t); setError('') }}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition-all ${tab === t ? 'bg-white text-[#F97316] shadow-sm' : 'text-[#888]'}`}
           >
-            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-              <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
-              <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
-              <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
-              <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
-            </svg>
-            Continuer avec Google
+            {t === 'login' ? 'Connexion' : 'Inscription'}
           </button>
+        ))}
+      </div>
+
+      <h1 className="font-sans text-[26px] font-extrabold text-[#1a1a1a]">{tab === 'login' ? 'Connexion' : 'Créer un compte'}</h1>
+      <p className="mb-6 mt-1.5 text-sm text-[#888]">
+        {tab === 'login' ? 'Bienvenue ! Connectez-vous à votre compte.' : 'Rejoignez Grubano en quelques secondes.'}
+      </p>
+
+      {error && <p className="mb-4 rounded-[10px] bg-[#FEE2E2] p-3 text-[13px] text-[#DC2626]">{error}</p>}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {tab === 'register' && (
+          <div>
+            <label className="mb-2 block text-[13px] font-semibold text-[#444]">Nom complet</label>
+            <div className="flex items-center rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] px-3.5 py-3.5">
+              <UserIcon size={18} className="mr-2.5 text-[#aaa]" />
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jean Dupont" className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
+            </div>
+          </div>
+        )}
+
+        <div>
+          <label className="mb-2 block text-[13px] font-semibold text-[#444]">Adresse email</label>
+          <div className="flex items-center rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] px-3.5 py-3.5">
+            <Mail size={18} className="mr-2.5 text-[#aaa]" />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="votre@email.com" autoCapitalize="none" className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
+          </div>
         </div>
 
-        <p className="mt-5 text-center text-sm text-gray-500">
-          {tab === 'login' ? (
-            <>
-              Pas encore de compte ?{' '}
-              <button onClick={() => setTab('register')} className="font-bold text-[#E8593C]">
-                S&apos;inscrire
-              </button>
-            </>
-          ) : (
-            <>
-              Déjà un compte ?{' '}
-              <button onClick={() => setTab('login')} className="font-bold text-[#E8593C]">
-                Se connecter
-              </button>
-            </>
-          )}
-        </p>
+        <div>
+          <label className="mb-2 block text-[13px] font-semibold text-[#444]">Mot de passe</label>
+          <div className="flex items-center rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] px-3.5 py-3.5">
+            <Lock size={18} className="mr-2.5 text-[#aaa]" />
+            <input type={showPwd ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" minLength={tab === 'register' ? 8 : 1} className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
+            <button type="button" onClick={() => setShowPwd((v) => !v)}>{showPwd ? <EyeOff size={18} className="text-[#aaa]" /> : <Eye size={18} className="text-[#aaa]" />}</button>
+          </div>
+        </div>
 
-        {tab === 'register' && (
-          <p className="mx-auto mt-4 max-w-sm pb-6 text-center text-[10px] leading-relaxed text-gray-400">
-            En créant un compte vous acceptez nos conditions d&apos;utilisation et notre politique de confidentialité.
-          </p>
+        {tab === 'login' && (
+          <button type="button" onClick={() => showToast('Réinitialisation bientôt disponible')} className="ml-auto block text-[13px] font-semibold text-[#F97316]">
+            Mot de passe oublié ?
+          </button>
         )}
+
+        <button type="submit" disabled={loading} className="w-full rounded-[30px] bg-[#F97316] py-4 text-[17px] font-bold text-white shadow-bolt-cta active:scale-[0.98] disabled:opacity-70">
+          {loading ? 'Chargement…' : tab === 'login' ? 'Se connecter' : 'Créer mon compte'}
+        </button>
+      </form>
+
+      {/* Divider */}
+      <div className="my-5 flex items-center gap-3">
+        <div className="h-px flex-1 bg-[#eee]" />
+        <span className="text-[13px] text-[#aaa]">ou continuer avec</span>
+        <div className="h-px flex-1 bg-[#eee]" />
       </div>
+
+      {/* Social */}
+      <div className="flex gap-3">
+        <button onClick={() => social('google')} className="flex flex-1 items-center justify-center gap-2 rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] py-3.5 text-sm font-semibold text-[#333] active:scale-95">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+            <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
+            <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+            <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
+            <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+          </svg>
+          Google
+        </button>
+        <button onClick={() => social('apple')} className="flex flex-1 items-center justify-center gap-2 rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] py-3.5 text-sm font-semibold text-[#333] active:scale-95">
+          <svg width="16" height="18" viewBox="0 0 16 18" fill="#1a1a1a" aria-hidden>
+            <path d="M13.3 9.6c0-2 1.6-3 1.7-3a3.6 3.6 0 0 0-2.9-1.5c-1.2-.1-2.4.7-3 .7s-1.6-.7-2.6-.7A3.8 3.8 0 0 0 3.3 7c-1.4 2.4-.4 6 1 8 .6 1 1.4 2 2.4 2s1.3-.6 2.5-.6 1.5.6 2.5.6 1.7-1 2.3-2a8.6 8.6 0 0 0 1-2.1c-.1 0-2-.8-2-3zM11.4 3.3c.5-.7.9-1.6.8-2.5-.8 0-1.7.5-2.3 1.2-.5.6-.9 1.5-.8 2.4.9.1 1.8-.4 2.3-1.1z" />
+          </svg>
+          Apple
+        </button>
+      </div>
+
+      {/* Switch */}
+      <p className="mt-7 text-center text-sm text-[#555]">
+        {tab === 'login' ? (
+          <>Pas encore de compte ? <button onClick={() => setTab('register')} className="font-bold text-[#F97316]">S&apos;inscrire</button></>
+        ) : (
+          <>Déjà un compte ? <button onClick={() => setTab('login')} className="font-bold text-[#F97316]">Se connecter</button></>
+        )}
+      </p>
     </div>
   )
 }
