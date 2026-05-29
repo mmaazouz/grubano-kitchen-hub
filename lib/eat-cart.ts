@@ -5,15 +5,40 @@
 // from the restaurant page to the cart page. These helpers centralise reads
 // + change notifications so the BottomNav badge and Toast can react.
 
+/** Customizations chosen for a dish. */
+export interface EatCartItemOptions {
+  /** Parent menu-item id (line id may differ if size/extras vary). */
+  parentDishId?: string
+  /** Size label (Petite / Moyenne / Grande). */
+  size?: string
+  /** Chosen supplements with their per-item price. */
+  supplements?: { name: string; price: number }[]
+  /** Excluded ingredients (sans oignon, sans gluten…). */
+  exclusions?: string[]
+  /** Free-form note from the customer. */
+  note?: string
+}
+
 export interface EatCartLineItem {
+  /** `item.id` is the LINE id (dish id, or composite when customised). */
   item: { id: string; name: string; price: number; photos: string[] }
   qty: number
+  /** Per-line customisations. Sent to /api/orders as `options[]`. */
+  options?: EatCartItemOptions
 }
 
 export interface EatCartData {
   restaurantId: string
   items: EatCartLineItem[]
-  restaurant: { name: string; deliveryFee: number; minOrder: number }
+  restaurant: {
+    name: string
+    deliveryFee: number
+    minOrder: number
+    /** Used by the cart's pickup mode and fallback fetches. */
+    address?: string
+    city?: string
+    deliveryTime?: number
+  }
 }
 
 const KEY = 'grubano_cart'

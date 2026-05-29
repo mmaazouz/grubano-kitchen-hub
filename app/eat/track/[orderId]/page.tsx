@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Navigation, MessageCircle, Phone } from 'lucide-react'
 import FoodImage from '@/components/eat/FoodImage'
+import { Button } from '@/components/design-system'
+import { getFoodImage, inferCategory } from '@/lib/food-images'
 
 interface Order {
   id: string
@@ -178,7 +180,12 @@ export default function OrderTrackingScreen() {
         <p className="mb-3 text-base font-extrabold text-[#1a1a1a]">Articles</p>
         {order.items.map((item, i) => (
           <div key={i} className="mb-3.5 flex items-center gap-3 border-b border-[#f8f8f8] pb-3.5 last:border-0">
-            <FoodImage name={item.name} className="h-14 w-14 shrink-0 rounded-[10px]" glyphClassName="text-xl" />
+            <FoodImage
+              name={item.name}
+              src={getFoodImage(inferCategory(item.name), item.name)}
+              className="h-14 w-14 shrink-0 rounded-[10px]"
+              glyphClassName="text-xl"
+            />
             <div className="flex-1">
               <p className="text-sm font-bold text-[#1a1a1a]">{item.name}</p>
               <p className="mt-0.5 text-xs text-[#888]">x{item.qty}</p>
@@ -199,12 +206,11 @@ export default function OrderTrackingScreen() {
           </div>
         )}
 
-        <button
-          onClick={() => router.push('/eat')}
-          className="mb-6 w-full rounded-[30px] bg-[#F97316] py-4 text-base font-bold text-white shadow-bolt-cta active:scale-[0.98]"
-        >
-          Retour à l&apos;accueil
-        </button>
+        <div className="mb-6">
+          <Button variant="primary" size="pill" fullWidth onClick={() => router.push('/eat')}>
+            Retour à l&apos;accueil
+          </Button>
+        </div>
       </div>
     </div>
   )

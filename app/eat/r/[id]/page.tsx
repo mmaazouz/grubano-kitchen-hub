@@ -1,10 +1,31 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Heart, Share2, Star, Clock, MapPin, Search, Plus, Minus, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Heart, Share2, Clock, MapPin, Search, ShoppingBag } from 'lucide-react'
+import {
+  DishCard,
+  Modal,
+  Button,
+  Badge,
+  StarRating,
+  CategoryPill,
+  EmptyState,
+  Input,
+  Skeleton,
+} from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
-import { readCart, writeCart, showToast, isFav, toggleFav, type EatCartData } from '@/lib/eat-cart'
+import {
+  readCart,
+  writeCart,
+  showToast,
+  isFav,
+  toggleFav,
+  type EatCartData,
+  type EatCartLineItem,
+  type EatCartItemOptions,
+} from '@/lib/eat-cart'
+import { getFoodImage, getRestaurantCover, inferCategory, type FoodCategory } from '@/lib/food-images'
 
 interface MenuItem {
   id: string
@@ -39,11 +60,54 @@ interface RestaurantInfo {
 const TABS = ['Menu', 'À propos', 'Galerie', 'Avis'] as const
 type Tab = (typeof TABS)[number]
 
+const SIZE_OPTIONS = [
+  { label: 'Petite', premium: 0 },
+  { label: 'Moyenne', premium: 2 },
+  { label: 'Grande', premium: 4 },
+] as const
+
+const SUPPLEMENT_OPTIONS = [
+  { name: 'Fromage', price: 1 },
+  { name: 'Bacon', price: 1.5 },
+  { name: 'Œuf', price: 1 },
+  { name: 'Champignons', price: 1 },
+  { name: 'Avocat', price: 1.5 },
+] as const
+
+const EXCLUSION_OPTIONS = ['Sans oignon', 'Sans gluten', 'Sans lactose', 'Sans gras']
+
 const SAMPLE_REVIEWS = [
   { name: 'Marie D.', text: 'Excellent service, plats délicieux !', rating: 5, date: 'il y a 2 j' },
   { name: 'Jean-Luc M.', text: 'Livraison rapide et nourriture chaude.', rating: 4, date: 'il y a 5 j' },
   { name: 'Sophie B.', text: 'Portions généreuses et prix raisonnables.', rating: 5, date: 'il y a 1 sem' },
 ]
+
+/** Stable signature for grouping cart lines by their customisation. */
+function signatureOf(opts?: EatCartItemOptions): string {
+  if (!opts) return ''
+  const parts = [
+    opts.size ?? '',
+    (opts.supplements ?? []).map((s) => s.name).sort().join('+'),
+    (opts.exclusions ?? []).slice().sort().join('+'),
+    (opts.note ?? '').trim(),
+  ]
+  return parts.join('|')
+}
+
+function lineKeyFor(dishId: string, opts?: EatCartItemOptions): string {
+  const sig = signatureOf(opts)
+  return sig ? `${dishId}::${sig}` : dishId
+}
+
+/** Build a short human description like "Moyenne · Fromage, Bacon · sans oignon". */
+function summariseOptions(opts?: EatCartItemOptions): string | null {
+  if (!opts) return null
+  const bits: string[] = []
+  if (opts.size) bits.push(opts.size)
+  if (opts.supplements?.length) bits.push(opts.supplements.map((s) => s.name).join(', '))
+  if (opts.exclusions?.length) bits.push(opts.exclusions.join(', '))
+  return bits.length ? bits.join(' · ') : null
+}
 
 export default function RestaurantScreen() {
   const { id } = useParams<{ id: string }>()
@@ -56,8 +120,8 @@ export default function RestaurantScreen() {
   const [menuSearch, setMenuSearch] = useState('')
   const [menuFilter, setMenuFilter] = useState('Tout')
   const [fav, setFav] = useState(false)
-  // qty per menu-item id
-  const [qty, setQty] = useState<Record<string, number>>({})
+  const [cart, setCart] = useState<EatCartData | null>(null)
+  const [modalDish, setModalDish] = useState<MenuItem | null>(null)
 
   useEffect(() => {
     fetch(`/api/restaurants/${id}`)
@@ -65,13 +129,8 @@ export default function RestaurantScreen() {
       .then((d) => {
         setRestaurant(d.restaurant)
         setMenu(d.menu ?? [])
-        // hydrate qty from an existing cart for this same restaurant
         const existing = readCart()
-        if (existing && existing.restaurantId === id) {
-          const map: Record<string, number> = {}
-          existing.items.forEach((l) => (map[l.item.id] = l.qty))
-          setQty(map)
-        }
+        if (existing && existing.restaurantId === id) setCart(existing)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -81,59 +140,92 @@ export default function RestaurantScreen() {
     if (id) setFav(isFav(id))
   }, [id])
 
-  const allItems = menu.flatMap((c) => c.items)
-  const categories = ['Tout', ...menu.map((c) => c.category)]
+  const allItems = useMemo(() => menu.flatMap((c) => c.items), [menu])
+  const categories = useMemo(() => ['Tout', ...menu.map((c) => c.category)], [menu])
 
-  function persistCart(nextQty: Record<string, number>) {
+  /** Pick a stable photo for a dish using the design-system catalogue. */
+  function photoFor(dish: MenuItem): string {
+    if (dish.photos?.[0]) return dish.photos[0]
+    const cuisineHint = restaurant?.cuisine?.[0] ?? ''
+    const cat: FoodCategory = inferCategory(dish.category || cuisineHint)
+    return getFoodImage(cat, dish.id)
+  }
+
+  /** Total qty in cart for a given parent dish (across all customisations). */
+  function qtyForDish(dishId: string): number {
+    if (!cart) return 0
+    return cart.items
+      .filter((l) => (l.options?.parentDishId ?? l.item.id) === dishId)
+      .reduce((s, l) => s + l.qty, 0)
+  }
+
+  function addLine(dish: MenuItem, opts?: EatCartItemOptions) {
     if (!restaurant) return
-    const items = allItems
-      .filter((m) => nextQty[m.id] > 0)
-      .map((m) => ({ item: { id: m.id, name: m.name, price: m.price, photos: m.photos ?? [] }, qty: nextQty[m.id] }))
-    const data: EatCartData = {
+    const fullOpts: EatCartItemOptions | undefined = opts && (opts.size || opts.supplements?.length || opts.exclusions?.length || opts.note)
+      ? { ...opts, parentDishId: dish.id }
+      : undefined
+    const lineId = lineKeyFor(dish.id, fullOpts)
+    const sizePremium = SIZE_OPTIONS.find((s) => s.label === opts?.size)?.premium ?? 0
+    const supplementsTotal = (opts?.supplements ?? []).reduce((s, x) => s + x.price, 0)
+    const unitPrice = dish.price + sizePremium + supplementsTotal
+    const summary = summariseOptions(fullOpts)
+    const displayName = summary ? `${dish.name} (${summary})` : dish.name
+
+    const current = cart ?? {
       restaurantId: restaurant.id,
-      items,
-      restaurant: { name: restaurant.name, deliveryFee: restaurant.deliveryFee, minOrder: restaurant.minOrder },
+      items: [] as EatCartLineItem[],
+      restaurant: {
+        name: restaurant.name,
+        deliveryFee: restaurant.deliveryFee,
+        minOrder: restaurant.minOrder,
+        address: restaurant.address,
+        city: restaurant.city,
+        deliveryTime: restaurant.deliveryTime,
+      },
     }
-    writeCart(items.length ? data : null)
+
+    const existingIdx = current.items.findIndex((l) => l.item.id === lineId)
+    let nextItems: EatCartLineItem[]
+    if (existingIdx >= 0) {
+      nextItems = current.items.map((l, i) => (i === existingIdx ? { ...l, qty: l.qty + 1 } : l))
+    } else {
+      nextItems = [
+        ...current.items,
+        {
+          item: { id: lineId, name: displayName, price: unitPrice, photos: dish.photos ?? [] },
+          qty: 1,
+          options: fullOpts,
+        },
+      ]
+    }
+    const next: EatCartData = { ...current, items: nextItems }
+    setCart(next)
+    writeCart(next)
+    showToast(`${dish.name} ajouté au panier`)
   }
 
-  function add(m: MenuItem) {
-    setQty((prev) => {
-      const next = { ...prev, [m.id]: (prev[m.id] ?? 0) + 1 }
-      persistCart(next)
-      return next
-    })
-    showToast(`${m.name} ajouté au panier`)
-  }
-  function remove(m: MenuItem) {
-    setQty((prev) => {
-      const cur = prev[m.id] ?? 0
-      const next = { ...prev }
-      if (cur <= 1) delete next[m.id]
-      else next[m.id] = cur - 1
-      persistCart(next)
-      return next
-    })
-  }
+  const cartCount = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
+  const cartTotal = cart?.items.reduce((s, l) => s + l.item.price * l.qty, 0) ?? 0
 
-  const cartCount = Object.values(qty).reduce((s, n) => s + n, 0)
-  const cartTotal = allItems.reduce((s, m) => s + (qty[m.id] ?? 0) * m.price, 0)
-
-  const filtered = allItems
-    .filter((m) => menuFilter === 'Tout' || m.category === menuFilter)
-    .filter((m) => menuSearch === '' || m.name.toLowerCase().includes(menuSearch.toLowerCase()))
-  const galleryItems = allItems.slice(0, 9)
+  // ── filtered menu items for current Menu tab state
+  const filtered = useMemo(
+    () =>
+      allItems
+        .filter((m) => menuFilter === 'Tout' || m.category === menuFilter)
+        .filter((m) => menuSearch === '' || m.name.toLowerCase().includes(menuSearch.toLowerCase())),
+    [allItems, menuFilter, menuSearch],
+  )
 
   if (loading) {
     return (
       <div className="bg-white">
-        <div className="h-[280px] w-full animate-pulse bg-gray-200" />
+        <Skeleton className="h-[280px] w-full rounded-none" />
         <div className="space-y-3 p-4">
-          <div className="h-6 w-2/3 animate-pulse rounded bg-gray-200" />
-          <div className="h-4 w-1/2 animate-pulse rounded bg-gray-100" />
+          <Skeleton className="h-6 w-2/3" />
+          <Skeleton className="h-4 w-1/2" />
           <div className="grid grid-cols-2 gap-3 pt-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-[180px] animate-pulse rounded-2xl bg-gray-100" />
+              <Skeleton key={i} className="h-[200px]" />
             ))}
           </div>
         </div>
@@ -143,34 +235,49 @@ export default function RestaurantScreen() {
 
   if (!restaurant) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-white text-[#888]">
-        <div className="text-5xl">😕</div>
-        <p>Restaurant introuvable</p>
-        <button onClick={() => router.back()} className="text-sm font-bold text-[#F97316]">Retour</button>
-      </div>
+      <EmptyState
+        emoji="😕"
+        title="Restaurant introuvable"
+        action={
+          <Button variant="secondary" size="sm" onClick={() => router.back()}>
+            Retour
+          </Button>
+        }
+      />
     )
   }
 
+  const heroCover = restaurant.coverPhoto || getRestaurantCover(restaurant.id)
+
   return (
-    <div className={`min-h-screen bg-white ${cartCount > 0 ? 'pb-24' : 'pb-24'}`}>
+    <div className="min-h-screen bg-white pb-24">
       {/* Hero */}
       <div className="relative">
-        <FoodImage name={restaurant.name} src={restaurant.coverPhoto} className="h-[280px] w-full" glyphClassName="text-7xl" />
+        <FoodImage name={restaurant.name} src={heroCover} className="h-[280px] w-full" glyphClassName="text-7xl" />
         <button
           onClick={() => router.back()}
-          className="absolute left-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.12)] active:scale-90"
+          aria-label="Retour"
+          className="absolute left-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-grubano-md active:scale-90"
         >
-          <ArrowLeft size={18} className="text-[#1a1a1a]" />
+          <ArrowLeft size={18} className="text-grubano-ink" />
         </button>
         <div className="absolute right-4 top-4 flex gap-2.5">
           <button
-            onClick={() => { const now = toggleFav(id); setFav(now); showToast(now ? 'Ajouté aux favoris' : 'Retiré des favoris') }}
-            className={`flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-[0_2px_6px_rgba(0,0,0,0.12)] active:scale-90 ${fav ? 'bg-[#EF4444]' : 'bg-white'}`}
+            onClick={() => {
+              const now = toggleFav(id)
+              setFav(now)
+              showToast(now ? 'Ajouté aux favoris' : 'Retiré des favoris')
+            }}
+            aria-label="Favori"
+            className={`flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-grubano-md active:scale-90 ${fav ? 'bg-grubano-danger' : 'bg-white'}`}
           >
-            <Heart size={16} className={fav ? 'fill-white text-white' : 'fill-[#EF4444] text-[#EF4444]'} />
+            <Heart size={16} className={fav ? 'fill-white text-white' : 'fill-grubano-danger text-grubano-danger'} />
           </button>
-          <button className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-[0_2px_6px_rgba(0,0,0,0.12)] active:scale-90">
-            <Share2 size={16} className="text-[#1a1a1a]" />
+          <button
+            aria-label="Partager"
+            className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-grubano-md active:scale-90"
+          >
+            <Share2 size={16} className="text-grubano-ink" />
           </button>
         </div>
         {/* Thumbnail strip */}
@@ -178,7 +285,7 @@ export default function RestaurantScreen() {
           <div className="absolute inset-x-0 bottom-0 flex gap-2 bg-black/35 px-4 py-2.5">
             {allItems.slice(0, 5).map((d, i) => (
               <div key={d.id} className="relative">
-                <FoodImage name={d.name} src={d.photos?.[0]} className="h-[50px] w-[50px] rounded-[10px] border-2 border-white" glyphClassName="text-base" />
+                <FoodImage name={d.name} src={photoFor(d)} className="h-[50px] w-[50px] rounded-[10px] border-2 border-white" glyphClassName="text-base" />
                 {i === 4 && allItems.length > 5 && (
                   <div className="absolute inset-0 flex items-center justify-center rounded-[10px] bg-black/50 text-[13px] font-bold text-white">
                     +{allItems.length - 5}
@@ -191,13 +298,13 @@ export default function RestaurantScreen() {
       </div>
 
       {/* Sticky tabs */}
-      <div className="sticky top-0 z-20 flex border-b border-[#f0f0f0] bg-white">
+      <div className="sticky top-0 z-20 flex border-b border-grubano-border bg-white">
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 border-b-[2.5px] py-3.5 text-[13px] ${
-              activeTab === tab ? 'border-[#F97316] font-extrabold text-[#F97316]' : 'border-transparent font-semibold text-[#aaa]'
+            className={`flex-1 border-b-[2.5px] py-3.5 text-grubano-sm ${
+              activeTab === tab ? 'border-grubano-primary font-extrabold text-grubano-primary' : 'border-transparent font-semibold text-grubano-ink-faint'
             }`}
           >
             {tab}
@@ -208,110 +315,76 @@ export default function RestaurantScreen() {
       {/* Info section */}
       <div className="px-4 pb-2 pt-4">
         <div className="mb-1.5 flex justify-end">
-          <span className="flex items-center gap-1">
-            <Star size={14} className="fill-[#F97316] text-[#F97316]" />
-            <span className="text-[15px] font-extrabold text-[#1a1a1a]">{restaurant.rating.toFixed(1)}</span>
-            <span className="text-[13px] text-[#888]">({(restaurant.reviewCount / 1000).toFixed(1)}K)</span>
-          </span>
+          <StarRating value={restaurant.rating} reviewCount={restaurant.reviewCount} size="sm" />
         </div>
-        <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{restaurant.name}</h1>
-        <p className="mb-1.5 text-[13px] text-[#555]">{Array.isArray(restaurant.cuisine) ? restaurant.cuisine.join(', ') : ''}</p>
+        <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{restaurant.name}</h1>
+        <p className="mb-1.5 text-grubano-sm text-grubano-ink-muted">
+          {Array.isArray(restaurant.cuisine) ? restaurant.cuisine.join(' • ') : ''}
+        </p>
         <div className="mb-2 flex items-center gap-1">
-          <MapPin size={13} className="text-[#888]" />
-          <span className="truncate text-[13px] text-[#555]">{restaurant.address}, {restaurant.city}</span>
+          <MapPin size={13} className="text-grubano-ink-faint" />
+          <span className="truncate text-grubano-sm text-grubano-ink-muted">
+            {restaurant.address}, {restaurant.city}
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="flex items-center gap-1 text-xs text-[#888]">
+          <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
             <MapPin size={12} /> {restaurant.deliveryFee === 0 ? 'Livraison gratuite' : `${restaurant.deliveryFee.toFixed(2)} €`}
           </span>
-          <span className="flex items-center gap-1 text-xs text-[#888]">
+          <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
             <Clock size={12} /> {restaurant.deliveryTime} Min
           </span>
-          <button onClick={() => setActiveTab('Avis')} className="text-[13px] font-semibold text-[#F97316]">Avis</button>
+          <button onClick={() => setActiveTab('Avis')} className="text-grubano-sm font-semibold text-grubano-primary">
+            Avis
+          </button>
         </div>
       </div>
 
       {/* Menu tab */}
       {activeTab === 'Menu' && (
         <div className="px-4 pt-3">
-          <p className="mb-3 text-[17px] font-extrabold text-[#1a1a1a]">
-            Menu <span className="text-[#F97316]">({allItems.length} Articles)</span>
+          <p className="mb-3 text-[17px] font-extrabold text-grubano-ink">
+            Menu <span className="text-grubano-primary">({allItems.length} Articles)</span>
           </p>
 
-          <div className="mb-3 flex items-center gap-2.5">
-            <div className="flex flex-1 items-center gap-2 rounded-xl bg-[#f5f5f5] px-3 py-2.5">
-              <Search size={14} className="text-[#bbb]" />
-              <input
-                value={menuSearch}
-                onChange={(e) => setMenuSearch(e.target.value)}
-                placeholder="Chercher des articles"
-                className="flex-1 bg-transparent text-[13px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none"
-              />
-            </div>
+          <div className="mb-3">
+            <Input
+              leftIcon={<Search size={14} className="text-grubano-ink-faint" />}
+              placeholder="Chercher des articles"
+              value={menuSearch}
+              onChange={(e) => setMenuSearch(e.target.value)}
+            />
           </div>
 
           {categories.length > 1 && (
             <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
               {categories.map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setMenuFilter(f)}
-                  className={`shrink-0 rounded-[20px] border-[1.5px] px-3.5 py-2 text-xs font-semibold active:scale-95 ${
-                    menuFilter === f ? 'border-[#F97316] bg-[#F97316] text-white' : 'border-transparent bg-[#f5f5f5] text-[#555]'
-                  }`}
-                >
+                <CategoryPill key={f} active={menuFilter === f} onClick={() => setMenuFilter(f)}>
                   {f}
-                </button>
+                </CategoryPill>
               ))}
             </div>
           )}
 
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-sm text-[#888]">Aucun article trouvé</div>
+            <EmptyState compact emoji="🍽️" title="Aucun article trouvé" />
           ) : (
             <div className="grid grid-cols-2 gap-3 pb-2">
-              {filtered.map((dish) => {
-                const q = qty[dish.id] ?? 0
-                return (
-                  <div key={dish.id} className="rounded-[14px] bg-white pb-2.5 shadow-bolt-card">
-                    <div className="relative">
-                      <FoodImage name={dish.name} src={dish.photos?.[0]} className="h-[115px] w-full rounded-t-[14px]" glyphClassName="text-3xl" />
-                      {dish.comparePrice && dish.comparePrice > dish.price && (
-                        <span className="absolute left-1.5 top-1.5 rounded-lg bg-[#22C55E] px-1.5 py-[3px] text-[9px] font-bold text-white">
-                          PROMO
-                        </span>
-                      )}
-                      {q > 0 ? (
-                        <div className="absolute -bottom-3 right-2 flex items-center gap-1 rounded-full bg-white p-1 shadow-[0_2px_8px_rgba(0,0,0,0.15)]">
-                          <button onClick={() => remove(dish)} className="flex h-6 w-6 items-center justify-center rounded-full bg-[#FFF3ED] text-[#F97316] active:scale-90">
-                            <Minus size={12} strokeWidth={3} />
-                          </button>
-                          <span className="w-4 text-center text-xs font-bold">{q}</span>
-                          <button onClick={() => add(dish)} className="flex h-6 w-6 items-center justify-center rounded-full bg-[#F97316] text-white active:scale-90">
-                            <Plus size={12} strokeWidth={3} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => add(dish)}
-                          className="absolute -bottom-3 right-2 flex h-8 w-8 items-center justify-center rounded-full border border-[#f0f0f0] bg-white text-[#F97316] shadow-[0_2px_8px_rgba(0,0,0,0.12)] active:scale-90"
-                          aria-label={`Ajouter ${dish.name}`}
-                        >
-                          <Plus size={16} strokeWidth={3} />
-                        </button>
-                      )}
-                    </div>
-                    <div className="px-2.5 pt-3.5">
-                      <p className="truncate text-[13px] font-bold text-[#1a1a1a]">{dish.name}</p>
-                      <div className="mt-1 flex items-center gap-1 text-[10px] text-[#aaa]">
-                        <Star size={11} className="fill-[#F97316] text-[#F97316]" />
-                        {restaurant.rating.toFixed(1)}
-                      </div>
-                      <p className="mt-1 text-sm font-extrabold text-[#F97316]">{dish.price.toFixed(2)} €</p>
-                    </div>
-                  </div>
-                )
-              })}
+              {filtered.map((dish) => (
+                <DishCard
+                  key={dish.id}
+                  layout="vertical"
+                  name={dish.name}
+                  description={dish.description}
+                  price={dish.price}
+                  originalPrice={dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined}
+                  photo={photoFor(dish)}
+                  popular={dish.isPopular}
+                  quantityInCart={qtyForDish(dish.id)}
+                  onClick={() => setModalDish(dish)}
+                  onAdd={() => setModalDish(dish)}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -320,11 +393,21 @@ export default function RestaurantScreen() {
       {/* About tab */}
       {activeTab === 'À propos' && (
         <div className="p-4">
-          <h2 className="mb-2.5 text-[17px] font-extrabold text-[#1a1a1a]">À propos de {restaurant.name}</h2>
-          <p className="mb-4 text-sm leading-relaxed text-[#555]">{restaurant.description || 'Restaurant partenaire Grubano.'}</p>
-          <div className="space-y-3 rounded-[14px] bg-[#f8f8f8] p-4">
-            <div className="flex items-center gap-2.5"><MapPin size={15} className="text-[#F97316]" /><span className="text-sm text-[#444]">{restaurant.address}, {restaurant.city}</span></div>
-            <div className="flex items-center gap-2.5"><Clock size={15} className="text-[#F97316]" /><span className="text-sm text-[#444]">Lun–Dim : 10h00 – 23h00</span></div>
+          <h2 className="mb-2.5 text-[17px] font-extrabold text-grubano-ink">À propos de {restaurant.name}</h2>
+          <p className="mb-4 text-grubano-sm leading-relaxed text-grubano-ink-muted">
+            {restaurant.description || 'Restaurant partenaire Grubano.'}
+          </p>
+          <div className="space-y-3 rounded-grubano-lg bg-grubano-surface-muted p-4">
+            <div className="flex items-center gap-2.5">
+              <MapPin size={15} className="text-grubano-primary" />
+              <span className="text-grubano-sm text-grubano-ink-muted">
+                {restaurant.address}, {restaurant.city}
+              </span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <Clock size={15} className="text-grubano-primary" />
+              <span className="text-grubano-sm text-grubano-ink-muted">Lun–Dim : 10h00 – 23h00</span>
+            </div>
           </div>
         </div>
       )}
@@ -332,63 +415,242 @@ export default function RestaurantScreen() {
       {/* Gallery tab */}
       {activeTab === 'Galerie' && (
         <div className="grid grid-cols-3 gap-1 p-2">
-          {galleryItems.map((d) => (
-            <FoodImage key={d.id} name={d.name} src={d.photos?.[0]} className="aspect-square w-full rounded-lg" glyphClassName="text-2xl" />
+          {allItems.slice(0, 9).map((d) => (
+            <FoodImage key={d.id} name={d.name} src={photoFor(d)} className="aspect-square w-full rounded-grubano-sm" glyphClassName="text-2xl" />
           ))}
-          {galleryItems.length === 0 && <p className="col-span-3 py-12 text-center text-sm text-[#888]">Galerie bientôt disponible</p>}
+          {allItems.length === 0 && <EmptyState compact emoji="🖼️" title="Galerie bientôt disponible" className="col-span-3" />}
         </div>
       )}
 
       {/* Reviews tab */}
       {activeTab === 'Avis' && (
         <div className="p-4">
-          <div className="mb-4 flex flex-col items-center rounded-2xl bg-[#f8f8f8] py-5">
-            <span className="text-[48px] font-extrabold text-[#1a1a1a]">{restaurant.rating.toFixed(1)}</span>
-            <div className="my-1.5 flex gap-1">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <Star key={s} size={18} className={s <= Math.round(restaurant.rating) ? 'fill-[#F97316] text-[#F97316]' : 'text-[#ddd]'} />
-              ))}
+          <div className="mb-4 flex flex-col items-center rounded-grubano-xl bg-grubano-surface-muted py-5">
+            <span className="font-display text-[48px] font-extrabold text-grubano-ink">{restaurant.rating.toFixed(1)}</span>
+            <div className="my-1.5">
+              <StarRating value={restaurant.rating} size="md" />
             </div>
-            <span className="text-[13px] text-[#888]">{restaurant.reviewCount.toLocaleString()} avis</span>
+            <span className="text-grubano-sm text-grubano-ink-muted">{restaurant.reviewCount.toLocaleString('fr-FR')} avis</span>
           </div>
           {SAMPLE_REVIEWS.map((r, i) => (
-            <div key={i} className="mb-2.5 rounded-[14px] bg-[#f8f8f8] p-3.5">
+            <div key={i} className="mb-2.5 rounded-grubano-lg bg-grubano-surface-muted p-3.5">
               <div className="mb-2 flex items-center gap-2.5">
-                <div className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-[#F97316] text-base font-bold text-white">{r.name[0]}</div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-[#1a1a1a]">{r.name}</p>
-                  <p className="text-[11px] text-[#aaa]">{r.date}</p>
+                <div className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-grubano-primary text-base font-bold text-white">
+                  {r.name[0]}
                 </div>
-                <span className="flex items-center gap-1 text-[13px] font-bold"><Star size={12} className="fill-[#F97316] text-[#F97316]" />{r.rating}</span>
+                <div className="flex-1">
+                  <p className="text-grubano-sm font-bold text-grubano-ink">{r.name}</p>
+                  <p className="text-[11px] text-grubano-ink-faint">{r.date}</p>
+                </div>
+                <StarRating value={r.rating} size="sm" />
               </div>
-              <p className="text-[13px] leading-5 text-[#555]">{r.text}</p>
+              <p className="text-grubano-sm leading-5 text-grubano-ink-muted">{r.text}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* Bottom bar: cart (if items) else book a table */}
-      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-[#f0f0f0] bg-white px-4 py-3.5">
+      {/* Bottom bar */}
+      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-grubano-border bg-white px-4 py-3.5">
         {cartCount > 0 ? (
-          <button
+          <Button
+            variant="primary"
+            size="pill"
+            fullWidth
             onClick={() => router.push('/eat/cart')}
-            className="flex w-full items-center justify-between rounded-[30px] bg-[#F97316] px-6 py-4 text-white shadow-bolt-cta active:scale-[0.98]"
+            leftIcon={
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white px-1.5 text-xs font-bold text-grubano-primary">
+                {cartCount}
+              </span>
+            }
+            rightIcon={
+              <span className="flex items-center gap-2">
+                {cartTotal.toFixed(2)} € <ShoppingBag size={18} />
+              </span>
+            }
           >
-            <span className="flex items-center gap-2.5">
-              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white px-1.5 text-xs font-bold text-[#F97316]">{cartCount}</span>
-              <span className="font-bold">Voir le panier</span>
-            </span>
-            <span className="flex items-center gap-2 font-bold">{cartTotal.toFixed(2)} € <ShoppingBag size={18} /></span>
-          </button>
+            <span className="flex-1 text-left">Voir le panier</span>
+          </Button>
         ) : (
-          <button
+          <Button
+            variant="primary"
+            size="pill"
+            fullWidth
             onClick={() => showToast('Réservation de table bientôt disponible')}
-            className="w-full rounded-[30px] bg-[#F97316] py-4 text-base font-bold text-white shadow-bolt-cta active:scale-[0.98]"
           >
             Réserver une table
-          </button>
+          </Button>
         )}
       </div>
+
+      {/* Customisation Modal */}
+      {modalDish && (
+        <DishCustomizationModal
+          dish={modalDish}
+          photo={photoFor(modalDish)}
+          onClose={() => setModalDish(null)}
+          onConfirm={(opts) => {
+            addLine(modalDish, opts)
+            setModalDish(null)
+          }}
+        />
+      )}
+
+    </div>
+  )
+}
+
+// ── Customisation Modal ─────────────────────────────────────────────────────
+
+interface ModalProps {
+  dish: MenuItem
+  photo: string
+  onClose: () => void
+  onConfirm: (opts: EatCartItemOptions) => void
+}
+
+function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps) {
+  const [size, setSize] = useState<string>('Petite')
+  const [supplements, setSupplements] = useState<string[]>([])
+  const [exclusions, setExclusions] = useState<string[]>([])
+  const [note, setNote] = useState('')
+
+  const sizePremium = SIZE_OPTIONS.find((s) => s.label === size)?.premium ?? 0
+  const supplementsList = SUPPLEMENT_OPTIONS.filter((s) => supplements.includes(s.name))
+  const supplementsTotal = supplementsList.reduce((s, x) => s + x.price, 0)
+  const total = dish.price + sizePremium + supplementsTotal
+
+  function toggle(list: string[], setList: (n: string[]) => void, value: string) {
+    setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      hideClose={false}
+      title={dish.name}
+      description={dish.description}
+      footer={
+        <Button variant="primary" size="pill" fullWidth onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note })}>
+          Ajouter au panier — {total.toFixed(2)} €
+        </Button>
+      }
+    >
+      <FoodImage name={dish.name} src={photo} className="mb-4 h-40 w-full rounded-grubano-lg" glyphClassName="text-5xl" />
+
+      <Section title="Taille">
+        <div className="space-y-1.5">
+          {SIZE_OPTIONS.map((opt) => {
+            const selected = size === opt.label
+            return (
+              <label
+                key={opt.label}
+                className={`flex cursor-pointer items-center justify-between rounded-grubano-md border px-3 py-3 transition ${
+                  selected ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-white'
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <input
+                    type="radio"
+                    name="size"
+                    value={opt.label}
+                    checked={selected}
+                    onChange={() => setSize(opt.label)}
+                    className="h-4 w-4 accent-grubano-primary"
+                  />
+                  <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.label}</span>
+                </span>
+                <span className="text-grubano-sm font-bold text-grubano-ink">
+                  {opt.premium > 0 ? `+${opt.premium.toFixed(2)} €` : 'Inclus'}
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </Section>
+
+      <Section title="Suppléments">
+        <div className="space-y-1.5">
+          {SUPPLEMENT_OPTIONS.map((opt) => {
+            const selected = supplements.includes(opt.name)
+            return (
+              <label
+                key={opt.name}
+                className={`flex cursor-pointer items-center justify-between rounded-grubano-md border px-3 py-3 transition ${
+                  selected ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-white'
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => toggle(supplements, setSupplements, opt.name)}
+                    className="h-4 w-4 accent-grubano-primary"
+                  />
+                  <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.name}</span>
+                </span>
+                <span className="text-grubano-sm font-bold text-grubano-ink">+{opt.price.toFixed(2)} €</span>
+              </label>
+            )
+          })}
+        </div>
+      </Section>
+
+      <Section title="Sans">
+        <div className="flex flex-wrap gap-2">
+          {EXCLUSION_OPTIONS.map((opt) => {
+            const selected = exclusions.includes(opt)
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => toggle(exclusions, setExclusions, opt)}
+                className={`rounded-grubano-pill border px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                  selected ? 'border-grubano-primary bg-grubano-primary text-white' : 'border-grubano-border bg-white text-grubano-ink-muted'
+                }`}
+              >
+                {opt}
+              </button>
+            )
+          })}
+        </div>
+      </Section>
+
+      <Section title="Note pour le restaurant">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          placeholder="Ex. cuisson saignante, pas de coriandre…"
+          className="w-full resize-none rounded-grubano-md border border-grubano-border bg-grubano-surface-muted p-3 text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:bg-white focus:outline-none focus:ring-2 focus:ring-grubano-primary/30"
+        />
+      </Section>
+
+      <div className="mt-2 flex items-center justify-between rounded-grubano-md bg-grubano-tint p-3">
+        <span className="text-grubano-sm font-semibold text-grubano-ink">Total</span>
+        <span className="font-display text-[22px] font-extrabold text-grubano-primary">{total.toFixed(2)} €</span>
+      </div>
+      {(supplements.length > 0 || exclusions.length > 0) && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {supplements.map((s) => (
+            <Badge key={`s-${s}`} tone="primary" size="sm">+ {s}</Badge>
+          ))}
+          {exclusions.map((s) => (
+            <Badge key={`e-${s}`} tone="neutral" size="sm">{s}</Badge>
+          ))}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-4">
+      <h3 className="mb-2 text-grubano-sm font-extrabold text-grubano-ink">{title}</h3>
+      {children}
     </div>
   )
 }

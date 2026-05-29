@@ -1,18 +1,24 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
-import { Search, Star, Clock, MapPin, X } from 'lucide-react'
-import FoodImage from '@/components/eat/FoodImage'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { Search, X, ArrowLeft } from 'lucide-react'
+import {
+  RestaurantCard,
+  CategoryPill,
+  EmptyState,
+  Skeleton,
+  Button,
+} from '@/components/design-system'
+import { getRestaurantCover } from '@/lib/food-images'
 
 const CUISINES = [
-  { label: '🍕 Italien', q: 'italian' },
-  { label: '🍜 Asiatique', q: 'asian' },
-  { label: '🍔 Burgers', q: 'burger' },
-  { label: '🥗 Healthy', q: 'healthy' },
-  { label: '🍣 Sushi', q: 'sushi' },
-  { label: '🍰 Desserts', q: 'desserts' },
+  { label: 'Italien', emoji: '🍕', q: 'italian' },
+  { label: 'Asiatique', emoji: '🍜', q: 'asian' },
+  { label: 'Burgers', emoji: '🍔', q: 'burger' },
+  { label: 'Healthy', emoji: '🥗', q: 'healthy' },
+  { label: 'Sushi', emoji: '🍣', q: 'sushi' },
+  { label: 'Desserts', emoji: '🍰', q: 'desserts' },
 ]
 const SORTS = [
   { label: 'Mieux notés', value: 'rating' },
@@ -34,27 +40,26 @@ interface Restaurant {
   address: string
 }
 
-function Row({ r }: { r: Restaurant }) {
-  return (
-    <Link href={`/eat/r/${r.id}`} className="flex items-center gap-3 rounded-2xl bg-white p-2.5 shadow-bolt-card active:scale-[0.98]">
-      <FoodImage name={r.name} src={r.coverPhoto} className="h-20 w-20 shrink-0 rounded-xl" glyphClassName="text-2xl" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold text-[#1a1a1a]">{r.name}</p>
-        <p className="truncate text-xs text-[#888]">{Array.isArray(r.cuisine) && r.cuisine.length ? r.cuisine.join(', ') : 'Cuisine variée'}</p>
-        <div className="mt-0.5 flex items-center gap-1 text-[11px] text-[#aaa]"><MapPin size={11} /><span className="truncate">{r.address?.slice(0, 26) || r.city}</span></div>
-        <div className="flex items-center gap-1 text-[11px] text-[#aaa]"><Clock size={11} />{r.deliveryTime} Min • {r.deliveryFee === 0 ? 'Gratuit' : `${r.deliveryFee.toFixed(2)} €`}</div>
-      </div>
-      <span className="flex items-center gap-1 self-start"><Star size={12} className="fill-[#F97316] text-[#F97316]" /><span className="text-[13px] font-bold text-[#1a1a1a]">{r.rating.toFixed(1)}</span></span>
-    </Link>
-  )
+function cuisineText(c: string[]) {
+  return Array.isArray(c) && c.length ? c.join(' • ') : 'Cuisine variée'
 }
 
 function RowSkeleton() {
-  return <div className="h-[100px] animate-pulse rounded-2xl bg-white shadow-bolt-card" />
+  return (
+    <div className="flex gap-3 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3 shadow-grubano-sm">
+      <Skeleton className="h-24 w-24 rounded-grubano-md" />
+      <div className="flex-1 space-y-2 py-1">
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-3 w-1/3" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
+    </div>
+  )
 }
 
-function ExploreContent() {
+function SearchContent() {
   const params = useSearchParams()
+  const router = useRouter()
   const [query, setQuery] = useState(params.get('q') ?? '')
   const [cuisine, setCuisine] = useState(params.get('cuisine') ?? '')
   const [sort, setSort] = useState('rating')
@@ -83,37 +88,56 @@ function ExploreContent() {
     run()
   }, [run])
 
+  const hasFilters = Boolean(query || cuisine)
+
   return (
-    <div className="min-h-screen bg-[#f5f5f5]">
+    <div className="min-h-screen bg-grubano-bg">
       {/* Sticky search header */}
-      <div className="sticky top-0 z-20 space-y-3 border-b border-[#f0f0f0] bg-white px-4 pb-3 pt-3">
-        <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">Explorer</h1>
-        <form onSubmit={(e) => { e.preventDefault(); run() }} className="flex items-center gap-2 rounded-[14px] bg-[#f5f5f5] px-3.5 py-3">
-          <Search size={17} className="text-[#bbb]" />
+      <div className="sticky top-0 z-20 space-y-3 border-b border-grubano-border bg-white px-4 pb-3 pt-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/eat')}
+            aria-label="Retour"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-grubano-surface-muted text-grubano-ink transition active:scale-90"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">Explorer</h1>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            run()
+          }}
+          className="flex items-center gap-2 rounded-grubano-lg bg-grubano-surface-muted px-3.5 py-3"
+        >
+          <Search size={17} className="text-grubano-ink-faint" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Rechercher plat, restaurant..."
             autoFocus
-            className="flex-1 bg-transparent text-sm text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none"
+            className="flex-1 bg-transparent text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:outline-none"
           />
           {query && (
-            <button type="button" onClick={() => setQuery('')}><X size={16} className="text-[#bbb]" /></button>
+            <button type="button" onClick={() => setQuery('')} aria-label="Effacer">
+              <X size={16} className="text-grubano-ink-faint" />
+            </button>
           )}
         </form>
 
         {/* Cuisine pills */}
         <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
           {CUISINES.map((c) => (
-            <button
+            <CategoryPill
               key={c.q}
+              emoji={c.emoji}
+              active={cuisine === c.q}
               onClick={() => setCuisine((prev) => (prev === c.q ? '' : c.q))}
-              className={`shrink-0 rounded-[25px] border-[1.5px] px-3.5 py-2 text-xs font-semibold active:scale-95 ${
-                cuisine === c.q ? 'border-[#F97316] bg-[#F97316] text-white' : 'border-transparent bg-[#f5f5f5] text-[#555]'
-              }`}
             >
               {c.label}
-            </button>
+            </CategoryPill>
           ))}
         </div>
 
@@ -123,8 +147,10 @@ function ExploreContent() {
             <button
               key={s.value}
               onClick={() => setSort(s.value)}
-              className={`shrink-0 rounded-[25px] border-[1.5px] px-3.5 py-2 text-xs font-medium active:scale-95 ${
-                sort === s.value ? 'border-[#1a1a1a] bg-[#1a1a1a] text-white' : 'border-transparent bg-[#f5f5f5] text-[#555]'
+              className={`shrink-0 rounded-grubano-pill border-[1.5px] px-3.5 py-2 text-xs font-medium transition active:scale-95 ${
+                sort === s.value
+                  ? 'border-grubano-dark bg-grubano-dark text-white'
+                  : 'border-transparent bg-grubano-surface-muted text-grubano-ink-muted'
               }`}
             >
               {s.label}
@@ -138,18 +164,44 @@ function ExploreContent() {
         {loading ? (
           Array.from({ length: 5 }).map((_, i) => <RowSkeleton key={i} />)
         ) : results.length === 0 ? (
-          <div className="py-20 text-center">
-            <div className="mb-3 text-5xl">🔍</div>
-            <p className="font-bold text-[#1a1a1a]">Aucun restaurant trouvé</p>
-            <p className="mt-1 text-sm text-[#888]">Essayez un autre mot ou un autre filtre.</p>
-            {(query || cuisine) && (
-              <button onClick={() => { setQuery(''); setCuisine('') }} className="mt-4 text-sm font-bold text-[#F97316]">Réinitialiser</button>
-            )}
-          </div>
+          <EmptyState
+            emoji="🔍"
+            title="Aucun restaurant trouvé"
+            description="Essayez un autre mot ou un autre filtre."
+            action={
+              hasFilters ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setQuery('')
+                    setCuisine('')
+                  }}
+                >
+                  Réinitialiser
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <>
-            <p className="text-xs font-medium text-[#888]">{results.length} résultat{results.length > 1 ? 's' : ''}</p>
-            {results.map((r) => <Row key={r.id} r={r} />)}
+            <p className="text-xs font-medium text-grubano-ink-muted">
+              {results.length} résultat{results.length > 1 ? 's' : ''}
+            </p>
+            {results.map((r) => (
+              <RestaurantCard
+                key={r.id}
+                layout="list"
+                name={r.name}
+                cover={r.coverPhoto || getRestaurantCover(r.id)}
+                cuisine={cuisineText(r.cuisine)}
+                rating={r.rating}
+                reviewCount={r.reviewCount}
+                deliveryTime={r.deliveryTime}
+                deliveryFee={r.deliveryFee}
+                onClick={() => router.push(`/eat/r/${r.id}`)}
+              />
+            ))}
           </>
         )}
       </div>
@@ -159,8 +211,16 @@ function ExploreContent() {
 
 export default function ExploreScreen() {
   return (
-    <Suspense fallback={<div className="space-y-3 p-4 pt-24">{Array.from({ length: 5 }).map((_, i) => <RowSkeleton key={i} />)}</div>}>
-      <ExploreContent />
+    <Suspense
+      fallback={
+        <div className="space-y-3 p-4 pt-24">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <RowSkeleton key={i} />
+          ))}
+        </div>
+      }
+    >
+      <SearchContent />
     </Suspense>
   )
 }
