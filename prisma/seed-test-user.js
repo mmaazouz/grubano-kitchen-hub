@@ -12,6 +12,21 @@
 //   password: Test1234!   (bcrypt, cost 12)
 //   role:     consumer
 
+// Auto-load DATABASE_URL from .env.local if not already in the environment.
+if (!process.env.DATABASE_URL) {
+  const fs = require('fs')
+  const path = require('path')
+  const envFile = path.join(__dirname, '..', '.env.local')
+  if (fs.existsSync(envFile)) {
+    for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
+      const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
+      if (m && !process.env[m[1]]) {
+        process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
+      }
+    }
+  }
+}
+
 const { PrismaClient } = require('@prisma/client')
 const bcrypt = require('bcryptjs')
 
