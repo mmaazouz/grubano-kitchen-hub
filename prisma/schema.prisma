@@ -339,6 +339,17 @@ model Restaurant {
   lat          Float?
   lng          Float?
   isActive     Boolean  @default(true)
+  // ── Fulfillment settings (operator-controlled) ──
+  // Booleans toggle which fulfillment channels this restaurant offers.
+  // All defaults preserve current behaviour: delivery on, pickup/reservation off.
+  deliveryEnabled    Boolean @default(true)
+  pickupEnabled      Boolean @default(false)
+  reservationEnabled Boolean @default(false)
+  deliveryRadius     Int     @default(5)    // km
+  pickupPrepTime     Int     @default(15)   // minutes
+  deliveryPrepTime   Int     @default(30)   // minutes
+  pickupAddress      String?
+  pickupInstructions String? @db.Text
   createdAt    DateTime @default(now())
   orders       Order[]
 }
@@ -353,6 +364,7 @@ model Order {
   deliveryFee     Float      @default(1.99)
   total           Float
   status          String     @default("received") // received|preparing|ready|picked_up|delivered|cancelled
+  fulfillmentType String     @default("delivery") // delivery|pickup
   deliveryAddress String
   paymentMethod   String     @default("card")
   pointsEarned    Int        @default(0)
