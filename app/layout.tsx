@@ -3,18 +3,18 @@ import './globals.css'
 import AppChrome from '@/components/AppChrome'
 
 export const metadata: Metadata = {
-  title: 'Grubano — Dark Kitchen OS',
-  description: 'Gestion opérationnelle de dark kitchens multi-marques',
-  // Favicons — drop the matching files into /public (see names below).
-  // Files are served gracefully (browser ignores any that are missing).
+  title: 'Grubano — Commander local',
+  description: 'Commandez vos plats préférés près de chez vous, livrés vite.',
+  // Favicon files live in /public (placed by Mohammed).
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: '32x32' },
-      { url: '/favicon-16x16.png', type: 'image/png', sizes: '16x16' },
-      { url: '/favicon-32x32.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-96x96.png', type: 'image/png', sizes: '96x96' },
     ],
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
   },
+  manifest: '/site.webmanifest',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

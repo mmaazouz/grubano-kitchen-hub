@@ -46,3 +46,35 @@ export function showToast(message: string) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent(TOAST_EVENT, { detail: message }))
 }
+
+// ── Favorite restaurants (persisted in localStorage) ──────────────────────
+const FAV_KEY = 'grubano_favs'
+export const FAV_EVENT = 'grubano:favs'
+
+export function readFavs(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(FAV_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function isFav(id: string): boolean {
+  return readFavs().includes(id)
+}
+
+/** Toggle a restaurant favorite. Returns the new favorited state. */
+export function toggleFav(id: string): boolean {
+  const favs = readFavs()
+  const exists = favs.includes(id)
+  const next = exists ? favs.filter((f) => f !== id) : [...favs, id]
+  try {
+    localStorage.setItem(FAV_KEY, JSON.stringify(next))
+    window.dispatchEvent(new CustomEvent(FAV_EVENT))
+  } catch {
+    /* ignore */
+  }
+  return !exists
+}

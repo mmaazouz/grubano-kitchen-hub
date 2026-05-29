@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Heart, Share2, Star, Clock, MapPin, Search, Plus, Minus, ShoppingBag } from 'lucide-react'
 import FoodImage from '@/components/eat/FoodImage'
-import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
+import { readCart, writeCart, showToast, isFav, toggleFav, type EatCartData } from '@/lib/eat-cart'
 
 interface MenuItem {
   id: string
@@ -75,6 +75,10 @@ export default function RestaurantScreen() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
+  }, [id])
+
+  useEffect(() => {
+    if (id) setFav(isFav(id))
   }, [id])
 
   const allItems = menu.flatMap((c) => c.items)
@@ -160,7 +164,7 @@ export default function RestaurantScreen() {
         </button>
         <div className="absolute right-4 top-4 flex gap-2.5">
           <button
-            onClick={() => { setFav((v) => !v); showToast(fav ? 'Retiré des favoris' : 'Ajouté aux favoris') }}
+            onClick={() => { const now = toggleFav(id); setFav(now); showToast(now ? 'Ajouté aux favoris' : 'Retiré des favoris') }}
             className={`flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-[0_2px_6px_rgba(0,0,0,0.12)] active:scale-90 ${fav ? 'bg-[#EF4444]' : 'bg-white'}`}
           >
             <Heart size={16} className={fav ? 'fill-white text-white' : 'fill-[#EF4444] text-[#EF4444]'} />
