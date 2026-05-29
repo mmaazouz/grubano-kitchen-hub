@@ -7,7 +7,10 @@ on:
 
 concurrency:
   group: deploy-staging
-  cancel-in-progress: true
+  # Do NOT cancel in-progress runs: the cold FTPS sync (~30+ min for the
+  # standalone node_modules) was being killed by rapid develop pushes, leaving
+  # the staging app half-uploaded. Better to queue and let each finish.
+  cancel-in-progress: false
 
 # Opt JS actions into Node 24 now (checkout/setup-node/FTP-Deploy-Action still
 # ship Node 20, deprecated on the runner from 2026-06-02). Silences the warning.
@@ -125,6 +128,7 @@ jobs:
             cd ~/app.grubano.com
             export DATABASE_URL='${{ secrets.DATABASE_URL_STAGING }}'
             npx prisma@5.22.0 generate || true
+            node prisma/seed-test-user.js || true
             touch tmp/restart.txt
 
       # ── SSH: chmod + Passenger restart ────────────────────────────────────────

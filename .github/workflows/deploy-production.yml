@@ -131,6 +131,7 @@ jobs:
             cd ~/grubano.com
             export DATABASE_URL='${{ secrets.DATABASE_URL_PROD }}'
             npx prisma@5.22.0 generate || true
+            node prisma/seed-test-user.js || true
             touch tmp/restart.txt
 
       # ── SSH: chmod + Passenger restart ────────────────────────────────────────
