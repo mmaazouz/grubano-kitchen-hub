@@ -18,7 +18,7 @@
   --popover:            255 255 255;
   --popover-foreground: 26  26  46;
 
-  --primary:            232 89  60;       /* #E8593C */
+  --primary:            249 115 22;       /* #F97316 — unified Grubano orange (was #E8593C) */
   --primary-foreground: 255 255 255;
 
   --secondary:          247 247 250;
@@ -41,7 +41,7 @@
 
   --border:             228 228 231;      /* zinc-200 */
   --input:              228 228 231;
-  --ring:               232 89  60;       /* primary */
+  --ring:               249 115 22;       /* primary */
 
   --navy:               26  26  46;       /* #1a1a2e */
   --navy-elevated:      37  37  71;       /* #252547 */
