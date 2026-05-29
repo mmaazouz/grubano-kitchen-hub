@@ -2,22 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Clock, MapPin, Phone, Home, ChevronRight, Check } from 'lucide-react'
-
-const STEPS = [
-  { key: 'received', label: 'Reçu', emoji: '✅', desc: 'Commande confirmée' },
-  { key: 'preparing', label: 'En préparation', emoji: '🍳', desc: 'Le restaurant cuisine pour vous' },
-  { key: 'picked_up', label: 'En route', emoji: '🛵', desc: 'Le livreur arrive vers vous' },
-  { key: 'delivered', label: 'Livré', emoji: '🏠', desc: 'Bon appétit !' },
-] as const
-
-const STATUS_TO_STEP: Record<string, number> = {
-  received: 0,
-  preparing: 1,
-  ready: 1,
-  picked_up: 2,
-  delivered: 3,
-}
+import { ArrowLeft, Navigation, MessageCircle, Phone } from 'lucide-react'
+import FoodImage from '@/components/eat/FoodImage'
 
 interface Order {
   id: string
@@ -31,20 +17,26 @@ interface Order {
   deliveryAddress: string
 }
 
-export default function TrackPage() {
+const STATUS_TO_STEP: Record<string, number> = { received: 0, preparing: 1, ready: 1, picked_up: 2, delivered: 3 }
+const STATUS_LABEL: Record<string, string> = {
+  received: 'Commande reçue',
+  preparing: 'En préparation',
+  ready: 'Prête',
+  picked_up: 'En route vers vous',
+  delivered: 'Livrée',
+  cancelled: 'Annulée',
+}
+
+export default function OrderTrackingScreen() {
   const { orderId } = useParams<{ orderId: string }>()
   const router = useRouter()
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
-  const [secondsLeft, setSecondsLeft] = useState(0)
 
   const fetchOrder = useCallback(async () => {
     try {
       const res = await fetch(`/api/orders/${orderId}`)
-      if (res.status === 401) {
-        router.push('/eat/auth')
-        return
-      }
+      if (res.status === 401) { router.push('/eat/auth'); return }
       if (!res.ok) return
       const data = await res.json()
       setOrder(data.order)
@@ -61,162 +53,157 @@ export default function TrackPage() {
     return () => clearInterval(poll)
   }, [fetchOrder])
 
-  useEffect(() => {
-    if (!order) return
+  function etaWindow() {
+    if (!order) return ''
     const created = new Date(order.createdAt).getTime()
-    const eta = created + order.estimatedTime * 60_000
-    const update = () => setSecondsLeft(Math.max(0, Math.floor((eta - Date.now()) / 1000)))
-    update()
-    const t = setInterval(update, 1000)
-    return () => clearInterval(t)
-  }, [order])
-
-  const currentStep = order ? STATUS_TO_STEP[order.status] ?? 0 : 0
-  const isDelivered = order?.status === 'delivered'
-  const isCancelled = order?.status === 'cancelled'
-
-  function etaText() {
-    if (isDelivered) return 'Livré'
-    if (secondsLeft <= 0) return 'Bientôt'
-    const m = Math.ceil(secondsLeft / 60)
-    return `~${m} min`
+    const eta = new Date(created + order.estimatedTime * 60_000)
+    const end = new Date(created + (order.estimatedTime + 5) * 60_000)
+    const fmt = (d: Date) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    return `${fmt(eta)} - ${fmt(end)}`
   }
 
   if (loading) {
     return (
-      <div className="space-y-4 p-5">
-        <div className="h-36 animate-pulse rounded-[24px] bg-gray-200" />
-        <div className="h-32 animate-pulse rounded-[20px] bg-gray-100" />
-        <div className="h-40 animate-pulse rounded-[20px] bg-gray-100" />
+      <div className="min-h-screen bg-white">
+        <div className="h-[280px] w-full animate-pulse bg-gray-200" />
+        <div className="space-y-3 p-5">
+          <div className="mx-auto h-6 w-1/2 animate-pulse rounded bg-gray-200" />
+          <div className="h-16 animate-pulse rounded-2xl bg-gray-100" />
+        </div>
       </div>
     )
   }
 
   if (!order) {
     return (
-      <div className="flex h-[70vh] flex-col items-center justify-center gap-3 text-center">
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-white text-[#888]">
         <div className="text-5xl">😕</div>
-        <p className="font-semibold text-gray-600">Commande introuvable</p>
-        <button onClick={() => router.push('/eat')} className="text-sm font-semibold text-[#E8593C] active:scale-95">
-          Retour à l&apos;accueil
-        </button>
+        <p>Commande introuvable</p>
+        <button onClick={() => router.push('/eat')} className="text-sm font-bold text-[#F97316]">Retour à l&apos;accueil</button>
       </div>
     )
   }
 
+  const step = STATUS_TO_STEP[order.status] ?? 0
+  const isDelivered = order.status === 'delivered'
+
   return (
-    <div className="bg-[#FAFAFA] p-5 pb-8">
-      {/* Hero ETA */}
-      <div className="relative overflow-hidden rounded-[24px] bg-gradient-to-br from-[#1a1a2e] to-[#2D3561] p-6 text-white shadow-[0_8px_32px_rgba(26,26,46,0.25)]">
-        <div
-          className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full opacity-20"
-          style={{ background: 'radial-gradient(circle, #E8593C, transparent 65%)' }}
-        />
-        <div className="relative z-10">
-          <p className="text-sm text-white/60">
-            {isCancelled ? 'Commande annulée' : isDelivered ? 'Commande livrée' : 'Arrivée estimée'}
-          </p>
-          <div className="mt-1.5 flex items-center gap-2.5">
-            <Clock size={28} className="text-[#E8593C]" />
-            <span className="text-[34px] font-bold leading-none tracking-tight">{etaText()}</span>
-          </div>
-          <p className="mt-2 text-xs text-white/40">Commande #{order.id.slice(-8).toUpperCase()}</p>
-        </div>
-        <div className="absolute -bottom-3 right-3 text-7xl">
-          <span className="inline-block animate-bounce">{STEPS[currentStep]?.emoji}</span>
-        </div>
-      </div>
-
-      {/* Step progress */}
-      <div className="mt-5 rounded-[20px] bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
-        <div className="flex items-start justify-between">
-          {STEPS.map((step, i) => {
-            const done = i < currentStep || isDelivered
-            const active = i === currentStep && !isDelivered
-            return (
-              <div key={step.key} className="flex flex-1 flex-col items-center">
-                <div className="relative flex w-full items-center justify-center">
-                  {i > 0 && (
-                    <div
-                      className={`absolute right-1/2 top-1/2 h-[3px] w-full -translate-y-1/2 rounded-full ${
-                        i <= currentStep || isDelivered ? 'bg-[#E8593C]' : 'bg-gray-100'
-                      }`}
-                    />
-                  )}
-                  <div
-                    className={`relative z-10 flex h-12 w-12 items-center justify-center rounded-full text-lg transition-all duration-300 ${
-                      done
-                        ? 'bg-[#E8593C] text-white shadow-[0_4px_16px_rgba(232,89,60,0.4)]'
-                        : active
-                          ? 'bg-[#FFF7F3] ring-2 ring-[#E8593C]'
-                          : 'bg-gray-50'
-                    } ${active ? 'animate-pulse' : ''}`}
-                  >
-                    {done ? <Check size={21} strokeWidth={3} /> : step.emoji}
-                  </div>
-                </div>
-                <p className={`mt-2.5 text-center text-[11px] font-semibold leading-tight ${done || active ? 'text-[#1a1a2e]' : 'text-gray-300'}`}>
-                  {step.label}
-                </p>
-              </div>
-            )
-          })}
-        </div>
-        <p className="mt-5 text-center text-sm font-medium text-gray-500">
-          {isCancelled ? 'Cette commande a été annulée.' : STEPS[currentStep]?.desc}
-        </p>
-      </div>
-
-      {/* Delivered celebration */}
-      {isDelivered && (
-        <div className="mt-4 rounded-[20px] border border-green-100 bg-green-50 p-5 text-center">
-          <p className="text-3xl">🎉</p>
-          <p className="mt-1 font-bold text-green-700">Régalez-vous bien !</p>
-          <p className="mt-0.5 text-xs text-green-600">+{order.pointsEarned} points fidélité crédités</p>
-        </div>
-      )}
-
-      {/* Order summary */}
-      <div className="mt-4 space-y-3 rounded-[20px] bg-white p-5 shadow-[0_4px_24px_rgba(0,0,0,0.05)]">
-        <h2 className="text-base font-bold tracking-tight text-[#1a1a2e]">{order.restaurant.name}</h2>
-        <div className="flex items-start gap-2 text-xs text-gray-500">
-          <MapPin size={14} className="mt-0.5 shrink-0 text-[#E8593C]" />
-          <span>{order.deliveryAddress}</span>
-        </div>
-        <div className="divide-y divide-gray-50 border-t border-gray-100 pt-1">
-          {order.items.map((item, i) => (
-            <div key={i} className="flex justify-between py-2 text-sm">
-              <span className="text-gray-600">
-                <span className="font-semibold text-[#1a1a2e]">{item.qty}×</span> {item.name}
-              </span>
-              <span className="font-medium text-[#1a1a2e]">{(item.price * item.qty).toFixed(2)}€</span>
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-between border-t border-gray-100 pt-3 text-sm font-bold">
-          <span>Total payé</span>
-          <span className="text-[#E8593C]">{order.total.toFixed(2)}€</span>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="mt-4 space-y-2.5">
-        <button className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-[#E8593C] bg-white py-3.5 text-sm font-bold text-[#E8593C] transition active:scale-[0.98]">
-          <Phone size={16} /> Contacter le restaurant
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <div className="flex items-center border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
+        <button onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5f5f5] active:scale-90">
+          <ArrowLeft size={20} className="text-[#1a1a1a]" />
         </button>
-        {(isDelivered || isCancelled) && (
-          <button
-            onClick={() => router.push('/eat')}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#E8593C] py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(232,89,60,0.35)] transition active:scale-[0.98]"
-          >
-            <Home size={16} /> Commander à nouveau
-          </button>
-        )}
-        <button
-          onClick={() => router.push('/eat/account')}
-          className="flex w-full items-center justify-center gap-1 py-2 text-sm font-medium text-gray-500"
+        <h1 className="flex-1 text-center font-sans text-[18px] font-extrabold text-[#1a1a1a]">Suivi en temps réel</h1>
+        <div className="w-10" />
+      </div>
+
+      {/* Faux map */}
+      <div className="relative h-[280px] overflow-hidden bg-gradient-to-br from-[#e9efe6] via-[#eef1ee] to-[#e6ebf0]">
+        {/* grid lines */}
+        <div
+          className="absolute inset-0 opacity-40"
+          style={{
+            backgroundImage:
+              'linear-gradient(#d8ded6 1px, transparent 1px), linear-gradient(90deg, #d8ded6 1px, transparent 1px)',
+            backgroundSize: '40px 40px',
+          }}
+        />
+        {/* route line */}
+        <div className="absolute left-1/2 top-[20%] h-[55%] w-[3px] -translate-x-1/2 rounded-full bg-[#1a1a1a]" />
+        {/* restaurant pin */}
+        <div className="absolute left-[46%] top-[12%]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-white bg-[#F97316] text-base shadow-md">🏠</div>
+        </div>
+        {/* driver pin — sits along the route based on status */}
+        <div
+          className="absolute left-[44%] transition-all duration-700"
+          style={{ top: step >= 3 ? '76%' : step >= 2 ? '44%' : '24%' }}
         >
-          Voir mes commandes <ChevronRight size={15} />
+          <div className="flex h-[34px] w-[34px] items-center justify-center rounded-full border-2 border-[#F97316] bg-white text-base shadow">🛵</div>
+        </div>
+        {/* destination pin */}
+        <div className="absolute bottom-[12%] left-[44%]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-white bg-[#F97316] text-base shadow-md">📍</div>
+        </div>
+        {/* GPS button */}
+        <button className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md active:scale-90">
+          <Navigation size={18} className="text-[#F97316]" />
+        </button>
+      </div>
+
+      {/* Bottom sheet */}
+      <div className="px-5 pt-5">
+        <p className="text-center text-[13px] text-[#888]">
+          {isDelivered ? 'Votre commande est arrivée' : "Heure d'arrivée estimée"}
+        </p>
+        <p className="text-center text-xl font-extrabold text-[#1a1a1a]">{isDelivered ? 'Livré 🎉' : etaWindow()}</p>
+        <div className="mt-2 flex justify-center">
+          <span className="rounded-full bg-[#FFF3ED] px-3 py-1 text-xs font-bold text-[#F97316]">{STATUS_LABEL[order.status] ?? order.status}</span>
+        </div>
+
+        <div className="my-3.5 h-px bg-[#f0f0f0]" />
+
+        {/* Driver */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-[#FFF3ED] text-xl">🧑‍✈️</div>
+          <div className="flex-1">
+            <p className="text-[15px] font-bold text-[#1a1a1a]">Charlotte Taylor</p>
+            <p className="mt-0.5 text-xs text-[#888]">Partenaire de livraison</p>
+          </div>
+          <div className="flex gap-2.5">
+            <button className="flex h-10 w-10 items-center justify-center rounded-full border-[1.5px] border-[#f0f0f0] active:scale-90"><MessageCircle size={18} className="text-[#F97316]" /></button>
+            <button className="flex h-10 w-10 items-center justify-center rounded-full border-[1.5px] border-[#f0f0f0] active:scale-90"><Phone size={18} className="text-[#F97316]" /></button>
+          </div>
+        </div>
+
+        <div className="my-3.5 h-px bg-[#f0f0f0]" />
+
+        {/* Route */}
+        <div>
+          <div className="flex items-center gap-3">
+            <span className="h-3.5 w-3.5 rounded-full border-[3px] border-[#FFF3ED] bg-[#F97316]" />
+            <span className="text-sm font-medium text-[#444]">{order.restaurant.name}</span>
+          </div>
+          <div className="ml-[6px] h-[18px] w-0.5 bg-[#ddd]" />
+          <div className="flex items-center gap-3">
+            <span className="h-3.5 w-3.5 rounded-full border-2 border-[#888] bg-white" />
+            <span className="truncate text-sm font-medium text-[#444]">{order.deliveryAddress}</span>
+          </div>
+        </div>
+
+        <div className="my-3.5 h-px bg-[#f0f0f0]" />
+
+        {/* Items */}
+        <p className="mb-3 text-base font-extrabold text-[#1a1a1a]">Articles</p>
+        {order.items.map((item, i) => (
+          <div key={i} className="mb-3.5 flex items-center gap-3 border-b border-[#f8f8f8] pb-3.5 last:border-0">
+            <FoodImage name={item.name} className="h-14 w-14 shrink-0 rounded-[10px]" glyphClassName="text-xl" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-[#1a1a1a]">{item.name}</p>
+              <p className="mt-0.5 text-xs text-[#888]">x{item.qty}</p>
+            </div>
+            <span className="text-sm font-bold text-[#1a1a1a]">{(item.price * item.qty).toFixed(2)} €</span>
+          </div>
+        ))}
+
+        <div className="mb-4 flex justify-between border-t border-[#f0f0f0] pt-3">
+          <span className="text-base font-extrabold text-[#1a1a1a]">Total payé</span>
+          <span className="text-base font-extrabold text-[#F97316]">{order.total.toFixed(2)} €</span>
+        </div>
+
+        {isDelivered && (
+          <div className="mb-4 rounded-2xl bg-[#F0FDF4] p-4 text-center">
+            <p className="font-bold text-[#16A34A]">Régalez-vous bien ! 🎉</p>
+            <p className="mt-0.5 text-xs text-[#22C55E]">+{order.pointsEarned} points fidélité crédités</p>
+          </div>
+        )}
+
+        <button
+          onClick={() => router.push('/eat')}
+          className="mb-6 w-full rounded-[30px] bg-[#F97316] py-4 text-base font-bold text-white shadow-bolt-cta active:scale-[0.98]"
+        >
+          Retour à l&apos;accueil
         </button>
       </div>
     </div>
