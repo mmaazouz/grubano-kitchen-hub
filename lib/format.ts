@@ -62,3 +62,24 @@ export function formatDateTime(date: Date | string | number, locale: string): st
     minute: '2-digit',
   }).format(new Date(date))
 }
+
+/**
+ * Format a distance in kilometres with a locale-aware decimal separator.
+ * Under 1 km → metres ("400 m"). Otherwise 1 decimal ("1,2 km" in FR, "1.2 km"
+ * in EN). Caller supplies the unit label so it can come from next-intl.
+ *
+ * @example formatDistance(1.234, 'fr', 'km')  // "1,2 km"
+ * @example formatDistance(0.4,   'fr', 'km')  // "400 m"
+ */
+export function formatDistance(km: number, locale: string, kmLabel = 'km'): string {
+  if (!Number.isFinite(km) || km < 0) return ''
+  if (km < 1) {
+    const metres = Math.round(km * 1000)
+    return `${new Intl.NumberFormat(tag(locale)).format(metres)} m`
+  }
+  const rounded = Math.round(km * 10) / 10
+  return `${new Intl.NumberFormat(tag(locale), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(rounded)} ${kmLabel}`
+}

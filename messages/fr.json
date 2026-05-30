@@ -14,7 +14,8 @@
     "closed": "Fermé",
     "popular": "Populaire",
     "top": "Top",
-    "soldOut": "Épuisé"
+    "soldOut": "Épuisé",
+    "km": "km"
   },
   "categories": {
     "italien": "Italien",
@@ -76,7 +77,17 @@
       "topBadge": "⭐ Top noté",
       "cuisineVaried": "Cuisine variée",
       "emptyTitle": "Aucun restaurant disponible",
-      "emptyDescription": "Revenez bientôt — on prépare quelque chose de bon."
+      "emptyDescription": "Revenez bientôt — on prépare quelque chose de bon.",
+      "nearYou": "Près de vous",
+      "moreNearYou": "Plus de restos près de vous",
+      "myPosition": "Ma position",
+      "geoBannerTitle": "Activer ma position",
+      "geoBannerSubtitle": "Pour voir les restos les plus proches.",
+      "geoBannerDenied": "Autorisez la localisation dans votre navigateur pour réessayer.",
+      "geoBannerUnavailable": "La géolocalisation n'est pas disponible sur cet appareil.",
+      "geoEnable": "Activer",
+      "geoActive": "Position activée — résultats triés par proximité.",
+      "geoDisable": "Désactiver la position"
     },
     "search": {
       "title": "Explorer",
@@ -95,7 +106,12 @@
       "emptyDescription": "Essayez un autre mot ou un autre filtre.",
       "reset": "Réinitialiser",
       "resultsCount": "{count, plural, one {# résultat} other {# résultats}}",
-      "cuisineVaried": "Cuisine variée"
+      "cuisineVaried": "Cuisine variée",
+      "geoOffHint": "Position non activée — résultats non triés par distance.",
+      "geoEnable": "Activer",
+      "categoryFallbackTitle": "Pas de {category} près de vous — voici d'autres options",
+      "categoryFallbackSubtitle": "Les restaurants les plus proches, tous types confondus.",
+      "clearCategory": "Effacer la catégorie"
     },
     "favorites": {
       "title": "Mes Favoris",
