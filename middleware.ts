@@ -37,13 +37,16 @@ export async function middleware(request: NextRequest) {
     }
 
     const role = token.role as string
-    const home = () =>
-      NextResponse.redirect(new URL(`/${activeLocale}`, request.url))
+    // Send a role-mismatched user to the PUBLIC consumer app, which always
+    // renders. Never bounce to the locale root (`/{locale}`) — that path
+    // redirects to /dashboard, which re-triggers this guard → infinite loop.
+    const safeFallback = () =>
+      NextResponse.redirect(new URL(`/${activeLocale}/eat`, request.url))
 
-    if (restPath.startsWith('/dashboard') && !['restaurant', 'admin'].includes(role)) return home()
-    if (restPath.startsWith('/franchise') && !['franchise', 'admin'].includes(role)) return home()
-    if (restPath.startsWith('/creators') && !['creator', 'admin'].includes(role)) return home()
-    if (restPath.startsWith('/account') && !['consumer', 'admin'].includes(role)) return home()
+    if (restPath.startsWith('/dashboard') && !['restaurant', 'admin'].includes(role)) return safeFallback()
+    if (restPath.startsWith('/franchise') && !['franchise', 'admin'].includes(role)) return safeFallback()
+    if (restPath.startsWith('/creators') && !['creator', 'admin'].includes(role)) return safeFallback()
+    if (restPath.startsWith('/account') && !['consumer', 'admin'].includes(role)) return safeFallback()
   }
 
   // Locale detection + redirect of unprefixed paths to /{locale}/...
@@ -51,7 +54,12 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Exclude API routes, Next internals, and any path with a file extension
-  // (favicons, images, manifest) so they are never locale-prefixed.
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)'],
+  // next-intl recommended matcher. Excludes:
+  //   api      → API routes stay un-prefixed (/api/restaurants → 200)
+  //   _next    → all Next internals (static, image, data, …)
+  //   _vercel  → Vercel internals
+  //   .*\..*   → any path with a file extension (favicon.ico, /images/*, manifest)
+  // Already-localized paths (/fr, /en, …) ARE matched on purpose so next-intl
+  // can resolve the active locale; it does NOT re-redirect them.
+  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)'],
 }
