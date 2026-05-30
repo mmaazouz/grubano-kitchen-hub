@@ -9,7 +9,26 @@
     "cancel": "Annuler",
     "confirm": "Confirmer",
     "search": "Rechercher",
-    "seeAll": "Voir tout"
+    "seeAll": "Voir tout",
+    "free": "Gratuit",
+    "closed": "Fermé",
+    "popular": "Populaire",
+    "top": "Top",
+    "soldOut": "Épuisé"
+  },
+  "categories": {
+    "italien": "Italien",
+    "asiatique": "Asiatique",
+    "healthy": "Healthy",
+    "bowls": "Bowls",
+    "desserts": "Desserts",
+    "burgers": "Burgers",
+    "wraps": "Wraps",
+    "sandwiches": "Sandwiches",
+    "pizza": "Pizza",
+    "sushi": "Sushi",
+    "pates": "Pâtes",
+    "boissons": "Boissons"
   },
   "languageSwitcher": {
     "label": "Langue",
@@ -104,7 +123,12 @@
       "code3Desc": "Livraison offerte",
       "code3Sub": "Dès 25€ de commande",
       "copiedToast": "Code {code} copié !",
-      "footerHint": "Saisissez votre code dans le panier au moment du paiement."
+      "footerHint": "Saisissez votre code dans le panier au moment du paiement.",
+      "badgePromo": "Promo",
+      "badgeFreeDelivery": "Livraison offerte",
+      "badgeNew": "Nouveau",
+      "badgeTrending": "Tendance",
+      "badgeDiscount": "-{percent}%"
     },
     "nav": {
       "home": "Accueil",

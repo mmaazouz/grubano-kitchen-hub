@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { Heart } from 'lucide-react'
+import { formatCuisineList } from '@/lib/categories'
 import {
   RestaurantCard,
   EmptyState,
@@ -28,6 +29,8 @@ interface Restaurant {
 
 export default function FavoritesScreen() {
   const t = useTranslations('eat.favorites')
+  const tc = useTranslations('common')
+  const locale = useLocale()
   const router = useRouter()
   const [all, setAll] = useState<Restaurant[]>([])
   const [favs, setFavs] = useState<string[]>([])
@@ -78,11 +81,13 @@ export default function FavoritesScreen() {
                 layout="list"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={Array.isArray(r.cuisine) && r.cuisine.length ? r.cuisine.join(' • ') : t('cuisineVaried')}
+                cuisine={formatCuisineList(r.cuisine, locale, t('cuisineVaried'))}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}
                 deliveryFee={r.deliveryFee}
+                freeLabel={tc('free')}
+                closedLabel={tc('closed')}
                 onClick={() => router.push(`/eat/r/${r.id}`)}
               />
               <button

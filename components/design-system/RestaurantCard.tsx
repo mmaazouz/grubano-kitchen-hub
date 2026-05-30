@@ -29,6 +29,10 @@ export interface RestaurantCardProps extends Omit<React.HTMLAttributes<HTMLDivEl
   layout?: RestaurantCardLayout
   /** Show a closed/unavailable overlay. */
   unavailable?: boolean
+  /** Label for free delivery (i18n). Defaults to French "Gratuit". */
+  freeLabel?: string
+  /** Label for the closed overlay (i18n). Defaults to French "Fermé". */
+  closedLabel?: string
 }
 
 const GRADIENTS = [
@@ -53,12 +57,14 @@ function CoverArea({
   className,
   unavailable,
   ribbon,
+  closedLabel = 'Fermé',
 }: {
   cover?: string | null
   name: string
   className?: string
   unavailable?: boolean
   ribbon?: RestaurantCardProps['ribbon']
+  closedLabel?: string
 }) {
   const [from, to] = GRADIENTS[hash(name) % GRADIENTS.length]!
 
@@ -95,7 +101,7 @@ function CoverArea({
       {unavailable && (
         <div className="absolute inset-0 z-10 bg-black/55 grid place-items-center">
           <span className="px-3 py-1 rounded-grubano-pill bg-white/95 text-grubano-ink text-grubano-sm font-bold">
-            Fermé
+            {closedLabel}
           </span>
         </div>
       )}
@@ -109,7 +115,8 @@ function MetaRow({
   deliveryTime,
   deliveryFee,
   currency = '€',
-}: Pick<RestaurantCardProps, 'rating' | 'reviewCount' | 'deliveryTime' | 'deliveryFee' | 'currency'>) {
+  freeLabel = 'Gratuit',
+}: Pick<RestaurantCardProps, 'rating' | 'reviewCount' | 'deliveryTime' | 'deliveryFee' | 'currency' | 'freeLabel'>) {
   return (
     <div className="flex items-center gap-3 text-grubano-xs text-grubano-ink-muted">
       {typeof rating === 'number' && rating > 0 && (
@@ -124,7 +131,7 @@ function MetaRow({
       {typeof deliveryFee === 'number' && (
         <span className="inline-flex items-center gap-1 font-medium">
           <Bike size={12} />
-          {deliveryFee === 0 ? 'Gratuit' : `${deliveryFee.toFixed(2).replace('.', ',')} ${currency}`}
+          {deliveryFee === 0 ? freeLabel : `${deliveryFee.toFixed(2).replace('.', ',')} ${currency}`}
         </span>
       )}
     </div>
@@ -146,6 +153,8 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
     onClick,
     layout = 'grid',
     unavailable,
+    freeLabel,
+    closedLabel,
     className,
     ...rest
   },
@@ -179,13 +188,13 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
         )}
         {...rest}
       >
-        <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} className="h-24 w-24 rounded-grubano-md shrink-0" />
+        <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-24 w-24 rounded-grubano-md shrink-0" />
         <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
           <div>
             <h3 className="font-display font-bold text-grubano-base text-grubano-ink truncate">{name}</h3>
             {cuisine && <p className="text-grubano-xs text-grubano-ink-muted truncate">{cuisine}</p>}
           </div>
-          <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} />
+          <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} />
         </div>
       </div>
     )
@@ -207,12 +216,12 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
         )}
         {...rest}
       >
-        <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} className="h-56" />
+        <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-56" />
         <div className="p-5 flex flex-col gap-2">
           <h2 className="font-display font-bold text-grubano-2xl text-grubano-ink">{name}</h2>
           {cuisine && <p className="text-grubano-sm text-grubano-ink-muted">{cuisine}</p>}
           <div className="mt-1">
-            <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} />
+            <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} />
           </div>
           {typeof minOrder === 'number' && minOrder > 0 && (
             <p className="text-grubano-xs text-grubano-ink-muted mt-1">
@@ -240,13 +249,13 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
       )}
       {...rest}
     >
-      <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} className="h-40" />
+      <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-40" />
       <div className="p-4 flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-display font-bold text-grubano-lg text-grubano-ink leading-tight line-clamp-1">{name}</h3>
         </div>
         {cuisine && <p className="text-grubano-xs text-grubano-ink-muted line-clamp-1">{cuisine}</p>}
-        <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} />
+        <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} />
       </div>
     </div>
   )

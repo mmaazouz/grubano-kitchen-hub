@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
+import { formatCuisineList } from '@/lib/categories'
 import { ArrowLeft, Heart, Share2, Clock, MapPin, Search, ShoppingBag } from 'lucide-react'
 import {
   DishCard,
@@ -114,6 +115,7 @@ function summariseOptions(opts?: EatCartItemOptions): string | null {
 export default function RestaurantScreen() {
   const t = useTranslations('eat.restaurant')
   const tc = useTranslations('common')
+  const locale = useLocale()
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
@@ -334,7 +336,7 @@ export default function RestaurantScreen() {
         </div>
         <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{restaurant.name}</h1>
         <p className="mb-1.5 text-grubano-sm text-grubano-ink-muted">
-          {Array.isArray(restaurant.cuisine) ? restaurant.cuisine.join(' • ') : ''}
+          {formatCuisineList(restaurant.cuisine, locale, '')}
         </p>
         <div className="mb-2 flex items-center gap-1">
           <MapPin size={13} className="text-grubano-ink-faint" />
@@ -395,6 +397,9 @@ export default function RestaurantScreen() {
                   originalPrice={dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined}
                   photo={photoFor(dish)}
                   popular={dish.isPopular}
+                  popularLabel={tc('popular')}
+                  topLabel={tc('top')}
+                  soldOutLabel={tc('soldOut')}
                   quantityInCart={qtyForDish(dish.id)}
                   onClick={() => setModalDish(dish)}
                   onAdd={() => setModalDish(dish)}

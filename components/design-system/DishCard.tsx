@@ -25,6 +25,12 @@ export interface DishCardProps extends Omit<React.HTMLAttributes<HTMLDivElement>
   labels?: Array<{ label: string; tone?: 'primary' | 'success' | 'warning' | 'neutral' }>
   popular?: boolean
   unavailable?: boolean
+  /** Badge text for popular dishes (i18n). Defaults to French "Populaire". */
+  popularLabel?: string
+  /** Compact popular badge in the horizontal layout. Defaults to "Top". */
+  topLabel?: string
+  /** Sold-out overlay text (i18n). Defaults to French "Épuisé". */
+  soldOutLabel?: string
   /** When set, the card becomes interactive (whole card tap). */
   onClick?: () => void
   /** When set, shows a + button (independent of card click). */
@@ -56,11 +62,13 @@ function DishPhoto({
   name,
   className,
   unavailable,
+  soldOutLabel = 'Épuisé',
 }: {
   photo?: string | null
   name: string
   className?: string
   unavailable?: boolean
+  soldOutLabel?: string
 }) {
   const h = hash(name)
   const [from, to] = GRADIENTS[h % GRADIENTS.length]!
@@ -81,7 +89,7 @@ function DishPhoto({
       )}
       {unavailable && (
         <div className="absolute inset-0 bg-white/70 grid place-items-center">
-          <span className="text-grubano-xs font-bold text-grubano-ink">Épuisé</span>
+          <span className="text-grubano-xs font-bold text-grubano-ink">{soldOutLabel}</span>
         </div>
       )}
     </div>
@@ -134,6 +142,9 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
     labels,
     popular,
     unavailable,
+    popularLabel = 'Populaire',
+    topLabel = 'Top',
+    soldOutLabel,
     onClick,
     onAdd,
     quantityInCart,
@@ -164,11 +175,11 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
         {...rest}
       >
         <div className="relative">
-          <DishPhoto photo={photo} name={name} className="h-36 w-full" unavailable={unavailable} />
+          <DishPhoto photo={photo} name={name} className="h-36 w-full" unavailable={unavailable} soldOutLabel={soldOutLabel} />
           {popular && (
             <span className="absolute top-2 left-2">
               <Badge tone="warning" size="sm" icon={<Flame size={10} />}>
-                Populaire
+                {popularLabel}
               </Badge>
             </span>
           )}
@@ -215,7 +226,7 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
           <h4 className="flex-1 font-semibold text-grubano-base text-grubano-ink line-clamp-1">{name}</h4>
           {popular && (
             <Badge tone="warning" size="sm" icon={<Flame size={10} />}>
-              Top
+              {topLabel}
             </Badge>
           )}
         </div>
@@ -235,7 +246,7 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
         </div>
       </div>
       <div className="relative shrink-0">
-        <DishPhoto photo={photo} name={name} className="h-24 w-24 rounded-grubano-md" unavailable={unavailable} />
+        <DishPhoto photo={photo} name={name} className="h-24 w-24 rounded-grubano-md" unavailable={unavailable} soldOutLabel={soldOutLabel} />
         <AddButton onAdd={onAdd} qty={quantityInCart} />
       </div>
     </div>

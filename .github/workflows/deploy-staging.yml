@@ -32,6 +32,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # i18n completeness gate — fails the deploy if any locale is missing or
+      # has empty keys vs messages/fr.json, so untranslated strings never ship.
+      - name: Check translations
+        run: node scripts/check-translations.js
+
       - name: Generate Prisma client
         run: npx prisma generate
         env:

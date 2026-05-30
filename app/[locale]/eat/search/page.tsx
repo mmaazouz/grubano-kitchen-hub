@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
+import { formatCuisineList } from '@/lib/categories'
 import { Search, X, ArrowLeft } from 'lucide-react'
 import {
   RestaurantCard,
@@ -42,10 +43,6 @@ interface Restaurant {
   address: string
 }
 
-function cuisineText(c: string[], fallback: string) {
-  return Array.isArray(c) && c.length ? c.join(' • ') : fallback
-}
-
 function RowSkeleton() {
   return (
     <div className="flex gap-3 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3 shadow-grubano-sm">
@@ -62,6 +59,7 @@ function RowSkeleton() {
 function SearchContent() {
   const t = useTranslations('eat.search')
   const tc = useTranslations('common')
+  const locale = useLocale()
   const params = useSearchParams()
   const router = useRouter()
   const [query, setQuery] = useState(params.get('q') ?? '')
@@ -198,11 +196,13 @@ function SearchContent() {
                 layout="list"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
+                cuisine={formatCuisineList(r.cuisine, locale, t('cuisineVaried'))}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}
                 deliveryFee={r.deliveryFee}
+                freeLabel={tc('free')}
+                closedLabel={tc('closed')}
                 onClick={() => router.push(`/eat/r/${r.id}`)}
               />
             ))}

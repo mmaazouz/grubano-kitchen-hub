@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
+import { formatCuisineList } from '@/lib/categories'
 import { Bell, Search, MapPin, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import {
   RestaurantCard,
@@ -42,10 +43,6 @@ interface Restaurant {
   address: string
 }
 
-function cuisineText(c: string[], fallback: string) {
-  return Array.isArray(c) && c.length ? c.join(' • ') : fallback
-}
-
 function SectionHeader({ title }: { title: string }) {
   const t = useTranslations('eat.home')
   return (
@@ -60,6 +57,8 @@ function SectionHeader({ title }: { title: string }) {
 
 export default function HomeScreen() {
   const t = useTranslations('eat.home')
+  const tc = useTranslations('common')
+  const locale = useLocale()
   const router = useRouter()
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [loading, setLoading] = useState(true)
@@ -230,11 +229,13 @@ export default function HomeScreen() {
                 layout="grid"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
+                cuisine={formatCuisineList(r.cuisine, locale, t('cuisineVaried'))}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}
                 deliveryFee={r.deliveryFee}
+                freeLabel={tc('free')}
+                closedLabel={tc('closed')}
                 onClick={() => router.push(`/eat/r/${r.id}`)}
               />
             </div>
@@ -256,11 +257,13 @@ export default function HomeScreen() {
               layout="list"
               name={r.name}
               cover={r.coverPhoto || getRestaurantCover(r.id)}
-              cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
+              cuisine={formatCuisineList(r.cuisine, locale, t('cuisineVaried'))}
               rating={r.rating}
               reviewCount={r.reviewCount}
               deliveryTime={r.deliveryTime}
               deliveryFee={r.deliveryFee}
+              freeLabel={tc('free')}
+              closedLabel={tc('closed')}
               onClick={() => router.push(`/eat/r/${r.id}`)}
             />
           ))
@@ -280,11 +283,13 @@ export default function HomeScreen() {
                 layout="list"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
+                cuisine={formatCuisineList(r.cuisine, locale, t('cuisineVaried'))}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}
                 deliveryFee={r.deliveryFee}
+                freeLabel={tc('free')}
+                closedLabel={tc('closed')}
                 ribbon={{ label: t('topBadge'), tone: 'success' }}
                 onClick={() => router.push(`/eat/r/${r.id}`)}
               />
