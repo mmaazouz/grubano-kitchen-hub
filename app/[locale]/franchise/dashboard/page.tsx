@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { TrendingUp, TrendingDown, AlertCircle, PlusCircle } from 'lucide-react'
-import { Card } from '@/components/grubano/Card'
-import { SectionTitle } from '@/components/grubano/SectionTitle'
+import { useTranslations } from 'next-intl'
+import { TrendingUp, TrendingDown, MapPin, ChevronDown, ChevronUp, PlusCircle } from 'lucide-react'
+import { Link } from '@/navigation'
+import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
 
 type BrandPerf = {
   id:        string
@@ -25,9 +25,12 @@ type DashData = {
 }
 
 export default function FranchiseDashboard() {
-  const [data,    setData]    = useState<DashData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
+  const t = useTranslations('franchise.dashboard')
+
+  const [data,     setData]     = useState<DashData | null>(null)
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetch('/api/franchise/my-dashboard')
@@ -36,138 +39,214 @@ export default function FranchiseDashboard() {
         if (d.error) setError(d.error)
         else setData(d)
       })
-      .catch(() => setError('Erreur réseau'))
+      .catch(() => setError(t('errorNetwork')))
       .finally(() => setLoading(false))
-  }, [])
+  }, [t])
+
+  function toggleExpand(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">Chargement...</div>
-  }
-  if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-4">
-        <AlertCircle size={32} className="text-muted-foreground" />
-        <p className="text-sm font-semibold">{error}</p>
-        <Link href="/franchise" className="text-xs text-primary underline">Retour au portail</Link>
+      <div className="px-4 pt-5 max-w-2xl mx-auto">
+        <SkeletonList count={4} />
       </div>
     )
   }
 
-  const evoPct   = data && data.revenueLastMonth
+  if (error) {
+    return (
+      <div className="px-4 pt-10 max-w-2xl mx-auto">
+        <EmptyState
+          emoji="⚠️"
+          title={error}
+          action={
+            <Link href="/franchise">
+              <Button variant="ghost" size="sm">{t('backToPortal')}</Button>
+            </Link>
+          }
+        />
+      </div>
+    )
+  }
+
+  const evoPct     = data && data.revenueLastMonth
     ? Math.round(((data.revenueThisMonth - data.revenueLastMonth) / data.revenueLastMonth) * 100)
     : null
-  const vsNetwork = data ? data.revenueThisMonth - data.networkAvg : 0
-  const hasBrands = (data?.brands.length ?? 0) > 0
+  const vsNetwork  = data ? data.revenueThisMonth - data.networkAvg : 0
+  const hasBrands  = (data?.brands.length ?? 0) > 0
+  const fmt        = (n: number) => n.toLocaleString('fr-FR', { maximumFractionDigits: 0 })
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto">
+      {/* Header */}
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-display font-bold tracking-tight">Tableau de bord</h1>
-          <p className="text-sm text-muted-foreground mt-1">Performances de vos franchises ce mois</p>
+          <h1 className="text-2xl font-display font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-grubano-ink-muted mt-1">{t('subtitle')}</p>
         </div>
-        <Link
-          href="/franchise/apply"
-          className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition"
-        >
-          <PlusCircle size={13} /> Ajouter marque
+        <Link href="/franchise/apply">
+          <Button variant="primary" size="sm" leftIcon={<PlusCircle size={13} />}>
+            {t('addLocation')}
+          </Button>
         </Link>
       </div>
 
-      {/* KPI grid */}
+      {/* KPI grid — consolidated totals */}
       <div className="grid grid-cols-2 gap-3 mb-6">
-        <Card className="!p-4">
-          <p className="text-xs text-muted-foreground mb-1">CA ce mois</p>
-          <p className="text-xl font-bold">
-            {(data?.revenueThisMonth ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })}€
-          </p>
+        {/* CA ce mois */}
+        <Card elevation="sm" padding="md">
+          <p className="text-xs text-grubano-ink-muted mb-1">{t('kpiRevenue')}</p>
+          <p className="text-xl font-bold">{fmt(data?.revenueThisMonth ?? 0)}€</p>
           {evoPct !== null && (
-            <div className={`flex items-center gap-1 text-xs mt-1 ${evoPct >= 0 ? 'text-success' : 'text-destructive'}`}>
+            <div className={`flex items-center gap-1 text-xs mt-1 ${evoPct >= 0 ? 'text-grubano-success' : 'text-grubano-danger'}`}>
               {evoPct >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-              {evoPct >= 0 ? '+' : ''}{evoPct}% vs mois dernier
+              {evoPct >= 0
+                ? t('kpiTrendUp',   { pct: evoPct })
+                : t('kpiTrendDown', { pct: evoPct })}
             </div>
           )}
         </Card>
 
-        <Card className="!p-4">
-          <p className="text-xs text-muted-foreground mb-1">Royalties dues</p>
-          <p className="text-xl font-bold text-destructive">
-            {(data?.royaltiesDue ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })}€
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">À régler fin de mois</p>
+        {/* Royalties dues */}
+        <Card elevation="sm" padding="md">
+          <p className="text-xs text-grubano-ink-muted mb-1">{t('kpiRoyalties')}</p>
+          <p className="text-xl font-bold text-grubano-danger">{fmt(data?.royaltiesDue ?? 0)}€</p>
+          <p className="text-xs text-grubano-ink-muted mt-1">{t('kpiRoyaltiesHint')}</p>
         </Card>
 
-        <Card className="!p-4">
-          <p className="text-xs text-muted-foreground mb-1">Mois précédent</p>
-          <p className="text-xl font-bold">
-            {(data?.revenueLastMonth ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })}€
-          </p>
+        {/* Mois précédent */}
+        <Card elevation="sm" padding="md">
+          <p className="text-xs text-grubano-ink-muted mb-1">{t('kpiLastMonth')}</p>
+          <p className="text-xl font-bold">{fmt(data?.revenueLastMonth ?? 0)}€</p>
         </Card>
 
-        <Card className={`!p-4 ${vsNetwork >= 0 ? 'border-success/30 bg-success/5' : 'border-destructive/30 bg-destructive/5'}`}>
-          <p className="text-xs text-muted-foreground mb-1">vs réseau</p>
-          <p className={`text-xl font-bold ${vsNetwork >= 0 ? 'text-success' : 'text-destructive'}`}>
-            {vsNetwork >= 0 ? '+' : ''}{vsNetwork.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}€
+        {/* vs réseau */}
+        <Card
+          elevation="sm"
+          padding="md"
+          className={vsNetwork >= 0 ? 'border-grubano-success/30 bg-grubano-success-tint' : 'border-grubano-danger/30 bg-grubano-danger-tint'}
+        >
+          <p className="text-xs text-grubano-ink-muted mb-1">{t('kpiNetwork')}</p>
+          <p className={`text-xl font-bold ${vsNetwork >= 0 ? 'text-grubano-success' : 'text-grubano-danger'}`}>
+            {vsNetwork >= 0 ? '+' : ''}{fmt(vsNetwork)}€
           </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Moy. réseau: {(data?.networkAvg ?? 7800).toLocaleString('fr-FR')}€
+          <p className="text-xs text-grubano-ink-muted mt-1">
+            {t('kpiNetworkAvg', { amount: fmt(data?.networkAvg ?? 7800) })}
           </p>
         </Card>
       </div>
 
-      {/* Brands performance */}
-      <SectionTitle hint={hasBrands ? `${data!.brands.length} marque${data!.brands.length > 1 ? 's' : ''}` : undefined}>
-        Performances par marque
-      </SectionTitle>
+      {/* Points de vente */}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-display font-bold">{t('locationsTitle')}</h2>
+        {hasBrands && (
+          <span className="text-xs text-grubano-ink-muted">
+            {t('locationsHint', { count: data!.brands.length })}
+          </span>
+        )}
+      </div>
 
       {!hasBrands ? (
-        <Card className="text-center !p-8">
-          <AlertCircle size={28} className="mx-auto mb-3 text-muted-foreground" />
-          <p className="text-sm font-semibold mb-1">Aucune marque active</p>
-          <p className="text-xs text-muted-foreground mb-4">
-            Soumettez une candidature pour démarrer votre franchise
-          </p>
-          <Link
-            href="/franchise/apply"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition"
-          >
-            <PlusCircle size={13} /> Candidater
-          </Link>
-        </Card>
+        <EmptyState
+          emoji={<MapPin size={28} />}
+          title={t('emptyTitle')}
+          description={t('emptyDesc')}
+          action={
+            <Link href="/franchise/apply">
+              <Button variant="primary" size="sm">{t('applyCta')}</Button>
+            </Link>
+          }
+        />
       ) : (
         <div className="space-y-3">
-          {data!.brands.map(brand => (
-            <Card key={brand.id} className="!p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">{brand.emoji}</span>
-                  <div>
-                    <p className="font-bold text-sm">{brand.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{brand.orders} commandes ce mois</p>
+          {data!.brands.map(brand => {
+            const isOpen = expanded.has(brand.id)
+            return (
+              <Card key={brand.id} elevation="sm" padding="md">
+                {/* Location header — always visible */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{brand.emoji}</span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-sm">{brand.name}</p>
+                        <Badge tone="success" size="sm">Actif</Badge>
+                      </div>
+                      <p className="text-[11px] text-grubano-ink-muted">
+                        {t('brandOrders', { count: brand.orders })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="font-bold text-sm">{fmt(brand.revenue)}€</p>
+                      <p className="text-[11px] text-grubano-danger">
+                        −{fmt(brand.royalties)}€ {t('brandRoyalties')}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => toggleExpand(brand.id)}
+                      className="text-grubano-ink-muted hover:text-grubano-ink transition"
+                      aria-label={isOpen ? 'Réduire' : 'Détails'}
+                    >
+                      {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold">{brand.revenue.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}€</p>
-                  <p className="text-[11px] text-destructive">
-                    −{brand.royalties.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}€ royalties
-                  </p>
-                </div>
-              </div>
 
-              {brand.topDishes.length > 0 && (
-                <>
-                  <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide mb-1.5">
-                    Meilleurs plats
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {brand.topDishes.map(dish => (
-                      <span key={dish} className="rounded-full bg-accent px-2 py-0.5 text-[10px]">{dish}</span>
-                    ))}
+                {/* Drill-down details */}
+                {isOpen && (
+                  <div className="mt-3 pt-3 border-t border-grubano-border space-y-3">
+                    {/* KPI breakdown */}
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { label: t('drillRevenue'),   value: `${fmt(brand.revenue)}€`   },
+                        { label: t('drillRoyalties'), value: `${fmt(brand.royalties)}€` },
+                        { label: t('drillOrders'),    value: String(brand.orders)        },
+                      ] as const).map(({ label, value }) => (
+                        <div key={label} className="rounded-grubano-md bg-grubano-bg px-2 py-1.5 text-center">
+                          <p className="text-xs font-bold">{value}</p>
+                          <p className="text-[10px] text-grubano-ink-muted">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Top dishes */}
+                    {brand.topDishes.length > 0 && (
+                      <>
+                        <p className="text-[10px] text-grubano-ink-muted uppercase font-semibold tracking-wide">
+                          {t('brandTopDishes')}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {brand.topDishes.map(dish => (
+                            <span key={dish} className="rounded-grubano-pill bg-grubano-tint px-2 py-0.5 text-[10px] text-grubano-primary font-medium">
+                              {dish}
+                            </span>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Compare vs network */}
+                    <div className="flex items-center justify-between rounded-grubano-lg bg-grubano-bg p-2">
+                      <span className="text-[11px] text-grubano-ink-muted">{t('kpiNetwork')}</span>
+                      <span className={`text-xs font-bold ${brand.revenue >= (data?.networkAvg ?? 7800) ? 'text-grubano-success' : 'text-grubano-danger'}`}>
+                        {brand.revenue >= (data?.networkAvg ?? 7800) ? '+' : ''}
+                        {fmt(brand.revenue - (data?.networkAvg ?? 7800))}€
+                      </span>
+                    </div>
                   </div>
-                </>
-              )}
-            </Card>
-          ))}
+                )}
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

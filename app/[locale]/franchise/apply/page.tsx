@@ -1,18 +1,14 @@
 'use client'
 
 import { Suspense, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { CheckCircle2, ChevronRight, ChevronLeft, Building2, User, Star, FileCheck } from 'lucide-react'
-import { Card } from '@/components/grubano/Card'
+import { useRouter } from '@/navigation'
+import { Card, Button, Input } from '@/components/design-system'
 
-const BRANDS = ['Gnocchi Bar', 'Riz Gourmand', 'Pasta Fresca', 'Bowl Healthy']
+const BRANDS = ['Gnocchi Bar', 'Riz Gourmand', 'Pasta Fresca', 'Bowl Healthy', 'Rollix']
 
-const STEPS = [
-  { label: 'Profil',        icon: User       },
-  { label: 'Business',      icon: Building2  },
-  { label: 'Marque',        icon: Star       },
-  { label: 'Confirmation',  icon: FileCheck  },
-]
+const STEP_ICONS = [User, Building2, Star, FileCheck]
 
 type FormData = {
   name:       string
@@ -27,7 +23,9 @@ type FormData = {
 }
 
 function ApplyForm() {
+  const t      = useTranslations('franchise.apply')
   const router = useRouter()
+
   const [step,       setStep]       = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [done,       setDone]       = useState(false)
@@ -62,121 +60,127 @@ function ApplyForm() {
         setDone(true)
       } else {
         const data = await res.json()
-        setError(data.error ?? 'Erreur lors de la soumission')
+        setError(data.error ?? t('errorSubmit'))
       }
     } catch {
-      setError('Erreur réseau')
+      setError(t('errorNetwork'))
     } finally {
       setSubmitting(false)
     }
   }
 
+  const STEP_LABELS = [
+    t('stepProfile'),
+    t('stepBusiness'),
+    t('stepBrand'),
+    t('stepConfirm'),
+  ]
+
   if (done) {
     return (
       <div className="px-4 pt-12 max-w-lg mx-auto text-center">
-        <div className="h-20 w-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 size={40} className="text-success" />
+        <div className="h-20 w-20 rounded-grubano-pill bg-grubano-success-tint flex items-center justify-center mx-auto mb-4">
+          <CheckCircle2 size={40} className="text-grubano-success" />
         </div>
-        <h1 className="text-xl font-display font-bold mb-2">Candidature envoyée !</h1>
-        <p className="text-sm text-muted-foreground mb-6">
-          Notre équipe examine votre dossier et vous recontacte sous 48h.
-        </p>
-        <button
-          onClick={() => router.push('/franchise')}
-          className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition"
-        >
-          Retour au portail
-        </button>
+        <h1 className="text-xl font-display font-bold mb-2">{t('successTitle')}</h1>
+        <p className="text-sm text-grubano-ink-muted mb-6">{t('successDesc')}</p>
+        <Button variant="primary" size="md" fullWidth onClick={() => router.push('/franchise')}>
+          {t('backToPortal')}
+        </Button>
       </div>
     )
   }
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
-      <h1 className="text-xl font-display font-bold mb-1">Candidature franchise</h1>
-      <p className="text-xs text-muted-foreground mb-5">Étape {step + 1} sur {STEPS.length}</p>
+      <h1 className="text-xl font-display font-bold mb-1">{t('title')}</h1>
+      <p className="text-xs text-grubano-ink-muted mb-5">
+        {t('stepOf', { current: step + 1, total: STEP_LABELS.length })}
+      </p>
 
       {/* Stepper */}
       <div className="flex items-center mb-6">
-        {STEPS.map((s, i) => (
-          <div key={i} className="flex items-center flex-1">
-            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition ${
-              i < step  ? 'bg-success text-white'
-              : i === step ? 'bg-primary text-primary-foreground'
-              : 'bg-accent text-muted-foreground'
-            }`}>
-              {i < step ? <CheckCircle2 size={14} /> : i + 1}
+        {STEP_LABELS.map((label, i) => {
+          const Icon = STEP_ICONS[i]
+          return (
+            <div key={i} className="flex items-center flex-1">
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-grubano-pill text-xs font-bold transition ${
+                i < step    ? 'bg-grubano-success text-white'
+                : i === step ? 'bg-grubano-primary text-white'
+                : 'bg-grubano-bg text-grubano-ink-muted'
+              }`}>
+                {i < step ? <CheckCircle2 size={14} /> : <Icon size={14} />}
+              </div>
+              {i < STEP_LABELS.length - 1 && (
+                <div className={`h-0.5 flex-1 mx-1 transition ${i < step ? 'bg-grubano-success' : 'bg-grubano-border'}`} />
+              )}
             </div>
-            {i < STEPS.length - 1 && (
-              <div className={`h-0.5 flex-1 mx-1 transition ${i < step ? 'bg-success' : 'bg-accent'}`} />
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      <Card className="mb-4">
-        <h2 className="font-bold mb-4 text-sm">{STEPS[step].label}</h2>
+      <Card elevation="sm" padding="md" className="mb-4">
+        <h2 className="font-bold mb-4 text-sm">{STEP_LABELS[step]}</h2>
 
         {/* Step 1 — Personal info */}
         {step === 0 && (
           <div className="space-y-3">
-            {([
-              { key: 'name',  label: 'Nom complet', type: 'text',  placeholder: 'Jean Dupont'        },
-              { key: 'city',  label: 'Ville',        type: 'text',  placeholder: 'Paris'              },
-              { key: 'phone', label: 'Téléphone',    type: 'tel',   placeholder: '06 12 34 56 78'     },
-              { key: 'email', label: 'Email',         type: 'email', placeholder: 'jean@exemple.fr'   },
-            ] as { key: keyof FormData; label: string; type: string; placeholder: string }[]).map(({ key, label, type, placeholder }) => (
-              <div key={key}>
-                <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">
-                  {label}
-                </label>
-                <input
-                  type={type}
-                  placeholder={placeholder}
-                  value={form[key] as string}
-                  onChange={e => set(key, e.target.value)}
-                  className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-            ))}
+            <Input
+              label={t('labelName')}
+              type="text"
+              placeholder="Jean Dupont"
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
+            />
+            <Input
+              label={t('labelCity')}
+              type="text"
+              placeholder="Paris"
+              value={form.city}
+              onChange={e => set('city', e.target.value)}
+            />
+            <Input
+              label={t('labelPhone')}
+              type="tel"
+              placeholder="06 12 34 56 78"
+              value={form.phone}
+              onChange={e => set('phone', e.target.value)}
+            />
+            <Input
+              label={t('labelEmail')}
+              type="email"
+              placeholder="jean@exemple.fr"
+              value={form.email}
+              onChange={e => set('email', e.target.value)}
+            />
           </div>
         )}
 
         {/* Step 2 — Business info */}
         {step === 1 && (
           <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">
-                SIRET <span className="normal-case font-normal">(optionnel)</span>
-              </label>
-              <input
-                type="text"
-                placeholder="12345678901234"
-                value={form.siret}
-                onChange={e => set('siret', e.target.value)}
-                className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">
-                RIB / IBAN <span className="normal-case font-normal">(optionnel)</span>
-              </label>
-              <input
-                type="text"
-                placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
-                value={form.rib}
-                onChange={e => set('rib', e.target.value)}
-                className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <label className="flex items-center gap-3 cursor-pointer rounded-xl bg-accent p-3">
+            <Input
+              label={`${t('labelSiret')} ${t('labelOptional')}`}
+              type="text"
+              placeholder="12345678901234"
+              value={form.siret}
+              onChange={e => set('siret', e.target.value)}
+            />
+            <Input
+              label={`${t('labelRib')} ${t('labelOptional')}`}
+              type="text"
+              placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+              value={form.rib}
+              onChange={e => set('rib', e.target.value)}
+            />
+            <label className="flex items-center gap-3 cursor-pointer rounded-grubano-lg bg-grubano-bg p-3">
               <input
                 type="checkbox"
                 checked={form.hasKitchen}
                 onChange={e => set('hasKitchen', e.target.checked)}
-                className="h-4 w-4 rounded accent-primary"
+                className="h-4 w-4 rounded accent-grubano-primary"
               />
-              <span className="text-sm">J&apos;ai déjà une cuisine disponible</span>
+              <span className="text-sm">{t('labelKitchen')}</span>
             </label>
           </div>
         )}
@@ -185,30 +189,32 @@ function ApplyForm() {
         {step === 2 && (
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">
-                Marque souhaitée
+              <label className="block text-xs font-semibold mb-1.5 text-grubano-ink-muted uppercase tracking-wide">
+                {t('labelBrand')}
               </label>
               <select
                 value={form.brandName}
                 onChange={e => set('brandName', e.target.value)}
-                className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary"
               >
-                <option value="">Sélectionner une marque...</option>
+                <option value="">{t('labelBrandPlaceholder')}</option>
                 {BRANDS.map(b => <option key={b}>{b}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">
-                Motivation
+              <label className="block text-xs font-semibold mb-1.5 text-grubano-ink-muted uppercase tracking-wide">
+                {t('labelMotivation')}
               </label>
               <textarea
                 rows={5}
-                placeholder="Pourquoi souhaitez-vous rejoindre Grubano ? Quelle est votre expérience ?"
+                placeholder={t('motivationPlaceholder')}
                 value={form.motivation}
                 onChange={e => set('motivation', e.target.value)}
-                className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary resize-none"
               />
-              <p className="text-[10px] text-muted-foreground mt-1">{form.motivation.length} caractères</p>
+              <p className="text-[10px] text-grubano-ink-muted mt-1">
+                {t('charCount', { count: form.motivation.length })}
+              </p>
             </div>
           </div>
         )}
@@ -216,20 +222,20 @@ function ApplyForm() {
         {/* Step 4 — Confirmation summary */}
         {step === 3 && (
           <div className="space-y-1">
-            {[
-              { label: 'Nom',              value: form.name      },
-              { label: 'Ville',            value: form.city      },
-              { label: 'Email',            value: form.email     },
-              { label: 'Téléphone',        value: form.phone     },
-              { label: 'Marque choisie',   value: form.brandName },
-              { label: 'Cuisine dispo',    value: form.hasKitchen ? 'Oui' : 'Non' },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between py-2 border-b border-border last:border-0">
-                <span className="text-xs text-muted-foreground">{label}</span>
+            {([
+              { label: t('summaryName'),    value: form.name      },
+              { label: t('summaryCity'),    value: form.city      },
+              { label: t('summaryEmail'),   value: form.email     },
+              { label: t('summaryPhone'),   value: form.phone     },
+              { label: t('summaryBrand'),   value: form.brandName },
+              { label: t('summaryKitchen'), value: form.hasKitchen ? t('kitchenYes') : t('kitchenNo') },
+            ] as const).map(({ label, value }) => (
+              <div key={label} className="flex justify-between py-2 border-b border-grubano-border last:border-0">
+                <span className="text-xs text-grubano-ink-muted">{label}</span>
                 <span className="text-xs font-semibold text-right max-w-[60%] truncate">{value}</span>
               </div>
             ))}
-            {error && <p className="text-xs text-destructive pt-2">{error}</p>}
+            {error && <p className="text-xs text-grubano-danger pt-2">{error}</p>}
           </div>
         )}
       </Card>
@@ -237,29 +243,38 @@ function ApplyForm() {
       {/* Navigation */}
       <div className="flex gap-3">
         {step > 0 && (
-          <button
+          <Button
+            variant="secondary"
+            size="md"
+            className="flex-1"
             onClick={() => setStep(s => s - 1)}
-            className="flex-1 rounded-xl border border-border py-3 text-sm font-bold flex items-center justify-center gap-2 hover:bg-accent transition"
+            leftIcon={<ChevronLeft size={16} />}
           >
-            <ChevronLeft size={16} /> Retour
-          </button>
+            {t('back')}
+          </Button>
         )}
         {step < 3 ? (
-          <button
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
             onClick={() => setStep(s => s + 1)}
             disabled={!canProceed()}
-            className="flex-1 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground flex items-center justify-center gap-2 hover:bg-primary/90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            rightIcon={<ChevronRight size={16} />}
           >
-            Continuer <ChevronRight size={16} />
-          </button>
+            {t('continue')}
+          </Button>
         ) : (
-          <button
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
             onClick={handleSubmit}
-            disabled={submitting}
-            className="flex-1 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground flex items-center justify-center gap-2 hover:bg-primary/90 transition disabled:opacity-50"
+            loading={submitting}
+            leftIcon={submitting ? undefined : <CheckCircle2 size={16} />}
           >
-            {submitting ? 'Envoi en cours...' : <><CheckCircle2 size={16} /> Envoyer ma candidature</>}
-          </button>
+            {submitting ? t('submitting') : t('submit')}
+          </Button>
         )}
       </div>
     </div>
@@ -268,7 +283,7 @@ function ApplyForm() {
 
 export default function FranchiseApplyPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Chargement...</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-grubano-ink-muted">…</div>}>
       <ApplyForm />
     </Suspense>
   )
