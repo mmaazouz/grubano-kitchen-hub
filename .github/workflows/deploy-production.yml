@@ -81,6 +81,12 @@ jobs:
           mkdir -p deploy-temp/prisma
           cp prisma/schema.prisma deploy-temp/prisma/schema.prisma
 
+          # Server-side post-deploy script (run via SSH after FTP — prunes
+          # stale .next/static artifacts so old chunk dirs don't accumulate
+          # and cause 404/blank-page on the freshly deployed HTML).
+          mkdir -p deploy-temp/scripts/server
+          cp scripts/server/prune-next.js deploy-temp/scripts/server/prune-next.js
+
           # Public assets
           [ -d public ] && cp -r public deploy-temp/public || true
 
@@ -119,11 +125,24 @@ jobs:
             **/.git*
             **/.git*/**
 
-      # ── SSH: generate Prisma client on the server ─────────────────────────────
-      # The uploaded standalone node_modules carries a Prisma client built for the
-      # CI runner. Regenerate it on the server (correct binaryTarget) so runtime
-      # queries don't fail even when the schema/DB is already synced.
-      - name: Generate Prisma client on server
+      # ── SSH: post-deploy server tasks ─────────────────────────────────────────
+      # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
+      # so a single failure (e.g. prisma generate hiccup) does not skip the
+      # Passenger restart at the end — that restart is the LAST line on
+      # purpose, so it always fires while the SSH session is still open.
+      #
+      # Order matters:
+      #   1. prisma generate  — rebuild client for the server's binaryTarget
+      #   2. seed test user   — idempotent demo account
+      #   3. prune-next       — delete stale .next/static artifacts owned by
+      #                          previous builds. This is the FIX for the
+      #                          recurring "blank page / CSS 404" right after
+      #                          a deploy: SamKirkland/FTP-Deploy-Action never
+      #                          removes remote files, so without this the
+      #                          new HTML keeps 404-ing on chunks the next
+      #                          process state still expects.
+      #   4. touch restart.txt — Passenger picks up fresh code + clean static
+      - name: Post-deploy server tasks
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
@@ -137,6 +156,8 @@ jobs:
             export DATABASE_URL='${{ secrets.DATABASE_URL_PROD }}'
             npx prisma@5.22.0 generate || true
             node prisma/seed-test-user.js || true
+            node scripts/server/prune-next.js || true
+            mkdir -p tmp
             touch tmp/restart.txt
 
       # ── SSH: chmod + Passenger restart ────────────────────────────────────────
