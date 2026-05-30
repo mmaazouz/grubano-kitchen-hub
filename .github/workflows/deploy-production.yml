@@ -165,3 +165,21 @@ jobs:
             exit 1
           fi
           echo "OK Production is live!"
+
+      # ── Trigger docs rebuild ──────────────────────────────────────────────────
+      # Fires a repository_dispatch at grubano-docs after a successful prod deploy
+      # so the auto-update workflow there regenerates the API reference + changelog.
+      # Staging deploys deliberately do NOT do this (avoids Claude API spend on
+      # every dev push). Requires repo secret DOCS_DISPATCH_TOKEN — a fine-grained
+      # PAT scoped to mmaazouz/grubano-docs with Contents: write (or Actions: write).
+      # The default GITHUB_TOKEN cannot dispatch cross-repo.
+      - name: Trigger docs rebuild
+        if: success()
+        continue-on-error: true
+        run: |
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.DOCS_DISPATCH_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/mmaazouz/grubano-docs/dispatches \
+            -d '{"event_type":"app-updated"}'
