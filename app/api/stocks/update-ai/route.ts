@@ -14,7 +14,7 @@ type ParsedItem = { name: string; quantity: number; unit: string }
 
 async function parseWithClaude(text: string): Promise<ParsedItem[]> {
   const msg = await claude.messages.create({
-    model:      'claude-sonnet-4-20250514',
+    model:      'claude-sonnet-4-5',
     max_tokens: 512,
     messages: [{
       role: 'user',

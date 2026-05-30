@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       : 'enthusiastic and grateful'
 
     const msg = await claude.messages.create({
-      model:      'claude-sonnet-4-20250514',
+      model:      'claude-sonnet-4-5',
       max_tokens: 300,
       messages: [{
         role: 'user',

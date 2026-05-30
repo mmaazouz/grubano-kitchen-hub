@@ -53,7 +53,7 @@ Génère un briefing matinal en français avec :
 Sois concis, direct et professionnel. Maximum 120 mots au total.`
 
     const msg = await claude.messages.create({
-      model:      'claude-sonnet-4-20250514',
+      model:      'claude-sonnet-4-5',
       max_tokens: 400,
       messages:   [{ role: 'user', content: prompt }],
     })

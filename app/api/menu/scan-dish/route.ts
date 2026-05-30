@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const { imageBase64, mediaType } = schema.parse(body)
 
     const msg = await claude.messages.create({
-      model:      'claude-sonnet-4-20250514',
+      model:      'claude-sonnet-4-5',
       max_tokens: 1024,
       messages: [{
         role: 'user',

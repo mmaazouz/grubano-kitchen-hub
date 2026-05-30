@@ -21,7 +21,7 @@ const transporter = nodemailer.createTransport({
 
 async function generateEmail(prompt: string): Promise<{ html: string; tokens: number }> {
   const msg = await claude.messages.create({
-    model:      'claude-sonnet-4-20250514',
+    model:      'claude-sonnet-4-5',
     max_tokens: 600,
     messages:   [{ role: 'user', content: prompt }],
   })
