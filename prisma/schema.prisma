@@ -20,10 +20,14 @@ model Operator {
   status    String    @default("active")
   role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin
   createdAt  DateTime   @default(now())
-  brands     Brand[]
-  accounts   Account[]
-  sessions   Session[]
-  restaurant Restaurant?
+  brands       Brand[]
+  accounts     Account[]
+  sessions     Session[]
+  restaurant   Restaurant?
+  // Franchise (role=franchise) owns one or more points of sale. Empty for
+  // non-franchise operators — the relation list is nullable by virtue of
+  // being a list (Prisma returns []).
+  pointsOfSale PointOfSale[]
 }
 
 model Brand {
@@ -264,6 +268,11 @@ model Creator {
   followers     Int           @default(0)
   verified      Boolean       @default(false)
   totalEarnings Float         @default(0)
+  // Referral programme — nullable so existing creators keep working until
+  // they are granted a code / slug from the back office.
+  referralCode     String?    @unique           // e.g. "MARCO20"
+  referralLinkSlug String?    @unique           // used in /r/{slug}
+  referrals        Referral[]
   dishes        CreatorDish[]
   createdAt     DateTime      @default(now())
 }
@@ -370,6 +379,103 @@ model Order {
   pointsEarned    Int        @default(0)
   estimatedTime   Int        @default(30)
   trackingUrl     String?
+  // Optional location attribution (set when a franchise operator's POS
+  // generated the order — used for consolidated multi-location reporting).
+  pointOfSaleId   String?
+  pointOfSale     PointOfSale? @relation(fields: [pointOfSaleId], references: [id])
+  // Referral code captured at checkout (cookie or manual entry). Plain string
+  // — kept independent of the Referral row so reporting still works even if
+  // the Referral expires before this row is touched. The matching
+  // ReferralOrder row (if any) is created server-side at order time.
+  referralCode    String?
+  referralOrder   ReferralOrder?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+
+  @@index([pointOfSaleId])
+  @@index([referralCode])
+}
+
+// ── Franchise multi-location ──────────────────────────────────────────────────
+
+// A franchise operator (Operator.role = "franchise") owns one or more
+// physical or virtual locations. Each location can be attributed independently
+// in orders + analytics. Coordinates are geocoded via lib/geocode.ts (BAN)
+// at create/update time, same pattern as Restaurant.
+model PointOfSale {
+  id          String   @id @default(cuid())
+  franchiseId String
+  franchise   Operator @relation(fields: [franchiseId], references: [id])
+  name        String
+  address     String?
+  city        String?
+  lat         Float?
+  lng         Float?
+  brand       String?  // which Grubano brand this POS operates (free-form for now)
+  isActive    Boolean  @default(true)
+  orders      Order[]
+  createdAt   DateTime @default(now())
+
+  @@index([franchiseId])
+}
+
+// ── Creator referral programme (CONFIGURABLE) ─────────────────────────────────
+// All commercial parameters live in ReferralConfig (single global row) so
+// Mohammed can tune them from a future /dashboard/referral settings page
+// without a code change. Defaults match the values Mohammed approved at
+// programme launch.
+model ReferralConfig {
+  id                        String  @id @default(cuid())
+  // Creator's cut of GRUBANO'S commission on a referred order (NOT of basket).
+  // Example: 0.22 = 22 % of Grubano's fee.
+  commissionPctOfGrubanoFee Float   @default(0.22)
+  // How long the creator earns on a referred customer's orders, from
+  // the referral start date.
+  durationDays              Int     @default(90)
+  // Welcome discount on the referred customer's first order.
+  customerDiscountPct       Float   @default(0.10)
+  customerDiscountCapEur    Float   @default(5)
+  active                    Boolean @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+// A live referral binding: customer ↔ creator, with an expiry computed at
+// creation time from ReferralConfig.durationDays. We freeze expiresAt rather
+// than recomputing from config on read, so future config tweaks never
+// retroactively shorten an existing referral window.
+model Referral {
+  id         String         @id @default(cuid())
+  creatorId  String
+  creator    Creator        @relation(fields: [creatorId], references: [id])
+  // customerId is an Operator.id with role=consumer. Kept as a plain string
+  // (same convention as Order.consumerId) to avoid a second relation back
+  // into Operator and keep this migration purely additive on existing models.
+  customerId String
+  codeUsed   String
+  startedAt  DateTime       @default(now())
+  expiresAt  DateTime
+  active     Boolean        @default(true)
+  orders     ReferralOrder[]
+  createdAt  DateTime       @default(now())
+
+  @@index([creatorId])
+  @@index([customerId])
+  @@index([codeUsed])
+}
+
+// One row per qualifying order routed through a referral. `creatorEarning`
+// is FROZEN at order time (commissionPctOfGrubanoFee × grubanoFee) so future
+// config changes can't retroactively rewrite past payouts.
+model ReferralOrder {
+  id             String   @id @default(cuid())
+  referralId     String
+  referral       Referral @relation(fields: [referralId], references: [id])
+  orderId        String   @unique
+  order          Order    @relation(fields: [orderId], references: [id])
+  grubanoFee     Float    // Grubano's commission on this order, captured at order time
+  creatorEarning Float    // grubanoFee × commissionPctOfGrubanoFee — FROZEN
+  createdAt      DateTime @default(now())
+
+  @@index([referralId])
 }
