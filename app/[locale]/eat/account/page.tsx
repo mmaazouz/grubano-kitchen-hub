@@ -6,9 +6,10 @@ import { useSession, signOut } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import {
   User, MapPin, CreditCard, Tag, Bell, Settings, LogOut, ChevronRight,
-  Star, Package, Heart, MessageCircle, Shield, CircleHelp,
+  Star, Package, Heart, MessageCircle, Shield, CircleHelp, Globe,
 } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
+import { LanguageSwitcher } from '@/components/design-system'
 
 // Loyalty tiers per CLAUDE.md: Bronze 50 → Silver 100 → Gold 200 → Platine 400
 function tierFor(points: number) {
@@ -183,6 +184,22 @@ export default function ProfileScreen() {
               </button>
             )
           })}
+        </div>
+
+        {/* Language */}
+        <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card">
+          <div className="flex items-center gap-3.5 px-4 py-3.5">
+            <span
+              className="flex h-[38px] w-[38px] items-center justify-center rounded-xl"
+              style={{ backgroundColor: '#3B82F618' }}
+            >
+              <Globe size={18} style={{ color: '#3B82F6' }} />
+            </span>
+            <span className="text-[15px] font-semibold text-[#1a1a1a]">Langue</span>
+            <div className="ml-auto">
+              <LanguageSwitcher variant="full" />
+            </div>
+          </div>
         </div>
 
         {/* Logout */}

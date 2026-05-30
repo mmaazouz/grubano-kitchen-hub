@@ -155,21 +155,21 @@ export default function HomeScreen() {
         {BANNERS.map((b) => (
           <div
             key={b.id}
-            className="relative flex h-[168px] w-[calc(100%-32px)] shrink-0 snap-start overflow-hidden rounded-grubano-xl bg-grubano-primary text-white"
+            className="relative flex h-[188px] w-[calc(100%-32px)] shrink-0 snap-start overflow-hidden rounded-grubano-xl bg-grubano-primary text-white"
           >
-            <div className="flex flex-1 flex-col justify-between p-4">
+            <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
               <span className="self-start rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold">
                 {t(b.tagKey)}
               </span>
-              <p className="mt-1.5 text-[17px] font-extrabold leading-tight">{t(b.titleKey)}</p>
-              <div className="mt-1 flex items-end gap-1">
+              <p className="line-clamp-2 text-[17px] font-extrabold leading-tight">{t(b.titleKey)}</p>
+              <div className="flex items-end gap-1">
                 <span className="text-xs text-white/90">{t('upTo')}</span>
-                <span className="text-[38px] font-black leading-[44px]">{b.discount}</span>
-                <span className="mb-1 text-base font-bold">%</span>
+                <span className="text-[36px] font-black leading-none">{b.discount}</span>
+                <span className="mb-0.5 text-base font-bold">%</span>
               </div>
               <button
                 onClick={() => router.push('/eat/promos')}
-                className="self-start rounded-full bg-grubano-dark px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
+                className="mt-auto self-start rounded-full bg-grubano-dark px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
               >
                 {t('getOffer')}
               </button>
