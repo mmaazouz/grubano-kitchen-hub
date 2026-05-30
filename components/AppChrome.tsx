@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import MobileHeader from '@/components/MobileHeader'
 import { SidebarProvider } from '@/components/SidebarContext'
 import { BottomNav } from '@/components/grubano/BottomNav'
+import { locales } from '@/i18n'
 
 // Routes that must render WITHOUT the operator dashboard chrome
 // (Sidebar + MobileHeader + operator BottomNav).
@@ -14,10 +15,18 @@ import { BottomNav } from '@/components/grubano/BottomNav'
 const BARE_PREFIXES = ['/eat', '/login', '/register']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname() || '/'
+  const raw = usePathname() || '/'
+  // Strip the leading locale segment (e.g. /fr/eat → /eat) so chrome rules
+  // stay locale-agnostic.
+  const segments = raw.split('/')
+  const pathname =
+    locales.includes(segments[1] as never)
+      ? '/' + segments.slice(2).join('/') || '/'
+      : raw
+  const normalized = pathname === '' ? '/' : pathname
   const isBare =
-    pathname === '/' ||
-    BARE_PREFIXES.some(p => pathname === p || pathname.startsWith(`${p}/`))
+    normalized === '/' ||
+    BARE_PREFIXES.some(p => normalized === p || normalized.startsWith(`${p}/`))
 
   // Public / consumer routes: render bare, no operator chrome.
   if (isBare) return <>{children}</>

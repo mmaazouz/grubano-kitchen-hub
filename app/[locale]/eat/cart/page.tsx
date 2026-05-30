@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { useRouter } from '@/navigation'
 import { Minus, Plus, Trash2, Tag, MapPin, CreditCard, ShoppingBag, Bike, Package } from 'lucide-react'
 import { Button, Badge, PriceTag } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
@@ -10,6 +11,7 @@ import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart
 type Fulfillment = 'delivery' | 'pickup'
 
 export default function CartScreen() {
+  const t = useTranslations('eat.cart')
   const router = useRouter()
   const [cart, setCart] = useState<EatCartData | null>(null)
   const [hydrated, setHydrated] = useState(false)
@@ -68,17 +70,17 @@ export default function CartScreen() {
     if (!cart) return
     const items = cart.items.filter((l) => l.item.id !== itemId)
     update(items.length ? { ...cart, items } : null)
-    showToast('Article retiré')
+    showToast(t('toastItemRemoved'))
   }
 
   function applyPromo() {
     const code = promoInput.trim().toUpperCase()
     if (code === 'FRENCH10') {
       setDiscount(0.1)
-      showToast('Code promo appliqué ! -10%')
+      showToast(t('toastPromoApplied'))
     } else {
       setDiscount(0)
-      showToast('Code promo invalide')
+      showToast(t('toastPromoInvalid'))
     }
   }
 
@@ -103,11 +105,11 @@ export default function CartScreen() {
     if (fulfillment === 'pickup') {
       const restoAddr = [cart.restaurant.address, cart.restaurant.city].filter(Boolean).join(', ')
       deliveryAddress = restoAddr
-        ? `Retrait sur place — ${restoAddr}`
-        : 'Retrait sur place'
+        ? t('pickupAt', { address: restoAddr })
+        : t('pickupLabel')
     } else {
       if (!address.trim() || address.trim().length < 5) {
-        setError('Veuillez entrer une adresse de livraison')
+        setError(t('errorAddressRequired'))
         return
       }
       deliveryAddress = address
@@ -144,13 +146,13 @@ export default function CartScreen() {
       }
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error ?? 'Erreur lors de la commande')
+        setError(data.error ?? t('errorOrderFailed'))
         return
       }
       writeCart(null)
       router.push(`/eat/track/${data.orderId}`)
     } catch {
-      setError('Erreur réseau. Veuillez réessayer.')
+      setError(t('errorNetwork'))
     } finally {
       setSubmitting(false)
     }
@@ -169,16 +171,16 @@ export default function CartScreen() {
     return (
       <div className="min-h-screen bg-grubano-bg">
         <div className="border-b border-grubano-border bg-white px-4 pb-4 pt-3">
-          <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">Mon Panier</h1>
+          <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{t('title')}</h1>
         </div>
         <div className="flex flex-col items-center justify-center px-10 pt-24 text-center">
           <ShoppingBag size={64} className="text-grubano-primary" />
-          <p className="mt-4 text-xl font-extrabold text-grubano-ink">Votre panier est vide</p>
+          <p className="mt-4 text-xl font-extrabold text-grubano-ink">{t('emptyTitle')}</p>
           <p className="mt-2 text-grubano-sm leading-relaxed text-grubano-ink-muted">
-            Ajoutez des plats pour commencer votre commande.
+            {t('emptyDescription')}
           </p>
           <Button variant="primary" size="pill" className="mt-6" onClick={() => router.push('/eat')}>
-            Explorer les plats
+            {t('exploreDishes')}
           </Button>
         </div>
       </div>
@@ -189,17 +191,17 @@ export default function CartScreen() {
     <div className="min-h-screen bg-grubano-bg pb-[160px]">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-grubano-border bg-white px-4 pb-4 pt-3">
-        <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">Mon Panier</h1>
+        <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{t('title')}</h1>
         <span className="text-grubano-sm font-semibold text-grubano-primary">
-          {totalItems} article{totalItems > 1 ? 's' : ''}
+          {t('itemCount', { count: totalItems })}
         </span>
       </div>
 
       {/* Fulfilment tabs */}
       <div className="mx-4 mt-3 flex gap-2 rounded-grubano-lg bg-grubano-surface p-1 shadow-grubano-sm">
         {([
-          { value: 'delivery', label: 'Livraison', icon: <Bike size={16} /> },
-          { value: 'pickup', label: 'Retrait sur place', icon: <Package size={16} /> },
+          { value: 'delivery', label: t('tabDelivery'), icon: <Bike size={16} /> },
+          { value: 'pickup', label: t('tabPickup'), icon: <Package size={16} /> },
         ] as const).map((opt) => {
           const active = fulfillment === opt.value
           return (
@@ -246,7 +248,7 @@ export default function CartScreen() {
             <div className="flex flex-col items-center gap-2.5">
               <button
                 onClick={() => removeItem(item.id)}
-                aria-label="Retirer"
+                aria-label={t('removeAria')}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-grubano-danger-tint active:scale-90"
               >
                 <Trash2 size={16} className="text-grubano-danger" />
@@ -279,11 +281,11 @@ export default function CartScreen() {
           <div className="flex items-start gap-3">
             <MapPin size={20} className="mt-0.5 shrink-0 text-grubano-primary" />
             <div className="flex-1">
-              <p className="text-grubano-sm font-bold text-grubano-ink">Adresse de livraison</p>
+              <p className="text-grubano-sm font-bold text-grubano-ink">{t('deliveryAddress')}</p>
               <input
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="Numéro, rue, ville, code postal…"
+                placeholder={t('addressPlaceholder')}
                 className="mt-1 w-full bg-transparent text-xs text-grubano-ink-muted placeholder:text-grubano-ink-faint focus:outline-none"
               />
             </div>
@@ -294,14 +296,14 @@ export default function CartScreen() {
           <div className="flex items-start gap-3">
             <Package size={20} className="mt-0.5 shrink-0 text-grubano-primary" />
             <div className="flex-1">
-              <p className="text-grubano-sm font-bold text-grubano-ink">Retrait sur place</p>
+              <p className="text-grubano-sm font-bold text-grubano-ink">{t('pickupLabel')}</p>
               <p className="mt-0.5 text-xs text-grubano-ink-muted">
                 {cart.restaurant.name}
                 {cart.restaurant.address ? ` — ${cart.restaurant.address}` : ''}
                 {cart.restaurant.city ? `, ${cart.restaurant.city}` : ''}
               </p>
               <p className="mt-1 text-xs font-semibold text-grubano-primary">
-                Prêt vers {readyAt} (~{cart.restaurant.deliveryTime ?? 20} min)
+                {t('readyAround', { time: readyAt, minutes: cart.restaurant.deliveryTime ?? 20 })}
               </p>
             </div>
           </div>
@@ -313,13 +315,13 @@ export default function CartScreen() {
         <div className="flex items-center gap-3">
           <CreditCard size={20} className="shrink-0 text-grubano-primary" />
           <div className="flex-1">
-            <p className="text-grubano-sm font-bold text-grubano-ink">Méthode de paiement</p>
+            <p className="text-grubano-sm font-bold text-grubano-ink">{t('paymentMethod')}</p>
             <p className="mt-0.5 text-xs text-grubano-ink-muted">
-              {payment === 'card' ? '**** **** **** 4521' : 'Espèces à la livraison'}
+              {payment === 'card' ? '**** **** **** 4521' : t('cashOnDelivery')}
             </p>
           </div>
           <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))} className="text-grubano-sm font-semibold text-grubano-primary">
-            Modifier
+            {t('edit')}
           </button>
         </div>
       </div>
@@ -331,34 +333,34 @@ export default function CartScreen() {
           <input
             value={promoInput}
             onChange={(e) => setPromoInput(e.target.value)}
-            placeholder="Code promo (essayez FRENCH10)"
+            placeholder={t('promoPlaceholder')}
             className="flex-1 bg-transparent text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:outline-none"
           />
           <Button variant="primary" size="sm" onClick={applyPromo}>
-            Appliquer
+            {t('apply')}
           </Button>
         </div>
       </div>
 
       {/* Summary */}
       <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">
-        <p className="mb-3.5 text-[17px] font-extrabold text-grubano-ink">Récapitulatif</p>
+        <p className="mb-3.5 text-[17px] font-extrabold text-grubano-ink">{t('summary')}</p>
         <div className="mb-2.5 flex justify-between text-grubano-sm">
-          <span className="text-grubano-ink-muted">Sous-total</span>
+          <span className="text-grubano-ink-muted">{t('subtotal')}</span>
           <span className="font-semibold text-grubano-ink">{subtotal.toFixed(2)} €</span>
         </div>
         {discount > 0 && (
           <div className="mb-2.5 flex justify-between text-grubano-sm">
-            <span className="text-grubano-success">Réduction (-{discount * 100}%)</span>
+            <span className="text-grubano-success">{t('discount', { percent: discount * 100 })}</span>
             <span className="font-semibold text-grubano-success">-{discountAmount.toFixed(2)} €</span>
           </div>
         )}
         <div className="mb-2.5 flex justify-between text-grubano-sm">
-          <span className="text-grubano-ink-muted">{fulfillment === 'pickup' ? 'Frais (retrait)' : 'Frais de livraison'}</span>
-          <span className="font-semibold text-grubano-ink">{fulfillment === 'pickup' ? 'Gratuit' : `${deliveryFee.toFixed(2)} €`}</span>
+          <span className="text-grubano-ink-muted">{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
+          <span className="font-semibold text-grubano-ink">{fulfillment === 'pickup' ? t('free') : `${deliveryFee.toFixed(2)} €`}</span>
         </div>
         <div className="mt-1 flex items-center justify-between border-t border-grubano-border pt-3">
-          <span className="text-base font-extrabold text-grubano-ink">Total</span>
+          <span className="text-base font-extrabold text-grubano-ink">{t('total')}</span>
           <PriceTag amount={total} size="lg" />
         </div>
       </div>
@@ -378,7 +380,7 @@ export default function CartScreen() {
           loading={submitting}
           onClick={placeOrder}
         >
-          <span className="flex-1 text-left">{submitting ? 'Envoi…' : 'Passer la commande'}</span>
+          <span className="flex-1 text-left">{submitting ? t('submitting') : t('placeOrder')}</span>
           {!submitting && <span>{total.toFixed(2)} €</span>}
         </Button>
       </div>

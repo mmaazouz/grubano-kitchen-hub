@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
+import { useRouter } from '@/navigation'
 import { Search, X, ArrowLeft } from 'lucide-react'
 import {
   RestaurantCard,
@@ -13,17 +15,17 @@ import {
 import { getRestaurantCover } from '@/lib/food-images'
 
 const CUISINES = [
-  { label: 'Italien', emoji: '🍕', q: 'italian' },
-  { label: 'Asiatique', emoji: '🍜', q: 'asian' },
-  { label: 'Burgers', emoji: '🍔', q: 'burger' },
-  { label: 'Healthy', emoji: '🥗', q: 'healthy' },
-  { label: 'Sushi', emoji: '🍣', q: 'sushi' },
-  { label: 'Desserts', emoji: '🍰', q: 'desserts' },
+  { labelKey: 'cuisineItalian', emoji: '🍕', q: 'italian' },
+  { labelKey: 'cuisineAsian', emoji: '🍜', q: 'asian' },
+  { labelKey: 'cuisineBurgers', emoji: '🍔', q: 'burger' },
+  { labelKey: 'cuisineHealthy', emoji: '🥗', q: 'healthy' },
+  { labelKey: 'cuisineSushi', emoji: '🍣', q: 'sushi' },
+  { labelKey: 'cuisineDesserts', emoji: '🍰', q: 'desserts' },
 ]
 const SORTS = [
-  { label: 'Mieux notés', value: 'rating' },
-  { label: 'Plus rapides', value: 'delivery' },
-  { label: 'Nouveautés', value: 'newest' },
+  { labelKey: 'sortRating', value: 'rating' },
+  { labelKey: 'sortDelivery', value: 'delivery' },
+  { labelKey: 'sortNewest', value: 'newest' },
 ]
 
 interface Restaurant {
@@ -40,8 +42,8 @@ interface Restaurant {
   address: string
 }
 
-function cuisineText(c: string[]) {
-  return Array.isArray(c) && c.length ? c.join(' • ') : 'Cuisine variée'
+function cuisineText(c: string[], fallback: string) {
+  return Array.isArray(c) && c.length ? c.join(' • ') : fallback
 }
 
 function RowSkeleton() {
@@ -58,6 +60,8 @@ function RowSkeleton() {
 }
 
 function SearchContent() {
+  const t = useTranslations('eat.search')
+  const tc = useTranslations('common')
   const params = useSearchParams()
   const router = useRouter()
   const [query, setQuery] = useState(params.get('q') ?? '')
@@ -97,12 +101,12 @@ function SearchContent() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/eat')}
-            aria-label="Retour"
+            aria-label={tc('back')}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-grubano-surface-muted text-grubano-ink transition active:scale-90"
           >
             <ArrowLeft size={20} />
           </button>
-          <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">Explorer</h1>
+          <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{t('title')}</h1>
         </div>
 
         <form
@@ -116,12 +120,12 @@ function SearchContent() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher plat, restaurant..."
+            placeholder={t('searchPlaceholder')}
             autoFocus
             className="flex-1 bg-transparent text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:outline-none"
           />
           {query && (
-            <button type="button" onClick={() => setQuery('')} aria-label="Effacer">
+            <button type="button" onClick={() => setQuery('')} aria-label={t('clear')}>
               <X size={16} className="text-grubano-ink-faint" />
             </button>
           )}
@@ -136,7 +140,7 @@ function SearchContent() {
               active={cuisine === c.q}
               onClick={() => setCuisine((prev) => (prev === c.q ? '' : c.q))}
             >
-              {c.label}
+              {t(c.labelKey)}
             </CategoryPill>
           ))}
         </div>
@@ -153,7 +157,7 @@ function SearchContent() {
                   : 'border-transparent bg-grubano-surface-muted text-grubano-ink-muted'
               }`}
             >
-              {s.label}
+              {t(s.labelKey)}
             </button>
           ))}
         </div>
@@ -166,8 +170,8 @@ function SearchContent() {
         ) : results.length === 0 ? (
           <EmptyState
             emoji="🔍"
-            title="Aucun restaurant trouvé"
-            description="Essayez un autre mot ou un autre filtre."
+            title={t('emptyTitle')}
+            description={t('emptyDescription')}
             action={
               hasFilters ? (
                 <Button
@@ -178,7 +182,7 @@ function SearchContent() {
                     setCuisine('')
                   }}
                 >
-                  Réinitialiser
+                  {t('reset')}
                 </Button>
               ) : undefined
             }
@@ -186,7 +190,7 @@ function SearchContent() {
         ) : (
           <>
             <p className="text-xs font-medium text-grubano-ink-muted">
-              {results.length} résultat{results.length > 1 ? 's' : ''}
+              {t('resultsCount', { count: results.length })}
             </p>
             {results.map((r) => (
               <RestaurantCard
@@ -194,7 +198,7 @@ function SearchContent() {
                 layout="list"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineText(r.cuisine)}
+                cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}

@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { Link, useRouter } from '@/navigation'
 import { Bell, Search, MapPin, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import {
   RestaurantCard,
@@ -13,18 +13,18 @@ import {
 import { getRestaurantCover } from '@/lib/food-images'
 
 const BANNERS = [
-  { id: '1', tag: 'Offres du Week-end !', title: "Bénéficiez d'Offres Spéciales", discount: '30' },
-  { id: '2', tag: 'Nouveaux Restaurants !', title: 'Découvrez les Nouveautés', discount: '20' },
-  { id: '3', tag: 'Livraison Gratuite !', title: 'Commandez Maintenant', discount: '15' },
+  { id: '1', tagKey: 'bannerWeekendTag', titleKey: 'bannerWeekendTitle', discount: '30' },
+  { id: '2', tagKey: 'bannerNewTag', titleKey: 'bannerNewTitle', discount: '20' },
+  { id: '3', tagKey: 'bannerFreeTag', titleKey: 'bannerFreeTitle', discount: '15' },
 ]
 
 const CATS = [
-  { name: 'Burger', emoji: '🍔', q: 'burger' },
-  { name: 'Pizza', emoji: '🍕', q: 'pizza' },
-  { name: 'Nouilles', emoji: '🍜', q: 'asian' },
-  { name: 'Dessert', emoji: '🧁', q: 'desserts' },
-  { name: 'Salade', emoji: '🥗', q: 'healthy' },
-  { name: 'Sushi', emoji: '🍣', q: 'sushi' },
+  { name: 'Burger', nameKey: 'catBurger', emoji: '🍔', q: 'burger' },
+  { name: 'Pizza', nameKey: 'catPizza', emoji: '🍕', q: 'pizza' },
+  { name: 'Nouilles', nameKey: 'catNoodles', emoji: '🍜', q: 'asian' },
+  { name: 'Dessert', nameKey: 'catDessert', emoji: '🧁', q: 'desserts' },
+  { name: 'Salade', nameKey: 'catSalad', emoji: '🥗', q: 'healthy' },
+  { name: 'Sushi', nameKey: 'catSushi', emoji: '🍣', q: 'sushi' },
 ]
 
 interface Restaurant {
@@ -42,22 +42,24 @@ interface Restaurant {
   address: string
 }
 
-function cuisineText(c: string[]) {
-  return Array.isArray(c) && c.length ? c.join(' • ') : 'Cuisine variée'
+function cuisineText(c: string[], fallback: string) {
+  return Array.isArray(c) && c.length ? c.join(' • ') : fallback
 }
 
 function SectionHeader({ title }: { title: string }) {
+  const t = useTranslations('eat.home')
   return (
     <div className="mb-3 flex items-center justify-between px-4">
       <h2 className="font-display text-[18px] font-extrabold text-grubano-ink">{title}</h2>
       <Link href="/eat/search" className="text-grubano-sm font-semibold text-grubano-primary">
-        Voir tout
+        {t('seeAll')}
       </Link>
     </div>
   )
 }
 
 export default function HomeScreen() {
+  const t = useTranslations('eat.home')
   const router = useRouter()
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [loading, setLoading] = useState(true)
@@ -105,7 +107,7 @@ export default function HomeScreen() {
             🧑‍🍳
           </div>
           <div>
-            <p className="text-[11px] text-grubano-ink-faint">Localisation</p>
+            <p className="text-[11px] text-grubano-ink-faint">{t('location')}</p>
             <div className="flex items-center gap-1">
               <MapPin size={13} className="text-grubano-primary" />
               <span className="text-grubano-sm font-bold text-grubano-ink">Paris, France</span>
@@ -116,7 +118,7 @@ export default function HomeScreen() {
         <Link
           href="/eat/account"
           className="relative flex h-11 w-11 items-center justify-center rounded-full border-[1.5px] border-grubano-border"
-          aria-label="Notifications"
+          aria-label={t('notifications')}
         >
           <Bell size={22} strokeWidth={1.8} className="text-grubano-ink" />
           <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-grubano-primary" />
@@ -130,13 +132,13 @@ export default function HomeScreen() {
           className="flex flex-1 items-center gap-2 rounded-grubano-lg bg-grubano-surface-muted px-3.5 py-3.5 text-left transition active:scale-[0.99]"
         >
           <Search size={17} className="text-grubano-ink-faint" />
-          <span className="text-grubano-sm text-grubano-ink-faint">Rechercher plat, restaurant...</span>
+          <span className="text-grubano-sm text-grubano-ink-faint">{t('searchPlaceholder')}</span>
         </button>
         <Button
           variant="primary"
           size="md"
           onClick={() => router.push('/eat/search')}
-          aria-label="Filtres"
+          aria-label={t('filters')}
           className="h-12 w-12 px-0"
         >
           <SlidersHorizontal size={18} />
@@ -144,7 +146,7 @@ export default function HomeScreen() {
       </div>
 
       {/* Offres Exclusives */}
-      <SectionHeader title="Offres Exclusives" />
+      <SectionHeader title={t('exclusiveOffers')} />
       <div
         ref={bannerRef}
         onScroll={onBannerScroll}
@@ -157,11 +159,11 @@ export default function HomeScreen() {
           >
             <div className="flex flex-1 flex-col justify-between p-4">
               <span className="self-start rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold">
-                {b.tag}
+                {t(b.tagKey)}
               </span>
-              <p className="mt-1.5 text-[17px] font-extrabold leading-tight">{b.title}</p>
+              <p className="mt-1.5 text-[17px] font-extrabold leading-tight">{t(b.titleKey)}</p>
               <div className="mt-1 flex items-end gap-1">
-                <span className="text-xs text-white/90">Jusqu&apos;à</span>
+                <span className="text-xs text-white/90">{t('upTo')}</span>
                 <span className="text-[38px] font-black leading-[44px]">{b.discount}</span>
                 <span className="mb-1 text-base font-bold">%</span>
               </div>
@@ -169,7 +171,7 @@ export default function HomeScreen() {
                 onClick={() => router.push('/eat/promos')}
                 className="self-start rounded-full bg-grubano-dark px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
               >
-                Obtenir
+                {t('getOffer')}
               </button>
             </div>
             <div className="w-[140px] bg-white/10" aria-hidden>
@@ -188,7 +190,7 @@ export default function HomeScreen() {
       </div>
 
       {/* Categories */}
-      <SectionHeader title="Explorer les Catégories" />
+      <SectionHeader title={t('exploreCategories')} />
       <div className="no-scrollbar mb-5 flex gap-2.5 overflow-x-auto px-4">
         {CATS.map((cat) => {
           const active = activeCat === cat.name
@@ -204,14 +206,14 @@ export default function HomeScreen() {
               }`}
             >
               <span className="text-base">{cat.emoji}</span>
-              <span className="text-grubano-sm font-semibold">{cat.name}</span>
+              <span className="text-grubano-sm font-semibold">{t(cat.nameKey)}</span>
             </button>
           )
         })}
       </div>
 
       {/* Popular */}
-      <SectionHeader title="Populaires" />
+      <SectionHeader title={t('popular')} />
       {loading ? (
         <div className="no-scrollbar mb-5 flex gap-3 overflow-x-auto px-4">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -228,7 +230,7 @@ export default function HomeScreen() {
                 layout="grid"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineText(r.cuisine)}
+                cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}
@@ -241,7 +243,7 @@ export default function HomeScreen() {
       )}
 
       {/* New restaurants */}
-      <SectionHeader title="Nouveaux Restaurants" />
+      <SectionHeader title={t('newRestaurants')} />
       <div className="space-y-3 px-4">
         {loading ? (
           Array.from({ length: 2 }).map((_, i) => (
@@ -254,7 +256,7 @@ export default function HomeScreen() {
               layout="list"
               name={r.name}
               cover={r.coverPhoto || getRestaurantCover(r.id)}
-              cuisine={cuisineText(r.cuisine)}
+              cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
               rating={r.rating}
               reviewCount={r.reviewCount}
               deliveryTime={r.deliveryTime}
@@ -269,7 +271,7 @@ export default function HomeScreen() {
       {topRated.length > 0 && (
         <>
           <div className="mt-5">
-            <SectionHeader title="Mieux Notés" />
+            <SectionHeader title={t('topRated')} />
           </div>
           <div className="space-y-3 px-4">
             {topRated.map((r) => (
@@ -278,12 +280,12 @@ export default function HomeScreen() {
                 layout="list"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineText(r.cuisine)}
+                cuisine={cuisineText(r.cuisine, t('cuisineVaried'))}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}
                 deliveryFee={r.deliveryFee}
-                ribbon={{ label: '⭐ Top noté', tone: 'success' }}
+                ribbon={{ label: t('topBadge'), tone: 'success' }}
                 onClick={() => router.push(`/eat/r/${r.id}`)}
               />
             ))}
@@ -295,8 +297,8 @@ export default function HomeScreen() {
         <div className="px-4">
           <EmptyState
             emoji="🍳"
-            title="Aucun restaurant disponible"
-            description="Revenez bientôt — on prépare quelque chose de bon."
+            title={t('emptyTitle')}
+            description={t('emptyDescription')}
           />
         </div>
       )}

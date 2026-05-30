@@ -1,7 +1,7 @@
 'use client'
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { Link, usePathname } from '@/navigation'
 import { useEffect, useState } from 'react'
 import { Home, Compass, Heart, ShoppingBag, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -10,22 +10,23 @@ import { cartCount, CART_EVENT } from '@/lib/eat-cart'
 interface NavItem {
   href: string
   icon: typeof Home
-  label: string
+  labelKey: string
   isCart?: boolean
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/eat', icon: Home, label: 'Accueil' },
-  { href: '/eat/search', icon: Compass, label: 'Explorer' },
-  { href: '/eat/favorites', icon: Heart, label: 'Favoris' },
-  { href: '/eat/cart', icon: ShoppingBag, label: 'Panier', isCart: true },
-  { href: '/eat/account', icon: User, label: 'Profil' },
+  { href: '/eat', icon: Home, labelKey: 'home' },
+  { href: '/eat/search', icon: Compass, labelKey: 'explore' },
+  { href: '/eat/favorites', icon: Heart, labelKey: 'favorites' },
+  { href: '/eat/cart', icon: ShoppingBag, labelKey: 'cart', isCart: true },
+  { href: '/eat/account', icon: User, labelKey: 'profile' },
 ]
 
 // Deep / immersive screens that hide the tab bar (Bolt = Stack screens).
 const HIDDEN_PREFIXES = ['/eat/r/', '/eat/track', '/eat/dish/', '/eat/splash', '/eat/promos']
 
 export default function BottomNav() {
+  const t = useTranslations('eat.nav')
   const pathname = usePathname()
   const [count, setCount] = useState(0)
 
@@ -47,7 +48,7 @@ export default function BottomNav() {
       className="fixed bottom-0 left-1/2 z-50 flex h-[60px] w-full max-w-[480px] -translate-x-1/2 items-stretch justify-around border-t border-[#f0f0f0] bg-white"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      {NAV_ITEMS.map(({ href, icon: Icon, label, isCart }) => {
+      {NAV_ITEMS.map(({ href, icon: Icon, labelKey, isCart }) => {
         const active = pathname === href || (href !== '/eat' && pathname.startsWith(href))
         return (
           <Link
@@ -64,7 +65,7 @@ export default function BottomNav() {
               )}
             </span>
             <span className={cn('text-[11px] font-medium', active ? 'text-[#F97316]' : 'text-[#aaa]')}>
-              {label}
+              {t(labelKey)}
             </span>
           </Link>
         )

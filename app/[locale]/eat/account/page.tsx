@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/navigation'
 import { useSession, signOut } from 'next-auth/react'
+import { useTranslations } from 'next-intl'
 import {
   User, MapPin, CreditCard, Tag, Bell, Settings, LogOut, ChevronRight,
   Star, Package, Heart, MessageCircle, Shield, CircleHelp,
@@ -25,6 +26,7 @@ interface Order {
 }
 
 export default function ProfileScreen() {
+  const t = useTranslations('eat.account')
   const { data: session, status } = useSession()
   const router = useRouter()
   const [points, setPoints] = useState(0)
@@ -45,16 +47,16 @@ export default function ProfileScreen() {
   }, [status])
 
   const MENU_ITEMS = [
-    { icon: Package, label: 'Mes Commandes', route: '/eat/account', color: '#F97316' },
-    { icon: Heart, label: 'Mes Favoris', route: '/eat/favorites', color: '#EF4444' },
-    { icon: MapPin, label: 'Mes Adresses', route: null, color: '#3B82F6' },
-    { icon: CreditCard, label: 'Paiement', route: null, color: '#22C55E' },
-    { icon: Tag, label: 'Promotions', route: '/eat/promos', color: '#F59E0B' },
-    { icon: Bell, label: 'Notifications', route: null, color: '#8B5CF6' },
-    { icon: MessageCircle, label: 'Support Chat', route: null, color: '#06B6D4' },
-    { icon: Shield, label: 'Confidentialité', route: null, color: '#64748B' },
-    { icon: CircleHelp, label: 'Aide & FAQ', route: null, color: '#94A3B8' },
-    { icon: Settings, label: 'Paramètres', route: null, color: '#6B7280' },
+    { icon: Package, key: 'menuOrders', label: t('menuOrders'), route: '/eat/account', color: '#F97316' },
+    { icon: Heart, key: 'menuFavorites', label: t('menuFavorites'), route: '/eat/favorites', color: '#EF4444' },
+    { icon: MapPin, key: 'menuAddresses', label: t('menuAddresses'), route: null, color: '#3B82F6' },
+    { icon: CreditCard, key: 'menuPayment', label: t('menuPayment'), route: null, color: '#22C55E' },
+    { icon: Tag, key: 'menuPromotions', label: t('menuPromotions'), route: '/eat/promos', color: '#F59E0B' },
+    { icon: Bell, key: 'menuNotifications', label: t('menuNotifications'), route: null, color: '#8B5CF6' },
+    { icon: MessageCircle, key: 'menuSupport', label: t('menuSupport'), route: null, color: '#06B6D4' },
+    { icon: Shield, key: 'menuPrivacy', label: t('menuPrivacy'), route: null, color: '#64748B' },
+    { icon: CircleHelp, key: 'menuHelp', label: t('menuHelp'), route: null, color: '#94A3B8' },
+    { icon: Settings, key: 'menuSettings', label: t('menuSettings'), route: null, color: '#6B7280' },
   ]
 
   // Guest
@@ -71,14 +73,14 @@ export default function ProfileScreen() {
     return (
       <div className="min-h-screen bg-[#f5f5f5]">
         <div className="border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
-          <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">Mon Profil</h1>
+          <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{t('title')}</h1>
         </div>
         <div className="flex flex-col items-center px-10 pt-20 text-center">
           <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#FFF3ED]"><User size={48} className="text-[#F97316]" /></div>
-          <p className="mt-5 text-[22px] font-extrabold text-[#1a1a1a]">Connectez-vous</p>
-          <p className="mt-2 text-sm leading-relaxed text-[#888]">Accédez à votre profil, commandes et favoris</p>
-          <button onClick={() => router.push('/eat/auth')} className="mt-8 w-full rounded-[30px] bg-[#F97316] py-4 text-base font-bold text-white active:scale-95">Se connecter</button>
-          <button onClick={() => router.push('/eat/auth')} className="mt-3 w-full rounded-[30px] border-2 border-[#F97316] py-3.5 text-base font-bold text-[#F97316] active:scale-95">Créer un compte</button>
+          <p className="mt-5 text-[22px] font-extrabold text-[#1a1a1a]">{t('signInPrompt')}</p>
+          <p className="mt-2 text-sm leading-relaxed text-[#888]">{t('signInSubtitle')}</p>
+          <button onClick={() => router.push('/eat/auth')} className="mt-8 w-full rounded-[30px] bg-[#F97316] py-4 text-base font-bold text-white active:scale-95">{t('signIn')}</button>
+          <button onClick={() => router.push('/eat/auth')} className="mt-3 w-full rounded-[30px] border-2 border-[#F97316] py-3.5 text-base font-bold text-[#F97316] active:scale-95">{t('createAccount')}</button>
         </div>
       </div>
     )
@@ -88,13 +90,23 @@ export default function ProfileScreen() {
   const span = tier.next - tier.floor
   const progress = tier.label === 'Platine' ? 100 : Math.min(100, ((points - tier.floor) / span) * 100)
   const nextLabel = tierFor(tier.next).label
-  const name = session?.user?.name ?? 'Utilisateur'
+  const tierLabel = (label: string) => {
+    const map: Record<string, string> = {
+      Platine: t('tierPlatinum'),
+      Or: t('tierGold'),
+      Argent: t('tierSilver'),
+      Bronze: t('tierBronze'),
+      Membre: t('tierMember'),
+    }
+    return map[label] ?? label
+  }
+  const name = session?.user?.name ?? t('defaultName')
   const email = session?.user?.email ?? ''
 
   return (
     <div className="min-h-screen bg-[#f5f5f5]">
       <div className="border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
-        <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">Mon Profil</h1>
+        <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{t('title')}</h1>
       </div>
 
       <div className="px-4 pb-6">
@@ -109,42 +121,42 @@ export default function ProfileScreen() {
             <p className="truncate text-[13px] text-[#888]">{email}</p>
             <div className="mt-0.5 flex items-center gap-1">
               <Star size={13} className="fill-[#F97316] text-[#F97316]" />
-              <span className="text-xs text-[#888]">Client fidèle</span>
+              <span className="text-xs text-[#888]">{t('loyalCustomer')}</span>
             </div>
           </div>
-          <button onClick={() => showToast('Édition du profil bientôt disponible')} className="rounded-[20px] bg-[#FFF3ED] px-3.5 py-[7px] text-[13px] font-bold text-[#F97316] active:scale-95">Modifier</button>
+          <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-[20px] bg-[#FFF3ED] px-3.5 py-[7px] text-[13px] font-bold text-[#F97316] active:scale-95">{t('edit')}</button>
         </div>
 
         {/* Loyalty card */}
         <div className="mt-3 flex items-center gap-4 rounded-[20px] bg-[#F97316] p-5">
           <div className="flex-1">
-            <p className="text-xs font-semibold text-white/80">Points Fidélité</p>
-            <p className="mt-1 text-[28px] font-extrabold leading-none text-white">{points.toLocaleString('fr-FR')} pts</p>
+            <p className="text-xs font-semibold text-white/80">{t('loyaltyPoints')}</p>
+            <p className="mt-1 text-[28px] font-extrabold leading-none text-white">{t('pts', { count: points.toLocaleString('fr-FR') })}</p>
             <p className="mt-1 text-[11px] text-white/80">
-              {tier.label === 'Platine' ? 'Niveau maximum 🎉' : `${tier.next - points} pts avant le niveau ${nextLabel}`}
+              {tier.label === 'Platine' ? t('maxLevel') : t('pointsToNextLevel', { count: tier.next - points, level: tierLabel(nextLabel) })}
             </p>
           </div>
           <div className="flex flex-1 flex-col items-end gap-2">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/30">
               <div className="h-full rounded-full bg-white transition-all duration-700" style={{ width: `${progress}%` }} />
             </div>
-            <span className="text-[11px] font-semibold text-white/90">{tier.label} → {nextLabel}</span>
+            <span className="text-[11px] font-semibold text-white/90">{tierLabel(tier.label)} → {tierLabel(nextLabel)}</span>
           </div>
         </div>
 
         {/* Stats */}
         <div className="mt-3 flex rounded-[20px] bg-white py-5 shadow-bolt-card">
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{orders.length}</span><span className="text-xs text-[#888]">Commandes</span></div>
+          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{orders.length}</span><span className="text-xs text-[#888]">{t('statOrders')}</span></div>
           <div className="w-px bg-[#f0f0f0]" />
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{orders.filter((o) => o.status === 'delivered').length}</span><span className="text-xs text-[#888]">Livrées</span></div>
+          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{orders.filter((o) => o.status === 'delivered').length}</span><span className="text-xs text-[#888]">{t('statDelivered')}</span></div>
           <div className="w-px bg-[#f0f0f0]" />
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{points >= 50 ? tier.label : '–'}</span><span className="text-xs text-[#888]">Niveau</span></div>
+          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{points >= 50 ? tierLabel(tier.label) : '–'}</span><span className="text-xs text-[#888]">{t('statLevel')}</span></div>
         </div>
 
         {/* Notif toggle */}
         <div className="mt-3 flex items-center gap-3 rounded-2xl bg-white p-4 shadow-bolt-soft">
           <Bell size={20} className="text-[#F97316]" />
-          <span className="text-[15px] font-semibold text-[#1a1a1a]">Notifications push</span>
+          <span className="text-[15px] font-semibold text-[#1a1a1a]">{t('pushNotifications')}</span>
           <button
             onClick={() => setNotif((v) => !v)}
             className={`ml-auto flex h-7 w-12 items-center rounded-full px-0.5 transition-colors ${notif ? 'justify-end bg-[#F97316]' : 'justify-start bg-[#ddd]'}`}
@@ -159,8 +171,8 @@ export default function ProfileScreen() {
             const Icon = item.icon
             return (
               <button
-                key={item.label}
-                onClick={() => (item.route ? router.push(item.route) : showToast('Bientôt disponible'))}
+                key={item.key}
+                onClick={() => (item.route ? router.push(item.route) : showToast(t('comingSoon')))}
                 className={`flex w-full items-center gap-3.5 px-4 py-3.5 active:bg-[#fafafa] ${idx === MENU_ITEMS.length - 1 ? '' : 'border-b border-[#f8f8f8]'}`}
               >
                 <span className="flex h-[38px] w-[38px] items-center justify-center rounded-xl" style={{ backgroundColor: item.color + '18' }}>
@@ -179,7 +191,7 @@ export default function ProfileScreen() {
           className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-2xl border-[1.5px] border-[#FEE2E2] bg-white py-4 active:scale-[0.99]"
         >
           <LogOut size={18} className="text-[#EF4444]" />
-          <span className="text-[15px] font-bold text-[#EF4444]">Se déconnecter</span>
+          <span className="text-[15px] font-bold text-[#EF4444]">{t('logout')}</span>
         </button>
 
         <p className="mt-5 text-center text-xs text-[#ccc]">Grubano v1.0.0</p>

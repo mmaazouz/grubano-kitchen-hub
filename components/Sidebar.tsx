@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebar } from './SidebarContext'
+import { LanguageSwitcher } from '@/components/design-system'
 
 const navGroups = [
   {
@@ -111,6 +112,11 @@ export default function Sidebar() {
             </div>
           ))}
         </nav>
+
+        {/* Langue */}
+        <div className="px-3 py-3 border-t border-white/10">
+          <LanguageSwitcher variant="full" className="w-full" />
+        </div>
 
         {/* Profil */}
         <div className="px-4 py-4 border-t border-white/10">

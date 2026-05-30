@@ -28,6 +28,7 @@ export {
 } from './SkeletonLoader'
 export { StarRating }    from './StarRating'
 export { ToastProvider, useToast } from './Toast'
+export { LanguageSwitcher } from './LanguageSwitcher'
 
 // ── Re-export prop types for external consumers ─────────────────────────────
 export type { AvatarProps, AvatarSize }         from './Avatar'
@@ -45,3 +46,4 @@ export type { RestaurantCardProps, RestaurantCardLayout } from './RestaurantCard
 export type { SkeletonProps }                   from './SkeletonLoader'
 export type { StarRatingProps, StarSize }       from './StarRating'
 export type { ToastVariant, ToastOptions }      from './Toast'
+export type { LanguageSwitcherProps }           from './LanguageSwitcher'

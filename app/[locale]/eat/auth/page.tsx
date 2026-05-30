@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/navigation'
 import { signIn } from 'next-auth/react'
 import { Eye, EyeOff, Mail, Lock, User as UserIcon, ArrowLeft } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
+import { useTranslations } from 'next-intl'
 
 type Tab = 'login' | 'register'
 
@@ -28,6 +29,7 @@ async function routeByRole(router: ReturnType<typeof useRouter>) {
 }
 
 export default function AuthScreen() {
+  const t = useTranslations('eat.auth')
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('login')
   const [name, setName] = useState('')
@@ -49,7 +51,7 @@ export default function AuthScreen() {
     e.preventDefault()
     setError('')
     if (!email || !password || (tab === 'register' && !name)) {
-      setError('Veuillez remplir tous les champs.')
+      setError(t('errorFillAllFields'))
       return
     }
     setLoading(true)
@@ -63,12 +65,12 @@ export default function AuthScreen() {
         })
         const data = await res.json()
         if (!res.ok) {
-          setError(data.error ?? 'Erreur lors de la création du compte')
+          setError(data.error ?? t('errorAccountCreation'))
           setLoading(false)
           return
         }
       } catch {
-        setError('Erreur réseau')
+        setError(t('errorNetwork'))
         setLoading(false)
         return
       }
@@ -76,7 +78,7 @@ export default function AuthScreen() {
 
     const result = await signIn('credentials', { email, password, redirect: false })
     if (result?.error) {
-      setError('Email ou mot de passe incorrect')
+      setError(t('errorInvalidCredentials'))
       setLoading(false)
       return
     }
@@ -93,7 +95,7 @@ export default function AuthScreen() {
       redirect: false,
     })
     if (result?.error) {
-      setError("Compte démo indisponible. Lancez le seed sur le serveur (prisma/seed-test-user.js).")
+      setError(t('errorDemoUnavailable'))
       setLoading(false)
       return
     }
@@ -105,7 +107,7 @@ export default function AuthScreen() {
     if (providers[provider]) {
       signIn(provider, { callbackUrl: '/eat' })
     } else {
-      showToast(`Connexion ${provider === 'google' ? 'Google' : 'Apple'} bientôt disponible`)
+      showToast(t('socialSoon', { provider: provider === 'google' ? 'Google' : 'Apple' }))
     }
   }
 
@@ -123,20 +125,20 @@ export default function AuthScreen() {
 
       {/* Tabs */}
       <div className="mb-6 flex rounded-2xl bg-[#f5f5f5] p-1">
-        {(['login', 'register'] as Tab[]).map((t) => (
+        {(['login', 'register'] as Tab[]).map((tabItem) => (
           <button
-            key={t}
-            onClick={() => { setTab(t); setError('') }}
-            className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition-all ${tab === t ? 'bg-white text-[#F97316] shadow-sm' : 'text-[#888]'}`}
+            key={tabItem}
+            onClick={() => { setTab(tabItem); setError('') }}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition-all ${tab === tabItem ? 'bg-white text-[#F97316] shadow-sm' : 'text-[#888]'}`}
           >
-            {t === 'login' ? 'Connexion' : 'Inscription'}
+            {tabItem === 'login' ? t('tabLogin') : t('tabRegister')}
           </button>
         ))}
       </div>
 
-      <h1 className="font-sans text-[26px] font-extrabold text-[#1a1a1a]">{tab === 'login' ? 'Connexion' : 'Créer un compte'}</h1>
+      <h1 className="font-sans text-[26px] font-extrabold text-[#1a1a1a]">{tab === 'login' ? t('tabLogin') : t('createAccount')}</h1>
       <p className="mb-6 mt-1.5 text-sm text-[#888]">
-        {tab === 'login' ? 'Bienvenue ! Connectez-vous à votre compte.' : 'Rejoignez Grubano en quelques secondes.'}
+        {tab === 'login' ? t('loginSubtitle') : t('registerSubtitle')}
       </p>
 
       {error && <p className="mb-4 rounded-[10px] bg-[#FEE2E2] p-3 text-[13px] text-[#DC2626]">{error}</p>}
@@ -144,24 +146,24 @@ export default function AuthScreen() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {tab === 'register' && (
           <div>
-            <label className="mb-2 block text-[13px] font-semibold text-[#444]">Nom complet</label>
+            <label className="mb-2 block text-[13px] font-semibold text-[#444]">{t('fullNameLabel')}</label>
             <div className="flex items-center rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] px-3.5 py-3.5">
               <UserIcon size={18} className="mr-2.5 text-[#aaa]" />
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jean Dupont" className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('fullNamePlaceholder')} className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
             </div>
           </div>
         )}
 
         <div>
-          <label className="mb-2 block text-[13px] font-semibold text-[#444]">Adresse email</label>
+          <label className="mb-2 block text-[13px] font-semibold text-[#444]">{t('emailLabel')}</label>
           <div className="flex items-center rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] px-3.5 py-3.5">
             <Mail size={18} className="mr-2.5 text-[#aaa]" />
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="votre@email.com" autoCapitalize="none" className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('emailPlaceholder')} autoCapitalize="none" className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
           </div>
         </div>
 
         <div>
-          <label className="mb-2 block text-[13px] font-semibold text-[#444]">Mot de passe</label>
+          <label className="mb-2 block text-[13px] font-semibold text-[#444]">{t('passwordLabel')}</label>
           <div className="flex items-center rounded-[14px] border-[1.5px] border-[#eee] bg-[#fafafa] px-3.5 py-3.5">
             <Lock size={18} className="mr-2.5 text-[#aaa]" />
             <input type={showPwd ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" minLength={tab === 'register' ? 8 : 1} className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none" />
@@ -170,20 +172,20 @@ export default function AuthScreen() {
         </div>
 
         {tab === 'login' && (
-          <button type="button" onClick={() => showToast('Réinitialisation bientôt disponible')} className="ml-auto block text-[13px] font-semibold text-[#F97316]">
-            Mot de passe oublié ?
+          <button type="button" onClick={() => showToast(t('resetSoon'))} className="ml-auto block text-[13px] font-semibold text-[#F97316]">
+            {t('forgotPassword')}
           </button>
         )}
 
         <button type="submit" disabled={loading} className="w-full rounded-[30px] bg-[#F97316] py-4 text-[17px] font-bold text-white shadow-bolt-cta active:scale-[0.98] disabled:opacity-70">
-          {loading ? 'Chargement…' : tab === 'login' ? 'Se connecter' : 'Créer mon compte'}
+          {loading ? t('loading') : tab === 'login' ? t('signIn') : t('createMyAccount')}
         </button>
       </form>
 
       {/* Divider */}
       <div className="my-5 flex items-center gap-3">
         <div className="h-px flex-1 bg-[#eee]" />
-        <span className="text-[13px] text-[#aaa]">ou continuer avec</span>
+        <span className="text-[13px] text-[#aaa]">{t('orContinueWith')}</span>
         <div className="h-px flex-1 bg-[#eee]" />
       </div>
 
@@ -212,15 +214,15 @@ export default function AuthScreen() {
         disabled={loading}
         className="mt-4 w-full rounded-[14px] border-[1.5px] border-dashed border-[#F97316] bg-[#FFF3ED] py-3 text-sm font-bold text-[#F97316] active:scale-[0.98] disabled:opacity-60"
       >
-        🚀 Tester avec un compte démo
+        🚀 {t('tryDemo')}
       </button>
 
       {/* Switch */}
       <p className="mt-7 text-center text-sm text-[#555]">
         {tab === 'login' ? (
-          <>Pas encore de compte ? <button onClick={() => setTab('register')} className="font-bold text-[#F97316]">S&apos;inscrire</button></>
+          <>{t('noAccountYet')} <button onClick={() => setTab('register')} className="font-bold text-[#F97316]">{t('register')}</button></>
         ) : (
-          <>Déjà un compte ? <button onClick={() => setTab('login')} className="font-bold text-[#F97316]">Se connecter</button></>
+          <>{t('alreadyHaveAccount')} <button onClick={() => setTab('login')} className="font-bold text-[#F97316]">{t('signIn')}</button></>
         )}
       </p>
     </div>

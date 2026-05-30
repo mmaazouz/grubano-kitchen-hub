@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
+import { useRouter } from '@/navigation'
 import { Heart } from 'lucide-react'
 import {
   RestaurantCard,
@@ -26,6 +27,7 @@ interface Restaurant {
 }
 
 export default function FavoritesScreen() {
+  const t = useTranslations('eat.favorites')
   const router = useRouter()
   const [all, setAll] = useState<Restaurant[]>([])
   const [favs, setFavs] = useState<string[]>([])
@@ -52,7 +54,7 @@ export default function FavoritesScreen() {
   return (
     <div className="min-h-screen bg-grubano-bg">
       <div className="border-b border-grubano-border bg-white px-4 pb-4 pt-3">
-        <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">Mes Favoris</h1>
+        <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{t('title')}</h1>
       </div>
 
       <div className="space-y-3 p-4">
@@ -61,11 +63,11 @@ export default function FavoritesScreen() {
         ) : favRestaurants.length === 0 ? (
           <EmptyState
             emoji={<Heart size={44} className="text-grubano-primary" />}
-            title="Aucun favori"
-            description="Touchez le cœur sur un restaurant pour l'ajouter ici."
+            title={t('emptyTitle')}
+            description={t('emptyDescription')}
             action={
               <Button variant="primary" size="pill" onClick={() => router.push('/eat')}>
-                Explorer les restos
+                {t('explore')}
               </Button>
             }
           />
@@ -76,7 +78,7 @@ export default function FavoritesScreen() {
                 layout="list"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={Array.isArray(r.cuisine) && r.cuisine.length ? r.cuisine.join(' • ') : 'Cuisine variée'}
+                cuisine={Array.isArray(r.cuisine) && r.cuisine.length ? r.cuisine.join(' • ') : t('cuisineVaried')}
                 rating={r.rating}
                 reviewCount={r.reviewCount}
                 deliveryTime={r.deliveryTime}
@@ -87,9 +89,9 @@ export default function FavoritesScreen() {
                 onClick={(e) => {
                   e.stopPropagation()
                   toggleFav(r.id)
-                  showToast('Retiré des favoris')
+                  showToast(t('removedToast'))
                 }}
-                aria-label="Retirer des favoris"
+                aria-label={t('removeAria')}
                 className="absolute right-2.5 top-2.5 flex h-8 w-8 items-center justify-center rounded-full bg-grubano-danger-tint active:scale-90"
               >
                 <Heart size={15} className="fill-grubano-danger text-grubano-danger" />

@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
+import { useRouter } from '@/navigation'
+import { useTranslations } from 'next-intl'
 import { ArrowLeft, Heart, Share2, Clock, MapPin, Search, ShoppingBag } from 'lucide-react'
 import {
   DishCard,
@@ -110,6 +112,8 @@ function summariseOptions(opts?: EatCartItemOptions): string | null {
 }
 
 export default function RestaurantScreen() {
+  const t = useTranslations('eat.restaurant')
+  const tc = useTranslations('common')
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
@@ -122,6 +126,17 @@ export default function RestaurantScreen() {
   const [fav, setFav] = useState(false)
   const [cart, setCart] = useState<EatCartData | null>(null)
   const [modalDish, setModalDish] = useState<MenuItem | null>(null)
+
+  const tabLabel = (tab: Tab) => {
+    const map: Record<Tab, string> = {
+      Menu: t('tabMenu'),
+      'À propos': t('tabAbout'),
+      Galerie: t('tabGallery'),
+      Avis: t('tabReviews'),
+    }
+    return map[tab]
+  }
+  const categoryLabel = (cat: string) => (cat === 'Tout' ? t('categoryAll') : cat)
 
   useEffect(() => {
     fetch(`/api/restaurants/${id}`)
@@ -201,7 +216,7 @@ export default function RestaurantScreen() {
     const next: EatCartData = { ...current, items: nextItems }
     setCart(next)
     writeCart(next)
-    showToast(`${dish.name} ajouté au panier`)
+    showToast(t('addedToCart', { name: dish.name }))
   }
 
   const cartCount = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
@@ -237,10 +252,10 @@ export default function RestaurantScreen() {
     return (
       <EmptyState
         emoji="😕"
-        title="Restaurant introuvable"
+        title={t('restaurantNotFound')}
         action={
           <Button variant="secondary" size="sm" onClick={() => router.back()}>
-            Retour
+            {tc('back')}
           </Button>
         }
       />
@@ -256,7 +271,7 @@ export default function RestaurantScreen() {
         <FoodImage name={restaurant.name} src={heroCover} className="h-[280px] w-full" glyphClassName="text-7xl" />
         <button
           onClick={() => router.back()}
-          aria-label="Retour"
+          aria-label={tc('back')}
           className="absolute left-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-grubano-md active:scale-90"
         >
           <ArrowLeft size={18} className="text-grubano-ink" />
@@ -266,15 +281,15 @@ export default function RestaurantScreen() {
             onClick={() => {
               const now = toggleFav(id)
               setFav(now)
-              showToast(now ? 'Ajouté aux favoris' : 'Retiré des favoris')
+              showToast(now ? t('addedToFavorites') : t('removedFromFavorites'))
             }}
-            aria-label="Favori"
+            aria-label={t('favorite')}
             className={`flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-grubano-md active:scale-90 ${fav ? 'bg-grubano-danger' : 'bg-white'}`}
           >
             <Heart size={16} className={fav ? 'fill-white text-white' : 'fill-grubano-danger text-grubano-danger'} />
           </button>
           <button
-            aria-label="Partager"
+            aria-label={t('share')}
             className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-grubano-md active:scale-90"
           >
             <Share2 size={16} className="text-grubano-ink" />
@@ -307,7 +322,7 @@ export default function RestaurantScreen() {
               activeTab === tab ? 'border-grubano-primary font-extrabold text-grubano-primary' : 'border-transparent font-semibold text-grubano-ink-faint'
             }`}
           >
-            {tab}
+            {tabLabel(tab)}
           </button>
         ))}
       </div>
@@ -329,13 +344,13 @@ export default function RestaurantScreen() {
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
-            <MapPin size={12} /> {restaurant.deliveryFee === 0 ? 'Livraison gratuite' : `${restaurant.deliveryFee.toFixed(2)} €`}
+            <MapPin size={12} /> {restaurant.deliveryFee === 0 ? t('freeDelivery') : `${restaurant.deliveryFee.toFixed(2)} €`}
           </span>
           <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
-            <Clock size={12} /> {restaurant.deliveryTime} Min
+            <Clock size={12} /> {t('minutes', { count: restaurant.deliveryTime })}
           </span>
           <button onClick={() => setActiveTab('Avis')} className="text-grubano-sm font-semibold text-grubano-primary">
-            Avis
+            {t('tabReviews')}
           </button>
         </div>
       </div>
@@ -344,13 +359,13 @@ export default function RestaurantScreen() {
       {activeTab === 'Menu' && (
         <div className="px-4 pt-3">
           <p className="mb-3 text-[17px] font-extrabold text-grubano-ink">
-            Menu <span className="text-grubano-primary">({allItems.length} Articles)</span>
+            {t('tabMenu')} <span className="text-grubano-primary">{t('itemCount', { count: allItems.length })}</span>
           </p>
 
           <div className="mb-3">
             <Input
               leftIcon={<Search size={14} className="text-grubano-ink-faint" />}
-              placeholder="Chercher des articles"
+              placeholder={t('searchItems')}
               value={menuSearch}
               onChange={(e) => setMenuSearch(e.target.value)}
             />
@@ -360,14 +375,14 @@ export default function RestaurantScreen() {
             <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
               {categories.map((f) => (
                 <CategoryPill key={f} active={menuFilter === f} onClick={() => setMenuFilter(f)}>
-                  {f}
+                  {categoryLabel(f)}
                 </CategoryPill>
               ))}
             </div>
           )}
 
           {filtered.length === 0 ? (
-            <EmptyState compact emoji="🍽️" title="Aucun article trouvé" />
+            <EmptyState compact emoji="🍽️" title={t('noItemsFound')} />
           ) : (
             <div className="grid grid-cols-2 gap-3 pb-2">
               {filtered.map((dish) => (
@@ -393,9 +408,9 @@ export default function RestaurantScreen() {
       {/* About tab */}
       {activeTab === 'À propos' && (
         <div className="p-4">
-          <h2 className="mb-2.5 text-[17px] font-extrabold text-grubano-ink">À propos de {restaurant.name}</h2>
+          <h2 className="mb-2.5 text-[17px] font-extrabold text-grubano-ink">{t('aboutTitle', { name: restaurant.name })}</h2>
           <p className="mb-4 text-grubano-sm leading-relaxed text-grubano-ink-muted">
-            {restaurant.description || 'Restaurant partenaire Grubano.'}
+            {restaurant.description || t('partnerRestaurant')}
           </p>
           <div className="space-y-3 rounded-grubano-lg bg-grubano-surface-muted p-4">
             <div className="flex items-center gap-2.5">
@@ -406,7 +421,7 @@ export default function RestaurantScreen() {
             </div>
             <div className="flex items-center gap-2.5">
               <Clock size={15} className="text-grubano-primary" />
-              <span className="text-grubano-sm text-grubano-ink-muted">Lun–Dim : 10h00 – 23h00</span>
+              <span className="text-grubano-sm text-grubano-ink-muted">{t('openingHours')}</span>
             </div>
           </div>
         </div>
@@ -418,7 +433,7 @@ export default function RestaurantScreen() {
           {allItems.slice(0, 9).map((d) => (
             <FoodImage key={d.id} name={d.name} src={photoFor(d)} className="aspect-square w-full rounded-grubano-sm" glyphClassName="text-2xl" />
           ))}
-          {allItems.length === 0 && <EmptyState compact emoji="🖼️" title="Galerie bientôt disponible" className="col-span-3" />}
+          {allItems.length === 0 && <EmptyState compact emoji="🖼️" title={t('gallerySoon')} className="col-span-3" />}
         </div>
       )}
 
@@ -430,7 +445,7 @@ export default function RestaurantScreen() {
             <div className="my-1.5">
               <StarRating value={restaurant.rating} size="md" />
             </div>
-            <span className="text-grubano-sm text-grubano-ink-muted">{restaurant.reviewCount.toLocaleString('fr-FR')} avis</span>
+            <span className="text-grubano-sm text-grubano-ink-muted">{t('reviewCount', { count: restaurant.reviewCount.toLocaleString('fr-FR') })}</span>
           </div>
           {SAMPLE_REVIEWS.map((r, i) => (
             <div key={i} className="mb-2.5 rounded-grubano-lg bg-grubano-surface-muted p-3.5">
@@ -440,11 +455,11 @@ export default function RestaurantScreen() {
                 </div>
                 <div className="flex-1">
                   <p className="text-grubano-sm font-bold text-grubano-ink">{r.name}</p>
-                  <p className="text-[11px] text-grubano-ink-faint">{r.date}</p>
+                  <p className="text-[11px] text-grubano-ink-faint">{t(`reviewDate${i}` as 'reviewDate0')}</p>
                 </div>
                 <StarRating value={r.rating} size="sm" />
               </div>
-              <p className="text-grubano-sm leading-5 text-grubano-ink-muted">{r.text}</p>
+              <p className="text-grubano-sm leading-5 text-grubano-ink-muted">{t(`reviewText${i}` as 'reviewText0')}</p>
             </div>
           ))}
         </div>
@@ -469,16 +484,16 @@ export default function RestaurantScreen() {
               </span>
             }
           >
-            <span className="flex-1 text-left">Voir le panier</span>
+            <span className="flex-1 text-left">{t('viewCart')}</span>
           </Button>
         ) : (
           <Button
             variant="primary"
             size="pill"
             fullWidth
-            onClick={() => showToast('Réservation de table bientôt disponible')}
+            onClick={() => showToast(t('tableReservationSoon'))}
           >
-            Réserver une table
+            {t('reserveTable')}
           </Button>
         )}
       </div>
@@ -510,6 +525,7 @@ interface ModalProps {
 }
 
 function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps) {
+  const t = useTranslations('eat.restaurant')
   const [size, setSize] = useState<string>('Petite')
   const [supplements, setSupplements] = useState<string[]>([])
   const [exclusions, setExclusions] = useState<string[]>([])
@@ -534,13 +550,13 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
       description={dish.description}
       footer={
         <Button variant="primary" size="pill" fullWidth onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note })}>
-          Ajouter au panier — {total.toFixed(2)} €
+          {t('addToCartPrice', { price: total.toFixed(2) })}
         </Button>
       }
     >
       <FoodImage name={dish.name} src={photo} className="mb-4 h-40 w-full rounded-grubano-lg" glyphClassName="text-5xl" />
 
-      <Section title="Taille">
+      <Section title={t('sectionSize')}>
         <div className="space-y-1.5">
           {SIZE_OPTIONS.map((opt) => {
             const selected = size === opt.label
@@ -563,7 +579,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                   <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.label}</span>
                 </span>
                 <span className="text-grubano-sm font-bold text-grubano-ink">
-                  {opt.premium > 0 ? `+${opt.premium.toFixed(2)} €` : 'Inclus'}
+                  {opt.premium > 0 ? t('plusPrice', { price: opt.premium.toFixed(2) }) : t('included')}
                 </span>
               </label>
             )
@@ -571,7 +587,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
         </div>
       </Section>
 
-      <Section title="Suppléments">
+      <Section title={t('sectionSupplements')}>
         <div className="space-y-1.5">
           {SUPPLEMENT_OPTIONS.map((opt) => {
             const selected = supplements.includes(opt.name)
@@ -591,14 +607,14 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                   />
                   <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.name}</span>
                 </span>
-                <span className="text-grubano-sm font-bold text-grubano-ink">+{opt.price.toFixed(2)} €</span>
+                <span className="text-grubano-sm font-bold text-grubano-ink">{t('plusPrice', { price: opt.price.toFixed(2) })}</span>
               </label>
             )
           })}
         </div>
       </Section>
 
-      <Section title="Sans">
+      <Section title={t('sectionWithout')}>
         <div className="flex flex-wrap gap-2">
           {EXCLUSION_OPTIONS.map((opt) => {
             const selected = exclusions.includes(opt)
@@ -618,18 +634,18 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
         </div>
       </Section>
 
-      <Section title="Note pour le restaurant">
+      <Section title={t('sectionNote')}>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
-          placeholder="Ex. cuisson saignante, pas de coriandre…"
+          placeholder={t('notePlaceholder')}
           className="w-full resize-none rounded-grubano-md border border-grubano-border bg-grubano-surface-muted p-3 text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:bg-white focus:outline-none focus:ring-2 focus:ring-grubano-primary/30"
         />
       </Section>
 
       <div className="mt-2 flex items-center justify-between rounded-grubano-md bg-grubano-tint p-3">
-        <span className="text-grubano-sm font-semibold text-grubano-ink">Total</span>
+        <span className="text-grubano-sm font-semibold text-grubano-ink">{t('total')}</span>
         <span className="font-display text-[22px] font-extrabold text-grubano-primary">{total.toFixed(2)} €</span>
       </div>
       {(supplements.length > 0 || exclusions.length > 0) && (
