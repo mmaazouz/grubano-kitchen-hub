@@ -9,10 +9,16 @@ import { locales } from '@/i18n'
 
 // Routes that must render WITHOUT the operator dashboard chrome
 // (Sidebar + MobileHeader + operator BottomNav).
-//   /eat/*       → consumer app, has its own BottomNav (app/eat/layout.tsx)
+//
+//   /eat/*          → consumer app, has its own BottomNav (app/eat/layout.tsx)
+//   /franchise/*    → franchise portal (Agent 4 mounts its own sidebar here)
+//   /creators/*     → creator portal  (Agent 4 mounts its own sidebar here)
 //   /login, /register → public auth pages
-//   /            → redirects to /dashboard, never renders content
-const BARE_PREFIXES = ['/eat', '/login', '/register']
+//   /               → redirects to /dashboard, never renders content
+//
+// Note: the locale prefix is stripped BEFORE matching below, so these
+// patterns work across /fr/franchise, /en/creators, /es/eat, etc.
+const BARE_PREFIXES = ['/eat', '/franchise', '/creators', '/login', '/register']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'
