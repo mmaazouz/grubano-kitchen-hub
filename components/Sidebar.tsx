@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Store, Star, Package, Users, Settings,
   ChefHat, X, ShoppingBag, UtensilsCrossed, CalendarDays,
   BarChart2, Truck, MessageSquare, Wallet, Zap, Bell, Receipt,
+  Megaphone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebar } from './SidebarContext'
@@ -45,6 +46,7 @@ const navGroups = [
       { href: '/briefing',     label: 'Briefing IA',  icon: Zap },
       { href: '/finance',      label: 'Finance',       icon: Receipt },
       { href: '/franchise',    label: 'Franchise',     icon: Users },
+      { href: '/creators',     label: 'Influenceurs',  icon: Megaphone },
       { href: '/notifications',label: 'Notifications', icon: Bell },
     ],
   },

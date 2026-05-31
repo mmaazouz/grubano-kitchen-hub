@@ -40,7 +40,75 @@
     "it": "Italiano"
   },
   "dashboard": {
-    "title": "لوحة التحكم"
+    "title": "لوحة التحكم",
+    "home": {
+      "greeting": "مرحباً، {name}",
+      "statusOpen": "مفتوح",
+      "kpi": {
+        "revenueLabel": "رقم الأعمال اليوم",
+        "ordersLabel": "الطلبات",
+        "aovLabel": "متوسط السلة 7 أيام",
+        "ratingLabel": "المعدل العام",
+        "vsYday": "مقارنة بالأمس",
+        "vsLastWeek": "مقارنة بالأسبوع الماضي"
+      },
+      "actions": {
+        "title": "الفرص المتاحة لك",
+        "pickupTitle": "فعّل الاستلام من المطعم",
+        "pickupDesc": "المطاعم التي تقبل الطلب والاستلام تحصل في المتوسط على +18% من الطلبات الإضافية.",
+        "pickupCta": "تفعيل الاستلام",
+        "influencerTitle": "افتح أطباقك للمؤثرين",
+        "influencerDesc": "المبدعون يجلبون لك الزبائن ولا تدفع إلا عند النتيجة — عمولتهم محددة افتراضياً.",
+        "influencerCta": "اكتشف البرنامج",
+        "franchiseTitle": "كن صاحب امتياز تجاري",
+        "franchiseDesc": "تقييمك وحجم مبيعاتك يؤهلانك. اجعل علامتك تُستغل دون طبخ إضافي.",
+        "franchiseCta": "معرفة المزيد"
+      },
+      "liveOrders": {
+        "title": "الطلبات الجارية",
+        "seeAll": "عرض الكل",
+        "emptyTitle": "لا توجد طلبات جارية",
+        "emptyDesc": "الطلبات الجديدة ستظهر هنا في الوقت الفعلي.",
+        "status_received": "مستلم",
+        "status_preparing": "قيد التحضير",
+        "status_ready": "جاهز",
+        "status_picked_up": "في الطريق",
+        "status_unknown": "جارٍ"
+      },
+      "perf": {
+        "title": "الأداء",
+        "subtitle": "آخر 14 يوماً",
+        "seeAll": "التفاصيل",
+        "empty": "لا توجد طلبات في الفترة",
+        "tooltip": "الإيرادات",
+        "topDishesTitle": "أفضل 5 أطباق",
+        "topDishesEmpty": "لم تُباع أطباق بعد",
+        "qty": "{count} ×"
+      },
+      "influencers": {
+        "title": "المؤثرون الذين يروجون لي",
+        "emptyTitle": "لا يوجد مؤثرون بعد",
+        "emptyDesc": "أطلق برنامجاً — لن تدفع إلا عند تحقيق النتائج.",
+        "emptyCta": "إطلاق برنامج",
+        "viaCode": "الرمز {code}",
+        "ordersCount": "{count, plural, one {# طلب} other {# طلبات}}"
+      },
+      "bits": {
+        "seeAll": "عرض الكل",
+        "lowStockTitle": "مخزون منخفض",
+        "lowStockEmpty": "كل المخزونات فوق الحد الأدنى",
+        "reviewsTitle": "آراء العملاء",
+        "reviewsCount": "{count, plural, one {# رأي} other {# آراء}}",
+        "reviewsSubtitle": "المجموع منذ الافتتاح"
+      },
+      "empty": {
+        "authTitle": "سجّل الدخول لعرض لوحة التحكم",
+        "authDesc": "هذه الصفحة مخصصة لحسابات المشغّلين.",
+        "noRestaurantTitle": "لا يوجد مطعم مرتبط",
+        "noRestaurantDesc": "أنشئ بطاقة مطعمك للبدء.",
+        "noRestaurantCta": "إعداد علامتي التجارية"
+      }
+    }
   },
   "franchise": {
     "title": "امتياز",

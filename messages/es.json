@@ -40,7 +40,75 @@
     "it": "Italiano"
   },
   "dashboard": {
-    "title": "Panel de control"
+    "title": "Panel de control",
+    "home": {
+      "greeting": "Hola, {name}",
+      "statusOpen": "Abierto",
+      "kpi": {
+        "revenueLabel": "Facturación hoy",
+        "ordersLabel": "Pedidos",
+        "aovLabel": "Ticket medio 7d",
+        "ratingLabel": "Valoración media",
+        "vsYday": "vs ayer",
+        "vsLastWeek": "vs semana pasada"
+      },
+      "actions": {
+        "title": "Tus próximas oportunidades",
+        "pickupTitle": "Activa la recogida en local",
+        "pickupDesc": "Los restaurantes que aceptan recogida captan de media un +18 % de pedidos adicionales.",
+        "pickupCta": "Activar recogida",
+        "influencerTitle": "Abre tus platos a influencers",
+        "influencerDesc": "Los creadores traen clientes y solo pagas por resultados — su comisión está limitada por defecto.",
+        "influencerCta": "Descubrir el programa",
+        "franchiseTitle": "Conviértete en franquiciador",
+        "franchiseDesc": "Tu valoración y volumen te hacen elegible. Haz crecer tu marca sin cocinar más.",
+        "franchiseCta": "Saber más"
+      },
+      "liveOrders": {
+        "title": "Pedidos en curso",
+        "seeAll": "Ver todo",
+        "emptyTitle": "Ningún pedido en curso",
+        "emptyDesc": "Los nuevos pedidos aparecerán aquí en tiempo real.",
+        "status_received": "Recibido",
+        "status_preparing": "En preparación",
+        "status_ready": "Listo",
+        "status_picked_up": "En camino",
+        "status_unknown": "En curso"
+      },
+      "perf": {
+        "title": "Rendimiento",
+        "subtitle": "Últimos 14 días",
+        "seeAll": "Detalles",
+        "empty": "Ningún pedido en el período",
+        "tooltip": "Ingresos",
+        "topDishesTitle": "Top 5 platos",
+        "topDishesEmpty": "Aún no hay platos vendidos",
+        "qty": "{count} ×"
+      },
+      "influencers": {
+        "title": "Influencers que me promocionan",
+        "emptyTitle": "Aún no hay influencers",
+        "emptyDesc": "Abre un programa — solo pagas por resultados.",
+        "emptyCta": "Lanzar un programa",
+        "viaCode": "Código {code}",
+        "ordersCount": "{count, plural, one {# pedido} other {# pedidos}}"
+      },
+      "bits": {
+        "seeAll": "Ver todo",
+        "lowStockTitle": "Stock bajo",
+        "lowStockEmpty": "Todo el stock está por encima del umbral",
+        "reviewsTitle": "Opiniones de clientes",
+        "reviewsCount": "{count, plural, one {# opinión} other {# opiniones}}",
+        "reviewsSubtitle": "Acumuladas desde la apertura"
+      },
+      "empty": {
+        "authTitle": "Inicia sesión para ver tu panel",
+        "authDesc": "Esta página está reservada a cuentas de operadores.",
+        "noRestaurantTitle": "Ningún restaurante vinculado",
+        "noRestaurantDesc": "Crea tu ficha de restaurante para empezar.",
+        "noRestaurantCta": "Configurar mi marca"
+      }
+    }
   },
   "franchise": {
     "title": "Franquicia",
