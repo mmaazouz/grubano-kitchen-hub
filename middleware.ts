@@ -23,12 +23,24 @@ export async function middleware(request: NextRequest) {
   const restPath = rest === '' ? '/' : rest
   const activeLocale = localeInPath ?? defaultLocale
 
+  // The /franchise and /creators ROOTS are public discovery/recruitment landing
+  // pages — any visitor (any role, or none) must be able to see them, and anyone
+  // may apply. Only the private /dashboard sub-routes keep a role-guard.
+  const isFranchiseDashboard =
+    restPath === '/franchise/dashboard' || restPath.startsWith('/franchise/dashboard/')
+  const isCreatorsDashboard =
+    restPath === '/creators/dashboard' || restPath.startsWith('/creators/dashboard/')
+
   // Public routes — no auth required. /eat/* is the consumer app (auth per-page).
   const publicRoots = ['/', '/login', '/register', '/design']
   const isPublic =
     publicRoots.includes(restPath) ||
     restPath.startsWith('/eat') ||
-    restPath.startsWith('/api/auth')
+    restPath.startsWith('/api/auth') ||
+    // Everything under /franchise and /creators is public EXCEPT the /dashboard
+    // sub-routes (landing pages, /apply, etc. stay open to all).
+    (restPath.startsWith('/franchise') && !isFranchiseDashboard) ||
+    (restPath.startsWith('/creators') && !isCreatorsDashboard)
 
   if (!isPublic) {
     const token = await getToken({ req: request })
@@ -44,8 +56,13 @@ export async function middleware(request: NextRequest) {
       NextResponse.redirect(new URL(`/${activeLocale}/eat`, request.url))
 
     if (restPath.startsWith('/dashboard') && !['restaurant', 'admin'].includes(role)) return safeFallback()
-    if (restPath.startsWith('/franchise') && !['franchise', 'admin'].includes(role)) return safeFallback()
-    if (restPath.startsWith('/creators') && !['creator', 'admin'].includes(role)) return safeFallback()
+    // A franchisee IS a restaurateur (Mohammed): restaurant + franchise + admin.
+    // Bounce to the PUBLIC /franchise landing (not /eat) so the user lands on the
+    // discovery page — that page is public, so this never loops.
+    if (isFranchiseDashboard && !['franchise', 'restaurant', 'admin'].includes(role))
+      return NextResponse.redirect(new URL(`/${activeLocale}/franchise`, request.url))
+    if (isCreatorsDashboard && !['creator', 'admin'].includes(role))
+      return NextResponse.redirect(new URL(`/${activeLocale}/creators`, request.url))
     if (restPath.startsWith('/account') && !['consumer', 'admin'].includes(role)) return safeFallback()
   }
 
