@@ -74,7 +74,7 @@ export default function FranchisePage() {
         </div>
         <Link href="/franchise/dashboard">
           <Button variant="primary" size="sm" leftIcon={<LayoutDashboard size={13} />}>
-            {t('myDashboard')}
+            {t('mySpace')}
           </Button>
         </Link>
       </div>
