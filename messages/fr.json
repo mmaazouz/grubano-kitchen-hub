@@ -211,6 +211,14 @@
       "applyCta": "Candidater",
       "errorNetwork": "Erreur réseau",
       "backToPortal": "Retour au portail"
+    },
+    "nav": {
+      "overview": "Vue d'ensemble",
+      "locations": "Mes établissements",
+      "brands": "Marques disponibles",
+      "finances": "Royalties / Finances",
+      "apply": "Candidatures",
+      "back": "Retour au portail"
     }
   },
   "creators": {
@@ -322,6 +330,14 @@
       "audienceNoSocials": "Aucun réseau lié",
       "audienceComingSoon": "Les statistiques de parrainage seront disponibles prochainement.",
       "audienceConnectSocials": "Lier mes réseaux"
+    },
+    "nav": {
+      "overview": "Vue d'ensemble",
+      "discover": "Programmes disponibles",
+      "promotions": "Mes promotions",
+      "audience": "Mon audience",
+      "revenue": "Mes revenus",
+      "back": "Retour au portail"
     }
   },
   "eat": {

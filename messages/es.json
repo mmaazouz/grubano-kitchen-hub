@@ -211,6 +211,14 @@
       "applyCta": "Postular",
       "errorNetwork": "Error de red",
       "backToPortal": "Volver al portal"
+    },
+    "nav": {
+      "overview": "Visión general",
+      "locations": "Mis establecimientos",
+      "brands": "Marcas disponibles",
+      "finances": "Regalías / Finanzas",
+      "apply": "Candidaturas",
+      "back": "Volver al portal"
     }
   },
   "creators": {
@@ -322,6 +330,14 @@
       "audienceNoSocials": "Ninguna red vinculada",
       "audienceComingSoon": "Las estadísticas de referidos estarán disponibles próximamente.",
       "audienceConnectSocials": "Vincular mis redes"
+    },
+    "nav": {
+      "overview": "Visión general",
+      "discover": "Programas disponibles",
+      "promotions": "Mis promociones",
+      "audience": "Mi audiencia",
+      "revenue": "Mis ingresos",
+      "back": "Volver al portal"
     }
   },
   "eat": {

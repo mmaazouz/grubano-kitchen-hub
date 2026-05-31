@@ -211,6 +211,14 @@
       "applyCta": "Apply",
       "errorNetwork": "Network error",
       "backToPortal": "Back to portal"
+    },
+    "nav": {
+      "overview": "Overview",
+      "locations": "My locations",
+      "brands": "Available brands",
+      "finances": "Royalties / Finances",
+      "apply": "Applications",
+      "back": "Back to portal"
     }
   },
   "creators": {
@@ -322,6 +330,14 @@
       "audienceNoSocials": "No networks linked",
       "audienceComingSoon": "Referral statistics will be available soon.",
       "audienceConnectSocials": "Link my networks"
+    },
+    "nav": {
+      "overview": "Overview",
+      "discover": "Available programs",
+      "promotions": "My promotions",
+      "audience": "My audience",
+      "revenue": "My revenue",
+      "back": "Back to portal"
     }
   },
   "eat": {

@@ -211,6 +211,14 @@
       "applyCta": "تقدّم",
       "errorNetwork": "خطأ في الشبكة",
       "backToPortal": "العودة إلى البوابة"
+    },
+    "nav": {
+      "overview": "نظرة عامة",
+      "locations": "فروعي",
+      "brands": "العلامات المتاحة",
+      "finances": "الإتاوات / المالية",
+      "apply": "الطلبات",
+      "back": "العودة إلى البوابة"
     }
   },
   "creators": {
@@ -322,6 +330,14 @@
       "audienceNoSocials": "لا توجد شبكات مرتبطة",
       "audienceComingSoon": "ستتوفر إحصائيات الإحالة قريباً.",
       "audienceConnectSocials": "ربط شبكاتي"
+    },
+    "nav": {
+      "overview": "نظرة عامة",
+      "discover": "البرامج المتاحة",
+      "promotions": "عروضي الترويجية",
+      "audience": "جمهوري",
+      "revenue": "إيراداتي",
+      "back": "العودة إلى البوابة"
     }
   },
   "eat": {

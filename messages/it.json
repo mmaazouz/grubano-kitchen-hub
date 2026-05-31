@@ -211,6 +211,14 @@
       "applyCta": "Candidati",
       "errorNetwork": "Errore di rete",
       "backToPortal": "Torna al portale"
+    },
+    "nav": {
+      "overview": "Panoramica",
+      "locations": "I miei locali",
+      "brands": "Marchi disponibili",
+      "finances": "Royalty / Finanze",
+      "apply": "Candidature",
+      "back": "Torna al portale"
     }
   },
   "creators": {
@@ -322,6 +330,14 @@
       "audienceNoSocials": "Nessun social collegato",
       "audienceComingSoon": "Le statistiche di referral saranno disponibili a breve.",
       "audienceConnectSocials": "Collega i miei social"
+    },
+    "nav": {
+      "overview": "Panoramica",
+      "discover": "Programmi disponibili",
+      "promotions": "Le mie promozioni",
+      "audience": "Il mio pubblico",
+      "revenue": "I miei ricavi",
+      "back": "Torna al portale"
     }
   },
   "eat": {
