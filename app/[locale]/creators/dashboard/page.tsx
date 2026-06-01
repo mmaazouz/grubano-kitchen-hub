@@ -115,8 +115,10 @@ export default function CreatorDashboardHome() {
   const thisMonth  = data?.earningsThisMonth ?? 0
   const lastMonth  = data?.earningsLastMonth ?? 0
   const totalEarn  = creator?.totalEarnings ?? 0
-  const totalSales = data?.dishSalesTotal   ?? 0
-  const adoptions  = data?.dishAdoptionsTotal ?? 0
+  const totalSales          = data?.dishSalesTotal         ?? 0
+  const adoptions           = data?.dishAdoptionsTotal      ?? 0
+  const recipeEarnings30d   = data?.recipeEarnings30d       ?? 0
+  const referralEarnings30d = data?.referralEarnings30d     ?? 0
 
   const pctDelta = lastMonth > 0
     ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100)
@@ -543,7 +545,11 @@ export default function CreatorDashboardHome() {
         </div>
 
         <div className="mt-3">
-          <CreatorEarningsChart data={chartData} />
+          <CreatorEarningsChart
+            data={chartData}
+            recipeEarnings30d={recipeEarnings30d}
+            referralEarnings30d={referralEarnings30d}
+          />
         </div>
 
         {/* Top dishes by earnings */}

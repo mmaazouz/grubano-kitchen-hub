@@ -43,7 +43,13 @@ export type ReferralRates = {
   customerDiscountPct:  number   // fraction, e.g. 0.10
 }
 
-export type ChartDatum = { date: string; label: string; amount: number }
+export type ChartDatum = {
+  date:           string
+  label:          string
+  amount:         number   // total = recipeAmount + referralAmount (kept for back-compat)
+  recipeAmount:   number   // DishSale earnings for that day
+  referralAmount: number   // ReferralOrder earnings for that day
+}
 
 export type CreatorHomeData = {
   creator:             CreatorHomeCreator | null
@@ -53,9 +59,11 @@ export type CreatorHomeData = {
   dishAdoptionsTotal:  number
   audience:            CreatorHomeAudience
   referralRates:       ReferralRates | null
-  chartData:           ChartDatum[]
-  earningsThisMonth:   number   // referral + recipe, 30-day rolling window
-  earningsLastMonth:   number   // referral + recipe, previous 30-day window
+  chartData:            ChartDatum[]
+  earningsThisMonth:    number   // referral + recipe, 30-day rolling window
+  earningsLastMonth:    number   // referral + recipe, previous 30-day window
+  recipeEarnings30d:    number   // recipe-only total for the chart legend
+  referralEarnings30d:  number   // referral-only total for the chart legend
 }
 
 export async function GET() {
@@ -109,9 +117,11 @@ export async function GET() {
           earningsLastMonth: 0,
         },
         referralRates,
-        chartData:          buildEmptyChart(),
-        earningsThisMonth:  0,
-        earningsLastMonth:  0,
+        chartData:            buildEmptyChart(),
+        earningsThisMonth:    0,
+        earningsLastMonth:    0,
+        recipeEarnings30d:    0,
+        referralEarnings30d:  0,
       } satisfies CreatorHomeData)
     }
 
@@ -231,6 +241,8 @@ export async function GET() {
       chartData,
       earningsThisMonth,
       earningsLastMonth,
+      recipeEarnings30d:   Number(dishEarningsNow.toFixed(2)),
+      referralEarnings30d: Number(refEarningsNow.toFixed(2)),
     } satisfies CreatorHomeData)
   } catch (err) {
     console.error('[GET /api/creators/home]', err)
@@ -246,51 +258,63 @@ function buildEmptyChart(): ChartDatum[] {
     const d = new Date(today)
     d.setDate(today.getDate() - 29 + i)
     return {
-      date:   d.toISOString().slice(0, 10),
-      label:  d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
-      amount: 0,
+      date:           d.toISOString().slice(0, 10),
+      label:          d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+      amount:         0,
+      recipeAmount:   0,
+      referralAmount: 0,
     }
   })
 }
 
 /**
- * Build a 30-day bar chart that combines referral order earnings and recipe sale
- * earnings into a single `amount` per day. Both sources use their respective
- * `createdAt` timestamps.
+ * Build a 30-day bar chart tracking recipe earnings (DishSale) and referral
+ * earnings (ReferralOrder) separately per day.
+ * `amount` = recipeAmount + referralAmount for backward compatibility.
  */
 function buildCombinedChart(
   referralOrders: { creatorEarning: number; createdAt: Date }[],
   dishSales:      { creatorEarning: number; createdAt: Date }[],
 ): ChartDatum[] {
-  const today    = new Date()
+  const today     = new Date()
   const thirtyAgo = new Date(today)
   thirtyAgo.setDate(today.getDate() - 29)
 
-  const map = new Map<string, number>()
+  const recipeMap   = new Map<string, number>()
+  const referralMap = new Map<string, number>()
+
   // Pre-fill all 30 days with 0
   for (let i = 0; i < 30; i++) {
     const d = new Date(thirtyAgo)
     d.setDate(thirtyAgo.getDate() + i)
-    map.set(d.toISOString().slice(0, 10), 0)
+    const key = d.toISOString().slice(0, 10)
+    recipeMap.set(key, 0)
+    referralMap.set(key, 0)
   }
 
   // Accumulate referral orders
   for (const o of referralOrders) {
     if (o.createdAt < thirtyAgo) continue
     const key = o.createdAt.toISOString().slice(0, 10)
-    if (map.has(key)) map.set(key, (map.get(key) ?? 0) + o.creatorEarning)
+    if (referralMap.has(key)) referralMap.set(key, (referralMap.get(key) ?? 0) + o.creatorEarning)
   }
 
   // Accumulate dish sales
   for (const s of dishSales) {
     if (s.createdAt < thirtyAgo) continue
     const key = s.createdAt.toISOString().slice(0, 10)
-    if (map.has(key)) map.set(key, (map.get(key) ?? 0) + s.creatorEarning)
+    if (recipeMap.has(key)) recipeMap.set(key, (recipeMap.get(key) ?? 0) + s.creatorEarning)
   }
 
-  return Array.from(map.entries()).map(([date, amount]) => ({
-    date,
-    label:  new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
-    amount: Number(amount.toFixed(2)),
-  }))
+  return Array.from(recipeMap.keys()).map(date => {
+    const recipeAmount   = Number((recipeMap.get(date)   ?? 0).toFixed(2))
+    const referralAmount = Number((referralMap.get(date) ?? 0).toFixed(2))
+    return {
+      date,
+      label:  new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+      amount: Number((recipeAmount + referralAmount).toFixed(2)),
+      recipeAmount,
+      referralAmount,
+    }
+  })
 }
