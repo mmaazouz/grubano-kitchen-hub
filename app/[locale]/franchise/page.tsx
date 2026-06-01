@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { CheckCircle2, Lock, ChevronRight, LayoutDashboard } from 'lucide-react'
 import { Link } from '@/navigation'
-import { Card, Button, Badge } from '@/components/design-system'
+import { Card, Button, Badge, EmptyState } from '@/components/design-system'
 
 type Brand = {
   id:          string
@@ -17,20 +17,22 @@ type Brand = {
   royaltyRate: number
   citiesAvail: string[]
   available:   boolean
+  topDishes?:  string[]
 }
 
 export default function FranchisePage() {
   const t = useTranslations('franchise')
 
-  const [brands, setBrands] = useState<Brand[]>([])
-  const [orders, setOrders] = useState(80)
-  const avgTicket           = 14
+  const [brands,  setBrands]  = useState<Brand[]>([])
+  const [loading, setLoading] = useState(true)
+  const [orders,  setOrders]  = useState(80)
+  const avgTicket             = 14
 
   useEffect(() => {
     fetch('/api/franchise/brands')
       .then(r => r.json())
-      .then(d => setBrands(d.brands ?? []))
-      .catch(() => {})
+      .then(d => { setBrands(d.brands ?? []); setLoading(false) })
+      .catch(() => { setLoading(false) })
   }, [])
 
   const monthlyRevenue = orders * 30 * avgTicket
@@ -88,6 +90,13 @@ export default function FranchisePage() {
       </div>
 
       <div className="space-y-3 mb-8">
+        {!loading && brands.length === 0 && (
+          <EmptyState
+            emoji={<span className="text-4xl">🏗️</span>}
+            title={t('brandsEmpty')}
+            description={t('brandsEmptyDesc')}
+          />
+        )}
         {brands.map(brand => (
           <Card key={brand.id} elevation="sm" padding="md">
             <div className="flex items-start gap-3 mb-2">
@@ -129,7 +138,7 @@ export default function FranchisePage() {
             </div>
 
             {brand.available ? (
-              <Link href="/franchise/apply" className="block w-full">
+              <Link href={`/franchise/apply?brandId=${brand.id}`} className="block w-full">
                 <Button variant="primary" size="sm" fullWidth leftIcon={<CheckCircle2 size={13} />}>
                   {t('brandApply', { name: brand.name })}
                 </Button>

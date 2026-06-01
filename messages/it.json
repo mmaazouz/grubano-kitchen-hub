@@ -124,6 +124,8 @@
     "mySpace": "Il mio spazio franchising",
     "brandsTitle": "Brand disponibili",
     "brandsHint": "{count} disponibili",
+    "brandsEmpty": "Nessun marchio disponibile",
+    "brandsEmptyDesc": "Presto saranno disponibili nuovi marchi in franchising.",
     "brandFull": "Completo",
     "brandWaitlist": "Lista d'attesa",
     "brandApply": "Candidati — {name}",

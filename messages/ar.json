@@ -124,6 +124,8 @@
     "mySpace": "مساحتي للامتياز",
     "brandsTitle": "العلامات المتاحة",
     "brandsHint": "{count} متاح",
+    "brandsEmpty": "لا توجد علامات تجارية متاحة",
+    "brandsEmptyDesc": "ستتوفر قريباً علامات تجارية جديدة قابلة للامتياز.",
     "brandFull": "ممتلئ",
     "brandWaitlist": "قائمة الانتظار",
     "brandApply": "التقدم — {name}",
