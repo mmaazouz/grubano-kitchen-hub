@@ -386,7 +386,7 @@
       "audienceFollowers": "{count} followers",
       "audienceNoSocials": "No networks linked",
       "perfTitle": "Performance — 30 days",
-      "perfSubtitle": "Daily referral earnings",
+      "perfSubtitle": "Daily earnings (recipes + referrals)",
       "perfEmpty": "No data yet",
       "perfTooltip": "Earnings",
       "perfTopDishes": "Top recipes",

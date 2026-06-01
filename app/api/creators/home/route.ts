@@ -24,17 +24,17 @@ export type CreatorHomeDish = {
   cuisineType:    string
   suggestedPrice: number
   status:         string
-  adoptions:      number
-  totalSales:     number
-  earnings:       number   // totalSales × suggestedPrice × commission
+  adoptions:      number   // count of DishAdoption rows with status='active'
+  totalSales:     number   // count of DishSale rows across all adoptions
+  earnings:       number   // sum of DishSale.creatorEarning across all adoptions
 }
 
 export type CreatorHomeAudience = {
   referralsCount:       number   // distinct customers referred
   ordersCount:          number   // total ReferralOrders
-  earningsTotal:        number   // sum of creatorEarning all time
-  earningsThisMonth:    number
-  earningsLastMonth:    number
+  earningsTotal:        number   // sum of referral creatorEarning all time
+  earningsThisMonth:    number   // referral only, 30-day rolling window
+  earningsLastMonth:    number   // referral only, previous 30-day window
 }
 
 export type ReferralRates = {
@@ -46,21 +46,17 @@ export type ReferralRates = {
 export type ChartDatum = { date: string; label: string; amount: number }
 
 export type CreatorHomeData = {
-  creator:          CreatorHomeCreator | null
-  dishes:           CreatorHomeDish[]
-  dishEarningsTotal: number
-  dishSalesTotal:   number
-  dishAdoptionsTotal: number
-  audience:         CreatorHomeAudience
-  referralRates:    ReferralRates | null
-  chartData:        ChartDatum[]
-  earningsThisMonth: number   // referral only — schema note below
-  earningsLastMonth: number   // referral only
+  creator:             CreatorHomeCreator | null
+  dishes:              CreatorHomeDish[]
+  dishEarningsTotal:   number
+  dishSalesTotal:      number
+  dishAdoptionsTotal:  number
+  audience:            CreatorHomeAudience
+  referralRates:       ReferralRates | null
+  chartData:           ChartDatum[]
+  earningsThisMonth:   number   // referral + recipe, 30-day rolling window
+  earningsLastMonth:   number   // referral + recipe, previous 30-day window
 }
-
-// NOTE (schema gap): CreatorDish.totalSales is a cumulative counter with no
-// per-date breakdown, so recipe earnings cannot be charted by day. The 30-day
-// chart and monthly KPIs show REFERRAL earnings only. Flagged in Notion inbox.
 
 export async function GET() {
   try {
@@ -105,7 +101,13 @@ export async function GET() {
         dishEarningsTotal:  0,
         dishSalesTotal:     0,
         dishAdoptionsTotal: 0,
-        audience: { referralsCount: 0, ordersCount: 0, earningsTotal: 0, earningsThisMonth: 0, earningsLastMonth: 0 },
+        audience: {
+          referralsCount:    0,
+          ordersCount:       0,
+          earningsTotal:     0,
+          earningsThisMonth: 0,
+          earningsLastMonth: 0,
+        },
         referralRates,
         chartData:          buildEmptyChart(),
         earningsThisMonth:  0,
@@ -113,50 +115,96 @@ export async function GET() {
       } satisfies CreatorHomeData)
     }
 
-    // ── Dish stats ────────────────────────────────────────────────────────────
-    const dishes: CreatorHomeDish[] = creator.dishes.map(d => ({
-      id:             d.id,
-      name:           d.name,
-      cuisineType:    d.cuisineType,
-      suggestedPrice: d.suggestedPrice,
-      status:         d.status,
-      adoptions:      (d.adoptedBy as string[]).length,
-      totalSales:     d.totalSales,
-      earnings:       Number((d.totalSales * d.suggestedPrice * d.commission).toFixed(2)),
-    }))
+    // ── 30-day rolling windows ────────────────────────────────────────────────
+    const now       = new Date()
+    const thirtyAgo = new Date(now); thirtyAgo.setDate(now.getDate() - 29)
+    const sixtyAgo  = new Date(now); sixtyAgo.setDate(now.getDate() - 59)
 
-    const dishEarningsTotal  = dishes.reduce((s, d) => s + d.earnings, 0)
+    // ── Real adoptions + sales for this creator's dishes ─────────────────────
+    const dishIds = creator.dishes.map(d => d.id)
+
+    const allAdoptions = dishIds.length > 0
+      ? await prisma.dishAdoption.findMany({
+          where:   { creatorDishId: { in: dishIds } },
+          include: {
+            sales: {
+              select: { creatorEarning: true, createdAt: true },
+            },
+          },
+        })
+      : []
+
+    // Build per-dish lookup maps from adoptions
+    const adoptionCountByDish = new Map<string, number>()   // active adoptions
+    const salesByDish         = new Map<string, { creatorEarning: number; createdAt: Date }[]>()
+
+    for (const adoption of allAdoptions) {
+      const did = adoption.creatorDishId
+      if (adoption.status === 'active') {
+        adoptionCountByDish.set(did, (adoptionCountByDish.get(did) ?? 0) + 1)
+      }
+      const existing = salesByDish.get(did) ?? []
+      salesByDish.set(did, [...existing, ...adoption.sales])
+    }
+
+    // ── Dish stats ────────────────────────────────────────────────────────────
+    const dishes: CreatorHomeDish[] = creator.dishes.map(d => {
+      const dishSales = salesByDish.get(d.id) ?? []
+      const earnings  = dishSales.reduce((s, sale) => s + sale.creatorEarning, 0)
+      return {
+        id:             d.id,
+        name:           d.name,
+        cuisineType:    d.cuisineType,
+        suggestedPrice: d.suggestedPrice,
+        status:         d.status,
+        adoptions:      adoptionCountByDish.get(d.id) ?? 0,
+        totalSales:     dishSales.length,
+        earnings:       Number(earnings.toFixed(2)),
+      }
+    })
+
+    const dishEarningsTotal  = Number(dishes.reduce((s, d) => s + d.earnings, 0).toFixed(2))
     const dishSalesTotal     = dishes.reduce((s, d) => s + d.totalSales, 0)
     const dishAdoptionsTotal = dishes.reduce((s, d) => s + d.adoptions, 0)
 
-    // ── Flatten all referral orders ───────────────────────────────────────────
+    // ── Flatten sources for chart + KPIs ─────────────────────────────────────
     const allReferralOrders = creator.referrals.flatMap(r => r.orders)
+    const allDishSales      = allAdoptions.flatMap(a => a.sales)
 
-    // Month boundaries
-    const now              = new Date()
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-
-    const earningsThisMonth = allReferralOrders
-      .filter(o => o.createdAt >= startOfThisMonth)
+    // Referral earnings by rolling window
+    const refEarningsNow  = allReferralOrders
+      .filter(o => o.createdAt >= thirtyAgo)
       .reduce((s, o) => s + o.creatorEarning, 0)
 
-    const earningsLastMonth = allReferralOrders
-      .filter(o => o.createdAt >= startOfLastMonth && o.createdAt < startOfThisMonth)
+    const refEarningsPrev = allReferralOrders
+      .filter(o => o.createdAt >= sixtyAgo && o.createdAt < thirtyAgo)
       .reduce((s, o) => s + o.creatorEarning, 0)
 
-    // ── Audience block ────────────────────────────────────────────────────────
+    // Dish sale earnings by rolling window
+    const dishEarningsNow  = allDishSales
+      .filter(s => s.createdAt >= thirtyAgo)
+      .reduce((s, sale) => s + sale.creatorEarning, 0)
+
+    const dishEarningsPrev = allDishSales
+      .filter(s => s.createdAt >= sixtyAgo && s.createdAt < thirtyAgo)
+      .reduce((s, sale) => s + sale.creatorEarning, 0)
+
+    // Combined KPIs (referral + recipe)
+    const earningsThisMonth = Number((refEarningsNow  + dishEarningsNow).toFixed(2))
+    const earningsLastMonth = Number((refEarningsPrev + dishEarningsPrev).toFixed(2))
+
+    // ── Audience block (referral-only) ────────────────────────────────────────
     const uniqueCustomers = new Set(creator.referrals.map(r => r.customerId))
     const audience: CreatorHomeAudience = {
       referralsCount:    uniqueCustomers.size,
       ordersCount:       allReferralOrders.length,
-      earningsTotal:     allReferralOrders.reduce((s, o) => s + o.creatorEarning, 0),
-      earningsThisMonth,
-      earningsLastMonth,
+      earningsTotal:     Number(allReferralOrders.reduce((s, o) => s + o.creatorEarning, 0).toFixed(2)),
+      earningsThisMonth: Number(refEarningsNow.toFixed(2)),
+      earningsLastMonth: Number(refEarningsPrev.toFixed(2)),
     }
 
-    // ── 30-day chart (referral earnings by day) ───────────────────────────────
-    const chartData = buildChart(allReferralOrders)
+    // ── 30-day chart: recipe sales + referral orders combined per day ─────────
+    const chartData = buildCombinedChart(allReferralOrders, allDishSales)
 
     // ── Creator info ──────────────────────────────────────────────────────────
     const creatorInfo: CreatorHomeCreator = {
@@ -205,9 +253,17 @@ function buildEmptyChart(): ChartDatum[] {
   })
 }
 
-function buildChart(orders: { creatorEarning: number; createdAt: Date }[]): ChartDatum[] {
-  const today       = new Date()
-  const thirtyAgo   = new Date(today)
+/**
+ * Build a 30-day bar chart that combines referral order earnings and recipe sale
+ * earnings into a single `amount` per day. Both sources use their respective
+ * `createdAt` timestamps.
+ */
+function buildCombinedChart(
+  referralOrders: { creatorEarning: number; createdAt: Date }[],
+  dishSales:      { creatorEarning: number; createdAt: Date }[],
+): ChartDatum[] {
+  const today    = new Date()
+  const thirtyAgo = new Date(today)
   thirtyAgo.setDate(today.getDate() - 29)
 
   const map = new Map<string, number>()
@@ -217,11 +273,19 @@ function buildChart(orders: { creatorEarning: number; createdAt: Date }[]): Char
     d.setDate(thirtyAgo.getDate() + i)
     map.set(d.toISOString().slice(0, 10), 0)
   }
-  // Accumulate orders
-  for (const o of orders) {
+
+  // Accumulate referral orders
+  for (const o of referralOrders) {
     if (o.createdAt < thirtyAgo) continue
     const key = o.createdAt.toISOString().slice(0, 10)
     if (map.has(key)) map.set(key, (map.get(key) ?? 0) + o.creatorEarning)
+  }
+
+  // Accumulate dish sales
+  for (const s of dishSales) {
+    if (s.createdAt < thirtyAgo) continue
+    const key = s.createdAt.toISOString().slice(0, 10)
+    if (map.has(key)) map.set(key, (map.get(key) ?? 0) + s.creatorEarning)
   }
 
   return Array.from(map.entries()).map(([date, amount]) => ({
