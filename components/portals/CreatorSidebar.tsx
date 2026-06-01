@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import {
-  LayoutDashboard, Star, Tag, Users2,
+  LayoutDashboard, Tag, Users2,
   TrendingUp, ArrowLeft, Sparkles, X,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
@@ -19,7 +19,6 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/creators/dashboard',              labelKey: 'overview',    icon: LayoutDashboard, exact: true },
-  { href: '/creators',                        labelKey: 'discover',    icon: Star,            exact: true },
   { href: '/creators/dashboard/promotions',   labelKey: 'promotions',  icon: Tag },
   { href: '/creators/dashboard/audience',     labelKey: 'audience',    icon: Users2 },
   { href: '/creators/dashboard/revenus',      labelKey: 'revenue',     icon: TrendingUp },

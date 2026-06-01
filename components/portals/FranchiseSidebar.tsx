@@ -2,8 +2,8 @@
 
 import { useTranslations } from 'next-intl'
 import {
-  LayoutDashboard, MapPin, Store, CreditCard,
-  FileText, ArrowLeft, Building2, X,
+  LayoutDashboard, MapPin, CreditCard,
+  ArrowLeft, Building2, X,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
 import { useSidebar } from '@/components/SidebarContext'
@@ -21,9 +21,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: '/franchise/dashboard',                  labelKey: 'overview',   icon: LayoutDashboard, exact: true },
   { href: '/franchise/dashboard/etablissements',   labelKey: 'locations',  icon: MapPin },
-  { href: '/franchise',                            labelKey: 'brands',     icon: Store,           exact: true },
   { href: '/franchise/dashboard/finances',         labelKey: 'finances',   icon: CreditCard },
-  { href: '/franchise/apply',                      labelKey: 'apply',      icon: FileText,        exact: true },
 ]
 
 export default function FranchiseSidebar() {
