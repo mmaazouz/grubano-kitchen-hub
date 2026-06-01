@@ -148,6 +148,56 @@ const DEMO_POS = [
   { id: 'demo-pos-3', name: 'Grubano Carpentras',    address: '14 Boulevard Albin Durand, 84200 Carpentras', city: 'Carpentras', brand: 'Rollix' },
 ]
 
+// Real restaurateur-franchisors (brique 2A): each is an Operator(role=restaurant)
+// that owns one *franchisable* Brand (openToFranchise) plus its inherited
+// signature menu. The demo points of sale are then linked to the first brand.
+const DEMO_FRANCHISORS = [
+  {
+    opId: 'demo-franchiseur-1',
+    email: 'demo-franchiseur1@grubano.com',
+    name: 'Luigi Romano',
+    brandId: 'demo-brand-1',
+    brand: {
+      name: 'Gnocchi Bar',
+      emoji: '🥟',
+      cuisineType: 'Italien',
+      tagline: 'Le gnocchi frais façon trattoria — un concept clé en main.',
+      royaltyPct: 0.06,
+      setupFee: 15000,
+      avgMonthlyRevenue: 9200,
+      franchiseZones: ['Orange', 'Avignon', 'Carpentras', 'Marseille', 'Lyon', 'Nîmes'],
+    },
+    menu: [
+      ['Gnocchi à la truffe',   13.9, 'Plats'],
+      ['Gnocchi 4 fromages',    12.5, 'Plats'],
+      ['Gnocchi pesto maison',  11.9, 'Plats'],
+      ['Tiramisu maison',        5.5, 'Desserts'],
+    ],
+  },
+  {
+    opId: 'demo-franchiseur-2',
+    email: 'demo-franchiseur2@grubano.com',
+    name: 'Inès Haddad',
+    brandId: 'demo-brand-2',
+    brand: {
+      name: 'Bowl Healthy',
+      emoji: '🥗',
+      cuisineType: 'Healthy',
+      tagline: 'Des bowls frais et équilibrés, prêts à franchiser.',
+      royaltyPct: 0.05,
+      setupFee: 12000,
+      avgMonthlyRevenue: 7600,
+      franchiseZones: ['Avignon', 'Sorgues', 'Montpellier', 'Aix-en-Provence', 'Paris'],
+    },
+    menu: [
+      ['Bowl poke saumon',      13.9, 'Bowls'],
+      ['Bowl poulet teriyaki',  12.9, 'Bowls'],
+      ['Bowl veggie falafel',   11.5, 'Bowls'],
+      ['Smoothie açaï',          5.9, 'Boissons'],
+    ],
+  },
+]
+
 // Creator signature dishes.
 const DEMO_DISHES = [
   { id: 'demo-dish-1', name: 'Gnocchi truffe & parmesan', cuisineType: 'Italien',  suggestedPrice: 14.5, ingredients: ['Gnocchi frais', 'Crème de truffe', 'Parmesan 24 mois', 'Huile de truffe'] },
@@ -276,6 +326,39 @@ async function main() {
   }
   console.log(`[3/7] Restaurant pool: ${restaurants.length} restaurant(s).`)
 
+  // ── Real restaurateur-franchisors + franchisable brands (brique 2A) ────────────
+  const franchisorBrands = []
+  for (const f of DEMO_FRANCHISORS) {
+    const op = await ensureOperator({ id: f.opId, email: f.email, name: f.name, role: 'restaurant', withPassword: true })
+    const brand = await prisma.brand.upsert({
+      where:  { id: f.brandId },
+      update: {
+        name: f.brand.name, emoji: f.brand.emoji, openToFranchise: true, franchiseStatus: 'open',
+        royaltyPct: f.brand.royaltyPct, setupFee: f.brand.setupFee, tagline: f.brand.tagline,
+        cuisineType: f.brand.cuisineType, franchiseZones: f.brand.franchiseZones, avgMonthlyRevenue: f.brand.avgMonthlyRevenue,
+      },
+      create: {
+        id: f.brandId, operatorId: op.id, name: f.brand.name, emoji: f.brand.emoji, status: 'active',
+        openToFranchise: true, franchiseStatus: 'open',
+        royaltyPct: f.brand.royaltyPct, setupFee: f.brand.setupFee, tagline: f.brand.tagline,
+        cuisineType: f.brand.cuisineType, franchiseZones: f.brand.franchiseZones, avgMonthlyRevenue: f.brand.avgMonthlyRevenue,
+      },
+    })
+    // Inherited signature menu (idempotent by deterministic id).
+    for (let i = 0; i < f.menu.length; i++) {
+      const [name, price, category] = f.menu[i]
+      const menuId = `demo-menu-${f.brandId}-${i + 1}`
+      await prisma.menuItem.upsert({
+        where:  { id: menuId },
+        update: { name, price, category, available: true },
+        create: { id: menuId, brandId: brand.id, name, price, category, available: true, isPopular: i === 0 },
+      })
+    }
+    franchisorBrands.push(brand)
+  }
+  const primaryBrandId = franchisorBrands[0].id // demo points of sale all link to this brand
+  console.log(`[4a/7] Franchisors: ${franchisorBrands.length} (openToFranchise brands + inherited menus).`)
+
   // ── Franchise operator + points of sale ────────────────────────────────────────
   const franchise = await ensureOperator({
     id: 'demo-franchise-op',
@@ -288,12 +371,14 @@ async function main() {
   for (const p of DEMO_POS) {
     const row = await prisma.pointOfSale.upsert({
       where:  { id: p.id },
-      update: { name: p.name, address: p.address, city: p.city, brand: p.brand, isActive: true },
-      create: { id: p.id, franchiseId: franchise.id, name: p.name, address: p.address, city: p.city, brand: p.brand, isActive: true },
+      // Link to a real franchisable Brand via brandId; keep the legacy `brand`
+      // text label too (brique 2A — backward compatible).
+      update: { name: p.name, address: p.address, city: p.city, brand: p.brand, brandId: primaryBrandId, isActive: true },
+      create: { id: p.id, franchiseId: franchise.id, name: p.name, address: p.address, city: p.city, brand: p.brand, brandId: primaryBrandId, isActive: true },
     })
     posRows.push(row)
   }
-  console.log(`[4/7] Franchise franchise@grubano.com + ${posRows.length} points of sale.`)
+  console.log(`[4b/7] Franchise franchise@grubano.com + ${posRows.length} points of sale (linked to brandId ${primaryBrandId}).`)
 
   // ── Creator operator + Creator profile + signature dishes ───────────────────────
   await ensureOperator({

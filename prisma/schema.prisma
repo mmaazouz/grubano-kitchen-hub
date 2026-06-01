@@ -38,11 +38,26 @@ model Brand {
   emoji      String         @default("🍴")
   platform   String         @default("ubereats")
   status     String         @default("active")
+  // ── Franchise (brique 2A) ───────────────────────────────────────────────────
+  // ADDITIVE + REVERSIBLE: a Brand can be opened to franchising and reused as a
+  // "franchisable brand". Every field below is optional or has a safe default,
+  // so existing Brand rows stay valid with no backfill. Dropping these columns
+  // again is non-destructive to the rest of the model.
+  openToFranchise   Boolean @default(false)  // is this brand open to franchising
+  royaltyPct        Float?                    // royalty % of revenue paid to the franchisor (e.g. 0.06)
+  setupFee          Float?                    // one-off installation fee in €
+  franchiseZones    Json    @default("[]")    // allowed cities/zones (array of strings)
+  tagline           String?                   // short pitch shown on the discovery page
+  cuisineType       String?                   // e.g. "Italien", "Asiatique"
+  avgMonthlyRevenue Float?                     // indicative showcase revenue
+  franchiseStatus   String  @default("none")  // none | open | full (drives the "Complet" badge)
   createdAt  DateTime       @default(now())
   orders     LoyaltyOrder[]
   menuItems  MenuItem[]
   promotions Promotion[]
   stockItems StockItem[]
+  // Inverse side of PointOfSale.brand_ref (brique 2A).
+  pointsOfSale PointOfSale[]
 }
 
 // ── Loyalty ───────────────────────────────────────────────────────────────────
@@ -411,12 +426,20 @@ model PointOfSale {
   city        String?
   lat         Float?
   lng         Float?
-  brand       String?  // which Grubano brand this POS operates (free-form for now)
+  // Legacy free-text brand label — KEPT for backward compatibility (brique 2A).
+  // The real link is brandId/brand_ref below; this text column will be removed
+  // in a later brique (2C) once all rows are migrated.
+  brand       String?  // which Grubano brand this POS operates (free-form, legacy)
+  // ── Real link to a franchisable Brand (brique 2A, ADDITIVE) ──────────────────
+  // Nullable so existing PointOfSale rows stay valid until they are linked.
+  brandId     String?
+  brand_ref   Brand?   @relation(fields: [brandId], references: [id])
   isActive    Boolean  @default(true)
   orders      Order[]
   createdAt   DateTime @default(now())
 
   @@index([franchiseId])
+  @@index([brandId])
 }
 
 // ── Creator referral programme (CONFIGURABLE) ─────────────────────────────────
