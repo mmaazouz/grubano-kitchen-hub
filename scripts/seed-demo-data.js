@@ -380,6 +380,58 @@ async function main() {
   }
   console.log(`[4b/8] Franchise franchise@grubano.com + ${posRows.length} points of sale (linked to brandId ${primaryBrandId}).`)
 
+  // ── Dedicated TEST restaurateur with its OWN adoptable brand ────────────────────
+  // A reliable, documented login (resto@grubano.com / Test1234!) that owns
+  // demo-brand-test so creator-recipe adoption can be tested end-to-end. The
+  // admin/Mohammed account owns no brand of its own, and the demo brands above
+  // belong to the franchisors. This account deliberately has NO pre-existing
+  // adoption, so Marco's 3 creator recipes all show up as "à adopter" on /menu.
+  //
+  // Password handling: explicit bcrypt hash of 'Test1234!' at CREATE (same pattern
+  // as test@grubano.com) so the login never depends on DEMO_PASSWORD. On UPDATE we
+  // never clobber an existing password/role — an admin may have configured it.
+  const restoTestHash = await bcrypt.hash('Test1234!', 12)
+  const restoTest = await prisma.operator.upsert({
+    where:  { email: 'resto@grubano.com' },
+    update: { name: 'Resto Test', status: 'active' },
+    create: { id: 'demo-resto-test', name: 'Resto Test', email: 'resto@grubano.com', role: 'restaurant', status: 'active', password: restoTestHash },
+  })
+  await prisma.brand.upsert({
+    where:  { id: 'demo-brand-test' },
+    update: { name: 'Resto Test', emoji: '🌮', status: 'active', openToFranchise: false, franchiseStatus: 'none', cuisineType: 'Street food' },
+    create: {
+      id: 'demo-brand-test',
+      operatorId: restoTest.id,
+      name: 'Resto Test',
+      emoji: '🌮',
+      status: 'active',
+      openToFranchise: false,
+      franchiseStatus: 'none',
+      cuisineType: 'Street food',
+    },
+  })
+  // Optional minimal Restaurant profile bound to the same operator (1-to-1).
+  await prisma.restaurant.upsert({
+    where:  { operatorId: restoTest.id },
+    update: { name: 'Resto Test', city: 'Orange', isActive: true },
+    create: {
+      id: 'demo-resto-test-profile',
+      operatorId: restoTest.id,
+      name: 'Resto Test',
+      description: "Compte restaurateur de test — street food, pour tester l'adoption de recettes créateurs.",
+      cuisine: ['Street food'],
+      rating: 4.8,
+      reviewCount: 42,
+      deliveryTime: 25,
+      city: 'Orange',
+      address: '12 Rue de la République, 84100 Orange',
+      isActive: true,
+      deliveryEnabled: true,
+      pickupEnabled: true,
+    },
+  })
+  console.log(`[4c/8] Test restaurateur resto@grubano.com (role restaurant) + own brand demo-brand-test (openToFranchise=false, no adoption).`)
+
   // ── Creator operator + Creator profile + signature dishes ───────────────────────
   await ensureOperator({
     id: 'demo-creator-op',
@@ -643,6 +695,7 @@ async function main() {
   console.log('    Restaurateur : test@grubano.com / Test1234! (consumer)')
   console.log('    Franchise    : franchise@grubano.com / Demo1234!')
   console.log('    Créateur     : createur@grubano.com / Demo1234!  (code DEMO20)')
+  console.log("    RESTO DE TEST → resto@grubano.com / Test1234! (role restaurant, marque 'Resto Test')")
   console.log('  Re-running this script refreshes the same demo-* rows — no dupes.')
   console.log('============================================================')
 }
