@@ -682,5 +682,33 @@
       "notePlaceholder": "Ex. rare, no cilantro…",
       "total": "Total"
     }
+  },
+  "menu": {
+    "adopt": {
+      "tab": "Adopt",
+      "title": "Creator recipes to adopt",
+      "subtitle": "Add a creator recipe to your menu",
+      "commitmentNote": "Minimum 60-day commitment · you can freely withdraw a recipe that doesn't take off.",
+      "byCreator": "By {name}",
+      "followers": "{count} followers",
+      "benefit": "The creator earns 4%, you keep the rest.",
+      "promotedBy": "Promoted by a creator · {count} followers",
+      "priceLabel": "Your selling price (€)",
+      "suggestedPriceHint": "Suggested {price} €",
+      "adopt": "Adopt",
+      "adopting": "Adopting…",
+      "adopted": "Adopted",
+      "alreadyOnMenu": "Already on your menu",
+      "commitment60": "60-day commitment",
+      "adoptedToast": "Recipe adopted",
+      "adoptedToastDesc": "{name} is now on your menu.",
+      "alreadyToast": "Already adopted",
+      "alreadyToastDesc": "This recipe is already on your menu.",
+      "errorToast": "Adoption failed",
+      "noBrand": "Create a brand first to adopt creator recipes.",
+      "emptyTitle": "No recipes to adopt",
+      "emptyDesc": "Approved creator recipes will appear here.",
+      "loadError": "Couldn't load recipes."
+    }
   }
 }

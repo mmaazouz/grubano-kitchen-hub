@@ -682,5 +682,33 @@
       "notePlaceholder": "Ej. poco hecho, sin cilantro…",
       "total": "Total"
     }
+  },
+  "menu": {
+    "adopt": {
+      "tab": "Adoptar",
+      "title": "Recetas de creadores para adoptar",
+      "subtitle": "Añade una receta de creador a tu carta",
+      "commitmentNote": "Compromiso mínimo de 60 días · puedes retirar libremente una receta que no despegue.",
+      "byCreator": "Por {name}",
+      "followers": "{count} seguidores",
+      "benefit": "El creador se lleva el 4 %, tú te quedas con el resto.",
+      "promotedBy": "Promocionada por un creador · {count} seguidores",
+      "priceLabel": "Tu precio de venta (€)",
+      "suggestedPriceHint": "Sugerido {price} €",
+      "adopt": "Adoptar",
+      "adopting": "Adoptando…",
+      "adopted": "Adoptada",
+      "alreadyOnMenu": "Ya en tu carta",
+      "commitment60": "Compromiso de 60 días",
+      "adoptedToast": "Receta adoptada",
+      "adoptedToastDesc": "{name} ya está en tu carta.",
+      "alreadyToast": "Ya adoptada",
+      "alreadyToastDesc": "Esta receta ya está en tu carta.",
+      "errorToast": "Error al adoptar",
+      "noBrand": "Crea primero una marca para adoptar recetas de creadores.",
+      "emptyTitle": "No hay recetas para adoptar",
+      "emptyDesc": "Las recetas de creadores aprobadas aparecerán aquí.",
+      "loadError": "No se pudieron cargar las recetas."
+    }
   }
 }

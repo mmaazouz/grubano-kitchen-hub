@@ -682,5 +682,33 @@
       "notePlaceholder": "Es. cottura al sangue, no coriandolo…",
       "total": "Totale"
     }
+  },
+  "menu": {
+    "adopt": {
+      "tab": "Adotta",
+      "title": "Ricette dei creator da adottare",
+      "subtitle": "Aggiungi una ricetta di un creator al tuo menu",
+      "commitmentNote": "Impegno minimo di 60 giorni · puoi ritirare liberamente una ricetta che non decolla.",
+      "byCreator": "Di {name}",
+      "followers": "{count} follower",
+      "benefit": "Il creator guadagna il 4%, tu tieni il resto.",
+      "promotedBy": "Promossa da un creator · {count} follower",
+      "priceLabel": "Il tuo prezzo di vendita (€)",
+      "suggestedPriceHint": "Consigliato {price} €",
+      "adopt": "Adotta",
+      "adopting": "Adozione…",
+      "adopted": "Adottata",
+      "alreadyOnMenu": "Già nel tuo menu",
+      "commitment60": "Impegno di 60 giorni",
+      "adoptedToast": "Ricetta adottata",
+      "adoptedToastDesc": "{name} è ora nel tuo menu.",
+      "alreadyToast": "Già adottata",
+      "alreadyToastDesc": "Questa ricetta è già nel tuo menu.",
+      "errorToast": "Adozione non riuscita",
+      "noBrand": "Crea prima un brand per adottare le ricette dei creator.",
+      "emptyTitle": "Nessuna ricetta da adottare",
+      "emptyDesc": "Le ricette dei creator approvate appariranno qui.",
+      "loadError": "Impossibile caricare le ricette."
+    }
   }
 }

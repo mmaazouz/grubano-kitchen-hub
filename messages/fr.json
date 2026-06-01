@@ -682,5 +682,33 @@
       "notePlaceholder": "Ex. cuisson saignante, pas de coriandre…",
       "total": "Total"
     }
+  },
+  "menu": {
+    "adopt": {
+      "tab": "À adopter",
+      "title": "Recettes créateurs à adopter",
+      "subtitle": "Ajoute une recette de créateur à ta carte",
+      "commitmentNote": "Engagement minimum 60 jours · tu peux retirer librement une recette qui ne décolle pas.",
+      "byCreator": "Par {name}",
+      "followers": "{count} abonnés",
+      "benefit": "Le créateur touche 4 %, tu gardes le reste.",
+      "promotedBy": "Promue par un créateur · {count} abonnés",
+      "priceLabel": "Ton prix de vente (€)",
+      "suggestedPriceHint": "Prix suggéré {price} €",
+      "adopt": "Adopter",
+      "adopting": "Adoption…",
+      "adopted": "Adoptée",
+      "alreadyOnMenu": "Déjà à ta carte",
+      "commitment60": "Engagement 60 jours",
+      "adoptedToast": "Recette adoptée",
+      "adoptedToastDesc": "{name} est maintenant à ta carte.",
+      "alreadyToast": "Déjà adoptée",
+      "alreadyToastDesc": "Cette recette est déjà à ta carte.",
+      "errorToast": "Échec de l'adoption",
+      "noBrand": "Crée d'abord une marque pour adopter des recettes créateurs.",
+      "emptyTitle": "Aucune recette à adopter",
+      "emptyDesc": "Les recettes approuvées par les créateurs apparaîtront ici.",
+      "loadError": "Impossible de charger les recettes."
+    }
   }
 }

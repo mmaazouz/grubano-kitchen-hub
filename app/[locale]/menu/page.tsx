@@ -4,10 +4,20 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Sparkles, Plus, Clock, Eye, EyeOff, Percent, Flame, Leaf, WheatOff, Star,
   Tag, X, Check, ChevronLeft, Upload, GripVertical, RefreshCw, Trash2,
-  Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle,
+  Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle, Users, TrendingUp,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Card } from '@/components/grubano/Card'
 import { SectionTitle } from '@/components/grubano/SectionTitle'
+import {
+  Badge,
+  Button as DSButton,
+  Card as DSCard,
+  EmptyState,
+  SkeletonList,
+  ToastProvider,
+  useToast,
+} from '@/components/design-system'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -26,6 +36,20 @@ type MenuItem = {
 }
 
 type Brand = { id: string; name: string; emoji: string }
+
+// Catalogue entry returned by GET /api/dishes/available (brique 3C-1).
+type AvailableDish = {
+  id:               string
+  name:             string
+  description:      string | null
+  photo:            string | null
+  cuisineType:      string
+  suggestedPrice:   number
+  commission:       number
+  creatorName:      string
+  creatorFollowers: number
+  alreadyAdopted:   boolean
+}
 
 type ScanResult = {
   name:             string
@@ -62,7 +86,8 @@ const PROMOS = [
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function MenuBuilder() {
-  const [tab,     setTab]     = useState<'items' | 'categories' | 'promos'>('items')
+  const tAdopt = useTranslations('menu.adopt')
+  const [tab,     setTab]     = useState<'items' | 'categories' | 'promos' | 'adopt'>('items')
   const [items,   setItems]   = useState<MenuItem[]>([])
   const [brands,  setBrands]  = useState<Brand[]>([])
   const [brandId, setBrandId] = useState<string>('')
@@ -205,12 +230,15 @@ export default function MenuBuilder() {
 
       {/* Tabs */}
       <div className="mb-4 flex gap-1 rounded-xl bg-muted p-1">
-        {(['items', 'categories', 'promos'] as const).map(k => (
+        {(['items', 'categories', 'promos', 'adopt'] as const).map(k => (
           <button key={k} onClick={() => setTab(k)}
             className={`flex-1 rounded-lg py-1.5 text-[11px] font-bold transition ${
               tab === k ? 'bg-card shadow text-foreground' : 'text-muted-foreground'
             }`}>
-            {k === 'items' ? 'Plats' : k === 'categories' ? 'Catégories' : 'Promos'}
+            {k === 'items' ? 'Plats'
+              : k === 'categories' ? 'Catégories'
+              : k === 'promos' ? 'Promos'
+              : tAdopt('tab')}
           </button>
         ))}
       </div>
@@ -224,6 +252,7 @@ export default function MenuBuilder() {
       )}
       {tab === 'categories' && <CategoriesTab items={items} categories={categories} />}
       {tab === 'promos'     && <PromosTab />}
+      {tab === 'adopt'      && <AdoptTab brandId={brandId} onAdopted={() => loadItems(brandId)} />}
 
       {scanner && (
         <AIScannerOverlay
@@ -406,6 +435,219 @@ function PromosTab() {
             <span className="text-[11px] font-bold">{l}</span>
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Adopt tab (creator recipes a restaurateur can add to their menu) ──────────
+// Brique 3C-1. Wrapped in a LOCAL ToastProvider (operator pages have no global
+// provider — same pattern as components/dashboard/FulfillmentForm).
+
+function AdoptTab(props: { brandId: string; onAdopted: () => void }) {
+  return (
+    <ToastProvider>
+      <AdoptTabInner {...props} />
+    </ToastProvider>
+  )
+}
+
+function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () => void }) {
+  const t     = useTranslations('menu.adopt')
+  const toast = useToast()
+
+  const [dishes,     setDishes]     = useState<AvailableDish[]>([])
+  const [hasBrand,   setHasBrand]   = useState(true)
+  const [loading,    setLoading]    = useState(true)
+  const [prices,     setPrices]     = useState<Record<string, number>>({})
+  const [adoptingId, setAdoptingId] = useState<string | null>(null)
+  const [adoptedIds, setAdoptedIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    fetch('/api/dishes/available')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('load'))))
+      .then(d => {
+        if (!alive) return
+        setDishes(d.dishes ?? [])
+        setHasBrand(Boolean(d.hasBrand))
+      })
+      .catch(() => { if (alive) toast.error(t('loadError')) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function adopt(dish: AvailableDish) {
+    if (!brandId) { toast.warning(t('noBrand')); return }
+    setAdoptingId(dish.id)
+    try {
+      const sellingPrice = prices[dish.id] ?? dish.suggestedPrice
+      const r = await fetch('/api/dishes/adopt', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ creatorDishId: dish.id, brandId, sellingPrice }),
+      })
+      if (r.ok) {
+        setAdoptedIds(prev => new Set(prev).add(dish.id))
+        toast.success(t('adoptedToast'), { description: t('adoptedToastDesc', { name: dish.name }) })
+        onAdopted()
+      } else if (r.status === 409) {
+        setAdoptedIds(prev => new Set(prev).add(dish.id))
+        toast.warning(t('alreadyToast'), { description: t('alreadyToastDesc') })
+      } else {
+        const d = await r.json().catch(() => null)
+        toast.error(t('errorToast'), { description: d?.error })
+      }
+    } catch {
+      toast.error(t('errorToast'))
+    } finally {
+      setAdoptingId(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div>
+        <AdoptHeader t={t} />
+        <SkeletonList count={4} variant="card" />
+      </div>
+    )
+  }
+
+  if (!hasBrand) {
+    return (
+      <div>
+        <AdoptHeader t={t} />
+        <EmptyState emoji="🏪" title={t('emptyTitle')} description={t('noBrand')} />
+      </div>
+    )
+  }
+
+  if (dishes.length === 0) {
+    return (
+      <div>
+        <AdoptHeader t={t} />
+        <EmptyState emoji="🧑‍🍳" title={t('emptyTitle')} description={t('emptyDesc')} />
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <AdoptHeader t={t} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {dishes.map(dish => {
+          const adoptedServer = dish.alreadyAdopted
+          const adoptedNow    = adoptedIds.has(dish.id)
+          const isAdopted     = adoptedServer || adoptedNow
+          const price         = prices[dish.id] ?? dish.suggestedPrice
+
+          return (
+            <DSCard key={dish.id} className="overflow-hidden !p-0">
+              {/* Visual */}
+              <div className="relative h-28 w-full">
+                {dish.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={dish.photo} alt={dish.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-grubano-tint to-grubano-primary/20 text-4xl">
+                    🍽️
+                  </div>
+                )}
+                <span className="absolute left-2 top-2">
+                  <Badge tone="dark" size="sm">{dish.cuisineType}</Badge>
+                </span>
+                {isAdopted && (
+                  <span className="absolute right-2 top-2">
+                    <Badge tone="success" size="sm" icon={<Check size={12} />}>{t('adopted')}</Badge>
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-3 p-3">
+                <div>
+                  <p className="text-sm font-bold leading-tight">{dish.name}</p>
+                  {dish.description && (
+                    <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">{dish.description}</p>
+                  )}
+                </div>
+
+                {/* Creator + audience */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {t('byCreator', { name: dish.creatorName || '—' })}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Users size={12} /> {t('followers', { count: dish.creatorFollowers })}
+                  </span>
+                </div>
+
+                {/* Benefit pitch */}
+                <div className="rounded-xl bg-grubano-tint/60 px-3 py-2">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-grubano-primary">
+                    <TrendingUp size={12} /> {t('benefit')}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {t('promotedBy', { count: dish.creatorFollowers })}
+                  </p>
+                </div>
+
+                {/* Price (editable) or commitment note once adopted */}
+                {isAdopted ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-grubano-success-tint px-3 py-2 text-[11px] font-semibold text-grubano-success">
+                    <Clock size={12} /> {t('commitment60')}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {t('priceLabel')}
+                    </label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        type="number" step="0.1" min="0" value={price}
+                        onChange={e => setPrices(p => ({ ...p, [dish.id]: Number(e.target.value) }))}
+                        className="w-24 rounded-xl border border-border bg-card px-3 py-2 text-sm font-bold focus:border-primary focus:outline-none"
+                      />
+                      <span className="text-[10px] text-muted-foreground">
+                        {t('suggestedPriceHint', { price: dish.suggestedPrice.toFixed(2).replace('.', ',') })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* CTA */}
+                {isAdopted ? (
+                  <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
+                    {adoptedServer && !adoptedNow ? t('alreadyOnMenu') : t('adopted')}
+                  </DSButton>
+                ) : (
+                  <DSButton
+                    variant="primary" size="sm" fullWidth
+                    loading={adoptingId === dish.id}
+                    onClick={() => adopt(dish)}
+                    leftIcon={adoptingId === dish.id ? undefined : <Sparkles size={14} />}
+                  >
+                    {adoptingId === dish.id ? t('adopting') : t('adopt')}
+                  </DSButton>
+                )}
+              </div>
+            </DSCard>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function AdoptHeader({ t }: { t: ReturnType<typeof useTranslations> }) {
+  return (
+    <div className="mb-4">
+      <SectionTitle hint={t('subtitle')}>{t('title')}</SectionTitle>
+      <div className="mt-1 flex items-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
+        <Clock size={14} className="mt-0.5 shrink-0 text-primary" />
+        <p className="text-[11px] leading-snug text-muted-foreground">{t('commitmentNote')}</p>
       </div>
     </div>
   )
