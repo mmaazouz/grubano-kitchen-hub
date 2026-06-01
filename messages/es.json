@@ -709,6 +709,12 @@
       "emptyTitle": "No hay recetas para adoptar",
       "emptyDesc": "Las recetas de creadores aprobadas aparecerán aquí.",
       "loadError": "No se pudieron cargar las recetas."
+    },
+    "loading": "Cargando…",
+    "empty": {
+      "title": "Aún no hay marca configurada",
+      "desc": "Todavía no tienes una marca. Configura tu marca para gestionar tu carta y adoptar recetas.",
+      "cta": "Configurar mi marca"
     }
   }
 }

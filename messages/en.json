@@ -709,6 +709,12 @@
       "emptyTitle": "No recipes to adopt",
       "emptyDesc": "Approved creator recipes will appear here.",
       "loadError": "Couldn't load recipes."
+    },
+    "loading": "Loading…",
+    "empty": {
+      "title": "No brand set up yet",
+      "desc": "You don't have a brand yet. Set up your brand to manage your menu and adopt recipes.",
+      "cta": "Set up my brand"
     }
   }
 }

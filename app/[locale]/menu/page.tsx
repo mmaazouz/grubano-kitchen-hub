@@ -7,6 +7,8 @@ import {
   Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle, Users, TrendingUp,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { SessionProvider, useSession } from 'next-auth/react'
+import { Link } from '@/navigation'
 import { Card } from '@/components/grubano/Card'
 import { SectionTitle } from '@/components/grubano/SectionTitle'
 import {
@@ -85,15 +87,32 @@ const PROMOS = [
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function MenuBuilder() {
+// Operator pages have no global SessionProvider (the dashboard reads the session
+// server-side via getServerSession). /menu is a client page that needs the
+// logged-in operator id to scope brands, so it mounts its own provider — same
+// pattern as components/EatSessionProvider for the consumer app.
+export default function MenuPage() {
+  return (
+    <SessionProvider>
+      <MenuBuilder />
+    </SessionProvider>
+  )
+}
+
+function MenuBuilder() {
   const tAdopt = useTranslations('menu.adopt')
-  const [tab,     setTab]     = useState<'items' | 'categories' | 'promos' | 'adopt'>('items')
-  const [items,   setItems]   = useState<MenuItem[]>([])
-  const [brands,  setBrands]  = useState<Brand[]>([])
-  const [brandId, setBrandId] = useState<string>('')
-  const [loading, setLoading] = useState(true)
-  const [scanner, setScanner] = useState(false)
-  const [editing, setEditing] = useState<MenuItem | null>(null)
+  const tMenu  = useTranslations('menu')
+  const { status, data: session } = useSession()
+  const operatorId = (session?.user as { id?: string } | undefined)?.id
+
+  const [tab,           setTab]           = useState<'items' | 'categories' | 'promos' | 'adopt'>('items')
+  const [items,         setItems]         = useState<MenuItem[]>([])
+  const [brands,        setBrands]        = useState<Brand[]>([])
+  const [brandId,       setBrandId]       = useState<string>('')
+  const [loading,       setLoading]       = useState(true)
+  const [brandsLoading, setBrandsLoading] = useState(true)
+  const [scanner,       setScanner]       = useState(false)
+  const [editing,       setEditing]       = useState<MenuItem | null>(null)
 
   const loadItems = useCallback(async (bId: string) => {
     if (!bId) return
@@ -110,7 +129,15 @@ export default function MenuBuilder() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/brands')
+    // Wait for the session before fetching — and only ever request the brands
+    // that belong to the connected operator (?operatorId=). Without this filter
+    // /api/brands returns EVERY brand in the DB, so the page could pick a brandId
+    // owned by someone else → /api/dishes/adopt rightly rejects it with a 403.
+    if (status === 'loading') return
+    if (!operatorId) { setBrandsLoading(false); setLoading(false); return }
+
+    setBrandsLoading(true)
+    fetch(`/api/brands?operatorId=${operatorId}`)
       .then(r => r.json())
       .then(d => {
         const list: Brand[] = d.brands ?? []
@@ -123,7 +150,8 @@ export default function MenuBuilder() {
         }
       })
       .catch(() => setLoading(false))
-  }, [loadItems])
+      .finally(() => setBrandsLoading(false))
+  }, [status, operatorId, loadItems])
 
   const categories = Array.from(new Set(items.map(i => i.category))).sort()
 
@@ -187,6 +215,30 @@ export default function MenuBuilder() {
           {items.length} plats
         </span>
       </div>
+
+      {(status === 'loading' || brandsLoading) ? (
+        <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+          <RefreshCw size={16} className="animate-spin" /> {tMenu('loading')}
+        </div>
+      ) : brands.length === 0 ? (
+        /* No brand belongs to this operator → invite them to set one up. We
+           never fall back to other operators' brands, so the brandId sent to
+           /api/dishes/adopt always belongs to the connected account. */
+        <EmptyState
+          emoji="🏪"
+          title={tMenu('empty.title')}
+          description={tMenu('empty.desc')}
+          action={
+            <Link
+              href="/brands"
+              className="inline-flex items-center rounded-grubano-lg bg-grubano-primary px-4 py-2 text-sm font-medium text-white shadow-grubano-cta transition-colors hover:bg-grubano-primaryHover"
+            >
+              {tMenu('empty.cta')}
+            </Link>
+          }
+        />
+      ) : (
+        <>
 
       {/* Brand selector */}
       {brands.length > 1 && (
@@ -253,6 +305,8 @@ export default function MenuBuilder() {
       {tab === 'categories' && <CategoriesTab items={items} categories={categories} />}
       {tab === 'promos'     && <PromosTab />}
       {tab === 'adopt'      && <AdoptTab brandId={brandId} onAdopted={() => loadItems(brandId)} />}
+        </>
+      )}
 
       {scanner && (
         <AIScannerOverlay

@@ -709,6 +709,12 @@
       "emptyTitle": "Aucune recette à adopter",
       "emptyDesc": "Les recettes approuvées par les créateurs apparaîtront ici.",
       "loadError": "Impossible de charger les recettes."
+    },
+    "loading": "Chargement…",
+    "empty": {
+      "title": "Aucune marque configurée",
+      "desc": "Tu n'as pas encore de marque. Configure ta marque pour gérer ton menu et adopter des recettes.",
+      "cta": "Configurer ma marque"
     }
   }
 }

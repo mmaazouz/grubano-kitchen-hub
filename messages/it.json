@@ -709,6 +709,12 @@
       "emptyTitle": "Nessuna ricetta da adottare",
       "emptyDesc": "Le ricette dei creator approvate appariranno qui.",
       "loadError": "Impossibile caricare le ricette."
+    },
+    "loading": "Caricamento…",
+    "empty": {
+      "title": "Nessun brand configurato",
+      "desc": "Non hai ancora un brand. Configura il tuo brand per gestire il menu e adottare ricette.",
+      "cta": "Configura il mio brand"
     }
   }
 }
