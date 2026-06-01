@@ -124,6 +124,20 @@ jobs:
           exclude: |
             **/.git*
             **/.git*/**
+            # Server-regenerated artifacts: the Post-deploy SSH step runs
+            # `npx prisma@5.22.0 generate` which rebuilds .prisma/client/*
+            # with the o2switch nodevenv binaryTarget. Including it in the
+            # FTP transfer is both redundant and triggers reproducible
+            # 553 "Can't open that file: No such file or directory" errors
+            # on Pure-FTPd when dir state diverges between deploys, which
+            # aborts the whole job (Post-deploy + restart + health check
+            # all skipped). Exclude entirely; the server regenerates it.
+            node_modules/.prisma
+            node_modules/.prisma/**
+            # Local CLI binaries / symlinks — not used at runtime by the
+            # standalone server, and FTP-syncing symlinks is fragile.
+            node_modules/.bin
+            node_modules/.bin/**
 
       # ── SSH: post-deploy server tasks ─────────────────────────────────────────
       # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
