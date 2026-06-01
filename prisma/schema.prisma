@@ -58,6 +58,8 @@ model Brand {
   stockItems StockItem[]
   // Inverse side of PointOfSale.brand_ref (brique 2A).
   pointsOfSale PointOfSale[]
+  // Inverse side of DishAdoption.brand (brique 3A) — creator recipes this brand adopted.
+  dishAdoptions DishAdoption[]
 }
 
 // ── Loyalty ───────────────────────────────────────────────────────────────────
@@ -119,6 +121,9 @@ model MenuItem {
   prepTime      Int?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  // Inverse side of DishAdoption.menuItem (brique 3A) — the menu entries created
+  // when a brand adopted a creator recipe.
+  dishAdoptions DishAdoption[]
 }
 
 model Promotion {
@@ -307,6 +312,9 @@ model CreatorDish {
   commission     Float    @default(0.04)
   totalSales     Int      @default(0)
   createdAt      DateTime @default(now())
+  // Inverse side of DishAdoption.creatorDish (brique 3A) — restaurateurs who
+  // adopted this recipe. KEEP adoptedBy + totalSales above for back-compat.
+  adoptions      DishAdoption[]
 }
 
 // ── Franchise applications ────────────────────────────────────────────────────
@@ -404,6 +412,9 @@ model Order {
   // ReferralOrder row (if any) is created server-side at order time.
   referralCode    String?
   referralOrder   ReferralOrder?
+  // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
+  // attributed to this order. Nullable list, no impact on existing orders.
+  dishSales       DishSale[]
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
@@ -501,4 +512,73 @@ model ReferralOrder {
   createdAt      DateTime @default(now())
 
   @@index([referralId])
+}
+
+// ── Creator-recipe adoption mechanic (brique 3A) ──────────────────────────────
+// ADDITIVE + REVERSIBLE: these three models are brand-new tables with no FK back
+// onto existing rows that isn't nullable, so `db push` creates them with zero
+// backfill and dropping them again leaves the rest of the schema untouched.
+//
+// Business rule (frozen at adoption time, see DishSale):
+//   • A restaurateur (Brand) adopts an approved CreatorDish and puts it on its
+//     menu (optional MenuItem link). It commits to keep it ≥ minCommitmentDays.
+//   • While the recipe is on the menu, the creator earns `creatorCommissionPct`
+//     (default 4 %) of every sale of that dish. Grubano takes `grubanoCutPct`
+//     (default 20 %) of that creator payout.
+//   • `successThresholdEur` of generated revenue marks the adoption as "working"
+//     and underpins the anti-circumvention / early-exit settlement logic.
+// All commercial parameters live in AdoptionConfig (single global row) so they
+// can be tuned from the back office without a code change. Per-sale amounts are
+// FROZEN on the DishSale row, never recomputed from config on read.
+
+model DishAdoption {
+  id                  String      @id @default(cuid())
+  creatorDishId       String
+  creatorDish         CreatorDish @relation(fields: [creatorDishId], references: [id])
+  brandId             String
+  brand               Brand       @relation(fields: [brandId], references: [id])
+  // Optional menu entry created for this adoption (a Brand may adopt a recipe
+  // before wiring up the concrete MenuItem). Nullable → no impact on MenuItem.
+  menuItemId          String?
+  menuItem            MenuItem?   @relation(fields: [menuItemId], references: [id])
+  adoptedAt           DateTime    @default(now())
+  minCommitmentDays   Int         @default(60)
+  sellingPrice        Float
+  status              String      @default("active") // active | ended
+  endedAt             DateTime?
+  earlyExitSettlement Float?      // settlement owed if ended before commitment
+  createdAt           DateTime    @default(now())
+  sales               DishSale[]
+
+  @@index([creatorDishId])
+  @@index([brandId])
+  @@index([status])
+}
+
+model DishSale {
+  id             String       @id @default(cuid())
+  adoptionId     String
+  adoption       DishAdoption @relation(fields: [adoptionId], references: [id])
+  // Optional link to the consumer Order that generated this sale (nullable so a
+  // sale can be recorded from POS/aggregate flows without an Order row).
+  orderId        String?
+  order          Order?       @relation(fields: [orderId], references: [id])
+  amount         Float        // sale amount in €
+  creatorEarning Float        // FROZEN = amount × creatorCommissionPct (0.04)
+  grubanoCut     Float        // FROZEN = creatorEarning × grubanoCutPct (0.20)
+  createdAt      DateTime     @default(now())
+
+  @@index([adoptionId])
+  @@index([createdAt])
+}
+
+model AdoptionConfig {
+  id                   String   @id @default(cuid())
+  minCommitmentDays    Int      @default(60)
+  successThresholdEur  Float    @default(300)
+  creatorCommissionPct Float    @default(0.04)
+  grubanoCutPct        Float    @default(0.20)
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }

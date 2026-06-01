@@ -269,7 +269,7 @@ async function main() {
   const COMMISSION_PCT = config.commissionPctOfGrubanoFee
   const DURATION_DAYS  = config.durationDays
   const GRUBANO_FEE_PCT = 0.10 // Grubano's commission on a basket (demo assumption)
-  console.log(`\n[1/7] ReferralConfig: ${Math.round(COMMISSION_PCT * 100)}% of fee, ${DURATION_DAYS}-day window.`)
+  console.log(`\n[1/8] ReferralConfig: ${Math.round(COMMISSION_PCT * 100)}% of fee, ${DURATION_DAYS}-day window.`)
 
   // ── Consumers ────────────────────────────────────────────────────────────────
   // The pre-existing demo login (prisma/seed-test-user.js). Create it if missing
@@ -285,7 +285,7 @@ async function main() {
   const client3 = await ensureOperator({ id: 'demo-consumer-3', email: 'demo-client3@grubano.com', name: 'Emma Petit',      role: 'consumer', withPassword: false })
   const referredCustomerId = client1.id            // the customer bound to the referral
   const consumerCycle = [testUser.id, client2.id, client3.id]
-  console.log(`[2/7] Consumers ready: test@grubano.com + 3 demo clients.`)
+  console.log(`[2/8] Consumers ready: test@grubano.com + 3 demo clients.`)
 
   // ── Restaurant pool (prefer real staging restaurants; self-seed if empty) ──────
   let restaurants = await prisma.restaurant.findMany({ orderBy: { createdAt: 'asc' }, take: 6 })
@@ -324,7 +324,7 @@ async function main() {
   if (restaurants.length === 0) {
     throw new Error('No restaurants available to attach orders to.')
   }
-  console.log(`[3/7] Restaurant pool: ${restaurants.length} restaurant(s).`)
+  console.log(`[3/8] Restaurant pool: ${restaurants.length} restaurant(s).`)
 
   // ── Real restaurateur-franchisors + franchisable brands (brique 2A) ────────────
   const franchisorBrands = []
@@ -357,7 +357,7 @@ async function main() {
     franchisorBrands.push(brand)
   }
   const primaryBrandId = franchisorBrands[0].id // demo points of sale all link to this brand
-  console.log(`[4a/7] Franchisors: ${franchisorBrands.length} (openToFranchise brands + inherited menus).`)
+  console.log(`[4a/8] Franchisors: ${franchisorBrands.length} (openToFranchise brands + inherited menus).`)
 
   // ── Franchise operator + points of sale ────────────────────────────────────────
   const franchise = await ensureOperator({
@@ -378,7 +378,7 @@ async function main() {
     })
     posRows.push(row)
   }
-  console.log(`[4b/7] Franchise franchise@grubano.com + ${posRows.length} points of sale (linked to brandId ${primaryBrandId}).`)
+  console.log(`[4b/8] Franchise franchise@grubano.com + ${posRows.length} points of sale (linked to brandId ${primaryBrandId}).`)
 
   // ── Creator operator + Creator profile + signature dishes ───────────────────────
   await ensureOperator({
@@ -422,7 +422,7 @@ async function main() {
       },
     })
   }
-  console.log(`[5/7] Creator createur@grubano.com (code DEMO20) + ${DEMO_DISHES.length} dishes.`)
+  console.log(`[5/8] Creator createur@grubano.com (code DEMO20) + ${DEMO_DISHES.length} dishes.`)
 
   // ── Referral binding (customer ↔ creator) ───────────────────────────────────────
   const startedAt = new Date(NOW - 26 * DAY)
@@ -513,7 +513,7 @@ async function main() {
       create: data,
     })
   }
-  console.log(`[6/7] Orders: ${orderSpecs.length} (14 delivered / 6 live), 6 attributed to franchise POS.`)
+  console.log(`[6/8] Orders: ${orderSpecs.length} (14 delivered / 6 live), 6 attributed to franchise POS.`)
 
   // ── ReferralOrders for the 6 referred delivered orders ──────────────────────────
   let totalCreatorEarning = 0
@@ -540,7 +540,100 @@ async function main() {
     where: { id: creator.id },
     data:  { totalEarnings: round2(totalCreatorEarning) },
   })
-  console.log(`[7/7] ReferralOrders: ${referredOrders.length} (creator earnings €${round2(totalCreatorEarning)}).`)
+  console.log(`[7/8] ReferralOrders: ${referredOrders.length} (creator earnings €${round2(totalCreatorEarning)}).`)
+
+  // ── Creator-recipe adoptions (brique 3A) ────────────────────────────────────────
+  // AdoptionConfig holds the commercial parameters (single global row). Per-sale
+  // creatorEarning / grubanoCut are FROZEN on each DishSale, never recomputed on
+  // read — same freeze-at-write pattern as ReferralOrder.
+  const adoptionConfig = await prisma.adoptionConfig.upsert({
+    where:  { id: 'default' },
+    create: {
+      id: 'default',
+      minCommitmentDays: 60,
+      successThresholdEur: 300,
+      creatorCommissionPct: 0.04,
+      grubanoCutPct: 0.20,
+      active: true,
+    },
+    update: {}, // never overwrite tuned values
+  })
+  const CREATOR_COMMISSION_PCT = adoptionConfig.creatorCommissionPct
+  const GRUBANO_CUT_PCT        = adoptionConfig.grubanoCutPct
+
+  // Two adoptions: a Brand puts a creator recipe on its menu. adoption-1 (Gnocchi
+  // Bar adopts Marco's truffle gnocchi) WORKS — cumulative sales clear the €300
+  // success threshold. adoption-2 (Bowl Healthy adopts the poke bowl) does NOT —
+  // only a couple of sales, well under €300.
+  const adoptionSpecs = [
+    {
+      id: 'demo-adoption-1',
+      creatorDishId: 'demo-dish-1',                         // Gnocchi truffe & parmesan
+      brandId: franchisorBrands[0].id,                      // demo-brand-1 — Gnocchi Bar
+      menuItemId: `demo-menu-${franchisorBrands[0].id}-1`,
+      sellingPrice: 14.5,
+      salesCount: 15,                                       // qty 1/2 → ~€333.5 > €300 (WORKS)
+      qtyPattern: (i) => (i % 2 === 0 ? 2 : 1),
+    },
+    {
+      id: 'demo-adoption-2',
+      creatorDishId: 'demo-dish-2',                         // Bowl poke saumon avocat
+      brandId: franchisorBrands[1].id,                      // demo-brand-2 — Bowl Healthy
+      menuItemId: `demo-menu-${franchisorBrands[1].id}-1`,
+      sellingPrice: 13.9,
+      salesCount: 3,                                        // €41.70 < €300 (DOES NOT WORK)
+      qtyPattern: () => 1,
+    },
+  ]
+
+  const adoptedAt = new Date(NOW - 25 * DAY)
+  let adoptionSalesTotal = 0
+  for (let a = 0; a < adoptionSpecs.length; a++) {
+    const spec = adoptionSpecs[a]
+    await prisma.dishAdoption.upsert({
+      where:  { id: spec.id },
+      update: {
+        creatorDishId: spec.creatorDishId, brandId: spec.brandId, menuItemId: spec.menuItemId,
+        sellingPrice: spec.sellingPrice, minCommitmentDays: adoptionConfig.minCommitmentDays,
+        status: 'active', adoptedAt,
+      },
+      create: {
+        id: spec.id,
+        creatorDishId: spec.creatorDishId,
+        brandId: spec.brandId,
+        menuItemId: spec.menuItemId,
+        sellingPrice: spec.sellingPrice,
+        minCommitmentDays: adoptionConfig.minCommitmentDays,
+        status: 'active',
+        adoptedAt,
+      },
+    })
+
+    // Spread the sales across the window since the adoption started (~24 days →
+    // ~1 day ago). DishSale.orderId stays null (a sale can exist without a
+    // consumer Order row), keeping this seed decoupled from the orders above.
+    const tag = a === 0 ? 'a1' : 'a2'
+    let cumulative = 0
+    for (let i = 0; i < spec.salesCount; i++) {
+      const qty            = spec.qtyPattern(i)
+      const amount         = round2(spec.sellingPrice * qty)
+      const creatorEarning = round2(amount * CREATOR_COMMISSION_PCT)        // FROZEN
+      const grubanoCut     = round2(creatorEarning * GRUBANO_CUT_PCT)       // FROZEN
+      cumulative += amount
+      const daysAgo   = 24 - i * (23 / Math.max(spec.salesCount - 1, 1))
+      const createdAt = new Date(NOW - daysAgo * DAY - randInt(0, 23) * HOUR)
+      const saleId    = `demo-sale-${tag}-${String(i + 1).padStart(2, '0')}`
+      await prisma.dishSale.upsert({
+        where:  { id: saleId },
+        update: { adoptionId: spec.id, amount, creatorEarning, grubanoCut, createdAt },
+        create: { id: saleId, adoptionId: spec.id, amount, creatorEarning, grubanoCut, createdAt },
+      })
+    }
+    adoptionSalesTotal += cumulative
+    const works = cumulative >= adoptionConfig.successThresholdEur
+    console.log(`        ${spec.id}: ${spec.salesCount} sales, €${round2(cumulative)} ${works ? `(WORKS ≥ €${adoptionConfig.successThresholdEur})` : '(below threshold)'}`)
+  }
+  console.log(`[8/8] Adoptions: 2 (AdoptionConfig + DishSale timestamped over 30d), total €${round2(adoptionSalesTotal)}.`)
 
   // ── Summary ────────────────────────────────────────────────────────────────────
   console.log('\n============================================================')
