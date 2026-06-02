@@ -106,10 +106,24 @@ export async function POST(req: NextRequest) {
     // absolute priority is that the customer is always served — so any failure in
     // this block is logged and swallowed, leaving the Order fully valid.
     try {
-      const itemIds = data.items.map((i) => i.itemId)
+      // The /eat cart sends a COMPOSITE line id for customised dishes:
+      // `${dishId}::${optionsSignature}` (see lineKeyFor in the restaurant page).
+      // The DishAdoption.menuItemId stores the RAW MenuItem id, so we must match
+      // on the raw id, not the composite line id — otherwise an adopted dish
+      // ordered WITH options (size/extras) never matches and no DishSale is made.
+      //
+      // Raw id = the line's parentDishId when present (set by the cart whenever
+      // the line carries options), else the part of itemId before "::" (robust:
+      // a cuid never contains "::", so a plain line returns itself).
+      const rawIdOf = (item: (typeof data.items)[number]): string => {
+        const parent = item.options?.[0]?.parentDishId
+        if (typeof parent === 'string' && parent.length > 0) return parent
+        return item.itemId.split('::')[0]
+      }
+      const rawIds = data.items.map(rawIdOf)
       // One query (no N+1): the active adoptions whose menuItem is in this order.
       const adoptions = await prisma.dishAdoption.findMany({
-        where:  { status: 'active', menuItemId: { in: itemIds } },
+        where:  { status: 'active', menuItemId: { in: rawIds } },
         select: { id: true, menuItemId: true, creatorDishId: true },
       })
 
@@ -131,8 +145,10 @@ export async function POST(req: NextRequest) {
           const sales: Prisma.DishSaleCreateManyInput[] = []
           const salesPerDish = new Map<string, number>()
 
+          // One DishSale per matched order LINE (each customisation is a distinct
+          // sale): same dish with different options counts as separate sales.
           for (const item of data.items) {
-            const adoption = byMenuItem.get(item.itemId)
+            const adoption = byMenuItem.get(rawIdOf(item))
             if (!adoption) continue // not an adopted dish → ignore this line
             const amount         = round2(item.price * item.qty)        // CA of this line
             const creatorEarning = round2(amount * creatorPct)          // FROZEN
