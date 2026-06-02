@@ -18,15 +18,26 @@ export type CreatorHomeCreator = {
   followers:        number
 }
 
+export type DishAdopter = {
+  adoptionId:    string
+  brandName:     string
+  brandEmoji:    string
+  adoptedAt:     string   // ISO date string
+  sellingPrice:  number
+  daysRemaining: number   // max(0, minCommitmentDays - daysElapsed)
+  commitmentMet: boolean  // daysElapsed >= minCommitmentDays
+}
+
 export type CreatorHomeDish = {
   id:             string
   name:           string
   cuisineType:    string
   suggestedPrice: number
   status:         string
-  adoptions:      number   // count of DishAdoption rows with status='active'
-  totalSales:     number   // count of DishSale rows across all adoptions
-  earnings:       number   // sum of DishSale.creatorEarning across all adoptions
+  adoptions:      number        // count of DishAdoption rows with status='active'
+  totalSales:     number        // count of DishSale rows across all adoptions
+  earnings:       number        // sum of DishSale.creatorEarning across all adoptions
+  adopters:       DishAdopter[] // active adoptions with brand + commitment details
 }
 
 export type CreatorHomeAudience = {
@@ -137,21 +148,35 @@ export async function GET() {
       ? await prisma.dishAdoption.findMany({
           where:   { creatorDishId: { in: dishIds } },
           include: {
-            sales: {
-              select: { creatorEarning: true, createdAt: true },
-            },
+            brand: { select: { name: true, emoji: true } },
+            sales: { select: { creatorEarning: true, createdAt: true } },
           },
+          orderBy: { adoptedAt: 'asc' },
         })
       : []
 
     // Build per-dish lookup maps from adoptions
     const adoptionCountByDish = new Map<string, number>()   // active adoptions
     const salesByDish         = new Map<string, { creatorEarning: number; createdAt: Date }[]>()
+    const adoptersByDish      = new Map<string, DishAdopter[]>()
 
     for (const adoption of allAdoptions) {
       const did = adoption.creatorDishId
       if (adoption.status === 'active') {
         adoptionCountByDish.set(did, (adoptionCountByDish.get(did) ?? 0) + 1)
+        // Build adopter detail
+        const daysElapsed   = Math.floor((now.getTime() - adoption.adoptedAt.getTime()) / 86_400_000)
+        const daysRemaining = Math.max(0, adoption.minCommitmentDays - daysElapsed)
+        const existing = adoptersByDish.get(did) ?? []
+        adoptersByDish.set(did, [...existing, {
+          adoptionId:    adoption.id,
+          brandName:     adoption.brand.name,
+          brandEmoji:    adoption.brand.emoji,
+          adoptedAt:     adoption.adoptedAt.toISOString(),
+          sellingPrice:  adoption.sellingPrice,
+          daysRemaining,
+          commitmentMet: daysElapsed >= adoption.minCommitmentDays,
+        }])
       }
       const existing = salesByDish.get(did) ?? []
       salesByDish.set(did, [...existing, ...adoption.sales])
@@ -170,6 +195,7 @@ export async function GET() {
         adoptions:      adoptionCountByDish.get(d.id) ?? 0,
         totalSales:     dishSales.length,
         earnings:       Number(earnings.toFixed(2)),
+        adopters:       adoptersByDish.get(d.id) ?? [],
       }
     })
 

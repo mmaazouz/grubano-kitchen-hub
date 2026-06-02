@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, ChefHat, Sparkles, Upload,
   Copy, Check, Link2, Instagram, ArrowRight,
   CheckCircle2, Clock, Store, Users2, ShoppingBag,
-  Wallet, Star,
+  Wallet, Star, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { Link } from '@/navigation'
 import {
@@ -15,7 +15,7 @@ import {
 import { useCategoryLabel } from '@/lib/categories'
 import { CreatorEarningsChart } from '@/components/creators/CreatorEarningsChart'
 import type {
-  CreatorHomeData, CreatorHomeDish,
+  CreatorHomeData, CreatorHomeDish, DishAdopter,
 } from '@/app/api/creators/home/route'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -34,14 +34,15 @@ export default function CreatorDashboardHome() {
   const t           = useTranslations('creators.home')
   const getCatLabel = useCategoryLabel()
 
-  const [data,       setData]       = useState<CreatorHomeData | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [copied,     setCopied]     = useState(false)
-  const [showSubmit, setShowSubmit] = useState(false)
-  const [form,       setForm]       = useState<SubmitForm>(EMPTY_FORM)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted,  setSubmitted]  = useState(false)
-  const [submitErr,  setSubmitErr]  = useState('')
+  const [data,           setData]           = useState<CreatorHomeData | null>(null)
+  const [loading,        setLoading]        = useState(true)
+  const [copied,         setCopied]         = useState(false)
+  const [showSubmit,     setShowSubmit]     = useState(false)
+  const [form,           setForm]           = useState<SubmitForm>(EMPTY_FORM)
+  const [submitting,     setSubmitting]     = useState(false)
+  const [submitted,      setSubmitted]      = useState(false)
+  const [submitErr,      setSubmitErr]      = useState('')
+  const [expandedDishId, setExpandedDishId] = useState<string | null>(null)
 
   function load() {
     fetch('/api/creators/home')
@@ -407,29 +408,84 @@ export default function CreatorDashboardHome() {
               }
             />
           ) : (
-            <div className="space-y-2">
-              {(dishes as CreatorHomeDish[]).slice(0, 4).map(dish => (
-                <div key={dish.id}
-                  className="flex items-center justify-between py-1.5 border-b border-grubano-border last:border-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold truncate">{dish.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <StatusBadge status={dish.status} />
-                      {dish.adoptions > 0 && (
-                        <span className="text-[10px] text-grubano-ink-muted flex items-center gap-0.5">
-                          <Store size={9} />
-                          {t('dishAdoptions', { count: dish.adoptions })}
-                        </span>
-                      )}
-                    </div>
+            <div className="space-y-1">
+              {(dishes as CreatorHomeDish[]).slice(0, 4).map(dish => {
+                const isExpanded = expandedDishId === dish.id
+                const hasAdopters = dish.adopters.length > 0
+                return (
+                  <div key={dish.id} className="border-b border-grubano-border last:border-0">
+                    {/* ── Dish row ─────────────────────────────────────── */}
+                    <button
+                      onClick={() => hasAdopters && setExpandedDishId(isExpanded ? null : dish.id)}
+                      className={[
+                        'w-full flex items-center justify-between py-1.5 text-left',
+                        hasAdopters ? 'cursor-pointer' : 'cursor-default',
+                      ].join(' ')}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold truncate">{dish.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <StatusBadge status={dish.status} />
+                          {dish.adoptions > 0 && (
+                            <span className="text-[10px] text-grubano-ink-muted flex items-center gap-0.5">
+                              <Store size={9} />
+                              {t('dishAdoptions', { count: dish.adoptions })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-grubano-success">€{dish.earnings.toFixed(0)}</p>
+                          <p className="text-[10px] text-grubano-ink-muted">{t('dishSales', { count: dish.totalSales })}</p>
+                        </div>
+                        {hasAdopters && (
+                          isExpanded
+                            ? <ChevronUp  size={12} className="text-grubano-ink-muted" />
+                            : <ChevronDown size={12} className="text-grubano-ink-muted" />
+                        )}
+                      </div>
+                    </button>
+
+                    {/* ── Adopters accordion ───────────────────────────── */}
+                    {isExpanded && (
+                      <div className="pb-2 space-y-1.5">
+                        {dish.adopters.map((adopter: DishAdopter) => {
+                          const sinceDate = new Date(adopter.adoptedAt)
+                            .toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+                          return (
+                            <div
+                              key={adopter.adoptionId}
+                              className="flex items-center justify-between rounded-grubano-md bg-grubano-bg px-2.5 py-1.5"
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-sm shrink-0">{adopter.brandEmoji}</span>
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-semibold truncate">{adopter.brandName}</p>
+                                  <p className="text-[10px] text-grubano-ink-muted">
+                                    {t('dishAdopterSince', { date: sinceDate })}
+                                    {' · '}€{adopter.sellingPrice.toFixed(2)}
+                                  </p>
+                                </div>
+                              </div>
+                              {adopter.commitmentMet ? (
+                                <span className="ml-2 shrink-0 flex items-center gap-0.5 rounded-grubano-pill bg-grubano-success/10 px-2 py-0.5 text-[9px] font-semibold text-grubano-success">
+                                  <CheckCircle2 size={9} />
+                                  {t('dishAdopterCommitmentMet')}
+                                </span>
+                              ) : (
+                                <span className="ml-2 shrink-0 rounded-grubano-pill bg-grubano-bg border border-grubano-border px-2 py-0.5 text-[9px] font-medium text-grubano-ink-muted">
+                                  {t('dishAdopterDaysLeft', { days: adopter.daysRemaining })}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right ml-2 shrink-0">
-                    <p className="text-xs font-bold text-grubano-success">€{dish.earnings.toFixed(0)}</p>
-                    <p className="text-[10px] text-grubano-ink-muted">{t('dishSales', { count: dish.totalSales })}</p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
               {dishes.length > 4 && (
                 <p className="text-[11px] text-grubano-ink-muted text-center pt-1">
                   +{dishes.length - 4} autres

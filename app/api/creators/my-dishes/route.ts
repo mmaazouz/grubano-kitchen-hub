@@ -2,36 +2,113 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import type { DishAdopter } from '@/app/api/creators/home/route'
+
+// ── Types returned to the client ──────────────────────────────────────────────
+
+export type MyDish = {
+  id:             string
+  name:           string
+  description:    string | null
+  cuisineType:    string
+  suggestedPrice: number
+  status:         string
+  adoptions:      number        // count of active DishAdoption rows
+  totalSales:     number        // count of DishSale rows across all adoptions
+  earnings:       number        // sum of DishSale.creatorEarning across all adoptions
+  adopters:       DishAdopter[] // active adoptions with brand + commitment details
+}
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user) {
+    if (!session?.user?.email) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
     }
 
-    const userEmail = session.user.email!
+    const userEmail = session.user.email
 
     const creator = await prisma.creator.findUnique({
-      where: { email: userEmail },
+      where:   { email: userEmail },
       include: { dishes: { orderBy: { createdAt: 'desc' } } },
     })
 
     if (!creator) {
-      return NextResponse.json({ creator: null, dishes: [], totalEarnings: 0, totalSales: 0, adoptions: 0 })
+      return NextResponse.json({
+        creator:       null,
+        dishes:        [],
+        totalEarnings: 0,
+        totalSales:    0,
+        adoptions:     0,
+      })
     }
 
-    const dishes = creator.dishes.map(d => ({
-      id:             d.id,
-      name:           d.name,
-      description:    d.description,
-      cuisineType:    d.cuisineType,
-      suggestedPrice: d.suggestedPrice,
-      status:         d.status,
-      adoptions:      (d.adoptedBy as string[]).length,
-      totalSales:     d.totalSales,
-      earnings:       Number((d.totalSales * d.suggestedPrice * d.commission).toFixed(2)),
-    }))
+    const dishIds = creator.dishes.map(d => d.id)
+
+    // ── Batch-load all adoptions + their brands + their sales ─────────────────
+    // No N+1: single query with nested includes
+    const allAdoptions = dishIds.length > 0
+      ? await prisma.dishAdoption.findMany({
+          where: { creatorDishId: { in: dishIds } },
+          include: {
+            brand: { select: { name: true, emoji: true } },
+            sales: { select: { creatorEarning: true } },
+          },
+          orderBy: { adoptedAt: 'asc' },
+        })
+      : []
+
+    // ── Build per-dish maps ───────────────────────────────────────────────────
+    const now = new Date()
+
+    type AdoptionRow = (typeof allAdoptions)[number]
+    const adoptionsByDish = new Map<string, AdoptionRow[]>()
+
+    for (const adoption of allAdoptions) {
+      const list = adoptionsByDish.get(adoption.creatorDishId) ?? []
+      list.push(adoption)
+      adoptionsByDish.set(adoption.creatorDishId, list)
+    }
+
+    // ── Build dish payloads ───────────────────────────────────────────────────
+    const dishes: MyDish[] = creator.dishes.map(d => {
+      const dishAdoptions   = adoptionsByDish.get(d.id) ?? []
+      const activeAdoptions = dishAdoptions.filter(a => a.status === 'active')
+
+      const totalSales = dishAdoptions.reduce((s, a) => s + a.sales.length, 0)
+      const earnings   = Number(
+        dishAdoptions
+          .reduce((s, a) => s + a.sales.reduce((ss, sale) => ss + sale.creatorEarning, 0), 0)
+          .toFixed(2)
+      )
+
+      const adopters: DishAdopter[] = activeAdoptions.map(a => {
+        const daysElapsed   = Math.floor((now.getTime() - a.adoptedAt.getTime()) / 86_400_000)
+        const daysRemaining = Math.max(0, a.minCommitmentDays - daysElapsed)
+        return {
+          adoptionId:    a.id,
+          brandName:     a.brand.name,
+          brandEmoji:    a.brand.emoji,
+          adoptedAt:     a.adoptedAt.toISOString(),
+          sellingPrice:  a.sellingPrice,
+          daysRemaining,
+          commitmentMet: daysElapsed >= a.minCommitmentDays,
+        }
+      })
+
+      return {
+        id:             d.id,
+        name:           d.name,
+        description:    d.description,
+        cuisineType:    d.cuisineType,
+        suggestedPrice: d.suggestedPrice,
+        status:         d.status,
+        adoptions:      activeAdoptions.length,
+        totalSales,
+        earnings,
+        adopters,
+      }
+    })
 
     return NextResponse.json({
       creator: {
@@ -45,9 +122,9 @@ export async function GET() {
         followers:     creator.followers,
       },
       dishes,
-      totalEarnings: dishes.reduce((s, d) => s + d.earnings, 0),
-      totalSales:    dishes.reduce((s, d) => s + d.totalSales, 0),
-      adoptions:     dishes.reduce((s, d) => s + d.adoptions, 0),
+      totalEarnings: Number(dishes.reduce((s, d) => s + d.earnings,   0).toFixed(2)),
+      totalSales:    dishes.reduce((s, d) => s + d.totalSales,  0),
+      adoptions:     dishes.reduce((s, d) => s + d.adoptions,   0),
     })
   } catch (err) {
     console.error('[GET /api/creators/my-dishes]', err)
