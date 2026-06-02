@@ -589,6 +589,8 @@
       "summary": "Récapitulatif",
       "subtotal": "Sous-total",
       "discount": "Réduction (-{percent}%)",
+      "welcomeDiscount": "Remise de bienvenue",
+      "welcomeDiscountFrom": "Remise de bienvenue · {creator}",
       "feePickup": "Frais (retrait)",
       "feeDelivery": "Frais de livraison",
       "free": "Gratuit",

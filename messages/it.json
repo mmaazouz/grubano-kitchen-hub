@@ -589,6 +589,8 @@
       "summary": "Riepilogo",
       "subtotal": "Subtotale",
       "discount": "Sconto (-{percent}%)",
+      "welcomeDiscount": "Sconto di benvenuto",
+      "welcomeDiscountFrom": "Sconto di benvenuto · {creator}",
       "feePickup": "Costi (ritiro)",
       "feeDelivery": "Costi di consegna",
       "free": "Gratis",

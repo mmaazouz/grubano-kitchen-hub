@@ -589,6 +589,8 @@
       "summary": "الملخص",
       "subtotal": "المجموع الفرعي",
       "discount": "الخصم (-{percent}%)",
+      "welcomeDiscount": "خصم الترحيب",
+      "welcomeDiscountFrom": "خصم الترحيب · {creator}",
       "feePickup": "رسوم (استلام)",
       "feeDelivery": "رسوم التوصيل",
       "free": "مجاني",

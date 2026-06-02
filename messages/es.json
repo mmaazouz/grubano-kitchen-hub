@@ -589,6 +589,8 @@
       "summary": "Resumen",
       "subtotal": "Subtotal",
       "discount": "Descuento (-{percent}%)",
+      "welcomeDiscount": "Descuento de bienvenida",
+      "welcomeDiscountFrom": "Descuento de bienvenida · {creator}",
       "feePickup": "Gastos (recogida)",
       "feeDelivery": "Gastos de envío",
       "free": "Gratis",

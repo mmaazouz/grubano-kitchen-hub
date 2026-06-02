@@ -22,10 +22,33 @@ export default function CartScreen() {
   const [discount, setDiscount] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Welcome-discount preview (brique 5B companion). The grubano_ref cookie is
+  // httpOnly so the client can't read it — GET /api/referral/preview tells us,
+  // server-side, whether this visitor is eligible. INDICATIVE only: the server
+  // recomputes the real discount at checkout (never trust this amount).
+  const [welcome, setWelcome] = useState<
+    { eligible: boolean; discountPct: number; discountCap: number; creatorName?: string } | null
+  >(null)
 
   useEffect(() => {
     setCart(readCart())
     setHydrated(true)
+  }, [])
+
+  // Ask the server (once) whether a welcome discount applies for this visitor.
+  // Read-only; degrades silently to "no preview" on any error or when not
+  // eligible / not logged in.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/referral/preview')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d && typeof d.eligible === 'boolean') setWelcome(d)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // If the cart has no restaurant.address (older cart shape), fetch it once on pickup.
@@ -91,7 +114,14 @@ export default function CartScreen() {
     return cart.restaurant.deliveryFee || 2.99
   }, [cart, fulfillment])
   const discountAmount = subtotal * discount
-  const total = subtotal - discountAmount + deliveryFee
+  // Indicative welcome discount = min(subtotal × pct, cap), matching 5B's server
+  // formula. Source of truth stays server-side at checkout.
+  const welcomeAmount = useMemo(() => {
+    if (!welcome?.eligible) return 0
+    const raw = Math.min(subtotal * welcome.discountPct, welcome.discountCap)
+    return Math.round(raw * 100) / 100
+  }, [welcome, subtotal])
+  const total = Math.max(0, subtotal - discountAmount - welcomeAmount + deliveryFee)
   const totalItems = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
   const readyAt = useMemo(() => {
     const minutes = cart?.restaurant.deliveryTime ?? 20
@@ -132,11 +162,8 @@ export default function CartScreen() {
           })),
           deliveryAddress,
           paymentMethod: payment,
-          /**
-           * Server's zod schema is non-strict — extra fields are silently
-           * stripped today. Future-proof for when Agent 2 lands the
-           * fulfillmentType column on Order + extends the API.
-           */
+          // The server (POST /api/orders) honours this: pickup → delivery fee 0,
+          // and it's stored on Order.fulfillmentType for reporting.
           fulfillmentType: fulfillment,
         }),
       })
@@ -353,6 +380,16 @@ export default function CartScreen() {
           <div className="mb-2.5 flex justify-between text-grubano-sm">
             <span className="text-grubano-success">{t('discount', { percent: discount * 100 })}</span>
             <span className="font-semibold text-grubano-success">-{discountAmount.toFixed(2)} €</span>
+          </div>
+        )}
+        {welcomeAmount > 0 && (
+          <div className="mb-2.5 flex justify-between text-grubano-sm">
+            <span className="text-grubano-success">
+              {welcome?.creatorName
+                ? t('welcomeDiscountFrom', { creator: welcome.creatorName })
+                : t('welcomeDiscount')}
+            </span>
+            <span className="font-semibold text-grubano-success">-{welcomeAmount.toFixed(2)} €</span>
           </div>
         )}
         <div className="mb-2.5 flex justify-between text-grubano-sm">

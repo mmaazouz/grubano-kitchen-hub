@@ -589,6 +589,8 @@
       "summary": "Summary",
       "subtotal": "Subtotal",
       "discount": "Discount (-{percent}%)",
+      "welcomeDiscount": "Welcome discount",
+      "welcomeDiscountFrom": "Welcome discount · {creator}",
       "feePickup": "Fee (pickup)",
       "feeDelivery": "Delivery fee",
       "free": "Free",
