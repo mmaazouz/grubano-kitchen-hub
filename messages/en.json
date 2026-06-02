@@ -455,7 +455,11 @@
       "recipeGenerated": "You generated",
       "recipeCommission": "Grubano commission (20%)",
       "recipeNet": "You receive",
-      "affiliationNote": "This amount is already net · the platform commission is included in Grubano's calculation"
+      "affiliationNote": "This amount is already net · the platform commission is included in Grubano's calculation",
+      "lastDays": "last days",
+      "recipeContext": "after Grubano commission (20%)",
+      "affiliationContext": "22% of the Grubano commission · already net",
+      "affiliationTooltip": "You receive 22% of the commission Grubano takes on your referrals' orders"
     }
   },
   "eat": {

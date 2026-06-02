@@ -455,7 +455,11 @@
       "recipeGenerated": "ما أنتجته",
       "recipeCommission": "عمولة Grubano (20%)",
       "recipeNet": "ما تحصل عليه",
-      "affiliationNote": "هذا المبلغ صافٍ بالفعل · عمولة المنصة مدرجة في حساب Grubano"
+      "affiliationNote": "هذا المبلغ صافٍ بالفعل · عمولة المنصة مدرجة في حساب Grubano",
+      "lastDays": "الأيام الأخيرة",
+      "recipeContext": "بعد عمولة Grubano (20%)",
+      "affiliationContext": "22% من عمولة Grubano · صافٍ بالفعل",
+      "affiliationTooltip": "تحصل على 22% من العمولة التي تأخذها Grubano من طلبات مرجعياتك"
     }
   },
   "eat": {

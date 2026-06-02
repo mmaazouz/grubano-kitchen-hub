@@ -2,12 +2,15 @@
 
 /**
  * Mes revenus — 30-day earnings split by source.
- * Robinet A (Recettes): recipeEarnings30d (DishSale, 4% du CA)
- *   → affiché en triptyque : Généré / Commission Grubano (20%) / Tu touches (net)
- * Robinet B (Affiliation): referralEarnings30d (ReferralOrder, 22%)
- *   → DishSale.grubanoCut n'existe pas sur ReferralOrder ; ce montant est déjà
- *     la part nette créateur calculée par Grubano (22% de la commission plateforme).
- *     Pas de triptyque possible ici — on affiche le montant net tel qu'exposé.
+ *
+ * Both cards follow the same layout:
+ *   [Icon] [Label]               [Rate badge]
+ *   €XX.XX  ← NET, large, title tooltip = full detail
+ *   context line (tiny, gray) + ⓘ tooltip
+ *
+ * Robinet A (Recettes): net = recipeNet30d = recipeEarnings30d − recipeGrubanoFee30d
+ * Robinet B (Affiliation): net = referralEarnings30d (already net by construction —
+ *   creatorEarning on ReferralOrder = 22% of Grubano's commission, no grubanoCut field)
  */
 
 import { useEffect, useState } from 'react'
@@ -39,6 +42,10 @@ export default function CreatorRevenusPage() {
   const fmt = (n: number) =>
     n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+  // Tooltip strings — reuse existing keys, built client-side
+  const recipeTooltip      = `${tr('recipeGenerated')} €${fmt(recipeEarnings30d)} · ${tr('recipeCommission')} −€${fmt(recipeGrubanoFee30d)} · ${tr('recipeNet')} €${fmt(recipeNet30d)}`
+  const affiliationTooltip = tr('affiliationTooltip')
+
   return (
     <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto space-y-5">
 
@@ -54,13 +61,13 @@ export default function CreatorRevenusPage() {
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 animate-pulse rounded-grubano-xl bg-grubano-bg" />
+            <div key={i} className="h-28 animate-pulse rounded-grubano-xl bg-grubano-bg" />
           ))}
         </div>
       ) : (
         <div className="space-y-3">
 
-          {/* ── Recipe earnings card — triptyque ─────────────────────────── */}
+          {/* ── Recipe card ──────────────────────────────────────────────── */}
           <Card elevation="sm" padding="md">
             {/* Header row */}
             <div className="flex items-center gap-2 mb-4">
@@ -69,73 +76,74 @@ export default function CreatorRevenusPage() {
               </div>
               <div>
                 <p className="text-sm font-bold">{tr('recipeLabel')}</p>
-                <p className="text-[10px] text-grubano-ink-muted">4% / vente · 30 derniers jours</p>
+                <p className="text-[10px] text-grubano-ink-muted">30 {tr('lastDays')}</p>
               </div>
               <span className="ml-auto rounded-grubano-pill bg-grubano-primary/10 px-2 py-0.5 text-[10px] font-bold text-grubano-primary shrink-0">
                 4%
               </span>
             </div>
 
-            {/* Triptyque breakdown */}
-            <div className="space-y-2">
-              {/* Row 1 — Gross */}
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-grubano-ink-muted">{tr('recipeGenerated')}</p>
-                <p className="text-sm font-semibold tabular-nums">€{fmt(recipeEarnings30d)}</p>
-              </div>
+            {/* Net amount — primary */}
+            <p
+              className="text-3xl font-display font-bold text-grubano-primary tabular-nums"
+              title={recipeTooltip}
+            >
+              €{fmt(recipeNet30d)}
+            </p>
 
-              {/* Row 2 — Commission */}
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-grubano-ink-muted">{tr('recipeCommission')}</p>
-                <p className="text-sm font-semibold tabular-nums text-grubano-danger">
-                  −€{fmt(recipeGrubanoFee30d)}
-                </p>
-              </div>
-
-              {/* Divider */}
-              <div className="border-t border-grubano-border" />
-
-              {/* Row 3 — Net (primary) */}
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold">{tr('recipeNet')}</p>
-                <p className="text-2xl font-display font-bold text-grubano-primary tabular-nums">
-                  €{fmt(recipeNet30d)}
-                </p>
-              </div>
+            {/* Context line + info icon */}
+            <div className="flex items-center gap-1 mt-1.5">
+              <p className="text-[11px] text-grubano-ink-muted">{tr('recipeContext')}</p>
+              <button
+                type="button"
+                title={recipeTooltip}
+                className="text-grubano-ink-faint hover:text-grubano-ink-muted transition shrink-0"
+                aria-label={recipeTooltip}
+              >
+                <Info size={11} />
+              </button>
             </div>
           </Card>
 
-          {/* ── Affiliation earnings card ────────────────────────────────── */}
+          {/* ── Affiliation card ─────────────────────────────────────────── */}
           <Card elevation="sm" padding="md">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="h-9 w-9 rounded-grubano-lg bg-[#3B82F6]/10 flex items-center justify-center shrink-0">
-                  <Megaphone size={18} className="text-[#3B82F6]" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold">{tr('affiliationLabel')}</p>
-                  <p className="text-[10px] text-grubano-ink-muted">22% · 90j · ReferralOrder</p>
-                </div>
+            {/* Header row */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-9 w-9 rounded-grubano-lg bg-[#3B82F6]/10 flex items-center justify-center shrink-0">
+                <Megaphone size={18} className="text-[#3B82F6]" />
               </div>
-              <div className="text-right">
-                <p className="text-2xl font-display font-bold text-[#3B82F6] tabular-nums">
-                  €{fmt(referralEarnings30d)}
-                </p>
-                <span className="inline-block rounded-grubano-pill bg-[#3B82F6]/10 px-2 py-0.5 text-[10px] font-bold text-[#3B82F6]">
-                  22%
-                </span>
+              <div>
+                <p className="text-sm font-bold">{tr('affiliationLabel')}</p>
+                <p className="text-[10px] text-grubano-ink-muted">30 {tr('lastDays')}</p>
               </div>
+              <span className="ml-auto rounded-grubano-pill bg-[#3B82F6]/10 px-2 py-0.5 text-[10px] font-bold text-[#3B82F6] shrink-0">
+                22%
+              </span>
             </div>
-            {/* Affiliation note: creatorEarning is already net (no grubanoCut on ReferralOrder) */}
-            <div className="flex items-start gap-1.5 rounded-grubano-md bg-grubano-bg px-2.5 py-2">
-              <Info size={11} className="text-grubano-ink-faint mt-0.5 shrink-0" />
-              <p className="text-[10px] text-grubano-ink-muted leading-relaxed">
-                {tr('affiliationNote')}
-              </p>
+
+            {/* Net amount — primary */}
+            <p
+              className="text-3xl font-display font-bold text-[#3B82F6] tabular-nums"
+              title={affiliationTooltip}
+            >
+              €{fmt(referralEarnings30d)}
+            </p>
+
+            {/* Context line + info icon */}
+            <div className="flex items-center gap-1 mt-1.5">
+              <p className="text-[11px] text-grubano-ink-muted">{tr('affiliationContext')}</p>
+              <button
+                type="button"
+                title={affiliationTooltip}
+                className="text-grubano-ink-faint hover:text-grubano-ink-muted transition shrink-0"
+                aria-label={affiliationTooltip}
+              >
+                <Info size={11} />
+              </button>
             </div>
           </Card>
 
-          {/* ── Total card ───────────────────────────────────────────────── */}
+          {/* ── Total card — unchanged ────────────────────────────────────── */}
           <div className="rounded-grubano-xl bg-grubano-ink p-4 flex items-center justify-between text-white">
             <div className="flex items-center gap-2">
               <TrendingUp size={18} />
