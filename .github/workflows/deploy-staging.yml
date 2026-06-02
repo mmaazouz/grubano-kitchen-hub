@@ -193,48 +193,74 @@ jobs:
 
       # ── Trigger Passenger restart via FTPS (SSH-independent fallback) ─────────
       # Belt-and-suspenders alongside the two SSH `touch tmp/restart.txt` calls
-      # above. Diagnostic (1 jun 2026, last 8 staging runs): SSH steps ALL report
-      # success, so the SSH-blocked-by-o2switch hypothesis is not the current
-      # cause of the recurring "deploy lands without CSS until manual restart"
-      # symptom — but the SSH `touch` may run without effectively propagating to
-      # Passenger's smart-spawner (subtle CWD / nodevenv-activate / fs sync
-      # quirk), and we deliberately re-trigger the restart over a completely
-      # independent channel (raw FTPS curl, not appleboy/ssh-action) to remove
-      # one whole class of risk.
+      # above. Both SSH steps can fail intermittently:
+      #   "Fix permissions and restart": dial tcp 109.234.165.222:22 i/o timeout
+      # → o2switch intermittently firewalls GHA runner IPs on SSH, so we can NOT
+      # rely on SSH for the restart. FTP/FTPS is on a different control channel
+      # and stays reachable when SSH does not.
       #
-      # Important: this runs AFTER the main FTP sync AND AFTER both SSH steps.
-      # That guarantees the restart.txt mtime is bumped LAST — so the new
+      # FTPS HOSTNAME — why we hardcode `muscadier.o2switch.net` here:
+      # The shared `O2SWITCH_HOST` secret (=ftp.deyi0010.odns.fr) is a per-user
+      # CNAME alias and is NOT in the FTPS server's Let's Encrypt certificate
+      # SAN list. Strict TLS verification therefore fails with curl exit 60:
+      #   "SSL: no alternative certificate subject name matches target host name"
+      # The main FTP step (SamKirkland/FTP-Deploy-Action with basic-ftp under
+      # the hood) tolerates that mismatch by default; a strict `curl --ssl-reqd`
+      # does not, so we have to use a hostname that IS in the cert's SAN.
+      # The cert SANs include `muscadier.o2switch.net` (the o2switch shared
+      # server hostname for this account), resolved to the same IP as the FTP
+      # secret. Verified locally:
+      #   subject=CN = autoconfig.muscadier.o2switch.net
+      #   SAN: ...muscadier.o2switch.net (bare)...cpanel.muscadier.o2switch.net...
+      #   openssl s_client ... → Verify return code: 0 (ok)
+      # Using this hostname keeps full strict cert chain + hostname verification
+      # ACTIVE (no --insecure), so the transfer is properly authenticated.
+      #
+      # Important runtime ordering: this step runs AFTER the main FTP sync AND
+      # AFTER both SSH steps, so the restart.txt mtime is bumped LAST — the new
       # Passenger process picks up a fully-flushed deploy, not a partial one.
-      # tmp/restart.txt is deliberately NOT included in deploy-temp/, so the
-      # main FTP step never touches it at random timing.
+      # tmp/restart.txt is deliberately NOT in deploy-temp/, so the main FTP
+      # step never touches it at random timing.
       #
       # Production workflow is intentionally NOT changed yet: this is staging-
-      # only until two consecutive deploys confirm the symptom is gone with no
-      # manual cPanel touch.
+      # only until two consecutive deploys confirm the FTPS step finishes with
+      # exit 0 (no more exit 60) AND CSS lands without manual cPanel `touch`.
       - name: Trigger Passenger restart via FTPS (independent of SSH)
         if: success()
         continue-on-error: true
         run: |
-          set -e
           STAMP="restart from run ${{ github.run_id }} at $(date -u +%FT%TZ) sha ${{ github.sha }}"
           MARKER=$(mktemp)
+          ERRLOG=$(mktemp)
           printf '%s\n' "$STAMP" > "$MARKER"
-          echo "Uploading restart trigger:"
-          echo "  $STAMP"
-          # --ssl-reqd     : require explicit FTPS (AUTH TLS) — matches the main FTP step's `protocol: ftps`
-          # --ftp-create-dirs : create tmp/ if Passenger never wrote it
-          # --user / URL host are taken from the same secrets the main FTP step uses;
-          #   O2SWITCH_HOST is the FTP hostname (ftp.deyi0010.odns.fr), not the SSH IP.
-          curl --fail --silent --show-error \
-               --ssl-reqd \
-               --ftp-create-dirs \
-               --connect-timeout 30 \
-               --max-time 60 \
-               --upload-file "$MARKER" \
-               --user "${{ secrets.O2SWITCH_FTP_USER }}:${{ secrets.O2SWITCH_FTP_PASS }}" \
-               "ftp://${{ secrets.O2SWITCH_HOST }}/app.grubano.com/tmp/restart.txt"
-          rm -f "$MARKER"
-          echo "OK — tmp/restart.txt uploaded via FTPS; Passenger smart-spawner should reload."
+          echo "── FTPS restart trigger ──"
+          echo "host:   muscadier.o2switch.net (cert SAN match — strict TLS verify)"
+          echo "target: ~/app.grubano.com/tmp/restart.txt"
+          echo "marker: $STAMP"
+          if curl --fail --silent --show-error \
+                  --ssl-reqd \
+                  --ftp-create-dirs \
+                  --connect-timeout 30 \
+                  --max-time 60 \
+                  --upload-file "$MARKER" \
+                  --user "${{ secrets.O2SWITCH_FTP_USER }}:${{ secrets.O2SWITCH_FTP_PASS }}" \
+                  "ftp://muscadier.o2switch.net/app.grubano.com/tmp/restart.txt" \
+                  2> "$ERRLOG"; then
+            RC=0
+            echo "✅ SUCCESS — FTPS upload returned exit 0"
+            echo "Passenger smart-spawner should reload within seconds."
+          else
+            RC=$?
+            echo "❌ FAILED — FTPS upload returned exit $RC"
+            echo "curl stderr:"
+            sed 's/^/  /' "$ERRLOG"
+            echo ""
+            echo 'The two SSH "touch tmp/restart.txt" steps above may still have'
+            echo 'triggered the restart. If staging still serves stale code, run'
+            echo 'in cPanel Terminal:  touch ~/app.grubano.com/tmp/restart.txt'
+          fi
+          rm -f "$MARKER" "$ERRLOG"
+          exit $RC
 
       - name: Health check
         run: |
