@@ -564,8 +564,12 @@ model DishSale {
   orderId        String?
   order          Order?       @relation(fields: [orderId], references: [id])
   amount         Float        // sale amount in €
-  creatorEarning Float        // FROZEN = amount × creatorCommissionPct (0.04)
+  creatorEarning Float        // FROZEN = amount × rateApplied
   grubanoCut     Float        // FROZEN = creatorEarning × grubanoCutPct (0.20)
+  // Levier 1: the creator commission rate actually used for this sale, frozen at
+  // order time (0.04 = recipe creator's own traffic, 0.01 = organic/other).
+  // Nullable so legacy rows written before levier 1 stay valid.
+  rateApplied    Float?
   createdAt      DateTime     @default(now())
 
   @@index([adoptionId])
@@ -576,7 +580,16 @@ model AdoptionConfig {
   id                   String   @id @default(cuid())
   minCommitmentDays    Int      @default(60)
   successThresholdEur  Float    @default(300)
+  // LEGACY single rate — kept for backward compatibility with any reader that
+  // still references it. The checkout (levier 1) now picks one of the two rates
+  // below depending on the traffic source.
   creatorCommissionPct Float    @default(0.04)
+  // ── Levier 1: variable recipe commission by traffic source ───────────────────
+  // FORT — the sale comes from the RECIPE CREATOR's own traffic (a ReferralOrder
+  // is created for this order AND its referring creator IS the recipe creator).
+  creatorCommissionPctReferred Float @default(0.04)
+  // RÉDUIT — organic sale OR traffic driven by ANOTHER creator.
+  creatorCommissionPctOrganic  Float @default(0.01)
   grubanoCutPct        Float    @default(0.20)
   active               Boolean  @default(true)
   createdAt            DateTime @default(now())

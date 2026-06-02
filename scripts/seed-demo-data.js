@@ -604,7 +604,9 @@ async function main() {
       id: 'default',
       minCommitmentDays: 60,
       successThresholdEur: 300,
-      creatorCommissionPct: 0.04,
+      creatorCommissionPct: 0.04,           // LEGACY single rate (kept for rétrocompat)
+      creatorCommissionPctReferred: 0.04,   // levier 1 — FORT: recipe creator's own traffic
+      creatorCommissionPctOrganic: 0.01,    // levier 1 — RÉDUIT: organic / other creator
       grubanoCutPct: 0.20,
       active: true,
     },
@@ -677,8 +679,8 @@ async function main() {
       const saleId    = `demo-sale-${tag}-${String(i + 1).padStart(2, '0')}`
       await prisma.dishSale.upsert({
         where:  { id: saleId },
-        update: { adoptionId: spec.id, amount, creatorEarning, grubanoCut, createdAt },
-        create: { id: saleId, adoptionId: spec.id, amount, creatorEarning, grubanoCut, createdAt },
+        update: { adoptionId: spec.id, amount, creatorEarning, grubanoCut, rateApplied: CREATOR_COMMISSION_PCT, createdAt },
+        create: { id: saleId, adoptionId: spec.id, amount, creatorEarning, grubanoCut, rateApplied: CREATOR_COMMISSION_PCT, createdAt },
       })
     }
     adoptionSalesTotal += cumulative

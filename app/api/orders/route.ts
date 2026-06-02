@@ -101,6 +101,12 @@ export async function POST(req: NextRequest) {
       expiredReferralId:       null as string | null,  // CAS 2 (expired window) → deactivate, no payout
       commissionPct:           0.22,                    // ReferralConfig.commissionPctOfGrubanoFee
       durationDays:            90,                      // ReferralConfig.durationDays
+      // Levier 1: the creator who will actually receive a ReferralOrder payout for
+      // THIS order (CAS 1 → the resolved creator, CAS 2-valid → the existing
+      // binding's creator). null when organic, no code, or an expired window: those
+      // produce no ReferralOrder, so the 5C recipe rate must stay on the reduced
+      // (organic) tier. Read-only here; the 5C block uses it, the 5B writes do not.
+      referringCreatorId:      null as string | null,
     }
     try {
       const rawCode = (data.referralCode ?? req.cookies.get('grubano_ref')?.value ?? '').trim().toUpperCase()
@@ -129,12 +135,16 @@ export async function POST(req: NextRequest) {
           if (!existing) {
             // CAS 1 — first referred order for this customer → bind + discount.
             ref.createReferralCreatorId = creator.id
+            ref.referringCreatorId      = creator.id // payout goes to this creator
             ref.discount = round2(Math.min(subtotal * discountPct, discountCap))
           } else if (existing.expiresAt > new Date()) {
-            // CAS 2 — window still open → reuse the binding, NO discount.
-            ref.reuseReferralId = existing.id
+            // CAS 2 — window still open → reuse the binding, NO discount. The payout
+            // goes to the ALREADY-bound creator, not necessarily the code's creator.
+            ref.reuseReferralId    = existing.id
+            ref.referringCreatorId = existing.creatorId
           } else {
             // CAS 2 — window expired → no payout, no discount (close it later).
+            // referringCreatorId stays null → 5C uses the organic (reduced) rate.
             ref.expiredReferralId = existing.id
           }
         }
@@ -205,9 +215,16 @@ export async function POST(req: NextRequest) {
       }
       const rawIds = data.items.map(rawIdOf)
       // One query (no N+1): the active adoptions whose menuItem is in this order.
+      // We also pull the recipe owner's creatorId (via the CreatorDish relation) so
+      // levier 1 can compare it to the referring creator without a second round-trip.
       const adoptions = await prisma.dishAdoption.findMany({
         where:  { status: 'active', menuItemId: { in: rawIds } },
-        select: { id: true, menuItemId: true, creatorDishId: true },
+        select: {
+          id: true,
+          menuItemId: true,
+          creatorDishId: true,
+          creatorDish: { select: { creatorId: true } },
+        },
       })
 
       if (adoptions.length > 0) {
@@ -220,8 +237,12 @@ export async function POST(req: NextRequest) {
         if (!already) {
           // Read the single AdoptionConfig row once; fall back to launch defaults.
           const cfg = await prisma.adoptionConfig.findFirst({ where: { active: true } })
-          const creatorPct = cfg?.creatorCommissionPct ?? 0.04
-          const grubanoPct = cfg?.grubanoCutPct ?? 0.20
+          // Levier 1: two rates instead of one. The FORT rate rewards a creator when
+          // the sale of THEIR recipe comes from THEIR own referral traffic; every
+          // other sale (organic, or another creator's traffic) earns the reduced one.
+          const referredPct = cfg?.creatorCommissionPctReferred ?? 0.04
+          const organicPct  = cfg?.creatorCommissionPctOrganic  ?? 0.01
+          const grubanoPct  = cfg?.grubanoCutPct ?? 0.20
           const round2 = (n: number) => Math.round(n * 100) / 100
 
           const byMenuItem = new Map(adoptions.map((a) => [a.menuItemId as string, a]))
@@ -233,10 +254,16 @@ export async function POST(req: NextRequest) {
           for (const item of data.items) {
             const adoption = byMenuItem.get(rawIdOf(item))
             if (!adoption) continue // not an adopted dish → ignore this line
+            // Levier 1 — pick the rate PER LINE by recipe: a sale earns the FORT rate
+            // only when the referring creator (from 5B) IS the recipe's own creator.
+            const recipeCreatorId = adoption.creatorDish.creatorId
+            const isCreatorTraffic =
+              ref.referringCreatorId !== null && ref.referringCreatorId === recipeCreatorId
+            const rateApplied    = isCreatorTraffic ? referredPct : organicPct
             const amount         = round2(item.price * item.qty)        // CA of this line
-            const creatorEarning = round2(amount * creatorPct)          // FROZEN
+            const creatorEarning = round2(amount * rateApplied)         // FROZEN
             const grubanoCut     = round2(creatorEarning * grubanoPct)  // FROZEN
-            sales.push({ adoptionId: adoption.id, orderId: order.id, amount, creatorEarning, grubanoCut })
+            sales.push({ adoptionId: adoption.id, orderId: order.id, amount, creatorEarning, grubanoCut, rateApplied })
             salesPerDish.set(adoption.creatorDishId, (salesPerDish.get(adoption.creatorDishId) ?? 0) + 1)
           }
 
