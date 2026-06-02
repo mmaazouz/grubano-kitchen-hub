@@ -22,6 +22,10 @@ const createOrderSchema = z.object({
   items:           z.array(orderItemSchema).min(1),
   deliveryAddress: z.string().min(5).max(200),
   paymentMethod:   z.enum(['card', 'cash', 'wallet']).default('card'),
+  // Pickup vs delivery. The /eat cart already sends this; the server uses it to
+  // zero the delivery fee on pickup (a customer collecting in person must NOT be
+  // charged €1.99). Defaults to 'delivery' to keep the existing contract intact.
+  fulfillmentType: z.enum(['delivery', 'pickup']).default('delivery'),
   // brique 5B: optional manual referral code. The `grubano_ref` cookie is the
   // primary source; this body field is a future-proof fallback for manual entry.
   // .optional() keeps the existing request contract intact.
@@ -64,6 +68,12 @@ export async function POST(req: NextRequest) {
     // customer genuinely ordered enough, so the referral welcome discount (5B)
     // applied below is a gift on top and must never retroactively block the order.
     const subtotal = data.items.reduce((sum, item) => sum + item.price * item.qty, 0)
+
+    // Pickup orders are collected in person → no delivery fee. Delivery keeps the
+    // restaurant's normal fee. Used everywhere the fee applies to THIS order
+    // (total calc + the deliveryFee stored on the Order) so the billing matches
+    // exactly what the cart already shows the customer.
+    const effectiveDeliveryFee = data.fulfillmentType === 'pickup' ? 0 : restaurant.deliveryFee
 
     if (subtotal < restaurant.minOrder) {
       return NextResponse.json(
@@ -134,7 +144,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Apply the welcome discount to the paid total (clamped ≥ 0).
-    const total        = Math.max(0, round2(subtotal + restaurant.deliveryFee - ref.discount))
+    const total        = Math.max(0, round2(subtotal + effectiveDeliveryFee - ref.discount))
     // Points: 1 point per euro actually spent (rounded down).
     const pointsEarned = Math.floor(total)
 
@@ -145,8 +155,9 @@ export async function POST(req: NextRequest) {
         restaurantId:    data.restaurantId,
         items:           data.items as unknown as Prisma.InputJsonValue,
         subtotal,
-        deliveryFee:     restaurant.deliveryFee,
+        deliveryFee:     effectiveDeliveryFee,
         total,
+        fulfillmentType: data.fulfillmentType,
         deliveryAddress: data.deliveryAddress,
         paymentMethod:   data.paymentMethod,
         pointsEarned,
