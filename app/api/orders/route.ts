@@ -95,6 +95,72 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // ── Adopted-dish sales (brique 5C) ─────────────────────────────────────────
+    // For every ordered line whose MenuItem is tied to an ACTIVE DishAdoption,
+    // record a real DishSale with FROZEN earnings — same freeze-at-write rule
+    // already applied to ReferralOrder (never recomputed from config on read).
+    //
+    // BEST-EFFORT, on purpose: this runs AFTER the Order is committed and is NOT
+    // wrapped together with it in a $transaction. A shared transaction would roll
+    // the Order back if a DishSale insert failed, which would break checkout. The
+    // absolute priority is that the customer is always served — so any failure in
+    // this block is logged and swallowed, leaving the Order fully valid.
+    try {
+      const itemIds = data.items.map((i) => i.itemId)
+      // One query (no N+1): the active adoptions whose menuItem is in this order.
+      const adoptions = await prisma.dishAdoption.findMany({
+        where:  { status: 'active', menuItemId: { in: itemIds } },
+        select: { id: true, menuItemId: true, creatorDishId: true },
+      })
+
+      if (adoptions.length > 0) {
+        // Anti-doublon: a DishSale is bound to orderId. If this order already
+        // produced sales (route replayed), do nothing.
+        const already = await prisma.dishSale.findFirst({
+          where:  { orderId: order.id },
+          select: { id: true },
+        })
+        if (!already) {
+          // Read the single AdoptionConfig row once; fall back to launch defaults.
+          const cfg = await prisma.adoptionConfig.findFirst({ where: { active: true } })
+          const creatorPct = cfg?.creatorCommissionPct ?? 0.04
+          const grubanoPct = cfg?.grubanoCutPct ?? 0.20
+          const round2 = (n: number) => Math.round(n * 100) / 100
+
+          const byMenuItem = new Map(adoptions.map((a) => [a.menuItemId as string, a]))
+          const sales: Prisma.DishSaleCreateManyInput[] = []
+          const salesPerDish = new Map<string, number>()
+
+          for (const item of data.items) {
+            const adoption = byMenuItem.get(item.itemId)
+            if (!adoption) continue // not an adopted dish → ignore this line
+            const amount         = round2(item.price * item.qty)        // CA of this line
+            const creatorEarning = round2(amount * creatorPct)          // FROZEN
+            const grubanoCut     = round2(creatorEarning * grubanoPct)  // FROZEN
+            sales.push({ adoptionId: adoption.id, orderId: order.id, amount, creatorEarning, grubanoCut })
+            salesPerDish.set(adoption.creatorDishId, (salesPerDish.get(adoption.creatorDishId) ?? 0) + 1)
+          }
+
+          if (sales.length > 0) {
+            await prisma.dishSale.createMany({ data: sales })
+            // Keep the denormalized CreatorDish.totalSales counter (read by the
+            // public creator leaderboard) in sync with real sales.
+            await Promise.all(
+              Array.from(salesPerDish.entries()).map(([creatorDishId, count]) =>
+                prisma.creatorDish.update({
+                  where: { id: creatorDishId },
+                  data:  { totalSales: { increment: count } },
+                }),
+              ),
+            )
+          }
+        }
+      }
+    } catch (saleErr) {
+      // Never break checkout because of adoption bookkeeping.
+      console.error('[POST /api/orders] DishSale creation failed (order still valid):', saleErr)
+    }
+
     return NextResponse.json(
       {
         orderId:           updated.id,
