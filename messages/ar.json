@@ -762,5 +762,35 @@
       "desc": "ليس لديك علامة تجارية بعد. أنشئ علامتك التجارية لإدارة قائمتك وتبنّي الوصفات.",
       "cta": "إعداد علامتي التجارية"
     }
+  },
+  "finance": {
+    "title": "المالية",
+    "subtitle": "المحاسبة والتقارير",
+    "windowLabel": "آخر 30 يومًا",
+    "caBrutLabel": "إجمالي الإيرادات",
+    "commissionLabel": "عمولة Grubano (10%)",
+    "creatorsCostLabel": "المدفوع للمبدعين",
+    "discountsLabel": "خصومات الترحيب المموّلة",
+    "netLabel": "الصافي",
+    "valueTitle": "قيمة المبدعين",
+    "valueBody": "حقّق لك المبدعون {ca} من المبيعات مقابل {cost} كعمولة.",
+    "valueOrders": "{count, plural, =0 {لا طلبات} one {# طلب} other {# طلبات}} عبر رمزهم",
+    "ctaTitle": "افتح أطباقك للمبدعين",
+    "ctaBody": "دع المبدعين يتبنّون أطباقك ويجلبون لك الزيارات. لا تدفع عمولة إلا على المبيعات المُحقَّقة.",
+    "ctaButton": "اكتشف الوصفات",
+    "reportsTitle": "التقارير المتاحة",
+    "report1Title": "كشف العمولات",
+    "report1Desc": "حسب المنصة · 30 يومًا",
+    "report2Title": "التوزيع حسب العلامة",
+    "report2Desc": "تحليل الربحية",
+    "report3Title": "تقرير شهري كامل",
+    "report3Desc": "PDF · قابل للتصدير",
+    "reportsSoon": "قريبًا",
+    "proTitle": "تصدير محاسبي تلقائي",
+    "proDesc": "تكامل Sage وQuickBooks · Grubano Pro",
+    "proBadge": "Pro",
+    "loading": "جارٍ التحميل…",
+    "emptyTitle": "لا طلبات في هذه الفترة",
+    "emptyDesc": "ستظهر آخر 30 يومًا هنا بمجرد استلام أولى طلباتك."
   }
 }

@@ -762,5 +762,35 @@
       "desc": "You don't have a brand yet. Set up your brand to manage your menu and adopt recipes.",
       "cta": "Set up my brand"
     }
+  },
+  "finance": {
+    "title": "Finance",
+    "subtitle": "Accounting & reports",
+    "windowLabel": "Last 30 days",
+    "caBrutLabel": "Gross revenue",
+    "commissionLabel": "Grubano commission (10%)",
+    "creatorsCostLabel": "Paid to creators",
+    "discountsLabel": "Welcome discounts funded",
+    "netLabel": "Net",
+    "valueTitle": "What creators bring you",
+    "valueBody": "Creators brought you {ca} in sales for {cost} in commission.",
+    "valueOrders": "{count, plural, =0 {No orders} one {# order} other {# orders}} via their code",
+    "ctaTitle": "Open your dishes to creators",
+    "ctaBody": "Let creators adopt your dishes and drive traffic. You only pay commission on the sales they generate.",
+    "ctaButton": "Discover recipes",
+    "reportsTitle": "Available reports",
+    "report1Title": "Commission statement",
+    "report1Desc": "By platform · 30 days",
+    "report2Title": "Breakdown by brand",
+    "report2Desc": "Profitability analysis",
+    "report3Title": "Full monthly report",
+    "report3Desc": "PDF · exportable",
+    "reportsSoon": "Soon",
+    "proTitle": "Automatic accounting export",
+    "proDesc": "Sage, QuickBooks integration · Grubano Pro",
+    "proBadge": "Pro",
+    "loading": "Loading…",
+    "emptyTitle": "No orders in this period",
+    "emptyDesc": "Your last 30 days will show here once you receive your first orders."
   }
 }

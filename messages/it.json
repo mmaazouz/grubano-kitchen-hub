@@ -762,5 +762,35 @@
       "desc": "Non hai ancora un brand. Configura il tuo brand per gestire il menu e adottare ricette.",
       "cta": "Configura il mio brand"
     }
+  },
+  "finance": {
+    "title": "Finanze",
+    "subtitle": "Contabilità e report",
+    "windowLabel": "Ultimi 30 giorni",
+    "caBrutLabel": "Fatturato lordo",
+    "commissionLabel": "Commissione Grubano (10%)",
+    "creatorsCostLabel": "Versato ai creator",
+    "discountsLabel": "Sconti di benvenuto finanziati",
+    "netLabel": "Netto",
+    "valueTitle": "Il valore dei creator",
+    "valueBody": "I creator ti hanno portato {ca} di vendite per {cost} di commissione.",
+    "valueOrders": "{count, plural, =0 {Nessun ordine} one {# ordine} other {# ordini}} tramite il loro codice",
+    "ctaTitle": "Apri i tuoi piatti ai creator",
+    "ctaBody": "Lascia che i creator adottino i tuoi piatti e portino traffico. Paghi una commissione solo sulle vendite generate.",
+    "ctaButton": "Scopri le ricette",
+    "reportsTitle": "Report disponibili",
+    "report1Title": "Estratto commissioni",
+    "report1Desc": "Per piattaforma · 30 giorni",
+    "report2Title": "Ripartizione per brand",
+    "report2Desc": "Analisi di redditività",
+    "report3Title": "Report mensile completo",
+    "report3Desc": "PDF · esportabile",
+    "reportsSoon": "Presto",
+    "proTitle": "Esportazione contabile automatica",
+    "proDesc": "Integrazione Sage, QuickBooks · Grubano Pro",
+    "proBadge": "Pro",
+    "loading": "Caricamento…",
+    "emptyTitle": "Nessun ordine nel periodo",
+    "emptyDesc": "I tuoi ultimi 30 giorni appariranno qui non appena ricevi i primi ordini."
   }
 }
