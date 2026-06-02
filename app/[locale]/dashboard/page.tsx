@@ -3,8 +3,8 @@ import { getTranslations, setRequestLocale } from 'next-intl/server'
 import {
   TrendingUp, TrendingDown, ShoppingBag, Euro, Star,
   AlertTriangle, Sparkles, ChevronRight,
-  ShoppingBasket, Megaphone, Building2, Truck, Package,
-  MessageSquare, Users as UsersIcon, Clock,
+  ShoppingBasket, Megaphone, Building2, Package,
+  MessageSquare, Users as UsersIcon,
 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { authOptions } from '@/lib/auth'
@@ -18,6 +18,7 @@ import {
   DashboardRevenueChart,
   type RevenueChartDatum,
 } from '@/components/dashboard/DashboardRevenueChart'
+import LiveOrders from '@/components/dashboard/LiveOrders'
 
 // ── Route config ─────────────────────────────────────────────────────────────
 // Per-session, per-current-time data → never prerender, always run on demand.
@@ -363,25 +364,6 @@ function DeltaPill({ pct }: { pct: number | null }) {
   )
 }
 
-function statusTone(status: string): 'info' | 'warning' | 'success' | 'neutral' {
-  if (status === 'received')   return 'info'
-  if (status === 'preparing')  return 'warning'
-  if (status === 'ready')      return 'warning'
-  if (status === 'picked_up')  return 'success'
-  return 'neutral'
-}
-
-/**
- * Safe status label lookup — next-intl throws on missing keys, so we keep an
- * explicit allow-list and fall back to a generic key for anything unknown.
- */
-const KNOWN_STATUS_KEYS = new Set([
-  'received', 'preparing', 'ready', 'picked_up',
-])
-function statusKey(status: string): string {
-  return KNOWN_STATUS_KEYS.has(status) ? `liveOrders.status_${status}` : 'liveOrders.status_unknown'
-}
-
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardHomePage(props: { params: { locale: string } }) {
@@ -572,43 +554,19 @@ export default async function DashboardHomePage(props: { params: { locale: strin
             />
           </Card>
         ) : (
-          <div className="space-y-2">
-            {d.activeOrders.map(o => (
-              <Link key={o.id} href={`/orders/${o.id}`} className="block">
-                <Card elevation="sm" padding="md" interactive>
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-surface-muted text-grubano-ink-muted">
-                      {o.fulfillmentType === 'pickup'
-                        ? <ShoppingBasket size={16} />
-                        : <Truck size={16} />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-grubano-ink">
-                          #{o.id.slice(-6).toUpperCase()}
-                        </span>
-                        <Badge tone={statusTone(o.status)} size="sm">
-                          {/* All four known statuses are translated; anything
-                              unexpected falls back to the generic key. */}
-                          {t(statusKey(o.status) as never)}
-                        </Badge>
-                      </div>
-                      <p className="mt-0.5 truncate text-[11px] text-grubano-ink-muted">
-                        {o.itemsPreview}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-grubano-ink">€{o.total.toFixed(2)}</p>
-                      <p className="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-grubano-ink-faint">
-                        <Clock size={10} />
-                        {timeFmt.format(o.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
+          /* Client island: contextual accept/advance buttons consuming the
+             existing PATCH /api/orders/[id]/status route. Time is pre-formatted
+             server-side (locale-aware) to avoid hydration drift. */
+          <LiveOrders
+            orders={d.activeOrders.map(o => ({
+              id:              o.id,
+              status:          o.status,
+              total:           o.total,
+              fulfillmentType: o.fulfillmentType,
+              itemsPreview:    o.itemsPreview,
+              timeLabel:       timeFmt.format(o.createdAt),
+            }))}
+          />
         )}
       </section>
 
