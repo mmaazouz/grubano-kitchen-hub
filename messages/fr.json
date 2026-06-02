@@ -339,7 +339,9 @@
       "promotions": "Mes promotions",
       "audience": "Mon audience",
       "revenue": "Mes revenus",
-      "back": "Retour au portail"
+      "back": "Retour au portail",
+      "recipes": "Mes recettes",
+      "affiliation": "Mon affiliation"
     },
     "home": {
       "greeting": "Bonjour, {name} 👋",
@@ -419,6 +421,36 @@
       "notCreatorTitle": "Pas encore créateur ?",
       "notCreatorDesc": "Rejoins le programme et monétise tes recettes.",
       "notCreatorCta": "Rejoindre"
+    },
+    "recipes": {
+      "title": "Mes recettes",
+      "subtitle": "Crée une recette, un resto l'adopte, tu touches 4% sur chaque vente tant qu'elle est à sa carte.",
+      "badge": "4% / vente",
+      "kpiEarnings": "Gains recettes",
+      "kpiAdoptions": "Adoptions actives",
+      "kpiSales": "Ventes totales"
+    },
+    "affiliation": {
+      "title": "Mon affiliation",
+      "subtitle": "Partage ton code, tes abonnés commandent, tu touches 22% de la commission Grubano pendant 90 jours.",
+      "badge": "22% · 90 jours",
+      "codeLabel": "Ton code parrainage",
+      "linkLabel": "Ton lien de parrainage",
+      "copy": "Copier",
+      "copied": "Copié !",
+      "noCode": "Code en attente d'activation",
+      "noCodeDesc": "L'équipe Grubano activera ton code parrainage prochainement.",
+      "kpiCustomers": "Clients parrainés",
+      "kpiOrders": "Commandes",
+      "kpiEarnings30d": "Gains 30 jours",
+      "kpiEarningsTotal": "Gains totaux"
+    },
+    "revenus": {
+      "title": "Mes revenus — 30 jours",
+      "subtitle": "Décomposition de tes gains sur les 30 derniers jours.",
+      "recipeLabel": "Recettes",
+      "affiliationLabel": "Affiliation",
+      "totalLabel": "Total"
     }
   },
   "eat": {

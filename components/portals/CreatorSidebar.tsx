@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl'
 import {
-  LayoutDashboard, Tag, Users2,
+  LayoutDashboard, ChefHat, Megaphone,
   TrendingUp, ArrowLeft, Sparkles, X,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
@@ -18,10 +18,10 @@ type NavItem = {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/creators/dashboard',              labelKey: 'overview',    icon: LayoutDashboard, exact: true },
-  { href: '/creators/dashboard/promotions',   labelKey: 'promotions',  icon: Tag },
-  { href: '/creators/dashboard/audience',     labelKey: 'audience',    icon: Users2 },
-  { href: '/creators/dashboard/revenus',      labelKey: 'revenue',     icon: TrendingUp },
+  { href: '/creators/dashboard',            labelKey: 'overview',     icon: LayoutDashboard, exact: true },
+  { href: '/creators/dashboard/promotions', labelKey: 'recipes',      icon: ChefHat },
+  { href: '/creators/dashboard/audience',   labelKey: 'affiliation',  icon: Megaphone },
+  { href: '/creators/dashboard/revenus',    labelKey: 'revenue',      icon: TrendingUp },
 ]
 
 export default function CreatorSidebar() {

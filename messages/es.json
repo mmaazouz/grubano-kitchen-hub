@@ -339,7 +339,9 @@
       "promotions": "Mis promociones",
       "audience": "Mi audiencia",
       "revenue": "Mis ingresos",
-      "back": "Volver al portal"
+      "back": "Volver al portal",
+      "recipes": "Mis recetas",
+      "affiliation": "Mi afiliación"
     },
     "home": {
       "greeting": "Hola, {name} 👋",
@@ -419,6 +421,36 @@
       "notCreatorTitle": "¿Aún no eres creador?",
       "notCreatorDesc": "Únete al programa y monetiza tus recetas.",
       "notCreatorCta": "Unirse"
+    },
+    "recipes": {
+      "title": "Mis recetas",
+      "subtitle": "Crea una receta, un restaurante la adopta, ganas el 4% en cada venta mientras esté en el menú.",
+      "badge": "4% / venta",
+      "kpiEarnings": "Ganancias de recetas",
+      "kpiAdoptions": "Adopciones activas",
+      "kpiSales": "Ventas totales"
+    },
+    "affiliation": {
+      "title": "Mi afiliación",
+      "subtitle": "Comparte tu código, tus seguidores piden, ganas el 22% de la comisión de Grubano durante 90 días.",
+      "badge": "22% · 90 días",
+      "codeLabel": "Tu código de referido",
+      "linkLabel": "Tu enlace de referido",
+      "copy": "Copiar",
+      "copied": "¡Copiado!",
+      "noCode": "Código pendiente de activación",
+      "noCodeDesc": "El equipo de Grubano activará tu código de referido pronto.",
+      "kpiCustomers": "Clientes referidos",
+      "kpiOrders": "Pedidos",
+      "kpiEarnings30d": "Ganancias 30 días",
+      "kpiEarningsTotal": "Ganancias totales"
+    },
+    "revenus": {
+      "title": "Mis ingresos — 30 días",
+      "subtitle": "Desglose de tus ganancias de los últimos 30 días.",
+      "recipeLabel": "Recetas",
+      "affiliationLabel": "Afiliación",
+      "totalLabel": "Total"
     }
   },
   "eat": {

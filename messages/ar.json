@@ -339,7 +339,9 @@
       "promotions": "عروضي الترويجية",
       "audience": "جمهوري",
       "revenue": "إيراداتي",
-      "back": "العودة إلى البوابة"
+      "back": "العودة إلى البوابة",
+      "recipes": "وصفاتي",
+      "affiliation": "برنامج الإحالة"
     },
     "home": {
       "greeting": "مرحباً، {name} 👋",
@@ -419,6 +421,36 @@
       "notCreatorTitle": "لست منشئاً بعد؟",
       "notCreatorDesc": "انضم إلى البرنامج وحقق الدخل من وصفاتك.",
       "notCreatorCta": "انضم"
+    },
+    "recipes": {
+      "title": "وصفاتي",
+      "subtitle": "أنشئ وصفة، يتبناها مطعم، تكسب 4% من كل بيع طالما كانت في القائمة.",
+      "badge": "4% / بيع",
+      "kpiEarnings": "أرباح الوصفات",
+      "kpiAdoptions": "التبني النشط",
+      "kpiSales": "إجمالي المبيعات"
+    },
+    "affiliation": {
+      "title": "برنامج الإحالة",
+      "subtitle": "شارك رمزك، يطلب متابعوك، تكسب 22% من عمولة Grubano لمدة 90 يومًا.",
+      "badge": "22% · 90 يومًا",
+      "codeLabel": "رمز الإحالة الخاص بك",
+      "linkLabel": "رابط الإحالة الخاص بك",
+      "copy": "نسخ",
+      "copied": "تم النسخ!",
+      "noCode": "الرمز في انتظار التفعيل",
+      "noCodeDesc": "سيقوم فريق Grubano بتفعيل رمز الإحالة الخاص بك قريبًا.",
+      "kpiCustomers": "العملاء المُحالون",
+      "kpiOrders": "الطلبات",
+      "kpiEarnings30d": "أرباح 30 يومًا",
+      "kpiEarningsTotal": "إجمالي الأرباح"
+    },
+    "revenus": {
+      "title": "أرباحي — 30 يومًا",
+      "subtitle": "تفصيل أرباحك خلال الـ 30 يومًا الماضية.",
+      "recipeLabel": "الوصفات",
+      "affiliationLabel": "الإحالة",
+      "totalLabel": "الإجمالي"
     }
   },
   "eat": {
