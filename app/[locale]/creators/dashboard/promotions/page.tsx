@@ -12,6 +12,11 @@ import {
   ChefHat, Upload, CheckCircle2, Clock,
   ChevronDown, ChevronUp, Store,
 } from 'lucide-react'
+
+// locale-aware currency formatter (2 dec, fr-FR like the rest of the portal)
+function fmt(n: number) {
+  return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 import { Link } from '@/navigation'
 import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
 import type { CreatorHomeData, CreatorHomeDish, DishAdopter } from '@/app/api/creators/home/route'
@@ -136,8 +141,14 @@ export default function CreatorRecipesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                      <div className="text-right">
-                        <p className="text-xs font-bold text-grubano-success">€{dish.earnings.toFixed(2)}</p>
+                      <div
+                        className="text-right"
+                        title={`Généré €${fmt(dish.earnings)} · Commission Grubano −€${fmt(dish.grubanoFee ?? 0)} · Net €${fmt(dish.earningsNet ?? dish.earnings)}`}
+                      >
+                        <p className="text-[9px] text-grubano-ink-faint uppercase tracking-wide leading-none mb-0.5">
+                          {t('dishNetLabel')}
+                        </p>
+                        <p className="text-xs font-bold text-grubano-success">€{fmt(dish.earningsNet ?? dish.earnings)}</p>
                         <p className="text-[10px] text-grubano-ink-muted">{t('dishSales', { count: dish.totalSales })}</p>
                       </div>
                       {hasAdopters && (

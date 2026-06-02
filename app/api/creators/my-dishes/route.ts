@@ -15,7 +15,9 @@ export type MyDish = {
   status:         string
   adoptions:      number        // count of active DishAdoption rows
   totalSales:     number        // count of DishSale rows across all adoptions
-  earnings:       number        // sum of DishSale.creatorEarning across all adoptions
+  earnings:       number        // sum of DishSale.creatorEarning (gross) — kept for compat
+  grubanoFee:     number        // sum of DishSale.grubanoCut  (= earnings × 20%)
+  earningsNet:    number        // earnings − grubanoFee  (what creator receives)
   adopters:       DishAdopter[] // active adoptions with brand + commitment details
 }
 
@@ -52,7 +54,7 @@ export async function GET() {
           where: { creatorDishId: { in: dishIds } },
           include: {
             brand: { select: { name: true, emoji: true } },
-            sales: { select: { creatorEarning: true } },
+            sales: { select: { creatorEarning: true, grubanoCut: true } },
           },
           orderBy: { adoptedAt: 'asc' },
         })
@@ -75,12 +77,18 @@ export async function GET() {
       const dishAdoptions   = adoptionsByDish.get(d.id) ?? []
       const activeAdoptions = dishAdoptions.filter(a => a.status === 'active')
 
-      const totalSales = dishAdoptions.reduce((s, a) => s + a.sales.length, 0)
-      const earnings   = Number(
+      const totalSales  = dishAdoptions.reduce((s, a) => s + a.sales.length, 0)
+      const earnings    = Number(
         dishAdoptions
           .reduce((s, a) => s + a.sales.reduce((ss, sale) => ss + sale.creatorEarning, 0), 0)
           .toFixed(2)
       )
+      const grubanoFee  = Number(
+        dishAdoptions
+          .reduce((s, a) => s + a.sales.reduce((ss, sale) => ss + sale.grubanoCut, 0), 0)
+          .toFixed(2)
+      )
+      const earningsNet = Number((earnings - grubanoFee).toFixed(2))
 
       const adopters: DishAdopter[] = activeAdoptions.map(a => {
         const daysElapsed   = Math.floor((now.getTime() - a.adoptedAt.getTime()) / 86_400_000)
@@ -103,9 +111,11 @@ export async function GET() {
         cuisineType:    d.cuisineType,
         suggestedPrice: d.suggestedPrice,
         status:         d.status,
-        adoptions:      activeAdoptions.length,
+        adoptions:   activeAdoptions.length,
         totalSales,
         earnings,
+        grubanoFee,
+        earningsNet,
         adopters,
       }
     })
@@ -122,9 +132,11 @@ export async function GET() {
         followers:     creator.followers,
       },
       dishes,
-      totalEarnings: Number(dishes.reduce((s, d) => s + d.earnings,   0).toFixed(2)),
-      totalSales:    dishes.reduce((s, d) => s + d.totalSales,  0),
-      adoptions:     dishes.reduce((s, d) => s + d.adoptions,   0),
+      totalEarnings:   Number(dishes.reduce((s, d) => s + d.earnings,    0).toFixed(2)),
+      totalGrubanoFee: Number(dishes.reduce((s, d) => s + d.grubanoFee,  0).toFixed(2)),
+      totalNet:        Number(dishes.reduce((s, d) => s + d.earningsNet, 0).toFixed(2)),
+      totalSales:      dishes.reduce((s, d) => s + d.totalSales, 0),
+      adoptions:       dishes.reduce((s, d) => s + d.adoptions,  0),
     })
   } catch (err) {
     console.error('[GET /api/creators/my-dishes]', err)

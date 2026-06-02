@@ -36,7 +36,9 @@ export type CreatorHomeDish = {
   status:         string
   adoptions:      number        // count of DishAdoption rows with status='active'
   totalSales:     number        // count of DishSale rows across all adoptions
-  earnings:       number        // sum of DishSale.creatorEarning across all adoptions
+  earnings:       number        // sum of DishSale.creatorEarning (gross) — kept for compat
+  grubanoFee:     number        // sum of DishSale.grubanoCut  (= earnings × 20%)
+  earningsNet:    number        // earnings − grubanoFee  (what creator receives)
   adopters:       DishAdopter[] // active adoptions with brand + commitment details
 }
 
@@ -65,15 +67,19 @@ export type ChartDatum = {
 export type CreatorHomeData = {
   creator:             CreatorHomeCreator | null
   dishes:              CreatorHomeDish[]
-  dishEarningsTotal:   number
+  dishEarningsTotal:   number   // gross — kept for compat
+  dishGrubanoFeeTotal: number   // sum grubanoCut across all dish sales
+  dishNetTotal:        number   // dishEarningsTotal − dishGrubanoFeeTotal
   dishSalesTotal:      number
   dishAdoptionsTotal:  number
   audience:            CreatorHomeAudience
   referralRates:       ReferralRates | null
   chartData:            ChartDatum[]
-  earningsThisMonth:    number   // referral + recipe, 30-day rolling window
-  earningsLastMonth:    number   // referral + recipe, previous 30-day window
-  recipeEarnings30d:    number   // recipe-only total for the chart legend
+  earningsThisMonth:    number   // referral + recipe gross, 30-day rolling window
+  earningsLastMonth:    number   // referral + recipe gross, previous 30-day window
+  recipeEarnings30d:    number   // recipe gross, 30-day
+  recipeGrubanoFee30d:  number   // grubanoCut on recipe sales, 30-day
+  recipeNet30d:         number   // recipe net (gross − fee), 30-day
   referralEarnings30d:  number   // referral-only total for the chart legend
 }
 
@@ -115,11 +121,13 @@ export async function GET() {
 
     if (!creator) {
       return NextResponse.json({
-        creator:            null,
-        dishes:             [],
-        dishEarningsTotal:  0,
-        dishSalesTotal:     0,
-        dishAdoptionsTotal: 0,
+        creator:             null,
+        dishes:              [],
+        dishEarningsTotal:   0,
+        dishGrubanoFeeTotal: 0,
+        dishNetTotal:        0,
+        dishSalesTotal:      0,
+        dishAdoptionsTotal:  0,
         audience: {
           referralsCount:    0,
           ordersCount:       0,
@@ -132,6 +140,8 @@ export async function GET() {
         earningsThisMonth:    0,
         earningsLastMonth:    0,
         recipeEarnings30d:    0,
+        recipeGrubanoFee30d:  0,
+        recipeNet30d:         0,
         referralEarnings30d:  0,
       } satisfies CreatorHomeData)
     }
@@ -149,7 +159,7 @@ export async function GET() {
           where:   { creatorDishId: { in: dishIds } },
           include: {
             brand: { select: { name: true, emoji: true } },
-            sales: { select: { creatorEarning: true, createdAt: true } },
+            sales: { select: { creatorEarning: true, grubanoCut: true, createdAt: true } },
           },
           orderBy: { adoptedAt: 'asc' },
         })
@@ -157,7 +167,7 @@ export async function GET() {
 
     // Build per-dish lookup maps from adoptions
     const adoptionCountByDish = new Map<string, number>()   // active adoptions
-    const salesByDish         = new Map<string, { creatorEarning: number; createdAt: Date }[]>()
+    const salesByDish         = new Map<string, { creatorEarning: number; grubanoCut: number; createdAt: Date }[]>()
     const adoptersByDish      = new Map<string, DishAdopter[]>()
 
     for (const adoption of allAdoptions) {
@@ -184,8 +194,9 @@ export async function GET() {
 
     // ── Dish stats ────────────────────────────────────────────────────────────
     const dishes: CreatorHomeDish[] = creator.dishes.map(d => {
-      const dishSales = salesByDish.get(d.id) ?? []
-      const earnings  = dishSales.reduce((s, sale) => s + sale.creatorEarning, 0)
+      const dishSales  = salesByDish.get(d.id) ?? []
+      const earnings   = Number(dishSales.reduce((s, sale) => s + sale.creatorEarning, 0).toFixed(2))
+      const grubanoFee = Number(dishSales.reduce((s, sale) => s + sale.grubanoCut,      0).toFixed(2))
       return {
         id:             d.id,
         name:           d.name,
@@ -194,14 +205,18 @@ export async function GET() {
         status:         d.status,
         adoptions:      adoptionCountByDish.get(d.id) ?? 0,
         totalSales:     dishSales.length,
-        earnings:       Number(earnings.toFixed(2)),
+        earnings,
+        grubanoFee,
+        earningsNet:    Number((earnings - grubanoFee).toFixed(2)),
         adopters:       adoptersByDish.get(d.id) ?? [],
       }
     })
 
-    const dishEarningsTotal  = Number(dishes.reduce((s, d) => s + d.earnings, 0).toFixed(2))
-    const dishSalesTotal     = dishes.reduce((s, d) => s + d.totalSales, 0)
-    const dishAdoptionsTotal = dishes.reduce((s, d) => s + d.adoptions, 0)
+    const dishEarningsTotal   = Number(dishes.reduce((s, d) => s + d.earnings,    0).toFixed(2))
+    const dishGrubanoFeeTotal = Number(dishes.reduce((s, d) => s + d.grubanoFee,  0).toFixed(2))
+    const dishNetTotal        = Number(dishes.reduce((s, d) => s + d.earningsNet, 0).toFixed(2))
+    const dishSalesTotal      = dishes.reduce((s, d) => s + d.totalSales, 0)
+    const dishAdoptionsTotal  = dishes.reduce((s, d) => s + d.adoptions,  0)
 
     // ── Flatten sources for chart + KPIs ─────────────────────────────────────
     const allReferralOrders = creator.referrals.flatMap(r => r.orders)
@@ -220,6 +235,10 @@ export async function GET() {
     const dishEarningsNow  = allDishSales
       .filter(s => s.createdAt >= thirtyAgo)
       .reduce((s, sale) => s + sale.creatorEarning, 0)
+
+    const dishGrubanoFeeNow = allDishSales
+      .filter(s => s.createdAt >= thirtyAgo)
+      .reduce((s, sale) => s + sale.grubanoCut, 0)
 
     const dishEarningsPrev = allDishSales
       .filter(s => s.createdAt >= sixtyAgo && s.createdAt < thirtyAgo)
@@ -260,6 +279,8 @@ export async function GET() {
       creator: creatorInfo,
       dishes,
       dishEarningsTotal,
+      dishGrubanoFeeTotal,
+      dishNetTotal,
       dishSalesTotal,
       dishAdoptionsTotal,
       audience,
@@ -268,6 +289,8 @@ export async function GET() {
       earningsThisMonth,
       earningsLastMonth,
       recipeEarnings30d:   Number(dishEarningsNow.toFixed(2)),
+      recipeGrubanoFee30d: Number(dishGrubanoFeeNow.toFixed(2)),
+      recipeNet30d:        Number((dishEarningsNow - dishGrubanoFeeNow).toFixed(2)),
       referralEarnings30d: Number(refEarningsNow.toFixed(2)),
     } satisfies CreatorHomeData)
   } catch (err) {

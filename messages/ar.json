@@ -420,7 +420,8 @@
       "cuisinePlaceholder": "اختر...",
       "notCreatorTitle": "لست منشئاً بعد؟",
       "notCreatorDesc": "انضم إلى البرنامج وحقق الدخل من وصفاتك.",
-      "notCreatorCta": "انضم"
+      "notCreatorCta": "انضم",
+      "dishNetLabel": "صافي"
     },
     "recipes": {
       "title": "وصفاتي",
@@ -450,7 +451,11 @@
       "subtitle": "تفصيل أرباحك خلال الـ 30 يومًا الماضية.",
       "recipeLabel": "الوصفات",
       "affiliationLabel": "الإحالة",
-      "totalLabel": "الإجمالي"
+      "totalLabel": "الإجمالي",
+      "recipeGenerated": "ما أنتجته",
+      "recipeCommission": "عمولة Grubano (20%)",
+      "recipeNet": "ما تحصل عليه",
+      "affiliationNote": "هذا المبلغ صافٍ بالفعل · عمولة المنصة مدرجة في حساب Grubano"
     }
   },
   "eat": {

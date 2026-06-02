@@ -435,8 +435,14 @@ export default function CreatorDashboardHome() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-grubano-success">€{fmt(dish.earnings)}</p>
+                        <div
+                          className="text-right"
+                          title={`Généré €${fmt(dish.earnings)} · Commission Grubano −€${fmt(dish.grubanoFee ?? 0)} · Net €${fmt(dish.earningsNet ?? dish.earnings)}`}
+                        >
+                          <p className="text-[9px] text-grubano-ink-faint uppercase tracking-wide leading-none mb-0.5">
+                            {t('dishNetLabel')}
+                          </p>
+                          <p className="text-xs font-bold text-grubano-success">€{fmt(dish.earningsNet ?? dish.earnings)}</p>
                           <p className="text-[10px] text-grubano-ink-muted">{t('dishSales', { count: dish.totalSales })}</p>
                         </div>
                         {hasAdopters && (
@@ -608,41 +614,50 @@ export default function CreatorDashboardHome() {
           />
         </div>
 
-        {/* Top dishes by earnings */}
-        {dishes.filter(d => d.earnings > 0).length > 0 && (
+        {/* Top dishes by net earnings */}
+        {dishes.filter(d => (d.earningsNet ?? d.earnings) > 0).length > 0 && (
           <div className="mt-4 pt-3 border-t border-grubano-border">
             <p className="text-[10px] text-grubano-ink-muted uppercase tracking-wide font-semibold mb-2">
               {t('perfTopDishes')}
             </p>
             <div className="space-y-1.5">
               {dishes
-                .filter(d => d.earnings > 0)
-                .sort((a, b) => b.earnings - a.earnings)
+                .filter(d => (d.earningsNet ?? d.earnings) > 0)
+                .sort((a, b) => (b.earningsNet ?? b.earnings) - (a.earningsNet ?? a.earnings))
                 .slice(0, 3)
-                .map((dish, i) => (
-                  <div key={dish.id} className="flex items-center gap-2">
-                    <span className="text-[10px] text-grubano-ink-faint w-3">{i + 1}.</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className="text-xs font-medium truncate">{dish.name}</p>
-                        <p className="text-xs font-bold text-grubano-success ml-2 shrink-0">
-                          €{fmt(dish.earnings)}
-                        </p>
-                      </div>
-                      <div
-                        className="h-1 rounded-full bg-grubano-tint overflow-hidden"
-                        title={`${dish.earnings.toFixed(2)}€`}
-                      >
+                .map((dish, i) => {
+                  const topNet = dishes
+                    .map(d => d.earningsNet ?? d.earnings)
+                    .reduce((m, v) => Math.max(m, v), 0)
+                  const netVal = dish.earningsNet ?? dish.earnings
+                  return (
+                    <div key={dish.id} className="flex items-center gap-2">
+                      <span className="text-[10px] text-grubano-ink-faint w-3">{i + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="text-xs font-medium truncate">{dish.name}</p>
+                          <p
+                            className="text-xs font-bold text-grubano-success ml-2 shrink-0"
+                            title={`Généré €${fmt(dish.earnings)} · Commission −€${fmt(dish.grubanoFee ?? 0)} · Net €${fmt(netVal)}`}
+                          >
+                            €{fmt(netVal)}
+                          </p>
+                        </div>
                         <div
-                          className="h-full bg-grubano-primary rounded-full transition-all duration-500"
-                          style={{
-                            width: `${Math.min(100, (dish.earnings / (dishes[0]?.earnings || 1)) * 100)}%`,
-                          }}
-                        />
+                          className="h-1 rounded-full bg-grubano-tint overflow-hidden"
+                          title={`Net €${fmt(netVal)} · Généré €${fmt(dish.earnings)}`}
+                        >
+                          <div
+                            className="h-full bg-grubano-primary rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(100, (netVal / (topNet || 1)) * 100)}%`,
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
             </div>
           </div>
         )}

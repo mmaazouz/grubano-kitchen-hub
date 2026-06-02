@@ -420,7 +420,8 @@
       "cuisinePlaceholder": "Scegli...",
       "notCreatorTitle": "Non sei ancora creatore?",
       "notCreatorDesc": "Unisciti al programma e monetizza le tue ricette.",
-      "notCreatorCta": "Unisciti"
+      "notCreatorCta": "Unisciti",
+      "dishNetLabel": "Netto"
     },
     "recipes": {
       "title": "Le mie ricette",
@@ -450,7 +451,11 @@
       "subtitle": "Ripartizione dei tuoi guadagni negli ultimi 30 giorni.",
       "recipeLabel": "Ricette",
       "affiliationLabel": "Affiliazione",
-      "totalLabel": "Totale"
+      "totalLabel": "Totale",
+      "recipeGenerated": "Hai generato",
+      "recipeCommission": "Commissione Grubano (20%)",
+      "recipeNet": "Ricevi",
+      "affiliationNote": "Importo già netto · la commissione della piattaforma è inclusa nel calcolo Grubano"
     }
   },
   "eat": {
