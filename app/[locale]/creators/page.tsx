@@ -12,6 +12,18 @@ const FALLBACK_LEADERBOARD = [
   { rank: 5, name: 'Leila M.',  dishes: 2, totalSales: 280,  earnings: 560  },
 ]
 
+async function getCreatorStats() {
+  try {
+    const [activeCount, approvedDishCount] = await Promise.all([
+      prisma.creator.count(),
+      prisma.creatorDish.count({ where: { status: { in: ['approved', 'live'] } } }),
+    ])
+    return { activeCount, approvedDishCount }
+  } catch {
+    return { activeCount: 0, approvedDishCount: 0 }
+  }
+}
+
 async function getLeaderboard() {
   try {
     const creators = await prisma.creator.findMany({
@@ -39,9 +51,10 @@ async function getLeaderboard() {
 
 export default async function CreatorsPage({ params: { locale } }: { params: { locale: string } }) {
   setRequestLocale(locale)
-  const [t, leaderboard] = await Promise.all([
+  const [t, leaderboard, stats] = await Promise.all([
     getTranslations('creators'),
     getLeaderboard(),
+    getCreatorStats(),
   ])
 
   return (
@@ -62,9 +75,9 @@ export default async function CreatorsPage({ params: { locale } }: { params: { l
 
         <div className="grid grid-cols-3 gap-2 mb-5">
           {([
-            { label: t('statActive'),     value: '120+' },
-            { label: t('statCommission'), value: '4%'   },
-            { label: t('statDishes'),     value: '340+' },
+            { label: t('statActive'),     value: String(stats.activeCount)        },
+            { label: t('statCommission'), value: '4%'                             },
+            { label: t('statDishes'),     value: String(stats.approvedDishCount)  },
           ] as const).map(({ label, value }) => (
             <div key={label} className="rounded-grubano-lg bg-white/20 p-2.5 text-center">
               <p className="text-base font-bold">{value}</p>

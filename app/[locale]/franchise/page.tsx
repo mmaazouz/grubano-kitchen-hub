@@ -1,12 +1,13 @@
-'use client'
-
-import { useState, useEffect } from 'react'
-import { useTranslations } from 'next-intl'
+import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { CheckCircle2, Lock, ChevronRight, LayoutDashboard } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Badge, EmptyState } from '@/components/design-system'
+import { prisma } from '@/lib/prisma'
+import { RevenueCalculator } from './RevenueCalculator'
 
-type Brand = {
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type BrandRow = {
   id:          string
   name:        string
   cuisine:     string
@@ -17,42 +18,114 @@ type Brand = {
   royaltyRate: number
   citiesAvail: string[]
   available:   boolean
-  topDishes?:  string[]
 }
 
-export default function FranchisePage() {
-  const t = useTranslations('franchise')
+type FranchiseStats = {
+  brandCount:  number
+  avgRevenue:  number | null   // null → no data → show "—"
+  posCount:    number
+}
 
-  const [brands,  setBrands]  = useState<Brand[]>([])
-  const [loading, setLoading] = useState(true)
-  const [orders,  setOrders]  = useState(80)
-  const avgTicket             = 14
+// ── Server data helpers ────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    fetch('/api/franchise/brands')
-      .then(r => r.json())
-      .then(d => { setBrands(d.brands ?? []); setLoading(false) })
-      .catch(() => { setLoading(false) })
-  }, [])
+const DEFAULT_ROYALTY = 0.06
 
-  const monthlyRevenue = orders * 30 * avgTicket
-  const royalties      = monthlyRevenue * 0.06
-  const netRevenue     = monthlyRevenue - royalties
+async function getFranchiseStats(): Promise<FranchiseStats> {
+  try {
+    const [brandCount, aggResult, posCount] = await Promise.all([
+      prisma.brand.count({ where: { openToFranchise: true } }),
+      prisma.brand.aggregate({
+        where: { openToFranchise: true },
+        _avg:  { avgMonthlyRevenue: true },
+      }),
+      prisma.pointOfSale.count(),
+    ])
+    const avg = aggResult._avg.avgMonthlyRevenue
+    return {
+      brandCount,
+      avgRevenue: avg && avg > 0 ? avg : null,
+      posCount,
+    }
+  } catch {
+    return { brandCount: 0, avgRevenue: null, posCount: 0 }
+  }
+}
+
+async function getBrands(): Promise<BrandRow[]> {
+  try {
+    const dbBrands = await prisma.brand.findMany({
+      where:   { openToFranchise: true },
+      include: {
+        menuItems:    { take: 4, select: { name: true } },
+        pointsOfSale: { select: { id: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    })
+    return dbBrands.map(b => ({
+      id:          b.id,
+      name:        b.name,
+      cuisine:     b.cuisineType       ?? '',
+      emoji:       b.emoji,
+      description: b.tagline          ?? '',
+      avgRevenue:  b.avgMonthlyRevenue ?? 0,
+      setupCost:   b.setupFee         ?? 0,
+      royaltyRate: b.royaltyPct       ?? DEFAULT_ROYALTY,
+      citiesAvail: (Array.isArray(b.franchiseZones) ? b.franchiseZones : []) as string[],
+      available:   b.franchiseStatus !== 'full',
+    }))
+  } catch {
+    return []
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Format average monthly revenue as "X XXX€". Rounds to nearest hundred. */
+function fmtRevenue(n: number): string {
+  return `${Math.round(n).toLocaleString('fr-FR')}€`
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
+export default async function FranchisePage({
+  params: { locale },
+}: {
+  params: { locale: string }
+}) {
+  setRequestLocale(locale)
+
+  const [t, stats, brands] = await Promise.all([
+    getTranslations('franchise'),
+    getFranchiseStats(),
+    getBrands(),
+  ])
+
+  // Stat banner values — honest, from DB
+  const statValues = [
+    {
+      label: t('statBrands'),
+      value: String(stats.brandCount),
+    },
+    {
+      label: t('statAvgRevenue'),
+      value: stats.avgRevenue !== null ? fmtRevenue(stats.avgRevenue) : '—',
+    },
+    {
+      label: t('statSatisfaction'),   // repurposed as "Points de vente"
+      value: String(stats.posCount),
+    },
+  ]
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto">
 
-      {/* Hero */}
+      {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <div className="rounded-grubano-xl bg-gradient-to-br from-grubano-primary to-grubano-primary/70 p-6 mb-5 text-white">
         <h1 className="text-2xl font-display font-bold mb-2">{t('heroTitle')}</h1>
         <p className="text-sm opacity-90 mb-4">{t('heroSubtitle')}</p>
 
         <div className="grid grid-cols-3 gap-2 mb-5">
-          {([
-            { label: t('statBrands'),      value: '12'     },
-            { label: t('statAvgRevenue'),  value: '7 800€' },
-            { label: t('statSatisfaction'), value: '96%'   },
-          ] as const).map(({ label, value }) => (
+          {statValues.map(({ label, value }) => (
             <div key={label} className="rounded-grubano-lg bg-white/15 p-3 text-center">
               <p className="text-lg font-bold">{value}</p>
               <p className="text-[10px] opacity-80">{label}</p>
@@ -68,7 +141,7 @@ export default function FranchisePage() {
         </Link>
       </div>
 
-      {/* Already franchisee banner */}
+      {/* ── Already franchisee banner ─────────────────────────────────────── */}
       <div className="mb-6 rounded-grubano-xl border border-grubano-primary/30 bg-grubano-primary/5 p-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-bold">{t('alreadyFranchisee')}</p>
@@ -81,7 +154,7 @@ export default function FranchisePage() {
         </Link>
       </div>
 
-      {/* Brands grid */}
+      {/* ── Brands grid ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-base font-display font-bold">{t('brandsTitle')}</h2>
         <span className="text-xs text-grubano-ink-muted">
@@ -90,7 +163,7 @@ export default function FranchisePage() {
       </div>
 
       <div className="space-y-3 mb-8">
-        {!loading && brands.length === 0 && (
+        {brands.length === 0 && (
           <EmptyState
             emoji={<span className="text-4xl">🏗️</span>}
             title={t('brandsEmpty')}
@@ -119,8 +192,8 @@ export default function FranchisePage() {
             <div className="grid grid-cols-3 gap-2 mb-3">
               {([
                 { label: t('brandLabelRevenue'),   value: `${(brand.avgRevenue / 1000).toFixed(1)}k€/mois` },
-                { label: t('brandLabelSetup'),     value: `${brand.setupCost.toLocaleString('fr-FR')}€` },
-                { label: t('brandLabelRoyalties'), value: `${(brand.royaltyRate * 100).toFixed(0)}%` },
+                { label: t('brandLabelSetup'),     value: `${brand.setupCost.toLocaleString('fr-FR')}€`    },
+                { label: t('brandLabelRoyalties'), value: `${(brand.royaltyRate * 100).toFixed(0)}%`       },
               ] as const).map(({ label, value }) => (
                 <div key={label} className="rounded-grubano-md bg-grubano-bg px-2 py-1.5 text-center">
                   <p className="text-xs font-bold">{value}</p>
@@ -152,49 +225,10 @@ export default function FranchisePage() {
         ))}
       </div>
 
-      {/* Revenue calculator */}
-      <h2 className="text-base font-display font-bold mb-3">{t('calcTitle')}</h2>
-      <Card elevation="sm" padding="md" className="mb-8">
-        <p className="text-xs text-grubano-ink-muted mb-4">{t('calcSubtitle')}</p>
+      {/* ── Revenue calculator (client island) ────────────────────────────── */}
+      <RevenueCalculator />
 
-        <div className="mb-5">
-          <div className="flex justify-between mb-2">
-            <label className="text-xs font-semibold">{t('calcOrdersLabel')}</label>
-            <span className="text-sm font-bold text-grubano-primary">{orders}</span>
-          </div>
-          <input
-            type="range"
-            min={20}
-            max={200}
-            step={5}
-            value={orders}
-            onChange={e => setOrders(Number(e.target.value))}
-            className="w-full accent-grubano-primary h-2 cursor-pointer"
-          />
-          <div className="flex justify-between text-[10px] text-grubano-ink-muted mt-1">
-            <span>{t('calcMin')}</span>
-            <span>{t('calcMax')}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          {([
-            { label: t('calcGross'),    value: `${(monthlyRevenue / 1000).toFixed(1)}k€`, color: ''                        },
-            { label: t('calcRoyalties'), value: `${(royalties / 1000).toFixed(1)}k€`,     color: 'text-grubano-danger'     },
-            { label: t('calcNet'),      value: `${(netRevenue / 1000).toFixed(1)}k€`,     color: 'text-grubano-success'    },
-          ] as const).map(({ label, value, color }) => (
-            <div key={label} className="rounded-grubano-md bg-grubano-bg p-3 text-center">
-              <p className={`text-sm font-bold ${color}`}>{value}</p>
-              <p className="text-[10px] text-grubano-ink-muted mt-0.5">{label}</p>
-            </div>
-          ))}
-        </div>
-        <p className="text-[10px] text-grubano-ink-muted mt-3 text-center">
-          {t('calcFootnote', { ticket: avgTicket })}
-        </p>
-      </Card>
-
-      {/* How it works */}
+      {/* ── How it works ──────────────────────────────────────────────────── */}
       <h2 className="text-base font-display font-bold mb-3">{t('howTitle')}</h2>
       <div className="space-y-3">
         {([
