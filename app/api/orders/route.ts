@@ -4,6 +4,9 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
+// Round money to 2 decimals. Used by the referral attribution logic below.
+const round2 = (n: number) => Math.round(n * 100) / 100
+
 // ── Validation ────────────────────────────────────────────────────────────────
 
 const orderItemSchema = z.object({
@@ -19,6 +22,10 @@ const createOrderSchema = z.object({
   items:           z.array(orderItemSchema).min(1),
   deliveryAddress: z.string().min(5).max(200),
   paymentMethod:   z.enum(['card', 'cash', 'wallet']).default('card'),
+  // brique 5B: optional manual referral code. The `grubano_ref` cookie is the
+  // primary source; this body field is a future-proof fallback for manual entry.
+  // .optional() keeps the existing request contract intact.
+  referralCode:    z.string().optional(),
 })
 
 // ── Uber Direct mock ──────────────────────────────────────────────────────────
@@ -53,9 +60,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Restaurant introuvable ou fermé' }, { status: 404 })
     }
 
-    // Calculate totals
+    // Calculate totals. minOrder is enforced on the PRE-discount subtotal: the
+    // customer genuinely ordered enough, so the referral welcome discount (5B)
+    // applied below is a gift on top and must never retroactively block the order.
     const subtotal = data.items.reduce((sum, item) => sum + item.price * item.qty, 0)
-    const total    = subtotal + restaurant.deliveryFee
 
     if (subtotal < restaurant.minOrder) {
       return NextResponse.json(
@@ -64,10 +72,73 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Points: 1 point per euro spent (rounded down)
+    // ── Referral attribution — RESOLUTION phase (brique 5B) ────────────────────
+    // Resolve the referral BEFORE creating the Order so the welcome discount is
+    // baked into the stored total (the customer pays the right amount). The actual
+    // Referral / ReferralOrder WRITES happen AFTER the Order, best-effort (same
+    // rule as the 5C DishSale block). These resolution reads are themselves
+    // wrapped in try/catch: a referral hiccup must never block checkout.
+    //
+    // GRUBANO_FEE_PCT mirrors scripts/seed-demo-data.js (Grubano's commission on
+    // a basket) so the checkout freezes grubanoFee with the same rate the seed and
+    // creator reporting assume.
+    const GRUBANO_FEE_PCT = 0.10
+    const ref = {
+      code:                    null as string | null, // Order.referralCode — set whenever a valid creator code is seen, regardless of expiry
+      discount:                0,                      // welcome discount, FIRST referred order only
+      createReferralCreatorId: null as string | null, // CAS 1 → create a new Referral with this creator
+      reuseReferralId:         null as string | null,  // CAS 2 (valid window) → reuse this referral for the ReferralOrder
+      expiredReferralId:       null as string | null,  // CAS 2 (expired window) → deactivate, no payout
+      commissionPct:           0.22,                    // ReferralConfig.commissionPctOfGrubanoFee
+      durationDays:            90,                      // ReferralConfig.durationDays
+    }
+    try {
+      const rawCode = (data.referralCode ?? req.cookies.get('grubano_ref')?.value ?? '').trim().toUpperCase()
+      if (rawCode) {
+        const creator = await prisma.creator.findFirst({ where: { referralCode: rawCode } })
+        // Anti-self-referral: a creator cannot refer themselves. The Creator↔
+        // Operator link is by EMAIL (there is no Creator.operatorId column), so we
+        // compare the buyer's token email to the creator's email. If the token
+        // carries no email we skip the self-check (best-effort) — to be refined if
+        // a direct Creator→Operator FK is ever added.
+        const buyerEmail = typeof token.email === 'string' ? token.email.toLowerCase() : null
+        const isSelf = !!creator && !!buyerEmail && creator.email.toLowerCase() === buyerEmail
+        if (creator && !isSelf) {
+          const cfg = await prisma.referralConfig.findFirst({ where: { active: true } })
+          ref.commissionPct = cfg?.commissionPctOfGrubanoFee ?? 0.22
+          ref.durationDays  = cfg?.durationDays ?? 90
+          const discountPct = cfg?.customerDiscountPct ?? 0.10
+          const discountCap = cfg?.customerDiscountCapEur ?? 5
+          ref.code = rawCode // tag the order for reporting, independent of expiry
+
+          // Binding is per-customer: once a customer is linked to a creator via
+          // first-touch, we stay on that link while it is active.
+          const existing = await prisma.referral.findFirst({
+            where: { customerId: token.sub!, active: true },
+          })
+          if (!existing) {
+            // CAS 1 — first referred order for this customer → bind + discount.
+            ref.createReferralCreatorId = creator.id
+            ref.discount = round2(Math.min(subtotal * discountPct, discountCap))
+          } else if (existing.expiresAt > new Date()) {
+            // CAS 2 — window still open → reuse the binding, NO discount.
+            ref.reuseReferralId = existing.id
+          } else {
+            // CAS 2 — window expired → no payout, no discount (close it later).
+            ref.expiredReferralId = existing.id
+          }
+        }
+      }
+    } catch (refErr) {
+      console.error('[POST /api/orders] referral resolution failed (order proceeds normally):', refErr)
+    }
+
+    // Apply the welcome discount to the paid total (clamped ≥ 0).
+    const total        = Math.max(0, round2(subtotal + restaurant.deliveryFee - ref.discount))
+    // Points: 1 point per euro actually spent (rounded down).
     const pointsEarned = Math.floor(total)
 
-    // Create order in DB
+    // Create order in DB (referralCode stored for reporting; 5B writes follow).
     const order = await prisma.order.create({
       data: {
         consumerId:      token.sub!,
@@ -79,6 +150,7 @@ export async function POST(req: NextRequest) {
         deliveryAddress: data.deliveryAddress,
         paymentMethod:   data.paymentMethod,
         pointsEarned,
+        referralCode:    ref.code,
         status:          'received',
       },
     })
@@ -177,6 +249,54 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/orders] DishSale creation failed (order still valid):', saleErr)
     }
 
+    // ── Referral writes (brique 5B) ────────────────────────────────────────────
+    // Best-effort, AFTER the Order, and fully independent of the 5C DishSale block
+    // above: a single order may legitimately produce BOTH a DishSale and a
+    // ReferralOrder. Amounts are FROZEN at order time, never recomputed from config
+    // on read (same rule as DishSale / the seed). A failure here is logged and
+    // swallowed — the Order stays valid.
+    try {
+      // Expired window → close the binding, no payout.
+      if (ref.expiredReferralId) {
+        await prisma.referral.update({
+          where: { id: ref.expiredReferralId },
+          data:  { active: false },
+        })
+      }
+
+      // CAS 1 → create the customer↔creator binding with a FROZEN expiresAt.
+      let referralId = ref.reuseReferralId
+      if (ref.createReferralCreatorId) {
+        const now = new Date()
+        const created = await prisma.referral.create({
+          data: {
+            creatorId:  ref.createReferralCreatorId,
+            customerId: token.sub!,
+            codeUsed:   ref.code!,
+            startedAt:  now,
+            expiresAt:  new Date(now.getTime() + ref.durationDays * 24 * 60 * 60 * 1000),
+            active:     true,
+          },
+        })
+        referralId = created.id
+      }
+
+      // CAS 1 or CAS 2-valid → one ReferralOrder (orderId @unique → anti-doublon).
+      if (referralId) {
+        const exists = await prisma.referralOrder.findUnique({ where: { orderId: order.id } })
+        if (!exists) {
+          const grubanoFee     = round2(subtotal * GRUBANO_FEE_PCT)     // FROZEN
+          const creatorEarning = round2(grubanoFee * ref.commissionPct) // FROZEN
+          await prisma.referralOrder.create({
+            data: { referralId, orderId: order.id, grubanoFee, creatorEarning },
+          })
+        }
+      }
+    } catch (refErr) {
+      // Never break checkout because of referral bookkeeping.
+      console.error('[POST /api/orders] referral writes failed (order still valid):', refErr)
+    }
+
     return NextResponse.json(
       {
         orderId:           updated.id,
@@ -185,6 +305,7 @@ export async function POST(req: NextRequest) {
         trackingUrl:       dispatch.trackingUrl,
         total:             updated.total,
         pointsEarned,
+        discount:          ref.discount, // 5B: welcome discount applied (0 if none)
       },
       { status: 201 },
     )
