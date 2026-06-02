@@ -24,6 +24,17 @@
  *
  * Middleware: the next-intl matcher (middleware.ts) is `(!api|_next|_vercel|.*\..*).*` —
  * /api/* is excluded, so this handler is reached directly with no locale prefix.
+ *
+ * ── Fix (relative Location) ─────────────────────────────────────────────────
+ * Behind the o2switch / Passenger reverse-proxy, `req.url` carries the INTERNAL
+ * host (e.g. muscadier.o2switch.net:3000), not the public domain. Building
+ * `new URL('/x', req.url)` produced absolute redirects pointing at the internal
+ * host → ERR_CONNECTION_TIMED_OUT for the customer + the attribution cookie
+ * never got applied. We now return a manual NextResponse with a **relative**
+ * `Location` header so the browser resolves it against the public domain in
+ * the address bar (works behind any reverse proxy, depends on no env var).
+ * `res.cookies.set()` still works on a hand-rolled NextResponse — Next's
+ * cookies layer writes to the response headers, not to redirect-only helpers.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -43,12 +54,24 @@ function pickLocale(req: NextRequest): string {
   return defaultLocale
 }
 
+/**
+ * Build a 307 with a RELATIVE Location. The browser resolves it against the
+ * public URL in the address bar — sidesteps the internal-host issue caused
+ * by Passenger / o2switch's reverse-proxy.
+ */
+function redirectRelative(path: string): NextResponse {
+  return new NextResponse(null, {
+    status: 307,
+    headers: { Location: path },
+  })
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { code: string } },
 ) {
   const locale = pickLocale(req)
-  const homeUrl = new URL(`/${locale}/eat`, req.url)
+  const homePath = `/${locale}/eat`
 
   // 1. Normalise the URL slug. Codes are usually stored upper-case ("DEMO20").
   let raw = ''
@@ -58,7 +81,7 @@ export async function GET(
     raw = (params.code ?? '').trim()
   }
   if (!raw) {
-    return NextResponse.redirect(homeUrl, { status: 307 })
+    return redirectRelative(homePath)
   }
   const upper = raw.toUpperCase()
   const lower = raw.toLowerCase()
@@ -84,20 +107,19 @@ export async function GET(
   } catch (err) {
     // DB hiccup → degrade gracefully (no cookie, just send the user home).
     console.error('[GET /api/ref/:code] lookup failed', err)
-    return NextResponse.redirect(homeUrl, { status: 307 })
+    return redirectRelative(homePath)
   }
 
   // 3. Unknown / no canonical referralCode → no attribution, but never block.
   if (!creator || !creator.referralCode) {
-    return NextResponse.redirect(homeUrl, { status: 307 })
+    return redirectRelative(homePath)
   }
 
   // 4. First-touch: keep an existing attribution if any.
   const existing = req.cookies.get(COOKIE_NAME)?.value
-  const res = NextResponse.redirect(homeUrl, { status: 307 })
   if (existing && existing.trim().length > 0) {
     // Already attributed — leave the cookie untouched.
-    return res
+    return redirectRelative(homePath)
   }
 
   // 5. Resolve cookie lifetime from ReferralConfig (single row).
@@ -111,7 +133,9 @@ export async function GET(
     /* fallback already in place */
   }
 
-  // 6. Drop the attribution cookie (canonical referralCode, upper-case).
+  // 6. Drop the attribution cookie (canonical referralCode, upper-case)
+  //    on the same relative-redirect response.
+  const res = redirectRelative(homePath)
   res.cookies.set({
     name:    COOKIE_NAME,
     value:   creator.referralCode, // stored canonical, e.g. "DEMO20"
