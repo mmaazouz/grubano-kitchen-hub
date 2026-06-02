@@ -436,7 +436,7 @@ export default function CreatorDashboardHome() {
                       </div>
                       <div className="flex items-center gap-1.5 ml-2 shrink-0">
                         <div className="text-right">
-                          <p className="text-xs font-bold text-grubano-success">€{dish.earnings.toFixed(0)}</p>
+                          <p className="text-xs font-bold text-grubano-success">€{fmt(dish.earnings)}</p>
                           <p className="text-[10px] text-grubano-ink-muted">{t('dishSales', { count: dish.totalSales })}</p>
                         </div>
                         {hasAdopters && (
@@ -626,7 +626,7 @@ export default function CreatorDashboardHome() {
                       <div className="flex items-center justify-between mb-0.5">
                         <p className="text-xs font-medium truncate">{dish.name}</p>
                         <p className="text-xs font-bold text-grubano-success ml-2 shrink-0">
-                          €{dish.earnings.toFixed(0)}
+                          €{fmt(dish.earnings)}
                         </p>
                       </div>
                       <div
