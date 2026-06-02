@@ -191,6 +191,51 @@ jobs:
             touch ~/app.grubano.com/tmp/restart.txt
             echo "✅ Staging restarted"
 
+      # ── Trigger Passenger restart via FTPS (SSH-independent fallback) ─────────
+      # Belt-and-suspenders alongside the two SSH `touch tmp/restart.txt` calls
+      # above. Diagnostic (1 jun 2026, last 8 staging runs): SSH steps ALL report
+      # success, so the SSH-blocked-by-o2switch hypothesis is not the current
+      # cause of the recurring "deploy lands without CSS until manual restart"
+      # symptom — but the SSH `touch` may run without effectively propagating to
+      # Passenger's smart-spawner (subtle CWD / nodevenv-activate / fs sync
+      # quirk), and we deliberately re-trigger the restart over a completely
+      # independent channel (raw FTPS curl, not appleboy/ssh-action) to remove
+      # one whole class of risk.
+      #
+      # Important: this runs AFTER the main FTP sync AND AFTER both SSH steps.
+      # That guarantees the restart.txt mtime is bumped LAST — so the new
+      # Passenger process picks up a fully-flushed deploy, not a partial one.
+      # tmp/restart.txt is deliberately NOT included in deploy-temp/, so the
+      # main FTP step never touches it at random timing.
+      #
+      # Production workflow is intentionally NOT changed yet: this is staging-
+      # only until two consecutive deploys confirm the symptom is gone with no
+      # manual cPanel touch.
+      - name: Trigger Passenger restart via FTPS (independent of SSH)
+        if: success()
+        continue-on-error: true
+        run: |
+          set -e
+          STAMP="restart from run ${{ github.run_id }} at $(date -u +%FT%TZ) sha ${{ github.sha }}"
+          MARKER=$(mktemp)
+          printf '%s\n' "$STAMP" > "$MARKER"
+          echo "Uploading restart trigger:"
+          echo "  $STAMP"
+          # --ssl-reqd     : require explicit FTPS (AUTH TLS) — matches the main FTP step's `protocol: ftps`
+          # --ftp-create-dirs : create tmp/ if Passenger never wrote it
+          # --user / URL host are taken from the same secrets the main FTP step uses;
+          #   O2SWITCH_HOST is the FTP hostname (ftp.deyi0010.odns.fr), not the SSH IP.
+          curl --fail --silent --show-error \
+               --ssl-reqd \
+               --ftp-create-dirs \
+               --connect-timeout 30 \
+               --max-time 60 \
+               --upload-file "$MARKER" \
+               --user "${{ secrets.O2SWITCH_FTP_USER }}:${{ secrets.O2SWITCH_FTP_PASS }}" \
+               "ftp://${{ secrets.O2SWITCH_HOST }}/app.grubano.com/tmp/restart.txt"
+          rm -f "$MARKER"
+          echo "OK — tmp/restart.txt uploaded via FTPS; Passenger smart-spawner should reload."
+
       - name: Health check
         run: |
           sleep 25
