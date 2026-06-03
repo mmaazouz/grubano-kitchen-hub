@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { makeVerifyCode } from '@/lib/verify-code'
 
 const dishConceptSchema = z.object({
   name:        z.string().min(1),
@@ -37,7 +38,11 @@ export async function POST(req: Request) {
       },
     })
 
-    return NextResponse.json({ application }, { status: 201 })
+    // The applicant proves channel ownership by pasting this code into their
+    // YouTube description; POST /api/creators/apply/[id]/verify re-derives it.
+    const verifyCode = makeVerifyCode(application.id)
+
+    return NextResponse.json({ applicationId: application.id, verifyCode }, { status: 201 })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
