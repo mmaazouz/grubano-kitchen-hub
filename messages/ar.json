@@ -880,5 +880,32 @@
     "loading": "جارٍ التحميل…",
     "emptyTitle": "لا طلبات في هذه الفترة",
     "emptyDesc": "ستظهر آخر 30 يومًا هنا بمجرد استلام أولى طلباتك."
+  },
+  "brands": {
+    "title": "العلامات",
+    "conceptsActive": "{count} مفاهيم نشطة",
+    "perfTitle": "الأداء العام",
+    "perfSubtitle": "كل العلامات مجتمعة · آخر 30 يومًا",
+    "perfRevenue": "الإيرادات لكل العلامات",
+    "perfOrders": "الطلبات",
+    "filterGrubano": "Grubano",
+    "filterAllPlatforms": "كل المنصات",
+    "statusAll": "الحالة: الكل",
+    "statusActive": "نشطة",
+    "statusPaused": "متوقفة",
+    "sortMost": "أكثر الأطباق",
+    "sortLeast": "أقل الأطباق",
+    "proBanner": "فعّل Grubano Pro لرؤية UberEats وDeliveroo وJust Eat",
+    "proPrice": "29€/شهر",
+    "darkKitchen": "مطبخ مظلم · Grubano",
+    "badgeActive": "نشطة",
+    "badgePaused": "متوقفة",
+    "statMenu": "أطباق القائمة",
+    "statAdopted": "أطباق مُعتمدة",
+    "addBrand": "إضافة علامة",
+    "loading": "جارٍ التحميل…",
+    "emptyTitle": "لا توجد علامات",
+    "emptyDesc": "ليس لديك أي علامة بعد. أضف مفهومك الأول للبدء.",
+    "emptyFiltered": "لا توجد علامة تطابق هذا الفلتر."
   }
 }

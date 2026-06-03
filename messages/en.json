@@ -880,5 +880,32 @@
     "loading": "Loading…",
     "emptyTitle": "No orders in this period",
     "emptyDesc": "Your last 30 days will show here once you receive your first orders."
+  },
+  "brands": {
+    "title": "Brands",
+    "conceptsActive": "{count} active concepts",
+    "perfTitle": "Overall performance",
+    "perfSubtitle": "All brands combined · last 30 days",
+    "perfRevenue": "Revenue, all brands combined",
+    "perfOrders": "Orders",
+    "filterGrubano": "Grubano",
+    "filterAllPlatforms": "All platforms",
+    "statusAll": "Status: All",
+    "statusActive": "Active",
+    "statusPaused": "Paused",
+    "sortMost": "Most dishes",
+    "sortLeast": "Fewest dishes",
+    "proBanner": "Activate Grubano Pro to see UberEats, Deliveroo & Just Eat",
+    "proPrice": "€29/mo",
+    "darkKitchen": "Dark kitchen · Grubano",
+    "badgeActive": "Active",
+    "badgePaused": "Paused",
+    "statMenu": "Menu dishes",
+    "statAdopted": "Adopted dishes",
+    "addBrand": "Add a brand",
+    "loading": "Loading…",
+    "emptyTitle": "No brands",
+    "emptyDesc": "You don't have any brand yet. Add your first concept to get started.",
+    "emptyFiltered": "No brand matches this filter."
   }
 }
