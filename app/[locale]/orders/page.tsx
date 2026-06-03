@@ -1,92 +1,230 @@
-'use client'
+import { getServerSession } from 'next-auth'
+import { getTranslations, setRequestLocale } from 'next-intl/server'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { EmptyState } from '@/components/design-system'
+import OrdersClient, {
+  type OrderView,
+  type OrderItemView,
+  type BrandView,
+  type MenuItemView,
+  type RestaurantView,
+} from '@/components/orders/OrdersClient'
 
-import Link from 'next/link'
-import { useState } from 'react'
-import { Volume2, Pause, Filter, Lock } from 'lucide-react'
-import { Card } from '@/components/grubano/Card'
-import { SectionTitle } from '@/components/grubano/SectionTitle'
+// Per-session, per-current-time data → never prerender, always run on demand.
+export const dynamic = 'force-dynamic'
 
-const ORDERS = [
-  { id: '#GR-2241', plat: 'Grubano',   brand: 'Gnocchi Bar',  total: 24.5, fee: 5,  time: 'il y a 2 min',  tone: 'primary',  premium: false },
-  { id: '#GR-2240', plat: 'Grubano',   brand: 'Pasta Fresca', total: 31.2, fee: 5,  time: 'il y a 5 min',  tone: 'success',  premium: false },
-  { id: '#UE-8421', plat: 'UberEats',  brand: 'Gnocchi Bar',  total: 24.5, fee: 25, time: 'il y a 6 min',  tone: 'primary',  premium: true  },
-  { id: '#DR-9183', plat: 'Deliveroo', brand: 'Rollix',        total: 18.9, fee: 30, time: 'il y a 8 min',  tone: 'primary',  premium: true  },
-  { id: '#JE-4421', plat: 'Just Eat',  brand: 'Pasta Fresca', total: 31.2, fee: 22, time: 'il y a 9 min',  tone: 'primary',  premium: true  },
-] as const
+// Raw cart-line option shape persisted in Order.items[].options[0]
+// (see lib/eat-cart.ts → EatCartItemOptions).
+interface RawItemOptions {
+  parentDishId?: string
+  size?:         string
+  supplements?:  { name?: string; price?: number }[]
+  exclusions?:   string[]
+  note?:         string
+}
+interface RawOrderItem {
+  itemId?:  string
+  name?:    string
+  qty?:     number
+  price?:   number
+  options?: RawItemOptions[]
+}
 
-const BRANDS = ['Toutes', ...Array.from(new Set(ORDERS.map(o => o.brand)))]
+// Resolve the "real" menu-item id behind a (possibly composite) line id, so we
+// can attribute an order line back to the brand that owns the dish:
+//   options[0].parentDishId  (set when the line carries customisations)
+//   otherwise itemId before "::"  (the size/extras signature separator — a bare
+//   cuid never contains "::", so split is a no-op for plain items).
+function rawIdOf(item: RawOrderItem): string {
+  const parent = item.options?.[0]?.parentDishId
+  if (typeof parent === 'string' && parent.length > 0) return parent
+  return (item.itemId ?? '').split('::')[0]
+}
 
-export default function OrdersPage() {
-  const [brand,  setBrand]  = useState('Toutes')
-  const [status, setStatus] = useState<'all' | 'live' | 'done'>('all')
+interface PageData {
+  restaurant: RestaurantView | null
+  orders:     OrderView[]
+  brands:     BrandView[]
+  menuItems:  MenuItemView[]
+}
 
-  const visible = ORDERS.filter(o => !o.premium).filter(o => brand === 'Toutes' || o.brand === brand)
+async function loadData(
+  operatorEmail: string,
+  locale: string,
+): Promise<PageData | null> {
+  const operator = await prisma.operator.findUnique({
+    where:  { email: operatorEmail },
+    select: {
+      id: true,
+      restaurant: { select: { id: true, name: true, isActive: true } },
+      brands:     { select: { id: true, name: true, emoji: true } },
+    },
+  })
+
+  if (!operator?.restaurant) {
+    return { restaurant: null, orders: [], brands: [], menuItems: [] }
+  }
+
+  const restaurantId = operator.restaurant.id
+
+  // Last 100 orders for this restaurant + every menu item across its brands
+  // (used for brand attribution + the stock-out picker).
+  const [ordersRaw, menuItemsRaw] = await Promise.all([
+    prisma.order.findMany({
+      where:   { restaurantId },
+      orderBy: { createdAt: 'desc' },
+      take:    100,
+      select: {
+        id: true, status: true, fulfillmentType: true,
+        subtotal: true, deliveryFee: true, total: true,
+        referralCode: true, consumerId: true, items: true, createdAt: true,
+      },
+    }),
+    prisma.menuItem.findMany({
+      where:   { brand: { operatorId: operator.id } },
+      orderBy: { name: 'asc' },
+      select:  { id: true, name: true, available: true, brand: { select: { name: true, emoji: true } } },
+    }),
+  ])
+
+  // dishId → { brandName, emoji } for order-line attribution.
+  const dishBrand = new Map<string, { name: string; emoji: string }>()
+  const menuItems: MenuItemView[] = menuItemsRaw.map(m => {
+    dishBrand.set(m.id, { name: m.brand.name, emoji: m.brand.emoji })
+    return {
+      id:        m.id,
+      name:      m.name,
+      available: m.available,
+      brandName: m.brand.name,
+      emoji:     m.brand.emoji,
+    }
+  })
+
+  // Batch-resolve customers (Order.consumerId is a plain Operator.id string,
+  // NOT a relation — so we look them up separately).
+  const consumerIds = Array.from(new Set(ordersRaw.map(o => o.consumerId).filter(Boolean)))
+  const consumers = consumerIds.length
+    ? await prisma.operator.findMany({
+        where:  { id: { in: consumerIds } },
+        select: { id: true, name: true, email: true, phone: true },
+      })
+    : []
+  const consumerMap = new Map(consumers.map(c => [c.id, c]))
+
+  const timeFmt = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' })
+  const dateFmt = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })
+
+  const orders: OrderView[] = ordersRaw.map(o => {
+    const rawItems = Array.isArray(o.items) ? (o.items as RawOrderItem[]) : []
+
+    const items: OrderItemView[] = rawItems.map(it => {
+      const brand = dishBrand.get(rawIdOf(it)) ?? null
+      const opt   = it.options?.[0]
+      return {
+        name:  it.name ?? '',
+        qty:   Number(it.qty ?? 1),
+        price: Number(it.price ?? 0),
+        options: opt
+          ? {
+              size:        typeof opt.size === 'string' ? opt.size : undefined,
+              supplements: Array.isArray(opt.supplements)
+                ? opt.supplements.map(s => ({ name: String(s?.name ?? ''), price: Number(s?.price ?? 0) }))
+                : undefined,
+              exclusions:  Array.isArray(opt.exclusions) ? opt.exclusions.map(String) : undefined,
+              note:        typeof opt.note === 'string' && opt.note.trim() ? opt.note : undefined,
+            }
+          : null,
+        brandName: brand?.name ?? null,
+        emoji:     brand?.emoji ?? null,
+      }
+    })
+
+    const brandNames = Array.from(
+      new Set(items.map(i => i.brandName).filter((b): b is string => !!b)),
+    )
+    const itemsPreview =
+      (items.slice(0, 2).map(i => `${i.qty}× ${i.name}`).join(' · ')
+        + (items.length > 2 ? ` +${items.length - 2}` : '')) || '—'
+
+    // No explicit discount column on Order — a referral / promo discount shows
+    // up as total < subtotal + deliveryFee. Derive it (never negative).
+    const discount = Math.max(0, Math.round((o.subtotal + o.deliveryFee - o.total) * 100) / 100)
+
+    const customer = consumerMap.get(o.consumerId)
+
+    return {
+      id:              o.id,
+      status:          o.status,
+      fulfillmentType: o.fulfillmentType,
+      subtotal:        o.subtotal,
+      deliveryFee:     o.deliveryFee,
+      discount,
+      total:           o.total,
+      referralCode:    o.referralCode ?? null,
+      timeLabel:       timeFmt.format(o.createdAt),
+      dateLabel:       dateFmt.format(o.createdAt),
+      items,
+      itemsPreview,
+      brandNames,
+      customer: customer
+        ? { name: customer.name, email: customer.email, phone: customer.phone ?? null }
+        : null,
+    }
+  })
+
+  return {
+    restaurant: operator.restaurant,
+    orders,
+    brands: operator.brands,
+    menuItems,
+  }
+}
+
+async function loadDataSafe(email: string, locale: string): Promise<PageData | null> {
+  try {
+    return await loadData(email, locale)
+  } catch (err) {
+    console.error('[orders page] data load failed:', err)
+    return null
+  }
+}
+
+export default async function OrdersPage(props: {
+  params: { locale: string }
+  searchParams: { order?: string }
+}) {
+  setRequestLocale(props.params.locale)
+  const t = await getTranslations('orders')
+
+  const session = await getServerSession(authOptions)
+  const email   = session?.user?.email
+
+  if (!email) {
+    return (
+      <div className="mx-auto max-w-xl px-5 pt-12">
+        <EmptyState emoji="🔒" title={t('empty.authTitle')} description={t('empty.authDesc')} />
+      </div>
+    )
+  }
+
+  const d = await loadDataSafe(email, props.params.locale)
+
+  if (!d || !d.restaurant) {
+    return (
+      <div className="mx-auto max-w-xl px-5 pt-12">
+        <EmptyState emoji="🏪" title={t('empty.noRestaurantTitle')} description={t('empty.noRestaurantDesc')} />
+      </div>
+    )
+  }
 
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Commandes</h1>
-      <p className="mb-4 text-sm text-muted-foreground">Grubano uniquement · {visible.length} actives</p>
-
-      <div className="grid grid-cols-2 gap-2 mb-4">
-        <button className="flex items-center justify-center gap-2 rounded-xl bg-navy py-3 text-sm font-semibold text-navy-foreground">
-          <Volume2 size={15} /> Son activé
-        </button>
-        <button className="flex items-center justify-center gap-2 rounded-xl bg-destructive py-3 text-sm font-semibold text-destructive-foreground">
-          <Pause size={15} /> Tout mettre en pause
-        </button>
-      </div>
-
-      <Link href="/premium" className="mb-3 flex items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-accent p-3">
-        <Lock size={14} className="text-primary" />
-        <div className="flex-1">
-          <p className="text-[11px] font-bold">Voir UberEats, Deliveroo &amp; Just Eat ici</p>
-          <p className="text-[10px] text-muted-foreground">Pause unique multi-plateforme · Grubano Pro</p>
-        </div>
-        <span className="rounded-full bg-primary px-2 py-1 text-[10px] font-bold text-primary-foreground">Pro</span>
-      </Link>
-
-      <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
-        <Filter size={13} className="shrink-0 text-muted-foreground" />
-        {BRANDS.map(b => (
-          <button key={b} onClick={() => setBrand(b)}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${brand === b ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-muted-foreground'}`}>
-            {b}
-          </button>
-        ))}
-        <span className="mx-1 h-3 w-px bg-border" />
-        {([['all', 'Tous'], ['live', 'En cours'], ['done', 'Livrées']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setStatus(k)}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold ${status === k ? 'bg-navy text-navy-foreground' : 'border border-border bg-card text-muted-foreground'}`}>
-            {l}
-          </button>
-        ))}
-      </div>
-
-      <SectionTitle hint="Live">En cours</SectionTitle>
-      <div className="space-y-2">
-        {visible.map((o) => {
-          const net = o.total * (1 - o.fee / 100)
-          return (
-            <Card key={o.id} className="!p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-primary" />
-                  <span className="text-xs font-bold">{o.plat}</span>
-                  <span className="text-[11px] text-muted-foreground">{o.id}</span>
-                </div>
-                <span className="text-[11px] font-semibold text-success">{o.time}</span>
-              </div>
-              <p className="mt-1 text-sm font-semibold">{o.brand}</p>
-              <div className="mt-2 flex items-end justify-between">
-                <div className="text-[11px] text-muted-foreground">
-                  €{o.total.toFixed(2)} <span className="text-destructive">−{o.fee}%</span>
-                </div>
-                <p className="text-base font-bold">€{net.toFixed(2)} net</p>
-              </div>
-            </Card>
-          )
-        })}
-      </div>
-    </div>
+    <OrdersClient
+      restaurant={d.restaurant}
+      orders={d.orders}
+      brands={d.brands}
+      menuItems={d.menuItems}
+      initialOrderId={props.searchParams.order}
+    />
   )
 }
