@@ -60,10 +60,74 @@ export async function GET(
       b.menuItems.map(item => ({ ...item, brandId: b.id, brandName: b.name })),
     )
 
+    // ── Creator attribution (levier 4-bis A1) ────────────────────────────────
+    // Some menu items are ADOPTED creator recipes. We expose WHO signed each one
+    // so the consumer menu can show a "Recette signée {créateur}" badge linking to
+    // the creator's public profile. ADDITIVE: items without an active adoption are
+    // returned exactly as before (no `creator` field). NO N+1 — every active
+    // DishAdoption for the menu's items is preloaded in a single query, then mapped.
+    // Defensive: any failure here degrades to a plain menu, never a 500.
+    type ItemCreator = {
+      id:        string
+      name:      string
+      verified:  boolean
+      followers: number
+      slug:      string | null
+      dishPhoto: string | null
+    }
+    const creatorByMenuItem = new Map<string, ItemCreator>()
+    try {
+      const menuItemIds = allItems.map(i => i.id)
+      if (menuItemIds.length > 0) {
+        const adoptions = await prisma.dishAdoption.findMany({
+          where:  { menuItemId: { in: menuItemIds }, status: 'active' },
+          select: {
+            menuItemId:  true,
+            creatorDish: {
+              select: {
+                photo:   true,
+                creator: {
+                  select: {
+                    id:               true,
+                    name:             true,
+                    verified:         true,
+                    followers:        true,
+                    referralLinkSlug: true,
+                    referralCode:     true,
+                  },
+                },
+              },
+            },
+          },
+        })
+        for (const a of adoptions) {
+          if (!a.menuItemId || creatorByMenuItem.has(a.menuItemId)) continue
+          const c = a.creatorDish?.creator
+          if (!c) continue
+          creatorByMenuItem.set(a.menuItemId, {
+            id:        c.id,
+            name:      c.name,
+            verified:  c.verified,
+            followers: c.followers,
+            slug:      c.referralLinkSlug ?? c.referralCode ?? null,
+            dishPhoto: a.creatorDish?.photo ?? null,
+          })
+        }
+      }
+    } catch (err) {
+      // Never break the menu over the optional creator badge.
+      console.error('[GET /api/restaurants/:id] creator attribution failed', err)
+    }
+
     const categories = Array.from(new Set(allItems.map(i => i.category)))
     const menu = categories.map(cat => ({
       category: cat,
-      items:    allItems.filter(i => i.category === cat),
+      items:    allItems
+        .filter(i => i.category === cat)
+        .map(i => {
+          const creator = creatorByMenuItem.get(i.id)
+          return creator ? { ...i, creator } : i
+        }),
     }))
 
     return NextResponse.json({
