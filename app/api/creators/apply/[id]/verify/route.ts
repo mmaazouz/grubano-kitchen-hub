@@ -8,6 +8,11 @@ import { vetCreator } from '@/lib/creator-vetting'
 // call, so it must always be server-rendered on demand.
 export const dynamic = 'force-dynamic'
 
+// Minimum subscriber count to earn the "verified" badge. Below it the profile is
+// still created (just not verified) — the creator unlocks the badge as they grow.
+// Tunable via env; defaults to 10 000.
+const MIN_VERIFIED_SUBS = Number(process.env.CREATOR_MIN_VERIFIED_SUBS) || 10000
+
 // ── POST /api/creators/apply/:id/verify ───────────────────────────────────────
 // Auto-verification pipeline for a CREATOR application (backend only, no UI).
 //
@@ -203,6 +208,17 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       if (vet.verdict === 'reject') {
         await prisma.creatorApplication.update({ where: { id }, data: { status: 'rejected' } })
         return NextResponse.json({ ok: false, status: 'rejected', reason: vet.reason })
+      }
+
+      // Claude is happy with the content. The verified BADGE additionally needs
+      // a minimum audience: below the threshold the profile is created but stays
+      // un-verified (and flagged) until the channel grows — never a publish block.
+      if (vet.verdict === 'pass' && stats.subscriberCount < MIN_VERIFIED_SUBS) {
+        const reason =
+          `Profil créé ✅. Le badge vérifié s'active dès ` +
+          `${MIN_VERIFIED_SUBS.toLocaleString('fr-FR')} abonnés ` +
+          `(tu en as ${stats.subscriberCount.toLocaleString('fr-FR')}).`
+        return finalize(application, 'flagged', false, stats.subscriberCount, reason, stats.subscriberCount)
       }
 
       const verified = vet.verdict === 'pass'

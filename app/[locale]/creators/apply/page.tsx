@@ -270,9 +270,12 @@ export default function CreatorsApplyPage() {
           <h1 className="text-xl font-display font-bold mb-2">
             {isApproved ? t('verifyApprovedTitle') : t('verifyFlaggedTitle')}
           </h1>
-          <p className="text-sm text-grubano-ink-muted mb-6">
+          <p className={`text-sm text-grubano-ink-muted ${!isApproved && verifyResult.reason ? 'mb-2' : 'mb-6'}`}>
             {isApproved ? t('verifyApprovedDesc') : t('verifyFlaggedDesc')}
           </p>
+          {!isApproved && verifyResult.reason && (
+            <p className="text-xs text-grubano-ink-faint mb-6">{verifyResult.reason}</p>
+          )}
           <Link href={profileUrl} className="block w-full">
             <Button variant="primary" size="md" fullWidth rightIcon={<ExternalLink size={14} />}>
               {t('verifyViewProfile')}
