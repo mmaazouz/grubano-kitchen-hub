@@ -11,6 +11,13 @@ import { authOptions } from '@/lib/auth'
 // plus `alreadyAdopted` = true when an ACTIVE DishAdoption already exists for
 // (this recipe, one of the current operator's brands) — so the UI can show
 // "Déjà à ta carte" instead of an Adopt button.
+//
+// City exclusivity (levier 3B) adds three flags per recipe, computed with
+// grouped queries (no N+1) against the operator's restaurant city:
+//   - cityTaken     : an ACTIVE adoption of this recipe by ANOTHER operator's
+//                     brand in the SAME city (→ offer the waitlist instead).
+//   - onWaitlist    : one of this operator's brands already queued (waiting|offered).
+//   - waitlistCount : how many brands are 'waiting' for this recipe in this city.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const dynamic = 'force-dynamic'
@@ -51,6 +58,46 @@ export async function GET() {
       : []
     const adoptedDishIds = new Set(activeAdoptions.map((a) => a.creatorDishId))
 
+    // ── City-exclusivity signals (levier 3B) — resolve the operator's city once ──
+    const restaurant = await prisma.restaurant.findUnique({
+      where:  { operatorId },
+      select: { city: true },
+    })
+    const myCity = (restaurant?.city ?? '').trim()
+
+    // Recipes ACTIVELY adopted by ANOTHER operator's brand in my city → taken.
+    const cityAdoptions = myCity
+      ? await prisma.dishAdoption.findMany({
+          where: {
+            status: 'active',
+            brand:  { operatorId: { not: operatorId }, operator: { restaurant: { city: myCity } } },
+          },
+          select: { creatorDishId: true },
+        })
+      : []
+    const cityTakenIds = new Set(cityAdoptions.map((a) => a.creatorDishId))
+
+    // Recipes one of MY brands already queued for (waiting|offered).
+    const myWaitlist = brandIds.length
+      ? await prisma.adoptionWaitlist.findMany({
+          where:  { brandId: { in: brandIds }, status: { in: ['waiting', 'offered'] } },
+          select: { creatorDishId: true },
+        })
+      : []
+    const onWaitlistIds = new Set(myWaitlist.map((w) => w.creatorDishId))
+
+    // How many brands are 'waiting' per recipe in my city (single grouped query).
+    const waitlistGroups = myCity
+      ? await prisma.adoptionWaitlist.groupBy({
+          by:      ['creatorDishId'],
+          where:   { city: myCity, status: 'waiting' },
+          _count:  { _all: true },
+        })
+      : []
+    const waitlistCountByDish = new Map(
+      waitlistGroups.map((g) => [g.creatorDishId, g._count._all]),
+    )
+
     const result = dishes.map((d) => ({
       id:               d.id,
       name:             d.name,
@@ -62,6 +109,9 @@ export async function GET() {
       creatorName:      d.creator?.name ?? '',
       creatorFollowers: d.creator?.followers ?? 0,
       alreadyAdopted:   adoptedDishIds.has(d.id),
+      cityTaken:        cityTakenIds.has(d.id),
+      onWaitlist:       onWaitlistIds.has(d.id),
+      waitlistCount:    waitlistCountByDish.get(d.id) ?? 0,
     }))
 
     return NextResponse.json({ dishes: result, hasBrand: brandIds.length > 0 })

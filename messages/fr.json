@@ -880,7 +880,15 @@
       "noBrand": "Crée d'abord une marque pour adopter des recettes créateurs.",
       "emptyTitle": "Aucune recette à adopter",
       "emptyDesc": "Les recettes approuvées par les créateurs apparaîtront ici.",
-      "loadError": "Impossible de charger les recettes."
+      "loadError": "Impossible de charger les recettes.",
+      "cityTaken": "Déjà pris dans ta ville",
+      "joinWaitlist": "M'inscrire sur la liste d'attente",
+      "joiningWaitlist": "Inscription…",
+      "joinedWaitlist": "Inscrit sur la liste d'attente",
+      "waitlistJoinedToast": "Inscrit sur la liste d'attente",
+      "waitlistJoinedToastDesc": "On te préviendra dès que la recette se libère dans ta ville.",
+      "waitlistErrorToast": "Échec de l'inscription",
+      "waitingCount": "{count, plural, one {# restaurant en attente dans ta ville pour cette recette} other {# restaurants en attente dans ta ville pour cette recette}}"
     },
     "loading": "Chargement…",
     "empty": {

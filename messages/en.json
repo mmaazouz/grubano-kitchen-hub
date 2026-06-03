@@ -880,7 +880,15 @@
       "noBrand": "Create a brand first to adopt creator recipes.",
       "emptyTitle": "No recipes to adopt",
       "emptyDesc": "Approved creator recipes will appear here.",
-      "loadError": "Couldn't load recipes."
+      "loadError": "Couldn't load recipes.",
+      "cityTaken": "Already taken in your city",
+      "joinWaitlist": "Join the waitlist",
+      "joiningWaitlist": "Joining…",
+      "joinedWaitlist": "On the waitlist",
+      "waitlistJoinedToast": "Added to the waitlist",
+      "waitlistJoinedToastDesc": "We'll let you know as soon as this recipe frees up in your city.",
+      "waitlistErrorToast": "Couldn't join the waitlist",
+      "waitingCount": "{count, plural, one {# restaurant waiting in your city for this recipe} other {# restaurants waiting in your city for this recipe}}"
     },
     "loading": "Loading…",
     "empty": {

@@ -51,6 +51,10 @@ type AvailableDish = {
   creatorName:      string
   creatorFollowers: number
   alreadyAdopted:   boolean
+  // City exclusivity (levier 3B) — defaulted in the UI for forward-compat.
+  cityTaken?:       boolean
+  onWaitlist?:      boolean
+  waitlistCount?:   number
 }
 
 type ScanResult = {
@@ -516,6 +520,8 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   const [prices,     setPrices]     = useState<Record<string, number>>({})
   const [adoptingId, setAdoptingId] = useState<string | null>(null)
   const [adoptedIds, setAdoptedIds] = useState<Set<string>>(new Set())
+  const [joiningId,  setJoiningId]  = useState<string | null>(null)
+  const [joinedIds,  setJoinedIds]  = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let alive = true
@@ -561,6 +567,29 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
     }
   }
 
+  // Join the city waitlist for a recipe already taken in this city (levier 3B).
+  async function joinWaitlist(dish: AvailableDish) {
+    setJoiningId(dish.id)
+    try {
+      const r = await fetch('/api/dishes/waitlist', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ creatorDishId: dish.id }),
+      })
+      if (r.ok) {
+        setJoinedIds(prev => new Set(prev).add(dish.id))
+        toast.success(t('waitlistJoinedToast'), { description: t('waitlistJoinedToastDesc') })
+      } else {
+        const d = await r.json().catch(() => null)
+        toast.error(t('waitlistErrorToast'), { description: d?.error })
+      }
+    } catch {
+      toast.error(t('waitlistErrorToast'))
+    } finally {
+      setJoiningId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div>
@@ -597,6 +626,11 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
           const adoptedNow    = adoptedIds.has(dish.id)
           const isAdopted     = adoptedServer || adoptedNow
           const price         = prices[dish.id] ?? dish.suggestedPrice
+          // City exclusivity (levier 3B): waitlist state for non-adopted recipes.
+          const joinedNow     = joinedIds.has(dish.id)
+          const onWaitlist    = (dish.onWaitlist ?? false) || joinedNow
+          const cityTaken     = (dish.cityTaken ?? false) && !isAdopted
+          const waitlistCount = dish.waitlistCount ?? 0
 
           return (
             <DSCard key={dish.id} className="overflow-hidden !p-0">
@@ -650,10 +684,18 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
 
                 {/* Price (editable) or commitment note once adopted */}
                 {isAdopted ? (
-                  <div className="flex items-center gap-2 rounded-xl bg-grubano-success-tint px-3 py-2 text-[11px] font-semibold text-grubano-success">
-                    <Clock size={12} /> {t('commitment60')}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 rounded-xl bg-grubano-success-tint px-3 py-2 text-[11px] font-semibold text-grubano-success">
+                      <Clock size={12} /> {t('commitment60')}
+                    </div>
+                    {/* Incumbent visibility: how many restos wait for this recipe here */}
+                    {waitlistCount > 0 && (
+                      <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Users size={12} /> {t('waitingCount', { count: waitlistCount })}
+                      </p>
+                    )}
                   </div>
-                ) : (
+                ) : (cityTaken || onWaitlist) ? null : (
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       {t('priceLabel')}
@@ -671,11 +713,29 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                   </div>
                 )}
 
-                {/* CTA */}
+                {/* CTA — 4 states: adopted / on waitlist / city-taken / adoptable */}
                 {isAdopted ? (
                   <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
                     {adoptedServer && !adoptedNow ? t('alreadyOnMenu') : t('adopted')}
                   </DSButton>
+                ) : onWaitlist ? (
+                  <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
+                    {t('joinedWaitlist')}
+                  </DSButton>
+                ) : cityTaken ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-[11px] font-semibold text-muted-foreground">
+                      <AlertCircle size={12} /> {t('cityTaken')}
+                    </div>
+                    <DSButton
+                      variant="secondary" size="sm" fullWidth
+                      loading={joiningId === dish.id}
+                      onClick={() => joinWaitlist(dish)}
+                      leftIcon={joiningId === dish.id ? undefined : <Clock size={14} />}
+                    >
+                      {joiningId === dish.id ? t('joiningWaitlist') : t('joinWaitlist')}
+                    </DSButton>
+                  </div>
                 ) : (
                   <DSButton
                     variant="primary" size="sm" fullWidth
