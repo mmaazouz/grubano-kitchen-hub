@@ -60,6 +60,8 @@ model Brand {
   pointsOfSale PointOfSale[]
   // Inverse side of DishAdoption.brand (brique 3A) — creator recipes this brand adopted.
   dishAdoptions DishAdoption[]
+  // Inverse side of AdoptionWaitlist.brand (levier 3A) — city-exclusivity queue.
+  waitlist      AdoptionWaitlist[]
 }
 
 // ── Loyalty ───────────────────────────────────────────────────────────────────
@@ -315,6 +317,8 @@ model CreatorDish {
   // Inverse side of DishAdoption.creatorDish (brique 3A) — restaurateurs who
   // adopted this recipe. KEEP adoptedBy + totalSales above for back-compat.
   adoptions      DishAdoption[]
+  // Inverse side of AdoptionWaitlist.creatorDish (levier 3A) — per-city queue.
+  waitlist       AdoptionWaitlist[]
 }
 
 // ── Franchise applications ────────────────────────────────────────────────────
@@ -553,6 +557,26 @@ model DishAdoption {
   @@index([creatorDishId])
   @@index([brandId])
   @@index([status])
+}
+
+// ── City-exclusive recipes (levier 3A) ────────────────────────────────────────
+// Queue of brands waiting to adopt a recipe in a city that is already taken by
+// another restaurant (first-come exclusivity). The runtime waitlist mechanics
+// (offer / accept / expire) land in brique B — this model only stores the queue.
+model AdoptionWaitlist {
+  id             String      @id @default(cuid())
+  creatorDishId  String
+  creatorDish    CreatorDish @relation(fields: [creatorDishId], references: [id])
+  brandId        String
+  brand          Brand       @relation(fields: [brandId], references: [id])
+  city           String
+  status         String      @default("waiting") // waiting | offered | accepted | declined | expired | cancelled
+  offeredAt      DateTime?
+  offerExpiresAt DateTime?
+  createdAt      DateTime    @default(now())
+
+  @@index([creatorDishId, city, status])
+  @@index([brandId])
 }
 
 model DishSale {

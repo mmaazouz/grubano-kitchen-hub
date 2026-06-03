@@ -86,6 +86,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Recette déjà adoptée par cette marque' }, { status: 409 })
     }
 
+    // ── City exclusivity (levier 3A): first restaurant in a city wins ─────────────
+    // Resolve the adopting brand's city via its operator's restaurant profile.
+    // No city on file → can't enforce locality, so we DON'T block (normal adoption).
+    const restaurant = await prisma.restaurant.findUnique({
+      where:  { operatorId: brand.operatorId },
+      select: { city: true },
+    })
+    const city = (restaurant?.city ?? '').trim()
+    if (city) {
+      // Is the recipe already actively adopted by ANOTHER brand in the same city?
+      const cityConflict = await prisma.dishAdoption.findFirst({
+        where: {
+          creatorDishId,
+          status: 'active',
+          brand:  { operator: { restaurant: { city } } },
+          NOT:    { brandId: brand.id },
+        },
+        select: { id: true },
+      })
+      if (cityConflict) {
+        return NextResponse.json(
+          {
+            ok:      false,
+            reason:  'city_taken',
+            city,
+            message: `Cette recette est déjà adoptée par un restaurant de ${city}. Exclusivité locale.`,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     // ── Commitment length from config (or safe default) ───────────────────────────
     const config = await prisma.adoptionConfig.findFirst({
       where:   { active: true },
