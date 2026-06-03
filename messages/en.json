@@ -700,7 +700,16 @@
       "items": "Items",
       "totalPaid": "Total paid",
       "enjoy": "Enjoy your meal! 🎉",
-      "pointsCredited": "+{points} loyalty points credited"
+      "pointsCredited": "+{points} loyalty points credited",
+      "pickupMode": "Pickup",
+      "pickupReadyAt": "Ready around {time}",
+      "pickupReadyNow": "Ready now!",
+      "pickupCollectedTitle": "Order picked up 🎉",
+      "pickupReadyHeadline": "Pick up your order at {restaurant}",
+      "pickupTimelineHeader": "Order progress",
+      "pickupCurrentStep": "In progress",
+      "statusReadyPickup": "Ready for pickup",
+      "statusCollected": "Picked up"
     },
     "account": {
       "title": "My Profile",

@@ -700,7 +700,16 @@
       "items": "Articles",
       "totalPaid": "Total payé",
       "enjoy": "Régalez-vous bien ! 🎉",
-      "pointsCredited": "+{points} points fidélité crédités"
+      "pointsCredited": "+{points} points fidélité crédités",
+      "pickupMode": "Retrait sur place",
+      "pickupReadyAt": "Prête vers {time}",
+      "pickupReadyNow": "Prête maintenant !",
+      "pickupCollectedTitle": "Commande récupérée 🎉",
+      "pickupReadyHeadline": "Récupère ta commande chez {restaurant}",
+      "pickupTimelineHeader": "Suivi de ta commande",
+      "pickupCurrentStep": "En cours",
+      "statusReadyPickup": "Prête à récupérer",
+      "statusCollected": "Récupérée"
     },
     "account": {
       "title": "Mon Profil",

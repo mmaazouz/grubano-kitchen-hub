@@ -700,7 +700,16 @@
       "items": "العناصر",
       "totalPaid": "المجموع المدفوع",
       "enjoy": "بالهناء والشفاء! 🎉",
-      "pointsCredited": "+{points} نقطة ولاء تمت إضافتها"
+      "pointsCredited": "+{points} نقطة ولاء تمت إضافتها",
+      "pickupMode": "الاستلام من المتجر",
+      "pickupReadyAt": "جاهز حوالي {time}",
+      "pickupReadyNow": "جاهز الآن!",
+      "pickupCollectedTitle": "تم استلام الطلب 🎉",
+      "pickupReadyHeadline": "استلم طلبك من {restaurant}",
+      "pickupTimelineHeader": "تتبّع الطلب",
+      "pickupCurrentStep": "قيد التنفيذ",
+      "statusReadyPickup": "جاهز للاستلام",
+      "statusCollected": "تم الاستلام"
     },
     "account": {
       "title": "حسابي",

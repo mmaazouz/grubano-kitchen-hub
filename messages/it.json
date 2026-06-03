@@ -700,7 +700,16 @@
       "items": "Articoli",
       "totalPaid": "Totale pagato",
       "enjoy": "Buon appetito! 🎉",
-      "pointsCredited": "+{points} punti fedeltà accreditati"
+      "pointsCredited": "+{points} punti fedeltà accreditati",
+      "pickupMode": "Ritiro",
+      "pickupReadyAt": "Pronto verso le {time}",
+      "pickupReadyNow": "Pronto ora!",
+      "pickupCollectedTitle": "Ordine ritirato 🎉",
+      "pickupReadyHeadline": "Ritira il tuo ordine da {restaurant}",
+      "pickupTimelineHeader": "Avanzamento dell'ordine",
+      "pickupCurrentStep": "In corso",
+      "statusReadyPickup": "Pronto per il ritiro",
+      "statusCollected": "Ritirato"
     },
     "account": {
       "title": "Il Mio Profilo",

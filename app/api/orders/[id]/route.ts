@@ -33,6 +33,7 @@ export async function GET(
             name:         true,
             logo:         true,
             address:      true,
+            city:         true,
             deliveryTime: true,
           },
         },
@@ -55,6 +56,10 @@ export async function GET(
       order: {
         id:              order.id,
         status:          order.status,
+        // fulfillmentType drives the entire /eat/track UI (pickup vs delivery)
+        // — without it the page renders the mock delivery map for pickup
+        // orders, which is absurd. Defaults to 'delivery' (matches schema).
+        fulfillmentType: order.fulfillmentType,
         items:           order.items,
         subtotal:        order.subtotal,
         deliveryFee:     order.deliveryFee,
