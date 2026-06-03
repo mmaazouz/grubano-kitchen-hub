@@ -2,19 +2,21 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2 } from 'lucide-react'
+import {
+  CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2,
+  Copy, Check, ExternalLink, XCircle, Clock,
+} from 'lucide-react'
 import { useRouter } from '@/navigation'
+import { Link } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 import { type CategorySlug } from '@/lib/categories'
 
-// System cuisine slugs — used as option values so the dish concepts store a
-// normalised slug that getCategoryLabel() can translate later.
+// ── Cuisine slugs (stable values stored on CreatorDish) ────────────────────────
 const CUISINE_SLUGS: CategorySlug[] = [
   'italien', 'asiatique', 'healthy', 'bowls', 'desserts',
   'burgers', 'wraps', 'sandwiches', 'pizza', 'sushi', 'pates', 'boissons',
 ]
 
-// Human-readable French labels for the select (fr labels are stable for the apply form)
 const CUISINE_LABELS: Record<CategorySlug, string> = {
   italien:    'Italien',
   asiatique:  'Asiatique',
@@ -29,6 +31,8 @@ const CUISINE_LABELS: Record<CategorySlug, string> = {
   pates:      'Pâtes',
   boissons:   'Boissons',
 }
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type DishConcept = {
   name:        string
@@ -47,12 +51,32 @@ type FormData = {
   dishConcepts: DishConcept[]
 }
 
+/** Shape returned by POST /api/creators/apply/{id}/verify */
+type VerifyOkResult = {
+  ok:               true
+  status:           'approved' | 'flagged'
+  verified:         boolean
+  referralLinkSlug: string
+  subscriberCount:  number
+  reason?:          string
+}
+type VerifyFailResult = {
+  ok:       false
+  status?:  'rejected'
+  reason:   string
+  message?: string
+}
+type VerifyOutcome = VerifyOkResult | VerifyFailResult
+
 const EMPTY_CONCEPT: DishConcept = { name: '', description: '', cuisineType: '' }
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CreatorsApplyPage() {
   const t      = useTranslations('creators.apply')
   const router = useRouter()
 
+  // ── Form state ──────────────────────────────────────────────────────────────
   const [step,       setStep]       = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [done,       setDone]       = useState(false)
@@ -63,6 +87,14 @@ export default function CreatorsApplyPage() {
     dishConcepts: [{ ...EMPTY_CONCEPT }],
   })
 
+  // ── Verification state ──────────────────────────────────────────────────────
+  const [applicationId, setApplicationId] = useState<string | null>(null)
+  const [verifyCode,    setVerifyCode]    = useState<string | null>(null)
+  const [verifying,     setVerifying]     = useState(false)
+  const [verifyResult,  setVerifyResult]  = useState<VerifyOutcome | null>(null)
+  const [copied,        setCopied]        = useState(false)
+
+  // ── Form helpers ────────────────────────────────────────────────────────────
   function setField(key: keyof Omit<FormData, 'dishConcepts'>, value: string) {
     setForm(f => ({ ...f, [key]: value }))
   }
@@ -76,9 +108,8 @@ export default function CreatorsApplyPage() {
   }
 
   function addConcept() {
-    if (form.dishConcepts.length < 3) {
+    if (form.dishConcepts.length < 3)
       setForm(f => ({ ...f, dishConcepts: [...f.dishConcepts, { ...EMPTY_CONCEPT }] }))
-    }
   }
 
   function removeConcept(i: number) {
@@ -91,6 +122,7 @@ export default function CreatorsApplyPage() {
     return true
   }
 
+  // ── Submit form ─────────────────────────────────────────────────────────────
   async function handleSubmit() {
     setSubmitting(true)
     setError('')
@@ -110,6 +142,9 @@ export default function CreatorsApplyPage() {
         }),
       })
       if (res.ok) {
+        const d = await res.json()
+        setApplicationId(d.applicationId ?? null)
+        setVerifyCode(d.verifyCode ?? null)
         setDone(true)
       } else {
         const d = await res.json()
@@ -122,22 +157,197 @@ export default function CreatorsApplyPage() {
     }
   }
 
-  const STEP_LABELS = [t('stepProfile'), t('stepPortfolio'), t('stepConfirm')]
+  // ── Trigger YouTube verification ────────────────────────────────────────────
+  async function handleVerify() {
+    if (!applicationId) return
+    setVerifying(true)
+    try {
+      const res = await fetch(`/api/creators/apply/${applicationId}/verify`, { method: 'POST' })
+      const d   = await res.json()
+      setVerifyResult(d as VerifyOutcome)
+    } catch {
+      setVerifyResult({ ok: false, reason: 'youtube_unavailable' })
+    } finally {
+      setVerifying(false)
+    }
+  }
 
+  // ── Copy code ───────────────────────────────────────────────────────────────
+  function copyCode() {
+    if (!verifyCode) return
+    navigator.clipboard.writeText(verifyCode).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  // ── Code chip (reusable inside done screens) ────────────────────────────────
+  function CodeChip() {
+    return (
+      <div className="flex items-center gap-2">
+        <code className="flex-1 rounded-grubano-lg bg-grubano-bg px-3 py-2.5 text-base font-mono font-bold tracking-widest text-grubano-primary truncate">
+          {verifyCode}
+        </code>
+        <button
+          type="button"
+          onClick={copyCode}
+          className="flex items-center gap-1.5 rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-xs font-semibold hover:bg-grubano-bg transition shrink-0"
+        >
+          {copied
+            ? <><Check size={12} className="text-grubano-success" />{t('verifyCopied')}</>
+            : <><Copy size={12} />{t('verifyCopy')}</>
+          }
+        </button>
+      </div>
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // DONE screens
+  // ══════════════════════════════════════════════════════════════════════════════
   if (done) {
+    const hasYoutube = !!form.youtube.trim()
+
+    // ── A) No YouTube → simple success ─────────────────────────────────────────
+    if (!hasYoutube) {
+      return (
+        <div className="px-4 pt-12 max-w-lg mx-auto text-center">
+          <div className="h-20 w-20 rounded-grubano-pill bg-grubano-success-tint flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 size={40} className="text-grubano-success" />
+          </div>
+          <h1 className="text-xl font-display font-bold mb-2">{t('successTitle')}</h1>
+          <p className="text-sm text-grubano-ink-muted mb-6">{t('successDesc')}</p>
+          <Button variant="primary" size="md" fullWidth onClick={() => router.push('/creators')}>
+            {t('backToPortal')}
+          </Button>
+        </div>
+      )
+    }
+
+    // ── B) YouTube — awaiting first verification ────────────────────────────────
+    if (verifyResult === null) {
+      return (
+        <div className="px-4 pt-8 max-w-lg mx-auto space-y-5">
+          <div className="text-center">
+            <div className="h-16 w-16 rounded-grubano-pill bg-grubano-success-tint flex items-center justify-center mx-auto mb-3">
+              <CheckCircle2 size={32} className="text-grubano-success" />
+            </div>
+            <h1 className="text-xl font-display font-bold mb-2">{t('verifyTitle')}</h1>
+            <p className="text-sm text-grubano-ink-muted leading-relaxed">{t('verifyDesc')}</p>
+          </div>
+
+          <Card elevation="sm" padding="md">
+            <p className="text-[10px] text-grubano-ink-muted uppercase tracking-wide font-semibold mb-2">
+              {t('verifyCodeLabel')}
+            </p>
+            <CodeChip />
+          </Card>
+
+          <Button
+            variant="primary"
+            size="md"
+            fullWidth
+            onClick={handleVerify}
+            loading={verifying}
+          >
+            {verifying ? t('verifying') : t('verifyButton')}
+          </Button>
+        </div>
+      )
+    }
+
+    // ── C) Verification returned ok (approved or flagged) ──────────────────────
+    if (verifyResult.ok) {
+      const isApproved = verifyResult.status === 'approved'
+      const profileUrl = `/eat/c/${verifyResult.referralLinkSlug}`
+      return (
+        <div className="px-4 pt-12 max-w-lg mx-auto text-center">
+          <div className={`h-20 w-20 rounded-grubano-pill flex items-center justify-center mx-auto mb-4 ${
+            isApproved ? 'bg-grubano-success-tint' : 'bg-grubano-primary/10'
+          }`}>
+            <CheckCircle2 size={40} className={isApproved ? 'text-grubano-success' : 'text-grubano-primary'} />
+          </div>
+          <h1 className="text-xl font-display font-bold mb-2">
+            {isApproved ? t('verifyApprovedTitle') : t('verifyFlaggedTitle')}
+          </h1>
+          <p className="text-sm text-grubano-ink-muted mb-6">
+            {isApproved ? t('verifyApprovedDesc') : t('verifyFlaggedDesc')}
+          </p>
+          <Link href={profileUrl} className="block w-full">
+            <Button variant="primary" size="md" fullWidth rightIcon={<ExternalLink size={14} />}>
+              {t('verifyViewProfile')}
+            </Button>
+          </Link>
+        </div>
+      )
+    }
+
+    // ── D) Code not yet found → show code again + retry ────────────────────────
+    if (verifyResult.reason === 'code_not_found') {
+      return (
+        <div className="px-4 pt-8 max-w-lg mx-auto space-y-5">
+          <div className="text-center">
+            <div className="h-16 w-16 rounded-grubano-pill bg-amber-50 flex items-center justify-center mx-auto mb-3">
+              <Clock size={32} className="text-amber-500" />
+            </div>
+            <p className="text-sm text-grubano-ink-muted leading-relaxed">{t('verifyCodeNotFound')}</p>
+          </div>
+
+          <Card elevation="sm" padding="md">
+            <CodeChip />
+          </Card>
+
+          <Button
+            variant="primary"
+            size="md"
+            fullWidth
+            onClick={handleVerify}
+            loading={verifying}
+          >
+            {verifying ? t('verifying') : t('verifyRetry')}
+          </Button>
+        </div>
+      )
+    }
+
+    // ── E) Rejected ────────────────────────────────────────────────────────────
+    if (verifyResult.status === 'rejected') {
+      return (
+        <div className="px-4 pt-12 max-w-lg mx-auto text-center">
+          <div className="h-20 w-20 rounded-grubano-pill bg-grubano-danger/10 flex items-center justify-center mx-auto mb-4">
+            <XCircle size={40} className="text-grubano-danger" />
+          </div>
+          <h1 className="text-xl font-display font-bold mb-2">{t('verifyRejectedTitle')}</h1>
+          <p className="text-sm text-grubano-ink-muted mb-2">{t('verifyRejectedDesc')}</p>
+          {verifyResult.reason && (
+            <p className="text-xs text-grubano-ink-faint mb-6">{verifyResult.reason}</p>
+          )}
+          <Button variant="secondary" size="md" fullWidth onClick={() => router.push('/creators')}>
+            {t('backToPortal')}
+          </Button>
+        </div>
+      )
+    }
+
+    // ── F) Channel not found / unavailable ─────────────────────────────────────
     return (
       <div className="px-4 pt-12 max-w-lg mx-auto text-center">
-        <div className="h-20 w-20 rounded-grubano-pill bg-grubano-success-tint flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 size={40} className="text-grubano-success" />
+        <div className="h-20 w-20 rounded-grubano-pill bg-grubano-danger/10 flex items-center justify-center mx-auto mb-4">
+          <XCircle size={40} className="text-grubano-danger" />
         </div>
-        <h1 className="text-xl font-display font-bold mb-2">{t('successTitle')}</h1>
-        <p className="text-sm text-grubano-ink-muted mb-6">{t('successDesc')}</p>
-        <Button variant="primary" size="md" fullWidth onClick={() => router.push('/creators')}>
+        <p className="text-sm text-grubano-ink-muted mb-6">{t('verifyChannelError')}</p>
+        <Button variant="secondary" size="md" fullWidth onClick={() => router.push('/creators')}>
           {t('backToPortal')}
         </Button>
       </div>
     )
   }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // FORM (steps 0–2)
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  const STEP_LABELS = [t('stepProfile'), t('stepPortfolio'), t('stepConfirm')]
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
