@@ -35,6 +35,9 @@ export interface VetCreatorInput {
   channelDescription?: string
   bio:                 string
   dishConcepts: { name: string; description: string; cuisineType: string }[]
+  // Real-channel signals — far stronger evidence than the self-declared bio.
+  channelTopics?:      string[] // YouTube topic categories (e.g. "Food")
+  recentVideoTitles?:  string[] // titles of the channel's latest uploads
 }
 
 // SAFE fallback — used whenever we cannot get a trustworthy verdict. 'flag' so a
@@ -56,6 +59,14 @@ function buildPrompt(input: VetCreatorInput): string {
         .join('\n')
     : '  (aucun)'
 
+  const topics = Array.isArray(input.channelTopics) ? input.channelTopics.filter(Boolean) : []
+  const topicsLine = topics.length ? topics.join(', ') : '(aucune)'
+
+  const titles = Array.isArray(input.recentVideoTitles) ? input.recentVideoTitles.filter(Boolean) : []
+  const titleLines = titles.length
+    ? titles.map((t, i) => `  ${i + 1}. ${String(t).trim()}`).join('\n')
+    : '  (aucun)'
+
   return [
     'You are a strict content-vetting reviewer for Grubano, a food delivery / dark-kitchen platform.',
     'Decide whether a CREATOR applicant should be approved to publish signature dish recipes.',
@@ -68,7 +79,10 @@ function buildPrompt(input: VetCreatorInput): string {
     'Creator data:',
     `- Channel title: ${title}`,
     `- Channel description: ${desc}`,
-    `- Bio: ${bio}`,
+    `- Bio (SELF-DECLARED by the applicant — NOT evidence): ${bio}`,
+    `- Channel topic categories (from YouTube): ${topicsLine}`,
+    '- Recent video titles (from the channel — the REAL signal of what it is about):',
+    titleLines,
     '- Dish concepts:',
     conceptLines,
     '',
@@ -80,6 +94,12 @@ function buildPrompt(input: VetCreatorInput): string {
     '- "flag" = uncertain, borderline, or needs human review.',
     '- "reject" = off-topic (not about food) OR inappropriate / unsafe content.',
     '- foodRelevance = integer 0-100 measuring how food/cooking-relevant the creator is.',
+    '',
+    'CRITICAL — judge PRIMARILY on the REAL channel content (recent video titles + topic categories).',
+    'The bio is SELF-DECLARED by the applicant and is NOT proof of anything.',
+    'If the videos / categories are clearly NOT about cooking / food (gaming, vlog, music, etc.),',
+    "answer 'reject' or 'flag', EVEN IF the bio claims otherwise.",
+    "Answer 'pass' ONLY when the CHANNEL content clearly shows cooking / food. When in doubt → 'flag'.",
   ].join('\n')
 }
 

@@ -24,6 +24,19 @@ interface ChannelStatsResponse {
   items?: Array<{
     snippet?: { title?: string; description?: string }
     statistics?: { subscriberCount?: string; hiddenSubscriberCount?: boolean }
+    topicDetails?: { topicCategories?: string[] }
+  }>
+}
+
+interface UploadsPlaylistResponse {
+  items?: Array<{
+    contentDetails?: { relatedPlaylists?: { uploads?: string } }
+  }>
+}
+
+interface PlaylistItemsResponse {
+  items?: Array<{
+    snippet?: { title?: string }
   }>
 }
 
@@ -31,6 +44,9 @@ export interface YouTubeChannelStats {
   subscriberCount: number
   title:           string
   description:     string
+  // Wikipedia topic categories, reduced to their last readable URL segment
+  // (e.g. "Food", "Video_game_culture"). [] when YouTube returns no topics.
+  topicCategories: string[]
 }
 
 /** GET helper with a hard timeout. Returns parsed JSON or null on any failure. */
@@ -121,7 +137,7 @@ export async function getChannelStats(
     if (!key) return null
 
     const url =
-      `${YT_BASE}/channels?part=snippet,statistics` +
+      `${YT_BASE}/channels?part=snippet,statistics,topicDetails` +
       `&id=${encodeURIComponent(id)}` +
       `&key=${encodeURIComponent(key)}`
 
@@ -136,12 +152,69 @@ export async function getChannelStats(
     const subscriberCount = Number.parseInt(stats.subscriberCount ?? '', 10)
     if (!Number.isFinite(subscriberCount)) return null
 
+    // Reduce each Wikipedia topic URL to its last readable path segment.
+    const topicCategories = (item.topicDetails?.topicCategories ?? [])
+      .map((u) => {
+        if (typeof u !== 'string') return ''
+        const seg = u.split('/').filter(Boolean).pop() ?? ''
+        return decodeURIComponent(seg)
+      })
+      .filter((s) => s.length > 0)
+
     return {
       subscriberCount,
       title:       item.snippet?.title       ?? '',
       description: item.snippet?.description  ?? '',
+      topicCategories,
     }
   } catch {
     return null
+  }
+}
+
+/**
+ * Fetch the titles of a channel's most recent uploads (best signal for what the
+ * channel is ACTUALLY about, vs. a self-declared bio).
+ *
+ * Two calls: channels?part=contentDetails → the "uploads" playlist id, then
+ * playlistItems?part=snippet → the latest video titles.
+ *
+ * Returns up to `max` titles, or [] on any failure (no key, unknown channel,
+ * empty playlist, network/parse error). Never throws.
+ */
+export async function getRecentVideoTitles(channelId: string, max = 10): Promise<string[]> {
+  try {
+    const id = (channelId ?? '').trim()
+    if (!id) return []
+    const key = process.env.YOUTUBE_API_KEY
+    if (!key) return []
+
+    const limit = Math.max(1, Math.min(50, Math.trunc(max) || 10))
+
+    // 1) Resolve the channel's "uploads" playlist.
+    const channelUrl =
+      `${YT_BASE}/channels?part=contentDetails` +
+      `&id=${encodeURIComponent(id)}` +
+      `&key=${encodeURIComponent(key)}`
+
+    const channelJson = await getJson<UploadsPlaylistResponse>(channelUrl)
+    const uploads     = channelJson?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
+    if (typeof uploads !== 'string' || uploads.length === 0) return []
+
+    // 2) Pull the latest video titles from that playlist.
+    const playlistUrl =
+      `${YT_BASE}/playlistItems?part=snippet` +
+      `&playlistId=${encodeURIComponent(uploads)}` +
+      `&maxResults=${limit}` +
+      `&key=${encodeURIComponent(key)}`
+
+    const playlistJson = await getJson<PlaylistItemsResponse>(playlistUrl)
+    const items        = playlistJson?.items ?? []
+
+    return items
+      .map((it) => (typeof it.snippet?.title === 'string' ? it.snippet.title.trim() : ''))
+      .filter((t) => t.length > 0)
+  } catch {
+    return []
   }
 }

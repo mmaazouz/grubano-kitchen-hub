@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { makeVerifyCode } from '@/lib/verify-code'
-import { resolveChannelId, getChannelStats } from '@/lib/youtube'
+import { resolveChannelId, getChannelStats, getRecentVideoTitles } from '@/lib/youtube'
 import { vetCreator } from '@/lib/creator-vetting'
 
 // Orchestration route — does live network calls (YouTube) + a Claude vetting
@@ -187,11 +187,17 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         })
       }
 
+      // Pull the channel's real content signal (latest uploads) so vetting is
+      // judged on what the channel actually publishes, not the self-declared bio.
+      const recentVideoTitles = await getRecentVideoTitles(channelId)
+
       const vet = await vetCreator({
         channelTitle:       stats.title,
         channelDescription: stats.description,
         bio:                application.bio,
         dishConcepts,
+        channelTopics:      stats.topicCategories,
+        recentVideoTitles,
       })
 
       if (vet.verdict === 'reject') {
