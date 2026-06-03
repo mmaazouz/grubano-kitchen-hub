@@ -18,6 +18,7 @@ import {
 import { Button, EmptyState, Badge, Skeleton } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
 import { showToast } from '@/lib/eat-cart'
+import { getFoodImage, inferCategory } from '@/lib/food-images'
 
 // ── Types matching GET /api/creators/public/[slug] ────────────────────────────
 
@@ -59,6 +60,16 @@ function formatFollowers(n: number): string {
   if (n < 10_000) return `${(n / 1000).toFixed(1).replace('.', ',')}k`
   if (n < 1_000_000) return `${Math.round(n / 1000)}k`
   return `${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
+}
+
+/**
+ * Stable photo per recipe — keeps the page visually consistent with the
+ * restaurant menu (which already uses the same `getFoodImage` catalogue).
+ * Falls back to a category-derived image keyed by recipe id, so the same
+ * recipe always renders the same picture across sessions.
+ */
+function recipePhoto(r: CreatorRecipe): string {
+  return r.photo || getFoodImage(inferCategory(r.cuisineType || r.name), r.id)
 }
 
 function socialUrl(kind: 'instagram' | 'tiktok' | 'youtube', handle: string): string {
@@ -173,7 +184,9 @@ export default function PublicCreatorPage() {
     )
   }
 
-  const heroPhoto = data.recipes.find((r) => r.photo)?.photo ?? null
+  // Pick the first recipe (if any) and resolve it through the catalogue so
+  // the hero always shows a real food image — matches the menu's behaviour.
+  const heroPhoto = data.recipes[0] ? recipePhoto(data.recipes[0]) : null
   const initial = data.name.trim()[0]?.toUpperCase() ?? '?'
 
   return (
@@ -312,16 +325,23 @@ function RecipeBlock({
    * the attribution cookie is dropped, then land on the adopting restaurant.
    * 5A whitelists the ?to= path; we pass a same-origin relative URL.
    */
+  /**
+   * The next-intl <Link> from `@/navigation` automatically prefixes the active
+   * locale. Returning `/${locale}/eat/r/{id}` here produced `/fr/fr/eat/r/{id}`
+   * → 404. Return locale-LESS paths so the Link layer adds the prefix once.
+   * `to` (the param the API consumes after the redirect) STAYS locale-full —
+   * it's the final absolute target.
+   */
   function ctaHref(restaurantId: string): string {
     const to = `/${locale}/eat/r/${restaurantId}`
-    if (!referralCode) return to
-    return `/${locale}/ref/${encodeURIComponent(referralCode)}?to=${encodeURIComponent(to)}`
+    if (!referralCode) return `/eat/r/${restaurantId}`
+    return `/ref/${encodeURIComponent(referralCode)}?to=${encodeURIComponent(to)}`
   }
 
   return (
     <div className="overflow-hidden rounded-grubano-xl border border-grubano-border bg-white shadow-grubano-sm">
-      {/* Recipe photo */}
-      <FoodImage name={recipe.name} src={recipe.photo} className="h-44 w-full" glyphClassName="text-6xl" />
+      {/* Recipe photo — same catalogue as the menu so adopted dishes look identical */}
+      <FoodImage name={recipe.name} src={recipePhoto(recipe)} className="h-44 w-full" glyphClassName="text-6xl" />
 
       {/* Recipe info */}
       <div className="space-y-2 px-4 pt-3">
