@@ -29,6 +29,7 @@ export {
 export { StarRating }    from './StarRating'
 export { ToastProvider, useToast } from './Toast'
 export { LanguageSwitcher } from './LanguageSwitcher'
+export { DocsLink }         from './DocsLink'
 
 // ── Re-export prop types for external consumers ─────────────────────────────
 export type { AvatarProps, AvatarSize }         from './Avatar'
@@ -47,3 +48,4 @@ export type { SkeletonProps }                   from './SkeletonLoader'
 export type { StarRatingProps, StarSize }       from './StarRating'
 export type { ToastVariant, ToastOptions }      from './Toast'
 export type { LanguageSwitcherProps }           from './LanguageSwitcher'
+export type { DocsLinkProps, DocsLinkVariant }  from './DocsLink'

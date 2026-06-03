@@ -17,6 +17,10 @@
     "soldOut": "نفذت الكمية",
     "km": "كلم"
   },
+  "docs": {
+    "learnMore": "اعرف المزيد",
+    "help": "مساعدة"
+  },
   "categories": {
     "italien": "إيطالي",
     "asiatique": "آسيوي",

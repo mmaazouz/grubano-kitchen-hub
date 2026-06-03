@@ -17,6 +17,10 @@
     "soldOut": "Épuisé",
     "km": "km"
   },
+  "docs": {
+    "learnMore": "En savoir plus",
+    "help": "Aide"
+  },
   "categories": {
     "italien": "Italien",
     "asiatique": "Asiatique",

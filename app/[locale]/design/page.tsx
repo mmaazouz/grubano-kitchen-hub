@@ -19,6 +19,7 @@ import {
   Card,
   CategoryPill,
   DishCard,
+  DocsLink,
   EmptyState,
   Input,
   Modal,
@@ -35,6 +36,7 @@ import {
 } from '@/components/design-system'
 import { colors, radii, shadows, typography } from '@/lib/design-tokens'
 import { FOOD_CATALOG, getFoodImage, getRestaurantCover } from '@/lib/food-images'
+import { ALL_DOCS_TOPICS } from '@/lib/docs-map'
 import { Search, Heart, ShoppingBag, ArrowRight, Mail, Lock } from 'lucide-react'
 
 export default function DesignPage() {
@@ -416,6 +418,75 @@ function DesignInner() {
             <Button variant="danger"  onClick={() => error('Paiement refusé',  { description: 'Vérifiez votre carte' })}>Error</Button>
             <Button variant="secondary" onClick={() => warning('Stock bas',     { description: '3 portions restantes' })}>Warning</Button>
             <Button variant="ghost" onClick={() => info('Nouveau plat ajouté')}>Info</Button>
+          </div>
+        </Section>
+
+        <Section
+          title="Docs Link"
+          caption="Brique B2 — contextual help linking app surfaces to docs.grubano.com. Locale-aware (snapshot in lib/docs-map.ts). Always opens in a new tab."
+        >
+          <div className="space-y-6">
+            {/* "link" variant — typical use under a section header or empty state */}
+            <Card padding="lg" elevation="sm" className="space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <h4 className="font-display font-bold text-grubano-base text-grubano-ink">
+                  Gérer mes stocks
+                </h4>
+                <DocsLink topic="restaurant.stocks" />
+              </div>
+              <p className="text-grubano-sm text-grubano-ink-muted">
+                Variante <code className="font-mono text-grubano-xs bg-grubano-surface-muted px-1 rounded">link</code> —
+                default. Texte i18n + flèche externe.
+              </p>
+            </Card>
+
+            {/* "icon" variant — discreet "?" next to inline titles */}
+            <Card padding="lg" elevation="sm" className="space-y-3">
+              <div className="flex items-center gap-1">
+                <h4 className="font-display font-bold text-grubano-base text-grubano-ink">
+                  Programme de fidélité
+                </h4>
+                <DocsLink topic="restaurant.loyalty" variant="icon" />
+              </div>
+              <p className="text-grubano-sm text-grubano-ink-muted">
+                Variante <code className="font-mono text-grubano-xs bg-grubano-surface-muted px-1 rounded">icon</code> —
+                petit <code className="font-mono text-grubano-xs">?</code> discret, idéal à côté d&apos;un titre de section.
+              </p>
+            </Card>
+
+            {/* Custom label override */}
+            <Card padding="lg" elevation="sm" className="space-y-3">
+              <DocsLink topic="creators" label="Tout savoir sur le programme Créateurs" />
+              <p className="text-grubano-sm text-grubano-ink-muted">
+                Prop <code className="font-mono text-grubano-xs bg-grubano-surface-muted px-1 rounded">label</code> pour
+                surcharger le texte par défaut.
+              </p>
+            </Card>
+
+            {/* Unknown topic — graceful fallback to docs home */}
+            <Card padding="lg" elevation="sm" className="space-y-3">
+              <DocsLink topic="not-a-real-topic" label="Sujet inconnu (fallback gracieux)" />
+              <p className="text-grubano-sm text-grubano-ink-muted">
+                Topic inconnu → lien vers la home doc (jamais de lien cassé). Console warning en dev seulement.
+              </p>
+            </Card>
+
+            {/* Catalogue of every known topic — proof the contract is wired */}
+            <div>
+              <p className="text-grubano-xs uppercase tracking-wide text-grubano-ink-muted mb-2">
+                Catalogue ({ALL_DOCS_TOPICS.length} topics connus)
+              </p>
+              <Card padding="lg" elevation="flat" className="bg-grubano-surface-muted">
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-grubano-sm">
+                  {ALL_DOCS_TOPICS.map((t) => (
+                    <li key={t} className="flex items-baseline justify-between gap-3">
+                      <code className="font-mono text-grubano-xs text-grubano-ink">{t}</code>
+                      <DocsLink topic={t} />
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </div>
           </div>
         </Section>
 
