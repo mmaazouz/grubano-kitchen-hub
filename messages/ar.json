@@ -815,6 +815,23 @@
       "sectionNote": "ملاحظة للمطعم",
       "notePlaceholder": "مثلاً: مطبوخ جيداً، بدون كزبرة...",
       "total": "المجموع"
+    },
+    "creator": {
+      "title": "الملف الشخصي للمبدع",
+      "signedBy": "وصفة من إعداد",
+      "seeProfile": "عرض الملف الشخصي",
+      "followers": "متابع",
+      "verifiedBadge": "مبدع موثّق",
+      "copyCode": "الرمز {code} — نسخ",
+      "codeCopied": "تم نسخ الرمز!",
+      "recipesTitle": "وصفاته",
+      "noRecipesTitle": "لا توجد وصفات بعد",
+      "noRecipesDescription": "عُد قريباً — هناك شيء قيد التحضير.",
+      "notFoundTitle": "هذا المبدع غير موجود",
+      "notFoundDescription": "قد يكون الرابط خاطئاً أو منتهي الصلاحية.",
+      "backToBrowse": "استكشاف المطاعم",
+      "orderFrom": "اطلب من",
+      "soonNearYou": "قريباً بالقرب منك"
     }
   },
   "menu": {

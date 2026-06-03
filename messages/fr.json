@@ -815,6 +815,23 @@
       "sectionNote": "Note pour le restaurant",
       "notePlaceholder": "Ex. cuisson saignante, pas de coriandre…",
       "total": "Total"
+    },
+    "creator": {
+      "title": "Profil créateur",
+      "signedBy": "Recette signée",
+      "seeProfile": "voir le profil",
+      "followers": "abonnés",
+      "verifiedBadge": "Créateur vérifié",
+      "copyCode": "Code {code} — copier",
+      "codeCopied": "Code copié !",
+      "recipesTitle": "Ses recettes",
+      "noRecipesTitle": "Pas encore de recettes",
+      "noRecipesDescription": "Reviens bientôt — il prépare quelque chose.",
+      "notFoundTitle": "Ce créateur n'existe pas",
+      "notFoundDescription": "Le lien est peut-être faux ou expiré.",
+      "backToBrowse": "Explorer les restos",
+      "orderFrom": "Commander chez",
+      "soonNearYou": "Bientôt disponible près de chez toi"
     }
   },
   "menu": {

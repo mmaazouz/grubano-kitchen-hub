@@ -18,6 +18,7 @@ import {
   Skeleton,
 } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
+import CreatorBadge from '@/components/eat/CreatorBadge'
 import {
   readCart,
   writeCart,
@@ -39,6 +40,15 @@ interface MenuItem {
   category: string
   photos: string[]
   isPopular: boolean
+  /** Present only on adopted creator recipes (4-bis A) — drives the badge. */
+  creator?: {
+    id: string
+    name: string
+    verified: boolean
+    followers: number
+    slug: string | null
+    dishPhoto: string | null
+  }
 }
 interface MenuCategory {
   category: string
@@ -401,6 +411,7 @@ export default function RestaurantScreen() {
                   topLabel={tc('top')}
                   soldOutLabel={tc('soldOut')}
                   quantityInCart={qtyForDish(dish.id)}
+                  meta={dish.creator ? <CreatorBadge creator={dish.creator} /> : undefined}
                   onClick={() => setModalDish(dish)}
                   onAdd={() => setModalDish(dish)}
                 />

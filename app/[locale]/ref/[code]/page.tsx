@@ -12,10 +12,22 @@ import { redirect } from 'next/navigation'
  * `next/navigation`'s `redirect()` throws a `NEXT_REDIRECT` error that the
  * framework converts into a 307/308 response, preserving the cookie flow.
  *
+ * Optional ?to= forwarding: the public creator page sends visitors through
+ * /ref/{code}?to=/{locale}/eat/r/{restaurantId} so the cookie is dropped AND
+ * the funnel lands on the adopting restaurant. The API handler whitelists
+ * the value — we just pass it through.
+ *
  * Brick 5A — no DB write happens here; this file only rewrites the URL.
  */
-export default function RefBridge({ params }: { params: { code: string; locale: string } }) {
-  // Pass the raw code through untouched — the API handler normalises casing.
+export default function RefBridge({
+  params,
+  searchParams,
+}: {
+  params: { code: string; locale: string }
+  searchParams?: { to?: string | string[] }
+}) {
   const safe = encodeURIComponent(params.code || '')
-  redirect(`/api/ref/${safe}`)
+  const rawTo = Array.isArray(searchParams?.to) ? searchParams?.to[0] : searchParams?.to
+  const qs = rawTo ? `?to=${encodeURIComponent(rawTo)}` : ''
+  redirect(`/api/ref/${safe}${qs}`)
 }

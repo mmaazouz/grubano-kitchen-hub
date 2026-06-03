@@ -815,6 +815,23 @@
       "sectionNote": "Note for restaurant",
       "notePlaceholder": "Ex. rare, no cilantro…",
       "total": "Total"
+    },
+    "creator": {
+      "title": "Creator profile",
+      "signedBy": "Recipe by",
+      "seeProfile": "view profile",
+      "followers": "followers",
+      "verifiedBadge": "Verified creator",
+      "copyCode": "Code {code} — copy",
+      "codeCopied": "Code copied!",
+      "recipesTitle": "Their recipes",
+      "noRecipesTitle": "No recipes yet",
+      "noRecipesDescription": "Come back soon — something's cooking.",
+      "notFoundTitle": "This creator does not exist",
+      "notFoundDescription": "The link may be wrong or expired.",
+      "backToBrowse": "Browse restaurants",
+      "orderFrom": "Order from",
+      "soonNearYou": "Coming soon to your area"
     }
   },
   "menu": {

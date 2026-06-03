@@ -55,6 +55,37 @@ function pickLocale(req: NextRequest): string {
 }
 
 /**
+ * Resolve the optional `?to=` query param to a SAFE same-origin path.
+ *
+ * Used by the creator-public-page → restaurant funnel (Levier 4-bis B): the CTA
+ * sends the visitor through /ref/{code}?to=/{locale}/eat/r/{restaurantId}, so
+ * we both drop the attribution cookie AND land on the adopting restaurant.
+ *
+ * Strict whitelist to avoid open-redirect abuse:
+ *  - Must start with a single `/` (no protocol-relative `//`, no absolute URL).
+ *  - Must not contain `://` anywhere (defends against decoded `http://` etc.).
+ *  - Must not start with `/api/` (we never want to round-trip the API).
+ *
+ * Returns the validated path, or `null` if missing/invalid (caller falls back).
+ */
+function pickToPath(req: NextRequest): string | null {
+  const raw = req.nextUrl.searchParams.get('to')
+  if (!raw) return null
+  let decoded = raw
+  try {
+    decoded = decodeURIComponent(raw)
+  } catch {
+    /* keep raw */
+  }
+  if (decoded.length < 2 || decoded.length > 500) return null
+  if (!decoded.startsWith('/')) return null
+  if (decoded.startsWith('//')) return null
+  if (decoded.startsWith('/api/')) return null
+  if (decoded.includes('://')) return null
+  return decoded
+}
+
+/**
  * Build a 307 with a RELATIVE Location. The browser resolves it against the
  * public URL in the address bar — sidesteps the internal-host issue caused
  * by Passenger / o2switch's reverse-proxy.
@@ -71,7 +102,10 @@ export async function GET(
   { params }: { params: { code: string } },
 ) {
   const locale = pickLocale(req)
-  const homePath = `/${locale}/eat`
+  // Funnel target: explicit ?to= path (whitelisted) wins over the default home.
+  // This lets the creator public page send the visitor straight to the adopting
+  // restaurant while still posting the attribution cookie on the same hop.
+  const homePath = pickToPath(req) ?? `/${locale}/eat`
 
   // 1. Normalise the URL slug. Codes are usually stored upper-case ("DEMO20").
   let raw = ''

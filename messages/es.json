@@ -815,6 +815,23 @@
       "sectionNote": "Nota para el restaurante",
       "notePlaceholder": "Ej. poco hecho, sin cilantro…",
       "total": "Total"
+    },
+    "creator": {
+      "title": "Perfil del creador",
+      "signedBy": "Receta de",
+      "seeProfile": "ver perfil",
+      "followers": "seguidores",
+      "verifiedBadge": "Creador verificado",
+      "copyCode": "Código {code} — copiar",
+      "codeCopied": "¡Código copiado!",
+      "recipesTitle": "Sus recetas",
+      "noRecipesTitle": "Aún no hay recetas",
+      "noRecipesDescription": "Vuelve pronto — está preparando algo.",
+      "notFoundTitle": "Este creador no existe",
+      "notFoundDescription": "El enlace puede ser incorrecto o haber caducado.",
+      "backToBrowse": "Explorar restaurantes",
+      "orderFrom": "Pedir en",
+      "soonNearYou": "Próximamente cerca de ti"
     }
   },
   "menu": {

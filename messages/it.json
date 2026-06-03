@@ -815,6 +815,23 @@
       "sectionNote": "Nota per il ristorante",
       "notePlaceholder": "Es. cottura al sangue, no coriandolo…",
       "total": "Totale"
+    },
+    "creator": {
+      "title": "Profilo creator",
+      "signedBy": "Ricetta firmata da",
+      "seeProfile": "vedi profilo",
+      "followers": "follower",
+      "verifiedBadge": "Creator verificato",
+      "copyCode": "Codice {code} — copia",
+      "codeCopied": "Codice copiato!",
+      "recipesTitle": "Le sue ricette",
+      "noRecipesTitle": "Ancora nessuna ricetta",
+      "noRecipesDescription": "Torna presto — sta preparando qualcosa.",
+      "notFoundTitle": "Questo creator non esiste",
+      "notFoundDescription": "Il link potrebbe essere errato o scaduto.",
+      "backToBrowse": "Esplora ristoranti",
+      "orderFrom": "Ordina da",
+      "soonNearYou": "Presto vicino a te"
     }
   },
   "menu": {
