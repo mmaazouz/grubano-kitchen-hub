@@ -87,8 +87,11 @@ jobs:
           # Public assets
           [ -d public ] && cp -r public deploy-temp/public || true
 
-          # .htaccess — Passenger config for staging (printf avoids BOM)
-          printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/app.grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/app.grubano.com/24/bin/node\nPassengerMaxPoolSize 1\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
+          # .htaccess is INTENTIONALLY NOT written into deploy-temp/. The
+          # server's .htaccess is the live Passenger config and is not FTP-
+          # writable (553 Permission denied on STOR). Passenger reads it in
+          # place; we don't need to re-ship it on every deploy. The FTP step
+          # also excludes .htaccess below as a second safety net.
 
           # .env.local is INTENTIONALLY NOT written into deploy-temp/. The
           # ENV_LOCAL_CONTENT secret was unset, so this line was creating an
@@ -163,6 +166,11 @@ jobs:
             # FTP sync will skip every .env* file.
             .env.local
             .env*
+            # Server's .htaccess (Passenger config) is not FTP-writable
+            # (553 Permission denied) and doesn't need to be re-shipped —
+            # Passenger reads it in place. The workflow no longer writes one
+            # into deploy-temp/, and this exclude is a second safety net.
+            .htaccess
 
       # ── SSH: post-deploy server tasks ─────────────────────────────────────────
       # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
