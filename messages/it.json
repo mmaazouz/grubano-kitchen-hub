@@ -1,19 +1,4 @@
 {
-  "seo": {
-    "defaultTitle": "Grubano — Ordina, prenota e scopri il cibo locale",
-    "defaultDescription": "Grubano riunisce consegna, prenotazione e ricette dei creator. Scopri il cibo locale vicino a te e ordina in pochi clic.",
-    "homeTitle": "Grubano — Consegna di cibo e prenotazione ristoranti vicino a te",
-    "homeDescription": "Ordina i tuoi piatti preferiti con consegna rapida e prenota il tuo tavolo. Il cibo locale della tua città, riunito su Grubano. Ordina ora.",
-    "homeH1": "Grubano — la piattaforma all-in-one per ordinare, prenotare e scoprire il cibo locale",
-    "restaurantTitle": "{name}, {city} — Ordina e prenota un tavolo | Grubano",
-    "restaurantDescription": "Ordina da {name} a {city} con consegna rapida o prenota un tavolo. Menu, prezzi e recensioni su Grubano. Ordina ora.",
-    "franchiseTitle": "Franchising Grubano — Lancia il tuo ristorante multi-brand",
-    "franchiseDescription": "Entra nel franchising Grubano: brand food chiavi in mano, consegna integrata e supporto. Scopri i brand disponibili vicino a te.",
-    "creatorsTitle": "Creator Grubano — Monetizza le tue ricette con i ristoranti",
-    "creatorsDescription": "Creator del food: porta le tue ricette nei ristoranti Grubano e guadagna su ogni vendita. Unisciti al programma creator e inizia.",
-    "ogTagline": "La prima piattaforma food all-in-one: consegna, prenotazione e creator",
-    "ogCta": "Ordina e prenota"
-  },
   "common": {
     "loading": "Caricamento...",
     "error": "Si è verificato un errore",
