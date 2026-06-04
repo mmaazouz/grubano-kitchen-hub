@@ -3,11 +3,16 @@ import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 
+// SECURITY: `role` is deliberately NOT accepted from the request body. This
+// endpoint only ever creates a CONSUMER account — the role is forced
+// server-side below. A client-supplied role here would be a privilege-escalation
+// vector (anyone could mint a `restaurant`/`admin` account). Partner accounts go
+// through POST /api/partners/register, which forces role='restaurant' + email
+// verification. Any extra key (e.g. a stray `role`) is silently stripped by Zod.
 const registerSchema = z.object({
   name:     z.string().min(2).max(80),
   email:    z.string().email(),
   password: z.string().min(8).max(100),
-  role:     z.enum(['consumer', 'restaurant', 'franchise', 'creator']).default('consumer'),
 })
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
@@ -32,7 +37,7 @@ export async function POST(req: NextRequest) {
         name:     data.name,
         email:    data.email,
         password: hashedPassword,
-        role:     data.role,
+        role:     'consumer',   // forced server-side — never client-controlled
         status:   'active',
       },
     })

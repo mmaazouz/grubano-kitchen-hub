@@ -17,9 +17,22 @@ model Operator {
   password  String?                              // bcrypt hash — null for SSO / seed accounts
   phone     String?
   city      String?
-  status    String    @default("active")
+  status    String    @default("active")   // active | pending | pending_review | suspended
   role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin
   createdAt  DateTime   @default(now())
+  // ── Partner email verification + RGPD consent (Agent 12, brique 1) ───────────
+  // ADDITIVE + REVERSIBLE: every field is nullable, so existing rows (consumers,
+  // operators, seed accounts) stay valid with zero backfill and dropping these
+  // columns leaves the rest of the model untouched. A partner self-registers via
+  // POST /api/partners/register in status 'pending' with a SHA-256-hashed,
+  // single-use verification token (24h). GET /api/partners/verify-email promotes
+  // the account to 'pending_review' and stamps emailVerifiedAt. Login is refused
+  // while status='pending'. consentAt records the explicit, timestamped RGPD
+  // consent given at registration.
+  emailVerifiedAt   DateTime?
+  verifyTokenHash   String?
+  verifyTokenExpiry DateTime?
+  consentAt         DateTime?
   brands       Brand[]
   accounts     Account[]
   sessions     Session[]

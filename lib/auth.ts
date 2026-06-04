@@ -26,6 +26,12 @@ const providers: Provider[] = [
       })
       if (!operator) return null
 
+      // Partner accounts self-register in status 'pending' and must confirm their
+      // email (GET /api/partners/verify-email → 'pending_review') before they can
+      // sign in. Returning null surfaces as a generic "invalid credentials" so we
+      // don't leak that the account exists-but-unverified.
+      if (operator.status === 'pending') return null
+
       // Support both hashed passwords and plain text (for legacy seed data)
       let valid = false
       if (operator.password) {
