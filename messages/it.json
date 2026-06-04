@@ -994,6 +994,25 @@
       "partnerOnlyNote": "Accesso riservato ai partner Grubano.",
       "createAccount": "Crea il mio account partner",
       "legalNote": "Creando un account confermi di essere autorizzato a rappresentare la tua attività."
+    },
+    "metadata": {
+      "title": "Grubano Partner",
+      "description": "Area partner della piattaforma Grubano."
+    },
+    "verified": {
+      "successTitle": "Email verificata ✅",
+      "successBody": "Il tuo account partner è in fase di revisione da parte del nostro team prima dell’attivazione. Ti scriveremo non appena sarà attivo.",
+      "successCta": "Vai all’accesso",
+      "expiredTitle": "Link scaduto",
+      "expiredBody": "Questo link di verifica è scaduto. Accedi di nuovo per richiedere un nuovo email.",
+      "usedTitle": "Link già utilizzato",
+      "usedBody": "Questo link è già stato utilizzato. La tua email è probabilmente già verificata — accedi per confermarlo.",
+      "invalidTitle": "Link non valido",
+      "invalidBody": "Non riconosciamo questo link. Assicurati di aver cliccato l’ultimo email ricevuto.",
+      "errorTitle": "Qualcosa è andato storto",
+      "errorBody": "Non siamo riusciti a verificare la tua email in questo momento. Riprova tra qualche istante.",
+      "errorCta": "Torna all’accesso",
+      "helpHint": "Se il problema persiste, contatta il supporto a contact@grubano.com."
     }
   }
 }

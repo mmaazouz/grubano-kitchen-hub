@@ -5,6 +5,7 @@ import {
   sha256,
   safeEqualHex,
 } from '@/lib/partner-verification'
+import { locales, defaultLocale, type Locale } from '@/i18n'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -17,21 +18,43 @@ export const runtime = 'nodejs'
 // On success the account moves status 'pending' → 'pending_review' (email is
 // confirmed, but the restaurant is NOT yet publishable — that needs admin
 // approval). The single-use token is cleared and emailVerifiedAt is stamped.
-// Idempotency: a token that was already consumed (hash cleared) returns the same
-// "invalid / already used" error rather than 500.
+// Idempotency: a token that was already consumed (hash cleared) is reported as
+// `used` rather than 500 so the friendly page can reassure the user.
 //
-// Backend-only brique: returns JSON. A later UI brique can wrap this in a
-// friendly confirmation page / redirect.
+// ── UI brique (Agent 3) — response shape only ────────────────────────────────
+// The token-validation logic written by Agent 12 (timing-safe equal, single-use,
+// expiry, status promotion) is UNCHANGED. Only the HTTP response was swapped
+// from `NextResponse.json` to a 303 redirect to /{locale}/business/verified so
+// the click on the email link lands on a real branded page, not raw JSON.
+// Status param values: success | invalid | expired | used | error.
 
-function fail(message: string, status = 400) {
-  return NextResponse.json({ ok: false, error: message }, { status })
+/** Read NEXT_LOCALE cookie (set by next-intl) to honour the partner's language. */
+function pickLocale(req: NextRequest): string {
+  const cookieLocale = req.cookies.get('NEXT_LOCALE')?.value
+  if (cookieLocale && (locales as readonly string[]).includes(cookieLocale)) {
+    return cookieLocale as Locale
+  }
+  return defaultLocale
+}
+
+/**
+ * 303 See Other with a RELATIVE Location — the browser resolves it against
+ * the public domain in the address bar. Same trick the /api/ref route uses to
+ * sidestep the o2switch / Passenger internal-host issue (commit bbe88ef).
+ */
+function redirectToVerified(req: NextRequest, status: string): NextResponse {
+  const locale = pickLocale(req)
+  return new NextResponse(null, {
+    status: 303,
+    headers: { Location: `/${locale}/business/verified?status=${status}` },
+  })
 }
 
 export async function GET(req: NextRequest) {
   try {
     const token = req.nextUrl.searchParams.get('token') ?? ''
     const parsed = parseVerificationToken(token)
-    if (!parsed) return fail('Lien invalide')
+    if (!parsed) return redirectToVerified(req, 'invalid')
 
     const operator = await prisma.operator.findUnique({
       where:  { id: parsed.operatorId },
@@ -43,15 +66,16 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    // No row, or token already consumed → uniform "invalid / used" message.
-    if (!operator || !operator.verifyTokenHash || !operator.verifyTokenExpiry) {
-      return fail('Lien invalide ou déjà utilisé')
+    // No row → invalid. Hash cleared → already consumed (single-use).
+    if (!operator) return redirectToVerified(req, 'invalid')
+    if (!operator.verifyTokenHash || !operator.verifyTokenExpiry) {
+      return redirectToVerified(req, 'used')
     }
     if (operator.verifyTokenExpiry.getTime() < Date.now()) {
-      return fail('Lien expiré. Demande un nouvel email de vérification.')
+      return redirectToVerified(req, 'expired')
     }
     if (!safeEqualHex(sha256(parsed.secret), operator.verifyTokenHash)) {
-      return fail('Lien invalide')
+      return redirectToVerified(req, 'invalid')
     }
 
     await prisma.operator.update({
@@ -66,14 +90,9 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return NextResponse.json({
-      ok: true,
-      message:
-        'Email vérifié ✅. Ton compte partenaire est en cours de validation par ' +
-        'notre équipe avant la mise en ligne.',
-    })
+    return redirectToVerified(req, 'success')
   } catch (err) {
     console.error('[GET /api/partners/verify-email]', err)
-    return fail('Erreur serveur', 500)
+    return redirectToVerified(req, 'error')
   }
 }

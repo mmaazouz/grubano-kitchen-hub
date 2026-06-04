@@ -994,6 +994,25 @@
       "partnerOnlyNote": "Acceso reservado a los socios de Grubano.",
       "createAccount": "Crear mi cuenta de socio",
       "legalNote": "Al crear una cuenta, confirmas que estás autorizado para representar tu establecimiento."
+    },
+    "metadata": {
+      "title": "Grubano Socios",
+      "description": "Espacio para socios de la plataforma Grubano."
+    },
+    "verified": {
+      "successTitle": "Email verificado ✅",
+      "successBody": "Tu cuenta de socio está siendo revisada por nuestro equipo antes de activarse. Te avisaremos por email en cuanto esté lista.",
+      "successCta": "Ir al inicio de sesión",
+      "expiredTitle": "Enlace caducado",
+      "expiredBody": "Este enlace de verificación ha caducado. Vuelve a iniciar sesión para solicitar un nuevo email.",
+      "usedTitle": "Enlace ya utilizado",
+      "usedBody": "Este enlace ya se ha utilizado. Tu email probablemente está verificado — inicia sesión para comprobarlo.",
+      "invalidTitle": "Enlace no válido",
+      "invalidBody": "No reconocemos este enlace. Asegúrate de haber pulsado el último email recibido.",
+      "errorTitle": "Algo ha fallado",
+      "errorBody": "No hemos podido verificar tu email en este momento. Inténtalo de nuevo en unos instantes.",
+      "errorCta": "Volver al inicio de sesión",
+      "helpHint": "Si el problema persiste, contacta con soporte en contact@grubano.com."
     }
   }
 }

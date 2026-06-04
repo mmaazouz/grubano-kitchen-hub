@@ -994,6 +994,25 @@
       "partnerOnlyNote": "Connexion réservée aux partenaires Grubano.",
       "createAccount": "Créer mon compte partenaire",
       "legalNote": "En créant un compte, tu confirmes être autorisé à représenter ton établissement."
+    },
+    "metadata": {
+      "title": "Grubano Partenaires",
+      "description": "Espace partenaire de la plateforme Grubano."
+    },
+    "verified": {
+      "successTitle": "Email vérifié ✅",
+      "successBody": "Ton compte partenaire est en cours de validation par notre équipe avant la mise en ligne. Tu recevras un email dès qu’il sera activé.",
+      "successCta": "Aller à la connexion",
+      "expiredTitle": "Lien expiré",
+      "expiredBody": "Ce lien de vérification a expiré. Reconnecte-toi pour demander un nouvel email.",
+      "usedTitle": "Lien déjà utilisé",
+      "usedBody": "Ce lien a déjà été utilisé. Ton email est sans doute déjà vérifié — connecte-toi pour le confirmer.",
+      "invalidTitle": "Lien invalide",
+      "invalidBody": "Ce lien n’est pas reconnu. Vérifie que tu as bien cliqué le dernier email reçu.",
+      "errorTitle": "Une erreur est survenue",
+      "errorBody": "Impossible de vérifier ton email pour le moment. Réessaie dans quelques instants.",
+      "errorCta": "Revenir à la connexion",
+      "helpHint": "Si le problème persiste, contacte le support à contact@grubano.com."
     }
   }
 }

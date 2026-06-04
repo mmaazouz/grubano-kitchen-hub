@@ -994,6 +994,25 @@
       "partnerOnlyNote": "Sign-in reserved for Grubano partners.",
       "createAccount": "Create my partner account",
       "legalNote": "By creating an account, you confirm you are authorised to represent your business."
+    },
+    "metadata": {
+      "title": "Grubano Partners",
+      "description": "Partner area of the Grubano platform."
+    },
+    "verified": {
+      "successTitle": "Email verified ✅",
+      "successBody": "Your partner account is being reviewed by our team before going live. We’ll email you as soon as it is activated.",
+      "successCta": "Go to sign-in",
+      "expiredTitle": "Link expired",
+      "expiredBody": "This verification link has expired. Sign in again to request a new email.",
+      "usedTitle": "Link already used",
+      "usedBody": "This link has already been used. Your email is probably verified — sign in to confirm.",
+      "invalidTitle": "Invalid link",
+      "invalidBody": "This link is not recognised. Make sure you clicked the latest email you received.",
+      "errorTitle": "Something went wrong",
+      "errorBody": "We couldn’t verify your email right now. Please try again in a moment.",
+      "errorCta": "Back to sign-in",
+      "helpHint": "If the problem persists, contact support at contact@grubano.com."
     }
   }
 }
