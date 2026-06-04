@@ -1,4 +1,19 @@
 {
+  "seo": {
+    "defaultTitle": "Grubano — Pide, reserva y descubre la comida local",
+    "defaultDescription": "Grubano reúne entrega, reserva de restaurante y recetas de creadores. Descubre la comida local cerca de ti y pide en pocos clics.",
+    "homeTitle": "Grubano — Entrega de comida y reserva de restaurantes cerca de ti",
+    "homeDescription": "Pide tus platos favoritos con entrega rápida y reserva tu mesa. La comida local de tu ciudad, reunida en Grubano. Pide ahora.",
+    "homeH1": "Grubano — la plataforma todo en uno para pedir, reservar y descubrir la comida local",
+    "restaurantTitle": "{name}, {city} — Pedir y reservar mesa | Grubano",
+    "restaurantDescription": "Pide en {name} en {city} con entrega rápida o reserva una mesa. Menú, precios y opiniones en Grubano. Pide ahora.",
+    "franchiseTitle": "Franquicia Grubano — Lanza tu restaurante multimarca",
+    "franchiseDescription": "Únete a la franquicia Grubano: marcas de comida llave en mano, entrega integrada y acompañamiento. Descubre las marcas disponibles.",
+    "creatorsTitle": "Creadores Grubano — Monetiza tus recetas con los restaurantes",
+    "creatorsDescription": "Creadores food: lleva tus recetas a los restaurantes Grubano y gana en cada venta. Únete al programa de creadores y empieza.",
+    "ogTagline": "La primera plataforma food todo en uno: entrega, reservas y creadores",
+    "ogCta": "Pedir y reservar"
+  },
   "common": {
     "loading": "Cargando...",
     "error": "Ha ocurrido un error",

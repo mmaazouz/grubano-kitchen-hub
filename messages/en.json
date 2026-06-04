@@ -1,4 +1,19 @@
 {
+  "seo": {
+    "defaultTitle": "Grubano — Order, book & discover local food",
+    "defaultDescription": "Grubano brings together delivery, booking and creator recipes. Discover local food near you and order in just a few clicks.",
+    "homeTitle": "Grubano — Food delivery & restaurant booking near you",
+    "homeDescription": "Order your favourite dishes with fast delivery and book your table. Your city's local food, all on Grubano. Order now.",
+    "homeH1": "Grubano — the all-in-one platform to order, book and discover local food",
+    "restaurantTitle": "{name}, {city} — Order & book a table | Grubano",
+    "restaurantDescription": "Order from {name} in {city} with fast delivery or book a table. Menu, prices and reviews on Grubano. Order now.",
+    "franchiseTitle": "Grubano Franchise — Launch your multi-brand restaurant",
+    "franchiseDescription": "Join the Grubano franchise: turnkey food brands, built-in delivery and support. Discover the brands available near you.",
+    "creatorsTitle": "Grubano Creators — Monetise your recipes with restaurants",
+    "creatorsDescription": "Food creators: bring your recipes to Grubano restaurants and earn on every sale. Join the creators programme and get started.",
+    "ogTagline": "The first all-in-one food platform: delivery, booking & creators",
+    "ogCta": "Order & book"
+  },
   "common": {
     "loading": "Loading...",
     "error": "An error occurred",

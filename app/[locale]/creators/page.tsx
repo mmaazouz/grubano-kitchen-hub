@@ -1,8 +1,41 @@
+import type { Metadata } from 'next'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { ChefHat, ChevronRight, Store, Coins, BarChart2 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button } from '@/components/design-system'
 import { prisma } from '@/lib/prisma'
+import type { Locale } from '@/i18n'
+import {
+  SITE_URL,
+  BRAND_NAME,
+  absoluteUrl,
+  buildAlternates,
+  ogBase,
+  twitterBase,
+  defaultOgImage,
+} from '@/lib/seo'
+
+export async function generateMetadata({
+  params: { locale },
+}: {
+  params: { locale: string }
+}): Promise<Metadata> {
+  const t = await getTranslations({ locale, namespace: 'seo' })
+  const title = t('creatorsTitle')
+  const description = t('creatorsDescription')
+  return {
+    title,
+    description,
+    alternates: buildAlternates(locale as Locale, '/creators'),
+    openGraph: ogBase(locale as Locale, {
+      title,
+      description,
+      path: '/creators',
+      image: defaultOgImage(locale as Locale),
+    }),
+    twitter: twitterBase({ title, description, image: defaultOgImage(locale as Locale) }),
+  }
+}
 
 const FALLBACK_LEADERBOARD = [
   { rank: 1, name: 'Amina K.',  dishes: 8, totalSales: 1240, earnings: 2480 },
@@ -57,8 +90,27 @@ export default async function CreatorsPage({ params: { locale } }: { params: { l
     getCreatorStats(),
   ])
 
+  // Factual description of the creator programme. The 4% commission shown in
+  // the hero is a real, fixed programme term, so it's safe to surface here too.
+  const t2 = await getTranslations({ locale, namespace: 'seo' })
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Service',
+    serviceType: 'Creator programme',
+    name: t2('creatorsTitle'),
+    description: t2('creatorsDescription'),
+    url: absoluteUrl(locale as Locale, '/creators'),
+    areaServed: 'FR',
+    provider: { '@type': 'Organization', name: BRAND_NAME, url: SITE_URL },
+  }
+
   return (
-    <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
 
       {/* Hero */}
       <div className="rounded-grubano-xl bg-gradient-to-br from-grubano-primary to-grubano-primary/70 p-6 mb-5 text-white">
@@ -158,6 +210,7 @@ export default async function CreatorsPage({ params: { locale } }: { params: { l
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </>
   )
 }

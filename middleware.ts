@@ -31,9 +31,21 @@ export async function middleware(request: NextRequest) {
   const isCreatorsDashboard =
     restPath === '/creators/dashboard' || restPath.startsWith('/creators/dashboard/')
 
+  // Metadata image routes (Next.js file conventions: opengraph-image,
+  // twitter-image). These are crawled by social/search bots with no session and
+  // MUST stay public — otherwise the auth gate 307-redirects them to /login and
+  // every OG/Twitter card breaks. Matches both the locale-root images
+  // (/{locale}/opengraph-image) and any nested segment's colocated image.
+  const isMetadataImage =
+    restPath === '/opengraph-image' ||
+    restPath === '/twitter-image' ||
+    restPath.endsWith('/opengraph-image') ||
+    restPath.endsWith('/twitter-image')
+
   // Public routes — no auth required. /eat/* is the consumer app (auth per-page).
   const publicRoots = ['/', '/login', '/register', '/design']
   const isPublic =
+    isMetadataImage ||
     publicRoots.includes(restPath) ||
     restPath.startsWith('/eat') ||
     restPath.startsWith('/api/auth') ||
