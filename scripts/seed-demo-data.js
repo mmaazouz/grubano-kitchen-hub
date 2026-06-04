@@ -432,6 +432,53 @@ async function main() {
   })
   console.log(`[4c/8] Test restaurateur resto@grubano.com (role restaurant) + own brand demo-brand-test (openToFranchise=false, no adoption).`)
 
+  // ── 2nd TEST restaurateur in the SAME city (Orange) — levier 3 fixture ──────────
+  // A replica of "Resto Test" with fresh ids and a distinct email, deliberately in
+  // the SAME city (Orange) so city-exclusivity / the waitlist (levier 3) can be
+  // exercised: this account tries to adopt a recipe already taken by Resto Test in
+  // Orange → must be blocked → can then join the waitlist. It owns NO adoption.
+  // Reuses restoTestHash (bcrypt of 'Test1234!') so the login is identical.
+  const restoTest2 = await prisma.operator.upsert({
+    where:  { email: 'resto2@grubano.com' },
+    update: { name: 'Resto Test 2', status: 'active' },
+    create: { id: 'demo-resto-test-2', name: 'Resto Test 2', email: 'resto2@grubano.com', role: 'restaurant', status: 'active', password: restoTestHash },
+  })
+  await prisma.brand.upsert({
+    where:  { id: 'demo-brand-test-2' },
+    update: { name: 'Resto Test 2', emoji: '🌮', status: 'active', openToFranchise: false, franchiseStatus: 'none', cuisineType: 'Street food' },
+    create: {
+      id: 'demo-brand-test-2',
+      operatorId: restoTest2.id,
+      name: 'Resto Test 2',
+      emoji: '🌮',
+      status: 'active',
+      openToFranchise: false,
+      franchiseStatus: 'none',
+      cuisineType: 'Street food',
+    },
+  })
+  // Restaurant profile in the SAME city as Resto Test (Orange) — 1-to-1 by operator.
+  await prisma.restaurant.upsert({
+    where:  { operatorId: restoTest2.id },
+    update: { name: 'Resto Test 2', city: 'Orange', isActive: true },
+    create: {
+      id: 'demo-resto-test-2-profile',
+      operatorId: restoTest2.id,
+      name: 'Resto Test 2',
+      description: "2e compte restaurateur de test (Orange) — pour tester l'exclusivité de ville et la liste d'attente (levier 3).",
+      cuisine: ['Street food'],
+      rating: 4.8,
+      reviewCount: 42,
+      deliveryTime: 25,
+      city: 'Orange',
+      address: '12 Rue de la République, 84100 Orange',
+      isActive: true,
+      deliveryEnabled: true,
+      pickupEnabled: true,
+    },
+  })
+  console.log(`[4d/8] 2nd test restaurateur resto2@grubano.com (Orange) + own brand demo-brand-test-2 (no adoption — levier 3 fixture).`)
+
   // ── Creator operator + Creator profile + signature dishes ───────────────────────
   await ensureOperator({
     id: 'demo-creator-op',
@@ -698,6 +745,7 @@ async function main() {
   console.log('    Franchise    : franchise@grubano.com / Demo1234!')
   console.log('    Créateur     : createur@grubano.com / Demo1234!  (code DEMO20)')
   console.log("    RESTO DE TEST → resto@grubano.com / Test1234! (role restaurant, marque 'Resto Test')")
+  console.log('    RESTO DE TEST 2 → resto2@grubano.com / Test1234! (Orange)')
   console.log('  Re-running this script refreshes the same demo-* rows — no dupes.')
   console.log('============================================================')
 }
