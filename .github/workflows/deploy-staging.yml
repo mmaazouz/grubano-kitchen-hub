@@ -71,18 +71,6 @@ jobs:
           fi
           echo "OK: node_modules/next present in standalone"
 
-          # Pack next/og runtime (@vercel/og + WASM) as a single tarball so
-          # FTP transfers ONE file instead of thousands of nested binaries.
-          # The FTP step excludes the raw tree; the SSH Post-deploy step
-          # untars this archive back into place. Keeps dynamic OG routes
-          # working without breaking Pure-FTPd on a deep binary subtree.
-          OG=$(find deploy-temp/node_modules/next -type d -path '*compiled/@vercel/og' | head -1)
-          if [ -n "$OG" ]; then
-            tar czf deploy-temp/vercel-og.tar.gz -C "$(dirname "$OG")" @vercel/og && echo "OG packaged"
-          else
-            echo "WARN: @vercel/og introuvable"
-          fi
-
           # Static assets (CSS/JS bundles — not inside standalone by default)
           cp -r .next/static deploy-temp/.next/static
 
@@ -136,6 +124,14 @@ jobs:
           local-dir: ./deploy-temp/
           server-dir: /app.grubano.com/
           exclude: |
+            # ~/app.grubano.com/node_modules on the server is a SYMLINK to
+            # the nodevenv's lib/node_modules. Pure-FTPd cannot CWD into it,
+            # so any FTP write under node_modules/ returns 550 "Can't change
+            # directory to node_modules" and aborts the whole sync. The app
+            # already runs on the nodevenv's modules — node_modules must NOT
+            # be transferred by FTP at all.
+            node_modules
+            node_modules/**
             **/.git*
             **/.git*/**
             # Server-regenerated artifacts: the Post-deploy SSH step runs
@@ -200,12 +196,6 @@ jobs:
             npx prisma@5.22.0 generate || true
             node prisma/seed-test-user.js || true
             node scripts/server/prune-next.js || true
-            # Restore @vercel/og from the single tarball that FTP shipped
-            # (the raw tree is excluded from the FTP sync to avoid Pure-FTPd
-            # choking on thousands of nested binaries). Keeps dynamic OG
-            # routes alive without breaking the deploy.
-            mkdir -p ~/app.grubano.com/node_modules/next/dist/compiled
-            tar xzf ~/app.grubano.com/vercel-og.tar.gz -C ~/app.grubano.com/node_modules/next/dist/compiled/ || true
             mkdir -p tmp
             touch tmp/restart.txt
 
