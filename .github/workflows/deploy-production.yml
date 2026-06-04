@@ -93,8 +93,13 @@ jobs:
           # .htaccess — Passenger config for production (printf avoids BOM)
           printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node\nPassengerMaxPoolSize 2\nPassengerMaxRequests 1000\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
 
-          # .env.local from secret (full file content, avoids per-secret sprawl)
-          printf '%s' "${{ secrets.ENV_LOCAL_CONTENT }}" > deploy-temp/.env.local
+          # .env.local is INTENTIONALLY NOT written into deploy-temp/. The
+          # ENV_LOCAL_CONTENT secret was unset, so this line was creating an
+          # empty file that the FTP sync would push and overwrite the real
+          # server .env.local — the runtime source of truth. The server's
+          # .env.local is now authoritative; the FTP step also excludes
+          # .env* below as a second safety net so a deploy-temp/.env.local
+          # accidentally introduced upstream still can't reach the server.
 
           echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
           echo "Files to upload: $(find deploy-temp -type f | wc -l)"
@@ -138,6 +143,14 @@ jobs:
             # standalone server, and FTP-syncing symlinks is fragile.
             node_modules/.bin
             node_modules/.bin/**
+            # Never overwrite the server's .env.local — it is the runtime
+            # source of truth (DB URL, NEXTAUTH_SECRET, etc.). The workflow
+            # no longer writes one into deploy-temp/, and this exclude is a
+            # belt-and-suspenders guard: even if a future change accidentally
+            # re-introduces a deploy-temp/.env.local (empty or stale), the
+            # FTP sync will skip every .env* file.
+            .env.local
+            .env*
 
       # ── SSH: post-deploy server tasks ─────────────────────────────────────────
       # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
