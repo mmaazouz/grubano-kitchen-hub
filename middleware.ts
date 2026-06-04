@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { locales, defaultLocale, type Locale } from './i18n'
+import { isPartnerHostValue } from './lib/partner-host'
 
 const intlMiddleware = createIntlMiddleware({
   locales,
@@ -23,6 +24,22 @@ export async function middleware(request: NextRequest) {
   const restPath = rest === '' ? '/' : rest
   const activeLocale = localeInPath ?? defaultLocale
 
+  // ── Partner-host routing (Brique 2C, Agent 12) ──────────────────────────────
+  // On the partner subdomain (business.grubano.com) the localed ROOT resolves to
+  // the partner auth screen instead of the operator dashboard. Host is read from
+  // x-forwarded-host first (o2switch / Passenger reverse-proxy) then host, and
+  // matched via the single source of truth lib/partner-host.ts (same env override
+  // PARTNER_REGISTER_ALLOW_HOST the partner API uses). ADDITIVE: this only fires
+  // for isPartnerHostValue(host) — every OTHER host (app/www.grubano.com) keeps
+  // the existing consumer / role-guard / dashboard behaviour untouched. The bare
+  // root `/` is intentionally left to next-intl below: it gets a detected locale
+  // first, then re-enters here as `/{locale}` and is routed in one hop.
+  const hostHeader =
+    request.headers.get('x-forwarded-host') ?? request.headers.get('host')
+  if (isPartnerHostValue(hostHeader) && localeInPath && restPath === '/') {
+    return NextResponse.redirect(new URL(`/${activeLocale}/business/auth`, request.url))
+  }
+
   // The /franchise and /creators ROOTS are public discovery/recruitment landing
   // pages — any visitor (any role, or none) must be able to see them, and anyone
   // may apply. Only the private /dashboard sub-routes keep a role-guard.
@@ -36,6 +53,9 @@ export async function middleware(request: NextRequest) {
   const isPublic =
     publicRoots.includes(restPath) ||
     restPath.startsWith('/eat') ||
+    // /business/* is the PUBLIC partner space (auth/landing) — no session
+    // required, exactly like /eat. The partner host root is routed here above.
+    restPath.startsWith('/business') ||
     restPath.startsWith('/api/auth') ||
     // Everything under /franchise and /creators is public EXCEPT the /dashboard
     // sub-routes (landing pages, /apply, etc. stay open to all).
