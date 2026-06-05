@@ -51,6 +51,14 @@ model Brand {
   id         String         @id @default(cuid())
   operatorId String
   operator   Operator       @relation(fields: [operatorId], references: [id])
+  // ── Establishment link (Option B, additive step 1) ──────────────────────────
+  // ADDITIVE + REVERSIBLE: a Brand belongs to one Restaurant (establishment).
+  // Nullable so every existing row stays valid with no backfill, and dropping the
+  // column again is non-destructive. Backfill (step 2), read switch (step 3) and
+  // the Operator→restaurants cardinality flip (step 4) come in later commits.
+  // Nothing reads restaurantId yet, so runtime behaviour is unchanged.
+  restaurantId String?
+  restaurant   Restaurant?    @relation(fields: [restaurantId], references: [id])
   name       String
   emoji      String         @default("🍴")
   platform   String         @default("ubereats")
@@ -79,6 +87,8 @@ model Brand {
   dishAdoptions DishAdoption[]
   // Inverse side of AdoptionWaitlist.brand (levier 3A) — city-exclusivity queue.
   waitlist      AdoptionWaitlist[]
+
+  @@index([restaurantId])
 }
 
 // ── Loyalty ───────────────────────────────────────────────────────────────────
@@ -403,8 +413,17 @@ model Restaurant {
   deliveryPrepTime   Int     @default(30)   // minutes
   pickupAddress      String?
   pickupInstructions String? @db.Text
+  // ── Opening hours (Option B, additive step 1) ───────────────────────────────
+  // ADDITIVE + REVERSIBLE: the establishment's opening hours, shared by all its
+  // brands (same physical kitchen). Nullable JSON — no @default to keep the MySQL
+  // push trivial; the application default is handled later (UI step / brique 4B).
+  // Nothing reads this field yet, so runtime behaviour is unchanged.
+  openingHours Json?
   createdAt    DateTime @default(now())
   orders       Order[]
+  // Inverse side of Brand.restaurant (Option B, additive step 1) — the brands
+  // (concepts) served from this establishment. Zero extra column.
+  brands       Brand[]
 }
 
 model Order {
