@@ -26,7 +26,9 @@ export async function middleware(request: NextRequest) {
 
   // ── Partner-host routing (Brique 2C, Agent 12) ──────────────────────────────
   // On the partner subdomain (business.grubano.com) the localed ROOT resolves to
-  // the partner auth screen instead of the operator dashboard. Host is read from
+  // the account-type chooser (/business/start) instead of the operator dashboard.
+  // /business/auth stays reachable directly (the "Restaurateur" card / "Se
+  // connecter" link point there). Host is read from
   // x-forwarded-host first (o2switch / Passenger reverse-proxy) then host, and
   // matched via the single source of truth lib/partner-host.ts (same env override
   // PARTNER_REGISTER_ALLOW_HOST the partner API uses). ADDITIVE: this only fires
@@ -37,7 +39,7 @@ export async function middleware(request: NextRequest) {
   const hostHeader =
     request.headers.get('x-forwarded-host') ?? request.headers.get('host')
   if (isPartnerHostValue(hostHeader) && localeInPath && restPath === '/') {
-    return NextResponse.redirect(new URL(`/${activeLocale}/business/auth`, request.url))
+    return NextResponse.redirect(new URL(`/${activeLocale}/business/start`, request.url))
   }
 
   // The /franchise and /creators ROOTS are public discovery/recruitment landing
