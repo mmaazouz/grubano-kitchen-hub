@@ -41,26 +41,30 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null)
     const { creatorDishId, brandId } = bodySchema.parse(body)
 
-    // ── Resolve the target brand (same logic as /adopt) ───────────────────────────
+    // ── Resolve the target brand (same logic as /adopt), WITH its establishment's
+    //    city via the direct Brand.restaurantId link (Option B step 3) ─────────────
     let brand
     if (brandId) {
-      brand = await prisma.brand.findFirst({ where: { id: brandId, operatorId } })
+      brand = await prisma.brand.findFirst({
+        where:   { id: brandId, operatorId },
+        include: { restaurant: { select: { city: true } } },
+      })
       if (!brand) {
         return NextResponse.json({ error: 'Marque introuvable ou non autorisée' }, { status: 403 })
       }
     } else {
-      brand = await prisma.brand.findFirst({ where: { operatorId }, orderBy: { createdAt: 'asc' } })
+      brand = await prisma.brand.findFirst({
+        where:   { operatorId },
+        orderBy: { createdAt: 'asc' },
+        include: { restaurant: { select: { city: true } } },
+      })
       if (!brand) {
         return NextResponse.json({ error: 'Aucune marque pour ce compte' }, { status: 400 })
       }
     }
 
-    // ── City of this operator's restaurant (required to queue) ────────────────────
-    const restaurant = await prisma.restaurant.findUnique({
-      where:  { operatorId },
-      select: { city: true },
-    })
-    const city = (restaurant?.city ?? '').trim()
+    // ── City of this brand's establishment (required to queue) ────────────────────
+    const city = (brand.restaurant?.city ?? '').trim()
     if (!city) {
       return NextResponse.json({ error: 'Ville du restaurant manquante' }, { status: 400 })
     }

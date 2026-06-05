@@ -13,37 +13,35 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    // Option B (step 3): the consumer menu is the brands attached to THIS
+    // establishment via Brand.restaurantId — read the DIRECT link instead of the
+    // transitive operator.brands path. Behaviour is identical today (the backfill
+    // linked every brand to its operator's single restaurant), but the menu is now
+    // scoped to the establishment, so it stays correct once an operator has several.
     const restaurant = await prisma.restaurant.findUnique({
       where:   { id: params.id },
       include: {
-        operator: {
+        brands: {
           select: {
-            id:     true,
-            name:   true,
-            email:  true,
-            brands: {
+            id:        true,
+            name:      true,
+            menuItems: {
+              where:   { available: true },
+              orderBy: [{ category: 'asc' }, { name: 'asc' }],
               select: {
-                id:        true,
-                name:      true,
-                menuItems: {
-                  where:   { available: true },
-                  orderBy: [{ category: 'asc' }, { name: 'asc' }],
-                  select: {
-                    id:          true,
-                    name:        true,
-                    description: true,
-                    price:       true,
-                    comparePrice:true,
-                    category:    true,
-                    calories:    true,
-                    allergens:   true,
-                    labels:      true,
-                    photos:      true,
-                    options:     true,
-                    isPopular:   true,
-                    prepTime:    true,
-                  },
-                },
+                id:          true,
+                name:        true,
+                description: true,
+                price:       true,
+                comparePrice:true,
+                category:    true,
+                calories:    true,
+                allergens:   true,
+                labels:      true,
+                photos:      true,
+                options:     true,
+                isPopular:   true,
+                prepTime:    true,
               },
             },
           },
@@ -55,8 +53,8 @@ export async function GET(
       return NextResponse.json({ error: 'Restaurant introuvable' }, { status: 404 })
     }
 
-    // Flatten all menu items from all brands, grouped by category
-    const allItems = restaurant.operator.brands.flatMap(b =>
+    // Flatten all menu items from this establishment's brands, grouped by category
+    const allItems = restaurant.brands.flatMap(b =>
       b.menuItems.map(item => ({ ...item, brandId: b.id, brandName: b.name })),
     )
 

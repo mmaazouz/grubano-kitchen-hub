@@ -59,18 +59,22 @@ export async function GET() {
     const adoptedDishIds = new Set(activeAdoptions.map((a) => a.creatorDishId))
 
     // ── City-exclusivity signals (levier 3B) — resolve the operator's city once ──
-    const restaurant = await prisma.restaurant.findUnique({
+    // findFirst (not findUnique) so this no longer depends on Restaurant.operatorId
+    // being unique (Option B step 3). Identical result while an operator has one resto.
+    const restaurant = await prisma.restaurant.findFirst({
       where:  { operatorId },
       select: { city: true },
     })
     const myCity = (restaurant?.city ?? '').trim()
 
     // Recipes ACTIVELY adopted by ANOTHER operator's brand in my city → taken.
+    // City resolved through the DIRECT Brand.restaurantId link (no transitive
+    // operator.restaurant path, which would break at the cardinality flip).
     const cityAdoptions = myCity
       ? await prisma.dishAdoption.findMany({
           where: {
             status: 'active',
-            brand:  { operatorId: { not: operatorId }, operator: { restaurant: { city: myCity } } },
+            brand:  { operatorId: { not: operatorId }, restaurant: { city: myCity } },
           },
           select: { creatorDishId: true },
         })

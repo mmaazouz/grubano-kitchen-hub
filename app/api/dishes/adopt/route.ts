@@ -56,14 +56,24 @@ export async function POST(req: Request) {
     // ── Resolve the target brand ────────────────────────────────────────────────
     // If a brandId is supplied it must belong to this operator; otherwise we pick
     // the operator's first brand (admins still operate within a concrete brand).
+    // Load the brand WITH its establishment's city (Option B direct link), so the
+    // city-exclusivity check below no longer depends on Restaurant.operatorId being
+    // unique.
     let brand
     if (brandId) {
-      brand = await prisma.brand.findFirst({ where: { id: brandId, operatorId } })
+      brand = await prisma.brand.findFirst({
+        where:   { id: brandId, operatorId },
+        include: { restaurant: { select: { city: true } } },
+      })
       if (!brand) {
         return NextResponse.json({ error: 'Marque introuvable ou non autorisée' }, { status: 403 })
       }
     } else {
-      brand = await prisma.brand.findFirst({ where: { operatorId }, orderBy: { createdAt: 'asc' } })
+      brand = await prisma.brand.findFirst({
+        where:   { operatorId },
+        orderBy: { createdAt: 'asc' },
+        include: { restaurant: { select: { city: true } } },
+      })
       if (!brand) {
         return NextResponse.json({ error: 'Aucune marque pour ce compte' }, { status: 400 })
       }
@@ -87,20 +97,17 @@ export async function POST(req: Request) {
     }
 
     // ── City exclusivity (levier 3A): first restaurant in a city wins ─────────────
-    // Resolve the adopting brand's city via its operator's restaurant profile.
-    // No city on file → can't enforce locality, so we DON'T block (normal adoption).
-    const restaurant = await prisma.restaurant.findUnique({
-      where:  { operatorId: brand.operatorId },
-      select: { city: true },
-    })
-    const city = (restaurant?.city ?? '').trim()
+    // Resolve the adopting brand's city via its DIRECT establishment link
+    // (Brand.restaurantId, Option B step 3). No establishment / city on file
+    // (e.g. an orphan brand) → can't enforce locality, so we DON'T block.
+    const city = (brand.restaurant?.city ?? '').trim()
     if (city) {
       // Is the recipe already actively adopted by ANOTHER brand in the same city?
       const cityConflict = await prisma.dishAdoption.findFirst({
         where: {
           creatorDishId,
           status: 'active',
-          brand:  { operator: { restaurant: { city } } },
+          brand:  { restaurant: { city } },
           NOT:    { brandId: brand.id },
         },
         select: { id: true },
