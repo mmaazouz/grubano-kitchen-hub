@@ -1107,7 +1107,14 @@
       "errRestaurantMissing": "الاسم والعنوان والمدينة إلزامية.",
       "errAtLeastOneFulfilment": "فعّل التوصيل أو الاستلام على الأقل.",
       "errRestaurantFailed": "تعذّر إنشاء المطعم. تحقق من معلوماتك.",
-      "errNetwork": "خطأ في الشبكة، أعد المحاولة."
+      "errNetwork": "خطأ في الشبكة، أعد المحاولة.",
+      "restoCuisineHint": "هذه هي الفئة التي سيجدك بها العملاء على Grubano.",
+      "logoLabel": "الشعار (اختياري)",
+      "logoPlaceholder": "https://… رابط شعارك",
+      "coverLabel": "صورة الغلاف (اختياري)",
+      "coverPlaceholder": "https://… رابط لافتتك",
+      "imageHint": "الصق رابط صورة. إذا تُرك فارغاً، يُستخدم تصميم افتراضي حسب نوع مطبخك.",
+      "errInvalidUrl": "رابط الصورة غير صالح (يجب أن يبدأ بـ http)."
     },
     "start": {
       "title": "انضم إلى Grubano",

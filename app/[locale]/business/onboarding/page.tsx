@@ -14,6 +14,7 @@ import {
   Loader2,
   ArrowRight,
   ArrowLeft,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { Card, Button, Input } from '@/components/design-system'
 
@@ -45,6 +46,17 @@ const CUISINE_TYPES = [
 
 const BRAND_EMOJIS = ['🍕', '🍜', '🍔', '🥗', '🍣', '🍰', '🥙', '🍝', '🌮', '🍱', '🥘', '🥟', '🍴', '🥐']
 
+/** Loose http(s) URL check — matches the server zod `.url()` intent without
+ *  blocking the user on an empty field (those are sent as undefined). */
+function isHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export default function PartnerOnboardingPage() {
   const t = useTranslations('business.onboarding')
   const router = useRouter()
@@ -62,6 +74,8 @@ export default function PartnerOnboardingPage() {
   // Restaurant fields
   const [restaurantName, setRestaurantName] = useState('')
   const [description, setDescription] = useState('')
+  const [logo, setLogo] = useState('')
+  const [coverPhoto, setCoverPhoto] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [postalCode, setPostalCode] = useState('')
@@ -171,6 +185,14 @@ export default function PartnerOnboardingPage() {
       setError(t('errAtLeastOneFulfilment'))
       return
     }
+    // Logo / cover are OPTIONAL URLs. Only validate when filled — an empty field
+    // is fine (the consumer app falls back to a cuisine-based placeholder).
+    const logoUrl = logo.trim()
+    const coverUrl = coverPhoto.trim()
+    if ((logoUrl && !isHttpUrl(logoUrl)) || (coverUrl && !isHttpUrl(coverUrl))) {
+      setError(t('errInvalidUrl'))
+      return
+    }
     setError('')
     setSubmitting(true)
     try {
@@ -181,6 +203,8 @@ export default function PartnerOnboardingPage() {
           name:        restaurantName.trim(),
           description: description.trim() || undefined,
           cuisine:     [cuisineType],
+          logo:        logoUrl || undefined,
+          coverPhoto:  coverUrl || undefined,
           city:        city.trim(),
           address:     address.trim(),
           postalCode:  postalCode.trim() || undefined,
@@ -356,6 +380,57 @@ export default function PartnerOnboardingPage() {
                 className="w-full resize-none rounded-grubano-md border border-grubano-border bg-grubano-surface px-3 py-2.5 text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:bg-white focus:outline-none focus:ring-2 focus:ring-grubano-primary/30"
               />
             </div>
+
+            {/* Cuisine shown on /eat — pre-filled from the brand, editable here */}
+            <div>
+              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">
+                {t('cuisineTypeLabel')}
+              </label>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {CUISINE_TYPES.map((c) => {
+                  const active = cuisineType === c.value
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setCuisineType(c.value)}
+                      className={`flex flex-col items-center gap-1 rounded-grubano-md border px-2 py-2 text-xs font-semibold transition active:scale-95 ${
+                        active
+                          ? 'border-grubano-primary bg-grubano-tint text-grubano-primary'
+                          : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:bg-grubano-surface-muted'
+                      }`}
+                    >
+                      <span className="text-lg">{c.emoji}</span>
+                      <span>{t(c.labelKey)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="mt-1.5 text-[11px] text-grubano-ink-faint">{t('restoCuisineHint')}</p>
+            </div>
+
+            {/* Visual identity — optional image URLs. Empty → placeholder on /eat */}
+            <Input
+              label={t('logoLabel')}
+              type="url"
+              inputMode="url"
+              maxLength={500}
+              leftIcon={<ImageIcon size={16} />}
+              placeholder={t('logoPlaceholder')}
+              value={logo}
+              onChange={(e) => setLogo(e.target.value)}
+              hint={t('imageHint')}
+            />
+            <Input
+              label={t('coverLabel')}
+              type="url"
+              inputMode="url"
+              maxLength={500}
+              leftIcon={<ImageIcon size={16} />}
+              placeholder={t('coverPlaceholder')}
+              value={coverPhoto}
+              onChange={(e) => setCoverPhoto(e.target.value)}
+            />
 
             <Input
               label={t('addressLabel')}

@@ -1107,7 +1107,14 @@
       "errRestaurantMissing": "Nom, adresse et ville sont obligatoires.",
       "errAtLeastOneFulfilment": "Active au moins la livraison ou le retrait.",
       "errRestaurantFailed": "Impossible de créer le restaurant. Vérifie tes informations.",
-      "errNetwork": "Erreur réseau, réessaie."
+      "errNetwork": "Erreur réseau, réessaie.",
+      "restoCuisineHint": "C’est la catégorie sous laquelle les clients te trouveront sur Grubano.",
+      "logoLabel": "Logo (optionnel)",
+      "logoPlaceholder": "https://… lien vers ton logo",
+      "coverLabel": "Photo de couverture (optionnel)",
+      "coverPlaceholder": "https://… lien vers ta bannière",
+      "imageHint": "Colle un lien d’image. Si vide, un visuel par défaut selon ta cuisine est utilisé.",
+      "errInvalidUrl": "Lien d’image invalide (doit commencer par http)."
     },
     "start": {
       "title": "Rejoins Grubano",

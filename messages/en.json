@@ -1107,7 +1107,14 @@
       "errRestaurantMissing": "Name, address and city are required.",
       "errAtLeastOneFulfilment": "Enable at least delivery or pickup.",
       "errRestaurantFailed": "Could not create the restaurant. Check your details.",
-      "errNetwork": "Network error, please retry."
+      "errNetwork": "Network error, please retry.",
+      "restoCuisineHint": "This is the category customers will find you under on Grubano.",
+      "logoLabel": "Logo (optional)",
+      "logoPlaceholder": "https://… link to your logo",
+      "coverLabel": "Cover photo (optional)",
+      "coverPlaceholder": "https://… link to your banner",
+      "imageHint": "Paste an image link. If empty, a default visual based on your cuisine is used.",
+      "errInvalidUrl": "Invalid image link (must start with http)."
     },
     "start": {
       "title": "Join Grubano",

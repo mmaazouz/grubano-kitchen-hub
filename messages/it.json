@@ -1107,7 +1107,14 @@
       "errRestaurantMissing": "Nome, indirizzo e città sono obbligatori.",
       "errAtLeastOneFulfilment": "Attiva almeno la consegna o il ritiro.",
       "errRestaurantFailed": "Impossibile creare il ristorante. Controlla i dati.",
-      "errNetwork": "Errore di rete, riprova."
+      "errNetwork": "Errore di rete, riprova.",
+      "restoCuisineHint": "È la categoria con cui i clienti ti troveranno su Grubano.",
+      "logoLabel": "Logo (opzionale)",
+      "logoPlaceholder": "https://… link al tuo logo",
+      "coverLabel": "Foto di copertina (opzionale)",
+      "coverPlaceholder": "https://… link al tuo banner",
+      "imageHint": "Incolla un link immagine. Se vuoto, viene usato un visual predefinito in base alla cucina.",
+      "errInvalidUrl": "Link immagine non valido (deve iniziare con http)."
     },
     "start": {
       "title": "Unisciti a Grubano",
