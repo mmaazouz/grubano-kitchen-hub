@@ -28,9 +28,12 @@ const providers: Provider[] = [
 
       // Partner accounts self-register in status 'pending' and must confirm their
       // email (GET /api/partners/verify-email → 'pending_review') before they can
-      // sign in. Returning null surfaces as a generic "invalid credentials" so we
-      // don't leak that the account exists-but-unverified.
-      if (operator.status === 'pending') return null
+      // sign in. A 'suspended' account is blocked by an admin (statusReason kept
+      // for audit). Both refusals return null so the surfaced message stays a
+      // generic "invalid credentials" — we never leak the account's real state.
+      // 'active' and 'pending_review' (email verified, onboarding/profil access)
+      // are allowed through.
+      if (operator.status === 'pending' || operator.status === 'suspended') return null
 
       // Support both hashed passwords and plain text (for legacy seed data)
       let valid = false

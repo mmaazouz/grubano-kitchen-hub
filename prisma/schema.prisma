@@ -18,6 +18,10 @@ model Operator {
   phone     String?
   city      String?
   status    String    @default("active")   // active | pending | pending_review | suspended
+  // Optional human-readable reason for a suspension / refusal — shown to the
+  // partner and kept for audit. ADDITIVE + REVERSIBLE: nullable, no backfill,
+  // existing rows stay valid and dropping it leaves the model intact.
+  statusReason String?
   role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin
   createdAt  DateTime   @default(now())
   // ── Partner email verification + RGPD consent (Agent 12, brique 1) ───────────
