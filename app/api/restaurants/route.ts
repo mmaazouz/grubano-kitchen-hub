@@ -279,20 +279,28 @@ export async function POST(req: Request) {
     // Geocode (soft-fail — null coords are OK).
     const coords = await geocodeAddress(input.address, input.city, postalCode)
 
-    // ── Partner safety gate (onboarding) ────────────────────────────────────
-    // A self-served partner creates a restaurant via /business/onboarding. It
-    // must NOT appear on /eat until an admin reviews it (brand quality + RGPD).
-    // `isActive` is forced to false for the `restaurant` role; an admin who
-    // creates a row via this endpoint gets it live immediately. Switching a
-    // partner-created row to live = PATCH /api/restaurants/:id by an admin.
-    const isAdmin = operator.role === 'admin'
+    // ── 🔒 Safety gate: created restaurants are ALWAYS INVISIBLE on /eat ───
+    // The partner onboarding voie (/business/onboarding) hits this endpoint;
+    // its restaurant MUST start invisible while an admin reviews the dossier
+    // (brand quality + RGPD). Admin direct-create is rare today and goes
+    // through the SAME enforcement to avoid a "did the role check work?"
+    // regression. The admin then flips it live via PATCH /api/restaurants/:id
+    // — that endpoint is unchanged and still respects role checks.
+    //
+    // Defense in depth:
+    //   - `CreateInput` zod schema has NO `isActive` field → zod silently
+    //     strips any client-supplied `isActive` BEFORE we touch the data.
+    //   - We then force `isActive: false` AT THE END of the spread so even a
+    //     future schema change that re-introduced `isActive` could not lift
+    //     the restaurant on a create call.
+    //   - Activation is operator-side via the existing PATCH route.
     const restaurant = await prisma.restaurant.create({
       data: {
         ...input,
         operatorId: operator.id,
         lat:        coords?.latitude  ?? null,
         lng:        coords?.longitude ?? null,
-        isActive:   isAdmin, // admin → live; partner → awaiting admin review
+        isActive:   false, // ← FORCED. PATCH /api/restaurants/:id flips later.
       },
     })
 

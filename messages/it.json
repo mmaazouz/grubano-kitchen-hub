@@ -128,6 +128,18 @@
         "noRestaurantDesc": "Crea la tua scheda ristorante per iniziare.",
         "noRestaurantCta": "Configura il mio brand"
       }
+    },
+    "sidebar": {
+      "subtitleAdmin": "Dark Kitchen OS",
+      "subtitlePartner": "Spazio Partner",
+      "roleAdmin": "Admin",
+      "roleRestaurateur": "Ristoratore",
+      "roleFranchise": "Affiliato",
+      "roleCreator": "Creator",
+      "roleConsumer": "Cliente",
+      "roleDefault": "Membro",
+      "defaultUserName": "Utente",
+      "connected": "Connesso"
     }
   },
   "orders": {

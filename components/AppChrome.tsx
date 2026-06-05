@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { SessionProvider } from 'next-auth/react'
 import Sidebar from '@/components/Sidebar'
 import MobileHeader from '@/components/MobileHeader'
 import { SidebarProvider } from '@/components/SidebarContext'
@@ -39,15 +40,20 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   if (isBare) return <>{children}</>
 
   // Operator app (/dashboard, /menu, /stocks, /orders, … — all flat routes):
-  // wrap in the dashboard sidebar chrome.
+  // wrap in the dashboard sidebar chrome. SessionProvider is mounted here so
+  // the Sidebar (and any client child) can read the user's role/name via
+  // useSession() — the /eat consumer app has its own provider, bare auth
+  // pages don't need one.
   return (
-    <SidebarProvider>
-      <Sidebar />
-      <MobileHeader />
-      <main className="md:ml-64 pt-[52px] md:pt-0 min-h-screen pb-20 md:pb-0">
-        {children}
-      </main>
-      <BottomNav />
-    </SidebarProvider>
+    <SessionProvider>
+      <SidebarProvider>
+        <Sidebar />
+        <MobileHeader />
+        <main className="md:ml-64 pt-[52px] md:pt-0 min-h-screen pb-20 md:pb-0">
+          {children}
+        </main>
+        <BottomNav />
+      </SidebarProvider>
+    </SessionProvider>
   )
 }

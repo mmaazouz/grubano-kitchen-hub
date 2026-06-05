@@ -128,6 +128,18 @@
         "noRestaurantDesc": "Créez votre fiche restaurant pour démarrer.",
         "noRestaurantCta": "Configurer ma marque"
       }
+    },
+    "sidebar": {
+      "subtitleAdmin": "Dark Kitchen OS",
+      "subtitlePartner": "Espace Partenaire",
+      "roleAdmin": "Admin",
+      "roleRestaurateur": "Restaurateur",
+      "roleFranchise": "Franchisé",
+      "roleCreator": "Créateur",
+      "roleConsumer": "Client",
+      "roleDefault": "Membre",
+      "defaultUserName": "Utilisateur",
+      "connected": "Connecté"
     }
   },
   "orders": {

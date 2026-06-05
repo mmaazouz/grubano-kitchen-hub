@@ -128,6 +128,18 @@
         "noRestaurantDesc": "Create your restaurant profile to get started.",
         "noRestaurantCta": "Set up my brand"
       }
+    },
+    "sidebar": {
+      "subtitleAdmin": "Dark Kitchen OS",
+      "subtitlePartner": "Partner Space",
+      "roleAdmin": "Admin",
+      "roleRestaurateur": "Restaurant owner",
+      "roleFranchise": "Franchisee",
+      "roleCreator": "Creator",
+      "roleConsumer": "Customer",
+      "roleDefault": "Member",
+      "defaultUserName": "User",
+      "connected": "Connected"
     }
   },
   "orders": {

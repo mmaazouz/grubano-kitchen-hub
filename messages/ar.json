@@ -128,6 +128,18 @@
         "noRestaurantDesc": "أنشئ بطاقة مطعمك للبدء.",
         "noRestaurantCta": "إعداد علامتي التجارية"
       }
+    },
+    "sidebar": {
+      "subtitleAdmin": "Dark Kitchen OS",
+      "subtitlePartner": "فضاء الشريك",
+      "roleAdmin": "مشرف",
+      "roleRestaurateur": "صاحب مطعم",
+      "roleFranchise": "صاحب امتياز",
+      "roleCreator": "مبدع",
+      "roleConsumer": "عميل",
+      "roleDefault": "عضو",
+      "defaultUserName": "مستخدم",
+      "connected": "متصل"
     }
   },
   "orders": {

@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useSession } from 'next-auth/react'
+import { useTranslations } from 'next-intl'
 import {
   LayoutDashboard, Store, Star, Package, Users, Settings,
   ChefHat, X, ShoppingBag, UtensilsCrossed, CalendarDays,
@@ -52,9 +54,29 @@ const navGroups = [
   },
 ]
 
+// Maps a NextAuth role to an i18n key under dashboard.sidebar.roles.* so the
+// label shown in the profile block is the REAL session role, never a hard-
+// coded "Super Admin" string. Falls back to a generic "Membre" / "Member".
+const ROLE_LABEL_KEY: Record<string, string> = {
+  admin:      'roleAdmin',
+  restaurant: 'roleRestaurateur',
+  franchise:  'roleFranchise',
+  creator:    'roleCreator',
+  consumer:   'roleConsumer',
+}
+
 export default function Sidebar() {
   const pathname = usePathname()
   const { open, close } = useSidebar()
+  const t = useTranslations('dashboard.sidebar')
+
+  // Read the live session — role is injected into session.user by lib/auth.ts.
+  const { data: session } = useSession()
+  const role = (session?.user as { role?: string } | undefined)?.role ?? ''
+  const userName = session?.user?.name?.trim() || t('defaultUserName')
+  const initial = userName[0]?.toUpperCase() || '?'
+  const subtitle = role === 'restaurant' ? t('subtitlePartner') : t('subtitleAdmin')
+  const roleLabel = t(ROLE_LABEL_KEY[role] ?? 'roleDefault')
 
   return (
     <>
@@ -78,7 +100,7 @@ export default function Sidebar() {
           </div>
           <div className="flex-1">
             <span className="text-lg font-display font-bold tracking-tight">Grubano</span>
-            <p className="text-[10px] text-navy-foreground/40 leading-none">Dark Kitchen OS</p>
+            <p className="text-[10px] text-navy-foreground/40 leading-none">{subtitle}</p>
           </div>
           <button onClick={close} className="md:hidden text-navy-foreground/50 hover:text-navy-foreground p-1 rounded-lg hover:bg-white/10" aria-label="Fermer">
             <X size={18} />
@@ -123,12 +145,17 @@ export default function Sidebar() {
         {/* Profil */}
         <div className="px-4 py-4 border-t border-white/10">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-primary-foreground shrink-0">M</div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">Mohammed Maazouz</p>
-              <p className="text-[10px] text-navy-foreground/40 truncate">Super Admin</p>
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-primary-foreground shrink-0">
+              {initial}
             </div>
-            <span className="h-2 w-2 rounded-full bg-success shrink-0" title="Connecté" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{userName}</p>
+              <p className="text-[10px] text-navy-foreground/40 truncate">{roleLabel}</p>
+            </div>
+            <span
+              className="h-2 w-2 rounded-full bg-success shrink-0"
+              title={t('connected')}
+            />
           </div>
         </div>
       </aside>
