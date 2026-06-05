@@ -997,7 +997,23 @@
     "errDeleteMenu": "Impossible : la marque contient encore des plats. Supprime-les d’abord.",
     "errDeleteLastBrand": "Impossible : c’est la dernière marque d’un restaurant en ligne.",
     "errDeleteRelated": "Impossible : des commandes ou données sont liées à cette marque.",
-    "errDeleteFailed": "Suppression impossible. Réessaie."
+    "errDeleteFailed": "Suppression impossible. Réessaie.",
+    "copyModeScratch": "Repartir de zéro",
+    "copyModeCopy": "Copier une marque",
+    "copySourceLabel": "Marque à copier",
+    "copyTargetLabel": "Établissement cible",
+    "copyHint": "Le menu est dupliqué. Les plats adoptés (recettes créateurs) sont exclus — tu pourras les ré-adopter ensuite, l’exclusivité locale s’applique.",
+    "copyButton": "Copier la marque",
+    "copyNoBrands": "Aucune marque à copier pour le moment.",
+    "copyNoTarget": "Choisis un établissement cible.",
+    "copyErrorFailed": "Copie impossible. Réessaie.",
+    "readoptTitle": "Ré-adopter les recettes créateurs",
+    "readoptIntro": "Ces plats adoptés n’ont pas été copiés. Ré-adopte-les pour le nouvel établissement (l’exclusivité par ville s’applique).",
+    "readoptBtn": "Ré-adopter",
+    "readoptDone": "Adopté",
+    "readoptCityTaken": "Ville déjà prise",
+    "readoptError": "Échec — réessayer",
+    "readoptClose": "Terminé"
   },
   "business": {
     "auth": {

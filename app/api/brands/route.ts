@@ -14,6 +14,10 @@ const createSchema = z.object({
   emoji:       z.string().min(1).max(8).default('🍴'),
   platform:    z.string().min(1).max(40).default('ubereats'),
   cuisineType: z.string().max(60).optional().nullable(),
+  // Option B (step 5C): optionally attach the new brand to one of the operator's
+  // establishments. Ownership is verified below; an unknown/foreign id is
+  // rejected. Omitted → restaurantId stays null (unchanged legacy behaviour).
+  restaurantId: z.string().min(1).optional().nullable(),
 })
 
 /** Resolve the calling operator from the session — null on any failure. */
@@ -113,10 +117,25 @@ export async function POST(req: Request) {
       )
     }
 
+    const { restaurantId: rawRestaurantId, ...rest } = parsed.data
+
+    // Verify the target establishment belongs to the caller before linking.
+    let restaurantId: string | null = rawRestaurantId ?? null
+    if (restaurantId) {
+      const owned = await prisma.restaurant.findFirst({
+        where:  { id: restaurantId, operatorId: operator.id },
+        select: { id: true },
+      })
+      if (!owned) {
+        return NextResponse.json({ error: 'Établissement invalide' }, { status: 400 })
+      }
+    }
+
     const brand = await prisma.brand.create({
       data: {
-        ...parsed.data,
-        operatorId: operator.id, // ← forced from the session
+        ...rest,
+        operatorId:   operator.id, // ← forced from the session
+        restaurantId,              // ← null unless an owned establishment was given
       },
     })
 

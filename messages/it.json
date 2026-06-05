@@ -997,7 +997,23 @@
     "errDeleteMenu": "Impossibile eliminare: il marchio ha ancora dei piatti. Rimuovili prima.",
     "errDeleteLastBrand": "Impossibile eliminare: è l’ultimo marchio di un ristorante online.",
     "errDeleteRelated": "Impossibile eliminare: ci sono ordini o dati collegati a questo marchio.",
-    "errDeleteFailed": "Impossibile eliminare. Riprova."
+    "errDeleteFailed": "Impossibile eliminare. Riprova.",
+    "copyModeScratch": "Parti da zero",
+    "copyModeCopy": "Copia un marchio",
+    "copySourceLabel": "Marchio da copiare",
+    "copyTargetLabel": "Sede di destinazione",
+    "copyHint": "Il menu viene duplicato. I piatti adottati (ricette dei creator) sono esclusi — potrai riadottarli dopo, con l’esclusiva locale applicata.",
+    "copyButton": "Copia marchio",
+    "copyNoBrands": "Nessun marchio da copiare per ora.",
+    "copyNoTarget": "Scegli una sede di destinazione.",
+    "copyErrorFailed": "Impossibile copiare. Riprova.",
+    "readoptTitle": "Riadotta le ricette dei creator",
+    "readoptIntro": "Questi piatti adottati non sono stati copiati. Riadottali per la nuova sede (si applica l’esclusiva per città).",
+    "readoptBtn": "Riadotta",
+    "readoptDone": "Adottato",
+    "readoptCityTaken": "Città occupata",
+    "readoptError": "Errore — riprova",
+    "readoptClose": "Fatto"
   },
   "business": {
     "auth": {

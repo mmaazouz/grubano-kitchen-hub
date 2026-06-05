@@ -997,7 +997,23 @@
     "errDeleteMenu": "Cannot delete: the brand still has menu items. Remove them first.",
     "errDeleteLastBrand": "Cannot delete: it is the last brand of a live restaurant.",
     "errDeleteRelated": "Cannot delete: orders or data are linked to this brand.",
-    "errDeleteFailed": "Could not delete. Please retry."
+    "errDeleteFailed": "Could not delete. Please retry.",
+    "copyModeScratch": "Start from scratch",
+    "copyModeCopy": "Copy a brand",
+    "copySourceLabel": "Brand to copy",
+    "copyTargetLabel": "Target establishment",
+    "copyHint": "The menu is duplicated. Adopted dishes (creator recipes) are excluded — you can re-adopt them afterwards, with local exclusivity applied.",
+    "copyButton": "Copy brand",
+    "copyNoBrands": "No brand to copy yet.",
+    "copyNoTarget": "Choose a target establishment.",
+    "copyErrorFailed": "Could not copy. Please retry.",
+    "readoptTitle": "Re-adopt creator recipes",
+    "readoptIntro": "These adopted dishes were not copied. Re-adopt them for the new establishment (city exclusivity applies).",
+    "readoptBtn": "Re-adopt",
+    "readoptDone": "Adopted",
+    "readoptCityTaken": "City taken",
+    "readoptError": "Failed — retry",
+    "readoptClose": "Done"
   },
   "business": {
     "auth": {
