@@ -40,7 +40,9 @@ model Operator {
   brands       Brand[]
   accounts     Account[]
   sessions     Session[]
-  restaurant   Restaurant?
+  // Option B (step 4): an operator can own several establishments. The UI is still
+  // mono-establishment (reads restaurants[0]); multi-establishment is a later step.
+  restaurants  Restaurant[]
   // Franchise (role=franchise) owns one or more points of sale. Empty for
   // non-franchise operators — the relation list is nullable by virtue of
   // being a list (Prisma returns []).
@@ -384,7 +386,10 @@ model CreatorApplication {
 
 model Restaurant {
   id           String   @id @default(cuid())
-  operatorId   String   @unique
+  // Option B (step 4): operatorId is NO LONGER unique — an operator can have
+  // several establishments. Dropping this unique index is non-destructive on the
+  // data. Indexed (not unique) so per-operator lookups stay fast.
+  operatorId   String
   operator     Operator @relation(fields: [operatorId], references: [id])
   name         String
   description  String?  @db.Text
@@ -424,6 +429,10 @@ model Restaurant {
   // Inverse side of Brand.restaurant (Option B, additive step 1) — the brands
   // (concepts) served from this establishment. Zero extra column.
   brands       Brand[]
+
+  // Option B (step 4): operatorId is no longer unique; keep a plain index so the
+  // frequent findFirst/findMany({ where: { operatorId } }) lookups stay fast.
+  @@index([operatorId])
 }
 
 model Order {

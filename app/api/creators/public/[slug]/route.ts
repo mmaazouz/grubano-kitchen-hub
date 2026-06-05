@@ -67,12 +67,11 @@ export async function GET(
                 sellingPrice: true,
                 brand: {
                   select: {
-                    operator: {
-                      select: {
-                        restaurant: {
-                          select: { id: true, name: true, city: true },
-                        },
-                      },
+                    // Option B (step 4): read the brand's establishment via the
+                    // DIRECT Brand.restaurantId link, not the transitive
+                    // operator.restaurant path (which is now a list).
+                    restaurant: {
+                      select: { id: true, name: true, city: true },
                     },
                   },
                 },
@@ -101,7 +100,7 @@ export async function GET(
       const seen = new Set<string>()
       const servedAt: ServedAt[] = []
       for (const a of d.adoptions) {
-        const r = a.brand?.operator?.restaurant
+        const r = a.brand?.restaurant
         if (!r || seen.has(r.id)) continue
         seen.add(r.id)
         servedAt.push({

@@ -107,7 +107,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   const [menuCount, brandCount, restaurant] = await Promise.all([
     prisma.menuItem.count({ where: { brandId: params.id } }),
     prisma.brand.count({ where: { operatorId: operator.id } }),
-    prisma.restaurant.findUnique({ where: { operatorId: operator.id }, select: { isActive: true } }),
+    prisma.restaurant.findFirst({ where: { operatorId: operator.id }, select: { isActive: true } }),
   ])
 
   if (menuCount > 0) {

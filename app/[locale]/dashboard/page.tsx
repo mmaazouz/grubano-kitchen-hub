@@ -83,15 +83,22 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
   // Operator + restaurant
   const operator = await prisma.operator.findUnique({
     where:  { email: operatorEmail },
-    select: { id: true, role: true, restaurant: {
+    select: { id: true, role: true, restaurants: {
       select: {
         id: true, name: true, rating: true, reviewCount: true,
         pickupEnabled: true,
       },
+      orderBy: { createdAt: 'asc' },
+      take:    1,
     } },
   })
 
-  if (!operator?.restaurant) {
+  // Option B (step 4): Operator.restaurants is now a list. The dashboard UI stays
+  // MONO-establishment — we read the first (oldest) restaurant exactly as before.
+  // Multi-establishment selection is a later commit (step 5).
+  const restaurant = operator?.restaurants?.[0] ?? null
+
+  if (!restaurant) {
     return {
       restaurant:   null,
       kpis:         [],
@@ -104,7 +111,7 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
     }
   }
 
-  const restaurantId = operator.restaurant.id
+  const restaurantId = restaurant.id
 
   // Parallel queries
   const [
@@ -191,8 +198,8 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
     },
     {
       label:      t('kpi.ratingLabel'),
-      value:      operator.restaurant.rating > 0
-                    ? `${operator.restaurant.rating.toFixed(1)}★`
+      value:      restaurant.rating > 0
+                    ? `${restaurant.rating.toFixed(1)}★`
                     : '—',
       delta:      null,
       deltaLabel: '',
@@ -276,7 +283,7 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
   // ── Next best actions — calculated, priorité par impact estimé ─────────
   const actions: Action[] = []
 
-  if (!operator.restaurant.pickupEnabled) {
+  if (!restaurant.pickupEnabled) {
     actions.push({
       key:    'pickup',
       icon:   <ShoppingBasket size={18} />,
@@ -304,7 +311,7 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
 
   // Franchise eligibility — solid rating + meaningful order history.
   const eligibleForFranchise =
-       operator.restaurant.rating      >= 4.5
+       restaurant.rating      >= 4.5
     && ordersThisWeek.length            >= 50
 
   if (eligibleForFranchise) {
@@ -323,7 +330,7 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
   actions.sort((a, b) => b.impact - a.impact)
 
   return {
-    restaurant:   operator.restaurant,
+    restaurant,
     kpis,
     activeOrders,
     chart,

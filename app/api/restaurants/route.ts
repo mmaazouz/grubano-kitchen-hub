@@ -264,8 +264,11 @@ export async function POST(req: Request) {
     }
     const { postalCode, ...input } = parsed.data
 
-    // Reject duplicate (Restaurant.operatorId is @unique).
-    const existing = await prisma.restaurant.findUnique({
+    // Reject duplicate. Option B (step 4): operatorId is no longer unique, so use
+    // findFirst. The onboarding UI is still mono-establishment, so an operator that
+    // already has a restaurant is blocked here exactly as before; the multi-resto
+    // flow (creating a 2nd establishment) is a later commit (step 5).
+    const existing = await prisma.restaurant.findFirst({
       where:  { operatorId: operator.id },
       select: { id: true },
     })

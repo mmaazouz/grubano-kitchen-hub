@@ -56,7 +56,7 @@ export default async function DashboardLayout({
   if (operator.role === 'restaurant') {
     const [brandCount, restaurant] = await Promise.all([
       prisma.brand.count({ where: { operatorId: operator.id } }),
-      prisma.restaurant.findUnique({ where: { operatorId: operator.id }, select: { id: true } }),
+      prisma.restaurant.findFirst({ where: { operatorId: operator.id }, select: { id: true } }),
     ])
     if (brandCount === 0 || restaurant === null) {
       redirect(`/${locale}/business/onboarding`)

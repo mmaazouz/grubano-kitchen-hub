@@ -37,7 +37,7 @@ export default async function FulfillmentPage() {
     )
   }
 
-  const restaurant = await prisma.restaurant.findUnique({
+  const restaurant = await prisma.restaurant.findFirst({
     where:  { operatorId: operator.id },
     select: {
       id:                 true,

@@ -57,16 +57,24 @@ async function loadData(
     where:  { email: operatorEmail },
     select: {
       id: true,
-      restaurant: { select: { id: true, name: true, isActive: true } },
+      restaurants: {
+        select:  { id: true, name: true, isActive: true },
+        orderBy: { createdAt: 'asc' },
+        take:    1,
+      },
       brands:     { select: { id: true, name: true, emoji: true } },
     },
   })
 
-  if (!operator?.restaurant) {
+  // Option B (step 4): Operator.restaurants is now a list; the UI stays
+  // MONO-establishment — read the first (oldest) restaurant as before.
+  const restaurant = operator?.restaurants?.[0] ?? null
+
+  if (!operator || !restaurant) {
     return { restaurant: null, orders: [], brands: [], menuItems: [] }
   }
 
-  const restaurantId = operator.restaurant.id
+  const restaurantId = restaurant.id
 
   // Last 100 orders for this restaurant + every menu item across its brands
   // (used for brand attribution + the stock-out picker).
@@ -174,7 +182,7 @@ async function loadData(
   })
 
   return {
-    restaurant: operator.restaurant,
+    restaurant,
     orders,
     brands: operator.brands,
     menuItems,
