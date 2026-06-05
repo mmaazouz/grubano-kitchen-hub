@@ -24,13 +24,30 @@ Read the output fully. Check for:
 
 ```bash
 # 1. Write your session summary to Notion
-node scripts/notion-sync.js write <your-agent-id> "What you built. Commits: abc123. Next task: X. HTTP status: 200."
+#    For SHORT messages (< 500 chars, no special chars), inline is fine:
+node scripts/notion-sync.js write <your-agent-id> "What you built. Commits: abc123. Next: X. HTTP 200."
+#
+#    For LONG reports OR any content with special chars (! () "" accents / \ &),
+#    write to a file FIRST and use the file mode — shell quoting is bypassed
+#    and Notion's 2000-char-per-text limit is handled automatically:
+echo "Long multi-paragraph report with accents éàç, parens (), quotes…" > /tmp/report.md
+node scripts/notion-sync.js write-file <your-agent-id> /tmp/report.md
 
 # 2. Report cross-agent info / decisions / blockers to the shared inbox
-node scripts/notion-sync.js write inbox "[AGENT X] [INFO/DECISION/BLOCKER] message. Action required: yes/no"
+#    Same rules — inline for short, file mode for long:
+node scripts/notion-sync.js write inbox "[AGENT X] [INFO/DECISION/BLOCKER] short message. Action required: yes/no"
+# OR (recommended for any non-trivial report):
+node scripts/notion-sync.js write-inbox-file /tmp/inbox-report.md
 # Inbox page ID: 36efd2c9-8146-8195-a65a-d146cfed0642
 
-# 3. Commit and push
+# 3. ALWAYS check the LAST line of stdout — the script does a read-back:
+#       ✅ Inbox mise à jour, entrée confirmée présente            → success
+#       ❌ ÉCHEC : l'entrée n'apparaît pas après écriture           → failed, retry
+#    If you see ❌ on inline mode, RETRY with the file mode (write-file /
+#    write-inbox-file). The script also exits 1 on failure, so a CI pipeline
+#    can `&& git push` and refuse to push on failed sync.
+
+# 4. Commit and push
 git add .
 git commit -m "feat|fix|docs: description"
 git push origin develop
