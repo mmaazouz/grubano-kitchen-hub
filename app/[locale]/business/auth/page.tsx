@@ -32,8 +32,21 @@ const ROLE_REDIRECTS: Record<string, string> = {
 
 async function routeByRole(router: ReturnType<typeof useRouter>) {
   try {
-    const session = await fetch('/api/auth/session').then((r) => r.json())
-    const role = session?.user?.role ?? 'restaurant'
+    // Onboarding gate: a freshly-verified partner (role=restaurant, no Brand
+    // yet) is sent to /business/onboarding to create their brand + restaurant
+    // before they ever see the dashboard. /api/business/me is read-only and
+    // owner-scoped — it returns needsOnboarding=true only for first-touch
+    // partners. Other roles bypass the gate and follow the default mapping.
+    const me = await fetch('/api/business/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+    if (me?.needsOnboarding) {
+      router.push('/business/onboarding')
+      return
+    }
+    const role = (me?.role as string) ??
+      (await fetch('/api/auth/session').then((r) => r.json()).then((s) => s?.user?.role).catch(() => null)) ??
+      'restaurant'
     router.push(ROLE_REDIRECTS[role] ?? '/dashboard')
   } catch {
     router.push('/dashboard')

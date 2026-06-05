@@ -279,12 +279,20 @@ export async function POST(req: Request) {
     // Geocode (soft-fail — null coords are OK).
     const coords = await geocodeAddress(input.address, input.city, postalCode)
 
+    // ── Partner safety gate (onboarding) ────────────────────────────────────
+    // A self-served partner creates a restaurant via /business/onboarding. It
+    // must NOT appear on /eat until an admin reviews it (brand quality + RGPD).
+    // `isActive` is forced to false for the `restaurant` role; an admin who
+    // creates a row via this endpoint gets it live immediately. Switching a
+    // partner-created row to live = PATCH /api/restaurants/:id by an admin.
+    const isAdmin = operator.role === 'admin'
     const restaurant = await prisma.restaurant.create({
       data: {
         ...input,
         operatorId: operator.id,
         lat:        coords?.latitude  ?? null,
         lng:        coords?.longitude ?? null,
+        isActive:   isAdmin, // admin → live; partner → awaiting admin review
       },
     })
 
