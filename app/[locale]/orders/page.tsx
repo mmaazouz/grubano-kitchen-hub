@@ -1,8 +1,11 @@
 import { getServerSession } from 'next-auth'
+import { cookies } from 'next/headers'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ESTABLISHMENT_COOKIE, pickEstablishment } from '@/lib/establishment'
 import { EmptyState } from '@/components/design-system'
+import { type EstablishmentOption } from '@/components/dashboard/EstablishmentSwitcher'
 import OrdersClient, {
   type OrderView,
   type OrderItemView,
@@ -43,10 +46,11 @@ function rawIdOf(item: RawOrderItem): string {
 }
 
 interface PageData {
-  restaurant: RestaurantView | null
-  orders:     OrderView[]
-  brands:     BrandView[]
-  menuItems:  MenuItemView[]
+  restaurant:     RestaurantView | null
+  establishments: EstablishmentOption[]
+  orders:         OrderView[]
+  brands:         BrandView[]
+  menuItems:      MenuItemView[]
 }
 
 async function loadData(
@@ -58,20 +62,27 @@ async function loadData(
     select: {
       id: true,
       restaurants: {
-        select:  { id: true, name: true, isActive: true },
+        select:  { id: true, name: true, city: true, isActive: true },
         orderBy: { createdAt: 'asc' },
-        take:    1,
       },
       brands:     { select: { id: true, name: true, emoji: true } },
     },
   })
 
-  // Option B (step 4): Operator.restaurants is now a list; the UI stays
-  // MONO-establishment — read the first (oldest) restaurant as before.
-  const restaurant = operator?.restaurants?.[0] ?? null
+  // Option B (step 5): Operator.restaurants is a list; the operator picks the
+  // active establishment via the header switcher (durable cookie). Absent/stale
+  // cookie → the oldest restaurant, so a mono operator behaves exactly as before.
+  const allRestaurants = operator?.restaurants ?? []
+  const establishments: EstablishmentOption[] = allRestaurants.map((r) => ({
+    id: r.id, name: r.name, city: r.city,
+  }))
+  const restaurant = pickEstablishment(
+    allRestaurants,
+    cookies().get(ESTABLISHMENT_COOKIE)?.value,
+  )
 
   if (!operator || !restaurant) {
-    return { restaurant: null, orders: [], brands: [], menuItems: [] }
+    return { restaurant: null, establishments, orders: [], brands: [], menuItems: [] }
   }
 
   const restaurantId = restaurant.id
@@ -183,6 +194,7 @@ async function loadData(
 
   return {
     restaurant,
+    establishments,
     orders,
     brands: operator.brands,
     menuItems,
@@ -229,6 +241,7 @@ export default async function OrdersPage(props: {
   return (
     <OrdersClient
       restaurant={d.restaurant}
+      establishments={d.establishments}
       orders={d.orders}
       brands={d.brands}
       menuItems={d.menuItems}

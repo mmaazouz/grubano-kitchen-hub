@@ -23,6 +23,9 @@ import {
   useToast,
   Badge,
 } from '@/components/design-system'
+import EstablishmentSwitcher, {
+  type EstablishmentOption,
+} from '@/components/dashboard/EstablishmentSwitcher'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,9 +41,12 @@ export interface FulfillmentSettings {
 }
 
 interface Props {
-  restaurantId: string
+  restaurantId:   string
   restaurantName: string
-  initial:      FulfillmentSettings
+  // All of the operator's establishments (oldest first) for the header switcher.
+  // ≤1 entry → the switcher renders nothing (mono behaviour preserved).
+  establishments: EstablishmentOption[]
+  initial:        FulfillmentSettings
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -55,7 +61,7 @@ export default function FulfillmentForm(props: Props) {
   )
 }
 
-function FulfillmentFormInner({ restaurantId, restaurantName, initial }: Props) {
+function FulfillmentFormInner({ restaurantId, restaurantName, establishments, initial }: Props) {
   const toast = useToast()
   const [form,    setForm]    = useState<FulfillmentSettings>(initial)
   const [saving,  setSaving]  = useState(false)
@@ -126,11 +132,15 @@ function FulfillmentFormInner({ restaurantId, restaurantName, initial }: Props) 
 
   return (
     <div className="mx-auto max-w-3xl px-5 pt-4 pb-24">
-      <header className="mb-6">
-        <h1 className="font-display text-2xl font-bold tracking-tight">Modes de service</h1>
-        <p className="mt-1 text-sm text-grubano-ink-muted">
-          Choisissez comment <span className="font-medium text-grubano-ink">{restaurantName}</span> sert ses clients.
-        </p>
+      <header className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold tracking-tight">Modes de service</h1>
+          <p className="mt-1 text-sm text-grubano-ink-muted">
+            Choisissez comment <span className="font-medium text-grubano-ink">{restaurantName}</span> sert ses clients.
+          </p>
+        </div>
+        {/* Switcher renders nothing at ≤1 establishment → mono header unchanged. */}
+        <EstablishmentSwitcher establishments={establishments} currentId={restaurantId} />
       </header>
 
       {/* Channel toggles ------------------------------------------------------ */}

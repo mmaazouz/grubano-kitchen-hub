@@ -1138,5 +1138,8 @@
       "contactCta": "Contáctanos",
       "back": "Volver a los perfiles"
     }
+  },
+  "establishment": {
+    "label": "Establecimiento"
   }
 }

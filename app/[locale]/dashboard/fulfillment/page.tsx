@@ -1,8 +1,11 @@
 import { redirect } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ESTABLISHMENT_COOKIE, pickEstablishment } from '@/lib/establishment'
 import { EmptyState } from '@/components/design-system'
+import { type EstablishmentOption } from '@/components/dashboard/EstablishmentSwitcher'
 import FulfillmentForm, {
   type FulfillmentSettings,
 } from '@/components/dashboard/FulfillmentForm'
@@ -37,11 +40,16 @@ export default async function FulfillmentPage() {
     )
   }
 
-  const restaurant = await prisma.restaurant.findFirst({
-    where:  { operatorId: operator.id },
+  // Option B (step 5): an operator may own several establishments. Fetch the
+  // full list (oldest first) and pick the one selected via the durable cookie,
+  // falling back to the oldest. The header switcher lets them change it.
+  const allRestaurants = await prisma.restaurant.findMany({
+    where:   { operatorId: operator.id },
+    orderBy: { createdAt: 'asc' },
     select: {
       id:                 true,
       name:               true,
+      city:               true,
       deliveryEnabled:    true,
       pickupEnabled:      true,
       reservationEnabled: true,
@@ -52,6 +60,14 @@ export default async function FulfillmentPage() {
       pickupInstructions: true,
     },
   })
+
+  const establishments: EstablishmentOption[] = allRestaurants.map((r) => ({
+    id: r.id, name: r.name, city: r.city,
+  }))
+  const restaurant = pickEstablishment(
+    allRestaurants,
+    cookies().get(ESTABLISHMENT_COOKIE)?.value,
+  )
 
   if (!restaurant) {
     return (
@@ -88,6 +104,7 @@ export default async function FulfillmentPage() {
     <FulfillmentForm
       restaurantId={restaurant.id}
       restaurantName={restaurant.name}
+      establishments={establishments}
       initial={initial}
     />
   )

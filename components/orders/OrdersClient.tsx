@@ -30,6 +30,9 @@ import { Link } from '@/navigation'
 import {
   Badge, Button, Card, Modal, EmptyState, ToastProvider, useToast,
 } from '@/components/design-system'
+import EstablishmentSwitcher, {
+  type EstablishmentOption,
+} from '@/components/dashboard/EstablishmentSwitcher'
 import {
   KNOWN_STATUS, statusTone, useOrderAdvance, OrderStatusActions,
 } from '@/components/orders/order-actions'
@@ -73,6 +76,9 @@ export interface RestaurantView { id: string; name: string; isActive: boolean }
 
 interface OrdersClientProps {
   restaurant:     RestaurantView
+  // All of the operator's establishments (oldest first) for the header switcher.
+  // ≤1 entry → the switcher renders nothing (mono behaviour preserved).
+  establishments: EstablishmentOption[]
   orders:         OrderView[]
   brands:         BrandView[]
   menuItems:      MenuItemView[]
@@ -92,7 +98,7 @@ export default function OrdersClient(props: OrdersClientProps) {
   )
 }
 
-function OrdersInner({ restaurant, orders, brands, menuItems, initialOrderId }: OrdersClientProps) {
+function OrdersInner({ restaurant, establishments, orders, brands, menuItems, initialOrderId }: OrdersClientProps) {
   const t      = useTranslations('orders')
   const ts     = useTranslations('dashboard.home.liveOrders') // status / type / action labels
   const toast  = useToast()
@@ -196,9 +202,13 @@ function OrdersInner({ restaurant, orders, brands, menuItems, initialOrderId }: 
             {t('subtitle', { count: activeCount })}
           </p>
         </div>
-        {!isActive && (
-          <Badge tone="danger" size="md" icon={<Pause size={11} />}>{t('pausedBadge')}</Badge>
-        )}
+        {/* Switcher renders nothing at ≤1 establishment → mono header unchanged. */}
+        <div className="flex flex-col items-end gap-2">
+          <EstablishmentSwitcher establishments={establishments} currentId={restaurant.id} />
+          {!isActive && (
+            <Badge tone="danger" size="md" icon={<Pause size={11} />}>{t('pausedBadge')}</Badge>
+          )}
+        </div>
       </div>
 
       {/* Control buttons */}

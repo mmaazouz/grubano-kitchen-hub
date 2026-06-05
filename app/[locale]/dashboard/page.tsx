@@ -1,4 +1,5 @@
 import { getServerSession } from 'next-auth'
+import { cookies } from 'next/headers'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import {
   TrendingUp, TrendingDown, ShoppingBag, Euro, Star,
@@ -9,11 +10,15 @@ import {
 import { Link } from '@/navigation'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ESTABLISHMENT_COOKIE, pickEstablishment } from '@/lib/establishment'
 import {
   Badge,
   Card,
   EmptyState,
 } from '@/components/design-system'
+import EstablishmentSwitcher, {
+  type EstablishmentOption,
+} from '@/components/dashboard/EstablishmentSwitcher'
 import {
   DashboardRevenueChart,
   type RevenueChartDatum,
@@ -56,6 +61,9 @@ interface DashboardData {
     id: string; name: string; rating: number; reviewCount: number
     pickupEnabled: boolean
   } | null
+  // All of the operator's establishments (oldest first) for the header switcher.
+  // Single entry → the switcher renders nothing (mono behaviour preserved).
+  establishments: EstablishmentOption[]
   kpis:        KpiDatum[]
   activeOrders: OrderRow[]
   chart:        RevenueChartDatum[]
@@ -80,27 +88,35 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
   const last14   = new Date(today); last14.setDate(today.getDate() - 13) // 14 days incl. today
   const last30   = new Date(today); last30.setDate(today.getDate() - 29)
 
-  // Operator + restaurant
+  // Operator + every establishment (oldest first). Option B (step 5): the UI is
+  // now multi-establishment — we fetch the full list and let the operator pick
+  // which one drives the dashboard via the header switcher. The selection is a
+  // durable cookie; absent/stale cookie falls back to the oldest restaurant, so
+  // a mono operator behaves exactly as before.
   const operator = await prisma.operator.findUnique({
     where:  { email: operatorEmail },
     select: { id: true, role: true, restaurants: {
       select: {
-        id: true, name: true, rating: true, reviewCount: true,
+        id: true, name: true, city: true, rating: true, reviewCount: true,
         pickupEnabled: true,
       },
       orderBy: { createdAt: 'asc' },
-      take:    1,
     } },
   })
 
-  // Option B (step 4): Operator.restaurants is now a list. The dashboard UI stays
-  // MONO-establishment — we read the first (oldest) restaurant exactly as before.
-  // Multi-establishment selection is a later commit (step 5).
-  const restaurant = operator?.restaurants?.[0] ?? null
+  const allRestaurants = operator?.restaurants ?? []
+  const establishments: EstablishmentOption[] = allRestaurants.map((r) => ({
+    id: r.id, name: r.name, city: r.city,
+  }))
+  const restaurant = pickEstablishment(
+    allRestaurants,
+    cookies().get(ESTABLISHMENT_COOKIE)?.value,
+  )
 
   if (!restaurant) {
     return {
       restaurant:   null,
+      establishments,
       kpis:         [],
       activeOrders: [],
       chart:        [],
@@ -331,6 +347,7 @@ async function loadData(operatorEmail: string, t: Awaited<ReturnType<typeof getT
 
   return {
     restaurant,
+    establishments,
     kpis,
     activeOrders,
     chart,
@@ -436,7 +453,12 @@ export default async function DashboardHomePage(props: { params: { locale: strin
           </h1>
           <p className="text-sm text-grubano-ink-muted capitalize">{dateLine}</p>
         </div>
-        <Badge tone="success" size="sm" dot>{t('statusOpen')}</Badge>
+        {/* Establishment switcher renders nothing when the operator has ≤1
+            restaurant, so the header is byte-identical for mono operators. */}
+        <div className="flex flex-col items-end gap-2">
+          <EstablishmentSwitcher establishments={d.establishments} currentId={d.restaurant.id} />
+          <Badge tone="success" size="sm" dot>{t('statusOpen')}</Badge>
+        </div>
       </header>
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
