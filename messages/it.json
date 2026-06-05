@@ -1165,7 +1165,6 @@
     "activeChip": "Attiva",
     "liveChip": "Online",
     "offlineChip": "Offline",
-    "switchBtn": "Cambia",
     "fName": "Nome della sede",
     "fNamePlaceholder": "Es. Grubano Lyon Part-Dieu",
     "fCity": "Città",
@@ -1189,6 +1188,7 @@
     "errAddress": "L’indirizzo è obbligatorio.",
     "errInvalidUrl": "Link immagine non valido (deve iniziare con http).",
     "errCreateFailed": "Impossibile creare. Controlla i campi.",
-    "errNetwork": "Errore di rete, riprova."
+    "errNetwork": "Errore di rete, riprova.",
+    "openDashboard": "Apri questa dashboard"
   }
 }

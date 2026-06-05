@@ -1165,7 +1165,6 @@
     "activeChip": "نشطة",
     "liveChip": "متصلة",
     "offlineChip": "غير متصلة",
-    "switchBtn": "تبديل",
     "fName": "اسم المنشأة",
     "fNamePlaceholder": "مثال: Grubano Lyon Part-Dieu",
     "fCity": "المدينة",
@@ -1189,6 +1188,7 @@
     "errAddress": "العنوان إلزامي.",
     "errInvalidUrl": "رابط الصورة غير صالح (يجب أن يبدأ بـ http).",
     "errCreateFailed": "تعذّر الإنشاء. تحقق من الحقول.",
-    "errNetwork": "خطأ في الشبكة، أعد المحاولة."
+    "errNetwork": "خطأ في الشبكة، أعد المحاولة.",
+    "openDashboard": "افتح لوحة التحكم هذه"
   }
 }

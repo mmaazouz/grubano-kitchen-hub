@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from '@/navigation'
 import { useTranslations } from 'next-intl'
 import {
-  Plus, Store, MapPin, Check, Loader2, Image as ImageIcon, Building2,
+  Plus, Store, MapPin, Loader2, Image as ImageIcon, Building2, LayoutDashboard,
 } from 'lucide-react'
 import {
   Modal, Button, Input, ToastProvider, useToast,
@@ -70,7 +70,12 @@ function EstablishmentsManagerInner({
   const router = useRouter()
   const toast  = useToast()
 
-  const [switching, setSwitching] = useState<string | null>(null)
+  // Loading state is bound to the navigation transition (not a manual flag that
+  // can leak): startTransition stays pending until router.push completes, then
+  // resets automatically — and navigating away unmounts this component anyway,
+  // so the spinner can never get stuck.
+  const [pendingId, setPendingId]  = useState<string | null>(null)
+  const [pending, startTransition] = useTransition()
 
   // Create-modal state.
   const [open, setOpen]       = useState(false)
@@ -84,12 +89,14 @@ function EstablishmentsManagerInner({
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
 
-  function setActive(id: string) {
-    if (id === currentId) return
+  // Select this establishment (durable cookie) and open ITS dashboard. Navigating
+  // is clearer for a non-tech operator than a silent in-place switch — and it
+  // sidesteps any stuck-spinner state because the page unmounts on navigation.
+  function openDashboardFor(id: string) {
     document.cookie =
       `${ESTABLISHMENT_COOKIE}=${encodeURIComponent(id)}; path=/; max-age=${ESTABLISHMENT_COOKIE_MAX_AGE}; samesite=lax`
-    setSwitching(id)
-    router.refresh()
+    setPendingId(id)
+    startTransition(() => router.push('/dashboard'))
   }
 
   function resetForm() {
@@ -191,17 +198,15 @@ function EstablishmentsManagerInner({
                   <span className="truncate">{[e.city, e.address].filter(Boolean).join(' · ')}</span>
                 </p>
               </div>
-              {!current && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={switching === e.id}
-                  onClick={() => setActive(e.id)}
-                >
-                  {t('switchBtn')}
-                </Button>
-              )}
-              {current && <Check size={18} className="shrink-0 text-grubano-primary" />}
+              <Button
+                variant={current ? 'primary' : 'secondary'}
+                size="sm"
+                loading={pending && pendingId === e.id}
+                leftIcon={<LayoutDashboard size={14} />}
+                onClick={() => openDashboardFor(e.id)}
+              >
+                {t('openDashboard')}
+              </Button>
             </article>
           )
         })}
