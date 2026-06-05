@@ -1,9 +1,10 @@
 'use client'
 
 import { Link } from '@/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
-import { Store, Plus, UtensilsCrossed, Sparkles, TrendingUp, Filter, Lock, Loader2 } from 'lucide-react'
+import { Store, Plus, UtensilsCrossed, Sparkles, TrendingUp, Filter, Lock, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Modal, Button, Input } from '@/components/design-system'
 
 type BrandSummary = {
   id:               string
@@ -32,6 +33,28 @@ const isActive = (s: string) => s === 'active'
 // inventing per-brand data.
 const TILE_BG = ['bg-orange-50', 'bg-blue-50', 'bg-green-50', 'bg-yellow-50', 'bg-purple-50', 'bg-pink-50'] as const
 
+// Canonical cuisine values shared with the onboarding flow — labels are i18n.
+const CUISINE_TYPES = [
+  { value: 'italien', emoji: '🍕' },
+  { value: 'asiatique', emoji: '🍜' },
+  { value: 'burger', emoji: '🍔' },
+  { value: 'healthy', emoji: '🥗' },
+  { value: 'sushi', emoji: '🍣' },
+  { value: 'desserts', emoji: '🍰' },
+  { value: 'wraps', emoji: '🥙' },
+  { value: 'pasta', emoji: '🍝' },
+  { value: 'autre', emoji: '🍴' },
+] as const
+const BRAND_EMOJIS = ['🍕', '🍜', '🍔', '🥗', '🍣', '🍰', '🥙', '🍝', '🌮', '🍱', '🥘', '🥟', '🍴', '🥐']
+
+interface BrandForm {
+  id?: string
+  name: string
+  emoji: string
+  cuisineType: string
+  tagline: string
+}
+
 export default function BrandsPage() {
   const t = useTranslations('brands')
 
@@ -43,23 +66,126 @@ export default function BrandsPage() {
   const [status,   setStatus]   = useState<'all' | 'active' | 'paused'>('all')
   const [sort,     setSort]     = useState<SortKey>('most')
 
+  // Create / edit / delete modal state.
+  const [form, setForm]               = useState<BrandForm | null>(null)
+  const [formLoading, setFormLoading] = useState(false)
+  const [saving, setSaving]           = useState(false)
+  const [formError, setFormError]     = useState('')
+  const [toDelete, setToDelete]       = useState<BrandSummary | null>(null)
+  const [deleting, setDeleting]       = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const loadBrands = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/brands/summary', { cache: 'no-store' })
+      const data = await res.json()
+      if (Array.isArray(data?.brands)) setBrands(data.brands)
+      if (data?.performance) setPerf(data.performance)
+    } catch {
+      // Degrade silently to the empty state — never break the page.
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      try {
-        const res  = await fetch('/api/brands/summary', { cache: 'no-store' })
-        const data = await res.json()
-        if (cancelled) return
-        if (Array.isArray(data?.brands)) setBrands(data.brands)
-        if (data?.performance) setPerf(data.performance)
-      } catch {
-        // Degrade silently to the empty state — never break the page.
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+      if (!cancelled) await loadBrands()
     })()
     return () => { cancelled = true }
-  }, [])
+  }, [loadBrands])
+
+  function openCreate() {
+    setFormError('')
+    setForm({ name: '', emoji: '🍕', cuisineType: 'italien', tagline: '' })
+  }
+
+  async function openEdit(b: BrandSummary) {
+    setFormError('')
+    setForm({ id: b.id, name: b.name, emoji: b.emoji, cuisineType: 'autre', tagline: '' })
+    setFormLoading(true)
+    try {
+      const res = await fetch(`/api/brands/${b.id}`, { cache: 'no-store' })
+      const data = await res.json()
+      if (res.ok && data?.brand) {
+        setForm({
+          id: data.brand.id,
+          name: data.brand.name ?? b.name,
+          emoji: data.brand.emoji ?? b.emoji,
+          cuisineType: data.brand.cuisineType ?? 'autre',
+          tagline: data.brand.tagline ?? '',
+        })
+      }
+    } catch {
+      /* keep the summary-derived defaults */
+    } finally {
+      setFormLoading(false)
+    }
+  }
+
+  async function saveForm(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form) return
+    if (!form.name.trim()) {
+      setFormError(t('errName'))
+      return
+    }
+    setFormError('')
+    setSaving(true)
+    try {
+      const isEdit = Boolean(form.id)
+      const res = await fetch(isEdit ? `/api/brands/${form.id}` : '/api/brands', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:        form.name.trim(),
+          emoji:       form.emoji,
+          cuisineType: form.cuisineType,
+          tagline:     form.tagline.trim() || null,
+        }),
+      })
+      if (res.status === 401) { window.location.href = '/business/auth'; return }
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setFormError((data && (data.error as string)) || t('errSaveFailed'))
+        return
+      }
+      setForm(null)
+      await loadBrands()
+    } catch {
+      setFormError(t('errNetwork'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function confirmDelete() {
+    if (!toDelete) return
+    setDeleteError('')
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/brands/${toDelete.id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => null)
+      if (res.status === 401) { window.location.href = '/business/auth'; return }
+      if (!res.ok) {
+        const reason = data?.reason as string | undefined
+        setDeleteError(
+          reason === 'has_menu_items'              ? t('errDeleteMenu')
+          : reason === 'last_brand_active_restaurant' ? t('errDeleteLastBrand')
+          : reason === 'has_related_data'          ? t('errDeleteRelated')
+          : (data?.error as string) || t('errDeleteFailed'),
+        )
+        return
+      }
+      setToDelete(null)
+      await loadBrands()
+    } catch {
+      setDeleteError(t('errNetwork'))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const activeCount = brands.filter(b => isActive(b.status)).length
 
@@ -186,7 +312,23 @@ export default function BrandsPage() {
                   </div>
                   <p className="text-[11px] text-muted-foreground">{t('darkKitchen')}</p>
                 </div>
-                <Store size={16} className="text-muted-foreground" />
+                {/* Actions */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => openEdit(b)}
+                    aria-label={t('editBrand')}
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition hover:border-primary hover:text-primary"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => { setDeleteError(''); setToDelete(b) }}
+                    aria-label={t('deleteBrand')}
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-2 divide-x divide-border border-t border-border bg-muted/30">
                 <Stat icon={UtensilsCrossed} label={t('statMenu')}     value={String(b.menuCount)} />
@@ -197,9 +339,130 @@ export default function BrandsPage() {
         </div>
       )}
 
-      <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-card py-4 text-sm font-semibold text-muted-foreground transition hover:border-primary hover:text-primary">
+      <button
+        onClick={openCreate}
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-card py-4 text-sm font-semibold text-muted-foreground transition hover:border-primary hover:text-primary"
+      >
         <Plus size={16} /> {t('addBrand')}
       </button>
+
+      {/* ── Create / Edit modal ─────────────────────────────────────────── */}
+      <Modal
+        open={form !== null}
+        onClose={() => setForm(null)}
+        size="md"
+        title={form?.id ? t('editTitle') : t('createTitle')}
+      >
+        {form && (
+          <form onSubmit={saveForm} className="space-y-4">
+            {formError && (
+              <div className="rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
+                {formError}
+              </div>
+            )}
+
+            <Input
+              label={t('fieldName')}
+              value={form.name}
+              maxLength={80}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder={t('fieldNamePlaceholder')}
+            />
+
+            <div>
+              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('fieldCuisine')}</label>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {CUISINE_TYPES.map((c) => {
+                  const active = form.cuisineType === c.value
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, cuisineType: c.value })}
+                      className={`flex flex-col items-center gap-1 rounded-grubano-md border px-2 py-2 text-xs font-semibold transition active:scale-95 ${
+                        active ? 'border-grubano-primary bg-grubano-tint text-grubano-primary' : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted'
+                      }`}
+                    >
+                      <span className="text-lg">{c.emoji}</span>
+                      <span>{t(`cuisine_${c.value}` as 'cuisine_italien')}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('fieldEmoji')}</label>
+              <div className="flex flex-wrap gap-2">
+                {BRAND_EMOJIS.map((e2) => (
+                  <button
+                    key={e2}
+                    type="button"
+                    onClick={() => setForm({ ...form, emoji: e2 })}
+                    aria-label={e2}
+                    className={`flex h-10 w-10 items-center justify-center rounded-grubano-md border text-lg transition active:scale-95 ${
+                      form.emoji === e2 ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-grubano-surface'
+                    }`}
+                  >
+                    {e2}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Input
+              label={t('fieldTagline')}
+              value={form.tagline}
+              maxLength={140}
+              onChange={(e) => setForm({ ...form, tagline: e.target.value })}
+              placeholder={t('fieldTaglinePlaceholder')}
+            />
+
+            <div className="flex gap-2 pt-1">
+              <Button type="button" variant="secondary" size="md" onClick={() => setForm(null)}>
+                {t('cancel')}
+              </Button>
+              <Button type="submit" variant="primary" size="md" loading={saving || formLoading} className="flex-1">
+                {form.id ? t('save') : t('create')}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* ── Delete confirmation modal ───────────────────────────────────── */}
+      <Modal
+        open={toDelete !== null}
+        onClose={() => setToDelete(null)}
+        size="sm"
+        title={t('deleteConfirmTitle')}
+      >
+        {toDelete && (
+          <div className="space-y-4">
+            <p className="text-grubano-sm leading-relaxed text-grubano-ink-muted">
+              {t('deleteConfirmBody', { name: toDelete.name })}
+            </p>
+            {toDelete.menuCount > 0 && (
+              <div className="rounded-grubano-md border border-grubano-warning/30 bg-grubano-warning-tint px-3 py-2.5 text-grubano-sm text-grubano-ink-muted">
+                {t('deleteWarnMenu', { count: toDelete.menuCount })}
+              </div>
+            )}
+            {deleteError && (
+              <div className="rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" size="md" onClick={() => setToDelete(null)}>
+                {t('cancel')}
+              </Button>
+              <Button type="button" variant="danger" size="md" loading={deleting} className="flex-1" onClick={confirmDelete}>
+                {t('confirmDelete')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
