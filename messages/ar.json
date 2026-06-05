@@ -1075,6 +1075,28 @@
       "errAtLeastOneFulfilment": "فعّل التوصيل أو الاستلام على الأقل.",
       "errRestaurantFailed": "تعذّر إنشاء المطعم. تحقق من معلوماتك.",
       "errNetwork": "خطأ في الشبكة، أعد المحاولة."
+    },
+    "start": {
+      "title": "انضم إلى Grubano",
+      "subtitle": "اختر الملف الذي يناسبك.",
+      "restaurateurTitle": "صاحب مطعم",
+      "restaurateurDesc": "بِع أطباقك، توصيلاً أو استلاماً",
+      "creatorTitle": "مبدع وصفات",
+      "creatorDesc": "أنشئ وصفات واربح من كل عملية بيع",
+      "influencerTitle": "مسوّق / مؤثّر",
+      "influencerDesc": "اجلب العملاء واحصل على أجرك حسب النتائج",
+      "franchisorTitle": "مانح امتياز",
+      "franchisorDesc": "وسّع علامتك في عدة مدن",
+      "alreadyAccount": "لديك حساب بالفعل؟",
+      "signIn": "تسجيل الدخول"
+    },
+    "franchiseSoon": {
+      "badge": "قريباً",
+      "title": "مانح امتياز",
+      "body": "توسيع علامتك في عدة مدن قادم قريباً جداً. فريقنا يرافقك شخصياً في كل خطوة.",
+      "dedicatedSupport": "مرافقة مخصّصة — سنتواصل معك",
+      "contactCta": "تواصل معنا",
+      "back": "العودة إلى الملفات"
     }
   }
 }

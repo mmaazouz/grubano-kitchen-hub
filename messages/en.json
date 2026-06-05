@@ -1075,6 +1075,28 @@
       "errAtLeastOneFulfilment": "Enable at least delivery or pickup.",
       "errRestaurantFailed": "Could not create the restaurant. Check your details.",
       "errNetwork": "Network error, please retry."
+    },
+    "start": {
+      "title": "Join Grubano",
+      "subtitle": "Choose the profile that fits you.",
+      "restaurateurTitle": "Restaurant owner",
+      "restaurateurDesc": "Sell your dishes, for delivery or pickup",
+      "creatorTitle": "Recipe creator",
+      "creatorDesc": "Create recipes, earn on every sale",
+      "influencerTitle": "Affiliate / Influencer",
+      "influencerDesc": "Bring in customers, get paid on results",
+      "franchisorTitle": "Franchisor",
+      "franchisorDesc": "Expand your brand across several cities",
+      "alreadyAccount": "Already have an account?",
+      "signIn": "Sign in"
+    },
+    "franchiseSoon": {
+      "badge": "Coming soon",
+      "title": "Franchisor",
+      "body": "Expanding your brand across several cities is coming very soon. Our team will support you personally at every step.",
+      "dedicatedSupport": "Dedicated support — we’ll get back to you",
+      "contactCta": "Contact us",
+      "back": "Back to profiles"
     }
   }
 }

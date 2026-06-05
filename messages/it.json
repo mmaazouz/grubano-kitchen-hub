@@ -1075,6 +1075,28 @@
       "errAtLeastOneFulfilment": "Attiva almeno la consegna o il ritiro.",
       "errRestaurantFailed": "Impossibile creare il ristorante. Controlla i dati.",
       "errNetwork": "Errore di rete, riprova."
+    },
+    "start": {
+      "title": "Unisciti a Grubano",
+      "subtitle": "Scegli il profilo che fa per te.",
+      "restaurateurTitle": "Ristoratore",
+      "restaurateurDesc": "Vendi i tuoi piatti, in consegna o ritiro",
+      "creatorTitle": "Creator di ricette",
+      "creatorDesc": "Crea ricette, guadagna su ogni vendita",
+      "influencerTitle": "Affiliato / Influencer",
+      "influencerDesc": "Porta clienti, vieni pagato sui risultati",
+      "franchisorTitle": "Affiliante",
+      "franchisorDesc": "Espandi il tuo marchio in più città",
+      "alreadyAccount": "Hai già un account?",
+      "signIn": "Accedi"
+    },
+    "franchiseSoon": {
+      "badge": "In arrivo",
+      "title": "Affiliante",
+      "body": "L’espansione del tuo marchio in più città arriva molto presto. Il nostro team ti accompagna personalmente in ogni fase.",
+      "dedicatedSupport": "Supporto dedicato — ti ricontatteremo",
+      "contactCta": "Contattaci",
+      "back": "Torna ai profili"
     }
   }
 }

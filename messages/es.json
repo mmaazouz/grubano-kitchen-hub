@@ -1075,6 +1075,28 @@
       "errAtLeastOneFulfilment": "Activa al menos la entrega o la recogida.",
       "errRestaurantFailed": "No se pudo crear el restaurante. Revisa tus datos.",
       "errNetwork": "Error de red, vuelve a intentarlo."
+    },
+    "start": {
+      "title": "Únete a Grubano",
+      "subtitle": "Elige el perfil que te corresponde.",
+      "restaurateurTitle": "Restaurador",
+      "restaurateurDesc": "Vende tus platos, en entrega o recogida",
+      "creatorTitle": "Creador de recetas",
+      "creatorDesc": "Crea recetas, gana en cada venta",
+      "influencerTitle": "Afiliado / Influencer",
+      "influencerDesc": "Trae clientes, cobra por resultados",
+      "franchisorTitle": "Franquiciador",
+      "franchisorDesc": "Expande tu marca por varias ciudades",
+      "alreadyAccount": "¿Ya tienes una cuenta?",
+      "signIn": "Iniciar sesión"
+    },
+    "franchiseSoon": {
+      "badge": "Próximamente",
+      "title": "Franquiciador",
+      "body": "La expansión de tu marca por varias ciudades llega muy pronto. Nuestro equipo te acompaña personalmente en cada paso.",
+      "dedicatedSupport": "Acompañamiento dedicado — te contactaremos",
+      "contactCta": "Contáctanos",
+      "back": "Volver a los perfiles"
     }
   }
 }
