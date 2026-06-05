@@ -955,7 +955,6 @@
     "sortLeast": "أقل الأطباق",
     "proBanner": "فعّل Grubano Pro لرؤية UberEats وDeliveroo وJust Eat",
     "proPrice": "29€/شهر",
-    "darkKitchen": "مطبخ مظلم · Grubano",
     "badgeActive": "نشطة",
     "badgePaused": "متوقفة",
     "statMenu": "أطباق القائمة",
@@ -1013,7 +1012,8 @@
     "readoptDone": "تم التبنّي",
     "readoptCityTaken": "المدينة محجوزة",
     "readoptError": "فشل — أعد المحاولة",
-    "readoptClose": "تم"
+    "readoptClose": "تم",
+    "brandKind": "علامة افتراضية"
   },
   "business": {
     "auth": {
@@ -1162,7 +1162,6 @@
     "manageLink": "إدارة المنشآت",
     "add": "إضافة منشأة",
     "addTitle": "منشأة جديدة",
-    "activeChip": "نشطة",
     "liveChip": "متصلة",
     "offlineChip": "غير متصلة",
     "fName": "اسم المنشأة",
@@ -1191,6 +1190,7 @@
     "errNetwork": "خطأ في الشبكة، أعد المحاولة.",
     "openDashboard": "افتح لوحة التحكم هذه",
     "errCityInvalid": "مدينة غير صالحة — أدخل اسم مدينة حقيقية (وليس نوع مطبخ).",
-    "cityNotVerified": "تم إنشاء المنشأة، لكن تعذّر التحقق من العنوان — تحقق من تهجئة المدينة والعنوان."
+    "cityNotVerified": "تم إنشاء المنشأة، لكن تعذّر التحقق من العنوان — تحقق من تهجئة المدينة والعنوان.",
+    "selectedChip": "محدد"
   }
 }

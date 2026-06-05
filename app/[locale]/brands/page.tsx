@@ -417,7 +417,7 @@ export default function BrandsPage() {
                       {isActive(b.status) ? t('badgeActive') : t('badgePaused')}
                     </span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">{t('darkKitchen')}</p>
+                  <p className="text-[11px] text-muted-foreground">{t('brandKind')}</p>
                 </div>
                 {/* Actions */}
                 <div className="flex items-center gap-1.5">

@@ -202,7 +202,7 @@ function EstablishmentsManagerInner({
                   <h3 className="truncate text-base font-bold text-grubano-ink">{e.name}</h3>
                   {current && (
                     <span className="rounded-full bg-grubano-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
-                      {t('activeChip')}
+                      {t('selectedChip')}
                     </span>
                   )}
                   <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${

@@ -955,7 +955,6 @@
     "sortLeast": "Moins de plats",
     "proBanner": "Activez Grubano Pro pour voir UberEats, Deliveroo & Just Eat",
     "proPrice": "29€/mois",
-    "darkKitchen": "Dark kitchen · Grubano",
     "badgeActive": "Actif",
     "badgePaused": "Pause",
     "statMenu": "Plats au menu",
@@ -1013,7 +1012,8 @@
     "readoptDone": "Adopté",
     "readoptCityTaken": "Ville déjà prise",
     "readoptError": "Échec — réessayer",
-    "readoptClose": "Terminé"
+    "readoptClose": "Terminé",
+    "brandKind": "Marque virtuelle"
   },
   "business": {
     "auth": {
@@ -1162,7 +1162,6 @@
     "manageLink": "Gérer les établissements",
     "add": "Ajouter un établissement",
     "addTitle": "Nouvel établissement",
-    "activeChip": "Actif",
     "liveChip": "En ligne",
     "offlineChip": "Hors ligne",
     "fName": "Nom de l’établissement",
@@ -1191,6 +1190,7 @@
     "errNetwork": "Erreur réseau, réessaie.",
     "openDashboard": "Voir ce tableau de bord",
     "errCityInvalid": "Ville invalide — saisis le nom d’une vraie ville (pas un type de cuisine).",
-    "cityNotVerified": "Établissement créé, mais l’adresse n’a pas pu être vérifiée — contrôle l’orthographe de la ville et de l’adresse."
+    "cityNotVerified": "Établissement créé, mais l’adresse n’a pas pu être vérifiée — contrôle l’orthographe de la ville et de l’adresse.",
+    "selectedChip": "Sélectionné"
   }
 }
