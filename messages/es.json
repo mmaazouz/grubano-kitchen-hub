@@ -1189,6 +1189,8 @@
     "errInvalidUrl": "Enlace de imagen no válido (debe empezar por http).",
     "errCreateFailed": "No se pudo crear. Revisa los campos.",
     "errNetwork": "Error de red, vuelve a intentarlo.",
-    "openDashboard": "Ver este panel"
+    "openDashboard": "Ver este panel",
+    "errCityInvalid": "Ciudad no válida — escribe el nombre de una ciudad real (no un tipo de cocina).",
+    "cityNotVerified": "Establecimiento creado, pero no se pudo verificar la dirección — revisa la ortografía de la ciudad y la dirección."
   }
 }

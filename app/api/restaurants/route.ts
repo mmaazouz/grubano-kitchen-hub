@@ -269,6 +269,25 @@ export async function POST(req: Request) {
     }
     const { postalCode, additional, ...input } = parsed.data
 
+    // ── City sanity check (post-commit-5 fix) ────────────────────────────────
+    // The city field was free-text and accepted anything (a partner typed
+    // "burger" — a cuisine — by mistake). Reject an empty/too-short city or one
+    // that is obviously a cuisine keyword. Applies to BOTH onboarding and the
+    // add-establishment flow. The deeper "does this city exist?" check is the
+    // BAN geocode below, which stays a SOFT failure (graceful when BAN is down)
+    // and is surfaced to the client via the `geocoded` flag.
+    const cityNorm = input.city.trim().toLowerCase()
+    const CUISINE_WORDS = new Set([
+      'italien', 'asiatique', 'burger', 'healthy', 'sushi',
+      'desserts', 'wraps', 'pasta', 'autre',
+    ])
+    if (cityNorm.length < 2 || CUISINE_WORDS.has(cityNorm)) {
+      return NextResponse.json(
+        { error: 'Ville invalide — saisis le nom d’une vraie ville.', reason: 'invalid_city' },
+        { status: 400 },
+      )
+    }
+
     // Reject accidental duplicate from the onboarding wizard. Option B (step 4):
     // operatorId is no longer unique, so use findFirst. Step 5B: a DELIBERATE
     // "add an establishment" action sends additional:true to opt out of this

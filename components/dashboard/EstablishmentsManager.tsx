@@ -28,6 +28,11 @@ const CUISINE_TYPES = [
   { value: 'autre',     labelKey: 'cuisineAutre',     emoji: '🍴' },
 ] as const
 
+// Cuisine keywords typed into the city field by mistake (e.g. "burger") are
+// rejected client-side — the server enforces the same. Built from the cuisine
+// values above so the two never drift.
+const CUISINE_VALUES = new Set<string>(CUISINE_TYPES.map((c) => c.value))
+
 /** Loose http(s) URL check — mirrors the server zod `.url()` intent without
  *  blocking on an empty field (empty values are sent as undefined). */
 function isHttpUrl(value: string): boolean {
@@ -111,6 +116,16 @@ function EstablishmentsManagerInner({
     if (!city.trim())    { setError(t('errCity')); return }
     if (!address.trim()) { setError(t('errAddress')); return }
 
+    // Reject an obviously-invalid city (too short, or a cuisine keyword typed by
+    // mistake). The server enforces the same; here we fail fast without a round
+    // trip. The "does this city exist?" question is answered by the BAN geocode
+    // server-side and surfaced as a soft warning below.
+    const cityNorm = city.trim().toLowerCase()
+    if (cityNorm.length < 2 || CUISINE_VALUES.has(cityNorm)) {
+      setError(t('errCityInvalid'))
+      return
+    }
+
     const logoUrl  = logo.trim()
     const coverUrl = cover.trim()
     if ((logoUrl && !isHttpUrl(logoUrl)) || (coverUrl && !isHttpUrl(coverUrl))) {
@@ -146,7 +161,10 @@ function EstablishmentsManagerInner({
         `${ESTABLISHMENT_COOKIE}=${encodeURIComponent(data.restaurant.id)}; path=/; max-age=${ESTABLISHMENT_COOKIE_MAX_AGE}; samesite=lax`
       setOpen(false)
       resetForm()
-      toast.success(t('createdNote'))
+      // The establishment is created either way (graceful when BAN is down), but
+      // if the address didn't geocode we warn instead of silently accepting it.
+      if (data.geocoded === false) toast.warning(t('cityNotVerified'))
+      else                         toast.success(t('createdNote'))
       router.refresh()
     } catch {
       setError(t('errNetwork'))

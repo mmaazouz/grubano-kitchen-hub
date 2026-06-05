@@ -1189,6 +1189,8 @@
     "errInvalidUrl": "Invalid image link (must start with http).",
     "errCreateFailed": "Could not create. Check the fields.",
     "errNetwork": "Network error, please retry.",
-    "openDashboard": "Open this dashboard"
+    "openDashboard": "Open this dashboard",
+    "errCityInvalid": "Invalid city — enter a real city name (not a cuisine type).",
+    "cityNotVerified": "Establishment created, but the address could not be verified — check the spelling of the city and address."
   }
 }

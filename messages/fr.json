@@ -1189,6 +1189,8 @@
     "errInvalidUrl": "Lien d’image invalide (doit commencer par http).",
     "errCreateFailed": "Création impossible. Vérifie les champs.",
     "errNetwork": "Erreur réseau, réessaie.",
-    "openDashboard": "Voir ce tableau de bord"
+    "openDashboard": "Voir ce tableau de bord",
+    "errCityInvalid": "Ville invalide — saisis le nom d’une vraie ville (pas un type de cuisine).",
+    "cityNotVerified": "Établissement créé, mais l’adresse n’a pas pu être vérifiée — contrôle l’orthographe de la ville et de l’adresse."
   }
 }
