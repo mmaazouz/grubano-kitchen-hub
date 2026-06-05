@@ -234,6 +234,11 @@ const CreateInput = z.object({
   deliveryTime: z.number().int().min(0).max(180).optional(),
   minOrder:     z.number().min(0).max(500).optional(),
   deliveryFee:  z.number().min(0).max(50).optional(),
+  // Option B (step 5B): explicit opt-in to add a SECOND (or Nth) establishment.
+  // The onboarding wizard never sends this, so its duplicate-submit guard (the
+  // 409 below) stays intact; the deliberate "add an establishment" flow sends
+  // additional:true to bypass it. Stripped before the DB write (not a column).
+  additional:   z.boolean().optional().default(false),
 })
 
 export async function POST(req: Request) {
@@ -262,21 +267,24 @@ export async function POST(req: Request) {
         { status: 400 },
       )
     }
-    const { postalCode, ...input } = parsed.data
+    const { postalCode, additional, ...input } = parsed.data
 
-    // Reject duplicate. Option B (step 4): operatorId is no longer unique, so use
-    // findFirst. The onboarding UI is still mono-establishment, so an operator that
-    // already has a restaurant is blocked here exactly as before; the multi-resto
-    // flow (creating a 2nd establishment) is a later commit (step 5).
-    const existing = await prisma.restaurant.findFirst({
-      where:  { operatorId: operator.id },
-      select: { id: true },
-    })
-    if (existing) {
-      return NextResponse.json(
-        { error: 'Vous avez déjà un restaurant. Utilisez PATCH pour le mettre à jour.' },
-        { status: 409 },
-      )
+    // Reject accidental duplicate from the onboarding wizard. Option B (step 4):
+    // operatorId is no longer unique, so use findFirst. Step 5B: a DELIBERATE
+    // "add an establishment" action sends additional:true to opt out of this
+    // guard — an operator can then own several establishments. The onboarding
+    // wizard never sets the flag, so a double-submit there is still blocked.
+    if (!additional) {
+      const existing = await prisma.restaurant.findFirst({
+        where:  { operatorId: operator.id },
+        select: { id: true },
+      })
+      if (existing) {
+        return NextResponse.json(
+          { error: 'Vous avez déjà un restaurant. Utilisez PATCH pour le mettre à jour.' },
+          { status: 409 },
+        )
+      }
     }
 
     // Geocode (soft-fail — null coords are OK).

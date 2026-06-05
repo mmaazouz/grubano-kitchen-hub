@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Store, Star, Package, Users, Settings,
   ChefHat, X, ShoppingBag, UtensilsCrossed, CalendarDays,
   BarChart2, Truck, MessageSquare, Wallet, Zap, Bell, Receipt,
-  Megaphone,
+  Megaphone, Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebar } from './SidebarContext'
@@ -27,6 +27,7 @@ const navGroups = [
   {
     label: 'Gestion',
     items: [
+      { href: '/dashboard/establishments', label: 'Établissements', icon: Building2 },
       { href: '/stocks',     label: 'Stocks',        icon: Package },
       { href: '/suppliers',  label: 'Fournisseurs',  icon: Truck },
       { href: '/brands',     label: 'Mes marques',   icon: Store },

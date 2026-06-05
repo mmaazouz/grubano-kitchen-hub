@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect, useTransition } from 'react'
-import { useRouter } from '@/navigation'
+import { useRouter, Link } from '@/navigation'
 import { useTranslations } from 'next-intl'
-import { Store, ChevronDown, Check, Loader2 } from 'lucide-react'
+import { Store, ChevronDown, Check, Loader2, Building2 } from 'lucide-react'
 import {
   ESTABLISHMENT_COOKIE,
   ESTABLISHMENT_COOKIE_MAX_AGE,
@@ -112,6 +112,13 @@ export default function EstablishmentSwitcher({
               )
             })}
           </ul>
+          <Link
+            href="/dashboard/establishments"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 border-t border-grubano-border px-3 py-2.5 text-sm font-semibold text-grubano-primary transition hover:bg-grubano-tint"
+          >
+            <Building2 size={15} /> {t('manageLink')}
+          </Link>
         </div>
       )}
     </div>
