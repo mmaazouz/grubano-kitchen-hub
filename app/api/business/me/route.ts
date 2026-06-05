@@ -10,13 +10,15 @@ export const dynamic = 'force-dynamic'
  *
  *   GET /api/business/me
  *     → 401 if not signed in
- *     → 200 { ok, role, status, hasBrand, hasRestaurant, needsOnboarding }
+ *     → 200 { ok, role, status, hasBrand, hasRestaurant, needsOnboarding, brand }
  *
- * `needsOnboarding` is true when a freshly-verified partner (role=restaurant)
- * has not yet created a Brand. /business/auth uses it to send a first-time
- * partner to /business/onboarding instead of /dashboard; the onboarding page
- * itself uses it to bounce an already-onboarded partner straight to their
- * dashboard. READ-only, no DB write.
+ * `needsOnboarding` is true for a restaurant partner who has not yet finished
+ * onboarding — i.e. is missing EITHER the Brand OR the Restaurant. This lets a
+ * partner who quit mid-flow (brand created, restaurant not) RESUME at the right
+ * step instead of landing on an empty dashboard.
+ *
+ * `brand` (when present) carries the existing brand's fields so the onboarding
+ * page can resume at step 2 with the cuisine pre-filled. READ-only, no write.
  */
 export async function GET() {
   try {
@@ -33,16 +35,22 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: 'Utilisateur introuvable' }, { status: 401 })
     }
 
-    // Cheap existence checks. We only need to know "any" / "none".
+    // Existing brand (first one) + whether a restaurant row exists.
     const [brand, restaurant] = await Promise.all([
-      prisma.brand.findFirst({ where: { operatorId: operator.id }, select: { id: true } }),
+      prisma.brand.findFirst({
+        where:   { operatorId: operator.id },
+        orderBy: { createdAt: 'asc' },
+        select:  { id: true, name: true, emoji: true, cuisineType: true },
+      }),
       prisma.restaurant.findUnique({ where: { operatorId: operator.id }, select: { id: true } }),
     ])
 
     const hasBrand      = brand !== null
     const hasRestaurant = restaurant !== null
-    // Only restaurant accounts have an onboarding flow; admins skip it entirely.
-    const needsOnboarding = operator.role === 'restaurant' && !hasBrand
+    // A restaurant partner is "still onboarding" until BOTH the brand and the
+    // restaurant exist. Other roles never onboard through this flow.
+    const needsOnboarding =
+      operator.role === 'restaurant' && (!hasBrand || !hasRestaurant)
 
     return NextResponse.json({
       ok: true,
@@ -51,6 +59,7 @@ export async function GET() {
       hasBrand,
       hasRestaurant,
       needsOnboarding,
+      brand, // null when none — used to resume + pre-fill onboarding step 2
     })
   } catch (err) {
     console.error('[GET /api/business/me]', err)

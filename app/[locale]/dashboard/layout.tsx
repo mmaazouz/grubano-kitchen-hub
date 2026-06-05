@@ -47,11 +47,18 @@ export default async function DashboardLayout({
 
   // Only the restaurant role is onboarded through /business/onboarding. Admins
   // (and franchise/creator/consumer who shouldn't be here anyway) skip the gate.
+  //
+  // A partner is "still onboarding" until BOTH the brand AND the restaurant
+  // exist. This catches the bastard state where they created the brand then
+  // quit — the onboarding page resumes them at step 2 (restaurant). Anti-loop:
+  // the onboarding page only sends back to /dashboard once BOTH exist, so the
+  // two gates can never ping-pong.
   if (operator.role === 'restaurant') {
-    const brandCount = await prisma.brand.count({
-      where: { operatorId: operator.id },
-    })
-    if (brandCount === 0) {
+    const [brandCount, restaurant] = await Promise.all([
+      prisma.brand.count({ where: { operatorId: operator.id } }),
+      prisma.restaurant.findUnique({ where: { operatorId: operator.id }, select: { id: true } }),
+    ])
+    if (brandCount === 0 || restaurant === null) {
       redirect(`/${locale}/business/onboarding`)
     }
   }

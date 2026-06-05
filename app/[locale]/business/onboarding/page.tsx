@@ -26,6 +26,7 @@ interface MeResponse {
   hasBrand?: boolean
   hasRestaurant?: boolean
   needsOnboarding?: boolean
+  brand?: { id: string; name: string; emoji: string; cuisineType: string | null } | null
 }
 
 // Predefined cuisine types — keep stable so the search filter on /eat groups
@@ -68,7 +69,7 @@ export default function PartnerOnboardingPage() {
   const [pickupEnabled, setPickupEnabled] = useState(false)
 
   // Gate: ensure the visitor is a signed-in restaurant partner who has not
-  // already finished onboarding. Anyone else is bounced cleanly.
+  // already finished onboarding. Resumes at the right step from real state.
   useEffect(() => {
     let cancelled = false
     fetch('/api/business/me', { cache: 'no-store' })
@@ -91,11 +92,21 @@ export default function PartnerOnboardingPage() {
           router.replace('/eat')
           return
         }
-        // Already onboarded → straight to the dashboard.
-        if (data.hasBrand) {
+        // Fully onboarded (brand + restaurant) → dashboard.
+        if (data.hasBrand && data.hasRestaurant) {
           router.replace('/dashboard')
           return
         }
+        // RESUME: brand exists but restaurant doesn't → jump to step 2 and
+        // pre-fill the cuisine from the existing brand. Never recreate the
+        // brand (anti-doublon — the POST /api/brands would just add a second).
+        if (data.hasBrand && !data.hasRestaurant) {
+          if (data.brand?.cuisineType) setCuisineType(data.brand.cuisineType)
+          if (data.brand?.emoji) setEmoji(data.brand.emoji)
+          if (data.brand?.name) setBrandName(data.brand.name)
+          setStep('restaurant')
+        }
+        // else: no brand → keep the default step 'brand'.
         setGateLoading(false)
       })
       .catch(() => {
