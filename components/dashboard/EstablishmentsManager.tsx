@@ -13,6 +13,7 @@ import {
   ESTABLISHMENT_COOKIE,
   ESTABLISHMENT_COOKIE_MAX_AGE,
 } from '@/lib/establishment'
+import { isPlausibleAddress } from '@/lib/geocode'
 
 // Canonical cuisine values shared with the onboarding flow. Labels come from the
 // existing `business.onboarding` namespace so we don't duplicate translations.
@@ -126,6 +127,14 @@ function EstablishmentsManagerInner({
       return
     }
 
+    // Reject an implausible address ("gogo") before the round trip; the server
+    // enforces the same. A plausible-but-unfindable address is allowed through
+    // and warned about (via geocodeStatus) after creation.
+    if (!isPlausibleAddress(address)) {
+      setError(t('errAddressInvalid'))
+      return
+    }
+
     const logoUrl  = logo.trim()
     const coverUrl = cover.trim()
     if ((logoUrl && !isHttpUrl(logoUrl)) || (coverUrl && !isHttpUrl(coverUrl))) {
@@ -161,10 +170,11 @@ function EstablishmentsManagerInner({
         `${ESTABLISHMENT_COOKIE}=${encodeURIComponent(data.restaurant.id)}; path=/; max-age=${ESTABLISHMENT_COOKIE_MAX_AGE}; samesite=lax`
       setOpen(false)
       resetForm()
-      // The establishment is created either way (graceful when BAN is down), but
-      // if the address didn't geocode we warn instead of silently accepting it.
-      if (data.geocoded === false) toast.warning(t('cityNotVerified'))
-      else                         toast.success(t('createdNote'))
+      // Created either way. Warn ONLY when BAN positively didn't find the address
+      // (likely a typo); stay silent + show success when BAN was unavailable, so
+      // a third-party outage never produces a false "check your address" alarm.
+      if (data.geocodeStatus === 'not_found') toast.warning(t('cityNotVerified'))
+      else                                    toast.success(t('createdNote'))
       router.refresh()
     } catch {
       setError(t('errNetwork'))

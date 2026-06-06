@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
-import { geocodeAddress, haversineKm } from '@/lib/geocode'
+import { geocodeAddressDetailed, isPlausibleAddress, haversineKm } from '@/lib/geocode'
 
 // ── GET /api/restaurants ──────────────────────────────────────────────────────
 // Query params:
@@ -288,6 +288,18 @@ export async function POST(req: Request) {
       )
     }
 
+    // ── Address sanity check (vague 1 fix) ───────────────────────────────────
+    // The address field was free-text and accepted anything (a partner typed
+    // "gogo"). Reject empty / too short / structurally implausible input here;
+    // the deeper "does this address exist?" question is the BAN geocode below,
+    // which only WARNS (never blocks) so a BAN outage can't stop a legit create.
+    if (!isPlausibleAddress(input.address)) {
+      return NextResponse.json(
+        { error: 'Adresse invalide — saisis une adresse complète (numéro et rue).', reason: 'invalid_address' },
+        { status: 400 },
+      )
+    }
+
     // Reject accidental duplicate from the onboarding wizard. Option B (step 4):
     // operatorId is no longer unique, so use findFirst. Step 5B: a DELIBERATE
     // "add an establishment" action sends additional:true to opt out of this
@@ -306,8 +318,12 @@ export async function POST(req: Request) {
       }
     }
 
-    // Geocode (soft-fail — null coords are OK).
-    const coords = await geocodeAddress(input.address, input.city, postalCode)
+    // Geocode (soft-fail — null coords are OK). We use the DETAILED geocoder so
+    // we can tell the client whether the address was genuinely not found (→ warn,
+    // likely a typo) or BAN was simply unavailable (→ stay silent, don't penalise
+    // a legit create for a third-party outage).
+    const geo    = await geocodeAddressDetailed(input.address, input.city, postalCode)
+    const coords = geo.status === 'ok' ? geo.coords : null
 
     // ── 🔒 Safety gate: created restaurants are ALWAYS INVISIBLE on /eat ───
     // The partner onboarding voie (/business/onboarding) hits this endpoint;
@@ -334,7 +350,12 @@ export async function POST(req: Request) {
       },
     })
 
-    return NextResponse.json({ restaurant, geocoded: coords !== null }, { status: 201 })
+    // geocodeStatus lets the client warn ONLY on a genuine not_found (typo),
+    // staying silent when BAN was unavailable. `geocoded` kept for back-compat.
+    return NextResponse.json(
+      { restaurant, geocoded: coords !== null, geocodeStatus: geo.status },
+      { status: 201 },
+    )
   } catch (err) {
     console.error('[POST /api/restaurants]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

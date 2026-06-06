@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from '@/navigation'
 import { useTranslations } from 'next-intl'
+import { isPlausibleAddress } from '@/lib/geocode'
 import {
   ChefHat,
   ShieldCheck,
@@ -179,6 +180,13 @@ export default function PartnerOnboardingPage() {
     e.preventDefault()
     if (!restaurantName.trim() || !address.trim() || !city.trim()) {
       setError(t('errRestaurantMissing'))
+      return
+    }
+    // Reject an implausible address ("gogo") — same gate as the establishments
+    // hub; the server enforces it too. The deeper existence check is the BAN
+    // geocode server-side (a miss there is reviewed by the admin, not blocked).
+    if (!isPlausibleAddress(address)) {
+      setError(t('errAddressInvalid'))
       return
     }
     if (!deliveryEnabled && !pickupEnabled) {

@@ -1171,7 +1171,8 @@
       "coverLabel": "Foto de portada (opcional)",
       "coverPlaceholder": "https://… enlace a tu banner",
       "imageHint": "Pega un enlace de imagen. Si está vacío, se usa un visual por defecto según tu cocina.",
-      "errInvalidUrl": "Enlace de imagen no válido (debe empezar por http)."
+      "errInvalidUrl": "Enlace de imagen no válido (debe empezar por http).",
+      "errAddressInvalid": "Dirección no válida — escribe una dirección completa (número y calle)."
     },
     "start": {
       "title": "Únete a Grubano",
@@ -1232,6 +1233,7 @@
     "openDashboard": "Ver este panel",
     "errCityInvalid": "Ciudad no válida — escribe el nombre de una ciudad real (no un tipo de cocina).",
     "cityNotVerified": "Establecimiento creado, pero no se pudo verificar la dirección — revisa la ortografía de la ciudad y la dirección.",
-    "selectedChip": "Seleccionado"
+    "selectedChip": "Seleccionado",
+    "errAddressInvalid": "Dirección no válida — escribe una dirección completa (número y calle)."
   }
 }

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
-import { geocodeAddress } from '@/lib/geocode'
+import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '@/lib/geocode'
 
 // ── GET /api/restaurants/:id ──────────────────────────────────────────────────
 // Returns full restaurant details + menu grouped by category
@@ -216,21 +216,33 @@ export async function PATCH(
     }
     const { postalCode, ...input } = parsed.data
 
+    // Address sanity check (vague 1 fix): when an address is supplied, reject an
+    // implausible one (empty / too short / "gogo") before touching the DB.
+    if (input.address !== undefined && !isPlausibleAddress(input.address)) {
+      return NextResponse.json(
+        { error: 'Adresse invalide — saisis une adresse complète (numéro et rue).', reason: 'invalid_address' },
+        { status: 400 },
+      )
+    }
+
     // Re-geocode only if the address-bearing fields actually changed.
     const addressChanged =
       (input.address !== undefined && input.address !== current.address) ||
       (input.city    !== undefined && input.city    !== current.city)
 
     let geocoded: boolean | null = null
+    let geocodeStatus: GeocodeStatus | null = null
     const data: Record<string, unknown> = { ...input }
 
     if (addressChanged) {
       const nextAddress = input.address ?? current.address
       const nextCity    = input.city    ?? current.city
-      const coords      = await geocodeAddress(nextAddress, nextCity, postalCode)
+      const geo         = await geocodeAddressDetailed(nextAddress, nextCity, postalCode)
+      const coords      = geo.status === 'ok' ? geo.coords : null
       data.lat = coords?.latitude  ?? null
       data.lng = coords?.longitude ?? null
       geocoded = coords !== null
+      geocodeStatus = geo.status
     }
 
     const restaurant = await prisma.restaurant.update({
@@ -238,7 +250,7 @@ export async function PATCH(
       data,
     })
 
-    return NextResponse.json({ restaurant, geocoded })
+    return NextResponse.json({ restaurant, geocoded, geocodeStatus })
   } catch (err) {
     console.error('[PATCH /api/restaurants/:id]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
