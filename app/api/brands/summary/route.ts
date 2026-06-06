@@ -17,6 +17,11 @@ type BrandSummary = {
   emoji:            string
   platform:         string
   status:           string
+  // Option B: which establishment this brand belongs to (Brand.restaurantId,
+  // direct link added in step 1, backfilled in step 2). Exposed so the
+  // establishment hub (/dashboard/establishments/[id]) can scope brands by
+  // restaurantId. null when the brand is not (yet) attached to a restaurant.
+  restaurantId:     string | null
   menuCount:        number
   adoptedDishCount: number
 }
@@ -66,12 +71,13 @@ export async function GET() {
       where:   { operatorId },
       orderBy: { name: 'asc' },
       select: {
-        id:       true,
-        name:     true,
-        emoji:    true,
-        platform: true,
-        status:   true,
-        _count:   { select: { menuItems: true } },
+        id:           true,
+        name:         true,
+        emoji:        true,
+        platform:     true,
+        status:       true,
+        restaurantId: true,
+        _count:       { select: { menuItems: true } },
       },
     })
 
@@ -96,6 +102,7 @@ export async function GET() {
       emoji:            b.emoji,
       platform:         b.platform,
       status:           b.status,
+      restaurantId:     b.restaurantId,
       menuCount:        b._count.menuItems,
       adoptedDishCount: adoptedByBrand.get(b.id) ?? 0,
     }))
