@@ -65,9 +65,28 @@ type Alerts = {
   reviewsToHandle: Unavailable
 }
 
+// LIVRABLE 3 — level-2 objective data. REAL progress values; the thresholds are
+// PROVISIONAL (to be frozen in brique 9) and exposed so the UI can render the gap.
+type Objectives = {
+  franchisable: {
+    thresholdsProvisional: true
+    thresholds: { minAvgRating: number; minWeeklyOrders: number; minAccountAgeDays: number }
+    values:     { avgRating: number | null; weeklyOrders: number; accountAgeDays: number }
+    // ratingMet is null when the operator has no review at all (unknown, not "failed").
+    criteria:   { ratingMet: boolean | null; volumeMet: boolean; ageMet: boolean }
+  }
+  creator: {
+    adoptedRecipes: number   // active DishAdoption rows on the operator's brands
+    linkedCreators: number   // distinct creators behind those adoptions
+  }
+  // No geo-matchable influencer data exists → neutral 0, never fabricated.
+  localInfluencers: { available: false; reason: string; count: 0 }
+}
+
 type Overview = {
   aggregates: Aggregates
   alerts:     Alerts
+  objectives: Objectives
   meta:       { window7dDays: number; generatedAt: string }
 }
 
@@ -77,6 +96,12 @@ const SUPPLIER_UNAVAILABLE_REASON =
   "Aucun lien fiable proprietaire->fournisseur dans le schema : Supplier / SupplierOrder n'ont ni operatorId ni restaurantId, et StockItem n'a pas de supplierId. Signal non calculable de facon owner-scoped — non invente."
 const REVIEWS_UNAVAILABLE_REASON =
   "Aucun modele Review : seules des donnees denormalisees Restaurant.rating / Restaurant.reviewCount existent (pas de lignes d'avis, pas de champ reponse/traitement, pas d'horodatage pour definir 'recent'). 'Avis a traiter' non calculable — non invente. Le total d'avis neutre est expose dans aggregates.totalReviews."
+const INFLUENCERS_UNAVAILABLE_REASON =
+  "Aucun modele Influencer ; Creator n'a ni ville ni lat/lng pour un matching geographique avec la zone de l'etablissement. Comptage d'influenceurs locaux non calculable — expose 0 neutre, non invente."
+
+// PROVISIONAL franchisable thresholds — to be FROZEN in brique 9. Named constant
+// so the values are tunable in one place without touching the logic below.
+const FRANCHISABLE_THRESHOLDS = { minAvgRating: 4.5, minWeeklyOrders: 100, minAccountAgeDays: 180 }
 
 function buildEmpty(): Overview {
   return {
@@ -93,6 +118,16 @@ function buildEmpty(): Overview {
       stockOut:        { count: 0, items: [] },
       supplierToOrder: { available: false, reason: SUPPLIER_UNAVAILABLE_REASON, count: 0 },
       reviewsToHandle: { available: false, reason: REVIEWS_UNAVAILABLE_REASON, count: 0 },
+    },
+    objectives: {
+      franchisable: {
+        thresholdsProvisional: true,
+        thresholds: { ...FRANCHISABLE_THRESHOLDS },
+        values:     { avgRating: null, weeklyOrders: 0, accountAgeDays: 0 },
+        criteria:   { ratingMet: null, volumeMet: false, ageMet: false },
+      },
+      creator: { adoptedRecipes: 0, linkedCreators: 0 },
+      localInfluencers: { available: false, reason: INFLUENCERS_UNAVAILABLE_REASON, count: 0 },
     },
     meta: { window7dDays: 7, generatedAt: new Date().toISOString() },
   }
@@ -272,9 +307,49 @@ export async function GET() {
       reviewsToHandle: { available: false, reason: REVIEWS_UNAVAILABLE_REASON, count: 0 },
     }
 
+    // ── LIVRABLE 3 — level-2 objectives ───────────────────────────────────────
+    // Account age = operator account lifetime in days (real createdAt). weeklyOrders
+    // reuses the rolling-7-day count; avgRating reuses the weighted rating above.
+    const operator = await prisma.operator.findUnique({
+      where:  { id: operatorId },
+      select: { createdAt: true },
+    })
+    const accountAgeDays = operator
+      ? Math.max(0, Math.floor((now.getTime() - operator.createdAt.getTime()) / 86_400_000))
+      : 0
+
+    // Adopted creator recipes (active) on the operator's brands + the distinct
+    // creators behind them (DishAdoption → CreatorDish.creatorId).
+    let adoptedRecipes = 0
+    let linkedCreators = 0
+    if (brandIds.length > 0) {
+      const adoptions = await prisma.dishAdoption.findMany({
+        where:  { brandId: { in: brandIds }, status: 'active' },
+        select: { creatorDish: { select: { creatorId: true } } },
+      })
+      adoptedRecipes = adoptions.length
+      linkedCreators = new Set(adoptions.map(a => a.creatorDish.creatorId)).size
+    }
+
+    const objectives: Objectives = {
+      franchisable: {
+        thresholdsProvisional: true,
+        thresholds: { ...FRANCHISABLE_THRESHOLDS },
+        values:     { avgRating, weeklyOrders: orders7d, accountAgeDays },
+        criteria: {
+          ratingMet: avgRating === null ? null : avgRating >= FRANCHISABLE_THRESHOLDS.minAvgRating,
+          volumeMet: orders7d >= FRANCHISABLE_THRESHOLDS.minWeeklyOrders,
+          ageMet:    accountAgeDays >= FRANCHISABLE_THRESHOLDS.minAccountAgeDays,
+        },
+      },
+      creator: { adoptedRecipes, linkedCreators },
+      localInfluencers: { available: false, reason: INFLUENCERS_UNAVAILABLE_REASON, count: 0 },
+    }
+
     const payload: Overview = {
       aggregates,
       alerts,
+      objectives,
       meta: { window7dDays: 7, generatedAt: now.toISOString() },
     }
     return NextResponse.json(payload)
