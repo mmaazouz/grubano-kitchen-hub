@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
 const createSchema = z.object({
-  tableId:      z.string(),
+  // Must be a non-empty table id. When the room has no tables the form used to
+  // submit an empty string, which slipped past validation and only failed at the
+  // DB as a foreign-key violation surfaced as an opaque 500 ("Erreur serveur").
+  tableId:      z.string().min(1, 'Sélectionnez une table.'),
   customerName: z.string().min(1).max(100),
   phone:        z.string().optional(),
   email:        z.string().email().optional(),
@@ -63,6 +66,17 @@ export async function POST(req: Request) {
     const body = await req.json()
     const data = createSchema.parse(body)
 
+    // The table must exist before we create a reservation that references it.
+    // A missing / stale tableId would otherwise hit a foreign-key violation that
+    // bubbles up as a generic 500; return a clear 400 instead.
+    const table = await prisma.restaurantTable.findUnique({ where: { id: data.tableId } })
+    if (!table) {
+      return NextResponse.json(
+        { error: 'Table introuvable — créez ou sélectionnez une table avant de réserver.' },
+        { status: 400 },
+      )
+    }
+
     // Check table availability
     const conflict = await prisma.reservation.findFirst({
       where: {
@@ -96,6 +110,12 @@ export async function POST(req: Request) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
     }
+    // Foreign-key / not-found at the DB level → a client data problem, not a
+    // server fault. Surface a clean 400 rather than an opaque 500.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2003' || err.code === 'P2025')) {
+      return NextResponse.json({ error: 'Table invalide — réservation impossible.' }, { status: 400 })
+    }
+    console.error('[POST /api/reservations]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

@@ -590,7 +590,15 @@ function NewReservationForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true); setError('')
+    setError('')
+    // A reservation must reference an existing table. When the room has no tables
+    // the form has no table to pre-select; block here with a clear message rather
+    // than POSTing an empty tableId (which used to come back as "Erreur serveur").
+    if (!form.tableId) {
+      setError('Créez ou sélectionnez une table avant de réserver.')
+      return
+    }
+    setSaving(true)
     const start = new Date(`${form.date}T${form.time}:00`)
     const end   = new Date(start.getTime() + form.duration * 60_000)
     const r = await fetch('/api/reservations', {
@@ -678,9 +686,15 @@ function NewReservationForm({
             </div>
           )}
 
+          {tables.length === 0 && (
+            <p className="rounded-xl bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+              Aucune table pour le moment. Ajoutez une table dans l&apos;onglet Config avant de réserver.
+            </p>
+          )}
+
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm">Annuler</button>
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving || !form.tableId}
               className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-60">
               {saving ? <RefreshCw size={14} className="animate-spin mx-auto" /> : 'Réserver'}
             </button>
