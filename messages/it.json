@@ -180,7 +180,8 @@
       "statusPaused": "In pausa",
       "emptyTitle": "Ancora nessun marchio",
       "emptyDesc": "Aggiungi il tuo primo marchio per iniziare il menù.",
-      "loading": "Caricamento…"
+      "loading": "Caricamento…",
+      "emptyCta": "Crea un marchio"
     }
   },
   "orders": {
@@ -945,9 +946,9 @@
     },
     "loading": "Caricamento…",
     "empty": {
-      "title": "Nessun brand configurato",
-      "desc": "Non hai ancora un brand. Configura il tuo brand per gestire il menu e adottare ricette.",
-      "cta": "Configura il mio brand"
+      "title": "Ancora nessun marchio",
+      "desc": "Crea il tuo primo marchio per iniziare il menù e aggiungere i tuoi piatti.",
+      "cta": "Crea un marchio"
     }
   },
   "finance": {
@@ -1234,6 +1235,8 @@
     "errCityInvalid": "Città non valida — inserisci il nome di una città reale (non un tipo di cucina).",
     "cityNotVerified": "Sede creata, ma non è stato possibile verificare l’indirizzo — controlla l’ortografia della città e dell’indirizzo.",
     "selectedChip": "Selezionato",
-    "errAddressInvalid": "Indirizzo non valido — inserisci un indirizzo completo (numero civico e via)."
+    "errAddressInvalid": "Indirizzo non valido — inserisci un indirizzo completo (numero civico e via).",
+    "openHub": "Vedi marchi e menù",
+    "openHubAria": "Apri {name} — vedi i suoi marchi e menù"
   }
 }

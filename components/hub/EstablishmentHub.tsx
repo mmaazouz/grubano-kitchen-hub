@@ -138,10 +138,21 @@ export default function EstablishmentHub({
           <Loader2 size={16} className="animate-spin" /> {t('loading')}
         </div>
       ) : scoped.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-border bg-card py-10 text-center">
-          <Store size={26} className="text-muted-foreground" />
+        /* 0 brand → this establishment has no menu container yet. A menu belongs
+           to a brand, so the ONLY way forward is to create one — surfaced as a
+           clear, actionable CTA (never a dead-end message). */
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card py-10 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent text-primary">
+            <Store size={22} />
+          </span>
           <p className="text-sm font-bold text-foreground">{t('emptyTitle')}</p>
           <p className="max-w-xs text-xs text-muted-foreground">{t('emptyDesc')}</p>
+          <Link
+            href="/brands"
+            className="mt-2 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Plus size={16} /> {t('emptyCta')}
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

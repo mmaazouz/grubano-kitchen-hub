@@ -5,6 +5,7 @@ import { useRouter, Link } from '@/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Plus, Store, MapPin, Loader2, Image as ImageIcon, Building2, LayoutDashboard,
+  ChevronRight,
 } from 'lucide-react'
 import {
   Modal, Button, Input, ToastProvider, useToast,
@@ -200,30 +201,39 @@ function EstablishmentsManagerInner({
           return (
             <article
               key={e.id}
-              className={`flex items-center gap-3 rounded-grubano-lg border bg-grubano-surface p-4 ${
+              className={`group relative flex items-center gap-3 rounded-grubano-lg border bg-grubano-surface p-4 transition-colors hover:border-grubano-primary ${
                 current ? 'border-grubano-primary' : 'border-grubano-border'
               }`}
             >
+              {/* 5B — discoverability: the WHOLE card opens this establishment's
+                  HUB (its brands & menus). A stretched overlay link covers the
+                  card and sits BENEATH the dashboard button (raised to z-10), so
+                  the operational "tableau de bord" action stays a distinct click.
+                  Affordance: pointer cursor (the <a>), hover border + the chevron
+                  hint row below tell the operator the card is openable. */}
+              <Link
+                href={`/dashboard/establishments/${e.id}`}
+                aria-label={t('openHubAria', { name: e.name })}
+                className="absolute inset-0 z-0 rounded-grubano-lg"
+              />
+
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-grubano-md bg-grubano-tint text-grubano-primary">
                 <Store size={18} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* C13-2: the name opens this establishment's HUB (its brands). */}
-                  <Link
-                    href={`/dashboard/establishments/${e.id}`}
-                    className="truncate text-base font-bold text-grubano-ink transition-colors hover:text-grubano-primary hover:underline"
-                  >
+                  <h3 className="truncate text-base font-bold text-grubano-ink transition-colors group-hover:text-grubano-primary">
                     {e.name}
-                  </Link>
+                  </h3>
                   {current && (
-                    <span className="rounded-full bg-grubano-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                    <span className="rounded-full bg-grubano-tint px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-grubano-primary">
                       {t('selectedChip')}
                     </span>
                   )}
-                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
-                    e.isActive ? 'bg-grubano-success-tint text-grubano-success' : 'bg-grubano-warning-tint text-grubano-warning'
-                  }`}>
+                  {/* Sober online/offline — a discreet dot + label, not a loud
+                      tinted pill (atténue le bruit). */}
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-grubano-ink-muted">
+                    <span className={`h-1.5 w-1.5 rounded-full ${e.isActive ? 'bg-grubano-success' : 'bg-grubano-ink-muted/40'}`} />
                     {e.isActive ? t('liveChip') : t('offlineChip')}
                   </span>
                 </div>
@@ -231,10 +241,17 @@ function EstablishmentsManagerInner({
                   <MapPin size={11} className="shrink-0" />
                   <span className="truncate">{[e.city, e.address].filter(Boolean).join(' · ')}</span>
                 </p>
+                {/* Hub affordance — names the card's destination (brands & menus),
+                    distinct from the dashboard button (operational stats). */}
+                <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-grubano-ink-muted transition-colors group-hover:text-grubano-primary">
+                  {t('openHub')}
+                  <ChevronRight size={12} className="rtl:rotate-180" />
+                </span>
               </div>
               <Button
                 variant={current ? 'primary' : 'secondary'}
                 size="sm"
+                className="relative z-10"
                 loading={pending && pendingId === e.id}
                 leftIcon={<LayoutDashboard size={14} />}
                 onClick={() => openDashboardFor(e.id)}

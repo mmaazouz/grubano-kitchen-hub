@@ -180,7 +180,8 @@
       "statusPaused": "En pause",
       "emptyTitle": "Aucune marque pour le moment",
       "emptyDesc": "Ajoutez votre première marque pour démarrer votre carte.",
-      "loading": "Chargement…"
+      "loading": "Chargement…",
+      "emptyCta": "Créer une marque"
     }
   },
   "orders": {
@@ -945,9 +946,9 @@
     },
     "loading": "Chargement…",
     "empty": {
-      "title": "Aucune marque configurée",
-      "desc": "Tu n'as pas encore de marque. Configure ta marque pour gérer ton menu et adopter des recettes.",
-      "cta": "Configurer ma marque"
+      "title": "Aucune marque pour le moment",
+      "desc": "Créez votre première marque pour démarrer votre carte et ajouter vos plats.",
+      "cta": "Créer une marque"
     }
   },
   "finance": {
@@ -1234,6 +1235,8 @@
     "errCityInvalid": "Ville invalide — saisis le nom d’une vraie ville (pas un type de cuisine).",
     "cityNotVerified": "Établissement créé, mais l’adresse n’a pas pu être vérifiée — contrôle l’orthographe de la ville et de l’adresse.",
     "selectedChip": "Sélectionné",
-    "errAddressInvalid": "Adresse invalide — saisis une adresse complète (numéro et rue)."
+    "errAddressInvalid": "Adresse invalide — saisis une adresse complète (numéro et rue).",
+    "openHub": "Voir les marques & menus",
+    "openHubAria": "Ouvrir {name} — voir ses marques et menus"
   }
 }

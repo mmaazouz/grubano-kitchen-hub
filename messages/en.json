@@ -180,7 +180,8 @@
       "statusPaused": "Paused",
       "emptyTitle": "No brand yet",
       "emptyDesc": "Add your first brand to start your menu.",
-      "loading": "Loading…"
+      "loading": "Loading…",
+      "emptyCta": "Create a brand"
     }
   },
   "orders": {
@@ -945,9 +946,9 @@
     },
     "loading": "Loading…",
     "empty": {
-      "title": "No brand set up yet",
-      "desc": "You don't have a brand yet. Set up your brand to manage your menu and adopt recipes.",
-      "cta": "Set up my brand"
+      "title": "No brand yet",
+      "desc": "Create your first brand to start your menu and add your dishes.",
+      "cta": "Create a brand"
     }
   },
   "finance": {
@@ -1234,6 +1235,8 @@
     "errCityInvalid": "Invalid city — enter a real city name (not a cuisine type).",
     "cityNotVerified": "Establishment created, but the address could not be verified — check the spelling of the city and address.",
     "selectedChip": "Selected",
-    "errAddressInvalid": "Invalid address — enter a complete address (street number and name)."
+    "errAddressInvalid": "Invalid address — enter a complete address (street number and name).",
+    "openHub": "View brands & menus",
+    "openHubAria": "Open {name} — view its brands and menus"
   }
 }
