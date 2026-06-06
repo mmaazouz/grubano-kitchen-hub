@@ -161,6 +161,26 @@
       "navFranchise": "Franchise",
       "navBriefing": "Briefing",
       "navNotifications": "Notifications"
+    },
+    "hub": {
+      "bcRoot": "Mes établissements",
+      "bcMenu": "Menu",
+      "online": "En ligne",
+      "offline": "Hors ligne",
+      "accessHours": "Horaires & service",
+      "accessTables": "Tables & réservations",
+      "brandsTitle": "Vos marques",
+      "brandsHint": "Cliquez une marque pour ouvrir son menu",
+      "addBrand": "Ajouter une marque",
+      "addBrandHint": "Vierge ou copier une marque existante",
+      "openMenu": "Voir le menu",
+      "statMenu": "plats",
+      "statCreators": "créateurs",
+      "statusActive": "Active",
+      "statusPaused": "En pause",
+      "emptyTitle": "Aucune marque pour le moment",
+      "emptyDesc": "Ajoutez votre première marque pour démarrer votre carte.",
+      "loading": "Chargement…"
     }
   },
   "orders": {

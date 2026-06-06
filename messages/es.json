@@ -161,6 +161,26 @@
       "navFranchise": "Franquicia",
       "navBriefing": "Resumen",
       "navNotifications": "Notificaciones"
+    },
+    "hub": {
+      "bcRoot": "Mis establecimientos",
+      "bcMenu": "Menú",
+      "online": "En línea",
+      "offline": "Desconectado",
+      "accessHours": "Horario y servicio",
+      "accessTables": "Mesas y reservas",
+      "brandsTitle": "Tus marcas",
+      "brandsHint": "Toca una marca para abrir su menú",
+      "addBrand": "Añadir una marca",
+      "addBrandHint": "Desde cero o copiar una marca existente",
+      "openMenu": "Ver menú",
+      "statMenu": "platos",
+      "statCreators": "creadores",
+      "statusActive": "Activa",
+      "statusPaused": "En pausa",
+      "emptyTitle": "Aún no hay marcas",
+      "emptyDesc": "Añade tu primera marca para empezar tu carta.",
+      "loading": "Cargando…"
     }
   },
   "orders": {

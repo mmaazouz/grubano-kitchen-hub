@@ -161,6 +161,26 @@
       "navFranchise": "الامتياز",
       "navBriefing": "الموجز",
       "navNotifications": "الإشعارات"
+    },
+    "hub": {
+      "bcRoot": "منشآتي",
+      "bcMenu": "القائمة",
+      "online": "متصل",
+      "offline": "غير متصل",
+      "accessHours": "المواعيد والخدمة",
+      "accessTables": "الطاولات والحجوزات",
+      "brandsTitle": "علاماتك التجارية",
+      "brandsHint": "اضغط على علامة تجارية لفتح قائمتها",
+      "addBrand": "إضافة علامة تجارية",
+      "addBrandHint": "من الصفر أو نسخ علامة موجودة",
+      "openMenu": "عرض القائمة",
+      "statMenu": "أطباق",
+      "statCreators": "صنّاع المحتوى",
+      "statusActive": "نشطة",
+      "statusPaused": "متوقفة",
+      "emptyTitle": "لا توجد علامات تجارية بعد",
+      "emptyDesc": "أضف علامتك التجارية الأولى لبدء قائمتك.",
+      "loading": "جارٍ التحميل…"
     }
   },
   "orders": {

@@ -161,6 +161,26 @@
       "navFranchise": "Franchising",
       "navBriefing": "Briefing",
       "navNotifications": "Notifiche"
+    },
+    "hub": {
+      "bcRoot": "I miei locali",
+      "bcMenu": "Menù",
+      "online": "Online",
+      "offline": "Offline",
+      "accessHours": "Orari e servizio",
+      "accessTables": "Tavoli e prenotazioni",
+      "brandsTitle": "I tuoi marchi",
+      "brandsHint": "Tocca un marchio per aprire il suo menù",
+      "addBrand": "Aggiungi un marchio",
+      "addBrandHint": "Da zero o copia un marchio esistente",
+      "openMenu": "Vedi menù",
+      "statMenu": "piatti",
+      "statCreators": "creator",
+      "statusActive": "Attivo",
+      "statusPaused": "In pausa",
+      "emptyTitle": "Ancora nessun marchio",
+      "emptyDesc": "Aggiungi il tuo primo marchio per iniziare il menù.",
+      "loading": "Caricamento…"
     }
   },
   "orders": {

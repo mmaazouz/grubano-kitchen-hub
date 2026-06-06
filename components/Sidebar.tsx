@@ -37,8 +37,14 @@ type NavGroup = { header?: string; items: NavItem[] }
  * for non-restaurant roles) we keep the single-establishment label, so the word
  * "établissement" NEVER appears at N=1, even on the first paint.
  */
+type OperatorShape = {
+  establishments:  number
+  brands:          number
+  establishmentId: string | null // current (or first) establishment, for the hub link
+}
+
 function useOperatorShape(role: string) {
-  const [shape, setShape] = useState<{ establishments: number; brands: number } | null>(null)
+  const [shape, setShape] = useState<OperatorShape | null>(null)
 
   useEffect(() => {
     if (role !== 'restaurant' && role !== 'admin') return
@@ -48,9 +54,12 @@ function useOperatorShape(role: string) {
       fetch('/api/brands/summary').then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ]).then(([est, br]) => {
       if (!alive) return
+      const list      = Array.isArray(est?.establishments) ? est.establishments : []
+      const currentId = typeof est?.currentId === 'string' ? est.currentId : null
       setShape({
-        establishments: Array.isArray(est?.establishments) ? est.establishments.length : 0,
-        brands:         Array.isArray(br?.brands) ? br.brands.length : 0,
+        establishments:  list.length,
+        brands:          Array.isArray(br?.brands) ? br.brands.length : 0,
+        establishmentId: currentId ?? (list[0]?.id as string | undefined) ?? null,
       })
     })
     return () => { alive = false }
@@ -63,11 +72,13 @@ function useOperatorShape(role: string) {
  * The adaptive "Mon restaurant" nav entry — its label AND its target follow the
  * real account shape, so the hierarchy stays invisible at N=1:
  *   • ≥2 establishments        → "Mes établissements" → /dashboard/establishments
- *   • 1 establishment, 1 brand → "Ma carte"           → /menu
- *   • 1 establishment, N brands (or still loading) → "Mon restaurant" → /brands
+ *   • 1 establishment, 1 brand → "Ma carte"           → /menu (court-circuit C13-2)
+ *   • 1 establishment, N brands → "Mon restaurant"    → the establishment HUB
+ *     (/dashboard/establishments/<id>, C13-2) so the brands sit one click away;
+ *     falls back to /brands while the shape is still loading (no broken link).
  */
 function restaurantEntry(
-  shape: { establishments: number; brands: number } | null,
+  shape: OperatorShape | null,
   t: (k: string) => string,
 ): NavItem {
   if (shape && shape.establishments >= 2) {
@@ -75,6 +86,9 @@ function restaurantEntry(
   }
   if (shape && shape.establishments <= 1 && shape.brands === 1) {
     return { href: '/menu', label: t('navRestaurantCard'), icon: UtensilsCrossed }
+  }
+  if (shape && shape.establishments === 1 && shape.establishmentId) {
+    return { href: `/dashboard/establishments/${shape.establishmentId}`, label: t('navRestaurantSingle'), icon: Store }
   }
   return { href: '/brands', label: t('navRestaurantSingle'), icon: Store }
 }

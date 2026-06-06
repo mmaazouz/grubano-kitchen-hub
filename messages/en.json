@@ -161,6 +161,26 @@
       "navFranchise": "Franchise",
       "navBriefing": "Briefing",
       "navNotifications": "Notifications"
+    },
+    "hub": {
+      "bcRoot": "My locations",
+      "bcMenu": "Menu",
+      "online": "Online",
+      "offline": "Offline",
+      "accessHours": "Hours & service",
+      "accessTables": "Tables & bookings",
+      "brandsTitle": "Your brands",
+      "brandsHint": "Tap a brand to open its menu",
+      "addBrand": "Add a brand",
+      "addBrandHint": "From scratch or copy an existing brand",
+      "openMenu": "View menu",
+      "statMenu": "dishes",
+      "statCreators": "creators",
+      "statusActive": "Active",
+      "statusPaused": "Paused",
+      "emptyTitle": "No brand yet",
+      "emptyDesc": "Add your first brand to start your menu.",
+      "loading": "Loading…"
     }
   },
   "orders": {

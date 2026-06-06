@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from '@/navigation'
+import { useRouter, Link } from '@/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Plus, Store, MapPin, Loader2, Image as ImageIcon, Building2, LayoutDashboard,
@@ -199,7 +199,13 @@ function EstablishmentsManagerInner({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="truncate text-base font-bold text-grubano-ink">{e.name}</h3>
+                  {/* C13-2: the name opens this establishment's HUB (its brands). */}
+                  <Link
+                    href={`/dashboard/establishments/${e.id}`}
+                    className="truncate text-base font-bold text-grubano-ink transition-colors hover:text-grubano-primary hover:underline"
+                  >
+                    {e.name}
+                  </Link>
                   {current && (
                     <span className="rounded-full bg-grubano-primary px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
                       {t('selectedChip')}
