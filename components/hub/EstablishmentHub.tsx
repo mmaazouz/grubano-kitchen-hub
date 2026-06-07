@@ -4,10 +4,13 @@ import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Link } from '@/navigation'
 import {
-  MapPin, Clock, CalendarDays, Plus, ChevronRight, UtensilsCrossed,
-  Sparkles, Store, Loader2,
+  MapPin, Clock, CalendarDays, Truck, Plus, ChevronRight, UtensilsCrossed,
+  Sparkles, Store, Loader2, Pencil, Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  Modal, Button, Input,
+} from '@/components/design-system'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 
 // ── Establishment HUB (C13-2) ─────────────────────────────────────────────────
@@ -16,6 +19,13 @@ import { Breadcrumb, type Crumb } from './Breadcrumb'
 // access strip sit above. Server props carry the establishment identity (read
 // from Prisma in the route); brands are fetched client-side from the EXISTING
 // /api/brands/summary (no new API).
+//
+// REFONTE UX MARQUES (Agent 13) — the brand list lived on a SECOND page
+// (/brands) too, which was redundant: filters + "Performance globale" already
+// covered by the accueil consolidé endpoint, edit/delete duplicated here, etc.
+// So edit + delete actions are MIGRATED here as discrete icon buttons on each
+// brand card (raised above the stretched-link to the menu so the primary tap
+// stays "open this brand's menu"). /brands becomes a focused create-only page.
 //
 // ZÉRO COMPLEXITÉ À N=1 : at a single establishment the breadcrumb root and the
 // establishment chrome are trimmed — the operator lands straight on their brands.
@@ -28,9 +38,8 @@ type HubEstablishment = {
   isActive: boolean
 }
 
-// /api/brands/summary item. `restaurantId` is NOT returned today — typed optional
-// so the hub is forward-compatible: the day Agent 2 adds it, multi-establishment
-// scoping turns on with no further change here.
+// /api/brands/summary item. `restaurantId` is exposed since Agent 2's
+// commit b5a850f, so multi-establishment scoping works as expected.
 type BrandSummary = {
   id:               string
   name:             string
@@ -41,10 +50,33 @@ type BrandSummary = {
   restaurantId?:    string | null
 }
 
+// /api/brands/[id] GET shape — the editable fields the hub modal mutates.
+type BrandEdit = {
+  id:          string
+  name:        string
+  emoji:       string
+  cuisineType: string | null
+  tagline:     string | null
+}
+
 const isActiveBrand = (s: string) => s === 'active'
 
 // Soft tile tints, cycled by index so brands stay visually distinct.
 const TILE_BG = ['bg-orange-50', 'bg-blue-50', 'bg-green-50', 'bg-yellow-50', 'bg-purple-50', 'bg-pink-50'] as const
+
+// Canonical cuisine values shared with the onboarding flow — labels are i18n.
+const CUISINE_TYPES = [
+  { value: 'italien',   emoji: '🍕' },
+  { value: 'asiatique', emoji: '🍜' },
+  { value: 'burger',    emoji: '🍔' },
+  { value: 'healthy',   emoji: '🥗' },
+  { value: 'sushi',     emoji: '🍣' },
+  { value: 'desserts',  emoji: '🍰' },
+  { value: 'wraps',     emoji: '🥙' },
+  { value: 'pasta',     emoji: '🍝' },
+  { value: 'autre',     emoji: '🍴' },
+] as const
+const BRAND_EMOJIS = ['🍕', '🍜', '🍔', '🥗', '🍣', '🍰', '🥙', '🍝', '🌮', '🍱', '🥘', '🥟', '🍴', '🥐']
 
 export default function EstablishmentHub({
   establishment,
@@ -53,22 +85,50 @@ export default function EstablishmentHub({
   establishment:       HubEstablishment
   establishmentsCount: number
 }) {
-  const t = useTranslations('dashboard.hub')
+  const t  = useTranslations('dashboard.hub')
+  const tb = useTranslations('brands')
 
   const [brands, setBrands]   = useState<BrandSummary[]>([])
   const [loading, setLoading] = useState(true)
 
+  // ── Edit modal state ────────────────────────────────────────────────────────
+  const [editForm, setEditForm]         = useState<BrandEdit | null>(null)
+  const [editLoading, setEditLoading]   = useState(false)
+  const [saving, setSaving]             = useState(false)
+  const [editError, setEditError]       = useState('')
+
+  // ── Delete confirm state ────────────────────────────────────────────────────
+  const [toDelete, setToDelete]         = useState<BrandSummary | null>(null)
+  const [deleting, setDeleting]         = useState(false)
+  const [deleteError, setDeleteError]   = useState('')
+
+  async function loadBrands() {
+    try {
+      const r = await fetch('/api/brands/summary', { cache: 'no-store' })
+      const d = r.ok ? await r.json() : null
+      const list: BrandSummary[] = Array.isArray(d?.brands) ? d.brands : []
+      setBrands(list)
+    } catch {
+      setBrands([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     let alive = true
-    fetch('/api/brands/summary', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
+    ;(async () => {
+      try {
+        const r = await fetch('/api/brands/summary', { cache: 'no-store' })
+        const d = r.ok ? await r.json() : null
         if (!alive) return
-        const list: BrandSummary[] = Array.isArray(d?.brands) ? d.brands : []
-        setBrands(list)
-      })
-      .catch(() => { if (alive) setBrands([]) })
-      .finally(() => { if (alive) setLoading(false) })
+        setBrands(Array.isArray(d?.brands) ? d.brands : [])
+      } catch {
+        if (alive) setBrands([])
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
     return () => { alive = false }
   }, [])
 
@@ -87,6 +147,93 @@ export default function EstablishmentHub({
     : []
 
   const location = [establishment.city, establishment.address].filter(Boolean).join(' · ')
+
+  // ── Edit-brand modal handlers ───────────────────────────────────────────────
+  async function openEdit(b: BrandSummary) {
+    setEditError('')
+    // Seed defaults from the summary so the modal shows SOMETHING while we fetch.
+    setEditForm({ id: b.id, name: b.name, emoji: b.emoji, cuisineType: 'autre', tagline: '' })
+    setEditLoading(true)
+    try {
+      const r = await fetch(`/api/brands/${b.id}`, { cache: 'no-store' })
+      const d = r.ok ? await r.json() : null
+      if (d?.brand) {
+        setEditForm({
+          id:          d.brand.id,
+          name:        d.brand.name ?? b.name,
+          emoji:       d.brand.emoji ?? b.emoji,
+          cuisineType: d.brand.cuisineType ?? 'autre',
+          tagline:     d.brand.tagline ?? '',
+        })
+      }
+    } catch {
+      /* keep the summary-derived defaults */
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editForm) return
+    if (!editForm.name.trim()) {
+      setEditError(tb('errName'))
+      return
+    }
+    setEditError('')
+    setSaving(true)
+    try {
+      const r = await fetch(`/api/brands/${editForm.id}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:        editForm.name.trim(),
+          emoji:       editForm.emoji,
+          cuisineType: editForm.cuisineType,
+          tagline:     editForm.tagline?.trim() || null,
+        }),
+      })
+      if (r.status === 401) { window.location.href = '/business/auth'; return }
+      const d = await r.json().catch(() => null)
+      if (!r.ok) {
+        setEditError((d && (d.error as string)) || tb('errSaveFailed'))
+        return
+      }
+      setEditForm(null)
+      await loadBrands()
+    } catch {
+      setEditError(tb('errNetwork'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function confirmDelete() {
+    if (!toDelete) return
+    setDeleteError('')
+    setDeleting(true)
+    try {
+      const r = await fetch(`/api/brands/${toDelete.id}`, { method: 'DELETE' })
+      const d = await r.json().catch(() => null)
+      if (r.status === 401) { window.location.href = '/business/auth'; return }
+      if (!r.ok) {
+        const reason = d?.reason as string | undefined
+        setDeleteError(
+          reason === 'has_menu_items'              ? tb('errDeleteMenu')
+          : reason === 'last_brand_active_restaurant' ? tb('errDeleteLastBrand')
+          : reason === 'has_related_data'          ? tb('errDeleteRelated')
+          : (d?.error as string) || tb('errDeleteFailed'),
+        )
+        return
+      }
+      setToDelete(null)
+      await loadBrands()
+    } catch {
+      setDeleteError(tb('errNetwork'))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <div className="mx-auto max-w-lg px-5 pb-24 pt-4 md:max-w-3xl">
@@ -110,18 +257,19 @@ export default function EstablishmentHub({
               </span>
             </div>
             {location && (
-              <p className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-muted-foreground">
+              <p className="mt-0.5 flex items-center gap-1 text-[12px] text-muted-foreground">
                 <MapPin size={12} className="shrink-0" />
-                <span className="truncate">{location}</span>
+                <span className="break-words">{location}</span>
               </p>
             )}
           </div>
         </div>
 
-        {/* ── Discreet access strip (low emphasis) ────────────────────────── */}
+        {/* ── Discreet access strip (maquette: Horaires partagés / Livraison · Retrait / Tables & résas) */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <AccessChip href="/dashboard/fulfillment" icon={Clock} label={t('accessHours')} />
-          <AccessChip href="/tables" icon={CalendarDays} label={t('accessTables')} />
+          <AccessChip href="/dashboard/fulfillment" icon={Clock}        label={t('accessHours')} />
+          <AccessChip href="/dashboard/fulfillment" icon={Truck}        label={t('accessDelivery')} />
+          <AccessChip href="/tables"                icon={CalendarDays} label={t('accessTables')} />
         </div>
       </header>
 
@@ -157,18 +305,25 @@ export default function EstablishmentHub({
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {scoped.map((b, i) => (
-            <Link
+            <article
               key={b.id}
-              href={`/menu?brand=${b.id}`}
-              aria-label={t('openMenu')}
-              className="group flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary"
+              className="group relative flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary"
             >
-              <div className="flex items-center gap-3">
+              {/* The stretched-link covers the whole card → primary tap = open
+                  this brand's menu. The edit/delete icon buttons below are
+                  raised (relative z-10) so they remain distinct clicks. */}
+              <Link
+                href={`/menu?brand=${b.id}`}
+                aria-label={t('openMenu')}
+                className="absolute inset-0 z-0 rounded-2xl"
+              />
+
+              <div className="relative z-10 flex items-center gap-3">
                 <div className={cn('grid h-12 w-12 shrink-0 place-items-center rounded-xl text-2xl', TILE_BG[i % TILE_BG.length])}>
                   {b.emoji}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-base font-bold text-foreground">{b.name}</h3>
+                  <h3 className="break-words text-base font-bold leading-tight text-foreground">{b.name}</h3>
                   <span className={cn(
                     'mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium',
                     isActiveBrand(b.status) ? 'text-success' : 'text-warning',
@@ -177,10 +332,33 @@ export default function EstablishmentHub({
                     {isActiveBrand(b.status) ? t('statusActive') : t('statusPaused')}
                   </span>
                 </div>
-                <ChevronRight size={16} className="shrink-0 text-muted-foreground/50 transition-colors group-hover:text-primary rtl:rotate-180" />
+
+                {/* Discrete edit/delete actions — z-10 so they stay clickable on
+                    top of the stretched-link, sober styling so they don't fight
+                    the brand tile for attention. */}
+                <div className="relative z-10 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(b)}
+                    aria-label={t('editBrandAria', { name: b.name })}
+                    title={t('editBrand')}
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteError(''); setToDelete(b) }}
+                    aria-label={t('deleteBrandAria', { name: b.name })}
+                    title={t('deleteBrand')}
+                    className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-4 border-t border-border pt-2.5 text-[11px] text-muted-foreground">
+              <div className="relative z-0 flex items-center gap-4 border-t border-border pt-2.5 text-[11px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <UtensilsCrossed size={12} /> <strong className="font-bold text-foreground">{b.menuCount}</strong> {t('statMenu')}
                 </span>
@@ -189,12 +367,13 @@ export default function EstablishmentHub({
                 </span>
                 <span className="ms-auto inline-flex items-center gap-1 font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
                   {t('openMenu')}
+                  <ChevronRight size={12} className="rtl:rotate-180" />
                 </span>
               </div>
-            </Link>
+            </article>
           ))}
 
-          {/* Add a brand → /brands (scratch or copy, existing flow). */}
+          {/* Add a brand → /brands (scratch or copy, focused create page). */}
           <Link
             href="/brands"
             className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary"
@@ -207,6 +386,130 @@ export default function EstablishmentHub({
           </Link>
         </div>
       )}
+
+      {/* ── Edit-brand modal (was on /brands) ──────────────────────────────── */}
+      <Modal
+        open={editForm !== null}
+        onClose={() => setEditForm(null)}
+        size="md"
+        title={tb('editTitle')}
+      >
+        {editForm && (
+          <form onSubmit={saveEdit} className="space-y-4">
+            {editError && (
+              <div className="rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
+                {editError}
+              </div>
+            )}
+
+            <Input
+              label={tb('fieldName')}
+              value={editForm.name}
+              maxLength={80}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              placeholder={tb('fieldNamePlaceholder')}
+            />
+
+            <div>
+              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{tb('fieldCuisine')}</label>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {CUISINE_TYPES.map((c) => {
+                  const active = (editForm.cuisineType ?? 'autre') === c.value
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setEditForm({ ...editForm, cuisineType: c.value })}
+                      className={`flex flex-col items-center gap-1 rounded-grubano-md border px-2 py-2 text-xs font-semibold transition active:scale-95 ${
+                        active ? 'border-grubano-primary bg-grubano-tint text-grubano-primary' : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted'
+                      }`}
+                    >
+                      <span className="text-lg">{c.emoji}</span>
+                      <span>{tb(`cuisine_${c.value}` as 'cuisine_italien')}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{tb('fieldEmoji')}</label>
+              <div className="flex flex-wrap gap-2">
+                {BRAND_EMOJIS.map((e2) => (
+                  <button
+                    key={e2}
+                    type="button"
+                    onClick={() => setEditForm({ ...editForm, emoji: e2 })}
+                    aria-label={e2}
+                    className={`flex h-10 w-10 items-center justify-center rounded-grubano-md border text-lg transition active:scale-95 ${
+                      editForm.emoji === e2 ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-grubano-surface'
+                    }`}
+                  >
+                    {e2}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Input
+              label={tb('fieldTagline')}
+              value={editForm.tagline ?? ''}
+              maxLength={140}
+              onChange={(e) => setEditForm({ ...editForm, tagline: e.target.value })}
+              placeholder={tb('fieldTaglinePlaceholder')}
+            />
+
+            <div className="flex gap-2 pt-1">
+              <Button type="button" variant="secondary" size="md" onClick={() => setEditForm(null)}>
+                {tb('cancel')}
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                loading={saving || editLoading}
+                className="flex-1"
+              >
+                {tb('save')}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* ── Delete-brand confirm (was on /brands) ──────────────────────────── */}
+      <Modal
+        open={toDelete !== null}
+        onClose={() => setToDelete(null)}
+        size="sm"
+        title={tb('deleteConfirmTitle')}
+      >
+        {toDelete && (
+          <div className="space-y-4">
+            <p className="text-grubano-sm leading-relaxed text-grubano-ink-muted">
+              {tb('deleteConfirmBody', { name: toDelete.name })}
+            </p>
+            {toDelete.menuCount > 0 && (
+              <div className="rounded-grubano-md border border-grubano-warning/30 bg-grubano-warning-tint px-3 py-2.5 text-grubano-sm text-grubano-ink-muted">
+                {tb('deleteWarnMenu', { count: toDelete.menuCount })}
+              </div>
+            )}
+            {deleteError && (
+              <div className="rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" size="md" onClick={() => setToDelete(null)}>
+                {tb('cancel')}
+              </Button>
+              <Button type="button" variant="danger" size="md" loading={deleting} className="flex-1" onClick={confirmDelete}>
+                {tb('confirmDelete')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
