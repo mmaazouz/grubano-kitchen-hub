@@ -1307,5 +1307,25 @@
     "errAddressInvalid": "Invalid address — enter a complete address (street number and name).",
     "openHub": "View brands & menus",
     "openHubAria": "Open {name} — view its brands and menus"
+  },
+  "tables": {
+    "noEstabTitle": "No establishment",
+    "noEstabDesc": "Create an establishment to manage its tables and reservations.",
+    "noTablesTitle": "No table yet",
+    "noTablesDesc": "Add your first table in Setup to start taking reservations.",
+    "noTablesGoSetup": "Go to Setup",
+    "durationTitle": "Default reservation duration",
+    "durationDesc": "How long a table stays reserved by default.",
+    "durationHint": "Pre-filled in the reservation form.",
+    "durationLabel": "Duration (min)",
+    "durationUnit": "min",
+    "minutes": "minutes",
+    "pastSlotError": "Slot already past — pick a future time.",
+    "durationSaved": "Default duration saved",
+    "durationSaveError": "Could not save the duration",
+    "durationSavedShort": "Saved",
+    "preset60": "1 h",
+    "preset90": "1 h 30",
+    "preset120": "2 h"
   }
 }

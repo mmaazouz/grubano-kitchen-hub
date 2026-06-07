@@ -1307,5 +1307,25 @@
     "errAddressInvalid": "عنوان غير صالح — أدخل عنواناً كاملاً (رقم واسم الشارع).",
     "openHub": "عرض العلامات والقوائم",
     "openHubAria": "فتح {name} — عرض علاماته التجارية وقوائمه"
+  },
+  "tables": {
+    "noEstabTitle": "لا منشأة",
+    "noEstabDesc": "أنشئ منشأة لإدارة طاولاتها وحجوزاتها.",
+    "noTablesTitle": "لا توجد طاولة بعد",
+    "noTablesDesc": "أضف طاولتك الأولى في الإعدادات لبدء قبول الحجوزات.",
+    "noTablesGoSetup": "الانتقال إلى الإعدادات",
+    "durationTitle": "المدة الافتراضية للحجز",
+    "durationDesc": "كم من الوقت تبقى الطاولة محجوزة افتراضيًا.",
+    "durationHint": "يتم تعبئته تلقائيًا في نموذج الحجز.",
+    "durationLabel": "المدة (دقيقة)",
+    "durationUnit": "د",
+    "minutes": "دقيقة",
+    "pastSlotError": "موعد منقضٍ — اختر وقتًا مستقبليًا.",
+    "durationSaved": "تم حفظ المدة الافتراضية",
+    "durationSaveError": "تعذر حفظ المدة",
+    "durationSavedShort": "تم الحفظ",
+    "preset60": "١ س",
+    "preset90": "١ س ٣٠",
+    "preset120": "٢ س"
   }
 }

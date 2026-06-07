@@ -1307,5 +1307,25 @@
     "errAddressInvalid": "Adresse invalide — saisis une adresse complète (numéro et rue).",
     "openHub": "Voir les marques & menus",
     "openHubAria": "Ouvrir {name} — voir ses marques et menus"
+  },
+  "tables": {
+    "noEstabTitle": "Aucun établissement",
+    "noEstabDesc": "Créez un établissement pour gérer ses tables et réservations.",
+    "noTablesTitle": "Aucune table",
+    "noTablesDesc": "Ajoutez votre première table dans Config pour pouvoir prendre des réservations.",
+    "noTablesGoSetup": "Aller à Config",
+    "durationTitle": "Durée par défaut d’une réservation",
+    "durationDesc": "Combien de temps une table reste réservée par défaut.",
+    "durationHint": "Pré-rempli automatiquement dans le formulaire de réservation.",
+    "durationLabel": "Durée (min)",
+    "durationUnit": "min",
+    "minutes": "minutes",
+    "pastSlotError": "Créneau déjà passé — choisissez un horaire à venir.",
+    "durationSaved": "Durée par défaut enregistrée",
+    "durationSaveError": "Impossible d’enregistrer la durée",
+    "durationSavedShort": "Enregistré",
+    "preset60": "1 h",
+    "preset90": "1 h 30",
+    "preset120": "2 h"
   }
 }

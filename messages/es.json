@@ -1307,5 +1307,25 @@
     "errAddressInvalid": "Dirección no válida — escribe una dirección completa (número y calle).",
     "openHub": "Ver marcas y menús",
     "openHubAria": "Abrir {name} — ver sus marcas y menús"
+  },
+  "tables": {
+    "noEstabTitle": "Ningún establecimiento",
+    "noEstabDesc": "Crea un establecimiento para gestionar sus mesas y reservas.",
+    "noTablesTitle": "Aún no hay mesas",
+    "noTablesDesc": "Añade tu primera mesa en Config para empezar a tomar reservas.",
+    "noTablesGoSetup": "Ir a Config",
+    "durationTitle": "Duración por defecto de una reserva",
+    "durationDesc": "Cuánto tiempo permanece reservada una mesa por defecto.",
+    "durationHint": "Se rellena automáticamente en el formulario de reserva.",
+    "durationLabel": "Duración (min)",
+    "durationUnit": "min",
+    "minutes": "minutos",
+    "pastSlotError": "Franja ya pasada — elige un horario futuro.",
+    "durationSaved": "Duración por defecto guardada",
+    "durationSaveError": "No se pudo guardar la duración",
+    "durationSavedShort": "Guardado",
+    "preset60": "1 h",
+    "preset90": "1 h 30",
+    "preset120": "2 h"
   }
 }

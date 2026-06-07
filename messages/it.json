@@ -1307,5 +1307,25 @@
     "errAddressInvalid": "Indirizzo non valido — inserisci un indirizzo completo (numero civico e via).",
     "openHub": "Vedi marchi e menù",
     "openHubAria": "Apri {name} — vedi i suoi marchi e menù"
+  },
+  "tables": {
+    "noEstabTitle": "Nessuna struttura",
+    "noEstabDesc": "Crea una struttura per gestire i suoi tavoli e le sue prenotazioni.",
+    "noTablesTitle": "Nessun tavolo",
+    "noTablesDesc": "Aggiungi il tuo primo tavolo in Config per iniziare ad accettare prenotazioni.",
+    "noTablesGoSetup": "Vai a Config",
+    "durationTitle": "Durata predefinita di una prenotazione",
+    "durationDesc": "Per quanto tempo un tavolo resta prenotato per impostazione predefinita.",
+    "durationHint": "Precompilata nel modulo di prenotazione.",
+    "durationLabel": "Durata (min)",
+    "durationUnit": "min",
+    "minutes": "minuti",
+    "pastSlotError": "Orario già passato — scegli un orario futuro.",
+    "durationSaved": "Durata predefinita salvata",
+    "durationSaveError": "Impossibile salvare la durata",
+    "durationSavedShort": "Salvato",
+    "preset60": "1 h",
+    "preset90": "1 h 30",
+    "preset120": "2 h"
   }
 }
