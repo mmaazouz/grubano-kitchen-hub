@@ -845,6 +845,32 @@ function NewReservationForm({
     return end.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   })()
 
+  // ── Past-slot guard (mirrors Agent 2 PAST_GRACE_MS = 5*60*1000) ────────────
+  // The server is the authority — it returns 400 "Créneau déjà passé" if start
+  // < (now - 5 min). The form guides BEFORE the round-trip so we never POST a
+  // request we know will fail. Same 5-minute grace so a "réservation pour tout
+  // de suite" never trips the guard.
+  const PAST_GRACE_MS = 5 * 60 * 1000
+
+  function isPast(date: string, time: string): boolean {
+    if (!date || !time) return false
+    const start = new Date(`${date}T${time}:00`)
+    if (Number.isNaN(start.getTime())) return false
+    return start.getTime() < Date.now() - PAST_GRACE_MS
+  }
+
+  // Today's HH:MM — used as the input[type=time]'s `min` when the date is
+  // today. Re-computed every render is cheap. We don't render this on the
+  // server (the form is client-only) so toLocaleTimeString without a fixed
+  // locale is safe — though we pick fr-FR for consistency with the rest of
+  // the page.
+  const isToday = form.date === today
+  const minTimeForToday = isToday
+    ? new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false })
+    : ''
+
+  const slotIsPast = isPast(form.date, form.time)
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -853,6 +879,13 @@ function NewReservationForm({
     // than POSTing an empty tableId (which used to come back as "Erreur serveur").
     if (!form.tableId) {
       setError('Créez ou sélectionnez une table avant de réserver.')
+      return
+    }
+    // Block past slots BEFORE the round-trip. The server is still the
+    // authority — same 5-min grace as PAST_GRACE_MS — but the form guides
+    // the operator instead of submitting a doomed request.
+    if (isPast(form.date, form.time)) {
+      setError(t('pastSlotError'))
       return
     }
     setSaving(true)
@@ -908,13 +941,25 @@ function NewReservationForm({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] text-muted-foreground">Date</label>
-              <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+              {/* `min={today}` blocks the date picker from selecting yesterday
+                  or before — the server still re-checks. */}
+              <input type="date" min={today} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
                 className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
             </div>
             <div>
               <label className="text-[10px] text-muted-foreground">Heure</label>
-              <input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
+              {/* When the date is today, the time picker's `min` is HH:MM now
+                  so the operator can't pick an already-past time. Browsers
+                  honour `min` on input[type=time] by clamping spinner +
+                  flagging invalid keyboard input. Empty `min` on other dates
+                  lets the operator freely pick any time. */}
+              <input type="time" min={minTimeForToday || undefined} value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
                 className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+              {slotIsPast && (
+                <p className="mt-1 text-[10px] font-semibold text-destructive">
+                  {t('pastSlotError')}
+                </p>
+              )}
             </div>
           </div>
 
@@ -962,8 +1007,8 @@ function NewReservationForm({
 
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm">Annuler</button>
-            <button type="submit" disabled={saving || !form.tableId}
-              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-60">
+            <button type="submit" disabled={saving || !form.tableId || slotIsPast}
+              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">
               {saving ? <RefreshCw size={14} className="animate-spin mx-auto" /> : 'Réserver'}
             </button>
           </div>
