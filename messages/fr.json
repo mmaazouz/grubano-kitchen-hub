@@ -1009,7 +1009,13 @@
       "title": "Aucune marque pour le moment",
       "desc": "Créez votre première marque pour démarrer votre carte et ajouter vos plats.",
       "cta": "Créer une marque"
-    }
+    },
+    "bc": {
+      "root": "Mes établissements",
+      "menuLabel": "Menu"
+    },
+    "brandsHint": "Marques de cet établissement",
+    "brandsAria": "Choisir une marque"
   },
   "finance": {
     "title": "Finance",

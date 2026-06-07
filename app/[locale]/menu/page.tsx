@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import {
   Sparkles, Plus, Clock, Eye, EyeOff, Percent, Flame, Leaf, WheatOff, Star,
-  Tag, X, Check, ChevronLeft, Upload, GripVertical, RefreshCw, Trash2,
+  Tag, X, Check, ChevronLeft, ChevronRight, Upload, GripVertical, RefreshCw, Trash2,
   Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle, Users, TrendingUp,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { SessionProvider, useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import { Link } from '@/navigation'
 import { Card } from '@/components/grubano/Card'
 import { SectionTitle } from '@/components/grubano/SectionTitle'
@@ -37,7 +38,17 @@ type MenuItem = {
   isPopular:   boolean
 }
 
-type Brand = { id: string; name: string; emoji: string }
+// /api/brands/summary item — exposes restaurantId since Agent 2's commit
+// b5a850f, which is the scoping key we use to filter the brand selector to
+// the marques of the SAME establishment as the currently-opened brand.
+// `restaurantId` may still be null on legacy rows → in that case we keep the
+// historical behaviour and show every brand (no false-empty scoping).
+type Brand = {
+  id:            string
+  name:          string
+  emoji:         string
+  restaurantId?: string | null
+}
 
 // Catalogue entry returned by GET /api/dishes/available (brique 3C-1).
 type AvailableDish = {
@@ -98,10 +109,28 @@ const PROMOS = [
 export default function MenuPage() {
   return (
     <SessionProvider>
-      <MenuBuilder />
+      {/* useSearchParams() must be inside <Suspense> in Next.js 14 App Router,
+          otherwise the page can't be statically analysed at build time. */}
+      <Suspense fallback={<MenuBuilderFallback />}>
+        <MenuBuilder />
+      </Suspense>
     </SessionProvider>
   )
 }
+
+function MenuBuilderFallback() {
+  const tMenu = useTranslations('menu')
+  return (
+    <div className="mx-auto max-w-lg px-5 pt-12 md:max-w-3xl">
+      <div className="flex items-center justify-center gap-2 text-muted-foreground">
+        <RefreshCw size={16} className="animate-spin" /> {tMenu('loading')}
+      </div>
+    </div>
+  )
+}
+
+// Lite establishment shape used to label the breadcrumb middle segment.
+type EstablishmentLite = { id: string; name: string }
 
 function MenuBuilder() {
   const tAdopt = useTranslations('menu.adopt')
@@ -109,14 +138,25 @@ function MenuBuilder() {
   const { status, data: session } = useSession()
   const operatorId = (session?.user as { id?: string } | undefined)?.id
 
-  const [tab,           setTab]           = useState<'items' | 'categories' | 'promos' | 'adopt'>('items')
-  const [items,         setItems]         = useState<MenuItem[]>([])
-  const [brands,        setBrands]        = useState<Brand[]>([])
-  const [brandId,       setBrandId]       = useState<string>('')
-  const [loading,       setLoading]       = useState(true)
-  const [brandsLoading, setBrandsLoading] = useState(true)
-  const [scanner,       setScanner]       = useState(false)
-  const [editing,       setEditing]       = useState<MenuItem | null>(null)
+  // The hub navigates here as /menu?brand=<id> — we honour that target so the
+  // operator lands on the brand they actually clicked (instead of the legacy
+  // "always pick brands[0]" behaviour, which surfaced the menu of an unrelated
+  // brand after a deletion/creation).
+  const searchParams      = useSearchParams()
+  const requestedBrandId  = searchParams.get('brand') ?? ''
+
+  const [tab,            setTab]            = useState<'items' | 'categories' | 'promos' | 'adopt'>('items')
+  const [items,          setItems]          = useState<MenuItem[]>([])
+  const [brands,         setBrands]         = useState<Brand[]>([])
+  const [brandId,        setBrandId]        = useState<string>('')
+  const [loading,        setLoading]        = useState(true)
+  const [brandsLoading,  setBrandsLoading]  = useState(true)
+  const [scanner,        setScanner]        = useState(false)
+  const [editing,        setEditing]        = useState<MenuItem | null>(null)
+  // Establishments list — used to label the breadcrumb middle segment with the
+  // real establishment name. Falls back to "" if the call fails (we still show
+  // the breadcrumb root + brand name, just without the middle label).
+  const [establishments, setEstablishments] = useState<EstablishmentLite[]>([])
 
   const loadItems = useCallback(async (bId: string) => {
     if (!bId) return
@@ -133,29 +173,67 @@ function MenuBuilder() {
   }, [])
 
   useEffect(() => {
-    // Wait for the session before fetching — and only ever request the brands
-    // that belong to the connected operator (?operatorId=). Without this filter
-    // /api/brands returns EVERY brand in the DB, so the page could pick a brandId
-    // owned by someone else → /api/dishes/adopt rightly rejects it with a 403.
+    // Wait for the session before fetching — owner-scoping is enforced
+    // server-side on /api/brands/summary (operatorId from session, never body),
+    // so the page only ever sees brands the connected operator owns.
     if (status === 'loading') return
     if (!operatorId) { setBrandsLoading(false); setLoading(false); return }
 
     setBrandsLoading(true)
-    fetch(`/api/brands?operatorId=${operatorId}`)
-      .then(r => r.json())
-      .then(d => {
-        const list: Brand[] = d.brands ?? []
+    // Switched from /api/brands?operatorId=… to /api/brands/summary because the
+    // SUMMARY endpoint exposes Brand.restaurantId (added by Agent 2 in b5a850f),
+    // which we need to scope the selector to the marques of the SAME
+    // establishment as the requested brand — instead of dumping every brand of
+    // the operator (= up to 20 establishments × 3 marques = 60 chips, unusable).
+    Promise.all([
+      fetch('/api/brands/summary').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/api/establishments').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ])
+      .then(([brandsResp, estResp]) => {
+        const list: Brand[] = Array.isArray(brandsResp?.brands) ? brandsResp.brands : []
         setBrands(list)
+        if (Array.isArray(estResp?.establishments)) {
+          setEstablishments(
+            estResp.establishments.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })),
+          )
+        }
         if (list.length > 0) {
-          setBrandId(list[0].id)
-          loadItems(list[0].id)
+          // Honour ?brand=<id> when it points at one of the operator's own
+          // brands; otherwise fall back to the first brand. The server-side
+          // owner-scoping on the summary endpoint guarantees the requested id
+          // is always one the caller owns (or it just won't be in `list`).
+          const chosen = requestedBrandId && list.some((b) => b.id === requestedBrandId)
+            ? requestedBrandId
+            : list[0].id
+          setBrandId(chosen)
+          loadItems(chosen)
         } else {
           setLoading(false)
         }
       })
       .catch(() => setLoading(false))
       .finally(() => setBrandsLoading(false))
-  }, [status, operatorId, loadItems])
+  }, [status, operatorId, requestedBrandId, loadItems])
+
+  // ── Scope the brand selector to the CURRENT establishment ─────────────────
+  // The brand opened via ?brand=<id> belongs to ONE establishment
+  // (Brand.restaurantId). The selector at the top must list only the brands of
+  // THAT establishment — not every brand of every establishment the operator
+  // owns. At 1 brand in scope (the common case) we drop the selector entirely
+  // and lean on the breadcrumb to communicate "which brand we're on".
+  //
+  // FALLBACK: when no brand carries a restaurantId (legacy data still being
+  // backfilled), we keep the historical behaviour and show every brand — so
+  // we never produce a false-empty scoping that hides every option.
+  const currentBrand          = brands.find((b) => b.id === brandId) ?? null
+  const currentRestaurantId   = currentBrand?.restaurantId ?? null
+  const someBrandHasRestaurant = brands.some((b) => b.restaurantId != null)
+  const scopedBrands = currentRestaurantId && someBrandHasRestaurant
+    ? brands.filter((b) => b.restaurantId === currentRestaurantId)
+    : brands
+  const currentEstablishment   = currentRestaurantId
+    ? establishments.find((e) => e.id === currentRestaurantId) ?? null
+    : null
 
   const categories = Array.from(new Set(items.map(i => i.category))).sort()
 
@@ -209,6 +287,37 @@ function MenuBuilder() {
   return (
     <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
 
+      {/* ── Breadcrumb ─ « Mes établissements ▸ {Étab} ▸ {Marque} » ─────────
+          Cohérent avec EstablishmentHub.tsx Breadcrumb. C'est le moyen de
+          REMONTER vers l'établissement (et donc de CHANGER d'établissement
+          sans onglet 60-marques). Le suffix "Menu" rappelle où l'on est. */}
+      <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1 text-[11px] text-muted-foreground">
+        <Link href="/dashboard/establishments" className="hover:text-primary transition-colors">
+          {tMenu('bc.root')}
+        </Link>
+        {currentEstablishment && (
+          <>
+            <ChevronRight size={11} className="text-muted-foreground/50 rtl:rotate-180" />
+            <Link
+              href={`/dashboard/establishments/${currentEstablishment.id}`}
+              className="hover:text-primary transition-colors truncate max-w-[10rem]"
+            >
+              {currentEstablishment.name}
+            </Link>
+          </>
+        )}
+        {currentBrand && (
+          <>
+            <ChevronRight size={11} className="text-muted-foreground/50 rtl:rotate-180" />
+            <span className="font-semibold text-foreground truncate max-w-[10rem]" aria-current="page">
+              {currentBrand.emoji} {currentBrand.name}
+            </span>
+          </>
+        )}
+        <ChevronRight size={11} className="text-muted-foreground/50 rtl:rotate-180" />
+        <span className="text-muted-foreground">{tMenu('bc.menuLabel')}</span>
+      </nav>
+
       {/* Header */}
       <div className="mb-5 flex items-center justify-between">
         <div>
@@ -244,19 +353,43 @@ function MenuBuilder() {
       ) : (
         <>
 
-      {/* Brand selector */}
-      {brands.length > 1 && (
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-          {brands.map(b => (
-            <button key={b.id} onClick={() => setBrandId(b.id)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                brandId === b.id
-                  ? 'bg-primary text-primary-foreground'
-                  : 'border border-border bg-card text-muted-foreground'
-              }`}>
-              {b.emoji} {b.name}
-            </button>
-          ))}
+      {/* Brand selector — SCOPED to the current establishment.
+          Hidden when there's only one brand in scope: the breadcrumb already
+          communicates which brand we're on, no need for a one-button selector.
+          When the operator has multiple brands in this establishment, a sober
+          hint above the chips names what the row represents. */}
+      {scopedBrands.length > 1 && (
+        <div className="mb-4">
+          <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+            {tMenu('brandsHint')}
+          </p>
+          <div
+            role="group"
+            aria-label={tMenu('brandsAria')}
+            className="flex gap-2 overflow-x-auto pb-1"
+          >
+            {scopedBrands.map(b => {
+              const onSelect = () => {
+                setBrandId(b.id)
+                setItems([])      // avoid flashing the previous brand's items
+                loadItems(b.id)
+              }
+              return (
+                <button
+                  key={b.id}
+                  onClick={onSelect}
+                  aria-pressed={brandId === b.id}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
+                    brandId === b.id
+                      ? 'bg-primary text-primary-foreground'
+                      : 'border border-border bg-card text-muted-foreground'
+                  }`}
+                >
+                  {b.emoji} {b.name}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 

@@ -1009,7 +1009,13 @@
       "title": "Ancora nessun marchio",
       "desc": "Crea il tuo primo marchio per iniziare il menù e aggiungere i tuoi piatti.",
       "cta": "Crea un marchio"
-    }
+    },
+    "bc": {
+      "root": "Le mie strutture",
+      "menuLabel": "Menù"
+    },
+    "brandsHint": "Marchi di questa struttura",
+    "brandsAria": "Scegli un marchio"
   },
   "finance": {
     "title": "Finanze",

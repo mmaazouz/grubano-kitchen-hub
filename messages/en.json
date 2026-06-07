@@ -1009,7 +1009,13 @@
       "title": "No brand yet",
       "desc": "Create your first brand to start your menu and add your dishes.",
       "cta": "Create a brand"
-    }
+    },
+    "bc": {
+      "root": "My establishments",
+      "menuLabel": "Menu"
+    },
+    "brandsHint": "Brands of this establishment",
+    "brandsAria": "Choose a brand"
   },
   "finance": {
     "title": "Finance",
