@@ -7,6 +7,11 @@ import { Prisma } from '@prisma/client'
 // Reads the session/cookie → never statically prerendered.
 export const dynamic = 'force-dynamic'
 
+// Reject a reservation whose START is already in the past. A 5-minute grace
+// window absorbs clock skew and "book for the current slot" cases — we block
+// clearly-past times (hours earlier), not to-the-minute.
+const PAST_GRACE_MS = 5 * 60 * 1000
+
 // ── Validation ────────────────────────────────────────────────────────────────
 
 const createSchema = z.object({
@@ -85,6 +90,16 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { restaurantId: bodyRestaurantId, ...data } = createSchema.parse(body)
+
+    // Reject a slot that already started (server is the authority). Validated
+    // before any DB work so a clearly-past booking fails fast and cheap.
+    const start = new Date(data.date)
+    if (start.getTime() < Date.now() - PAST_GRACE_MS) {
+      return NextResponse.json(
+        { error: 'Créneau déjà passé — choisissez un horaire à venir.' },
+        { status: 400 },
+      )
+    }
 
     const scope = await resolveEstablishmentScope(bodyRestaurantId ?? null)
     if (!scope.ok) {
