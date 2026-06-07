@@ -229,18 +229,38 @@ model SupplierOrder {
 
 model RestaurantTable {
   id           String        @id @default(cuid())
+  // ── Establishment link (Chantier 2, additive step 1) ────────────────────────
+  // ADDITIVE + REVERSIBLE: a table belongs to ONE establishment (Restaurant), so
+  // /tables can be scoped per establishment — dark kitchens simply have 0 tables.
+  // Nullable so every existing row stays valid with no backfill, and dropping the
+  // column again is non-destructive. Backfill (step 2) sets existing tables to the
+  // main establishment; the scoped reads/writes (step 3) then rely on it. Same
+  // shape as Brand.restaurantId.
+  restaurantId String?
+  restaurant   Restaurant?   @relation(fields: [restaurantId], references: [id])
   name         String
   seats        Int
   x            Float         @default(50)
   y            Float         @default(50)
   active       Boolean       @default(true)
   reservations Reservation[]
+
+  @@index([restaurantId])
 }
 
 model Reservation {
   id           String          @id @default(cuid())
   tableId      String
   table        RestaurantTable @relation(fields: [tableId], references: [id])
+  // ── Establishment link (Chantier 2, additive step 1) ────────────────────────
+  // ADDITIVE + REVERSIBLE: a reservation is made AT one establishment. It COULD be
+  // derived from the table (table.restaurantId), but a DIRECT, indexed field lets
+  // us scope reservations with a simple `where { restaurantId, date }` (no relation
+  // join) and FREEZES the establishment at booking time, so the row stays correct
+  // even if the table is later reassigned or removed. Same denormalised pattern as
+  // Order.restaurantId. Nullable until backfilled.
+  restaurantId String?
+  restaurant   Restaurant?     @relation(fields: [restaurantId], references: [id])
   customerName String
   phone        String?
   email        String?
@@ -429,6 +449,11 @@ model Restaurant {
   // Inverse side of Brand.restaurant (Option B, additive step 1) — the brands
   // (concepts) served from this establishment. Zero extra column.
   brands       Brand[]
+  // Inverse side of RestaurantTable.restaurant / Reservation.restaurant
+  // (Chantier 2, additive step 1) — the dining room of this establishment. Zero
+  // extra column on Restaurant.
+  tables       RestaurantTable[]
+  reservations Reservation[]
 
   // Option B (step 4): operatorId is no longer unique; keep a plain index so the
   // frequent findFirst/findMany({ where: { operatorId } }) lookups stay fast.
