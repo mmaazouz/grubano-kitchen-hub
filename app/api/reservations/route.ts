@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+
+// Reads the session/cookie → never statically prerendered.
+export const dynamic = 'force-dynamic'
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -22,6 +26,10 @@ const createSchema = z.object({
   depositAmount:z.number().min(0).default(0),
   noShowPenalty:z.number().min(0).default(0),
   notes:        z.string().max(500).optional(),
+  // Optional explicit target establishment; verified against the caller below.
+  // The reservation's establishment is ultimately taken from its TABLE, so this
+  // only resolves scope for a legacy (NULL-restaurantId) table.
+  restaurantId: z.string().min(1).optional(),
 })
 
 const patchSchema = z.object({
@@ -31,20 +39,31 @@ const patchSchema = z.object({
 })
 
 // ── GET /api/reservations?date= ──────────────────────────────────────────────
+// Owner-scoped to the caller's CURRENT establishment (explicit ?restaurantId= if
+// owned, else the selected-establishment cookie, else oldest).
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
-    const dateStr = searchParams.get('date')
+    const dateStr  = searchParams.get('date')
+    const explicit = searchParams.get('restaurantId')
 
-    let where: Record<string, unknown> = {}
+    const scope = await resolveEstablishmentScope(explicit)
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
+    if (!scope.restaurantId) {
+      return NextResponse.json({ reservations: [] })
+    }
+
+    const where: Record<string, unknown> = { restaurantId: scope.restaurantId }
 
     if (dateStr) {
       const day   = new Date(dateStr)
       day.setHours(0, 0, 0, 0)
       const next  = new Date(day)
       next.setDate(day.getDate() + 1)
-      where = { date: { gte: day, lt: next } }
+      where.date = { gte: day, lt: next }
     }
 
     const reservations = await prisma.reservation.findMany({
@@ -54,7 +73,8 @@ export async function GET(req: Request) {
     })
 
     return NextResponse.json({ reservations })
-  } catch {
+  } catch (err) {
+    console.error('[GET /api/reservations]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
@@ -64,17 +84,34 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const data = createSchema.parse(body)
+    const { restaurantId: bodyRestaurantId, ...data } = createSchema.parse(body)
+
+    const scope = await resolveEstablishmentScope(bodyRestaurantId ?? null)
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
 
     // The table must exist before we create a reservation that references it.
     // A missing / stale tableId would otherwise hit a foreign-key violation that
     // bubbles up as a generic 500; return a clear 400 instead.
-    const table = await prisma.restaurantTable.findUnique({ where: { id: data.tableId } })
+    const table = await prisma.restaurantTable.findUnique({
+      where:  { id: data.tableId },
+      select: { id: true, restaurantId: true },
+    })
     if (!table) {
       return NextResponse.json(
         { error: 'Table introuvable — créez ou sélectionnez une table avant de réserver.' },
         { status: 400 },
       )
+    }
+
+    // The reservation belongs to the TABLE's establishment (source of truth). A
+    // legacy table with no establishment yet falls back to the caller's current
+    // scope. Either way the establishment MUST belong to the caller (owner-scope),
+    // so a table from another operator can never be booked here.
+    const resaRestaurantId = table.restaurantId ?? scope.restaurantId
+    if (resaRestaurantId && !scope.ownedIds.includes(resaRestaurantId)) {
+      return NextResponse.json({ error: 'Établissement non autorisé' }, { status: 403 })
     }
 
     // Check table availability
@@ -97,6 +134,7 @@ export async function POST(req: Request) {
     const reservation = await prisma.reservation.create({
       data: {
         ...data,
+        restaurantId: resaRestaurantId,
         date:     new Date(data.date),
         endTime:  new Date(data.endTime),
         allergies: data.allergies as unknown as Prisma.InputJsonValue,
@@ -121,11 +159,28 @@ export async function POST(req: Request) {
 }
 
 // ── PATCH /api/reservations ───────────────────────────────────────────────────
+// Owner-scoped: the reservation must belong to one of the caller's establishments.
 
 export async function PATCH(req: Request) {
   try {
     const body = await req.json()
     const { id, ...data } = patchSchema.parse(body)
+
+    const scope = await resolveEstablishmentScope(null)
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
+
+    const existing = await prisma.reservation.findUnique({
+      where:  { id },
+      select: { restaurantId: true },
+    })
+    if (!existing) {
+      return NextResponse.json({ error: 'Réservation introuvable' }, { status: 404 })
+    }
+    if (existing.restaurantId && !scope.ownedIds.includes(existing.restaurantId)) {
+      return NextResponse.json({ error: 'Réservation non autorisée' }, { status: 403 })
+    }
 
     const reservation = await prisma.reservation.update({
       where:   { id },
@@ -138,6 +193,7 @@ export async function PATCH(req: Request) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
     }
+    console.error('[PATCH /api/reservations]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
