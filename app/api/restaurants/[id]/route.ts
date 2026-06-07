@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '@/lib/geocode'
@@ -253,6 +254,129 @@ export async function PATCH(
     return NextResponse.json({ restaurant, geocoded, geocodeStatus })
   } catch (err) {
     console.error('[PATCH /api/restaurants/:id]', err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}
+
+// ── DELETE /api/restaurants/:id ───────────────────────────────────────────────
+// Smart soft-delete, owner-scoped (the owning operator or an admin).
+//   • establishment WITH order history → SOFT: archivedAt = now(), all data
+//     preserved (sales history kept for accounting). It is then hidden from every
+//     listing/aggregate (archivedAt = null filters).
+//   • establishment with 0 orders → HARD delete, with a controlled, FK-safe
+//     cascade of its attached (empty) brands/tables/menus — no orphan rows.
+// Returns { mode: 'archived' | 'deleted' } so the UI shows the right message.
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+    }
+    const operator = await prisma.operator.findUnique({
+      where:  { email: session.user.email },
+      select: { id: true, role: true },
+    })
+    if (!operator) {
+      return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 401 })
+    }
+
+    const restaurant = await prisma.restaurant.findUnique({
+      where:  { id: params.id },
+      select: { id: true, name: true, operatorId: true, archivedAt: true },
+    })
+    if (!restaurant) {
+      return NextResponse.json({ error: 'Établissement introuvable' }, { status: 404 })
+    }
+    const isOwner = restaurant.operatorId === operator.id
+    const isAdmin = operator.role === 'admin'
+    if (!isOwner && !isAdmin) {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    }
+
+    // Idempotent: an already-archived establishment stays archived.
+    if (restaurant.archivedAt) {
+      return NextResponse.json({
+        mode: 'archived', id: restaurant.id, name: restaurant.name, alreadyArchived: true,
+      })
+    }
+
+    const ordersCount = await prisma.order.count({ where: { restaurantId: restaurant.id } })
+
+    // ── WITH history → archive (preserve sales data) ──────────────────────────
+    if (ordersCount > 0) {
+      await prisma.restaurant.update({
+        where: { id: restaurant.id },
+        data:  { archivedAt: new Date() },
+      })
+      return NextResponse.json({ mode: 'archived', id: restaurant.id, name: restaurant.name, ordersCount })
+    }
+
+    // ── EMPTY (0 orders) → hard delete, controlled FK-safe cascade ─────────────
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Tables + their reservations first (Reservation → RestaurantTable FK).
+        const tables = await tx.restaurantTable.findMany({
+          where:  { restaurantId: restaurant.id },
+          select: { id: true },
+        })
+        const tableIds = tables.map(t => t.id)
+        await tx.reservation.deleteMany({
+          where: { OR: [{ restaurantId: restaurant.id }, { tableId: { in: tableIds } }] },
+        })
+        await tx.restaurantTable.deleteMany({ where: { restaurantId: restaurant.id } })
+
+        // Brands of this establishment + everything that references them.
+        const brands = await tx.brand.findMany({
+          where:  { restaurantId: restaurant.id },
+          select: { id: true },
+        })
+        const brandIds = brands.map(b => b.id)
+        if (brandIds.length > 0) {
+          const adoptions = await tx.dishAdoption.findMany({
+            where:  { brandId: { in: brandIds } },
+            select: { id: true },
+          })
+          const adoptionIds = adoptions.map(a => a.id)
+          if (adoptionIds.length > 0) {
+            await tx.dishSale.deleteMany({ where: { adoptionId: { in: adoptionIds } } })
+          }
+          await tx.dishAdoption.deleteMany({ where: { brandId: { in: brandIds } } })
+          await tx.adoptionWaitlist.deleteMany({ where: { brandId: { in: brandIds } } })
+          await tx.loyaltyOrder.deleteMany({ where: { brandId: { in: brandIds } } })
+          await tx.promotion.deleteMany({ where: { brandId: { in: brandIds } } })
+          await tx.stockItem.deleteMany({ where: { brandId: { in: brandIds } } })
+          await tx.menuItem.deleteMany({ where: { brandId: { in: brandIds } } })
+          // A PointOfSale belongs to a FRANCHISE operator — keep it, just unlink.
+          await tx.pointOfSale.updateMany({
+            where: { brandId: { in: brandIds } },
+            data:  { brandId: null },
+          })
+          await tx.brand.deleteMany({ where: { restaurantId: restaurant.id } })
+        }
+
+        await tx.restaurant.delete({ where: { id: restaurant.id } })
+      })
+    } catch (err) {
+      // A concurrent order (or any FK constraint) makes a hard delete unsafe →
+      // fall back to archive so the operator's intent (remove from the UI) still
+      // holds, with zero data loss.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        await prisma.restaurant.update({
+          where: { id: restaurant.id },
+          data:  { archivedAt: new Date() },
+        })
+        return NextResponse.json({ mode: 'archived', id: restaurant.id, name: restaurant.name, fallback: true })
+      }
+      throw err
+    }
+
+    return NextResponse.json({ mode: 'deleted', id: restaurant.id, name: restaurant.name })
+  } catch (err) {
+    console.error('[DELETE /api/restaurants/:id]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
