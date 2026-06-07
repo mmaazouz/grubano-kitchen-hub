@@ -62,7 +62,7 @@ export async function GET() {
     // findFirst (not findUnique) so this no longer depends on Restaurant.operatorId
     // being unique (Option B step 3). Identical result while an operator has one resto.
     const restaurant = await prisma.restaurant.findFirst({
-      where:  { operatorId },
+      where:  { operatorId, archivedAt: null },
       select: { city: true },
     })
     const myCity = (restaurant?.city ?? '').trim()

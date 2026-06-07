@@ -161,7 +161,7 @@ export async function GET() {
 
     // ── Owner scope: this operator's establishments + brands ──────────────────
     const restaurants = await prisma.restaurant.findMany({
-      where:  { operatorId },
+      where:  { operatorId, archivedAt: null },
       select: { id: true, name: true, isActive: true, rating: true, reviewCount: true },
     })
     const restaurantIds = restaurants.map(r => r.id)

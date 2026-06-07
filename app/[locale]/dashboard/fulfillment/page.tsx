@@ -44,7 +44,7 @@ export default async function FulfillmentPage() {
   // full list (oldest first) and pick the one selected via the durable cookie,
   // falling back to the oldest. The header switcher lets them change it.
   const allRestaurants = await prisma.restaurant.findMany({
-    where:   { operatorId: operator.id },
+    where:   { operatorId: operator.id, archivedAt: null },
     orderBy: { createdAt: 'asc' },
     select: {
       id:                 true,

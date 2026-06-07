@@ -42,7 +42,7 @@ export async function GET() {
         orderBy: { createdAt: 'asc' },
         select:  { id: true, name: true, emoji: true, cuisineType: true },
       }),
-      prisma.restaurant.findFirst({ where: { operatorId: operator.id }, select: { id: true } }),
+      prisma.restaurant.findFirst({ where: { operatorId: operator.id, archivedAt: null }, select: { id: true } }),
     ])
 
     const hasBrand      = brand !== null

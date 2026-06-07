@@ -57,7 +57,7 @@ export async function GET() {
     // Restaurants owned by this operator (Restaurant.operatorId is @unique, so
     // this is 0 or 1 in practice — findMany keeps it future-proof regardless).
     const restaurants = await prisma.restaurant.findMany({
-      where:  { operatorId },
+      where:  { operatorId, archivedAt: null },
       select: { id: true },
     })
     const restaurantIds = restaurants.map(r => r.id)

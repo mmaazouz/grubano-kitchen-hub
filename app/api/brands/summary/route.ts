@@ -114,7 +114,7 @@ export async function GET() {
     const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
     const restaurants = await prisma.restaurant.findMany({
-      where:  { operatorId },
+      where:  { operatorId, archivedAt: null },
       select: { id: true },
     })
     const restaurantIds = restaurants.map(r => r.id)

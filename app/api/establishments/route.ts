@@ -32,7 +32,7 @@ export async function GET() {
     }
 
     const restaurants = await prisma.restaurant.findMany({
-      where:   { operatorId: operator.id },
+      where:   { operatorId: operator.id, archivedAt: null },
       orderBy: { createdAt: 'asc' },
       select:  { id: true, name: true, city: true, isActive: true },
     })

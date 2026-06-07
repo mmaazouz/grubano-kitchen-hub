@@ -56,9 +56,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createOrderSchema.parse(body)
 
-    // Verify restaurant exists and is active
-    const restaurant = await prisma.restaurant.findUnique({
-      where: { id: data.restaurantId, isActive: true },
+    // Verify restaurant exists, is active, and is not archived (soft-deleted).
+    const restaurant = await prisma.restaurant.findFirst({
+      where: { id: data.restaurantId, isActive: true, archivedAt: null },
     })
     if (!restaurant) {
       return NextResponse.json({ error: 'Restaurant introuvable ou fermé' }, { status: 404 })

@@ -49,7 +49,7 @@ export default async function TablesPage(props: { params: { locale: string } }) 
   // Operator's establishments, oldest first (so pickEstablishment's fallback
   // is deterministic and matches the rest of the dashboard).
   const restaurants = await prisma.restaurant.findMany({
-    where:   { operatorId: operator.id },
+    where:   { operatorId: operator.id, archivedAt: null },
     orderBy: { createdAt: 'asc' },
     select:  {
       id: true, name: true, city: true,

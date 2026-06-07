@@ -19,8 +19,10 @@ export async function GET(
     // transitive operator.brands path. Behaviour is identical today (the backfill
     // linked every brand to its operator's single restaurant), but the menu is now
     // scoped to the establishment, so it stays correct once an operator has several.
-    const restaurant = await prisma.restaurant.findUnique({
-      where:   { id: params.id },
+    // findFirst (not findUnique) so we can exclude archived establishments — an
+    // archived (soft-deleted) restaurant must 404 on the consumer side too.
+    const restaurant = await prisma.restaurant.findFirst({
+      where:   { id: params.id, archivedAt: null },
       include: {
         brands: {
           select: {

@@ -44,7 +44,7 @@ export default async function EstablishmentHubPage(props: {
 
   // Owner-scoped lookup: a foreign / unknown id resolves to null → back to list.
   const establishment = await prisma.restaurant.findFirst({
-    where:  { id: props.params.id, operatorId: operator.id },
+    where:  { id: props.params.id, operatorId: operator.id, archivedAt: null },
     select: { id: true, name: true, city: true, address: true, isActive: true },
   })
 
@@ -55,7 +55,7 @@ export default async function EstablishmentHubPage(props: {
   // How many establishments the operator owns — drives the "zéro complexité à
   // N=1" adaptation (breadcrumb root + brand scoping) inside the hub.
   const establishmentsCount = await prisma.restaurant.count({
-    where: { operatorId: operator.id },
+    where: { operatorId: operator.id, archivedAt: null },
   })
 
   return (

@@ -44,7 +44,7 @@ export default async function EstablishmentsPage(props: { params: { locale: stri
   }
 
   const allRestaurants = await prisma.restaurant.findMany({
-    where:   { operatorId: operator.id },
+    where:   { operatorId: operator.id, archivedAt: null },
     orderBy: { createdAt: 'asc' },
     select:  { id: true, name: true, city: true, address: true, isActive: true },
   })

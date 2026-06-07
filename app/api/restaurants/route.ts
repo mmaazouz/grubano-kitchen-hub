@@ -62,7 +62,7 @@ export async function GET(req: Request) {
       // Fetch ALL active restaurants with coords. We accept restaurants
       // without coords later in the fallback.
       const all = await prisma.restaurant.findMany({
-        where: { isActive: true },
+        where: { isActive: true, archivedAt: null },
         select: {
           id:           true,
           name:         true,
@@ -148,7 +148,8 @@ export async function GET(req: Request) {
     // ── Branch 2 — legacy (no geo) ───────────────────────────────────────
     // Preserves the pre-Discovery behaviour for callers that don't send lat/lng.
     const where: Prisma.RestaurantWhereInput = {
-      isActive: true,
+      isActive:   true,
+      archivedAt: null,
     }
 
     if (city) {
@@ -307,7 +308,7 @@ export async function POST(req: Request) {
     // wizard never sets the flag, so a double-submit there is still blocked.
     if (!additional) {
       const existing = await prisma.restaurant.findFirst({
-        where:  { operatorId: operator.id },
+        where:  { operatorId: operator.id, archivedAt: null },
         select: { id: true },
       })
       if (existing) {
