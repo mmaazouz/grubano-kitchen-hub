@@ -198,10 +198,11 @@ function EstablishmentsManagerInner({
       <div className="space-y-3">
         {establishments.map((e) => {
           const current = e.id === currentId
+          const dashboardLabel = t('openDashboard')
           return (
             <article
               key={e.id}
-              className={`group relative flex items-center gap-3 rounded-grubano-lg border bg-grubano-surface p-4 transition-colors hover:border-grubano-primary ${
+              className={`group relative rounded-grubano-lg border bg-grubano-surface p-4 transition-colors hover:border-grubano-primary ${
                 current ? 'border-grubano-primary' : 'border-grubano-border'
               }`}
             >
@@ -210,54 +211,94 @@ function EstablishmentsManagerInner({
                   card and sits BENEATH the dashboard button (raised to z-10), so
                   the operational "tableau de bord" action stays a distinct click.
                   Affordance: pointer cursor (the <a>), hover border + the chevron
-                  hint row below tell the operator the card is openable. */}
+                  hint row below tell the operator the card is openable.
+
+                  RESPONSIVE (iPhone testing — Mohammed):
+                    Mobile  → name has FULL ROW priority (no truncation to "Res…")
+                              the dashboard CTA collapses to a compact icon button
+                              right of the icon column; the badges stack just below
+                              the name. The address line wraps without clipping.
+                    ≥ md    → the dashboard CTA stretches back to a labelled button. */}
               <Link
                 href={`/dashboard/establishments/${e.id}`}
                 aria-label={t('openHubAria', { name: e.name })}
                 className="absolute inset-0 z-0 rounded-grubano-lg"
               />
 
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-grubano-md bg-grubano-tint text-grubano-primary">
-                <Store size={18} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="truncate text-base font-bold text-grubano-ink transition-colors group-hover:text-grubano-primary">
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-grubano-md bg-grubano-tint text-grubano-primary">
+                  <Store size={18} />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  {/* Name FIRST, on its own line — never truncated by sibling
+                      controls. break-words handles unusually long names. */}
+                  <h3 className="break-words text-base font-bold leading-tight text-grubano-ink transition-colors group-hover:text-grubano-primary">
                     {e.name}
                   </h3>
-                  {current && (
-                    <span className="rounded-full bg-grubano-tint px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-grubano-primary">
-                      {t('selectedChip')}
+                  {/* Badges UNDER the name so they never compete for width. */}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {current && (
+                      <span className="rounded-full bg-grubano-tint px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-grubano-primary">
+                        {t('selectedChip')}
+                      </span>
+                    )}
+                    {/* Sober online/offline — a discreet dot + label, not a loud
+                        tinted pill (atténue le bruit). */}
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-grubano-ink-muted">
+                      <span className={`h-1.5 w-1.5 rounded-full ${e.isActive ? 'bg-grubano-success' : 'bg-grubano-ink-muted/40'}`} />
+                      {e.isActive ? t('liveChip') : t('offlineChip')}
                     </span>
-                  )}
-                  {/* Sober online/offline — a discreet dot + label, not a loud
-                      tinted pill (atténue le bruit). */}
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-grubano-ink-muted">
-                    <span className={`h-1.5 w-1.5 rounded-full ${e.isActive ? 'bg-grubano-success' : 'bg-grubano-ink-muted/40'}`} />
-                    {e.isActive ? t('liveChip') : t('offlineChip')}
+                  </div>
+                  <p className="mt-1 flex items-start gap-1 text-[11px] text-grubano-ink-muted">
+                    <MapPin size={11} className="mt-0.5 shrink-0" />
+                    <span className="break-words">{[e.city, e.address].filter(Boolean).join(' · ')}</span>
+                  </p>
+                  {/* Hub affordance — names the card's destination (brands & menus),
+                      distinct from the dashboard button (operational stats). */}
+                  <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-grubano-ink-muted transition-colors group-hover:text-grubano-primary">
+                    {t('openHub')}
+                    <ChevronRight size={12} className="rtl:rotate-180" />
                   </span>
                 </div>
-                <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-grubano-ink-muted">
-                  <MapPin size={11} className="shrink-0" />
-                  <span className="truncate">{[e.city, e.address].filter(Boolean).join(' · ')}</span>
-                </p>
-                {/* Hub affordance — names the card's destination (brands & menus),
-                    distinct from the dashboard button (operational stats). */}
-                <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-grubano-ink-muted transition-colors group-hover:text-grubano-primary">
-                  {t('openHub')}
-                  <ChevronRight size={12} className="rtl:rotate-180" />
-                </span>
+
+                {/* Mobile: compact icon-only button (saves all horizontal space
+                    for the name). aria-label preserves accessibility. */}
+                <button
+                  type="button"
+                  onClick={() => openDashboardFor(e.id)}
+                  disabled={pending && pendingId === e.id}
+                  aria-label={dashboardLabel}
+                  title={dashboardLabel}
+                  className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-grubano-md border transition-colors disabled:opacity-50 md:hidden ${
+                    current
+                      ? 'border-grubano-primary bg-grubano-primary text-white hover:bg-grubano-primaryHover'
+                      : 'border-grubano-border bg-grubano-surface text-grubano-ink hover:border-grubano-primary hover:text-grubano-primary'
+                  }`}
+                >
+                  {pending && pendingId === e.id ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <LayoutDashboard size={15} />
+                  )}
+                </button>
               </div>
-              <Button
-                variant={current ? 'primary' : 'secondary'}
-                size="sm"
-                className="relative z-10"
-                loading={pending && pendingId === e.id}
-                leftIcon={<LayoutDashboard size={14} />}
-                onClick={() => openDashboardFor(e.id)}
-              >
-                {t('openDashboard')}
-              </Button>
+
+              {/* Desktop CTA — full labelled button, in its own row so we never
+                  squeeze the name. Hidden on mobile (the icon button above
+                  replaces it). */}
+              <div className="mt-3 hidden justify-end md:flex">
+                <Button
+                  variant={current ? 'primary' : 'secondary'}
+                  size="sm"
+                  className="relative z-10"
+                  loading={pending && pendingId === e.id}
+                  leftIcon={<LayoutDashboard size={14} />}
+                  onClick={() => openDashboardFor(e.id)}
+                >
+                  {dashboardLabel}
+                </Button>
+              </div>
             </article>
           )
         })}
