@@ -436,6 +436,12 @@ model Restaurant {
   deliveryRadius     Int     @default(5)    // km
   pickupPrepTime     Int     @default(15)   // minutes
   deliveryPrepTime   Int     @default(30)   // minutes
+  // ── Reservation default duration (Finitions Tables, additive) ───────────────
+  // ADDITIVE + non-destructive: how long a table is held by default, in minutes.
+  // NOT NULL @default(60) → `db push` (ADD COLUMN ... NOT NULL DEFAULT 60)
+  // backfills every existing row to 60. A reservation can still override it; the
+  // POST /api/reservations uses sent duration → this establishment default → 60.
+  defaultReservationDurationMin Int @default(60)
   pickupAddress      String?
   pickupInstructions String? @db.Text
   // ── Opening hours (Option B, additive step 1) ───────────────────────────────
