@@ -21,6 +21,9 @@ const FulfillmentInput = z.object({
   deliveryPrepTime:   z.number().int().min(0).max(180).optional(),
   pickupAddress:      z.string().max(500).nullable().optional(),
   pickupInstructions: z.string().max(2000).nullable().optional(),
+  // Default table-hold duration (minutes) used to pre-fill the reservation modal.
+  // Bounded 15..600; a reservation can still override it at creation time.
+  defaultReservationDurationMin: z.number().int().min(15).max(600).optional(),
 })
 
 // Pull only the fulfillment-relevant columns when returning to the client.
@@ -36,6 +39,7 @@ const SELECT_FULFILLMENT = {
   deliveryPrepTime:   true,
   pickupAddress:      true,
   pickupInstructions: true,
+  defaultReservationDurationMin: true,
 } as const
 
 // Confirm the session user owns the restaurant (or is admin). Returns the

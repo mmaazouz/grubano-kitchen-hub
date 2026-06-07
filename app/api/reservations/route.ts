@@ -24,7 +24,12 @@ const createSchema = z.object({
   email:        z.string().email().optional(),
   guests:       z.number().int().min(1).max(30),
   date:         z.string().datetime(),
-  endTime:      z.string().datetime(),
+  // endTime is optional: when a durationMin is sent the server computes it; when
+  // neither is sent the establishment default (else 60 min) is applied. A sent
+  // endTime is kept for backward-compatibility with the current form.
+  endTime:      z.string().datetime().optional(),
+  // Optional per-reservation duration override (minutes). Wins over endTime.
+  durationMin:  z.number().int().min(15).max(600).optional(),
   type:         z.enum(['quick', 'standard', 'full']).default('standard'),
   allergies:    z.array(z.string()).default([]),
   preOrder:     z.array(z.unknown()).default([]),
@@ -89,7 +94,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { restaurantId: bodyRestaurantId, ...data } = createSchema.parse(body)
+    const { restaurantId: bodyRestaurantId, durationMin, endTime: bodyEndTime, ...data } =
+      createSchema.parse(body)
 
     // Reject a slot that already started (server is the authority). Validated
     // before any DB work so a clearly-past booking fails fast and cheap.
@@ -129,13 +135,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Établissement non autorisé' }, { status: 403 })
     }
 
-    // Check table availability
+    // Resolve the slot end (server is the authority). Priority:
+    //   1. an explicit per-reservation durationMin override,
+    //   2. an endTime sent by the form (legacy / current behaviour),
+    //   3. the establishment's default reservation duration, else 60 minutes.
+    let endTime: Date
+    if (durationMin != null) {
+      endTime = new Date(start.getTime() + durationMin * 60_000)
+    } else if (bodyEndTime) {
+      endTime = new Date(bodyEndTime)
+    } else {
+      let defaultMin = 60
+      if (resaRestaurantId) {
+        const est = await prisma.restaurant.findUnique({
+          where:  { id: resaRestaurantId },
+          select: { defaultReservationDurationMin: true },
+        })
+        defaultMin = est?.defaultReservationDurationMin ?? 60
+      }
+      endTime = new Date(start.getTime() + defaultMin * 60_000)
+    }
+
+    // Check table availability over the resolved [start, endTime) slot.
     const conflict = await prisma.reservation.findFirst({
       where: {
         tableId: data.tableId,
         status:  { notIn: ['cancelled', 'noshow'] },
-        date:    { lt: new Date(data.endTime) },
-        endTime: { gt: new Date(data.date) },
+        date:    { lt: endTime },
+        endTime: { gt: start },
       },
     })
 
@@ -150,8 +177,8 @@ export async function POST(req: Request) {
       data: {
         ...data,
         restaurantId: resaRestaurantId,
-        date:     new Date(data.date),
-        endTime:  new Date(data.endTime),
+        date:     start,
+        endTime,
         allergies: data.allergies as unknown as Prisma.InputJsonValue,
         preOrder:  data.preOrder  as unknown as Prisma.InputJsonValue,
       } as unknown as Prisma.ReservationUncheckedCreateInput,

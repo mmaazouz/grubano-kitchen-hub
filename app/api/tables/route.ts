@@ -19,15 +19,26 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: scope.error }, { status: scope.status })
     }
     if (!scope.restaurantId) {
-      // Operator has no establishment yet → no tables to show.
-      return NextResponse.json({ tables: [] })
+      // Operator has no establishment yet → no tables, default duration only.
+      return NextResponse.json({ tables: [], defaultDurationMin: 60 })
     }
 
-    const tables = await prisma.restaurantTable.findMany({
-      where:   { active: true, restaurantId: scope.restaurantId },
-      orderBy: { name: 'asc' },
+    // Tables of the current establishment + that establishment's default
+    // reservation duration (exposed so the UI can pre-fill the booking modal).
+    const [tables, establishment] = await Promise.all([
+      prisma.restaurantTable.findMany({
+        where:   { active: true, restaurantId: scope.restaurantId },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.restaurant.findUnique({
+        where:  { id: scope.restaurantId },
+        select: { defaultReservationDurationMin: true },
+      }),
+    ])
+    return NextResponse.json({
+      tables,
+      defaultDurationMin: establishment?.defaultReservationDurationMin ?? 60,
     })
-    return NextResponse.json({ tables })
   } catch (err) {
     console.error('[GET /api/tables]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
