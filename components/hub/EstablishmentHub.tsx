@@ -296,7 +296,7 @@ export default function EstablishmentHub({
           <p className="text-sm font-bold text-foreground">{t('emptyTitle')}</p>
           <p className="max-w-xs text-xs text-muted-foreground">{t('emptyDesc')}</p>
           <Link
-            href="/brands"
+            href={`/brands?restaurantId=${establishment.id}`}
             className="mt-2 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <Plus size={16} /> {t('emptyCta')}
@@ -375,7 +375,7 @@ export default function EstablishmentHub({
 
           {/* Add a brand → /brands (scratch or copy, focused create page). */}
           <Link
-            href="/brands"
+            href={`/brands?restaurantId=${establishment.id}`}
             className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary"
           >
             <span className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-primary">

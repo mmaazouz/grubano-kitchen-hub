@@ -1,7 +1,8 @@
 'use client'
 
 import { Link } from '@/navigation'
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Plus, Sparkles, Copy, Check, ArrowLeft, AlertTriangle,
@@ -67,8 +68,15 @@ type ReadoptStatus = 'idle' | 'loading' | 'done' | 'taken' | 'error'
 interface ReadoptItem { creatorDishId: string; name: string; sellingPrice: number; status: ReadoptStatus }
 interface ReadoptState { brandId: string; items: ReadoptItem[] }
 
-export default function BrandsCreatePage() {
+function BrandsCreateInner() {
   const t = useTranslations('brands')
+
+  // The establishment the operator clicked "Ajouter une marque" from, passed by
+  // the hub as ?restaurantId=… so the new brand attaches to THAT establishment
+  // instead of the cookie-selected / oldest one. Ownership is enforced server-side
+  // (POST /api/brands rejects a foreign id with 400) — never resolved by city.
+  const searchParams          = useSearchParams()
+  const requestedRestaurantId = searchParams.get('restaurantId')
 
   // Existing brands (used as the source list for the copy mode + as a guard
   // ("you can't copy if you have none yet")).
@@ -124,12 +132,18 @@ export default function BrandsCreatePage() {
   // operator just picks a source and clicks once.
   useEffect(() => {
     if (!copyTarget) {
-      setCopyTarget(currentEstablishmentId ?? establishments[0]?.id ?? '')
+      // Prefer the establishment we came from (?restaurantId=…) when it's one of
+      // the operator's own; otherwise fall back to the selected / first one.
+      const preferred =
+        requestedRestaurantId && establishments.some((e) => e.id === requestedRestaurantId)
+          ? requestedRestaurantId
+          : (currentEstablishmentId ?? establishments[0]?.id ?? '')
+      setCopyTarget(preferred)
     }
     if (!copySource && brands.length > 0) {
       setCopySource(brands[0].id)
     }
-  }, [brands, establishments, currentEstablishmentId, copySource, copyTarget])
+  }, [brands, establishments, currentEstablishmentId, requestedRestaurantId, copySource, copyTarget])
 
   // ── Scratch submit ─────────────────────────────────────────────────────────
   async function submitScratch(e: React.FormEvent) {
@@ -140,6 +154,10 @@ export default function BrandsCreatePage() {
     }
     setError('')
     setSaving(true)
+    // Attach to the establishment we came from (?restaurantId=…) when present,
+    // else the cookie-selected / first establishment. The server re-checks
+    // ownership and rejects a foreign id with 400 — we never resolve by city.
+    const targetEstabId = requestedRestaurantId ?? currentEstablishmentId ?? establishments[0]?.id ?? null
     try {
       const res = await fetch('/api/brands', {
         method:  'POST',
@@ -149,8 +167,9 @@ export default function BrandsCreatePage() {
           emoji:       form.emoji,
           cuisineType: form.cuisineType,
           tagline:     form.tagline.trim() || null,
-          // Attach to the active establishment so the hierarchy holds.
-          restaurantId: (currentEstablishmentId ?? establishments[0]?.id) || undefined,
+          // Explicit target establishment (verified owner-side); null only when
+          // the operator has none.
+          restaurantId: targetEstabId || undefined,
         }),
       })
       if (res.status === 401) { window.location.href = '/business/auth'; return }
@@ -161,7 +180,6 @@ export default function BrandsCreatePage() {
       }
       // After create: bounce back to the hub of the target establishment so the
       // operator sees their freshly-created brand listed where it belongs.
-      const targetEstabId = currentEstablishmentId ?? establishments[0]?.id ?? null
       if (targetEstabId) {
         window.location.href = `/dashboard/establishments/${targetEstabId}`
         return
@@ -483,5 +501,15 @@ export default function BrandsCreatePage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function BrandsCreatePage() {
+  // useSearchParams() (read in BrandsCreateInner) requires a Suspense boundary in
+  // the Next.js 14 App Router, or the build fails with a CSR-bailout error.
+  return (
+    <Suspense fallback={null}>
+      <BrandsCreateInner />
+    </Suspense>
   )
 }
