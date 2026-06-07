@@ -235,7 +235,13 @@
       "emptyTitle": "Aún no hay marcas",
       "emptyDesc": "Añade tu primera marca para empezar tu carta.",
       "loading": "Cargando…",
-      "emptyCta": "Crear una marca"
+      "emptyCta": "Crear una marca",
+      "accessDelivery": "Entrega · Recogida",
+      "editBrand": "Editar",
+      "deleteBrand": "Eliminar",
+      "editBrandAria": "Editar la marca {name}",
+      "deleteBrandAria": "Eliminar la marca {name}",
+      "brandActionsHint": "Acciones"
     }
   },
   "orders": {
@@ -1109,7 +1115,10 @@
     "readoptCityTaken": "Ciudad ocupada",
     "readoptError": "Error — reintentar",
     "readoptClose": "Listo",
-    "brandKind": "Marca virtual"
+    "brandKind": "Marca virtual",
+    "pageTitleCreate": "Nueva marca",
+    "pageDescCreate": "Crea una marca desde cero o copia una marca existente a este establecimiento.",
+    "backToHub": "Volver a mis establecimientos"
   },
   "business": {
     "auth": {

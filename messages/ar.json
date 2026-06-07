@@ -235,7 +235,13 @@
       "emptyTitle": "لا توجد علامات تجارية بعد",
       "emptyDesc": "أضف علامتك التجارية الأولى لبدء قائمتك.",
       "loading": "جارٍ التحميل…",
-      "emptyCta": "إنشاء علامة تجارية"
+      "emptyCta": "إنشاء علامة تجارية",
+      "accessDelivery": "التوصيل · الاستلام",
+      "editBrand": "تعديل",
+      "deleteBrand": "حذف",
+      "editBrandAria": "تعديل العلامة التجارية {name}",
+      "deleteBrandAria": "حذف العلامة التجارية {name}",
+      "brandActionsHint": "إجراءات"
     }
   },
   "orders": {
@@ -1109,7 +1115,10 @@
     "readoptCityTaken": "المدينة محجوزة",
     "readoptError": "فشل — أعد المحاولة",
     "readoptClose": "تم",
-    "brandKind": "علامة افتراضية"
+    "brandKind": "علامة افتراضية",
+    "pageTitleCreate": "علامة تجارية جديدة",
+    "pageDescCreate": "أنشئ علامة تجارية من الصفر أو انسخ علامة تجارية موجودة إلى هذه المنشأة.",
+    "backToHub": "العودة إلى منشآتي"
   },
   "business": {
     "auth": {

@@ -235,7 +235,13 @@
       "emptyTitle": "No brand yet",
       "emptyDesc": "Add your first brand to start your menu.",
       "loading": "Loading…",
-      "emptyCta": "Create a brand"
+      "emptyCta": "Create a brand",
+      "accessDelivery": "Delivery · Pickup",
+      "editBrand": "Edit",
+      "deleteBrand": "Delete",
+      "editBrandAria": "Edit brand {name}",
+      "deleteBrandAria": "Delete brand {name}",
+      "brandActionsHint": "Actions"
     }
   },
   "orders": {
@@ -1109,7 +1115,10 @@
     "readoptCityTaken": "City taken",
     "readoptError": "Failed — retry",
     "readoptClose": "Done",
-    "brandKind": "Virtual brand"
+    "brandKind": "Virtual brand",
+    "pageTitleCreate": "New brand",
+    "pageDescCreate": "Create a brand from scratch, or copy an existing brand into this establishment.",
+    "backToHub": "Back to my establishments"
   },
   "business": {
     "auth": {

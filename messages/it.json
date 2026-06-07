@@ -235,7 +235,13 @@
       "emptyTitle": "Ancora nessun marchio",
       "emptyDesc": "Aggiungi il tuo primo marchio per iniziare il menù.",
       "loading": "Caricamento…",
-      "emptyCta": "Crea un marchio"
+      "emptyCta": "Crea un marchio",
+      "accessDelivery": "Consegna · Ritiro",
+      "editBrand": "Modifica",
+      "deleteBrand": "Elimina",
+      "editBrandAria": "Modifica il marchio {name}",
+      "deleteBrandAria": "Elimina il marchio {name}",
+      "brandActionsHint": "Azioni"
     }
   },
   "orders": {
@@ -1109,7 +1115,10 @@
     "readoptCityTaken": "Città occupata",
     "readoptError": "Errore — riprova",
     "readoptClose": "Fatto",
-    "brandKind": "Marchio virtuale"
+    "brandKind": "Marchio virtuale",
+    "pageTitleCreate": "Nuovo marchio",
+    "pageDescCreate": "Crea un marchio da zero o copia un marchio esistente in questa struttura.",
+    "backToHub": "Torna alle mie strutture"
   },
   "business": {
     "auth": {
