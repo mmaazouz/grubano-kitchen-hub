@@ -427,6 +427,14 @@ model Restaurant {
   lat          Float?
   lng          Float?
   isActive     Boolean  @default(true)
+  // ── Soft delete (Suppression etablissement, additive) ───────────────────────
+  // ADDITIVE + REVERSIBLE: when an establishment WITH order history is "deleted"
+  // it is ARCHIVED (archivedAt set) instead of hard-deleted, so the sales history
+  // is preserved. A truly empty establishment (0 orders) is hard-deleted instead.
+  // Nullable → every existing row stays valid with no backfill; dropping the
+  // column is non-destructive. ALL operator/consumer listings filter archivedAt
+  // = null, so an archived establishment never reappears in the UI or aggregates.
+  archivedAt   DateTime?
   // ── Fulfillment settings (operator-controlled) ──
   // Booleans toggle which fulfillment channels this restaurant offers.
   // All defaults preserve current behaviour: delivery on, pickup/reservation off.
