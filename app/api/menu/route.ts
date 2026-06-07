@@ -1,26 +1,44 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
+// Nullable optional fields use .nullish() (accepts undefined AND null), NOT
+// .optional() (undefined only). The "Manuel" form posts these fields as `null`
+// when left blank (newItem() seeds calories: null) — with .optional() that null
+// was rejected by Zod → HTTP 400 → the dish was NEVER written to the DB and the
+// client swallowed the error. The columns are nullable in Prisma, so null is a
+// valid stored value here.
 const createSchema = z.object({
-  brandId:     z.string(),
+  brandId:     z.string().min(1),
   name:        z.string().min(1).max(100),
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).nullish(),
   price:       z.number().positive(),
-  comparePrice:z.number().positive().optional(),
+  comparePrice:z.number().positive().nullish(),
   category:    z.string().min(1).max(50),
-  calories:    z.number().int().positive().optional(),
+  calories:    z.number().int().positive().nullish(),
   allergens:   z.array(z.string()).default([]),
   labels:      z.array(z.string()).default([]),
   photos:      z.array(z.string()).default([]),
   options:     z.array(z.record(z.unknown())).default([]),
   available:   z.boolean().default(true),
   isPopular:   z.boolean().default(false),
-  prepTime:    z.number().int().positive().optional(),
+  prepTime:    z.number().int().positive().nullish(),
 })
+
+/** Resolve the calling operator from the session — null on any failure. */
+async function callerOperator() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) return null
+  return prisma.operator.findUnique({
+    where:  { email: session.user.email },
+    select: { id: true, role: true },
+  })
+}
 
 const updateSchema = createSchema.partial().extend({ id: z.string() })
 
@@ -51,8 +69,29 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    // Owner-scope the creation: only an authenticated restaurant/admin can add a
+    // dish, and only to a brand they own. The brandId comes from the body but is
+    // VERIFIED against the session operator — never trusted blindly.
+    const operator = await callerOperator()
+    if (!operator) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+    }
+    if (!['restaurant', 'admin'].includes(operator.role)) {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    }
+
     const body = await req.json()
     const data = createSchema.parse(body)
+
+    const brand = await prisma.brand.findFirst({
+      where: operator.role === 'admin'
+        ? { id: data.brandId }
+        : { id: data.brandId, operatorId: operator.id },
+      select: { id: true },
+    })
+    if (!brand) {
+      return NextResponse.json({ error: 'Marque introuvable ou non autorisée' }, { status: 400 })
+    }
 
     const item = await prisma.menuItem.create({
       data: data as unknown as Prisma.MenuItemUncheckedCreateInput,
@@ -63,6 +102,12 @@ export async function POST(req: Request) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
     }
+    // FK / record-not-found at the DB level → a client data problem, surface a
+    // clean 400 instead of an opaque 500.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2003' || err.code === 'P2025')) {
+      return NextResponse.json({ error: 'Marque invalide — plat non créé.' }, { status: 400 })
+    }
+    console.error('[POST /api/menu]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
