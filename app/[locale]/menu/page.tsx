@@ -162,7 +162,12 @@ function MenuBuilder() {
     if (!bId) return
     setLoading(true)
     try {
-      const r = await fetch(`/api/menu?brandId=${bId}`)
+      // cache: 'no-store' — client fetches don't go through the Next.js Data
+      // Cache (server-side only) but the BROWSER may heuristically cache GETs
+      // when the API doesn't send Cache-Control. Without no-store, a brand
+      // mutation in another tab leaves /menu showing the pre-mutation items
+      // until a manual reload (the exact symptom Mohammed reported).
+      const r = await fetch(`/api/menu?brandId=${bId}`, { cache: 'no-store' })
       if (r.ok) {
         const d = await r.json()
         setItems(d.items ?? [])
@@ -172,6 +177,23 @@ function MenuBuilder() {
     }
   }, [])
 
+  // ── Brand + establishment loader (extracted so we can reuse it on regain of
+  //    focus). cache: 'no-store' for the same reason as loadItems above. ─────
+  const loadBrandsAndEstablishments = useCallback(
+    async (preferredBrandId: string) => {
+      const [brandsResp, estResp] = await Promise.all([
+        fetch('/api/brands/summary', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch('/api/establishments',  { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      ])
+      const list: Brand[] = Array.isArray(brandsResp?.brands) ? brandsResp.brands : []
+      const ests: EstablishmentLite[] = Array.isArray(estResp?.establishments)
+        ? estResp.establishments.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name }))
+        : []
+      return { list, ests, preferredBrandId }
+    },
+    [],
+  )
+
   useEffect(() => {
     // Wait for the session before fetching — owner-scoping is enforced
     // server-side on /api/brands/summary (operatorId from session, never body),
@@ -180,40 +202,90 @@ function MenuBuilder() {
     if (!operatorId) { setBrandsLoading(false); setLoading(false); return }
 
     setBrandsLoading(true)
-    // Switched from /api/brands?operatorId=… to /api/brands/summary because the
-    // SUMMARY endpoint exposes Brand.restaurantId (added by Agent 2 in b5a850f),
-    // which we need to scope the selector to the marques of the SAME
-    // establishment as the requested brand — instead of dumping every brand of
-    // the operator (= up to 20 establishments × 3 marques = 60 chips, unusable).
-    Promise.all([
-      fetch('/api/brands/summary').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-      fetch('/api/establishments').then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    ])
-      .then(([brandsResp, estResp]) => {
-        const list: Brand[] = Array.isArray(brandsResp?.brands) ? brandsResp.brands : []
+    let cancelled = false
+    loadBrandsAndEstablishments(requestedBrandId)
+      .then(({ list, ests }) => {
+        if (cancelled) return
         setBrands(list)
-        if (Array.isArray(estResp?.establishments)) {
-          setEstablishments(
-            estResp.establishments.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })),
-          )
-        }
+        setEstablishments(ests)
         if (list.length > 0) {
           // Honour ?brand=<id> when it points at one of the operator's own
-          // brands; otherwise fall back to the first brand. The server-side
+          // brands; otherwise fall back to the first brand. Server-side
           // owner-scoping on the summary endpoint guarantees the requested id
           // is always one the caller owns (or it just won't be in `list`).
           const chosen = requestedBrandId && list.some((b) => b.id === requestedBrandId)
             ? requestedBrandId
             : list[0].id
           setBrandId(chosen)
+          setItems([])      // avoid showing stale items from a previous brand
           loadItems(chosen)
         } else {
           setLoading(false)
         }
       })
-      .catch(() => setLoading(false))
-      .finally(() => setBrandsLoading(false))
-  }, [status, operatorId, requestedBrandId, loadItems])
+      .catch(() => { if (!cancelled) setLoading(false) })
+      .finally(() => { if (!cancelled) setBrandsLoading(false) })
+    return () => { cancelled = true }
+  }, [status, operatorId, requestedBrandId, loadItems, loadBrandsAndEstablishments])
+
+  // ── Cross-tab / cross-window freshness ─────────────────────────────────────
+  // When the operator creates or deletes a brand from the hub (another tab) and
+  // comes back to /menu, refresh the brand list + items so the page reflects
+  // reality without a manual reload. Trigger on:
+  //   • visibilitychange → user switches back to the tab,
+  //   • pageshow         → BFCache restore (Safari, iPhone Mohammed test).
+  // If the currently-selected brand has just been DELETED upstream, fall back
+  // to the first available brand in the SAME establishment scope; if that
+  // establishment is now brand-less, fall back to the first remaining brand
+  // overall — never get stuck on a dangling id that would show the menu of a
+  // brand that no longer exists.
+  useEffect(() => {
+    if (!operatorId) return
+
+    function refreshFromFocus() {
+      if (typeof document === 'undefined' || document.visibilityState !== 'visible') return
+      loadBrandsAndEstablishments(brandId)
+        .then(({ list, ests }) => {
+          setBrands(list)
+          setEstablishments(ests)
+          if (list.length === 0) {
+            setBrandId('')
+            setItems([])
+            return
+          }
+          // Did the currently-selected brand survive?
+          const stillExists = list.some((b) => b.id === brandId)
+          if (stillExists) {
+            // Brand still alive — re-pull its items to catch upstream menu
+            // edits (e.g. a dish toggled by another tab).
+            loadItems(brandId)
+            return
+          }
+          // Selected brand vanished → pick a replacement, preferring one in
+          // the same establishment if we can guess which it was. We resolve
+          // the previous restaurantId from the PREVIOUS `brands` snapshot (the
+          // closure value) rather than the derived `currentRestaurantId`, so
+          // this effect can't depend on a value declared later in the body.
+          const prev = brands.find((b) => b.id === brandId) ?? null
+          const prevRestaurantId = prev?.restaurantId ?? null
+          const sameEstab = prevRestaurantId
+            ? list.find((b) => b.restaurantId === prevRestaurantId)
+            : null
+          const next = sameEstab ?? list[0]
+          setBrandId(next.id)
+          setItems([])
+          loadItems(next.id)
+        })
+        .catch(() => { /* keep current state on transient errors */ })
+    }
+
+    document.addEventListener('visibilitychange', refreshFromFocus)
+    window.addEventListener('pageshow', refreshFromFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', refreshFromFocus)
+      window.removeEventListener('pageshow', refreshFromFocus)
+    }
+  }, [operatorId, brandId, brands, loadItems, loadBrandsAndEstablishments])
 
   // ── Scope the brand selector to the CURRENT establishment ─────────────────
   // The brand opened via ?brand=<id> belongs to ONE establishment
@@ -659,7 +731,10 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   useEffect(() => {
     let alive = true
     setLoading(true)
-    fetch('/api/dishes/available')
+    // cache: 'no-store' — without it the browser may serve a stale catalogue
+    // after the operator adopts a dish in another tab, masking the
+    // alreadyAdopted/cityTaken flags this UI depends on.
+    fetch('/api/dishes/available', { cache: 'no-store' })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error('load'))))
       .then(d => {
         if (!alive) return
