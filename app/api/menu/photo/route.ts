@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createHash } from 'crypto'
+import Anthropic from '@anthropic-ai/sdk'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
@@ -25,6 +26,48 @@ export const dynamic = 'force-dynamic'
 const MAX_BYTES = 8 * 1024 * 1024 // 8 MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 const CLOUDINARY_FOLDER = 'grubano/dishes'
+
+// Reads ANTHROPIC_API_KEY from the environment (same as scan-dish).
+const claude = new Anthropic()
+
+// Strict moderation prompt. The model must return ONLY JSON {allowed, reason}.
+const MODERATION_PROMPT =
+  'You are a strict content moderator for a food-ordering app. The image MUST be an ' +
+  'appropriate photograph of a dish, food, or drink. REJECT (allowed=false) if it ' +
+  'contains ANY of: sexual or nude content; violence, gore or shocking/disturbing ' +
+  'imagery; hateful or offensive content; a person as the main subject; or content ' +
+  'that is clearly NOT food (documents, screenshots, memes, logos or text as the main ' +
+  'subject, random objects). ACCEPT (allowed=true) ONLY a genuine, appropriate photo of ' +
+  'food or drink. Respond with ONLY valid JSON, no markdown, exactly: ' +
+  '{"allowed": boolean, "reason": "short reason IN FRENCH when rejected, empty string when allowed"}.'
+
+type Moderation = { allowed: boolean; reason: string }
+
+/** Run Claude vision on the image. Throws if the call/parse fails (caller fails closed). */
+async function moderateImage(
+  imageBase64: string,
+  mediaType: (typeof ALLOWED_TYPES)[number],
+): Promise<Moderation> {
+  const msg = await claude.messages.create({
+    model:      'claude-sonnet-4-5',
+    max_tokens: 256,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+        { type: 'text',  text: MODERATION_PROMPT },
+      ],
+    }],
+  })
+  const first = msg.content[0]
+  const raw   = first && first.type === 'text' ? first.text : ''
+  const clean = raw.replace(/```json\n?|\n?```/g, '').trim()
+  const parsed = JSON.parse(clean) as { allowed?: unknown; reason?: unknown }
+  return {
+    allowed: parsed.allowed === true,
+    reason:  typeof parsed.reason === 'string' ? parsed.reason : '',
+  }
+}
 
 const bodySchema = z.object({
   imageBase64: z.string().min(1),
@@ -137,11 +180,34 @@ export async function POST(req: Request) {
       }
     }
 
-    // ── 4. Upload (moderation is inserted before this in commit 2) ────────────
+    // ── 3. Moderation (BLOCKING) — never store an image Claude rejects ────────
+    // Moderate the buffer BEFORE any upload, so a rejected image is never stored.
+    let moderation: Moderation
+    try {
+      moderation = await moderateImage(imageBase64, mediaType)
+    } catch (err) {
+      // Fail CLOSED: if moderation cannot be evaluated, do not store anything.
+      console.error('[POST /api/menu/photo] moderation failed', err)
+      return NextResponse.json(
+        { error: 'Modération indisponible, réessayez dans un instant.' },
+        { status: 503 },
+      )
+    }
+    if (!moderation.allowed) {
+      return NextResponse.json(
+        {
+          error: `Cette image a été refusée : ${moderation.reason || 'contenu inapproprié'}`,
+          moderation,
+        },
+        { status: 422 },
+      )
+    }
+
+    // ── 4. Upload to Cloudinary (only reached once moderation passed) ─────────
     const dataUri = `data:${mediaType};base64,${imageBase64}`
     const url = await uploadToCloudinary(dataUri)
 
-    return NextResponse.json({ url, photos: [url] }, { status: 201 })
+    return NextResponse.json({ url, photos: [url], moderation }, { status: 201 })
   } catch (err) {
     if (err instanceof Error && err.message === 'cloudinary_not_configured') {
       console.error('[POST /api/menu/photo] Cloudinary env vars missing')
