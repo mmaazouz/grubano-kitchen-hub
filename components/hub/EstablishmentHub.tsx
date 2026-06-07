@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { Link } from '@/navigation'
 import {
   MapPin, Clock, CalendarDays, Truck, Plus, ChevronRight, UtensilsCrossed,
-  Sparkles, Store, Loader2, Pencil, Trash2,
+  Sparkles, Store, Loader2, Pencil, Trash2, AlertTriangle, Check,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -87,6 +87,7 @@ export default function EstablishmentHub({
 }) {
   const t  = useTranslations('dashboard.hub')
   const tb = useTranslations('brands')
+  const td = useTranslations('dashboard.hub.danger')
 
   const [brands, setBrands]   = useState<BrandSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -97,10 +98,24 @@ export default function EstablishmentHub({
   const [saving, setSaving]             = useState(false)
   const [editError, setEditError]       = useState('')
 
-  // ── Delete confirm state ────────────────────────────────────────────────────
+  // ── Delete-BRAND confirm state ──────────────────────────────────────────────
   const [toDelete, setToDelete]         = useState<BrandSummary | null>(null)
   const [deleting, setDeleting]         = useState(false)
   const [deleteError, setDeleteError]   = useState('')
+
+  // ── Delete-ESTABLISHMENT confirm state ──────────────────────────────────────
+  // Consommé via DELETE /api/restaurants/[id] (Agent 2 e94ca18) qui décide
+  // soft (archive) vs hard (suppression). On rend l'action volontairement peu
+  // accessible : section sobre en bas, modale avec re-saisie du nom.
+  const [estabDeleteOpen,   setEstabDeleteOpen]   = useState(false)
+  const [estabDeleteTyped,  setEstabDeleteTyped]  = useState('')
+  const [estabDeleting,     setEstabDeleting]     = useState(false)
+  const [estabDeleteError,  setEstabDeleteError]  = useState('')
+  // After DELETE returns, we replace the form with a brief success panel
+  // showing the actual mode ("archived" vs "deleted"), then hard-navigate to
+  // /dashboard/establishments so the operator visually confirms before the
+  // page reloads. null = form still showing.
+  const [estabDeleteResult, setEstabDeleteResult] = useState<'archived' | 'deleted' | null>(null)
 
   async function loadBrands() {
     try {
@@ -205,6 +220,39 @@ export default function EstablishmentHub({
       setEditError(tb('errNetwork'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ── Delete THIS establishment (Agent 2's DELETE /api/restaurants/[id]) ─────
+  async function confirmEstablishmentDelete() {
+    if (estabDeleteTyped !== establishment.name) return  // typed-name guard
+    setEstabDeleteError('')
+    setEstabDeleting(true)
+    try {
+      const r = await fetch(`/api/restaurants/${establishment.id}`, { method: 'DELETE' })
+      if (r.status === 401) { window.location.href = '/business/auth'; return }
+      if (r.status === 403) { setEstabDeleteError(td('errorForbidden')); return }
+      if (r.status === 404) { setEstabDeleteError(td('errorNotFound'));  return }
+      const d = await r.json().catch(() => null)
+      if (!r.ok) {
+        setEstabDeleteError((d && (d.error as string)) || td('errorGeneric'))
+        return
+      }
+      // Agent 2 returns { mode: "archived" | "deleted", id, name }. Show the
+      // matching success panel in the modal for ~1.4 s so the operator gets a
+      // visual confirmation BEFORE the navigate, then hard-navigate so every
+      // cache (Router, fetch, browser, the hub itself) is bypassed and the
+      // list reflects reality.
+      const mode: 'archived' | 'deleted' =
+        d?.mode === 'archived' || d?.mode === 'deleted' ? d.mode : 'deleted'
+      setEstabDeleteResult(mode)
+      setTimeout(() => {
+        window.location.href = '/dashboard/establishments'
+      }, 1400)
+    } catch {
+      setEstabDeleteError(td('errorGeneric'))
+    } finally {
+      setEstabDeleting(false)
     }
   }
 
@@ -505,6 +553,141 @@ export default function EstablishmentHub({
               </Button>
               <Button type="button" variant="danger" size="md" loading={deleting} className="flex-1" onClick={confirmDelete}>
                 {tb('confirmDelete')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── DANGER ZONE — supprimer cet établissement ─────────────────────────
+          Action destructive volontairement difficile d'accès : section sobre
+          en BAS du hub, bouton rouge size sm (jamais en cible de clic
+          accidentel), modale avec re-saisie du nom. Pour le dernier
+          établissement, le bouton est désactivé + message expliquant pourquoi
+          — on n'autorise pas un compte à se retrouver sans établissement
+          via cette UI. */}
+      <section className="mt-10 border-t border-border pt-5">
+        <div className="flex items-start gap-2">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-destructive" />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-sm font-semibold text-foreground">
+              {td('title')}
+            </h2>
+            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+              {td('intro')}
+            </p>
+            {establishmentsCount <= 1 ? (
+              <p className="mt-3 rounded-grubano-md border border-border bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                {td('lastBlocker')}
+              </p>
+            ) : (
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="sm"
+                  leftIcon={<Trash2 size={13} />}
+                  onClick={() => {
+                    setEstabDeleteTyped('')
+                    setEstabDeleteError('')
+                    setEstabDeleteOpen(true)
+                  }}
+                  aria-label={td('buttonAria', { name: establishment.name })}
+                >
+                  {td('button')}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Modale confirm suppression établissement ───────────────────────── */}
+      <Modal
+        open={estabDeleteOpen}
+        onClose={() => { if (!estabDeleting && !estabDeleteResult) setEstabDeleteOpen(false) }}
+        size="md"
+        title={td('modalTitle')}
+      >
+        {estabDeleteResult ? (
+          /* Success panel — visible for ~1.4 s before the hard-navigate. The
+             message reflects the ACTUAL server outcome (archived vs deleted)
+             rather than a generic confirmation. */
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-grubano-success-tint text-grubano-success">
+              <Check size={22} />
+            </span>
+            <p className="text-grubano-base font-semibold text-grubano-ink">
+              {estabDeleteResult === 'archived'
+                ? td('resultArchived')
+                : td('resultDeleted')}
+            </p>
+            <p className="text-[11px] text-grubano-ink-muted">
+              <Loader2 size={11} className="me-1 inline animate-spin" />
+              …
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-grubano-sm leading-relaxed text-grubano-ink-muted">
+              {td('modalBody')}
+            </p>
+
+            <ul className="space-y-1.5 rounded-grubano-md border border-grubano-warning/30 bg-grubano-warning-tint px-3 py-2.5 text-[11px] text-grubano-ink">
+              <li className="flex items-start gap-2">
+                <Check size={11} className="mt-0.5 shrink-0 text-grubano-warning" />
+                <span>{td('modalIntroSoft')}</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check size={11} className="mt-0.5 shrink-0 text-grubano-warning" />
+                <span>{td('modalIntroHard')}</span>
+              </li>
+            </ul>
+
+            <div>
+              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">
+                {td('typeNameLabel', { name: establishment.name })}
+              </label>
+              <input
+                type="text"
+                value={estabDeleteTyped}
+                onChange={(e) => setEstabDeleteTyped(e.target.value)}
+                placeholder={td('typeNameInput')}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                disabled={estabDeleting}
+                className="w-full rounded-grubano-md border border-grubano-border bg-grubano-surface px-3 py-2 text-grubano-sm text-grubano-ink outline-none transition focus:border-grubano-danger disabled:opacity-60"
+              />
+            </div>
+
+            {estabDeleteError && (
+              <div className="rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
+                <p className="font-semibold">{td('errorTitle')}</p>
+                <p className="mt-0.5">{estabDeleteError}</p>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                onClick={() => setEstabDeleteOpen(false)}
+                disabled={estabDeleting}
+              >
+                {td('cancel')}
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="md"
+                className="flex-1"
+                loading={estabDeleting}
+                disabled={estabDeleteTyped !== establishment.name}
+                onClick={confirmEstablishmentDelete}
+              >
+                {td('confirmBtn')}
               </Button>
             </div>
           </div>
