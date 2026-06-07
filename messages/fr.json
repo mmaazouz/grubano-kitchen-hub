@@ -241,7 +241,28 @@
       "deleteBrand": "Supprimer",
       "editBrandAria": "Modifier la marque {name}",
       "deleteBrandAria": "Supprimer la marque {name}",
-      "brandActionsHint": "Actions"
+      "brandActionsHint": "Actions",
+      "danger": {
+        "title": "Zone de danger",
+        "intro": "Si cet établissement a des commandes, il sera archivé (son historique sera conservé). Sinon, il sera définitivement supprimé.",
+        "button": "Supprimer cet établissement",
+        "buttonAria": "Supprimer l’établissement {name}",
+        "lastBlocker": "C’est votre dernier établissement — créez-en un autre avant de pouvoir supprimer celui-ci.",
+        "modalTitle": "Supprimer cet établissement ?",
+        "modalBody": "Pour confirmer, tapez exactement le nom de l’établissement ci-dessous. Cette action ne peut pas être annulée par l’interface.",
+        "modalIntroSoft": "Si cet établissement a des commandes, son historique sera archivé (conservé en base).",
+        "modalIntroHard": "S’il est vide, il sera définitivement supprimé avec ses marques et menus vides.",
+        "typeNameLabel": "Tapez « {name} » pour confirmer.",
+        "typeNameInput": "Nom de l’établissement",
+        "confirmBtn": "Supprimer définitivement",
+        "cancel": "Annuler",
+        "resultArchived": "Établissement archivé (historique préservé).",
+        "resultDeleted": "Établissement supprimé.",
+        "errorTitle": "Suppression impossible",
+        "errorForbidden": "Vous n’avez pas le droit de supprimer cet établissement.",
+        "errorNotFound": "Cet établissement n’existe plus.",
+        "errorGeneric": "La suppression a échoué — réessayez dans un instant."
+      }
     }
   },
   "orders": {

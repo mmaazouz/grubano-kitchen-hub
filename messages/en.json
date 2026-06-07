@@ -241,7 +241,28 @@
       "deleteBrand": "Delete",
       "editBrandAria": "Edit brand {name}",
       "deleteBrandAria": "Delete brand {name}",
-      "brandActionsHint": "Actions"
+      "brandActionsHint": "Actions",
+      "danger": {
+        "title": "Danger zone",
+        "intro": "If this establishment has orders, it will be archived (its history is preserved). Otherwise, it will be permanently deleted.",
+        "button": "Delete this establishment",
+        "buttonAria": "Delete establishment {name}",
+        "lastBlocker": "This is your last establishment — create another one before you can delete this.",
+        "modalTitle": "Delete this establishment?",
+        "modalBody": "To confirm, type the establishment name exactly below. This action cannot be undone from the interface.",
+        "modalIntroSoft": "If the establishment has orders, its history will be archived (kept in the database).",
+        "modalIntroHard": "If it is empty, it will be permanently deleted along with its brands and empty menus.",
+        "typeNameLabel": "Type \"{name}\" to confirm.",
+        "typeNameInput": "Establishment name",
+        "confirmBtn": "Permanently delete",
+        "cancel": "Cancel",
+        "resultArchived": "Establishment archived (history preserved).",
+        "resultDeleted": "Establishment deleted.",
+        "errorTitle": "Could not delete",
+        "errorForbidden": "You are not allowed to delete this establishment.",
+        "errorNotFound": "This establishment no longer exists.",
+        "errorGeneric": "Delete failed — please try again."
+      }
     }
   },
   "orders": {

@@ -241,7 +241,28 @@
       "deleteBrand": "Elimina",
       "editBrandAria": "Modifica il marchio {name}",
       "deleteBrandAria": "Elimina il marchio {name}",
-      "brandActionsHint": "Azioni"
+      "brandActionsHint": "Azioni",
+      "danger": {
+        "title": "Zona pericolosa",
+        "intro": "Se questa struttura ha ordini, verrà archiviata (la sua cronologia sarà conservata). In caso contrario, verrà eliminata definitivamente.",
+        "button": "Elimina questa struttura",
+        "buttonAria": "Elimina la struttura {name}",
+        "lastBlocker": "È la tua ultima struttura — creane un’altra prima di poter eliminare questa.",
+        "modalTitle": "Eliminare questa struttura?",
+        "modalBody": "Per confermare, digita esattamente il nome della struttura qui sotto. Questa azione non può essere annullata dall’interfaccia.",
+        "modalIntroSoft": "Se la struttura ha ordini, la sua cronologia sarà archiviata (conservata nel database).",
+        "modalIntroHard": "Se è vuota, sarà eliminata definitivamente insieme ai suoi marchi e menù vuoti.",
+        "typeNameLabel": "Digita «{name}» per confermare.",
+        "typeNameInput": "Nome della struttura",
+        "confirmBtn": "Elimina definitivamente",
+        "cancel": "Annulla",
+        "resultArchived": "Struttura archiviata (cronologia preservata).",
+        "resultDeleted": "Struttura eliminata.",
+        "errorTitle": "Impossibile eliminare",
+        "errorForbidden": "Non hai il permesso di eliminare questa struttura.",
+        "errorNotFound": "Questa struttura non esiste più.",
+        "errorGeneric": "Eliminazione non riuscita — riprova."
+      }
     }
   },
   "orders": {

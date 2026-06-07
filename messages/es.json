@@ -241,7 +241,28 @@
       "deleteBrand": "Eliminar",
       "editBrandAria": "Editar la marca {name}",
       "deleteBrandAria": "Eliminar la marca {name}",
-      "brandActionsHint": "Acciones"
+      "brandActionsHint": "Acciones",
+      "danger": {
+        "title": "Zona de peligro",
+        "intro": "Si este establecimiento tiene pedidos, se archivará (se conservará su historial). De lo contrario, se eliminará definitivamente.",
+        "button": "Eliminar este establecimiento",
+        "buttonAria": "Eliminar el establecimiento {name}",
+        "lastBlocker": "Es tu último establecimiento — crea otro antes de poder eliminar este.",
+        "modalTitle": "¿Eliminar este establecimiento?",
+        "modalBody": "Para confirmar, escribe exactamente el nombre del establecimiento abajo. Esta acción no se puede deshacer desde la interfaz.",
+        "modalIntroSoft": "Si el establecimiento tiene pedidos, su historial se archivará (se mantiene en la base de datos).",
+        "modalIntroHard": "Si está vacío, se eliminará definitivamente junto con sus marcas y menús vacíos.",
+        "typeNameLabel": "Escribe «{name}» para confirmar.",
+        "typeNameInput": "Nombre del establecimiento",
+        "confirmBtn": "Eliminar definitivamente",
+        "cancel": "Cancelar",
+        "resultArchived": "Establecimiento archivado (historial conservado).",
+        "resultDeleted": "Establecimiento eliminado.",
+        "errorTitle": "No se pudo eliminar",
+        "errorForbidden": "No tienes permiso para eliminar este establecimiento.",
+        "errorNotFound": "Este establecimiento ya no existe.",
+        "errorGeneric": "Error al eliminar — inténtalo de nuevo."
+      }
     }
   },
   "orders": {
