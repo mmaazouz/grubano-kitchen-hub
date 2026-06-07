@@ -6,7 +6,7 @@ import {
   Sparkles, Users, Clock, AlertTriangle,
   ChevronRight, Plus, CalendarDays, Euro, Filter, ShieldCheck,
   RefreshCw, QrCode, X, ChevronLeft, ChevronRight as ChevRight,
-  Store, Check,
+  Store, Check, Timer,
 } from 'lucide-react'
 import EstablishmentSwitcher, {
   type EstablishmentOption,
@@ -591,6 +591,61 @@ function SetupView({
   const [newTable, setNewTable] = useState({ name: '', seats: 4, x: 50, y: 50 })
   const [saving, setSaving]   = useState(false)
 
+  // ── Default reservation duration (Agent 2 endpoint, commit 3d20718) ────────
+  // Lit + écrit GET/POST /api/restaurants/[id]/fulfillment
+  // .defaultReservationDurationMin (Zod 15..600). Initialement seeded server-
+  // side via la prop defaultDurationMin pour pas de flash.
+  const [dur, setDur]                 = useState<number>(defaultDurationMin)
+  const [durSaving, setDurSaving]     = useState(false)
+  const [durSavedAt, setDurSavedAt]   = useState<number | null>(null)
+  const [durError, setDurError]       = useState('')
+
+  // Re-sync the local state when the parent reports a fresh default (e.g. after
+  // a Switcher change or after this component just saved).
+  useEffect(() => {
+    setDur(defaultDurationMin)
+  }, [defaultDurationMin])
+
+  // Auto-clear the "Saved" pill after 2s so it doesn't linger.
+  useEffect(() => {
+    if (!durSavedAt) return
+    const id = setTimeout(() => setDurSavedAt(null), 2000)
+    return () => clearTimeout(id)
+  }, [durSavedAt])
+
+  async function saveDuration(nextMin: number) {
+    // Clamp to the API range (Zod 15..600) before sending so the input can't
+    // produce a 400 we'd have to explain.
+    const clamped = Math.max(15, Math.min(600, Math.round(nextMin)))
+    setDur(clamped)
+    if (clamped === defaultDurationMin) return
+    setDurSaving(true)
+    setDurError('')
+    try {
+      const r = await fetch(`/api/restaurants/${restaurantId}/fulfillment`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ defaultReservationDurationMin: clamped }),
+      })
+      if (!r.ok) {
+        setDurError(t('durationSaveError'))
+        return
+      }
+      onDurationSaved(clamped)
+      setDurSavedAt(Date.now())
+    } catch {
+      setDurError(t('durationSaveError'))
+    } finally {
+      setDurSaving(false)
+    }
+  }
+
+  const presets: Array<{ min: number; label: string }> = [
+    { min: 60,  label: t('preset60')  },
+    { min: 90,  label: t('preset90')  },
+    { min: 120, label: t('preset120') },
+  ]
+
   async function createTable(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -607,6 +662,72 @@ function SetupView({
 
   return (
     <div className="space-y-4">
+      {/* ── Default reservation duration ─────────────────────────────────────
+          C'est le défaut auto-rempli dans la modale « Nouvelle réservation ».
+          3 presets sobres (1 h / 1 h 30 / 2 h) + un input numérique pour un
+          réglage fin (step 15). Save immédiat (no submit button) — le pill
+          « Enregistré » confirme, l'erreur s'affiche sobrement. */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2">
+          <Timer size={14} className="text-primary" />
+          <h3 className="text-sm font-bold">{t('durationTitle')}</h3>
+          {durSaving && <RefreshCw size={11} className="ms-auto animate-spin text-muted-foreground" />}
+          {!durSaving && durSavedAt && (
+            <span className="ms-auto inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-success">
+              <Check size={9} /> {t('durationSavedShort')}
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">{t('durationDesc')}</p>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {presets.map((p) => {
+            const active = dur === p.min
+            return (
+              <button
+                key={p.min}
+                type="button"
+                onClick={() => saveDuration(p.min)}
+                disabled={durSaving}
+                aria-pressed={active}
+                className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-60 ${
+                  active
+                    ? 'bg-primary text-primary-foreground'
+                    : 'border border-border bg-card text-muted-foreground hover:border-primary hover:text-primary'
+                }`}
+              >
+                {p.label}
+              </button>
+            )
+          })}
+          <div className="ms-1 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1">
+            <input
+              type="number"
+              min={15}
+              max={600}
+              step={15}
+              value={dur}
+              onChange={(e) => setDur(Number(e.target.value))}
+              onBlur={(e) => saveDuration(Number(e.target.value))}
+              disabled={durSaving}
+              aria-label={t('durationLabel')}
+              className="w-12 bg-transparent text-center text-[11px] font-bold text-foreground focus:outline-none disabled:opacity-60"
+            />
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {t('durationUnit')}
+            </span>
+          </div>
+        </div>
+
+        <p className="mt-3 text-[10px] text-muted-foreground">{t('durationHint')}</p>
+
+        {durError && (
+          <p className="mt-2 rounded-lg bg-destructive/10 px-2 py-1 text-[10px] text-destructive">
+            {durError}
+          </p>
+        )}
+      </div>
+
       <div className="rounded-2xl border border-border bg-card p-4">
         <div className="flex items-center gap-2">
           <ShieldCheck size={14} className="text-primary" />
