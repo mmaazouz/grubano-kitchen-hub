@@ -819,6 +819,7 @@ function NewReservationForm({
   onClose:            () => void
   onSaved:            () => void
 }) {
+  const t = useTranslations('tables')
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
     tableId:      tables[0]?.id ?? '',
@@ -834,6 +835,16 @@ function NewReservationForm({
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
+  // Live "libère à HH:MM" preview computed from the chosen date + time +
+  // duration. Stays empty when the user hasn't typed both date and time.
+  const releaseTime = (() => {
+    if (!form.date || !form.time) return ''
+    const start = new Date(`${form.date}T${form.time}:00`)
+    if (Number.isNaN(start.getTime())) return ''
+    const end = new Date(start.getTime() + form.duration * 60_000)
+    return end.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  })()
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
@@ -846,7 +857,10 @@ function NewReservationForm({
     }
     setSaving(true)
     const start = new Date(`${form.date}T${form.time}:00`)
-    const end   = new Date(start.getTime() + form.duration * 60_000)
+    // Send BOTH durationMin (Agent 2's preferred field, commit 3d20718) and
+    // endTime for retro-compat. The server resolves the slot in this priority
+    // order: durationMin > endTime > establishment default > 60.
+    const end = new Date(start.getTime() + form.duration * 60_000)
     const r = await fetch('/api/reservations', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -856,6 +870,7 @@ function NewReservationForm({
         phone:         form.phone || undefined,
         guests:        form.guests,
         date:          start.toISOString(),
+        durationMin:   form.duration,
         endTime:       end.toISOString(),
         type:          form.type,
         depositAmount: form.depositAmount,
@@ -910,9 +925,16 @@ function NewReservationForm({
                 className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground">Durée (min)</label>
+              <label className="text-[10px] text-muted-foreground">{t('durationLabel')}</label>
               <input type="number" min={15} max={300} step={15} value={form.duration} onChange={e => setForm(f => ({ ...f, duration: Number(e.target.value) }))}
                 className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+              {/* Sober "libère à HH:MM" preview based on the chosen duration
+                  — coherent with the list/calendar "libère X" labels. */}
+              {releaseTime && (
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  libère à {releaseTime}
+                </p>
+              )}
             </div>
           </div>
 
