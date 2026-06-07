@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import Anthropic from '@anthropic-ai/sdk'
+import { Prisma } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
@@ -207,7 +208,21 @@ export async function POST(req: Request) {
     const dataUri = `data:${mediaType};base64,${imageBase64}`
     const url = await uploadToCloudinary(dataUri)
 
-    return NextResponse.json({ url, photos: [url], moderation }, { status: 201 })
+    // ── 5. Persist onto the dish when one was given ───────────────────────────
+    // MenuItem.photos is a JSON array (Json @default("[]")). We set the dish's
+    // photo to [url] (single primary photo). For the AI-scan / new-dish flow no
+    // menuItemId is sent yet — the client passes the returned url to POST
+    // /api/menu (photos:[url]) at creation, so the URL still lands on the dish.
+    let persisted = false
+    if (menuItemId) {
+      await prisma.menuItem.update({
+        where: { id: menuItemId },
+        data:  { photos: [url] as unknown as Prisma.InputJsonValue },
+      })
+      persisted = true
+    }
+
+    return NextResponse.json({ url, photos: [url], moderation, persisted }, { status: 201 })
   } catch (err) {
     if (err instanceof Error && err.message === 'cloudinary_not_configured') {
       console.error('[POST /api/menu/photo] Cloudinary env vars missing')
