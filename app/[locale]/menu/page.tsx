@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import {
   Sparkles, Plus, Clock, Eye, EyeOff, Percent, Flame, Leaf, WheatOff, Star,
   Tag, X, Check, ChevronLeft, ChevronRight, Upload, GripVertical, RefreshCw, Trash2,
-  Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle, Users, TrendingUp,
+  Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle, Users, TrendingUp, Pencil,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { SessionProvider, useSession } from 'next-auth/react'
@@ -620,7 +620,15 @@ function MenuBuilder() {
             </div>
           : <ItemsTab items={items} categories={categories} onToggle={toggleAvail} onEdit={setEditing} />
       )}
-      {tab === 'categories' && <CategoriesTab items={items} categories={categories} />}
+      {tab === 'categories' && (
+        <CategoriesTab
+          items={items}
+          brandId={brandId}
+          customCategories={customCategories}
+          allCategoryNames={allCategoryNames}
+          onChanged={() => loadCustomCategories(brandId)}
+        />
+      )}
       {tab === 'promos'     && <PromosTab />}
       {tab === 'adopt'      && <AdoptTab brandId={brandId} onAdopted={() => loadItems(brandId)} />}
         </>
@@ -796,37 +804,303 @@ function ItemsTab({
 
 // ── Categories tab ────────────────────────────────────────────────────────────
 
-function CategoriesTab({ items, categories }: { items: MenuItem[]; categories: string[] }) {
-  const cats = categories.length > 0 ? categories : Array.from(new Set(items.map(i => i.category))).sort()
+type CustomCategory = { id: string; name: string; position: number }
 
-  if (cats.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
-        <p className="text-sm text-muted-foreground">Aucune catégorie — ajoutez des plats d&apos;abord</p>
-      </div>
-    )
+function CategoriesTab({
+  items, brandId, customCategories, allCategoryNames, onChanged,
+}: {
+  items:             MenuItem[]
+  brandId:           string
+  customCategories:  CustomCategory[]
+  allCategoryNames:  string[]
+  onChanged:         () => void
+}) {
+  const t = useTranslations('menu.categories')
+
+  // CRUD modal state (one shared form for create / rename, one for delete).
+  type EditMode = { kind: 'create' } | { kind: 'rename'; id: string; name: string }
+  const [editMode, setEditMode] = useState<EditMode | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+
+  const [toDelete, setToDelete] = useState<CustomCategory | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  // ── Server-error mapping ───────────────────────────────────────────────────
+  function mapMutationError(status: number): string {
+    switch (status) {
+      case 400: return t('err400')
+      case 409: return t('err409')
+      default:  return t('errGeneric')
+    }
   }
 
+  function openCreate() {
+    setEditMode({ kind: 'create' })
+    setEditValue('')
+    setEditError('')
+  }
+
+  function openRename(c: CustomCategory) {
+    setEditMode({ kind: 'rename', id: c.id, name: c.name })
+    setEditValue(c.name)
+    setEditError('')
+  }
+
+  function closeEdit() {
+    if (editSaving) return
+    setEditMode(null)
+    setEditValue('')
+    setEditError('')
+  }
+
+  async function submitEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editMode) return
+    const name = editValue.trim()
+    if (!name) { setEditError(t('err400')); return }
+    setEditError('')
+    setEditSaving(true)
+    try {
+      if (editMode.kind === 'create') {
+        const r = await fetch('/api/menu/categories', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ brandId, name }),
+        })
+        if (!r.ok) { setEditError(mapMutationError(r.status)); return }
+      } else {
+        const r = await fetch('/api/menu/categories', {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id: editMode.id, name }),
+        })
+        if (!r.ok) { setEditError(mapMutationError(r.status)); return }
+      }
+      setEditMode(null)
+      setEditValue('')
+      onChanged()
+    } catch {
+      setEditError(t('errNetwork'))
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  async function confirmDelete() {
+    if (!toDelete) return
+    setDeleteError('')
+    setDeleting(true)
+    try {
+      const r = await fetch(`/api/menu/categories?id=${toDelete.id}`, { method: 'DELETE' })
+      if (!r.ok) { setDeleteError(mapMutationError(r.status)); return }
+      setToDelete(null)
+      onChanged()
+    } catch {
+      setDeleteError(t('errNetwork'))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // ── Render: never empty — the 4 defaults are always there ──────────────────
+  // Group each rendered category with its source: 'default' or 'custom'. Names
+  // are matched case-insensitively against the operator's custom list so a
+  // hypothetical capitalisation drift doesn't break the edit affordance.
+  const customByLower = new Map(
+    customCategories.map((c) => [c.name.trim().toLowerCase(), c]),
+  )
+  const rendered = allCategoryNames.map((name) => {
+    const custom = customByLower.get(name.trim().toLowerCase())
+    const count = items.filter((i) => i.category === name).length
+    const avail = items.filter((i) => i.category === name && i.available).length
+    return { name, count, avail, custom }
+  })
+
   return (
-    <div className="space-y-2">
-      {cats.map(cat => {
-        const count = items.filter(i => i.category === cat).length
-        const avail = items.filter(i => i.category === cat && i.available).length
-        return (
-          <Card key={cat} className="!p-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xl">{emojiFor(cat)}</span>
-              <div className="flex-1">
-                <p className="text-sm font-bold">{cat}</p>
-                <p className="text-[10px] text-muted-foreground">
-                  {count} plat{count > 1 ? 's' : ''} · {avail} disponible{avail > 1 ? 's' : ''}
-                </p>
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-foreground">{t('tabTitle')}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{t('tabSubtitle')}</p>
+        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[11px] font-bold text-primary-foreground transition hover:brightness-105"
+        >
+          <Plus size={13} /> {t('newButton')}
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {rendered.map(({ name, count, avail, custom }) => {
+          const isDefault = !custom
+          return (
+            <Card key={name} className="!p-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xl shrink-0">{emojiFor(name)}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="text-sm font-bold text-foreground">{name}</p>
+                    {isDefault ? (
+                      <span
+                        title={t('defaultsNotEditable')}
+                        className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground"
+                      >
+                        {t('defaultBadge')}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                        {t('customBadge')}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    {t('countItems', { count })}
+                    {count > 0 && ` · ${avail}/${count}`}
+                  </p>
+                </div>
+                <span
+                  aria-hidden
+                  className={`h-2 w-2 shrink-0 rounded-full ${avail > 0 ? 'bg-success' : 'bg-muted-foreground/40'}`}
+                />
+                {custom && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => openRename(custom)}
+                      aria-label={t('editButton')}
+                      title={t('editButton')}
+                      className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition hover:border-primary hover:text-primary"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteError(''); setToDelete(custom) }}
+                      aria-label={t('deleteButton')}
+                      title={t('deleteButton')}
+                      className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
-              <span className={`h-2 w-2 rounded-full ${avail > 0 ? 'bg-success' : 'bg-muted-foreground'}`} />
+            </Card>
+          )
+        })}
+      </div>
+
+      {/* ── Create / Rename modal ──────────────────────────────────────────── */}
+      {editMode && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+          <form
+            onSubmit={submitEdit}
+            className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-base font-bold">
+                {editMode.kind === 'create' ? t('newTitle') : t('editTitle')}
+              </p>
+              <button
+                type="button"
+                onClick={closeEdit}
+                aria-label={t('cancel')}
+                className="grid h-9 w-9 place-items-center rounded-xl bg-muted"
+              >
+                <X size={16} />
+              </button>
             </div>
-          </Card>
-        )
-      })}
+
+            <input
+              autoFocus
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              placeholder={t('newPlaceholder')}
+              maxLength={50}
+              disabled={editSaving}
+              className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none disabled:opacity-60"
+            />
+
+            {editError && (
+              <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+                <AlertCircle size={12} className="shrink-0" />
+                <span>{editError}</span>
+              </p>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={closeEdit}
+                disabled={editSaving}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm disabled:opacity-60"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={editSaving || !editValue.trim()}
+                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-60"
+              >
+                {editSaving
+                  ? <RefreshCw size={14} className="mx-auto animate-spin" />
+                  : (editMode.kind === 'create' ? t('confirmCreate') : t('confirmRename'))}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Delete confirm modal ──────────────────────────────────────────── */}
+      {toDelete && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-destructive/15 text-destructive">
+                <Trash2 size={15} />
+              </span>
+              <p className="text-base font-bold">{t('deleteTitle')}</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {t('deleteBody', { name: toDelete.name })}
+            </p>
+            <p className="mt-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-foreground">
+              {t('deleteNote')}
+            </p>
+            {deleteError && (
+              <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+                <AlertCircle size={12} className="shrink-0" />
+                <span>{deleteError}</span>
+              </p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => { if (!deleting) setToDelete(null) }}
+                disabled={deleting}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm disabled:opacity-60"
+              >
+                {t('cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground disabled:opacity-60"
+              >
+                {deleting
+                  ? <RefreshCw size={14} className="mx-auto animate-spin" />
+                  : t('confirmDelete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
