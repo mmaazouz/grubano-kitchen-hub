@@ -7,6 +7,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import {
   ArrowLeft, Calendar, Clock, Users, Loader2, Check, AlertCircle, CreditCard,
 } from 'lucide-react'
+import StripeDepositForm from '@/components/eat/StripeDepositForm'
 
 // ── /eat/r/[id]/reserver ──────────────────────────────────────────────────────
 //
@@ -344,7 +345,7 @@ function ReserveInner() {
         </section>
       )}
 
-      {/* Step 4 — Deposit placeholder (Stripe Elements lands in sub-commit 2) */}
+      {/* Step 4 — Stripe Elements card hold (Agent 2's manual-capture intent) */}
       {step === 'deposit' && reservation && (
         <section className="mt-4 px-4">
           <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -352,21 +353,10 @@ function ReserveInner() {
           </p>
           <div className="rounded-2xl border border-border bg-card p-4">
             <p className="text-sm font-bold text-foreground">{t('depositTitle')}</p>
-            <p className="mt-1 text-[12px] text-muted-foreground">
-              {t('depositIntro', { amount: currencyFmt.format(reservation.depositAmount) })}
-            </p>
-            <p className="mt-2 text-[10px] text-muted-foreground">{t('depositHint')}</p>
-            {/* Stripe Elements wiring lands in sub-commit 2 (this card will
-                embed <StripeDepositForm reservationId={...} /> there). For
-                now we accept the reservation as-is so the dashboard flow
-                can already be exercised end-to-end. */}
-            <button
-              type="button"
-              onClick={() => setStep('done')}
-              className="mt-3 w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground"
-            >
-              {t('depositSubmit')}
-            </button>
+            <StripeDepositForm
+              reservationId={reservation.id}
+              onAuthorized={() => setStep('done')}
+            />
           </div>
         </section>
       )}
