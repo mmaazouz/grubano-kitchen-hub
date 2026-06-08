@@ -15,12 +15,13 @@ import { locales } from '@/i18n'
 //   /franchise/*    → franchise portal (Agent 4 mounts its own sidebar here)
 //   /creators/*     → creator portal  (Agent 4 mounts its own sidebar here)
 //   /business/*     → partner space served on business.grubano.com (Agent 3 / 2C)
+//   /t/*            → public "table bill" QR landing (consumer, sober, no chrome)
 //   /login, /register → public auth pages
 //   /               → redirects to /dashboard, never renders content
 //
 // Note: the locale prefix is stripped BEFORE matching below, so these
 // patterns work across /fr/franchise, /en/creators, /es/eat, etc.
-const BARE_PREFIXES = ['/eat', '/franchise', '/creators', '/business', '/login', '/register']
+const BARE_PREFIXES = ['/eat', '/franchise', '/creators', '/business', '/t', '/login', '/register']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'
