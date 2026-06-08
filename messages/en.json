@@ -1036,7 +1036,22 @@
       "menuLabel": "Menu"
     },
     "brandsHint": "Brands of this establishment",
-    "brandsAria": "Choose a brand"
+    "brandsAria": "Choose a brand",
+    "photo": {
+      "alt": "Photo of {name}",
+      "change": "Change photo",
+      "pick": "Add a photo",
+      "uploading": "Uploading…",
+      "replaceHint": "Replace the photo (JPG, PNG or WebP — 8 MB max)",
+      "warningsTitle": "Tips to improve the photo",
+      "warningsDismiss": "Dismiss tips",
+      "warningsItemAlt": "AI tip",
+      "err422": "Photo refused. {reason}",
+      "err400": "Invalid photo (format or size). Accepted: JPG, PNG, WebP — 8 MB max.",
+      "err503": "Photo service temporarily unavailable. Please retry shortly.",
+      "err500": "Photo upload failed.",
+      "errNetwork": "Could not upload the photo — check your connection."
+    }
   },
   "finance": {
     "title": "Finance",

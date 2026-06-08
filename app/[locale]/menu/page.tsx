@@ -36,6 +36,9 @@ type MenuItem = {
   labels:      string[]
   available:   boolean
   isPopular:   boolean
+  /** Cloudinary URLs (already square c_fill,g_auto,ar_1:1) — Agent 2 stores
+   *  exactly one entry today, but the array is preserved for forward compat. */
+  photos?:     string[]
 }
 
 // /api/brands/summary item — exposes restaurantId since Agent 2's commit
@@ -548,6 +551,8 @@ function ItemsTab({
   onToggle:   (item: MenuItem) => void
   onEdit:     (item: MenuItem) => void
 }) {
+  const tPhoto = useTranslations('menu.photo')
+
   if (items.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
@@ -577,9 +582,23 @@ function ItemsTab({
                 <button key={item.id} onClick={() => onEdit(item)}
                   className="w-full rounded-2xl border border-border bg-card p-3 text-left transition active:scale-[0.99]">
                   <div className="flex items-start gap-3">
-                    <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent to-primary/10 text-2xl">
-                      {emojiFor(cat)}
-                    </div>
+                    {/* Real photo (Cloudinary, already square via Agent 2's
+                        c_fill,g_auto,ar_1:1 transform). Falls back to the
+                        category emoji tile when there's no photo yet — same
+                        size + radius so nothing reflows. */}
+                    {item.photos && item.photos[0] ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.photos[0]}
+                        alt={tPhoto('alt', { name: item.name })}
+                        loading="lazy"
+                        className="h-14 w-14 shrink-0 rounded-xl object-cover"
+                      />
+                    ) : (
+                      <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent to-primary/10 text-2xl">
+                        {emojiFor(cat)}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-bold leading-tight">{item.name}</p>

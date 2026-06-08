@@ -1036,7 +1036,22 @@
       "menuLabel": "Menù"
     },
     "brandsHint": "Marchi di questa struttura",
-    "brandsAria": "Scegli un marchio"
+    "brandsAria": "Scegli un marchio",
+    "photo": {
+      "alt": "Foto di {name}",
+      "change": "Cambia foto",
+      "pick": "Aggiungi una foto",
+      "uploading": "Caricamento…",
+      "replaceHint": "Sostituisci la foto (JPG, PNG o WebP — 8 MB max)",
+      "warningsTitle": "Consigli per migliorare la foto",
+      "warningsDismiss": "Chiudi i consigli",
+      "warningsItemAlt": "Consiglio dell’IA",
+      "err422": "Foto rifiutata. {reason}",
+      "err400": "Foto non valida (formato o dimensione). Accettati: JPG, PNG, WebP — 8 MB max.",
+      "err503": "Servizio foto temporaneamente non disponibile. Riprova tra poco.",
+      "err500": "Caricamento foto fallito.",
+      "errNetwork": "Impossibile inviare la foto — verifica la connessione."
+    }
   },
   "finance": {
     "title": "Finanze",

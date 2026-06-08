@@ -1036,7 +1036,22 @@
       "menuLabel": "Menú"
     },
     "brandsHint": "Marcas de este establecimiento",
-    "brandsAria": "Elegir una marca"
+    "brandsAria": "Elegir una marca",
+    "photo": {
+      "alt": "Foto de {name}",
+      "change": "Cambiar foto",
+      "pick": "Añadir foto",
+      "uploading": "Enviando…",
+      "replaceHint": "Reemplazar la foto (JPG, PNG o WebP — 8 MB máx)",
+      "warningsTitle": "Consejos para mejorar la foto",
+      "warningsDismiss": "Cerrar consejos",
+      "warningsItemAlt": "Consejo de la IA",
+      "err422": "Foto rechazada. {reason}",
+      "err400": "Foto inválida (formato o tamaño). Aceptados: JPG, PNG, WebP — 8 MB máx.",
+      "err503": "Servicio de fotos no disponible. Inténtalo de nuevo en un momento.",
+      "err500": "Error al subir la foto.",
+      "errNetwork": "No se pudo enviar la foto — comprueba tu conexión."
+    }
   },
   "finance": {
     "title": "Finanzas",
