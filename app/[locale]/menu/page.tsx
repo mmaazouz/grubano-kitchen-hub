@@ -1314,7 +1314,7 @@ function ResultStep({
         </button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4 pb-32">
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {preview && (
           <img src={preview} alt={name} className="w-full rounded-2xl object-cover max-h-48" />
         )}
@@ -1400,7 +1400,14 @@ function ResultStep({
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 border-t border-border bg-card p-4">
+      {/* Bottom action bar — previously `absolute bottom-0 left-0 right-0`,
+          which took its containing block from the fixed grand-parent
+          (AIScannerOverlay's `fixed inset-0`) and stretched across the full
+          viewport instead of the inner max-w-md column. Returning the bar to
+          the natural flow of the parent flex column keeps it pinned at the
+          bottom (the scrollable section above is `flex-1`) AND caps its
+          width to the column on every screen size. */}
+      <div className="shrink-0 border-t border-border bg-card p-4">
         {error && (
           <p className="mb-2 flex items-center gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
             <AlertCircle size={12} className="shrink-0" /> {error}
