@@ -1462,6 +1462,18 @@
       "actionDoneNoshow": "Penalización cobrada",
       "actionErrorGeneric": "Acción fallida — reintenta.",
       "actionError409": "Estado incompatible (ya cobrada o liberada)."
+    },
+    "noShow": {
+      "sectionTitle": "Protección no-show",
+      "intro": "Pre-autorización de tarjeta en el momento de la reserva.",
+      "depositLabel": "Garantía / huella (€)",
+      "depositHint": "Importe retenido en la tarjeta del cliente al reservar. No se cobra nada si acude. 0 = sin huella.",
+      "penaltyNote": "Penalización por no-show = 100% de la huella.",
+      "customerSeesPrefix": "El cliente ve: {amount}€ retenidos en su tarjeta. No se cobra nada si acude.",
+      "customerSeesNone": "El cliente ve: sin huella requerida.",
+      "disabledLabel": "Huella desactivada",
+      "savedShort": "Guardado",
+      "saveError": "No se pudo guardar el importe de la huella."
     }
   }
 }

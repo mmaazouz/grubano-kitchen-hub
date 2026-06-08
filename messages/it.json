@@ -1462,6 +1462,18 @@
       "actionDoneNoshow": "Penale addebitata",
       "actionErrorGeneric": "Azione fallita — riprova.",
       "actionError409": "Stato incompatibile (già addebitata o rilasciata)."
+    },
+    "noShow": {
+      "sectionTitle": "Protezione no-show",
+      "intro": "Pre-autorizzazione della carta al momento della prenotazione.",
+      "depositLabel": "Caparra / impronta (€)",
+      "depositHint": "Importo bloccato sulla carta del cliente alla prenotazione. Nulla viene addebitato se viene. 0 = nessuna impronta.",
+      "penaltyNote": "Penale no-show = 100% dell’impronta.",
+      "customerSeesPrefix": "Il cliente vede: {amount}€ bloccati sulla sua carta. Nulla viene addebitato se viene.",
+      "customerSeesNone": "Il cliente vede: nessuna impronta richiesta.",
+      "disabledLabel": "Impronta disattivata",
+      "savedShort": "Salvato",
+      "saveError": "Impossibile salvare l’importo dell’impronta."
     }
   }
 }

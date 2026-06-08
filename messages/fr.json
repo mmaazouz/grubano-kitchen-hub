@@ -1462,6 +1462,18 @@
       "actionDoneNoshow": "Pénalité capturée",
       "actionErrorGeneric": "Action impossible — réessayez.",
       "actionError409": "Statut incompatible (déjà capturée ou libérée)."
+    },
+    "noShow": {
+      "sectionTitle": "Protection no-show",
+      "intro": "Pré-autorisation carte bancaire à la réservation.",
+      "depositLabel": "Acompte / empreinte de garantie (€)",
+      "depositHint": "Montant bloqué sur la carte du client à la réservation. Rien n’est débité s’il vient. 0 = aucune empreinte demandée.",
+      "penaltyNote": "Pénalité no-show = 100% de l’empreinte.",
+      "customerSeesPrefix": "Le client voit : {amount}€ bloqués sur sa carte. Rien n’est débité s’il vient.",
+      "customerSeesNone": "Le client voit : aucune empreinte demandée.",
+      "disabledLabel": "Empreinte désactivée",
+      "savedShort": "Enregistré",
+      "saveError": "Impossible d’enregistrer l’empreinte."
     }
   }
 }

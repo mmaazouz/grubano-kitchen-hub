@@ -824,14 +824,77 @@ function SetupView({
   onDurationSaved:     (min: number) => void
   onRefresh:           () => void
 }) {
-  const t = useTranslations('tables')
-  // No-show acompte/penalty — UI-only state for now (no API yet; kept to preserve
-  // the existing UX surface from the previous version).
-  const [deposit, setDeposit] = useState(10)
-  const [penalty, setPenalty] = useState(15)
+  const t  = useTranslations('tables')
+  const tn = useTranslations('tables.noShow')
+  const locale = useLocale()
   const [adding, setAdding]   = useState(false)
   const [newTable, setNewTable] = useState({ name: '', seats: 4, x: 50, y: 50 })
   const [saving, setSaving]   = useState(false)
+
+  // ── Deposit amount (Restaurant.defaultDepositAmount — Agent 14 bc99eaf) ───
+  // Single field, replaces the two dead UI-only sliders ("acompte" + "pénalité").
+  // Penalty = 100% of the deposit by Mohammed's decision, so there is exactly
+  // one number to configure here. 0 disables the hold entirely.
+  const [deposit, setDeposit]               = useState<number>(10)
+  const [depositLoaded, setDepositLoaded]   = useState(false)
+  const [depositSaving, setDepositSaving]   = useState(false)
+  const [depositSavedAt, setDepositSavedAt] = useState<number | null>(null)
+  const [depositError, setDepositError]     = useState('')
+
+  // Hydrate at mount / whenever the active establishment changes. Tolerant:
+  // a failure leaves the default of 10 (which matches Prisma's column default,
+  // so the card is never visibly broken even when the endpoint hiccups).
+  useEffect(() => {
+    if (!restaurantId) return
+    let cancelled = false
+    fetch(`/api/restaurants/${restaurantId}/fulfillment`, { cache: 'no-store' })
+      .then(async (r) => {
+        if (!r.ok) throw new Error('load_failed')
+        return r.json() as Promise<{ defaultDepositAmount?: number | null }>
+      })
+      .then((body) => {
+        if (cancelled) return
+        const fromApi = typeof body?.defaultDepositAmount === 'number' ? body.defaultDepositAmount : 10
+        setDeposit(Math.max(0, Math.min(500, fromApi)))
+        setDepositLoaded(true)
+      })
+      .catch(() => { if (!cancelled) setDepositLoaded(true) })
+    return () => { cancelled = true }
+  }, [restaurantId])
+
+  // Auto-clear the "Saved" pill after 2 s (same idiom as duration above).
+  useEffect(() => {
+    if (!depositSavedAt) return
+    const id = setTimeout(() => setDepositSavedAt(null), 2000)
+    return () => clearTimeout(id)
+  }, [depositSavedAt])
+
+  async function saveDeposit(nextValue: number) {
+    // Clamp to the API range (Zod 0..500) BEFORE sending so the input can't
+    // produce a 400 we'd have to explain.
+    const clamped = Math.max(0, Math.min(500, Math.round(nextValue)))
+    setDeposit(clamped)
+    setDepositError('')
+    setDepositSaving(true)
+    try {
+      const r = await fetch(`/api/restaurants/${restaurantId}/fulfillment`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ defaultDepositAmount: clamped }),
+      })
+      if (!r.ok) { setDepositError(tn('saveError')); return }
+      setDepositSavedAt(Date.now())
+    } catch {
+      setDepositError(tn('saveError'))
+    } finally {
+      setDepositSaving(false)
+    }
+  }
+
+  const currencyFmt = useMemo(
+    () => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
+    [locale],
+  )
 
   // ── Default reservation duration (Agent 2 endpoint, commit 3d20718) ────────
   // Lit + écrit GET/POST /api/restaurants/[id]/fulfillment
@@ -970,31 +1033,86 @@ function SetupView({
         )}
       </div>
 
+      {/* ── No-show protection — single field wired to
+            Restaurant.defaultDepositAmount (Agent 14 bc99eaf). The previous
+            two-slider card was UI-only with no persistence; Mohammed's
+            decision is ONE amount, penalty = 100% of the hold. ─────────── */}
       <div className="rounded-2xl border border-border bg-card p-4">
         <div className="flex items-center gap-2">
           <ShieldCheck size={14} className="text-primary" />
-          <h3 className="text-sm font-bold">Protection no-show</h3>
+          <h3 className="text-sm font-bold">{tn('sectionTitle')}</h3>
+          {depositSaving && <RefreshCw size={11} className="ms-auto animate-spin text-muted-foreground" />}
+          {!depositSaving && depositSavedAt && (
+            <span className="ms-auto inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-success">
+              <Check size={9} /> {tn('savedShort')}
+            </span>
+          )}
+          {!depositSaving && !depositSavedAt && deposit === 0 && (
+            <span className="ms-auto inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+              {tn('disabledLabel')}
+            </span>
+          )}
         </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Pré-autorisation carte bancaire requise à la réservation.
+        <p className="mt-1 text-[11px] text-muted-foreground">{tn('intro')}</p>
+
+        <div className="mt-4">
+          <label className="text-[11px] font-semibold">{tn('depositLabel')}</label>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {[0, 10, 15, 20].map((preset) => {
+              const active = deposit === preset
+              return (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => saveDeposit(preset)}
+                  disabled={depositSaving || !depositLoaded}
+                  aria-pressed={active}
+                  className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-60 ${
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'border border-border bg-card text-muted-foreground hover:border-primary hover:text-primary'
+                  }`}
+                >
+                  {preset === 0 ? '0' : `${preset}€`}
+                </button>
+              )
+            })}
+            {/* Numeric input — save on blur so the operator can type freely
+                without firing a POST on every keystroke. */}
+            <div className="ms-1 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1">
+              <input
+                type="number"
+                min={0}
+                max={500}
+                step={1}
+                value={deposit}
+                onChange={(e) => setDeposit(Number(e.target.value))}
+                onBlur={(e) => saveDeposit(Number(e.target.value))}
+                disabled={depositSaving || !depositLoaded}
+                aria-label={tn('depositLabel')}
+                className="w-14 bg-transparent text-center text-[11px] font-bold text-foreground focus:outline-none disabled:opacity-60"
+              />
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">€</span>
+            </div>
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">{tn('depositHint')}</p>
+        </div>
+
+        <p className="mt-3 text-[10px] font-semibold text-destructive">
+          {tn('penaltyNote')}
         </p>
-        <div className="mt-4">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-semibold">Acompte (remboursé à l&apos;arrivée)</label>
-            <span className="text-sm font-bold text-primary">€{deposit}</span>
-          </div>
-          <input type="range" min={0} max={50} value={deposit} onChange={e => setDeposit(Number(e.target.value))} className="mt-2 w-full accent-primary" />
-        </div>
-        <div className="mt-4">
-          <div className="flex items-center justify-between">
-            <label className="text-[11px] font-semibold">Pénalité no-show</label>
-            <span className="text-sm font-bold text-destructive">€{penalty}</span>
-          </div>
-          <input type="range" min={0} max={50} value={penalty} onChange={e => setPenalty(Number(e.target.value))} className="mt-2 w-full accent-primary" />
-        </div>
+
         <p className="mt-3 rounded-lg bg-muted p-2 text-[10px] text-muted-foreground">
-          Le client voit : &quot;{deposit}€ d&apos;acompte. Remboursé à l&apos;arrivée. {penalty}€ si no-show.&quot;
+          {deposit === 0
+            ? tn('customerSeesNone')
+            : tn('customerSeesPrefix', { amount: deposit })}
         </p>
+
+        {depositError && (
+          <p className="mt-2 rounded-lg bg-destructive/10 px-2 py-1 text-[10px] text-destructive">
+            {depositError}
+          </p>
+        )}
       </div>
 
       {/* Table list */}

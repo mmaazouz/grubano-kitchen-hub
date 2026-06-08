@@ -1462,6 +1462,18 @@
       "actionDoneNoshow": "Penalty captured",
       "actionErrorGeneric": "Action failed — please retry.",
       "actionError409": "Incompatible status (already captured or released)."
+    },
+    "noShow": {
+      "sectionTitle": "No-show protection",
+      "intro": "Card pre-authorisation at booking time.",
+      "depositLabel": "Hold / guarantee (€)",
+      "depositHint": "Amount placed on hold on the guest's card at booking. Nothing is charged if they show up. 0 = no hold required.",
+      "penaltyNote": "No-show penalty = 100% of the hold.",
+      "customerSeesPrefix": "Guests see: {amount}€ held on their card. Nothing is charged if they come.",
+      "customerSeesNone": "Guests see: no hold required.",
+      "disabledLabel": "Hold disabled",
+      "savedShort": "Saved",
+      "saveError": "Could not save the hold amount."
     }
   }
 }
