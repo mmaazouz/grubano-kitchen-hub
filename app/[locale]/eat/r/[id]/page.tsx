@@ -507,7 +507,7 @@ export default function RestaurantScreen() {
             variant="primary"
             size="pill"
             fullWidth
-            onClick={() => showToast(t('tableReservationSoon'))}
+            onClick={() => router.push(`/eat/r/${id}/reserver`)}
           >
             {t('reserveTable')}
           </Button>
