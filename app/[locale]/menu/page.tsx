@@ -156,6 +156,10 @@ function MenuBuilder() {
   const [brandsLoading,  setBrandsLoading]  = useState(true)
   const [scanner,        setScanner]        = useState(false)
   const [editing,        setEditing]        = useState<MenuItem | null>(null)
+  /** Soft, non-blocking photo warnings (blur, low-light, framing) returned by
+   *  Agent 2's moderation. Surfaced as a top banner above the list and
+   *  auto-dismissed after a few seconds. Empty array = no banner. */
+  const [photoWarnings,  setPhotoWarnings]  = useState<string[]>([])
   // Establishments list — used to label the breadcrumb middle segment with the
   // real establishment name. Falls back to "" if the call fails (we still show
   // the breadcrumb root + brand name, just without the middle label).
@@ -322,7 +326,7 @@ function MenuBuilder() {
     })
   }
 
-  async function saveItem(item: MenuItem) {
+  async function saveItem(item: MenuItem, extras?: { warnings?: string[] }) {
     if (item.id === 'new') {
       const r = await fetch('/api/menu', {
         method:  'POST',
@@ -332,6 +336,12 @@ function MenuBuilder() {
       if (r.ok) {
         const d = await r.json()
         setItems(prev => [d.item, ...prev])
+        // Forward the API-side warnings up to the banner. The DishEditor
+        // Manuel-upload flow also passes its own warnings via `extras` (when
+        // the photo was sent through /api/menu/photo separately).
+        const apiWarnings: string[] = Array.isArray(d.warnings) ? d.warnings : []
+        const combined = [...apiWarnings, ...(extras?.warnings ?? [])].filter(Boolean)
+        if (combined.length > 0) setPhotoWarnings(combined)
       }
     } else {
       const r = await fetch('/api/menu', {
@@ -342,10 +352,21 @@ function MenuBuilder() {
       if (r.ok) {
         const d = await r.json()
         setItems(prev => prev.map(i => i.id === item.id ? d.item : i))
+        if (extras?.warnings && extras.warnings.length > 0) {
+          setPhotoWarnings(extras.warnings)
+        }
       }
     }
     setEditing(null)
   }
+
+  // Auto-dismiss the soft warnings after ~6 s so the banner doesn't camp.
+  // The operator can still close it manually before that.
+  useEffect(() => {
+    if (photoWarnings.length === 0) return
+    const id = setTimeout(() => setPhotoWarnings([]), 6000)
+    return () => clearTimeout(id)
+  }, [photoWarnings])
 
   async function deleteItem(id: string) {
     await fetch(`/api/menu?id=${id}`, { method: 'DELETE' })
@@ -427,6 +448,18 @@ function MenuBuilder() {
         />
       ) : (
         <>
+
+      {/* ── Soft photo-moderation warnings (non blocking) ──────────────────
+          Agent 2's moderation may return warnings[] (blur / low light /
+          subject-not-clear) while ALLOWING the dish — i.e. the photo is
+          published, here are just tips to improve it. Sober banner at the top
+          of the list, auto-dismiss after ~6 s, manual close cross. */}
+      {photoWarnings.length > 0 && (
+        <PhotoWarningsBanner
+          warnings={photoWarnings}
+          onDismiss={() => setPhotoWarnings([])}
+        />
+      )}
 
       {/* Brand selector — SCOPED to the current establishment.
           Hidden when there's only one brand in scope: the breadcrumb already
@@ -525,7 +558,11 @@ function MenuBuilder() {
           brandId={brandId}
           categories={categories}
           onClose={() => setScanner(false)}
-          onAdd={(item) => { setItems(prev => [item, ...prev]); setScanner(false) }}
+          onAdd={(item, warnings) => {
+            setItems(prev => [item, ...prev])
+            if (warnings && warnings.length > 0) setPhotoWarnings(warnings)
+            setScanner(false)
+          }}
         />
       )}
       {editing && (
@@ -537,6 +574,48 @@ function MenuBuilder() {
           onDelete={deleteItem}
         />
       )}
+    </div>
+  )
+}
+
+// ── Soft photo warnings banner (Agent 2's moderation may return tips) ───────
+
+function PhotoWarningsBanner({
+  warnings, onDismiss,
+}: {
+  warnings: string[]
+  onDismiss: () => void
+}) {
+  const t = useTranslations('menu.photo')
+  return (
+    <div
+      role="status"
+      className="mb-4 rounded-2xl border border-warning/40 bg-warning/10 p-3"
+    >
+      <div className="flex items-start gap-2">
+        <AlertCircle size={14} className="mt-0.5 shrink-0 text-warning" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-semibold text-foreground">
+            {t('warningsTitle')}
+          </p>
+          <ul className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
+            {warnings.map((w, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span aria-hidden className="mt-1 inline-block h-1 w-1 shrink-0 rounded-full bg-warning/70" />
+                <span>{w || t('warningsItemAlt')}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label={t('warningsDismiss')}
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-warning/10 hover:text-foreground"
+        >
+          <X size={14} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -1002,7 +1081,9 @@ function AIScannerOverlay({
   brandId:    string
   categories: string[]
   onClose:    () => void
-  onAdd:      (item: MenuItem) => void
+  /** Receives the freshly-created MenuItem AND the soft moderation warnings
+   *  (if any), so the page can surface them in the top banner. */
+  onAdd:      (item: MenuItem, warnings?: string[]) => void
 }) {
   const [step,       setStep]       = useState<'upload' | 'analyzing' | 'result'>('upload')
   const [imageB64,   setImageB64]   = useState<string>('')
@@ -1165,7 +1246,7 @@ function ResultStep({
   mediaType:   'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
   onClose:     () => void
   onRetake:    () => void
-  onAdd:       (item: MenuItem) => void
+  onAdd:       (item: MenuItem, warnings?: string[]) => void
 }) {
   const [name,      setName]      = useState(scanResult.name)
   const [desc,      setDesc]      = useState(scanResult.description)
@@ -1204,7 +1285,11 @@ function ResultStep({
     })
     if (r.ok) {
       const d = await r.json()
-      onAdd(d.item)
+      // Forward the soft warnings (blur / low light / framing) so the menu
+      // page can surface them in its top banner — they NEVER block the
+      // creation, just suggest a better photo for next time.
+      const warnings: string[] = Array.isArray(d.warnings) ? d.warnings : []
+      onAdd(d.item, warnings)
     } else {
       // Never swallow the failure (e.g. a rejected image) — surface it; the dish
       // is intentionally NOT created without its photo.
@@ -1339,7 +1424,9 @@ function DishEditor({
   item:       MenuItem
   categories: string[]
   onClose:    () => void
-  onSave:     (item: MenuItem) => void
+  /** `extras.warnings` forwards soft moderation tips when the operator
+   *  uploaded a fresh photo through the Manuel flow (sub-commit 3). */
+  onSave:     (item: MenuItem, extras?: { warnings?: string[] }) => void
   onDelete:   (id: string) => void
 }) {
   const [d, setD] = useState<MenuItem>(item)
