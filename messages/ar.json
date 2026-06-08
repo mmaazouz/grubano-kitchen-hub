@@ -1389,6 +1389,19 @@
     "durationSavedShort": "تم الحفظ",
     "preset60": "١ س",
     "preset90": "١ س ٣٠",
-    "preset120": "٢ س"
+    "preset120": "٢ س",
+    "qr": {
+      "title": "رموز QR للطاولات",
+      "subtitle": "رمز QR لكل طاولة لطلب الطعام مباشرة. صفحة «فاتورتك قادمة قريبًا» متاحة الآن.",
+      "downloadPng": "PNG",
+      "downloadAria": "تنزيل رمز QR للطاولة {name} بصيغة PNG",
+      "downloadFilename": "grubano-{establishment}-{table}.png",
+      "printButton": "طباعة رموز QR",
+      "printAria": "طباعة صفحة رموز QR",
+      "sheetTitle": "رموز QR — {establishment}",
+      "sheetCaption": "امسح بهاتفك",
+      "sheetBrandLine": "grubano.com",
+      "noTables": "أضف طاولة لإنشاء رمز QR الخاص بها."
+    }
   }
 }

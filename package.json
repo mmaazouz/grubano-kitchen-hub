@@ -54,6 +54,7 @@
     "next-auth": "^4.24.11",
     "next-intl": "^3.26.5",
     "nodemailer": "^7.0.13",
+    "qrcode.react": "^4.2.0",
     "react": "^18",
     "react-dom": "^18",
     "react-hook-form": "^7.76.1",

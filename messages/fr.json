@@ -1389,6 +1389,19 @@
     "durationSavedShort": "Enregistré",
     "preset60": "1 h",
     "preset90": "1 h 30",
-    "preset120": "2 h"
+    "preset120": "2 h",
+    "qr": {
+      "title": "QR codes des tables",
+      "subtitle": "Un QR par table pour la commande à table. La page « Votre addition arrive bientôt » est déjà en ligne.",
+      "downloadPng": "PNG",
+      "downloadAria": "Télécharger le QR de {name} en PNG",
+      "downloadFilename": "grubano-{establishment}-{table}.png",
+      "printButton": "Imprimer les QR codes",
+      "printAria": "Imprimer la planche des QR codes",
+      "sheetTitle": "QR codes — {establishment}",
+      "sheetCaption": "Scannez avec votre téléphone",
+      "sheetBrandLine": "grubano.com",
+      "noTables": "Ajoutez une table pour générer son QR code."
+    }
   }
 }

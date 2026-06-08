@@ -1389,6 +1389,19 @@
     "durationSavedShort": "Salvato",
     "preset60": "1 h",
     "preset90": "1 h 30",
-    "preset120": "2 h"
+    "preset120": "2 h",
+    "qr": {
+      "title": "QR code dei tavoli",
+      "subtitle": "Un QR per tavolo per ordinare al tavolo. La pagina «Il tuo conto sta arrivando» è già online.",
+      "downloadPng": "PNG",
+      "downloadAria": "Scarica il QR di {name} in PNG",
+      "downloadFilename": "grubano-{establishment}-{table}.png",
+      "printButton": "Stampa i QR code",
+      "printAria": "Stampa la pagina dei QR code",
+      "sheetTitle": "QR code — {establishment}",
+      "sheetCaption": "Scansiona con il tuo telefono",
+      "sheetBrandLine": "grubano.com",
+      "noTables": "Aggiungi un tavolo per generare il suo QR code."
+    }
   }
 }

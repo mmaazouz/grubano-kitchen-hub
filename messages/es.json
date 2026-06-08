@@ -1389,6 +1389,19 @@
     "durationSavedShort": "Guardado",
     "preset60": "1 h",
     "preset90": "1 h 30",
-    "preset120": "2 h"
+    "preset120": "2 h",
+    "qr": {
+      "title": "Códigos QR de las mesas",
+      "subtitle": "Un QR por mesa para pedir en la mesa. La página «Tu cuenta llega pronto» ya está activa.",
+      "downloadPng": "PNG",
+      "downloadAria": "Descargar el QR de {name} en PNG",
+      "downloadFilename": "grubano-{establishment}-{table}.png",
+      "printButton": "Imprimir los QR",
+      "printAria": "Imprimir la hoja de QR",
+      "sheetTitle": "Códigos QR — {establishment}",
+      "sheetCaption": "Escanea con tu teléfono",
+      "sheetBrandLine": "grubano.com",
+      "noTables": "Añade una mesa para generar su QR."
+    }
   }
 }

@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   Sparkles, Users, Clock, AlertTriangle,
   ChevronRight, Plus, CalendarDays, Euro, Filter, ShieldCheck,
   RefreshCw, QrCode, X, ChevronLeft, ChevronRight as ChevRight,
-  Store, Check, Timer,
+  Store, Check, Timer, Download, Printer,
 } from 'lucide-react'
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import EstablishmentSwitcher, {
   type EstablishmentOption,
 } from '@/components/dashboard/EstablishmentSwitcher'
@@ -56,6 +57,35 @@ type Reservation = {
 }
 
 type Tab = 'list' | 'calendar' | 'plan' | 'setup'
+
+// ── consoOrigin (Agent 2's /t/[tableId] is on the SAME host as the dashboard
+//   — staging app.grubano.com, prod grubano.com). Falling back to
+//   NEXT_PUBLIC_CONSO_ORIGIN keeps us forward-compatible if the conso host
+//   ever splits off; falling back to the empty string at SSR is harmless
+//   because QR rendering only happens once the client has mounted. ──────────
+function getConsoOrigin(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
+  const fromEnv = process.env.NEXT_PUBLIC_CONSO_ORIGIN
+  return typeof fromEnv === 'string' ? fromEnv : ''
+}
+
+function buildQrUrl(origin: string, tableId: string): string {
+  // /t/<id> is the PERMANENT URL Agent 2's middleware + page locked in. The
+  // future payment flow will branch on the same URL, so today's printed QR
+  // codes will keep working unchanged.
+  return origin ? `${origin}/t/${tableId}` : ''
+}
+
+/** Sanitise a free-text label into something fit for a saved filename:
+ *  lowercase, ASCII-only-ish, spaces → "-", dropping characters the OS may
+ *  refuse. Falls back to "table" so we never produce an empty name. */
+function slugForFilename(input: string, fallback = 'table'): string {
+  const trimmed = (input ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '')
+  const ascii   = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return ascii || fallback
+}
 
 export interface TablesShellProps {
   /** The establishment the page currently scopes to, resolved server-side from
@@ -234,6 +264,9 @@ export default function TablesShell({
             <SetupView
               tables={tables}
               restaurantId={restaurantId}
+              establishmentName={
+                establishments.find((e) => e.id === currentId)?.name ?? ''
+              }
               defaultDurationMin={defaultDurationMin}
               onDurationSaved={(min) => setDefaultDurationMin(min)}
               onRefresh={loadTables}
@@ -574,10 +607,11 @@ function FloorPlanView({ tables, reservations }: { tables: Table[]; reservations
 // ── Setup view ────────────────────────────────────────────────────────────────
 
 function SetupView({
-  tables, restaurantId, defaultDurationMin, onDurationSaved, onRefresh,
+  tables, restaurantId, establishmentName, defaultDurationMin, onDurationSaved, onRefresh,
 }: {
   tables:              Table[]
   restaurantId:        string
+  establishmentName:   string
   defaultDurationMin:  number
   onDurationSaved:     (min: number) => void
   onRefresh:           () => void
@@ -772,6 +806,15 @@ function SetupView({
         </div>
       )}
 
+      {/* ── QR codes per table — Agent 2's /t/[tableId] page lives at the same
+            host as the dashboard (app.grubano.com staging, grubano.com prod),
+            so we encode `${window.location.origin}/t/<cuid>` directly. The
+            cuid table id is already non-guessable, no extra token needed. */}
+      <QrCodesSection
+        tables={tables}
+        establishmentName={establishmentName}
+      />
+
       {/* Add table */}
       {!adding ? (
         <button onClick={() => setAdding(true)}
@@ -805,6 +848,137 @@ function SetupView({
           </div>
         </form>
       )}
+    </div>
+  )
+}
+
+// ── QR codes section (Setup tab) ─────────────────────────────────────────────
+//
+// Sober list of per-table cards: a sharp SVG QR (vector — prints perfectly),
+// the table label, the encoded URL, and a small PNG download button. Hidden
+// when the establishment has zero tables (the empty caption replaces the
+// section so the operator knows what to do).
+
+function QrCodesSection({
+  tables, establishmentName,
+}: {
+  tables:            Table[]
+  establishmentName: string
+}) {
+  const t = useTranslations('tables.qr')
+  // window.location.origin is only legitimately readable AFTER mount, so we
+  // gate the rendering of the encoded URLs on a mounted flag — avoids the
+  // "QR points at empty origin" race during the very first SSR-friendly paint.
+  const [origin, setOrigin] = useState('')
+  useEffect(() => { setOrigin(getConsoOrigin()) }, [])
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <QrCode size={14} className="text-primary" />
+        <h3 className="text-sm font-bold">{t('title')}</h3>
+      </div>
+      <p className="mb-3 text-[11px] text-muted-foreground">{t('subtitle')}</p>
+
+      {tables.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border bg-background px-3 py-6 text-center text-[11px] text-muted-foreground">
+          {t('noTables')}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {tables.map((table) => (
+            <QrCard
+              key={table.id}
+              table={table}
+              establishmentName={establishmentName}
+              origin={origin}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function QrCard({
+  table, establishmentName, origin,
+}: {
+  table:             Table
+  establishmentName: string
+  origin:            string
+}) {
+  const t = useTranslations('tables.qr')
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const url       = buildQrUrl(origin, table.id)
+
+  function handleDownload() {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dataUrl  = canvas.toDataURL('image/png')
+    const filename = t('downloadFilename', {
+      establishment: slugForFilename(establishmentName, 'grubano'),
+      table:         slugForFilename(table.name, 'table'),
+    })
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-xl border border-border bg-background p-3 ${
+        table.active ? '' : 'opacity-60'
+      }`}
+    >
+      {/* Crisp SVG QR — vector, the displayed size + the printed size are both
+          sharp. The dashboard render uses a smaller box than the printable
+          card. */}
+      <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg bg-white p-1">
+        {origin && url ? (
+          <QRCodeSVG
+            value={url}
+            size={72}
+            level="M"
+            marginSize={0}
+          />
+        ) : (
+          <span className="text-[9px] text-muted-foreground">…</span>
+        )}
+      </div>
+
+      {/* Hidden canvas QR used SOLELY to power the PNG download. Same value as
+          the visible SVG so the downloaded image matches what's on screen. */}
+      <div aria-hidden className="hidden">
+        {origin && url && (
+          <QRCodeCanvas
+            ref={canvasRef}
+            value={url}
+            size={512}
+            level="M"
+            marginSize={2}
+          />
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">{table.name}</p>
+        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+          {url || '—'}
+        </p>
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={!origin || !url}
+          aria-label={t('downloadAria', { name: table.name })}
+          title={t('downloadAria', { name: table.name })}
+          className="mt-2 inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+        >
+          <Download size={11} /> {t('downloadPng')}
+        </button>
+      </div>
     </div>
   )
 }

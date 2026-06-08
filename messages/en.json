@@ -1389,6 +1389,19 @@
     "durationSavedShort": "Saved",
     "preset60": "1 h",
     "preset90": "1 h 30",
-    "preset120": "2 h"
+    "preset120": "2 h",
+    "qr": {
+      "title": "Table QR codes",
+      "subtitle": "One QR per table for at-table ordering. The \"Your bill is on the way\" page is already live.",
+      "downloadPng": "PNG",
+      "downloadAria": "Download the QR of {name} as PNG",
+      "downloadFilename": "grubano-{establishment}-{table}.png",
+      "printButton": "Print QR codes",
+      "printAria": "Print the QR-codes sheet",
+      "sheetTitle": "QR codes — {establishment}",
+      "sheetCaption": "Scan with your phone",
+      "sheetBrandLine": "grubano.com",
+      "noTables": "Add a table to generate its QR code."
+    }
   }
 }
