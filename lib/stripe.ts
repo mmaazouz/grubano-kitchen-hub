@@ -24,6 +24,19 @@ export type DepositMetadata = {
   tableId:       string
 }
 
+export type DepositStatus = 'none' | 'authorized' | 'captured' | 'released'
+
+/** Map a live PaymentIntent status onto our coarse depositStatus. */
+export function mapPaymentIntentStatus(s: Stripe.PaymentIntent.Status): DepositStatus {
+  if (s === 'requires_capture') return 'authorized' // card authorised, awaiting capture
+  if (s === 'canceled')         return 'released'    // authorisation cancelled, nothing charged
+  if (s === 'succeeded')        return 'captured'    // captured (penalty taken)
+  return 'none'                                      // not yet authorised
+}
+
+/** Publishable key (pk_test…) — safe to send to the client for Stripe Elements. */
+export const getPublishableKey = (): string | null => process.env.STRIPE_PUBLISHABLE_KEY ?? null
+
 /** EUR amount → integer cents (Stripe works in the smallest currency unit). */
 export const eurosToCents = (eur: number) => Math.round(eur * 100)
 
