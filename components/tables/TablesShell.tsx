@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useTranslations } from 'next-intl'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useTranslations, useLocale } from 'next-intl'
 import {
   Sparkles, Users, Clock, AlertTriangle,
   ChevronRight, Plus, CalendarDays, Euro, Filter, ShieldCheck,
   RefreshCw, QrCode, X, ChevronLeft, ChevronRight as ChevRight,
-  Store, Check, Timer, Download, Printer,
+  Store, Check, Timer, Download, Printer, Loader2,
 } from 'lucide-react'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import EstablishmentSwitcher, {
@@ -52,6 +52,15 @@ type Reservation = {
   allergies:    string[]
   depositAmount: number
   depositPaid:  boolean
+  // ── Stripe deposit lifecycle (Agent 2 Paiement V1) ─────────────────────────
+  // depositStatus = 'none' | 'authorized' | 'captured' | 'released'
+  // stripePaymentIntentId = the manual-capture PI handed back by Agent 2's
+  // POST /api/reservations/[id]/deposit. Both are nullable / defaulted on the
+  // server so older rows stay valid without backfill.
+  depositStatus?:        'none' | 'authorized' | 'captured' | 'released' | string
+  depositCurrency?:      string
+  noShowPenalty?:        number
+  stripePaymentIntentId?: string | null
   notes:        string | null
   table:        { id: string; name: string; seats: number }
 }
@@ -177,6 +186,37 @@ export default function TablesShell({
     })
   }
 
+  // ── Deposit actions (Agent 2 Paiement V1 endpoints) ──────────────────────
+  // Both endpoints are OWNER-scoped — Agent 2's resolveEstablishmentScope
+  // confirms the reservation belongs to one of the operator's restaurants
+  // before touching Stripe. We optimistically update local state on success
+  // and surface a friendly error code mapping for 409 (already captured /
+  // released) and the generic case.
+
+  async function releaseDeposit(id: string): Promise<{ ok: true } | { ok: false; status: number }> {
+    const r = await fetch(`/api/reservations/${id}/deposit/release`, { method: 'POST' })
+    if (!r.ok) return { ok: false, status: r.status }
+    const body = await r.json().catch(() => null)
+    setReservations(prev => prev.map(rs =>
+      rs.id === id
+        ? { ...rs, status: 'arrived', depositStatus: (body?.depositStatus ?? 'released') as Reservation['depositStatus'] }
+        : rs,
+    ))
+    return { ok: true }
+  }
+
+  async function captureDeposit(id: string): Promise<{ ok: true } | { ok: false; status: number }> {
+    const r = await fetch(`/api/reservations/${id}/deposit/capture`, { method: 'POST' })
+    if (!r.ok) return { ok: false, status: r.status }
+    const body = await r.json().catch(() => null)
+    setReservations(prev => prev.map(rs =>
+      rs.id === id
+        ? { ...rs, status: 'noshow', depositStatus: (body?.depositStatus ?? 'captured') as Reservation['depositStatus'] }
+        : rs,
+    ))
+    return { ok: true }
+  }
+
   // ── 0-establishment guard ────────────────────────────────────────────────
   if (!restaurantId) {
     return (
@@ -249,6 +289,8 @@ export default function TablesShell({
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}
               onUpdateStatus={updateStatus}
+              onReleaseDeposit={releaseDeposit}
+              onCaptureDeposit={captureDeposit}
             />
           )}
           {tab === 'calendar' && (
@@ -291,13 +333,43 @@ export default function TablesShell({
 
 function ListView({
   reservations, loading, selectedDate, onDateChange, onUpdateStatus,
+  onReleaseDeposit, onCaptureDeposit,
 }: {
-  reservations:   Reservation[]
-  loading:        boolean
-  selectedDate:   string
-  onDateChange:   (d: string) => void
-  onUpdateStatus: (id: string, status: Reservation['status']) => void
+  reservations:     Reservation[]
+  loading:          boolean
+  selectedDate:     string
+  onDateChange:     (d: string) => void
+  onUpdateStatus:   (id: string, status: Reservation['status']) => void
+  onReleaseDeposit: (id: string) => Promise<{ ok: true } | { ok: false; status: number }>
+  onCaptureDeposit: (id: string) => Promise<{ ok: true } | { ok: false; status: number }>
 }) {
+  const td = useTranslations('tables.deposit')
+  // Confirmation modal state for the no-show capture (real charge).
+  const [confirmCapture, setConfirmCapture] = useState<Reservation | null>(null)
+  // Per-reservation pending state for action buttons.
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function doRelease(r: Reservation) {
+    setActionError(null)
+    setPendingId(r.id)
+    const res = await onReleaseDeposit(r.id)
+    if (!res.ok) {
+      setActionError(res.status === 409 ? td('actionError409') : td('actionErrorGeneric'))
+    }
+    setPendingId(null)
+  }
+
+  async function doCapture(r: Reservation) {
+    setActionError(null)
+    setPendingId(r.id)
+    const res = await onCaptureDeposit(r.id)
+    if (!res.ok) {
+      setActionError(res.status === 409 ? td('actionError409') : td('actionErrorGeneric'))
+    }
+    setPendingId(null)
+    setConfirmCapture(null)
+  }
   const [filter, setFilter] = useState<'all' | 'arrived' | 'allergy' | 'deposit'>('all')
 
   function prevDay() {
@@ -393,9 +465,7 @@ function ListView({
                         <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warning">Dépassement</span>
                       )}
                       {r.depositAmount > 0 && (
-                        <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-primary">
-                          €{r.depositAmount} acompte{r.depositPaid ? ' ✓' : ''}
-                        </span>
+                        <DepositBadge reservation={r} />
                       )}
                       <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                         r.type === 'quick'    ? 'bg-muted text-muted-foreground'
@@ -414,27 +484,165 @@ function ListView({
                       </div>
                     )}
                   </div>
-                  {r.status === 'confirmed' && (
+                  {/* Action column: when the reservation has an ACTIVE
+                      Stripe hold (authorized), show release / capture pair
+                      that the Agent-2 endpoints expose. Otherwise fall back
+                      to the legacy arrival / overrun status updates. */}
+                  {r.status === 'confirmed' && r.depositStatus === 'authorized' ? (
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => doRelease(r)}
+                        disabled={pendingId === r.id}
+                        className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground disabled:opacity-60"
+                        title={td('actionArrived')}
+                      >
+                        {pendingId === r.id ? <Loader2 size={11} className="animate-spin" /> : td('actionArrived')}
+                      </button>
+                      <button
+                        onClick={() => setConfirmCapture(r)}
+                        disabled={pendingId === r.id}
+                        className="rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-1.5 text-[10px] font-semibold text-destructive disabled:opacity-60"
+                        title={td('actionNoshow')}
+                      >
+                        {td('actionNoshow')}
+                      </button>
+                    </div>
+                  ) : r.status === 'confirmed' ? (
                     <button
                       onClick={() => onUpdateStatus(r.id, 'arrived')}
                       className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground">
-                      Arrivée
+                      {td('actionMarkArrived')}
                     </button>
-                  )}
-                  {r.status === 'arrived' && (
+                  ) : r.status === 'arrived' ? (
                     <button
                       onClick={() => onUpdateStatus(r.id, 'overrun')}
                       className="rounded-lg bg-warning/20 px-2.5 py-1.5 text-[10px] font-semibold text-warning">
                       Dépassement
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             )
           })}
         </div>
       )}
+
+      {/* Error pill — used for both release and capture failures. */}
+      {actionError && (
+        <p className="mt-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          <span>{actionError}</span>
+        </p>
+      )}
+
+      {/* Capture-confirm modal — the action DEBITS the client, so it lives
+          behind an explicit "are you sure?" with the amount in the body. */}
+      {confirmCapture && (
+        <CaptureConfirmModal
+          reservation={confirmCapture}
+          pending={pendingId === confirmCapture.id}
+          onCancel={() => setConfirmCapture(null)}
+          onConfirm={() => doCapture(confirmCapture)}
+        />
+      )}
     </>
+  )
+}
+
+// ── Deposit badge — one of authorized / released / captured ─────────────────
+
+function DepositBadge({ reservation }: { reservation: Reservation }) {
+  const td = useTranslations('tables.deposit')
+  const locale = useLocale()
+  const currency = (reservation.depositCurrency ?? 'eur').toUpperCase()
+  const fmt = useMemo(
+    () => new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 }),
+    [locale, currency],
+  )
+  const amount = fmt.format(reservation.depositAmount)
+
+  switch (reservation.depositStatus) {
+    case 'authorized':
+      return (
+        <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-bold text-warning">
+          {td('depositBadgeAuth', { amount })}
+        </span>
+      )
+    case 'released':
+      return (
+        <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] font-bold text-success">
+          {td('depositBadgeRel')}
+        </span>
+      )
+    case 'captured':
+      return (
+        <span className="rounded-full bg-destructive/15 px-1.5 py-0.5 text-[9px] font-bold text-destructive">
+          {td('depositBadgeCap', { amount })}
+        </span>
+      )
+    default:
+      // Legacy reservations (depositStatus undefined or 'none') — show the
+      // historical "acompte" pill so nothing visibly regresses.
+      return (
+        <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-primary">
+          {amount}
+          {reservation.depositPaid ? ' ✓' : ''}
+        </span>
+      )
+  }
+}
+
+// ── Capture confirm modal — explicit consent before charging the guest ──────
+
+function CaptureConfirmModal({
+  reservation, pending, onCancel, onConfirm,
+}: {
+  reservation: Reservation
+  pending:     boolean
+  onCancel:    () => void
+  onConfirm:   () => void
+}) {
+  const td = useTranslations('tables.deposit')
+  const locale = useLocale()
+  const currency = (reservation.depositCurrency ?? 'eur').toUpperCase()
+  const amount = useMemo(
+    () => new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0 })
+      .format(reservation.noShowPenalty || reservation.depositAmount),
+    [reservation.depositAmount, reservation.noShowPenalty, currency, locale],
+  )
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+      <div className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-destructive/15 text-destructive">
+            <AlertTriangle size={15} />
+          </span>
+          <p className="text-base font-bold">{td('actionConfirmNoshowTitle')}</p>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {td('actionConfirmNoshowBody', { amount })}
+        </p>
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={pending}
+            className="flex-1 rounded-xl border border-border py-2.5 text-sm disabled:opacity-60"
+          >
+            {td('actionCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={pending}
+            className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground disabled:opacity-60"
+          >
+            {pending ? <Loader2 size={14} className="mx-auto animate-spin" /> : td('actionConfirm')}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
