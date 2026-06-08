@@ -118,17 +118,26 @@ export async function POST(req: Request) {
       select: { tableId: true },
     })
     const taken = new Set(conflicts.map((c) => c.tableId))
-    // Prefer the smallest table that still seats `guests`, then any free one.
-    const ranked = [...tables]
-      .filter((tab) => !taken.has(tab.id))
-      .sort((a, b) => {
-        const aOk = a.seats >= data.guests ? 0 : 1
-        const bOk = b.seats >= data.guests ? 0 : 1
-        if (aOk !== bOk) return aOk - bOk
-        return a.seats - b.seats
-      })
+
+    // Capacity (V1: one reservation = one table). NEVER seat a party on a table
+    // smaller than it. If no table is big enough at all → clear 400; otherwise
+    // pick the SMALLEST free table that seats the whole party.
+    const maxSeats = Math.max(...tables.map((t) => t.seats))
+    if (data.guests > maxSeats) {
+      return NextResponse.json(
+        {
+          error: `Nos tables accueillent au maximum ${maxSeats} couvert${maxSeats > 1 ? 's' : ''} (vous demandez ${data.guests}).`,
+          code:  'capacity_exceeded',
+        },
+        { status: 400 },
+      )
+    }
+    const ranked = tables
+      .filter((tab) => tab.seats >= data.guests && !taken.has(tab.id))
+      .sort((a, b) => a.seats - b.seats)
     const picked = ranked[0]
     if (!picked) {
+      // Big-enough tables exist but they are all taken for this slot.
       return NextResponse.json(
         { error: 'Créneau complet', code: 'slot_taken' },
         { status: 409 },

@@ -120,11 +120,23 @@ export async function POST(req: Request) {
     // bubbles up as a generic 500; return a clear 400 instead.
     const table = await prisma.restaurantTable.findUnique({
       where:  { id: data.tableId },
-      select: { id: true, restaurantId: true },
+      select: { id: true, restaurantId: true, seats: true },
     })
     if (!table) {
       return NextResponse.json(
         { error: 'Table introuvable — créez ou sélectionnez une table avant de réserver.' },
+        { status: 400 },
+      )
+    }
+
+    // Capacity (V1: one reservation = one table). The party must fit on the chosen
+    // table — never book more covers than the table seats. Server is the authority.
+    if (data.guests > table.seats) {
+      return NextResponse.json(
+        {
+          error: `Cette table a ${table.seats} place${table.seats > 1 ? 's' : ''}, vous demandez ${data.guests} couvert${data.guests > 1 ? 's' : ''}.`,
+          code:  'capacity_exceeded',
+        },
         { status: 400 },
       )
     }

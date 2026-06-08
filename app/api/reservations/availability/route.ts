@@ -48,8 +48,11 @@ export async function GET(req: Request) {
 
     const tables = await prisma.restaurantTable.findMany({
       where:  { restaurantId, active: true },
-      select: { id: true },
+      select: { id: true, seats: true },
     })
+    // Capacity ceiling: the largest single table (V1 = one reservation = one
+    // table). Exposed so the consumer UI can cap the covers selector.
+    const maxTableSeats = tables.reduce((max, t) => Math.max(max, t.seats), 0)
 
     // The day's live reservations for those tables (exclude cancelled/no-show).
     const dayStart = new Date(`${date}T00:00:00`)
@@ -88,7 +91,7 @@ export async function GET(req: Request) {
       slots.push({ time: `${pad(h)}:${pad(m)}`, available: !past && freeTables > 0, freeTables })
     }
 
-    return NextResponse.json({ restaurantId, date, durationMin, totalTables: tables.length, slots })
+    return NextResponse.json({ restaurantId, date, durationMin, totalTables: tables.length, maxTableSeats, slots })
   } catch (err) {
     console.error('[GET /api/reservations/availability]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
