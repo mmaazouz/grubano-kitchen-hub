@@ -55,6 +55,9 @@ export async function middleware(request: NextRequest) {
   const isPublic =
     publicRoots.includes(restPath) ||
     restPath.startsWith('/eat') ||
+    // /t/[tableId] is the PUBLIC consumer "table bill" QR landing (Sunday-style).
+    // Exact /t or the /t/ prefix only — never matches /tables (operator dashboard).
+    restPath === '/t' || restPath.startsWith('/t/') ||
     // /business/* is the PUBLIC partner space (auth/landing) — no session
     // required, exactly like /eat. The partner host root is routed here above.
     restPath.startsWith('/business') ||
