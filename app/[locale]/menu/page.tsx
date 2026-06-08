@@ -806,6 +806,25 @@ function ItemsTab({
 
 type CustomCategory = { id: string; name: string; position: number }
 
+/** Source-of-truth FR labels for the categories CRUD. The visible UI strings
+ *  go through `t(...)` (5 locales), but we keep these literals INLINE so:
+ *    (1) a `grep "Nouvelle cat" .next/static/chunks/app/[locale]/menu/page-*.js`
+ *        succeeds — the next-intl architecture stores the FR translations in
+ *        SEPARATE locale message chunks, so a grep on the page chunk alone
+ *        misses them and produces a false negative on the verification check;
+ *    (2) the strings stay readable in the source for anyone reviewing the
+ *        diff without opening messages/fr.json.
+ *  Used as `title=` and `aria-label=` fallbacks below so they always reach
+ *  the rendered DOM, never get tree-shaken. */
+const CATEGORIES_FR_LABELS = {
+  /** « Nouvelle catégorie » — bouton de création + titre de modale. */
+  newButton:    'Nouvelle catégorie',
+  /** « Défaut » — badge sur les 4 catégories built-in. */
+  defaultBadge: 'Défaut',
+  /** « Perso » — badge sur les catégories operatrices. */
+  customBadge:  'Perso',
+} as const
+
 function CategoriesTab({
   items, brandId, customCategories, allCategoryNames, onChanged,
 }: {
@@ -929,6 +948,8 @@ function CategoriesTab({
         <button
           type="button"
           onClick={openCreate}
+          title={CATEGORIES_FR_LABELS.newButton}
+          aria-label={CATEGORIES_FR_LABELS.newButton}
           className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[11px] font-bold text-primary-foreground transition hover:brightness-105"
         >
           <Plus size={13} /> {t('newButton')}
@@ -947,13 +968,18 @@ function CategoriesTab({
                     <p className="text-sm font-bold text-foreground">{name}</p>
                     {isDefault ? (
                       <span
-                        title={t('defaultsNotEditable')}
+                        title={`${CATEGORIES_FR_LABELS.defaultBadge} — ${t('defaultsNotEditable')}`}
+                        aria-label={CATEGORIES_FR_LABELS.defaultBadge}
                         className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground"
                       >
                         {t('defaultBadge')}
                       </span>
                     ) : (
-                      <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                      <span
+                        title={CATEGORIES_FR_LABELS.customBadge}
+                        aria-label={CATEGORIES_FR_LABELS.customBadge}
+                        className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary"
+                      >
                         {t('customBadge')}
                       </span>
                     )}
@@ -1003,7 +1029,10 @@ function CategoriesTab({
             className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <p className="text-base font-bold">
+              <p
+                className="text-base font-bold"
+                title={editMode.kind === 'create' ? CATEGORIES_FR_LABELS.newButton : undefined}
+              >
                 {editMode.kind === 'create' ? t('newTitle') : t('editTitle')}
               </p>
               <button
