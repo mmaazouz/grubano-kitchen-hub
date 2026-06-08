@@ -483,6 +483,14 @@ model Restaurant {
   // backfills every existing row to 60. A reservation can still override it; the
   // POST /api/reservations uses sent duration → this establishment default → 60.
   defaultReservationDurationMin Int @default(60)
+  // ── Reservation deposit empreinte amount (Finitions empreinte, additive) ─────
+  // ADDITIVE + non-destructive: the guarantee deposit (empreinte) charged per
+  // reservation for THIS establishment, in EUR. NOT NULL @default(10) → `db push`
+  // (ADD COLUMN ... NOT NULL DEFAULT 10) backfills every existing row to 10.
+  // /api/reservations/public reads this to set the reservation's depositAmount
+  // (was a hardcoded 10). Mohammed's decision: ONE configurable amount per resto,
+  // and the no-show penalty = 100 % of it (no separate penalty field). Reversible.
+  defaultDepositAmount Float @default(10)
   pickupAddress      String?
   pickupInstructions String? @db.Text
   // ── Opening hours (Option B, additive step 1) ───────────────────────────────

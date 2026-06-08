@@ -24,6 +24,11 @@ const FulfillmentInput = z.object({
   // Default table-hold duration (minutes) used to pre-fill the reservation modal.
   // Bounded 15..600; a reservation can still override it at creation time.
   defaultReservationDurationMin: z.number().int().min(15).max(600).optional(),
+  // Guarantee deposit / empreinte amount (EUR) charged per reservation for this
+  // establishment. ONE amount: the no-show penalty = 100 % of it (no separate
+  // penalty field). Read by /api/reservations/public to set the empreinte.
+  // Bounded 0..500; 0 disables the deposit. (UI: Agent 13, Config des tables.)
+  defaultDepositAmount: z.number().min(0).max(500).optional(),
 })
 
 // Pull only the fulfillment-relevant columns when returning to the client.
@@ -40,6 +45,7 @@ const SELECT_FULFILLMENT = {
   pickupAddress:      true,
   pickupInstructions: true,
   defaultReservationDurationMin: true,
+  defaultDepositAmount: true,
 } as const
 
 // Confirm the session user owns the restaurant (or is admin). Returns the

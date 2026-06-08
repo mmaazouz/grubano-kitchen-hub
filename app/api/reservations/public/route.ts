@@ -75,17 +75,19 @@ export async function POST(req: Request) {
       select: {
         id: true,
         defaultReservationDurationMin: true,
+        defaultDepositAmount: true,
       },
     })
     if (!restaurant) {
       return NextResponse.json({ error: 'Établissement introuvable' }, { status: 404 })
     }
 
-    // V1 default deposit amount (TheFork-style — small enough to be unfussy,
-    // big enough to disincentivise no-shows). depositAmount lives on
-    // Reservation, not on Restaurant, so for now we pick a sensible default
-    // here; making it configurable per-establishment is the next iteration.
-    const V1_DEFAULT_DEPOSIT_EUR = 10
+    // Per-establishment guarantee deposit (empreinte). Configured by the operator
+    // via /api/restaurants/[id]/fulfillment (defaultDepositAmount); falls back to
+    // 10 € for any legacy row. Mohammed's decision: ONE amount per resto, and the
+    // no-show penalty = 100 % of it (so noShowPenalty is set equal to the deposit
+    // on the row — captureHold then captures the full empreinte at no-show).
+    const depositEur = restaurant.defaultDepositAmount ?? 10
 
     // Slot end — explicit duration override > establishment default > 60.
     const durationMin = data.durationMin ?? restaurant.defaultReservationDurationMin ?? 60
@@ -147,8 +149,10 @@ export async function POST(req: Request) {
         type:         'standard',
         // Server-side authoritative deposit amount — the client can't
         // influence it. Agent 2's deposit POST will use the same value
-        // (depositAmount on the row, not on the body).
-        depositAmount: V1_DEFAULT_DEPOSIT_EUR,
+        // (depositAmount on the row, not on the body). noShowPenalty is set
+        // equal to the deposit so a no-show capture takes 100 % of the empreinte.
+        depositAmount: depositEur,
+        noShowPenalty: depositEur,
         depositPaid:   false,
         // Empty JSON columns — Prisma rejects undefined for Json @default("[]").
         allergies: [] as unknown as Prisma.InputJsonValue,
