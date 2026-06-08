@@ -89,8 +89,32 @@ model Brand {
   dishAdoptions DishAdoption[]
   // Inverse side of AdoptionWaitlist.brand (levier 3A) — city-exclusivity queue.
   waitlist      AdoptionWaitlist[]
+  // Inverse side of Category.brand — this brand's CUSTOM menu categories.
+  categories    Category[]
 
   @@index([restaurantId])
+}
+
+// ── Custom menu categories (additive) ─────────────────────────────────────────
+// ADDITIVE + REVERSIBLE: a brand's CUSTOM menu categories. The 4 built-in defaults
+// (Entrées / Plats / Desserts / Boissons) are NOT stored here — they are front-end
+// constants, always present and non-deletable. Only the operator's own extra
+// categories live in this table. MenuItem.category stays a free-text column (the
+// category NAME), so existing dishes are untouched and there is no mandatory FK —
+// this table just remembers/edits the custom list per brand. Dropping it is
+// non-destructive. onDelete: Cascade so deleting a brand removes its categories
+// (keeps the establishment hard-delete orphan-free with no extra step).
+model Category {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  // Unique per brand (no duplicate names). This composite also indexes brandId
+  // via its leftmost prefix, so per-brand lookups stay fast with no extra index.
+  @@unique([brandId, name])
 }
 
 // ── Loyalty ───────────────────────────────────────────────────────────────────
