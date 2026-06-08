@@ -20,7 +20,11 @@ const createSchema = z.object({
   description: z.string().max(500).nullish(),
   price:       z.number().positive(),
   comparePrice:z.number().positive().nullish(),
-  category:    z.string().min(1).max(50),
+  // Trim the stored category name: prevents " Boissons " from creating a near-duplicate
+  // of "Boissons". The server persists exactly the category sent for THIS dish (each
+  // request is independent — no remanent state); the "sticky category" bug is the
+  // client default logic (Agent 13), not the server.
+  category:    z.string().trim().min(1).max(50),
   calories:    z.number().int().positive().nullish(),
   allergens:   z.array(z.string()).default([]),
   labels:      z.array(z.string()).default([]),
