@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { processDishImage, ALLOWED_IMAGE_TYPES } from '@/lib/dish-photo'
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,10 @@ const createSchema = z.object({
   available:   z.boolean().default(true),
   isPopular:   z.boolean().default(false),
   prepTime:    z.number().int().positive().nullish(),
+  // Optional inline photo. When present the server moderates + uploads it and
+  // sets photos=[url] at creation (atomic — never a photoless dish on failure).
+  imageBase64: z.string().optional(),
+  mediaType:   z.enum(ALLOWED_IMAGE_TYPES).optional(),
 })
 
 /** Resolve the calling operator from the session — null on any failure. */
@@ -81,7 +86,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const data = createSchema.parse(body)
+    const { imageBase64, mediaType, ...data } = createSchema.parse(body)
 
     const brand = await prisma.brand.findFirst({
       where: operator.role === 'admin'
@@ -93,11 +98,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Marque introuvable ou non autorisée' }, { status: 400 })
     }
 
+    // Optional inline photo. Run the full chain (moderate → upload → square)
+    // BEFORE creating the dish; on ANY failure return the error and DO NOT create
+    // a photoless dish silently. On success photos = [square Cloudinary URL].
+    let photos = data.photos
+    let warnings: string[] = []
+    if (imageBase64) {
+      const result = await processDishImage(imageBase64, mediaType ?? 'image/jpeg')
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: result.error, ...(result.moderation ? { moderation: result.moderation } : {}) },
+          { status: result.status },
+        )
+      }
+      photos   = [result.url]
+      warnings = result.warnings
+    }
+
     const item = await prisma.menuItem.create({
-      data: data as unknown as Prisma.MenuItemUncheckedCreateInput,
+      data: { ...data, photos } as unknown as Prisma.MenuItemUncheckedCreateInput,
     })
 
-    return NextResponse.json({ item }, { status: 201 })
+    return NextResponse.json({ item, warnings }, { status: 201 })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
