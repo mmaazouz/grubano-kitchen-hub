@@ -872,11 +872,31 @@ function QrCodesSection({
   const [origin, setOrigin] = useState('')
   useEffect(() => { setOrigin(getConsoOrigin()) }, [])
 
+  function handlePrint() {
+    // Browsers only run window.print() once any pending paint is committed —
+    // the printable sheet markup below is in the DOM already with display:none
+    // on screen but `visibility:visible` in print (via the @media print rule
+    // injected as a global style), so this call is enough.
+    window.print()
+  }
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="mb-2 flex items-center gap-2">
+      {/* Section header with the print button on the right */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
         <QrCode size={14} className="text-primary" />
         <h3 className="text-sm font-bold">{t('title')}</h3>
+        {tables.length > 0 && origin && (
+          <button
+            type="button"
+            onClick={handlePrint}
+            aria-label={t('printAria')}
+            title={t('printAria')}
+            className="ms-auto inline-flex items-center gap-1.5 rounded-xl bg-navy px-3 py-1.5 text-[11px] font-bold text-navy-foreground transition hover:brightness-110"
+          >
+            <Printer size={12} /> {t('printButton')}
+          </button>
+        )}
       </div>
       <p className="mb-3 text-[11px] text-muted-foreground">{t('subtitle')}</p>
 
@@ -896,7 +916,102 @@ function QrCodesSection({
           ))}
         </div>
       )}
+
+      {/* ── Printable A4 sheet ──────────────────────────────────────────────
+          Hidden on screen (`hidden`), revealed only by the @media print rule
+          via `visibility: visible`. The host page chrome (Sidebar, header,
+          rest of the dashboard) is hidden in print via `body * { visibility:
+          hidden }` + an override on the sheet sub-tree. Browser-native
+          window.print() drives it — no PDF library, no external service.
+
+          Grid: 2 columns × 3 rows ≈ 6 cards per A4 page with comfortable
+          margins; the browser handles page breaks naturally between rows. */}
+      <PrintableQrSheet
+        tables={tables}
+        establishmentName={establishmentName}
+        origin={origin}
+      />
+      {/* Global print rules — small and idempotent (we use unique class
+          names so multiple instances won't fight). */}
+      <style jsx global>{`
+        @media print {
+          @page { size: A4; margin: 12mm; }
+          /* Hide everything by default ... */
+          body * { visibility: hidden !important; }
+          /* ... then reveal only the printable sheet tree. */
+          .grubano-print-sheet, .grubano-print-sheet * { visibility: visible !important; }
+          .grubano-print-sheet {
+            position: absolute !important;
+            inset: 0 !important;
+            width: 100% !important;
+            background: #fff !important;
+            color: #000 !important;
+          }
+          /* Avoid page break inside a single card. */
+          .grubano-print-card { break-inside: avoid; page-break-inside: avoid; }
+        }
+      `}</style>
     </div>
+  )
+}
+
+// ── Printable sheet ───────────────────────────────────────────────────────────
+//
+// Renders ONE card per table, sized for A4 (2 cols × 3 rows ≈ 6/page). Each
+// card shows: a large vector-SVG QR (sharp at any zoom), the table name, the
+// establishment name, a small caption ("Scannez avec votre téléphone") and a
+// sober Grubano wordmark. Trim hint via a thin dashed border around each card.
+
+function PrintableQrSheet({
+  tables, establishmentName, origin,
+}: {
+  tables:            Table[]
+  establishmentName: string
+  origin:            string
+}) {
+  const t = useTranslations('tables.qr')
+  if (tables.length === 0 || !origin) return null
+
+  return (
+    <section
+      aria-hidden
+      className="grubano-print-sheet hidden"
+    >
+      <div className="mb-4 flex items-baseline justify-between border-b border-black/10 pb-2">
+        <p className="text-base font-bold text-black">
+          {t('sheetTitle', { establishment: establishmentName || '—' })}
+        </p>
+        <p className="text-[10px] uppercase tracking-wider text-black/50">
+          {t('sheetBrandLine')}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {tables.map((table) => {
+          const url = buildQrUrl(origin, table.id)
+          return (
+            <div
+              key={table.id}
+              className="grubano-print-card flex flex-col items-center gap-2 rounded-md border border-dashed border-black/30 p-4 text-center"
+            >
+              <p className="text-[10px] uppercase tracking-widest text-black/50">
+                {establishmentName || '—'}
+              </p>
+              <p className="text-xl font-bold text-black">{table.name}</p>
+              {/* Square white panel under the QR so the contrast is guaranteed
+                  even on tinted paper. Size large enough for a phone scanner
+                  at arm's length (≈ 45mm = ~170 px at 96 DPI). */}
+              <div className="my-1 bg-white p-2">
+                <QRCodeSVG value={url} size={180} level="M" marginSize={0} />
+              </div>
+              <p className="text-[11px] font-semibold text-black">{t('sheetCaption')}</p>
+              <p className="mt-1 text-[9px] uppercase tracking-wider text-black/50">
+                {t('sheetBrandLine')}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
