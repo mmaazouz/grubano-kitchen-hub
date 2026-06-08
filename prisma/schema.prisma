@@ -298,6 +298,15 @@ model Reservation {
   depositAmount Float          @default(0)
   depositPaid  Boolean         @default(false)
   noShowPenalty Float          @default(0)
+  // ── Stripe deposit hold (Paiement V1, additive — TEST mode) ─────────────────
+  // ADDITIVE + REVERSIBLE: a TheFork-style guarantee held by a manual-capture
+  // Stripe PaymentIntent (pre-authorisation). On arrival → cancel (nothing
+  // charged); on no-show → capture the penalty. depositPaid is KEPT for
+  // back-compat; depositStatus is the finer lifecycle. All nullable / defaulted,
+  // so existing rows stay valid with no backfill.
+  stripePaymentIntentId String?              // the PaymentIntent id (pi_...)
+  depositStatus String          @default("none") // none | authorized | captured | released
+  depositCurrency String        @default("eur")
   notes        String?         @db.Text
   createdAt    DateTime        @default(now())
 }
