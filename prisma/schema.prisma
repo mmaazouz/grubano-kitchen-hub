@@ -268,6 +268,8 @@ model RestaurantTable {
   y            Float         @default(50)
   active       Boolean       @default(true)
   reservations Reservation[]
+  // Inverse side of TableTicket.restaurantTable (Addition brique 1).
+  tickets      TableTicket[]
 
   @@index([restaurantId])
 }
@@ -509,10 +511,58 @@ model Restaurant {
   // extra column on Restaurant.
   tables       RestaurantTable[]
   reservations Reservation[]
+  // Inverse side of TableTicket.restaurant (Addition brique 1) — the table bills.
+  tickets      TableTicket[]
 
   // Option B (step 4): operatorId is no longer unique; keep a plain index so the
   // frequent findFirst/findMany({ where: { operatorId } }) lookups stay fast.
   @@index([operatorId])
+}
+
+// ── Table bill / addition (Sunday-style QR pay, brique 1) ──────────────────────
+// ADDITIVE + REVERSIBLE: a "ticket" is the addition opened at a table. The waiter
+// adds lines (from the menu or free), the consumer later scans the QR to PAY
+// (brique 2 — not here). TicketItem FREEZES name + unitPrice at add time, so a
+// later menu price change never rewrites a billed line. subtotal is recomputed on
+// every write. Brand-new tables with no non-nullable FK back into existing rows →
+// `db push` creates them with zero backfill; dropping them is non-destructive.
+model TableTicket {
+  id                String          @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant      @relation(fields: [restaurantId], references: [id])
+  restaurantTableId String
+  restaurantTable   RestaurantTable @relation(fields: [restaurantTableId], references: [id])
+  // Optional link to the table's active reservation (best-effort) so brique 2 can
+  // find the deposit empreinte to release at payment. Nullable → no impact.
+  reservationId     String?
+  status            String          @default("open")  // open | paid | void
+  currency          String          @default("eur")
+  subtotal          Float           @default(0)        // Σ(unitPrice * quantity), recomputed
+  openedAt          DateTime        @default(now())
+  paidAt            DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  items             TicketItem[]
+
+  @@index([restaurantId])
+  @@index([restaurantTableId])
+  @@index([status])
+}
+
+model TicketItem {
+  id         String      @id @default(cuid())
+  ticketId   String
+  ticket     TableTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  // Optional reference to the source dish (null for a free line). name + unitPrice
+  // are FROZEN copies taken at add time — the billed line never changes if the
+  // menu price changes later.
+  menuItemId String?
+  name       String
+  unitPrice  Float
+  quantity   Int         @default(1)
+  createdAt  DateTime    @default(now())
+
+  @@index([ticketId])
 }
 
 model Order {
