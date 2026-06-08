@@ -1051,6 +1051,33 @@
       "err503": "Servizio foto temporaneamente non disponibile. Riprova tra poco.",
       "err500": "Caricamento foto fallito.",
       "errNetwork": "Impossibile inviare la foto — verifica la connessione."
+    },
+    "categories": {
+      "tabTitle": "Le tue categorie",
+      "tabSubtitle": "Organizza i tuoi piatti. Le 4 categorie predefinite sono sempre disponibili; quelle personalizzate possono essere rinominate o eliminate.",
+      "defaultBadge": "Predefinita",
+      "customBadge": "Personale",
+      "countItems": "{count, plural, =0 {Nessun piatto} =1 {# piatto} other {# piatti}}",
+      "newButton": "Nuova categoria",
+      "newPlaceholder": "Es. Pizze, Vini, Brunch…",
+      "newTitle": "Nuova categoria",
+      "editTitle": "Rinomina la categoria",
+      "editButton": "Rinomina",
+      "deleteButton": "Elimina",
+      "confirmCreate": "Crea",
+      "confirmRename": "Rinomina",
+      "confirmDelete": "Elimina",
+      "cancel": "Annulla",
+      "deleteTitle": "Eliminare questa categoria?",
+      "deleteBody": "La categoria «{name}» verrà eliminata.",
+      "deleteNote": "I piatti associati torneranno a «Non classificato».",
+      "defaultsNotEditable": "Categoria predefinita — non modificabile",
+      "unclassifiedLabel": "Non classificato",
+      "err400": "Nome non valido o riservato.",
+      "err409": "Questa categoria esiste già.",
+      "errGeneric": "Azione non riuscita — riprova.",
+      "errNetwork": "Impossibile contattare il server.",
+      "savedToast": "Categoria salvata"
     }
   },
   "finance": {

@@ -1051,6 +1051,33 @@
       "err503": "Service photo temporairement indisponible. Réessayez dans un instant.",
       "err500": "Échec de l’envoi de la photo.",
       "errNetwork": "Impossible d’envoyer la photo — vérifiez votre connexion."
+    },
+    "categories": {
+      "tabTitle": "Vos catégories",
+      "tabSubtitle": "Organisez vos plats. Les 4 catégories par défaut sont toujours disponibles ; vos catégories perso peuvent être renommées ou supprimées.",
+      "defaultBadge": "Défaut",
+      "customBadge": "Perso",
+      "countItems": "{count, plural, =0 {Aucun plat} =1 {# plat} other {# plats}}",
+      "newButton": "Nouvelle catégorie",
+      "newPlaceholder": "Ex. Pizzas, Vins, Brunch…",
+      "newTitle": "Nouvelle catégorie",
+      "editTitle": "Renommer la catégorie",
+      "editButton": "Renommer",
+      "deleteButton": "Supprimer",
+      "confirmCreate": "Créer",
+      "confirmRename": "Renommer",
+      "confirmDelete": "Supprimer",
+      "cancel": "Annuler",
+      "deleteTitle": "Supprimer cette catégorie ?",
+      "deleteBody": "La catégorie « {name} » sera supprimée.",
+      "deleteNote": "Les plats associés repasseront en « Non classé ».",
+      "defaultsNotEditable": "Catégorie par défaut — non modifiable",
+      "unclassifiedLabel": "Non classé",
+      "err400": "Nom invalide ou réservé.",
+      "err409": "Cette catégorie existe déjà.",
+      "errGeneric": "Action impossible — réessayez.",
+      "errNetwork": "Impossible de joindre le serveur.",
+      "savedToast": "Catégorie enregistrée"
     }
   },
   "finance": {

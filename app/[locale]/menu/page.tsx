@@ -95,6 +95,38 @@ const EMOJI_FOR_CAT: Record<string, string> = {
 }
 const emojiFor = (cat: string) => EMOJI_FOR_CAT[cat] ?? '🍴'
 
+/** The 4 built-in categories — ALWAYS available as picker chips, never
+ *  derived from existing dishes (that derivation was the root cause of the
+ *  "catégorie collée" bug: as soon as one dish existed in "Boissons", the
+ *  selector collapsed to ['Boissons'] and every new dish fell into it).
+ *  Aligned with what Agent 2's POST /api/menu/categories rejects as
+ *  reserved (case-insensitive). */
+const DEFAULT_CATEGORIES = ['Entrées', 'Plats', 'Desserts', 'Boissons'] as const
+
+/** Server-reserved label for dishes whose custom category was deleted.
+ *  Agent 2's DELETE /api/menu/categories returns reclassifiedTo: this. */
+const UNCLASSIFIED_LABEL = 'Non classé'
+
+/** Merge the 4 defaults with the operator's custom category names, in this
+ *  order (defaults first), deduping case-insensitive so a custom that
+ *  duplicates a default never produces two chips. */
+function mergeCategoryNames(custom: string[]): string[] {
+  const seen = new Set<string>(DEFAULT_CATEGORIES.map((c) => c.toLowerCase()))
+  const merged: string[] = [...DEFAULT_CATEGORIES]
+  for (const name of custom) {
+    const key = name.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    merged.push(name)
+  }
+  return merged
+}
+
+/** The default category for any NEW dish (Manuel or Scan IA fallback).
+ *  Fixed — never `existingCategories[0]`. "Plats" is the obvious neutral
+ *  pick (matches the icon in the navy CTA and the brief's example). */
+const DEFAULT_NEW_DISH_CATEGORY = 'Plats'
+
 // ── Mock promotions (Phase 2 — not yet in DB scope) ───────────────────────────
 
 const PROMOS = [
@@ -160,6 +192,12 @@ function MenuBuilder() {
    *  Agent 2's moderation. Surfaced as a top banner above the list and
    *  auto-dismissed after a few seconds. Empty array = no banner. */
   const [photoWarnings,  setPhotoWarnings]  = useState<string[]>([])
+  /** Custom (per-brand) category objects from /api/menu/categories. The 4
+   *  built-ins are added on top in `allCategoryNames` below — never derived
+   *  from existing dishes (the previous source of the "catégorie collée"
+   *  bug). Includes `id` so the Categories tab can mutate them. */
+  const [customCategories, setCustomCategories] =
+    useState<Array<{ id: string; name: string; position: number }>>([])
   // Establishments list — used to label the breadcrumb middle segment with the
   // real establishment name. Falls back to "" if the call fails (we still show
   // the breadcrumb root + brand name, just without the middle label).
@@ -314,7 +352,39 @@ function MenuBuilder() {
     ? establishments.find((e) => e.id === currentRestaurantId) ?? null
     : null
 
+  // Categories DERIVED from existing dishes — kept only for the
+  // CategoriesTab's "stats per category" aggregation. NEVER used to source
+  // the picker chips (that was the bug). The picker reads
+  // `allCategoryNames` instead, which is always defaults + custom.
   const categories = Array.from(new Set(items.map(i => i.category))).sort()
+
+  // Picker source: ALWAYS the 4 defaults + the operator's custom categories.
+  // Stable across renders so child component state doesn't churn.
+  const allCategoryNames = mergeCategoryNames(customCategories.map((c) => c.name))
+
+  // ── Custom categories loader (per brand) ───────────────────────────────────
+  // Fetches /api/menu/categories?brandId=<id> with cache:'no-store' so a
+  // mutation in the Categories tab is reflected immediately. Tolerant: any
+  // non-OK answer just leaves the array empty — the defaults still work.
+  const loadCustomCategories = useCallback(async (bId: string) => {
+    if (!bId) { setCustomCategories([]); return }
+    try {
+      const r = await fetch(`/api/menu/categories?brandId=${bId}`, { cache: 'no-store' })
+      if (r.ok) {
+        const d = await r.json()
+        const list = Array.isArray(d?.categories) ? d.categories : []
+        setCustomCategories(list)
+      } else {
+        setCustomCategories([])
+      }
+    } catch {
+      setCustomCategories([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (brandId) loadCustomCategories(brandId)
+  }, [brandId, loadCustomCategories])
 
   async function toggleAvail(item: MenuItem) {
     const newAvail = !item.available
@@ -374,9 +444,12 @@ function MenuBuilder() {
     setEditing(null)
   }
 
+  // FIX "catégorie collée": new dish defaults to a FIXED neutral category,
+  // never `categories[0]` (which used to inherit whatever the first existing
+  // dish was — "Boissons" if there was only a drink, etc.).
   const newItem = (): MenuItem => ({
     id: 'new', brandId, name: '', description: '', price: 0,
-    category: categories[0] ?? 'Plats', calories: null,
+    category: DEFAULT_NEW_DISH_CATEGORY, calories: null,
     allergens: [], labels: [], available: true, isPopular: false,
   })
 
@@ -556,7 +629,10 @@ function MenuBuilder() {
       {scanner && (
         <AIScannerOverlay
           brandId={brandId}
-          categories={categories}
+          /* FIX "catégorie collée": pickers receive the COMPLETE category
+             list (4 defaults + custom), never the items-derived
+             `categories` subset that used to collapse to a single option. */
+          categories={allCategoryNames}
           onClose={() => setScanner(false)}
           onAdd={(item, warnings) => {
             setItems(prev => [item, ...prev])
@@ -568,7 +644,7 @@ function MenuBuilder() {
       {editing && (
         <DishEditor
           item={editing}
-          categories={categories}
+          categories={allCategoryNames}
           onClose={() => setEditing(null)}
           onSave={saveItem}
           onDelete={deleteItem}
@@ -1250,8 +1326,13 @@ function ResultStep({
 }) {
   const [name,      setName]      = useState(scanResult.name)
   const [desc,      setDesc]      = useState(scanResult.description)
+  // FIX "catégorie collée": keep the IA suggestion when it matches one of the
+  // available chips (defaults + custom), else fall back to the FIXED neutral
+  // default — never `categories[0]`, which used to be whatever existed first.
   const [category,  setCategory]  = useState(
-    categories.includes(scanResult.category) ? scanResult.category : (categories[0] ?? 'Plats'),
+    categories.includes(scanResult.category)
+      ? scanResult.category
+      : DEFAULT_NEW_DISH_CATEGORY,
   )
   const [price,     setPrice]     = useState(
     Math.round((scanResult.calories_min / 100 + 7) * 10) / 10,
@@ -1264,7 +1345,11 @@ function ResultStep({
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
-  const allCats = categories.length > 0 ? categories : ['Entrées', 'Plats', 'Desserts', 'Boissons']
+  // The chips render the prop list as-is. The parent passes the COMPLETE set
+  // (4 defaults + custom) via allCategoryNames, so a degenerate fallback to
+  // the 4 defaults is no longer necessary — and exactly that fallback used
+  // to mask the bug by hiding defaults once any dish existed.
+  const allCats = categories
 
   async function confirm() {
     setError('')
@@ -1490,7 +1575,12 @@ function DishEditor({
     reader.readAsDataURL(file)
   }
 
-  const allCats = categories.length > 0 ? categories : ['Entrées', 'Plats', 'Desserts', 'Boissons']
+  // Same fix as ResultStep: trust the prop list (defaults + custom) instead
+  // of degenerating to the 4 builtins when it "looks small". The previous
+  // `categories.length > 0 ? categories : DEFAULTS` was the symmetric cause
+  // of the bug — once any custom existed but defaults were absent, the
+  // picker collapsed to whatever happened to be in `categories`.
+  const allCats = categories
 
   /** Map an HTTP status (returned by /api/menu or /api/menu/photo) to a
    *  user-facing i18n string. 422 surfaces the server's `reason` when

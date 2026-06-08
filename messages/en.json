@@ -1051,6 +1051,33 @@
       "err503": "Photo service temporarily unavailable. Please retry shortly.",
       "err500": "Photo upload failed.",
       "errNetwork": "Could not upload the photo — check your connection."
+    },
+    "categories": {
+      "tabTitle": "Your categories",
+      "tabSubtitle": "Organise your dishes. The 4 default categories are always available; your custom ones can be renamed or deleted.",
+      "defaultBadge": "Default",
+      "customBadge": "Custom",
+      "countItems": "{count, plural, =0 {No dish} =1 {# dish} other {# dishes}}",
+      "newButton": "New category",
+      "newPlaceholder": "e.g. Pizzas, Wines, Brunch…",
+      "newTitle": "New category",
+      "editTitle": "Rename the category",
+      "editButton": "Rename",
+      "deleteButton": "Delete",
+      "confirmCreate": "Create",
+      "confirmRename": "Rename",
+      "confirmDelete": "Delete",
+      "cancel": "Cancel",
+      "deleteTitle": "Delete this category?",
+      "deleteBody": "The category \"{name}\" will be removed.",
+      "deleteNote": "Linked dishes will move back to \"Unclassified\".",
+      "defaultsNotEditable": "Default category — not editable",
+      "unclassifiedLabel": "Unclassified",
+      "err400": "Invalid or reserved name.",
+      "err409": "This category already exists.",
+      "errGeneric": "Action failed — please retry.",
+      "errNetwork": "Could not reach the server.",
+      "savedToast": "Category saved"
     }
   },
   "finance": {
