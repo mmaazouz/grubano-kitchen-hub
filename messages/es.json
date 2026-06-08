@@ -1475,5 +1475,27 @@
       "savedShort": "Guardado",
       "saveError": "No se pudo guardar el importe de la huella."
     }
+  },
+  "tickets": {
+    "noTable": "Sin mesa — añade una en Config.",
+    "selectTable": "Mesa",
+    "open": "Abrir una cuenta",
+    "statusOpen": "Abierta",
+    "statusPaid": "Pagada",
+    "statusVoid": "Anulada",
+    "total": "Total",
+    "emptyLines": "Sin líneas todavía.",
+    "searchPlaceholder": "Buscar un plato…",
+    "menuEmpty": "Ningún plato encontrado.",
+    "freeTitle": "Línea libre",
+    "freeNamePh": "Etiqueta",
+    "freePricePh": "Precio €",
+    "addBtn": "Añadir",
+    "paidNote": "El pago por QR llegará pronto.",
+    "voidBtn": "Anular la cuenta",
+    "voidConfirm": "¿Anular esta cuenta?",
+    "voidYes": "Sí, anular",
+    "voidNo": "No",
+    "error": "Algo salió mal, inténtalo de nuevo."
   }
 }

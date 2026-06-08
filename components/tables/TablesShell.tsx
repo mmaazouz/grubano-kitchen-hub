@@ -13,6 +13,7 @@ import EstablishmentSwitcher, {
   type EstablishmentOption,
 } from '@/components/dashboard/EstablishmentSwitcher'
 import { EmptyState } from '@/components/design-system'
+import TicketPanel from '@/components/tables/TicketPanel'
 
 // ── /tables — Agent 13 ─────────────────────────────────────────────────────────
 // The page used to be a single client component (~700 l.) that fetched
@@ -65,7 +66,7 @@ type Reservation = {
   table:        { id: string; name: string; seats: number }
 }
 
-type Tab = 'list' | 'calendar' | 'plan' | 'setup'
+type Tab = 'list' | 'calendar' | 'plan' | 'setup' | 'addition'
 
 // ── consoOrigin (Agent 2's /t/[tableId] is on the SAME host as the dashboard
 //   — staging app.grubano.com, prod grubano.com). Falling back to
@@ -252,13 +253,13 @@ export default function TablesShell({
         </button>
       </div>
 
-      <div className="mb-4 grid grid-cols-4 gap-1 rounded-2xl bg-muted p-1">
-        {(['list', 'calendar', 'plan', 'setup'] as const).map(k => (
+      <div className="mb-4 grid grid-cols-5 gap-1 rounded-2xl bg-muted p-1">
+        {(['list', 'calendar', 'plan', 'addition', 'setup'] as const).map(k => (
           <button key={k} onClick={() => setTab(k)}
             className={`rounded-xl py-2 text-[11px] font-semibold transition ${
               tab === k ? 'bg-card text-foreground shadow' : 'text-muted-foreground'
             }`}>
-            {k === 'list' ? 'Liste' : k === 'calendar' ? 'Agenda' : k === 'plan' ? 'Plan' : 'Config'}
+            {k === 'list' ? 'Liste' : k === 'calendar' ? 'Agenda' : k === 'plan' ? 'Plan' : k === 'addition' ? 'Addition' : 'Config'}
           </button>
         ))}
       </div>
@@ -302,6 +303,7 @@ export default function TablesShell({
             />
           )}
           {tab === 'plan' && <FloorPlanView tables={tables} reservations={reservations} />}
+          {tab === 'addition' && <TicketPanel tables={tables} />}
           {tab === 'setup' && (
             <SetupView
               tables={tables}

@@ -1475,5 +1475,27 @@
       "savedShort": "Saved",
       "saveError": "Could not save the hold amount."
     }
+  },
+  "tickets": {
+    "noTable": "No table — add one in Config.",
+    "selectTable": "Table",
+    "open": "Open a bill",
+    "statusOpen": "Open",
+    "statusPaid": "Paid",
+    "statusVoid": "Voided",
+    "total": "Total",
+    "emptyLines": "No items yet.",
+    "searchPlaceholder": "Search a dish…",
+    "menuEmpty": "No dish found.",
+    "freeTitle": "Free line",
+    "freeNamePh": "Label",
+    "freePricePh": "Price €",
+    "addBtn": "Add",
+    "paidNote": "QR payment is coming soon.",
+    "voidBtn": "Void the bill",
+    "voidConfirm": "Void this bill?",
+    "voidYes": "Yes, void",
+    "voidNo": "No",
+    "error": "Something went wrong, try again."
   }
 }

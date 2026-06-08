@@ -1475,5 +1475,27 @@
       "savedShort": "Salvato",
       "saveError": "Impossibile salvare l’importo dell’impronta."
     }
+  },
+  "tickets": {
+    "noTable": "Nessun tavolo — aggiungine uno in Config.",
+    "selectTable": "Tavolo",
+    "open": "Apri un conto",
+    "statusOpen": "Aperto",
+    "statusPaid": "Pagato",
+    "statusVoid": "Annullato",
+    "total": "Totale",
+    "emptyLines": "Ancora nessuna riga.",
+    "searchPlaceholder": "Cerca un piatto…",
+    "menuEmpty": "Nessun piatto trovato.",
+    "freeTitle": "Riga libera",
+    "freeNamePh": "Etichetta",
+    "freePricePh": "Prezzo €",
+    "addBtn": "Aggiungi",
+    "paidNote": "Il pagamento con QR arriverà presto.",
+    "voidBtn": "Annulla il conto",
+    "voidConfirm": "Annullare questo conto?",
+    "voidYes": "Sì, annulla",
+    "voidNo": "No",
+    "error": "Qualcosa è andato storto, riprova."
   }
 }

@@ -1475,5 +1475,27 @@
       "savedShort": "تم الحفظ",
       "saveError": "تعذر حفظ مبلغ الضمان."
     }
+  },
+  "tickets": {
+    "noTable": "لا توجد طاولة — أضف واحدة في الإعدادات.",
+    "selectTable": "الطاولة",
+    "open": "فتح حساب",
+    "statusOpen": "مفتوح",
+    "statusPaid": "مدفوع",
+    "statusVoid": "ملغى",
+    "total": "الإجمالي",
+    "emptyLines": "لا توجد أصناف بعد.",
+    "searchPlaceholder": "ابحث عن طبق…",
+    "menuEmpty": "لم يُعثر على طبق.",
+    "freeTitle": "سطر حر",
+    "freeNamePh": "التسمية",
+    "freePricePh": "السعر €",
+    "addBtn": "إضافة",
+    "paidNote": "الدفع عبر QR قريبًا.",
+    "voidBtn": "إلغاء الحساب",
+    "voidConfirm": "إلغاء هذا الحساب؟",
+    "voidYes": "نعم، إلغاء",
+    "voidNo": "لا",
+    "error": "حدث خطأ، حاول مرة أخرى."
   }
 }

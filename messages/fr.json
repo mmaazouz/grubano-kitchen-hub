@@ -1475,5 +1475,27 @@
       "savedShort": "Enregistré",
       "saveError": "Impossible d’enregistrer l’empreinte."
     }
+  },
+  "tickets": {
+    "noTable": "Aucune table — ajoutez-en une dans Config.",
+    "selectTable": "Table",
+    "open": "Ouvrir une addition",
+    "statusOpen": "Ouverte",
+    "statusPaid": "Payée",
+    "statusVoid": "Annulée",
+    "total": "Total",
+    "emptyLines": "Aucune ligne pour le moment.",
+    "searchPlaceholder": "Rechercher un plat…",
+    "menuEmpty": "Aucun plat trouvé.",
+    "freeTitle": "Ligne libre",
+    "freeNamePh": "Libellé",
+    "freePricePh": "Prix €",
+    "addBtn": "Ajouter",
+    "paidNote": "Le paiement par QR arrivera bientôt.",
+    "voidBtn": "Annuler l'addition",
+    "voidConfirm": "Annuler cette addition ?",
+    "voidYes": "Oui, annuler",
+    "voidNo": "Non",
+    "error": "Une erreur est survenue, réessayez."
   }
 }
