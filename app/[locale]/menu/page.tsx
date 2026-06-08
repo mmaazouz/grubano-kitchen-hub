@@ -1429,16 +1429,144 @@ function DishEditor({
   onSave:     (item: MenuItem, extras?: { warnings?: string[] }) => void
   onDelete:   (id: string) => void
 }) {
+  const tPhoto = useTranslations('menu.photo')
   const [d, setD] = useState<MenuItem>(item)
   const [saving, setSaving] = useState(false)
   const isNew = item.id === 'new'
 
+  // ── Manuel photo state ─────────────────────────────────────────────────────
+  // A pending base64 payload prepared from the file picker. Only the freshly-
+  // selected photo lives here; the canonical persisted URL stays on d.photos
+  // once the server returns. The pendingPreview holds an objectURL for live
+  // visual feedback before the upload completes.
+  const photoFileRef = useRef<HTMLInputElement>(null)
+  const [photoPayload, setPhotoPayload] = useState<{
+    imageBase64: string
+    mediaType:   'image/jpeg' | 'image/png' | 'image/webp'
+    preview:     string
+  } | null>(null)
+  const [photoError, setPhotoError] = useState('')
+
+  // Revoke the objectURL when the editor closes / a new file replaces it.
+  useEffect(() => {
+    return () => {
+      if (photoPayload?.preview) URL.revokeObjectURL(photoPayload.preview)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handlePhotoPick(file: File) {
+    setPhotoError('')
+    const raw = file.type
+    // /api/menu only accepts image/jpeg | image/png | image/webp (Agent 2's
+    // Zod). Block GIF / others client-side with the i18n 400 message.
+    if (raw !== 'image/jpeg' && raw !== 'image/png' && raw !== 'image/webp') {
+      setPhotoError(tPhoto('err400'))
+      return
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setPhotoError(tPhoto('err400'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const result = (ev.target?.result as string) ?? ''
+      const base64 = result.split(',')[1] ?? ''
+      if (!base64) return
+      if (photoPayload?.preview) URL.revokeObjectURL(photoPayload.preview)
+      setPhotoPayload({
+        imageBase64: base64,
+        mediaType:   raw,
+        preview:     URL.createObjectURL(file),
+      })
+    }
+    reader.readAsDataURL(file)
+  }
+
   const allCats = categories.length > 0 ? categories : ['Entrées', 'Plats', 'Desserts', 'Boissons']
+
+  /** Map an HTTP status (returned by /api/menu or /api/menu/photo) to a
+   *  user-facing i18n string. 422 surfaces the server's `reason` when
+   *  available so the operator knows what the moderation didn't like. */
+  function mapUploadError(status: number, body: unknown): string {
+    const reason =
+      typeof body === 'object' && body !== null
+        ? ((body as { moderation?: { reason?: string }; error?: string }).moderation?.reason
+          ?? (body as { error?: string }).error
+          ?? '')
+        : ''
+    switch (status) {
+      case 422: return tPhoto('err422', { reason: reason || '' }).trim()
+      case 400: return tPhoto('err400')
+      case 503: return tPhoto('err503')
+      case 500:
+      case 502: return tPhoto('err500')
+      default:  return reason || tPhoto('err500')
+    }
+  }
 
   async function handleSave() {
     setSaving(true)
-    await onSave(d)
-    setSaving(false)
+    setPhotoError('')
+    try {
+      if (isNew) {
+        // ── NEW dish: include the photo IN the create payload — Agent 2's
+        //    POST /api/menu uploads + creates atomically, never a half-state.
+        const r = await fetch('/api/menu', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...d,
+            brandId: d.brandId,
+            id: undefined,
+            ...(photoPayload
+              ? { imageBase64: photoPayload.imageBase64, mediaType: photoPayload.mediaType }
+              : {}),
+          }),
+        })
+        const body = await r.json().catch(() => null)
+        if (!r.ok) {
+          setPhotoError(mapUploadError(r.status, body))
+          return
+        }
+        // body = { item, warnings }
+        const created = body?.item ?? { ...d, photos: photoPayload ? d.photos : d.photos }
+        const warnings: string[] = Array.isArray(body?.warnings) ? body.warnings : []
+        onSave(created as MenuItem, { warnings })
+        return
+      }
+
+      // ── EXISTING dish: if the operator picked a new photo, run it through
+      //    /api/menu/photo FIRST so we know what photos URL to persist; then
+      //    save the rest via the regular PUT path (delegated to MenuBuilder
+      //    through onSave which already handles the PUT).
+      let nextPhotos = d.photos
+      let photoWarnings: string[] = []
+      if (photoPayload) {
+        const photoRes = await fetch('/api/menu/photo', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageBase64: photoPayload.imageBase64,
+            mediaType:   photoPayload.mediaType,
+            brandId:     d.brandId,
+            menuItemId:  d.id,
+          }),
+        })
+        const photoBody = await photoRes.json().catch(() => null)
+        if (!photoRes.ok) {
+          setPhotoError(mapUploadError(photoRes.status, photoBody))
+          return
+        }
+        nextPhotos = Array.isArray(photoBody?.photos) ? photoBody.photos : nextPhotos
+        photoWarnings = Array.isArray(photoBody?.warnings) ? photoBody.warnings : []
+      }
+      onSave({ ...d, photos: nextPhotos }, { warnings: photoWarnings })
+    } catch {
+      setPhotoError(tPhoto('errNetwork'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -1456,6 +1584,62 @@ function DishEditor({
         </div>
 
         <div className="space-y-3">
+          {/* ── Photo (Manuel upload) ─────────────────────────────────────
+              File picker bound to a hidden input. Acceptés : JPG / PNG /
+              WebP, 8 Mo max (validated client-side AND server-side). The
+              tile shows: the pending preview if one was picked, otherwise
+              the already-persisted photo, otherwise an empty add-tile. */}
+          <input
+            ref={photoFileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) handlePhotoPick(f)
+              // Reset so picking the same file twice still triggers onChange.
+              e.target.value = ''
+            }}
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => photoFileRef.current?.click()}
+              className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+            >
+              {photoPayload?.preview || (d.photos && d.photos[0]) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={photoPayload?.preview ?? d.photos?.[0]}
+                  alt={tPhoto('alt', { name: d.name || '—' })}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <ImageIcon size={20} />
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => photoFileRef.current?.click()}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60"
+              >
+                <Upload size={13} />
+                {d.photos?.[0] || photoPayload ? tPhoto('change') : tPhoto('pick')}
+              </button>
+              <p className="mt-1.5 text-[10px] text-muted-foreground">
+                {tPhoto('replaceHint')}
+              </p>
+            </div>
+          </div>
+          {photoError && (
+            <p className="flex items-start gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+              <AlertCircle size={12} className="mt-0.5 shrink-0" />
+              <span>{photoError}</span>
+            </p>
+          )}
+
           <input value={d.name} onChange={e => setD({ ...d, name: e.target.value })}
             placeholder="Nom du plat"
             className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold focus:border-primary focus:outline-none" />
