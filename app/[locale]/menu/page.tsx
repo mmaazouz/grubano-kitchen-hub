@@ -1092,6 +1092,8 @@ function AIScannerOverlay({
             preview={preview}
             brandId={brandId}
             categories={categories}
+            imageBase64={imageB64}
+            mediaType={mediaType}
             onClose={onClose}
             onRetake={() => setStep('upload')}
             onAdd={onAdd}
@@ -1134,15 +1136,17 @@ function AnalyzingStep() {
 }
 
 function ResultStep({
-  scanResult, preview, brandId, categories, onClose, onRetake, onAdd,
+  scanResult, preview, brandId, categories, imageBase64, mediaType, onClose, onRetake, onAdd,
 }: {
-  scanResult: ScanResult
-  preview:    string
-  brandId:    string
-  categories: string[]
-  onClose:    () => void
-  onRetake:   () => void
-  onAdd:      (item: MenuItem) => void
+  scanResult:  ScanResult
+  preview:     string
+  brandId:     string
+  categories:  string[]
+  imageBase64: string
+  mediaType:   'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  onClose:     () => void
+  onRetake:    () => void
+  onAdd:       (item: MenuItem) => void
 }) {
   const [name,      setName]      = useState(scanResult.name)
   const [desc,      setDesc]      = useState(scanResult.description)
@@ -1158,24 +1162,37 @@ function ResultStep({
     Math.round((scanResult.calories_min + scanResult.calories_max) / 2),
   )
   const [saving, setSaving] = useState(false)
+  const [error,  setError]  = useState('')
 
   const allCats = categories.length > 0 ? categories : ['Entrées', 'Plats', 'Desserts', 'Boissons']
 
   async function confirm() {
+    setError('')
     setSaving(true)
+    // Persist the scanned photo: the server moderates + uploads it and writes
+    // photos=[url] at creation. mediaType is coerced to an allowed type (gif is
+    // not stored as a dish photo) so the create payload never fails validation.
+    const safeType =
+      mediaType === 'image/png' || mediaType === 'image/webp' ? mediaType : 'image/jpeg'
     const r = await fetch('/api/menu', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         brandId, name, description: desc, price, category,
         calories, allergens, labels, available: true, isPopular: false,
+        imageBase64, mediaType: safeType,
       }),
     })
     if (r.ok) {
       const d = await r.json()
       onAdd(d.item)
+    } else {
+      // Never swallow the failure (e.g. a rejected image) — surface it; the dish
+      // is intentionally NOT created without its photo.
+      const d = await r.json().catch(() => null)
+      setError((d && (d.error as string)) || "Échec de l'ajout, réessayez.")
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   return (
@@ -1280,6 +1297,11 @@ function ResultStep({
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 border-t border-border bg-card p-4">
+        {error && (
+          <p className="mb-2 flex items-center gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+            <AlertCircle size={12} className="shrink-0" /> {error}
+          </p>
+        )}
         <button onClick={confirm} disabled={saving || !name}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground disabled:opacity-60">
           {saving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={16} />}
