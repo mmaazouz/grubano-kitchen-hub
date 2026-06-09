@@ -1,0 +1,227 @@
+'use client'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslations, useLocale } from 'next-intl'
+import { Clock, Loader2, AlertCircle, Receipt } from 'lucide-react'
+import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
+
+// ── <TableBillClient /> — client island for the QR landing /t/[tableId] ──────
+//
+// The page is server-rendered for identity (table + establishment) so a 404 on
+// an unknown / deactivated table happens BEFORE any JS runs. This island then
+// fetches the OPEN bill for the table (Agent 14 GET /api/t/[tableId]/ticket),
+// renders the line items + total, and walks the consumer through the real
+// charge via the factored <StripeTicketPayment /> component.
+//
+// 3 visible states:
+//   - "no ticket yet"            → sober "addition arrive bientôt" (default
+//                                   shell, mirrors the previous coquille)
+//   - "ticket open"               → items + total + "Payer mon addition" button
+//   - "paying" / "paid"           → Stripe Elements / success panel
+
+interface TicketItem {
+  id:        string
+  name:      string
+  unitPrice: number
+  quantity:  number
+}
+interface TicketPayload {
+  id:       string
+  status:   string
+  currency: string
+  subtotal: number
+  items:    TicketItem[]
+}
+interface PayInit {
+  clientSecret:   string
+  publishableKey: string
+  amount:         number
+  currency:       string
+}
+
+type Stage = 'loading' | 'no-ticket' | 'review' | 'pay' | 'paid' | 'error'
+
+interface Props {
+  tableId: string
+}
+
+export default function TableBillClient({ tableId }: Props) {
+  const t = useTranslations('bill')
+  const locale = useLocale()
+
+  const [stage,   setStage]   = useState<Stage>('loading')
+  const [ticket,  setTicket]  = useState<TicketPayload | null>(null)
+  const [error,   setError]   = useState('')
+  const [payInit, setPayInit] = useState<PayInit | null>(null)
+  const [starting, setStarting] = useState(false)
+
+  // Initial ticket fetch.
+  const loadTicket = useCallback(async () => {
+    setStage('loading')
+    setError('')
+    try {
+      const r = await fetch(`/api/t/${tableId}/ticket`, { cache: 'no-store' })
+      if (!r.ok) throw new Error('load_failed')
+      const body = await r.json() as { ticket: TicketPayload | null }
+      if (!body.ticket) {
+        setTicket(null)
+        setStage('no-ticket')
+        return
+      }
+      setTicket(body.ticket)
+      setStage('review')
+    } catch {
+      setError(t('errLoad'))
+      setStage('error')
+    }
+  }, [tableId, t])
+
+  useEffect(() => { loadTicket() }, [loadTicket])
+
+  async function startPayment() {
+    if (!ticket || starting) return
+    setStarting(true)
+    setError('')
+    try {
+      const r = await fetch(`/api/tickets/${ticket.id}/pay`, { method: 'POST' })
+      const body = await r.json().catch(() => null)
+      if (r.status === 409) { setError(t('errAlreadyPaid')); return }
+      if (!r.ok || !body?.clientSecret || !body?.publishableKey) {
+        setError(t('errStripeNotReady'))
+        return
+      }
+      setPayInit({
+        clientSecret:   body.clientSecret,
+        publishableKey: body.publishableKey,
+        amount:         body.amount,
+        currency:       body.currency,
+      })
+      setStage('pay')
+    } catch {
+      setError(t('errStripeNotReady'))
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  const currencyFmt = useMemo(
+    () => new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: (ticket?.currency || 'eur').toUpperCase(),
+      maximumFractionDigits: 2,
+    }),
+    [locale, ticket?.currency],
+  )
+
+  // ── States ────────────────────────────────────────────────────────────────
+
+  if (stage === 'loading') {
+    return (
+      <div className="mt-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 size={14} className="animate-spin" /> {t('loadingTicket')}
+      </div>
+    )
+  }
+
+  if (stage === 'no-ticket') {
+    // Mirrors the sober coquille shown before the API existed.
+    return (
+      <div className="mt-10 flex flex-col items-center text-center">
+        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-accent text-primary">
+          <Clock size={22} />
+        </span>
+        <p className="mt-4 text-lg font-semibold">{t('noTicketTitle')}</p>
+        <p className="mt-1 max-w-xs text-sm text-muted-foreground">{t('noTicketDesc')}</p>
+      </div>
+    )
+  }
+
+  if (stage === 'error') {
+    return (
+      <div className="mt-10 flex flex-col items-center text-center">
+        <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+          <AlertCircle size={13} className="mt-0.5 shrink-0" />
+          <span>{error || t('errLoad')}</span>
+        </p>
+        <button
+          type="button"
+          onClick={loadTicket}
+          className="mt-3 rounded-xl border border-border bg-card px-4 py-2 text-[12px] font-bold"
+        >
+          {t('payButton')}
+        </button>
+      </div>
+    )
+  }
+
+  if (stage === 'paid') {
+    return (
+      <div className="mt-10 rounded-2xl border border-success/40 bg-success/5 p-4 text-center">
+        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success text-white">
+          <Receipt size={20} />
+        </span>
+        <p className="mt-2 text-base font-bold text-foreground">{t('paidTitle')}</p>
+        <p className="mt-1 text-[12px] text-muted-foreground">{t('paidBody')}</p>
+      </div>
+    )
+  }
+
+  // Both review and pay show the items + total. Only the bottom area swaps.
+  return (
+    <div className="mt-8 space-y-4">
+      <h2 className="text-center text-base font-semibold text-foreground">
+        {t('yourBill')}
+      </h2>
+
+      <div className="rounded-2xl border border-border bg-card p-3">
+        <ul className="divide-y divide-border">
+          {ticket?.items.map((it) => (
+            <li key={it.id} className="flex items-baseline gap-3 py-2 text-sm">
+              <span className="text-muted-foreground">{it.quantity}×</span>
+              <span className="flex-1 truncate text-foreground">{it.name}</span>
+              <span className="font-semibold text-foreground">
+                {currencyFmt.format(it.unitPrice * it.quantity)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-bold">
+          <span>{t('total')}</span>
+          <span className="text-primary">
+            {ticket ? currencyFmt.format(ticket.subtotal) : '—'}
+          </span>
+        </div>
+      </div>
+
+      {stage === 'review' && (
+        <div className="space-y-3">
+          {error && (
+            <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+              <AlertCircle size={13} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={startPayment}
+            disabled={starting}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-60"
+          >
+            {starting ? <Loader2 size={14} className="animate-spin" /> : null}
+            {starting ? t('loadingPay') : t('payTitle')}
+          </button>
+        </div>
+      )}
+
+      {stage === 'pay' && payInit && (
+        <StripeTicketPayment
+          clientSecret={payInit.clientSecret}
+          publishableKey={payInit.publishableKey}
+          amount={payInit.amount}
+          currency={payInit.currency}
+          onPaid={() => setStage('paid')}
+        />
+      )}
+    </div>
+  )
+}

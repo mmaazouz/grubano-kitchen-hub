@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import { unstable_setRequestLocale } from 'next-intl/server'
-import { Receipt, Clock } from 'lucide-react'
+import { Receipt } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import TableBillClient from '@/components/eat/TableBillClient'
 
 // ── /t/[tableId] — public "table bill" landing (QR target, Sunday-style) ──────
 // The short, FIXED URL a table QR encodes. PUBLIC + consumer-side (served bare via
@@ -56,25 +57,12 @@ export default async function TableBillPage({
           </span>
         </div>
 
-        {/* Status */}
-        <div className="mt-14 flex flex-col items-center text-center">
-          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-accent text-primary">
-            <Clock size={22} />
-          </span>
-          <p className="mt-4 text-lg font-semibold">Votre addition arrive bientôt</p>
-          <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-            Bientôt : réglez votre table directement ici.
-          </p>
-        </div>
-
-        {/* ── FUTURE PAYMENT (placeholders — no payment exists yet) ───────────
-            The URL /t/[tableId] is PERMANENT: the bill amount + actions plug in
-            HERE without changing the QR. When the payment chantier lands:
-              • AMOUNT  → fetch the live bill (e.g. GET /api/t/[tableId]/bill) and
-                          render the total in a block right below the status;
-              • ACTIONS → render the "Payer tout / Payer ma part / Partager"
-                          buttons wired to the payment provider.
-            Left intentionally absent today so the shell stays sober. */}
+        {/* Bill — Agent 14 brique 2. The client island fetches the open
+            ticket, renders items + total, and walks through the real charge
+            via the factored <StripeTicketPayment /> component. Server side
+            still owns identity (Prisma lookup above), so an unknown /
+            deactivated table 404s BEFORE any JS runs. */}
+        <TableBillClient tableId={params.tableId} />
 
         <p className="mt-auto pt-10 text-center text-[11px] text-muted-foreground">
           Propulsé par Grubano
