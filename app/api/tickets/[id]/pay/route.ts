@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import {
   createTicketPayment, retrieveIntent, eurosToCents, getPublishableKey,
 } from '@/lib/stripe'
@@ -32,10 +34,16 @@ function stripeError(err: unknown) {
 // account). On payment success the webhook marks the ticket paid AND releases the
 // linked reservation's empreinte automatically.
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
   try {
+    // Channel discriminator: the consumer APP/ACCOUNT path sends { via: 'account' }
+    // to opt INTO the strict account checks below. The QR walk-in path sends no
+    // body → the lock is skipped and the bill stays openly payable (by design).
+    const reqBody = await req.json().catch(() => null)
+    const viaAccount = (reqBody as { via?: string } | null)?.via === 'account'
+
     const ticket = await prisma.tableTicket.findUnique({
       where:  { id: params.id },
       select: {
@@ -52,6 +60,39 @@ export async function POST(
     }
     if (ticket.status === 'void') {
       return NextResponse.json({ error: 'Addition annulée.' }, { status: 400 })
+    }
+
+    // ── APP/ACCOUNT channel lock — the QR walk-in channel is intentionally open ──
+    // Only the LINKED client may pay via their account, and only once the restaurant
+    // marked the reservation 'arrived'. The QR path (no via flag) skips all of this.
+    if (viaAccount) {
+      const session = await getServerSession(authOptions)
+      const userId  = (session?.user as { id?: string } | undefined)?.id
+      if (!userId) {
+        return NextResponse.json({ error: 'Connexion requise.' }, { status: 401 })
+      }
+      if (!ticket.reservationId) {
+        return NextResponse.json(
+          { error: 'Addition non liée à votre réservation.', code: 'no_reservation' },
+          { status: 409 },
+        )
+      }
+      const reservation = await prisma.reservation.findUnique({
+        where:  { id: ticket.reservationId },
+        select: { userId: true, status: true },
+      })
+      if (!reservation || reservation.userId !== userId) {
+        return NextResponse.json(
+          { error: "Cette addition n'est pas liée à votre compte." },
+          { status: 403 },
+        )
+      }
+      if (reservation.status !== 'arrived') {
+        return NextResponse.json(
+          { error: 'Addition pas encore disponible — le restaurant doit valider votre arrivée.', code: 'not_arrived' },
+          { status: 409 },
+        )
+      }
     }
 
     const currency    = ticket.currency || 'eur'

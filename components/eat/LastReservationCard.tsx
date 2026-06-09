@@ -154,10 +154,20 @@ function PayBillModal({
     if (!ticket || starting) return
     setStarting(true); setError('')
     try {
-      const r = await fetch(`/api/tickets/${ticket.id}/pay`, { method: 'POST' })
+      // Explicit APP/ACCOUNT channel → the server enforces: logged-in + this is
+      // YOUR reservation + status='arrived'. (The QR page pays without this flag.)
+      const r = await fetch(`/api/tickets/${ticket.id}/pay`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ via: 'account' }),
+      })
       const body = await r.json().catch(() => null)
-      if (r.status === 409) { setError(t('errAlreadyPaid')); return }
-      if (!r.ok || !body?.clientSecret) { setError(t('errStripeNotReady')); return }
+      // Surface the server's clear message for 401/403/409 (not-arrived, wrong
+      // account, already paid…); fall back to the generic Stripe-not-ready label.
+      if (!r.ok || !body?.clientSecret) {
+        setError((body?.error as string) || t('errStripeNotReady'))
+        return
+      }
       setPayInit(body as PayInit)
       setStage('pay')
     } catch {
