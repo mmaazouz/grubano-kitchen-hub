@@ -1496,7 +1496,9 @@
     "voidConfirm": "Void this bill?",
     "voidYes": "Yes, void",
     "voidNo": "No",
-    "error": "Something went wrong, try again."
+    "error": "Something went wrong, try again.",
+    "openHint": "Open the bill for an arrived guest, or as a walk-in.",
+    "openWalkin": "Open as walk-in (no reservation)"
   },
   "bill": {
     "loadingTicket": "Loading your bill…",

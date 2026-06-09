@@ -73,11 +73,13 @@ export default function TicketPanel({ tables }: { tables: Table[] }) {
     }
   }
 
-  async function openTicket() {
+  // walkin=false → the server requires an 'arrived' reservation on this table and
+  // binds the ticket to that exact service. walkin=true → open without a reservation.
+  async function openTicket(walkin = false) {
     if (!tableId) return
     await mutate('/api/tickets', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ restaurantTableId: tableId }),
+      body: JSON.stringify({ restaurantTableId: tableId, walkin }),
     })
   }
 
@@ -162,12 +164,20 @@ export default function TicketPanel({ tables }: { tables: Table[] }) {
           {ticket?.status === 'void' && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{t('statusVoid')}</span>
           )}
+          <p className="max-w-xs text-[12px] text-muted-foreground">{t('openHint')}</p>
           <button
-            onClick={openTicket}
+            onClick={() => openTicket(false)}
             disabled={pending}
             className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
           >
             {pending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} {t('open')}
+          </button>
+          <button
+            onClick={() => openTicket(true)}
+            disabled={pending}
+            className="text-[12px] font-semibold text-muted-foreground underline-offset-2 hover:text-primary hover:underline disabled:opacity-60"
+          >
+            {t('openWalkin')}
           </button>
         </div>
       ) : (

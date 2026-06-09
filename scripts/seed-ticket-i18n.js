@@ -31,6 +31,8 @@ const T = {
     voidYes: 'Oui, annuler',
     voidNo: 'Non',
     error: 'Une erreur est survenue, réessayez.',
+    openHint: "Ouvrez l'addition d'un client arrivé, ou en walk-in.",
+    openWalkin: 'Ouvrir en walk-in (sans réservation)',
   },
   en: {
     noTable: 'No table — add one in Config.',
@@ -53,6 +55,8 @@ const T = {
     voidYes: 'Yes, void',
     voidNo: 'No',
     error: 'Something went wrong, try again.',
+    openHint: 'Open the bill for an arrived guest, or as a walk-in.',
+    openWalkin: 'Open as walk-in (no reservation)',
   },
   es: {
     noTable: 'Sin mesa — añade una en Config.',
@@ -75,6 +79,8 @@ const T = {
     voidYes: 'Sí, anular',
     voidNo: 'No',
     error: 'Algo salió mal, inténtalo de nuevo.',
+    openHint: 'Abre la cuenta de un cliente llegado, o como walk-in.',
+    openWalkin: 'Abrir como walk-in (sin reserva)',
   },
   it: {
     noTable: 'Nessun tavolo — aggiungine uno in Config.',
@@ -97,6 +103,8 @@ const T = {
     voidYes: 'Sì, annulla',
     voidNo: 'No',
     error: 'Qualcosa è andato storto, riprova.',
+    openHint: 'Apri il conto di un cliente arrivato, o come walk-in.',
+    openWalkin: 'Apri come walk-in (senza prenotazione)',
   },
   ar: {
     noTable: 'لا توجد طاولة — أضف واحدة في الإعدادات.',
@@ -119,6 +127,8 @@ const T = {
     voidYes: 'نعم، إلغاء',
     voidNo: 'لا',
     error: 'حدث خطأ، حاول مرة أخرى.',
+    openHint: 'افتح حساب زبون وصل، أو كزبون عابر (walk-in).',
+    openWalkin: 'فتح كزبون عابر (بدون حجز)',
   },
 }
 

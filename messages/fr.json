@@ -1496,7 +1496,9 @@
     "voidConfirm": "Annuler cette addition ?",
     "voidYes": "Oui, annuler",
     "voidNo": "Non",
-    "error": "Une erreur est survenue, réessayez."
+    "error": "Une erreur est survenue, réessayez.",
+    "openHint": "Ouvrez l'addition d'un client arrivé, ou en walk-in.",
+    "openWalkin": "Ouvrir en walk-in (sans réservation)"
   },
   "bill": {
     "loadingTicket": "Chargement de votre addition…",

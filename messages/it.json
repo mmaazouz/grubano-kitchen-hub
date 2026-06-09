@@ -1496,7 +1496,9 @@
     "voidConfirm": "Annullare questo conto?",
     "voidYes": "Sì, annulla",
     "voidNo": "No",
-    "error": "Qualcosa è andato storto, riprova."
+    "error": "Qualcosa è andato storto, riprova.",
+    "openHint": "Apri il conto di un cliente arrivato, o come walk-in.",
+    "openWalkin": "Apri come walk-in (senza prenotazione)"
   },
   "bill": {
     "loadingTicket": "Caricamento del tuo conto…",
