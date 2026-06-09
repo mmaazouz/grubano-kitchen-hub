@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -144,10 +146,18 @@ export async function POST(req: Request) {
       )
     }
 
+    // Link the reservation to the consumer's ACCOUNT when they booked while logged
+    // in (session.user.id = Operator.id). null for anonymous bookings (still allowed,
+    // but only payable via the open QR channel — not the app/account channel). This
+    // is a PUBLIC endpoint: getServerSession simply returns null when no cookie.
+    const session = await getServerSession(authOptions)
+    const userId = (session?.user as { id?: string } | undefined)?.id ?? null
+
     const reservation = await prisma.reservation.create({
       data: {
         restaurantId: restaurant.id,
         tableId:      picked.id,
+        userId,
         date:         start,
         endTime,
         guests:       data.guests,
