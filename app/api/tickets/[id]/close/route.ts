@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { ticketSelect } from '@/lib/ticket'
+import { releaseHold, captureHold } from '@/lib/deposit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -79,27 +80,61 @@ export async function POST(
         })
       : null
 
-    // ── EMPREINTE HOOK — Agent 14, étape 2 ──────────────────────────────────────
-    // On an UNPAID walk-out the operator may KEEP the guarantee (capture) or WAIVE it
-    // (release). Everything needed is in `reservation`: the manual-capture empreinte
-    // is reservation.stripePaymentIntentId, with depositAmount + noShowPenalty.
-    // Branch on `deposit` and call lib/deposit:
-    //   • 'capture' → captureHold(reservation.stripePaymentIntentId, noShowPenalty, depositAmount)
-    //   • 'release' → releaseHold(reservation.stripePaymentIntentId)
-    //   • 'none' / undefined → leave the hold as-is (current étape-1 behaviour)
-    // Then persist reservation.depositStatus from the SettleResult and set
-    // `depositSettled` to that result. DO NOT change the ticket close above (the
-    // closure must succeed even if the empreinte settle fails — wrap in try/catch
-    // and surface the outcome, never throw past the close). Agent 2 leaves this a
-    // no-op so the closure + trace already work end-to-end before étape 2.
-    const depositSettled: { depositStatus?: string; capturedAmount?: number } | null = null
-    // (Agent 14 fills `depositSettled` here.)
+    // ── EMPREINTE HOOK — Agent 14, étape 2 (WIRED) ──────────────────────────────
+    // On an UNPAID walk-out the operator KEEPS the guarantee (capture = penalty) or
+    // WAIVES it (release = nothing charged). Stripe is the source of truth: both
+    // settles read the LIVE manual-capture PI (reservation.stripePaymentIntentId).
+    //   • 'capture' → captureHold(pi, noShowPenalty, depositAmount) — the penalty
+    //     defaults to noShowPenalty (or the full depositAmount when penalty is 0,
+    //     per lib/deposit), capped at what Stripe actually authorised.
+    //   • 'release' → releaseHold(pi) — authorisation cancelled, nothing charged.
+    //   • 'none' / undefined → the hold is left untouched.
+    // The ticket closure + trace ABOVE are already committed — this block NEVER
+    // throws past them: any Stripe/DB failure is caught, logged, and surfaced in
+    // deposit.settled.error while the ticket stays void/traced. capturedAmount is
+    // in CENTS (same unit as the dedicated /deposit/capture endpoint). Idempotent:
+    // lib/deposit treats an already-canceled release / already-captured capture
+    // as success, and conflicting states come back as a clean error.
+    let depositSettled: { depositStatus?: string; capturedAmount?: number; error?: string } | null = null
+    if (deposit === 'capture' || deposit === 'release') {
+      if (!reservation?.stripePaymentIntentId) {
+        depositSettled = { error: 'Aucune empreinte à régler pour cette addition.' }
+      } else {
+        try {
+          const settle = deposit === 'capture'
+            ? await captureHold(reservation.stripePaymentIntentId, reservation.noShowPenalty, reservation.depositAmount)
+            : await releaseHold(reservation.stripePaymentIntentId)
+          if (settle.ok) {
+            const newStatus = settle.depositStatus ?? (deposit === 'capture' ? 'captured' : 'released')
+            await prisma.reservation.update({
+              where: { id: reservation.id },
+              data:  {
+                depositStatus: newStatus,
+                ...(newStatus === 'captured' ? { depositPaid: true } : {}),
+              },
+            })
+            depositSettled = {
+              depositStatus: newStatus,
+              ...(settle.capturedAmount != null ? { capturedAmount: settle.capturedAmount } : {}),
+            }
+          } else {
+            console.warn(`[close] empreinte settle refused (${settle.status}): ${settle.error} — ticket ${ticket.id}`)
+            depositSettled = { error: settle.error }
+          }
+        } catch (e) {
+          console.error('[close] empreinte settle failed', e instanceof Error ? e.message : e)
+          depositSettled = { error: 'Erreur paiement — empreinte non réglée, à traiter manuellement.' }
+        }
+      }
+    }
 
     return NextResponse.json({
       ticket,
       closedReason: REASON_TO_CLOSED[reason],
-      // Empreinte hook contract for Agent 14. `choice` is what the operator asked;
-      // `settled` is null until étape 2 wires capture/release.
+      // Empreinte settle outcome. `choice` is what the operator asked; `settled`
+      // is null when choice='none', else { depositStatus, capturedAmount? (cents) }
+      // on success or { error } when the settle was refused/failed (ticket stays
+      // closed either way).
       deposit: {
         choice:                deposit ?? 'none',
         reservationId:         reservation?.id ?? null,
