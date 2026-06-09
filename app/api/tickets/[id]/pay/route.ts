@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
-import { authOptions } from '@/lib/auth'
 import {
   createTicketPayment, retrieveIntent, eurosToCents, getPublishableKey,
 } from '@/lib/stripe'
@@ -33,17 +31,17 @@ function stripeError(err: unknown) {
 // (platformFeeAmount stays 0; no Connect → the whole amount lands on the platform
 // account). On payment success the webhook marks the ticket paid AND releases the
 // linked reservation's empreinte automatically.
+// PAYMENT IS OPEN (Mohammed's decision): anyone may settle a bill — the client from
+// their account, a QR walk-in, or a friend via a shared link (the bill-sharing
+// model). We do NOT check identity. The ONLY gate (besides paid / void / amount) is
+// a time window: a ticket tied to a reservation is payable once the restaurant has
+// marked that reservation 'arrived'; a walk-in ticket (no reservation) is payable as
+// soon as it is open. The QR walk-in channel is unchanged.
 export async function POST(
-  req: Request,
+  _req: Request,
   { params }: { params: { id: string } },
 ) {
   try {
-    // Channel discriminator: the consumer APP/ACCOUNT path sends { via: 'account' }
-    // to opt INTO the strict account checks below. The QR walk-in path sends no
-    // body → the lock is skipped and the bill stays openly payable (by design).
-    const reqBody = await req.json().catch(() => null)
-    const viaAccount = (reqBody as { via?: string } | null)?.via === 'account'
-
     const ticket = await prisma.tableTicket.findUnique({
       where:  { id: params.id },
       select: {
@@ -62,34 +60,19 @@ export async function POST(
       return NextResponse.json({ error: 'Addition annulée.' }, { status: 400 })
     }
 
-    // ── APP/ACCOUNT channel lock — the QR walk-in channel is intentionally open ──
-    // Only the LINKED client may pay via their account, and only once the restaurant
-    // marked the reservation 'arrived'. The QR path (no via flag) skips all of this.
-    if (viaAccount) {
-      const session = await getServerSession(authOptions)
-      const userId  = (session?.user as { id?: string } | undefined)?.id
-      if (!userId) {
-        return NextResponse.json({ error: 'Connexion requise.' }, { status: 401 })
-      }
-      if (!ticket.reservationId) {
-        return NextResponse.json(
-          { error: 'Addition non liée à votre réservation.', code: 'no_reservation' },
-          { status: 409 },
-        )
-      }
+    // ── Payment window (NO identity check — payment is open to anyone) ──────────
+    // A ticket tied to a reservation can only be paid once the restaurant marked
+    // that reservation 'arrived'. A walk-in ticket (no reservation) is payable as
+    // soon as it is open. A stale link (reservationId set but the row is gone)
+    // degrades to "payable" rather than blocking. Applies to BOTH channels (QR + app).
+    if (ticket.reservationId) {
       const reservation = await prisma.reservation.findUnique({
         where:  { id: ticket.reservationId },
-        select: { userId: true, status: true },
+        select: { status: true },
       })
-      if (!reservation || reservation.userId !== userId) {
+      if (reservation && reservation.status !== 'arrived') {
         return NextResponse.json(
-          { error: "Cette addition n'est pas liée à votre compte." },
-          { status: 403 },
-        )
-      }
-      if (reservation.status !== 'arrived') {
-        return NextResponse.json(
-          { error: 'Addition pas encore disponible — le restaurant doit valider votre arrivée.', code: 'not_arrived' },
+          { error: 'Le restaurant doit valider votre arrivée avant le paiement.', code: 'not_arrived' },
           { status: 409 },
         )
       }
