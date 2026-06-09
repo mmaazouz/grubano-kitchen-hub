@@ -1498,7 +1498,32 @@
     "voidNo": "No",
     "error": "Something went wrong, try again.",
     "openHint": "Open the bill for an arrived guest, or as a walk-in.",
-    "openWalkin": "Open as walk-in (no reservation)"
+    "openWalkin": "Open as walk-in (no reservation)",
+    "cloture": {
+      "unpaidTitle": "Unpaid bill from previous service",
+      "unpaidBody": "This table has an unpaid bill from a previous guest. Settle it or void it before opening the new guest's bill.",
+      "unpaidAmount": "Amount due: {amount}",
+      "unpaidExplain": "The session ID below refers to the unpaid bill, not the new guest.",
+      "prevSession": "Previous service",
+      "actionPay": "Settle the previous bill",
+      "actionVoid": "Void the previous bill",
+      "confirmVoidTitle": "Void this bill?",
+      "confirmVoidBody": "The {amount} bill will be voided. The guest is NOT charged. This action cannot be undone. Use \"Settle\" instead if they consumed.",
+      "confirmVoidCta": "Confirm void",
+      "cancel": "Cancel",
+      "savingPay": "Preparing payment…",
+      "savingVoid": "Voiding…",
+      "voidedToast": "Bill voided — table released",
+      "paidToast": "Settled — table released",
+      "closeTitle": "Close the table",
+      "closeWithItems": "Settle the bill to free the table.",
+      "closeEmpty": "No items — release the table without billing.",
+      "closeCta": "Settle & close",
+      "releaseTable": "Release the table",
+      "inlinePayTitle": "Payment",
+      "errPay": "Could not start the payment. Please retry.",
+      "errVoid": "Could not void. Please retry."
+    }
   },
   "bill": {
     "loadingTicket": "Loading your bill…",

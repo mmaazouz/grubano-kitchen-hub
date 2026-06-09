@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
-import { Plus, Minus, Trash2, Search, Loader2, Receipt } from 'lucide-react'
+import { Plus, Minus, Trash2, Search, Loader2, Receipt, CreditCard } from 'lucide-react'
 import SessionBadge from '@/components/session/SessionBadge'
+import UnpaidAlert from '@/components/tables/UnpaidAlert'
+import InlinePayPanel from '@/components/tables/InlinePayPanel'
 
 // ── TicketPanel (Addition brique 1, Agent 2) ──────────────────────────────────
 // Minimal operator UI to manage a table's addition: open a ticket, add dishes
@@ -28,16 +30,26 @@ type Table   = { id: string; name: string; seats: number; active: boolean }
 const eur = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 
 export default function TicketPanel({
-  tables, selectedTableId,
+  tables, selectedTableId, alert, onAlertResolved,
 }: {
   tables: Table[]
   /** When the operator clicks a table card in ListView/FloorPlanView,
    *  TablesShell lifts this id so the addition tab opens directly on the
    *  right session — no reload, no state loss across tab switches. */
   selectedTableId?: string | null
+  /** TablesShell hands us a `table_has_unpaid_previous` alert when the
+   *  PATCH /api/reservations { status:'arrived' } response carried a
+   *  ticketAlert. The panel surfaces <UnpaidAlert /> on top of the empty
+   *  state until the previous bill is settled or voided. */
+  alert?: { existingTicketId: string; existingSubtotal: number; currency?: string } | null
+  /** Fired when the unpaid previous bill is settled or voided. The parent
+   *  clears its `unpaidByTable[tableId]` entry; we retry openTicket so the
+   *  new session's blank addition opens immediately. */
+  onAlertResolved?: () => void
 }) {
   const t  = useTranslations('tickets')
   const ts = useTranslations('session')
+  const tc = useTranslations('tickets.cloture')
   const activeTables = tables.filter(tb => tb.active)
 
   // Resolve the initial pick: the parent-lifted selection wins; otherwise
@@ -53,9 +65,24 @@ export default function TicketPanel({
   useEffect(() => {
     if (selectedTableId && activeTables.some(t => t.id === selectedTableId) && selectedTableId !== tableId) {
       setTableId(selectedTableId)
+      setPendingAlert(null)
+      setPayingCurrent(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTableId])
+
+  // When the parent (TablesShell) is told by the PATCH /reservations response
+  // that THIS table has a previous-service unpaid bill, it hands us the alert
+  // payload. Drives <UnpaidAlert />.
+  useEffect(() => {
+    if (alert && alert.existingTicketId) {
+      setPendingAlert({
+        existingTicketId: alert.existingTicketId,
+        existingSubtotal: alert.existingSubtotal,
+        currency:         alert.currency,
+      })
+    }
+  }, [alert])
   const [ticket, setTicket]     = useState<Ticket | null>(null)
   const [loading, setLoading]   = useState(false)
   const [pending, setPending]   = useState(false)
@@ -65,6 +92,17 @@ export default function TicketPanel({
   const [freeName, setFreeName] = useState('')
   const [freePrice, setFreePrice] = useState('')
   const [confirmVoid, setConfirmVoid] = useState(false)
+  // Brique unpaid-previous: when POST /api/tickets returns 409 with
+  // code='table_has_unpaid_previous', or the parent feeds us the same alert
+  // (from PATCH /api/reservations.ticketAlert), surface <UnpaidAlert /> on
+  // top of the empty state. Cleared when the previous bill is settled/voided.
+  const [pendingAlert, setPendingAlert] = useState<
+    { existingTicketId: string; existingSubtotal: number; currency?: string } | null
+  >(null)
+  // Operator-side payment of the CURRENT open ticket (the "Encaisser /
+  // clôturer la table" general action). When `true` we render the inline
+  // Stripe Elements panel until onPaid fires.
+  const [payingCurrent, setPayingCurrent] = useState(false)
 
   const loadTicket = useCallback(async (tid: string) => {
     if (!tid) { setTicket(null); return }
@@ -107,14 +145,47 @@ export default function TicketPanel({
     }
   }
 
-  // walkin=false → the server requires an 'arrived' reservation on this table and
-  // binds the ticket to that exact service. walkin=true → open without a reservation.
+  // walkin=false → the server requires an 'arrived' reservation on this table
+  // and binds the ticket to that exact service. walkin=true → open without a
+  // reservation. The 409 { code:'table_has_unpaid_previous' } response is
+  // surfaced as <UnpaidAlert />, NOT as the generic error pill.
   async function openTicket(walkin = false) {
     if (!tableId) return
-    await mutate('/api/tickets', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ restaurantTableId: tableId, walkin }),
-    })
+    setPending(true); setError('')
+    try {
+      const r = await fetch('/api/tickets', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ restaurantTableId: tableId, walkin }),
+      })
+      const d = await r.json().catch(() => null)
+      if (r.status === 409 && d?.code === 'table_has_unpaid_previous' && d?.existingTicketId) {
+        setPendingAlert({
+          existingTicketId: d.existingTicketId,
+          existingSubtotal: Number(d.existingSubtotal) || 0,
+          currency:         (d.currency as string) || undefined,
+        })
+        return
+      }
+      if (!r.ok) { setError((d?.error as string) || t('error')); return }
+      if (d?.ticket) setTicket(d.ticket)
+    } catch {
+      setError(t('error'))
+    } finally {
+      setPending(false)
+    }
+  }
+
+  // The previous-service bill has been settled or voided. Tell the parent so
+  // it can clear unpaidByTable[tableId], then retry opening — Agent 2's
+  // ensureOpenTicket will now create the new client's blank session ticket.
+  function resolveAlertAndReopen() {
+    setPendingAlert(null)
+    setPayingCurrent(false)
+    onAlertResolved?.()
+    // Best-effort retry. If the table still has another stuck bill the 409
+    // path will surface a new alert; otherwise the new ticket appears.
+    void openTicket(false)
   }
 
   function addMenuItem(mi: MenuRow) {
@@ -188,6 +259,17 @@ export default function TicketPanel({
         <p className="rounded-xl bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>
       )}
 
+      {/* Brique unpaid-previous — alert + 2 actions. Stays on top of the
+          empty state until the previous-service bill is settled or voided. */}
+      {pendingAlert && (
+        <UnpaidAlert
+          existingTicketId={pendingAlert.existingTicketId}
+          existingSubtotal={pendingAlert.existingSubtotal}
+          currency={pendingAlert.currency}
+          onResolved={resolveAlertAndReopen}
+        />
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-12 text-sm text-muted-foreground">
           <Loader2 size={16} className="animate-spin" /> …
@@ -231,6 +313,68 @@ export default function TicketPanel({
               <p className="text-xl font-bold text-foreground">{eur(ticket.subtotal)}</p>
             </div>
           </div>
+
+          {/* ── Brique CLÔTURER LA TABLE ──────────────────────────────────
+              Always-visible CTA so the operator never gets stuck with a
+              ticket that can't be released. When the addition still has
+              items + is open → "Encaisser & clôturer" opens the inline
+              Stripe Elements panel; the webhook flips status to 'paid' →
+              GET reloads → the empty state shows again, table free for
+              the next guest. When the addition is empty → "Libérer la
+              table" voids the ticket without a confirm modal (nothing to
+              lose). Hidden once `ticket.status === 'paid'`. */}
+          {isOpen && (
+            <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3">
+              <div className="flex items-start gap-2">
+                <CreditCard size={14} className="mt-0.5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-foreground">{tc('closeTitle')}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {ticket.items.length > 0 ? tc('closeWithItems') : tc('closeEmpty')}
+                  </p>
+                  {payingCurrent ? (
+                    <div className="mt-3">
+                      <InlinePayPanel
+                        ticketId={ticket.id}
+                        onPaid={() => {
+                          // Webhook will mark the row 'paid'; refetching the
+                          // ticket reflects the new state in the UI. The
+                          // table is now free for the next service.
+                          setPayingCurrent(false)
+                          loadTicket(tableId)
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPayingCurrent(false)}
+                        className="mt-2 text-[11px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      >
+                        {tc('cancel')}
+                      </button>
+                    </div>
+                  ) : ticket.items.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setPayingCurrent(true)}
+                      disabled={pending}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60"
+                    >
+                      <CreditCard size={13} /> {tc('closeCta')}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={voidTicket}
+                      disabled={pending}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-[12px] font-bold text-destructive disabled:opacity-60"
+                    >
+                      <Trash2 size={13} /> {tc('releaseTable')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Lines */}
           {ticket.items.length === 0 ? (

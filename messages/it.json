@@ -1498,7 +1498,32 @@
     "voidNo": "No",
     "error": "Qualcosa è andato storto, riprova.",
     "openHint": "Apri il conto di un cliente arrivato, o come walk-in.",
-    "openWalkin": "Apri come walk-in (senza prenotazione)"
+    "openWalkin": "Apri come walk-in (senza prenotazione)",
+    "cloture": {
+      "unpaidTitle": "Conto non pagato del servizio precedente",
+      "unpaidBody": "Questo tavolo ha un conto non pagato di un cliente precedente. Incassalo o annullalo prima di aprire il conto del nuovo cliente.",
+      "unpaidAmount": "Importo da pagare: {amount}",
+      "unpaidExplain": "L'ID sessione qui sotto si riferisce al conto non pagato, non al nuovo cliente.",
+      "prevSession": "Servizio precedente",
+      "actionPay": "Incassa il conto precedente",
+      "actionVoid": "Annulla il conto precedente",
+      "confirmVoidTitle": "Annullare questo conto?",
+      "confirmVoidBody": "Il conto di {amount} sarà annullato. Il cliente NON viene addebitato. Azione irreversibile. Usa «Incassa» se ha consumato.",
+      "confirmVoidCta": "Conferma annullamento",
+      "cancel": "Annulla",
+      "savingPay": "Preparazione del pagamento…",
+      "savingVoid": "Annullamento…",
+      "voidedToast": "Conto annullato — tavolo liberato",
+      "paidToast": "Incassato — tavolo liberato",
+      "closeTitle": "Chiudi il tavolo",
+      "closeWithItems": "Incassa il conto per liberare il tavolo.",
+      "closeEmpty": "Nessun articolo — libera il tavolo senza incassare.",
+      "closeCta": "Incassa e chiudi",
+      "releaseTable": "Libera il tavolo",
+      "inlinePayTitle": "Pagamento",
+      "errPay": "Impossibile avviare il pagamento. Riprova.",
+      "errVoid": "Impossibile annullare. Riprova."
+    }
   },
   "bill": {
     "loadingTicket": "Caricamento del tuo conto…",

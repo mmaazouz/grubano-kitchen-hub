@@ -134,6 +134,15 @@ export default function TablesShell({
     setSelectedTableId(tableId)
     setTab('addition')
   }
+
+  // When PATCH /api/reservations status='arrived' returns a `ticketAlert`
+  // (Agent 2 a557d45/852ac73 contract: the previous-service ticket is still
+  // open with items), we surface it on the Addition tab via <UnpaidAlert />.
+  // Keyed by tableId so each stuck table carries its own banner — cleared
+  // when the operator settles or voids the previous bill.
+  const [unpaidByTable, setUnpaidByTable] = useState<
+    Record<string, { existingTicketId: string; existingSubtotal: number; currency?: string }>
+  >({})
   // Default duration as seen by the modal. Seeded server-side (no flash) and
   // refreshed every time /api/tables answers, so a Config save propagates here.
   const [defaultDurationMin, setDefaultDurationMin] = useState(initialDefaultDuration)
@@ -192,10 +201,45 @@ export default function TablesShell({
 
   async function updateStatus(id: string, status: Reservation['status']) {
     setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r))
-    await fetch('/api/reservations', {
+    const r = await fetch('/api/reservations', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ id, status }),
+    })
+    if (!r.ok) return
+    // Agent 2's contract: when marking 'arrived' would have auto-opened a
+    // ticket but a previous-service bill is still stuck on the same table,
+    // the response carries `ticketAlert`. The reservation IS 'arrived', but
+    // we navigate to the Addition tab and surface <UnpaidAlert /> so the
+    // operator settles / voids the previous bill before serving the new
+    // client.
+    const body = await r.json().catch(() => null)
+    const alert = body?.ticketAlert as
+      | { code?: string; existingTicketId?: string; existingSubtotal?: number; currency?: string }
+      | undefined
+    if (status === 'arrived' && alert?.code === 'table_has_unpaid_previous' && alert.existingTicketId) {
+      const reservation = reservations.find((res) => res.id === id)
+      const tableId = reservation?.tableId
+      if (tableId) {
+        setUnpaidByTable((prev) => ({
+          ...prev,
+          [tableId]: {
+            existingTicketId: alert.existingTicketId as string,
+            existingSubtotal: Number(alert.existingSubtotal) || 0,
+            currency:         alert.currency,
+          },
+        }))
+        openAddition(tableId)
+      }
+    }
+  }
+
+  function clearUnpaidFor(tableId: string) {
+    setUnpaidByTable((prev) => {
+      if (!prev[tableId]) return prev
+      const next = { ...prev }
+      delete next[tableId]
+      return next
     })
   }
 
@@ -323,7 +367,14 @@ export default function TablesShell({
             />
           )}
           {tab === 'addition' && (
-            <TicketPanel tables={tables} selectedTableId={selectedTableId} />
+            <TicketPanel
+              tables={tables}
+              selectedTableId={selectedTableId}
+              alert={selectedTableId ? unpaidByTable[selectedTableId] ?? null : null}
+              onAlertResolved={() => {
+                if (selectedTableId) clearUnpaidFor(selectedTableId)
+              }}
+            />
           )}
           {tab === 'setup' && (
             <SetupView

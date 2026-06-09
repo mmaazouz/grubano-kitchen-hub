@@ -1498,7 +1498,32 @@
     "voidNo": "Non",
     "error": "Une erreur est survenue, réessayez.",
     "openHint": "Ouvrez l'addition d'un client arrivé, ou en walk-in.",
-    "openWalkin": "Ouvrir en walk-in (sans réservation)"
+    "openWalkin": "Ouvrir en walk-in (sans réservation)",
+    "cloture": {
+      "unpaidTitle": "Addition impayée du service précédent",
+      "unpaidBody": "Cette table a une addition non réglée d’un client précédent. Encaissez-la ou annulez-la avant d’ouvrir l’addition du nouveau client.",
+      "unpaidAmount": "Montant à régler : {amount}",
+      "unpaidExplain": "Le n° de session ci-dessous correspond à l’addition impayée, pas au nouveau client.",
+      "prevSession": "Service précédent",
+      "actionPay": "Encaisser l’addition précédente",
+      "actionVoid": "Annuler l’addition précédente",
+      "confirmVoidTitle": "Annuler cette addition ?",
+      "confirmVoidBody": "L’addition de {amount} sera annulée. Le client n’est PAS débité. Cette action ne peut pas être annulée. Utilisez « Encaisser » à la place s’il a consommé.",
+      "confirmVoidCta": "Confirmer l’annulation",
+      "cancel": "Annuler",
+      "savingPay": "Préparation du paiement…",
+      "savingVoid": "Annulation…",
+      "voidedToast": "Addition annulée — table libérée",
+      "paidToast": "Encaissé — table libérée",
+      "closeTitle": "Clôturer la table",
+      "closeWithItems": "Encaissez l’addition pour libérer la table.",
+      "closeEmpty": "Aucun article — libérez la table sans encaisser.",
+      "closeCta": "Encaisser & clôturer",
+      "releaseTable": "Libérer la table",
+      "inlinePayTitle": "Paiement",
+      "errPay": "Impossible de démarrer le paiement. Réessayez.",
+      "errVoid": "Impossible d’annuler. Réessayez."
+    }
   },
   "bill": {
     "loadingTicket": "Chargement de votre addition…",

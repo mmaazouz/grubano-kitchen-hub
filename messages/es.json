@@ -1498,7 +1498,32 @@
     "voidNo": "No",
     "error": "Algo salió mal, inténtalo de nuevo.",
     "openHint": "Abre la cuenta de un cliente llegado, o como walk-in.",
-    "openWalkin": "Abrir como walk-in (sin reserva)"
+    "openWalkin": "Abrir como walk-in (sin reserva)",
+    "cloture": {
+      "unpaidTitle": "Cuenta sin pagar del servicio anterior",
+      "unpaidBody": "Esta mesa tiene una cuenta sin pagar de un cliente anterior. Cóbrala o anúlala antes de abrir la cuenta del nuevo cliente.",
+      "unpaidAmount": "Importe a pagar: {amount}",
+      "unpaidExplain": "El ID de sesión a continuación corresponde a la cuenta impagada, no al nuevo cliente.",
+      "prevSession": "Servicio anterior",
+      "actionPay": "Cobrar la cuenta anterior",
+      "actionVoid": "Anular la cuenta anterior",
+      "confirmVoidTitle": "¿Anular esta cuenta?",
+      "confirmVoidBody": "La cuenta de {amount} se anulará. El cliente NO es cobrado. Esta acción no se puede deshacer. Usa «Cobrar» si consumió.",
+      "confirmVoidCta": "Confirmar anulación",
+      "cancel": "Cancelar",
+      "savingPay": "Preparando el pago…",
+      "savingVoid": "Anulando…",
+      "voidedToast": "Cuenta anulada — mesa liberada",
+      "paidToast": "Cobrado — mesa liberada",
+      "closeTitle": "Cerrar la mesa",
+      "closeWithItems": "Cobra la cuenta para liberar la mesa.",
+      "closeEmpty": "Sin artículos — libera la mesa sin cobrar.",
+      "closeCta": "Cobrar y cerrar",
+      "releaseTable": "Liberar la mesa",
+      "inlinePayTitle": "Pago",
+      "errPay": "No se pudo iniciar el pago. Inténtalo de nuevo.",
+      "errVoid": "No se pudo anular. Inténtalo de nuevo."
+    }
   },
   "bill": {
     "loadingTicket": "Cargando tu cuenta…",
