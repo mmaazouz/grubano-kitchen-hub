@@ -69,3 +69,37 @@ export async function releaseDeposit(piId: string): Promise<Stripe.PaymentIntent
 export async function retrieveIntent(piId: string): Promise<Stripe.PaymentIntent> {
   return getStripe().paymentIntents.retrieve(piId)
 }
+
+// ── Bill payment (Brique 2) ───────────────────────────────────────────────────
+// IMPORTANT: this is the REAL charge for a table addition — NOT the empreinte.
+// capture_method is AUTOMATIC (the customer is debited immediately), whereas the
+// reservation empreinte above is MANUAL (authorise-only). Do NOT use
+// createDepositHold for a bill. Commission is 0 in TEST (no Connect yet → the
+// whole amount lands on the platform account); the fee can be added later.
+export type TicketPaymentMetadata = {
+  ticketId:       string
+  restaurantId:   string
+  reservationId?: string
+}
+
+/** Create an AUTOMATIC-capture PaymentIntent — a real, immediate bill charge. */
+export async function createTicketPayment(opts: {
+  amountCents: number
+  currency:    string
+  metadata:    TicketPaymentMetadata
+}): Promise<Stripe.PaymentIntent> {
+  // Stripe metadata values must be strings; omit reservationId when absent.
+  const metadata: Record<string, string> = {
+    ticketId:     opts.metadata.ticketId,
+    restaurantId: opts.metadata.restaurantId,
+  }
+  if (opts.metadata.reservationId) metadata.reservationId = opts.metadata.reservationId
+
+  return getStripe().paymentIntents.create({
+    amount:                    opts.amountCents,
+    currency:                  opts.currency,
+    capture_method:            'automatic', // ← REAL charge (vs manual empreinte)
+    automatic_payment_methods: { enabled: true },
+    metadata,
+  })
+}
