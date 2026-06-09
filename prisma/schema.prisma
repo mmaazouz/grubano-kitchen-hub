@@ -287,6 +287,13 @@ model Reservation {
   // Order.restaurantId. Nullable until backfilled.
   restaurantId String?
   restaurant   Restaurant?     @relation(fields: [restaurantId], references: [id])
+  // ── Account link (Sécurité addition, additive) ──────────────────────────────
+  // The connected consumer's account id (= session.user.id = Operator.id) when the
+  // reservation was made while logged in; null for anonymous / walk-in / legacy
+  // rows. Gates the APP/ACCOUNT pay+order channel (only the linked client, once
+  // status='arrived'). The QR walk-in channel ignores this — it stays open. Plain
+  // indexed String (no strict FK — the NextAuth identity model is ambiguous).
+  userId       String?
   customerName String
   phone        String?
   email        String?
@@ -311,6 +318,8 @@ model Reservation {
   depositCurrency String        @default("eur")
   notes        String?         @db.Text
   createdAt    DateTime        @default(now())
+
+  @@index([userId])
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
