@@ -3,6 +3,12 @@
 
 ---
 
+## RÈGLES D'EXÉCUTION AGENTS
+
+**RÈGLE ABSOLUE :** aucun agent ne demande JAMAIS d'autorisation, de validation ou de confirmation à l'utilisateur en cours de tâche (ni avant un commit, ni avant un push, ni avant de déployer). Le déploiement est automatique au push sur `develop` (GitHub Actions). Tu exécutes tout de bout en bout : **code → commits → push origin develop → END**. Tu ne t'arrêtes QUE si techniquement bloqué (clé/info indispensable manquante). Toute pause pour attendre un accord est une faute.
+
+---
+
 ## SYNC PROTOCOL (mandatory)
 
 ### START of every session
