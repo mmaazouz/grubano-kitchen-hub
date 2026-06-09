@@ -540,6 +540,18 @@ model TableTicket {
   subtotal          Float           @default(0)        // Σ(unitPrice * quantity), recomputed
   openedAt          DateTime        @default(now())
   paidAt            DateTime?
+  // ── Bill payment (Brique 2, additive — TEST mode) ───────────────────────────
+  // ADDITIVE + REVERSIBLE: the bill is paid with an AUTOMATIC-capture PaymentIntent
+  // (a REAL charge, unlike the manual-capture reservation empreinte). All nullable
+  // / defaulted, so existing tickets stay valid with no backfill.
+  stripePaymentIntentId String?                        // the bill PaymentIntent id (pi_...)
+  amountPaid        Float?                             // amount actually charged (set on payment success)
+  // Grubano commission on the bill. 0 during TEST (decision: hold the rail first,
+  // monetise later with Connect). The column exists now so the fee can be turned
+  // on without a migration the day Connect lands.
+  platformFeeAmount Float           @default(0)
+  // Tip (brique pourboire — not collected yet, 0 here). Reserved, additive.
+  tipAmount         Float           @default(0)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   items             TicketItem[]
