@@ -21,23 +21,51 @@ export const ticketSelect = {
   },
 } as const
 
+export type EnsureTicketResult =
+  | { ok: true;  id: string; created: boolean }
+  | { ok: false; blocked: true; code: 'table_has_unpaid_previous'; existingTicketId: string; existingSubtotal: number }
+
 /**
- * Ensure exactly ONE open session-ticket exists for a table. If one is already
- * open, return it (uniqueness — never a 2nd open per table); otherwise create one
- * linked to `reservationId` (the precise arrived service) or null (explicit
- * walk-in). This is the single funnel both POST /api/tickets and the auto-open on
- * 'arrived' go through, so a table never mixes two services' bills.
+ * Ensure the CURRENT session's open ticket for a table — bound to the precise
+ * reservation, never re-serving another service's bill (the confidentiality fix).
+ *
+ * With an open ticket already on the table:
+ *   • SAME session (its reservationId === the current one, or both null=walk-in)
+ *     → reuse it.
+ *   • OTHER session (a different reservation, or a leftover open while a reservation
+ *     now arrives):
+ *       – EMPTY (subtotal ≤ 0 AND zero items) → auto-void it (nothing to lose) and
+ *         create a fresh ticket for the current session.
+ *       – WITH items (subtotal > 0) → DON'T touch it, DON'T create a new one;
+ *         return a blocked signal so the operator settles/voids it first.
+ * With no open ticket → create a fresh one bound to the current reservation (or null
+ * for an explicit walk-in).
  */
 export async function ensureOpenTicket(opts: {
   restaurantTableId: string
   restaurantId: string
   reservationId: string | null
-}): Promise<{ id: string; created: boolean }> {
+}): Promise<EnsureTicketResult> {
   const existing = await prisma.tableTicket.findFirst({
     where:  { restaurantTableId: opts.restaurantTableId, status: 'open' },
-    select: { id: true },
+    select: { id: true, reservationId: true, subtotal: true, _count: { select: { items: true } } },
   })
-  if (existing) return { id: existing.id, created: false }
+
+  if (existing) {
+    const sameSession = existing.reservationId === opts.reservationId
+    if (sameSession) return { ok: true, id: existing.id, created: false }
+
+    // Different session: a residual / previous-service open on this table.
+    const isEmpty = existing.subtotal <= 0 && existing._count.items === 0
+    if (!isEmpty) {
+      return {
+        ok: false, blocked: true, code: 'table_has_unpaid_previous',
+        existingTicketId: existing.id, existingSubtotal: round2(existing.subtotal),
+      }
+    }
+    // Empty residual → void it, then fall through to create a clean ticket.
+    await prisma.tableTicket.update({ where: { id: existing.id }, data: { status: 'void' } })
+  }
 
   const created = await prisma.tableTicket.create({
     data: {
@@ -50,7 +78,7 @@ export async function ensureOpenTicket(opts: {
     },
     select: { id: true },
   })
-  return { id: created.id, created: true }
+  return { ok: true, id: created.id, created: true }
 }
 
 /** Recompute subtotal = Σ(unitPrice * quantity) over the ticket's items, persist it,

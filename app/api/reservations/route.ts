@@ -266,23 +266,30 @@ export async function PATCH(req: Request) {
       include: { table: true },
     })
 
-    // Auto-open the SESSION ticket bound to THIS reservation when the operator
-    // marks it 'arrived'. Best-effort: wrapped so a ticket hiccup can never break
-    // the reservation update nor the empreinte release above. ensureOpenTicket is
-    // idempotent (returns the existing open → never a 2nd ticket on the table).
+    // Auto-open the SESSION ticket bound to THIS reservation when the operator marks
+    // it 'arrived'. Best-effort: wrapped so a ticket hiccup can never break the
+    // reservation update nor the empreinte release above. ensureOpenTicket binds the
+    // ticket to THIS reservation; if the table still carries an UNPAID previous
+    // service, it does NOT open a new ticket and returns a blocked signal — the
+    // reservation still goes 'arrived' (the guest did arrive) but we surface a
+    // ticketAlert so the dashboard tells the operator to settle/void the old bill.
+    let ticketAlert: { code: string; existingTicketId: string; existingSubtotal: number } | null = null
     if (data.status === 'arrived' && reservation.restaurantId) {
       try {
-        await ensureOpenTicket({
+        const res = await ensureOpenTicket({
           restaurantTableId: reservation.tableId,
           restaurantId:      reservation.restaurantId,
           reservationId:     reservation.id,
         })
+        if (!res.ok) {
+          ticketAlert = { code: res.code, existingTicketId: res.existingTicketId, existingSubtotal: res.existingSubtotal }
+        }
       } catch (e) {
         console.error('[PATCH /api/reservations] auto-open ticket failed', e instanceof Error ? e.message : e)
       }
     }
 
-    return NextResponse.json({ reservation })
+    return NextResponse.json({ reservation, ...(ticketAlert ? { ticketAlert } : {}) })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })

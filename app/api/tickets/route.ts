@@ -69,14 +69,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Table non autorisée' }, { status: 403 })
     }
 
-    // Already an open session on the table → return it (one open per table).
-    const existing = await prisma.tableTicket.findFirst({
-      where:  { restaurantTableId, status: 'open' },
-      select: ticketSelect,
-    })
-    if (existing) return NextResponse.json({ ticket: existing, reused: true })
-
-    // Resolve the precise service this ticket belongs to.
+    // Resolve the precise service this ticket belongs to. (We do NOT blindly reuse
+    // "any open on the table" — that re-served another session's bill. The
+    // current-session vs residual decision is made by ensureOpenTicket below.)
     let reservationId: string | null = null
     if (!walkin) {
       // Require an ARRIVED reservation on this table today — the ticket is bound to
@@ -97,9 +92,21 @@ export async function POST(req: Request) {
       reservationId = arrived.id
     }
 
-    const { id } = await ensureOpenTicket({ restaurantTableId: table.id, restaurantId: table.restaurantId, reservationId })
-    const ticket = await prisma.tableTicket.findUnique({ where: { id }, select: ticketSelect })
-    return NextResponse.json({ ticket }, { status: 201 })
+    const result = await ensureOpenTicket({ restaurantTableId: table.id, restaurantId: table.restaurantId, reservationId })
+    if (!result.ok) {
+      // An UNPAID previous service is still open on this table → alert the operator.
+      return NextResponse.json(
+        {
+          error: `Cette table a une addition impayée du service précédent (${result.existingSubtotal.toFixed(2)} €). Encaissez-la ou annulez-la avant d'ouvrir une nouvelle addition.`,
+          code: result.code,
+          existingTicketId: result.existingTicketId,
+          existingSubtotal: result.existingSubtotal,
+        },
+        { status: 409 },
+      )
+    }
+    const ticket = await prisma.tableTicket.findUnique({ where: { id: result.id }, select: ticketSelect })
+    return NextResponse.json({ ticket, reused: !result.created }, { status: result.created ? 201 : 200 })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
