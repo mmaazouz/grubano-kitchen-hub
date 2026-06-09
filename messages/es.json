@@ -1528,5 +1528,13 @@
     "accountNoTicket": "Aún no hay cuenta abierta en tu mesa.",
     "accountClearLastResa": "Quitar esta reserva",
     "close": "Cerrar"
+  },
+  "session": {
+    "walkin": "Walk-in",
+    "sessionLabel": "Sesión",
+    "codeTooltip": "ID de sesión",
+    "yourSessionNo": "Tu ID de sesión",
+    "openTableTitle": "Ver la cuenta",
+    "noOpenBill": "No hay cuenta abierta"
   }
 }

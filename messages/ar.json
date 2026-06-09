@@ -1528,5 +1528,13 @@
     "accountNoTicket": "لا توجد فاتورة مفتوحة على طاولتك بعد.",
     "accountClearLastResa": "إزالة هذا الحجز",
     "close": "إغلاق"
+  },
+  "session": {
+    "walkin": "بدون حجز",
+    "sessionLabel": "الجلسة",
+    "codeTooltip": "معرّف الجلسة",
+    "yourSessionNo": "معرّف جلستك",
+    "openTableTitle": "عرض الفاتورة",
+    "noOpenBill": "لا توجد فاتورة مفتوحة"
   }
 }

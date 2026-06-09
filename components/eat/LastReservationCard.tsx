@@ -6,6 +6,7 @@ import {
   Receipt, Loader2, AlertCircle, X,
 } from 'lucide-react'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
+import SessionBadge from '@/components/session/SessionBadge'
 
 // ── <LastReservationCard /> — Brique 2 consumer-app pay shortcut (Agent 13) ──
 //
@@ -28,11 +29,13 @@ interface LastReservation {
 }
 
 interface TicketPayload {
-  id:       string
-  status:   string
-  currency: string
-  subtotal: number
-  items:    Array<{ id: string; name: string; unitPrice: number; quantity: number }>
+  id:             string
+  status:         string
+  currency:       string
+  subtotal:       number
+  items:          Array<{ id: string; name: string; unitPrice: number; quantity: number }>
+  /** Brique A — exposed by GET /api/t/[tableId]/ticket. null = walk-in. */
+  reservationId?: string | null
 }
 interface PayInit {
   clientSecret:   string
@@ -86,6 +89,10 @@ export default function LastReservationCard() {
             <p className="mt-1 truncate text-[12px] font-semibold text-[#1a1a1a]">
               {t('accountReservationLine', { restaurant: stored.tableName, date: dateLabel })}
             </p>
+            {/* Brique A — session anchor (same code the operator sees). */}
+            <div className="mt-1.5">
+              <SessionBadge reservationId={stored.reservationId} />
+            </div>
           </div>
         </div>
         <div className="mt-3 flex gap-2">
@@ -189,8 +196,14 @@ function PayBillModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-background p-5 sm:rounded-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <p className="text-base font-bold">{t('payTitle')}</p>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <p className="text-base font-bold">{t('payTitle')}</p>
+            {/* Brique A — session anchor reflects the ticket's
+                reservationId when loaded. Lets the guest cross-check the
+                same code the operator sees on their addition tab. */}
+            <SessionBadge reservationId={ticket?.reservationId ?? null} />
+          </div>
           <button
             type="button"
             onClick={onClose}

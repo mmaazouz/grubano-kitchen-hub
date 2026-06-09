@@ -1528,5 +1528,13 @@
     "accountNoTicket": "No bill open on your table yet.",
     "accountClearLastResa": "Remove this reservation",
     "close": "Close"
+  },
+  "session": {
+    "walkin": "Walk-in",
+    "sessionLabel": "Session",
+    "codeTooltip": "Session ID",
+    "yourSessionNo": "Your session ID",
+    "openTableTitle": "View the bill",
+    "noOpenBill": "No open bill"
   }
 }

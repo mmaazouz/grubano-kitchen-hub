@@ -8,6 +8,7 @@ import {
   ArrowLeft, Calendar, Clock, Users, Loader2, Check, AlertCircle, CreditCard,
 } from 'lucide-react'
 import StripeDepositForm from '@/components/eat/StripeDepositForm'
+import SessionBadge from '@/components/session/SessionBadge'
 
 // ── /eat/r/[id]/reserver ──────────────────────────────────────────────────────
 //
@@ -64,6 +65,7 @@ function ScreenFallback() {
 
 function ReserveInner() {
   const t = useTranslations('eat.reservation')
+  const tSession = useTranslations('session')
   const locale = useLocale()
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -393,6 +395,16 @@ function ReserveInner() {
                 guests: guests,
               })}
             </p>
+            {/* Brique A — Your session anchor. The operator sees the same
+                code (the badge in their list/plan/addition). Saving it
+                also helps the guest verify they're on the right addition
+                when they pay later. */}
+            <div className="mt-3 flex flex-col items-center gap-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {tSession('yourSessionNo')}
+              </p>
+              <SessionBadge reservationId={reservation.id} variant="large" />
+            </div>
             <button
               type="button"
               onClick={() => router.push(`/eat/r/${restaurantId}`)}

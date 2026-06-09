@@ -33,7 +33,12 @@ export async function GET(
       where:   { restaurantTableId: table.id, status: 'open' },
       orderBy: { openedAt: 'desc' },
       select: {
-        id: true, status: true, currency: true, subtotal: true,
+        // reservationId exposed so the consumer UI can derive the short
+        // session code (Agent 13 brique A). null = walk-in — the UI renders a
+        // sober "Walk-in" pill instead of a code. No private data: the id is
+        // a cuid that's already used as the URL token in /eat reservation
+        // flows. Strictly additive.
+        id: true, reservationId: true, status: true, currency: true, subtotal: true,
         items: {
           select:  { id: true, name: true, unitPrice: true, quantity: true },
           orderBy: { createdAt: 'asc' },

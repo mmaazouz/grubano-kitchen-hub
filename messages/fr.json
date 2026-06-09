@@ -1528,5 +1528,13 @@
     "accountNoTicket": "Aucune addition en cours sur votre table.",
     "accountClearLastResa": "Retirer cette réservation",
     "close": "Fermer"
+  },
+  "session": {
+    "walkin": "Walk-in",
+    "sessionLabel": "Session",
+    "codeTooltip": "Identifiant de session",
+    "yourSessionNo": "Votre n° de session",
+    "openTableTitle": "Voir l’addition",
+    "noOpenBill": "Aucune addition en cours"
   }
 }

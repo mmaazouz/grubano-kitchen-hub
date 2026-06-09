@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
 import { Plus, Minus, Trash2, Search, Loader2, Receipt } from 'lucide-react'
+import SessionBadge from '@/components/session/SessionBadge'
 
 // ── TicketPanel (Addition brique 1, Agent 2) ──────────────────────────────────
 // Minimal operator UI to manage a table's addition: open a ticket, add dishes
@@ -11,17 +12,50 @@ import { Plus, Minus, Trash2, Search, Loader2, Receipt } from 'lucide-react'
 // /api/tickets endpoints. Mounted as the "Addition" tab in TablesShell.
 
 type TItem   = { id: string; menuItemId: string | null; name: string; unitPrice: number; quantity: number }
-type Ticket  = { id: string; status: string; currency: string; subtotal: number; items: TItem[] }
+type Ticket  = {
+  id:            string
+  status:        string
+  currency:      string
+  subtotal:      number
+  items:         TItem[]
+  /** Server-side ensureOpenTicket binds the ticket to the precise arrived
+   *  reservation. null = explicit walk-in. Drives the session badge. */
+  reservationId?: string | null
+}
 type MenuRow = { id: string; name: string; price: number; category: string }
 type Table   = { id: string; name: string; seats: number; active: boolean }
 
 const eur = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 
-export default function TicketPanel({ tables }: { tables: Table[] }) {
-  const t = useTranslations('tickets')
+export default function TicketPanel({
+  tables, selectedTableId,
+}: {
+  tables: Table[]
+  /** When the operator clicks a table card in ListView/FloorPlanView,
+   *  TablesShell lifts this id so the addition tab opens directly on the
+   *  right session — no reload, no state loss across tab switches. */
+  selectedTableId?: string | null
+}) {
+  const t  = useTranslations('tickets')
+  const ts = useTranslations('session')
   const activeTables = tables.filter(tb => tb.active)
 
-  const [tableId, setTableId]   = useState(activeTables[0]?.id ?? '')
+  // Resolve the initial pick: the parent-lifted selection wins; otherwise
+  // fall back to the first active table (legacy behaviour preserved).
+  const initialTableId =
+    selectedTableId && activeTables.some(t => t.id === selectedTableId)
+      ? selectedTableId
+      : (activeTables[0]?.id ?? '')
+  const [tableId, setTableId]   = useState(initialTableId)
+
+  // Reflect a fresh selection coming from the parent (the operator clicked a
+  // different table from the list while the addition tab was already mounted).
+  useEffect(() => {
+    if (selectedTableId && activeTables.some(t => t.id === selectedTableId) && selectedTableId !== tableId) {
+      setTableId(selectedTableId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTableId])
   const [ticket, setTicket]     = useState<Ticket | null>(null)
   const [loading, setLoading]   = useState(false)
   const [pending, setPending]   = useState(false)
@@ -182,11 +216,16 @@ export default function TicketPanel({ tables }: { tables: Table[] }) {
         </div>
       ) : (
         <>
-          {/* Status + total */}
-          <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${ticket.status === 'paid' ? 'bg-success/15 text-success' : 'bg-primary/15 text-primary'}`}>
-              {ticket.status === 'paid' ? t('statusPaid') : t('statusOpen')}
-            </span>
+          {/* Status + session badge + total */}
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-border bg-card px-4 py-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${ticket.status === 'paid' ? 'bg-success/15 text-success' : 'bg-primary/15 text-primary'}`}>
+                {ticket.status === 'paid' ? t('statusPaid') : t('statusOpen')}
+              </span>
+              {/* Session anchor — short code (#A3F2) or walk-in pill. The
+                  operator and the guest cross-check this verbally. */}
+              <SessionBadge reservationId={ticket.reservationId} />
+            </div>
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('total')}</p>
               <p className="text-xl font-bold text-foreground">{eur(ticket.subtotal)}</p>

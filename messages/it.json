@@ -1528,5 +1528,13 @@
     "accountNoTicket": "Nessun conto aperto al tuo tavolo.",
     "accountClearLastResa": "Rimuovi questa prenotazione",
     "close": "Chiudi"
+  },
+  "session": {
+    "walkin": "Walk-in",
+    "sessionLabel": "Sessione",
+    "codeTooltip": "ID sessione",
+    "yourSessionNo": "Il tuo ID di sessione",
+    "openTableTitle": "Vedi il conto",
+    "noOpenBill": "Nessun conto aperto"
   }
 }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Clock, Loader2, AlertCircle, Receipt } from 'lucide-react'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
+import SessionBadge from '@/components/session/SessionBadge'
 
 // ── <TableBillClient /> — client island for the QR landing /t/[tableId] ──────
 //
@@ -26,11 +27,14 @@ interface TicketItem {
   quantity:  number
 }
 interface TicketPayload {
-  id:       string
-  status:   string
-  currency: string
-  subtotal: number
-  items:    TicketItem[]
+  id:             string
+  status:         string
+  currency:       string
+  subtotal:       number
+  items:          TicketItem[]
+  /** Brique A — exposed by Agent 2's GET /api/t/[tableId]/ticket select.
+   *  null = walk-in: the guest's session has no reservation code. */
+  reservationId?: string | null
 }
 interface PayInit {
   clientSecret:   string
@@ -169,9 +173,15 @@ export default function TableBillClient({ tableId }: Props) {
   // Both review and pay show the items + total. Only the bottom area swaps.
   return (
     <div className="mt-8 space-y-4">
-      <h2 className="text-center text-base font-semibold text-foreground">
-        {t('yourBill')}
-      </h2>
+      <div className="flex flex-col items-center gap-2">
+        <h2 className="text-base font-semibold text-foreground">
+          {t('yourBill')}
+        </h2>
+        {/* Brique A — the session anchor. Same code the operator sees on
+            their list/plan/addition tab. Guest can read it aloud to
+            confirm "you're #A3F2, right?" */}
+        <SessionBadge reservationId={ticket?.reservationId ?? null} variant="large" />
+      </div>
 
       <div className="rounded-2xl border border-border bg-card p-3">
         <ul className="divide-y divide-border">

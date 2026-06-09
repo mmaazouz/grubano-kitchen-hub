@@ -6,7 +6,7 @@ import {
   Sparkles, Users, Clock, AlertTriangle,
   ChevronRight, Plus, CalendarDays, Euro, Filter, ShieldCheck,
   RefreshCw, QrCode, X, ChevronLeft, ChevronRight as ChevRight,
-  Store, Check, Timer, Download, Printer, Loader2,
+  Store, Check, Timer, Download, Printer, Loader2, Receipt,
 } from 'lucide-react'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import EstablishmentSwitcher, {
@@ -14,6 +14,8 @@ import EstablishmentSwitcher, {
 } from '@/components/dashboard/EstablishmentSwitcher'
 import { EmptyState } from '@/components/design-system'
 import TicketPanel from '@/components/tables/TicketPanel'
+import SessionBadge from '@/components/session/SessionBadge'
+import { reservationCode } from '@/lib/reservation-code'
 
 // ── /tables — Agent 13 ─────────────────────────────────────────────────────────
 // The page used to be a single client component (~700 l.) that fetched
@@ -122,6 +124,16 @@ export default function TablesShell({
   const [loading,       setLoading]       = useState(true)
   const [selectedDate,  setSelectedDate]  = useState(new Date().toISOString().split('T')[0])
   const [addingRes,     setAddingRes]     = useState(false)
+  // Brique A — selected table id for the Addition tab. Lifted HERE so a
+  // navigation Liste → Addition → Liste → autre table never reloads or
+  // loses the ticket context (the ticket itself stays open in the DB; this
+  // is purely UI navigation). When the operator clicks a reservation /
+  // floor-plan card with an open bill, we set this AND switch tabs.
+  const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
+  function openAddition(tableId: string) {
+    setSelectedTableId(tableId)
+    setTab('addition')
+  }
   // Default duration as seen by the modal. Seeded server-side (no flash) and
   // refreshed every time /api/tables answers, so a Config save propagates here.
   const [defaultDurationMin, setDefaultDurationMin] = useState(initialDefaultDuration)
@@ -292,6 +304,7 @@ export default function TablesShell({
               onUpdateStatus={updateStatus}
               onReleaseDeposit={releaseDeposit}
               onCaptureDeposit={captureDeposit}
+              onOpenAddition={openAddition}
             />
           )}
           {tab === 'calendar' && (
@@ -302,8 +315,16 @@ export default function TablesShell({
               onDateChange={setSelectedDate}
             />
           )}
-          {tab === 'plan' && <FloorPlanView tables={tables} reservations={reservations} />}
-          {tab === 'addition' && <TicketPanel tables={tables} />}
+          {tab === 'plan' && (
+            <FloorPlanView
+              tables={tables}
+              reservations={reservations}
+              onOpenAddition={openAddition}
+            />
+          )}
+          {tab === 'addition' && (
+            <TicketPanel tables={tables} selectedTableId={selectedTableId} />
+          )}
           {tab === 'setup' && (
             <SetupView
               tables={tables}
@@ -335,7 +356,7 @@ export default function TablesShell({
 
 function ListView({
   reservations, loading, selectedDate, onDateChange, onUpdateStatus,
-  onReleaseDeposit, onCaptureDeposit,
+  onReleaseDeposit, onCaptureDeposit, onOpenAddition,
 }: {
   reservations:     Reservation[]
   loading:          boolean
@@ -344,7 +365,12 @@ function ListView({
   onUpdateStatus:   (id: string, status: Reservation['status']) => void
   onReleaseDeposit: (id: string) => Promise<{ ok: true } | { ok: false; status: number }>
   onCaptureDeposit: (id: string) => Promise<{ ok: true } | { ok: false; status: number }>
+  /** Brique A — fire when the operator clicks an `arrived` row (or the
+   *  badge / "Voir l'addition" CTA). Switches TablesShell to the Addition
+   *  tab focused on this table's open ticket. */
+  onOpenAddition:   (tableId: string) => void
 }) {
+  const tSession = useTranslations('session')
   const td = useTranslations('tables.deposit')
   // Confirmation modal state for the no-show capture (real charge).
   const [confirmCapture, setConfirmCapture] = useState<Reservation | null>(null)
@@ -460,6 +486,23 @@ function ListView({
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold">{r.customerName}</p>
+                      {/* Brique A — session anchor. Always rendered; for
+                          an 'arrived' service it becomes the clickable
+                          entry into the Addition tab. The badge itself
+                          stays a static visual element when status !==
+                          arrived (no ticket open yet, no link to make). */}
+                      {r.status === 'arrived' ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddition(r.tableId)}
+                          title={tSession('openTableTitle')}
+                          className="cursor-pointer"
+                        >
+                          <SessionBadge reservationId={r.id} />
+                        </button>
+                      ) : (
+                        <SessionBadge reservationId={r.id} />
+                      )}
                       {r.status === 'arrived' && (
                         <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-success">Arrivé</span>
                       )}
@@ -737,7 +780,16 @@ function CalendarView({
 
 // ── Floor plan view ───────────────────────────────────────────────────────────
 
-function FloorPlanView({ tables, reservations }: { tables: Table[]; reservations: Reservation[] }) {
+function FloorPlanView({
+  tables, reservations, onOpenAddition,
+}: {
+  tables:         Table[]
+  reservations:   Reservation[]
+  /** Brique A — fire when the operator taps an OCCUPIED table tile (a table
+   *  with an `arrived` reservation today). Opens the Addition tab on it. */
+  onOpenAddition: (tableId: string) => void
+}) {
+  const tSession = useTranslations('session')
   const [selected, setSelected] = useState<string | null>(null)
 
   const bookedIds = new Set(
@@ -746,9 +798,24 @@ function FloorPlanView({ tables, reservations }: { tables: Table[]; reservations
       .map(r => r.tableId),
   )
 
+  // Brique A — map tableId → ARRIVED reservation (the active session).
+  // The Plan view shows the session code ONLY for tables with an arrived
+  // service, since that's the precondition for an open ticket (Agent 2
+  // a557d45 forces ensureOpenTicket to require an arrived reservation).
+  // Plain `confirmed` reservations stay visible as "booked" but without a
+  // session badge — there's no addition to navigate into yet, mirroring
+  // the server-side rule: no `arrived` → no open bill.
+  const arrivedByTable = new Map<string, Reservation>()
+  for (const r of reservations) {
+    if (r.status === 'arrived' && !arrivedByTable.has(r.tableId)) {
+      arrivedByTable.set(r.tableId, r)
+    }
+  }
+
   const sel       = tables.find(t => t.id === selected)
   const selBooked = selected ? bookedIds.has(selected) : false
   const selRes    = sel ? reservations.filter(r => r.tableId === sel.id && r.status !== 'cancelled' && r.status !== 'noshow') : []
+  const selArrived = sel ? arrivedByTable.get(sel.id) ?? null : null
 
   const displayTables = tables.length > 0 ? tables : [
     { id: 'T1', name: 'Table 1', seats: 2, x: 18, y: 22, active: true },
@@ -768,7 +835,8 @@ function FloorPlanView({ tables, reservations }: { tables: Table[]; reservations
           Salle principale
         </div>
         {displayTables.map(t => {
-          const booked = bookedIds.has(t.id)
+          const booked  = bookedIds.has(t.id)
+          const arrived = arrivedByTable.get(t.id)
           return (
             <button
               key={t.id}
@@ -781,6 +849,16 @@ function FloorPlanView({ tables, reservations }: { tables: Table[]; reservations
               } ${selected === t.id ? 'ring-2 ring-primary' : ''}`}>
               {t.name}
               <span className="block text-[8px] font-normal opacity-70">{t.seats} pl.</span>
+              {/* Session anchor: the arrived service's short code.
+                  Shown directly on the tile so the operator can spot the
+                  active session at a glance. Tapping the tile selects it
+                  (legacy); the panel below offers the "Voir l'addition"
+                  click-through. */}
+              {arrived && (
+                <span className="mt-1 inline-block rounded-full bg-white/80 px-1.5 py-0.5 font-mono text-[8px] tracking-wider text-primary">
+                  {reservationCode(arrived.id)}
+                </span>
+              )}
             </button>
           )
         })}
@@ -788,16 +866,35 @@ function FloorPlanView({ tables, reservations }: { tables: Table[]; reservations
 
       {sel && (
         <div className="mt-4 rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-bold">{sel.name}</p>
               <p className="text-[11px] text-muted-foreground">
                 {sel.seats} places · {selBooked ? 'Réservée' : 'Disponible'}
               </p>
+              {/* Brique A: when the selected table has an arrived service,
+                  surface its session code as the panel's anchor + offer the
+                  "Voir l'addition" jump. */}
+              {selArrived && (
+                <div className="mt-2 flex items-center gap-2">
+                  <SessionBadge reservationId={selArrived.id} variant="large" />
+                </div>
+              )}
             </div>
-            <button className="grid h-10 w-10 place-items-center rounded-xl bg-navy text-navy-foreground">
-              <QrCode size={16} />
-            </button>
+            {selArrived ? (
+              <button
+                type="button"
+                onClick={() => onOpenAddition(sel.id)}
+                title={tSession('openTableTitle')}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground"
+              >
+                <Receipt size={13} /> {tSession('openTableTitle')}
+              </button>
+            ) : (
+              <button className="grid h-10 w-10 place-items-center rounded-xl bg-navy text-navy-foreground">
+                <QrCode size={16} />
+              </button>
+            )}
           </div>
           {selRes.length > 0 && (
             <div className="mt-3 space-y-1">
