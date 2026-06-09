@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
-import { releaseHold, captureHold } from '@/lib/deposit'
+import { captureHold } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
@@ -243,21 +243,20 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Réservation non autorisée' }, { status: 403 })
     }
 
-    // Settle the deposit empreinte on the status transition (Stripe = source of
-    // truth). This is the ROOT fix for "Client arrivé": the legacy status update
-    // (the path the dashboard takes when the deposit badge hasn't synced to
-    // 'authorized') now also RELEASES the hold — so the empreinte is cancelled
-    // whatever button the operator pressed. Only runs when a hold exists.
+    // Empreinte lifecycle (premium-table cycle, étape 2): the hold STAYS ACTIVE
+    // from arrival until the bill is PAID. 'arrived' therefore NO LONGER releases
+    // the empreinte (it used to call releaseHold here) — the only normal release
+    // moment is the bill payment (webhook handleTicketPaid), and on an unpaid
+    // walk-out the operator chooses capture/release at POST /api/tickets/[id]/close.
+    // 'noshow' (the client never arrived) still captures the penalty here.
     const writeData: Record<string, unknown> = { ...data }
-    if (existing.stripePaymentIntentId && (data.status === 'arrived' || data.status === 'noshow')) {
-      const settle = data.status === 'arrived'
-        ? await releaseHold(existing.stripePaymentIntentId)
-        : await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
+    if (existing.stripePaymentIntentId && data.status === 'noshow') {
+      const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
       if (!settle.ok) {
         return NextResponse.json({ error: settle.error }, { status: settle.status })
       }
       if (settle.depositStatus) writeData.depositStatus = settle.depositStatus
-      if (data.status === 'noshow' && settle.depositStatus === 'captured') writeData.depositPaid = true
+      if (settle.depositStatus === 'captured') writeData.depositPaid = true
     }
 
     const reservation = await prisma.reservation.update({
