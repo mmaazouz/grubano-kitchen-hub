@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/design-system'
 import TicketPanel from '@/components/tables/TicketPanel'
 import SessionBadge from '@/components/session/SessionBadge'
 import { reservationCode } from '@/lib/reservation-code'
+import { usePolling } from '@/lib/use-polling'
 
 // ── /tables — Agent 13 ─────────────────────────────────────────────────────────
 // The page used to be a single client component (~700 l.) that fetched
@@ -173,13 +174,13 @@ export default function TablesShell({
     }
   }, [restaurantId, scopedUrl])
 
-  const loadReservations = useCallback(async (date: string) => {
+  const loadReservations = useCallback(async (date: string, silent = false) => {
     if (!restaurantId) {
       setReservations([])
       setLoading(false)
       return
     }
-    setLoading(true)
+    if (!silent) setLoading(true)
     try {
       const r = await fetch(scopedUrl(`/api/reservations?date=${date}`), { cache: 'no-store' })
       if (r.ok) {
@@ -187,7 +188,7 @@ export default function TablesShell({
         setReservations(d.reservations ?? [])
       }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [restaurantId, scopedUrl])
 
@@ -199,14 +200,28 @@ export default function TablesShell({
     loadReservations(selectedDate)
   }, [selectedDate, loadReservations])
 
-  async function updateStatus(id: string, status: Reservation['status']) {
+  // ── Bloc A — realtime via polling. Silent refresh every 4s while the tab is
+  //   visible: arrivals, status flips, paid bills (table freed) appear on the
+  //   list / plan without a manual reload. The Addition tab has its own
+  //   3s ticket poll inside TicketPanel.
+  usePolling(() => loadReservations(selectedDate, true), 4000, !!restaurantId)
+
+  async function updateStatus(
+    id: string,
+    status: Reservation['status'],
+  ): Promise<{ ok: true } | { ok: false; status: number }> {
     setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r))
     const r = await fetch('/api/reservations', {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ id, status }),
     })
-    if (!r.ok) return
+    if (!r.ok) {
+      // Roll back the optimistic flip on failure and surface the status so
+      // the caller can map a message. The next poll re-syncs anyway.
+      loadReservations(selectedDate, true)
+      return { ok: false, status: r.status }
+    }
     // Agent 2's contract: when marking 'arrived' would have auto-opened a
     // ticket but a previous-service bill is still stuck on the same table,
     // the response carries `ticketAlert`. The reservation IS 'arrived', but
@@ -232,6 +247,7 @@ export default function TablesShell({
         openAddition(tableId)
       }
     }
+    return { ok: true }
   }
 
   function clearUnpaidFor(tableId: string) {
@@ -243,35 +259,24 @@ export default function TablesShell({
     })
   }
 
-  // ── Deposit actions (Agent 2 Paiement V1 endpoints) ──────────────────────
-  // Both endpoints are OWNER-scoped — Agent 2's resolveEstablishmentScope
-  // confirms the reservation belongs to one of the operator's restaurants
-  // before touching Stripe. We optimistically update local state on success
-  // and surface a friendly error code mapping for 409 (already captured /
-  // released) and the generic case.
+  // ── Bloc H — new empreinte cycle. "Client arrivé" calls ONLY
+  // PATCH /api/reservations { status:'arrived' } — the empreinte STAYS active
+  // until the bill is paid (the webhook releases it at payment) or until the
+  // traced closure settles it (capture/release choice). "No-show" goes through
+  // the same PATCH with status:'noshow' — the server captures the penalty
+  // there (Agent 14 étape 2 wired captureHold into that transition).
+  // The dedicated POST /deposit/release and /deposit/capture endpoints still
+  // exist server-side but the dashboard NO LONGER calls them at arrival.
 
   async function releaseDeposit(id: string): Promise<{ ok: true } | { ok: false; status: number }> {
-    const r = await fetch(`/api/reservations/${id}/deposit/release`, { method: 'POST' })
-    if (!r.ok) return { ok: false, status: r.status }
-    const body = await r.json().catch(() => null)
-    setReservations(prev => prev.map(rs =>
-      rs.id === id
-        ? { ...rs, status: 'arrived', depositStatus: (body?.depositStatus ?? 'released') as Reservation['depositStatus'] }
-        : rs,
-    ))
-    return { ok: true }
+    // "Client arrivé": PATCH only — deposit untouched (released at payment).
+    return updateStatus(id, 'arrived')
   }
 
   async function captureDeposit(id: string): Promise<{ ok: true } | { ok: false; status: number }> {
-    const r = await fetch(`/api/reservations/${id}/deposit/capture`, { method: 'POST' })
-    if (!r.ok) return { ok: false, status: r.status }
-    const body = await r.json().catch(() => null)
-    setReservations(prev => prev.map(rs =>
-      rs.id === id
-        ? { ...rs, status: 'noshow', depositStatus: (body?.depositStatus ?? 'captured') as Reservation['depositStatus'] }
-        : rs,
-    ))
-    return { ok: true }
+    // "No-show": PATCH — the server captures the penalty inside the same
+    // transition (one round-trip, no separate deposit call).
+    return updateStatus(id, 'noshow')
   }
 
   // ── 0-establishment guard ────────────────────────────────────────────────

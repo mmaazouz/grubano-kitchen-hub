@@ -1,10 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Clock, Loader2, AlertCircle, Receipt } from 'lucide-react'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import SessionBadge from '@/components/session/SessionBadge'
+import { usePolling } from '@/lib/use-polling'
 
 // ── <TableBillClient /> — client island for the QR landing /t/[tableId] ──────
 //
@@ -81,6 +82,30 @@ export default function TableBillClient({ tableId }: Props) {
   }, [tableId, t])
 
   useEffect(() => { loadTicket() }, [loadTicket])
+
+  // ── Bloc A — realtime: silent 3s poll while the consumer keeps the page
+  //   open. New lines added by the waiter show up alone; when the bill gets
+  //   paid (this device OR another channel), the open ticket disappears
+  //   server-side → if we were showing one, flip to the "addition réglée"
+  //   paid screen instead of regressing to "addition bientôt".
+  const sawTicketRef = useRef(false)
+  usePolling(async () => {
+    // Don't disturb the Stripe Elements sheet while typing card numbers.
+    if (stage === 'pay' || stage === 'loading') return
+    try {
+      const r = await fetch(`/api/t/${tableId}/ticket`, { cache: 'no-store' })
+      if (!r.ok) return
+      const body = await r.json() as { ticket: TicketPayload | null }
+      if (body.ticket) {
+        sawTicketRef.current = true
+        setTicket(body.ticket)
+        if (stage === 'no-ticket' || stage === 'error') setStage('review')
+      } else if (sawTicketRef.current && stage === 'review') {
+        // The bill we were looking at is gone (paid / closed) → settled.
+        setStage('paid')
+      }
+    } catch { /* best-effort */ }
+  }, 3000, stage !== 'paid')
 
   async function startPayment() {
     if (!ticket || starting) return

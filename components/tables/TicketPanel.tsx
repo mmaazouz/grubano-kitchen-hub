@@ -6,6 +6,7 @@ import { Plus, Minus, Trash2, Search, Loader2, Receipt, CreditCard } from 'lucid
 import SessionBadge from '@/components/session/SessionBadge'
 import UnpaidAlert from '@/components/tables/UnpaidAlert'
 import InlinePayPanel from '@/components/tables/InlinePayPanel'
+import { usePolling } from '@/lib/use-polling'
 
 // ── TicketPanel (Addition brique 1, Agent 2) ──────────────────────────────────
 // Minimal operator UI to manage a table's addition: open a ticket, add dishes
@@ -104,21 +105,28 @@ export default function TicketPanel({
   // Stripe Elements panel until onPaid fires.
   const [payingCurrent, setPayingCurrent] = useState(false)
 
-  const loadTicket = useCallback(async (tid: string) => {
+  const loadTicket = useCallback(async (tid: string, silent = false) => {
     if (!tid) { setTicket(null); return }
-    setLoading(true); setError(''); setConfirmVoid(false)
+    if (!silent) { setLoading(true); setError(''); setConfirmVoid(false) }
     try {
       const r = await fetch(`/api/tickets?restaurantTableId=${tid}`, { cache: 'no-store' })
       const d = r.ok ? await r.json() : null
       setTicket(d?.ticket ?? null)
     } catch {
-      setTicket(null)
+      if (!silent) setTicket(null)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => { loadTicket(tableId) }, [tableId, loadTicket])
+
+  // ── Bloc A — realtime: silent 3s poll of the current table's ticket. Client
+  //   orders (addedBy='client') and webhook-side payments (status flips to
+  //   'paid' → the open disappears) show up without a manual reload. Paused
+  //   while the operator is in the middle of the inline payment sheet so the
+  //   refresh doesn't yank the Elements form out from under them.
+  usePolling(() => loadTicket(tableId, true), 3000, !!tableId && !payingCurrent)
 
   // Load the establishment's menu once for the picker.
   useEffect(() => {
