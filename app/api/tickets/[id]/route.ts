@@ -30,6 +30,11 @@ export async function GET(
 
 // ── PATCH /api/tickets/[id] ───────────────────────────────────────────────────
 // Owner-scoped. Void a ticket (cancel). Payment (status=paid) is brique 2.
+// Voiding now also stamps the closure trace (closedReason='void_manual' + closedAt)
+// so a cancelled bill is never silently lost. The richer "close with a reason +
+// empreinte choice" flow (walk-out) is POST /api/tickets/[id]/close. The contract
+// of this endpoint is unchanged (Agent 13's existing "Annuler l'addition" still
+// works); the trace fields are purely additive.
 const patchSchema = z.object({ status: z.enum(['void']) })
 
 export async function PATCH(
@@ -56,7 +61,7 @@ export async function PATCH(
 
     const ticket = await prisma.tableTicket.update({
       where:  { id: params.id },
-      data:   { status },
+      data:   { status, closedReason: 'void_manual', closedAt: new Date() },
       select: ticketSelect,
     })
     return NextResponse.json({ ticket })

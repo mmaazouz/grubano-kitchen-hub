@@ -57,7 +57,13 @@ export async function PATCH(
   }
 }
 
-// ── DELETE /api/tickets/[id]/items/[itemId] — remove a line ───────────────────
+// ── DELETE /api/tickets/[id]/items/[itemId] — cancel a line (SERVER only) ─────
+// SOFT cancel (decision T3/T5): the line is marked status='cancelled' (+ cancelledAt)
+// and dropped from the subtotal, but KEPT in the DB so the addition/history shows
+// "this was ordered then cancelled by the server". Only the operator reaches this
+// route (owner-scoped — a 'consumer' role is refused upstream); the client has NO
+// endpoint to cancel a line (T3.Q2). Idempotent: cancelling an already-cancelled
+// line just no-ops the trace and recomputes.
 export async function DELETE(
   _req: Request,
   { params }: { params: { id: string; itemId: string } },
@@ -69,7 +75,10 @@ export async function DELETE(
     const loaded = await loadOwnedLine(params.id, params.itemId, scope)
     if ('error' in loaded) return loaded.error
 
-    await prisma.ticketItem.delete({ where: { id: params.itemId } })
+    await prisma.ticketItem.update({
+      where: { id: params.itemId },
+      data:  { status: 'cancelled', cancelledAt: new Date() },
+    })
     await recomputeSubtotal(params.id)
     const ticket = await prisma.tableTicket.findUnique({ where: { id: params.id }, select: ticketSelect })
     return NextResponse.json({ ticket })
