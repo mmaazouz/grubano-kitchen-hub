@@ -3,8 +3,29 @@ import { prisma } from '@/lib/prisma'
 
 export const round2 = (n: number) => Math.round(n * 100) / 100
 
+// Per-line fields exposed to the OPERATOR side (addition + history). Includes the
+// premium-table additions (who added it, options/notes/allergies, soft-cancel
+// status) so the dashboard can render a client order and a struck-through cancelled
+// line. name + unitPrice stay the FROZEN copies taken at add time.
+const itemSelect = {
+  id:         true,
+  menuItemId: true,
+  name:       true,
+  unitPrice:  true,
+  quantity:   true,
+  addedBy:    true,
+  options:    true,
+  notes:      true,
+  allergies:  true,
+  status:     true,
+  cancelledAt: true,
+  createdAt:  true,
+} as const
+
 // Fields returned to the UI / brique-2 consumer. No private data beyond the
 // operator's own ticket (the routes owner-scope before selecting this).
+// LIVE addition: only ACTIVE lines (a cancelled line is history — see
+// ticketHistorySelect — and is already excluded from the subtotal).
 export const ticketSelect = {
   id:                true,
   restaurantId:      true,
@@ -15,8 +36,49 @@ export const ticketSelect = {
   subtotal:          true,
   openedAt:          true,
   paidAt:            true,
+  closedReason:      true,
+  closedAt:          true,
   items: {
-    select:  { id: true, menuItemId: true, name: true, unitPrice: true, quantity: true },
+    where:   { status: 'active' },
+    select:  itemSelect,
+    orderBy: { createdAt: 'asc' as const },
+  },
+} as const
+
+// HISTORY view (owner): every ticket of a reservation, INCLUDING cancelled lines
+// and the closure trace. Never filters — the past consumption is shown whole.
+export const ticketHistorySelect = {
+  id:                true,
+  restaurantId:      true,
+  restaurantTableId: true,
+  reservationId:     true,
+  status:            true,
+  currency:          true,
+  subtotal:          true,
+  openedAt:          true,
+  paidAt:            true,
+  closedReason:      true,
+  closedAt:          true,
+  amountPaid:        true,
+  items: {
+    select:  itemSelect,
+    orderBy: { createdAt: 'asc' as const },
+  },
+} as const
+
+// CONSUMER view (public /api/t/[tableId]): the bill the client sees + pays. Only
+// active lines, and only the non-private fields (no menuItemId / addedBy / internal
+// status). Mirrors the existing public GET shape, additively enriched with the
+// per-line options/notes the client themselves submitted.
+export const consumerTicketSelect = {
+  id:            true,
+  reservationId: true,
+  status:        true,
+  currency:      true,
+  subtotal:      true,
+  items: {
+    where:   { status: 'active' },
+    select:  { id: true, name: true, unitPrice: true, quantity: true, options: true, notes: true },
     orderBy: { createdAt: 'asc' as const },
   },
 } as const
@@ -81,11 +143,12 @@ export async function ensureOpenTicket(opts: {
   return { ok: true, id: created.id, created: true }
 }
 
-/** Recompute subtotal = Σ(unitPrice * quantity) over the ticket's items, persist it,
- *  and return the rounded value. Called after every line mutation. */
+/** Recompute subtotal = Σ(unitPrice * quantity) over the ticket's ACTIVE items,
+ *  persist it, and return the rounded value. Called after every line mutation.
+ *  Cancelled lines are kept in the DB (trace) but EXCLUDED from the billed total. */
 export async function recomputeSubtotal(ticketId: string): Promise<number> {
   const items = await prisma.ticketItem.findMany({
-    where:  { ticketId },
+    where:  { ticketId, status: 'active' },
     select: { unitPrice: true, quantity: true },
   })
   const subtotal = round2(items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0))

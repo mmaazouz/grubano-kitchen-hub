@@ -40,7 +40,12 @@ export async function GET(
         // flows. Strictly additive.
         id: true, reservationId: true, status: true, currency: true, subtotal: true,
         items: {
-          select:  { id: true, name: true, unitPrice: true, quantity: true },
+          // ACTIVE lines only — a server-cancelled line is kept in the DB for the
+          // trace but is already out of the subtotal and must never appear on the
+          // client's bill. options/notes expose back what the client themselves
+          // ordered from the app (size/extras), strictly additive.
+          where:   { status: 'active' },
+          select:  { id: true, name: true, unitPrice: true, quantity: true, options: true, notes: true },
           orderBy: { createdAt: 'asc' },
         },
       },

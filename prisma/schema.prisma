@@ -549,6 +549,18 @@ model TableTicket {
   subtotal          Float           @default(0)        // Σ(unitPrice * quantity), recomputed
   openedAt          DateTime        @default(now())
   paidAt            DateTime?
+  // ── Closure trace (Chantier table premium étape 1, additive) ────────────────
+  // ADDITIVE + REVERSIBLE: the WHY + WHEN a ticket left the 'open' state, so a
+  // closed bill is never silently lost (decision T1/T5: keep the trace, never
+  // delete). closedReason is independent of `status` so we can distinguish the
+  // different VOID origins (a settled empreinte vs. an empty release vs. a manual
+  // cancel) and a paid close. Both nullable → existing rows stay valid, no backfill.
+  //   • 'paid'        — bill settled (status='paid'; webhook owns this — optional here)
+  //   • 'void_unpaid' — client left without paying (status='void', items KEPT as proof)
+  //   • 'void_empty'  — empty addition released to free the table (status='void')
+  //   • 'void_manual' — operator cancelled the addition (status='void')
+  closedReason      String?
+  closedAt          DateTime?
   // ── Bill payment (Brique 2, additive — TEST mode) ───────────────────────────
   // ADDITIVE + REVERSIBLE: the bill is paid with an AUTOMATIC-capture PaymentIntent
   // (a REAL charge, unlike the manual-capture reservation empreinte). All nullable
@@ -581,6 +593,27 @@ model TicketItem {
   name       String
   unitPrice  Float
   quantity   Int         @default(1)
+  // ── Premium table experience (Chantier étape 1, additive) ───────────────────
+  // ADDITIVE + REVERSIBLE: all defaulted / nullable, so every existing line stays
+  // valid with no backfill.
+  //   • addedBy   — who put the line on the bill: 'staff' (operator) or 'client'
+  //     (ordered from the app at the table). Defaults 'staff' = the legacy path.
+  //   • options   — per-line modifiers (size, cooking, extras) as a JSON-encoded
+  //     STRING, same SHAPE the delivery cart uses for Order.items[].options
+  //     (an array of objects). MySQL has no native JSON column reuse here → @db.Text.
+  //   • notes     — free customer/staff note for this line ("sans oignons").
+  //   • allergies — per-line allergy text (the reservation-level allergies stay on
+  //     Reservation; this is the line-specific extra a client may add when ordering).
+  //   • status    — 'active' | 'cancelled'. The server cancels a line by SOFT-marking
+  //     it 'cancelled' (kept for the trace/history) and recomputeSubtotal excludes it,
+  //     instead of a hard delete (decision T3/T5: keep the trace).
+  //   • cancelledAt — WHEN the line was cancelled (trace; null while active).
+  addedBy    String      @default("staff")
+  options    String?     @db.Text
+  notes      String?
+  allergies  String?
+  status     String      @default("active")
+  cancelledAt DateTime?
   createdAt  DateTime    @default(now())
 
   @@index([ticketId])
