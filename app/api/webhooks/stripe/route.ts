@@ -19,6 +19,12 @@ import { releaseHold } from '@/lib/deposit'
 //     reservation's empreinte (Mohammed's rule: never charge the meal AND keep
 //     the guarantee held).
 //
+// PREMIUM-TABLE CYCLE (étape 2): the empreinte now stays ACTIVE from arrival
+// until the bill is paid — PATCH status='arrived' no longer releases it. The
+// release below (bill paid → releaseHold) is therefore the SOLE normal release
+// moment. On an unpaid walk-out the operator settles the hold explicitly at
+// POST /api/tickets/[id]/close (capture or release).
+//
 // SECURITY: a webhook MUST be public (Stripe calls it with no session). Trust comes
 // from VERIFYING THE SIGNATURE, not from auth. /api/* is excluded from the
 // middleware matcher, so this route is public by default. Node runtime + RAW body
