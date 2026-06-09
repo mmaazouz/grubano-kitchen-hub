@@ -33,6 +33,8 @@ interface AvailabilityResponse {
 interface CreatedReservation {
   id:            string
   restaurantId:  string
+  /** Resolved server-side from the auto-picked free table. */
+  tableId?:      string
   tableName:     string
   date:          string
   endTime:       string
@@ -139,6 +141,21 @@ function ReserveInner() {
       }
       const resa: CreatedReservation = data.reservation
       setReservation(resa)
+      // Persist a thin "last reservation" pointer so /eat/account can offer a
+      // "Payer mon addition" button without scanning the QR. Tolerant: failures
+      // (Safari private mode, quota) just degrade the account convenience.
+      try {
+        if (resa.tableId) {
+          localStorage.setItem('grubano_last_reservation', JSON.stringify({
+            reservationId: resa.id,
+            restaurantId:  resa.restaurantId,
+            tableId:       resa.tableId,
+            tableName:     resa.tableName,
+            date:          resa.date,
+            savedAt:       Date.now(),
+          }))
+        }
+      } catch { /* non-fatal */ }
       if (resa.depositAmount > 0) {
         // Stripe Elements wiring arrives in sub-commit 2. For now we still
         // surface the deposit step, but its inner form will land then.

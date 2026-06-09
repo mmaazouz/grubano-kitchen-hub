@@ -175,6 +175,7 @@ export async function POST(req: Request) {
         reservation: {
           id:            reservation.id,
           restaurantId:  reservation.restaurantId,
+          tableId:       picked.id,
           tableName:     reservation.table?.name ?? picked.name,
           date:          reservation.date.toISOString(),
           endTime:       reservation.endTime.toISOString(),

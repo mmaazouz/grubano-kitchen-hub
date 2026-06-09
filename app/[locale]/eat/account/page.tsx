@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
 import { LanguageSwitcher } from '@/components/design-system'
+import LastReservationCard from '@/components/eat/LastReservationCard'
 
 // Loyalty tiers per CLAUDE.md: Bronze 50 → Silver 100 → Gold 200 → Platine 400
 function tierFor(points: number) {
@@ -127,6 +128,12 @@ export default function ProfileScreen() {
           </div>
           <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-[20px] bg-[#FFF3ED] px-3.5 py-[7px] text-[13px] font-bold text-[#F97316] active:scale-95">{t('edit')}</button>
         </div>
+
+        {/* Last reservation — Pay-my-bill shortcut (Brique 2). Hidden when
+            localStorage has no stored reservation pointer; the card hands
+            off to a modal that walks through the ticket fetch + Stripe
+            Elements via the same factored component as /t/[tableId]. */}
+        <LastReservationCard />
 
         {/* Loyalty card */}
         <div className="mt-3 flex items-center gap-4 rounded-[20px] bg-[#F97316] p-5">
