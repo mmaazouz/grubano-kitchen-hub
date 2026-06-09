@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { releaseHold, captureHold } from '@/lib/deposit'
+import { ensureOpenTicket } from '@/lib/ticket'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 
@@ -264,6 +265,22 @@ export async function PATCH(req: Request) {
       data:    writeData,
       include: { table: true },
     })
+
+    // Auto-open the SESSION ticket bound to THIS reservation when the operator
+    // marks it 'arrived'. Best-effort: wrapped so a ticket hiccup can never break
+    // the reservation update nor the empreinte release above. ensureOpenTicket is
+    // idempotent (returns the existing open → never a 2nd ticket on the table).
+    if (data.status === 'arrived' && reservation.restaurantId) {
+      try {
+        await ensureOpenTicket({
+          restaurantTableId: reservation.tableId,
+          restaurantId:      reservation.restaurantId,
+          reservationId:     reservation.id,
+        })
+      } catch (e) {
+        console.error('[PATCH /api/reservations] auto-open ticket failed', e instanceof Error ? e.message : e)
+      }
+    }
 
     return NextResponse.json({ reservation })
   } catch (err) {

@@ -21,6 +21,38 @@ export const ticketSelect = {
   },
 } as const
 
+/**
+ * Ensure exactly ONE open session-ticket exists for a table. If one is already
+ * open, return it (uniqueness — never a 2nd open per table); otherwise create one
+ * linked to `reservationId` (the precise arrived service) or null (explicit
+ * walk-in). This is the single funnel both POST /api/tickets and the auto-open on
+ * 'arrived' go through, so a table never mixes two services' bills.
+ */
+export async function ensureOpenTicket(opts: {
+  restaurantTableId: string
+  restaurantId: string
+  reservationId: string | null
+}): Promise<{ id: string; created: boolean }> {
+  const existing = await prisma.tableTicket.findFirst({
+    where:  { restaurantTableId: opts.restaurantTableId, status: 'open' },
+    select: { id: true },
+  })
+  if (existing) return { id: existing.id, created: false }
+
+  const created = await prisma.tableTicket.create({
+    data: {
+      restaurantId:      opts.restaurantId,
+      restaurantTableId: opts.restaurantTableId,
+      reservationId:     opts.reservationId,
+      status:            'open',
+      currency:          'eur',
+      subtotal:          0,
+    },
+    select: { id: true },
+  })
+  return { id: created.id, created: true }
+}
+
 /** Recompute subtotal = Σ(unitPrice * quantity) over the ticket's items, persist it,
  *  and return the rounded value. Called after every line mutation. */
 export async function recomputeSubtotal(ticketId: string): Promise<number> {
