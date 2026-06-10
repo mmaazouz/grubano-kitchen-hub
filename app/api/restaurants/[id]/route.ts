@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '@/lib/geocode'
+import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 
 // ── GET /api/restaurants/:id ──────────────────────────────────────────────────
 // Returns full restaurant details + menu grouped by category
@@ -120,6 +121,20 @@ export async function GET(
       console.error('[GET /api/restaurants/:id] creator attribution failed', err)
     }
 
+    // ── Opening hours (Chantier horaires, additive) ───────────────────────────
+    // The consumer badge/card data: configured?, open now?, next opening with a
+    // French label, the weekly grid, and the PUBLIC reason of a blocking closure.
+    // Nothing private. Defensive: a hours hiccup degrades to "not configured"
+    // (no badge — current behaviour) and never breaks the restaurant card.
+    let hours: PublicHours = {
+      hoursConfigured: false, isOpenNow: null, nextOpening: null, weeklyHours: [], currentClosure: null,
+    }
+    try {
+      hours = await publicHoursSummary(restaurant.id)
+    } catch (err) {
+      console.error('[GET /api/restaurants/:id] hours summary failed', err)
+    }
+
     const categories = Array.from(new Set(allItems.map(i => i.category)))
     const menu = categories.map(cat => ({
       category: cat,
@@ -149,6 +164,9 @@ export async function GET(
         lat:          restaurant.lat,
         lng:          restaurant.lng,
       },
+      // Additive — consumer badge/card (Agent 13 étape 2). hoursConfigured=false
+      // ⇒ no badge at all (T1.Q3 keeps unconfigured establishments untouched).
+      hours,
       menu,
       itemCount: allItems.length,
     })
