@@ -74,21 +74,28 @@ export async function POST(
       }
     }
 
-    // ── Conflict detection (T3.Q1) ───────────────────────────────────────────
-    // FUTURE reservations (confirmed | arrived) whose slot falls inside the
-    // closure: start on a covered local day, and — for a PARTIAL closure — the
-    // reservation slot overlaps the closed [startTime, endTime) window that day.
-    // A guest is NEVER silently dropped: without confirm, conflicts are returned
-    // and NOTHING is created; with confirm:true the closure is created, each
-    // conflicting reservation is cancelled (cancelReason 'closure') and its
-    // empreinte released via lib/deposit.releaseHold (called, never modified —
-    // idempotent) so the client is never charged for the restaurant's closure.
+    // ── Conflict detection (T3.Q1, fixed: an ONGOING session is never cut) ────
+    // A closure governs ENTRY (new bookings/orders) — it NEVER cuts a meal in
+    // progress ("la session fait foi"). So:
+    //   • CANCELLABLE = FUTURE 'confirmed' reservations whose slot falls inside
+    //     the closure (covered local day; for a PARTIAL closure, slot overlapping
+    //     the closed window). With confirm:true these are cancelled + their
+    //     empreinte released (lib/deposit.releaseHold — called, never modified).
+    //   • ONGOING = 'arrived' sessions (guest physically at the table, bill open)
+    //     matching the closure: INFORMATIVE ONLY. Never cancelled, never
+    //     released — they order, pay and close normally, even with confirm:true.
+    //     (No date>=now filter here: an in-progress session STARTED in the past;
+    //     endTime>=now keeps long-finished stale rows out of the list.)
+    // A guest is NEVER silently dropped: without confirm, anything to show
+    // (cancellable OR ongoing) returns a preview and NOTHING is created.
     const now = new Date()
     const candidates = await prisma.reservation.findMany({
       where: {
         restaurantId: params.id,
-        status:       { in: ['confirmed', 'arrived'] },
-        date:         { gte: now },
+        OR: [
+          { status: 'confirmed', date:    { gte: now } },
+          { status: 'arrived',   endTime: { gte: now } },
+        ],
       },
       select: {
         id: true, customerName: true, date: true, endTime: true,
@@ -98,7 +105,7 @@ export async function POST(
     })
     const winStart = partial ? toMin(data.startTime!) : 0
     const winEnd   = partial ? toMin(data.endTime!)   : 1440
-    const conflicts = candidates.filter((r) => {
+    const matching = candidates.filter((r) => {
       const p = localParts(r.date)
       if (p.dateStr < data.dateStart || p.dateStr > data.dateEnd) return false
       if (!partial) return true
@@ -106,22 +113,25 @@ export async function POST(
       const endMin = Math.min(1440, p.minutes + Math.max(1, Math.round((r.endTime.getTime() - r.date.getTime()) / 60_000)))
       return p.minutes < winEnd && endMin > winStart
     })
+    const conflicts = matching.filter((r) => r.status === 'confirmed')
+    const ongoing   = matching.filter((r) => r.status === 'arrived')
 
-    if (conflicts.length > 0 && !data.confirm) {
-      // PREVIEW: nothing is created. Agent 13's modal shows the recap then
-      // re-POSTs the same body with confirm:true.
+    const toPublic = (r: (typeof matching)[number]) => ({
+      id:            r.id, // the UI derives the short session code from it
+      customerName:  r.customerName,
+      date:          r.date.toISOString(),
+      status:        r.status,
+      depositStatus: r.depositStatus,
+    })
+
+    if ((conflicts.length > 0 || ongoing.length > 0) && !data.confirm) {
+      // PREVIEW: nothing is created. Agent 13's modal shows the recap ("X résas
+      // seront annulées" + "Y session(s) en cours se termineront normalement")
+      // then re-POSTs the same body with confirm:true.
       return NextResponse.json({
         created: false,
-        conflicts: {
-          count: conflicts.length,
-          reservations: conflicts.map((r) => ({
-            id:            r.id, // the UI derives the short session code from it
-            customerName:  r.customerName,
-            date:          r.date.toISOString(),
-            status:        r.status,
-            depositStatus: r.depositStatus,
-          })),
-        },
+        conflicts: { count: conflicts.length, reservations: conflicts.map(toPublic) },
+        ongoing:   { count: ongoing.length,   reservations: ongoing.map(toPublic) },
       })
     }
 
@@ -142,6 +152,8 @@ export async function POST(
     // One failing release never blocks the others; every failure is surfaced.
     // The reservation is cancelled EVEN IF its release fails (the closure is a
     // fact) — the error tells the operator to settle that hold manually.
+    // ONLY `conflicts` (future 'confirmed') is iterated: the `ongoing` 'arrived'
+    // sessions are deliberately NOT in this loop — never cancelled, never released.
     let cancelled = 0
     let depositsReleased = 0
     const errors: Array<{ reservationId: string; error: string }> = []
@@ -184,6 +196,9 @@ export async function POST(
         closure,
         cancelled,
         depositsReleased,
+        // Informative recap: the in-progress sessions the closure did NOT touch
+        // (they finish normally — order, pay, close as usual).
+        ongoing: { count: ongoing.length, reservations: ongoing.map(toPublic) },
         ...(errors.length ? { errors } : {}),
       },
       { status: 201 },
