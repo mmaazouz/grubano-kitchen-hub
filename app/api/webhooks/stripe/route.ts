@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { getStripe, type DepositStatus } from '@/lib/stripe'
+import { getStripe, mapAccountStatus, type DepositStatus } from '@/lib/stripe'
 import { releaseHold } from '@/lib/deposit'
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
@@ -52,20 +52,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing stripe-signature' }, { status: 400 })
   }
 
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
-  if (!webhookSecret) {
+  // Two signing secrets may be in play: the original endpoint ("Your account" —
+  // PI events) and the Connect endpoint ("Connected accounts" — account.updated),
+  // each with its OWN whsec in the Stripe dashboard. Verification tries each
+  // configured secret; one match is enough (A1).
+  const secrets = [process.env.STRIPE_WEBHOOK_SECRET, process.env.STRIPE_CONNECT_WEBHOOK_SECRET]
+    .filter((s): s is string => !!s)
+  if (secrets.length === 0) {
     console.error('[stripe webhook] STRIPE_WEBHOOK_SECRET missing')
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 })
   }
 
   // 2) Verify the signature — proves the call really came from Stripe. Tampered /
-  //    forged payloads throw → 400 (rejected).
-  let event: Stripe.Event
-  try {
-    event = getStripe().webhooks.constructEvent(rawBody, signature, webhookSecret)
-  } catch (err) {
-    console.error('[stripe webhook] signature verification failed:', err instanceof Error ? err.message : err)
+  //    forged payloads match no secret → 400 (rejected).
+  let event: Stripe.Event | null = null
+  for (const secret of secrets) {
+    try {
+      event = getStripe().webhooks.constructEvent(rawBody, signature, secret)
+      break
+    } catch {
+      // try the next configured secret
+    }
+  }
+  if (!event) {
+    console.error('[stripe webhook] signature verification failed (no configured secret matched)')
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+  }
+
+  // 3-pre) CONNECT branch — account.updated carries a Stripe Account (not a PI):
+  //        sync the establishment's onboarding status (rail financier A1).
+  if (event.type === 'account.updated') {
+    return handleAccountUpdated(event.data.object as Stripe.Account)
   }
 
   const pi = event.data.object as Stripe.PaymentIntent
@@ -256,6 +273,41 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
     return NextResponse.json({ received: true, ticket: 'paid', depositReleased })
   } catch (err) {
     console.error('[stripe webhook] bill paid handler error:', err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: 'Handler error' }, { status: 500 })
+  }
+}
+
+// ── Connect: account.updated → sync the establishment's onboarding status ──────
+// Stripe pushes this whenever a connected account changes (onboarding finished,
+// verification passed/failed, capability toggled…). Same coarse mapping as GET
+// /api/restaurants/[id]/connect: pending | active | restricted. Idempotent (same
+// status = no-op); unknown account → 200 + log (NEVER fail the webhook).
+async function handleAccountUpdated(acct: Stripe.Account) {
+  try {
+    const restaurant = await prisma.restaurant.findUnique({
+      where:  { stripeAccountId: acct.id },
+      select: { id: true, stripeAccountStatus: true, stripeOnboardedAt: true },
+    })
+    if (!restaurant) {
+      console.warn(`[stripe webhook] account.updated for ${acct.id} — no matching restaurant`)
+      return NextResponse.json({ received: true, matched: false })
+    }
+
+    const status = mapAccountStatus(acct)
+    if (restaurant.stripeAccountStatus !== status) {
+      await prisma.restaurant.update({
+        where: { id: restaurant.id },
+        data: {
+          stripeAccountStatus: status,
+          // Stamp the FIRST pass to 'active' (KYC onboarding completed).
+          ...(status === 'active' && !restaurant.stripeOnboardedAt ? { stripeOnboardedAt: new Date() } : {}),
+        },
+      })
+    }
+
+    return NextResponse.json({ received: true, account: acct.id, status })
+  } catch (err) {
+    console.error('[stripe webhook] account.updated handler error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Handler error' }, { status: 500 })
   }
 }
