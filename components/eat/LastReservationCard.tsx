@@ -1,25 +1,38 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import {
-  Receipt, Loader2, AlertCircle, X,
+  Receipt, Loader2, AlertCircle, X, UtensilsCrossed, RefreshCw,
 } from 'lucide-react'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import SessionBadge from '@/components/session/SessionBadge'
+import OrderAtTable from '@/components/eat/OrderAtTable'
+import { usePolling } from '@/lib/use-polling'
 
-// ── <LastReservationCard /> — Brique 2 consumer-app pay shortcut (Agent 13) ──
+// ── <LastReservationCard /> — "Ma session" consumer view (étape 3 bloc C) ────
 //
-// The reservation flow at /eat/r/[id]/reserver persists a thin
-// `grubano_last_reservation` pointer to localStorage on success
-// (reservationId, restaurantId, tableId, tableName, date, savedAt). This
-// card reads it and offers a "Payer mon addition" shortcut so the connected
-// guest can pay without scanning the QR. No new API endpoint — reuses the
-// same two public endpoints as /t/[tableId]: GET /api/t/[tableId]/ticket
-// then POST /api/tickets/[id]/pay, then mounts the factored
-// <StripeTicketPayment /> component.
+// The connected guest retrieves their CURRENT table session from the SERVER:
+// GET /api/eat/my-session (the one new read-only endpoint of étape 3) returns
+// the most recent reservation linked to their account in the active window
+// (confirmed | arrived). localStorage (`grubano_last_reservation`, written by
+// the booking flow) stays as a FALLBACK for guests who booked before being
+// signed in. From here the guest can:
+//   - see their session code (SessionBadge) + live bill (3s poll),
+//   - ORDER at the table (status==='arrived' only — bloc B),
+//   - PAY the bill (existing Stripe flow).
 
-interface LastReservation {
+interface SessionInfo {
+  reservationId:  string
+  tableId:        string
+  tableName:      string
+  restaurantId:   string
+  restaurantName: string
+  status:         'confirmed' | 'arrived' | string
+  date:           string
+}
+
+interface StoredPointer {
   reservationId: string
   restaurantId:  string
   tableId:       string
@@ -34,7 +47,6 @@ interface TicketPayload {
   currency:       string
   subtotal:       number
   items:          Array<{ id: string; name: string; unitPrice: number; quantity: number }>
-  /** Brique A — exposed by GET /api/t/[tableId]/ticket. null = walk-in. */
   reservationId?: string | null
 }
 interface PayInit {
@@ -45,36 +57,68 @@ interface PayInit {
 }
 
 export default function LastReservationCard() {
-  const t = useTranslations('bill')
+  const t  = useTranslations('bill')
+  const tm = useTranslations('premium.mysession')
+  const to = useTranslations('premium.order')
   const locale = useLocale()
-  const [stored, setStored] = useState<LastReservation | null>(null)
-  const [open, setOpen]     = useState(false)
 
-  useEffect(() => {
+  const [session, setSession]   = useState<SessionInfo | null>(null)
+  const [resolved, setResolved] = useState(false)
+  const [payOpen, setPayOpen]   = useState(false)
+  const [orderOpen, setOrderOpen] = useState(false)
+
+  // Server-first resolution, localStorage fallback.
+  const resolveSession = useCallback(async () => {
+    try {
+      const r = await fetch('/api/eat/my-session', { cache: 'no-store' })
+      if (r.ok) {
+        const body = await r.json() as { session: SessionInfo | null }
+        if (body.session) {
+          setSession(body.session)
+          setResolved(true)
+          return
+        }
+      }
+    } catch { /* fall through to localStorage */ }
     try {
       const raw = localStorage.getItem('grubano_last_reservation')
-      if (!raw) return
-      const parsed = JSON.parse(raw) as LastReservation
-      if (parsed?.reservationId && parsed?.tableId) setStored(parsed)
+      if (raw) {
+        const p = JSON.parse(raw) as StoredPointer
+        if (p?.reservationId && p?.tableId) {
+          setSession({
+            reservationId:  p.reservationId,
+            tableId:        p.tableId,
+            tableName:      p.tableName,
+            restaurantId:   p.restaurantId,
+            restaurantName: '',
+            status:         'confirmed',
+            date:           p.date,
+          })
+        }
+      }
     } catch { /* non-fatal */ }
+    setResolved(true)
   }, [])
 
-  function clearStored() {
-    try { localStorage.removeItem('grubano_last_reservation') } catch { /* non-fatal */ }
-    setStored(null)
-  }
+  useEffect(() => { resolveSession() }, [resolveSession])
+
+  // Light status poll: when the restaurant marks the guest 'arrived', the
+  // Commander button unlocks without a manual refresh.
+  usePolling(resolveSession, 5000, resolved && !!session && session.status !== 'arrived')
 
   const dateLabel = useMemo(() => {
-    if (!stored?.date) return ''
+    if (!session?.date) return ''
     try {
       return new Intl.DateTimeFormat(locale, {
         weekday: 'short', day: 'numeric', month: 'short',
         hour: '2-digit', minute: '2-digit',
-      }).format(new Date(stored.date))
-    } catch { return stored.date }
-  }, [stored?.date, locale])
+      }).format(new Date(session.date))
+    } catch { return session.date }
+  }, [session?.date, locale])
 
-  if (!stored) return null
+  if (!session) return null
+
+  const arrived = session.status === 'arrived'
 
   return (
     <>
@@ -84,39 +128,59 @@ export default function LastReservationCard() {
             <Receipt size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-extrabold text-[#1a1a1a]">{t('accountSectionTitle')}</p>
-            <p className="text-[12px] text-[#888]">{t('accountSubtitle')}</p>
-            <p className="mt-1 truncate text-[12px] font-semibold text-[#1a1a1a]">
-              {t('accountReservationLine', { restaurant: stored.tableName, date: dateLabel })}
+            <p className="text-[15px] font-extrabold text-[#1a1a1a]">{tm('title')}</p>
+            <p className="text-[12px] text-[#888]">
+              {arrived ? tm('statusActive') : tm('statusWaiting')}
             </p>
-            {/* Brique A — session anchor (same code the operator sees). */}
+            <p className="mt-1 truncate text-[12px] font-semibold text-[#1a1a1a]">
+              {[session.restaurantName, session.tableName, dateLabel].filter(Boolean).join(' · ')}
+            </p>
             <div className="mt-1.5">
-              <SessionBadge reservationId={stored.reservationId} />
+              <SessionBadge reservationId={session.reservationId} />
             </div>
           </div>
         </div>
         <div className="mt-3 flex gap-2">
+          {/* Commander — only when the restaurant validated the arrival.
+              Walk-ins / unlinked accounts are refused server-side anyway
+              (403 walkin_no_order / not_your_session). */}
+          {arrived && (
+            <button
+              type="button"
+              onClick={() => setOrderOpen(true)}
+              className="flex-1 rounded-[20px] bg-[#F97316] py-3 text-[14px] font-bold text-white active:scale-95"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <UtensilsCrossed size={14} /> {to('cta')}
+              </span>
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setOpen(true)}
-            className="flex-1 rounded-[20px] bg-[#F97316] py-3 text-[14px] font-bold text-white active:scale-95"
+            onClick={() => setPayOpen(true)}
+            className={`flex-1 rounded-[20px] py-3 text-[14px] font-bold active:scale-95 ${
+              arrived
+                ? 'border-2 border-[#F97316] text-[#F97316]'
+                : 'bg-[#F97316] text-white'
+            }`}
           >
             {t('accountPayButton')}
-          </button>
-          <button
-            type="button"
-            onClick={clearStored}
-            className="rounded-[20px] border border-[#f0f0f0] px-3 py-3 text-[12px] font-semibold text-[#888] active:scale-95"
-          >
-            {t('accountClearLastResa')}
           </button>
         </div>
       </div>
 
-      {open && (
+      {orderOpen && (
+        <OrderAtTable
+          tableId={session.tableId}
+          restaurantId={session.restaurantId}
+          onClose={() => setOrderOpen(false)}
+        />
+      )}
+
+      {payOpen && (
         <PayBillModal
-          tableId={stored.tableId}
-          onClose={() => setOpen(false)}
+          tableId={session.tableId}
+          onClose={() => setPayOpen(false)}
         />
       )}
     </>
@@ -139,38 +203,41 @@ function PayBillModal({
   const [error,    setError]    = useState('')
   const [starting, setStarting] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    setStage('loading')
-    setError('')
-    fetch(`/api/t/${tableId}/ticket`, { cache: 'no-store' })
-      .then(async (r) => {
-        if (!r.ok) throw new Error('load_failed')
-        return r.json() as Promise<{ ticket: TicketPayload | null }>
-      })
-      .then((body) => {
-        if (cancelled) return
-        if (!body.ticket) { setStage('no-ticket'); return }
-        setTicket(body.ticket); setStage('review')
-      })
-      .catch(() => { if (!cancelled) { setError(t('errLoad')); setStage('error') } })
-    return () => { cancelled = true }
-  }, [tableId, t])
+  const loadTicket = useCallback(async (silent = false) => {
+    if (!silent) { setStage('loading'); setError('') }
+    try {
+      const r = await fetch(`/api/t/${tableId}/ticket`, { cache: 'no-store' })
+      if (!r.ok) throw new Error('load_failed')
+      const body = await r.json() as { ticket: TicketPayload | null }
+      if (!body.ticket) {
+        if (silent && ticket) { setStage('paid'); return }
+        setStage('no-ticket')
+        return
+      }
+      setTicket(body.ticket)
+      if (stage !== 'pay') setStage('review')
+    } catch {
+      if (!silent) { setError(t('errLoad')); setStage('error') }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableId, t, ticket, stage])
+
+  useEffect(() => { loadTicket() // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tableId])
+
+  // Bloc A — the modal's bill follows the waiter's additions live.
+  usePolling(() => loadTicket(true), 3000, stage === 'review' || stage === 'no-ticket')
 
   async function startPayment() {
     if (!ticket || starting) return
     setStarting(true); setError('')
     try {
-      // Explicit APP/ACCOUNT channel → the server enforces: logged-in + this is
-      // YOUR reservation + status='arrived'. (The QR page pays without this flag.)
       const r = await fetch(`/api/tickets/${ticket.id}/pay`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ via: 'account' }),
       })
       const body = await r.json().catch(() => null)
-      // Surface the server's clear message for 401/403/409 (not-arrived, wrong
-      // account, already paid…); fall back to the generic Stripe-not-ready label.
       if (!r.ok || !body?.clientSecret) {
         setError((body?.error as string) || t('errStripeNotReady'))
         return
@@ -199,9 +266,6 @@ function PayBillModal({
         <div className="mb-4 flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <p className="text-base font-bold">{t('payTitle')}</p>
-            {/* Brique A — session anchor reflects the ticket's
-                reservationId when loaded. Lets the guest cross-check the
-                same code the operator sees on their addition tab. */}
             <SessionBadge reservationId={ticket?.reservationId ?? null} />
           </div>
           <button

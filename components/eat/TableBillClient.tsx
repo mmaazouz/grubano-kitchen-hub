@@ -5,7 +5,9 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Clock, Loader2, AlertCircle, Receipt } from 'lucide-react'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import SessionBadge from '@/components/session/SessionBadge'
+import OrderAtTable from '@/components/eat/OrderAtTable'
 import { usePolling } from '@/lib/use-polling'
+import { UtensilsCrossed } from 'lucide-react'
 
 // ── <TableBillClient /> — client island for the QR landing /t/[tableId] ──────
 //
@@ -52,6 +54,7 @@ interface Props {
 
 export default function TableBillClient({ tableId }: Props) {
   const t = useTranslations('bill')
+  const tOrder = useTranslations('premium.order')
   const locale = useLocale()
 
   const [stage,   setStage]   = useState<Stage>('loading')
@@ -59,6 +62,29 @@ export default function TableBillClient({ tableId }: Props) {
   const [error,   setError]   = useState('')
   const [payInit, setPayInit] = useState<PayInit | null>(null)
   const [starting, setStarting] = useState(false)
+  // Bloc B — the Commander button shows ONLY when the connected visitor IS
+  // the linked client of THIS table's arrived session (server truth via
+  // /api/eat/my-session). Walk-ins / strangers never see it (and the order
+  // endpoint re-enforces server-side anyway).
+  const [canOrder,  setCanOrder]  = useState(false)
+  const [restaurantIdForMenu, setRestaurantIdForMenu] = useState('')
+  const [orderOpen, setOrderOpen] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/eat/my-session', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled || !body?.session) return
+        const s = body.session as { tableId: string; status: string; restaurantId: string }
+        if (s.tableId === tableId && s.status === 'arrived') {
+          setCanOrder(true)
+          setRestaurantIdForMenu(s.restaurantId)
+        }
+      })
+      .catch(() => { /* anonymous visitor — no order button */ })
+    return () => { cancelled = true }
+  }, [tableId])
 
   // Initial ticket fetch.
   const loadTicket = useCallback(async () => {
@@ -236,6 +262,16 @@ export default function TableBillClient({ tableId }: Props) {
               <span>{error}</span>
             </p>
           )}
+          {/* Bloc B — order-at-table for the LINKED connected client only. */}
+          {canOrder && restaurantIdForMenu && (
+            <button
+              type="button"
+              onClick={() => setOrderOpen(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary py-3 text-sm font-bold text-primary"
+            >
+              <UtensilsCrossed size={14} /> {tOrder('cta')}
+            </button>
+          )}
           <button
             type="button"
             onClick={startPayment}
@@ -255,6 +291,15 @@ export default function TableBillClient({ tableId }: Props) {
           amount={payInit.amount}
           currency={payInit.currency}
           onPaid={() => setStage('paid')}
+        />
+      )}
+
+      {orderOpen && restaurantIdForMenu && (
+        <OrderAtTable
+          tableId={tableId}
+          restaurantId={restaurantIdForMenu}
+          onOrdered={() => { /* the 3s poll picks the new lines up */ }}
+          onClose={() => setOrderOpen(false)}
         />
       )}
     </div>
