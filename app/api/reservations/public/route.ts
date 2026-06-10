@@ -113,7 +113,8 @@ export async function POST(req: Request) {
     const conflicts = await prisma.reservation.findMany({
       where: {
         tableId: { in: tables.map((t) => t.id) },
-        status:  { notIn: ['cancelled', 'noshow'] },
+        // 'completed' = session over (table freed) → must not block the slot.
+        status:  { notIn: ['cancelled', 'noshow', 'completed'] },
         date:    { lt: endTime },
         endTime: { gt: start },
       },

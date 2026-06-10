@@ -176,7 +176,8 @@ export async function POST(req: Request) {
     const conflict = await prisma.reservation.findFirst({
       where: {
         tableId: data.tableId,
-        status:  { notIn: ['cancelled', 'noshow'] },
+        // 'completed' = session over (table freed) → must not block the slot.
+        status:  { notIn: ['cancelled', 'noshow', 'completed'] },
         date:    { lt: endTime },
         endTime: { gt: start },
       },

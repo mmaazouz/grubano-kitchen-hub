@@ -62,7 +62,9 @@ export async function GET(req: Request) {
       : await prisma.reservation.findMany({
           where: {
             tableId: { in: tables.map(t => t.id) },
-            status:  { notIn: ['cancelled', 'noshow'] },
+            // 'completed' = the session is over (bill paid / table closed) → the
+            // table is free again and must NOT block the slot.
+            status:  { notIn: ['cancelled', 'noshow', 'completed'] },
             date:    { gte: dayStart, lt: dayEnd },
           },
           select: { tableId: true, date: true, endTime: true },
