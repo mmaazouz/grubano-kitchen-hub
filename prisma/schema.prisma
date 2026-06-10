@@ -508,6 +508,24 @@ model Restaurant {
   // (was a hardcoded 10). Mohammed's decision: ONE configurable amount per resto,
   // and the no-show penalty = 100 % of it (no separate penalty field). Reversible.
   defaultDepositAmount Float @default(10)
+  // ── Stripe Connect — rail financier A1 (additive, TEST mode) ────────────────
+  // ADDITIVE + REVERSIBLE: the establishment's Stripe Express connected account
+  // (KYC onboarding). All nullable → existing rows stay valid, no backfill. A
+  // restaurant WITHOUT an active connected account keeps today's exact behaviour
+  // (payments stay on the platform account — routing is A2, not wired yet).
+  stripeAccountId     String?   @unique  // acct_... (Express, country FR)
+  stripeAccountStatus String?            // pending | active | restricted
+  stripeOnboardedAt   DateTime?          // first time the account became 'active'
+  // ── Commission overrides — POSED FOR A2, NOT USED YET ───────────────────────
+  // Per-establishment override of the platform defaults (A0 decisions: 5 %
+  // dine-in/table, 8 % pickup, 12 % delivery — Stripe fees included). null =
+  // platform default applies. commissionFreeUntil = bounded founders offer
+  // (0 % until this date). NOTHING reads these fields until A2 wires the
+  // payment routing + application_fee.
+  commissionRateDineIn   Float?
+  commissionRatePickup   Float?
+  commissionRateDelivery Float?
+  commissionFreeUntil    DateTime?
   pickupAddress      String?
   pickupInstructions String? @db.Text
   // ── Opening hours (Option B, additive step 1) ───────────────────────────────
