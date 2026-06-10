@@ -837,7 +837,9 @@
       "toastPromoInvalid": "Código promo no válido",
       "errorAddressRequired": "Por favor, introduce una dirección de envío",
       "errorOrderFailed": "Error al realizar el pedido",
-      "errorNetwork": "Error de red. Por favor, inténtalo de nuevo."
+      "errorNetwork": "Error de red. Por favor, inténtalo de nuevo.",
+      "errClosedWithOpening": "El restaurante está cerrado ahora mismo — abre {label}. Podrás pedir entonces.",
+      "errClosedNoOpening": "El restaurante está cerrado ahora mismo. Inténtalo de nuevo durante sus horarios de apertura."
     },
     "track": {
       "title": "Seguimiento en tiempo real",
@@ -970,7 +972,16 @@
       "sectionWithout": "Sin",
       "sectionNote": "Nota para el restaurante",
       "notePlaceholder": "Ej. poco hecho, sin cilantro…",
-      "total": "Total"
+      "total": "Total",
+      "hoursOpenNow": "Abierto",
+      "hoursClosedNow": "Cerrado",
+      "hoursOpensAt": "Abre a las {time}",
+      "hoursOpensTomorrow": "Abre mañana a las {time}",
+      "hoursOpensOn": "Abre el {date} a las {time}",
+      "hoursClosureReason": "Cerrado — {reason}, reabre el {date}",
+      "hoursWeekTitle": "Horarios",
+      "hoursDayClosed": "Cerrado",
+      "hoursNextDay": "día siguiente"
     },
     "creator": {
       "title": "Perfil del creador",
@@ -1012,7 +1023,7 @@
       "submitBook": "Reservar",
       "submitWithDeposit": "Continuar con la huella",
       "depositTitle": "Huella bancaria",
-      "depositIntro": "Huella de {amount} — permanece activa hasta el pago de la cuenta y se libera automáticamente al pagar. Solo se cobra en caso de no-show.",
+      "depositIntro": "Huella de {amount} — permanece activa hasta el pago de la cuenta y se libera automáticamente al pagar. Solo se cobra en caso de no-show o si te marchas sin pagar la cuenta.",
       "depositHint": "Tarjeta de prueba: 4242 4242 4242 4242, fecha futura, CVC libre.",
       "depositSubmit": "Confirmar la huella",
       "depositProcessing": "Confirmando…",
@@ -1028,7 +1039,9 @@
       "errStripeNotReady": "El pago no está disponible. Reintenta en un momento.",
       "errStripeDeclined": "Tarjeta rechazada. Prueba con otra tarjeta.",
       "errStripeGeneric": "La huella ha fallado. Verifica tu tarjeta y vuelve a intentar.",
-      "restaurantClosed": "Este restaurante no acepta reservas online por ahora."
+      "restaurantClosed": "Este restaurante no acepta reservas online por ahora.",
+      "errOutsideHours": "Esta franja está fuera de los horarios de apertura — elige otro horario.",
+      "errClosedSlot": "El establecimiento está excepcionalmente cerrado en esta fecha — elige otro día."
     }
   },
   "menu": {
@@ -1474,7 +1487,11 @@
       "disabledLabel": "Huella desactivada",
       "savedShort": "Guardado",
       "saveError": "No se pudo guardar el importe de la huella."
-    }
+    },
+    "statusCompleted": "Terminada",
+    "hoursWarningTitle": "Reserva fuera de tus horarios configurados",
+    "hoursWarningBody": "La reserva se ha creado — tú mandas en tu sala. Solo comprueba que esta franja es la deseada.",
+    "hoursWarningClose": "OK"
   },
   "tickets": {
     "noTable": "Sin mesa — añade una en Config.",
@@ -1640,5 +1657,65 @@
     "wording": {
       "depositActiveUntilPaid": "La garantía permanece activa hasta el pago de la cuenta; se libera automáticamente al pagar."
     }
+  },
+  "hours": {
+    "sectionTitle": "Horarios de apertura",
+    "sectionIntro": "Tus horarios controlan las franjas de reserva, la insignia «Abierto / Cerrado» de tu ficha y la aceptación de pedidos.",
+    "notConfigured": "Sin horarios configurados: todo está permitido (reservas y pedidos a cualquier hora). Configura tus horarios para que tengan validez.",
+    "dayClosed": "Cerrado este día",
+    "addRange": "Añadir una franja",
+    "removeRange": "Eliminar esta franja",
+    "openLabel": "Apertura",
+    "closeLabel": "Cierre",
+    "nextDay": "día siguiente",
+    "applyToAll": "Aplicar a todos los días",
+    "applyToAllDone": "Horarios del día copiados a toda la semana — recuerda guardar.",
+    "timeHint": "Formato 19:00 — un cierre después de medianoche (ej. 01:00) es válido; «24:00» = medianoche.",
+    "save": "Guardar horarios",
+    "saving": "Guardando…",
+    "saved": "Horarios guardados",
+    "unsaved": "Cambios sin guardar",
+    "errInvalidTime": "Hora no válida — usa el formato HH:mm (ej. 19:00).",
+    "errLoad": "No se pudieron cargar los horarios — reinténtalo.",
+    "errSave": "No se pudo guardar — reinténtalo.",
+    "day0": "Domingo",
+    "day1": "Lunes",
+    "day2": "Martes",
+    "day3": "Miércoles",
+    "day4": "Jueves",
+    "day5": "Viernes",
+    "day6": "Sábado",
+    "closuresTitle": "Cierres excepcionales",
+    "closuresIntro": "Vacaciones, festivos, obras… El motivo es visible para tus clientes.",
+    "closuresEmpty": "Ningún cierre excepcional planificado.",
+    "closureAdd": "Añadir un cierre",
+    "closureDateStart": "Desde",
+    "closureDateEnd": "Hasta",
+    "closurePartial": "Cierre parcial (horas concretas)",
+    "closureTimeFrom": "De",
+    "closureTimeTo": "A",
+    "closureReason": "Motivo (visible para los clientes)",
+    "closureReasonPh": "ej. Vacaciones anuales",
+    "closureCreate": "Planificar el cierre",
+    "closureCreating": "Creando…",
+    "closureCreated": "Cierre planificado",
+    "closureDelete": "Eliminar este cierre",
+    "closureDeleted": "Cierre eliminado",
+    "closureWholeDay": "Día completo",
+    "errClosureLoad": "No se pudieron cargar los cierres — reinténtalo.",
+    "errClosureSave": "No se pudo crear — comprueba las fechas y reinténtalo.",
+    "errClosureDelete": "No se pudo eliminar — reinténtalo.",
+    "conflictTitle": "Reservas en este período",
+    "conflictBody": "{count, plural, =1 {Existe 1 reserva en este período. Al confirmar, se cancelará y su garantía se liberará sin coste.} other {Existen # reservas en este período. Al confirmar, se cancelarán y las garantías se liberarán sin coste.}}",
+    "conflictDepositHeld": "garantía activa",
+    "conflictDepositNone": "sin garantía",
+    "conflictCancel": "Cancelar",
+    "conflictConfirm": "Confirmar el cierre",
+    "conflictConfirming": "Cerrando…",
+    "conflictDone": "{cancelled, plural, =0 {Cierre planificado.} =1 {Cierre planificado — 1 reserva cancelada, {released} garantía(s) liberada(s).} other {Cierre planificado — # reservas canceladas, {released} garantía(s) liberada(s).}}",
+    "conflictErrors": "{count, plural, =1 {1 garantía no pudo liberarse — gestiónala desde la reserva.} other {# garantías no pudieron liberarse — gestiónalas desde las reservas.}}",
+    "adoptTitle": "Configura tus horarios de apertura",
+    "adoptDesc": "Franjas de reserva exactas, insignia «Abierto / Cerrado» en tu ficha y pedidos aceptados a las horas correctas.",
+    "adoptCta": "Configurar"
   }
 }

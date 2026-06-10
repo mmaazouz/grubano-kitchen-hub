@@ -837,7 +837,9 @@
       "toastPromoInvalid": "Codice promo non valido",
       "errorAddressRequired": "Inserisci un indirizzo di consegna",
       "errorOrderFailed": "Errore durante l'ordine",
-      "errorNetwork": "Errore di rete. Riprova."
+      "errorNetwork": "Errore di rete. Riprova.",
+      "errClosedWithOpening": "Il ristorante è attualmente chiuso — apre {label}. Potrai ordinare allora.",
+      "errClosedNoOpening": "Il ristorante è attualmente chiuso. Riprova durante i suoi orari di apertura."
     },
     "track": {
       "title": "Tracciamento in tempo reale",
@@ -970,7 +972,16 @@
       "sectionWithout": "Senza",
       "sectionNote": "Nota per il ristorante",
       "notePlaceholder": "Es. cottura al sangue, no coriandolo…",
-      "total": "Totale"
+      "total": "Totale",
+      "hoursOpenNow": "Aperto",
+      "hoursClosedNow": "Chiuso",
+      "hoursOpensAt": "Apre alle {time}",
+      "hoursOpensTomorrow": "Apre domani alle {time}",
+      "hoursOpensOn": "Apre il {date} alle {time}",
+      "hoursClosureReason": "Chiuso — {reason}, riapre il {date}",
+      "hoursWeekTitle": "Orari",
+      "hoursDayClosed": "Chiuso",
+      "hoursNextDay": "giorno dopo"
     },
     "creator": {
       "title": "Profilo creator",
@@ -1012,7 +1023,7 @@
       "submitBook": "Prenota",
       "submitWithDeposit": "Continua con l’impronta",
       "depositTitle": "Impronta bancaria",
-      "depositIntro": "Impronta di {amount} — resta attiva fino al pagamento del conto e viene rilasciata automaticamente al pagamento. Verrai addebitato solo in caso di no-show.",
+      "depositIntro": "Impronta di {amount} — resta attiva fino al pagamento del conto e viene rilasciata automaticamente al pagamento. Verrai addebitato solo in caso di no-show o se te ne vai senza saldare il conto.",
       "depositHint": "Carta di test: 4242 4242 4242 4242, data futura, CVC libero.",
       "depositSubmit": "Conferma l’impronta",
       "depositProcessing": "Conferma…",
@@ -1028,7 +1039,9 @@
       "errStripeNotReady": "Il pagamento non è disponibile. Riprova tra poco.",
       "errStripeDeclined": "Carta rifiutata. Prova un’altra carta.",
       "errStripeGeneric": "Impronta fallita. Controlla la carta e riprova.",
-      "restaurantClosed": "Questo ristorante non accetta prenotazioni online al momento."
+      "restaurantClosed": "Questo ristorante non accetta prenotazioni online al momento.",
+      "errOutsideHours": "Questa fascia è fuori dagli orari di apertura — scegli un altro orario.",
+      "errClosedSlot": "Il locale è eccezionalmente chiuso in questa data — scegli un altro giorno."
     }
   },
   "menu": {
@@ -1474,7 +1487,11 @@
       "disabledLabel": "Impronta disattivata",
       "savedShort": "Salvato",
       "saveError": "Impossibile salvare l’importo dell’impronta."
-    }
+    },
+    "statusCompleted": "Terminata",
+    "hoursWarningTitle": "Prenotazione fuori dagli orari configurati",
+    "hoursWarningBody": "La prenotazione è stata creata — sei padrone della tua sala. Verifica solo che questa fascia sia voluta.",
+    "hoursWarningClose": "OK"
   },
   "tickets": {
     "noTable": "Nessun tavolo — aggiungine uno in Config.",
@@ -1640,5 +1657,65 @@
     "wording": {
       "depositActiveUntilPaid": "L’impronta resta attiva fino al pagamento del conto; viene rilasciata automaticamente al pagamento."
     }
+  },
+  "hours": {
+    "sectionTitle": "Orari di apertura",
+    "sectionIntro": "I tuoi orari guidano le fasce di prenotazione, il badge «Aperto / Chiuso» della tua scheda e l’accettazione degli ordini.",
+    "notConfigured": "Nessun orario configurato: tutto è permesso (prenotazioni e ordini a qualsiasi ora). Configura i tuoi orari perché facciano fede.",
+    "dayClosed": "Chiuso questo giorno",
+    "addRange": "Aggiungi una fascia",
+    "removeRange": "Rimuovi questa fascia",
+    "openLabel": "Apertura",
+    "closeLabel": "Chiusura",
+    "nextDay": "giorno dopo",
+    "applyToAll": "Applica a tutti i giorni",
+    "applyToAllDone": "Orari del giorno copiati su tutta la settimana — ricordati di salvare.",
+    "timeHint": "Formato 19:00 — una chiusura dopo mezzanotte (es. 01:00) è valida; «24:00» = mezzanotte.",
+    "save": "Salva gli orari",
+    "saving": "Salvataggio…",
+    "saved": "Orari salvati",
+    "unsaved": "Modifiche non salvate",
+    "errInvalidTime": "Ora non valida — usa il formato HH:mm (es. 19:00).",
+    "errLoad": "Impossibile caricare gli orari — riprova.",
+    "errSave": "Salvataggio impossibile — riprova.",
+    "day0": "Domenica",
+    "day1": "Lunedì",
+    "day2": "Martedì",
+    "day3": "Mercoledì",
+    "day4": "Giovedì",
+    "day5": "Venerdì",
+    "day6": "Sabato",
+    "closuresTitle": "Chiusure eccezionali",
+    "closuresIntro": "Ferie, giorni festivi, lavori… Il motivo è visibile ai tuoi clienti.",
+    "closuresEmpty": "Nessuna chiusura eccezionale pianificata.",
+    "closureAdd": "Aggiungi una chiusura",
+    "closureDateStart": "Dal",
+    "closureDateEnd": "Al",
+    "closurePartial": "Chiusura parziale (orari precisi)",
+    "closureTimeFrom": "Dalle",
+    "closureTimeTo": "Alle",
+    "closureReason": "Motivo (visibile ai clienti)",
+    "closureReasonPh": "es. Ferie annuali",
+    "closureCreate": "Pianifica la chiusura",
+    "closureCreating": "Creazione…",
+    "closureCreated": "Chiusura pianificata",
+    "closureDelete": "Elimina questa chiusura",
+    "closureDeleted": "Chiusura eliminata",
+    "closureWholeDay": "Giornata intera",
+    "errClosureLoad": "Impossibile caricare le chiusure — riprova.",
+    "errClosureSave": "Creazione impossibile — controlla le date e riprova.",
+    "errClosureDelete": "Eliminazione impossibile — riprova.",
+    "conflictTitle": "Prenotazioni in questo periodo",
+    "conflictBody": "{count, plural, =1 {Esiste 1 prenotazione in questo periodo. Confermando, verrà annullata e la sua impronta rilasciata senza costi.} other {Esistono # prenotazioni in questo periodo. Confermando, verranno annullate e le impronte rilasciate senza costi.}}",
+    "conflictDepositHeld": "impronta attiva",
+    "conflictDepositNone": "senza impronta",
+    "conflictCancel": "Annulla",
+    "conflictConfirm": "Conferma la chiusura",
+    "conflictConfirming": "Chiusura…",
+    "conflictDone": "{cancelled, plural, =0 {Chiusura pianificata.} =1 {Chiusura pianificata — 1 prenotazione annullata, {released} impronta/e rilasciata/e.} other {Chiusura pianificata — # prenotazioni annullate, {released} impronta/e rilasciata/e.}}",
+    "conflictErrors": "{count, plural, =1 {1 impronta non è stata rilasciata — gestiscila dalla prenotazione.} other {# impronte non sono state rilasciate — gestiscile dalle prenotazioni.}}",
+    "adoptTitle": "Configura i tuoi orari di apertura",
+    "adoptDesc": "Fasce di prenotazione esatte, badge «Aperto / Chiuso» sulla tua scheda e ordini accettati agli orari giusti.",
+    "adoptCta": "Configura"
   }
 }

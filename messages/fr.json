@@ -837,7 +837,9 @@
       "toastPromoInvalid": "Code promo invalide",
       "errorAddressRequired": "Veuillez entrer une adresse de livraison",
       "errorOrderFailed": "Erreur lors de la commande",
-      "errorNetwork": "Erreur réseau. Veuillez réessayer."
+      "errorNetwork": "Erreur réseau. Veuillez réessayer.",
+      "errClosedWithOpening": "Le restaurant est actuellement fermé — il ouvre {label}. Vous pourrez commander à ce moment-là.",
+      "errClosedNoOpening": "Le restaurant est actuellement fermé. Réessayez pendant ses horaires d’ouverture."
     },
     "track": {
       "title": "Suivi en temps réel",
@@ -970,7 +972,16 @@
       "sectionWithout": "Sans",
       "sectionNote": "Note pour le restaurant",
       "notePlaceholder": "Ex. cuisson saignante, pas de coriandre…",
-      "total": "Total"
+      "total": "Total",
+      "hoursOpenNow": "Ouvert",
+      "hoursClosedNow": "Fermé",
+      "hoursOpensAt": "Ouvre à {time}",
+      "hoursOpensTomorrow": "Ouvre demain à {time}",
+      "hoursOpensOn": "Ouvre le {date} à {time}",
+      "hoursClosureReason": "Fermé — {reason}, réouverture le {date}",
+      "hoursWeekTitle": "Horaires",
+      "hoursDayClosed": "Fermé",
+      "hoursNextDay": "lendemain"
     },
     "creator": {
       "title": "Profil créateur",
@@ -1012,7 +1023,7 @@
       "submitBook": "Réserver",
       "submitWithDeposit": "Continuer vers l’empreinte",
       "depositTitle": "Empreinte bancaire",
-      "depositIntro": "Empreinte de {amount} — elle reste active jusqu’au paiement de l’addition et est libérée automatiquement au paiement. Vous ne serez débité qu’en cas de no-show.",
+      "depositIntro": "Empreinte de {amount} — elle reste active jusqu’au paiement de l’addition et est libérée automatiquement au paiement. Vous ne serez débité qu’en cas de no-show ou de départ sans règlement de l’addition.",
       "depositHint": "Carte de test : 4242 4242 4242 4242, date future, CVC libre.",
       "depositSubmit": "Confirmer l’empreinte",
       "depositProcessing": "Confirmation…",
@@ -1028,7 +1039,9 @@
       "errStripeNotReady": "Le paiement n’est pas disponible. Réessayez dans un instant.",
       "errStripeDeclined": "Carte refusée. Essayez une autre carte.",
       "errStripeGeneric": "Échec de l’empreinte. Vérifiez votre carte et réessayez.",
-      "restaurantClosed": "Cet établissement n’accepte pas de réservations en ligne pour le moment."
+      "restaurantClosed": "Cet établissement n’accepte pas de réservations en ligne pour le moment.",
+      "errOutsideHours": "Ce créneau est en dehors des horaires d’ouverture — choisissez un autre horaire.",
+      "errClosedSlot": "L’établissement est exceptionnellement fermé à cette date — choisissez un autre jour."
     }
   },
   "menu": {
@@ -1474,7 +1487,11 @@
       "disabledLabel": "Empreinte désactivée",
       "savedShort": "Enregistré",
       "saveError": "Impossible d’enregistrer l’empreinte."
-    }
+    },
+    "statusCompleted": "Terminée",
+    "hoursWarningTitle": "Réservation hors de vos horaires configurés",
+    "hoursWarningBody": "La réservation est bien créée — vous êtes maître chez vous. Vérifiez simplement que ce créneau est voulu.",
+    "hoursWarningClose": "OK"
   },
   "tickets": {
     "noTable": "Aucune table — ajoutez-en une dans Config.",
@@ -1640,5 +1657,65 @@
     "wording": {
       "depositActiveUntilPaid": "L’empreinte reste active jusqu’au paiement de l’addition ; elle est libérée automatiquement au paiement."
     }
+  },
+  "hours": {
+    "sectionTitle": "Horaires d’ouverture",
+    "sectionIntro": "Vos horaires pilotent les créneaux de réservation, le badge « Ouvert / Fermé » de votre fiche et l’acceptation des commandes.",
+    "notConfigured": "Aucun horaire configuré : tout est permis (réservations et commandes à toute heure). Configurez vos horaires pour qu’ils fassent foi.",
+    "dayClosed": "Fermé ce jour",
+    "addRange": "Ajouter une plage",
+    "removeRange": "Supprimer cette plage",
+    "openLabel": "Ouverture",
+    "closeLabel": "Fermeture",
+    "nextDay": "lendemain",
+    "applyToAll": "Appliquer à tous les jours",
+    "applyToAllDone": "Horaires du jour copiés sur toute la semaine — pensez à enregistrer.",
+    "timeHint": "Format 19:00 — une fermeture après minuit (ex. 01:00) est valide ; « 24:00 » = minuit.",
+    "save": "Enregistrer les horaires",
+    "saving": "Enregistrement…",
+    "saved": "Horaires enregistrés",
+    "unsaved": "Modifications non enregistrées",
+    "errInvalidTime": "Heure invalide — utilisez le format HH:mm (ex. 19:00).",
+    "errLoad": "Impossible de charger les horaires — réessayez.",
+    "errSave": "Enregistrement impossible — réessayez.",
+    "day0": "Dimanche",
+    "day1": "Lundi",
+    "day2": "Mardi",
+    "day3": "Mercredi",
+    "day4": "Jeudi",
+    "day5": "Vendredi",
+    "day6": "Samedi",
+    "closuresTitle": "Fermetures exceptionnelles",
+    "closuresIntro": "Congés, jours fériés, travaux… Le motif est visible par vos clients.",
+    "closuresEmpty": "Aucune fermeture exceptionnelle planifiée.",
+    "closureAdd": "Ajouter une fermeture",
+    "closureDateStart": "Du",
+    "closureDateEnd": "Au",
+    "closurePartial": "Fermeture partielle (heures précises)",
+    "closureTimeFrom": "De",
+    "closureTimeTo": "À",
+    "closureReason": "Motif (visible par les clients)",
+    "closureReasonPh": "ex. Congés annuels",
+    "closureCreate": "Planifier la fermeture",
+    "closureCreating": "Création…",
+    "closureCreated": "Fermeture planifiée",
+    "closureDelete": "Supprimer cette fermeture",
+    "closureDeleted": "Fermeture supprimée",
+    "closureWholeDay": "Journée entière",
+    "errClosureLoad": "Impossible de charger les fermetures — réessayez.",
+    "errClosureSave": "Création impossible — vérifiez les dates et réessayez.",
+    "errClosureDelete": "Suppression impossible — réessayez.",
+    "conflictTitle": "Réservations sur cette période",
+    "conflictBody": "{count, plural, =1 {1 réservation existe sur cette période. En confirmant, elle sera annulée et son empreinte libérée sans frais.} other {# réservations existent sur cette période. En confirmant, elles seront annulées et les empreintes libérées sans frais.}}",
+    "conflictDepositHeld": "empreinte active",
+    "conflictDepositNone": "sans empreinte",
+    "conflictCancel": "Annuler",
+    "conflictConfirm": "Confirmer la fermeture",
+    "conflictConfirming": "Fermeture…",
+    "conflictDone": "{cancelled, plural, =0 {Fermeture planifiée.} =1 {Fermeture planifiée — 1 réservation annulée, {released} empreinte(s) libérée(s).} other {Fermeture planifiée — # réservations annulées, {released} empreinte(s) libérée(s).}}",
+    "conflictErrors": "{count, plural, =1 {1 empreinte n’a pas pu être libérée — réglez-la depuis la réservation.} other {# empreintes n’ont pas pu être libérées — réglez-les depuis les réservations.}}",
+    "adoptTitle": "Configurez vos horaires d’ouverture",
+    "adoptDesc": "Créneaux de réservation exacts, badge « Ouvert / Fermé » sur votre fiche et commandes acceptées aux bonnes heures.",
+    "adoptCta": "Configurer"
   }
 }

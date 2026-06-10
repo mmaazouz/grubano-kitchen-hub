@@ -837,7 +837,9 @@
       "toastPromoInvalid": "Invalid promo code",
       "errorAddressRequired": "Please enter a delivery address",
       "errorOrderFailed": "Order failed",
-      "errorNetwork": "Network error. Please try again."
+      "errorNetwork": "Network error. Please try again.",
+      "errClosedWithOpening": "The restaurant is currently closed — it opens {label}. You can order then.",
+      "errClosedNoOpening": "The restaurant is currently closed. Try again during its opening hours."
     },
     "track": {
       "title": "Live tracking",
@@ -970,7 +972,16 @@
       "sectionWithout": "Without",
       "sectionNote": "Note for restaurant",
       "notePlaceholder": "Ex. rare, no cilantro…",
-      "total": "Total"
+      "total": "Total",
+      "hoursOpenNow": "Open",
+      "hoursClosedNow": "Closed",
+      "hoursOpensAt": "Opens at {time}",
+      "hoursOpensTomorrow": "Opens tomorrow at {time}",
+      "hoursOpensOn": "Opens on {date} at {time}",
+      "hoursClosureReason": "Closed — {reason}, reopens on {date}",
+      "hoursWeekTitle": "Opening hours",
+      "hoursDayClosed": "Closed",
+      "hoursNextDay": "next day"
     },
     "creator": {
       "title": "Creator profile",
@@ -1012,7 +1023,7 @@
       "submitBook": "Book",
       "submitWithDeposit": "Continue to the hold",
       "depositTitle": "Card hold",
-      "depositIntro": "Hold of {amount} — it stays active until the bill is paid and is released automatically at payment. You are only charged in case of a no-show.",
+      "depositIntro": "Hold of {amount} — it stays active until the bill is paid and is released automatically at payment. You are only charged in case of a no-show or if you leave without settling the bill.",
       "depositHint": "Test card: 4242 4242 4242 4242, future date, any CVC.",
       "depositSubmit": "Confirm the hold",
       "depositProcessing": "Confirming…",
@@ -1028,7 +1039,9 @@
       "errStripeNotReady": "Payment is not available. Please retry shortly.",
       "errStripeDeclined": "Card refused. Try another card.",
       "errStripeGeneric": "The hold failed. Check your card and retry.",
-      "restaurantClosed": "This restaurant is not accepting online bookings at the moment."
+      "restaurantClosed": "This restaurant is not accepting online bookings at the moment.",
+      "errOutsideHours": "This slot is outside the opening hours — pick another time.",
+      "errClosedSlot": "The establishment is exceptionally closed on this date — pick another day."
     }
   },
   "menu": {
@@ -1474,7 +1487,11 @@
       "disabledLabel": "Hold disabled",
       "savedShort": "Saved",
       "saveError": "Could not save the hold amount."
-    }
+    },
+    "statusCompleted": "Completed",
+    "hoursWarningTitle": "Reservation outside your configured hours",
+    "hoursWarningBody": "The reservation was created — you are master of your own room. Just double-check this slot is intended.",
+    "hoursWarningClose": "OK"
   },
   "tickets": {
     "noTable": "No table — add one in Config.",
@@ -1640,5 +1657,65 @@
     "wording": {
       "depositActiveUntilPaid": "The hold stays active until the bill is paid; it is released automatically at payment."
     }
+  },
+  "hours": {
+    "sectionTitle": "Opening hours",
+    "sectionIntro": "Your hours drive the reservation slots, the “Open / Closed” badge on your page and when orders are accepted.",
+    "notConfigured": "No hours configured: everything is allowed (reservations and orders at any time). Configure your hours to make them authoritative.",
+    "dayClosed": "Closed this day",
+    "addRange": "Add a range",
+    "removeRange": "Remove this range",
+    "openLabel": "Opens",
+    "closeLabel": "Closes",
+    "nextDay": "next day",
+    "applyToAll": "Apply to every day",
+    "applyToAllDone": "This day’s hours copied to the whole week — remember to save.",
+    "timeHint": "Format 19:00 — closing after midnight (e.g. 01:00) is valid; “24:00” = midnight.",
+    "save": "Save hours",
+    "saving": "Saving…",
+    "saved": "Hours saved",
+    "unsaved": "Unsaved changes",
+    "errInvalidTime": "Invalid time — use the HH:mm format (e.g. 19:00).",
+    "errLoad": "Could not load the hours — please retry.",
+    "errSave": "Could not save — please retry.",
+    "day0": "Sunday",
+    "day1": "Monday",
+    "day2": "Tuesday",
+    "day3": "Wednesday",
+    "day4": "Thursday",
+    "day5": "Friday",
+    "day6": "Saturday",
+    "closuresTitle": "Exceptional closures",
+    "closuresIntro": "Holidays, public holidays, works… The reason is visible to your customers.",
+    "closuresEmpty": "No exceptional closure planned.",
+    "closureAdd": "Add a closure",
+    "closureDateStart": "From",
+    "closureDateEnd": "To",
+    "closurePartial": "Partial closure (specific hours)",
+    "closureTimeFrom": "From",
+    "closureTimeTo": "To",
+    "closureReason": "Reason (visible to customers)",
+    "closureReasonPh": "e.g. Annual holidays",
+    "closureCreate": "Schedule the closure",
+    "closureCreating": "Creating…",
+    "closureCreated": "Closure scheduled",
+    "closureDelete": "Delete this closure",
+    "closureDeleted": "Closure deleted",
+    "closureWholeDay": "Whole day",
+    "errClosureLoad": "Could not load the closures — please retry.",
+    "errClosureSave": "Could not create — check the dates and retry.",
+    "errClosureDelete": "Could not delete — please retry.",
+    "conflictTitle": "Reservations in this period",
+    "conflictBody": "{count, plural, =1 {1 reservation exists in this period. By confirming, it will be cancelled and its hold released free of charge.} other {# reservations exist in this period. By confirming, they will be cancelled and the holds released free of charge.}}",
+    "conflictDepositHeld": "active hold",
+    "conflictDepositNone": "no hold",
+    "conflictCancel": "Cancel",
+    "conflictConfirm": "Confirm the closure",
+    "conflictConfirming": "Closing…",
+    "conflictDone": "{cancelled, plural, =0 {Closure scheduled.} =1 {Closure scheduled — 1 reservation cancelled, {released} hold(s) released.} other {Closure scheduled — # reservations cancelled, {released} hold(s) released.}}",
+    "conflictErrors": "{count, plural, =1 {1 hold could not be released — settle it from the reservation.} other {# holds could not be released — settle them from the reservations.}}",
+    "adoptTitle": "Configure your opening hours",
+    "adoptDesc": "Exact reservation slots, an “Open / Closed” badge on your page and orders accepted at the right times.",
+    "adoptCta": "Configure"
   }
 }
