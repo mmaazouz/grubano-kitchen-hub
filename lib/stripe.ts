@@ -115,3 +115,55 @@ export async function createTicketPayment(opts: {
     metadata,
   })
 }
+
+// ── Stripe Connect — rail financier A1 (Express accounts, TEST mode) ──────────
+// One Express connected account per establishment. KYC onboarding happens on
+// Stripe-hosted pages (Account Links) — Grubano never touches identity papers.
+// Payment ROUTING to these accounts (destination charges + application_fee) is
+// A2: nothing here changes any existing money flow.
+
+export type ConnectAccountStatus = 'pending' | 'active' | 'restricted'
+
+/** Map a live Stripe Account onto our coarse onboarding status.
+ *  active     = onboarding finished AND Stripe enabled both charges & payouts.
+ *  restricted = onboarding finished but something blocks charges/payouts
+ *               (expired document, rejected verification…).
+ *  pending    = onboarding not finished yet (fresh account / abandoned form). */
+export function mapAccountStatus(acct: Stripe.Account): ConnectAccountStatus {
+  if (acct.details_submitted && acct.charges_enabled && acct.payouts_enabled) return 'active'
+  if (acct.details_submitted) return 'restricted'
+  return 'pending'
+}
+
+/** Create the establishment's Express account (France). The DAILY payout
+ *  schedule (A0 decision) is set AT CREATION so it is never forgotten later. */
+export async function createExpressAccount(restaurantId: string): Promise<Stripe.Account> {
+  return getStripe().accounts.create({
+    type:    'express',
+    country: 'FR',
+    capabilities: {
+      card_payments: { requested: true },
+      transfers:     { requested: true },
+    },
+    settings: { payouts: { schedule: { interval: 'daily' } } },
+    metadata: { restaurantId },
+  })
+}
+
+/** One-time Stripe-hosted onboarding link (expires after a few minutes — the
+ *  caller regenerates one on every request; this never creates an account). */
+export async function createOnboardingLink(
+  accountId: string, refreshUrl: string, returnUrl: string,
+): Promise<Stripe.AccountLink> {
+  return getStripe().accountLinks.create({
+    account:     accountId,
+    refresh_url: refreshUrl,
+    return_url:  returnUrl,
+    type:        'account_onboarding',
+  })
+}
+
+/** Read the live connected account (to sync stripeAccountStatus). */
+export async function retrieveAccount(accountId: string): Promise<Stripe.Account> {
+  return getStripe().accounts.retrieve(accountId)
+}
