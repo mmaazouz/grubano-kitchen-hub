@@ -70,6 +70,18 @@ export async function retrieveIntent(piId: string): Promise<Stripe.PaymentIntent
   return getStripe().paymentIntents.retrieve(piId)
 }
 
+/** Re-align an unconfirmed PaymentIntent's amount (bill grew/shrank since it was
+ *  created). Only valid while the PI is requires_payment_method /
+ *  requires_confirmation — callers handle the failure by cancel + recreate. */
+export async function updateIntentAmount(piId: string, amountCents: number): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.update(piId, { amount: amountCents })
+}
+
+/** Cancel any cancellable PaymentIntent (generic — not deposit-specific). */
+export async function cancelIntent(piId: string): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.cancel(piId)
+}
+
 // ── Bill payment (Brique 2) ───────────────────────────────────────────────────
 // IMPORTANT: this is the REAL charge for a table addition — NOT the empreinte.
 // capture_method is AUTOMATIC (the customer is debited immediately), whereas the
