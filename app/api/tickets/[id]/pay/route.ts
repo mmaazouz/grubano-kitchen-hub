@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import {
   createTicketPayment, retrieveIntent, eurosToCents, getPublishableKey,
+  updateIntentAmount, cancelIntent,
 } from '@/lib/stripe'
 
 // Stripe SDK → Node runtime, never static.
@@ -47,7 +48,7 @@ export async function POST(
       select: {
         id: true, restaurantId: true, reservationId: true,
         status: true, currency: true, subtotal: true,
-        stripePaymentIntentId: true,
+        stripePaymentIntentId: true, amountPaid: true,
       },
     })
     if (!ticket) {
@@ -78,35 +79,76 @@ export async function POST(
       }
     }
 
-    const currency    = ticket.currency || 'eur'
-    const amountCents  = eurosToCents(ticket.subtotal)
-    if (ticket.subtotal <= 0 || amountCents < MIN_CHARGE_CENTS) {
+    const currency = ticket.currency || 'eur'
+
+    // ── Amount DUE, recomputed server-side on EVERY call (the money-bug fix) ────
+    // The bill is a LIVE document: lines can land between opening the payment
+    // screen and confirming the card. The charge must always be the CURRENT
+    // subtotal minus what was already collected (amountPaid covers a past partial
+    // payment recorded by the webhook safety-net). All maths in integer cents.
+    const subtotalCents = eurosToCents(ticket.subtotal)
+    const paidCents     = eurosToCents(ticket.amountPaid ?? 0)
+    const dueCents      = subtotalCents - paidCents
+    if (ticket.subtotal <= 0) {
       return NextResponse.json({ error: 'Addition vide ou montant trop faible.' }, { status: 400 })
+    }
+    if (dueCents <= 0) {
+      // Everything is collected — only the webhook lag separates us from 'paid'.
+      return NextResponse.json({ error: 'Addition déjà payée.' }, { status: 409 })
+    }
+    if (dueCents < MIN_CHARGE_CENTS) {
+      // A sub-0.50€ remainder can't go through Stripe — settle it off-platform.
+      return NextResponse.json(
+        { error: 'Reste dû trop faible pour un paiement carte — à régler sur place.', code: 'remainder_too_small' },
+        { status: 400 },
+      )
     }
 
     const publishableKey = getPublishableKey()
 
-    // Idempotent: reuse a still-usable PaymentIntent rather than stacking charges.
-    // If a prior PI already succeeded, the bill is effectively paid (webhook lag) →
-    // 409. A canceled PI falls through to create a fresh one.
+    // Idempotent reuse of the stored PaymentIntent, but NEVER with a stale amount:
+    //   • succeeded + still due > 0 → a PAST PARTIAL payment (pre-guard bug or
+    //     mid-meal payment): fall through and create a NEW PI for the REMAINDER.
+    //   • usable + amount matches dueCents → return as-is.
+    //   • usable + amount STALE → paymentIntents.update (requires_payment_method /
+    //     requires_confirmation); if Stripe refuses (e.g. requires_action), cancel
+    //     it and fall through to a fresh PI — never leave an orphan payable at the
+    //     wrong amount. 'processing' can be neither updated nor cancelled: return
+    //     it untouched (the webhook at-cent guard is the safety net).
     if (ticket.stripePaymentIntentId) {
       try {
         const existing = await retrieveIntent(ticket.stripePaymentIntentId)
-        if (existing.status === 'succeeded') {
-          return NextResponse.json({ error: 'Addition déjà payée.' }, { status: 409 })
+        if (existing.status !== 'succeeded' && existing.status !== 'canceled' && existing.client_secret) {
+          if (existing.amount === dueCents) {
+            return NextResponse.json({
+              clientSecret: existing.client_secret, publishableKey, amount: dueCents, currency,
+            })
+          }
+          if (existing.status === 'processing') {
+            return NextResponse.json({
+              clientSecret: existing.client_secret, publishableKey, amount: existing.amount, currency,
+            })
+          }
+          try {
+            const updated = await updateIntentAmount(existing.id, dueCents)
+            return NextResponse.json({
+              clientSecret: updated.client_secret, publishableKey, amount: dueCents, currency,
+            })
+          } catch {
+            // Not updatable in this state → cancel (best-effort) + recreate below.
+            try { await cancelIntent(existing.id) } catch {
+              console.warn(`[ticket pay] could not cancel stale PI ${existing.id} (ticket ${ticket.id})`)
+            }
+          }
         }
-        if (existing.status !== 'canceled' && existing.client_secret) {
-          return NextResponse.json({
-            clientSecret: existing.client_secret, publishableKey, amount: amountCents, currency,
-          })
-        }
+        // succeeded with due > 0, or canceled → fall through to a fresh PI.
       } catch {
         // fall through and create a fresh PaymentIntent
       }
     }
 
     const pi = await createTicketPayment({
-      amountCents,
+      amountCents: dueCents,
       currency,
       metadata: {
         ticketId:      ticket.id,
@@ -122,7 +164,7 @@ export async function POST(
     })
 
     return NextResponse.json(
-      { clientSecret: pi.client_secret, publishableKey, amount: amountCents, currency },
+      { clientSecret: pi.client_secret, publishableKey, amount: dueCents, currency },
       { status: 201 },
     )
   } catch (err) {
