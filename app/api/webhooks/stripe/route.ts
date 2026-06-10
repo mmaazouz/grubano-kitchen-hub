@@ -143,22 +143,63 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
   try {
     const ticket = await prisma.tableTicket.findUnique({
       where:  { id: ticketId },
-      select: { id: true, status: true, reservationId: true },
+      select: {
+        id: true, status: true, reservationId: true,
+        subtotal: true, amountPaid: true, stripePaymentIntentId: true,
+      },
     })
     if (!ticket) {
       console.warn(`[stripe webhook] bill paid for ${pi.id} — ticket ${ticketId} not found`)
       return NextResponse.json({ received: true, matched: false })
     }
 
-    // 1) Mark the ticket paid (idempotent: skip if already paid).
+    // 1) Account the payment — AT-CENT GUARD (money safety net). The bill is a
+    //    live document: a PI can succeed for LESS than the current subtotal (it
+    //    was created before more lines landed). NEVER mark such a ticket fully
+    //    paid in silence: record what was really collected, keep the ticket OPEN
+    //    (the remainder stays due and /pay charges it), and log loudly. The
+    //    empreinte release + reservation completion below are reserved for FULL
+    //    payment. All maths in integer cents.
     if (ticket.status !== 'paid') {
-      const amountPaid = (pi.amount_received ?? pi.amount ?? 0) / 100
+      // Anti-replay / stale-PI guard: only the CURRENT PI (the one /pay last
+      // persisted) is accounted. A replayed success from an older, superseded PI
+      // must not double-count — surface it for manual review instead.
+      if (ticket.stripePaymentIntentId && ticket.stripePaymentIntentId !== pi.id) {
+        console.error(`[stripe webhook] MONEY REVIEW: succeeded PI ${pi.id} is not ticket ${ticket.id}'s current PI (${ticket.stripePaymentIntentId}) — NOT accounted`)
+        return NextResponse.json({ received: true, accounted: false, reason: 'stale_pi' })
+      }
+
+      const receivedCents = pi.amount_received ?? pi.amount ?? 0
+      const subtotalCents = Math.round(ticket.subtotal * 100)
+      const totalCents    = Math.round((ticket.amountPaid ?? 0) * 100) + receivedCents
+
+      if (totalCents < subtotalCents) {
+        // PARTIAL PAYMENT — the safety net fires. Ticket stays OPEN with the
+        // collected amount recorded; /pay now computes the remainder from
+        // subtotal − amountPaid, so the rest stays collectable.
+        await prisma.tableTicket.update({
+          where: { id: ticket.id },
+          data:  { amountPaid: totalCents / 100, stripePaymentIntentId: pi.id },
+        })
+        console.error(`[stripe webhook] MONEY PARTIAL: ticket ${ticket.id} collected ${totalCents}c of ${subtotalCents}c — kept OPEN, ${subtotalCents - totalCents}c still due (PI ${pi.id})`)
+        return NextResponse.json({
+          received: true, ticket: 'partial',
+          collected: totalCents, due: subtotalCents - totalCents,
+        })
+      }
+
+      if (totalCents > subtotalCents) {
+        // Over-collection (e.g. a line was cancelled after the PI synced) — the
+        // bill IS settled; surface the excess for a manual gesture/refund.
+        console.warn(`[stripe webhook] MONEY OVERPAID: ticket ${ticket.id} collected ${totalCents}c for ${subtotalCents}c (PI ${pi.id})`)
+      }
+
       await prisma.tableTicket.update({
         where: { id: ticket.id },
         data:  {
           status:                'paid',
           paidAt:                new Date(),
-          amountPaid,
+          amountPaid:            totalCents / 100,
           stripePaymentIntentId: pi.id,
         },
       })
