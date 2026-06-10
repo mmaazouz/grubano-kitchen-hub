@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslations } from 'next-intl'
-import { Plus, Minus, Trash2, Search, Loader2, Receipt, CreditCard } from 'lucide-react'
+import { Plus, Minus, Trash2, Search, Loader2, Receipt, CreditCard, Bell } from 'lucide-react'
 import SessionBadge from '@/components/session/SessionBadge'
 import UnpaidAlert from '@/components/tables/UnpaidAlert'
 import InlinePayPanel from '@/components/tables/InlinePayPanel'
+import CloseTableModal from '@/components/tables/CloseTableModal'
 import { usePolling } from '@/lib/use-polling'
 
 // ── TicketPanel (Addition brique 1, Agent 2) ──────────────────────────────────
@@ -14,7 +15,10 @@ import { usePolling } from '@/lib/use-polling'
 // the live total. NO payment (brique 2). Talks only to Agent 2's owner-scoped
 // /api/tickets endpoints. Mounted as the "Addition" tab in TablesShell.
 
-type TItem   = { id: string; menuItemId: string | null; name: string; unitPrice: number; quantity: number }
+type TItem   = {
+  id: string; menuItemId: string | null; name: string; unitPrice: number; quantity: number
+  addedBy?: string; notes?: string | null; allergies?: string | null; status?: string
+}
 type Ticket  = {
   id:            string
   status:        string
@@ -51,6 +55,8 @@ export default function TicketPanel({
   const t  = useTranslations('tickets')
   const ts = useTranslations('session')
   const tc = useTranslations('tickets.cloture')
+  const tcl = useTranslations('premium.closure')
+  const tnotif = useTranslations('premium.notif')
   const activeTables = tables.filter(tb => tb.active)
 
   // Resolve the initial pick: the parent-lifted selection wins; otherwise
@@ -104,6 +110,14 @@ export default function TicketPanel({
   // clôturer la table" general action). When `true` we render the inline
   // Stripe Elements panel until onPaid fires.
   const [payingCurrent, setPayingCurrent] = useState(false)
+  // Bloc E/F — traced closure modal (close unpaid with deposit choice).
+  const [closeOpen, setCloseOpen] = useState(false)
+  // Bloc D — track which client-line ids we've already seen on this panel so
+  // freshly-arrived ones can be highlighted + counted in a "new order" banner.
+  const seenClientIdsRef = useRef<Set<string>>(new Set())
+  const [newClientLineIds, setNewClientLineIds] = useState<Set<string>>(new Set())
+  // Closure result toast (empreinte settlement outcome).
+  const [closeToast, setCloseToast] = useState<string | null>(null)
 
   const loadTicket = useCallback(async (tid: string, silent = false) => {
     if (!tid) { setTicket(null); return }
@@ -120,6 +134,37 @@ export default function TicketPanel({
   }, [])
 
   useEffect(() => { loadTicket(tableId) }, [tableId, loadTicket])
+
+  // Reset the "seen client lines" baseline whenever the selected table changes
+  // — each table's notification state is independent.
+  useEffect(() => {
+    seenClientIdsRef.current = new Set()
+    setNewClientLineIds(new Set())
+  }, [tableId])
+
+  // ── Bloc D — detect newly-arrived client lines. After each ticket load we
+  //   diff the current client-line ids against the ones already seen on this
+  //   panel; the fresh ones are highlighted + counted in the banner. The
+  //   operator dismisses the banner (acknowledge → all current become seen).
+  useEffect(() => {
+    if (!ticket) return
+    const clientIds = ticket.items.filter((it) => it.addedBy === 'client').map((it) => it.id)
+    const fresh = clientIds.filter((id) => !seenClientIdsRef.current.has(id))
+    if (fresh.length > 0) {
+      setNewClientLineIds((prev) => {
+        const next = new Set(prev)
+        fresh.forEach((id) => next.add(id))
+        return next
+      })
+    }
+  }, [ticket])
+
+  function acknowledgeClientOrders() {
+    if (ticket) {
+      ticket.items.filter((it) => it.addedBy === 'client').forEach((it) => seenClientIdsRef.current.add(it.id))
+    }
+    setNewClientLineIds(new Set())
+  }
 
   // ── Bloc A — realtime: silent 3s poll of the current table's ticket. Client
   //   orders (addedBy='client') and webhook-side payments (status flips to
@@ -237,6 +282,25 @@ export default function TicketPanel({
     if (ok) { setConfirmVoid(false); loadTicket(tableId) }
   }
 
+  // Bloc D — owner soft-cancel of a single line. DELETE /items/[itemId] flips
+  // it to status='cancelled' server-side; the live select drops it from the
+  // returned ticket (out of total), so a refetch just removes it visually.
+  async function cancelLine(item: TItem) {
+    if (!ticket) return
+    await mutate(`/api/tickets/${ticket.id}/items/${item.id}`, { method: 'DELETE' })
+    loadTicket(tableId, true)
+  }
+
+  // Bloc E — empty table → release directly (no question). reason:'empty'.
+  async function closeEmpty() {
+    if (!ticket) return
+    const ok = await mutate(`/api/tickets/${ticket.id}/close`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'empty' }),
+    })
+    if (ok) loadTicket(tableId)
+  }
+
   const filteredMenu = search.trim()
     ? menu.filter(m => m.name.toLowerCase().includes(search.trim().toLowerCase()))
     : menu
@@ -322,15 +386,36 @@ export default function TicketPanel({
             </div>
           </div>
 
+          {/* ── Bloc D — new client-order banner ─────────────────────────── */}
+          {isOpen && newClientLineIds.size > 0 && (
+            <button
+              type="button"
+              onClick={acknowledgeClientOrders}
+              className="flex w-full items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-left"
+            >
+              <Bell size={14} className="shrink-0 text-primary" />
+              <span className="flex-1 text-[12px] font-bold text-foreground">
+                {tnotif('newClientOrder')}
+              </span>
+              <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                {newClientLineIds.size}
+              </span>
+            </button>
+          )}
+
+          {/* ── Closure result toast (empreinte settlement) ───────────────── */}
+          {closeToast && (
+            <p className="rounded-2xl border border-border bg-card px-3 py-2 text-[12px] text-muted-foreground">
+              {closeToast}
+            </p>
+          )}
+
           {/* ── Brique CLÔTURER LA TABLE ──────────────────────────────────
               Always-visible CTA so the operator never gets stuck with a
-              ticket that can't be released. When the addition still has
-              items + is open → "Encaisser & clôturer" opens the inline
-              Stripe Elements panel; the webhook flips status to 'paid' →
-              GET reloads → the empty state shows again, table free for
-              the next guest. When the addition is empty → "Libérer la
-              table" voids the ticket without a confirm modal (nothing to
-              lose). Hidden once `ticket.status === 'paid'`. */}
+              ticket that can't be released. items > 0 → "Encaisser & clôturer"
+              (inline Stripe) as the primary path + a secondary "Clôturer sans
+              encaisser" (traced close, deposit choice). items == 0 → "Libérer
+              la table" closes empty directly. Hidden once paid. */}
           {isOpen && (
             <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3">
               <div className="flex items-start gap-2">
@@ -345,9 +430,6 @@ export default function TicketPanel({
                       <InlinePayPanel
                         ticketId={ticket.id}
                         onPaid={() => {
-                          // Webhook will mark the row 'paid'; refetching the
-                          // ticket reflects the new state in the UI. The
-                          // table is now free for the next service.
                           setPayingCurrent(false)
                           loadTicket(tableId)
                         }}
@@ -361,18 +443,28 @@ export default function TicketPanel({
                       </button>
                     </div>
                   ) : ticket.items.length > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setPayingCurrent(true)}
-                      disabled={pending}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60"
-                    >
-                      <CreditCard size={13} /> {tc('closeCta')}
-                    </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPayingCurrent(true)}
+                        disabled={pending}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60"
+                      >
+                        <CreditCard size={13} /> {tc('closeCta')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCloseOpen(true)}
+                        disabled={pending}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-[12px] font-bold text-destructive disabled:opacity-60"
+                      >
+                        <Trash2 size={13} /> {tcl('reasonUnpaid')}
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={voidTicket}
+                      onClick={closeEmpty}
                       disabled={pending}
                       className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-[12px] font-bold text-destructive disabled:opacity-60"
                     >
@@ -389,11 +481,30 @@ export default function TicketPanel({
             <p className="rounded-2xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">{t('emptyLines')}</p>
           ) : (
             <div className="space-y-1.5">
-              {ticket.items.map(item => (
-                <div key={item.id} className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2">
+              {ticket.items.map(item => {
+                const isClient = item.addedBy === 'client'
+                const isNew    = newClientLineIds.has(item.id)
+                return (
+                <div
+                  key={item.id}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${
+                    isNew ? 'border-primary bg-primary/5' : 'border-border bg-card'
+                  }`}
+                >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-foreground">{item.name}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold text-foreground">{item.name}</p>
+                      {/* Bloc D — client-order tag so the operator distinguishes
+                          what the guest ordered from the app. */}
+                      {isClient && (
+                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-primary">
+                          {tnotif('clientLine')}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-muted-foreground">{eur(item.unitPrice)} × {item.quantity} = {eur(item.unitPrice * item.quantity)}</p>
+                    {item.notes && <p className="mt-0.5 text-[10px] italic text-muted-foreground">“{item.notes}”</p>}
+                    {item.allergies && <p className="text-[10px] font-semibold text-destructive">⚠ {item.allergies}</p>}
                   </div>
                   {isOpen && (
                     <div className="flex items-center gap-1">
@@ -406,14 +517,17 @@ export default function TicketPanel({
                         className="grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50">
                         <Plus size={13} />
                       </button>
-                      <button onClick={() => setQty(item, 0)} disabled={pending}
+                      {/* Bloc D — soft-cancel this line (owner only). */}
+                      <button onClick={() => cancelLine(item)} disabled={pending}
+                        title={tnotif('cancelLine')} aria-label={tnotif('cancelLine')}
                         className="ms-1 grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-50">
                         <Trash2 size={13} />
                       </button>
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -478,6 +592,34 @@ export default function TicketPanel({
             </>
           )}
         </>
+      )}
+
+      {/* ── Bloc E/F — traced closure modal (close unpaid + deposit choice) */}
+      {closeOpen && ticket && (
+        <CloseTableModal
+          ticketId={ticket.id}
+          subtotal={ticket.subtotal}
+          currency={ticket.currency}
+          reservationId={ticket.reservationId ?? null}
+          onClose={() => setCloseOpen(false)}
+          onClosed={(res) => {
+            setCloseOpen(false)
+            // Surface the empreinte settlement outcome as a sober toast.
+            if (res.depositResult === 'captured') {
+              const amt = res.capturedAmount != null
+                ? new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(res.capturedAmount / 100)
+                : ''
+              setCloseToast(tcl('doneCaptured', { amount: amt }))
+            } else if (res.depositResult === 'released') {
+              setCloseToast(tcl('doneReleased'))
+            } else if (res.depositResult === 'error') {
+              setCloseToast(tcl('settleError', { error: res.error ?? '' }))
+            } else {
+              setCloseToast(tcl('doneClosed'))
+            }
+            loadTicket(tableId)
+          }}
+        />
       )}
     </div>
   )

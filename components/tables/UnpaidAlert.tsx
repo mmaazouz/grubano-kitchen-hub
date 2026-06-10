@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { AlertTriangle, CreditCard, Trash2, Loader2, X } from 'lucide-react'
+import { AlertTriangle, CreditCard, Trash2, X } from 'lucide-react'
 import InlinePayPanel from '@/components/tables/InlinePayPanel'
 import SessionBadge from '@/components/session/SessionBadge'
+import CloseTableModal from '@/components/tables/CloseTableModal'
 
 // ── <UnpaidAlert /> — alert + 2 actions for a stuck table (Agent 13) ─────────
 //
@@ -48,11 +49,16 @@ export default function UnpaidAlert({
   onResolved, onDismiss, previousReservationId,
 }: Props) {
   const t      = useTranslations('tickets.cloture')
+  const tcl    = useTranslations('premium.closure')
   const locale = useLocale()
 
-  type Stage = 'idle' | 'paying' | 'confirmVoid' | 'voiding' | 'error'
+  type Stage = 'idle' | 'paying' | 'error'
   const [stage,   setStage]   = useState<Stage>('idle')
   const [error,   setError]   = useState('')
+  // Bloc F — the "Clôturer en impayé" action routes through CloseTableModal so
+  // the operator gets the empreinte choice (capture/release) on the PREVIOUS
+  // session's hold, instead of a blind void.
+  const [closeOpen, setCloseOpen] = useState(false)
 
   const fmt = useMemo(
     () => new Intl.NumberFormat(locale, {
@@ -63,28 +69,6 @@ export default function UnpaidAlert({
     [locale, currency],
   )
   const amountLabel = fmt.format(existingSubtotal)
-
-  // ── ANNULER (void) — destructive, gated by a confirmation modal ───────────
-  async function doVoid() {
-    setStage('voiding')
-    setError('')
-    try {
-      const r = await fetch(`/api/tickets/${existingTicketId}`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ status: 'void' }),
-      })
-      if (!r.ok) {
-        setError(t('errVoid'))
-        setStage('error')
-        return
-      }
-      onResolved()
-    } catch {
-      setError(t('errVoid'))
-      setStage('error')
-    }
-  }
 
   return (
     <div className="relative rounded-2xl border border-warning/40 bg-warning/10 p-4">
@@ -134,10 +118,6 @@ export default function UnpaidAlert({
                 {t('cancel')}
               </button>
             </div>
-          ) : stage === 'voiding' ? (
-            <div className="mt-3 flex items-center gap-2 text-[12px] text-muted-foreground">
-              <Loader2 size={13} className="animate-spin" /> {t('savingVoid')}
-            </div>
           ) : (
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -149,10 +129,10 @@ export default function UnpaidAlert({
               </button>
               <button
                 type="button"
-                onClick={() => { setError(''); setStage('confirmVoid') }}
+                onClick={() => { setError(''); setCloseOpen(true) }}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] font-bold text-destructive"
               >
-                <Trash2 size={13} /> {t('actionVoid')}
+                <Trash2 size={13} /> {tcl('reasonUnpaid')}
               </button>
             </div>
           )}
@@ -165,37 +145,17 @@ export default function UnpaidAlert({
         </div>
       </div>
 
-      {/* Void confirmation modal */}
-      {stage === 'confirmVoid' && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-destructive/15 text-destructive">
-                <Trash2 size={15} />
-              </span>
-              <p className="text-base font-bold">{t('confirmVoidTitle')}</p>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t('confirmVoidBody', { amount: amountLabel })}
-            </p>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setStage('idle')}
-                className="flex-1 rounded-xl border border-border py-2.5 text-sm"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={doVoid}
-                className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground"
-              >
-                {t('confirmVoidCta')}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Bloc F — traced closure of the PREVIOUS unpaid bill, with the
+          empreinte choice (capture/release) on that session's hold. */}
+      {closeOpen && (
+        <CloseTableModal
+          ticketId={existingTicketId}
+          subtotal={existingSubtotal}
+          currency={currency}
+          reservationId={previousReservationId ?? null}
+          onClose={() => setCloseOpen(false)}
+          onClosed={() => { setCloseOpen(false); onResolved() }}
+        />
       )}
     </div>
   )

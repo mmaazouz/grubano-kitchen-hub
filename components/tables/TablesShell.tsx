@@ -6,7 +6,7 @@ import {
   Sparkles, Users, Clock, AlertTriangle,
   ChevronRight, Plus, CalendarDays, Euro, Filter, ShieldCheck,
   RefreshCw, QrCode, X, ChevronLeft, ChevronRight as ChevRight,
-  Store, Check, Timer, Download, Printer, Loader2, Receipt,
+  Store, Check, Timer, Download, Printer, Loader2, Receipt, Bell, History,
 } from 'lucide-react'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
 import EstablishmentSwitcher, {
@@ -14,6 +14,7 @@ import EstablishmentSwitcher, {
 } from '@/components/dashboard/EstablishmentSwitcher'
 import { EmptyState } from '@/components/design-system'
 import TicketPanel from '@/components/tables/TicketPanel'
+import ReservationHistory from '@/components/tables/ReservationHistory'
 import SessionBadge from '@/components/session/SessionBadge'
 import { reservationCode } from '@/lib/reservation-code'
 import { usePolling } from '@/lib/use-polling'
@@ -100,6 +101,73 @@ function slugForFilename(input: string, fallback = 'table'): string {
   return ascii || fallback
 }
 
+// ── Bloc D — new-client-order detection across arrived tables ───────────────
+// The dashboard surfaces a "nouvelle commande" badge on the LIST + PLAN as soon
+// as a connected guest adds a line (addedBy='client') to a table the operator
+// hasn't opened yet. There is NO server notification model (T3.Q3): "seen" is
+// UI-side. We bounded-poll ONLY the arrived tables' open tickets (reusing the
+// owner GET /api/tickets?restaurantTableId=) every 6s, paused with the tab.
+//
+// Baseline rule: the FIRST time we see a table we treat its existing client
+// lines as already-seen, so opening the page doesn't light up every table that
+// ordered earlier in the service. Only lines that appear AFTER raise the badge.
+// Acknowledged when the operator opens that table's Addition tab.
+function useNewClientOrders(reservations: Reservation[], restaurantId: string | null) {
+  const [newOrderTables, setNewOrderTables] = useState<Set<string>>(new Set())
+  const seenRef       = useRef<Map<string, Set<string>>>(new Map())
+  const baselinedRef  = useRef<Set<string>>(new Set())
+
+  const arrivedTableIds = useMemo(
+    () => Array.from(new Set(
+      reservations.filter((r) => r.status === 'arrived' || r.status === 'overrun').map((r) => r.tableId),
+    )),
+    [reservations],
+  )
+  // A stable key so the poll callback only changes when the set really changes.
+  const arrivedKey = arrivedTableIds.slice().sort().join(',')
+
+  const poll = useCallback(async () => {
+    if (!restaurantId || arrivedTableIds.length === 0) return
+    await Promise.all(arrivedTableIds.map(async (tid) => {
+      try {
+        const r = await fetch(`/api/tickets?restaurantTableId=${tid}`, { cache: 'no-store' })
+        if (!r.ok) return
+        const d = await r.json()
+        const items: Array<{ id: string; addedBy?: string }> = d?.ticket?.items ?? []
+        const clientIds = items.filter((it) => it.addedBy === 'client').map((it) => it.id)
+        if (!baselinedRef.current.has(tid)) {
+          // First sight of this table → existing client lines are the baseline.
+          seenRef.current.set(tid, new Set(clientIds))
+          baselinedRef.current.add(tid)
+          return
+        }
+        const seen = seenRef.current.get(tid) ?? new Set<string>()
+        const hasFresh = clientIds.some((id) => !seen.has(id))
+        if (hasFresh) setNewOrderTables((prev) => {
+          if (prev.has(tid)) return prev
+          const next = new Set(prev); next.add(tid); return next
+        })
+      } catch { /* best-effort */ }
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId, arrivedKey])
+
+  usePolling(poll, 6000, !!restaurantId && arrivedTableIds.length > 0)
+
+  // Acknowledge: clear the badge and re-baseline so the table's current client
+  // lines become "seen" on the next poll (no badge until a NEW line lands).
+  const acknowledge = useCallback((tableId: string) => {
+    setNewOrderTables((prev) => {
+      if (!prev.has(tableId)) return prev
+      const next = new Set(prev); next.delete(tableId); return next
+    })
+    baselinedRef.current.delete(tableId)
+    seenRef.current.delete(tableId)
+  }, [])
+
+  return { newOrderTables, acknowledge }
+}
+
 export interface TablesShellProps {
   /** The establishment the page currently scopes to, resolved server-side from
    *  the cookie. `null` means the operator owns no establishment at all. */
@@ -131,7 +199,17 @@ export default function TablesShell({
   // is purely UI navigation). When the operator clicks a reservation /
   // floor-plan card with an open bill, we set this AND switch tabs.
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
+  // Bloc G — the reservation whose archived consumption is being viewed.
+  const [historyResId, setHistoryResId] = useState<string | null>(null)
+
+  // Bloc D — cross-table "nouvelle commande" detection (see hook above).
+  const { newOrderTables, acknowledge: ackClientOrders } =
+    useNewClientOrders(reservations, restaurantId)
+
   function openAddition(tableId: string) {
+    // Opening the table's addition is the implicit "I've seen it" for its
+    // pending client orders → clear the list/plan badge.
+    ackClientOrders(tableId)
     setSelectedTableId(tableId)
     setTab('addition')
   }
@@ -354,6 +432,8 @@ export default function TablesShell({
               onReleaseDeposit={releaseDeposit}
               onCaptureDeposit={captureDeposit}
               onOpenAddition={openAddition}
+              newOrderTables={newOrderTables}
+              onShowHistory={setHistoryResId}
             />
           )}
           {tab === 'calendar' && (
@@ -369,6 +449,8 @@ export default function TablesShell({
               tables={tables}
               reservations={reservations}
               onOpenAddition={openAddition}
+              newOrderTables={newOrderTables}
+              onShowHistory={setHistoryResId}
             />
           )}
           {tab === 'addition' && (
@@ -404,6 +486,14 @@ export default function TablesShell({
           onSaved={() => { setAddingRes(false); loadReservations(selectedDate) }}
         />
       )}
+
+      {/* Bloc G — archived consumption of a past / closed reservation. */}
+      {historyResId && (
+        <ReservationHistory
+          reservationId={historyResId}
+          onClose={() => setHistoryResId(null)}
+        />
+      )}
     </div>
   )
 }
@@ -413,6 +503,7 @@ export default function TablesShell({
 function ListView({
   reservations, loading, selectedDate, onDateChange, onUpdateStatus,
   onReleaseDeposit, onCaptureDeposit, onOpenAddition,
+  newOrderTables, onShowHistory,
 }: {
   reservations:     Reservation[]
   loading:          boolean
@@ -425,9 +516,15 @@ function ListView({
    *  badge / "Voir l'addition" CTA). Switches TablesShell to the Addition
    *  tab focused on this table's open ticket. */
   onOpenAddition:   (tableId: string) => void
+  /** Bloc D — tables with an unseen client order (badge on the row). */
+  newOrderTables:   Set<string>
+  /** Bloc G — open the archived-consumption view for a past reservation. */
+  onShowHistory:    (reservationId: string) => void
 }) {
   const tSession = useTranslations('session')
   const td = useTranslations('tables.deposit')
+  const tnotif = useTranslations('premium.notif')
+  const thist  = useTranslations('premium.history')
   // Confirmation modal state for the no-show capture (real charge).
   const [confirmCapture, setConfirmCapture] = useState<Reservation | null>(null)
   // Per-reservation pending state for action buttons.
@@ -565,6 +662,17 @@ function ListView({
                       {r.status === 'overrun' && (
                         <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warning">Dépassement</span>
                       )}
+                      {/* Bloc D — a connected guest just added a line to this
+                          table; tap to jump into the Addition (acknowledges). */}
+                      {newOrderTables.has(r.tableId) && (r.status === 'arrived' || r.status === 'overrun') && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAddition(r.tableId)}
+                          className="inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold uppercase text-primary-foreground animate-pulse"
+                        >
+                          <Bell size={9} /> {tnotif('newClientOrder')}
+                        </button>
+                      )}
                       {r.depositAmount > 0 && (
                         <DepositBadge reservation={r} />
                       )}
@@ -588,39 +696,55 @@ function ListView({
                   {/* Action column: when the reservation has an ACTIVE
                       Stripe hold (authorized), show release / capture pair
                       that the Agent-2 endpoints expose. Otherwise fall back
-                      to the legacy arrival / overrun status updates. */}
-                  {r.status === 'confirmed' && r.depositStatus === 'authorized' ? (
-                    <div className="flex flex-col gap-1">
+                      to the legacy arrival / overrun status updates. Plus a
+                      Bloc G history shortcut on any non-future reservation. */}
+                  <div className="flex flex-col items-end gap-1.5">
+                    {r.status === 'confirmed' && r.depositStatus === 'authorized' ? (
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => doRelease(r)}
+                          disabled={pendingId === r.id}
+                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground disabled:opacity-60"
+                          title={td('actionArrived')}
+                        >
+                          {pendingId === r.id ? <Loader2 size={11} className="animate-spin" /> : td('actionArrived')}
+                        </button>
+                        <button
+                          onClick={() => setConfirmCapture(r)}
+                          disabled={pendingId === r.id}
+                          className="rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-1.5 text-[10px] font-semibold text-destructive disabled:opacity-60"
+                          title={td('actionNoshow')}
+                        >
+                          {td('actionNoshow')}
+                        </button>
+                      </div>
+                    ) : r.status === 'confirmed' ? (
                       <button
-                        onClick={() => doRelease(r)}
-                        disabled={pendingId === r.id}
-                        className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground disabled:opacity-60"
-                        title={td('actionArrived')}
-                      >
-                        {pendingId === r.id ? <Loader2 size={11} className="animate-spin" /> : td('actionArrived')}
+                        onClick={() => onUpdateStatus(r.id, 'arrived')}
+                        className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground">
+                        {td('actionMarkArrived')}
                       </button>
+                    ) : r.status === 'arrived' ? (
                       <button
-                        onClick={() => setConfirmCapture(r)}
-                        disabled={pendingId === r.id}
-                        className="rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-1.5 text-[10px] font-semibold text-destructive disabled:opacity-60"
-                        title={td('actionNoshow')}
-                      >
-                        {td('actionNoshow')}
+                        onClick={() => onUpdateStatus(r.id, 'overrun')}
+                        className="rounded-lg bg-warning/20 px-2.5 py-1.5 text-[10px] font-semibold text-warning">
+                        Dépassement
                       </button>
-                    </div>
-                  ) : r.status === 'confirmed' ? (
-                    <button
-                      onClick={() => onUpdateStatus(r.id, 'arrived')}
-                      className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground">
-                      {td('actionMarkArrived')}
-                    </button>
-                  ) : r.status === 'arrived' ? (
-                    <button
-                      onClick={() => onUpdateStatus(r.id, 'overrun')}
-                      className="rounded-lg bg-warning/20 px-2.5 py-1.5 text-[10px] font-semibold text-warning">
-                      Dépassement
-                    </button>
-                  ) : null}
+                    ) : null}
+                    {/* Bloc G — archived consumption. Hidden for a still-future
+                        'confirmed' booking (nothing consumed yet). */}
+                    {r.status !== 'confirmed' && (
+                      <button
+                        type="button"
+                        onClick={() => onShowHistory(r.id)}
+                        aria-label={thist('title')}
+                        title={thist('title')}
+                        className="grid h-7 w-7 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <History size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -837,15 +961,21 @@ function CalendarView({
 // ── Floor plan view ───────────────────────────────────────────────────────────
 
 function FloorPlanView({
-  tables, reservations, onOpenAddition,
+  tables, reservations, onOpenAddition, newOrderTables, onShowHistory,
 }: {
   tables:         Table[]
   reservations:   Reservation[]
   /** Brique A — fire when the operator taps an OCCUPIED table tile (a table
    *  with an `arrived` reservation today). Opens the Addition tab on it. */
   onOpenAddition: (tableId: string) => void
+  /** Bloc D — tables with an unseen client order (dot on the tile). */
+  newOrderTables: Set<string>
+  /** Bloc G — open the archived-consumption view for a reservation. */
+  onShowHistory:  (reservationId: string) => void
 }) {
   const tSession = useTranslations('session')
+  const tnotif   = useTranslations('premium.notif')
+  const thist    = useTranslations('premium.history')
   const [selected, setSelected] = useState<string | null>(null)
 
   const bookedIds = new Set(
@@ -903,6 +1033,15 @@ function FloorPlanView({
                   ? 'border-primary/60 bg-primary/15 text-primary'
                   : 'border-success bg-success/15 text-success'
               } ${selected === t.id ? 'ring-2 ring-primary' : ''}`}>
+              {/* Bloc D — pulsing dot when a guest just ordered on this table. */}
+              {newOrderTables.has(t.id) && (
+                <span
+                  title={tnotif('newClientOrder')}
+                  className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground shadow animate-pulse"
+                >
+                  <Bell size={9} />
+                </span>
+              )}
               {t.name}
               <span className="block text-[8px] font-normal opacity-70">{t.seats} pl.</span>
               {/* Session anchor: the arrived service's short code.
@@ -955,9 +1094,23 @@ function FloorPlanView({
           {selRes.length > 0 && (
             <div className="mt-3 space-y-1">
               {selRes.map(r => (
-                <p key={r.id} className="text-[11px] text-muted-foreground">
-                  {new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} – {r.customerName} · {r.guests} pers.
-                </p>
+                <div key={r.id} className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    {new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} – {r.customerName} · {r.guests} pers.
+                  </p>
+                  {/* Bloc G — archived consumption for this reservation. */}
+                  {r.status !== 'confirmed' && (
+                    <button
+                      type="button"
+                      onClick={() => onShowHistory(r.id)}
+                      aria-label={thist('title')}
+                      title={thist('title')}
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <History size={11} />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
