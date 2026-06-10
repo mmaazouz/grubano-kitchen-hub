@@ -53,7 +53,11 @@ type Reservation = {
   date:         string
   endTime:      string
   type:         'quick' | 'standard' | 'full'
-  status:       'confirmed' | 'arrived' | 'overrun' | 'cancelled' | 'noshow'
+  // 'completed' is set AUTOMATICALLY by the server (bill paid via webhook, or
+  // table closed) — never by an operator action (Agent 14 fix session collée).
+  // These reservations stay VISIBLE in the list/planning with a discreet
+  // « Terminée » badge and must never be dropped by a filter.
+  status:       'confirmed' | 'arrived' | 'overrun' | 'cancelled' | 'noshow' | 'completed'
   allergies:    string[]
   depositAmount: number
   depositPaid:  boolean
@@ -205,6 +209,12 @@ export default function TablesShell({
   // Bloc D — cross-table "nouvelle commande" detection (see hook above).
   const { newOrderTables, acknowledge: ackClientOrders } =
     useNewClientOrders(reservations, restaurantId)
+
+  // Chantier horaires — POST /api/reservations (owner) may answer with a
+  // NON-blocking { hoursWarning } when the slot falls outside the configured
+  // hours: the reservation IS created (the restaurant is master of its own
+  // room), we just surface the server's message in a dismissible banner.
+  const [hoursWarning, setHoursWarning] = useState<string | null>(null)
 
   function openAddition(tableId: string) {
     // Opening the table's addition is the implicit "I've seen it" for its
@@ -392,6 +402,26 @@ export default function TablesShell({
         </button>
       </div>
 
+      {/* Avertissement horaires non bloquant (owner) — la résa est créée. */}
+      {hoursWarning && (
+        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-warning/40 bg-warning/10 p-3">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-bold text-foreground">{t('hoursWarningTitle')}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{hoursWarning}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{t('hoursWarningBody')}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHoursWarning(null)}
+            aria-label={t('hoursWarningClose')}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-warning/20 hover:text-foreground"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       <div className="mb-4 grid grid-cols-5 gap-1 rounded-2xl bg-muted p-1">
         {(['list', 'calendar', 'plan', 'addition', 'setup'] as const).map(k => (
           <button key={k} onClick={() => setTab(k)}
@@ -483,7 +513,11 @@ export default function TablesShell({
           tables={tables}
           defaultDurationMin={defaultDurationMin}
           onClose={() => setAddingRes(false)}
-          onSaved={() => { setAddingRes(false); loadReservations(selectedDate) }}
+          onSaved={(warning) => {
+            setAddingRes(false)
+            setHoursWarning(warning ?? null)
+            loadReservations(selectedDate)
+          }}
         />
       )}
 
@@ -521,6 +555,7 @@ function ListView({
   /** Bloc G — open the archived-consumption view for a past reservation. */
   onShowHistory:    (reservationId: string) => void
 }) {
+  const t = useTranslations('tables')
   const tSession = useTranslations('session')
   const td = useTranslations('tables.deposit')
   const tnotif = useTranslations('premium.notif')
@@ -661,6 +696,14 @@ function ListView({
                       )}
                       {r.status === 'overrun' && (
                         <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warning">Dépassement</span>
+                      )}
+                      {/* Badge « Terminée » (vigilance Agent 14) — session
+                          settled (paid/closed). Discreet, distinct from the
+                          green 'arrived' = session en cours. */}
+                      {r.status === 'completed' && (
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
+                          {t('statusCompleted')}
+                        </span>
                       )}
                       {/* Bloc D — a connected guest just added a line to this
                           table; tap to jump into the Addition (acknowledges). */}
@@ -1740,7 +1783,10 @@ function NewReservationForm({
   tables:             Table[]
   defaultDurationMin: number
   onClose:            () => void
-  onSaved:            () => void
+  /** Chantier horaires — carries the server's non-blocking hoursWarning
+   *  message (when the slot is outside the configured hours) so the parent
+   *  surfaces it AFTER the modal closes. The reservation is created anyway. */
+  onSaved:            (hoursWarning?: string) => void
 }) {
   const t = useTranslations('tables')
   const today = new Date().toISOString().split('T')[0]
@@ -1838,7 +1884,10 @@ function NewReservationForm({
       setSaving(false)
       return
     }
-    onSaved()
+    // Non-blocking hours warning (Agent 2's contract): the reservation IS
+    // created; the parent shows the banner.
+    const d = await r.json().catch(() => null)
+    onSaved(typeof d?.hoursWarning?.message === 'string' ? d.hoursWarning.message : undefined)
   }
 
   return (

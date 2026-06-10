@@ -32,7 +32,7 @@ import {
   Loader2, Euro, ShoppingBag, TrendingUp, Star,
   AlertTriangle, Package, Building2, Sparkles, Users,
   CheckCircle2, ChevronRight, Store, ChefHat,
-  Check, X, Minus, ArrowRight,
+  Check, X, Minus, ArrowRight, Clock,
 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, EmptyState } from '@/components/design-system'
@@ -105,10 +105,15 @@ interface ConsolidatedHomeProps {
 export default function ConsolidatedHome({ userName, locale }: ConsolidatedHomeProps) {
   const t = useTranslations('dashboard.home.ov')
   const tHome = useTranslations('dashboard.home')
+  const tHours = useTranslations('hours')
 
   const [overview, setOverview] = useState<Overview | null>(null)
   const [establishments, setEstablishments] = useState<Establishment[]>([])
   const [loading, setLoading] = useState(true)
+  // Bloc C (chantier horaires, T1.Q3) — first OWNED establishment whose hours
+  // are not configured yet. null = all configured / unknown → no encart
+  // (defensive: a fetch hiccup never shows a wrong nag).
+  const [hoursToConfigure, setHoursToConfigure] = useState<Establishment | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -123,6 +128,20 @@ export default function ConsolidatedHome({ userName, locale }: ConsolidatedHomeP
         if (cancelled) return
         setOverview(ov)
         setEstablishments(est?.establishments ?? [])
+
+        // Adoption check — owner GET /hours per establishment (small N). The
+        // encart shows while at least one establishment has zero hours rows
+        // and disappears as soon as it's configured.
+        const list = est?.establishments ?? []
+        const checks = await Promise.all(list.map(async (e) => {
+          try {
+            const r = await fetch(`/api/restaurants/${e.id}/hours`, { cache: 'no-store' })
+            if (!r.ok) return null
+            const d = await r.json() as { configured?: boolean }
+            return d.configured === false ? e : null
+          } catch { return null }
+        }))
+        if (!cancelled) setHoursToConfigure(checks.find(Boolean) ?? null)
       } catch {
         if (!cancelled) setOverview(null)
       } finally {
@@ -247,6 +266,30 @@ export default function ConsolidatedHome({ userName, locale }: ConsolidatedHomeP
           caption={t('metricReviews', { count: agg.totalReviews })}
         />
       </div>
+
+      {/* ── Encart adoption horaires (bloc C, T1.Q3) — sobre, disparaît une
+            fois les horaires configurés. CTA → la section Horaires de la page
+            établissement. */}
+      {hoursToConfigure && (
+        <Card elevation="sm" padding="md" className="mb-6 border-grubano-primary/30">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-grubano-tint text-grubano-primary">
+              <Clock size={16} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-display text-sm font-semibold text-grubano-ink">{tHours('adoptTitle')}</h3>
+              <p className="mt-0.5 text-xs text-grubano-ink-muted">{tHours('adoptDesc')}</p>
+            </div>
+            <Link
+              href={`/dashboard/establishments/${hoursToConfigure.id}#horaires`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-grubano-lg bg-grubano-primary px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-grubano-primaryHover"
+            >
+              {tHours('adoptCta')}
+              <ChevronRight size={13} className="rtl:rotate-180" />
+            </Link>
+          </div>
+        </Card>
+      )}
 
       {/* ── NIVEAU 1 — À traiter aujourd'hui ─────────────────────────────── */}
       <section className="mb-6">

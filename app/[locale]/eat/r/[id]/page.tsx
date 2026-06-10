@@ -70,6 +70,18 @@ interface RestaurantInfo {
   address: string
 }
 
+// Chantier horaires — the additive hours{} block of GET /api/restaurants/[id]
+// (Agent 2's contract). hoursConfigured=false → NO badge, NO change (defensive
+// degradation, zero regression). Local mirror of lib/opening-hours.PublicHours
+// so this client page never imports server code.
+interface PublicHoursInfo {
+  hoursConfigured: boolean
+  isOpenNow: boolean | null
+  nextOpening: { dateStr: string; time: string; label: string } | null
+  weeklyHours: Array<{ dayOfWeek: number; ranges: Array<{ open: string; close: string }> }>
+  currentClosure: { reason: string | null; until: string } | null
+}
+
 const TABS = ['Menu', 'À propos', 'Galerie', 'Avis'] as const
 type Tab = (typeof TABS)[number]
 
@@ -130,6 +142,7 @@ export default function RestaurantScreen() {
   const router = useRouter()
 
   const [restaurant, setRestaurant] = useState<RestaurantInfo | null>(null)
+  const [hours, setHours] = useState<PublicHoursInfo | null>(null)
   const [menu, setMenu] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('Menu')
@@ -155,6 +168,8 @@ export default function RestaurantScreen() {
       .then((r) => r.json())
       .then((d) => {
         setRestaurant(d.restaurant)
+        // Defensive: hours{} is additive — missing/odd payload = not configured.
+        setHours(d.hours && d.hours.hoursConfigured === true ? (d.hours as PublicHoursInfo) : null)
         setMenu(d.menu ?? [])
         const existing = readCart()
         if (existing && existing.restaurantId === id) setCart(existing)
@@ -276,6 +291,39 @@ export default function RestaurantScreen() {
 
   const heroCover = restaurant.coverPhoto || getRestaurantCover(restaurant.id)
 
+  // ── Chantier horaires — consumer badge (only when hoursConfigured) ─────────
+  // "Ouvert" / "Fermé" / "Ouvre à 19h00" — the next-opening label is composed
+  // client-side from nextOpening {dateStr, time} so it localises with the app
+  // (the server label is FR-only); fallback = the raw server label.
+  const todayStr = new Date().toISOString().split('T')[0]
+  const tomorrowStr = new Date(Date.now() + 86_400_000).toISOString().split('T')[0]
+  let hoursBadge: { label: string; open: boolean } | null = null
+  let closureLine: string | null = null
+  if (hours) {
+    if (hours.isOpenNow) {
+      hoursBadge = { label: t('hoursOpenNow'), open: true }
+    } else {
+      const n = hours.nextOpening
+      const label = !n
+        ? t('hoursClosedNow')
+        : n.dateStr === todayStr
+          ? t('hoursOpensAt', { time: n.time })
+          : n.dateStr === tomorrowStr
+            ? t('hoursOpensTomorrow', { time: n.time })
+            : t('hoursOpensOn', {
+                date: new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(new Date(n.dateStr + 'T12:00:00')),
+                time: n.time,
+              })
+      hoursBadge = { label, open: false }
+      if (hours.currentClosure?.reason) {
+        closureLine = t('hoursClosureReason', {
+          reason: hours.currentClosure.reason,
+          date:   new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long' }).format(new Date(hours.currentClosure.until + 'T12:00:00')),
+        })
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white pb-24">
       {/* Hero */}
@@ -345,6 +393,23 @@ export default function RestaurantScreen() {
           <StarRating value={restaurant.rating} reviewCount={restaurant.reviewCount} size="sm" />
         </div>
         <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{restaurant.name}</h1>
+        {/* Badge horaires — rendered ONLY when the establishment configured its
+            hours (hoursConfigured=false → nothing, zero regression). */}
+        {hoursBadge && (
+          <div className="mb-1 mt-0.5">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                hoursBadge.open ? 'bg-emerald-50 text-emerald-600' : 'bg-grubano-surface-muted text-grubano-ink-muted'
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${hoursBadge.open ? 'bg-emerald-500' : 'bg-grubano-ink-faint'}`} />
+              {hoursBadge.label}
+            </span>
+            {closureLine && (
+              <p className="mt-1 text-[11px] text-grubano-ink-muted">{closureLine}</p>
+            )}
+          </div>
+        )}
         <p className="mb-1.5 text-grubano-sm text-grubano-ink-muted">
           {formatCuisineList(restaurant.cuisine, locale, '')}
         </p>
@@ -440,6 +505,42 @@ export default function RestaurantScreen() {
               <span className="text-grubano-sm text-grubano-ink-muted">{t('openingHours')}</span>
             </div>
           </div>
+
+          {/* Bloc « Horaires » — the real weekly hours, only when configured.
+              Days displayed Monday→Sunday; an overnight range (close < open)
+              is suffixed "(lendemain)". Not configured → block absent. */}
+          {hours && hours.weeklyHours.length > 0 && (
+            <div className="mt-3 rounded-grubano-lg bg-grubano-surface-muted p-4">
+              <p className="mb-2.5 text-grubano-sm font-extrabold text-grubano-ink">{t('hoursWeekTitle')}</p>
+              <ul className="space-y-1.5">
+                {[1, 2, 3, 4, 5, 6, 0].map((d) => {
+                  const day = hours.weeklyHours.find((w) => w.dayOfWeek === d)
+                  const ranges = day?.ranges ?? []
+                  const dayName = new Intl.DateTimeFormat(locale, { weekday: 'long' })
+                    .format(new Date(Date.UTC(2024, 0, 7 + d, 12))) // 2024-01-07 = a Sunday → +d gives each weekday
+                  const overnight = (open: string, close: string) => {
+                    const m = (s: string) => parseInt(s.slice(0, 2), 10) * 60 + parseInt(s.slice(3, 5), 10)
+                    return close !== '24:00' && m(close) < m(open)
+                  }
+                  return (
+                    <li key={d} className="flex items-baseline justify-between gap-3 text-grubano-sm">
+                      <span className="capitalize text-grubano-ink-muted">{dayName}</span>
+                      <span className="text-end font-semibold text-grubano-ink">
+                        {ranges.length === 0
+                          ? t('hoursDayClosed')
+                          : ranges.map((r, i) => (
+                              <span key={i} className="block">
+                                {r.open} – {r.close}
+                                {overnight(r.open, r.close) ? ` (${t('hoursNextDay')})` : ''}
+                              </span>
+                            ))}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

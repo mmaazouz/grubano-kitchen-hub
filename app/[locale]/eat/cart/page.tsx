@@ -173,6 +173,14 @@ export default function CartScreen() {
       }
       const data = await res.json()
       if (!res.ok) {
+        // Chantier horaires — POST /api/orders answers 409 {code:'closed',
+        // nextOpening?} while the establishment is closed (menu browsing and
+        // future reservations stay free, T3.Q3). Spell out the next opening.
+        if (res.status === 409 && data?.code === 'closed') {
+          const label = data?.nextOpening?.label as string | undefined
+          setError(label ? t('errClosedWithOpening', { label }) : t('errClosedNoOpening'))
+          return
+        }
         setError(data.error ?? t('errorOrderFailed'))
         return
       }

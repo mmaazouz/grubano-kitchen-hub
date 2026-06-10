@@ -138,6 +138,12 @@ function ReserveInner() {
         const code = data?.code
         if (code === 'slot_taken')     setSubmitError(t('errSlotTaken'))
         else if (code === 'slot_past') setSubmitError(t('errSlotPast'))
+        // Chantier horaires — strict public gate (409). 'hors_horaires' = the
+        // slot is outside the weekly ranges (or too close to closing);
+        // 'closed' = an exceptional closure covers it. Booking a FUTURE open
+        // slot stays possible (T3.Q3) — these only reject THIS slot.
+        else if (code === 'hors_horaires') setSubmitError(t('errOutsideHours'))
+        else if (code === 'closed')        setSubmitError(t('errClosedSlot'))
         else                           setSubmitError(t('errCreate'))
         return
       }
