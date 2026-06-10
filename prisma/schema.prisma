@@ -316,6 +316,12 @@ model Reservation {
   stripePaymentIntentId String?              // the PaymentIntent id (pi_...)
   depositStatus String          @default("none") // none | authorized | captured | released
   depositCurrency String        @default("eur")
+  // ── Cancellation trace (Chantier horaires, additive) ────────────────────────
+  // WHY a reservation was cancelled. 'closure' = auto-cancelled because the
+  // restaurant declared an exceptional closure over its slot (empreinte released,
+  // nothing charged). Nullable → existing rows untouched; manual cancels may
+  // leave it null.
+  cancelReason String?
   notes        String?         @db.Text
   createdAt    DateTime        @default(now())
 
@@ -522,10 +528,64 @@ model Restaurant {
   reservations Reservation[]
   // Inverse side of TableTicket.restaurant (Addition brique 1) — the table bills.
   tickets      TableTicket[]
+  // Inverse side of OpeningHour / ClosureException (Chantier horaires étape 1).
+  weeklyHours  OpeningHour[]
+  closures     ClosureException[]
 
   // Option B (step 4): operatorId is no longer unique; keep a plain index so the
   // frequent findFirst/findMany({ where: { operatorId } }) lookups stay fast.
   @@index([operatorId])
+}
+
+// ── Opening hours (Chantier horaires étape 1, additive) ───────────────────────
+// ONE ROW PER RANGE: a weekday can hold several service ranges (midi 12:00-14:30
+// + soir 19:00-22:30); ZERO rows for a weekday = closed that day. KEY RULE
+// (T1.Q3): an establishment with ZERO OpeningHour rows is NOT CONFIGURED → no
+// restriction anywhere (current behaviour); once at least one row exists the
+// hours RULE (availability, public bookings, delivery/pickup orders). Times are
+// LOCAL establishment time (Europe/Paris — France first), "HH:mm".
+//   • closeTime < openTime → the range ends the NEXT day (19:00→01:00 service
+//     after midnight, T5); "24:00" is accepted as a close for a 00:00-24:00 24/7.
+//   • channel: V1 always 'all' (one set of hours rules everything). The column
+//     exists NOW so per-channel hours (resa-only evenings, delivery lunch…) can
+//     land later WITHOUT a migration ("ne pas se fermer la porte", T1.Q2).
+// NOTE: Restaurant.openingHours (legacy Json, unused — nothing ever read it)
+// stays untouched; THIS relational model is the source of truth.
+model OpeningHour {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  dayOfWeek    Int        // 0=dimanche … 6=samedi (JS Date.getDay() convention)
+  openTime     String     // "HH:mm" local Europe/Paris
+  closeTime    String     // "HH:mm" ("24:00" allowed); < openTime → ends next day
+  channel      String     @default("all") // V1: always 'all' (future per-channel)
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
+}
+
+// ── Closure exceptions (Chantier horaires étape 1, additive) ──────────────────
+// V1 = CLOSURES ONLY (T2.Q1): one model covers multi-day holidays, a single
+// closed day, and a PARTIAL closure (startTime+endTime set → only those hours
+// are closed on each covered day; both null → whole days). `type` defaults to
+// 'closed'; 'special_hours' is RESERVED for future exceptional openings (Google
+// Business-style) so they can land without a migration. dateStart/dateEnd are
+// DATE-ONLY semantics stored at UTC midnight (inclusive range, local days).
+//   • reason is PUBLIC (≤140 chars) — shown to consumers when set ("Congés
+//     annuels — réouverture le 16 août", T2.Q2); empty → plain "Fermé".
+model ClosureException {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  type         String     @default("closed") // 'special_hours' reserved (future)
+  dateStart    DateTime   // first covered day (date-only, stored T00:00Z)
+  dateEnd      DateTime   // last covered day, INCLUSIVE (date-only, T00:00Z)
+  startTime    String?    // "HH:mm" — partial closure window start (with endTime)
+  endTime      String?    // "HH:mm" — partial closure window end
+  reason       String?    // ≤140 chars, PUBLIC (consumer-facing)
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
 }
 
 // ── Table bill / addition (Sunday-style QR pay, brique 1) ──────────────────────
