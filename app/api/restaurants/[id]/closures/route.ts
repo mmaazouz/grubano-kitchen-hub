@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
-import { isValidTime, toMin } from '@/lib/opening-hours'
+import { releaseHold } from '@/lib/deposit'
+import { isValidTime, toMin, localParts, dateOnly } from '@/lib/opening-hours'
 
+// releaseHold reads the live Stripe PI → Node runtime.
+export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // ── /api/restaurants/[id]/closures — exceptional closures (owner-scoped) ───────
@@ -71,6 +74,57 @@ export async function POST(
       }
     }
 
+    // ── Conflict detection (T3.Q1) ───────────────────────────────────────────
+    // FUTURE reservations (confirmed | arrived) whose slot falls inside the
+    // closure: start on a covered local day, and — for a PARTIAL closure — the
+    // reservation slot overlaps the closed [startTime, endTime) window that day.
+    // A guest is NEVER silently dropped: without confirm, conflicts are returned
+    // and NOTHING is created; with confirm:true the closure is created, each
+    // conflicting reservation is cancelled (cancelReason 'closure') and its
+    // empreinte released via lib/deposit.releaseHold (called, never modified —
+    // idempotent) so the client is never charged for the restaurant's closure.
+    const now = new Date()
+    const candidates = await prisma.reservation.findMany({
+      where: {
+        restaurantId: params.id,
+        status:       { in: ['confirmed', 'arrived'] },
+        date:         { gte: now },
+      },
+      select: {
+        id: true, customerName: true, date: true, endTime: true,
+        status: true, depositStatus: true, stripePaymentIntentId: true,
+      },
+      orderBy: { date: 'asc' },
+    })
+    const winStart = partial ? toMin(data.startTime!) : 0
+    const winEnd   = partial ? toMin(data.endTime!)   : 1440
+    const conflicts = candidates.filter((r) => {
+      const p = localParts(r.date)
+      if (p.dateStr < data.dateStart || p.dateStr > data.dateEnd) return false
+      if (!partial) return true
+      // Same-local-day overlap between the reservation slot and the closed window.
+      const endMin = Math.min(1440, p.minutes + Math.max(1, Math.round((r.endTime.getTime() - r.date.getTime()) / 60_000)))
+      return p.minutes < winEnd && endMin > winStart
+    })
+
+    if (conflicts.length > 0 && !data.confirm) {
+      // PREVIEW: nothing is created. Agent 13's modal shows the recap then
+      // re-POSTs the same body with confirm:true.
+      return NextResponse.json({
+        created: false,
+        conflicts: {
+          count: conflicts.length,
+          reservations: conflicts.map((r) => ({
+            id:            r.id, // the UI derives the short session code from it
+            customerName:  r.customerName,
+            date:          r.date.toISOString(),
+            status:        r.status,
+            depositStatus: r.depositStatus,
+          })),
+        },
+      })
+    }
+
     const closure = await prisma.closureException.create({
       data: {
         restaurantId: params.id,
@@ -83,7 +137,57 @@ export async function POST(
       },
       select: { id: true, type: true, dateStart: true, dateEnd: true, startTime: true, endTime: true, reason: true },
     })
-    return NextResponse.json({ closure }, { status: 201 })
+
+    // ── Mass cancellation (confirmed) — best-effort PER reservation ───────────
+    // One failing release never blocks the others; every failure is surfaced.
+    // The reservation is cancelled EVEN IF its release fails (the closure is a
+    // fact) — the error tells the operator to settle that hold manually.
+    let cancelled = 0
+    let depositsReleased = 0
+    const errors: Array<{ reservationId: string; error: string }> = []
+    for (const r of conflicts) {
+      let depositStatusUpdate: string | null = null
+      if (r.stripePaymentIntentId && r.depositStatus !== 'released' && r.depositStatus !== 'captured') {
+        try {
+          const settle = await releaseHold(r.stripePaymentIntentId)
+          if (settle.ok) {
+            depositStatusUpdate = settle.depositStatus ?? 'released'
+            depositsReleased++
+          } else {
+            errors.push({ reservationId: r.id, error: settle.error })
+          }
+        } catch (e) {
+          errors.push({ reservationId: r.id, error: e instanceof Error ? e.message : 'release failed' })
+        }
+      }
+      try {
+        await prisma.reservation.update({
+          where: { id: r.id },
+          data:  {
+            status:       'cancelled',
+            cancelReason: 'closure',
+            ...(depositStatusUpdate ? { depositStatus: depositStatusUpdate } : {}),
+          },
+        })
+        cancelled++
+      } catch (e) {
+        errors.push({ reservationId: r.id, error: e instanceof Error ? e.message : 'cancel failed' })
+      }
+    }
+    // V1 limit (assumed, T3.Q1): no cancellation email yet — flagged priority 1
+    // of the transactional-emails chantier. The client sees the cancellation in
+    // the app (status + cancelReason exposed by the existing endpoints).
+
+    return NextResponse.json(
+      {
+        created: true,
+        closure,
+        cancelled,
+        depositsReleased,
+        ...(errors.length ? { errors } : {}),
+      },
+      { status: 201 },
+    )
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
