@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import {
   createDepositHold, retrieveIntent, eurosToCents,
-  mapPaymentIntentStatus, getPublishableKey, type DepositMetadata,
+  mapPaymentIntentStatus, getPublishableKey,
+  type DepositMetadata, type ConnectRouting,
 } from '@/lib/stripe'
 
 // Stripe SDK + session → Node runtime, never static.
@@ -77,6 +78,21 @@ export async function POST(
       }
     }
 
+    // ── Connect routing (rail A2) — 'reservation' channel, fee 0 (A0: a captured
+    // no-show penalty goes 100 % to the resto). When the establishment's Express
+    // account is active, the hold is a manual-capture DESTINATION charge: a later
+    // capture lands on the resto's account; a release cancels as before. Any
+    // other account state → the exact pre-A2 platform hold (full fallback).
+    // NB: an EXISTING reused hold keeps the routing it was created with (its
+    // amount never changes — reconciliation is a /pay concern, not a hold one).
+    const restaurant = await prisma.restaurant.findUnique({
+      where:  { id: reservation.restaurantId },
+      select: { stripeAccountId: true, stripeAccountStatus: true },
+    })
+    const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
+    const connect: ConnectRouting | undefined =
+      routed ? { destination: restaurant!.stripeAccountId!, applicationFeeCents: 0 } : undefined
+
     const pi = await createDepositHold({
       amountCents,
       currency,
@@ -85,6 +101,9 @@ export async function POST(
         restaurantId:  reservation.restaurantId,
         tableId:       reservation.tableId,
       } satisfies DepositMetadata,
+      connect,
+      extraMetadata: { grubano_channel: 'reservation', commission_rate: '0' },
+      idempotencyKey: `deposit-${reservation.id}-${amountCents}-${reservation.stripePaymentIntentId ?? 'first'}`,
     })
 
     await prisma.reservation.update({
