@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 
 // Reads query/DB → never static.
 export const dynamic = 'force-dynamic'
@@ -46,6 +47,13 @@ export async function GET(req: Request) {
     }
     const durationMin = restaurant.defaultReservationDurationMin ?? 60
 
+    // Opening hours (Chantier horaires). Loaded ONCE; not configured → every
+    // slot passes (current behaviour). Configured → a slot is only proposed when
+    // its START falls inside an open range, no closure exception blocks it, and
+    // start ≤ close − duration (T3.Q2) — ADDED to the existing rules below
+    // (capacity, anti-double-booking, past refusal), never replacing them.
+    const hoursCtx = await loadHoursContext(restaurantId)
+
     const tables = await prisma.restaurantTable.findMany({
       where:  { restaurantId, active: true },
       select: { id: true, seats: true },
@@ -78,9 +86,10 @@ export async function GET(req: Request) {
       const slotStart = new Date(`${date}T${pad(h)}:${pad(m)}:00`)
       const slotEnd   = new Date(slotStart.getTime() + durationMin * 60_000)
       const past      = slotStart.getTime() < now - PAST_GRACE_MS
+      const withinHours = slotFitsCtx(hoursCtx, slotStart, durationMin).ok
 
       let freeTables = 0
-      if (!past) {
+      if (!past && withinHours) {
         for (const t of tables) {
           // overlap = same anti-double-booking rule as POST /api/reservations
           const busy = reservations.some(
@@ -90,10 +99,14 @@ export async function GET(req: Request) {
         }
       }
 
-      slots.push({ time: `${pad(h)}:${pad(m)}`, available: !past && freeTables > 0, freeTables })
+      slots.push({ time: `${pad(h)}:${pad(m)}`, available: !past && withinHours && freeTables > 0, freeTables })
     }
 
-    return NextResponse.json({ restaurantId, date, durationMin, totalTables: tables.length, maxTableSeats, slots })
+    return NextResponse.json({
+      restaurantId, date, durationMin, totalTables: tables.length, maxTableSeats, slots,
+      // Additive: lets the booking UI explain WHY a day shows no slots.
+      hoursConfigured: hoursCtx.configured,
+    })
   } catch (err) {
     console.error('[GET /api/reservations/availability]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -62,6 +63,26 @@ export async function POST(req: NextRequest) {
     })
     if (!restaurant) {
       return NextResponse.json({ error: 'Restaurant introuvable ou fermé' }, { status: 404 })
+    }
+
+    // Opening hours (Chantier horaires): a delivery/pickup order is placed for
+    // NOW, so it is blocked while the establishment is closed — with the next
+    // opening spelled out ("Ouvre à 19h00"). Not configured → no restriction
+    // (T1.Q3). Browsing the menu stays free (T3.Q3) — only the order is gated.
+    // At-table ordering (/api/t/[tableId]/order) is intentionally NOT subject to
+    // hours: an 'arrived' session rules (angle mort 1).
+    const hoursCtx = await loadHoursContext(data.restaurantId)
+    if (hoursCtx.configured && !isOpenAtCtx(hoursCtx, new Date())) {
+      const next = nextOpeningCtx(hoursCtx, new Date())
+      const label = next ? nextOpeningLabelFr(next, new Date()) : null
+      return NextResponse.json(
+        {
+          error: `L'établissement est actuellement fermé${label ? ` — ouvre ${label}` : ''}.`,
+          code:  'closed',
+          ...(next ? { nextOpening: { dateStr: next.dateStr, time: next.time, label } } : {}),
+        },
+        { status: 409 },
+      )
     }
 
     // Calculate totals. minOrder is enforced on the PRE-discount subtotal: the

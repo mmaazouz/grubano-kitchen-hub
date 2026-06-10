@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { captureHold } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
+import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 
@@ -190,6 +191,32 @@ export async function POST(req: Request) {
       )
     }
 
+    // Opening hours — NON-BLOCKING on the owner path (angle mort 3: the
+    // restaurant is master of its own room — a private event on a closed Monday
+    // is legitimate). The reservation IS created; when the slot falls outside the
+    // configured hours / inside a closure, the response carries an explicit
+    // hoursWarning the UI surfaces ("hors des horaires configurés — confirmer ?").
+    // Public/consumer path stays STRICT (see /api/reservations/public). Best-
+    // effort: a hours hiccup never blocks the owner's booking.
+    let hoursWarning: { code: string; message: string } | null = null
+    if (resaRestaurantId) {
+      try {
+        const durMin = Math.max(1, Math.round((endTime.getTime() - start.getTime()) / 60_000))
+        const fit = slotFitsCtx(await loadHoursContext(resaRestaurantId), start, durMin)
+        if (!fit.ok) {
+          hoursWarning = {
+            code: fit.code,
+            message:
+              fit.code === 'too_late'
+                ? 'Créneau hors des horaires configurés : le repas dépasse l’heure de fermeture.'
+                : `Créneau hors des horaires configurés${fit.code === 'closure' && fit.closure?.reason ? ` (fermeture : ${fit.closure.reason})` : ''}.`,
+          }
+        }
+      } catch (e) {
+        console.error('[POST /api/reservations] hours check failed (booking proceeds)', e instanceof Error ? e.message : e)
+      }
+    }
+
     const reservation = await prisma.reservation.create({
       data: {
         ...data,
@@ -202,7 +229,10 @@ export async function POST(req: Request) {
       include: { table: true },
     })
 
-    return NextResponse.json({ reservation }, { status: 201 })
+    return NextResponse.json(
+      { reservation, ...(hoursWarning ? { hoursWarning } : {}) },
+      { status: 201 },
+    )
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })

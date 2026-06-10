@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
+import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -94,6 +95,26 @@ export async function POST(req: Request) {
     // Slot end — explicit duration override > establishment default > 60.
     const durationMin = data.durationMin ?? restaurant.defaultReservationDurationMin ?? 60
     const endTime     = new Date(start.getTime() + durationMin * 60_000)
+
+    // Opening hours — STRICT on the public path (Chantier horaires). When the
+    // establishment configured its hours, the requested slot must start inside an
+    // open range, clear of any closure exception, and start ≤ close − duration
+    // (T3.Q2). Not configured → no restriction (T1.Q3). Booking a FUTURE open
+    // slot while the restaurant is currently closed stays possible — only the
+    // SLOT's own hours matter here (T3.Q3).
+    const hoursCtx = await loadHoursContext(restaurant.id)
+    const fit = slotFitsCtx(hoursCtx, start, durationMin)
+    if (!fit.ok) {
+      const reason = fit.code === 'closure' && fit.closure?.reason ? ` (${fit.closure.reason})` : ''
+      const error =
+        fit.code === 'too_late'
+          ? 'Ce créneau est trop proche de la fermeture pour la durée du repas — choisissez un horaire plus tôt.'
+          : `L'établissement est fermé à cet horaire${reason} — choisissez un autre créneau.`
+      return NextResponse.json(
+        { error, code: fit.code === 'closure' ? 'closed' : 'hors_horaires' },
+        { status: 409 },
+      )
+    }
 
     // All active tables. Empty list ⇒ the operator hasn't set up any table
     // for at-table reservations yet → 409 "no tables".
