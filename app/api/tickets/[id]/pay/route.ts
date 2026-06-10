@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import {
   createTicketPayment, retrieveIntent, eurosToCents, getPublishableKey,
-  updateIntentAmount, cancelIntent,
+  updateIntentAmount, cancelIntent, type ConnectRouting,
 } from '@/lib/stripe'
+import { computeApplicationFee, resolveCommissionRate } from '@/lib/commission'
 
 // Stripe SDK → Node runtime, never static.
 export const runtime = 'nodejs'
@@ -28,10 +29,13 @@ function stripeError(err: unknown) {
 // (Agent 13) confirms the card with Stripe Elements.
 //
 // This is the FIRST REAL CHARGE on Grubano: capture is AUTOMATIC (immediate debit),
-// not the manual-capture reservation empreinte. Commission is 0 during TEST
-// (platformFeeAmount stays 0; no Connect → the whole amount lands on the platform
-// account). On payment success the webhook marks the ticket paid AND releases the
-// linked reservation's empreinte automatically.
+// not the manual-capture reservation empreinte. Routing (rail A2): when the
+// establishment's Connect account is ACTIVE the PI is a destination charge — the
+// resto receives the net and Grubano's commission (lib/commission, 'dinein' 5 %
+// by default) is taken at the source via application_fee_amount; otherwise the
+// charge stays fully on the platform account exactly as before A2 (fallback).
+// On payment success the webhook marks the ticket paid AND releases the linked
+// reservation's empreinte automatically.
 // PAYMENT IS OPEN (Mohammed's decision): anyone may settle a bill — the client from
 // their account, a QR walk-in, or a friend via a shared link (the bill-sharing
 // model). We do NOT check identity. The ONLY gate (besides paid / void / amount) is
@@ -106,20 +110,51 @@ export async function POST(
 
     const publishableKey = getPublishableKey()
 
-    // Idempotent reuse of the stored PaymentIntent, but NEVER with a stale amount:
-    //   • succeeded + still due > 0 → a PAST PARTIAL payment (pre-guard bug or
-    //     mid-meal payment): fall through and create a NEW PI for the REMAINDER.
-    //   • usable + amount matches dueCents → return as-is.
-    //   • usable + amount STALE → paymentIntents.update (requires_payment_method /
-    //     requires_confirmation); if Stripe refuses (e.g. requires_action), cancel
-    //     it and fall through to a fresh PI — never leave an orphan payable at the
-    //     wrong amount. 'processing' can be neither updated nor cancelled: return
-    //     it untouched (the webhook at-cent guard is the safety net).
+    // ── Connect routing (rail financier A2) — table bill = 'dinein' channel ─────
+    // Routed ONLY when the establishment's Express account is fully active; any
+    // other state (none/pending/restricted) keeps the exact pre-A2 platform
+    // charge (full fallback, zero regression). The fee is computed from THE
+    // amount actually charged (dueCents) by lib/commission (A0: 5 % dine-in,
+    // overrides + founders offer included).
+    const restaurant = await prisma.restaurant.findUnique({
+      where:  { id: ticket.restaurantId },
+      select: {
+        stripeAccountId: true, stripeAccountStatus: true,
+        commissionRateDineIn: true, commissionRatePickup: true,
+        commissionRateDelivery: true, commissionFreeUntil: true,
+      },
+    })
+    const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
+    const feeCents = routed ? computeApplicationFee(restaurant!, 'dinein', dueCents) : 0
+    const rate     = routed ? resolveCommissionRate(restaurant!, 'dinein') : 0
+    const connect: ConnectRouting | undefined =
+      routed ? { destination: restaurant!.stripeAccountId!, applicationFeeCents: feeCents } : undefined
+
+    // Idempotent reuse of the stored PaymentIntent, but NEVER with a stale amount,
+    // fee, or routing:
+    //   • succeeded + still due > 0 → a PAST PARTIAL payment: fall through and
+    //     create a NEW PI for the REMAINDER.
+    //   • usable + amount, fee AND routing all match → return as-is.
+    //   • 'processing' → untouchable either way (webhook at-cent guard nets it).
+    //   • routing mismatch (account became active/inactive since creation, or a
+    //     different destination) → transfer_data can NOT be changed by update →
+    //     cancel + recreate with the right routing.
+    //   • amount/fee stale on matching routing → ONE update sets amount AND
+    //     application_fee_amount TOGETHER (the commission always tracks the
+    //     charged amount — the money-fix coherence). If Stripe refuses (e.g.
+    //     requires_action), cancel + recreate — never an orphan payable wrong.
     if (ticket.stripePaymentIntentId) {
       try {
         const existing = await retrieveIntent(ticket.stripePaymentIntentId)
         if (existing.status !== 'succeeded' && existing.status !== 'canceled' && existing.client_secret) {
-          if (existing.amount === dueCents) {
+          const existingDest   = typeof existing.transfer_data?.destination === 'string'
+            ? existing.transfer_data.destination
+            : (existing.transfer_data?.destination as { id?: string } | null | undefined)?.id ?? null
+          const routingMatches = routed
+            ? existingDest === restaurant!.stripeAccountId
+            : !existingDest
+          const feeMatches     = (existing.application_fee_amount ?? 0) === feeCents
+          if (routingMatches && feeMatches && existing.amount === dueCents) {
             return NextResponse.json({
               clientSecret: existing.client_secret, publishableKey, amount: dueCents, currency,
             })
@@ -129,15 +164,26 @@ export async function POST(
               clientSecret: existing.client_secret, publishableKey, amount: existing.amount, currency,
             })
           }
-          try {
-            const updated = await updateIntentAmount(existing.id, dueCents)
-            return NextResponse.json({
-              clientSecret: updated.client_secret, publishableKey, amount: dueCents, currency,
-            })
-          } catch {
-            // Not updatable in this state → cancel (best-effort) + recreate below.
+          if (routingMatches) {
+            try {
+              const updated = await updateIntentAmount(existing.id, dueCents, {
+                // Only a ROUTED PI carries a fee; explicit 0 clears a stale fee.
+                ...(routed ? { applicationFeeCents: feeCents } : {}),
+                idempotencyKey: `payup-${ticket.id}-${existing.id}-${dueCents}-${feeCents}`,
+              })
+              return NextResponse.json({
+                clientSecret: updated.client_secret, publishableKey, amount: dueCents, currency,
+              })
+            } catch {
+              // Not updatable in this state → cancel (best-effort) + recreate below.
+              try { await cancelIntent(existing.id) } catch {
+                console.warn(`[ticket pay] could not cancel stale PI ${existing.id} (ticket ${ticket.id})`)
+              }
+            }
+          } else {
+            // Routing changed since creation → recreate with the right routing.
             try { await cancelIntent(existing.id) } catch {
-              console.warn(`[ticket pay] could not cancel stale PI ${existing.id} (ticket ${ticket.id})`)
+              console.warn(`[ticket pay] could not cancel misrouted PI ${existing.id} (ticket ${ticket.id})`)
             }
           }
         }
@@ -155,6 +201,12 @@ export async function POST(
         restaurantId:  ticket.restaurantId,
         ...(ticket.reservationId ? { reservationId: ticket.reservationId } : {}),
       },
+      connect,
+      extraMetadata: { grubano_channel: 'dinein', commission_rate: String(rate) },
+      // Same logical attempt (ticket + amount + fee + predecessor PI) → same PI:
+      // a double-click race never stacks two charges; any state change (new due,
+      // new fee, predecessor replaced) yields a new key.
+      idempotencyKey: `pay-${ticket.id}-${dueCents}-${feeCents}-${ticket.stripePaymentIntentId ?? 'first'}`,
     })
 
     // Persist the PI id so the webhook can match it and /pay is idempotent.
