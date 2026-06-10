@@ -194,6 +194,24 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
       }
     }
 
+    // 3) Terminal reservation transition (fix "session collée"): once the bill is
+    //    paid the table session is OVER, so move the reservation arrived→completed
+    //    — otherwise it stays 'arrived' forever and keeps resurfacing as the
+    //    consumer's "current session" (GET /api/eat/my-session). updateMany with a
+    //    status:'arrived' guard is atomic + idempotent: it NEVER overwrites
+    //    noshow/cancelled/confirmed, and a replayed event matches 0 rows.
+    //    Best-effort: a failure here must never fail the webhook.
+    if (ticket.reservationId) {
+      try {
+        await prisma.reservation.updateMany({
+          where: { id: ticket.reservationId, status: 'arrived' },
+          data:  { status: 'completed' },
+        })
+      } catch (e) {
+        console.error('[stripe webhook] reservation complete failed', e instanceof Error ? e.message : e)
+      }
+    }
+
     return NextResponse.json({ received: true, ticket: 'paid', depositReleased })
   } catch (err) {
     console.error('[stripe webhook] bill paid handler error:', err instanceof Error ? err.message : err)

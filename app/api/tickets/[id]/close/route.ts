@@ -128,6 +128,23 @@ export async function POST(
       }
     }
 
+    // Terminal reservation transition (fix "session collée"): closing the table
+    // ends the session, so move the linked reservation arrived→completed — else it
+    // stays 'arrived' and keeps resurfacing in GET /api/eat/my-session. Applies to
+    // ALL close reasons (unpaid/empty/manual). updateMany with a status:'arrived'
+    // guard is atomic + idempotent and never overwrites noshow/cancelled/confirmed.
+    // Best-effort: the closure + trace above must succeed even if this fails.
+    if (existing.reservationId) {
+      try {
+        await prisma.reservation.updateMany({
+          where: { id: existing.reservationId, status: 'arrived' },
+          data:  { status: 'completed' },
+        })
+      } catch (e) {
+        console.error('[close] reservation complete failed', e instanceof Error ? e.message : e)
+      }
+    }
+
     return NextResponse.json({
       ticket,
       closedReason: REASON_TO_CLOSED[reason],
