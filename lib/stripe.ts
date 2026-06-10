@@ -40,19 +40,28 @@ export const getPublishableKey = (): string | null => process.env.STRIPE_PUBLISH
 /** EUR amount → integer cents (Stripe works in the smallest currency unit). */
 export const eurosToCents = (eur: number) => Math.round(eur * 100)
 
-/** Create a pre-authorisation (manual capture) for the deposit/guarantee. */
+/** Create a pre-authorisation (manual capture) for the deposit/guarantee.
+ *  With `connect` (A2): a manual-capture DESTINATION charge — a captured no-show
+ *  penalty lands on the resto's account (fee 0 per A0: 100 % to the resto). */
 export async function createDepositHold(opts: {
-  amountCents: number
-  currency:    string
-  metadata:    DepositMetadata
+  amountCents:    number
+  currency:       string
+  metadata:       DepositMetadata
+  connect?:       ConnectRouting
+  extraMetadata?: Record<string, string>
+  idempotencyKey?: string
 }): Promise<Stripe.PaymentIntent> {
-  return getStripe().paymentIntents.create({
-    amount:                    opts.amountCents,
-    currency:                  opts.currency,
-    capture_method:            'manual', // ← pre-authorisation (empreinte)
-    automatic_payment_methods: { enabled: true },
-    metadata:                  opts.metadata,
-  })
+  return getStripe().paymentIntents.create(
+    {
+      amount:                    opts.amountCents,
+      currency:                  opts.currency,
+      capture_method:            'manual', // ← pre-authorisation (empreinte)
+      automatic_payment_methods: { enabled: true },
+      metadata:                  { ...opts.metadata, ...(opts.extraMetadata ?? {}) },
+      ...connectParams(opts.connect),
+    },
+    opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined,
+  )
 }
 
 /** Capture (no-show): take up to the authorised amount. amountCents must be ≤ hold. */
@@ -70,11 +79,43 @@ export async function retrieveIntent(piId: string): Promise<Stripe.PaymentIntent
   return getStripe().paymentIntents.retrieve(piId)
 }
 
+/** Routing of a charge to a connected account (rail financier A2): destination
+ *  charge — the resto receives the net, Grubano's commission stays on the
+ *  platform via application_fee_amount. A fee of 0 (e.g. empreinte, founders
+ *  offer) simply omits the fee → 100 % transferred. */
+export type ConnectRouting = {
+  destination:         string // acct_... (the establishment's Express account)
+  applicationFeeCents: number // Grubano's cut, integer cents (lib/commission)
+}
+
+/** Spread Connect routing params onto a PaymentIntent create payload. */
+function connectParams(connect?: ConnectRouting): Partial<Stripe.PaymentIntentCreateParams> {
+  if (!connect) return {}
+  return {
+    transfer_data: { destination: connect.destination },
+    on_behalf_of:  connect.destination,
+    ...(connect.applicationFeeCents > 0 ? { application_fee_amount: connect.applicationFeeCents } : {}),
+  }
+}
+
 /** Re-align an unconfirmed PaymentIntent's amount (bill grew/shrank since it was
- *  created). Only valid while the PI is requires_payment_method /
- *  requires_confirmation — callers handle the failure by cancel + recreate. */
-export async function updateIntentAmount(piId: string, amountCents: number): Promise<Stripe.PaymentIntent> {
-  return getStripe().paymentIntents.update(piId, { amount: amountCents })
+ *  created) — and, on a ROUTED PI, the application fee TOGETHER WITH it (the
+ *  commission must always match the charged amount). Only valid while the PI is
+ *  requires_payment_method / requires_confirmation — callers handle the failure
+ *  by cancel + recreate. */
+export async function updateIntentAmount(
+  piId: string,
+  amountCents: number,
+  opts?: { applicationFeeCents?: number; idempotencyKey?: string },
+): Promise<Stripe.PaymentIntent> {
+  return getStripe().paymentIntents.update(
+    piId,
+    {
+      amount: amountCents,
+      ...(opts?.applicationFeeCents != null ? { application_fee_amount: opts.applicationFeeCents } : {}),
+    },
+    opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined,
+  )
 }
 
 /** Cancel any cancellable PaymentIntent (generic — not deposit-specific). */
@@ -94,26 +135,37 @@ export type TicketPaymentMetadata = {
   reservationId?: string
 }
 
-/** Create an AUTOMATIC-capture PaymentIntent — a real, immediate bill charge. */
+/** Create an AUTOMATIC-capture PaymentIntent — a real, immediate bill charge.
+ *  With `connect` (A2): a DESTINATION charge — the resto receives the net,
+ *  Grubano's commission (application_fee_amount, lib/commission) stays on the
+ *  platform account. Without it: the exact pre-A2 platform charge (fallback). */
 export async function createTicketPayment(opts: {
-  amountCents: number
-  currency:    string
-  metadata:    TicketPaymentMetadata
+  amountCents:    number
+  currency:       string
+  metadata:       TicketPaymentMetadata
+  connect?:       ConnectRouting
+  extraMetadata?: Record<string, string>
+  idempotencyKey?: string
 }): Promise<Stripe.PaymentIntent> {
   // Stripe metadata values must be strings; omit reservationId when absent.
   const metadata: Record<string, string> = {
     ticketId:     opts.metadata.ticketId,
     restaurantId: opts.metadata.restaurantId,
+    ...(opts.extraMetadata ?? {}),
   }
   if (opts.metadata.reservationId) metadata.reservationId = opts.metadata.reservationId
 
-  return getStripe().paymentIntents.create({
-    amount:                    opts.amountCents,
-    currency:                  opts.currency,
-    capture_method:            'automatic', // ← REAL charge (vs manual empreinte)
-    automatic_payment_methods: { enabled: true },
-    metadata,
-  })
+  return getStripe().paymentIntents.create(
+    {
+      amount:                    opts.amountCents,
+      currency:                  opts.currency,
+      capture_method:            'automatic', // ← REAL charge (vs manual empreinte)
+      automatic_payment_methods: { enabled: true },
+      metadata,
+      ...connectParams(opts.connect),
+    },
+    opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined,
+  )
 }
 
 // ── Stripe Connect — rail financier A1 (Express accounts, TEST mode) ──────────
