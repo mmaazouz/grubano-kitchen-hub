@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import {
   Modal, Button, Input,
 } from '@/components/design-system'
+import OpeningHoursSection from '@/components/hours/OpeningHoursSection'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 
 // ── Establishment HUB (C13-2) ─────────────────────────────────────────────────
@@ -313,9 +314,17 @@ export default function EstablishmentHub({
           </div>
         </div>
 
-        {/* ── Discreet access strip (maquette: Horaires partagés / Livraison · Retrait / Tables & résas) */}
+        {/* ── Discreet access strip (maquette: Horaires partagés / Livraison · Retrait / Tables & résas)
+            The hours chip jumps to the in-page Horaires section (chantier
+            horaires étape 2) instead of the fulfillment page. */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <AccessChip href="/dashboard/fulfillment" icon={Clock}        label={t('accessHours')} />
+          <a
+            href="#horaires"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+          >
+            <Clock size={12} className="shrink-0" />
+            {t('accessHours')}
+          </a>
           <AccessChip href="/dashboard/fulfillment" icon={Truck}        label={t('accessDelivery')} />
           <AccessChip href="/tables"                icon={CalendarDays} label={t('accessTables')} />
         </div>
@@ -434,6 +443,13 @@ export default function EstablishmentHub({
           </Link>
         </div>
       )}
+
+      {/* ── Horaires d'ouverture (chantier horaires étape 2, blocs A+B) ─────
+          Owner CRUD over Agent 2's endpoints — weekly grid + exceptional
+          closures + conflicts modal. Scoped to THIS establishment. */}
+      <div className="mt-8">
+        <OpeningHoursSection restaurantId={establishment.id} />
+      </div>
 
       {/* ── Edit-brand modal (was on /brands) ──────────────────────────────── */}
       <Modal
