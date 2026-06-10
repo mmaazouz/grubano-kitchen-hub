@@ -1716,6 +1716,7 @@
     "conflictErrors": "{count, plural, =1 {1 impronta non è stata rilasciata — gestiscila dalla prenotazione.} other {# impronte non sono state rilasciate — gestiscile dalle prenotazioni.}}",
     "adoptTitle": "Configura i tuoi orari di apertura",
     "adoptDesc": "Fasce di prenotazione esatte, badge «Aperto / Chiuso» sulla tua scheda e ordini accettati agli orari giusti.",
-    "adoptCta": "Configura"
+    "adoptCta": "Configura",
+    "ongoingInfo": "{count, plural, =1 {1 sessione in corso — il cliente al tavolo terminerà normalmente (ordine e pagamento restano possibili).} other {# sessioni in corso — i clienti al tavolo termineranno normalmente (ordine e pagamento restano possibili).}}"
   }
 }

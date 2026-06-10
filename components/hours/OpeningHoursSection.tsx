@@ -22,10 +22,14 @@ import SessionBadge from '@/components/session/SessionBadge'
 // local until « Enregistrer » does ONE atomic PUT (full replacement) — server
 // validation errors (intra-day overlap…) are surfaced as-is.
 //
-// Conflict flow (T3.Q1): POST closure WITHOUT confirm → when the server answers
-// {created:false, conflicts:{count, reservations}} we open the recap modal; the
-// operator confirms → re-POST the same body with confirm:true → recap toast
-// (cancelled / released / surfaced errors). Zero conflict → direct creation.
+// Conflict flow (T3.Q1 + fix 6a6e6a3): POST closure WITHOUT confirm → when the
+// server answers {created:false, conflicts:{…}, ongoing:{…}} we open the recap
+// modal. conflicts = CANCELLABLE future 'confirmed' reservations (« X seront
+// annulées » counts ONLY these); ongoing = 'arrived' sessions IN PROGRESS —
+// purely informative, NEVER cancelled (even with confirm:true), the guests
+// finish normally (ordering/paying stay available). The operator confirms →
+// re-POST the same body with confirm:true → recap toast (cancelled / released
+// / surfaced errors). Nothing to show → direct creation.
 
 type Range = { open: string; close: string }
 type WeekState = Record<number, Range[]> // dayOfWeek (0..6) → ranges
@@ -99,7 +103,13 @@ export default function OpeningHoursSection({ restaurantId }: { restaurantId: st
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // ── Conflict modal (bloc B) ─────────────────────────────────────────────────
-  const [conflicts, setConflicts] = useState<{ count: number; reservations: ConflictReservation[] } | null>(null)
+  // cancellable = conflicts{} (future 'confirmed'); ongoing = 'arrived'
+  // sessions in progress, informative only.
+  const [conflicts, setConflicts] = useState<{
+    count: number
+    reservations: ConflictReservation[]
+    ongoing: { count: number; reservations: ConflictReservation[] }
+  } | null>(null)
   const [confirming, setConfirming] = useState(false)
 
   const loadHours = useCallback(async () => {
@@ -248,11 +258,17 @@ export default function OpeningHoursSection({ restaurantId }: { restaurantId: st
         if (confirm) { setConflicts(null); setCError(msg) } else setCError(msg)
         return
       }
-      // Preview branch: conflicts exist, nothing created → recap modal.
-      if (d?.created === false && d?.conflicts) {
+      // Preview branch: cancellable conflicts AND/OR ongoing sessions exist,
+      // nothing created → recap modal (the server previews as soon as there is
+      // anything to show — fix 6a6e6a3).
+      if (d?.created === false) {
         setConflicts({
-          count:        Number(d.conflicts.count) || 0,
-          reservations: Array.isArray(d.conflicts.reservations) ? d.conflicts.reservations : [],
+          count:        Number(d?.conflicts?.count) || 0,
+          reservations: Array.isArray(d?.conflicts?.reservations) ? d.conflicts.reservations : [],
+          ongoing: {
+            count:        Number(d?.ongoing?.count) || 0,
+            reservations: Array.isArray(d?.ongoing?.reservations) ? d.ongoing.reservations : [],
+          },
         })
         return
       }
@@ -641,9 +657,21 @@ export default function OpeningHoursSection({ restaurantId }: { restaurantId: st
               <p className="text-base font-bold">{t('conflictTitle')}</p>
             </div>
 
-            <p className="text-[13px] text-muted-foreground">
-              {t('conflictBody', { count: conflicts.count })}
-            </p>
+            {/* « X seront annulées » counts ONLY the cancellable conflicts —
+                never the ongoing sessions. */}
+            {conflicts.count > 0 && (
+              <p className="text-[13px] text-muted-foreground">
+                {t('conflictBody', { count: conflicts.count })}
+              </p>
+            )}
+
+            {/* Sessions EN COURS — informative, calm, no action: they are
+                never cancelled, the guests finish (order + pay) normally. */}
+            {conflicts.ongoing.count > 0 && (
+              <p className="mt-2 rounded-xl border border-border bg-muted/40 px-3 py-2 text-[12px] text-muted-foreground">
+                {t('ongoingInfo', { count: conflicts.ongoing.count })}
+              </p>
+            )}
 
             <ul className="mt-3 flex-1 space-y-1.5 overflow-y-auto">
               {conflicts.reservations.map((r) => (
@@ -690,7 +718,11 @@ export default function OpeningHoursSection({ restaurantId }: { restaurantId: st
                 type="button"
                 onClick={() => submitClosure(true)}
                 disabled={confirming}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground disabled:opacity-60"
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold disabled:opacity-60 ${
+                  conflicts.count > 0
+                    ? 'bg-destructive text-destructive-foreground'
+                    : 'bg-primary text-primary-foreground'
+                }`}
               >
                 {confirming ? <Loader2 size={13} className="animate-spin" /> : null}
                 {confirming ? t('conflictConfirming') : t('conflictConfirm')}

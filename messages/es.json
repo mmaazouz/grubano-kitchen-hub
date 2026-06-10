@@ -1716,6 +1716,7 @@
     "conflictErrors": "{count, plural, =1 {1 garantía no pudo liberarse — gestiónala desde la reserva.} other {# garantías no pudieron liberarse — gestiónalas desde las reservas.}}",
     "adoptTitle": "Configura tus horarios de apertura",
     "adoptDesc": "Franjas de reserva exactas, insignia «Abierto / Cerrado» en tu ficha y pedidos aceptados a las horas correctas.",
-    "adoptCta": "Configurar"
+    "adoptCta": "Configurar",
+    "ongoingInfo": "{count, plural, =1 {1 sesión en curso — el cliente en mesa terminará con normalidad (pedido y pago siguen disponibles).} other {# sesiones en curso — los clientes en mesa terminarán con normalidad (pedido y pago siguen disponibles).}}"
   }
 }

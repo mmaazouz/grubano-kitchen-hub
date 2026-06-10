@@ -1716,6 +1716,7 @@
     "conflictErrors": "{count, plural, =1 {1 hold could not be released — settle it from the reservation.} other {# holds could not be released — settle them from the reservations.}}",
     "adoptTitle": "Configure your opening hours",
     "adoptDesc": "Exact reservation slots, an “Open / Closed” badge on your page and orders accepted at the right times.",
-    "adoptCta": "Configure"
+    "adoptCta": "Configure",
+    "ongoingInfo": "{count, plural, =1 {1 ongoing session — the seated guest will finish normally (ordering and payment stay available).} other {# ongoing sessions — the seated guests will finish normally (ordering and payment stay available).}}"
   }
 }

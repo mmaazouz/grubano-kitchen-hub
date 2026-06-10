@@ -1716,6 +1716,7 @@
     "conflictErrors": "{count, plural, =1 {1 empreinte n’a pas pu être libérée — réglez-la depuis la réservation.} other {# empreintes n’ont pas pu être libérées — réglez-les depuis les réservations.}}",
     "adoptTitle": "Configurez vos horaires d’ouverture",
     "adoptDesc": "Créneaux de réservation exacts, badge « Ouvert / Fermé » sur votre fiche et commandes acceptées aux bonnes heures.",
-    "adoptCta": "Configurer"
+    "adoptCta": "Configurer",
+    "ongoingInfo": "{count, plural, =1 {1 session en cours — le client à table terminera normalement (commande et paiement restent possibles).} other {# sessions en cours — les clients à table termineront normalement (commande et paiement restent possibles).}}"
   }
 }

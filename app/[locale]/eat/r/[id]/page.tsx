@@ -500,10 +500,16 @@ export default function RestaurantScreen() {
                 {restaurant.address}, {restaurant.city}
               </span>
             </div>
-            <div className="flex items-center gap-2.5">
-              <Clock size={15} className="text-grubano-primary" />
-              <span className="text-grubano-sm text-grubano-ink-muted">{t('openingHours')}</span>
-            </div>
+            {/* Legacy STATIC hours line ("Lun–Dim : 10h00 – 23h00") — hidden as
+                soon as the establishment configured its REAL hours (the weekly
+                block below is then the single source). Not configured →
+                unchanged (zero regression). */}
+            {!hours && (
+              <div className="flex items-center gap-2.5">
+                <Clock size={15} className="text-grubano-primary" />
+                <span className="text-grubano-sm text-grubano-ink-muted">{t('openingHours')}</span>
+              </div>
+            )}
           </div>
 
           {/* Bloc « Horaires » — the real weekly hours, only when configured.

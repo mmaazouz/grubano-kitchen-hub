@@ -15,9 +15,13 @@ import { usePolling } from '@/lib/use-polling'
 // The connected guest retrieves their CURRENT table session from the SERVER:
 // GET /api/eat/my-session (the one new read-only endpoint of étape 3) returns
 // the most recent reservation linked to their account in the active window
-// (confirmed | arrived). localStorage (`grubano_last_reservation`, written by
-// the booking flow) stays as a FALLBACK for guests who booked before being
-// signed in. From here the guest can:
+// (confirmed | arrived). THE SERVER IS THE SOURCE OF TRUTH (fix passe 2
+// horaires) : a clean 200 { session:null } means NO card — and the stale
+// localStorage pointer (`grubano_last_reservation`, written by the booking
+// flow) is PURGED so a reservation cancelled by a closure can never resurface
+// as a ghost « En attente de validation » card. The localStorage fallback only
+// serves when the fetch fails TECHNICALLY (network error / 5xx). From here the
+// guest can:
 //   - see their session code (SessionBadge) + live bill (3s poll),
 //   - ORDER at the table (status==='arrived' only — bloc B),
 //   - PAY the bill (existing Stripe flow).
@@ -67,7 +71,14 @@ export default function LastReservationCard() {
   const [payOpen, setPayOpen]   = useState(false)
   const [orderOpen, setOrderOpen] = useState(false)
 
-  // Server-first resolution, localStorage fallback.
+  // Server-first resolution. The fallback hierarchy (fix passe 2 horaires):
+  //   200 + session        → show it.
+  //   200 + session:null   → SERVER TRUTH: no active session → NO card + PURGE
+  //                          the stale localStorage pointer (ghost-card fix).
+  //   other 4xx (e.g. 401) → server answered, just no usable context → no card,
+  //                          but NO purge (the server made no statement about
+  //                          the stored reservation itself).
+  //   network error / 5xx  → TECHNICAL failure only → localStorage fallback.
   const resolveSession = useCallback(async () => {
     try {
       const r = await fetch('/api/eat/my-session', { cache: 'no-store' })
@@ -75,11 +86,20 @@ export default function LastReservationCard() {
         const body = await r.json() as { session: SessionInfo | null }
         if (body.session) {
           setSession(body.session)
-          setResolved(true)
-          return
+        } else {
+          setSession(null)
+          try { localStorage.removeItem('grubano_last_reservation') } catch { /* non-fatal */ }
         }
+        setResolved(true)
+        return
       }
-    } catch { /* fall through to localStorage */ }
+      if (r.status < 500) {
+        setSession(null)
+        setResolved(true)
+        return
+      }
+      // 5xx → fall through to the technical-failure fallback below.
+    } catch { /* network failure → fall through to localStorage */ }
     try {
       const raw = localStorage.getItem('grubano_last_reservation')
       if (raw) {
