@@ -154,7 +154,10 @@ export async function retrieveChargeFacts(piId: string): Promise<{
 // createDepositHold for a bill. Commission is 0 in TEST (no Connect yet → the
 // whole amount lands on the platform account); the fee can be added later.
 export type TicketPaymentMetadata = {
-  ticketId:       string
+  // The table-bill id — OPTIONAL since C1: a checkout ORDER charge reuses this
+  // same automatic-capture factory and identifies itself via extraMetadata
+  // (orderId + grubano_channel) instead.
+  ticketId?:      string
   restaurantId:   string
   reservationId?: string
 }
@@ -171,12 +174,12 @@ export async function createTicketPayment(opts: {
   extraMetadata?: Record<string, string>
   idempotencyKey?: string
 }): Promise<Stripe.PaymentIntent> {
-  // Stripe metadata values must be strings; omit reservationId when absent.
+  // Stripe metadata values must be strings; omit absent ids entirely.
   const metadata: Record<string, string> = {
-    ticketId:     opts.metadata.ticketId,
     restaurantId: opts.metadata.restaurantId,
     ...(opts.extraMetadata ?? {}),
   }
+  if (opts.metadata.ticketId)      metadata.ticketId      = opts.metadata.ticketId
   if (opts.metadata.reservationId) metadata.reservationId = opts.metadata.reservationId
 
   return getStripe().paymentIntents.create(
