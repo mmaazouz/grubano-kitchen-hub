@@ -660,6 +660,44 @@ model TableTicket {
   @@index([status])
 }
 
+// ── Ledger — rail financier A3 (grand livre, APPEND-ONLY) ─────────────────────
+// EVERY cent that moves writes ONE immutable line here, fed by the Stripe
+// webhook (source of truth = Stripe events, not application code). RULES:
+//   • APPEND-ONLY: no code may EVER update or delete a row. Any future
+//     correction = a NEW compensating line (type 'adjustment') — A0 decision:
+//     the ledger is THE source of truth for partner disputes.
+//   • All amounts in integer CENTS (never Float — money maths must be exact).
+//   • Idempotence: @@unique([sourceEventId, type]) — sourceEventId is the
+//     DETERMINISTIC source id (the PaymentIntent id for payment/deposit_capture
+//     lines), so a replayed webhook event OR the backfill script can never
+//     create a second line for the same money movement.
+// Golden equation (probe-verified by GET /api/admin/ledger/check):
+//   grossAmount = applicationFeeAmount + netToRestaurant   (per line and in sum)
+model LedgerEntry {
+  id                    String   @id @default(cuid())
+  createdAt             DateTime @default(now())
+  type                  String   // payment | deposit_capture | refund | adjustment
+  restaurantId          String
+  ticketId              String?
+  reservationId         String?
+  stripePaymentIntentId String?
+  stripeChargeId        String?
+  stripeTransferId      String?
+  grossAmount           Int                 // cents debited from the client
+  applicationFeeAmount  Int      @default(0) // Grubano commission (cents)
+  stripeFeeAmount       Int?                // REAL Stripe processing fee (balance transaction)
+  netToRestaurant       Int                 // gross − applicationFee (cents)
+  routed                Boolean  @default(false) // destination charge vs legacy platform flow
+  destinationAccountId  String?             // acct_... when routed
+  currency              String   @default("eur")
+  sourceEventId         String              // deterministic anti-double-count key
+
+  @@unique([sourceEventId, type])
+  @@index([restaurantId, createdAt])
+  @@index([type, createdAt])
+  @@index([createdAt])
+}
+
 model TicketItem {
   id         String      @id @default(cuid())
   ticketId   String

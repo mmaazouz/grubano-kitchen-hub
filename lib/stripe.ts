@@ -123,6 +123,30 @@ export async function cancelIntent(piId: string): Promise<Stripe.PaymentIntent> 
   return getStripe().paymentIntents.cancel(piId)
 }
 
+/** Charge-level facts for the LEDGER (A3): the charge id, the REAL Stripe
+ *  processing fee (balance transaction) and the Connect transfer id when the
+ *  charge was routed. One extra retrieve with expand — callers treat a failure
+ *  as "facts unknown" (nulls), never as a payment failure. */
+export async function retrieveChargeFacts(piId: string): Promise<{
+  chargeId: string | null
+  stripeFeeCents: number | null
+  transferId: string | null
+}> {
+  const pi = await getStripe().paymentIntents.retrieve(piId, {
+    expand: ['latest_charge.balance_transaction'],
+  })
+  const charge = pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null
+  const bt = charge?.balance_transaction && typeof charge.balance_transaction === 'object'
+    ? charge.balance_transaction
+    : null
+  const transfer = charge?.transfer
+  return {
+    chargeId:       charge?.id ?? null,
+    stripeFeeCents: bt?.fee ?? null,
+    transferId:     typeof transfer === 'string' ? transfer : transfer?.id ?? null,
+  }
+}
+
 // ── Bill payment (Brique 2) ───────────────────────────────────────────────────
 // IMPORTANT: this is the REAL charge for a table addition — NOT the empreinte.
 // capture_method is AUTOMATIC (the customer is debited immediately), whereas the
