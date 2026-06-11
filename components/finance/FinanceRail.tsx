@@ -42,6 +42,9 @@ type Operation = {
   refundedCents: number
   ticket: { id: string; status: string; tableName: string | null } | null
   reservation: { id: string; customerName: string; date: string; depositStatus: string } | null
+  // C3-fix: the linked pickup/delivery order (joined by PaymentIntent) — its
+  // refund action targets POST /api/orders/[id]/refund.
+  order: { id: string; paymentStatus: string | null; fulfillmentType: string } | null
 }
 
 type InvoiceRow = {
@@ -151,7 +154,9 @@ export default function FinanceRail() {
       const isPenalty = refundTarget.type === 'deposit_capture'
       const url = isPenalty
         ? `/api/reservations/${refundTarget.reservation?.id}/refund-deposit`
-        : `/api/tickets/${refundTarget.ticket?.id}/refund`
+        : refundTarget.ticket
+          ? `/api/tickets/${refundTarget.ticket.id}/refund`
+          : `/api/orders/${refundTarget.order?.id}/refund` // C3-fix: pickup/delivery order
       const res = await fetch(url, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -413,9 +418,12 @@ function OperationRow({
   const isRefundLine = op.type === 'refund'
   const refundable   = Math.max(0, op.grossCents - op.refundedCents)
 
-  // Refund actions per the 🔄 policy: a PAID bill with money left; a CAPTURED
-  // penalty not yet given back.
+  // Refund actions per the 🔄 policy: a PAID bill with money left; a PAID
+  // pickup/delivery order with money left (C3-fix — same display rules); a
+  // CAPTURED penalty not yet given back.
   const canRefundBill    = op.type === 'payment' && op.ticket?.status === 'paid' && refundable > 0
+  const canRefundOrder   = op.type === 'payment' && !op.ticket &&
+    op.order?.paymentStatus === 'paid' && refundable > 0
   const canRefundPenalty = op.type === 'deposit_capture' &&
     op.reservation?.depositStatus === 'captured' && op.refundedCents === 0
 
@@ -460,7 +468,7 @@ function OperationRow({
         )}
         {op.routed && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold">{t('routedDirect')}</span>}
 
-        {(canRefundBill || canRefundPenalty) && (
+        {(canRefundBill || canRefundOrder || canRefundPenalty) && (
           <button
             type="button"
             onClick={() => onRefund(op)}

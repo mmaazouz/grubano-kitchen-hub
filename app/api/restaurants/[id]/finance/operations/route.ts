@@ -83,7 +83,7 @@ export async function GET(
     const reservationIds = Array.from(new Set(lines.map(l => l.reservationId).filter((x): x is string => !!x)))
     const piIds          = Array.from(new Set(lines.map(l => l.stripePaymentIntentId).filter((x): x is string => !!x)))
 
-    const [tickets, reservations, refundLines] = await Promise.all([
+    const [tickets, reservations, refundLines, orders] = await Promise.all([
       ticketIds.length
         ? prisma.tableTicket.findMany({
             where:  { id: { in: ticketIds } },
@@ -107,10 +107,20 @@ export async function GET(
             select: { stripePaymentIntentId: true, grossAmount: true },
           })
         : [],
+      // C3-fix: the linked checkout ORDER (the ledger has no orderId column —
+      // the join rides Order.stripePaymentIntentId, which is @unique), so the
+      // UI can offer the order-refund action on pickup/delivery payments.
+      piIds.length
+        ? prisma.order.findMany({
+            where:  { stripePaymentIntentId: { in: piIds } },
+            select: { id: true, stripePaymentIntentId: true, paymentStatus: true, fulfillmentType: true },
+          })
+        : [],
     ])
 
     const ticketById      = new Map(tickets.map(t => [t.id, t]))
     const reservationById = new Map(reservations.map(r => [r.id, r]))
+    const orderByPi       = new Map(orders.map(o => [o.stripePaymentIntentId as string, o]))
     const refundedByPi    = new Map<string, number>()
     for (const r of refundLines) {
       if (!r.stripePaymentIntentId) continue
@@ -148,6 +158,12 @@ export async function GET(
               depositStatus: reservation.depositStatus,
             }
           : null,
+        order: (() => {
+          const o = l.stripePaymentIntentId ? orderByPi.get(l.stripePaymentIntentId) : undefined
+          return o
+            ? { id: o.id, paymentStatus: o.paymentStatus, fulfillmentType: o.fulfillmentType }
+            : null
+        })(),
       }
     })
 
