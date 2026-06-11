@@ -75,6 +75,8 @@ beforeEach(() => {
   db.referralConfig.findFirst.mockResolvedValue({
     commissionPctOfGrubanoFee: 0.30, durationDays: 90,
     customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
+    // B0-quater: percentages ONLY — the fixed bonus is gone (config default 0).
+    newCustomerBonusAmount: 0,
   })
   db.referral.findFirst.mockResolvedValue(null)              // CAS 1 by default
   db.referral.create.mockResolvedValue({ id: 'ref1' })
@@ -87,11 +89,23 @@ beforeEach(() => {
 })
 
 describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
-  it('freezes grubanoFee = REAL delivery commission (12 %) and creatorEarning = 30 %, + 5 € new-customer bonus', async () => {
-    // subtotal 100, delivery → fee 12.00 → earning 3.60 ; first order → bonus 5.
+  it('freezes grubanoFee = REAL delivery commission (12 %) and creatorEarning = 30 % — NO bonus by default (B0-quater)', async () => {
+    // subtotal 100, delivery → fee 12.00 → earning 3.60 ; bonus config 0 → none,
+    // and the new-customer count query is not even made.
     const res = await POST(makeReq(orderBody()))
     expect(res.status).toBe(201)
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 3.6, newCustomerBonus: 5 })
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 3.6, newCustomerBonus: 0 })
+    expect(db.order.count).not.toHaveBeenCalled()
+  })
+
+  it('pays the configured acquisition bonus ONCE when activated (first Grubano order only)', async () => {
+    db.referralConfig.findFirst.mockResolvedValue({
+      commissionPctOfGrubanoFee: 0.30, durationDays: 90,
+      customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
+      newCustomerBonusAmount: 5, // Mohammed re-activates a bonus by config
+    })
+    await POST(makeReq(orderBody()))
+    expect(referralOrderArg()).toMatchObject({ newCustomerBonus: 5 })
   })
 
   it('uses the pickup rate (8 %) when the order is a pickup', async () => {
@@ -110,12 +124,17 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
     expect(referralOrderArg()).toMatchObject({ grubanoFee: 10, creatorEarning: 3 })
   })
 
-  it('founders offer (commissionFreeUntil future): fee 0, earning 0 — the 5 € acquisition still flows', async () => {
+  it('founders offer (commissionFreeUntil future): fee 0, earning 0 — an ACTIVATED bonus still flows', async () => {
     db.restaurant.findFirst.mockResolvedValue({
       id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
       commissionRateDineIn: null, commissionRatePickup: null,
       commissionRateDelivery: null,
       commissionFreeUntil: new Date(Date.now() + 30 * 86_400_000),
+    })
+    db.referralConfig.findFirst.mockResolvedValue({
+      commissionPctOfGrubanoFee: 0.30, durationDays: 90,
+      customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
+      newCustomerBonusAmount: 5,
     })
     await POST(makeReq(orderBody()))
     expect(referralOrderArg()).toMatchObject({ grubanoFee: 0, creatorEarning: 0, newCustomerBonus: 5 })
@@ -138,7 +157,12 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
     expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 2.64 })
   })
 
-  it('pays NO acquisition bonus to a returning customer (prior orders exist)', async () => {
+  it('pays NO acquisition bonus to a returning customer even when activated', async () => {
+    db.referralConfig.findFirst.mockResolvedValue({
+      commissionPctOfGrubanoFee: 0.30, durationDays: 90,
+      customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
+      newCustomerBonusAmount: 5,
+    })
     db.order.count.mockResolvedValue(3)
     await POST(makeReq(orderBody()))
     expect(referralOrderArg()).toMatchObject({ newCustomerBonus: 0 })
