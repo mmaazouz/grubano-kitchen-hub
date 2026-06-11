@@ -12,6 +12,7 @@ import {
   Modal, Button, Input,
 } from '@/components/design-system'
 import OpeningHoursSection from '@/components/hours/OpeningHoursSection'
+import ConnectCard from '@/components/connect/ConnectCard'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 
 // ── Establishment HUB (C13-2) ─────────────────────────────────────────────────
@@ -449,6 +450,13 @@ export default function EstablishmentHub({
           closures + conflicts modal. Scoped to THIS establishment. */}
       <div className="mt-8">
         <OpeningHoursSection restaurantId={establishment.id} />
+      </div>
+
+      {/* ── Encaissements / Compte Stripe (rail financier A1, contrat section
+          6) — invitation / onboarding à terminer / actif / action requise.
+          Défensif : GET en échec → la carte ne rend rien. */}
+      <div className="mt-4">
+        <ConnectCard restaurantId={establishment.id} />
       </div>
 
       {/* ── Edit-brand modal (was on /brands) ──────────────────────────────── */}

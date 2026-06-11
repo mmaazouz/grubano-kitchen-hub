@@ -1718,5 +1718,19 @@
     "adoptDesc": "Fasce di prenotazione esatte, badge «Aperto / Chiuso» sulla tua scheda e ordini accettati agli orari giusti.",
     "adoptCta": "Configura",
     "ongoingInfo": "{count, plural, =1 {1 sessione in corso — il cliente al tavolo terminerà normalmente (ordine e pagamento restano possibili).} other {# sessioni in corso — i clienti al tavolo termineranno normalmente (ordine e pagamento restano possibili).}}"
+  },
+  "connect": {
+    "title": "Incassi",
+    "inviteTitle": "Configura i tuoi incassi",
+    "inviteDesc": "Ricevi i pagamenti dei tuoi clienti direttamente sul tuo conto, con versamenti giornalieri.",
+    "ctaConfigure": "Configura",
+    "ctaResume": "Riprendi",
+    "statusPending": "Onboarding da completare",
+    "pendingDesc": "Completa la tua pratica per attivare gli incassi.",
+    "statusActive": "Account attivo — versamenti giornalieri",
+    "statusRestricted": "Azione richiesta",
+    "restrictedDesc": "Stripe ha bisogno di un’informazione aggiuntiva per continuare i versamenti.",
+    "errStart": "Impossibile aprire la pagina Stripe — riprova.",
+    "toastActivated": "Incassi attivati ✓"
   }
 }

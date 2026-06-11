@@ -1718,5 +1718,19 @@
     "adoptDesc": "Créneaux de réservation exacts, badge « Ouvert / Fermé » sur votre fiche et commandes acceptées aux bonnes heures.",
     "adoptCta": "Configurer",
     "ongoingInfo": "{count, plural, =1 {1 session en cours — le client à table terminera normalement (commande et paiement restent possibles).} other {# sessions en cours — les clients à table termineront normalement (commande et paiement restent possibles).}}"
+  },
+  "connect": {
+    "title": "Encaissements",
+    "inviteTitle": "Configurez vos encaissements",
+    "inviteDesc": "Recevez les paiements de vos clients directement sur votre compte, reversements quotidiens.",
+    "ctaConfigure": "Configurer",
+    "ctaResume": "Reprendre",
+    "statusPending": "Onboarding à terminer",
+    "pendingDesc": "Finalisez votre dossier pour activer les encaissements.",
+    "statusActive": "Compte actif — reversements quotidiens",
+    "statusRestricted": "Action requise",
+    "restrictedDesc": "Stripe a besoin d’une information complémentaire pour poursuivre les versements.",
+    "errStart": "Impossible d’ouvrir la page Stripe — réessayez.",
+    "toastActivated": "Encaissements activés ✓"
   }
 }

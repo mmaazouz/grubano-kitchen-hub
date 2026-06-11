@@ -26,8 +26,9 @@
  */
 
 import * as React from 'react'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
+import ConnectReturnToast from '@/components/connect/ConnectReturnToast'
 import {
   Loader2, Euro, ShoppingBag, TrendingUp, Star,
   AlertTriangle, Package, Building2, Sparkles, Users,
@@ -237,6 +238,13 @@ export default function ConsolidatedHome({ userName, locale }: ConsolidatedHomeP
 
   return (
     <div className="mx-auto max-w-5xl px-5 pb-24 pt-4">
+      {/* Retour d'onboarding Stripe (?connect=return&restaurant=<id>) — re-GET
+          du statut + toast discret si le compte est revenu actif. Suspense
+          obligatoire (useSearchParams, Next 14). */}
+      <Suspense fallback={null}>
+        <ConnectReturnToast />
+      </Suspense>
+
       {/* ── EN-TÊTE ──────────────────────────────────────────────────────── */}
       <header className="mb-5">
         <h1 className="font-display text-2xl font-bold tracking-tight text-grubano-ink">

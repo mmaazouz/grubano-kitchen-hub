@@ -1718,5 +1718,19 @@
     "adoptDesc": "Exact reservation slots, an “Open / Closed” badge on your page and orders accepted at the right times.",
     "adoptCta": "Configure",
     "ongoingInfo": "{count, plural, =1 {1 ongoing session — the seated guest will finish normally (ordering and payment stay available).} other {# ongoing sessions — the seated guests will finish normally (ordering and payment stay available).}}"
+  },
+  "connect": {
+    "title": "Payouts",
+    "inviteTitle": "Set up your payouts",
+    "inviteDesc": "Receive your customers’ payments directly on your account, with daily payouts.",
+    "ctaConfigure": "Set up",
+    "ctaResume": "Resume",
+    "statusPending": "Onboarding to finish",
+    "pendingDesc": "Complete your file to activate payouts.",
+    "statusActive": "Account active — daily payouts",
+    "statusRestricted": "Action required",
+    "restrictedDesc": "Stripe needs an additional piece of information to keep paying you out.",
+    "errStart": "Could not open the Stripe page — please retry.",
+    "toastActivated": "Payouts activated ✓"
   }
 }

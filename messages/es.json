@@ -1718,5 +1718,19 @@
     "adoptDesc": "Franjas de reserva exactas, insignia «Abierto / Cerrado» en tu ficha y pedidos aceptados a las horas correctas.",
     "adoptCta": "Configurar",
     "ongoingInfo": "{count, plural, =1 {1 sesión en curso — el cliente en mesa terminará con normalidad (pedido y pago siguen disponibles).} other {# sesiones en curso — los clientes en mesa terminarán con normalidad (pedido y pago siguen disponibles).}}"
+  },
+  "connect": {
+    "title": "Cobros",
+    "inviteTitle": "Configura tus cobros",
+    "inviteDesc": "Recibe los pagos de tus clientes directamente en tu cuenta, con transferencias diarias.",
+    "ctaConfigure": "Configurar",
+    "ctaResume": "Reanudar",
+    "statusPending": "Onboarding por terminar",
+    "pendingDesc": "Completa tu expediente para activar los cobros.",
+    "statusActive": "Cuenta activa — transferencias diarias",
+    "statusRestricted": "Acción requerida",
+    "restrictedDesc": "Stripe necesita información adicional para seguir realizando los pagos.",
+    "errStart": "No se pudo abrir la página de Stripe — reinténtalo.",
+    "toastActivated": "Cobros activados ✓"
   }
 }
