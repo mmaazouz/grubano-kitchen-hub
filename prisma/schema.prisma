@@ -698,6 +698,39 @@ model LedgerEntry {
   @@index([createdAt])
 }
 
+// ── Commission invoices — rail financier A4 ───────────────────────────────────
+// One invoice per establishment per month, totals COMPUTED FROM LedgerEntry
+// (∑ applicationFeeAmount of the period — never recomputed from rates). A0-bis:
+// the levied commission is TTC; the invoice splits HT = ttc/1.20 and
+// TVA 20 % = ttc − HT (cent-exact by construction). All amounts integer CENTS.
+model Invoice {
+  id           String   @id @default(cuid())
+  restaurantId String
+  periodStart  DateTime // first day of the month, 00:00 (inclusive)
+  periodEnd    DateTime // first day of the NEXT month, 00:00 (exclusive)
+  // LEGAL NUMBERING: continuous gapless sequence (GRB-YYYY-NNNNN). Issued from
+  // InvoiceCounter inside the SAME transaction as this row — a failure rolls
+  // back the counter, so numbers are never burned and never duplicated.
+  number       String   @unique
+  totalTtc     Int      // cents — what was actually levied over the period
+  totalHt      Int      // cents — round(ttc / 1.2)
+  totalTva     Int      // cents — ttc − ht (always adds back exactly)
+  entriesCount Int      // ledger lines covered
+  status       String   @default("issued")
+  issuedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@unique([restaurantId, periodStart])
+  @@index([restaurantId])
+}
+
+// The gapless-sequence counter behind Invoice.number — one row per year,
+// incremented ONLY inside the invoice-creation transaction (never MAX+1).
+model InvoiceCounter {
+  year Int @id
+  seq  Int @default(0)
+}
+
 model TicketItem {
   id         String      @id @default(cuid())
   ticketId   String
