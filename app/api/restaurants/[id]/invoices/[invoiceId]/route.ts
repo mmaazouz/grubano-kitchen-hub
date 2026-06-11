@@ -16,9 +16,17 @@ import { issuerIdentity, VAT_RATE } from '@/lib/invoice'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+// Real-channel labels (C1: LedgerEntry.channel) with legacy type fallback for
+// lines written before the channel column existed (pre-backfill).
 const CHANNEL_LABELS: Record<string, string> = {
-  payment:         'Sur place — additions de table (5 %)',
-  deposit_capture: 'Réservations — pénalités no-show (0 %)',
+  dinein:      'Sur place — additions de table',
+  pickup:      'À emporter',
+  delivery:    'Livraison',
+  reservation: 'Réservations — pénalités no-show',
+}
+const TYPE_LABELS: Record<string, string> = {
+  payment:         'Sur place — additions de table',
+  deposit_capture: 'Réservations — pénalités no-show',
   refund:          'Remboursements',
   adjustment:      'Ajustements',
 }
@@ -61,9 +69,11 @@ export async function GET(
       return NextResponse.json({ error: 'Facture introuvable' }, { status: 404 })
     }
 
-    // Per-channel detail from the ledger (display; stored totals stay authoritative).
+    // Per-channel detail from the ledger (display; stored totals stay
+    // authoritative). C1: grouped by the REAL channel when the line carries one
+    // (refund/adjustment lines keep their type label), legacy type fallback else.
     const groups = await prisma.ledgerEntry.groupBy({
-      by:     ['type'],
+      by:     ['channel', 'type'],
       where:  {
         restaurantId: restaurant.id,
         createdAt:    { gte: invoice.periodStart, lt: invoice.periodEnd },
@@ -74,10 +84,15 @@ export async function GET(
     const detailFeeSum = groups.reduce((s, g) => s + (g._sum.applicationFeeAmount ?? 0), 0)
     const drifted = detailFeeSum !== invoice.totalTtc
 
+    const labelFor = (g: { channel: string | null; type: string }) =>
+      g.type === 'refund' || g.type === 'adjustment'
+        ? TYPE_LABELS[g.type]
+        : (g.channel && CHANNEL_LABELS[g.channel]) ?? TYPE_LABELS[g.type] ?? g.type
+
     const issuer = issuerIdentity()
     const rows = groups.map(g => `
       <tr>
-        <td>${esc(CHANNEL_LABELS[g.type] ?? g.type)}</td>
+        <td>${esc(labelFor(g))}</td>
         <td class="num">${g._count._all}</td>
         <td class="num">${eur(g._sum.grossAmount ?? 0)}</td>
         <td class="num">${eur(g._sum.applicationFeeAmount ?? 0)}</td>

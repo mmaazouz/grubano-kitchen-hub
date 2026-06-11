@@ -19,6 +19,9 @@ export type LedgerEntryInput = {
   routed:                boolean
   destinationAccountId?: string | null
   currency?:             string
+  // C1 passthrough: dinein | pickup | delivery | reservation (from the PI's
+  // metadata.grubano_channel). Nullable for historical lines until backfilled.
+  channel?:              string | null
   sourceEventId:         string // deterministic (PI id for payment/deposit_capture)
   createdAt?:            Date   // backfill sets the PI's real date
 }
@@ -50,6 +53,7 @@ export async function recordLedgerEntry(entry: LedgerEntryInput): Promise<Ledger
         routed:                entry.routed,
         destinationAccountId:  entry.destinationAccountId ?? null,
         currency:              entry.currency ?? 'eur',
+        channel:               entry.channel ?? null,
         sourceEventId:         entry.sourceEventId,
         ...(entry.createdAt ? { createdAt: entry.createdAt } : {}),
       },

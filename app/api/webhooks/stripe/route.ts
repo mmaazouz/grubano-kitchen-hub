@@ -118,6 +118,12 @@ export async function POST(req: Request) {
     return handleTicketPaid(pi)
   }
 
+  // 3a-bis) CHECKOUT ORDER branch (C1) — a succeeded PI carrying an orderId is a
+  //     pickup/delivery order charge: confirm the order paid (at-cent guard).
+  if (event.type === 'payment_intent.succeeded' && pi.metadata?.orderId) {
+    return handleOrderPaid(pi)
+  }
+
   // 3b) EMPREINTE branch — only the three deposit-lifecycle events are actioned;
   //     anything else is acknowledged with 200 so Stripe stops retrying.
   const target = EVENT_TO_STATUS[event.type]
@@ -301,6 +307,56 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
   }
 }
 
+// ── Checkout order paid (C1) — confirm the order, at-cent guard ────────────────
+// A pickup/delivery order's amount is FIXED at creation (not a live document), so
+// a mismatch is near-impossible — the guard is the money safety net all the same:
+// an under-collection NEVER silently confirms the order. The ledger line (with
+// channel) was already written by the ledger-first writer above; here we only
+// flip the order's payment state. The kitchen state machine (status) is untouched.
+async function handleOrderPaid(pi: Stripe.PaymentIntent) {
+  const orderId = pi.metadata?.orderId
+  if (!orderId) return NextResponse.json({ received: true }) // defensive (checked by caller)
+
+  try {
+    const order = await prisma.order.findUnique({
+      where:  { id: orderId },
+      select: { id: true, total: true, paymentStatus: true, stripePaymentIntentId: true },
+    })
+    if (!order) {
+      console.warn(`[stripe webhook] order paid for ${pi.id} — order ${orderId} not found`)
+      return NextResponse.json({ received: true, matched: false })
+    }
+    if (order.paymentStatus === 'paid') {
+      return NextResponse.json({ received: true, noop: true }) // replay — idempotent
+    }
+
+    // Anti-replay / stale-PI guard: only the CURRENT PI confirms the order.
+    if (order.stripePaymentIntentId && order.stripePaymentIntentId !== pi.id) {
+      console.error(`[stripe webhook] MONEY REVIEW: succeeded PI ${pi.id} is not order ${order.id}'s current PI (${order.stripePaymentIntentId}) — NOT confirmed`)
+      return NextResponse.json({ received: true, accounted: false, reason: 'stale_pi' })
+    }
+
+    const receivedCents = pi.amount_received ?? pi.amount ?? 0
+    const totalCents    = Math.round(order.total * 100)
+    if (receivedCents < totalCents) {
+      console.error(`[stripe webhook] MONEY PARTIAL: order ${order.id} collected ${receivedCents}c of ${totalCents}c — NOT confirmed paid (PI ${pi.id})`)
+      return NextResponse.json({ received: true, order: 'partial', collected: receivedCents, due: totalCents - receivedCents })
+    }
+    if (receivedCents > totalCents) {
+      console.warn(`[stripe webhook] MONEY OVERPAID: order ${order.id} collected ${receivedCents}c for ${totalCents}c (PI ${pi.id})`)
+    }
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data:  { paymentStatus: 'paid', stripePaymentIntentId: pi.id },
+    })
+    return NextResponse.json({ received: true, order: 'paid' })
+  } catch (err) {
+    console.error('[stripe webhook] order paid handler error:', err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: 'Handler error' }, { status: 500 })
+  }
+}
+
 // ── LEDGER (A3): one immutable line per succeeded PaymentIntent ────────────────
 // type: metadata.ticketId → 'payment' (bill); else 'deposit_capture' (a captured
 // empreinte — its manual-capture PI succeeds on capture). sourceEventId = THE
@@ -337,8 +393,17 @@ async function recordSucceededPaymentLedger(pi: Stripe.PaymentIntent) {
       // facts unknown — the line is still written with nulls
     }
 
+    // C1: 'payment' covers bills (ticketId) AND checkout orders (orderId); a
+    // succeeded PI with neither is a captured empreinte. The channel comes from
+    // metadata.grubano_channel (set at PI creation since A2/C1); pre-channel PIs
+    // get the honest derivation (bill→dinein, empreinte→reservation).
+    const isPayment = !!(pi.metadata?.ticketId || pi.metadata?.orderId)
+    const channel =
+      pi.metadata?.grubano_channel ||
+      (pi.metadata?.ticketId ? 'dinein' : !isPayment ? 'reservation' : null)
+
     payload = {
-      type:                  pi.metadata?.ticketId ? 'payment' : 'deposit_capture',
+      type:                  isPayment ? 'payment' : 'deposit_capture',
       restaurantId,
       ticketId:              pi.metadata?.ticketId || null,
       reservationId:         pi.metadata?.reservationId || null,
@@ -352,6 +417,7 @@ async function recordSucceededPaymentLedger(pi: Stripe.PaymentIntent) {
       routed:                !!dest,
       destinationAccountId:  dest,
       currency:              pi.currency || 'eur',
+      channel,
       sourceEventId:         pi.id,
     }
 
@@ -449,6 +515,10 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
         routed:                !!dest,
         destinationAccountId:  dest,
         currency:              r.currency || charge.currency || 'eur',
+        // C1: the refund inherits the original payment's channel (charge metadata).
+        channel:               charge.metadata?.grubano_channel ||
+                               (charge.metadata?.ticketId ? 'dinein' :
+                                charge.metadata?.orderId ? null : 'reservation'),
         sourceEventId:         r.id,                        // re_… — replay-proof
         createdAt:             new Date(r.created * 1000),  // the refund's real date
       })
