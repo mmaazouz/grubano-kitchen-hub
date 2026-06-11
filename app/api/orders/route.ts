@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
+import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
+
+// B0 acquisition bonus: 5 € one-shot to the referring creator when this order is
+// the customer's FIRST on Grubano (any restaurant). Parameterisable later.
+const NEW_CUSTOMER_BONUS_EUR = 5
 
 // Round money to 2 decimals. Used by the referral attribution logic below.
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -110,17 +115,17 @@ export async function POST(req: NextRequest) {
     // rule as the 5C DishSale block). These resolution reads are themselves
     // wrapped in try/catch: a referral hiccup must never block checkout.
     //
-    // GRUBANO_FEE_PCT mirrors scripts/seed-demo-data.js (Grubano's commission on
-    // a basket) so the checkout freezes grubanoFee with the same rate the seed and
-    // creator reporting assume.
-    const GRUBANO_FEE_PCT = 0.10
+    // B0 (réconciliation C1): grubanoFee is the REAL commission (lib/commission —
+    // per-channel rate, per-resto override, founders offer), never a hardcoded
+    // 10 %; the creator earns 30 % of it (ReferralConfig) + the 5 € acquisition
+    // bonus on a customer's first Grubano order.
     const ref = {
       code:                    null as string | null, // Order.referralCode — set whenever a valid creator code is seen, regardless of expiry
       discount:                0,                      // welcome discount, FIRST referred order only
       createReferralCreatorId: null as string | null, // CAS 1 → create a new Referral with this creator
       reuseReferralId:         null as string | null,  // CAS 2 (valid window) → reuse this referral for the ReferralOrder
       expiredReferralId:       null as string | null,  // CAS 2 (expired window) → deactivate, no payout
-      commissionPct:           0.22,                    // ReferralConfig.commissionPctOfGrubanoFee
+      commissionPct:           0.30,                    // ReferralConfig.commissionPctOfGrubanoFee (B0: 30 %)
       durationDays:            90,                      // ReferralConfig.durationDays
       // Levier 1: the creator who will actually receive a ReferralOrder payout for
       // THIS order (CAS 1 → the resolved creator, CAS 2-valid → the existing
@@ -142,7 +147,7 @@ export async function POST(req: NextRequest) {
         const isSelf = !!creator && !!buyerEmail && creator.email.toLowerCase() === buyerEmail
         if (creator && !isSelf) {
           const cfg = await prisma.referralConfig.findFirst({ where: { active: true } })
-          ref.commissionPct = cfg?.commissionPctOfGrubanoFee ?? 0.22
+          ref.commissionPct = cfg?.commissionPctOfGrubanoFee ?? 0.30
           ref.durationDays  = cfg?.durationDays ?? 90
           const discountPct = cfg?.customerDiscountPct ?? 0.10
           const discountCap = cfg?.customerDiscountCapEur ?? 5
@@ -261,9 +266,12 @@ export async function POST(req: NextRequest) {
           // Levier 1: two rates instead of one. The FORT rate rewards a creator when
           // the sale of THEIR recipe comes from THEIR own referral traffic; every
           // other sale (organic, or another creator's traffic) earns the reduced one.
-          const referredPct = cfg?.creatorCommissionPctReferred ?? 0.04
-          const organicPct  = cfg?.creatorCommissionPctOrganic  ?? 0.01
-          const grubanoPct  = cfg?.grubanoCutPct ?? 0.20
+          // B0 fallbacks: adopted-recipe royalty = flat 2 % from Grubano's share
+          // (both tiers 0.02, no Grubano cut) — the two-tier plumbing stays
+          // parameterisable via AdoptionConfig.
+          const referredPct = cfg?.creatorCommissionPctReferred ?? 0.02
+          const organicPct  = cfg?.creatorCommissionPctOrganic  ?? 0.02
+          const grubanoPct  = cfg?.grubanoCutPct ?? 0
           const round2 = (n: number) => Math.round(n * 100) / 100
 
           const byMenuItem = new Map(adoptions.map((a) => [a.menuItemId as string, a]))
@@ -344,10 +352,24 @@ export async function POST(req: NextRequest) {
       if (referralId) {
         const exists = await prisma.referralOrder.findUnique({ where: { orderId: order.id } })
         if (!exists) {
-          const grubanoFee     = round2(subtotal * GRUBANO_FEE_PCT)     // FROZEN
-          const creatorEarning = round2(grubanoFee * ref.commissionPct) // FROZEN
+          // B0: the REAL Grubano commission for this order's channel — same
+          // source of truth as the charge itself (lib/commission on the PRODUCT
+          // subtotal: per-channel default 8 % pickup / 12 % delivery, per-resto
+          // override, founders 0 %). Never a hardcoded rate again.
+          const channel: CommissionChannel =
+            data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
+          const feeCents       = computeApplicationFee(restaurant, channel, Math.round(subtotal * 100))
+          const grubanoFee     = feeCents / 100                          // FROZEN — real commission (EUR)
+          const creatorEarning = round2(grubanoFee * ref.commissionPct)  // FROZEN — B0 30 % of the flow
+          // B0 acquisition: 5 € one-shot when this is the customer's FIRST order
+          // on Grubano (any restaurant) — independent of the commission share
+          // (a founders-0% resto still earns the creator their acquisition).
+          const priorOrders = await prisma.order.count({
+            where: { consumerId: token.sub!, id: { not: order.id } },
+          })
+          const newCustomerBonus = priorOrders === 0 ? NEW_CUSTOMER_BONUS_EUR : 0
           await prisma.referralOrder.create({
-            data: { referralId, orderId: order.id, grubanoFee, creatorEarning },
+            data: { referralId, orderId: order.id, grubanoFee, creatorEarning, newCustomerBonus },
           })
         }
       }

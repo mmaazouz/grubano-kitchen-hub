@@ -2,30 +2,37 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
-// POST /api/orders carries real money: the referral payout (grubanoFee ×
-// commissionPctOfGrubanoFee) is FROZEN into ReferralOrder at checkout. These
-// tests pin the formula, the half-up rounding, and the freeze-from-config rule.
+// POST /api/orders carries real money. Since C1 the referral payout follows the
+// B0 rules (réconciliation créateur):
+//   • grubanoFee  = the REAL commission via lib/commission on the PRODUCT
+//     subtotal (channel pickup 8 % / delivery 12 %, per-resto override,
+//     founders commissionFreeUntil → 0 %) — the hardcoded 10 % is GONE;
+//   • creatorEarning = grubanoFee × ReferralConfig.commissionPctOfGrubanoFee
+//     (B0 default 30 %), FROZEN at order time;
+//   • newCustomerBonus = 5 € one-shot on the customer's FIRST Grubano order
+//     (any restaurant), independent of the commission share.
+// These tests pin those rules, the cent rounding, and the freeze-from-config.
 const { getTokenMock } = vi.hoisted(() => ({ getTokenMock: vi.fn() }))
 vi.mock('next-auth/jwt', () => ({ getToken: getTokenMock }))
 
 const { db } = vi.hoisted(() => ({
   db: {
     // The route looks the restaurant up with findFirst (id + isActive +
-    // archivedAt:null) since a9bfdce (archived-establishment exclusion) —
-    // findUnique is gone from this code path.
+    // archivedAt:null). The row now also carries the A1 commission fields
+    // (null = platform defaults) read by lib/commission.
     restaurant:     { findFirst: vi.fn() },
     creator:        { findFirst: vi.fn() },
     referralConfig: { findFirst: vi.fn() },
     referral:       { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     referralOrder:  { findUnique: vi.fn(), create: vi.fn() },
-    order:          { create: vi.fn(), update: vi.fn() },
+    // order.count powers the B0 new-customer check (0 prior orders = first).
+    order:          { create: vi.fn(), update: vi.fn(), count: vi.fn() },
     dishAdoption:   { findMany: vi.fn() },
     dishSale:       { findFirst: vi.fn(), createMany: vi.fn() },
     creatorDish:    { update: vi.fn() },
     adoptionConfig: { findFirst: vi.fn() },
-    // Opening-hours gate (cf080df): POST /api/orders calls loadHoursContext,
-    // which reads these two models. Empty arrays = "hours not configured" =
-    // no restriction (T1.Q3) — the referral logic under test runs unhindered.
+    // Opening-hours gate: empty arrays = "hours not configured" = no
+    // restriction — the referral logic under test runs unhindered.
     openingHour:       { findMany: vi.fn() },
     closureException:  { findMany: vi.fn() },
   },
@@ -47,6 +54,7 @@ const orderBody = (over: Record<string, unknown> = {}) => ({
   deliveryAddress: '12 rue de la Paix',
   paymentMethod: 'card',
   referralCode: 'CHEF1',
+  // delivery by default (the schema default) → platform rate 12 %
   ...over,
 })
 
@@ -55,12 +63,17 @@ const referralOrderArg = () => (db.referralOrder.create.mock.calls[0]?.[0] as an
 beforeEach(() => {
   vi.clearAllMocks()
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com' })
-  db.restaurant.findFirst.mockResolvedValue({ id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10 })
+  db.restaurant.findFirst.mockResolvedValue({
+    id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+    // A1 commission fields: null = platform defaults (pickup 8 % / delivery 12 %)
+    commissionRateDineIn: null, commissionRatePickup: null,
+    commissionRateDelivery: null, commissionFreeUntil: null,
+  })
   db.openingHour.findMany.mockResolvedValue([])      // not configured → order not gated
   db.closureException.findMany.mockResolvedValue([])
   db.creator.findFirst.mockResolvedValue({ id: 'creatorA', email: 'creator@example.com', referralCode: 'CHEF1' })
   db.referralConfig.findFirst.mockResolvedValue({
-    commissionPctOfGrubanoFee: 0.22, durationDays: 90,
+    commissionPctOfGrubanoFee: 0.30, durationDays: 90,
     customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
   })
   db.referral.findFirst.mockResolvedValue(null)              // CAS 1 by default
@@ -69,33 +82,69 @@ beforeEach(() => {
   db.referralOrder.create.mockResolvedValue({})
   db.order.create.mockResolvedValue({ id: 'order1' })
   db.order.update.mockResolvedValue({ id: 'order1', total: 0, status: 'received' })
+  db.order.count.mockResolvedValue(0)                        // first Grubano order by default
   db.dishAdoption.findMany.mockResolvedValue([])
 })
 
-describe('POST /api/orders — referral payout freeze (CAS 1)', () => {
-  it('freezes grubanoFee = subtotal×10% and creatorEarning = grubanoFee×22%', async () => {
-    const res = await POST(makeReq(orderBody({ items: [{ itemId: 'i1', name: 'D', qty: 1, price: 100, options: [] }] })))
+describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
+  it('freezes grubanoFee = REAL delivery commission (12 %) and creatorEarning = 30 %, + 5 € new-customer bonus', async () => {
+    // subtotal 100, delivery → fee 12.00 → earning 3.60 ; first order → bonus 5.
+    const res = await POST(makeReq(orderBody()))
     expect(res.status).toBe(201)
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 10, creatorEarning: 2.2 })
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 3.6, newCustomerBonus: 5 })
   })
 
-  it('rounds creatorEarning half-up to 2 decimals (4.75 × 22% = 1.045 → 1.05)', async () => {
-    // subtotal 47.50 → grubanoFee 4.75 → 1.045 must round to 1.05, not 1.04.
-    const res = await POST(makeReq(orderBody({ items: [{ itemId: 'i1', name: 'D', qty: 2, price: 23.75, options: [] }] })))
+  it('uses the pickup rate (8 %) when the order is a pickup', async () => {
+    const res = await POST(makeReq(orderBody({ fulfillmentType: 'pickup' })))
     expect(res.status).toBe(201)
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 4.75, creatorEarning: 1.05 })
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 8, creatorEarning: 2.4 })
   })
 
-  it('uses the ACTIVE ReferralConfig rate at order time (value frozen from config, not hardcoded)', async () => {
-    db.referralConfig.findFirst.mockResolvedValue({
-      commissionPctOfGrubanoFee: 0.30, durationDays: 90,
-      customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
+  it('honours the per-restaurant override rate (B0: real commission, never a fixed 10 %)', async () => {
+    db.restaurant.findFirst.mockResolvedValue({
+      id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+      commissionRateDineIn: null, commissionRatePickup: null,
+      commissionRateDelivery: 0.10, commissionFreeUntil: null, // override 10 %
     })
-    await POST(makeReq(orderBody())) // subtotal 100 → fee 10 → earn 10×30% = 3.00
+    await POST(makeReq(orderBody()))
     expect(referralOrderArg()).toMatchObject({ grubanoFee: 10, creatorEarning: 3 })
   })
 
-  it('applies the welcome discount capped at customerDiscountCapEur', async () => {
+  it('founders offer (commissionFreeUntil future): fee 0, earning 0 — the 5 € acquisition still flows', async () => {
+    db.restaurant.findFirst.mockResolvedValue({
+      id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+      commissionRateDineIn: null, commissionRatePickup: null,
+      commissionRateDelivery: null,
+      commissionFreeUntil: new Date(Date.now() + 30 * 86_400_000),
+    })
+    await POST(makeReq(orderBody()))
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 0, creatorEarning: 0, newCustomerBonus: 5 })
+  })
+
+  it('rounds at the cent through lib/commission then half-up on the 30 % share', async () => {
+    // subtotal 47.50 delivery → feeCents = round(4750 × 0.12) = 570 → 5.70 €
+    // earning = round2(5.70 × 0.30) = 1.71
+    const res = await POST(makeReq(orderBody({ items: [{ itemId: 'i1', name: 'D', qty: 2, price: 23.75, options: [] }] })))
+    expect(res.status).toBe(201)
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 5.7, creatorEarning: 1.71 })
+  })
+
+  it('freezes the ACTIVE ReferralConfig share at order time (param respected, not hardcoded)', async () => {
+    db.referralConfig.findFirst.mockResolvedValue({
+      commissionPctOfGrubanoFee: 0.22, durationDays: 90,
+      customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
+    })
+    await POST(makeReq(orderBody()))// fee 12 → earning round2(12 × 0.22) = 2.64
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 2.64 })
+  })
+
+  it('pays NO acquisition bonus to a returning customer (prior orders exist)', async () => {
+    db.order.count.mockResolvedValue(3)
+    await POST(makeReq(orderBody()))
+    expect(referralOrderArg()).toMatchObject({ newCustomerBonus: 0 })
+  })
+
+  it('applies the welcome discount capped at customerDiscountCapEur (kept by B0, Grubano-financed)', async () => {
     const res = await POST(makeReq(orderBody())) // 10% of 100 = 10, capped at 5
     const json = await res.json()
     expect(json.discount).toBe(5)
@@ -118,16 +167,19 @@ describe('POST /api/orders — referral edge cases', () => {
     expect(json.discount).toBe(0)
   })
 
-  it('CAS 2 (open window): reuses the existing binding, pays the bound creator, no discount', async () => {
+  it('CAS 2 (open window): reuses the binding, pays the bound creator the B0 share, no discount, no bonus', async () => {
     db.referral.findFirst.mockResolvedValue({
       id: 'refExisting', creatorId: 'creatorB', active: true,
       expiresAt: new Date(Date.now() + 30 * 86_400_000),
     })
+    db.order.count.mockResolvedValue(2) // a bound customer has ordered before
     const res = await POST(makeReq(orderBody()))
     const json = await res.json()
     expect(json.discount).toBe(0)
     expect(db.referral.create).not.toHaveBeenCalled()
-    expect(referralOrderArg()).toMatchObject({ referralId: 'refExisting', grubanoFee: 10, creatorEarning: 2.2 })
+    expect(referralOrderArg()).toMatchObject({
+      referralId: 'refExisting', grubanoFee: 12, creatorEarning: 3.6, newCustomerBonus: 0,
+    })
   })
 
   it('CAS 2 (expired window): closes the binding, no payout, no discount', async () => {
