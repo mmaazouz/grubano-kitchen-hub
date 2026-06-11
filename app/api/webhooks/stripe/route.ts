@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { getStripe, mapAccountStatus, type DepositStatus } from '@/lib/stripe'
+import { getStripe, mapAccountStatus, retrieveChargeFacts, type DepositStatus } from '@/lib/stripe'
 import { releaseHold } from '@/lib/deposit'
+import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
 // Stripe pushes PaymentIntent lifecycle events here so payment state is synced
@@ -86,6 +87,15 @@ export async function POST(req: Request) {
   }
 
   const pi = event.data.object as Stripe.PaymentIntent
+
+  // 3-ledger) LEDGER (rail A3) — every succeeded PI is money that ACTUALLY moved:
+  //     write the immutable line FIRST, before ANY application logic, so the
+  //     ledger records the fact even when downstream treats it as partial /
+  //     stale / unknown. Best-effort traced: a ledger failure NEVER blocks the
+  //     payment processing below (the webhook still answers 200).
+  if (event.type === 'payment_intent.succeeded') {
+    await recordSucceededPaymentLedger(pi)
+  }
 
   // 3a) BILL PAYMENT branch — a succeeded PI carrying a ticketId is a real bill
   //     charge (NOT an empreinte). Checked FIRST so it never falls into the
@@ -274,6 +284,72 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
   } catch (err) {
     console.error('[stripe webhook] bill paid handler error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Handler error' }, { status: 500 })
+  }
+}
+
+// ── LEDGER (A3): one immutable line per succeeded PaymentIntent ────────────────
+// type: metadata.ticketId → 'payment' (bill); else 'deposit_capture' (a captured
+// empreinte — its manual-capture PI succeeds on capture). sourceEventId = THE
+// PAYMENTINTENT ID: deterministic, so a replayed webhook event AND the backfill
+// script land on the same @@unique([sourceEventId, type]) key → never two lines
+// for one money movement. Golden equation per line: gross = applicationFee + net.
+// Stripe's REAL processing fee comes from the charge's balance transaction
+// (extra retrieve) — best-effort: unknown fee = null, never a failure.
+async function recordSucceededPaymentLedger(pi: Stripe.PaymentIntent) {
+  let payload: LedgerEntryInput | null = null
+  try {
+    const restaurantId = pi.metadata?.restaurantId
+    if (!restaurantId) {
+      console.error(`[LEDGER MISS] succeeded PI ${pi.id} carries no metadata.restaurantId — line NOT recorded (manual insert needed)`)
+      return
+    }
+
+    const gross = pi.amount_received ?? pi.amount ?? 0
+    const fee   = pi.application_fee_amount ?? 0
+    const dest  = typeof pi.transfer_data?.destination === 'string'
+      ? pi.transfer_data.destination
+      : (pi.transfer_data?.destination as { id?: string } | null | undefined)?.id ?? null
+
+    // Best-effort charge facts (real Stripe fee, charge + transfer ids).
+    let chargeId: string | null = typeof pi.latest_charge === 'string' ? pi.latest_charge : null
+    let stripeFeeCents: number | null = null
+    let transferId: string | null = null
+    try {
+      const facts = await retrieveChargeFacts(pi.id)
+      chargeId       = facts.chargeId ?? chargeId
+      stripeFeeCents = facts.stripeFeeCents
+      transferId     = facts.transferId
+    } catch {
+      // facts unknown — the line is still written with nulls
+    }
+
+    payload = {
+      type:                  pi.metadata?.ticketId ? 'payment' : 'deposit_capture',
+      restaurantId,
+      ticketId:              pi.metadata?.ticketId || null,
+      reservationId:         pi.metadata?.reservationId || null,
+      stripePaymentIntentId: pi.id,
+      stripeChargeId:        chargeId,
+      stripeTransferId:      transferId,
+      grossAmount:           gross,
+      applicationFeeAmount:  fee,
+      stripeFeeAmount:       stripeFeeCents,
+      netToRestaurant:       gross - fee,
+      routed:                !!dest,
+      destinationAccountId:  dest,
+      currency:              pi.currency || 'eur',
+      sourceEventId:         pi.id,
+    }
+
+    const res = await recordLedgerEntry(payload)
+    if (!res.ok) {
+      console.error(`[LEDGER MISS] write failed for PI ${pi.id}: ${res.error} — payload: ${JSON.stringify(payload)}`)
+    }
+  } catch (err) {
+    console.error(
+      `[LEDGER MISS] unexpected error for PI ${pi.id}: ${err instanceof Error ? err.message : err}` +
+      (payload ? ` — payload: ${JSON.stringify(payload)}` : ''),
+    )
   }
 }
 
