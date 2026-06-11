@@ -47,13 +47,21 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { date: 'desc' },
       select: {
-        id:           true,
-        tableId:      true,
-        status:       true,
-        date:         true,
-        restaurantId: true,
-        table:        { select: { name: true } },
-        restaurant:   { select: { name: true, archivedAt: true } },
+        id:            true,
+        tableId:       true,
+        status:        true,
+        date:          true,
+        restaurantId:  true,
+        depositStatus: true,
+        depositAmount: true,
+        table:         { select: { name: true } },
+        restaurant:    {
+          select: {
+            name: true, archivedAt: true,
+            cancellationWindowHours: true,
+            operator: { select: { phone: true } },
+          },
+        },
       },
     })
 
@@ -73,6 +81,13 @@ export async function GET(req: NextRequest) {
             : '',
         status:         reservation.status,
         date:           reservation.date.toISOString(),
+        // ── Annulation client (additive) — drives the cancel button, the
+        // « annulable jusqu'à » deadline and the empreinte mention.
+        depositStatus:  reservation.depositStatus,
+        depositAmount:  reservation.depositAmount,
+        cancellationWindowHours:
+          reservation.restaurant?.cancellationWindowHours ?? 2,
+        restaurantPhone: reservation.restaurant?.operator?.phone ?? null,
       },
     })
   } catch (err) {

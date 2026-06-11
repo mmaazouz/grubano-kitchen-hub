@@ -1609,7 +1609,21 @@
       "statusActive": "Session active — commandez et suivez votre addition.",
       "none": "Aucune session en cours.",
       "refresh": "Actualiser",
-      "paid": "Addition réglée — merci !"
+      "paid": "Addition réglée — merci !",
+      "cancelCta": "Annuler la réservation",
+      "cancelDeadline": "Annulable jusqu’à {deadline}",
+      "cancelClosedHint": "Pour annuler, contactez le restaurant.",
+      "cancelClosedPhone": "Pour annuler, contactez le restaurant au {phone}.",
+      "cancelTitle": "Annuler cette réservation ?",
+      "cancelBody": "Votre réservation chez {restaurant} du {date} sera annulée.",
+      "cancelBodyDeposit": "Votre empreinte bancaire sera libérée — aucun débit.",
+      "cancelConfirm": "Oui, annuler",
+      "cancelAbort": "Garder ma réservation",
+      "cancelling": "Annulation…",
+      "cancelledOk": "Réservation annulée — un email de confirmation vous a été envoyé.",
+      "cancelErrWindow": "L’annulation en ligne n’est plus possible — contactez le restaurant.",
+      "cancelErrState": "Cette réservation ne peut plus être annulée en ligne.",
+      "cancelErrGeneric": "Annulation impossible — réessayez."
     },
     "closure": {
       "title": "Clôturer la table",

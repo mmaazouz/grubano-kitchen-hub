@@ -1609,7 +1609,21 @@
       "statusActive": "Sesión activa — pide y sigue tu cuenta.",
       "none": "Ninguna sesión en curso.",
       "refresh": "Actualizar",
-      "paid": "Cuenta pagada — ¡gracias!"
+      "paid": "Cuenta pagada — ¡gracias!",
+      "cancelCta": "Anular la reserva",
+      "cancelDeadline": "Anulable hasta {deadline}",
+      "cancelClosedHint": "Para anular, contacta con el restaurante.",
+      "cancelClosedPhone": "Para anular, contacta con el restaurante en el {phone}.",
+      "cancelTitle": "¿Anular esta reserva?",
+      "cancelBody": "Tu reserva en {restaurant} del {date} será anulada.",
+      "cancelBodyDeposit": "Tu retención bancaria se liberará — sin ningún cargo.",
+      "cancelConfirm": "Sí, anular",
+      "cancelAbort": "Mantener mi reserva",
+      "cancelling": "Anulando…",
+      "cancelledOk": "Reserva anulada — te hemos enviado un email de confirmación.",
+      "cancelErrWindow": "La anulación en línea ya no es posible — contacta con el restaurante.",
+      "cancelErrState": "Esta reserva ya no puede anularse en línea.",
+      "cancelErrGeneric": "No se pudo anular — reinténtalo."
     },
     "closure": {
       "title": "Cerrar la mesa",

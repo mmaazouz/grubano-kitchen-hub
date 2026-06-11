@@ -282,6 +282,9 @@ export async function PATCH(req: Request) {
     // walk-out the operator chooses capture/release at POST /api/tickets/[id]/close.
     // 'noshow' (the client never arrived) still captures the penalty here.
     const writeData: Record<string, unknown> = { ...data }
+    // Symmetric cancellation trace (Annulation client): a dashboard cancel is
+    // stamped 'operator' — the consumer self-cancel route stamps 'consumer'.
+    if (data.status === 'cancelled') writeData.cancelledBy = 'operator'
     let capturedCents: number | null = null
     if (existing.stripePaymentIntentId && data.status === 'noshow') {
       const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)

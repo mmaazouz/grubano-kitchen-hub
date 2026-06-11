@@ -1609,7 +1609,21 @@
       "statusActive": "جلسة نشطة — اطلب وتابع فاتورتك.",
       "none": "لا توجد جلسة جارية.",
       "refresh": "تحديث",
-      "paid": "تم دفع الفاتورة — شكرًا!"
+      "paid": "تم دفع الفاتورة — شكرًا!",
+      "cancelCta": "إلغاء الحجز",
+      "cancelDeadline": "يمكن الإلغاء حتى {deadline}",
+      "cancelClosedHint": "للإلغاء، اتصل بالمطعم.",
+      "cancelClosedPhone": "للإلغاء، اتصل بالمطعم على {phone}.",
+      "cancelTitle": "إلغاء هذا الحجز؟",
+      "cancelBody": "سيُلغى حجزك في {restaurant} بتاريخ {date}.",
+      "cancelBodyDeposit": "سيُحرَّر الضمان البنكي — دون أي خصم.",
+      "cancelConfirm": "نعم، إلغاء",
+      "cancelAbort": "الاحتفاظ بحجزي",
+      "cancelling": "جارٍ الإلغاء…",
+      "cancelledOk": "تم إلغاء الحجز — أرسلنا لك بريدًا للتأكيد.",
+      "cancelErrWindow": "لم يعد الإلغاء عبر الإنترنت ممكنًا — اتصل بالمطعم.",
+      "cancelErrState": "لم يعد بالإمكان إلغاء هذا الحجز عبر الإنترنت.",
+      "cancelErrGeneric": "تعذّر الإلغاء — أعد المحاولة."
     },
     "closure": {
       "title": "إغلاق الطاولة",

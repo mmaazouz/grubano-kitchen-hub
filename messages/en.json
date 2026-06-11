@@ -1609,7 +1609,21 @@
       "statusActive": "Active session — order and track your bill.",
       "none": "No session in progress.",
       "refresh": "Refresh",
-      "paid": "Bill settled — thank you!"
+      "paid": "Bill settled — thank you!",
+      "cancelCta": "Cancel the reservation",
+      "cancelDeadline": "Cancellable until {deadline}",
+      "cancelClosedHint": "To cancel, contact the restaurant.",
+      "cancelClosedPhone": "To cancel, contact the restaurant at {phone}.",
+      "cancelTitle": "Cancel this reservation?",
+      "cancelBody": "Your reservation at {restaurant} on {date} will be cancelled.",
+      "cancelBodyDeposit": "Your card hold will be released — nothing charged.",
+      "cancelConfirm": "Yes, cancel",
+      "cancelAbort": "Keep my reservation",
+      "cancelling": "Cancelling…",
+      "cancelledOk": "Reservation cancelled — a confirmation email is on its way.",
+      "cancelErrWindow": "Online cancellation is no longer possible — contact the restaurant.",
+      "cancelErrState": "This reservation can no longer be cancelled online.",
+      "cancelErrGeneric": "Could not cancel — please retry."
     },
     "closure": {
       "title": "Close the table",

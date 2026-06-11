@@ -322,6 +322,10 @@ model Reservation {
   // nothing charged). Nullable → existing rows untouched; manual cancels may
   // leave it null.
   cancelReason String?
+  // WHO cancelled — 'consumer' (self-cancel within the window via
+  // POST /api/reservations/[id]/cancel) | 'operator' (dashboard PATCH).
+  // Nullable → existing rows untouched (closure cancels may leave it null).
+  cancelledBy  String?
   notes        String?         @db.Text
   createdAt    DateTime        @default(now())
 
@@ -508,6 +512,12 @@ model Restaurant {
   // (was a hardcoded 10). Mohammed's decision: ONE configurable amount per resto,
   // and the no-show penalty = 100 % of it (no separate penalty field). Reversible.
   defaultDepositAmount Float @default(10)
+  // ── Consumer cancellation window (Annulation client, additive) ───────────────
+  // ADDITIVE + non-destructive: how long BEFORE the reservation start the guest
+  // can self-cancel online, in hours (A0 decision: « annulation libre jusqu'à
+  // 2h avant, paramétrable »). NOT NULL @default(2) → `db push` backfills every
+  // existing row to 2. No settings UI yet — per-resto knob reserved for later.
+  cancellationWindowHours Int @default(2)
   // ── Stripe Connect — rail financier A1 (additive, TEST mode) ────────────────
   // ADDITIVE + REVERSIBLE: the establishment's Stripe Express connected account
   // (KYC onboarding). All nullable → existing rows stay valid, no backfill. A

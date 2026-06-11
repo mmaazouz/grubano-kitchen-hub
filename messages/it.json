@@ -1609,7 +1609,21 @@
       "statusActive": "Sessione attiva — ordina e segui il tuo conto.",
       "none": "Nessuna sessione in corso.",
       "refresh": "Aggiorna",
-      "paid": "Conto saldato — grazie!"
+      "paid": "Conto saldato — grazie!",
+      "cancelCta": "Annulla la prenotazione",
+      "cancelDeadline": "Annullabile fino alle {deadline}",
+      "cancelClosedHint": "Per annullare, contatta il ristorante.",
+      "cancelClosedPhone": "Per annullare, contatta il ristorante al {phone}.",
+      "cancelTitle": "Annullare questa prenotazione?",
+      "cancelBody": "La tua prenotazione da {restaurant} del {date} sarà annullata.",
+      "cancelBodyDeposit": "La tua impronta bancaria sarà rilasciata — nessun addebito.",
+      "cancelConfirm": "Sì, annulla",
+      "cancelAbort": "Mantieni la prenotazione",
+      "cancelling": "Annullamento…",
+      "cancelledOk": "Prenotazione annullata — ti abbiamo inviato un’email di conferma.",
+      "cancelErrWindow": "L’annullamento online non è più possibile — contatta il ristorante.",
+      "cancelErrState": "Questa prenotazione non può più essere annullata online.",
+      "cancelErrGeneric": "Annullamento impossibile — riprova."
     },
     "closure": {
       "title": "Chiudi il tavolo",

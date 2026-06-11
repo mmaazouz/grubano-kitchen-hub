@@ -34,6 +34,12 @@ interface SessionInfo {
   restaurantName: string
   status:         'confirmed' | 'arrived' | string
   date:           string
+  // ── Annulation client (additive my-session fields) — absent on the
+  // localStorage fallback → the cancel affordance simply doesn't show.
+  depositStatus?:            string
+  depositAmount?:            number
+  cancellationWindowHours?:  number
+  restaurantPhone?:          string | null
 }
 
 interface StoredPointer {
@@ -70,6 +76,11 @@ export default function LastReservationCard() {
   const [resolved, setResolved] = useState(false)
   const [payOpen, setPayOpen]   = useState(false)
   const [orderOpen, setOrderOpen] = useState(false)
+  // ── Annulation client ──
+  const [cancelOpen, setCancelOpen]   = useState(false)
+  const [cancelling, setCancelling]   = useState(false)
+  const [cancelError, setCancelError] = useState('')
+  const [cancelledMsg, setCancelledMsg] = useState('')
 
   // Server-first resolution. The fallback hierarchy (fix passe 2 horaires):
   //   200 + session        → show it.
@@ -136,7 +147,65 @@ export default function LastReservationCard() {
     } catch { return session.date }
   }, [session?.date, locale])
 
-  if (!session) return null
+  // ── Annulation client — window math. The affordance only exists when the
+  // session came from the SERVER (cancellationWindowHours present): the
+  // localStorage fallback can't prove ownership, the route would 403 anyway.
+  const windowHours = session?.cancellationWindowHours
+  const deadline = useMemo(() => {
+    if (!session?.date || typeof windowHours !== 'number') return null
+    const d = new Date(new Date(session.date).getTime() - windowHours * 3_600_000)
+    return Number.isNaN(d.getTime()) ? null : d
+  }, [session?.date, windowHours])
+  const cancellable = session?.status === 'confirmed' && deadline !== null && Date.now() < deadline.getTime()
+  const windowClosed = session?.status === 'confirmed' && deadline !== null && Date.now() >= deadline.getTime()
+  const deadlineLabel = useMemo(() => {
+    if (!deadline) return ''
+    try {
+      return new Intl.DateTimeFormat(locale, {
+        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+      }).format(deadline)
+    } catch { return '' }
+  }, [deadline, locale])
+  const holdActive = session?.depositStatus === 'authorized'
+
+  async function doCancel() {
+    if (!session || cancelling) return
+    setCancelling(true)
+    setCancelError('')
+    try {
+      const r = await fetch(`/api/reservations/${session.reservationId}/cancel`, { method: 'POST' })
+      const body = await r.json().catch(() => null)
+      if (!r.ok) {
+        const code = body?.code as string | undefined
+        if (code === 'window_closed')        setCancelError(tm('cancelErrWindow'))
+        else if (code === 'not_cancellable') setCancelError(tm('cancelErrState'))
+        else                                 setCancelError((body?.error as string) || tm('cancelErrGeneric'))
+        return
+      }
+      // Cancelled server-side → close the modal, show the transient note and
+      // re-resolve: my-session now answers session:null → the card disappears
+      // (and the stale localStorage pointer is purged by resolveSession).
+      setCancelOpen(false)
+      setCancelledMsg(tm('cancelledOk'))
+      await resolveSession()
+    } catch {
+      setCancelError(tm('cancelErrGeneric'))
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  if (!session) {
+    // Transient post-cancellation note (the card itself is gone).
+    if (cancelledMsg) {
+      return (
+        <div className="mt-3 rounded-[20px] bg-white p-4 text-center shadow-bolt-card">
+          <p className="text-[13px] font-bold text-[#16a34a]">{cancelledMsg}</p>
+        </div>
+      )
+    }
+    return null
+  }
 
   const arrived = session.status === 'arrived'
 
@@ -187,7 +256,83 @@ export default function LastReservationCard() {
             {t('accountPayButton')}
           </button>
         </div>
+
+        {/* ── Annulation client — sober affordance under the actions. Window
+            open → deadline + text-button to the confirm modal; window closed
+            (still 'confirmed') → "call the restaurant" hint. Nothing once
+            arrived, nothing on the localStorage fallback. */}
+        {cancellable && (
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[#f1f1f1] pt-2.5">
+            <p className="text-[11px] text-[#888]">
+              {tm('cancelDeadline', { deadline: deadlineLabel })}
+            </p>
+            <button
+              type="button"
+              onClick={() => { setCancelError(''); setCancelOpen(true) }}
+              className="text-[12px] font-bold text-[#dc2626] underline-offset-2 active:scale-95"
+            >
+              {tm('cancelCta')}
+            </button>
+          </div>
+        )}
+        {windowClosed && (
+          <p className="mt-2.5 border-t border-[#f1f1f1] pt-2.5 text-[11px] text-[#888]">
+            {session.restaurantPhone
+              ? tm('cancelClosedPhone', { phone: session.restaurantPhone })
+              : tm('cancelClosedHint')}
+          </p>
+        )}
       </div>
+
+      {/* ── Cancel confirmation modal ─────────────────────────────────────── */}
+      {cancelOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-destructive/15 text-destructive">
+                <X size={15} />
+              </span>
+              <p className="text-base font-bold">{tm('cancelTitle')}</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {tm('cancelBody', {
+                restaurant: session.restaurantName || session.tableName,
+                date:       dateLabel,
+              })}
+            </p>
+            {holdActive && (
+              <p className="mt-2 rounded-xl border border-success/40 bg-success/5 px-3 py-2 text-[12px] text-success">
+                {tm('cancelBodyDeposit')}
+              </p>
+            )}
+            {cancelError && (
+              <p className="mt-2 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+                <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                <span>{cancelError}</span>
+              </p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelOpen(false)}
+                disabled={cancelling}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm disabled:opacity-60"
+              >
+                {tm('cancelAbort')}
+              </button>
+              <button
+                type="button"
+                onClick={doCancel}
+                disabled={cancelling}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground disabled:opacity-60"
+              >
+                {cancelling ? <Loader2 size={13} className="animate-spin" /> : null}
+                {cancelling ? tm('cancelling') : tm('cancelConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {orderOpen && (
         <OrderAtTable
