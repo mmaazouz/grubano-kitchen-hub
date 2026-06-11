@@ -835,7 +835,9 @@
       "badgeFreeDelivery": "Consegna gratuita",
       "badgeNew": "Nuovo",
       "badgeTrending": "Tendenza",
-      "badgeDiscount": "-{percent}%"
+      "badgeDiscount": "-{percent}%",
+      "soonTitle": "Le promozioni arrivano presto",
+      "soonBody": "I ristoranti potranno presto proporti vere offerte qui. Nel frattempo, il tuo sconto di benvenuto si applica automaticamente al pagamento."
     },
     "nav": {
       "home": "Home",
@@ -861,11 +863,8 @@
       "paymentMethod": "Metodo di pagamento",
       "cashOnDelivery": "Contanti alla consegna",
       "edit": "Modifica",
-      "promoPlaceholder": "Codice promo (prova FRENCH10)",
-      "apply": "Applica",
       "summary": "Riepilogo",
       "subtotal": "Subtotale",
-      "discount": "Sconto (-{percent}%)",
       "welcomeDiscount": "Sconto di benvenuto",
       "welcomeDiscountFrom": "Sconto di benvenuto · {creator}",
       "feePickup": "Costi (ritiro)",
@@ -875,8 +874,6 @@
       "submitting": "Invio…",
       "placeOrder": "Invia l'ordine",
       "toastItemRemoved": "Articolo rimosso",
-      "toastPromoApplied": "Codice promo applicato! -10%",
-      "toastPromoInvalid": "Codice promo non valido",
       "errorAddressRequired": "Inserisci un indirizzo di consegna",
       "errorOrderFailed": "Errore durante l'ordine",
       "errorNetwork": "Errore di rete. Riprova.",

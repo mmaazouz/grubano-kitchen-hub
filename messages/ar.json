@@ -835,7 +835,9 @@
       "badgeFreeDelivery": "توصيل مجاني",
       "badgeNew": "جديد",
       "badgeTrending": "رائج",
-      "badgeDiscount": "-{percent}%"
+      "badgeDiscount": "-{percent}%",
+      "soonTitle": "العروض قادمة قريبًا",
+      "soonBody": "ستتمكن المطاعم قريبًا من تقديم عروض حقيقية هنا. في الأثناء، يُطبَّق خصم الترحيب تلقائيًا عند الدفع."
     },
     "nav": {
       "home": "الرئيسية",
@@ -861,11 +863,8 @@
       "paymentMethod": "طريقة الدفع",
       "cashOnDelivery": "الدفع نقداً عند التوصيل",
       "edit": "تعديل",
-      "promoPlaceholder": "كود الخصم (جرب FRENCH10)",
-      "apply": "تطبيق",
       "summary": "الملخص",
       "subtotal": "المجموع الفرعي",
-      "discount": "الخصم (-{percent}%)",
       "welcomeDiscount": "خصم الترحيب",
       "welcomeDiscountFrom": "خصم الترحيب · {creator}",
       "feePickup": "رسوم (استلام)",
@@ -875,8 +874,6 @@
       "submitting": "جاري الإرسال...",
       "placeOrder": "تأكيد الطلب",
       "toastItemRemoved": "تم إزالة العنصر",
-      "toastPromoApplied": "تم تطبيق كود الخصم! -10%",
-      "toastPromoInvalid": "كود الخصم غير صالح",
       "errorAddressRequired": "يرجى إدخال عنوان التوصيل",
       "errorOrderFailed": "خطأ في الطلب",
       "errorNetwork": "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",

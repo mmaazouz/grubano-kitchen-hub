@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
-import { Minus, Plus, Trash2, Tag, MapPin, CreditCard, ShoppingBag, Bike, Package } from 'lucide-react'
+import { Minus, Plus, Trash2, MapPin, CreditCard, ShoppingBag, Bike, Package } from 'lucide-react'
 import { Button, Badge, PriceTag } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
 import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
@@ -18,8 +18,6 @@ export default function CartScreen() {
   const [fulfillment, setFulfillment] = useState<Fulfillment>('delivery')
   const [address, setAddress] = useState('')
   const [payment, setPayment] = useState<'card' | 'cash'>('card')
-  const [promoInput, setPromoInput] = useState('')
-  const [discount, setDiscount] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   // Welcome-discount preview (brique 5B companion). The grubano_ref cookie is
@@ -96,24 +94,12 @@ export default function CartScreen() {
     showToast(t('toastItemRemoved'))
   }
 
-  function applyPromo() {
-    const code = promoInput.trim().toUpperCase()
-    if (code === 'FRENCH10') {
-      setDiscount(0.1)
-      showToast(t('toastPromoApplied'))
-    } else {
-      setDiscount(0)
-      showToast(t('toastPromoInvalid'))
-    }
-  }
-
   const subtotal = cart?.items.reduce((s, l) => s + l.item.price * l.qty, 0) ?? 0
   const deliveryFee = useMemo(() => {
     if (!cart) return 0
     if (fulfillment === 'pickup') return 0
     return cart.restaurant.deliveryFee || 2.99
   }, [cart, fulfillment])
-  const discountAmount = subtotal * discount
   // Indicative welcome discount = min(subtotal × pct, cap), matching 5B's server
   // formula. Source of truth stays server-side at checkout.
   const welcomeAmount = useMemo(() => {
@@ -121,7 +107,11 @@ export default function CartScreen() {
     const raw = Math.min(subtotal * welcome.discountPct, welcome.discountCap)
     return Math.round(raw * 100) / 100
   }, [welcome, subtotal])
-  const total = Math.max(0, subtotal - discountAmount - welcomeAmount + deliveryFee)
+  // The displayed total is EXACTLY what the checkout will charge: full item
+  // prices + delivery fee - the server-confirmed welcome discount. The fake
+  // FRENCH10 client-only promo (audit C3-fix: the cart LIED vs the real debit)
+  // was removed by founder decision.
+  const total = Math.max(0, subtotal - welcomeAmount + deliveryFee)
   const totalItems = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
   const readyAt = useMemo(() => {
     const minutes = cart?.restaurant.deliveryTime ?? 20
@@ -368,22 +358,6 @@ export default function CartScreen() {
         </div>
       </div>
 
-      {/* Promo */}
-      <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-3.5 shadow-grubano-sm">
-        <div className="flex items-center gap-2.5">
-          <Tag size={18} className="text-grubano-primary" />
-          <input
-            value={promoInput}
-            onChange={(e) => setPromoInput(e.target.value)}
-            placeholder={t('promoPlaceholder')}
-            className="flex-1 bg-transparent text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:outline-none"
-          />
-          <Button variant="primary" size="sm" onClick={applyPromo}>
-            {t('apply')}
-          </Button>
-        </div>
-      </div>
-
       {/* Summary */}
       <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">
         <p className="mb-3.5 text-[17px] font-extrabold text-grubano-ink">{t('summary')}</p>
@@ -391,12 +365,6 @@ export default function CartScreen() {
           <span className="text-grubano-ink-muted">{t('subtotal')}</span>
           <span className="font-semibold text-grubano-ink">{subtotal.toFixed(2)} €</span>
         </div>
-        {discount > 0 && (
-          <div className="mb-2.5 flex justify-between text-grubano-sm">
-            <span className="text-grubano-success">{t('discount', { percent: discount * 100 })}</span>
-            <span className="font-semibold text-grubano-success">-{discountAmount.toFixed(2)} €</span>
-          </div>
-        )}
         {welcomeAmount > 0 && (
           <div className="mb-2.5 flex justify-between text-grubano-sm">
             <span className="text-grubano-success">

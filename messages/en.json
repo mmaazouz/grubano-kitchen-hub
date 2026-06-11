@@ -835,7 +835,9 @@
       "badgeFreeDelivery": "Free delivery",
       "badgeNew": "New",
       "badgeTrending": "Trending",
-      "badgeDiscount": "-{percent}%"
+      "badgeDiscount": "-{percent}%",
+      "soonTitle": "Promotions are coming soon",
+      "soonBody": "Restaurants will soon offer real deals here. Meanwhile, your welcome discount is applied automatically at checkout."
     },
     "nav": {
       "home": "Home",
@@ -861,11 +863,8 @@
       "paymentMethod": "Payment method",
       "cashOnDelivery": "Cash on delivery",
       "edit": "Edit",
-      "promoPlaceholder": "Promo code (try FRENCH10)",
-      "apply": "Apply",
       "summary": "Summary",
       "subtotal": "Subtotal",
-      "discount": "Discount (-{percent}%)",
       "welcomeDiscount": "Welcome discount",
       "welcomeDiscountFrom": "Welcome discount · {creator}",
       "feePickup": "Fee (pickup)",
@@ -875,8 +874,6 @@
       "submitting": "Submitting…",
       "placeOrder": "Place order",
       "toastItemRemoved": "Item removed",
-      "toastPromoApplied": "Promo code applied! -10%",
-      "toastPromoInvalid": "Invalid promo code",
       "errorAddressRequired": "Please enter a delivery address",
       "errorOrderFailed": "Order failed",
       "errorNetwork": "Network error. Please try again.",

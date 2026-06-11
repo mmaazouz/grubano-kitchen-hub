@@ -160,10 +160,11 @@ export default function CreatorEarningsPage() {
     [locale],
   )
 
-  // ── The public tracked link (B1-bis FIX 1, builder factored since) ─────────
-  // The contract carries "/r/<slug>" (no /r route exists — flagged to Agent
-  // 14); we derive the slug and hand it to the shared lib/referral-link
-  // builder (/ref/<slug> path + business.* browsing host neutralized).
+  // ── The public tracked link ────────────────────────────────────────────────
+  // The contract's link is "/ref/<slug>" (fixed server-side, C3-fix §3 — the
+  // old "/r/" workaround is gone). We extract the slug and hand it to the
+  // shared lib/referral-link builder, the single source for the origin
+  // (business.* browsing host neutralized) and the /ref path.
   const fullLink = useMemo(() => {
     if (!data?.link) return null
     const slug = data.link.split('/').filter(Boolean).pop()

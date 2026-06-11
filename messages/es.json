@@ -835,7 +835,9 @@
       "badgeFreeDelivery": "Envío gratis",
       "badgeNew": "Nuevo",
       "badgeTrending": "Tendencia",
-      "badgeDiscount": "-{percent}%"
+      "badgeDiscount": "-{percent}%",
+      "soonTitle": "Las promociones llegan pronto",
+      "soonBody": "Los restaurantes pronto podrán ofrecerte ofertas reales aquí. Mientras tanto, tu descuento de bienvenida se aplica automáticamente al pagar."
     },
     "nav": {
       "home": "Inicio",
@@ -861,11 +863,8 @@
       "paymentMethod": "Método de pago",
       "cashOnDelivery": "Efectivo en la entrega",
       "edit": "Modificar",
-      "promoPlaceholder": "Código promo (prueba FRENCH10)",
-      "apply": "Aplicar",
       "summary": "Resumen",
       "subtotal": "Subtotal",
-      "discount": "Descuento (-{percent}%)",
       "welcomeDiscount": "Descuento de bienvenida",
       "welcomeDiscountFrom": "Descuento de bienvenida · {creator}",
       "feePickup": "Gastos (recogida)",
@@ -875,8 +874,6 @@
       "submitting": "Enviando…",
       "placeOrder": "Realizar pedido",
       "toastItemRemoved": "Artículo eliminado",
-      "toastPromoApplied": "¡Código promo aplicado! -10%",
-      "toastPromoInvalid": "Código promo no válido",
       "errorAddressRequired": "Por favor, introduce una dirección de envío",
       "errorOrderFailed": "Error al realizar el pedido",
       "errorNetwork": "Error de red. Por favor, inténtalo de nuevo.",
