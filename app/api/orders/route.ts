@@ -6,9 +6,9 @@ import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
-// B0 acquisition bonus: 5 € one-shot to the referring creator when this order is
-// the customer's FIRST on Grubano (any restaurant). Parameterisable later.
-const NEW_CUSTOMER_BONUS_EUR = 5
+// B0-quater: the creator is paid in PERCENTAGES ONLY. The acquisition bonus is
+// now a CONFIG parameter (ReferralConfig.newCustomerBonusAmount, default 0 = no
+// bonus is ever written). No fixed amount lives in code anymore.
 
 // Round money to 2 decimals. Used by the referral attribution logic below.
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -126,6 +126,7 @@ export async function POST(req: NextRequest) {
       reuseReferralId:         null as string | null,  // CAS 2 (valid window) → reuse this referral for the ReferralOrder
       expiredReferralId:       null as string | null,  // CAS 2 (expired window) → deactivate, no payout
       commissionPct:           0.30,                    // ReferralConfig.commissionPctOfGrubanoFee (B0: 30 %)
+      bonusAmount:             0,                       // ReferralConfig.newCustomerBonusAmount (B0-quater: default 0 = none)
       durationDays:            90,                      // ReferralConfig.durationDays
       // Levier 1: the creator who will actually receive a ReferralOrder payout for
       // THIS order (CAS 1 → the resolved creator, CAS 2-valid → the existing
@@ -148,6 +149,7 @@ export async function POST(req: NextRequest) {
         if (creator && !isSelf) {
           const cfg = await prisma.referralConfig.findFirst({ where: { active: true } })
           ref.commissionPct = cfg?.commissionPctOfGrubanoFee ?? 0.30
+          ref.bonusAmount   = cfg?.newCustomerBonusAmount ?? 0
           ref.durationDays  = cfg?.durationDays ?? 90
           const discountPct = cfg?.customerDiscountPct ?? 0.10
           const discountCap = cfg?.customerDiscountCapEur ?? 5
@@ -361,13 +363,16 @@ export async function POST(req: NextRequest) {
           const feeCents       = computeApplicationFee(restaurant, channel, Math.round(subtotal * 100))
           const grubanoFee     = feeCents / 100                          // FROZEN — real commission (EUR)
           const creatorEarning = round2(grubanoFee * ref.commissionPct)  // FROZEN — B0 30 % of the flow
-          // B0 acquisition: 5 € one-shot when this is the customer's FIRST order
-          // on Grubano (any restaurant) — independent of the commission share
-          // (a founders-0% resto still earns the creator their acquisition).
-          const priorOrders = await prisma.order.count({
-            where: { consumerId: token.sub!, id: { not: order.id } },
-          })
-          const newCustomerBonus = priorOrders === 0 ? NEW_CUSTOMER_BONUS_EUR : 0
+          // B0-quater acquisition bonus: CONFIG-driven (default 0 → no count
+          // query, no write). When activated, paid once on the customer's FIRST
+          // Grubano order (any restaurant), independent of the commission share.
+          let newCustomerBonus = 0
+          if (ref.bonusAmount > 0) {
+            const priorOrders = await prisma.order.count({
+              where: { consumerId: token.sub!, id: { not: order.id } },
+            })
+            newCustomerBonus = priorOrders === 0 ? ref.bonusAmount : 0
+          }
           await prisma.referralOrder.create({
             data: { referralId, orderId: order.id, grubanoFee, creatorEarning, newCustomerBonus },
           })

@@ -870,6 +870,10 @@ model ReferralConfig {
   // B0 (11 June 2026): 30 % of Grubano's REAL fee — the creator is paid from
   // Grubano's share, never a surcharge on the resto.
   commissionPctOfGrubanoFee Float   @default(0.30)
+  // B0-quater (11 June, evening): the creator is paid in PERCENTAGES ONLY — the
+  // fixed 5 € acquisition bonus is REMOVED. 0 = no bonus is ever written (the
+  // default); Mohammed can re-activate a bonus by setting an amount here.
+  newCustomerBonusAmount    Float   @default(0)
   // How long the creator earns on a referred customer's orders, from
   // the referral start date.
   durationDays              Int     @default(90)
@@ -916,10 +920,17 @@ model ReferralOrder {
   order          Order    @relation(fields: [orderId], references: [id])
   grubanoFee     Float    // Grubano's REAL commission on this order (lib/commission), captured at order time
   creatorEarning Float    // grubanoFee × commissionPctOfGrubanoFee (B0: 30 %) — FROZEN
-  // B0 acquisition bonus: 5 € one-shot when this order is the customer's FIRST
-  // on Grubano (any restaurant). Separate column so the trace stays auditable
-  // (earning = flow share, bonus = acquisition). Additive, default 0.
+  // Acquisition bonus trace (B0-quater: amount comes from ReferralConfig.
+  // newCustomerBonusAmount, default 0 = never written). Separate column so the
+  // trace stays auditable (earning = flow share, bonus = acquisition).
   newCustomerBonus Float  @default(0)
+  // ── Earnings engine (B2a, additive) ─────────────────────────────────────────
+  // pending → matured (7 days after the ORDER + order paid + not fully refunded
+  // + not self-referral) → paid (B2b payouts). cancelled = never-paid order /
+  // fully refunded / self-referral, with the reason logged by the maturation
+  // run. ADD COLUMN NOT NULL DEFAULT 'pending' backfills existing rows.
+  status         String   @default("pending") // pending | matured | cancelled | paid
+  maturedAt      DateTime?
   createdAt      DateTime @default(now())
 
   @@index([referralId])
@@ -1001,6 +1012,9 @@ model DishSale {
   // order time (0.04 = recipe creator's own traffic, 0.01 = organic/other).
   // Nullable so legacy rows written before levier 1 stay valid.
   rateApplied    Float?
+  // ── Earnings engine (B2a, additive) — same lifecycle as ReferralOrder ───────
+  status         String       @default("pending") // pending | matured | cancelled | paid
+  maturedAt      DateTime?
   createdAt      DateTime     @default(now())
 
   @@index([adoptionId])
