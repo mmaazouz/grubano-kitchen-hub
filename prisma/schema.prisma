@@ -700,6 +700,12 @@ model LedgerEntry {
   routed                Boolean  @default(false) // destination charge vs legacy platform flow
   destinationAccountId  String?             // acct_... when routed
   currency              String   @default("eur")
+  // ── Channel (chantier checkout C1, additive) ────────────────────────────────
+  // dinein | pickup | delivery | reservation — written by the webhook from the
+  // PI's metadata.grubano_channel for ALL payments; nullable so historical lines
+  // stay valid until the one-shot backfill fills them. Lets invoices and the
+  // finance dashboard detail by REAL channel instead of deriving from type.
+  channel               String?
   sourceEventId         String              // deterministic anti-double-count key
 
   @@unique([sourceEventId, type])
@@ -791,6 +797,14 @@ model Order {
   fulfillmentType String     @default("delivery") // delivery|pickup
   deliveryAddress String
   paymentMethod   String     @default("card")
+  // ── Checkout payment (chantier C1, additive — TEST mode) ────────────────────
+  // ADDITIVE + REVERSIBLE: pickup/delivery orders are now REALLY charged (C0:
+  // immediate payment at order). The PI is an automatic-capture destination
+  // charge when the resto's Connect account is active (commission on the PRODUCT
+  // subtotal, delivery fee 100 % to the resto). paymentStatus: null = legacy /
+  // not initiated, 'pending' = PI created, 'paid' = webhook-confirmed.
+  stripePaymentIntentId String? @unique
+  paymentStatus   String?
   pointsEarned    Int        @default(0)
   estimatedTime   Int        @default(30)
   trackingUrl     String?
@@ -853,8 +867,9 @@ model PointOfSale {
 model ReferralConfig {
   id                        String  @id @default(cuid())
   // Creator's cut of GRUBANO'S commission on a referred order (NOT of basket).
-  // Example: 0.22 = 22 % of Grubano's fee.
-  commissionPctOfGrubanoFee Float   @default(0.22)
+  // B0 (11 June 2026): 30 % of Grubano's REAL fee — the creator is paid from
+  // Grubano's share, never a surcharge on the resto.
+  commissionPctOfGrubanoFee Float   @default(0.30)
   // How long the creator earns on a referred customer's orders, from
   // the referral start date.
   durationDays              Int     @default(90)
@@ -899,8 +914,12 @@ model ReferralOrder {
   referral       Referral @relation(fields: [referralId], references: [id])
   orderId        String   @unique
   order          Order    @relation(fields: [orderId], references: [id])
-  grubanoFee     Float    // Grubano's commission on this order, captured at order time
-  creatorEarning Float    // grubanoFee × commissionPctOfGrubanoFee — FROZEN
+  grubanoFee     Float    // Grubano's REAL commission on this order (lib/commission), captured at order time
+  creatorEarning Float    // grubanoFee × commissionPctOfGrubanoFee (B0: 30 %) — FROZEN
+  // B0 acquisition bonus: 5 € one-shot when this order is the customer's FIRST
+  // on Grubano (any restaurant). Separate column so the trace stays auditable
+  // (earning = flow share, bonus = acquisition). Additive, default 0.
+  newCustomerBonus Float  @default(0)
   createdAt      DateTime @default(now())
 
   @@index([referralId])
@@ -996,13 +1015,14 @@ model AdoptionConfig {
   // still references it. The checkout (levier 1) now picks one of the two rates
   // below depending on the traffic source.
   creatorCommissionPct Float    @default(0.04)
-  // ── Levier 1: variable recipe commission by traffic source ───────────────────
-  // FORT — the sale comes from the RECIPE CREATOR's own traffic (a ReferralOrder
-  // is created for this order AND its referring creator IS the recipe creator).
-  creatorCommissionPctReferred Float @default(0.04)
-  // RÉDUIT — organic sale OR traffic driven by ANOTHER creator.
-  creatorCommissionPctOrganic  Float @default(0.01)
-  grubanoCutPct        Float    @default(0.20)
+  // ── B0 (11 June 2026): adopted-recipe royalty = FLAT 2 % of the dish price,
+  // paid FROM Grubano's share (no Grubano cut on it, no two-tier traffic split).
+  // The levier-1 two-rate plumbing is KEPT (parameterisable) — B0 simply sets
+  // both tiers to 0.02 and the cut to 0. Existing rows: UPDATE in the C1 db
+  // push sequence.
+  creatorCommissionPctReferred Float @default(0.02)
+  creatorCommissionPctOrganic  Float @default(0.02)
+  grubanoCutPct        Float    @default(0)
   active               Boolean  @default(true)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
