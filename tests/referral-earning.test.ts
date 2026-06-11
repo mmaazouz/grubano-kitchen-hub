@@ -10,7 +10,10 @@ vi.mock('next-auth/jwt', () => ({ getToken: getTokenMock }))
 
 const { db } = vi.hoisted(() => ({
   db: {
-    restaurant:     { findUnique: vi.fn() },
+    // The route looks the restaurant up with findFirst (id + isActive +
+    // archivedAt:null) since a9bfdce (archived-establishment exclusion) —
+    // findUnique is gone from this code path.
+    restaurant:     { findFirst: vi.fn() },
     creator:        { findFirst: vi.fn() },
     referralConfig: { findFirst: vi.fn() },
     referral:       { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -20,6 +23,11 @@ const { db } = vi.hoisted(() => ({
     dishSale:       { findFirst: vi.fn(), createMany: vi.fn() },
     creatorDish:    { update: vi.fn() },
     adoptionConfig: { findFirst: vi.fn() },
+    // Opening-hours gate (cf080df): POST /api/orders calls loadHoursContext,
+    // which reads these two models. Empty arrays = "hours not configured" =
+    // no restriction (T1.Q3) — the referral logic under test runs unhindered.
+    openingHour:       { findMany: vi.fn() },
+    closureException:  { findMany: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -47,7 +55,9 @@ const referralOrderArg = () => (db.referralOrder.create.mock.calls[0]?.[0] as an
 beforeEach(() => {
   vi.clearAllMocks()
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com' })
-  db.restaurant.findUnique.mockResolvedValue({ id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10 })
+  db.restaurant.findFirst.mockResolvedValue({ id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10 })
+  db.openingHour.findMany.mockResolvedValue([])      // not configured → order not gated
+  db.closureException.findMany.mockResolvedValue([])
   db.creator.findFirst.mockResolvedValue({ id: 'creatorA', email: 'creator@example.com', referralCode: 'CHEF1' })
   db.referralConfig.findFirst.mockResolvedValue({
     commissionPctOfGrubanoFee: 0.22, durationDays: 90,

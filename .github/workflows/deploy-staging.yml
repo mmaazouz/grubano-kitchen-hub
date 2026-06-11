@@ -32,8 +32,10 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
-      - name: Finance unit tests
-        run: npm run test:finance
+      # Widened from test:finance after the full-suite audit (referral mock
+      # repaired, middleware green): every tests/ file now gates the deploy.
+      - name: Unit tests (full suite)
+        run: npm run test:ci
 
   deploy:
     needs: test
