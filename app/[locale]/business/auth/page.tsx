@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { Card, Button, Input } from '@/components/design-system'
+import ForgotPasswordModal from '@/components/auth/ForgotPasswordModal'
 
 type Tab = 'login' | 'register'
 
@@ -69,6 +70,7 @@ function passwordScore(pw: string): number {
 
 export default function PartnerAuthScreen() {
   const t = useTranslations('business.auth')
+  const tReset = useTranslations('auth.reset')
   const router = useRouter()
 
   const [tab, setTab] = useState<Tab>('login')
@@ -97,6 +99,8 @@ export default function PartnerAuthScreen() {
 
   // Login form
   const [loginEmail, setLoginEmail] = useState('')
+  // Emails v2 FIX 3 — forgot-password flow (no link existed on this space).
+  const [forgotOpen, setForgotOpen] = useState(false)
   const [loginPassword, setLoginPassword] = useState('')
   const [showLoginPwd, setShowLoginPwd] = useState(false)
 
@@ -263,6 +267,13 @@ export default function PartnerAuthScreen() {
                 onChange={(e) => setLoginPassword(e.target.value)}
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setForgotOpen(true)}
+              className="ml-auto block text-xs font-semibold text-grubano-primary hover:underline"
+            >
+              {tReset('forgotTitle')}
+            </button>
             <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
               {t('signIn')}
             </Button>
@@ -369,6 +380,14 @@ export default function PartnerAuthScreen() {
           </form>
         )}
       </Card>
+
+      {forgotOpen && (
+        <ForgotPasswordModal
+          space="business"
+          initialEmail={loginEmail}
+          onClose={() => setForgotOpen(false)}
+        />
+      )}
     </Layout>
   )
 }

@@ -5,6 +5,8 @@ import { releaseHold } from '@/lib/deposit'
 import {
   sendReservationCancelledByClientToClient,
   sendReservationCancelledByClientToOwner,
+  resolveReservationRecipient,
+  logEmailSkipped,
 } from '@/lib/transactional-emails'
 import type { NextRequest } from 'next/server'
 
@@ -130,16 +132,25 @@ export async function POST(
       select: { id: true, status: true, date: true },
     })
 
-    // ── Transactional emails v1 — POST-success, BEST-EFFORT (the prepared
-    // templates, never throw). Guest confirmation + owner information.
+    // ── Transactional emails — POST-success, BEST-EFFORT (never throw).
+    // Guest confirmation: reservation email OR the linked ACCOUNT's email
+    // (Emails v2 FIX 1 — this route requires userId, so the account fallback
+    // always exists in practice); nobody → traced 'skipped' EmailLog row.
     const restaurantName = reservation.restaurant?.name ?? 'votre restaurant'
-    if (reservation.email) {
+    const guestEmail = await resolveReservationRecipient(reservation)
+    if (guestEmail) {
       await sendReservationCancelledByClientToClient({
-        to:             reservation.email,
+        to:             guestEmail,
         customerName:   reservation.customerName,
         restaurantName,
         date:           reservation.date,
       })
+    } else {
+      await logEmailSkipped(
+        'reservation_cancelled_by_client_client',
+        `Annulation confirmée — ${restaurantName}`,
+        { reservationId: reservation.id },
+      )
     }
     const ownerEmail = reservation.restaurant?.operator?.email
     if (ownerEmail) {

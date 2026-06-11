@@ -1827,5 +1827,29 @@
     "rateReservation": "Prenotazione",
     "rateFreeBadge": "Offerta fondatore: 0% fino al {date}",
     "rateFree": "Gratis"
+  },
+  "auth": {
+    "reset": {
+      "forgotTitle": "Password dimenticata",
+      "forgotBody": "Inserisci la tua email — se esiste un account, riceverai un link di reimpostazione (valido 1 h).",
+      "forgotEmailPh": "tua@email.com",
+      "forgotSend": "Invia il link",
+      "forgotSending": "Invio…",
+      "forgotSent": "Se esiste un account per questa email, il link è appena stato inviato. Controlla anche lo spam.",
+      "forgotClose": "Chiudi",
+      "resetTitle": "Nuova password",
+      "resetBody": "Scegli la tua nuova password (minimo 8 caratteri).",
+      "resetPwLabel": "Nuova password",
+      "resetPw2Label": "Conferma la password",
+      "resetSubmit": "Cambia la mia password",
+      "resetSubmitting": "Modifica…",
+      "resetMismatch": "Le due password non coincidono.",
+      "resetTooShort": "Minimo 8 caratteri.",
+      "resetInvalid": "Link non valido o scaduto — richiedine uno nuovo dalla pagina di accesso.",
+      "resetErrGeneric": "Impossibile cambiare la password — riprova.",
+      "resetDoneTitle": "Password cambiata ✓",
+      "resetDoneBody": "Ora puoi accedere con la tua nuova password. Ti abbiamo inviato un’email di conferma.",
+      "resetGoLogin": "Accedi"
+    }
   }
 }

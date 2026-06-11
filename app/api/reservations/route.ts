@@ -4,7 +4,10 @@ import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { captureHold } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
-import { sendReservationCancelledByOwner, sendNoShowPenaltyCharged } from '@/lib/transactional-emails'
+import {
+  sendReservationCancelledByOwner, sendNoShowPenaltyCharged,
+  resolveReservationRecipient, logEmailSkipped,
+} from '@/lib/transactional-emails'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 
@@ -304,25 +307,35 @@ export async function PATCH(req: Request) {
       include: { table: true },
     })
 
-    // ── Transactional emails v1 — POST-success, BEST-EFFORT (never throw) ────
-    // (b) the RESTAURANT cancels → inform the client; (4) a no-show penalty was
-    // actually captured → notify the client (amount + how to contest). Both
-    // need the client's email — owner-typed reservations without one are
-    // silently skipped (nothing to send).
-    if ((data.status === 'cancelled' || (data.status === 'noshow' && capturedCents !== null)) && reservation.email) {
+    // ── Transactional emails — POST-success, BEST-EFFORT (never throw) ───────
+    // (b) the RESTAURANT cancels → inform the client. Recipient = reservation
+    // email OR the linked ACCOUNT's email (Emails v2 FIX 1 — dashboard-typed
+    // reservations rarely carry one); nobody → traced 'skipped' EmailLog row.
+    // (4) a no-show penalty was captured → notify the client (amount + how to
+    // contest) — same recipient guard as before (reservation email).
+    if (data.status === 'cancelled' || (data.status === 'noshow' && capturedCents !== null)) {
       try {
         const resto = reservation.restaurantId
           ? await prisma.restaurant.findUnique({ where: { id: reservation.restaurantId }, select: { name: true } })
           : null
         const restaurantName = resto?.name ?? 'votre restaurant'
         if (data.status === 'cancelled') {
-          await sendReservationCancelledByOwner({
-            to:             reservation.email,
-            customerName:   reservation.customerName,
-            restaurantName,
-            date:           reservation.date,
-          })
-        } else if (capturedCents !== null) {
+          const guestEmail = await resolveReservationRecipient(reservation)
+          if (guestEmail) {
+            await sendReservationCancelledByOwner({
+              to:             guestEmail,
+              customerName:   reservation.customerName,
+              restaurantName,
+              date:           reservation.date,
+            })
+          } else {
+            await logEmailSkipped(
+              'reservation_cancelled_by_owner',
+              `Votre réservation a été annulée — ${restaurantName}`,
+              { reservationId: reservation.id },
+            )
+          }
+        } else if (capturedCents !== null && reservation.email) {
           await sendNoShowPenaltyCharged({
             to:             reservation.email,
             customerName:   reservation.customerName,

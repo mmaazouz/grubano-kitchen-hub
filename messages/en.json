@@ -1827,5 +1827,29 @@
     "rateReservation": "Reservation",
     "rateFreeBadge": "Founders offer: 0% until {date}",
     "rateFree": "Free"
+  },
+  "auth": {
+    "reset": {
+      "forgotTitle": "Forgot password",
+      "forgotBody": "Enter your email — if an account exists, you will receive a reset link (valid for 1 h).",
+      "forgotEmailPh": "your@email.com",
+      "forgotSend": "Send the link",
+      "forgotSending": "Sending…",
+      "forgotSent": "If an account exists for this email, the reset link was just sent. Check your spam folder too.",
+      "forgotClose": "Close",
+      "resetTitle": "New password",
+      "resetBody": "Choose your new password (8 characters minimum).",
+      "resetPwLabel": "New password",
+      "resetPw2Label": "Confirm the password",
+      "resetSubmit": "Change my password",
+      "resetSubmitting": "Changing…",
+      "resetMismatch": "The two passwords do not match.",
+      "resetTooShort": "8 characters minimum.",
+      "resetInvalid": "Invalid or expired link — request a new one from the sign-in page.",
+      "resetErrGeneric": "Could not change the password — please retry.",
+      "resetDoneTitle": "Password changed ✓",
+      "resetDoneBody": "You can now sign in with your new password. A confirmation email is on its way.",
+      "resetGoLogin": "Sign in"
+    }
   }
 }

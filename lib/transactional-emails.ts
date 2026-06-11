@@ -75,6 +75,39 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+// ── Recipient resolution + traced skip (Emails v2, FIX 1) ───────────────────────
+
+/** Client-destined reservation emails: the reservation's typed email when
+ *  present, OTHERWISE the linked consumer ACCOUNT's email (userId →
+ *  Operator.email — same source as order_confirmation). null = nobody. */
+export async function resolveReservationRecipient(r: {
+  email: string | null
+  userId: string | null
+}): Promise<string | null> {
+  if (r.email) return r.email
+  if (!r.userId) return null
+  try {
+    const account = await prisma.operator.findUnique({
+      where:  { id: r.userId },
+      select: { email: true },
+    })
+    return account?.email ?? null
+  } catch {
+    return null
+  }
+}
+
+/** No recipient at all → we still leave a TRACE (EmailLog status='skipped')
+ *  so a silently-missing send is visible in the audit table. */
+export async function logEmailSkipped(trigger: string, subject: string, context: Record<string, unknown>): Promise<void> {
+  console.error(`[EMAIL MISS] [${trigger}] no recipient — SKIPPED`, JSON.stringify(context))
+  try {
+    await prisma.emailLog.create({
+      data: { recipient: '(aucun destinataire)', subject, trigger, status: 'skipped' },
+    })
+  } catch { /* audit log is best-effort */ }
+}
+
 // ── Core best-effort sender ─────────────────────────────────────────────────────
 
 export async function sendTransactional(opts: {
@@ -202,6 +235,80 @@ export async function sendReservationCancelledByOwner(p: {
            Réserver un autre créneau
         </a>
       </p>`),
+  })
+}
+
+// ── 2c) Cancellation BY AN EXCEPTIONAL CLOSURE (Emails v2, FIX 2) ───────────────
+// Dedicated trigger so the audit distinguishes a closure mass-cancel from a
+// one-off dashboard cancel. Sorry tone — the restaurant closed on the guest.
+
+export async function sendReservationCancelledByClosure(p: {
+  to:             string
+  customerName:   string
+  restaurantName: string
+  date:           Date
+  /** PUBLIC closure reason — shown verbatim when provided. */
+  closureReason?: string | null
+}): Promise<void> {
+  const why = p.closureReason
+    ? `<p style="font-size:13px;color:#6b7280">Motif : ${esc(p.closureReason)}.</p>`
+    : ''
+  await sendTransactional({
+    to:      p.to,
+    subject: `Votre réservation a été annulée — fermeture exceptionnelle de ${p.restaurantName}`,
+    trigger: 'reservation_cancelled_by_closure',
+    html: shell('Réservation annulée — fermeture exceptionnelle', `
+      <p>Bonjour ${esc(p.customerName)}, nous sommes sincèrement désolés :
+         <strong>${esc(p.restaurantName)}</strong> sera exceptionnellement fermé et a dû annuler
+         votre réservation du ${formatDateFr(p.date)}.</p>
+      ${why}
+      <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle est libérée sans frais — aucun débit.</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="https://grubano.com/eat" style="background:#F97316;color:#fff;text-decoration:none;
+           padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
+           Réserver un autre créneau
+        </a>
+      </p>`),
+  })
+}
+
+// ── 6) Password reset — security family (Emails v2, FIX 3) ──────────────────────
+
+export async function sendPasswordResetEmail(p: {
+  to:       string
+  name:     string
+  /** Full https reset link (token + email + space already in the query). */
+  resetUrl: string
+}): Promise<void> {
+  await sendTransactional({
+    to:      p.to,
+    subject: 'Réinitialisation de votre mot de passe Grubano',
+    trigger: 'password_reset_request',
+    html: shell('Réinitialiser votre mot de passe', `
+      <p>Bonjour ${esc(p.name)}, vous avez demandé à réinitialiser votre mot de passe Grubano.</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="${p.resetUrl}" style="background:#F97316;color:#fff;text-decoration:none;
+           padding:14px 28px;border-radius:12px;font-weight:600;display:inline-block">
+           Choisir un nouveau mot de passe
+        </a>
+      </p>
+      <p style="font-size:13px;color:#6b7280">Ce lien est valable <strong>1 heure</strong> et ne peut être utilisé qu'une seule fois.</p>
+      <p style="font-size:13px;color:#6b7280">Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet email — votre mot de passe reste inchangé.</p>`),
+  })
+}
+
+export async function sendPasswordChangedEmail(p: {
+  to:   string
+  name: string
+}): Promise<void> {
+  await sendTransactional({
+    to:      p.to,
+    subject: 'Votre mot de passe Grubano a été changé',
+    trigger: 'password_changed',
+    html: shell('Mot de passe changé', `
+      <p>Bonjour ${esc(p.name)}, le mot de passe de votre compte Grubano vient d'être modifié.</p>
+      <p style="font-size:13px;color:#6b7280"><strong>Ce n'était pas vous ?</strong> Réinitialisez immédiatement votre mot de passe
+         depuis la page de connexion (« Mot de passe oublié ») ou répondez à cet email.</p>`),
   })
 }
 

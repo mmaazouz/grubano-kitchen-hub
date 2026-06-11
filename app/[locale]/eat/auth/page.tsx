@@ -6,6 +6,7 @@ import { signIn } from 'next-auth/react'
 import { Eye, EyeOff, Mail, Lock, User as UserIcon, ArrowLeft } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
 import { useTranslations } from 'next-intl'
+import ForgotPasswordModal from '@/components/auth/ForgotPasswordModal'
 
 type Tab = 'login' | 'register'
 
@@ -39,6 +40,8 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [providers, setProviders] = useState<Record<string, unknown>>({})
+  // Emails v2 FIX 3 — the real forgot-password flow (was a "soon" toast).
+  const [forgotOpen, setForgotOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/providers')
@@ -172,7 +175,7 @@ export default function AuthScreen() {
         </div>
 
         {tab === 'login' && (
-          <button type="button" onClick={() => showToast(t('resetSoon'))} className="ml-auto block text-[13px] font-semibold text-[#F97316]">
+          <button type="button" onClick={() => setForgotOpen(true)} className="ml-auto block text-[13px] font-semibold text-[#F97316]">
             {t('forgotPassword')}
           </button>
         )}
@@ -225,6 +228,14 @@ export default function AuthScreen() {
           <>{t('alreadyHaveAccount')} <button onClick={() => setTab('login')} className="font-bold text-[#F97316]">{t('signIn')}</button></>
         )}
       </p>
+
+      {forgotOpen && (
+        <ForgotPasswordModal
+          space="eat"
+          initialEmail={email}
+          onClose={() => setForgotOpen(false)}
+        />
+      )}
     </div>
   )
 }

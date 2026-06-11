@@ -4,7 +4,11 @@ import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { releaseHold } from '@/lib/deposit'
 import { isValidTime, toMin, localParts, dateOnly } from '@/lib/opening-hours'
-import { sendReservationCancelledByOwner } from '@/lib/transactional-emails'
+import {
+  sendReservationCancelledByClosure,
+  resolveReservationRecipient,
+  logEmailSkipped,
+} from '@/lib/transactional-emails'
 
 // releaseHold reads the live Stripe PI → Node runtime.
 export const runtime = 'nodejs'
@@ -99,7 +103,7 @@ export async function POST(
         ],
       },
       select: {
-        id: true, customerName: true, email: true, date: true, endTime: true,
+        id: true, customerName: true, email: true, userId: true, date: true, endTime: true,
         status: true, depositStatus: true, stripePaymentIntentId: true,
       },
       orderBy: { date: 'asc' },
@@ -193,17 +197,28 @@ export async function POST(
           },
         })
         cancelled++
-        // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws):
-        // the « annulation muette » fix — each guest whose reservation the
-        // closure cancelled is informed, with the PUBLIC closure reason.
-        if (r.email) {
-          await sendReservationCancelledByOwner({
-            to:             r.email,
+        // ── Transactional email (Emails v2 FIX 2) — POST-success, BEST-EFFORT
+        // (never throws). EVERY guest the closure cancelled is informed, with
+        // the dedicated trigger reservation_cancelled_by_closure + the PUBLIC
+        // reason. Recipient = reservation email OR the linked ACCOUNT's email
+        // (FIX 1 — the v1 hook depended on the reservation's typed email only,
+        // and skipped SILENTLY when it was empty: that's why a partial closure
+        // produced zero EmailLog lines). Nobody → traced 'skipped' row.
+        const guestEmail = await resolveReservationRecipient(r)
+        if (guestEmail) {
+          await sendReservationCancelledByClosure({
+            to:             guestEmail,
             customerName:   r.customerName,
             restaurantName: restaurantNameForEmails,
             date:           r.date,
             closureReason:  data.reason?.trim() || null,
           })
+        } else {
+          await logEmailSkipped(
+            'reservation_cancelled_by_closure',
+            `Votre réservation a été annulée — fermeture exceptionnelle de ${restaurantNameForEmails}`,
+            { reservationId: r.id },
+          )
         }
       } catch (e) {
         errors.push({ reservationId: r.id, error: e instanceof Error ? e.message : 'cancel failed' })

@@ -1,0 +1,74 @@
+import { NextResponse } from 'next/server'
+import { randomBytes } from 'crypto'
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { sendPasswordResetEmail } from '@/lib/transactional-emails'
+
+// ── POST /api/auth/forgot-password — Emails v2 FIX 3 (step 1/2) ────────────────
+//
+// PUBLIC (under the /api/auth middleware allowance). Body { email, space? }.
+// ALWAYS answers 200 { ok:true } — whether the account exists or not (no user
+// enumeration). When the account exists AND has a password (SSO-only accounts
+// have nothing to reset):
+//   - a SINGLE-USE random token (crypto, 64 hex chars) valid 1 HOUR is stored
+//     in the EXISTING VerificationToken table (identifier 'pwreset:<email>' —
+//     namespaced, the table is unused by any other flow; previous tokens for
+//     the identifier are deleted → one active token at a time),
+//   - the reset email (best-effort, EmailLog trigger password_reset_request)
+//     carries {NEXTAUTH_URL}/fr/eat/reset-password?token=…&email=…&space=…
+//     (the page is PUBLIC via the /eat tree — middleware untouched; `space`
+//     only routes the post-reset CTA: business vs consumer sign-in).
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 h
+
+const bodySchema = z.object({
+  email: z.string().email(),
+  space: z.enum(['eat', 'business']).optional(),
+})
+
+export async function POST(req: Request) {
+  try {
+    const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Email invalide' }, { status: 400 })
+    }
+    const email = parsed.data.email.trim().toLowerCase()
+    const space = parsed.data.space ?? 'eat'
+
+    const operator = await prisma.operator.findUnique({
+      where:  { email },
+      select: { id: true, name: true, email: true, password: true },
+    })
+
+    // Account exists with a credentials password → issue the token + email.
+    // Anything else falls through to the same 200 (no enumeration).
+    if (operator?.password) {
+      const identifier = `pwreset:${email}`
+      const token = randomBytes(32).toString('hex')
+      await prisma.verificationToken.deleteMany({ where: { identifier } })
+      await prisma.verificationToken.create({
+        data: { identifier, token, expires: new Date(Date.now() + TOKEN_TTL_MS) },
+      })
+
+      const base = process.env.NEXTAUTH_URL || 'https://grubano.com'
+      const resetUrl =
+        `${base.replace(/\/$/, '')}/fr/eat/reset-password` +
+        `?token=${token}&email=${encodeURIComponent(email)}&space=${space}`
+
+      await sendPasswordResetEmail({
+        to:       operator.email,
+        name:     operator.name,
+        resetUrl,
+      })
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[POST /api/auth/forgot-password]', err instanceof Error ? err.message : err)
+    // Same shape on server hiccup — the caller can't distinguish anyway.
+    return NextResponse.json({ ok: true })
+  }
+}

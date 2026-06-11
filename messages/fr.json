@@ -1827,5 +1827,29 @@
     "rateReservation": "Réservation",
     "rateFreeBadge": "Offre fondateur : 0% jusqu’au {date}",
     "rateFree": "Gratuit"
+  },
+  "auth": {
+    "reset": {
+      "forgotTitle": "Mot de passe oublié",
+      "forgotBody": "Saisissez votre email — si un compte existe, vous recevrez un lien de réinitialisation (valable 1 h).",
+      "forgotEmailPh": "votre@email.com",
+      "forgotSend": "Envoyer le lien",
+      "forgotSending": "Envoi…",
+      "forgotSent": "Si un compte existe pour cet email, le lien de réinitialisation vient d’être envoyé. Pensez au dossier spam.",
+      "forgotClose": "Fermer",
+      "resetTitle": "Nouveau mot de passe",
+      "resetBody": "Choisissez votre nouveau mot de passe (8 caractères minimum).",
+      "resetPwLabel": "Nouveau mot de passe",
+      "resetPw2Label": "Confirmez le mot de passe",
+      "resetSubmit": "Changer mon mot de passe",
+      "resetSubmitting": "Changement…",
+      "resetMismatch": "Les deux mots de passe ne correspondent pas.",
+      "resetTooShort": "8 caractères minimum.",
+      "resetInvalid": "Lien invalide ou expiré — refaites une demande depuis la page de connexion.",
+      "resetErrGeneric": "Impossible de changer le mot de passe — réessayez.",
+      "resetDoneTitle": "Mot de passe changé ✓",
+      "resetDoneBody": "Vous pouvez maintenant vous connecter avec votre nouveau mot de passe. Un email de confirmation vous a été envoyé.",
+      "resetGoLogin": "Se connecter"
+    }
   }
 }
