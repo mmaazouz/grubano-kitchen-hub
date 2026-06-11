@@ -1042,6 +1042,31 @@
       "restaurantClosed": "Questo ristorante non accetta prenotazioni online al momento.",
       "errOutsideHours": "Questa fascia è fuori dagli orari di apertura — scegli un altro orario.",
       "errClosedSlot": "Il locale è eccezionalmente chiuso in questa data — scegli un altro giorno."
+    },
+    "checkout": {
+      "title": "Completa il mio ordine",
+      "orderRef": "Ordine {ref}",
+      "recapTitle": "Riepilogo",
+      "subtotal": "Subtotale prodotti",
+      "deliveryFee": "Spese di consegna",
+      "pickupNoFee": "Da asporto — nessuna spesa",
+      "discount": "Sconto di benvenuto",
+      "total": "Totale",
+      "payNowNote": "Importo addebitato ora con carta — il ristorante inizia la preparazione appena il pagamento è confermato.",
+      "payCta": "Paga {amount}",
+      "loading": "Caricamento del tuo ordine…",
+      "errLoad": "Impossibile caricare l’ordine — riprova.",
+      "errAlreadyPaid": "Questo ordine è già pagato.",
+      "alreadyPaidCta": "Segui il mio ordine",
+      "errPayInit": "Il pagamento non è partito — riprova.",
+      "retry": "Riprova",
+      "confirmTitle": "Ordine confermato!",
+      "confirmBody": "Il ristorante sta preparando il tuo ordine.",
+      "confirmPickup": "Da ritirare presso {restaurant}.",
+      "confirmDelivery": "In consegna da {restaurant}.",
+      "confirmEmail": "Ti abbiamo inviato un’email di conferma.",
+      "paidAmount": "Importo pagato: {amount}",
+      "trackCta": "Segui il mio ordine"
     }
   },
   "menu": {

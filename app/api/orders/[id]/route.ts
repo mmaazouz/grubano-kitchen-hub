@@ -68,6 +68,9 @@ export async function GET(
         trackingUrl:     order.trackingUrl,
         deliveryAddress: order.deliveryAddress,
         paymentMethod:   order.paymentMethod,
+        // Checkout C2 (additive) — null = legacy/not initiated, 'pending' = PI
+        // created, 'paid' = webhook-confirmed (C1 contract).
+        paymentStatus:   order.paymentStatus,
         pointsEarned:    order.pointsEarned,
         createdAt:       order.createdAt,
         updatedAt:       order.updatedAt,

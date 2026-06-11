@@ -228,6 +228,45 @@ export async function sendRefundConfirmation(p: {
   })
 }
 
+// ── 5) Order confirmation — checkout C2 (paid pickup/delivery order) ───────────
+
+export async function sendOrderConfirmation(p: {
+  to:             string
+  customerName:   string
+  restaurantName: string
+  /** Short customer-facing order ref (e.g. "#AB12CD") — also the idempotence
+   *  marker the confirm route greps in EmailLog.subject. */
+  orderRef:       string
+  fulfillmentType: 'pickup' | 'delivery' | string
+  items:          Array<{ name: string; qty: number }>
+  /** CENTS actually paid (order.total — products + delivery − discount). */
+  paidCents:      number
+}): Promise<void> {
+  const lines = p.items
+    .map((it) => row(`${it.qty}×`, esc(it.name)))
+    .join('')
+  const mode = p.fulfillmentType === 'pickup'
+    ? 'À emporter — votre commande sera à retirer au restaurant.'
+    : 'Livraison — votre commande arrive chez vous.'
+  await sendTransactional({
+    to:      p.to,
+    subject: `Commande ${p.orderRef} confirmée — ${p.restaurantName}`,
+    trigger: 'order_confirmation',
+    html: shell('Commande confirmée ✓', `
+      <p>Bonjour ${esc(p.customerName)}, votre paiement de
+         <strong>${eurosFromCents(p.paidCents)}</strong> est confirmé —
+         <strong>${esc(p.restaurantName)}</strong> prépare votre commande.</p>
+      ${table(row('Commande', esc(p.orderRef)) + lines + row('Montant payé', eurosFromCents(p.paidCents)))}
+      <p style="font-size:13px;color:#6b7280">${mode}</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="https://grubano.com/eat/account" style="background:#F97316;color:#fff;text-decoration:none;
+           padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
+           Suivre ma commande
+        </a>
+      </p>`),
+  })
+}
+
 // ── 4) No-show penalty charged ───────────────────────────────────────────────────
 
 export async function sendNoShowPenaltyCharged(p: {

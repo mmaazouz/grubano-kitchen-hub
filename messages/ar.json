@@ -1042,6 +1042,31 @@
       "restaurantClosed": "لا يقبل هذا المطعم الحجوزات عبر الإنترنت حاليًا.",
       "errOutsideHours": "هذه الفترة خارج ساعات العمل — اختر وقتًا آخر.",
       "errClosedSlot": "المطعم مغلق استثنائيًا في هذا التاريخ — اختر يومًا آخر."
+    },
+    "checkout": {
+      "title": "إتمام طلبي",
+      "orderRef": "الطلب {ref}",
+      "recapTitle": "الملخص",
+      "subtotal": "مجموع المنتجات",
+      "deliveryFee": "رسوم التوصيل",
+      "pickupNoFee": "استلام — بدون رسوم",
+      "discount": "خصم الترحيب",
+      "total": "الإجمالي",
+      "payNowNote": "يُخصم المبلغ الآن بالبطاقة — يبدأ المطعم التحضير فور تأكيد الدفع.",
+      "payCta": "ادفع {amount}",
+      "loading": "جارٍ تحميل طلبك…",
+      "errLoad": "تعذّر تحميل الطلب — أعد المحاولة.",
+      "errAlreadyPaid": "هذا الطلب مدفوع بالفعل.",
+      "alreadyPaidCta": "تتبّع طلبي",
+      "errPayInit": "تعذّر بدء الدفع — أعد المحاولة.",
+      "retry": "إعادة المحاولة",
+      "confirmTitle": "تم تأكيد الطلب!",
+      "confirmBody": "المطعم يحضّر طلبك الآن.",
+      "confirmPickup": "للاستلام من {restaurant}.",
+      "confirmDelivery": "قيد التوصيل من {restaurant}.",
+      "confirmEmail": "أرسلنا لك بريدًا للتأكيد.",
+      "paidAmount": "المبلغ المدفوع: {amount}",
+      "trackCta": "تتبّع طلبي"
     }
   },
   "menu": {

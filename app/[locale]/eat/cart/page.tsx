@@ -185,7 +185,14 @@ export default function CartScreen() {
         return
       }
       writeCart(null)
-      router.push(`/eat/track/${data.orderId}`)
+      // Checkout C2: card orders go through the payment journey (recap →
+      // Stripe Elements → confirmation). Cash-on-delivery keeps the legacy
+      // direct-to-tracking path — C1 only gated the card flow.
+      if (payment === 'card') {
+        router.push(`/eat/checkout/${data.orderId}`)
+      } else {
+        router.push(`/eat/track/${data.orderId}`)
+      }
     } catch {
       setError(t('errorNetwork'))
     } finally {
