@@ -96,7 +96,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       code: creator.referralCode,
-      link: creator.referralLinkSlug ? `/r/${creator.referralLinkSlug}` : null,
+      // C3-fix (B1-bis report): /ref/<slug> is the REAL tracked-link route — the
+      // contract previously fabricated a dead "/r/<slug>" path.
+      link: creator.referralLinkSlug ? `/ref/${creator.referralLinkSlug}` : null,
       totals: {
         ...totals,
         thresholdCents: PAYOUT_THRESHOLD_CENTS,
