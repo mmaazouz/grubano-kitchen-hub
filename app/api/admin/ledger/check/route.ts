@@ -111,12 +111,59 @@ export async function GET(req: Request) {
     const reconciliationOk = ecarts.every(e => e.kind === 'not_in_stripe_window') &&
       ledgerCount >= stripeCount && internalOk
 
+    // ── (c) REFUNDS reconciliation (A5) — negative 'refund' lines vs the REAL
+    //     succeeded Stripe refunds of the window. The internal equation already
+    //     holds with negatives (gross = fee + net line-by-line above); here we
+    //     verify nothing given back at Stripe is missing from the ledger.
+    const refundLines = lines.filter(l => l.type === 'refund')
+    let refunds: {
+      ledgerCount: number; stripeCount: number
+      ledgerSum: number; stripeSum: number; checked: boolean
+    } = { ledgerCount: refundLines.length, stripeCount: 0, ledgerSum: sum(refundLines.map(l => l.grossAmount)), stripeSum: 0, checked: false }
+    try {
+      const stripeRefunds = await getStripe().refunds
+        .list({
+          created: { gte: Math.floor(from.getTime() / 1000), lte: Math.ceil(to.getTime() / 1000) },
+          limit:   100,
+        })
+        .autoPagingToArray({ limit: STRIPE_PAGE_CAP })
+      const succeededRefunds = stripeRefunds.filter(r => r.status === 'succeeded')
+      refunds = {
+        ...refunds,
+        stripeCount: succeededRefunds.length,
+        // Ledger refund gross is NEGATIVE; Stripe amounts are positive → compare on -sum.
+        stripeSum:   -sum(succeededRefunds.map(r => r.amount)),
+        checked:     true,
+      }
+      const refundIds = succeededRefunds.map(r => r.id)
+      const knownRefunds = refundIds.length
+        ? await prisma.ledgerEntry.findMany({
+            where:  { sourceEventId: { in: refundIds }, type: 'refund' },
+            select: { sourceEventId: true },
+          })
+        : []
+      const knownRefundIds = new Set(knownRefunds.map(l => l.sourceEventId))
+      for (const r of succeededRefunds) {
+        if (!knownRefundIds.has(r.id)) {
+          ecarts.push({ kind: 'missing_refund_in_ledger', stripeRefundId: r.id, amount: r.amount })
+        }
+      }
+    } catch (e) {
+      // Refunds listing unavailable → surfaced, not fatal (noted for A6).
+      console.warn('[ledger check] refunds reconciliation unavailable:', e instanceof Error ? e.message : e)
+    }
+
+    const refundsOk = !refunds.checked ||
+      (refunds.ledgerSum === refunds.stripeSum && !ecarts.some(e => e.kind === 'missing_refund_in_ledger'))
+
     return NextResponse.json({
-      ok: internalOk && ecarts.length === 0 && ledgerCount === stripeCount && ledgerSum === stripeSum,
+      ok: internalOk && ecarts.length === 0 && ledgerCount === stripeCount && ledgerSum === stripeSum && refundsOk,
       internalOk,
       reconciliationOk,
+      refundsOk,
       from: from.toISOString(), to: to.toISOString(),
       ledgerCount, stripeCount, ledgerSum, stripeSum,
+      refunds,
       aggregates: { gross: aggGross, applicationFee: aggFee, netToRestaurant: aggNet },
       ecarts,
     })

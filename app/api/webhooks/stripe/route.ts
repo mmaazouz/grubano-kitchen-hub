@@ -86,6 +86,20 @@ export async function POST(req: Request) {
     return handleAccountUpdated(event.data.object as Stripe.Account)
   }
 
+  // 3-refund) REFUND branch (rail A5) — charge.refunded carries a Charge. One
+  //        compensating NEGATIVE ledger line per refund (append-only: nothing
+  //        is ever modified). Chosen over refund.updated because: (a) it fires
+  //        exactly when money actually went back; (b) the Charge payload carries
+  //        the full context the line needs (PI id, application fee, transfer
+  //        data, metadata) in one object; (c) iterating the charge's refunds
+  //        list + per-refund unique keys makes every event self-healing for any
+  //        previously missed refund — refund.updated only fires on UPDATES (an
+  //        immediately-succeeded card refund may never emit one) and its Refund
+  //        payload lacks the charge context.
+  if (event.type === 'charge.refunded') {
+    return handleChargeRefunded(event.data.object as Stripe.Charge)
+  }
+
   const pi = event.data.object as Stripe.PaymentIntent
 
   // 3-ledger) LEDGER (rail A3) — every succeeded PI is money that ACTUALLY moved:
@@ -350,6 +364,105 @@ async function recordSucceededPaymentLedger(pi: Stripe.PaymentIntent) {
       `[LEDGER MISS] unexpected error for PI ${pi.id}: ${err instanceof Error ? err.message : err}` +
       (payload ? ` — payload: ${JSON.stringify(payload)}` : ''),
     )
+  }
+}
+
+// ── REFUNDS (A5): one compensating NEGATIVE ledger line per refund ─────────────
+// gross = −refund.amount; applicationFee = −(commission actually taken back,
+// read from Stripe's REAL fee refunds — created pro-rata by Stripe when the
+// refund was made with refund_application_fee:true); net = gross − fee. The
+// golden equation holds with negatives. sourceEventId = the refund id (re_…) →
+// @@unique([sourceEventId,'refund']) makes replays silent, and iterating ALL of
+// the charge's refunds self-heals previously missed events. stripeFeeAmount = 0
+// (deliberate: Stripe does NOT return its processing fee on a refund — a zero
+// fee MOVEMENT, affirmed, not an unknown). Failure → [LEDGER MISS] + 200.
+async function handleChargeRefunded(charge: Stripe.Charge) {
+  try {
+    const piId         = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? null
+    const restaurantId = charge.metadata?.restaurantId
+    if (!restaurantId) {
+      console.error(`[LEDGER MISS] charge.refunded ${charge.id} carries no metadata.restaurantId — refund line(s) NOT recorded`)
+      return NextResponse.json({ received: true, matched: false })
+    }
+
+    // The charge's refunds (chronological). The embedded list covers the 10 most
+    // recent — beyond that, fetch the full list (test volumes never hit this).
+    let refunds: Stripe.Refund[] = charge.refunds?.data ? [...charge.refunds.data] : []
+    if (!refunds.length || charge.refunds?.has_more) {
+      try {
+        refunds = await getStripe().refunds
+          .list({ payment_intent: piId ?? undefined, charge: piId ? undefined : charge.id, limit: 100 })
+          .autoPagingToArray({ limit: 100 })
+      } catch {
+        // keep whatever the payload carried
+      }
+    }
+    refunds.sort((a, b) => a.created - b.created)
+    // Only money that actually went back.
+    refunds = refunds.filter(r => r.status === 'succeeded')
+
+    // Stripe's REAL fee refunds (commission taken back), same chronological
+    // order — our flow creates exactly one per refund (refund_application_fee),
+    // so index-matching is exact; a count mismatch falls back to pro-rata.
+    const appFeeId = typeof charge.application_fee === 'string'
+      ? charge.application_fee
+      : charge.application_fee?.id ?? null
+    let feeRefunds: Array<{ amount: number; created: number }> = []
+    if (appFeeId) {
+      try {
+        const list = await getStripe().applicationFees.listRefunds(appFeeId, { limit: 100 })
+        feeRefunds = list.data.map(fr => ({ amount: fr.amount, created: fr.created }))
+          .sort((a, b) => a.created - b.created)
+      } catch {
+        // fee refunds unknown → pro-rata fallback below
+      }
+    }
+    const totalFee = charge.application_fee_amount ?? 0
+
+    const dest = typeof charge.transfer_data?.destination === 'string'
+      ? charge.transfer_data.destination
+      : (charge.transfer_data?.destination as { id?: string } | null | undefined)?.id ?? null
+
+    let recorded = 0
+    for (let i = 0; i < refunds.length; i++) {
+      const r = refunds[i]
+      // Commission taken back for THIS refund: Stripe's real fee refund when the
+      // counts line up (our controlled flow), else the pro-rata Stripe applies.
+      const feeBack = feeRefunds.length === refunds.length
+        ? feeRefunds[i].amount
+        : (totalFee > 0 && charge.amount > 0 ? Math.round(totalFee * (r.amount / charge.amount)) : 0)
+      if (appFeeId && feeRefunds.length !== refunds.length) {
+        console.warn(`[stripe webhook] refund ${r.id}: fee refunds (${feeRefunds.length}) ≠ refunds (${refunds.length}) — pro-rata fallback used`)
+      }
+
+      const res = await recordLedgerEntry({
+        type:                  'refund',
+        restaurantId,
+        ticketId:              charge.metadata?.ticketId || null,
+        reservationId:         charge.metadata?.reservationId || null,
+        stripePaymentIntentId: piId,
+        stripeChargeId:        charge.id,
+        grossAmount:           -r.amount,
+        applicationFeeAmount:  -feeBack,
+        stripeFeeAmount:       0, // Stripe keeps its processing fee on refunds — zero movement, affirmed
+        netToRestaurant:       -r.amount + feeBack, // gross − fee, with negatives
+        routed:                !!dest,
+        destinationAccountId:  dest,
+        currency:              r.currency || charge.currency || 'eur',
+        sourceEventId:         r.id,                        // re_… — replay-proof
+        createdAt:             new Date(r.created * 1000),  // the refund's real date
+      })
+      if (!res.ok) {
+        console.error(`[LEDGER MISS] refund line failed for ${r.id}: ${res.error} — charge ${charge.id}, amount ${r.amount}, feeBack ${feeBack}`)
+      } else if (!res.duplicate) {
+        recorded++
+      }
+    }
+
+    return NextResponse.json({ received: true, refunds: refunds.length, recorded })
+  } catch (err) {
+    console.error('[stripe webhook] charge.refunded handler error:', err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: 'Handler error' }, { status: 500 })
   }
 }
 
