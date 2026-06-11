@@ -18,7 +18,25 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # ── Finance gate (A6 gardiens) ────────────────────────────────────────────
+  # Pure unit tests against lib/commission, lib/invoice's splits + month
+  # bounds, and the ledger golden equation. NO DB / NO Stripe / NO network.
+  # The deploy job below has `needs: test` — red tests block the FTP push.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Finance unit tests
+        run: npm run test:finance
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:

@@ -24,16 +24,33 @@ const STRIPE_PAGE_CAP   = 1000 // hard cap on PIs fetched per check (test volume
 
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-    }
-    const operator = await prisma.operator.findUnique({
-      where:  { email: session.user.email },
-      select: { role: true },
-    })
-    if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
-      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    // ── Auth (A6, ADDITIVE machine access) ────────────────────────────────────
+    // Two ways in, in order:
+    //   1. X-Internal-Token: a fixed-string header that, when it matches
+    //      INTERNAL_CRON_TOKEN, opens the route to the cron probe without a
+    //      session. The token MUST be set as an env var AND be non-empty —
+    //      anything else falls through to the session gate (no accidental
+    //      open-to-the-world if the env is mis-configured).
+    //   2. Otherwise, the original operator session gate (admin / restaurant).
+    const internalToken    = req.headers.get('x-internal-token')
+    const internalExpected = (process.env.INTERNAL_CRON_TOKEN ?? '').trim()
+    const isInternal =
+      internalExpected.length > 0 &&
+      typeof internalToken === 'string' &&
+      internalToken === internalExpected
+
+    if (!isInternal) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.email) {
+        return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+      }
+      const operator = await prisma.operator.findUnique({
+        where:  { email: session.user.email },
+        select: { role: true },
+      })
+      if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
+        return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+      }
     }
 
     const { searchParams } = new URL(req.url)

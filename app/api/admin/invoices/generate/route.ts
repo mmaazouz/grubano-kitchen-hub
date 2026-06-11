@@ -19,16 +19,31 @@ const bodySchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) })
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-    }
-    const operator = await prisma.operator.findUnique({
-      where:  { email: session.user.email },
-      select: { role: true },
-    })
-    if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
-      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    // ── Auth (A6, ADDITIVE machine access — same shape as /ledger/check) ──────
+    // The monthly invoice cron (scripts/cron/monthly-invoices.js) calls this
+    // endpoint with a fixed-string X-Internal-Token header. Same security model
+    // as /ledger/check: only opens when INTERNAL_CRON_TOKEN is set AND the
+    // header matches exactly; otherwise the original operator session gate
+    // (admin / restaurant) applies unchanged.
+    const internalToken    = req.headers.get('x-internal-token')
+    const internalExpected = (process.env.INTERNAL_CRON_TOKEN ?? '').trim()
+    const isInternal =
+      internalExpected.length > 0 &&
+      typeof internalToken === 'string' &&
+      internalToken === internalExpected
+
+    if (!isInternal) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.email) {
+        return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+      }
+      const operator = await prisma.operator.findUnique({
+        where:  { email: session.user.email },
+        select: { role: true },
+      })
+      if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
+        return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+      }
     }
 
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
