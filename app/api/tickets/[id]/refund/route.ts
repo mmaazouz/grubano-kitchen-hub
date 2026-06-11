@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { refundPayment } from '@/lib/refunds'
+import { sendRefundConfirmation } from '@/lib/transactional-emails'
 
 // ── POST /api/tickets/[id]/refund ─────────────────────────────────────────────
 // Rail A5 — OWNER refunds a PAID bill, partially ({ amountCents }) or fully
@@ -33,7 +34,7 @@ export async function POST(
 
     const ticket = await prisma.tableTicket.findUnique({
       where:  { id: params.id },
-      select: { id: true, restaurantId: true, status: true, stripePaymentIntentId: true },
+      select: { id: true, restaurantId: true, status: true, stripePaymentIntentId: true, reservationId: true },
     })
     if (!ticket) return NextResponse.json({ error: 'Addition introuvable' }, { status: 404 })
     if (!scope.ownedIds.includes(ticket.restaurantId)) {
@@ -48,6 +49,34 @@ export async function POST(
       amountCents:     parsed.data.amountCents,
     })
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+
+    // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws).
+    // The client's email lives on the LINKED reservation; a walk-in ticket
+    // (reservationId null) or a reservation without email → nothing to send.
+    if (ticket.reservationId) {
+      try {
+        const [reservation, resto] = await Promise.all([
+          prisma.reservation.findUnique({
+            where:  { id: ticket.reservationId },
+            select: { email: true, customerName: true },
+          }),
+          prisma.restaurant.findUnique({ where: { id: ticket.restaurantId }, select: { name: true } }),
+        ])
+        if (reservation?.email) {
+          await sendRefundConfirmation({
+            to:             reservation.email,
+            customerName:   reservation.customerName,
+            restaurantName: resto?.name ?? 'votre restaurant',
+            refundedCents:  result.refundedCents,
+            partial:        result.remainingCents > 0,
+          })
+        }
+      } catch (e) {
+        console.error('[EMAIL MISS] [POST /api/tickets/[id]/refund] context lookup failed',
+          JSON.stringify({ ticketId: ticket.id, refundId: result.refund.id }),
+          e instanceof Error ? e.message : e)
+      }
+    }
 
     return NextResponse.json({
       refundId:       result.refund.id,

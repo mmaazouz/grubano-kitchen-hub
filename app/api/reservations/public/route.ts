@@ -3,8 +3,13 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
+import { reservationCode } from '@/lib/reservation-code'
+import { sendReservationConfirmation } from '@/lib/transactional-emails'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
+
+// nodemailer (transactional confirmation) needs the Node runtime.
+export const runtime = 'nodejs'
 
 // ── POST /api/reservations/public ─────────────────────────────────────────────
 // PUBLIC consumer reservation endpoint (no auth). Agent 13 step 1 of payment V1:
@@ -77,6 +82,7 @@ export async function POST(req: Request) {
       where:  { id: data.restaurantId, isActive: true, archivedAt: null },
       select: {
         id: true,
+        name: true,
         defaultReservationDurationMin: true,
         defaultDepositAmount: true,
       },
@@ -201,6 +207,21 @@ export async function POST(req: Request) {
       } as unknown as Prisma.ReservationUncheckedCreateInput,
       include: { table: { select: { id: true, name: true } } },
     })
+
+    // ── Confirmation email (transactional v1) — POST-success, BEST-EFFORT ────
+    // sendReservationConfirmation never throws (its failures land in
+    // [EMAIL MISS] + EmailLog). No email on the booking → nothing to send.
+    if (data.email) {
+      await sendReservationConfirmation({
+        to:             data.email,
+        customerName:   data.customerName,
+        restaurantName: restaurant.name,
+        date:           reservation.date,
+        guests:         reservation.guests,
+        code:           reservationCode(reservation.id),
+        depositEur,
+      })
+    }
 
     return NextResponse.json(
       {

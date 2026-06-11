@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { releaseHold } from '@/lib/deposit'
 import { isValidTime, toMin, localParts, dateOnly } from '@/lib/opening-hours'
+import { sendReservationCancelledByOwner } from '@/lib/transactional-emails'
 
 // releaseHold reads the live Stripe PI → Node runtime.
 export const runtime = 'nodejs'
@@ -98,7 +99,7 @@ export async function POST(
         ],
       },
       select: {
-        id: true, customerName: true, date: true, endTime: true,
+        id: true, customerName: true, email: true, date: true, endTime: true,
         status: true, depositStatus: true, stripePaymentIntentId: true,
       },
       orderBy: { date: 'asc' },
@@ -157,6 +158,16 @@ export async function POST(
     let cancelled = 0
     let depositsReleased = 0
     const errors: Array<{ reservationId: string; error: string }> = []
+    // Restaurant display name for the cancellation emails — fetched ONCE,
+    // best-effort (a lookup failure falls back to a generic label, it never
+    // blocks the cancellations).
+    let restaurantNameForEmails = 'votre restaurant'
+    if (conflicts.length > 0) {
+      try {
+        const resto = await prisma.restaurant.findUnique({ where: { id: params.id }, select: { name: true } })
+        if (resto?.name) restaurantNameForEmails = resto.name
+      } catch { /* keep the generic label */ }
+    }
     for (const r of conflicts) {
       let depositStatusUpdate: string | null = null
       if (r.stripePaymentIntentId && r.depositStatus !== 'released' && r.depositStatus !== 'captured') {
@@ -182,13 +193,22 @@ export async function POST(
           },
         })
         cancelled++
+        // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws):
+        // the « annulation muette » fix — each guest whose reservation the
+        // closure cancelled is informed, with the PUBLIC closure reason.
+        if (r.email) {
+          await sendReservationCancelledByOwner({
+            to:             r.email,
+            customerName:   r.customerName,
+            restaurantName: restaurantNameForEmails,
+            date:           r.date,
+            closureReason:  data.reason?.trim() || null,
+          })
+        }
       } catch (e) {
         errors.push({ reservationId: r.id, error: e instanceof Error ? e.message : 'cancel failed' })
       }
     }
-    // V1 limit (assumed, T3.Q1): no cancellation email yet — flagged priority 1
-    // of the transactional-emails chantier. The client sees the cancellation in
-    // the app (status + cancelReason exposed by the existing endpoints).
 
     return NextResponse.json(
       {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { captureHold } from '@/lib/deposit'
+import { sendNoShowPenaltyCharged } from '@/lib/transactional-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,6 +24,7 @@ export async function POST(
       select: {
         id: true, restaurantId: true, stripePaymentIntentId: true,
         depositAmount: true, noShowPenalty: true, depositCurrency: true,
+        email: true, customerName: true, date: true,
       },
     })
     if (!reservation) return NextResponse.json({ error: 'Réservation introuvable' }, { status: 404 })
@@ -39,6 +41,28 @@ export async function POST(
       where: { id: reservation.id },
       data:  { depositStatus: 'captured', depositPaid: true, status: 'noshow' },
     })
+
+    // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws):
+    // the guest is told the penalty was charged + how to contest (30 days).
+    if (reservation.email && typeof settle.capturedAmount === 'number') {
+      try {
+        const resto = reservation.restaurantId
+          ? await prisma.restaurant.findUnique({ where: { id: reservation.restaurantId }, select: { name: true } })
+          : null
+        await sendNoShowPenaltyCharged({
+          to:             reservation.email,
+          customerName:   reservation.customerName,
+          restaurantName: resto?.name ?? 'votre restaurant',
+          capturedCents:  settle.capturedAmount,
+          date:           reservation.date,
+        })
+      } catch (e) {
+        console.error('[EMAIL MISS] [POST deposit/capture] context lookup failed',
+          JSON.stringify({ reservationId: reservation.id }),
+          e instanceof Error ? e.message : e)
+      }
+    }
+
     return NextResponse.json({
       depositStatus: 'captured', status: 'noshow',
       capturedAmount: settle.capturedAmount, currency: reservation.depositCurrency,

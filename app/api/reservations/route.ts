@@ -4,6 +4,7 @@ import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { captureHold } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
+import { sendReservationCancelledByOwner, sendNoShowPenaltyCharged } from '@/lib/transactional-emails'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 
@@ -281,13 +282,17 @@ export async function PATCH(req: Request) {
     // walk-out the operator chooses capture/release at POST /api/tickets/[id]/close.
     // 'noshow' (the client never arrived) still captures the penalty here.
     const writeData: Record<string, unknown> = { ...data }
+    let capturedCents: number | null = null
     if (existing.stripePaymentIntentId && data.status === 'noshow') {
       const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
       if (!settle.ok) {
         return NextResponse.json({ error: settle.error }, { status: settle.status })
       }
       if (settle.depositStatus) writeData.depositStatus = settle.depositStatus
-      if (settle.depositStatus === 'captured') writeData.depositPaid = true
+      if (settle.depositStatus === 'captured') {
+        writeData.depositPaid = true
+        capturedCents = settle.capturedAmount ?? null
+      }
     }
 
     const reservation = await prisma.reservation.update({
@@ -295,6 +300,40 @@ export async function PATCH(req: Request) {
       data:    writeData,
       include: { table: true },
     })
+
+    // ── Transactional emails v1 — POST-success, BEST-EFFORT (never throw) ────
+    // (b) the RESTAURANT cancels → inform the client; (4) a no-show penalty was
+    // actually captured → notify the client (amount + how to contest). Both
+    // need the client's email — owner-typed reservations without one are
+    // silently skipped (nothing to send).
+    if ((data.status === 'cancelled' || (data.status === 'noshow' && capturedCents !== null)) && reservation.email) {
+      try {
+        const resto = reservation.restaurantId
+          ? await prisma.restaurant.findUnique({ where: { id: reservation.restaurantId }, select: { name: true } })
+          : null
+        const restaurantName = resto?.name ?? 'votre restaurant'
+        if (data.status === 'cancelled') {
+          await sendReservationCancelledByOwner({
+            to:             reservation.email,
+            customerName:   reservation.customerName,
+            restaurantName,
+            date:           reservation.date,
+          })
+        } else if (capturedCents !== null) {
+          await sendNoShowPenaltyCharged({
+            to:             reservation.email,
+            customerName:   reservation.customerName,
+            restaurantName,
+            capturedCents,
+            date:           reservation.date,
+          })
+        }
+      } catch (e) {
+        console.error('[EMAIL MISS] [PATCH /api/reservations] context lookup failed',
+          JSON.stringify({ reservationId: reservation.id, status: data.status }),
+          e instanceof Error ? e.message : e)
+      }
+    }
 
     // Auto-open the SESSION ticket bound to THIS reservation when the operator marks
     // it 'arrived'. Best-effort: wrapped so a ticket hiccup can never break the
