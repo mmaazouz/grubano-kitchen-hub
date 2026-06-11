@@ -57,7 +57,8 @@ interface EarningAdoption {
   brandName:           string | null
   saleAmountCents:     number
   creatorEarningCents: number
-  rateApplied:         number
+  /** Legacy rows may carry null/0 with a real gain — the UI hides the % then. */
+  rateApplied:         number | null
   status:              string
   maturedAt:           string | null
 }
@@ -91,6 +92,9 @@ export default function CreatorEarningsPage() {
   // Copy / QR affordances.
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const [qrOpen, setQrOpen] = useState(false)
+  // B1-bis FIX 3 — adoptions folded: 5 visible, "Voir plus" unfolds by packs
+  // of 5 (client-side slice — the contract already capped the list at 20).
+  const [adoptionsShown, setAdoptionsShown] = useState(5)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -155,10 +159,30 @@ export default function CreatorEarningsPage() {
     [locale],
   )
 
+  // ── The public tracked link (B1-bis FIX 1) ─────────────────────────────────
+  // Two corrections over the raw contract value:
+  //   1. PATH — the contract carries "/r/<slug>" but no /r route exists; the
+  //      WORKING attribution path is /ref/<slug> (app/[locale]/ref/[code] →
+  //      /api/ref/[code], drops the first-touch cookie). We derive the slug
+  //      and rebuild the path; flagged to Agent 14 for the contract itself.
+  //   2. ORIGIN — the page's real origin (window.location.origin), but with
+  //      the partner/business browsing host NEUTRALIZED: a creator signed in
+  //      via business.grubano.com would otherwise propagate that host into a
+  //      link CONSUMERS must open — referral links always target the consumer
+  //      app (strip the "business." subdomain).
   const fullLink = useMemo(() => {
     if (!data?.link) return null
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://grubano.com'
-    return `${origin}${data.link}`
+    const slug = data.link.split('/').filter(Boolean).pop()
+    if (!slug) return null
+    let origin = typeof window !== 'undefined' ? window.location.origin : 'https://grubano.com'
+    try {
+      const u = new URL(origin)
+      if (u.hostname.startsWith('business.')) {
+        u.hostname = u.hostname.replace(/^business\./, '')
+        origin = u.origin
+      }
+    } catch { /* keep the origin as-is */ }
+    return `${origin}/ref/${slug}`
   }, [data?.link])
 
   const statusBadge = (status: string) => {
@@ -409,34 +433,53 @@ export default function CreatorEarningsPage() {
             {t('adoptionsEmpty')}
           </p>
         ) : (
-          <div className="space-y-2">
-            {data.adoptions.map((a) => {
-              const badge = statusBadge(a.status)
-              return (
-                <Card key={a.id} elevation="sm" padding="md">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold text-grubano-ink">
-                        {a.dishName ?? '—'}
-                      </p>
-                      <p className="mt-0.5 truncate text-[11px] text-grubano-ink-faint">
-                        {[a.brandName, dateFmt.format(new Date(a.date)), t('adoptionRate', { pct: Math.round(a.rateApplied * 100) })]
-                          .filter(Boolean).join(' · ')}
-                      </p>
+          <>
+            <div className="space-y-2">
+              {data.adoptions.slice(0, adoptionsShown).map((a) => {
+                const badge = statusBadge(a.status)
+                return (
+                  <Card key={a.id} elevation="sm" padding="md">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-bold text-grubano-ink">
+                          {a.dishName ?? '—'}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11px] text-grubano-ink-faint">
+                          {/* B1-bis FIX 2 — legacy rows carry rateApplied null/0
+                              with a real gain: no percentage shown at all then;
+                              non-zero rates display as-is (data truth). */}
+                          {[
+                            a.brandName,
+                            dateFmt.format(new Date(a.date)),
+                            ...((a.rateApplied ?? 0) > 0
+                              ? [t('adoptionRate', { pct: Math.round((a.rateApplied ?? 0) * 100) })]
+                              : []),
+                          ].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-end">
+                        <p className="text-[13px] font-extrabold tabular-nums text-grubano-primary">
+                          {fmtCents(a.creatorEarningCents)}
+                        </p>
+                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </div>
                     </div>
-                    <div className="shrink-0 text-end">
-                      <p className="text-[13px] font-extrabold tabular-nums text-grubano-primary">
-                        {fmtCents(a.creatorEarningCents)}
-                      </p>
-                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
+                  </Card>
+                )
+              })}
+            </div>
+            {data.adoptions.length > adoptionsShown && (
+              <button
+                type="button"
+                onClick={() => setAdoptionsShown((n) => n + 5)}
+                className="mt-3 w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface py-2.5 text-sm font-semibold text-grubano-ink"
+              >
+                {t('loadMore')}
+              </button>
+            )}
+          </>
         )}
       </section>
 
