@@ -13,6 +13,7 @@ import {
   Instagram, Users2, ShoppingBag, Wallet,
 } from 'lucide-react'
 import { Card, Button, EmptyState } from '@/components/design-system'
+import { buildReferralLink } from '@/lib/referral-link'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
 
 export default function CreatorAffiliationPage() {
@@ -41,7 +42,9 @@ export default function CreatorAffiliationPage() {
   const audience     = data?.audience ?? { referralsCount: 0, ordersCount: 0, earningsTotal: 0, earningsThisMonth: 0, earningsLastMonth: 0 }
   const rates        = data?.referralRates
   const referralSlug = creator?.referralLinkSlug ?? creator?.referralCode?.toLowerCase() ?? null
-  const referralLink = referralSlug ? `grubano.com/ref/${referralSlug}` : null
+  // Shared builder (B1-bis): /ref/<slug> on the page's real origin with the
+  // business.* browsing host neutralized — never a hardcoded domain.
+  const referralLink = buildReferralLink(referralSlug)
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto space-y-5">
@@ -101,13 +104,13 @@ export default function CreatorAffiliationPage() {
                 <Link2 size={11} className="text-grubano-ink-faint shrink-0" />
                 <p
                   className="text-[11px] text-grubano-ink-muted font-mono truncate flex-1 cursor-pointer hover:text-grubano-ink transition"
-                  onClick={() => copyToClipboard(`https://${referralLink}`)}
+                  onClick={() => copyToClipboard(referralLink)}
                   title={ta('linkLabel')}
                 >
                   {referralLink}
                 </p>
                 <button
-                  onClick={() => copyToClipboard(`https://${referralLink}`)}
+                  onClick={() => copyToClipboard(referralLink)}
                   className="text-[10px] font-semibold text-[#3B82F6] hover:underline shrink-0"
                 >
                   {ta('copy')}

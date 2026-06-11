@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
+import { buildReferralLink } from '@/lib/referral-link'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
 
 // ── B2a contract (mirrored locally — the route is the source of truth) ────────
@@ -159,30 +160,14 @@ export default function CreatorEarningsPage() {
     [locale],
   )
 
-  // ── The public tracked link (B1-bis FIX 1) ─────────────────────────────────
-  // Two corrections over the raw contract value:
-  //   1. PATH — the contract carries "/r/<slug>" but no /r route exists; the
-  //      WORKING attribution path is /ref/<slug> (app/[locale]/ref/[code] →
-  //      /api/ref/[code], drops the first-touch cookie). We derive the slug
-  //      and rebuild the path; flagged to Agent 14 for the contract itself.
-  //   2. ORIGIN — the page's real origin (window.location.origin), but with
-  //      the partner/business browsing host NEUTRALIZED: a creator signed in
-  //      via business.grubano.com would otherwise propagate that host into a
-  //      link CONSUMERS must open — referral links always target the consumer
-  //      app (strip the "business." subdomain).
+  // ── The public tracked link (B1-bis FIX 1, builder factored since) ─────────
+  // The contract carries "/r/<slug>" (no /r route exists — flagged to Agent
+  // 14); we derive the slug and hand it to the shared lib/referral-link
+  // builder (/ref/<slug> path + business.* browsing host neutralized).
   const fullLink = useMemo(() => {
     if (!data?.link) return null
     const slug = data.link.split('/').filter(Boolean).pop()
-    if (!slug) return null
-    let origin = typeof window !== 'undefined' ? window.location.origin : 'https://grubano.com'
-    try {
-      const u = new URL(origin)
-      if (u.hostname.startsWith('business.')) {
-        u.hostname = u.hostname.replace(/^business\./, '')
-        origin = u.origin
-      }
-    } catch { /* keep the origin as-is */ }
-    return `${origin}/ref/${slug}`
+    return buildReferralLink(slug)
   }, [data?.link])
 
   const statusBadge = (status: string) => {

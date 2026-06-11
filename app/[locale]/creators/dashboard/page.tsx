@@ -13,6 +13,7 @@ import {
   Card, Button, Badge, EmptyState, SkeletonList,
 } from '@/components/design-system'
 import { useCategoryLabel } from '@/lib/categories'
+import { buildReferralLink } from '@/lib/referral-link'
 import { CreatorEarningsChart } from '@/components/creators/CreatorEarningsChart'
 import type {
   CreatorHomeData, CreatorHomeDish, DishAdopter,
@@ -129,7 +130,9 @@ export default function CreatorDashboardHome() {
     n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 
   const referralSlug = creator?.referralLinkSlug ?? creator?.referralCode?.toLowerCase() ?? null
-  const referralLink = referralSlug ? `grubano.com/ref/${referralSlug}` : null
+  // Shared builder (B1-bis): /ref/<slug> on the page's real origin with the
+  // business.* browsing host neutralized — never a hardcoded domain.
+  const referralLink = buildReferralLink(referralSlug)
 
   // Flags driving "next best actions"
   const hasReferralCode = !!creator?.referralCode

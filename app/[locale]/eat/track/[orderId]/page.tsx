@@ -56,6 +56,83 @@ const PICKUP_STATUS_TO_STEP: Record<string, number> = {
   delivered: 3,
 }
 
+/**
+ * Delivery 5-step timeline (UI-fix harmonisation): the SAME step journey the
+ * restaurant sees and the pickup client already had — Reçue → En préparation →
+ * Prête → En route → Livrée. Display only: statuses and labels are the
+ * existing ones, zero new status logic. The courier card stays below as a
+ * complement.
+ */
+const DELIVERY_STEPS = [
+  { key: 'received',  labelKey: 'statusReceived',  emoji: '📥' },
+  { key: 'preparing', labelKey: 'statusPreparing', emoji: '👨‍🍳' },
+  { key: 'ready',     labelKey: 'statusReady',     emoji: '🛍️' },
+  { key: 'picked_up', labelKey: 'statusPickedUp',  emoji: '🛵' },
+  { key: 'delivered', labelKey: 'statusDelivered', emoji: '✅' },
+] as const
+
+const DELIVERY_STATUS_TO_STEP: Record<string, number> = {
+  received: 0,
+  preparing: 1,
+  ready: 2,
+  picked_up: 3,
+  delivered: 4,
+}
+
+/** Vertical step timeline — extracted from the pickup branch verbatim so both
+ *  fulfilment modes render the exact same component. */
+function StepTimeline({
+  steps, currentStep, completed, t,
+}: {
+  steps:       ReadonlyArray<{ key: string; labelKey: string; emoji: string }>
+  currentStep: number
+  completed:   boolean
+  t:           (key: string) => string
+}) {
+  return (
+    <div className="space-y-0">
+      {steps.map((step, i) => {
+        const done = i < currentStep || completed
+        const active = i === currentStep && !completed
+        const isLast = i === steps.length - 1
+        return (
+          <div key={step.key} className="relative flex gap-3 pb-4 last:pb-0">
+            {/* Vertical connector */}
+            {!isLast && (
+              <span
+                className={`absolute left-[15px] top-[34px] w-[2px] ${done ? 'bg-[#F97316]' : 'bg-[#eee]'}`}
+                style={{ height: 'calc(100% - 18px)' }}
+                aria-hidden
+              />
+            )}
+            {/* Step bullet */}
+            <div
+              className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm shadow-sm transition-colors ${
+                done
+                  ? 'bg-[#F97316] text-white'
+                  : active
+                    ? 'bg-white text-[#F97316] ring-2 ring-[#F97316]'
+                    : 'bg-[#f5f5f5] text-[#bbb]'
+              }`}
+            >
+              {done ? <Check size={16} strokeWidth={3} /> : <span>{step.emoji}</span>}
+            </div>
+            {/* Label */}
+            <div className="flex-1 pt-0.5">
+              <p className={`text-[14px] font-bold ${done || active ? 'text-[#1a1a1a]' : 'text-[#bbb]'}`}>
+                {t(step.labelKey)}
+              </p>
+              {active && (
+                <p className="mt-0.5 text-xs text-[#F97316]">{t('pickupCurrentStep')}</p>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function OrderTrackingScreen() {
   const t = useTranslations('eat.track')
   const locale = useLocale()
@@ -208,49 +285,10 @@ export default function OrderTrackingScreen() {
             </div>
           )}
 
-          {/* Vertical timeline */}
+          {/* Vertical timeline (shared component) */}
           <div className="my-5 rounded-2xl border border-[#f0f0f0] bg-white p-4">
             <p className="mb-3 text-sm font-bold text-[#1a1a1a]">{t('pickupTimelineHeader')}</p>
-            <div className="space-y-0">
-              {PICKUP_STEPS.map((step, i) => {
-                const done = i < currentStep || isCollected
-                const active = i === currentStep && !isCollected
-                const isLast = i === PICKUP_STEPS.length - 1
-                return (
-                  <div key={step.key} className="relative flex gap-3 pb-4 last:pb-0">
-                    {/* Vertical connector */}
-                    {!isLast && (
-                      <span
-                        className={`absolute left-[15px] top-[34px] w-[2px] ${done ? 'bg-[#F97316]' : 'bg-[#eee]'}`}
-                        style={{ height: 'calc(100% - 18px)' }}
-                        aria-hidden
-                      />
-                    )}
-                    {/* Step bullet */}
-                    <div
-                      className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm shadow-sm transition-colors ${
-                        done
-                          ? 'bg-[#F97316] text-white'
-                          : active
-                            ? 'bg-white text-[#F97316] ring-2 ring-[#F97316]'
-                            : 'bg-[#f5f5f5] text-[#bbb]'
-                      }`}
-                    >
-                      {done ? <Check size={16} strokeWidth={3} /> : <span>{step.emoji}</span>}
-                    </div>
-                    {/* Label */}
-                    <div className="flex-1 pt-0.5">
-                      <p className={`text-[14px] font-bold ${done || active ? 'text-[#1a1a1a]' : 'text-[#bbb]'}`}>
-                        {t(step.labelKey)}
-                      </p>
-                      {active && (
-                        <p className="mt-0.5 text-xs text-[#F97316]">{t('pickupCurrentStep')}</p>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <StepTimeline steps={PICKUP_STEPS} currentStep={currentStep} completed={isCollected} t={t} />
           </div>
 
           {/* Restaurant card (always shown for pickup, so customer knows the spot) */}
@@ -325,6 +363,21 @@ export default function OrderTrackingScreen() {
         <div className="mt-2 flex justify-center">
           <span className="rounded-full bg-[#FFF3ED] px-3 py-1 text-xs font-bold text-[#F97316]">{STATUS_LABEL_KEY[order.status] ? t(STATUS_LABEL_KEY[order.status]) : order.status}</span>
         </div>
+
+        {/* Étapes — harmonized with pickup (and the resto side): the journey
+            is now visible for delivery too; the courier card below stays as a
+            complement. Display only — existing statuses/labels, no new logic. */}
+        {!isCancelled && (
+          <div className="my-3.5 rounded-2xl border border-[#f0f0f0] bg-white p-4">
+            <p className="mb-3 text-sm font-bold text-[#1a1a1a]">{t('pickupTimelineHeader')}</p>
+            <StepTimeline
+              steps={DELIVERY_STEPS}
+              currentStep={DELIVERY_STATUS_TO_STEP[order.status] ?? 0}
+              completed={isDelivered}
+              t={t}
+            />
+          </div>
+        )}
 
         <div className="my-3.5 h-px bg-[#f0f0f0]" />
 
