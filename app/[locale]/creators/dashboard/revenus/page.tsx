@@ -1,159 +1,457 @@
 'use client'
 
 /**
- * Mes revenus — 30-day earnings split by source.
+ * Mes gains — PHASE B / B1 (Agent 13). The space where the creator LIVES
+ * their earnings, over Agent 14's B2a contract:
  *
- * Both cards follow the same layout:
- *   [Icon] [Label]               [Rate badge]
- *   €XX.XX  ← NET, large, title tooltip = full detail
- *   context line (tiny, gray) + ⓘ tooltip
+ *   GET /api/creator/earnings?page=N
+ *   → { code, link, totals { pendingCents, maturedCents, paidCents,
+ *       cancelledCents, thresholdCents, progressPct }, orders[…20/page],
+ *       ordersTotal, ordersHasMore, adoptions[…20] }
  *
- * Robinet A (Recettes): net = recipeNet30d = recipeEarnings30d − recipeGrubanoFee30d
- * Robinet B (Affiliation): net = referralEarnings30d (already net by construction —
- *   creatorEarning on ReferralOrder = 22% of Grubano's commission, no grubanoCut field)
+ * RULES: amounts are CENTS everywhere; the statuses come from the SERVER
+ * lifecycle (pending|matured|cancelled|paid) — ZERO client-side status
+ * computation. The transparency rate (30%) comes from the CONFIG via
+ * /api/creators/home → referralRates.commissionPct — never hardcoded.
+ *
+ * Sections: vue d'ensemble (big numbers + 20 € progress bar + code/link/QR +
+ * attributed-orders counter + transparency line) → Mes commandes (paginated,
+ * server badges) → Mes recettes adoptées (the 2% pipe) → Versements
+ * placeholder (B2b) → polished empty state for a brand-new creator.
  */
 
-import { useEffect, useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { TrendingUp, ChefHat, Megaphone, Info } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslations, useLocale } from 'next-intl'
+import {
+  TrendingUp, Hourglass, CheckCircle2, Wallet, Copy, Check, QrCode,
+  Loader2, AlertCircle, ShoppingBag, ChefHat, Landmark, Share2,
+} from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
 
-export default function CreatorRevenusPage() {
-  const tr = useTranslations('creators.revenus')
+// ── B2a contract (mirrored locally — the route is the source of truth) ────────
+interface EarningsTotals {
+  pendingCents:   number
+  maturedCents:   number
+  paidCents:      number
+  cancelledCents: number
+  thresholdCents: number
+  progressPct:    number
+}
+interface EarningOrder {
+  id:                  string
+  date:                string
+  restaurant:          string | null
+  orderTotalCents:     number | null
+  grubanoFeeCents:     number
+  creatorEarningCents: number
+  bonusCents:          number
+  status:              'pending' | 'matured' | 'cancelled' | 'paid' | string
+  maturedAt:           string | null
+}
+interface EarningAdoption {
+  id:                  string
+  date:                string
+  dishName:            string | null
+  brandName:           string | null
+  saleAmountCents:     number
+  creatorEarningCents: number
+  rateApplied:         number
+  status:              string
+  maturedAt:           string | null
+}
+interface EarningsPayload {
+  code:           string | null
+  link:           string | null
+  totals:         EarningsTotals
+  orders:         EarningOrder[]
+  ordersPage:     number
+  ordersPageSize: number
+  ordersTotal:    number
+  ordersHasMore:  boolean
+  adoptions:      EarningAdoption[]
+}
 
-  const [data,    setData]    = useState<CreatorHomeData | null>(null)
+export default function CreatorEarningsPage() {
+  const t = useTranslations('creators.earnings')
+  const locale = useLocale()
+
+  const [data,    setData]    = useState<EarningsPayload | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
+  // Config rate for the transparency line (fraction, e.g. 0.30) — from the
+  // referral config via /api/creators/home → referralRates, NEVER hardcoded.
+  const [ratePct, setRatePct] = useState<number | null>(null)
+  // Paginated orders, appended page by page (mobile-first "Voir plus").
+  const [orders,      setOrders]      = useState<EarningOrder[]>([])
+  const [page,        setPage]        = useState(1)
+  const [hasMore,     setHasMore]     = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  // Copy / QR affordances.
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
+  const [qrOpen, setQrOpen] = useState(false)
 
-  useEffect(() => {
-    fetch('/api/creators/home')
-      .then(r => r.json())
-      .then(d => setData(d))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const [earningsRes, homeRes] = await Promise.all([
+        fetch('/api/creator/earnings', { cache: 'no-store' }),
+        fetch('/api/creators/home',    { cache: 'no-store' }),
+      ])
+      if (earningsRes.status === 404) { setError(t('noProfile')); return }
+      if (!earningsRes.ok) throw new Error('load_failed')
+      const body = await earningsRes.json() as EarningsPayload
+      setData(body)
+      setOrders(body.orders ?? [])
+      setPage(body.ordersPage ?? 1)
+      setHasMore(Boolean(body.ordersHasMore))
+      // Best-effort rate — the line is simply hidden if the config read fails.
+      try {
+        const home = homeRes.ok ? (await homeRes.json()) as CreatorHomeData : null
+        const pct = home?.referralRates?.commissionPct
+        if (typeof pct === 'number' && pct > 0) setRatePct(Math.round(pct * 100))
+      } catch { /* line hidden */ }
+    } catch {
+      setError(t('errLoad'))
+    } finally {
+      setLoading(false)
+    }
+  }, [t])
 
-  const recipeEarnings30d   = data?.recipeEarnings30d   ?? 0
-  const recipeGrubanoFee30d = data?.recipeGrubanoFee30d ?? 0
-  const recipeNet30d        = data?.recipeNet30d        ?? 0
-  const referralEarnings30d = data?.referralEarnings30d ?? 0
-  const totalEarnings30d    = data?.earningsThisMonth   ?? 0
+  useEffect(() => { load() }, [load])
 
-  const fmt = (n: number) =>
-    n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  async function loadMore() {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    try {
+      const r = await fetch(`/api/creator/earnings?page=${page + 1}`, { cache: 'no-store' })
+      if (!r.ok) return
+      const body = await r.json() as EarningsPayload
+      setOrders((prev) => [...prev, ...(body.orders ?? [])])
+      setPage(body.ordersPage ?? page + 1)
+      setHasMore(Boolean(body.ordersHasMore))
+    } catch { /* keep the button usable */ } finally {
+      setLoadingMore(false)
+    }
+  }
 
-  // Tooltip strings — reuse existing keys, built client-side
-  const recipeTooltip      = `${tr('recipeGenerated')} €${fmt(recipeEarnings30d)} · ${tr('recipeCommission')} −€${fmt(recipeGrubanoFee30d)} · ${tr('recipeNet')} €${fmt(recipeNet30d)}`
-  const affiliationTooltip = tr('affiliationTooltip')
+  async function copy(kind: 'code' | 'link', value: string) {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(kind)
+      setTimeout(() => setCopied(null), 2000)
+    } catch { /* clipboard unavailable — no crash */ }
+  }
+
+  // ── Formatting (cents → localized euros) ────────────────────────────────────
+  const fmtCents = useMemo(() => {
+    const f = new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
+    return (cents: number) => f.format(cents / 100)
+  }, [locale])
+  const dateFmt = useMemo(
+    () => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }),
+    [locale],
+  )
+
+  const fullLink = useMemo(() => {
+    if (!data?.link) return null
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://grubano.com'
+    return `${origin}${data.link}`
+  }, [data?.link])
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case 'pending':   return { label: `⏳ ${t('statusPending')}`, cls: 'bg-grubano-warning-tint text-grubano-warning' }
+      case 'matured':   return { label: `✓ ${t('statusMatured')}`,  cls: 'bg-grubano-success-tint text-grubano-success' }
+      case 'paid':      return { label: t('statusPaid'),            cls: 'bg-grubano-tint text-grubano-primary' }
+      case 'cancelled': return { label: t('statusCancelled'),       cls: 'bg-grubano-surface-muted text-grubano-ink-faint' }
+      default:          return { label: status,                     cls: 'bg-grubano-surface-muted text-grubano-ink-faint' }
+    }
+  }
+
+  // ── Loading / error shells ──────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="mx-auto flex max-w-2xl items-center justify-center gap-2 px-4 py-24 text-grubano-ink-muted">
+        <Loader2 size={16} className="animate-spin" />
+        <span className="text-sm">{t('loading')}</span>
+      </div>
+    )
+  }
+  if (error || !data) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 pt-10">
+        <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          <span>{error || t('errLoad')}</span>
+        </p>
+        <button
+          type="button"
+          onClick={load}
+          className="mt-3 w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface py-2.5 text-sm font-semibold text-grubano-ink"
+        >
+          {t('retry')}
+        </button>
+      </div>
+    )
+  }
+
+  const { totals } = data
+  const brandNew = data.ordersTotal === 0 && data.adoptions.length === 0
+  const progressReached = totals.maturedCents >= totals.thresholdCents
 
   return (
-    <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto space-y-5">
-
-      {/* ── Header ───────────────────────────────────────────────────────── */}
+    <div className="mx-auto max-w-2xl space-y-5 px-4 pb-10 pt-5">
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div>
-        <div className="flex items-center gap-2 mb-1">
+        <div className="mb-1 flex items-center gap-2">
           <TrendingUp size={18} className="text-grubano-primary" />
-          <h1 className="text-xl font-display font-bold">{tr('title')}</h1>
+          <h1 className="font-display text-xl font-bold">{t('title')}</h1>
         </div>
-        <p className="text-sm text-grubano-ink-muted">{tr('subtitle')}</p>
+        <p className="text-sm text-grubano-ink-muted">{t('subtitle')}</p>
       </div>
 
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-28 animate-pulse rounded-grubano-xl bg-grubano-bg" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-
-          {/* ── Recipe card ──────────────────────────────────────────────── */}
-          <Card elevation="sm" padding="md">
-            {/* Header row */}
-            <div className="flex items-center gap-2 mb-4">
-              <div className="h-9 w-9 rounded-grubano-lg bg-grubano-primary/10 flex items-center justify-center shrink-0">
-                <ChefHat size={18} className="text-grubano-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-bold">{tr('recipeLabel')}</p>
-                <p className="text-[10px] text-grubano-ink-muted">30 {tr('lastDays')}</p>
-              </div>
-              <span className="ml-auto rounded-grubano-pill bg-grubano-primary/10 px-2 py-0.5 text-[10px] font-bold text-grubano-primary shrink-0">
-                4%
-              </span>
-            </div>
-
-            {/* Net amount — primary */}
-            <p
-              className="text-3xl font-display font-bold text-grubano-primary tabular-nums"
-              title={recipeTooltip}
-            >
-              €{fmt(recipeNet30d)}
-            </p>
-
-            {/* Context line + info icon */}
-            <div className="flex items-center gap-1 mt-1.5">
-              <p className="text-[11px] text-grubano-ink-muted">{tr('recipeContext')}</p>
-              <button
-                type="button"
-                title={recipeTooltip}
-                className="text-grubano-ink-faint hover:text-grubano-ink-muted transition shrink-0"
-                aria-label={recipeTooltip}
-              >
-                <Info size={11} />
-              </button>
-            </div>
-          </Card>
-
-          {/* ── Affiliation card ─────────────────────────────────────────── */}
-          <Card elevation="sm" padding="md">
-            {/* Header row */}
-            <div className="flex items-center gap-2 mb-4">
-              <div className="h-9 w-9 rounded-grubano-lg bg-[#3B82F6]/10 flex items-center justify-center shrink-0">
-                <Megaphone size={18} className="text-[#3B82F6]" />
-              </div>
-              <div>
-                <p className="text-sm font-bold">{tr('affiliationLabel')}</p>
-                <p className="text-[10px] text-grubano-ink-muted">30 {tr('lastDays')}</p>
-              </div>
-              <span className="ml-auto rounded-grubano-pill bg-[#3B82F6]/10 px-2 py-0.5 text-[10px] font-bold text-[#3B82F6] shrink-0">
-                22%
-              </span>
-            </div>
-
-            {/* Net amount — primary */}
-            <p
-              className="text-3xl font-display font-bold text-[#3B82F6] tabular-nums"
-              title={affiliationTooltip}
-            >
-              €{fmt(referralEarnings30d)}
-            </p>
-
-            {/* Context line + info icon */}
-            <div className="flex items-center gap-1 mt-1.5">
-              <p className="text-[11px] text-grubano-ink-muted">{tr('affiliationContext')}</p>
-              <button
-                type="button"
-                title={affiliationTooltip}
-                className="text-grubano-ink-faint hover:text-grubano-ink-muted transition shrink-0"
-                aria-label={affiliationTooltip}
-              >
-                <Info size={11} />
-              </button>
-            </div>
-          </Card>
-
-          {/* ── Total card — unchanged ────────────────────────────────────── */}
-          <div className="rounded-grubano-xl bg-grubano-ink p-4 flex items-center justify-between text-white">
-            <div className="flex items-center gap-2">
-              <TrendingUp size={18} />
-              <p className="text-sm font-bold">{tr('totalLabel')}</p>
-            </div>
-            <p className="text-2xl font-display font-bold tabular-nums">€{fmt(totalEarnings30d)}</p>
+      {/* ── Vue d'ensemble — the money, BIG ────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card elevation="sm" padding="md">
+          <div className="flex items-center gap-1.5 text-grubano-warning">
+            <Hourglass size={13} />
+            <p className="text-[11px] font-bold uppercase tracking-wider">{t('pending')}</p>
           </div>
+          <p className="mt-1 font-display text-2xl font-extrabold tabular-nums text-grubano-ink">
+            {fmtCents(totals.pendingCents)}
+          </p>
+          <p className="mt-0.5 text-[10px] text-grubano-ink-faint">{t('pendingHint')}</p>
+        </Card>
 
-        </div>
+        <Card elevation="sm" padding="md">
+          <div className="flex items-center gap-1.5 text-grubano-success">
+            <CheckCircle2 size={13} />
+            <p className="text-[11px] font-bold uppercase tracking-wider">{t('matured')}</p>
+          </div>
+          <p className="mt-1 font-display text-2xl font-extrabold tabular-nums text-grubano-ink">
+            {fmtCents(totals.maturedCents)}
+          </p>
+          {/* Progress to the payout threshold — straight from the contract. */}
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-grubano-surface-muted">
+            <div
+              className={`h-full rounded-full transition-all ${progressReached ? 'bg-grubano-success' : 'bg-grubano-primary'}`}
+              style={{ width: `${totals.progressPct}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] text-grubano-ink-faint">
+            {progressReached
+              ? t('progressReached')
+              : t('progressLabel', { amount: fmtCents(totals.maturedCents), threshold: fmtCents(totals.thresholdCents) })}
+          </p>
+        </Card>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3.5 py-2.5">
+        <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-grubano-ink">
+          <Wallet size={13} className="text-grubano-primary" /> {t('paid')}
+        </span>
+        <span className="font-display text-base font-extrabold tabular-nums text-grubano-ink">
+          {fmtCents(totals.paidCents)}
+        </span>
+      </div>
+      {totals.cancelledCents > 0 && (
+        <p className="px-1 text-[11px] text-grubano-ink-faint">
+          {t('cancelledLine', { amount: fmtCents(totals.cancelledCents) })}
+        </p>
       )}
+
+      {/* Transparency — the rate comes from the CONFIG, never hardcoded. */}
+      {ratePct !== null && (
+        <p className="px-1 text-[11px] text-grubano-ink-muted">
+          {t('transparency', { pct: ratePct })}
+        </p>
+      )}
+
+      {/* ── Code + lien + QR ───────────────────────────────────────────────── */}
+      <Card elevation="sm" padding="md">
+        <div className="mb-2 flex items-center gap-2">
+          <Share2 size={14} className="text-grubano-primary" />
+          <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('codeTitle')}</h2>
+          <span className="ms-auto text-[11px] text-grubano-ink-muted">
+            {t('ordersCount', { count: data.ordersTotal })}
+          </span>
+        </div>
+
+        {data.code ? (
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => copy('code', data.code as string)}
+              className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
+            >
+              <span className="font-mono text-base font-extrabold tracking-widest text-grubano-ink">{data.code}</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-grubano-primary">
+                {copied === 'code' ? <Check size={13} /> : <Copy size={13} />}
+                {copied === 'code' ? t('copied') : t('copyCode')}
+              </span>
+            </button>
+
+            {fullLink && (
+              <button
+                type="button"
+                onClick={() => copy('link', fullLink)}
+                className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
+              >
+                <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{fullLink}</span>
+                <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
+                  {copied === 'link' ? <Check size={13} /> : <Copy size={13} />}
+                  {copied === 'link' ? t('copied') : t('copyLink')}
+                </span>
+              </button>
+            )}
+
+            {fullLink && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setQrOpen((v) => !v)}
+                  className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary"
+                >
+                  <QrCode size={13} /> {qrOpen ? t('hideQr') : t('showQr')}
+                </button>
+                {qrOpen && (
+                  <div className="mt-2 flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
+                    <QRCodeSVG value={fullLink} size={168} includeMargin />
+                    <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('qrHint')}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-[12px] text-grubano-ink-muted">
+            {t('noCode')}
+          </p>
+        )}
+      </Card>
+
+      {/* ── Brand-new creator — guide, never an empty screen ──────────────── */}
+      {brandNew && (
+        <Card elevation="sm" padding="lg">
+          <div className="flex flex-col items-center gap-2 py-4 text-center">
+            <span className="grid h-12 w-12 place-items-center rounded-xl bg-grubano-tint text-grubano-primary">
+              <Share2 size={20} />
+            </span>
+            <p className="font-display text-base font-semibold text-grubano-ink">{t('emptyTitle')}</p>
+            <p className="max-w-sm text-xs text-grubano-ink-muted">{t('emptyBody')}</p>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Mes commandes (paginated, SERVER statuses — zero client math) ──── */}
+      {data.ordersTotal > 0 && (
+        <section>
+          <div className="mb-2 flex items-center gap-2">
+            <ShoppingBag size={14} className="text-grubano-primary" />
+            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('ordersTitle')}</h2>
+          </div>
+          <div className="space-y-2">
+            {orders.map((o) => {
+              const badge = statusBadge(o.status)
+              const gain = o.creatorEarningCents + o.bonusCents
+              return (
+                <Card key={o.id} elevation="sm" padding="md">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-bold text-grubano-ink">
+                        {o.restaurant ?? '—'}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-grubano-ink-faint">
+                        {dateFmt.format(new Date(o.date))}
+                        {o.orderTotalCents !== null && ` · ${t('orderTotal')} ${fmtCents(o.orderTotalCents)}`}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-end">
+                      <p className="text-[13px] font-extrabold tabular-nums text-grubano-ink">
+                        <span className="font-medium text-grubano-ink-muted">{t('orderGain')}</span>{' '}
+                        <span className="text-grubano-primary">{fmtCents(gain)}</span>
+                      </p>
+                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              )
+            })}
+          </div>
+          {hasMore && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface py-2.5 text-sm font-semibold text-grubano-ink disabled:opacity-60"
+            >
+              {loadingMore ? <Loader2 size={13} className="animate-spin" /> : null}
+              {loadingMore ? t('loadingMore') : t('loadMore')}
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* ── Mes recettes adoptées (the 2% pipe — present in the contract) ──── */}
+      <section>
+        <div className="mb-2 flex items-center gap-2">
+          <ChefHat size={14} className="text-grubano-primary" />
+          <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('adoptionsTitle')}</h2>
+        </div>
+        <p className="mb-2 text-[11px] text-grubano-ink-muted">{t('adoptionsHint')}</p>
+        {data.adoptions.length === 0 ? (
+          <p className="rounded-grubano-lg border border-dashed border-grubano-border bg-grubano-surface px-3 py-5 text-center text-[12px] text-grubano-ink-muted">
+            {t('adoptionsEmpty')}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {data.adoptions.map((a) => {
+              const badge = statusBadge(a.status)
+              return (
+                <Card key={a.id} elevation="sm" padding="md">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-bold text-grubano-ink">
+                        {a.dishName ?? '—'}
+                      </p>
+                      <p className="mt-0.5 truncate text-[11px] text-grubano-ink-faint">
+                        {[a.brandName, dateFmt.format(new Date(a.date)), t('adoptionRate', { pct: Math.round(a.rateApplied * 100) })]
+                          .filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-end">
+                      <p className="text-[13px] font-extrabold tabular-nums text-grubano-primary">
+                        {fmtCents(a.creatorEarningCents)}
+                      </p>
+                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+                  </div>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── Versements — elegant placeholder (B2b) ─────────────────────────── */}
+      <Card elevation="sm" padding="md" className="border-dashed">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-grubano-surface-muted text-grubano-ink-faint">
+            <Landmark size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('payoutsTitle')}</h2>
+            <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{t('payoutsSoon')}</p>
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }
