@@ -16,6 +16,7 @@ import { PieChart, Receipt, TrendingUp, Download, Lock, Sparkles, ArrowRight } f
 import { Link } from '@/navigation'
 import { Card } from '@/components/grubano/Card'
 import { SectionTitle } from '@/components/grubano/SectionTitle'
+import FinanceRail from '@/components/finance/FinanceRail'
 
 type FinanceSummary = {
   windowDays:          number
@@ -68,6 +69,11 @@ export default function FinancePage() {
     <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
       <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">{t('title')}</h1>
       <p className="mb-5 text-sm text-muted-foreground">{t('subtitle')}</p>
+
+      {/* ── Rail financier A7 — real money (LedgerEntry-driven): Connect status,
+          collected/commission/net, operations + refunds, invoices, rates. The
+          legacy 30-day P&L below (Order-based estimates) stays untouched. */}
+      <FinanceRail />
 
       {loading ? (
         <div className="mb-5 h-44 animate-pulse rounded-3xl bg-navy/10" />
