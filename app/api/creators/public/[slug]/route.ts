@@ -63,6 +63,7 @@ export async function GET(
             adoptions: {
               where:  { status: 'active' },
               select: {
+                id:           true,
                 menuItemId:   true,
                 sellingPrice: true,
                 brand: {
@@ -71,7 +72,9 @@ export async function GET(
                     // DIRECT Brand.restaurantId link, not the transitive
                     // operator.restaurant path (which is now a list).
                     restaurant: {
-                      select: { id: true, name: true, city: true },
+                      // lat/lng (nullable) feed the /chef proximity sort — Mission
+                      // 1 Creator Studio. null stays null, never coerced to 0.
+                      select: { id: true, name: true, city: true, lat: true, lng: true },
                     },
                   },
                 },
@@ -86,31 +89,61 @@ export async function GET(
       return NextResponse.json({ error: 'Créateur introuvable' }, { status: 404 })
     }
 
+    // ── Social proof (Mission 1 Creator Studio — VOLUMES ONLY, never € on a
+    // public payload). One grouped query over every active adoption of every
+    // listed recipe (no N+1): DishSale counts per adoption.
+    const adoptionIds = creator.dishes.flatMap(d => d.adoptions.map(a => a.id))
+    const salesByAdoption = new Map<string, number>()
+    if (adoptionIds.length > 0) {
+      try {
+        const grouped = await prisma.dishSale.groupBy({
+          by:     ['adoptionId'],
+          where:  { adoptionId: { in: adoptionIds } },
+          _count: { _all: true },
+        })
+        for (const g of grouped) salesByAdoption.set(g.adoptionId, g._count._all)
+      } catch (e) {
+        // Degrade to zero counts — the page hides the proof banner then.
+        console.error('[GET /api/creators/public/:slug] sales groupBy failed', e instanceof Error ? e.message : e)
+      }
+    }
+
     type ServedAt = {
       id:           string
       name:         string
       city:         string
+      lat:          number | null
+      lng:          number | null
       sellingPrice: number
       menuItemId:   string | null
     }
+
+    const allRestaurantIds = new Set<string>()
+    let totalSales = 0
 
     const recipes = creator.dishes.map(d => {
       // One entry per restaurant (an operator could adopt the same recipe under
       // two brands → same restaurant twice). De-dupe by restaurant id, keep first.
       const seen = new Set<string>()
       const servedAt: ServedAt[] = []
+      let salesCount = 0
       for (const a of d.adoptions) {
+        salesCount += salesByAdoption.get(a.id) ?? 0
         const r = a.brand?.restaurant
         if (!r || seen.has(r.id)) continue
         seen.add(r.id)
+        allRestaurantIds.add(r.id)
         servedAt.push({
           id:           r.id,
           name:         r.name,
           city:         r.city,
+          lat:          r.lat ?? null,
+          lng:          r.lng ?? null,
           sellingPrice: a.sellingPrice,
           menuItemId:   a.menuItemId,
         })
       }
+      totalSales += salesCount
       return {
         id:          d.id,
         name:        d.name,
@@ -118,6 +151,9 @@ export async function GET(
         photo:       d.photo,
         cuisineType: d.cuisineType,
         servedAt,
+        // Social proof per recipe (volumes only).
+        salesCount,
+        restaurantsCount: servedAt.length,
       }
     })
 
@@ -129,9 +165,14 @@ export async function GET(
       instagram:    creator.instagram,
       tiktok:       creator.tiktok,
       youtube:      creator.youtube,
+      // Kept for the legacy /eat/c reader until its débranchement — the new
+      // /chef page deliberately never displays it (pivot créateur/influenceur).
       referralCode: creator.referralCode,
       slug:         creator.referralLinkSlug ?? creator.referralCode,
       recipes,
+      // Creator-level social proof aggregates (volumes only).
+      totalSales,
+      totalRestaurants: allRestaurantIds.size,
     })
   } catch (err) {
     // Never 500: log and degrade to a clean not-found so the page renders.
