@@ -52,6 +52,21 @@ export async function GET(
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
 
+    // ── ADDITIVE (chantier P2) — promo display data for the checkout recap.
+    // discount + promotionId were resolved SERVER-side by P1 at order creation;
+    // this only SURFACES them (+ the promo's display name). Defensive: a name
+    // lookup failure degrades to a nameless discount line, never a 500.
+    let promotion: { id: string; name: string } | null = null
+    if (order.promotionId) {
+      try {
+        const p = await prisma.promotion.findUnique({
+          where:  { id: order.promotionId },
+          select: { id: true, name: true },
+        })
+        if (p) promotion = p
+      } catch { /* nameless line */ }
+    }
+
     return NextResponse.json({
       order: {
         id:              order.id,
@@ -64,6 +79,9 @@ export async function GET(
         subtotal:        order.subtotal,
         deliveryFee:     order.deliveryFee,
         total:           order.total,
+        // Additive (P2) — the server-resolved discount + its promo (display).
+        discount:        order.discount,
+        promotion,
         estimatedTime:   order.estimatedTime,
         trackingUrl:     order.trackingUrl,
         deliveryAddress: order.deliveryAddress,

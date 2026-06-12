@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '@/lib/geocode'
 import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
+import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
 
 // ── GET /api/restaurants/:id ──────────────────────────────────────────────────
 // Returns full restaurant details + menu grouped by category
@@ -146,6 +147,79 @@ export async function GET(
         }),
     }))
 
+    // ── Promotions actives (chantier P2, ADDITIVE — display only) ──────────────
+    // The P1 ENGINE decides everything at checkout; this block only EXPOSES the
+    // establishment's active promos (fetchActivePromotions: window + active +
+    // V1 types) and per-item discounted unit prices computed by the SAME
+    // evaluatePromotion import — never a local divergent calculation. No usage
+    // counters, nothing admin. Defensive: any failure → plain menu, never a 500.
+    type PublicPromo = {
+      id: string; name: string; type: string; discount: number
+      minOrderEur: number | null; itemIds: string[] | null; channels: string[] | null
+    }
+    let promotions: PublicPromo[] = []
+    const itemPromo: Record<string, {
+      promotionId: string; name: string; type: string; discount: number; discountedUnitPrice: number
+    }> = {}
+    try {
+      const rows = await fetchActivePromotions(restaurant.id)
+      if (rows.length > 0) {
+        // The engine row has no display name — fetch the names separately
+        // (lib/promotions stays untouched, interdit).
+        const names = new Map(
+          (await prisma.promotion.findMany({
+            where:  { id: { in: rows.map(r => r.id) } },
+            select: { id: true, name: true },
+          })).map(p => [p.id, p.name]),
+        )
+        promotions = rows.map(r => {
+          const c = (r.conditions && typeof r.conditions === 'object' && !Array.isArray(r.conditions)
+            ? r.conditions : {}) as Record<string, unknown>
+          return {
+            id:          r.id,
+            name:        names.get(r.id) ?? '',
+            type:        r.type,
+            discount:    r.discount,
+            minOrderEur: typeof c.minOrderEur === 'number' && c.minOrderEur > 0 ? c.minOrderEur : null,
+            itemIds:     Array.isArray(c.itemIds) && c.itemIds.length > 0 ? (c.itemIds as string[]) : null,
+            channels:    Array.isArray(c.channels) && c.channels.length > 0 ? (c.channels as string[]) : null,
+          }
+        })
+        // Per-item badge data for TARGETED promos: best unit discount via the
+        // engine itself (single line, qty 1; both channels tried so a
+        // channel-restricted promo still badges its items). A promo whose
+        // minOrderEur exceeds the unit price naturally evaluates to 0 here —
+        // it surfaces via the banner « dès X € » instead (choice noted).
+        const targeted = rows.filter(r => promotions.find(p => p.id === r.id)?.itemIds)
+        for (const item of allItems) {
+          let best: { id: string; d: number } | null = null
+          for (const r of targeted) {
+            const p = promotions.find(x => x.id === r.id)!
+            if (!p.itemIds!.includes(item.id)) continue
+            const line = { items: [{ rawId: item.id, price: item.price, qty: 1 }] }
+            const d = Math.max(
+              evaluatePromotion(r, { ...line, channel: 'delivery' }),
+              evaluatePromotion(r, { ...line, channel: 'pickup' }),
+            )
+            if (d > 0 && (!best || d > best.d)) best = { id: r.id, d }
+          }
+          if (best) {
+            const p = promotions.find(x => x.id === best!.id)!
+            itemPromo[item.id] = {
+              promotionId:         p.id,
+              name:                p.name,
+              type:                p.type,
+              discount:            p.discount,
+              discountedUnitPrice: round2(item.price - best.d),
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[GET /api/restaurants/:id] promotions exposure failed (plain menu)', err)
+      promotions = []
+    }
+
     return NextResponse.json({
       restaurant: {
         id:           restaurant.id,
@@ -169,6 +243,9 @@ export async function GET(
       hours,
       menu,
       itemCount: allItems.length,
+      // Additive (P2) — active promos + per-item discounted unit prices.
+      promotions,
+      itemPromo,
     })
   } catch (err) {
     console.error('[GET /api/restaurants/:id]', err)
