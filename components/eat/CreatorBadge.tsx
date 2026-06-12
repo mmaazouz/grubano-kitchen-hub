@@ -32,7 +32,7 @@ function formatFollowers(n: number): string {
 /**
  * Clickable badge attached to an adopted creator recipe on the consumer menu.
  *
- * - Navigates to the creator's public page (`/eat/c/{slug}`) so the customer
+ * - Navigates to the creator's public page (`/chef/{slug}`) so the customer
  *   can discover their other recipes (lever 4-bis B).
  * - `stopPropagation` so a tap inside a DishCard's meta slot doesn't bubble
  *   up and open the dish customisation modal.
@@ -71,7 +71,7 @@ export default function CreatorBadge({ creator, variant = 'compact' }: CreatorBa
 
   return (
     <Link
-      href={`/eat/c/${creator.slug}`}
+      href={`/chef/${creator.slug}`}
       onClick={(e) => e.stopPropagation()}
       className={`${base} transition-colors hover:bg-grubano-primary/15 active:scale-[0.98]`}
       aria-label={`${t('signedBy')} ${creator.name} — ${t('seeProfile')}`}

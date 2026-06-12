@@ -259,7 +259,7 @@ export default function CreatorsApplyPage() {
     // ── C) Verification returned ok (approved or flagged) ──────────────────────
     if (verifyResult.ok) {
       const isApproved = verifyResult.status === 'approved'
-      const profileUrl = `/eat/c/${verifyResult.referralLinkSlug}`
+      const profileUrl = `/chef/${verifyResult.referralLinkSlug}`
       return (
         <div className="px-4 pt-12 max-w-lg mx-auto text-center">
           <div className={`h-20 w-20 rounded-grubano-pill flex items-center justify-center mx-auto mb-4 ${
