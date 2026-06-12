@@ -128,6 +128,11 @@ export async function GET(
       const servedAt: ServedAt[] = []
       let salesCount = 0
       for (const a of d.adoptions) {
+        // salesCount counts EVERY sale of the recipe — including adoptions
+        // whose brand has no linked restaurant (real rows in the current
+        // dataset): the commercial proof stands regardless. restaurantsCount
+        // below only counts REAL restaurants (servedAt). The two figures can
+        // diverge — intended (complément Mission 1).
         salesCount += salesByAdoption.get(a.id) ?? 0
         const r = a.brand?.restaurant
         if (!r || seen.has(r.id)) continue

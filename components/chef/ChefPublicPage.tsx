@@ -75,6 +75,12 @@ function formatFollowers(n: number): string {
   return `${(n / 1_000_000).toFixed(1).replace('.', ',')}M`
 }
 
+/**
+ * Photo fallback (complément M1): EVERY CreatorDish in the current dataset
+ * has photo=null — the design-system food catalogue (Agent 6's 85 photos,
+ * getFoodImage keyed by category + stable id) is the NOMINAL source, never a
+ * grey card nor an empty hero. Used by the hero AND the recipe cards.
+ */
 function recipePhoto(r: ChefRecipe): string {
   return r.photo || getFoodImage(inferCategory(r.cuisineType || r.name), r.id)
 }
@@ -163,7 +169,9 @@ export default function ChefPublicPage({ slug }: { slug: string }) {
   }, [profile])
 
   // Proximity sort (opt-in geo): restos WITH coords by distance, the geo-less
-  // tail by city; without geo → city sort.
+  // tail by city; without geo → city sort. NOTE: ~50 % of the current adopter
+  // restaurants have NO lat/lng (Resto Test included) — the city fallback is
+  // the NOMINAL path of today's dataset, not an edge case (complément M1).
   const sortedPartners = useMemo(() => {
     const byCity = (a: PartnerRestaurant, b: PartnerRestaurant) =>
       (a.city || '').localeCompare(b.city || '') || a.name.localeCompare(b.name)
