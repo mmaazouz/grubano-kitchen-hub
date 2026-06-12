@@ -656,7 +656,8 @@
       "notCreatorTitle": "¿Aún no eres creador?",
       "notCreatorDesc": "Únete al programa y monetiza tus recetas.",
       "notCreatorCta": "Unirse",
-      "dishNetLabel": "Neto"
+      "dishNetLabel": "Neto",
+      "pageSales": "{count, plural, =1 {1 pedido vía mi página} other {# pedidos vía mi página}}"
     },
     "recipes": {
       "title": "Mis recetas",
@@ -1890,5 +1891,28 @@
       "resetDoneBody": "Ya puedes iniciar sesión con tu nueva contraseña. Te hemos enviado un email de confirmación.",
       "resetGoLogin": "Iniciar sesión"
     }
+  },
+  "chef": {
+    "metaTitle": "{name} — Chef creador en Grubano",
+    "metaFallbackDesc": "Descubre las creaciones de {name} y los restaurantes que las sirven cerca de ti.",
+    "heroTagline": "Chef creador",
+    "specialties": "Especialidades",
+    "proofBanner": "{sales, plural, =1 {1 venta} other {# ventas}} · {restaurants, plural, =1 {1 restaurante asociado} other {# restaurantes asociados}}",
+    "partnersTitle": "Sus restaurantes asociados",
+    "partnersSubtitle": "Pide sus creaciones en los restaurantes que las sirven.",
+    "sortGeoCta": "Ordenar por distancia",
+    "sortGeoActive": "Ordenados por distancia",
+    "sortGeoDenied": "Ubicación denegada — orden por ciudad.",
+    "distanceKm": "a {km} km",
+    "servesRecipes": "{count, plural, =1 {1 creación servida} other {# creaciones servidas}}",
+    "orderCta": "Pedir",
+    "portfolioTitle": "Sus creaciones",
+    "noPartnersYet": "Sus creaciones llegan pronto a restaurantes asociados.",
+    "ctaClientTitle": "¿Quieres probarlas?",
+    "ctaClientBody": "Sus creaciones se sirven en restaurantes reales — pide directamente.",
+    "ctaClientBtn": "Descubrir los restaurantes",
+    "ctaRestoTitle": "¿Eres restaurador?",
+    "ctaRestoBody": "Adopta sus recetas en tu carta y aprovecha su audiencia.",
+    "ctaRestoBtn": "Adoptar sus recetas"
   }
 }

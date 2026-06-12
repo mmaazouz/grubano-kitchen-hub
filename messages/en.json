@@ -656,7 +656,8 @@
       "notCreatorTitle": "Not a creator yet?",
       "notCreatorDesc": "Join the program and monetize your recipes.",
       "notCreatorCta": "Join",
-      "dishNetLabel": "Net"
+      "dishNetLabel": "Net",
+      "pageSales": "{count, plural, =1 {1 order via my page} other {# orders via my page}}"
     },
     "recipes": {
       "title": "My recipes",
@@ -1890,5 +1891,28 @@
       "resetDoneBody": "You can now sign in with your new password. A confirmation email is on its way.",
       "resetGoLogin": "Sign in"
     }
+  },
+  "chef": {
+    "metaTitle": "{name} — Creator chef on Grubano",
+    "metaFallbackDesc": "Discover {name}’s creations and the restaurants serving them near you.",
+    "heroTagline": "Creator chef",
+    "specialties": "Specialties",
+    "proofBanner": "{sales, plural, =1 {1 sale} other {# sales}} · {restaurants, plural, =1 {1 partner restaurant} other {# partner restaurants}}",
+    "partnersTitle": "Partner restaurants",
+    "partnersSubtitle": "Order their creations from the restaurants that serve them.",
+    "sortGeoCta": "Sort by distance",
+    "sortGeoActive": "Sorted by distance",
+    "sortGeoDenied": "Location denied — sorted by city.",
+    "distanceKm": "{km} km away",
+    "servesRecipes": "{count, plural, =1 {1 creation served} other {# creations served}}",
+    "orderCta": "Order",
+    "portfolioTitle": "Their creations",
+    "noPartnersYet": "Their creations are coming soon to partner restaurants.",
+    "ctaClientTitle": "Want a taste?",
+    "ctaClientBody": "These creations are served in real restaurants — order directly.",
+    "ctaClientBtn": "Discover the restaurants",
+    "ctaRestoTitle": "Are you a restaurateur?",
+    "ctaRestoBody": "Adopt these recipes on your menu and benefit from their audience.",
+    "ctaRestoBtn": "Adopt the recipes"
   }
 }

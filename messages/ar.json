@@ -656,7 +656,8 @@
       "notCreatorTitle": "لست منشئاً بعد؟",
       "notCreatorDesc": "انضم إلى البرنامج وحقق الدخل من وصفاتك.",
       "notCreatorCta": "انضم",
-      "dishNetLabel": "صافي"
+      "dishNetLabel": "صافي",
+      "pageSales": "{count, plural, =1 {طلب واحد عبر صفحتي} other {# طلبات عبر صفحتي}}"
     },
     "recipes": {
       "title": "وصفاتي",
@@ -1890,5 +1891,28 @@
       "resetDoneBody": "يمكنك الآن تسجيل الدخول بكلمة مرورك الجديدة. أرسلنا لك بريدًا للتأكيد.",
       "resetGoLogin": "تسجيل الدخول"
     }
+  },
+  "chef": {
+    "metaTitle": "{name} — شيف مبدع على Grubano",
+    "metaFallbackDesc": "اكتشف إبداعات {name} والمطاعم التي تقدّمها بالقرب منك.",
+    "heroTagline": "شيف مبدع",
+    "specialties": "التخصصات",
+    "proofBanner": "{sales, plural, =1 {بيع واحد} other {# مبيعات}} · {restaurants, plural, =1 {مطعم شريك واحد} other {# مطاعم شريكة}}",
+    "partnersTitle": "مطاعمه الشريكة",
+    "partnersSubtitle": "اطلب إبداعاته من المطاعم التي تقدّمها.",
+    "sortGeoCta": "الترتيب حسب المسافة",
+    "sortGeoActive": "مرتبة حسب المسافة",
+    "sortGeoDenied": "تم رفض الموقع — الترتيب حسب المدينة.",
+    "distanceKm": "على بعد {km} كم",
+    "servesRecipes": "{count, plural, =1 {إبداع واحد يُقدَّم} other {# إبداعات تُقدَّم}}",
+    "orderCta": "اطلب",
+    "portfolioTitle": "إبداعاته",
+    "noPartnersYet": "إبداعاته قادمة قريبًا إلى مطاعم شريكة.",
+    "ctaClientTitle": "هل تريد التذوق؟",
+    "ctaClientBody": "تُقدَّم إبداعاته في مطاعم حقيقية — اطلب مباشرة.",
+    "ctaClientBtn": "اكتشف المطاعم",
+    "ctaRestoTitle": "هل أنت صاحب مطعم؟",
+    "ctaRestoBody": "اعتمد وصفاته في قائمتك واستفد من جمهوره.",
+    "ctaRestoBtn": "اعتماد وصفاته"
   }
 }

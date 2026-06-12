@@ -61,6 +61,14 @@ export async function middleware(request: NextRequest) {
     // /business/* is the PUBLIC partner space (auth/landing) — no session
     // required, exactly like /eat. The partner host root is routed here above.
     restPath.startsWith('/business') ||
+    // /chef/[slug] is the PUBLIC creator (chef) page — Mission 1 Creator
+    // Studio: a shareable audience-facing page, anonymous by nature.
+    restPath === '/chef' || restPath.startsWith('/chef/') ||
+    // /ref/[code] is the PUBLIC influencer attribution bridge. Discovered
+    // GATED during Mission 1 verification: an anonymous first-time visitor
+    // (the core attribution case) was bounced to /login BEFORE the cookie
+    // dropped. Additive fix — the /ref handler logic itself is untouched.
+    restPath === '/ref' || restPath.startsWith('/ref/') ||
     restPath.startsWith('/api/auth') ||
     // Everything under /franchise and /creators is public EXCEPT the /dashboard
     // sub-routes (landing pages, /apply, etc. stay open to all).

@@ -180,7 +180,11 @@ function MenuBuilder() {
   const searchParams      = useSearchParams()
   const requestedBrandId  = searchParams.get('brand') ?? ''
 
-  const [tab,            setTab]            = useState<'items' | 'categories' | 'promos' | 'adopt'>('items')
+  // /menu?tab=adopt — deep link used by the public /chef page's restaurateur
+  // CTA (Mission 1 Creator Studio). Any other value falls back to 'items'.
+  const [tab,            setTab]            = useState<'items' | 'categories' | 'promos' | 'adopt'>(
+    searchParams.get('tab') === 'adopt' ? 'adopt' : 'items',
+  )
   const [items,          setItems]          = useState<MenuItem[]>([])
   const [brands,         setBrands]         = useState<Brand[]>([])
   const [brandId,        setBrandId]        = useState<string>('')
