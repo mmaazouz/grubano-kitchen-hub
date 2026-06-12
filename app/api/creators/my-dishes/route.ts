@@ -19,6 +19,13 @@ export type MyDish = {
   grubanoFee:     number        // sum of DishSale.grubanoCut  (= earnings × 20%)
   earningsNet:    number        // earnings − grubanoFee  (what creator receives)
   adopters:       DishAdopter[] // active adoptions with brand + commitment details
+  // ── Mission 3 editor — the UI decides what to allow WITHOUT guessing ────────
+  photo:             string | null
+  ingredients:       string[]   // for the edit form (Json column normalized)
+  hasActiveAdoption: boolean    // R3 — content locked, photo still editable
+  hasAnyHistory:     boolean    // R4 — delete becomes archive
+  adoptionsCount:    number     // all-time adoptions (history)
+  salesCount:        number     // all-time DishSale rows
 }
 
 export async function GET() {
@@ -117,6 +124,14 @@ export async function GET() {
         grubanoFee,
         earningsNet,
         adopters,
+        // Mission 3 editor flags (R1-R4 selectors, computed from the batch —
+        // no extra query).
+        photo:             d.photo,
+        ingredients:       (Array.isArray(d.ingredients) ? d.ingredients : []) as string[],
+        hasActiveAdoption: activeAdoptions.length > 0,
+        hasAnyHistory:     dishAdoptions.length > 0 || totalSales > 0,
+        adoptionsCount:    dishAdoptions.length,
+        salesCount:        totalSales,
       }
     })
 

@@ -3,6 +3,19 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { readCreatorRoles } from '@/lib/creator-roles'
+import { runDishVetting } from '@/lib/dish-submit'
+
+// ── POST /api/creators/dishes — create a recipe (Mission 3 editor) ────────────
+//
+// Two paths, both owner-scoped (session email → Creator, find-or-create kept):
+//   saveAsDraft:true  → status 'draft' (no vetting — the private workbench)
+//   saveAsDraft:false → status 'pending' then IMMEDIATE auto-vetting (vetDish):
+//                       pass → 'approved' · flag → stays 'pending' (review) ·
+//                       reject → 'rejected' (+ reason in the response only).
+// Requires the CHEF role (Mission 2 flags, tolerant read — both true
+// pre-migration). The catalogue (/api/dishes/available) filters
+// status='approved' by construction → draft/pending/rejected never leak (R5).
 
 const dishSchema = z.object({
   name:           z.string().min(2),
@@ -11,6 +24,7 @@ const dishSchema = z.object({
   cuisineType:    z.string().min(1),
   suggestedPrice: z.number().positive(),
   photo:          z.string().optional(),
+  saveAsDraft:    z.boolean().default(false),
 })
 
 export async function POST(req: Request) {
@@ -32,6 +46,30 @@ export async function POST(req: Request) {
       })
     }
 
+    // Mission 2/3 — the editor is a CHEF tool.
+    const roles = await readCreatorRoles(creator.id)
+    if (!roles.isChef) {
+      return NextResponse.json(
+        { error: 'Le rôle Chef créateur est désactivé sur votre profil.' },
+        { status: 403 },
+      )
+    }
+
+    // Draft → no vetting; submit → vet the content right away (1.3 flow).
+    let status: 'draft' | 'approved' | 'pending' | 'rejected' = 'draft'
+    let vetReason: string | null = null
+    if (!data.saveAsDraft) {
+      const outcome = await runDishVetting({
+        name:           data.name,
+        description:    data.description,
+        ingredients:    data.ingredients,
+        cuisineType:    data.cuisineType,
+        suggestedPrice: data.suggestedPrice,
+      })
+      status    = outcome.status
+      vetReason = outcome.reason
+    }
+
     const dish = await prisma.creatorDish.create({
       data: {
         creatorId:      creator.id,
@@ -41,11 +79,14 @@ export async function POST(req: Request) {
         cuisineType:    data.cuisineType,
         suggestedPrice: data.suggestedPrice,
         photo:          data.photo,
-        status:         'pending',
+        status,
       },
     })
 
-    return NextResponse.json({ dish }, { status: 201 })
+    return NextResponse.json(
+      { dish, ...(vetReason ? { vetReason } : {}) },
+      { status: 201 },
+    )
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })

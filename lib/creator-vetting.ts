@@ -177,3 +177,65 @@ export async function vetCreator(input: VetCreatorInput): Promise<VetResult> {
     return safeFallback()
   }
 }
+
+// ── Dish vetting (Mission 3 Creator Studio — ADDITIVE, same pattern) ───────────
+
+export interface VetDishInput {
+  name:           string
+  description:    string
+  ingredients:    string[]
+  cuisineType:    string
+  suggestedPrice: number
+}
+
+function buildDishPrompt(input: VetDishInput): string {
+  const ingredients = Array.isArray(input.ingredients) ? input.ingredients.filter(Boolean) : []
+  return [
+    'You are a strict content-vetting reviewer for Grubano, a food delivery / dark-kitchen platform.',
+    'Decide whether a CREATOR RECIPE submission should be published to the restaurant adoption catalogue.',
+    '',
+    'Evaluate three things:',
+    '1. Is this a REAL, coherent food recipe (name, description and ingredients consistent with each other)?',
+    '2. Is the content appropriate and brand-safe (nothing hateful, adult, illegal, dangerous or misleading)?',
+    '3. Is the quality decent (a restaurant could actually cook and sell this)?',
+    '',
+    'Recipe data:',
+    `- Name: ${(input.name ?? '').trim() || '(non fourni)'}`,
+    `- Cuisine type: ${(input.cuisineType ?? '').trim() || '(non fourni)'}`,
+    `- Description: ${(input.description ?? '').trim() || '(non fournie)'}`,
+    `- Ingredients: ${ingredients.length ? ingredients.join(', ') : '(aucun)'}`,
+    `- Suggested price: ${Number.isFinite(input.suggestedPrice) ? `${input.suggestedPrice} €` : '(non fourni)'}`,
+    '',
+    'Return STRICTLY a single JSON object and NOTHING else — no markdown, no code fences, no commentary:',
+    '{"verdict":"pass|flag|reject","reason":"<short French explanation, max 1 sentence>","foodRelevance":<integer 0-100>}',
+    '',
+    'Rules:',
+    '- "pass" = clearly a real, coherent, appropriate recipe → auto-approve.',
+    '- "flag" = uncertain, borderline, incoherent pricing, or needs human review.',
+    '- "reject" = not food, gibberish, or inappropriate / unsafe / misleading content.',
+    "When in doubt → 'flag'. Never 'pass' something that is not clearly food.",
+  ].join('\n')
+}
+
+/**
+ * Vet a single recipe's CONTENT with Claude (Mission 3 editor submit flow).
+ * Same safety contract as vetCreator: never throws, never auto-passes on
+ * error — the SAFE fallback is 'flag' (the dish stays 'pending', the creator
+ * is never blocked by a technical failure).
+ */
+export async function vetDish(input: VetDishInput): Promise<VetResult> {
+  try {
+    if (!process.env.ANTHROPIC_API_KEY) return safeFallback()
+
+    const msg = await claude.messages.create({
+      model:      MODEL,
+      max_tokens: 300,
+      messages:   [{ role: 'user', content: buildDishPrompt(input) }],
+    })
+
+    return parseVerdict(extractText(msg.content)) ?? safeFallback()
+  } catch {
+    console.error('[creator-vetting] dish vetting unavailable (API error)')
+    return safeFallback()
+  }
+}
