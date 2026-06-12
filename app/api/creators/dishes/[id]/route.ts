@@ -3,8 +3,10 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { runDishVetting } from '@/lib/dish-submit'
+import { runDishVetting, detectAdvertising } from '@/lib/dish-submit'
+import { vetDish } from '@/lib/creator-vetting'
 import { sheetSchema } from '@/lib/dish-sheet'
+import { readDishSheet } from '@/lib/dish-sheet-db'
 
 // ── /api/creators/dishes/[id] — edit & delete (Mission 3 editor) ──────────────
 //
@@ -119,12 +121,73 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     // R2 — validated content changed on an 'approved' recipe → re-vet now.
+    // M7: the vetting scope widens to the sheet's story/platingNotes + photo,
+    // and the duplicate net runs against other creators.
     let nextStatus = dish.status
     let vetReason: string | null = null
+    let vetReasonCode: string | undefined
+    let vetDetail: string | undefined
+    let vetSignatureScore: number | undefined
     if (touchesContent && dish.status === 'approved') {
-      const outcome = await runDishVetting(merged)
-      nextStatus = outcome.status
-      vetReason  = outcome.reason
+      const sheetForVet = touchesSheet ? (data.sheet ?? null) : await readDishSheet(dish.id)
+      const outcome = await runDishVetting({
+        ...merged,
+        story:        sheetForVet?.story,
+        platingNotes: sheetForVet?.platingNotes,
+        photoUrl:     (touchesPhoto ? data.photo : dish.photo) ?? undefined,
+      }, { creatorId: dish.creatorId, excludeDishId: dish.id })
+      nextStatus        = outcome.status
+      vetReason         = outcome.reason
+      vetReasonCode     = outcome.reasonCode
+      vetDetail         = outcome.detail
+      vetSignatureScore = outcome.signatureScore
+    } else if (touchesSheet && dish.status === 'approved') {
+      // M7 1.4 — a sheet added ALONE on an approved recipe still doesn't re-vet
+      // (M6 choice 1) EXCEPT when it carries a NEW/changed STORY: the story is
+      // PUBLIC on /chef, so it goes through a TARGETED best-effort vetting.
+      // IMPLEMENTATION NOTED: pass → status unchanged; the status drops to
+      // 'pending' ONLY on a real SAFETY verdict (reject, or flag coded
+      // advertising / inappropriate / not_a_recipe / ip_brand). A low-signature
+      // flag or a technical fallback NEVER knocks an approved recipe back —
+      // that would punish legacy recipes for enriching their sheet.
+      const newStory = (data.sheet?.story ?? '').trim()
+      if (newStory) {
+        try {
+          const oldStory = ((await readDishSheet(dish.id))?.story ?? '').trim()
+          if (newStory !== oldStory) {
+            const ad = detectAdvertising([newStory, data.sheet?.platingNotes])
+            if (ad) {
+              nextStatus    = 'pending'
+              vetReason     = `Contenu publicitaire détecté — ${ad}`
+              vetReasonCode = 'advertising'
+              vetDetail     = ad
+            } else {
+              const v = await vetDish({
+                name:           dish.name,
+                description:    dish.description,
+                ingredients:    (Array.isArray(dish.ingredients) ? dish.ingredients : []) as string[],
+                cuisineType:    dish.cuisineType,
+                suggestedPrice: dish.suggestedPrice,
+                story:          newStory,
+                platingNotes:   data.sheet?.platingNotes,
+              })
+              const safetyCodes = ['advertising', 'inappropriate', 'not_a_recipe', 'ip_brand']
+              const isSafetyProblem = v.verdict === 'reject'
+                || (v.verdict === 'flag' && v.reasonCode !== undefined && safetyCodes.includes(v.reasonCode))
+              if (isSafetyProblem) {
+                nextStatus    = 'pending'
+                vetReason     = v.detail ?? 'histoire à revoir'
+                vetReasonCode = v.reasonCode
+                vetDetail     = v.detail
+              }
+            }
+          }
+        } catch (err) {
+          // Best-effort — a story-check hiccup never blocks the save.
+          console.error('[PATCH /api/creators/dishes/[id]] story vetting skipped',
+            err instanceof Error ? err.message : err)
+        }
+      }
     }
 
     const updateData = {
@@ -152,7 +215,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       updated = await prisma.creatorDish.update({ where: { id: dish.id }, data: updateData })
     }
 
-    return NextResponse.json({ dish: updated, ...(vetReason ? { vetReason } : {}) })
+    return NextResponse.json({
+      dish: updated,
+      ...(vetReason ? { vetReason } : {}),
+      // M7 — structured verdict (additive).
+      ...(vetReasonCode ? { vetReasonCode } : {}),
+      ...(vetDetail ? { vetDetail } : {}),
+      ...(vetSignatureScore !== undefined ? { vetSignatureScore } : {}),
+    })
   } catch (err) {
     console.error('[PATCH /api/creators/dishes/[id]]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

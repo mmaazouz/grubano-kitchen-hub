@@ -123,7 +123,7 @@ describe('R2 — content edit on an approved recipe re-runs the vetting', () => 
     expect(res.status).toBe(200)
     expect(vetMock).toHaveBeenCalledWith(expect.objectContaining({
       name: 'Gnocchi 4 fromages', cuisineType: 'italien', // merged: new name + kept fields
-    }))
+    }), expect.anything()) // M7 — runDishVetting now also receives { creatorId, excludeDishId }
     expect(db.creatorDish.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'pending' }),
     }))

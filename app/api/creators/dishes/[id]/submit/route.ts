@@ -56,13 +56,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       )
     }
 
+    // M7 — the sheet's story/platingNotes + photo enter the vetting scope,
+    // and the internal-duplicate net runs against other creators' dishes.
     const outcome = await runDishVetting({
       name:           dish.name,
       description:    dish.description,
       ingredients:    (Array.isArray(dish.ingredients) ? dish.ingredients : []) as string[],
       cuisineType:    dish.cuisineType,
       suggestedPrice: dish.suggestedPrice,
-    })
+      story:          sheet?.story,
+      platingNotes:   sheet?.platingNotes,
+      photoUrl:       dish.photo ?? undefined,
+    }, { creatorId: creator.id, excludeDishId: dish.id })
 
     const updated = await prisma.creatorDish.update({
       where: { id: dish.id },
@@ -73,6 +78,10 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       dish:    updated,
       verdict: outcome.status, // approved | pending (review) | rejected
       reason:  outcome.reason,
+      // M7 — structured verdict (additive).
+      ...(outcome.reasonCode ? { reasonCode: outcome.reasonCode } : {}),
+      ...(outcome.detail ? { detail: outcome.detail } : {}),
+      ...(outcome.signatureScore !== undefined ? { signatureScore: outcome.signatureScore } : {}),
     })
   } catch (err) {
     console.error('[POST /api/creators/dishes/[id]/submit]', err)

@@ -88,7 +88,7 @@ export default function DishEditorModal({
   dish:    EditableDish | null
   onClose: () => void
   /** verdict present when a submission ran (approved | pending | rejected). */
-  onSaved: (outcome: { verdict?: string; reason?: string }) => void
+  onSaved: (outcome: { verdict?: string; reason?: string; signatureScore?: number }) => void
 }) {
   const t  = useTranslations('creators.editor')
   const tf = useTranslations('creators.home') // existing form labels reused
@@ -295,7 +295,7 @@ export default function DishEditorModal({
         const r2 = await fetch(`/api/creators/dishes/${dish.id}/submit`, { method: 'POST' })
         const b2 = await r2.json().catch(() => null)
         if (!r2.ok) { setError((b2?.error as string) || t('errGeneric')); return }
-        onSaved({ verdict: b2?.verdict as string, reason: b2?.reason as string })
+        onSaved({ verdict: b2?.verdict as string, reason: b2?.reason as string, signatureScore: b2?.signatureScore as number | undefined })
         return
       }
       // Create-and-submit → the POST already vetted (status on the dish).
@@ -304,7 +304,7 @@ export default function DishEditorModal({
         : body?.vetReason !== undefined
           ? (body?.dish?.status as string)
           : undefined
-      onSaved({ verdict, reason: body?.vetReason as string | undefined })
+      onSaved({ verdict, reason: body?.vetReason as string | undefined, signatureScore: body?.vetSignatureScore as number | undefined })
     } catch {
       setError(t('errGeneric'))
     } finally {

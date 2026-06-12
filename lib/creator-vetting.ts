@@ -178,7 +178,42 @@ export async function vetCreator(input: VetCreatorInput): Promise<VetResult> {
   }
 }
 
-// ── Dish vetting (Mission 3 Creator Studio — ADDITIVE, same pattern) ───────────
+// ── Dish vetting v2 (Mission 7 — hardened, structured verdict) ─────────────────
+//
+// The verdict becomes STRUCTURED: { verdict, reasonCode?, detail?,
+// signatureScore? }. New scope (M7): the sheet's story + platingNotes ENTER
+// the vetting input (the story is public on /chef — it was the hole to close),
+// and an optional photo goes through a MULTIMODAL coherence check (1.5,
+// best-effort: an image-leg failure falls back to text-only, never blocking).
+// Originality is NUANCED (1.6b): the prompt scores a signatureScore 0-100;
+// below SIGNATURE_FLAG_THRESHOLD (env, default 20) a passing recipe is flagged
+// « trop générique » — never a hard reject for lack of originality.
+
+export type VetReasonCode =
+  | 'not_a_recipe' | 'advertising' | 'inappropriate' | 'ip_brand'
+  | 'duplicate_internal' | 'low_quality' | 'incoherent_photo'
+
+/** French labels for the structured codes — UI-facing (project convention). */
+export const VET_REASON_LABELS: Record<VetReasonCode, string> = {
+  not_a_recipe:       'Ce n’est pas une vraie recette',
+  advertising:        'Contenu publicitaire détecté',
+  inappropriate:      'Contenu inapproprié',
+  ip_brand:           'Marque déposée dans le nom du plat',
+  duplicate_internal: 'Doublon d’une recette déjà au catalogue',
+  low_quality:        'Qualité insuffisante',
+  incoherent_photo:   'Photo incohérente avec le plat',
+}
+
+export interface VetDishResult {
+  verdict:         VetVerdict
+  reasonCode?:     VetReasonCode
+  /** Short French detail for the creator (toast). */
+  detail?:         string
+  /** 0-100, générique ↔ signature (1.6b). Absent on technical fallback. */
+  signatureScore?: number
+}
+
+export const SIGNATURE_FLAG_THRESHOLD = Number(process.env.SIGNATURE_FLAG_THRESHOLD) || 20
 
 export interface VetDishInput {
   name:           string
@@ -186,18 +221,44 @@ export interface VetDishInput {
   ingredients:    string[]
   cuisineType:    string
   suggestedPrice: number
+  // M7 1.4 — the sheet's PUBLIC-facing free text enters the scope.
+  story?:         string
+  platingNotes?:  string
+  // M7 1.5 — photo coherence (multimodal, best-effort).
+  photoUrl?:      string
 }
 
-function buildDishPrompt(input: VetDishInput): string {
+function safeDishFallback(): VetDishResult {
+  return { verdict: 'flag', detail: 'vérification auto indisponible' }
+}
+
+const VALID_CODES = new Set<string>([
+  'not_a_recipe', 'advertising', 'inappropriate', 'ip_brand',
+  'duplicate_internal', 'low_quality', 'incoherent_photo',
+])
+
+function buildDishPromptV2(input: VetDishInput, hasPhoto: boolean): string {
   const ingredients = Array.isArray(input.ingredients) ? input.ingredients.filter(Boolean) : []
   return [
     'You are a strict content-vetting reviewer for Grubano, a food delivery / dark-kitchen platform.',
     'Decide whether a CREATOR RECIPE submission should be published to the restaurant adoption catalogue.',
     '',
-    'Evaluate three things:',
-    '1. Is this a REAL, coherent food recipe (name, description and ingredients consistent with each other)?',
-    '2. Is the content appropriate and brand-safe (nothing hateful, adult, illegal, dangerous or misleading)?',
-    '3. Is the quality decent (a restaurant could actually cook and sell this)?',
+    'Evaluate ALL of the following:',
+    '1. AUTHENTICITY — is this a REAL, commercially viable food recipe? Name, description,',
+    '   ingredients (and story/plating when present) must be coherent with EACH OTHER.',
+    '   Random text, placeholder/test content ("aaa", lorem ipsum) → reject (not_a_recipe).',
+    '2. ADVERTISING — any external link, third-party promo code, phone number, or',
+    '   « visit my website » style call-to-action anywhere in the text → reject (advertising).',
+    '3. APPROPRIATE — nothing illegal, hateful, offensive, adult or dangerous → reject (inappropriate).',
+    '   NO health claims whatsoever (« détox », « brûle-graisse », « guérit », medical promises) → reject (inappropriate).',
+    '4. IP — a third-party REGISTERED BRAND in the DISH NAME (Nutella, Big Mac, Oreo, Coca-Cola…)',
+    '   → reject (ip_brand). A brand mentioned only as an ingredient is tolerated.',
+    hasPhoto
+      ? '5. PHOTO — the attached image must show FOOD plausibly matching this dish (not a selfie, logo, screenshot or unrelated object). Mismatch → flag (incoherent_photo).'
+      : '5. PHOTO — no photo attached, skip this check.',
+    '6. SIGNATURE — score 0-100 how much this recipe is a personal SIGNATURE dish (personal twist,',
+    '   story, own naming) versus fully generic (plain « pizza margherita »). This score NEVER',
+    '   causes a reject on its own.',
     '',
     'Recipe data:',
     `- Name: ${(input.name ?? '').trim() || '(non fourni)'}`,
@@ -205,37 +266,108 @@ function buildDishPrompt(input: VetDishInput): string {
     `- Description: ${(input.description ?? '').trim() || '(non fournie)'}`,
     `- Ingredients: ${ingredients.length ? ingredients.join(', ') : '(aucun)'}`,
     `- Suggested price: ${Number.isFinite(input.suggestedPrice) ? `${input.suggestedPrice} €` : '(non fourni)'}`,
+    `- Story (PUBLIC on the creator page): ${(input.story ?? '').trim() || '(aucune)'}`,
+    `- Plating notes: ${(input.platingNotes ?? '').trim() || '(aucune)'}`,
     '',
     'Return STRICTLY a single JSON object and NOTHING else — no markdown, no code fences, no commentary:',
-    '{"verdict":"pass|flag|reject","reason":"<short French explanation, max 1 sentence>","foodRelevance":<integer 0-100>}',
+    '{"verdict":"pass|flag|reject","reason":"not_a_recipe|advertising|inappropriate|ip_brand|low_quality|incoherent_photo|none",',
+    ' "detail":"<short French explanation for the creator, max 1 sentence>","signatureScore":<integer 0-100>}',
     '',
     'Rules:',
-    '- "pass" = clearly a real, coherent, appropriate recipe → auto-approve.',
-    '- "flag" = uncertain, borderline, incoherent pricing, or needs human review.',
-    '- "reject" = not food, gibberish, or inappropriate / unsafe / misleading content.',
+    '- "pass" = clearly a real, coherent, appropriate recipe → auto-approve (reason "none").',
+    '- "flag" = uncertain, borderline, photo mismatch, or needs human review.',
+    '- "reject" = one of the hard violations above (give the matching reason code).',
     "When in doubt → 'flag'. Never 'pass' something that is not clearly food.",
   ].join('\n')
 }
 
+/** Parse the v2 structured verdict. Null on unusable payload. */
+function parseDishVerdict(text: string): VetDishResult | null {
+  if (!text) return null
+  let obj = tryParse(text.trim())
+  if (obj === null || typeof obj !== 'object') {
+    const start = text.indexOf('{')
+    const end   = text.lastIndexOf('}')
+    if (start !== -1 && end !== -1 && end > start) obj = tryParse(text.slice(start, end + 1))
+  }
+  if (!obj || typeof obj !== 'object') return null
+
+  const r = obj as Record<string, unknown>
+  const verdictRaw = String(r.verdict ?? '').toLowerCase().trim()
+  if (verdictRaw !== 'pass' && verdictRaw !== 'flag' && verdictRaw !== 'reject') return null
+
+  const codeRaw = String(r.reason ?? '').toLowerCase().trim()
+  const reasonCode = VALID_CODES.has(codeRaw) ? (codeRaw as VetReasonCode) : undefined
+  const detail = typeof r.detail === 'string' && r.detail.trim() ? r.detail.trim() : undefined
+
+  let score = Number(r.signatureScore)
+  const signatureScore = Number.isFinite(score)
+    ? Math.max(0, Math.min(100, Math.round(score)))
+    : undefined
+
+  return { verdict: verdictRaw, reasonCode, detail, signatureScore }
+}
+
+/** Build the multimodal content blocks — the photo leg is OPTIONAL. */
+function dishContent(input: VetDishInput, withPhoto: boolean): Anthropic.Messages.ContentBlockParam[] {
+  const blocks: Anthropic.Messages.ContentBlockParam[] = []
+  if (withPhoto && input.photoUrl) {
+    blocks.push({ type: 'image', source: { type: 'url', url: input.photoUrl } })
+  }
+  blocks.push({ type: 'text', text: buildDishPromptV2(input, withPhoto && Boolean(input.photoUrl)) })
+  return blocks
+}
+
 /**
- * Vet a single recipe's CONTENT with Claude (Mission 3 editor submit flow).
- * Same safety contract as vetCreator: never throws, never auto-passes on
- * error — the SAFE fallback is 'flag' (the dish stays 'pending', the creator
- * is never blocked by a technical failure).
+ * Vet a single recipe's CONTENT with Claude — v2 structured verdict (M7).
+ * Safety contract unchanged: never throws, never auto-passes on error — the
+ * SAFE fallback is 'flag' (dish stays 'pending'). The MULTIMODAL photo leg is
+ * best-effort: if the image call fails (bad URL, fetch error), we RETRY in
+ * text-only mode before falling back.
  */
-export async function vetDish(input: VetDishInput): Promise<VetResult> {
+export async function vetDish(input: VetDishInput): Promise<VetDishResult> {
   try {
-    if (!process.env.ANTHROPIC_API_KEY) return safeFallback()
+    if (!process.env.ANTHROPIC_API_KEY) return safeDishFallback()
 
-    const msg = await claude.messages.create({
-      model:      MODEL,
-      max_tokens: 300,
-      messages:   [{ role: 'user', content: buildDishPrompt(input) }],
-    })
+    let parsed: VetDishResult | null = null
+    try {
+      const msg = await claude.messages.create({
+        model:      MODEL,
+        max_tokens: 400,
+        messages:   [{ role: 'user', content: dishContent(input, true) }],
+      })
+      parsed = parseDishVerdict(extractText(msg.content))
+    } catch (imgErr) {
+      // Image leg failed (1.5 best-effort) → text-only retry, never blocking.
+      if (input.photoUrl) {
+        console.error('[creator-vetting] photo leg failed — retrying text-only')
+        const msg = await claude.messages.create({
+          model:      MODEL,
+          max_tokens: 400,
+          messages:   [{ role: 'user', content: dishContent(input, false) }],
+        })
+        parsed = parseDishVerdict(extractText(msg.content))
+      } else {
+        throw imgErr
+      }
+    }
+    if (!parsed) return safeDishFallback()
 
-    return parseVerdict(extractText(msg.content)) ?? safeFallback()
+    // 1.6b — originality is NUANCED: a passing-but-too-generic recipe is
+    // FLAGGED (review), never rejected. The score travels with the verdict.
+    if (parsed.verdict === 'pass'
+        && parsed.signatureScore !== undefined
+        && parsed.signatureScore < SIGNATURE_FLAG_THRESHOLD) {
+      return {
+        verdict:        'flag',
+        reasonCode:     'low_quality',
+        detail:         'recette trop générique — ajoutez votre twist personnel, votre histoire',
+        signatureScore: parsed.signatureScore,
+      }
+    }
+    return parsed
   } catch {
     console.error('[creator-vetting] dish vetting unavailable (API error)')
-    return safeFallback()
+    return safeDishFallback()
   }
 }

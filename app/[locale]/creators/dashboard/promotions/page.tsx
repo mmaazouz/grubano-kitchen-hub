@@ -77,10 +77,16 @@ export default function CreatorRecipesPage() {
   }, [toast])
 
   // ── Verdict → toast (after a submission ran) ────────────────────────────────
-  function verdictToast(verdict?: string, reason?: string) {
-    if (verdict === 'approved')      setToast({ kind: 'ok',   text: te('toastApproved') })
+  // M7 — the structured reason (label — détail) travels in `reason`; the
+  // signature score shows soberly on approval (« Signature : 72/100 »); a
+  // motivated review (story/quality) spells out its reason too.
+  function verdictToast(verdict?: string, reason?: string, signatureScore?: number) {
+    if (verdict === 'approved') {
+      const sig = typeof signatureScore === 'number' ? ` · ${te('toastSignature', { score: signatureScore })}` : ''
+      setToast({ kind: 'ok', text: te('toastApproved') + sig })
+    }
     else if (verdict === 'rejected') setToast({ kind: 'err',  text: reason ? te('toastRejectedReason', { reason }) : te('toastRejected') })
-    else if (verdict === 'pending')  setToast({ kind: 'warn', text: te('toastInReview') })
+    else if (verdict === 'pending')  setToast({ kind: 'warn', text: reason ? `${te('toastInReview')} — ${reason}` : te('toastInReview') })
     else                             setToast({ kind: 'ok',   text: te('toastSaved') })
   }
 
@@ -92,7 +98,7 @@ export default function CreatorRecipesPage() {
       const r = await fetch(`/api/creators/dishes/${d.id}/submit`, { method: 'POST' })
       const body = await r.json().catch(() => null)
       if (!r.ok) { setToast({ kind: 'err', text: (body?.error as string) || te('errGeneric') }); return }
-      verdictToast(body?.verdict as string, body?.reason as string)
+      verdictToast(body?.verdict as string, body?.reason as string, body?.signatureScore as number | undefined)
       await load()
     } catch { setToast({ kind: 'err', text: te('errGeneric') }) } finally { setActingId(null) }
   }
@@ -218,7 +224,7 @@ export default function CreatorRecipesPage() {
             {tr('badge', { pct: Math.round((home?.adoptionCommissionPct ?? 0.02) * 100) })}
           </span>
         </div>
-        <p className="text-sm opacity-90 leading-relaxed">{tr('subtitle')}</p>
+        <p className="text-sm opacity-90 leading-relaxed">{tr('subtitle', { pct: Math.round((home?.adoptionCommissionPct ?? 0.02) * 100) })}</p>
       </div>
 
       {/* ── KPI strip (kept) ─────────────────────────────────────────────── */}
@@ -380,9 +386,9 @@ export default function CreatorRecipesPage() {
         <DishEditorModal
           dish={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
-          onSaved={({ verdict, reason }) => {
+          onSaved={({ verdict, reason, signatureScore }) => {
             setEditing(null)
-            verdictToast(verdict, reason)
+            verdictToast(verdict, reason, signatureScore)
             load()
           }}
         />

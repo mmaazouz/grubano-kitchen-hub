@@ -69,8 +69,13 @@ export async function POST(req: Request) {
     }
 
     // Draft → no vetting; submit → vet the content right away (1.3 flow).
+    // M7: the sheet's story/platingNotes + the photo enter the vetting scope,
+    // and the internal-duplicate check runs against other creators.
     let status: 'draft' | 'approved' | 'pending' | 'rejected' = 'draft'
     let vetReason: string | null = null
+    let vetReasonCode: string | undefined
+    let vetDetail: string | undefined
+    let vetSignatureScore: number | undefined
     if (!data.saveAsDraft) {
       const outcome = await runDishVetting({
         name:           data.name,
@@ -78,9 +83,15 @@ export async function POST(req: Request) {
         ingredients:    data.ingredients,
         cuisineType:    data.cuisineType,
         suggestedPrice: data.suggestedPrice,
-      })
-      status    = outcome.status
-      vetReason = outcome.reason
+        story:          data.sheet?.story,
+        platingNotes:   data.sheet?.platingNotes,
+        photoUrl:       data.photo,
+      }, { creatorId: creator.id })
+      status            = outcome.status
+      vetReason         = outcome.reason
+      vetReasonCode     = outcome.reasonCode
+      vetDetail         = outcome.detail
+      vetSignatureScore = outcome.signatureScore
     }
 
     const baseData = {
@@ -109,7 +120,14 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { dish, ...(vetReason ? { vetReason } : {}) },
+      {
+        dish,
+        ...(vetReason ? { vetReason } : {}),
+        // M7 — structured verdict (additive): code + detail + signature score.
+        ...(vetReasonCode ? { vetReasonCode } : {}),
+        ...(vetDetail ? { vetDetail } : {}),
+        ...(vetSignatureScore !== undefined ? { vetSignatureScore } : {}),
+      },
       { status: 201 },
     )
   } catch (err) {
