@@ -14,13 +14,20 @@ const FALLBACK_LEADERBOARD = [
 
 async function getCreatorStats() {
   try {
-    const [activeCount, approvedDishCount] = await Promise.all([
+    const [activeCount, approvedDishCount, adoptionCfg] = await Promise.all([
       prisma.creator.count(),
       prisma.creatorDish.count({ where: { status: { in: ['approved', 'live'] } } }),
+      // Real adoption rate (Mission 2, point dur E) — the landing's commission
+      // stat reads AdoptionConfig instead of a hardcoded « 4% ».
+      prisma.adoptionConfig.findFirst({
+        where:  { active: true },
+        select: { creatorCommissionPctReferred: true },
+      }).catch(() => null),
     ])
-    return { activeCount, approvedDishCount }
+    const pct = adoptionCfg?.creatorCommissionPctReferred ?? 0.02
+    return { activeCount, approvedDishCount, commissionLabel: `${Math.round(pct * 100)}%` }
   } catch {
-    return { activeCount: 0, approvedDishCount: 0 }
+    return { activeCount: 0, approvedDishCount: 0, commissionLabel: '2%' }
   }
 }
 
@@ -76,7 +83,7 @@ export default async function CreatorsPage({ params: { locale } }: { params: { l
         <div className="grid grid-cols-3 gap-2 mb-5">
           {([
             { label: t('statActive'),     value: String(stats.activeCount)        },
-            { label: t('statCommission'), value: '4%'                             },
+            { label: t('statCommission'), value: stats.commissionLabel             },
             { label: t('statDishes'),     value: String(stats.approvedDishCount)  },
           ] as const).map(({ label, value }) => (
             <div key={label} className="rounded-grubano-lg bg-white/20 p-2.5 text-center">

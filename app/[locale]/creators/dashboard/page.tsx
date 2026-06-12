@@ -36,6 +36,11 @@ export default function CreatorDashboardHome() {
   const getCatLabel = useCategoryLabel()
 
   const [data,           setData]           = useState<CreatorHomeData | null>(null)
+  // Mission 2 - local override after a toggle PATCH (the page reloads to keep
+  // the sidebar in sync, this is just the optimistic in-between).
+  const [rolesOverride, setRolesOverride] = useState<{ isChef: boolean; isInfluencer: boolean } | null>(null)
+  const [roleSaving, setRoleSaving] = useState(false)
+  const [roleError,  setRoleError]  = useState('')
   const [loading,        setLoading]        = useState(true)
   const [copied,         setCopied]         = useState(false)
   const [showSubmit,     setShowSubmit]     = useState(false)
@@ -122,9 +127,50 @@ export default function CreatorDashboardHome() {
   const recipeEarnings30d   = data?.recipeEarnings30d       ?? 0
   const referralEarnings30d = data?.referralEarnings30d     ?? 0
 
-  const pctDelta = lastMonth > 0
+  // Mission 2 - role flags (default BOTH true until loaded: no flash).
+  const roles = rolesOverride ?? data?.roles ?? { isChef: true, isInfluencer: true }
+  const bothRoles = roles.isChef && roles.isInfluencer
+  // Single active role -> that pipe's figures only (mission rule). The
+  // combined last-month delta has no per-pipe source -> hidden then.
+  const monthEarnings = bothRoles ? thisMonth : roles.isChef ? recipeEarnings30d : referralEarnings30d
+  const totalEarnShown = bothRoles ? totalEarn : roles.isChef ? (data?.dishNetTotal ?? 0) : audience.earningsTotal
+  const roleChartData = bothRoles ? chartData : chartData.map((d) => ({
+    ...d,
+    recipeAmount:   roles.isChef ? d.recipeAmount : 0,
+    referralAmount: roles.isInfluencer ? d.referralAmount : 0,
+    amount:         roles.isChef ? d.recipeAmount : d.referralAmount,
+  }))
+
+  const pctDelta = bothRoles && lastMonth > 0
     ? Math.round(((thisMonth - lastMonth) / lastMonth) * 100)
     : null
+
+  // Mission 2 - self-service toggle. The 'at least one role' guard is server-
+  // side (400) and surfaced here; success reloads the page so the sidebar and
+  // every section re-evaluate together.
+  async function saveRoles(key: 'isChef' | 'isInfluencer', value: boolean) {
+    if (roleSaving) return
+    setRoleSaving(true)
+    setRoleError('')
+    try {
+      const r = await fetch('/api/creators/me/roles', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ [key]: value }),
+      })
+      const body = await r.json().catch(() => null)
+      if (!r.ok) {
+        setRoleError((body?.error as string) || t('rolesError'))
+        return
+      }
+      setRolesOverride(body?.roles ?? null)
+      window.location.reload()
+    } catch {
+      setRoleError(t('rolesError'))
+    } finally {
+      setRoleSaving(false)
+    }
+  }
 
   const fmt = (n: number) =>
     n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -202,7 +248,7 @@ export default function CreatorDashboardHome() {
             {/* This month + delta */}
             <Card elevation="sm" padding="md">
               <p className="text-xs text-grubano-ink-muted mb-1">{t('kpiMonthEarnings')}</p>
-              <p className="text-2xl font-bold font-display text-grubano-success">€{fmt(thisMonth)}</p>
+              <p className="text-2xl font-bold font-display text-grubano-success">€{fmt(monthEarnings)}</p>
               {pctDelta !== null && (
                 <div className={`flex items-center gap-1 text-xs mt-1 ${pctDelta >= 0 ? 'text-grubano-success' : 'text-grubano-danger'}`}>
                   {pctDelta >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
@@ -214,20 +260,34 @@ export default function CreatorDashboardHome() {
             {/* Total cumulative */}
             <Card elevation="sm" padding="md">
               <p className="text-xs text-grubano-ink-muted mb-1">{t('kpiTotalEarnings')}</p>
-              <p className="text-2xl font-bold font-display">€{fmt(totalEarn)}</p>
+              <p className="text-2xl font-bold font-display">€{fmt(totalEarnShown)}</p>
             </Card>
 
-            {/* Sales */}
-            <Card elevation="sm" padding="md" className="text-center">
-              <p className="text-xl font-bold font-display text-grubano-primary">{totalSales}</p>
-              <p className="text-[11px] text-grubano-ink-muted mt-0.5">{t('kpiSales')}</p>
-            </Card>
-
-            {/* Adoptions */}
-            <Card elevation="sm" padding="md" className="text-center">
-              <p className="text-xl font-bold font-display text-grubano-primary">{adoptions}</p>
-              <p className="text-[11px] text-grubano-ink-muted mt-0.5">{t('kpiAdoptions')}</p>
-            </Card>
+            {/* Sales / Adoptions - chef figures; influencer-only mode shows
+                the audience volumes instead (single-role rule, Mission 2). */}
+            {roles.isChef ? (
+              <>
+                <Card elevation="sm" padding="md" className="text-center">
+                  <p className="text-xl font-bold font-display text-grubano-primary">{totalSales}</p>
+                  <p className="text-[11px] text-grubano-ink-muted mt-0.5">{t('kpiSales')}</p>
+                </Card>
+                <Card elevation="sm" padding="md" className="text-center">
+                  <p className="text-xl font-bold font-display text-grubano-primary">{adoptions}</p>
+                  <p className="text-[11px] text-grubano-ink-muted mt-0.5">{t('kpiAdoptions')}</p>
+                </Card>
+              </>
+            ) : (
+              <>
+                <Card elevation="sm" padding="md" className="text-center">
+                  <p className="text-xl font-bold font-display text-grubano-primary">{audience.ordersCount}</p>
+                  <p className="text-[11px] text-grubano-ink-muted mt-0.5">{t('audienceOrders')}</p>
+                </Card>
+                <Card elevation="sm" padding="md" className="text-center">
+                  <p className="text-xl font-bold font-display text-grubano-primary">{audience.referralsCount}</p>
+                  <p className="text-[11px] text-grubano-ink-muted mt-0.5">{t('audienceCustomers')}</p>
+                </Card>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -242,7 +302,7 @@ export default function CreatorDashboardHome() {
         <div className="space-y-2">
 
           {/* Action 1: Referral code not yet active */}
-          {!hasReferralCode && (
+          {roles.isInfluencer && !hasReferralCode && (
             <Card elevation="sm" padding="md" className="border-l-4 border-l-grubano-primary">
               <div className="flex items-start gap-3">
                 <div className="h-9 w-9 rounded-grubano-lg bg-grubano-tint flex items-center justify-center shrink-0">
@@ -269,7 +329,7 @@ export default function CreatorDashboardHome() {
           )}
 
           {/* Action 2: Submit a dish (if < 2 dishes) */}
-          {fewDishes && (
+          {roles.isChef && fewDishes && (
             <Card elevation="sm" padding="md" className="border-l-4 border-l-amber-400">
               <div className="flex items-start gap-3">
                 <div className="h-9 w-9 rounded-grubano-lg bg-amber-50 flex items-center justify-center shrink-0">
@@ -382,6 +442,7 @@ export default function CreatorDashboardHome() {
       <div className="grid md:grid-cols-2 gap-4">
 
         {/* ── Left: Mes recettes ─────────────────────────────────────────── */}
+        {roles.isChef && (
         <Card elevation="sm" padding="md">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -510,8 +571,10 @@ export default function CreatorDashboardHome() {
             </div>
           )}
         </Card>
+        )}
 
         {/* ── Right: Mon audience ────────────────────────────────────────── */}
+        {roles.isInfluencer && (
         <Card elevation="sm" padding="md">
           <div className="flex items-center gap-2 mb-3">
             <Users2 size={16} className="text-grubano-primary" />
@@ -600,6 +663,7 @@ export default function CreatorDashboardHome() {
             </div>
           )}
         </Card>
+        )}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -611,16 +675,17 @@ export default function CreatorDashboardHome() {
             <h2 className="text-sm font-bold">{t('perfTitle')}</h2>
             <p className="text-[11px] text-grubano-ink-muted">{t('perfSubtitle')}</p>
           </div>
-          {audience.earningsThisMonth > 0 && (
+          {roles.isInfluencer && audience.earningsThisMonth > 0 && (
             <Badge tone="success" size="sm">€{fmt(audience.earningsThisMonth)}</Badge>
           )}
         </div>
 
         <div className="mt-3">
           <CreatorEarningsChart
-            data={chartData}
-            recipeEarnings30d={recipeEarnings30d}
-            referralEarnings30d={referralEarnings30d}
+            data={roleChartData}
+            recipeEarnings30d={roles.isChef ? recipeEarnings30d : 0}
+            referralEarnings30d={roles.isInfluencer ? referralEarnings30d : 0}
+            recipeRatePct={Math.round((data?.adoptionCommissionPct ?? 0.02) * 100)}
           />
         </div>
 
@@ -699,6 +764,45 @@ export default function CreatorDashboardHome() {
           <ArrowRight size={16} className="text-grubano-ink-muted group-hover:text-grubano-primary transition-colors" />
         </Card>
       </Link>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          MISSION 2 — ROLE TOGGLES (self-service, sober)
+      ════════════════════════════════════════════════════════════════════ */}
+      <Card elevation="sm" padding="md">
+        <h2 className="text-sm font-bold mb-1">{t('rolesTitle')}</h2>
+        <p className="text-[11px] text-grubano-ink-muted mb-3">{t('rolesHint')}</p>
+        <div className="space-y-2">
+          {([
+            { key: 'isChef' as const,       label: t('roleChefLabel') },
+            { key: 'isInfluencer' as const, label: t('roleInfluencerLabel') },
+          ]).map((r) => (
+            <div key={r.key} className="flex items-center justify-between gap-3">
+              <span className="text-[13px] font-semibold text-grubano-ink">{r.label}</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={roles[r.key]}
+                disabled={roleSaving}
+                onClick={() => saveRoles(r.key, !roles[r.key])}
+                className={`relative h-6 w-11 rounded-full transition-colors disabled:opacity-60 ${
+                  roles[r.key] ? 'bg-grubano-primary' : 'bg-grubano-surface-muted border border-grubano-border'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                    roles[r.key] ? 'left-[22px]' : 'left-0.5'
+                  }`}
+                />
+              </button>
+            </div>
+          ))}
+        </div>
+        {roleError && (
+          <p className="mt-2 rounded-grubano-md bg-grubano-danger-tint px-2.5 py-1.5 text-[11px] text-grubano-danger">
+            {roleError}
+          </p>
+        )}
+      </Card>
 
     </div>
   )

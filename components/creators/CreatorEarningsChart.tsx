@@ -27,6 +27,9 @@ interface Props {
   data:                 ChartDatum[]
   recipeEarnings30d?:   number
   referralEarnings30d?: number
+  /** Real adoption rate %, from AdoptionConfig — the legend hides the figure
+   *  when absent (never a hardcoded 4%, point dur E). */
+  recipeRatePct?:       number
 }
 
 // Shared recharts axis props to avoid duplication
@@ -49,6 +52,7 @@ export function CreatorEarningsChart({
   data,
   recipeEarnings30d   = 0,
   referralEarnings30d = 0,
+  recipeRatePct,
 }: Props) {
   const t = useTranslations('creators.home')
   const [segment, setSegment] = useState<Segment>('all')
@@ -167,7 +171,7 @@ export function CreatorEarningsChart({
         <div className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: COLOR_RECIPE }} />
           <span className="text-[10px] text-grubano-ink-muted">
-            {t('perfSegRecipe')} (4%)
+            {t('perfSegRecipe')}{recipeRatePct != null ? ` (${recipeRatePct}%)` : ''}
             {' — '}
             <span className="font-semibold text-grubano-ink">€{recipeEarnings30d.toFixed(2)}</span>
           </span>

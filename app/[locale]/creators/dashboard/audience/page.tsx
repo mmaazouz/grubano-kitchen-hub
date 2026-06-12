@@ -18,6 +18,7 @@ import type { CreatorHomeData } from '@/app/api/creators/home/route'
 
 export default function CreatorAffiliationPage() {
   const ta = useTranslations('creators.affiliation')
+  const tn = useTranslations('creators.rolesGate')
 
   const [data,    setData]    = useState<CreatorHomeData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,6 +46,37 @@ export default function CreatorAffiliationPage() {
   // Shared builder (B1-bis): /ref/<slug> on the page's real origin with the
   // business.* browsing host neutralized — never a hardcoded domain.
   const referralLink = buildReferralLink(referralSlug)
+
+  // Mission 2 - influencer role disabled -> clean gate + one-tap re-enable.
+  if (data?.roles && data.roles.isInfluencer === false) {
+    return (
+      <div className="px-4 pt-12 max-w-2xl mx-auto">
+        <EmptyState
+          emoji="📣"
+          title={tn('influencerOffTitle')}
+          description={tn('influencerOffBody')}
+          action={
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const r = await fetch('/api/creators/me/roles', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isInfluencer: true }),
+                  })
+                  if (r.ok) window.location.reload()
+                } catch { /* retryable */ }
+              }}
+              className="inline-flex items-center rounded-grubano-lg bg-grubano-primary px-4 py-2 text-sm font-medium text-white"
+            >
+              {tn('enableCta')}
+            </button>
+          }
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto space-y-5">

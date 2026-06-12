@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   LayoutDashboard, ChefHat, Megaphone,
@@ -15,12 +16,17 @@ type NavItem = {
   labelKey: string
   icon: React.ElementType
   exact?: boolean
+  /** Mission 2 — entry visible only when this role flag is active. */
+  role?: 'chef' | 'influencer'
 }
 
+// Mission 2 (role split): entries carry an optional role gate — 'chef' hides
+// with isChef=false, 'influencer' with isInfluencer=false. Vue d'ensemble and
+// Mes revenus are ALWAYS shown.
 const NAV_ITEMS: NavItem[] = [
   { href: '/creators/dashboard',            labelKey: 'overview',     icon: LayoutDashboard, exact: true },
-  { href: '/creators/dashboard/promotions', labelKey: 'recipes',      icon: ChefHat },
-  { href: '/creators/dashboard/audience',   labelKey: 'affiliation',  icon: Megaphone },
+  { href: '/creators/dashboard/promotions', labelKey: 'recipes',      icon: ChefHat,   role: 'chef' },
+  { href: '/creators/dashboard/audience',   labelKey: 'affiliation',  icon: Megaphone, role: 'influencer' },
   { href: '/creators/dashboard/revenus',    labelKey: 'revenue',      icon: TrendingUp },
 ]
 
@@ -28,6 +34,26 @@ export default function CreatorSidebar() {
   const t        = useTranslations('creators.nav')
   const pathname = usePathname()
   const { open, close } = useSidebar()
+
+  // Role flags from /api/creators/home — DEFAULT BOTH TRUE until loaded (and
+  // on any failure): never a flash of disappearing entries, identical
+  // behaviour pre-migration (deploy-time default).
+  const [roles, setRoles] = useState<{ isChef: boolean; isInfluencer: boolean }>({ isChef: true, isInfluencer: true })
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/creators/home', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d?.roles) return
+        setRoles({ isChef: d.roles.isChef !== false, isInfluencer: d.roles.isInfluencer !== false })
+      })
+      .catch(() => { /* keep both */ })
+    return () => { cancelled = true }
+  }, [pathname])
+
+  const visibleItems = NAV_ITEMS.filter((item) =>
+    item.role === 'chef' ? roles.isChef : item.role === 'influencer' ? roles.isInfluencer : true,
+  )
 
   function isActive(item: NavItem) {
     if (item.exact) return pathname === item.href
@@ -74,7 +100,7 @@ export default function CreatorSidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          {NAV_ITEMS.map(item => {
+          {visibleItems.map(item => {
             const active = isActive(item)
             const Icon   = item.icon
             return (

@@ -29,6 +29,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
 import { buildReferralLink } from '@/lib/referral-link'
+import { buildChefPageLink } from '@/lib/chef-link'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
 
 // ── B2a contract (mirrored locally — the route is the source of truth) ────────
@@ -64,6 +65,8 @@ interface EarningAdoption {
   maturedAt:           string | null
 }
 interface EarningsPayload {
+  // Mission 2 - role flags (server-read, tolerant: both true pre-migration).
+  roles?:         { isChef: boolean; isInfluencer: boolean }
   code:           string | null
   link:           string | null
   totals:         EarningsTotals
@@ -91,8 +94,8 @@ export default function CreatorEarningsPage() {
   const [hasMore,     setHasMore]     = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   // Copy / QR affordances.
-  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
-  const [qrOpen, setQrOpen] = useState(false)
+  const [copied, setCopied] = useState<'code' | 'link' | 'cheflink' | null>(null)
+  const [qrOpen, setQrOpen] = useState<'ref' | 'chef' | null>(null)
   // B1-bis FIX 3 — adoptions folded: 5 visible, "Voir plus" unfolds by packs
   // of 5 (client-side slice — the contract already capped the list at 20).
   const [adoptionsShown, setAdoptionsShown] = useState(5)
@@ -142,7 +145,7 @@ export default function CreatorEarningsPage() {
     }
   }
 
-  async function copy(kind: 'code' | 'link', value: string) {
+  async function copy(kind: 'code' | 'link' | 'cheflink', value: string) {
     try {
       await navigator.clipboard.writeText(value)
       setCopied(kind)
@@ -169,6 +172,15 @@ export default function CreatorEarningsPage() {
     if (!data?.link) return null
     const slug = data.link.split('/').filter(Boolean).pop()
     return buildReferralLink(slug)
+  }, [data?.link])
+
+  // Mission 2 - the CHEF kit link: the public /chef page (M1), built by the
+  // dedicated lib/chef-link (imports consumerOrigin, never touches the
+  // influencer builder).
+  const chefLink = useMemo(() => {
+    if (!data?.link) return null
+    const slug = data.link.split('/').filter(Boolean).pop()
+    return buildChefPageLink(slug)
   }, [data?.link])
 
   const statusBadge = (status: string) => {
@@ -208,6 +220,7 @@ export default function CreatorEarningsPage() {
     )
   }
 
+  const roles = data.roles ?? { isChef: true, isInfluencer: true }
   const { totals } = data
   const brandNew = data.ordersTotal === 0 && data.adoptions.length === 0
   const progressReached = totals.maturedCents >= totals.thresholdCents
@@ -280,68 +293,118 @@ export default function CreatorEarningsPage() {
         </p>
       )}
 
-      {/* ── Code + lien + QR ───────────────────────────────────────────────── */}
-      <Card elevation="sm" padding="md">
-        <div className="mb-2 flex items-center gap-2">
-          <Share2 size={14} className="text-grubano-primary" />
-          <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('codeTitle')}</h2>
-          <span className="ms-auto text-[11px] text-grubano-ink-muted">
-            {t('ordersCount', { count: data.ordersTotal })}
-          </span>
-        </div>
-
-        {data.code ? (
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => copy('code', data.code as string)}
-              className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
-            >
-              <span className="font-mono text-base font-extrabold tracking-widest text-grubano-ink">{data.code}</span>
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                {copied === 'code' ? <Check size={13} /> : <Copy size={13} />}
-                {copied === 'code' ? t('copied') : t('copyCode')}
-              </span>
-            </button>
-
-            {fullLink && (
-              <button
-                type="button"
-                onClick={() => copy('link', fullLink)}
-                className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
-              >
-                <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{fullLink}</span>
-                <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                  {copied === 'link' ? <Check size={13} /> : <Copy size={13} />}
-                  {copied === 'link' ? t('copied') : t('copyLink')}
+      {/* ── LE KIT DE PARTAGE (Mission 2) — one block per ACTIVE role,
+          clearly labelled: this is where the creator understands their two
+          tools. Influencer -> the /ref affiliation link (existing rail);
+          Chef -> the public /chef page (M1 contribution rail). Both roles ->
+          both blocks side by side. */}
+      {(roles.isInfluencer || roles.isChef) && (
+        <div className={`grid gap-3 ${roles.isInfluencer && roles.isChef ? 'md:grid-cols-2' : ''}`}>
+          {roles.isInfluencer && (
+            <Card elevation="sm" padding="md">
+              <div className="mb-2 flex items-center gap-2">
+                <Share2 size={14} className="text-grubano-primary" />
+                <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('kitAffiliationTitle')}</h2>
+                <span className="ms-auto text-[11px] text-grubano-ink-muted">
+                  {t('ordersCount', { count: data.ordersTotal })}
                 </span>
-              </button>
-            )}
-
-            {fullLink && (
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setQrOpen((v) => !v)}
-                  className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary"
-                >
-                  <QrCode size={13} /> {qrOpen ? t('hideQr') : t('showQr')}
-                </button>
-                {qrOpen && (
-                  <div className="mt-2 flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
-                    <QRCodeSVG value={fullLink} size={168} includeMargin />
-                    <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('qrHint')}</p>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
-        ) : (
-          <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-[12px] text-grubano-ink-muted">
-            {t('noCode')}
-          </p>
-        )}
-      </Card>
+              {data.code ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => copy('code', data.code as string)}
+                    className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
+                  >
+                    <span className="font-mono text-base font-extrabold tracking-widest text-grubano-ink">{data.code}</span>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-grubano-primary">
+                      {copied === 'code' ? <Check size={13} /> : <Copy size={13} />}
+                      {copied === 'code' ? t('copied') : t('copyCode')}
+                    </span>
+                  </button>
+                  {fullLink && (
+                    <button
+                      type="button"
+                      onClick={() => copy('link', fullLink)}
+                      className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{fullLink}</span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
+                        {copied === 'link' ? <Check size={13} /> : <Copy size={13} />}
+                        {copied === 'link' ? t('copied') : t('copyLink')}
+                      </span>
+                    </button>
+                  )}
+                  {fullLink && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setQrOpen((v) => (v === 'ref' ? null : 'ref'))}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary"
+                      >
+                        <QrCode size={13} /> {qrOpen === 'ref' ? t('hideQr') : t('showQr')}
+                      </button>
+                      {qrOpen === 'ref' && (
+                        <div className="mt-2 flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
+                          <QRCodeSVG value={fullLink} size={168} includeMargin />
+                          <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('qrHint')}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-[12px] text-grubano-ink-muted">
+                  {t('noCode')}
+                </p>
+              )}
+            </Card>
+          )}
+
+          {roles.isChef && (
+            <Card elevation="sm" padding="md">
+              <div className="mb-2 flex items-center gap-2">
+                <ChefHat size={14} className="text-grubano-primary" />
+                <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('kitChefTitle')}</h2>
+              </div>
+              {chefLink ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => copy('cheflink', chefLink)}
+                    className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{chefLink}</span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
+                      {copied === 'cheflink' ? <Check size={13} /> : <Copy size={13} />}
+                      {copied === 'cheflink' ? t('copied') : t('copyLink')}
+                    </span>
+                  </button>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setQrOpen((v) => (v === 'chef' ? null : 'chef'))}
+                      className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary"
+                    >
+                      <QrCode size={13} /> {qrOpen === 'chef' ? t('hideQr') : t('showQr')}
+                    </button>
+                    {qrOpen === 'chef' && (
+                      <div className="mt-2 flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
+                        <QRCodeSVG value={chefLink} size={168} includeMargin />
+                        <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('kitChefQrHint')}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-[12px] text-grubano-ink-muted">
+                  {t('noCode')}
+                </p>
+              )}
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* ── Brand-new creator — guide, never an empty screen ──────────────── */}
       {brandNew && (
@@ -357,7 +420,7 @@ export default function CreatorEarningsPage() {
       )}
 
       {/* ── Mes commandes (paginated, SERVER statuses — zero client math) ──── */}
-      {data.ordersTotal > 0 && (
+      {roles.isInfluencer && data.ordersTotal > 0 && (
         <section>
           <div className="mb-2 flex items-center gap-2">
             <ShoppingBag size={14} className="text-grubano-primary" />
@@ -408,6 +471,7 @@ export default function CreatorEarningsPage() {
       )}
 
       {/* ── Mes recettes adoptées (the 2% pipe — present in the contract) ──── */}
+      {roles.isChef && (
       <section>
         <div className="mb-2 flex items-center gap-2">
           <ChefHat size={14} className="text-grubano-primary" />
@@ -468,6 +532,7 @@ export default function CreatorEarningsPage() {
           </>
         )}
       </section>
+      )}
 
       {/* ── Versements — elegant placeholder (B2b) ─────────────────────────── */}
       <Card elevation="sm" padding="md" className="border-dashed">

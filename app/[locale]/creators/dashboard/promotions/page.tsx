@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Mes recettes — Robinet A (4% / vente)
+ * Mes recettes — Robinet A (taux réel AdoptionConfig — jamais en dur)
  * Fetches /api/creators/home (read-only) and shows the creator's dishes
  * with real adoption counts, earnings, and per-adopter accordion.
  */
@@ -24,6 +24,7 @@ import type { CreatorHomeData, CreatorHomeDish, DishAdopter } from '@/app/api/cr
 export default function CreatorRecipesPage() {
   const t  = useTranslations('creators.home')
   const tr = useTranslations('creators.recipes')
+  const tn = useTranslations('creators.rolesGate')
 
   const [data,       setData]       = useState<CreatorHomeData | null>(null)
   const [loading,    setLoading]    = useState(true)
@@ -56,6 +57,37 @@ export default function CreatorRecipesPage() {
 
   const dishes = (data?.dishes ?? []) as CreatorHomeDish[]
 
+  // Mission 2 - chef role disabled -> clean gate + one-tap re-enable.
+  if (data?.roles && data.roles.isChef === false) {
+    return (
+      <div className="px-4 pt-12 max-w-2xl mx-auto">
+        <EmptyState
+          emoji="🍳"
+          title={tn('chefOffTitle')}
+          description={tn('chefOffBody')}
+          action={
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const r = await fetch('/api/creators/me/roles', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isChef: true }),
+                  })
+                  if (r.ok) window.location.reload()
+                } catch { /* retryable */ }
+              }}
+              className="inline-flex items-center rounded-grubano-lg bg-grubano-primary px-4 py-2 text-sm font-medium text-white"
+            >
+              {tn('enableCta')}
+            </button>
+          }
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto space-y-5">
 
@@ -65,7 +97,7 @@ export default function CreatorRecipesPage() {
           <ChefHat size={20} />
           <h1 className="text-lg font-display font-bold leading-tight">{tr('title')}</h1>
           <span className="ml-auto rounded-grubano-pill bg-white/20 px-2.5 py-0.5 text-xs font-bold shrink-0">
-            {tr('badge')}
+            {tr('badge', { pct: Math.round((data?.adoptionCommissionPct ?? 0.02) * 100) })}
           </span>
         </div>
         <p className="text-sm opacity-90 leading-relaxed">{tr('subtitle')}</p>
