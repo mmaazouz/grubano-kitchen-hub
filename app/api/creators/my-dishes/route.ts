@@ -2,9 +2,26 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import type { DishAdopter } from '@/app/api/creators/home/route'
 
 // ── Types returned to the client ──────────────────────────────────────────────
+
+// Mission 4 (1.2): the PRIVATE studio accordion adds per-adoption analytics
+// (city + sales/revenue/earnings). Richer than the shared home DishAdopter —
+// declared here so the public home payload is untouched. The € figures are
+// legitimate on this private surface only (never on /chef or the catalogue).
+export type MyDishAdopter = {
+  adoptionId:    string
+  brandName:     string
+  brandEmoji:    string
+  city:          string    // establishment city ('' when no linked restaurant)
+  adoptedAt:     string    // ISO date string
+  sellingPrice:  number
+  daysRemaining: number
+  commitmentMet: boolean
+  salesCount:    number    // count of DishSale rows for this adoption
+  revenue:       number    // Σ DishSale.amount (CA généré)
+  earnings:      number    // Σ DishSale.creatorEarning (gains créateur)
+}
 
 export type MyDish = {
   id:             string
@@ -18,7 +35,6 @@ export type MyDish = {
   earnings:       number        // sum of DishSale.creatorEarning (gross) — kept for compat
   grubanoFee:     number        // sum of DishSale.grubanoCut  (= earnings × 20%)
   earningsNet:    number        // earnings − grubanoFee  (what creator receives)
-  adopters:       DishAdopter[] // active adoptions with brand + commitment details
   // ── Mission 3 editor — the UI decides what to allow WITHOUT guessing ────────
   photo:             string | null
   ingredients:       string[]   // for the edit form (Json column normalized)
@@ -26,6 +42,8 @@ export type MyDish = {
   hasAnyHistory:     boolean    // R4 — delete becomes archive
   adoptionsCount:    number     // all-time adoptions (history)
   salesCount:        number     // all-time DishSale rows
+  // Mission 4 (1.2) — richer adopters with per-adoption analytics.
+  adoptersRich:      MyDishAdopter[]
 }
 
 export async function GET() {
@@ -60,8 +78,14 @@ export async function GET() {
       ? await prisma.dishAdoption.findMany({
           where: { creatorDishId: { in: dishIds } },
           include: {
-            brand: { select: { name: true, emoji: true } },
-            sales: { select: { creatorEarning: true, grubanoCut: true } },
+            brand: {
+              select: {
+                name: true, emoji: true,
+                // Establishment city for the private adopters analytics (1.2).
+                restaurant: { select: { city: true } },
+              },
+            },
+            sales: { select: { creatorEarning: true, grubanoCut: true, amount: true } },
           },
           orderBy: { adoptedAt: 'asc' },
         })
@@ -97,17 +121,23 @@ export async function GET() {
       )
       const earningsNet = Number((earnings - grubanoFee).toFixed(2))
 
-      const adopters: DishAdopter[] = activeAdoptions.map(a => {
+      const adoptersRich: MyDishAdopter[] = activeAdoptions.map(a => {
         const daysElapsed   = Math.floor((now.getTime() - a.adoptedAt.getTime()) / 86_400_000)
         const daysRemaining = Math.max(0, a.minCommitmentDays - daysElapsed)
+        const revenue  = Number(a.sales.reduce((s, sale) => s + sale.amount,         0).toFixed(2))
+        const earnings = Number(a.sales.reduce((s, sale) => s + sale.creatorEarning, 0).toFixed(2))
         return {
           adoptionId:    a.id,
           brandName:     a.brand.name,
           brandEmoji:    a.brand.emoji,
+          city:          a.brand.restaurant?.city ?? '',
           adoptedAt:     a.adoptedAt.toISOString(),
           sellingPrice:  a.sellingPrice,
           daysRemaining,
           commitmentMet: daysElapsed >= a.minCommitmentDays,
+          salesCount:    a.sales.length,
+          revenue,
+          earnings,
         }
       })
 
@@ -123,7 +153,7 @@ export async function GET() {
         earnings,
         grubanoFee,
         earningsNet,
-        adopters,
+        adoptersRich,
         // Mission 3 editor flags (R1-R4 selectors, computed from the batch —
         // no extra query).
         photo:             d.photo,

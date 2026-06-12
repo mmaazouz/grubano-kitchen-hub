@@ -374,6 +374,72 @@ export async function sendOrderConfirmation(p: {
   })
 }
 
+// ── 7) Creator notified of a new adoption (Mission 4 — marketplace vivante) ─────
+// Sent AFTER a successful adoption transaction, best-effort. The royalty pct is
+// read from AdoptionConfig by the caller and passed in — NEVER hardcoded here.
+
+export async function sendDishAdoptedToCreator(p: {
+  to:             string
+  creatorName:    string
+  restaurantName: string
+  /** Establishment city — '' when the brand has no linked restaurant. */
+  city:           string
+  dishName:       string
+  /** Selling price in € the restaurant set for the dish. */
+  priceEur:       number
+  /** Royalty fraction from AdoptionConfig (e.g. 0.02) — rendered as a percent. */
+  royaltyPct:     number
+}): Promise<void> {
+  const where  = p.city ? ` (${esc(p.city)})` : ''
+  const price  = p.priceEur.toFixed(2).replace('.', ',')
+  const pct    = (p.royaltyPct * 100).toFixed(p.royaltyPct * 100 % 1 === 0 ? 0 : 1).replace('.', ',')
+  await sendTransactional({
+    to:      p.to,
+    subject: `Nouvelle adoption — ${p.restaurantName} sert « ${p.dishName} »`,
+    trigger: 'dish_adopted_creator',
+    html: shell('Votre recette vient d’être adoptée 🎉', `
+      <p>Bonjour ${esc(p.creatorName)}, bonne nouvelle :
+         <strong>${esc(p.restaurantName)}</strong>${where} vient d’adopter votre recette
+         <strong>${esc(p.dishName)}</strong> au prix de <strong>${price} €</strong>.</p>
+      <p style="font-size:13px;color:#6b7280">Vos royalties de <strong>${pct}%</strong> s’appliquent sur chaque vente de cette recette.</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="https://grubano.com/creators/dashboard" style="background:#F97316;color:#fff;text-decoration:none;
+           padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
+           Voir mon studio
+        </a>
+      </p>`),
+  })
+}
+
+// ── 8) Waitlisted restaurant: a city-exclusive slot just freed up (Mission 4) ───
+// Sent when an 'offered' promotion is created. The TTL (hours) is passed in.
+
+export async function sendWaitlistOfferToRestaurant(p: {
+  to:             string
+  restaurantName: string
+  dishName:       string
+  city:           string
+  /** Offer time-to-live in hours (WAITLIST_OFFER_TTL_HOURS). */
+  hours:          number
+}): Promise<void> {
+  await sendTransactional({
+    to:      p.to,
+    subject: `Exclusivité disponible — « ${p.dishName} » à ${p.city}`,
+    trigger: 'waitlist_offer',
+    html: shell('Une exclusivité s’est libérée', `
+      <p>Bonjour, l’exclusivité de la recette <strong>${esc(p.dishName)}</strong> à
+         <strong>${esc(p.city)}</strong> vient de se libérer — et
+         <strong>${esc(p.restaurantName)}</strong> est le prochain sur la liste d’attente.</p>
+      <p style="font-size:13px;color:#6b7280">Vous avez <strong>${p.hours} h</strong> pour l’adopter avant que l’offre ne passe au restaurant suivant.</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="https://grubano.com/menu" style="background:#F97316;color:#fff;text-decoration:none;
+           padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
+           Adopter la recette
+        </a>
+      </p>`),
+  })
+}
+
 // ── 4) No-show penalty charged ───────────────────────────────────────────────────
 
 export async function sendNoShowPenaltyCharged(p: {

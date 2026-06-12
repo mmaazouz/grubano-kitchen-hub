@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
+import { sendDishAdoptedToCreator } from '@/lib/transactional-emails'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/dishes/adopt  — a restaurateur adopts an approved creator recipe.
@@ -164,6 +165,34 @@ export async function POST(req: Request) {
       })
       return { adoption, menuItem }
     })
+
+    // ── ADDITIVE (Mission 4, point H) — notify the creator, BEST-EFFORT ───────────
+    // Pattern 5C: a try/catch that NEVER lets an email failure fail the adoption.
+    // The royalty pct is read from AdoptionConfig (never hardcoded): B0 sets both
+    // tiers to 0.02 — we surface the "referred" tier as the headline rate.
+    try {
+      const creator = await prisma.creator.findUnique({
+        where:  { id: creatorDish.creatorId },
+        select: { email: true, name: true },
+      })
+      if (creator?.email) {
+        const royaltyPct = config?.creatorCommissionPctReferred
+          ?? config?.creatorCommissionPct
+          ?? CONFIG_DEFAULTS.creatorCommissionPct
+        await sendDishAdoptedToCreator({
+          to:             creator.email,
+          creatorName:    creator.name ?? '',
+          restaurantName: brand.name,
+          city,
+          dishName:       creatorDish.name,
+          priceEur:       price,
+          royaltyPct,
+        })
+      }
+    } catch (err) {
+      console.error('[POST /api/dishes/adopt] creator notification failed (adoption kept)',
+        err instanceof Error ? err.message : err)
+    }
 
     return NextResponse.json({ adoption, menuItem }, { status: 201 })
   } catch (err) {

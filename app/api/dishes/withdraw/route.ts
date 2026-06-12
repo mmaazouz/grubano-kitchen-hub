@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
+import { sweepAndPromote } from '@/lib/waitlist-promotion'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/dishes/withdraw  — a restaurateur withdraws an adopted recipe.
@@ -106,6 +107,25 @@ export async function POST(req: Request) {
         })
       }
     })
+
+    // ── ADDITIVE (Mission 4, levier 3B) — the city slot just freed up ─────────────
+    // Promote the oldest 'waiting' restaurant for this recipe in this city to
+    // 'offered' and email it. BEST-EFFORT: sweepAndPromote never throws, so a
+    // promotion/email failure can never fail the withdrawal.
+    try {
+      const city = (adoption.brand.restaurantId
+        ? (await prisma.restaurant.findUnique({
+            where:  { id: adoption.brand.restaurantId },
+            select: { city: true },
+          }))?.city
+        : '') ?? ''
+      if (city.trim()) {
+        await sweepAndPromote(adoption.creatorDishId, city.trim())
+      }
+    } catch (err) {
+      console.error('[POST /api/dishes/withdraw] waitlist promotion failed (withdrawal kept)',
+        err instanceof Error ? err.message : err)
+    }
 
     return NextResponse.json({
       withdrawn: true,
