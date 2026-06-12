@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from '@/navigation'
 import { useSession, signOut } from 'next-auth/react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import {
   User, MapPin, CreditCard, Tag, Bell, Settings, LogOut, ChevronRight,
   Star, Package, Heart, MessageCircle, Shield, CircleHelp, Globe,
@@ -25,10 +25,14 @@ interface Order {
   id: string
   status: string
   total: number
+  createdAt?: string
+  restaurant?: { id: string; name: string } | null
 }
 
 export default function ProfileScreen() {
   const t = useTranslations('eat.account')
+  const tt = useTranslations('eat.track') // status labels reused (hygiène)
+  const locale = useLocale()
   const { data: session, status } = useSession()
   const router = useRouter()
   const [points, setPoints] = useState(0)
@@ -160,6 +164,62 @@ export default function ProfileScreen() {
           <div className="w-px bg-[#f0f0f0]" />
           <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{points >= 50 ? tierLabel(tier.label) : '–'}</span><span className="text-xs text-[#888]">{t('statLevel')}</span></div>
         </div>
+
+        {/* Order history — hygiène pré-live : NO exclusion, the client sees
+            ALL their orders, just correctly labelled. awaiting_payment gets
+            « En attente de paiement » + Finaliser → checkout ; expired gets a
+            greyed « Commande expirée » (eat.track keys reused, coherent with
+            the tracking page). Other states reuse the track status labels. */}
+        {orders.length > 0 && (
+          <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card">
+            <p className="px-4 pb-1 pt-4 text-[15px] font-extrabold text-[#1a1a1a]">{t('ordersTitle')}</p>
+            {orders.slice(0, 10).map((o) => {
+              const badge = (() => {
+                if (o.status === 'awaiting_payment')
+                  return { label: tt('awaitingTitle'), cls: 'bg-[#FEF3C7] text-[#B45309]' }
+                if (o.status === 'expired')
+                  return { label: tt('expiredTitle'), cls: 'bg-[#F3F4F6] text-[#6B7280]' }
+                if (o.status === 'delivered')
+                  return { label: tt('statusDelivered'), cls: 'bg-[#DCFCE7] text-[#16A34A]' }
+                if (o.status === 'cancelled')
+                  return { label: tt('statusCancelled'), cls: 'bg-[#FEE2E2] text-[#DC2626]' }
+                const key = o.status === 'preparing' ? 'statusPreparing'
+                  : o.status === 'ready' ? 'statusReady'
+                  : o.status === 'picked_up' ? 'statusPickedUp'
+                  : 'statusReceived'
+                return { label: tt(key), cls: 'bg-[#FFF3ED] text-[#F97316]' }
+              })()
+              const isExpired = o.status === 'expired'
+              return (
+                <div key={o.id} className={`flex items-center gap-3 border-b border-[#f8f8f8] px-4 py-3 last:border-0 ${isExpired ? 'opacity-60' : ''}`}>
+                  <button
+                    onClick={() => router.push(o.status === 'awaiting_payment' ? `/eat/checkout/${o.id}` : `/eat/track/${o.id}`)}
+                    className="min-w-0 flex-1 text-left active:opacity-70"
+                  >
+                    <p className="truncate text-[14px] font-bold text-[#1a1a1a]">{o.restaurant?.name ?? '—'}</p>
+                    <p className="mt-0.5 text-[11px] text-[#888]">
+                      {o.createdAt ? new Date(o.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
+                      {' · '}{o.total.toFixed(2)} €
+                    </p>
+                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
+                      {badge.label}
+                    </span>
+                  </button>
+                  {o.status === 'awaiting_payment' ? (
+                    <button
+                      onClick={() => router.push(`/eat/checkout/${o.id}`)}
+                      className="shrink-0 rounded-[20px] bg-[#F97316] px-3 py-1.5 text-[12px] font-bold text-white active:scale-95"
+                    >
+                      {tt('awaitingCta')}
+                    </button>
+                  ) : (
+                    <ChevronRight size={16} className="shrink-0 text-[#ccc]" />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Notif toggle */}
         <div className="mt-3 flex items-center gap-3 rounded-2xl bg-white p-4 shadow-bolt-soft">

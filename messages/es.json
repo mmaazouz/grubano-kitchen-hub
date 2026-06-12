@@ -1076,7 +1076,8 @@
       "menuSupport": "Chat de Soporte",
       "menuPrivacy": "Privacidad",
       "menuHelp": "Ayuda y Preguntas",
-      "menuSettings": "Ajustes"
+      "menuSettings": "Ajustes",
+      "ordersTitle": "Mis pedidos"
     },
     "auth": {
       "tabLogin": "Iniciar sesión",

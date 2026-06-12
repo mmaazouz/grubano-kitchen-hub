@@ -1076,7 +1076,8 @@
       "menuSupport": "الدعم الفوري",
       "menuPrivacy": "الخصوصية",
       "menuHelp": "المساعدة والأسئلة الشائعة",
-      "menuSettings": "الإعدادات"
+      "menuSettings": "الإعدادات",
+      "ordersTitle": "طلباتي"
     },
     "auth": {
       "tabLogin": "تسجيل الدخول",
