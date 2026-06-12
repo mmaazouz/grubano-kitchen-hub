@@ -809,7 +809,47 @@
       "adopterSince": "since {date}",
       "adopterSales": "{count, plural, =1 {1 sale} other {# sales}}",
       "adopterRevenue": "Revenue",
-      "adopterEarnings": "Earnings"
+      "adopterEarnings": "Earnings",
+      "sectionBase": "① Basic info",
+      "sectionTech": "② Technical sheet",
+      "sectionStory": "③ Story & diets",
+      "sectionBusiness": "④ Business",
+      "completeness": "Sheet {pct}% complete",
+      "missingLabel": "To complete: {items}",
+      "missIngredients": "quantified ingredients",
+      "missSteps": "steps",
+      "missAllergens": "allergens",
+      "missTimings": "timings",
+      "missCost": "ingredient cost",
+      "baseServingsLabel": "Base servings",
+      "prepLabel": "Prep (min)",
+      "cookLabel": "Cook (min)",
+      "difficultyLabel": "Difficulty",
+      "sheetIngredientsLabel": "Quantified ingredients",
+      "ingName": "Ingredient",
+      "ingQty": "Qty",
+      "ingUnit": "Unit",
+      "addIngredient": "Add an ingredient",
+      "removeLine": "Remove line",
+      "stepsLabel": "Steps (ordered)",
+      "stepPlaceholder": "Describe the step…",
+      "addStep": "Add a step",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "allergensLabel": "Allergens (the 14 INCO)",
+      "allergensHint": "Mandatory to submit — dashed suggestions come from your ingredients, please confirm them.",
+      "suggestedTag": "suggested",
+      "equipmentLabel": "Equipment",
+      "equipmentPlaceholder": "oven, mandoline, piping bag…",
+      "platingLabel": "Plating",
+      "storyLabel": "The recipe’s story",
+      "storyPlaceholder": "What this recipe tells — visible on your public page.",
+      "dietTagsLabel": "Diets",
+      "dietTagsPlaceholder": "vegetarian, gluten-free, halal…",
+      "costLabel": "Estimated ingredient cost / serving (€)",
+      "costHint": "Indicative — feeds the margin preview on the restaurant side.",
+      "marginPreview": "Estimated gross margin ~{pct}% at the suggested price",
+      "errAllergens": "Allergens are mandatory — select “None” if that’s the case."
     },
     "stars": {
       "legend": "Grubano Stars — performance measured on real sales",
@@ -822,6 +862,28 @@
       "progressRestos": "{restos, plural, =1 {1 more restaurant} other {# more restaurants}} for the next level.",
       "progressSales": "{sales, plural, =1 {1 more sale} other {# more sales}} for the next level.",
       "progressAlmost": "Almost at the next level!"
+    },
+    "allergens": {
+      "gluten": "Gluten",
+      "crustaces": "Crustaceans",
+      "oeufs": "Eggs",
+      "poissons": "Fish",
+      "arachides": "Peanuts",
+      "soja": "Soy",
+      "lait": "Milk",
+      "fruits_a_coque": "Tree nuts",
+      "celeri": "Celery",
+      "moutarde": "Mustard",
+      "sesame": "Sesame",
+      "sulfites": "Sulphites",
+      "lupin": "Lupin",
+      "mollusques": "Molluscs",
+      "none": "No allergens"
+    },
+    "difficulty": {
+      "facile": "Easy",
+      "moyen": "Medium",
+      "technique": "Technical"
     }
   },
   "eat": {
@@ -1233,7 +1295,16 @@
       "offerAccept": "Adopt",
       "offerDecline": "Decline",
       "offerDeclined": "Offer declined",
-      "declinedToast": "Offer declined — it moves to the next restaurant."
+      "declinedToast": "Offer declined — it moves to the next restaurant.",
+      "sheetComplete": "Complete technical sheet",
+      "totalTime": "{min} min",
+      "allergensLine": "Allergens: {list}",
+      "bizPrice": "Suggested price €{price}",
+      "bizCost": "estimated ingredient cost €{cost}",
+      "bizMargin": "Estimated gross margin ~{pct}%",
+      "bizConditions": "Creator royalties {pct}% · {days}-day commitment",
+      "bizDisclaimer": "Estimates provided by the creator.",
+      "viewSheet": "View the technical sheet"
     },
     "loading": "Loading…",
     "empty": {
@@ -1288,6 +1359,23 @@
       "errGeneric": "Action failed — please retry.",
       "errNetwork": "Could not reach the server.",
       "savedToast": "Category saved"
+    },
+    "sheet": {
+      "title": "Technical sheet",
+      "print": "Print",
+      "close": "Close",
+      "loading": "Loading the sheet…",
+      "loadError": "Sheet unavailable.",
+      "noSheet": "This recipe has no technical sheet yet — the creator can complete it from their studio.",
+      "timing": "Prep {prep} min · cook {cook} min",
+      "allergensTitle": "Allergens — must be displayed",
+      "servingsLabel": "Servings",
+      "servingsBase": "sheet written for {base}",
+      "ingredientsTitle": "Ingredients (for {servings} servings)",
+      "stepsTitle": "Steps",
+      "equipmentTitle": "Equipment",
+      "platingTitle": "Plating",
+      "completenessLine": "Sheet {pct}% complete — provided by the creator via Grubano."
     }
   },
   "finance": {
@@ -2004,6 +2092,8 @@
     "ctaClientBtn": "Discover the restaurants",
     "ctaRestoTitle": "Are you a restaurateur?",
     "ctaRestoBody": "Adopt these recipes on your menu and benefit from their audience.",
-    "ctaRestoBtn": "Adopt the recipes"
+    "ctaRestoBtn": "Adopt the recipes",
+    "storyTitle": "The story behind this recipe",
+    "recipeTime": "{min} min"
   }
 }

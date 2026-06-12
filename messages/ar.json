@@ -809,7 +809,47 @@
       "adopterSince": "منذ {date}",
       "adopterSales": "{count, plural, =1 {بيع واحد} other {# مبيعات}}",
       "adopterRevenue": "الإيرادات",
-      "adopterEarnings": "الأرباح"
+      "adopterEarnings": "الأرباح",
+      "sectionBase": "① المعلومات الأساسية",
+      "sectionTech": "② البطاقة التقنية",
+      "sectionStory": "③ القصة والأنظمة الغذائية",
+      "sectionBusiness": "④ الأعمال",
+      "completeness": "البطاقة مكتملة بنسبة {pct}٪",
+      "missingLabel": "للإكمال: {items}",
+      "missIngredients": "مكونات بكميات",
+      "missSteps": "خطوات",
+      "missAllergens": "مسببات الحساسية",
+      "missTimings": "الأوقات",
+      "missCost": "تكلفة المواد",
+      "baseServingsLabel": "الحصص الأساسية",
+      "prepLabel": "التحضير (دقيقة)",
+      "cookLabel": "الطهي (دقيقة)",
+      "difficultyLabel": "الصعوبة",
+      "sheetIngredientsLabel": "مكونات بكميات محددة",
+      "ingName": "المكوّن",
+      "ingQty": "الكمية",
+      "ingUnit": "الوحدة",
+      "addIngredient": "إضافة مكوّن",
+      "removeLine": "حذف السطر",
+      "stepsLabel": "الخطوات (مرتبة)",
+      "stepPlaceholder": "صف الخطوة…",
+      "addStep": "إضافة خطوة",
+      "moveUp": "تحريك لأعلى",
+      "moveDown": "تحريك لأسفل",
+      "allergensLabel": "مسببات الحساسية (الـ 14 INCO)",
+      "allergensHint": "إلزامية للإرسال — الاقتراحات المنقطة مأخوذة من مكوناتك، أكّدها.",
+      "suggestedTag": "مقترح",
+      "equipmentLabel": "المعدات",
+      "equipmentPlaceholder": "فرن، مندولين، كيس حلواني…",
+      "platingLabel": "التقديم",
+      "storyLabel": "قصة الوصفة",
+      "storyPlaceholder": "ما تحكيه هذه الوصفة — يظهر على صفحتك العامة.",
+      "dietTagsLabel": "الأنظمة الغذائية",
+      "dietTagsPlaceholder": "نباتي، خالٍ من الغلوتين، حلال…",
+      "costLabel": "التكلفة التقديرية / حصة (€)",
+      "costHint": "إرشادي — يغذي معاينة الهامش لدى المطعم.",
+      "marginPreview": "هامش إجمالي تقديري ~{pct}٪ بالسعر المقترح",
+      "errAllergens": "مسببات الحساسية إلزامية — اختر «لا شيء» إن كان الأمر كذلك."
     },
     "stars": {
       "legend": "نجوم غروبانو — أداء يُقاس على المبيعات الحقيقية",
@@ -822,6 +862,28 @@
       "progressRestos": "تبقّى {restos, plural, =1 {مطعم واحد} other {# مطاعم}} للمستوى التالي.",
       "progressSales": "تبقّى {sales, plural, =1 {بيع واحد} other {# مبيعات}} للمستوى التالي.",
       "progressAlmost": "اقتربت من المستوى التالي!"
+    },
+    "allergens": {
+      "gluten": "الغلوتين",
+      "crustaces": "القشريات",
+      "oeufs": "البيض",
+      "poissons": "الأسماك",
+      "arachides": "الفول السوداني",
+      "soja": "الصويا",
+      "lait": "الحليب",
+      "fruits_a_coque": "المكسرات",
+      "celeri": "الكرفس",
+      "moutarde": "الخردل",
+      "sesame": "السمسم",
+      "sulfites": "الكبريتيت",
+      "lupin": "الترمس",
+      "mollusques": "الرخويات",
+      "none": "لا مسببات حساسية"
+    },
+    "difficulty": {
+      "facile": "سهل",
+      "moyen": "متوسط",
+      "technique": "تقني"
     }
   },
   "eat": {
@@ -1233,7 +1295,16 @@
       "offerAccept": "تبنّي",
       "offerDecline": "رفض",
       "offerDeclined": "تم رفض العرض",
-      "declinedToast": "تم رفض العرض — ينتقل إلى المطعم التالي."
+      "declinedToast": "تم رفض العرض — ينتقل إلى المطعم التالي.",
+      "sheetComplete": "بطاقة تقنية مكتملة",
+      "totalTime": "{min} دقيقة",
+      "allergensLine": "مسببات الحساسية: {list}",
+      "bizPrice": "السعر المقترح {price} €",
+      "bizCost": "التكلفة التقديرية {cost} €",
+      "bizMargin": "هامش إجمالي تقديري ~{pct}٪",
+      "bizConditions": "عمولة المبدع {pct}٪ · التزام {days} يومًا",
+      "bizDisclaimer": "تقديرات مقدمة من المبدع.",
+      "viewSheet": "عرض البطاقة التقنية"
     },
     "loading": "جارٍ التحميل…",
     "empty": {
@@ -1288,6 +1359,23 @@
       "errGeneric": "فشل الإجراء — حاول مجددًا.",
       "errNetwork": "تعذر الاتصال بالخادم.",
       "savedToast": "تم حفظ الفئة"
+    },
+    "sheet": {
+      "title": "البطاقة التقنية",
+      "print": "طباعة",
+      "close": "إغلاق",
+      "loading": "جارٍ تحميل البطاقة…",
+      "loadError": "البطاقة غير متاحة.",
+      "noSheet": "لا توجد بطاقة تقنية لهذه الوصفة بعد — يمكن للمبدع إكمالها من الاستوديو.",
+      "timing": "تحضير {prep} د · طهي {cook} د",
+      "allergensTitle": "مسببات الحساسية — يجب عرضها",
+      "servingsLabel": "الحصص",
+      "servingsBase": "البطاقة مكتوبة لـ {base}",
+      "ingredientsTitle": "المكونات (لـ {servings} حصص)",
+      "stepsTitle": "الخطوات",
+      "equipmentTitle": "المعدات",
+      "platingTitle": "التقديم",
+      "completenessLine": "البطاقة مكتملة بنسبة {pct}٪ — مقدمة من المبدع عبر غروبانو."
     }
   },
   "finance": {
@@ -2004,6 +2092,8 @@
     "ctaClientBtn": "اكتشف المطاعم",
     "ctaRestoTitle": "هل أنت صاحب مطعم؟",
     "ctaRestoBody": "اعتمد وصفاته في قائمتك واستفد من جمهوره.",
-    "ctaRestoBtn": "اعتماد وصفاته"
+    "ctaRestoBtn": "اعتماد وصفاته",
+    "storyTitle": "قصة هذه الوصفة",
+    "recipeTime": "{min} دقيقة"
   }
 }

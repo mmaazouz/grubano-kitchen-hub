@@ -151,6 +151,8 @@ export default function CreatorRecipesPage() {
       status:            d.status,
       hasActiveAdoption: d.hasActiveAdoption,
       adoptionsCount:    d.adoptionsCount,
+      // Mission 6 — the owner's technical sheet feeds the editor sections.
+      sheet:             d.sheet,
     }
   }
 
@@ -275,6 +277,10 @@ export default function CreatorRecipesPage() {
                     </div>
                     <p className="mt-0.5 text-[11px] text-grubano-ink-muted">
                       €{fmt(d.suggestedPrice)} · {te('counters', { restos: d.adoptionsCount, sales: d.salesCount })}
+                    </p>
+                    {/* Mission 6 — completeness score (D3, informative only). */}
+                    <p className={`mt-0.5 text-[10px] font-semibold ${d.sheetCompleteness >= 80 ? 'text-grubano-success' : 'text-grubano-ink-faint'}`}>
+                      {te('completeness', { pct: d.sheetCompleteness })}
                     </p>
                     {/* R3 — explanatory line when the content is locked. */}
                     {d.hasActiveAdoption && (

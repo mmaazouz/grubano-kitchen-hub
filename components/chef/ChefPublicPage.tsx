@@ -5,7 +5,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
 import {
   BadgeCheck, Instagram, Youtube, Store, MapPin, Crosshair, Loader2,
-  ChevronRight, Utensils, ChefHat,
+  ChevronRight, Utensils, ChefHat, Clock, ChevronDown, ChevronUp, BookOpen,
 } from 'lucide-react'
 import { EmptyState, Badge, Skeleton } from '@/components/design-system'
 import { StarBadge } from '@/components/creators/StarBadge'
@@ -44,6 +44,14 @@ interface ChefRecipe {
   servedAt:         ServedAt[]
   salesCount:       number
   restaurantsCount: number
+  // Mission 6 — PUBLIC face of the sheet only (D1): story/diet/timing/level.
+  publicSheet?: {
+    story:       string | null
+    dietTags:    string[]
+    prepMinutes: number | null
+    cookMinutes: number | null
+    difficulty:  string | null
+  } | null
 }
 interface ChefProfile {
   name:             string
@@ -100,6 +108,53 @@ function TikTokIcon({ size = 16 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M19.6 6.7a5.4 5.4 0 0 1-3.2-1.1A5.4 5.4 0 0 1 14.6 2H11v13.7a2.5 2.5 0 1 1-1.8-2.4V9.5a6.2 6.2 0 1 0 5.4 6.1V9.4a8.8 8.8 0 0 0 5 1.5V6.7z" />
     </svg>
+  )
+}
+
+/** Mission 6 — the PUBLIC face of a recipe (D1): diet tags, total time,
+ *  difficulty, and the story behind a sober accordion. Strictly non-technical. */
+function RecipePublicFace({
+  face,
+}: {
+  face: { story: string | null; dietTags: string[]; prepMinutes: number | null; cookMinutes: number | null; difficulty: string | null }
+}) {
+  const t  = useTranslations('chef')
+  const td = useTranslations('creators.difficulty')
+  const [openStory, setOpenStory] = useState(false)
+  const totalMin = (face.prepMinutes ?? 0) + (face.cookMinutes ?? 0)
+  const hasMeta = face.dietTags.length > 0 || totalMin > 0 || Boolean(face.difficulty)
+  if (!hasMeta && !face.story) return null
+  return (
+    <div className="mt-2 space-y-2">
+      {hasMeta && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {face.difficulty && <Badge>{td(face.difficulty)}</Badge>}
+          {totalMin > 0 && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-grubano-ink-muted">
+              <Clock size={11} /> {t('recipeTime', { min: totalMin })}
+            </span>
+          )}
+          {face.dietTags.map((d) => <Badge key={d}>{d}</Badge>)}
+        </div>
+      )}
+      {face.story && (
+        <div className="rounded-grubano-lg border border-grubano-border bg-grubano-surface">
+          <button
+            type="button"
+            onClick={() => setOpenStory((v) => !v)}
+            className="flex w-full items-center gap-1.5 px-3 py-2 text-[11px] font-bold text-grubano-ink-muted"
+          >
+            <BookOpen size={12} className="text-grubano-primary" /> {t('storyTitle')}
+            {openStory ? <ChevronUp size={12} className="ms-auto" /> : <ChevronDown size={12} className="ms-auto" />}
+          </button>
+          {openStory && (
+            <p className="whitespace-pre-line border-t border-grubano-border px-3 py-2.5 text-[12px] leading-relaxed text-grubano-ink-muted">
+              {face.story}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -385,6 +440,13 @@ export default function ChefPublicPage({ slug }: { slug: string }) {
                     <Badge>{r.cuisineType}</Badge>
                   </div>
                   <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-grubano-ink-muted">{r.description}</p>
+
+                  {/* Mission 6 — PUBLIC face only (D1): diet tags, timing,
+                      difficulty + the story in a sober accordion. NOTHING
+                      technical ever reaches this page. */}
+                  {r.publicSheet && (
+                    <RecipePublicFace face={r.publicSheet} />
+                  )}
 
                   {r.servedAt.length === 0 ? (
                     <p className="mt-3 rounded-grubano-lg bg-grubano-surface-muted px-3 py-2 text-[12px] text-grubano-ink-muted">

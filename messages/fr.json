@@ -809,7 +809,47 @@
       "adopterSince": "depuis le {date}",
       "adopterSales": "{count, plural, =1 {1 vente} other {# ventes}}",
       "adopterRevenue": "CA",
-      "adopterEarnings": "Gains"
+      "adopterEarnings": "Gains",
+      "sectionBase": "① Infos de base",
+      "sectionTech": "② Fiche technique",
+      "sectionStory": "③ Histoire & régimes",
+      "sectionBusiness": "④ Business",
+      "completeness": "Fiche complète à {pct} %",
+      "missingLabel": "À compléter : {items}",
+      "missIngredients": "ingrédients quantifiés",
+      "missSteps": "étapes",
+      "missAllergens": "allergènes",
+      "missTimings": "temps",
+      "missCost": "coût matière",
+      "baseServingsLabel": "Portions de base",
+      "prepLabel": "Prépa (min)",
+      "cookLabel": "Cuisson (min)",
+      "difficultyLabel": "Difficulté",
+      "sheetIngredientsLabel": "Ingrédients quantifiés",
+      "ingName": "Ingrédient",
+      "ingQty": "Qté",
+      "ingUnit": "Unité",
+      "addIngredient": "Ajouter un ingrédient",
+      "removeLine": "Supprimer la ligne",
+      "stepsLabel": "Étapes (ordonnées)",
+      "stepPlaceholder": "Décrivez l’étape…",
+      "addStep": "Ajouter une étape",
+      "moveUp": "Monter",
+      "moveDown": "Descendre",
+      "allergensLabel": "Allergènes (les 14 INCO)",
+      "allergensHint": "Obligatoires pour soumettre — les suggestions en pointillé viennent de vos ingrédients, confirmez-les.",
+      "suggestedTag": "suggéré",
+      "equipmentLabel": "Matériel",
+      "equipmentPlaceholder": "four, mandoline, poche à douille…",
+      "platingLabel": "Dressage",
+      "storyLabel": "L’histoire de la recette",
+      "storyPlaceholder": "Ce que cette recette raconte — visible sur votre page publique.",
+      "dietTagsLabel": "Régimes",
+      "dietTagsPlaceholder": "végétarien, sans gluten, halal…",
+      "costLabel": "Coût matière estimé / portion (€)",
+      "costHint": "Indicatif — alimente l’aperçu de marge côté restaurateur.",
+      "marginPreview": "Marge brute estimée ~{pct} % au prix conseillé",
+      "errAllergens": "Les allergènes sont obligatoires — sélectionnez « Aucun » si c’est le cas."
     },
     "stars": {
       "legend": "Étoiles Grubano — performance mesurée sur les ventes réelles",
@@ -822,6 +862,28 @@
       "progressRestos": "Encore {restos, plural, =1 {1 restaurant} other {# restaurants}} pour le niveau suivant.",
       "progressSales": "Encore {sales, plural, =1 {1 vente} other {# ventes}} pour le niveau suivant.",
       "progressAlmost": "Plus très loin du niveau suivant !"
+    },
+    "allergens": {
+      "gluten": "Gluten",
+      "crustaces": "Crustacés",
+      "oeufs": "Œufs",
+      "poissons": "Poissons",
+      "arachides": "Arachides",
+      "soja": "Soja",
+      "lait": "Lait",
+      "fruits_a_coque": "Fruits à coque",
+      "celeri": "Céleri",
+      "moutarde": "Moutarde",
+      "sesame": "Sésame",
+      "sulfites": "Sulfites",
+      "lupin": "Lupin",
+      "mollusques": "Mollusques",
+      "none": "Aucun allergène"
+    },
+    "difficulty": {
+      "facile": "Facile",
+      "moyen": "Moyen",
+      "technique": "Technique"
     }
   },
   "eat": {
@@ -1233,7 +1295,16 @@
       "offerAccept": "Adopter",
       "offerDecline": "Refuser",
       "offerDeclined": "Offre refusée",
-      "declinedToast": "Offre refusée — elle passe au restaurant suivant."
+      "declinedToast": "Offre refusée — elle passe au restaurant suivant.",
+      "sheetComplete": "Fiche technique complète",
+      "totalTime": "{min} min",
+      "allergensLine": "Allergènes : {list}",
+      "bizPrice": "Prix conseillé {price} €",
+      "bizCost": "coût matière estimé {cost} €",
+      "bizMargin": "Marge brute estimée ~{pct} %",
+      "bizConditions": "Royalties créateur {pct} % · engagement {days} jours",
+      "bizDisclaimer": "Estimations fournies par le créateur.",
+      "viewSheet": "Voir la fiche technique"
     },
     "loading": "Chargement…",
     "empty": {
@@ -1288,6 +1359,23 @@
       "errGeneric": "Action impossible — réessayez.",
       "errNetwork": "Impossible de joindre le serveur.",
       "savedToast": "Catégorie enregistrée"
+    },
+    "sheet": {
+      "title": "Fiche technique",
+      "print": "Imprimer",
+      "close": "Fermer",
+      "loading": "Chargement de la fiche…",
+      "loadError": "Fiche indisponible.",
+      "noSheet": "Cette recette n’a pas encore de fiche technique — le créateur peut la compléter depuis son studio.",
+      "timing": "Prépa {prep} min · cuisson {cook} min",
+      "allergensTitle": "Allergènes — à afficher",
+      "servingsLabel": "Portions",
+      "servingsBase": "fiche écrite pour {base}",
+      "ingredientsTitle": "Ingrédients (pour {servings} portions)",
+      "stepsTitle": "Étapes",
+      "equipmentTitle": "Matériel",
+      "platingTitle": "Dressage",
+      "completenessLine": "Fiche complète à {pct} % — fournie par le créateur via Grubano."
     }
   },
   "finance": {
@@ -2004,6 +2092,8 @@
     "ctaClientBtn": "Découvrir les restaurants",
     "ctaRestoTitle": "Vous êtes restaurateur ?",
     "ctaRestoBody": "Adoptez ses recettes à votre carte et profitez de son audience.",
-    "ctaRestoBtn": "Adopter ses recettes"
+    "ctaRestoBtn": "Adopter ses recettes",
+    "storyTitle": "L’histoire de cette recette",
+    "recipeTime": "{min} min"
   }
 }

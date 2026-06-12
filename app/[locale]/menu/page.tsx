@@ -22,6 +22,7 @@ import {
   useToast,
 } from '@/components/design-system'
 import { StarBadge } from '@/components/creators/StarBadge'
+import DishSheetModal from '@/components/menu/DishSheetModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,16 @@ type AvailableDish = {
   // Mission 4 additive — ⭐ stars + live waitlist offer state.
   creatorStars?:    number
   offerHoursLeft?:  number | null   // non-null ⇒ a live 'offered' slot for me
+  // Mission 6 additive — the BUSINESS face of the technical sheet (D1: figures
+  // only, never the asset). All optional for forward-compat.
+  sheetCompleteness?:       number
+  difficulty?:              string | null
+  prepMinutes?:             number | null
+  cookMinutes?:             number | null
+  dietTags?:                string[]
+  allergens?:               string[]
+  estimatedCostPerServing?: number | null
+  estimatedMarginPct?:      number | null
 }
 
 // Adoption conditions read from AdoptionConfig (point dur E) — defaulted for
@@ -1210,6 +1221,8 @@ function AdoptTab(props: { brandId: string; onAdopted: () => void }) {
 
 function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () => void }) {
   const t     = useTranslations('menu.adopt')
+  const ta    = useTranslations('creators.allergens')   // 14 INCO labels (M6)
+  const td    = useTranslations('creators.difficulty')
   const toast = useToast()
 
   const [dishes,     setDishes]     = useState<AvailableDish[]>([])
@@ -1223,6 +1236,8 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   const [decliningId, setDecliningId] = useState<string | null>(null)
   const [declinedIds, setDeclinedIds] = useState<Set<string>>(new Set())
   const [conditions, setConditions] = useState<AdoptionConditions | null>(null)
+  // Mission 6 — technical-sheet modal for the resto's ADOPTED recipes (D1).
+  const [sheetDishId, setSheetDishId] = useState<string | null>(null)
 
   function reload() {
     return fetch('/api/dishes/available', { cache: 'no-store' })
@@ -1454,6 +1469,45 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                   </p>
                 </div>
 
+                {/* Mission 6 — the BUSINESS CASE (figures from the sheet, D1) */}
+                {(dish.sheetCompleteness ?? 0) > 0 && (
+                  <div className="space-y-1.5 rounded-xl border border-border bg-card px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(dish.sheetCompleteness ?? 0) >= 80 && (
+                        <Badge tone="success" size="sm" icon={<Check size={10} />}>{t('sheetComplete')}</Badge>
+                      )}
+                      {dish.difficulty && <Badge size="sm">{td(dish.difficulty)}</Badge>}
+                      {((dish.prepMinutes ?? 0) + (dish.cookMinutes ?? 0)) > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Clock size={10} /> {t('totalTime', { min: (dish.prepMinutes ?? 0) + (dish.cookMinutes ?? 0) })}
+                        </span>
+                      )}
+                    </div>
+                    {((dish.dietTags?.length ?? 0) > 0 || (dish.allergens?.length ?? 0) > 0) && (
+                      <p className="text-[10px] text-muted-foreground">
+                        {(dish.dietTags ?? []).join(' · ')}
+                        {(dish.dietTags?.length ?? 0) > 0 && (dish.allergens?.length ?? 0) > 0 ? ' · ' : ''}
+                        {(dish.allergens?.length ?? 0) > 0
+                          ? t('allergensLine', { list: (dish.allergens ?? []).map((a) => ta(a)).join(', ') })
+                          : ''}
+                      </p>
+                    )}
+                    <div className="space-y-0.5 text-[10px] text-muted-foreground">
+                      <p>
+                        {t('bizPrice', { price: dish.suggestedPrice.toFixed(2).replace('.', ',') })}
+                        {dish.estimatedCostPerServing != null
+                          ? ` · ${t('bizCost', { cost: dish.estimatedCostPerServing.toFixed(2).replace('.', ',') })}`
+                          : ''}
+                      </p>
+                      {dish.estimatedMarginPct != null && (
+                        <p className="font-semibold text-grubano-success">{t('bizMargin', { pct: dish.estimatedMarginPct })}</p>
+                      )}
+                      <p>{t('bizConditions', { pct: Math.round((conditions?.commissionPct ?? 0.02) * 100), days: commitmentDays })}</p>
+                      <p className="italic">{t('bizDisclaimer')}</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Price (editable) or commitment note once adopted */}
                 {isAdopted ? (
                   <div className="space-y-2">
@@ -1487,9 +1541,16 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
 
                 {/* CTA — adopted / OFFER / on waitlist / city-taken / adoptable */}
                 {isAdopted ? (
-                  <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
-                    {adoptedServer && !adoptedNow ? t('alreadyOnMenu') : t('adopted')}
-                  </DSButton>
+                  <div className="space-y-2">
+                    <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
+                      {adoptedServer && !adoptedNow ? t('alreadyOnMenu') : t('adopted')}
+                    </DSButton>
+                    {/* Mission 6 — the licensed asset, server-locked to adopters (D1). */}
+                    <DSButton variant="primary" size="sm" fullWidth
+                      onClick={() => setSheetDishId(dish.id)} leftIcon={<Eye size={14} />}>
+                      {t('viewSheet')}
+                    </DSButton>
+                  </div>
                 ) : hasOffer ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 rounded-xl border border-grubano-primary/40 bg-grubano-primary/10 px-3 py-2 text-[11px] font-semibold text-grubano-primary">
@@ -1551,6 +1612,11 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
           )
         })}
       </div>
+
+      {/* Mission 6 — technical sheet modal (GET /api/dishes/[id]/sheet, D1) */}
+      {sheetDishId && (
+        <DishSheetModal dishId={sheetDishId} onClose={() => setSheetDishId(null)} />
+      )}
     </div>
   )
 }
