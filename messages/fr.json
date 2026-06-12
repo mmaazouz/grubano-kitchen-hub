@@ -895,12 +895,6 @@
       "searchPlaceholder": "Rechercher plat, restaurant...",
       "filters": "Filtres",
       "exclusiveOffers": "Offres Exclusives",
-      "bannerWeekendTag": "Offres du Week-end !",
-      "bannerWeekendTitle": "Bénéficiez d'Offres Spéciales",
-      "bannerNewTag": "Nouveaux Restaurants !",
-      "bannerNewTitle": "Découvrez les Nouveautés",
-      "bannerFreeTag": "Livraison Gratuite !",
-      "bannerFreeTitle": "Commandez Maintenant",
       "upTo": "Jusqu'à",
       "getOffer": "Obtenir",
       "exploreCategories": "Explorer les Catégories",
@@ -926,7 +920,9 @@
       "geoBannerUnavailable": "La géolocalisation n'est pas disponible sur cet appareil.",
       "geoEnable": "Activer",
       "geoActive": "Position activée — résultats triés par proximité.",
-      "geoDisable": "Désactiver la position"
+      "geoDisable": "Désactiver la position",
+      "bannerRealTag": "Offres en cours",
+      "bannerRealTitle": "{count, plural, =1 {1 vraie offre près de chez vous} other {# vraies offres près de chez vous}}"
     },
     "search": {
       "title": "Explorer",
@@ -963,29 +959,13 @@
     },
     "promos": {
       "title": "Promotions",
-      "heroWeekendTag": "Offres du Week-end !",
-      "heroWeekendTitle": "Bénéficiez d'Offres Spéciales",
-      "heroNewTag": "Nouveaux Restaurants !",
-      "heroNewTitle": "Découvrez les Nouveautés",
-      "heroFreeTag": "Livraison Gratuite !",
-      "heroFreeTitle": "Commandez Maintenant",
-      "upTo": "Jusqu'à",
-      "promoCodes": "Codes promo",
-      "code1Desc": "-10% sur votre commande",
-      "code1Sub": "Valable sur tout le menu",
-      "code2Desc": "-5€ pour votre 1ère commande",
-      "code2Sub": "Nouveaux clients uniquement",
-      "code3Desc": "Livraison offerte",
-      "code3Sub": "Dès 25€ de commande",
-      "copiedToast": "Code {code} copié !",
-      "footerHint": "Saisissez votre code dans le panier au moment du paiement.",
-      "badgePromo": "Promo",
-      "badgeFreeDelivery": "Livraison offerte",
-      "badgeNew": "Nouveau",
-      "badgeTrending": "Tendance",
-      "badgeDiscount": "-{percent}%",
-      "soonTitle": "Les promotions arrivent bientôt",
-      "soonBody": "Les restaurants pourront bientôt vous proposer de vraies offres ici. En attendant, votre remise de bienvenue s’applique automatiquement au paiement."
+      "emptyTitle": "Pas d’offres en ce moment",
+      "emptyBody": "Les restaurants n’ont pas de promotion active aujourd’hui — revenez vite !",
+      "offerPercent": "−{pct} % sur la carte",
+      "offerPercentMin": "−{pct} % dès {min} €",
+      "offerFixed": "−{eur} € sur la commande",
+      "offerFixedMin": "−{eur} € dès {min} €",
+      "moreOffers": "+{count, plural, =1 {1 offre} other {# offres}}"
     },
     "nav": {
       "home": "Accueil",
@@ -1026,7 +1006,8 @@
       "errorOrderFailed": "Erreur lors de la commande",
       "errorNetwork": "Erreur réseau. Veuillez réessayer.",
       "errClosedWithOpening": "Le restaurant est actuellement fermé — il ouvre {label}. Vous pourrez commander à ce moment-là.",
-      "errClosedNoOpening": "Le restaurant est actuellement fermé. Réessayez pendant ses horaires d’ouverture."
+      "errClosedNoOpening": "Le restaurant est actuellement fermé. Réessayez pendant ses horaires d’ouverture.",
+      "promoIncentive": "Encore {amount} € pour profiter de « {name} »"
     },
     "track": {
       "title": "Suivi en temps réel",
@@ -1168,7 +1149,13 @@
       "hoursClosureReason": "Fermé — {reason}, réouverture le {date}",
       "hoursWeekTitle": "Horaires",
       "hoursDayClosed": "Fermé",
-      "hoursNextDay": "lendemain"
+      "hoursNextDay": "lendemain",
+      "promoPercentAll": "🏷️ −{pct} % sur toute la carte",
+      "promoPercentMin": "🏷️ −{pct} % dès {min} € de commande",
+      "promoFixedAll": "🏷️ −{eur} € sur votre commande",
+      "promoFixedMin": "🏷️ −{eur} € dès {min} € de commande",
+      "promoPill": "−{pct} %",
+      "promoPillFixed": "−{eur} €"
     },
     "creator": {
       "title": "Profil créateur",
@@ -1253,7 +1240,8 @@
       "confirmDelivery": "En livraison depuis {restaurant}.",
       "confirmEmail": "Un email de confirmation vous a été envoyé.",
       "paidAmount": "Montant payé : {amount}",
-      "trackCta": "Suivre ma commande"
+      "trackCta": "Suivre ma commande",
+      "promoLine": "Promo {name}"
     }
   },
   "menu": {

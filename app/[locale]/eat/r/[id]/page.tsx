@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatCuisineList } from '@/lib/categories'
-import { ArrowLeft, Heart, Share2, Clock, MapPin, Search, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, Heart, Share2, Clock, MapPin, Search, ShoppingBag, Tag } from 'lucide-react'
 import {
   DishCard,
   Modal,
@@ -82,6 +82,26 @@ interface PublicHoursInfo {
   currentClosure: { reason: string | null; until: string } | null
 }
 
+// Chantier P2 — the additive promotions block of GET /api/restaurants/[id].
+// DISPLAY ONLY: every figure below was computed server-side by the P1 engine
+// (evaluatePromotion) — this page never computes a discount locally.
+interface PublicPromo {
+  id: string
+  name: string
+  type: string            // percent | fixed
+  discount: number
+  minOrderEur: number | null
+  itemIds: string[] | null
+  channels: string[] | null
+}
+interface ItemPromo {
+  promotionId: string
+  name: string
+  type: string
+  discount: number
+  discountedUnitPrice: number
+}
+
 const TABS = ['Menu', 'À propos', 'Galerie', 'Avis'] as const
 type Tab = (typeof TABS)[number]
 
@@ -151,6 +171,9 @@ export default function RestaurantScreen() {
   const [fav, setFav] = useState(false)
   const [cart, setCart] = useState<EatCartData | null>(null)
   const [modalDish, setModalDish] = useState<MenuItem | null>(null)
+  // Chantier P2 — server-computed promo display data (never computed here).
+  const [promotions, setPromotions] = useState<PublicPromo[]>([])
+  const [itemPromo, setItemPromo] = useState<Record<string, ItemPromo>>({})
 
   const tabLabel = (tab: Tab) => {
     const map: Record<Tab, string> = {
@@ -171,6 +194,8 @@ export default function RestaurantScreen() {
         // Defensive: hours{} is additive — missing/odd payload = not configured.
         setHours(d.hours && d.hours.hoursConfigured === true ? (d.hours as PublicHoursInfo) : null)
         setMenu(d.menu ?? [])
+        setPromotions(Array.isArray(d.promotions) ? d.promotions : [])
+        setItemPromo(d.itemPromo && typeof d.itemPromo === 'object' ? d.itemPromo : {})
         const existing = readCart()
         if (existing && existing.restaurantId === id) setCart(existing)
       })
@@ -291,6 +316,23 @@ export default function RestaurantScreen() {
 
   const heroCover = restaurant.coverPhoto || getRestaurantCover(restaurant.id)
 
+  // ── Chantier P2 — promo banner (GLOBAL promos only; targeted ones badge
+  // their dishes instead). Display heuristic: best percent first, else best
+  // fixed — the checkout server alone picks the TRUE best on the real basket.
+  const globalPromos = promotions.filter((p) => !p.itemIds)
+  const promoLabel = (p: PublicPromo): string =>
+    p.type === 'percent'
+      ? p.minOrderEur
+        ? t('promoPercentMin', { pct: p.discount, min: p.minOrderEur })
+        : t('promoPercentAll', { pct: p.discount })
+      : p.minOrderEur
+        ? t('promoFixedMin', { eur: p.discount, min: p.minOrderEur })
+        : t('promoFixedAll', { eur: p.discount })
+  const sortedGlobals = [...globalPromos].sort((a, b) =>
+    a.type !== b.type ? (a.type === 'percent' ? -1 : 1) : b.discount - a.discount)
+  const bestGlobal = sortedGlobals[0] ?? null
+  const otherGlobals = sortedGlobals.slice(1)
+
   // ── Chantier horaires — consumer badge (only when hoursConfigured) ─────────
   // "Ouvert" / "Fermé" / "Ouvre à 19h00" — the next-opening label is composed
   // client-side from nextOpening {dateStr, time} so it localises with the app
@@ -410,6 +452,23 @@ export default function RestaurantScreen() {
             )}
           </div>
         )}
+        {/* Chantier P2 — promo banner (sober, charte): best GLOBAL promo +
+            the others on a secondary line. Targeted promos badge their dish. */}
+        {bestGlobal && (
+          <div className="mb-2 mt-1 rounded-grubano-lg bg-grubano-tint px-3 py-2.5">
+            <p className="flex items-center gap-1.5 text-grubano-sm font-bold text-grubano-primary">
+              <Tag size={14} /> {promoLabel(bestGlobal)}
+            </p>
+            {bestGlobal.name && (
+              <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{bestGlobal.name}</p>
+            )}
+            {otherGlobals.length > 0 && (
+              <p className="mt-1 border-t border-grubano-primary/15 pt-1 text-[11px] text-grubano-ink-muted">
+                {otherGlobals.map((p) => promoLabel(p)).join(' · ')}
+              </p>
+            )}
+          </div>
+        )}
         <p className="mb-1.5 text-grubano-sm text-grubano-ink-muted">
           {formatCuisineList(restaurant.cuisine, locale, '')}
         </p>
@@ -462,25 +521,46 @@ export default function RestaurantScreen() {
             <EmptyState compact emoji="🍽️" title={t('noItemsFound')} />
           ) : (
             <div className="grid grid-cols-2 gap-3 pb-2">
-              {filtered.map((dish) => (
-                <DishCard
-                  key={dish.id}
-                  layout="vertical"
-                  name={dish.name}
-                  description={dish.description}
-                  price={dish.price}
-                  originalPrice={dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined}
-                  photo={photoFor(dish)}
-                  popular={dish.isPopular}
-                  popularLabel={tc('popular')}
-                  topLabel={tc('top')}
-                  soldOutLabel={tc('soldOut')}
-                  quantityInCart={qtyForDish(dish.id)}
-                  meta={dish.creator ? <CreatorBadge creator={dish.creator} /> : undefined}
-                  onClick={() => setModalDish(dish)}
-                  onAdd={() => setModalDish(dish)}
-                />
-              ))}
+              {filtered.map((dish) => {
+                // Chantier P2 — targeted promo badge: discounted unit price was
+                // computed SERVER-side by evaluatePromotion (never locally).
+                const promo = itemPromo[dish.id]
+                const pill = promo ? (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-grubano-tint px-1.5 py-0.5 text-[10px] font-bold text-grubano-primary">
+                    <Tag size={9} />
+                    {promo.type === 'percent'
+                      ? t('promoPill', { pct: promo.discount })
+                      : t('promoPillFixed', { eur: promo.discount })}
+                  </span>
+                ) : null
+                const meta = (promo || dish.creator) ? (
+                  <span className="inline-flex flex-wrap items-center gap-1">
+                    {pill}
+                    {dish.creator ? <CreatorBadge creator={dish.creator} /> : null}
+                  </span>
+                ) : undefined
+                return (
+                  <DishCard
+                    key={dish.id}
+                    layout="vertical"
+                    name={dish.name}
+                    description={dish.description}
+                    price={promo ? promo.discountedUnitPrice : dish.price}
+                    originalPrice={promo
+                      ? dish.price
+                      : dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined}
+                    photo={photoFor(dish)}
+                    popular={dish.isPopular}
+                    popularLabel={tc('popular')}
+                    topLabel={tc('top')}
+                    soldOutLabel={tc('soldOut')}
+                    quantityInCart={qtyForDish(dish.id)}
+                    meta={meta}
+                    onClick={() => setModalDish(dish)}
+                    onAdd={() => setModalDish(dish)}
+                  />
+                )
+              })}
             </div>
           )}
         </div>

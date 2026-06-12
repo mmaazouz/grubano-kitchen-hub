@@ -1,23 +1,54 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
-import { ArrowLeft, Tag } from 'lucide-react'
+import { ArrowLeft, Tag, MapPin, ChevronRight } from 'lucide-react'
+import FoodImage from '@/components/eat/FoodImage'
+import { getRestaurantCover } from '@/lib/food-images'
 
 /**
- * /eat/promos — neutralized showcase (founder decision, audit C3-fix §4).
+ * /eat/promos — THE REAL showcase (chantier P2).
  *
- * The previous page ADVERTISED fake offers and the client-only FRENCH10 code
- * (a 100% client decor that made the cart total lie vs the real debit — the
- * promo never reached the server, the charge, the fee or the ledger). Until
- * the real « Promotions Restaurateur » governance lands (server-resolved
- * Promotion model, restaurant-funded), this route stays alive (old links
- * never 404) as a sober "coming soon" — and reminds the guest that the only
- * REAL discount today (welcome) is applied automatically at checkout.
+ * Backed by GET /api/eat/promos: the restaurants with ≥ 1 ACTIVE promotion
+ * (P1 engine data — window + active + V1 types), each with its best offer.
+ * ZERO active promo → a clean EmptyState. NEVER invented content (the old
+ * fake-offers page died in C3-fix; this one only shows what the engine holds).
  */
+
+type PromoRestaurant = {
+  id: string
+  name: string
+  city: string
+  photo: string | null
+  promo: { id: string; name: string; type: string; discount: number; minOrderEur: number | null }
+  promoCount: number
+}
+
 export default function PromosScreen() {
   const t = useTranslations('eat.promos')
   const router = useRouter()
+  const [restaurants, setRestaurants] = useState<PromoRestaurant[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/eat/promos')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && Array.isArray(d?.restaurants)) setRestaurants(d.restaurants) })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  const promoLabel = (p: PromoRestaurant['promo']): string =>
+    p.type === 'percent'
+      ? p.minOrderEur
+        ? t('offerPercentMin', { pct: p.discount, min: p.minOrderEur })
+        : t('offerPercent', { pct: p.discount })
+      : p.minOrderEur
+        ? t('offerFixedMin', { eur: p.discount, min: p.minOrderEur })
+        : t('offerFixed', { eur: p.discount })
 
   return (
     <div className="min-h-screen bg-[#f5f5f5]">
@@ -28,14 +59,49 @@ export default function PromosScreen() {
         <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{t('title')}</h1>
       </div>
 
-      <div className="p-4">
-        <div className="rounded-[20px] bg-white p-8 text-center shadow-bolt-card">
-          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#FFF3ED] text-[#F97316]">
-            <Tag size={24} />
-          </span>
-          <p className="mt-4 text-[17px] font-extrabold text-[#1a1a1a]">{t('soonTitle')}</p>
-          <p className="mx-auto mt-2 max-w-xs text-[13px] leading-relaxed text-[#888]">{t('soonBody')}</p>
-        </div>
+      <div className="space-y-3 p-4">
+        {loading ? (
+          <>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-[88px] animate-pulse rounded-[20px] bg-white shadow-bolt-card" />
+            ))}
+          </>
+        ) : restaurants.length === 0 ? (
+          /* ZERO active promo → the honest empty state, never invented offers. */
+          <div className="rounded-[20px] bg-white p-8 text-center shadow-bolt-card">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#FFF3ED] text-[#F97316]">
+              <Tag size={24} />
+            </span>
+            <p className="mt-4 text-[17px] font-extrabold text-[#1a1a1a]">{t('emptyTitle')}</p>
+            <p className="mx-auto mt-2 max-w-xs text-[13px] leading-relaxed text-[#888]">{t('emptyBody')}</p>
+          </div>
+        ) : (
+          restaurants.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => router.push(`/eat/r/${r.id}`)}
+              className="flex w-full items-center gap-3 rounded-[20px] bg-white p-3 text-left shadow-bolt-card active:scale-[0.99]"
+            >
+              <FoodImage
+                name={r.name}
+                src={r.photo || getRestaurantCover(r.id)}
+                className="h-[64px] w-[64px] shrink-0 rounded-[14px]"
+                glyphClassName="text-2xl"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[15px] font-extrabold text-[#1a1a1a]">{r.name}</p>
+                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[#888]">
+                  <MapPin size={10} /> {r.city}
+                </p>
+                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#FFF3ED] px-2 py-0.5 text-[11px] font-bold text-[#F97316]">
+                  <Tag size={10} /> {promoLabel(r.promo)}
+                  {r.promoCount > 1 ? ` · ${t('moreOffers', { count: r.promoCount - 1 })}` : ''}
+                </p>
+              </div>
+              <ChevronRight size={16} className="shrink-0 text-[#ccc]" />
+            </button>
+          ))
+        )}
       </div>
     </div>
   )

@@ -895,12 +895,6 @@
       "searchPlaceholder": "Search dish, restaurant...",
       "filters": "Filters",
       "exclusiveOffers": "Exclusive Offers",
-      "bannerWeekendTag": "Weekend Deals!",
-      "bannerWeekendTitle": "Get Special Offers",
-      "bannerNewTag": "New Restaurants!",
-      "bannerNewTitle": "Discover What's New",
-      "bannerFreeTag": "Free Delivery!",
-      "bannerFreeTitle": "Order Now",
       "upTo": "Up to",
       "getOffer": "Get",
       "exploreCategories": "Explore Categories",
@@ -926,7 +920,9 @@
       "geoBannerUnavailable": "Geolocation is not available on this device.",
       "geoEnable": "Enable",
       "geoActive": "Location enabled — results sorted by proximity.",
-      "geoDisable": "Disable location"
+      "geoDisable": "Disable location",
+      "bannerRealTag": "Live offers",
+      "bannerRealTitle": "{count, plural, =1 {1 real offer near you} other {# real offers near you}}"
     },
     "search": {
       "title": "Explore",
@@ -963,29 +959,13 @@
     },
     "promos": {
       "title": "Promotions",
-      "heroWeekendTag": "Weekend Deals!",
-      "heroWeekendTitle": "Get Special Offers",
-      "heroNewTag": "New Restaurants!",
-      "heroNewTitle": "Discover What's New",
-      "heroFreeTag": "Free Delivery!",
-      "heroFreeTitle": "Order Now",
-      "upTo": "Up to",
-      "promoCodes": "Promo codes",
-      "code1Desc": "-10% on your order",
-      "code1Sub": "Valid on entire menu",
-      "code2Desc": "-5€ on your 1st order",
-      "code2Sub": "New customers only",
-      "code3Desc": "Free delivery",
-      "code3Sub": "On orders over 25€",
-      "copiedToast": "Code {code} copied!",
-      "footerHint": "Enter your code in the cart at checkout.",
-      "badgePromo": "Promo",
-      "badgeFreeDelivery": "Free delivery",
-      "badgeNew": "New",
-      "badgeTrending": "Trending",
-      "badgeDiscount": "-{percent}%",
-      "soonTitle": "Promotions are coming soon",
-      "soonBody": "Restaurants will soon offer real deals here. Meanwhile, your welcome discount is applied automatically at checkout."
+      "emptyTitle": "No offers right now",
+      "emptyBody": "No restaurant has an active promotion today — check back soon!",
+      "offerPercent": "−{pct}% on the menu",
+      "offerPercentMin": "−{pct}% from €{min}",
+      "offerFixed": "−€{eur} on the order",
+      "offerFixedMin": "−€{eur} from €{min}",
+      "moreOffers": "+{count, plural, =1 {1 offer} other {# offers}}"
     },
     "nav": {
       "home": "Home",
@@ -1026,7 +1006,8 @@
       "errorOrderFailed": "Order failed",
       "errorNetwork": "Network error. Please try again.",
       "errClosedWithOpening": "The restaurant is currently closed — it opens {label}. You can order then.",
-      "errClosedNoOpening": "The restaurant is currently closed. Try again during its opening hours."
+      "errClosedNoOpening": "The restaurant is currently closed. Try again during its opening hours.",
+      "promoIncentive": "€{amount} away from “{name}”"
     },
     "track": {
       "title": "Live tracking",
@@ -1168,7 +1149,13 @@
       "hoursClosureReason": "Closed — {reason}, reopens on {date}",
       "hoursWeekTitle": "Opening hours",
       "hoursDayClosed": "Closed",
-      "hoursNextDay": "next day"
+      "hoursNextDay": "next day",
+      "promoPercentAll": "🏷️ −{pct}% on the whole menu",
+      "promoPercentMin": "🏷️ −{pct}% from €{min}",
+      "promoFixedAll": "🏷️ −€{eur} on your order",
+      "promoFixedMin": "🏷️ −€{eur} from €{min}",
+      "promoPill": "−{pct}%",
+      "promoPillFixed": "−€{eur}"
     },
     "creator": {
       "title": "Creator profile",
@@ -1253,7 +1240,8 @@
       "confirmDelivery": "Being delivered from {restaurant}.",
       "confirmEmail": "A confirmation email is on its way.",
       "paidAmount": "Amount paid: {amount}",
-      "trackCta": "Track my order"
+      "trackCta": "Track my order",
+      "promoLine": "Promo {name}"
     }
   },
   "menu": {

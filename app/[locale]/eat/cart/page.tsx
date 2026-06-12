@@ -27,11 +27,32 @@ export default function CartScreen() {
   const [welcome, setWelcome] = useState<
     { eligible: boolean; discountPct: number; discountCap: number; creatorName?: string } | null
   >(null)
+  // Chantier P2 — the establishment's active promos (additive block of
+  // GET /api/restaurants/[id]). DISPLAY ONLY: used for the soft minOrder
+  // incentive line — the server alone resolves the real discount at checkout.
+  const [promos, setPromos] = useState<Array<{
+    id: string; name: string; type: string; discount: number
+    minOrderEur: number | null; itemIds: string[] | null
+  }>>([])
 
   useEffect(() => {
     setCart(readCart())
     setHydrated(true)
   }, [])
+
+  // Chantier P2 — load the resto's active promos once (display only).
+  useEffect(() => {
+    if (!cart?.restaurantId) return
+    let cancelled = false
+    fetch(`/api/restaurants/${cart.restaurantId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && Array.isArray(d?.promotions)) setPromos(d.promotions)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart?.restaurantId])
 
   // Ask the server (once) whether a welcome discount applies for this visitor.
   // Read-only; degrades silently to "no preview" on any error or when not
@@ -113,6 +134,17 @@ export default function CartScreen() {
   // was removed by founder decision.
   const total = Math.max(0, subtotal - welcomeAmount + deliveryFee)
   const totalItems = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
+  // Chantier P2 — soft minOrder incentive: the closest GLOBAL promo whose
+  // threshold isn't reached yet. DISPLAY-only arithmetic (a gap in €) — the
+  // server stays the only judge of what actually applies at checkout.
+  const promoIncentive = useMemo(() => {
+    const candidates = promos
+      .filter((p) => !p.itemIds && p.minOrderEur != null && p.minOrderEur > subtotal)
+      .sort((a, b) => (a.minOrderEur! - subtotal) - (b.minOrderEur! - subtotal))
+    const next = candidates[0]
+    if (!next) return null
+    return { name: next.name, missing: Math.round((next.minOrderEur! - subtotal) * 100) / 100 }
+  }, [promos, subtotal])
   const readyAt = useMemo(() => {
     const minutes = cart?.restaurant.deliveryTime ?? 20
     const d = new Date(Date.now() + minutes * 60_000)
@@ -379,6 +411,13 @@ export default function CartScreen() {
           <span className="text-grubano-ink-muted">{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
           <span className="font-semibold text-grubano-ink">{fulfillment === 'pickup' ? t('free') : `${deliveryFee.toFixed(2)} €`}</span>
         </div>
+        {/* Chantier P2 — soft incentive: « Encore X € pour profiter de {nom} ».
+            Display arithmetic only — the server resolves the real promo. */}
+        {promoIncentive && (
+          <p className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
+            {t('promoIncentive', { amount: promoIncentive.missing.toFixed(2), name: promoIncentive.name })}
+          </p>
+        )}
         <div className="mt-1 flex items-center justify-between border-t border-grubano-border pt-3">
           <span className="text-base font-extrabold text-grubano-ink">{t('total')}</span>
           <PriceTag amount={total} size="lg" />

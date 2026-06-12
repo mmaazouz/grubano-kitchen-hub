@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatCuisineList } from '@/lib/categories'
@@ -15,11 +15,11 @@ import {
 } from '@/components/design-system'
 import { getRestaurantCover } from '@/lib/food-images'
 
-const BANNERS = [
-  { id: '1', tagKey: 'bannerWeekendTag', titleKey: 'bannerWeekendTitle', discount: '30' },
-  { id: '2', tagKey: 'bannerNewTag', titleKey: 'bannerNewTitle', discount: '20' },
-  { id: '3', tagKey: 'bannerFreeTag', titleKey: 'bannerFreeTitle', discount: '15' },
-]
+// Chantier P2 — the static BANNERS constant (hardcoded « jusqu'à X % » that the
+// engine never honoured) IS DEAD. The single promo banner below is built from
+// GET /api/eat/promos (real active promotions); zero active promo → the whole
+// carousel is hidden. The home never promises what doesn't exist.
+type PromoSummary = { totalPromos: number; maxPercent: number; bestFixed: number }
 
 const CATS = [
   { name: 'Burger', nameKey: 'catBurger', emoji: '🍔', q: 'burger' },
@@ -68,9 +68,9 @@ export default function HomeScreen() {
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeBanner, setActiveBanner] = useState(0)
   const [activeCat, setActiveCat] = useState('Burger')
-  const bannerRef = useRef<HTMLDivElement>(null)
+  // Chantier P2 — real promo data; null until loaded (banner hidden then too).
+  const [promoSummary, setPromoSummary] = useState<PromoSummary | null>(null)
 
   // First visit of the session → play the splash once.
   useEffect(() => {
@@ -101,12 +101,23 @@ export default function HomeScreen() {
       .finally(() => setLoading(false))
   }, [coords])
 
-  function onBannerScroll() {
-    const el = bannerRef.current
-    if (!el) return
-    const idx = Math.round(el.scrollLeft / (el.clientWidth - 20))
-    setActiveBanner(Math.min(BANNERS.length - 1, Math.max(0, idx)))
-  }
+  // Chantier P2 — fetch the REAL active-promo summary once (display only).
+  useEffect(() => {
+    let alive = true
+    fetch('/api/eat/promos')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive && d && typeof d.totalPromos === 'number') {
+          setPromoSummary({
+            totalPromos: d.totalPromos,
+            maxPercent:  typeof d.maxPercent === 'number' ? d.maxPercent : 0,
+            bestFixed:   typeof d.bestFixed  === 'number' ? d.bestFixed  : 0,
+          })
+        }
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   // Compose the meta line shown inside each card. When the API returned a
   // distanceKm, append it to the cuisine slot so it surfaces on every layout
@@ -220,49 +231,48 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* Offres Exclusives */}
-      <SectionHeader title={t('exclusiveOffers')} />
-      <div
-        ref={bannerRef}
-        onScroll={onBannerScroll}
-        className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2.5"
-      >
-        {BANNERS.map((b) => (
-          <div
-            key={b.id}
-            className="relative flex h-[188px] w-[calc(100%-32px)] shrink-0 snap-start overflow-hidden rounded-grubano-xl bg-grubano-primary text-white"
-          >
-            <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
-              <span className="self-start rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold">
-                {t(b.tagKey)}
-              </span>
-              <p className="line-clamp-2 text-[17px] font-extrabold leading-tight">{t(b.titleKey)}</p>
-              <div className="flex items-end gap-1">
-                <span className="text-xs text-white/90">{t('upTo')}</span>
-                <span className="text-[36px] font-black leading-none">{b.discount}</span>
-                <span className="mb-0.5 text-base font-bold">%</span>
+      {/* Offres Exclusives — ONE REAL banner from active promotions (P2).
+          Zero active promo → the section is entirely hidden: the home never
+          promises what doesn't exist. */}
+      {promoSummary && promoSummary.totalPromos > 0 && (
+        <>
+          <SectionHeader title={t('exclusiveOffers')} />
+          <div className="mb-5 px-4">
+            <div className="relative flex h-[188px] w-full overflow-hidden rounded-grubano-xl bg-grubano-primary text-white">
+              <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
+                <span className="self-start rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold">
+                  {t('bannerRealTag')}
+                </span>
+                <p className="line-clamp-2 text-[17px] font-extrabold leading-tight">
+                  {t('bannerRealTitle', { count: promoSummary.totalPromos })}
+                </p>
+                {promoSummary.maxPercent > 0 ? (
+                  <div className="flex items-end gap-1">
+                    <span className="text-xs text-white/90">{t('upTo')}</span>
+                    <span className="text-[36px] font-black leading-none">−{promoSummary.maxPercent}</span>
+                    <span className="mb-0.5 text-base font-bold">%</span>
+                  </div>
+                ) : (
+                  <div className="flex items-end gap-1">
+                    <span className="text-xs text-white/90">{t('upTo')}</span>
+                    <span className="text-[36px] font-black leading-none">−{promoSummary.bestFixed}</span>
+                    <span className="mb-0.5 text-base font-bold">€</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => router.push('/eat/promos')}
+                  className="mt-auto self-start rounded-full bg-grubano-dark px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
+                >
+                  {t('getOffer')}
+                </button>
               </div>
-              <button
-                onClick={() => router.push('/eat/promos')}
-                className="mt-auto self-start rounded-full bg-grubano-dark px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
-              >
-                {t('getOffer')}
-              </button>
-            </div>
-            <div className="w-[140px] bg-white/10" aria-hidden>
-              <div className="grid h-full place-items-center text-5xl">🍔</div>
+              <div className="w-[140px] bg-white/10" aria-hidden>
+                <div className="grid h-full place-items-center text-5xl">🏷️</div>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
-      <div className="mb-5 mt-1 flex justify-center gap-1.5">
-        {BANNERS.map((_, i) => (
-          <span
-            key={i}
-            className={`h-2 rounded-full transition-all ${activeBanner === i ? 'w-[22px] bg-grubano-primary' : 'w-2 bg-grubano-border-strong'}`}
-          />
-        ))}
-      </div>
+        </>
+      )}
 
       {/* Categories */}
       <SectionHeader title={t('exploreCategories')} />

@@ -895,12 +895,6 @@
       "searchPlaceholder": "ابحث عن طبق أو مطعم...",
       "filters": "الفلاتر",
       "exclusiveOffers": "عروض حصرية",
-      "bannerWeekendTag": "عروض نهاية الأسبوع!",
-      "bannerWeekendTitle": "استفد من عروض خاصة",
-      "bannerNewTag": "مطاعم جديدة!",
-      "bannerNewTitle": "اكتشف الجديد",
-      "bannerFreeTag": "توصيل مجاني!",
-      "bannerFreeTitle": "اطلب الآن",
       "upTo": "حتى",
       "getOffer": "احصل عليه",
       "exploreCategories": "استكشف الفئات",
@@ -926,7 +920,9 @@
       "geoBannerUnavailable": "تحديد الموقع غير متاح على هذا الجهاز.",
       "geoEnable": "تفعيل",
       "geoActive": "الموقع مفعّل — النتائج مرتبة حسب القرب.",
-      "geoDisable": "تعطيل الموقع"
+      "geoDisable": "تعطيل الموقع",
+      "bannerRealTag": "عروض جارية",
+      "bannerRealTitle": "{count, plural, =1 {عرض حقيقي واحد بالقرب منك} other {# عروض حقيقية بالقرب منك}}"
     },
     "search": {
       "title": "استكشف",
@@ -963,29 +959,13 @@
     },
     "promos": {
       "title": "العروض الترويجية",
-      "heroWeekendTag": "عروض نهاية الأسبوع!",
-      "heroWeekendTitle": "استفد من عروض خاصة",
-      "heroNewTag": "مطاعم جديدة!",
-      "heroNewTitle": "اكتشف الجديد",
-      "heroFreeTag": "توصيل مجاني!",
-      "heroFreeTitle": "اطلب الآن",
-      "upTo": "حتى",
-      "promoCodes": "أكواد الخصم",
-      "code1Desc": "خصم 10% على طلبك",
-      "code1Sub": "صالح على كامل القائمة",
-      "code2Desc": "خصم 5 يورو على أول طلب",
-      "code2Sub": "للعملاء الجدد فقط",
-      "code3Desc": "توصيل مجاني",
-      "code3Sub": "عند الطلب بقيمة 25 يورو فأكثر",
-      "copiedToast": "تم نسخ الكود {code}!",
-      "footerHint": "أدخل كودك في السلة عند الدفع.",
-      "badgePromo": "عرض",
-      "badgeFreeDelivery": "توصيل مجاني",
-      "badgeNew": "جديد",
-      "badgeTrending": "رائج",
-      "badgeDiscount": "-{percent}%",
-      "soonTitle": "العروض قادمة قريبًا",
-      "soonBody": "ستتمكن المطاعم قريبًا من تقديم عروض حقيقية هنا. في الأثناء، يُطبَّق خصم الترحيب تلقائيًا عند الدفع."
+      "emptyTitle": "لا عروض حاليًا",
+      "emptyBody": "لا يوجد مطعم لديه عرض نشط اليوم — عد قريبًا!",
+      "offerPercent": "خصم {pct}٪ على القائمة",
+      "offerPercentMin": "خصم {pct}٪ ابتداءً من {min} €",
+      "offerFixed": "خصم {eur} € على الطلب",
+      "offerFixedMin": "خصم {eur} € ابتداءً من {min} €",
+      "moreOffers": "+{count, plural, =1 {عرض واحد} other {# عروض}}"
     },
     "nav": {
       "home": "الرئيسية",
@@ -1026,7 +1006,8 @@
       "errorOrderFailed": "خطأ في الطلب",
       "errorNetwork": "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
       "errClosedWithOpening": "المطعم مغلق حاليًا — يفتح {label}. يمكنك الطلب حينها.",
-      "errClosedNoOpening": "المطعم مغلق حاليًا. أعد المحاولة خلال ساعات عمله."
+      "errClosedNoOpening": "المطعم مغلق حاليًا. أعد المحاولة خلال ساعات عمله.",
+      "promoIncentive": "تبقّى {amount} € للاستفادة من «{name}»"
     },
     "track": {
       "title": "التتبع المباشر",
@@ -1168,7 +1149,13 @@
       "hoursClosureReason": "مغلق — {reason}، يعيد الفتح يوم {date}",
       "hoursWeekTitle": "ساعات العمل",
       "hoursDayClosed": "مغلق",
-      "hoursNextDay": "اليوم التالي"
+      "hoursNextDay": "اليوم التالي",
+      "promoPercentAll": "🏷️ خصم {pct}٪ على كامل القائمة",
+      "promoPercentMin": "🏷️ خصم {pct}٪ ابتداءً من {min} €",
+      "promoFixedAll": "🏷️ خصم {eur} € على طلبك",
+      "promoFixedMin": "🏷️ خصم {eur} € ابتداءً من {min} €",
+      "promoPill": "−{pct}٪",
+      "promoPillFixed": "−{eur} €"
     },
     "creator": {
       "title": "الملف الشخصي للمبدع",
@@ -1253,7 +1240,8 @@
       "confirmDelivery": "قيد التوصيل من {restaurant}.",
       "confirmEmail": "أرسلنا لك بريدًا للتأكيد.",
       "paidAmount": "المبلغ المدفوع: {amount}",
-      "trackCta": "تتبّع طلبي"
+      "trackCta": "تتبّع طلبي",
+      "promoLine": "عرض {name}"
     }
   },
   "menu": {

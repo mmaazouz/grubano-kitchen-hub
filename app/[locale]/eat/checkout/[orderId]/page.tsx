@@ -43,6 +43,10 @@ interface OrderInfo {
   total:           number
   paymentStatus?:  string | null
   restaurant?:     { id: string; name: string } | null
+  // Chantier P2 (additive GET fields) — the SERVER-resolved discount and its
+  // promotion display name. No client computation, ever.
+  discount?:       number
+  promotion?:      { id: string; name: string } | null
 }
 interface PayInit {
   clientSecret:   string
@@ -141,9 +145,14 @@ export default function CheckoutPage() {
     [locale],
   )
   const isPickup = order?.fulfillmentType === 'pickup'
-  // Welcome discount derived from the server-fixed amounts (C1: total =
-  // subtotal + deliveryFee − discount, all frozen at creation).
-  const discount = order ? Math.max(0, order.subtotal + order.deliveryFee - order.total) : 0
+  // Chantier P2 — the discount is the SERVER field when exposed (P1 resolved
+  // it at creation); legacy fallback: derived from the frozen amounts (C1:
+  // total = subtotal + deliveryFee − discount). Never computed from a promo.
+  const discount = order
+    ? (typeof order.discount === 'number' && order.discount > 0
+        ? order.discount
+        : Math.max(0, order.subtotal + order.deliveryFee - order.total))
+    : 0
   const ref = order ? orderRefOf(order.id) : ''
 
   // ── Screens ─────────────────────────────────────────────────────────────────
@@ -244,7 +253,9 @@ export default function CheckoutPage() {
               </div>
               {discount > 0.005 && (
                 <div className="flex items-baseline justify-between text-[#16a34a]">
-                  <span>{t('discount')}</span>
+                  {/* P2 — the promo's display name when the server resolved one;
+                      generic label otherwise (welcome discount, legacy). */}
+                  <span>{order.promotion?.name ? t('promoLine', { name: order.promotion.name }) : t('discount')}</span>
                   <span className="font-semibold">−{fmt.format(discount)}</span>
                 </div>
               )}
