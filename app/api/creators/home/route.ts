@@ -3,6 +3,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { readCreatorRoles, DEFAULT_ROLES, type CreatorRoles } from '@/lib/creator-roles'
+import {
+  computeStarsForCreators, nextStarProgress,
+  type StarLevel, type StarProgress, type CreatorStarsInput,
+} from '@/lib/creator-stars'
 
 // ── Types returned to the client ──────────────────────────────────────────────
 
@@ -92,6 +96,9 @@ export type CreatorHomeData = {
   // Real adoption rate (AdoptionConfig.creatorCommissionPctReferred, fraction
   // e.g. 0.02) — kills the hardcoded « 4% » badges (point dur E).
   adoptionCommissionPct: number
+  // ── ⭐ Étoiles Grubano (Mission 4) — ledger-proven performance, on the fly ────
+  stars:        StarLevel
+  starProgress: StarProgress
 }
 
 export async function GET() {
@@ -157,6 +164,8 @@ export async function GET() {
         pageSales30d:         0,
         roles:                { ...DEFAULT_ROLES },
         adoptionCommissionPct: 0.02,
+        stars:                0,
+        starProgress:         { nextStar: 1, missingRestaurants: 1, missingSales: 0 },
       } satisfies CreatorHomeData)
     }
 
@@ -305,6 +314,17 @@ export async function GET() {
       }
     } catch { /* keep the B0 default */ }
 
+    // ── ⭐ Étoiles Grubano (Mission 4) — on the fly, ledger-proven, silent 0 ──
+    let stars: StarLevel = 0
+    let starProgress: StarProgress = { nextStar: 1, missingRestaurants: 1, missingSales: 0 }
+    {
+      const entry = (await computeStarsForCreators([creator.id])).get(creator.id)
+      const input: CreatorStarsInput = entry?.input
+        ?? { activeRestaurants: 0, maturedSales: 0, hasFreshSale: false }
+      stars = entry?.stars ?? 0
+      starProgress = nextStarProgress(input)
+    }
+
     // ── Chef contribution stat (Mission 1) — BEST-EFFORT, volume only ────────
     // Survives the pre-db-push window: a missing Order.chefSlug column throws
     // → silent 0, the rest of the payload is unaffected.
@@ -340,6 +360,8 @@ export async function GET() {
       pageSales30d,
       roles,
       adoptionCommissionPct,
+      stars,
+      starProgress,
     } satisfies CreatorHomeData)
   } catch (err) {
     console.error('[GET /api/creators/home]', err)

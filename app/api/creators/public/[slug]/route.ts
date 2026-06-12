@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { computeStarsForCreators } from '@/lib/creator-stars'
 
 // PUBLIC, read-only, no auth. A dynamic param route is server-rendered on demand.
 export const dynamic = 'force-dynamic'
@@ -162,11 +163,19 @@ export async function GET(
       }
     })
 
+    // ── ⭐ Étoiles Grubano (Mission 4) — public, on the fly, silent 0 on error.
+    // ZERO stars ⇒ the field is 0 and the page shows NOTHING (absence = signal).
+    let stars = 0
+    try {
+      stars = (await computeStarsForCreators([creator.id])).get(creator.id)?.stars ?? 0
+    } catch { stars = 0 }
+
     return NextResponse.json({
       name:         creator.name,
       bio:          creator.bio,
       followers:    creator.followers,
       verified:     creator.verified,
+      stars,
       instagram:    creator.instagram,
       tiktok:       creator.tiktok,
       youtube:      creator.youtube,

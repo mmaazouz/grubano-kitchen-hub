@@ -8,6 +8,7 @@ import {
   ChevronRight, Utensils, ChefHat,
 } from 'lucide-react'
 import { EmptyState, Badge, Skeleton } from '@/components/design-system'
+import { StarBadge } from '@/components/creators/StarBadge'
 import FoodImage from '@/components/eat/FoodImage'
 import { getFoodImage, inferCategory } from '@/lib/food-images'
 import { useGeolocation } from '@/lib/use-geolocation'
@@ -49,6 +50,7 @@ interface ChefProfile {
   bio:              string | null
   followers:        number
   verified:         boolean
+  stars?:           number
   instagram:        string | null
   tiktok:           string | null
   youtube:          string | null
@@ -253,6 +255,8 @@ export default function ChefPublicPage({ slug }: { slug: string }) {
               <BadgeCheck size={15} /> {tc('verifiedBadge')}
             </span>
           )}
+          {/* ⭐ Étoiles Grubano (Mission 4) — absent when 0 (absence = signal). */}
+          <StarBadge stars={profile.stars ?? 0} size={15} />
         </div>
         <p className="mt-0.5 text-[12px] text-grubano-ink-muted">
           {tc('followers', { count: formatFollowers(profile.followers) })}

@@ -15,6 +15,7 @@ import {
 import { useCategoryLabel } from '@/lib/categories'
 import { buildReferralLink } from '@/lib/referral-link'
 import { CreatorEarningsChart } from '@/components/creators/CreatorEarningsChart'
+import { StarProgressCard } from '@/components/creators/StarBadge'
 import type {
   CreatorHomeData, CreatorHomeDish, DishAdopter,
 } from '@/app/api/creators/home/route'
@@ -251,6 +252,16 @@ export default function CreatorDashboardHome() {
           </div>
         )}
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          SECTION 1-bis — ⭐ VOS ÉTOILES GRUBANO (Mission 4, chef role only)
+      ══════════════════════════════════════════════════════════════════════ */}
+      {roles.isChef && (
+        <StarProgressCard
+          stars={data?.stars ?? 0}
+          progress={data?.starProgress ?? { nextStar: 1, missingRestaurants: 1, missingSales: 0 }}
+        />
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════
           SECTION 2 — NEXT BEST ACTIONS

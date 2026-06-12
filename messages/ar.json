@@ -804,7 +804,24 @@
       "errIngredients": "أدخل مكونًا واحدًا على الأقل.",
       "errCuisine": "حدد نوع المطبخ.",
       "errPrice": "سعر غير صالح.",
-      "errGeneric": "تعذّر تنفيذ الإجراء — أعد المحاولة."
+      "errGeneric": "تعذّر تنفيذ الإجراء — أعد المحاولة.",
+      "adoptersToggle": "{count, plural, =1 {متبنٍّ واحد} other {# متبنّين}}",
+      "adopterSince": "منذ {date}",
+      "adopterSales": "{count, plural, =1 {بيع واحد} other {# مبيعات}}",
+      "adopterRevenue": "الإيرادات",
+      "adopterEarnings": "الأرباح"
+    },
+    "stars": {
+      "legend": "نجوم غروبانو — أداء يُقاس على المبيعات الحقيقية",
+      "aria": "{count, plural, =1 {نجمة واحدة} other {# نجوم}} غروبانو",
+      "studioTitle": "نجومك في غروبانو",
+      "none": "لا نجوم بعد",
+      "firstStar": "تصلك نجمتك الأولى مع أول تبنٍّ نشط.",
+      "maxReached": "بلغت أعلى مستوى — أحسنت!",
+      "progressBoth": "تبقّى {restos, plural, =1 {مطعم واحد} other {# مطاعم}} و{sales, plural, =1 {بيع واحد} other {# مبيعات}} للمستوى التالي.",
+      "progressRestos": "تبقّى {restos, plural, =1 {مطعم واحد} other {# مطاعم}} للمستوى التالي.",
+      "progressSales": "تبقّى {sales, plural, =1 {بيع واحد} other {# مبيعات}} للمستوى التالي.",
+      "progressAlmost": "اقتربت من المستوى التالي!"
     }
   },
   "eat": {
@@ -1209,7 +1226,14 @@
       "waitlistJoinedToast": "تمت الإضافة إلى قائمة الانتظار",
       "waitlistJoinedToastDesc": "سنخبرك حالما تصبح هذه الوصفة متاحة في مدينتك.",
       "waitlistErrorToast": "تعذّر التسجيل في قائمة الانتظار",
-      "waitingCount": "{count, plural, one {# مطعم ينتظر هذه الوصفة في مدينتك} other {# مطاعم تنتظر هذه الوصفة في مدينتك}}"
+      "waitingCount": "{count, plural, one {# مطعم ينتظر هذه الوصفة في مدينتك} other {# مطاعم تنتظر هذه الوصفة في مدينتك}}",
+      "commitmentDays": "التزام {days} يومًا",
+      "commitmentNoteDays": "التزام بحد أدنى {days} يومًا · يمكنك سحب وصفة لا تنجح بحرية.",
+      "offerAvailable": "حصرية متاحة — تنتهي خلال {hours} ساعة",
+      "offerAccept": "تبنّي",
+      "offerDecline": "رفض",
+      "offerDeclined": "تم رفض العرض",
+      "declinedToast": "تم رفض العرض — ينتقل إلى المطعم التالي."
     },
     "loading": "جارٍ التحميل…",
     "empty": {

@@ -21,6 +21,7 @@ import {
   ToastProvider,
   useToast,
 } from '@/components/design-system'
+import { StarBadge } from '@/components/creators/StarBadge'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,17 @@ type AvailableDish = {
   cityTaken?:       boolean
   onWaitlist?:      boolean
   waitlistCount?:   number
+  // Mission 4 additive — ⭐ stars + live waitlist offer state.
+  creatorStars?:    number
+  offerHoursLeft?:  number | null   // non-null ⇒ a live 'offered' slot for me
+}
+
+// Adoption conditions read from AdoptionConfig (point dur E) — defaulted for
+// forward-compat until the API field lands.
+type AdoptionConditions = {
+  commissionPct:       number
+  minCommitmentDays:   number
+  successThresholdEur: number
 }
 
 type ScanResult = {
@@ -1208,6 +1220,19 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   const [adoptedIds, setAdoptedIds] = useState<Set<string>>(new Set())
   const [joiningId,  setJoiningId]  = useState<string | null>(null)
   const [joinedIds,  setJoinedIds]  = useState<Set<string>>(new Set())
+  const [decliningId, setDecliningId] = useState<string | null>(null)
+  const [declinedIds, setDeclinedIds] = useState<Set<string>>(new Set())
+  const [conditions, setConditions] = useState<AdoptionConditions | null>(null)
+
+  function reload() {
+    return fetch('/api/dishes/available', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('load'))))
+      .then(d => {
+        setDishes(d.dishes ?? [])
+        setHasBrand(Boolean(d.hasBrand))
+        if (d.conditions) setConditions(d.conditions as AdoptionConditions)
+      })
+  }
 
   useEffect(() => {
     let alive = true
@@ -1221,12 +1246,64 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
         if (!alive) return
         setDishes(d.dishes ?? [])
         setHasBrand(Boolean(d.hasBrand))
+        if (d.conditions) setConditions(d.conditions as AdoptionConditions)
       })
       .catch(() => { if (alive) toast.error(t('loadError')) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Mission 4 — accept a live city-exclusive offer (waitlist promotion).
+  async function acceptOffer(dish: AvailableDish) {
+    setAdoptingId(dish.id)
+    try {
+      const r = await fetch('/api/dishes/waitlist/accept', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ creatorDishId: dish.id }),
+      })
+      if (r.ok) {
+        setAdoptedIds(prev => new Set(prev).add(dish.id))
+        toast.success(t('adoptedToast'), { description: t('adoptedToastDesc', { name: dish.name }) })
+        onAdopted()
+        await reload().catch(() => {})
+      } else {
+        const d = await r.json().catch(() => null)
+        // Expired / taken in between → refresh so the card reflects the new truth.
+        toast.error(t('errorToast'), { description: d?.error })
+        await reload().catch(() => {})
+      }
+    } catch {
+      toast.error(t('errorToast'))
+    } finally {
+      setAdoptingId(null)
+    }
+  }
+
+  // Mission 4 — decline a live offer → it passes to the next restaurant.
+  async function declineOffer(dish: AvailableDish) {
+    setDecliningId(dish.id)
+    try {
+      const r = await fetch('/api/dishes/waitlist/decline', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ creatorDishId: dish.id }),
+      })
+      if (r.ok) {
+        setDeclinedIds(prev => new Set(prev).add(dish.id))
+        toast.success(t('declinedToast'))
+        await reload().catch(() => {})
+      } else {
+        const d = await r.json().catch(() => null)
+        toast.error(t('errorToast'), { description: d?.error })
+      }
+    } catch {
+      toast.error(t('errorToast'))
+    } finally {
+      setDecliningId(null)
+    }
+  }
 
   async function adopt(dish: AvailableDish) {
     if (!brandId) { toast.warning(t('noBrand')); return }
@@ -1282,7 +1359,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   if (loading) {
     return (
       <div>
-        <AdoptHeader t={t} />
+        <AdoptHeader t={t} commitmentDays={conditions?.minCommitmentDays} />
         <SkeletonList count={4} variant="card" />
       </div>
     )
@@ -1291,7 +1368,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   if (!hasBrand) {
     return (
       <div>
-        <AdoptHeader t={t} />
+        <AdoptHeader t={t} commitmentDays={conditions?.minCommitmentDays} />
         <EmptyState emoji="🏪" title={t('emptyTitle')} description={t('noBrand')} />
       </div>
     )
@@ -1300,7 +1377,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   if (dishes.length === 0) {
     return (
       <div>
-        <AdoptHeader t={t} />
+        <AdoptHeader t={t} commitmentDays={conditions?.minCommitmentDays} />
         <EmptyState emoji="🧑‍🍳" title={t('emptyTitle')} description={t('emptyDesc')} />
       </div>
     )
@@ -1308,7 +1385,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
 
   return (
     <div>
-      <AdoptHeader t={t} />
+      <AdoptHeader t={t} commitmentDays={conditions?.minCommitmentDays} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {dishes.map(dish => {
           const adoptedServer = dish.alreadyAdopted
@@ -1317,9 +1394,14 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
           const price         = prices[dish.id] ?? dish.suggestedPrice
           // City exclusivity (levier 3B): waitlist state for non-adopted recipes.
           const joinedNow     = joinedIds.has(dish.id)
-          const onWaitlist    = (dish.onWaitlist ?? false) || joinedNow
-          const cityTaken     = (dish.cityTaken ?? false) && !isAdopted
+          const declinedNow   = declinedIds.has(dish.id)
+          // A live city-exclusive OFFER for me (waitlist promotion) takes
+          // priority over the generic "on waitlist" display.
+          const hasOffer      = dish.offerHoursLeft != null && !isAdopted && !declinedNow
+          const onWaitlist    = ((dish.onWaitlist ?? false) || joinedNow) && !hasOffer
+          const cityTaken     = (dish.cityTaken ?? false) && !isAdopted && !hasOffer
           const waitlistCount = dish.waitlistCount ?? 0
+          const commitmentDays = conditions?.minCommitmentDays ?? 60
 
           return (
             <DSCard key={dish.id} className="overflow-hidden !p-0">
@@ -1351,7 +1433,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                   )}
                 </div>
 
-                {/* Creator + audience */}
+                {/* Creator + audience + ⭐ Étoiles Grubano (Mission 4) */}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
                   <span className="font-semibold text-foreground">
                     {t('byCreator', { name: dish.creatorName || '—' })}
@@ -1359,6 +1441,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                   <span className="inline-flex items-center gap-1">
                     <Users size={12} /> {t('followers', { count: dish.creatorFollowers })}
                   </span>
+                  <StarBadge stars={dish.creatorStars ?? 0} size={12} />
                 </div>
 
                 {/* Benefit pitch */}
@@ -1375,7 +1458,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                 {isAdopted ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 rounded-xl bg-grubano-success-tint px-3 py-2 text-[11px] font-semibold text-grubano-success">
-                      <Clock size={12} /> {t('commitment60')}
+                      <Clock size={12} /> {t('commitmentDays', { days: commitmentDays })}
                     </div>
                     {/* Incumbent visibility: how many restos wait for this recipe here */}
                     {waitlistCount > 0 && (
@@ -1384,7 +1467,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                       </p>
                     )}
                   </div>
-                ) : (cityTaken || onWaitlist) ? null : (
+                ) : (cityTaken || onWaitlist || hasOffer) ? null : (
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       {t('priceLabel')}
@@ -1402,10 +1485,38 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                   </div>
                 )}
 
-                {/* CTA — 4 states: adopted / on waitlist / city-taken / adoptable */}
+                {/* CTA — adopted / OFFER / on waitlist / city-taken / adoptable */}
                 {isAdopted ? (
                   <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
                     {adoptedServer && !adoptedNow ? t('alreadyOnMenu') : t('adopted')}
+                  </DSButton>
+                ) : hasOffer ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 rounded-xl border border-grubano-primary/40 bg-grubano-primary/10 px-3 py-2 text-[11px] font-semibold text-grubano-primary">
+                      <Sparkles size={12} /> {t('offerAvailable', { hours: dish.offerHoursLeft ?? 72 })}
+                    </div>
+                    <div className="flex gap-2">
+                      <DSButton
+                        variant="primary" size="sm" fullWidth
+                        loading={adoptingId === dish.id}
+                        onClick={() => acceptOffer(dish)}
+                        leftIcon={adoptingId === dish.id ? undefined : <Check size={14} />}
+                      >
+                        {adoptingId === dish.id ? t('adopting') : t('offerAccept')}
+                      </DSButton>
+                      <DSButton
+                        variant="secondary" size="sm" fullWidth
+                        loading={decliningId === dish.id}
+                        onClick={() => declineOffer(dish)}
+                        leftIcon={decliningId === dish.id ? undefined : <X size={14} />}
+                      >
+                        {t('offerDecline')}
+                      </DSButton>
+                    </div>
+                  </div>
+                ) : declinedNow ? (
+                  <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<X size={14} />}>
+                    {t('offerDeclined')}
                   </DSButton>
                 ) : onWaitlist ? (
                   <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
@@ -1444,13 +1555,15 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
   )
 }
 
-function AdoptHeader({ t }: { t: ReturnType<typeof useTranslations> }) {
+function AdoptHeader({ t, commitmentDays }: { t: ReturnType<typeof useTranslations>; commitmentDays?: number }) {
   return (
     <div className="mb-4">
       <SectionTitle hint={t('subtitle')}>{t('title')}</SectionTitle>
       <div className="mt-1 flex items-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
         <Clock size={14} className="mt-0.5 shrink-0 text-primary" />
-        <p className="text-[11px] leading-snug text-muted-foreground">{t('commitmentNote')}</p>
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          {t('commitmentNoteDays', { days: commitmentDays ?? 60 })}
+        </p>
       </div>
     </div>
   )

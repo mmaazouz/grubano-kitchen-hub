@@ -804,7 +804,24 @@
       "errIngredients": "Indica almeno un ingrediente.",
       "errCuisine": "Indica il tipo di cucina.",
       "errPrice": "Prezzo non valido.",
-      "errGeneric": "Azione impossibile — riprova."
+      "errGeneric": "Azione impossibile — riprova.",
+      "adoptersToggle": "{count, plural, =1 {1 adottante} other {# adottanti}}",
+      "adopterSince": "dal {date}",
+      "adopterSales": "{count, plural, =1 {1 vendita} other {# vendite}}",
+      "adopterRevenue": "Fatturato",
+      "adopterEarnings": "Guadagni"
+    },
+    "stars": {
+      "legend": "Stelle Grubano — performance misurata sulle vendite reali",
+      "aria": "{count, plural, =1 {1 stella} other {# stelle}} Grubano",
+      "studioTitle": "Le tue stelle Grubano",
+      "none": "Nessuna stella",
+      "firstStar": "La tua prima stella arriva con la tua prima adozione attiva.",
+      "maxReached": "Livello massimo raggiunto — bravo!",
+      "progressBoth": "Ancora {restos, plural, =1 {1 ristorante} other {# ristoranti}} e {sales, plural, =1 {1 vendita} other {# vendite}} per il livello successivo.",
+      "progressRestos": "Ancora {restos, plural, =1 {1 ristorante} other {# ristoranti}} per il livello successivo.",
+      "progressSales": "Ancora {sales, plural, =1 {1 vendita} other {# vendite}} per il livello successivo.",
+      "progressAlmost": "Quasi al livello successivo!"
     }
   },
   "eat": {
@@ -1209,7 +1226,14 @@
       "waitlistJoinedToast": "Aggiunto alla lista d'attesa",
       "waitlistJoinedToastDesc": "Ti avviseremo non appena questa ricetta si libera nella tua città.",
       "waitlistErrorToast": "Impossibile iscriversi alla lista d'attesa",
-      "waitingCount": "{count, plural, one {# ristorante in attesa nella tua città per questa ricetta} other {# ristoranti in attesa nella tua città per questa ricetta}}"
+      "waitingCount": "{count, plural, one {# ristorante in attesa nella tua città per questa ricetta} other {# ristoranti in attesa nella tua città per questa ricetta}}",
+      "commitmentDays": "Impegno di {days} giorni",
+      "commitmentNoteDays": "Impegno minimo di {days} giorni · puoi ritirare liberamente una ricetta che non decolla.",
+      "offerAvailable": "Esclusiva disponibile — scade tra {hours} h",
+      "offerAccept": "Adottare",
+      "offerDecline": "Rifiutare",
+      "offerDeclined": "Offerta rifiutata",
+      "declinedToast": "Offerta rifiutata — passa al ristorante successivo."
     },
     "loading": "Caricamento…",
     "empty": {

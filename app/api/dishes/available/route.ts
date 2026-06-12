@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { computeStarsForCreators } from '@/lib/creator-stars'
+import { offerExpired, WAITLIST_OFFER_TTL_HOURS } from '@/lib/waitlist-promotion'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/dishes/available  — catalogue of approved creator recipes a
@@ -102,6 +104,49 @@ export async function GET() {
       waitlistGroups.map((g) => [g.creatorDishId, g._count._all]),
     )
 
+    // ── ADDITIVE (Mission 4) — live 'offered' state for MY brands ────────────────
+    // The slot that just freed up: which recipes have a NON-EXPIRED 'offered'
+    // entry for one of my brands, and how many hours are left (TTL at read).
+    const now = new Date()
+    const myOffers = brandIds.length
+      ? await prisma.adoptionWaitlist.findMany({
+          where:  { brandId: { in: brandIds }, status: 'offered' },
+          select: { creatorDishId: true, offeredAt: true, offerExpiresAt: true },
+        })
+      : []
+    const offerHoursByDish = new Map<string, number>()
+    for (const o of myOffers) {
+      if (offerExpired(o, now)) continue
+      const exp = o.offerExpiresAt
+        ?? (o.offeredAt ? new Date(o.offeredAt.getTime() + WAITLIST_OFFER_TTL_HOURS * 3_600_000) : null)
+      const hoursLeft = exp
+        ? Math.max(0, Math.ceil((exp.getTime() - now.getTime()) / 3_600_000))
+        : WAITLIST_OFFER_TTL_HOURS
+      offerHoursByDish.set(o.creatorDishId, hoursLeft)
+    }
+
+    // ── ADDITIVE (Mission 4) — ⭐ Étoiles Grubano per creator (batch, silent 0) ───
+    const creatorIds = dishes.map((d) => d.creatorId)
+    const starsByCreator = await computeStarsForCreators(creatorIds)
+
+    // ── ADDITIVE (point dur E) — adoption conditions READ FROM CONFIG ────────────
+    // No more « 2% / 60 jours / 300 € » hardcoded in the resto UI.
+    let conditions = { commissionPct: 0.02, minCommitmentDays: 60, successThresholdEur: 300 }
+    try {
+      const cfg = await prisma.adoptionConfig.findFirst({
+        where:   { active: true },
+        orderBy: { createdAt: 'asc' },
+        select:  { creatorCommissionPctReferred: true, minCommitmentDays: true, successThresholdEur: true },
+      })
+      if (cfg) {
+        conditions = {
+          commissionPct:       cfg.creatorCommissionPctReferred ?? 0.02,
+          minCommitmentDays:   cfg.minCommitmentDays ?? 60,
+          successThresholdEur: cfg.successThresholdEur ?? 300,
+        }
+      }
+    } catch { /* keep safe defaults */ }
+
     const result = dishes.map((d) => ({
       id:               d.id,
       name:             d.name,
@@ -116,9 +161,12 @@ export async function GET() {
       cityTaken:        cityTakenIds.has(d.id),
       onWaitlist:       onWaitlistIds.has(d.id),
       waitlistCount:    waitlistCountByDish.get(d.id) ?? 0,
+      // Mission 4 additive fields:
+      creatorStars:     starsByCreator.get(d.creatorId)?.stars ?? 0,
+      offerHoursLeft:   offerHoursByDish.get(d.id) ?? null,  // non-null ⇒ live 'offered'
     }))
 
-    return NextResponse.json({ dishes: result, hasBrand: brandIds.length > 0 })
+    return NextResponse.json({ dishes: result, hasBrand: brandIds.length > 0, conditions })
   } catch (err) {
     console.error('[GET /api/dishes/available]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

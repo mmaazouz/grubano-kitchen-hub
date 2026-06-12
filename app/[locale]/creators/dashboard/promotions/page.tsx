@@ -21,7 +21,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   ChefHat, Plus, CheckCircle2, Clock, Store, Pencil, Send, Archive,
-  Trash2, RotateCcw, Loader2, Lock, FileEdit,
+  Trash2, RotateCcw, Loader2, Lock, FileEdit, ChevronDown, ChevronUp,
+  MapPin, ShoppingBag,
 } from 'lucide-react'
 import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
@@ -48,6 +49,8 @@ export default function CreatorRecipesPage() {
   const [confirmDel, setConfirmDel] = useState<MyDish | null>(null)
   const [actingId,  setActingId]  = useState<string | null>(null)
   const [toast,     setToast]     = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null)
+  // Mission 4 (1.2) — per-dish adopters analytics accordion (private studio).
+  const [openAdopters, setOpenAdopters] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -287,6 +290,47 @@ export default function CreatorRecipesPage() {
                     )}
                   </div>
                 </div>
+
+                {/* ── Adopters analytics accordion (Mission 4 — private €) ─ */}
+                {d.adoptersRich.length > 0 && (
+                  <div className="mt-3 border-t border-grubano-border pt-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setOpenAdopters(openAdopters === d.id ? null : d.id)}
+                      className="flex w-full items-center gap-1.5 text-[11px] font-bold text-grubano-ink-muted"
+                    >
+                      <Store size={12} className="text-grubano-primary" />
+                      {te('adoptersToggle', { count: d.adoptersRich.length })}
+                      {openAdopters === d.id ? <ChevronUp size={13} className="ml-auto" /> : <ChevronDown size={13} className="ml-auto" />}
+                    </button>
+                    {openAdopters === d.id && (
+                      <div className="mt-2 space-y-2">
+                        {d.adoptersRich.map((a) => (
+                          <div key={a.adoptionId} className="rounded-grubano-lg bg-grubano-surface px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                              <span className="font-bold text-grubano-ink">{a.brandEmoji} {a.brandName}</span>
+                              {a.city && (
+                                <span className="inline-flex items-center gap-0.5 text-grubano-ink-muted">
+                                  <MapPin size={10} /> {a.city}
+                                </span>
+                              )}
+                              <span className="ml-auto text-grubano-ink-faint">
+                                {te('adopterSince', { date: new Date(a.adoptedAt).toLocaleDateString('fr-FR') })}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+                              <span className="inline-flex items-center gap-1 text-grubano-ink-muted">
+                                <ShoppingBag size={10} /> {te('adopterSales', { count: a.salesCount })}
+                              </span>
+                              <span className="text-grubano-ink-muted">{te('adopterRevenue')} <b className="text-grubano-ink">€{fmt(a.revenue)}</b></span>
+                              <span className="text-grubano-success">{te('adopterEarnings')} <b>€{fmt(a.earnings)}</b></span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* ── Actions by state ─────────────────────────────────── */}
                 <div className="mt-3 flex flex-wrap gap-1.5 border-t border-grubano-border pt-2.5">
