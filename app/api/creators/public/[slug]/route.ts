@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { computeStarsForCreators } from '@/lib/creator-stars'
+import { publicFace } from '@/lib/dish-sheet'
+import { readDishSheets } from '@/lib/dish-sheet-db'
 
 // PUBLIC, read-only, no auth. A dynamic param route is server-rendered on demand.
 export const dynamic = 'force-dynamic'
@@ -122,6 +124,11 @@ export async function GET(
     const allRestaurantIds = new Set<string>()
     let totalSales = 0
 
+    // ── ADDITIVE (Mission 6, D1) — PUBLIC face of the sheet only ───────────────
+    // story / dietTags / timings / difficulty. NOTHING technical (no quantified
+    // ingredients, no steps, no plating, no cost) ever reaches this payload.
+    const sheetsByDish = await readDishSheets(creator.dishes.map(d => d.id))
+
     const recipes = creator.dishes.map(d => {
       // One entry per restaurant (an operator could adopt the same recipe under
       // two brands → same restaurant twice). De-dupe by restaurant id, keep first.
@@ -160,6 +167,8 @@ export async function GET(
         // Social proof per recipe (volumes only).
         salesCount,
         restaurantsCount: servedAt.length,
+        // Mission 6 additive — public face only (null = legacy, nothing shown).
+        publicSheet: publicFace(sheetsByDish.get(d.id) ?? null),
       }
     })
 

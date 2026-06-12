@@ -426,6 +426,14 @@ model CreatorDish {
   adoptedBy      Json     @default("[]")
   commission     Float    @default(0.04)
   totalSales     Int      @default(0)
+  // ── Fiche recette de chef (Mission 6, ADDITIVE) ─────────────────────────────
+  // The LICENSED ASSET: technical sheet (quantified ingredients, ordered steps,
+  // timings, allergens, plating, story, cost) — shape = lib/dish-sheet.DishSheet.
+  // NULLABLE: every existing row stays valid (legacy tolerated, D2) and all the
+  // code survives the column being absent pre-db-push (tolerant read → null).
+  // NEVER served publicly — only to restos with a DishAdoption of the recipe,
+  // the creator, or an admin (D1, enforced by /api/dishes/[id]/sheet).
+  sheet          Json?
   createdAt      DateTime @default(now())
   // Inverse side of DishAdoption.creatorDish (brique 3A) — restaurateurs who
   // adopted this recipe. KEEP adoptedBy + totalSales above for back-compat.

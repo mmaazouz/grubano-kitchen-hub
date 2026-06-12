@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { runDishVetting } from '@/lib/dish-submit'
+import { hasAllergenDeclaration } from '@/lib/dish-sheet'
+import { readDishSheet } from '@/lib/dish-sheet-db'
 
 // ── POST /api/creators/dishes/[id]/submit — submit to vetting (Mission 3) ─────
 //
@@ -40,6 +42,17 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       return NextResponse.json(
         { error: 'Cette recette ne peut pas être soumise dans son état actuel.' },
         { status: 409 },
+      )
+    }
+
+    // ── D2 (Mission 6) — allergens gate at submission. Tolerant read: legacy
+    // recipes WITHOUT a sheet (or pre-db-push column) keep passing untouched;
+    // a recipe that HAS a sheet must carry the declaration (['none'] is valid).
+    const sheet = await readDishSheet(dish.id)
+    if (sheet !== null && !hasAllergenDeclaration(sheet)) {
+      return NextResponse.json(
+        { error: 'Les allergènes sont obligatoires — sélectionnez « Aucun » si c’est le cas.', code: 'allergens_required' },
+        { status: 400 },
       )
     }
 

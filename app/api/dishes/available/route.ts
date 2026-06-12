@@ -4,6 +4,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { computeStarsForCreators } from '@/lib/creator-stars'
 import { offerExpired, WAITLIST_OFFER_TTL_HOURS } from '@/lib/waitlist-promotion'
+import { businessFace } from '@/lib/dish-sheet'
+import { readDishSheets } from '@/lib/dish-sheet-db'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/dishes/available  — catalogue of approved creator recipes a
@@ -129,6 +131,12 @@ export async function GET() {
     const creatorIds = dishes.map((d) => d.creatorId)
     const starsByCreator = await computeStarsForCreators(creatorIds)
 
+    // ── ADDITIVE (Mission 6, D1) — BUSINESS face of the technical sheet ──────────
+    // Tolerant batch read (column absent → empty map → legacy zeros). The card
+    // gets FIGURES ONLY (completeness, difficulty, timings, diet/allergens,
+    // cost, server-computed margin) — NEVER quantified ingredients/steps/plating.
+    const sheetsByDish = await readDishSheets(dishes.map((d) => d.id))
+
     // ── ADDITIVE (point dur E) — adoption conditions READ FROM CONFIG ────────────
     // No more « 2% / 60 jours / 300 € » hardcoded in the resto UI.
     let conditions = { commissionPct: 0.02, minCommitmentDays: 60, successThresholdEur: 300 }
@@ -164,6 +172,8 @@ export async function GET() {
       // Mission 4 additive fields:
       creatorStars:     starsByCreator.get(d.creatorId)?.stars ?? 0,
       offerHoursLeft:   offerHoursByDish.get(d.id) ?? null,  // non-null ⇒ live 'offered'
+      // Mission 6 additive — the BUSINESS face (D1: figures, never the asset).
+      ...businessFace(sheetsByDish.get(d.id) ?? null, d.suggestedPrice),
     }))
 
     return NextResponse.json({ dishes: result, hasBrand: brandIds.length > 0, conditions })

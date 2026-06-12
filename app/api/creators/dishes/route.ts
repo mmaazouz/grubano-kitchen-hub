@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { readCreatorRoles } from '@/lib/creator-roles'
 import { runDishVetting } from '@/lib/dish-submit'
+import { sheetSchema, parseSheet, hasAllergenDeclaration } from '@/lib/dish-sheet'
 
 // ── POST /api/creators/dishes — create a recipe (Mission 3 editor) ────────────
 //
@@ -25,6 +26,8 @@ const dishSchema = z.object({
   suggestedPrice: z.number().positive(),
   photo:          z.string().optional(),
   saveAsDraft:    z.boolean().default(false),
+  // Mission 6 — technical sheet (zod strips unknown keys by construction).
+  sheet:          sheetSchema.optional(),
 })
 
 export async function POST(req: Request) {
@@ -55,6 +58,16 @@ export async function POST(req: Request) {
       )
     }
 
+    // ── D2 (Mission 6) — allergens are MANDATORY to SUBMIT a NEW recipe.
+    // « Aucun allergène » (['none']) is an explicit valid choice. Drafts are
+    // free (the private workbench); only the submission path is gated.
+    if (!data.saveAsDraft && !hasAllergenDeclaration(parseSheet(data.sheet ?? null))) {
+      return NextResponse.json(
+        { error: 'Les allergènes sont obligatoires — sélectionnez « Aucun » si c’est le cas.', code: 'allergens_required' },
+        { status: 400 },
+      )
+    }
+
     // Draft → no vetting; submit → vet the content right away (1.3 flow).
     let status: 'draft' | 'approved' | 'pending' | 'rejected' = 'draft'
     let vetReason: string | null = null
@@ -70,18 +83,30 @@ export async function POST(req: Request) {
       vetReason = outcome.reason
     }
 
-    const dish = await prisma.creatorDish.create({
-      data: {
-        creatorId:      creator.id,
-        name:           data.name,
-        description:    data.description,
-        ingredients:    data.ingredients,
-        cuisineType:    data.cuisineType,
-        suggestedPrice: data.suggestedPrice,
-        photo:          data.photo,
-        status,
-      },
-    })
+    const baseData = {
+      creatorId:      creator.id,
+      name:           data.name,
+      description:    data.description,
+      ingredients:    data.ingredients,
+      cuisineType:    data.cuisineType,
+      suggestedPrice: data.suggestedPrice,
+      photo:          data.photo,
+      status,
+    }
+    // Tolerant WRITE (pre-db-push window): the sheet column not migrated yet
+    // makes the create throw → retry without the sheet (the recipe itself is
+    // never lost; the sheet can be re-saved after the push).
+    let dish
+    try {
+      dish = await prisma.creatorDish.create({
+        data: { ...baseData, ...(data.sheet !== undefined ? { sheet: data.sheet } : {}) },
+      })
+    } catch (e) {
+      if (data.sheet === undefined) throw e
+      console.error('[POST /api/creators/dishes] sheet column missing? retrying without sheet',
+        e instanceof Error ? e.message : e)
+      dish = await prisma.creatorDish.create({ data: baseData })
+    }
 
     return NextResponse.json(
       { dish, ...(vetReason ? { vetReason } : {}) },

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { runDishVetting } from '@/lib/dish-submit'
+import { sheetSchema } from '@/lib/dish-sheet'
 
 // ── /api/creators/dishes/[id] — edit & delete (Mission 3 editor) ──────────────
 //
@@ -32,6 +33,11 @@ const patchSchema = z.object({
   cuisineType:    z.string().min(1).optional(),
   suggestedPrice: z.number().positive().optional(),
   photo:          z.string().optional(),
+  // Mission 6 — the technical sheet. LOCKED by R3 like the rest of the content
+  // (D4: adoption active → 409, photo only stays free). CHOICE NOTED: a sheet
+  // change does NOT re-trigger the vetting (the vetted fields are unchanged —
+  // enriching an approved legacy recipe must not knock it back to review).
+  sheet:          sheetSchema.optional(),
 })
 
 /** Resolve the dish IFF it belongs to the session creator — else null (→404). */
@@ -82,16 +88,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     const data = parsed.data
     const touchesContent = CONTENT_FIELDS.some((f) => data[f] !== undefined)
+    const touchesSheet   = data.sheet !== undefined
     const touchesPhoto   = data.photo !== undefined
 
-    if (!touchesContent && !touchesPhoto) {
+    if (!touchesContent && !touchesSheet && !touchesPhoto) {
       return NextResponse.json({ dish }) // no-op
     }
 
     const { hasActiveAdoption } = await dishHistory(dish.id)
 
     // R3 — content locked while an adoption is active (photo stays free).
-    if (touchesContent && hasActiveAdoption) {
+    // D4 (Mission 6): the technical sheet IS content — same lock, no exception.
+    if ((touchesContent || touchesSheet) && hasActiveAdoption) {
       return NextResponse.json(
         {
           error: 'Contenu verrouillé : des restaurants servent cette recette. Seule la photo est modifiable — pour la retirer du catalogue, archivez-la.',
@@ -119,20 +127,30 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       vetReason  = outcome.reason
     }
 
-    const updated = await prisma.creatorDish.update({
-      where: { id: dish.id },
-      data: {
-        ...(touchesContent ? {
-          name:           merged.name,
-          description:    merged.description,
-          ingredients:    merged.ingredients,
-          cuisineType:    merged.cuisineType,
-          suggestedPrice: merged.suggestedPrice,
-        } : {}),
-        ...(touchesPhoto ? { photo: data.photo } : {}),
-        status: nextStatus,
-      },
-    })
+    const updateData = {
+      ...(touchesContent ? {
+        name:           merged.name,
+        description:    merged.description,
+        ingredients:    merged.ingredients,
+        cuisineType:    merged.cuisineType,
+        suggestedPrice: merged.suggestedPrice,
+      } : {}),
+      ...(touchesPhoto ? { photo: data.photo } : {}),
+      status: nextStatus,
+    }
+    // Tolerant WRITE (pre-db-push): a missing sheet column → retry without it.
+    let updated
+    try {
+      updated = await prisma.creatorDish.update({
+        where: { id: dish.id },
+        data:  { ...updateData, ...(touchesSheet ? { sheet: data.sheet } : {}) },
+      })
+    } catch (e) {
+      if (!touchesSheet) throw e
+      console.error('[PATCH /api/creators/dishes/[id]] sheet column missing? retrying without sheet',
+        e instanceof Error ? e.message : e)
+      updated = await prisma.creatorDish.update({ where: { id: dish.id }, data: updateData })
+    }
 
     return NextResponse.json({ dish: updated, ...(vetReason ? { vetReason } : {}) })
   } catch (err) {

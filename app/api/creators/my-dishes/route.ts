@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { sheetCompleteness, type DishSheet } from '@/lib/dish-sheet'
+import { readDishSheets } from '@/lib/dish-sheet-db'
 
 // ── Types returned to the client ──────────────────────────────────────────────
 
@@ -44,6 +46,9 @@ export type MyDish = {
   salesCount:        number     // all-time DishSale rows
   // Mission 4 (1.2) — richer adopters with per-adoption analytics.
   adoptersRich:      MyDishAdopter[]
+  // Mission 6 — full technical sheet (the OWNER's private payload) + score.
+  sheet:             DishSheet | null
+  sheetCompleteness: number
 }
 
 export async function GET() {
@@ -71,6 +76,9 @@ export async function GET() {
     }
 
     const dishIds = creator.dishes.map(d => d.id)
+
+    // Mission 6 — technical sheets, tolerant batch read (column absent → nulls).
+    const sheetsByDish = await readDishSheets(dishIds)
 
     // ── Batch-load all adoptions + their brands + their sales ─────────────────
     // No N+1: single query with nested includes
@@ -162,6 +170,9 @@ export async function GET() {
         hasAnyHistory:     dishAdoptions.length > 0 || totalSales > 0,
         adoptionsCount:    dishAdoptions.length,
         salesCount:        totalSales,
+        // Mission 6 — the owner's full sheet + completeness score (D3).
+        sheet:             sheetsByDish.get(d.id) ?? null,
+        sheetCompleteness: sheetCompleteness(sheetsByDish.get(d.id) ?? null),
       }
     })
 
