@@ -88,7 +88,7 @@ export default function StripeDepositForm({ reservationId, onAuthorized }: Props
     () => new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: (init?.currency ?? 'eur').toUpperCase(),
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2, // exact amount — never round a payment phrase to the euro (M7)
     }),
     [locale, init?.currency],
   )

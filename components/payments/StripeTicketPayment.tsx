@@ -52,7 +52,7 @@ export default function StripeTicketPayment({
     () => new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: (currency || 'eur').toUpperCase(),
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 2, // exact amount — never round a payment phrase to the euro (M7)
     }),
     [locale, currency],
   )

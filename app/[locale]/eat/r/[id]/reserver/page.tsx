@@ -180,7 +180,7 @@ function ReserveInner() {
 
   // ── Render ───────────────────────────────────────────────────────────────
   const currencyFmt = useMemo(
-    () => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
+    () => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }),
     [locale],
   )
   const longDate = useMemo(() => {
