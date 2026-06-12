@@ -516,7 +516,13 @@
       "verifyRejectedDesc": "Your application was not retained at this time.",
       "verifyCodeNotFound": "Code not detected yet. Check your description is published, wait ~1 min, then retry.",
       "verifyRetry": "Retry",
-      "verifyChannelError": "YouTube channel not found — check the link you entered in your application."
+      "verifyChannelError": "YouTube channel not found — check the link you entered in your application.",
+      "rolesTitle": "What do you want to do on Grubano?",
+      "roleChefTitle": "Creator chef",
+      "roleChefDesc": "Your recipes adopted by restaurants — royalties on every sale.",
+      "roleInfluencerTitle": "Influencer",
+      "roleInfluencerDesc": "Recommend restaurants to your audience — commission on orders.",
+      "rolesHint": "Cumulable — at least one role required."
     },
     "dashboard": {
       "title": "Creator Space",
@@ -657,12 +663,17 @@
       "notCreatorDesc": "Join the program and monetize your recipes.",
       "notCreatorCta": "Join",
       "dishNetLabel": "Net",
-      "pageSales": "{count, plural, =1 {1 order via my page} other {# orders via my page}}"
+      "pageSales": "{count, plural, =1 {1 order via my page} other {# orders via my page}}",
+      "rolesTitle": "My roles",
+      "rolesHint": "Enable or disable a role — your data is kept, only the tools show or hide.",
+      "roleChefLabel": "Creator chef",
+      "roleInfluencerLabel": "Influencer",
+      "rolesError": "Could not change — please retry."
     },
     "recipes": {
       "title": "My recipes",
       "subtitle": "Create a recipe, a restaurant adopts it, you earn 4% on every sale as long as it's on the menu.",
-      "badge": "4% / sale",
+      "badge": "{pct}% / sale",
       "kpiEarnings": "Recipe earnings",
       "kpiAdoptions": "Active adoptions",
       "kpiSales": "Total sales"
@@ -737,7 +748,17 @@
       "loading": "Loading your earnings…",
       "errLoad": "Could not load your earnings — please retry.",
       "retry": "Retry",
-      "noProfile": "No creator profile found for this account."
+      "noProfile": "No creator profile found for this account.",
+      "kitAffiliationTitle": "Affiliation link",
+      "kitChefTitle": "My chef page",
+      "kitChefQrHint": "Have this QR scanned — your fans discover the restaurants serving your creations."
+    },
+    "rolesGate": {
+      "chefOffTitle": "Creator chef role disabled",
+      "chefOffBody": "Your recipes and their earnings are kept — re-enable the role to get this space back.",
+      "influencerOffTitle": "Influencer role disabled",
+      "influencerOffBody": "Your code and affiliation earnings are kept — re-enable the role to get this space back.",
+      "enableCta": "Enable"
     }
   },
   "eat": {

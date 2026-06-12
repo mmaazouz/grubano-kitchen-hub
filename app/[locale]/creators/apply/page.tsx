@@ -86,6 +86,17 @@ export default function CreatorsApplyPage() {
     instagram: '', tiktok: '', youtube: '', followers: '',
     dishConcepts: [{ ...EMPTY_CONCEPT }],
   })
+  // Mission 2 — role choice (cumulable, at least one). Defaults: BOTH.
+  const [roles, setRoles] = useState<{ chef: boolean; influencer: boolean }>({ chef: true, influencer: true })
+
+  function toggleRole(key: 'chef' | 'influencer') {
+    setRoles(r => {
+      const next = { ...r, [key]: !r[key] }
+      // At least one role stays active — flipping the last one off is a no-op.
+      if (!next.chef && !next.influencer) return r
+      return next
+    })
+  }
 
   // ── Verification state ──────────────────────────────────────────────────────
   const [applicationId, setApplicationId] = useState<string | null>(null)
@@ -139,6 +150,7 @@ export default function CreatorsApplyPage() {
           youtube:      form.youtube  || undefined,
           followers:    parseInt(form.followers || '0', 10),
           dishConcepts: form.dishConcepts.filter(c => c.name && c.description && c.cuisineType),
+          roles,
         }),
       })
       if (res.ok) {
@@ -162,7 +174,11 @@ export default function CreatorsApplyPage() {
     if (!applicationId) return
     setVerifying(true)
     try {
-      const res = await fetch(`/api/creators/apply/${applicationId}/verify`, { method: 'POST' })
+      const res = await fetch(`/api/creators/apply/${applicationId}/verify`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ roles }),
+      })
       const d   = await res.json()
       setVerifyResult(d as VerifyOutcome)
     } catch {
@@ -383,6 +399,37 @@ export default function CreatorsApplyPage() {
         {/* Step 0 — Profile */}
         {step === 0 && (
           <div className="space-y-3">
+            {/* Mission 2 — role choice: two CUMULABLE cards, at least one
+                checked (toggleRole refuses to clear the last). Default: BOTH. */}
+            <div>
+              <p className="mb-1.5 text-sm font-semibold text-grubano-ink">{t('rolesTitle')}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => toggleRole('chef')}
+                  aria-pressed={roles.chef}
+                  className={`rounded-grubano-lg border-2 p-3 text-start transition ${
+                    roles.chef ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-grubano-surface'
+                  }`}
+                >
+                  <p className="text-sm font-bold text-grubano-ink">🍳 {t('roleChefTitle')}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-grubano-ink-muted">{t('roleChefDesc')}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleRole('influencer')}
+                  aria-pressed={roles.influencer}
+                  className={`rounded-grubano-lg border-2 p-3 text-start transition ${
+                    roles.influencer ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-grubano-surface'
+                  }`}
+                >
+                  <p className="text-sm font-bold text-grubano-ink">📣 {t('roleInfluencerTitle')}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-grubano-ink-muted">{t('roleInfluencerDesc')}</p>
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] text-grubano-ink-faint">{t('rolesHint')}</p>
+            </div>
+
             <Input
               label={t('labelName')}
               type="text"

@@ -516,7 +516,13 @@
       "verifyRejectedDesc": "La tua candidatura non è stata accettata al momento.",
       "verifyCodeNotFound": "Codice non ancora rilevato. Controlla che la descrizione sia pubblicata, attendi ~1 min, poi riprova.",
       "verifyRetry": "Riprova",
-      "verifyChannelError": "Canale YouTube non trovato — verifica il link inserito nella tua candidatura."
+      "verifyChannelError": "Canale YouTube non trovato — verifica il link inserito nella tua candidatura.",
+      "rolesTitle": "Cosa vuoi fare su Grubano?",
+      "roleChefTitle": "Chef creator",
+      "roleChefDesc": "Le tue ricette adottate dai ristoranti — royalties su ogni vendita.",
+      "roleInfluencerTitle": "Influencer",
+      "roleInfluencerDesc": "Consiglia ristoranti al tuo pubblico — commissione sugli ordini.",
+      "rolesHint": "Cumulabili — almeno un ruolo obbligatorio."
     },
     "dashboard": {
       "title": "Spazio Creatore",
@@ -657,12 +663,17 @@
       "notCreatorDesc": "Unisciti al programma e monetizza le tue ricette.",
       "notCreatorCta": "Unisciti",
       "dishNetLabel": "Netto",
-      "pageSales": "{count, plural, =1 {1 ordine dalla mia pagina} other {# ordini dalla mia pagina}}"
+      "pageSales": "{count, plural, =1 {1 ordine dalla mia pagina} other {# ordini dalla mia pagina}}",
+      "rolesTitle": "I miei ruoli",
+      "rolesHint": "Attiva o disattiva un ruolo — i tuoi dati restano conservati, solo gli strumenti si mostrano o si nascondono.",
+      "roleChefLabel": "Chef creator",
+      "roleInfluencerLabel": "Influencer",
+      "rolesError": "Modifica impossibile — riprova."
     },
     "recipes": {
       "title": "Le mie ricette",
       "subtitle": "Crea una ricetta, un ristorante la adotta, guadagni il 4% su ogni vendita finché è nel menu.",
-      "badge": "4% / vendita",
+      "badge": "{pct}% / vendita",
       "kpiEarnings": "Guadagni ricette",
       "kpiAdoptions": "Adozioni attive",
       "kpiSales": "Vendite totali"
@@ -737,7 +748,17 @@
       "loading": "Caricamento dei tuoi guadagni…",
       "errLoad": "Impossibile caricare i tuoi guadagni — riprova.",
       "retry": "Riprova",
-      "noProfile": "Nessun profilo creator trovato per questo account."
+      "noProfile": "Nessun profilo creator trovato per questo account.",
+      "kitAffiliationTitle": "Link di affiliazione",
+      "kitChefTitle": "La mia pagina chef",
+      "kitChefQrHint": "Fai scansionare questo QR — i tuoi fan scoprono i ristoranti che servono le tue creazioni."
+    },
+    "rolesGate": {
+      "chefOffTitle": "Ruolo Chef creator disattivato",
+      "chefOffBody": "Le tue ricette e i loro guadagni restano conservati — riattiva il ruolo per ritrovare questo spazio.",
+      "influencerOffTitle": "Ruolo Influencer disattivato",
+      "influencerOffBody": "Il tuo codice e i guadagni di affiliazione restano conservati — riattiva il ruolo per ritrovare questo spazio.",
+      "enableCta": "Attiva"
     }
   },
   "eat": {
