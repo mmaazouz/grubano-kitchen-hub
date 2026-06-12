@@ -9,6 +9,7 @@ import {
   Home, Store, Star, Package, ChefHat, X, ShoppingBag,
   CalendarDays, Clock, BarChart2, Truck, MessageSquare,
   Wallet, Zap, Bell, Megaphone, Building2, UtensilsCrossed, Network,
+  BadgePercent,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -147,9 +148,10 @@ export default function Sidebar() {
     {
       header: t('groupGrowth'),
       items: [
-        { href: '/analytics', label: t('navPerformance'), icon: BarChart2 },
-        { href: '/creators',  label: t('navInfluencers'), icon: Megaphone },
-        { href: '/finance',   label: t('navFinance'),     icon: Wallet },
+        { href: '/analytics',  label: t('navPerformance'), icon: BarChart2 },
+        { href: '/creators',   label: t('navInfluencers'), icon: Megaphone },
+        { href: '/promotions', label: t('navPromotions'),  icon: BadgePercent },
+        { href: '/finance',    label: t('navFinance'),     icon: Wallet },
         { href: '/franchise', label: t('navFranchise'),   icon: Network },
       ],
     },
