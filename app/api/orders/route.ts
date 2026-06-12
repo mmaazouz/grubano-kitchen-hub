@@ -383,6 +383,31 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/orders] referral writes failed (order still valid):', refErr)
     }
 
+    // ── Chef contribution stamp (Mission 1 Creator Studio) — BEST-EFFORT ─────
+    // Pure STAT, zero financial impact: when the buyer came through a /chef
+    // page (grubano_chef cookie, 24 h last-touch), stamp Order.chefSlug. The
+    // affiliation blocks above are UNTOUCHED — this never creates a
+    // ReferralOrder. Survives a missing column (deploy before db push): the
+    // catch swallows everything, the order stays intact.
+    try {
+      const chefSlug = (req.cookies.get('grubano_chef')?.value ?? '').trim().toLowerCase()
+      if (chefSlug) {
+        const chef = await prisma.creator.findFirst({
+          where:  { referralLinkSlug: chefSlug },
+          select: { referralLinkSlug: true },
+        })
+        if (chef?.referralLinkSlug) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data:  { chefSlug: chef.referralLinkSlug },
+          })
+        }
+      }
+    } catch (chefErr) {
+      console.error('[POST /api/orders] chef contribution stamp failed (order still valid):',
+        chefErr instanceof Error ? chefErr.message : chefErr)
+    }
+
     return NextResponse.json(
       {
         orderId:           updated.id,

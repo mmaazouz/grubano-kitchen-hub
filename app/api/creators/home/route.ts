@@ -81,6 +81,10 @@ export type CreatorHomeData = {
   recipeGrubanoFee30d:  number   // grubanoCut on recipe sales, 30-day
   recipeNet30d:         number   // recipe net (gross − fee), 30-day
   referralEarnings30d:  number   // referral-only total for the chart legend
+  // Chef contribution stat (Mission 1 Creator Studio): orders of the last 30
+  // days stamped with this creator's chefSlug (page visit → purchase). Pure
+  // VOLUME — 0 when the column isn't migrated yet (silent degrade).
+  pageSales30d:         number
 }
 
 export async function GET() {
@@ -143,6 +147,7 @@ export async function GET() {
         recipeGrubanoFee30d:  0,
         recipeNet30d:         0,
         referralEarnings30d:  0,
+        pageSales30d:         0,
       } satisfies CreatorHomeData)
     }
 
@@ -275,6 +280,21 @@ export async function GET() {
       followers:        creator.followers,
     }
 
+    // ── Chef contribution stat (Mission 1) — BEST-EFFORT, volume only ────────
+    // Survives the pre-db-push window: a missing Order.chefSlug column throws
+    // → silent 0, the rest of the payload is unaffected.
+    let pageSales30d = 0
+    if (creator.referralLinkSlug) {
+      try {
+        pageSales30d = await prisma.order.count({
+          where: {
+            chefSlug:  creator.referralLinkSlug,
+            createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+          },
+        })
+      } catch { /* column not migrated yet → 0 */ }
+    }
+
     return NextResponse.json({
       creator: creatorInfo,
       dishes,
@@ -292,6 +312,7 @@ export async function GET() {
       recipeGrubanoFee30d: Number(dishGrubanoFeeNow.toFixed(2)),
       recipeNet30d:        Number((dishEarningsNow - dishGrubanoFeeNow).toFixed(2)),
       referralEarnings30d: Number(refEarningsNow.toFixed(2)),
+      pageSales30d,
     } satisfies CreatorHomeData)
   } catch (err) {
     console.error('[GET /api/creators/home]', err)

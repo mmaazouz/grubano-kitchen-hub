@@ -821,11 +821,18 @@ model Order {
   // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
   // attributed to this order. Nullable list, no impact on existing orders.
   dishSales       DishSale[]
+  // ── Chef contribution tracking (Mission 1 Creator Studio, ADDITIVE) ─────────
+  // The creator (chef) page slug the buyer came through (grubano_chef cookie,
+  // 24 h last-touch). A pure STAT — no financial impact, never feeds the
+  // affiliation rail (that's grubano_ref / ReferralOrder, influencer role).
+  // Nullable → zero backfill, existing rows untouched.
+  chefSlug        String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
   @@index([pointOfSaleId])
   @@index([referralCode])
+  @@index([chefSlug])
 }
 
 // ── Franchise multi-location ──────────────────────────────────────────────────

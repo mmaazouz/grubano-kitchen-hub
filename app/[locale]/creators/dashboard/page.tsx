@@ -387,6 +387,13 @@ export default function CreatorDashboardHome() {
             <div className="flex items-center gap-2">
               <ChefHat size={16} className="text-grubano-primary" />
               <h2 className="text-sm font-bold">{t('dishesTitle')}</h2>
+              {/* Chef contribution stat (Mission 1) — orders that came through
+                  the public /chef page in the last 30 days. Volume only. */}
+              {(data?.pageSales30d ?? 0) > 0 && (
+                <span className="rounded-full bg-grubano-tint px-2 py-0.5 text-[10px] font-bold text-grubano-primary">
+                  {t('pageSales', { count: data?.pageSales30d ?? 0 })}
+                </span>
+              )}
             </div>
             {dishes.length > 0 && (
               <button
