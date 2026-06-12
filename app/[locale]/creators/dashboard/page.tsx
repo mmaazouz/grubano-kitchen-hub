@@ -21,14 +21,6 @@ import type {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type SubmitForm = {
-  name: string; description: string; ingredientsRaw: string
-  cuisineType: string; suggestedPrice: string
-}
-const EMPTY_FORM: SubmitForm = {
-  name: '', description: '', ingredientsRaw: '', cuisineType: '', suggestedPrice: '',
-}
-
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function CreatorDashboardHome() {
@@ -43,11 +35,7 @@ export default function CreatorDashboardHome() {
   const [roleError,  setRoleError]  = useState('')
   const [loading,        setLoading]        = useState(true)
   const [copied,         setCopied]         = useState(false)
-  const [showSubmit,     setShowSubmit]     = useState(false)
-  const [form,           setForm]           = useState<SubmitForm>(EMPTY_FORM)
   const [submitting,     setSubmitting]     = useState(false)
-  const [submitted,      setSubmitted]      = useState(false)
-  const [submitErr,      setSubmitErr]      = useState('')
   const [expandedDishId, setExpandedDishId] = useState<string | null>(null)
 
   function load() {
@@ -59,9 +47,6 @@ export default function CreatorDashboardHome() {
   }
   useEffect(() => { load() }, [])
 
-  function setField(key: keyof SubmitForm, value: string) {
-    setForm(f => ({ ...f, [key]: value }))
-  }
 
   function copyCode(code: string) {
     navigator.clipboard.writeText(code).then(() => {
@@ -70,31 +55,6 @@ export default function CreatorDashboardHome() {
     })
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setSubmitting(true); setSubmitErr('')
-    try {
-      const res = await fetch('/api/creators/dishes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name:           form.name,
-          description:    form.description,
-          ingredients:    form.ingredientsRaw.split(',').map(s => s.trim()).filter(Boolean),
-          cuisineType:    form.cuisineType,
-          suggestedPrice: parseFloat(form.suggestedPrice),
-        }),
-      })
-      if (res.ok) {
-        setSubmitted(true); setForm(EMPTY_FORM)
-        setTimeout(() => { setSubmitted(false); setShowSubmit(false); setLoading(true); load() }, 2500)
-      } else {
-        const d = await res.json()
-        setSubmitErr(d.error ?? t('submitError'))
-      }
-    } catch { setSubmitErr(t('submitNetworkError')) }
-    finally   { setSubmitting(false) }
-  }
 
   const CUISINE_OPTIONS = [
     'italien','asiatique','healthy','bowls','desserts',
@@ -343,7 +303,7 @@ export default function CreatorDashboardHome() {
                   variant="secondary"
                   size="sm"
                   rightIcon={<ArrowRight size={13} />}
-                  onClick={() => setShowSubmit(true)}
+                  onClick={() => { window.location.href = '/creators/dashboard/promotions' }}
                 >
                   {t('actionDishCta')}
                 </Button>
@@ -372,71 +332,6 @@ export default function CreatorDashboardHome() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          INLINE SUBMIT FORM (shown when triggered from action card)
-      ══════════════════════════════════════════════════════════════════════ */}
-      {showSubmit && (
-        <Card elevation="md" padding="md">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-sm">{t('submitTitle')}</h2>
-            <button
-              onClick={() => { setShowSubmit(false); setSubmitErr('') }}
-              className="text-xs text-grubano-ink-muted hover:text-grubano-ink"
-            >
-              ✕
-            </button>
-          </div>
-          {submitted ? (
-            <div className="text-center py-8">
-              <p className="text-3xl mb-2">🎉</p>
-              <p className="font-bold text-grubano-success">{t('submitSuccess')}</p>
-              <p className="text-xs text-grubano-ink-muted mt-1">{t('submitSuccessDesc')}</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-3">
-              {([
-                { key: 'name'           as const, label: t('formDishName'),    type: 'text',   ph: t('dishPlaceholder')      },
-                { key: 'ingredientsRaw' as const, label: t('formIngredients'), type: 'text',   ph: t('ingredientsPlaceholder') },
-                { key: 'suggestedPrice' as const, label: t('formPrice'),       type: 'number', ph: '12.90'                   },
-              ]).map(({ key, label, type, ph }) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold mb-1 text-grubano-ink-muted uppercase tracking-wide">{label}</label>
-                  <input
-                    type={type} required step={type === 'number' ? '0.01' : undefined}
-                    min={type === 'number' ? '0.01' : undefined}
-                    placeholder={ph} value={form[key]}
-                    onChange={e => setField(key, e.target.value)}
-                    className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary"
-                  />
-                </div>
-              ))}
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-grubano-ink-muted uppercase tracking-wide">{t('formCuisine')}</label>
-                <select required value={form.cuisineType} onChange={e => setField('cuisineType', e.target.value)}
-                  className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary"
-                >
-                  <option value="">{t('cuisinePlaceholder')}</option>
-                  {CUISINE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1 text-grubano-ink-muted uppercase tracking-wide">{t('formDescription')}</label>
-                <textarea required rows={2} placeholder={t('descPlaceholder')} value={form.description}
-                  onChange={e => setField('description', e.target.value)}
-                  className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary resize-none"
-                />
-              </div>
-              {submitErr && <p className="text-xs text-grubano-danger">{submitErr}</p>}
-              <Button type="submit" variant="primary" size="md" fullWidth loading={submitting}
-                leftIcon={<Upload size={15} />}
-              >
-                {submitting ? t('formSubmitting') : t('formSubmitCta')}
-              </Button>
-            </form>
-          )}
-        </Card>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════════
           SECTION 3 — DUAL PROFILE (Recipes + Audience side by side)
       ══════════════════════════════════════════════════════════════════════ */}
       <div className="grid md:grid-cols-2 gap-4">
@@ -458,10 +353,10 @@ export default function CreatorDashboardHome() {
             </div>
             {dishes.length > 0 && (
               <button
-                onClick={() => setShowSubmit(v => !v)}
+                onClick={() => { window.location.href = '/creators/dashboard/promotions' }}
                 className="text-[11px] font-semibold text-grubano-primary hover:underline flex items-center gap-1"
               >
-                <Upload size={11} /> {t('dishSubmitCta')}
+                <Upload size={11} /> {t('manageRecipesCta')}
               </button>
             )}
           </div>
@@ -473,8 +368,8 @@ export default function CreatorDashboardHome() {
               title={t('dishesEmpty')}
               description={t('dishesEmptyDesc')}
               action={
-                <Button variant="primary" size="sm" onClick={() => setShowSubmit(true)}>
-                  {t('dishSubmitCta')}
+                <Button variant="primary" size="sm" onClick={() => { window.location.href = '/creators/dashboard/promotions' }}>
+                  {t('manageRecipesCta')}
                 </Button>
               }
             />

@@ -1,50 +1,154 @@
 'use client'
 
 /**
- * Mes recettes — Robinet A (taux réel AdoptionConfig — jamais en dur)
- * Fetches /api/creators/home (read-only) and shows the creator's dishes
- * with real adoption counts, earnings, and per-adopter accordion.
+ * Mes recettes — THE RECIPE EDITOR (Mission 3 Creator Studio).
+ *
+ * Full lifecycle in one place: draft → (submit) → pending → auto-vetting →
+ * approved | rejected ; archived = retrait réversible. Data source:
+ *   /api/creators/home      → roles gate (M2) + real adoption rate + KPIs
+ *   /api/creators/my-dishes → ALL statuses + per-dish R1-R4 flags
+ *     { hasActiveAdoption, hasAnyHistory, adoptionsCount, salesCount }
+ *   → the UI decides what to allow WITHOUT guessing (the server re-enforces).
+ *
+ * Actions per state:
+ *   Modifier (drawer/modal, same form as creation) — content disabled when an
+ *   adoption is active (R3, photo always editable) · Soumettre (draft/
+ *   rejected/legacy-pending) · Archiver (history) / Supprimer (pristine,
+ *   confirm) · Restaurer (archived).
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
-  ChefHat, Upload, CheckCircle2, Clock,
-  ChevronDown, ChevronUp, Store,
+  ChefHat, Plus, CheckCircle2, Clock, Store, Pencil, Send, Archive,
+  Trash2, RotateCcw, Loader2, Lock, FileEdit,
 } from 'lucide-react'
+import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
+import FoodImage from '@/components/eat/FoodImage'
+import { getFoodImage, inferCategory } from '@/lib/food-images'
+import DishEditorModal, { type EditableDish } from '@/components/creators/DishEditorModal'
+import type { CreatorHomeData } from '@/app/api/creators/home/route'
+import type { MyDish } from '@/app/api/creators/my-dishes/route'
 
-// locale-aware currency formatter (2 dec, fr-FR like the rest of the portal)
 function fmt(n: number) {
   return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
-import { Link } from '@/navigation'
-import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
-import type { CreatorHomeData, CreatorHomeDish, DishAdopter } from '@/app/api/creators/home/route'
 
 export default function CreatorRecipesPage() {
   const t  = useTranslations('creators.home')
   const tr = useTranslations('creators.recipes')
   const tn = useTranslations('creators.rolesGate')
+  const te = useTranslations('creators.editor')
 
-  const [data,       setData]       = useState<CreatorHomeData | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [home,    setHome]    = useState<CreatorHomeData | null>(null)
+  const [dishes,  setDishes]  = useState<MyDish[]>([])
+  const [loading, setLoading] = useState(true)
+  // Editor + per-dish action state.
+  const [editing,   setEditing]   = useState<EditableDish | null | 'new'>(null)
+  const [confirmDel, setConfirmDel] = useState<MyDish | null>(null)
+  const [actingId,  setActingId]  = useState<string | null>(null)
+  const [toast,     setToast]     = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null)
 
-  useEffect(() => {
-    fetch('/api/creators/home')
-      .then(r => r.json())
-      .then(d => setData(d))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+  const load = useCallback(async () => {
+    try {
+      const [homeRes, dishesRes] = await Promise.all([
+        fetch('/api/creators/home',      { cache: 'no-store' }),
+        fetch('/api/creators/my-dishes', { cache: 'no-store' }),
+      ])
+      if (homeRes.ok)   setHome(await homeRes.json())
+      if (dishesRes.ok) {
+        const d = await dishesRes.json()
+        setDishes(Array.isArray(d?.dishes) ? d.dishes : [])
+      }
+    } catch { /* shells below */ } finally {
+      setLoading(false)
+    }
   }, [])
 
-  // ── Status badge ───────────────────────────────────────────────────────────
+  useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(id)
+  }, [toast])
+
+  // ── Verdict → toast (after a submission ran) ────────────────────────────────
+  function verdictToast(verdict?: string, reason?: string) {
+    if (verdict === 'approved')      setToast({ kind: 'ok',   text: te('toastApproved') })
+    else if (verdict === 'rejected') setToast({ kind: 'err',  text: reason ? te('toastRejectedReason', { reason }) : te('toastRejected') })
+    else if (verdict === 'pending')  setToast({ kind: 'warn', text: te('toastInReview') })
+    else                             setToast({ kind: 'ok',   text: te('toastSaved') })
+  }
+
+  // ── Per-dish actions ─────────────────────────────────────────────────────────
+  async function submitDish(d: MyDish) {
+    if (actingId) return
+    setActingId(d.id)
+    try {
+      const r = await fetch(`/api/creators/dishes/${d.id}/submit`, { method: 'POST' })
+      const body = await r.json().catch(() => null)
+      if (!r.ok) { setToast({ kind: 'err', text: (body?.error as string) || te('errGeneric') }); return }
+      verdictToast(body?.verdict as string, body?.reason as string)
+      await load()
+    } catch { setToast({ kind: 'err', text: te('errGeneric') }) } finally { setActingId(null) }
+  }
+
+  async function deleteDish(d: MyDish) {
+    if (actingId) return
+    setActingId(d.id)
+    try {
+      const r = await fetch(`/api/creators/dishes/${d.id}`, { method: 'DELETE' })
+      const body = await r.json().catch(() => null)
+      if (!r.ok) { setToast({ kind: 'err', text: (body?.error as string) || te('errGeneric') }); return }
+      setToast({ kind: 'ok', text: body?.deleted ? te('toastDeleted') : te('toastArchived') })
+      setConfirmDel(null)
+      await load()
+    } catch { setToast({ kind: 'err', text: te('errGeneric') }) } finally { setActingId(null) }
+  }
+
+  async function restoreDish(d: MyDish) {
+    if (actingId) return
+    setActingId(d.id)
+    try {
+      const r = await fetch(`/api/creators/dishes/${d.id}/restore`, { method: 'POST' })
+      const body = await r.json().catch(() => null)
+      if (!r.ok) { setToast({ kind: 'err', text: (body?.error as string) || te('errGeneric') }); return }
+      setToast({ kind: 'ok', text: te('toastRestored') })
+      await load()
+    } catch { setToast({ kind: 'err', text: te('errGeneric') }) } finally { setActingId(null) }
+  }
+
+  // ── Status badge (5 states) ─────────────────────────────────────────────────
   function StatusBadge({ status }: { status: string }) {
     if (status === 'approved' || status === 'live')
       return <Badge tone="success" size="sm" icon={<CheckCircle2 size={9} />}>{t('dishStatusActive')}</Badge>
     if (status === 'pending')
-      return <Badge tone="warning" size="sm" icon={<Clock size={9} />}>{t('dishStatusPending')}</Badge>
+      return <Badge tone="warning" size="sm" icon={<Clock size={9} />}>{te('statusInReview')}</Badge>
+    if (status === 'draft')
+      return <Badge size="sm" icon={<FileEdit size={9} />}>{te('statusDraft')}</Badge>
+    if (status === 'archived')
+      return <Badge size="sm" icon={<Archive size={9} />}>{te('statusArchived')}</Badge>
     return <Badge tone="danger" size="sm">{t('dishStatusRejected')}</Badge>
+  }
+
+  function dishPhoto(d: MyDish): string {
+    return d.photo || getFoodImage(inferCategory(d.cuisineType || d.name), d.id)
+  }
+
+  function toEditable(d: MyDish): EditableDish {
+    return {
+      id:                d.id,
+      name:              d.name,
+      description:       d.description ?? '',
+      ingredients:       d.ingredients,
+      cuisineType:       d.cuisineType,
+      suggestedPrice:    d.suggestedPrice,
+      photo:             d.photo,
+      status:            d.status,
+      hasActiveAdoption: d.hasActiveAdoption,
+      adoptionsCount:    d.adoptionsCount,
+    }
   }
 
   if (loading) {
@@ -55,10 +159,8 @@ export default function CreatorRecipesPage() {
     )
   }
 
-  const dishes = (data?.dishes ?? []) as CreatorHomeDish[]
-
   // Mission 2 - chef role disabled -> clean gate + one-tap re-enable.
-  if (data?.roles && data.roles.isChef === false) {
+  if (home?.roles && home.roles.isChef === false) {
     return (
       <div className="px-4 pt-12 max-w-2xl mx-auto">
         <EmptyState
@@ -91,25 +193,36 @@ export default function CreatorRecipesPage() {
   return (
     <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto space-y-5">
 
+      {/* Verdict / action toast */}
+      {toast && (
+        <p className={`rounded-grubano-lg px-3 py-2.5 text-[12px] font-semibold ${
+          toast.kind === 'ok' ? 'bg-grubano-success-tint text-grubano-success'
+          : toast.kind === 'warn' ? 'bg-grubano-warning-tint text-grubano-warning'
+          : 'bg-grubano-danger-tint text-grubano-danger'
+        }`}>
+          {toast.text}
+        </p>
+      )}
+
       {/* ── Hero header ──────────────────────────────────────────────────── */}
       <div className="rounded-grubano-xl bg-gradient-to-br from-grubano-primary to-grubano-primary/70 p-5 text-white">
         <div className="flex items-center gap-2 mb-2">
           <ChefHat size={20} />
           <h1 className="text-lg font-display font-bold leading-tight">{tr('title')}</h1>
           <span className="ml-auto rounded-grubano-pill bg-white/20 px-2.5 py-0.5 text-xs font-bold shrink-0">
-            {tr('badge', { pct: Math.round((data?.adoptionCommissionPct ?? 0.02) * 100) })}
+            {tr('badge', { pct: Math.round((home?.adoptionCommissionPct ?? 0.02) * 100) })}
           </span>
         </div>
         <p className="text-sm opacity-90 leading-relaxed">{tr('subtitle')}</p>
       </div>
 
-      {/* ── KPI strip ────────────────────────────────────────────────────── */}
-      {data && (
+      {/* ── KPI strip (kept) ─────────────────────────────────────────────── */}
+      {home && (
         <div className="grid grid-cols-3 gap-2">
           {([
-            { label: tr('kpiEarnings'),  value: `€${(data.dishEarningsTotal  ?? 0).toFixed(2)}` },
-            { label: tr('kpiAdoptions'), value: String(data.dishAdoptionsTotal ?? 0) },
-            { label: tr('kpiSales'),     value: String(data.dishSalesTotal     ?? 0) },
+            { label: tr('kpiEarnings'),  value: `€${(home.dishEarningsTotal  ?? 0).toFixed(2)}` },
+            { label: tr('kpiAdoptions'), value: String(home.dishAdoptionsTotal ?? 0) },
+            { label: tr('kpiSales'),     value: String(home.dishSalesTotal     ?? 0) },
           ] as const).map(({ label, value }) => (
             <Card key={label} elevation="sm" padding="sm">
               <p className="text-sm font-bold text-grubano-primary">{value}</p>
@@ -119,120 +232,137 @@ export default function CreatorRecipesPage() {
         </div>
       )}
 
-      {/* ── Dish list ────────────────────────────────────────────────────── */}
-      <Card elevation="sm" padding="md">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold flex items-center gap-1.5">
-            <ChefHat size={14} className="text-grubano-primary" />
-            {t('dishesTitle')}
-          </h2>
-          <Link href="/creators/dashboard">
-            <Button variant="ghost" size="sm" leftIcon={<Upload size={11} />}>
-              {t('dishSubmitCta')}
-            </Button>
-          </Link>
-        </div>
+      {/* ── The editor list ──────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-bold flex items-center gap-1.5">
+          <ChefHat size={14} className="text-grubano-primary" />
+          {t('dishesTitle')}
+        </h2>
+        <Button variant="primary" size="sm" leftIcon={<Plus size={12} />} onClick={() => setEditing('new')}>
+          {te('newRecipe')}
+        </Button>
+      </div>
 
-        {dishes.length === 0 ? (
+      {dishes.length === 0 ? (
+        <Card elevation="sm" padding="lg">
           <EmptyState
             compact
             emoji={<ChefHat size={24} />}
             title={t('dishesEmpty')}
             description={t('dishesEmptyDesc')}
             action={
-              <Link href="/creators/dashboard">
-                <Button variant="primary" size="sm">{t('dishSubmitCta')}</Button>
-              </Link>
+              <Button variant="primary" size="sm" leftIcon={<Plus size={12} />} onClick={() => setEditing('new')}>
+                {te('newRecipe')}
+              </Button>
             }
           />
-        ) : (
-          <div className="space-y-0">
-            {dishes.map(dish => {
-              const isExpanded  = expandedId === dish.id
-              const hasAdopters = dish.adopters.length > 0
-              return (
-                <div key={dish.id} className="border-b border-grubano-border last:border-0">
-                  {/* Dish row */}
-                  <button
-                    onClick={() => hasAdopters && setExpandedId(isExpanded ? null : dish.id)}
-                    className={[
-                      'w-full flex items-center justify-between py-2 text-left',
-                      hasAdopters ? 'cursor-pointer' : 'cursor-default',
-                    ].join(' ')}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold truncate">{dish.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        <StatusBadge status={dish.status} />
-                        {dish.adoptions > 0 && (
-                          <span className="text-[10px] text-grubano-ink-muted flex items-center gap-0.5">
-                            <Store size={9} />
-                            {t('dishAdoptions', { count: dish.adoptions })}
-                          </span>
-                        )}
-                      </div>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {dishes.map((d) => {
+            const acting = actingId === d.id
+            return (
+              <Card key={d.id} elevation="sm" padding="md">
+                <div className="flex items-start gap-3">
+                  <FoodImage name={d.name} src={dishPhoto(d)} className="h-16 w-16 shrink-0 rounded-grubano-lg" glyphClassName="text-xl" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-sm font-bold text-grubano-ink">{d.name}</p>
+                      <StatusBadge status={d.status} />
                     </div>
-                    <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                      <div
-                        className="text-right"
-                        title={`Généré €${fmt(dish.earnings)} · Commission Grubano −€${fmt(dish.grubanoFee ?? 0)} · Net €${fmt(dish.earningsNet ?? dish.earnings)}`}
-                      >
-                        <p className="text-[9px] text-grubano-ink-faint uppercase tracking-wide leading-none mb-0.5">
-                          {t('dishNetLabel')}
-                        </p>
-                        <p className="text-xs font-bold text-grubano-success">€{fmt(dish.earningsNet ?? dish.earnings)}</p>
-                        <p className="text-[10px] text-grubano-ink-muted">{t('dishSales', { count: dish.totalSales })}</p>
-                      </div>
-                      {hasAdopters && (
-                        isExpanded
-                          ? <ChevronUp  size={12} className="text-grubano-ink-muted" />
-                          : <ChevronDown size={12} className="text-grubano-ink-muted" />
-                      )}
-                    </div>
-                  </button>
+                    <p className="mt-0.5 text-[11px] text-grubano-ink-muted">
+                      €{fmt(d.suggestedPrice)} · {te('counters', { restos: d.adoptionsCount, sales: d.salesCount })}
+                    </p>
+                    {/* R3 — explanatory line when the content is locked. */}
+                    {d.hasActiveAdoption && (
+                      <p className="mt-1 flex items-start gap-1 text-[10px] text-grubano-warning">
+                        <Lock size={10} className="mt-0.5 shrink-0" />
+                        {te('lockedLine', { count: d.adoptions })}
+                      </p>
+                    )}
+                    {d.earningsNet > 0 && (
+                      <p className="mt-0.5 text-[11px] font-bold text-grubano-success">
+                        {t('dishNetLabel')} €{fmt(d.earningsNet)}
+                      </p>
+                    )}
+                  </div>
+                </div>
 
-                  {/* Adopters accordion */}
-                  {isExpanded && (
-                    <div className="pb-2 space-y-1.5">
-                      {dish.adopters.map((adopter: DishAdopter) => {
-                        const sinceDate = new Date(adopter.adoptedAt)
-                          .toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-                        return (
-                          <div
-                            key={adopter.adoptionId}
-                            className="flex items-center justify-between rounded-grubano-md bg-grubano-bg px-2.5 py-1.5"
-                          >
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="text-sm shrink-0">{adopter.brandEmoji}</span>
-                              <div className="min-w-0">
-                                <p className="text-[11px] font-semibold truncate">{adopter.brandName}</p>
-                                <p className="text-[10px] text-grubano-ink-muted">
-                                  {t('dishAdopterSince', { date: sinceDate })}
-                                  {' · '}€{adopter.sellingPrice.toFixed(2)}
-                                </p>
-                              </div>
-                            </div>
-                            {adopter.commitmentMet ? (
-                              <span className="ml-2 shrink-0 flex items-center gap-0.5 rounded-grubano-pill bg-grubano-success/10 px-2 py-0.5 text-[9px] font-semibold text-grubano-success">
-                                <CheckCircle2 size={9} />
-                                {t('dishAdopterCommitmentMet')}
-                              </span>
-                            ) : (
-                              <span className="ml-2 shrink-0 rounded-grubano-pill bg-grubano-bg border border-grubano-border px-2 py-0.5 text-[9px] font-medium text-grubano-ink-muted">
-                                {t('dishAdopterDaysLeft', { days: adopter.daysRemaining })}
-                              </span>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
+                {/* ── Actions by state ─────────────────────────────────── */}
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-grubano-border pt-2.5">
+                  {d.status !== 'archived' && (
+                    <Button variant="secondary" size="sm" leftIcon={<Pencil size={11} />}
+                      onClick={() => setEditing(toEditable(d))}>
+                      {te('actionEdit')}
+                    </Button>
+                  )}
+                  {(d.status === 'draft' || d.status === 'rejected' || d.status === 'pending') && (
+                    <Button variant="primary" size="sm" leftIcon={acting ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                      disabled={acting} onClick={() => submitDish(d)}>
+                      {te('actionSubmit')}
+                    </Button>
+                  )}
+                  {d.status === 'archived' ? (
+                    <Button variant="secondary" size="sm" leftIcon={acting ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                      disabled={acting} onClick={() => restoreDish(d)}>
+                      {te('actionRestore')}
+                    </Button>
+                  ) : d.hasAnyHistory ? (
+                    <Button variant="ghost" size="sm" leftIcon={acting ? <Loader2 size={11} className="animate-spin" /> : <Archive size={11} />}
+                      disabled={acting} onClick={() => deleteDish(d)}>
+                      {te('actionArchive')}
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="sm" leftIcon={<Trash2 size={11} />}
+                      disabled={acting} onClick={() => setConfirmDel(d)}>
+                      {te('actionDelete')}
+                    </Button>
                   )}
                 </div>
-              )
-            })}
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Editor modal (create + edit) ─────────────────────────────────── */}
+      {editing !== null && (
+        <DishEditorModal
+          dish={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={({ verdict, reason }) => {
+            setEditing(null)
+            verdictToast(verdict, reason)
+            load()
+          }}
+        />
+      )}
+
+      {/* ── Delete confirm (pristine recipes only — real deletion) ───────── */}
+      {confirmDel && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-md rounded-t-3xl bg-white p-5 sm:rounded-2xl">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-grubano-danger-tint text-grubano-danger">
+                <Trash2 size={15} />
+              </span>
+              <p className="text-base font-bold text-grubano-ink">{te('deleteTitle')}</p>
+            </div>
+            <p className="text-sm text-grubano-ink-muted">
+              {te('deleteBody', { name: confirmDel.name })}
+            </p>
+            <div className="mt-4 flex gap-2">
+              <Button variant="secondary" size="md" onClick={() => setConfirmDel(null)}>
+                {te('deleteCancel')}
+              </Button>
+              <Button variant="danger" size="md" className="flex-1"
+                loading={actingId === confirmDel.id} onClick={() => deleteDish(confirmDel)}>
+                {te('deleteConfirm')}
+              </Button>
+            </div>
           </div>
-        )}
-      </Card>
+        </div>
+      )}
     </div>
   )
 }
