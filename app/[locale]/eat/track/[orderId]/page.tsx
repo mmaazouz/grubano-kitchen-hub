@@ -186,6 +186,50 @@ export default function OrderTrackingScreen() {
   const isPickup = order.fulfillmentType === 'pickup'
   const isCancelled = order.status === 'cancelled'
 
+  // ── Ghost-orders fix: the CUSTOMER sees their order from checkout on (it is
+  // THEIR order) — but while the card payment isn't server-confirmed the rest
+  // of the tracking timeline makes no sense. Clean dedicated states:
+  //   awaiting_payment → "finish your payment" + CTA back to the checkout;
+  //   expired          → abandoned > 24 h, the order will not be prepared.
+  if (order.status === 'awaiting_payment' || order.status === 'expired') {
+    const awaiting = order.status === 'awaiting_payment'
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="flex items-center border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
+          <button onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5f5f5] active:scale-90">
+            <ArrowLeft size={20} className="text-[#1a1a1a]" />
+          </button>
+          <h1 className="flex-1 text-center font-sans text-[18px] font-extrabold text-[#1a1a1a]">{t('title')}</h1>
+          <div className="w-10" />
+        </div>
+        <div className="px-5 pt-6">
+          <div className={`rounded-2xl p-5 text-center ${awaiting ? 'bg-[#FFF7F3]' : 'bg-[#f5f5f5]'}`}>
+            <div className="text-4xl">{awaiting ? '💳' : '⌛'}</div>
+            <p className="mt-2 text-[20px] font-extrabold text-[#1a1a1a]">
+              {awaiting ? t('awaitingTitle') : t('expiredTitle')}
+            </p>
+            <p className="mt-1 text-[13px] text-[#888]">
+              {awaiting ? t('awaitingDesc') : t('expiredDesc')}
+            </p>
+            {awaiting && (
+              <button
+                onClick={() => router.push(`/eat/checkout/${order.id}`)}
+                className="mt-4 rounded-full bg-[#F97316] px-6 py-3 text-sm font-bold text-white active:scale-95"
+              >
+                {t('awaitingCta')}
+              </button>
+            )}
+          </div>
+          <div className="mt-6">
+            <Button variant="primary" size="pill" fullWidth onClick={() => router.push('/eat')}>
+              {t('backHome')}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // ── Shared header ──────────────────────────────────────────────────────────
   const Header = (
     <div className="flex items-center border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
