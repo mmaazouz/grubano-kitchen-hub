@@ -7,6 +7,7 @@ import {
   cancelIntent, type ConnectRouting,
 } from '@/lib/stripe'
 import { computeApplicationFee, resolveCommissionRate, type CommissionChannel } from '@/lib/commission'
+import { commissionBaseCents, commissionBaseMode } from '@/lib/promotions'
 
 // ── POST /api/orders/[id]/pay ─────────────────────────────────────────────────
 // Chantier checkout C1 (décision C0: pickup AND delivery are paid IMMEDIATELY at
@@ -75,10 +76,15 @@ export async function POST(
       return NextResponse.json({ error: 'Montant trop faible pour un paiement carte.' }, { status: 400 })
     }
 
-    // ── Commission (C0 + B0) ────────────────────────────────────────────────────
-    // Base = PRODUCT subtotal only. The welcome discount (derivable: subtotal +
-    // deliveryFee − total, clamped ≥ 0) is financed by Grubano: it is deducted
-    // from OUR commission, floored at 0 — the resto's net never funds it.
+    // ── Commission (C0 + P1 doctrine D1/D2) ─────────────────────────────────────
+    // Base = the PRODUCT subtotal minus the order's discount (derivable:
+    // subtotal + deliveryFee − total, clamped ≥ 0) when COMMISSION_BASE is
+    // 'discounted' (default — the commission is computed on what was PAID), or
+    // the list subtotal when 'list'. D1: the resto finances its promo — the
+    // discount shrinks the commission BASE, it is never deducted from the fee
+    // itself (the former welcome-financing deduction is retired with D6: the
+    // welcome discount is OFF; if it is ever reactivated, its Grubano-financing
+    // needs a fresh spec).
     const channel: CommissionChannel =
       order.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
     const restaurant = await prisma.restaurant.findUnique({
@@ -93,9 +99,9 @@ export async function POST(
     const discountCents = Math.max(
       0, subtotalCents + eurosToCents(order.deliveryFee) - amountCents,
     )
+    const baseCents = commissionBaseCents(subtotalCents, discountCents, commissionBaseMode())
     const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
-    const baseFee  = routed ? computeApplicationFee(restaurant!, channel, subtotalCents) : 0
-    const feeCents = Math.max(0, baseFee - discountCents)
+    const feeCents = routed ? computeApplicationFee(restaurant!, channel, baseCents) : 0
     const rate     = routed ? resolveCommissionRate(restaurant!, channel) : 0
     const connect: ConnectRouting | undefined =
       routed ? { destination: restaurant!.stripeAccountId!, applicationFeeCents: feeCents } : undefined

@@ -3,6 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
 import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
+import { fetchActivePromotions, pickBestPromotion } from '@/lib/promotions'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -181,8 +182,44 @@ export async function POST(req: NextRequest) {
       console.error('[POST /api/orders] referral resolution failed (order proceeds normally):', refErr)
     }
 
-    // Apply the welcome discount to the paid total (clamped ≥ 0).
-    const total        = Math.max(0, round2(subtotal + effectiveDeliveryFee - ref.discount))
+    // ── Promotions restaurateur (P1) — SERVER-resolved, D4 ─────────────────────
+    // The brand's active promos are fetched and the BEST one applies (D5). The
+    // client never sends a discount — anything client-side is ignored. D6 guard:
+    // the referral welcome discount is OFF (0); if it ever fires, the promo is
+    // skipped — there is NO stacking, ever. Best-effort: a promo hiccup never
+    // blocks checkout (no discount, normal order).
+    const promo = { id: null as string | null, discountEur: 0 }
+    if (ref.discount === 0) {
+      try {
+        const active = await fetchActivePromotions(data.restaurantId)
+        if (active.length > 0) {
+          // Composite cart line ids (`dishId::sig`) reduce to the RAW MenuItem id
+          // (same reduction the DishSale block applies — duplicated here because
+          // that block's helper is scoped inside it and the block is frozen).
+          const rawLines = data.items.map((item) => {
+            const parent = item.options?.[0]?.parentDishId
+            const rawId = typeof parent === 'string' && parent.length > 0
+              ? parent
+              : item.itemId.split('::')[0]
+            return { rawId, price: item.price, qty: item.qty }
+          })
+          const best = pickBestPromotion(active, {
+            items:   rawLines,
+            channel: data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery',
+          })
+          if (best) {
+            promo.id          = best.promotionId
+            promo.discountEur = best.discountEur
+          }
+        }
+      } catch (promoErr) {
+        console.error('[POST /api/orders] promotion resolution failed (order proceeds at full price):', promoErr)
+      }
+    }
+
+    // Apply the discounts to the paid total (clamped ≥ 0). D1: the promo is the
+    // RESTO's — the customer pays the discounted price, the resto's net absorbs it.
+    const total        = Math.max(0, round2(subtotal + effectiveDeliveryFee - ref.discount - promo.discountEur))
     // Points: 1 point per euro actually spent (rounded down).
     const pointsEarned = Math.floor(total)
 
@@ -215,6 +252,23 @@ export async function POST(req: NextRequest) {
         estimatedTime: dispatch.estimatedTime,
       },
     })
+
+    // ── Promotion trace (P1) — BEST-EFFORT + COLUMN-TOLERANT ───────────────────
+    // The applied promo (id + EUR amount) is written in a SEPARATE update so a
+    // deployment that precedes the db push (Order.promotionId/discount columns
+    // not in MySQL yet) logs and moves on — the order is already correct (the
+    // discount is baked into `total` above), only the trace is missing.
+    if (promo.id || promo.discountEur > 0 || ref.discount > 0) {
+      try {
+        await prisma.order.update({
+          where: { id: order.id },
+          data:  { promotionId: promo.id, discount: round2(ref.discount + promo.discountEur) },
+        })
+      } catch (traceErr) {
+        console.error('[POST /api/orders] promotion trace write failed (column missing pre-db-push? order stays valid):',
+          traceErr instanceof Error ? traceErr.message : traceErr)
+      }
+    }
 
     // ── Adopted-dish sales (brique 5C) ─────────────────────────────────────────
     // For every ordered line whose MenuItem is tied to an ACTIVE DishAdoption,
@@ -416,7 +470,8 @@ export async function POST(req: NextRequest) {
         trackingUrl:       dispatch.trackingUrl,
         total:             updated.total,
         pointsEarned,
-        discount:          ref.discount, // 5B: welcome discount applied (0 if none)
+        // Total discount applied (welcome OR promo — never both, D6 guard).
+        discount:          round2(ref.discount + promo.discountEur),
       },
       { status: 201 },
     )

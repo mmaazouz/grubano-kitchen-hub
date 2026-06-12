@@ -27,6 +27,8 @@ const { db } = vi.hoisted(() => ({
     referralOrder:  { findUnique: vi.fn(), create: vi.fn() },
     // order.count powers the B0 new-customer check (0 prior orders = first).
     order:          { create: vi.fn(), update: vi.fn(), count: vi.fn() },
+    // P1: the checkout resolves the brand's active promotions (none by default).
+    promotion:      { findMany: vi.fn() },
     dishAdoption:   { findMany: vi.fn() },
     dishSale:       { findFirst: vi.fn(), createMany: vi.fn() },
     creatorDish:    { update: vi.fn() },
@@ -85,6 +87,7 @@ beforeEach(() => {
   db.order.create.mockResolvedValue({ id: 'order1' })
   db.order.update.mockResolvedValue({ id: 'order1', total: 0, status: 'received' })
   db.order.count.mockResolvedValue(0)                        // first Grubano order by default
+  db.promotion.findMany.mockResolvedValue([])                // no active promo by default (P1)
   db.dishAdoption.findMany.mockResolvedValue([])
 })
 
