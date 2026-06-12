@@ -24,7 +24,8 @@ const ALLOWED_ROLES = ['restaurant', 'admin'] as const
 const CONFIG_DEFAULTS = {
   minCommitmentDays:    60,
   successThresholdEur:  300,
-  creatorCommissionPct: 0.04,
+  // fallback doctrine B0 — la config en base fait foi (creatorCommissionPctReferred).
+  creatorCommissionPct: 0.02,
   grubanoCutPct:        0.20,
 }
 
@@ -176,8 +177,9 @@ export async function POST(req: Request) {
         select: { email: true, name: true },
       })
       if (creator?.email) {
+        // fallback doctrine B0 — la config en base fait foi ; le champ legacy
+        // creatorCommissionPct n'est plus lu (hygiène pré-live).
         const royaltyPct = config?.creatorCommissionPctReferred
-          ?? config?.creatorCommissionPct
           ?? CONFIG_DEFAULTS.creatorCommissionPct
         await sendDishAdoptedToCreator({
           to:             creator.email,

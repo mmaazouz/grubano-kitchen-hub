@@ -1059,9 +1059,9 @@ model AdoptionConfig {
   id                   String   @id @default(cuid())
   minCommitmentDays    Int      @default(60)
   successThresholdEur  Float    @default(300)
-  // LEGACY single rate — kept for backward compatibility with any reader that
-  // still references it. The checkout (levier 1) now picks one of the two rates
-  // below depending on the traffic source.
+  // LEGACY, NON LU (hygiène pré-live) — plus aucun lecteur dans le code ;
+  // conservé au schema (migration destructive interdite). La config vivante est
+  // creatorCommissionPctReferred/Organic ci-dessous.
   creatorCommissionPct Float    @default(0.04)
   // ── B0 (11 June 2026): adopted-recipe royalty = FLAT 2 % of the dish price,
   // paid FROM Grubano's share (no Grubano cut on it, no two-tier traffic split).
