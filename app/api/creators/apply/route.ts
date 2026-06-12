@@ -18,6 +18,15 @@ const applySchema = z.object({
   youtube:      z.string().optional(),
   followers:    z.number().int().min(0).default(0),
   dishConcepts: z.array(dishConceptSchema).min(1).max(3),
+  // Mission 2 — role choice (chef/influencer, cumulable, both default true).
+  // VALIDATED here for contract clarity; the durable storage point is the
+  // Creator upsert at VERIFY time (the wizard forwards the same choice there —
+  // the application row stays untouched: zero extra migration, the vetting
+  // JSON unpolluted). Noted in the mission report.
+  roles: z.object({
+    chef:       z.boolean().default(true),
+    influencer: z.boolean().default(true),
+  }).optional(),
 })
 
 export async function POST(req: Request) {

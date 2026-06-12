@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { readCreatorRoles, DEFAULT_ROLES, type CreatorRoles } from '@/lib/creator-roles'
 
 // ── Types returned to the client ──────────────────────────────────────────────
 
@@ -85,6 +86,12 @@ export type CreatorHomeData = {
   // days stamped with this creator's chefSlug (page visit → purchase). Pure
   // VOLUME — 0 when the column isn't migrated yet (silent degrade).
   pageSales30d:         number
+  // ── Role split (Mission 2) — drives the studio's conditional UI. Tolerant
+  // read: columns not migrated yet → both true (deploy-time default).
+  roles:                CreatorRoles
+  // Real adoption rate (AdoptionConfig.creatorCommissionPctReferred, fraction
+  // e.g. 0.02) — kills the hardcoded « 4% » badges (point dur E).
+  adoptionCommissionPct: number
 }
 
 export async function GET() {
@@ -148,6 +155,8 @@ export async function GET() {
         recipeNet30d:         0,
         referralEarnings30d:  0,
         pageSales30d:         0,
+        roles:                { ...DEFAULT_ROLES },
+        adoptionCommissionPct: 0.02,
       } satisfies CreatorHomeData)
     }
 
@@ -280,6 +289,22 @@ export async function GET() {
       followers:        creator.followers,
     }
 
+    // ── Role flags (Mission 2) — tolerant read, both true pre-migration ──────
+    const roles = await readCreatorRoles(creator.id)
+
+    // ── Real adoption rate (point dur E) — tolerant, default 0.02 (B0) ───────
+    let adoptionCommissionPct = 0.02
+    try {
+      const adoptionCfg = await prisma.adoptionConfig.findFirst({
+        where:   { active: true },
+        orderBy: { createdAt: 'desc' },
+        select:  { creatorCommissionPctReferred: true },
+      })
+      if (typeof adoptionCfg?.creatorCommissionPctReferred === 'number') {
+        adoptionCommissionPct = adoptionCfg.creatorCommissionPctReferred
+      }
+    } catch { /* keep the B0 default */ }
+
     // ── Chef contribution stat (Mission 1) — BEST-EFFORT, volume only ────────
     // Survives the pre-db-push window: a missing Order.chefSlug column throws
     // → silent 0, the rest of the payload is unaffected.
@@ -313,6 +338,8 @@ export async function GET() {
       recipeNet30d:        Number((dishEarningsNow - dishGrubanoFeeNow).toFixed(2)),
       referralEarnings30d: Number(refEarningsNow.toFixed(2)),
       pageSales30d,
+      roles,
+      adoptionCommissionPct,
     } satisfies CreatorHomeData)
   } catch (err) {
     console.error('[GET /api/creators/home]', err)

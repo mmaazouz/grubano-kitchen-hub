@@ -92,6 +92,8 @@ async function finalize(
   followers:      number,
   reason:         string,
   subscriberCount?: number,
+  // Mission 2 — role choice from the wizard (chef/influencer, cumulable).
+  roles: { chef: boolean; influencer: boolean } = { chef: true, influencer: true },
 ) {
   const email    = application.email
   const existing = await prisma.creator.findUnique({ where: { email } })
@@ -122,6 +124,9 @@ async function finalize(
       youtube:          application.youtube,
       followers,
       verified,
+      // Mission 2 — the wizard's role choice (both default true).
+      isChef:       roles.chef,
+      isInfluencer: roles.influencer,
       referralCode,
       referralLinkSlug,
     },
@@ -134,6 +139,11 @@ async function finalize(
       followers,
       // …but never downgrade verified, never clobber an existing code/slug.
       verified:         finalVerified,
+      // Mission 2 — NEVER downgrade an existing role flag to false on
+      // re-verification (same rule as verified); an upgrade (false→true via a
+      // new application) is allowed.
+      isChef:       existing?.isChef       === true ? true : roles.chef,
+      isInfluencer: existing?.isInfluencer === true ? true : roles.influencer,
       referralCode,
       referralLinkSlug,
     },
@@ -154,9 +164,19 @@ async function finalize(
   })
 }
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const id          = params.id
+    // Mission 2 — role choice forwarded by the wizard (the application row is
+    // a transient vetting artifact; the durable truth is the Creator upsert).
+    // Tolerant: missing/invalid body → both roles (compat with old clients);
+    // both false → coerced to both true (the wizard prevents it anyway).
+    const rawBody = await req.json().catch(() => null) as { roles?: { chef?: unknown; influencer?: unknown } } | null
+    let roles = {
+      chef:       rawBody?.roles?.chef       !== false,
+      influencer: rawBody?.roles?.influencer !== false,
+    }
+    if (!roles.chef && !roles.influencer) roles = { chef: true, influencer: true }
     const application = await prisma.creatorApplication.findUnique({ where: { id } })
     if (!application) {
       return NextResponse.json({ ok: false, error: 'Candidature introuvable' }, { status: 404 })
@@ -218,7 +238,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
           `Profil créé ✅. Le badge vérifié s'active dès ` +
           `${MIN_VERIFIED_SUBS.toLocaleString('fr-FR')} abonnés ` +
           `(tu en as ${stats.subscriberCount.toLocaleString('fr-FR')}).`
-        return finalize(application, 'flagged', false, stats.subscriberCount, reason, stats.subscriberCount)
+        return finalize(application, 'flagged', false, stats.subscriberCount, reason, stats.subscriberCount, roles)
       }
 
       const verified = vet.verdict === 'pass'
@@ -229,6 +249,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         stats.subscriberCount,
         vet.reason,
         stats.subscriberCount,
+        roles,
       )
     }
 
@@ -241,7 +262,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }
 
     // No channel = no ownership/sub-count proof → never auto-verified, always flagged.
-    return finalize(application, 'flagged', false, application.followers, vet.reason)
+    return finalize(application, 'flagged', false, application.followers, vet.reason, undefined, roles)
   } catch (err) {
     console.error('[POST /api/creators/apply/[id]/verify]', err)
     return NextResponse.json({ ok: false, error: 'Erreur serveur' }, { status: 500 })

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { readCreatorRoles } from '@/lib/creator-roles'
 import { authOptions } from '@/lib/auth'
 import { PAYOUT_THRESHOLD_CENTS } from '@/lib/creator-earnings'
 
@@ -79,7 +80,13 @@ export async function GET(req: Request) {
       }),
     ])
 
-    // Totals per lifecycle status, both pipes summed, in cents.
+    // ── Role flags (Mission 2) — tolerant read, both true pre-migration ──────
+    const roles = await readCreatorRoles(creator.id)
+
+    // Totals per lifecycle status, ACTIVE pipes only (Mission 2: a disabled
+    // role's pipe is excluded from the DISPLAYED totals — its rows stay in DB
+    // untouched, B2b pays from rows, never from this aggregate), in cents.
+    // With the default-true flags this matches the previous both-pipes sum.
     const totals = { pendingCents: 0, maturedCents: 0, paidCents: 0, cancelledCents: 0 }
     const addTo = (status: string, amountCents: number) => {
       if (status === 'pending')        totals.pendingCents   += amountCents
@@ -87,14 +94,16 @@ export async function GET(req: Request) {
       else if (status === 'paid')      totals.paidCents      += amountCents
       else if (status === 'cancelled') totals.cancelledCents += amountCents
     }
-    for (const r of refAll)   addTo(r.status, cents(r.creatorEarning) + cents(r.newCustomerBonus))
-    for (const s of salesAll) addTo(s.status, cents(s.creatorEarning))
+    if (roles.isInfluencer) for (const r of refAll)   addTo(r.status, cents(r.creatorEarning) + cents(r.newCustomerBonus))
+    if (roles.isChef)       for (const s of salesAll) addTo(s.status, cents(s.creatorEarning))
 
     const progressPct = Math.min(
       100, Math.round((totals.maturedCents / PAYOUT_THRESHOLD_CENTS) * 100),
     )
 
     return NextResponse.json({
+      // Mission 2 — drives the studio's conditional sections + share kits.
+      roles,
       code: creator.referralCode,
       // C3-fix (B1-bis report): /ref/<slug> is the REAL tracked-link route — the
       // contract previously fabricated a dead "/r/<slug>" path.

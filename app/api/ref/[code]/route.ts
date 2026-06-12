@@ -39,6 +39,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { readCreatorRoles } from '@/lib/creator-roles'
 import { locales, defaultLocale } from '@/i18n'
 
 const COOKIE_NAME = 'grubano_ref'
@@ -146,6 +147,21 @@ export async function GET(
 
   // 3. Unknown / no canonical referralCode → no attribution, but never block.
   if (!creator || !creator.referralCode) {
+    return redirectRelative(homePath)
+  }
+
+  // 3-bis. ⚠️ FINANCIAL RAIL GATE (Mission 2 Creator Studio — the ONLY change
+  // this mission is allowed to make in this file). The affiliation rail (this
+  // cookie → ReferralOrder 30 %) belongs to the INFLUENCER role. A creator who
+  // explicitly switched their influencer role OFF must not attribute anymore:
+  // NO cookie, but the visitor's journey continues to the target untouched
+  // (soft, same pattern as an unknown slug / as /api/chef-visit).
+  // TOLERANT read (lib/creator-roles): the isInfluencer column not migrated
+  // yet → considered TRUE — with the default-true flags, NOTHING changes at
+  // deploy; this gate only ever bites a creator who opted out.
+  // Cookie / first-touch / whitelist / redirect logic below: INTACT.
+  const roleFlags = await readCreatorRoles(creator.id)
+  if (roleFlags.isInfluencer === false) {
     return redirectRelative(homePath)
   }
 

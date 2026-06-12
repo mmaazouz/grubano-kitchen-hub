@@ -393,6 +393,16 @@ model Creator {
   followers     Int           @default(0)
   verified      Boolean       @default(false)
   totalEarnings Float         @default(0)
+  // ── Role split (Mission 2 Creator Studio, ADDITIVE) ─────────────────────────
+  // Two DISTINCT and CUMULABLE roles (pivot 12 juin):
+  //   isChef       → royalties model (2 % of adopted-recipe sales, /chef page)
+  //   isInfluencer → affiliation model (/ref link, 30 % of Grubano commission)
+  // NOT NULL DEFAULT true → every existing creator keeps BOTH roles at deploy
+  // (zero regression by decision). The separation is expressed by CHOICE
+  // (wizard + self-service toggles). No referralCode is ever destroyed —
+  // masked/disabled by the flag only.
+  isChef        Boolean       @default(true)
+  isInfluencer  Boolean       @default(true)
   // Referral programme — nullable so existing creators keep working until
   // they are granted a code / slug from the back office.
   referralCode     String?    @unique           // e.g. "MARCO20"
