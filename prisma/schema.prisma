@@ -835,6 +835,14 @@ model Order {
   // the Referral expires before this row is touched. The matching
   // ReferralOrder row (if any) is created server-side at order time.
   referralCode    String?
+  // ── Promotions restaurateur (P1, additive) ──────────────────────────────────
+  // The promo APPLIED to this order (server-resolved at checkout, D4 — the
+  // client never sends a discount) and the discount amount in EUR. The resto
+  // finances its promo (D1): the customer pays total = subtotal − discount +
+  // fee, and the commission base follows COMMISSION_BASE (D2). Both written
+  // BEST-EFFORT post-create (column-tolerant until the db push).
+  promotionId     String?
+  discount        Float      @default(0)
   referralOrder   ReferralOrder?
   // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
   // attributed to this order. Nullable list, no impact on existing orders.
@@ -850,6 +858,7 @@ model Order {
 
   @@index([pointOfSaleId])
   @@index([referralCode])
+  @@index([promotionId])
   @@index([chefSlug])
 }
 
