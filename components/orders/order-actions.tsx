@@ -168,7 +168,10 @@ export function OrderStatusActions({
           <Button
             variant="secondary" size="sm" loading={busy} className="ml-auto"
             leftIcon={<PackageCheck size={14} />}
-            onClick={() => advance(order.id, 'picked_up')}
+            // PICKUP has no courier leg: the hand-off COMPLETES the order
+            // (ready → delivered directly, the state machine allows it) — the
+            // 'picked_up' "En route" step never applies to a pickup.
+            onClick={() => advance(order.id, 'delivered')}
           >
             {t('handToCustomer')}
           </Button>

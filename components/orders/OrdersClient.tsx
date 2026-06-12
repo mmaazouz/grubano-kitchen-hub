@@ -409,7 +409,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
             </div>
 
             {/* Timeline */}
-            <StatusTimeline status={detailOrder.status} statusLabel={statusLabel} cancelledLabel={t('detail.cancelled')} label={t('detail.timeline')} />
+            <StatusTimeline status={detailOrder.status} fulfillmentType={detailOrder.fulfillmentType} statusLabel={statusLabel} cancelledLabel={t('detail.cancelled')} label={t('detail.timeline')} />
 
             {/* Customer */}
             <section>
@@ -582,9 +582,10 @@ function FilterChip({
 }
 
 function StatusTimeline({
-  status, statusLabel, cancelledLabel, label,
+  status, fulfillmentType, statusLabel, cancelledLabel, label,
 }: {
   status: string
+  fulfillmentType: string
   statusLabel: (s: string) => string
   cancelledLabel: string
   label: string
@@ -599,12 +600,22 @@ function StatusTimeline({
       </section>
     )
   }
-  const currentIdx = STATUS_FLOW.indexOf(status as (typeof STATUS_FLOW)[number])
+  // PICKUP = 4 steps (no courier leg — "En route" never applies): Reçue →
+  // Préparation → Prête → Livrée/Récupérée. DELIVERY keeps the 5-step flow.
+  // Mirrors the corrected consumer tracking; a legacy pickup order that ended
+  // 'picked_up' indexes onto the terminal step (alias of delivered).
+  const isPickup = fulfillmentType === 'pickup'
+  const flow: readonly string[] = isPickup
+    ? ['received', 'preparing', 'ready', 'delivered']
+    : STATUS_FLOW
+  const currentIdx = isPickup && status === 'picked_up'
+    ? flow.length - 1
+    : flow.indexOf(status)
   return (
     <section>
       <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-grubano-ink-faint">{label}</h3>
       <ol className="flex items-center">
-        {STATUS_FLOW.map((step, i) => {
+        {flow.map((step, i) => {
           const done    = currentIdx >= 0 && i <= currentIdx
           const current = i === currentIdx
           return (
@@ -623,7 +634,7 @@ function StatusTimeline({
                   {statusLabel(step)}
                 </span>
               </div>
-              {i < STATUS_FLOW.length - 1 && (
+              {i < flow.length - 1 && (
                 <span className={'mx-1 h-0.5 flex-1 rounded ' + (i < currentIdx ? 'bg-grubano-primary' : 'bg-grubano-border')} />
               )}
             </li>

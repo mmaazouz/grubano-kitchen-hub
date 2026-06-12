@@ -10,7 +10,9 @@ import { z } from 'zod'
 const TRANSITIONS: Record<string, string[]> = {
   received:  ['preparing', 'cancelled'],
   preparing: ['ready',     'cancelled'],
-  ready:     ['picked_up', 'cancelled'],
+  // ready → delivered DIRECTLY = the PICKUP hand-off (no courier leg, the
+  // "picked_up / En route" step never applies to a pickup — ghost-orders 2.4).
+  ready:     ['picked_up', 'delivered', 'cancelled'],
   picked_up: ['delivered'],
   delivered: [],
   cancelled: [],
