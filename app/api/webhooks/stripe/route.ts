@@ -350,6 +350,23 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
       where: { id: order.id },
       data:  { paymentStatus: 'paid', stripePaymentIntentId: pi.id },
     })
+
+    // Ghost-orders fix — THE server-side reveal: a card order is created as
+    // 'awaiting_payment' (invisible to the resto); the webhook-confirmed payment
+    // flips it to 'received' HERE, and that is the instant it appears in the
+    // resto's Orders screen (never the customer's browser return). Guarded
+    // updateMany = atomic + idempotent: replays match 0 rows, and a status the
+    // kitchen already moved is never overwritten. Best-effort: a failure here
+    // never fails the webhook (paymentStatus above is already the money truth).
+    try {
+      await prisma.order.updateMany({
+        where: { id: order.id, status: 'awaiting_payment' },
+        data:  { status: 'received' },
+      })
+    } catch (e) {
+      console.error('[stripe webhook] order reveal failed', e instanceof Error ? e.message : e)
+    }
+
     return NextResponse.json({ received: true, order: 'paid' })
   } catch (err) {
     console.error('[stripe webhook] order paid handler error:', err instanceof Error ? err.message : err)

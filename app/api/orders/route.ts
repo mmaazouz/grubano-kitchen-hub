@@ -223,6 +223,14 @@ export async function POST(req: NextRequest) {
     // Points: 1 point per euro actually spent (rounded down).
     const pointsEarned = Math.floor(total)
 
+    // Ghost-orders fix: a CARD order must NEVER be visible to the resto before
+    // its payment is SERVER-confirmed (webhook). It is created as
+    // 'awaiting_payment' — the webhook flips it to 'received' at
+    // payment_intent.succeeded, and THAT is when it appears in the resto's
+    // Orders screen. Cash (and the legacy 'wallet' value) has no online payment
+    // → visible at creation, the legitimate current flow.
+    const initialStatus = data.paymentMethod === 'card' ? 'awaiting_payment' : 'received'
+
     // Create order in DB (referralCode stored for reporting; 5B writes follow).
     const order = await prisma.order.create({
       data: {
@@ -237,7 +245,7 @@ export async function POST(req: NextRequest) {
         paymentMethod:   data.paymentMethod,
         pointsEarned,
         referralCode:    ref.code,
-        status:          'received',
+        status:          initialStatus,
       },
     })
 

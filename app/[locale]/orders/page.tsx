@@ -87,11 +87,31 @@ async function loadData(
 
   const restaurantId = restaurant.id
 
+  // Ghost-orders fix — lazy expiry (zero cron, waitlist pattern): a card order
+  // stuck in 'awaiting_payment' for > 24 h is an abandoned checkout → marked
+  // 'expired' in passing since this read renders the resto screen anyway.
+  // Best-effort: a hiccup here never blocks the page.
+  try {
+    await prisma.order.updateMany({
+      where: {
+        restaurantId,
+        status:    'awaiting_payment',
+        createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+      data: { status: 'expired' },
+    })
+  } catch (err) {
+    console.error('[orders page] lazy expiry failed (page proceeds):', err)
+  }
+
   // Last 100 orders for this restaurant + every menu item across its brands
   // (used for brand attribution + the stock-out picker).
+  // Ghost-orders fix: 'awaiting_payment' (card not yet webhook-confirmed) and
+  // 'expired' (abandoned checkout) NEVER reach the resto — neither the list,
+  // nor the active counter, nor any notification derived from this data.
   const [ordersRaw, menuItemsRaw] = await Promise.all([
     prisma.order.findMany({
-      where:   { restaurantId },
+      where:   { restaurantId, status: { notIn: ['awaiting_payment', 'expired'] } },
       orderBy: { createdAt: 'desc' },
       take:    100,
       select: {

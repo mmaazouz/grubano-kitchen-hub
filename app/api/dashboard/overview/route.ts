@@ -185,7 +185,8 @@ export async function GET() {
       where: {
         restaurantId: { in: restaurantIds },
         createdAt:    { gte: windowStart },
-        status:       { not: 'cancelled' },
+        // Ghost-orders fix: unpaid/abandoned card checkouts never count.
+        status:       { notIn: ['cancelled', 'awaiting_payment', 'expired'] },
       },
       select: { subtotal: true, createdAt: true },
     })
