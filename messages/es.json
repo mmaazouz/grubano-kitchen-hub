@@ -446,7 +446,7 @@
     "title": "Creadores",
     "heroLine1": "Crea un plato.",
     "heroLine2": "Véndelo en todas partes.",
-    "heroSubtitle": "Envía tus recetas · Los restaurantes las adoptan · Gana 4% en cada venta",
+    "heroSubtitle": "Envía tus recetas · Los restaurantes las adoptan · Gana {pct}% en cada venta",
     "statActive": "Creadores activos",
     "statCommission": "Comisión",
     "statDishes": "Platos en menú",
@@ -462,8 +462,8 @@
     "how1Desc": "Comparte tu receta, ingredientes y precio sugerido. Nuestro equipo revisa en 48h.",
     "how2Title": "Los restaurantes adoptan",
     "how2Desc": "Tus platos aprobados se ofrecen a las cocinas colaboradoras de toda Francia.",
-    "how3Title": "Gana 4% en cada venta",
-    "how3Desc": "Recibe automáticamente el 4% del precio de venta cada vez que un restaurante vende tu plato.",
+    "how3Title": "Gana {pct}% en cada venta",
+    "how3Desc": "Recibe automáticamente el {pct}% del precio de venta cada vez que un restaurante vende tu plato.",
     "how4Title": "Seguimiento de rendimiento",
     "how4Desc": "Panel en tiempo real: adopciones, ventas, ingresos acumulados.",
     "apply": {
@@ -527,7 +527,6 @@
     },
     "dashboard": {
       "title": "Espacio Creador",
-      "subtitle": "Comisión 4%",
       "verified": "✓ Verificado",
       "kpiEarnings": "Ganancias totales",
       "kpiSales": "Ventas",
@@ -674,7 +673,7 @@
     },
     "recipes": {
       "title": "Mis recetas",
-      "subtitle": "Crea una receta, un restaurante la adopta, ganas el 4% en cada venta mientras esté en el menú.",
+      "subtitle": "Crea una receta, un restaurante la adopta, ganas el {pct}% en cada venta mientras esté en el menú.",
       "badge": "{pct}% / venta",
       "kpiEarnings": "Ganancias de recetas",
       "kpiAdoptions": "Adopciones activas",
@@ -850,7 +849,8 @@
       "costLabel": "Coste estimado / ración (€)",
       "costHint": "Indicativo — alimenta la vista de margen del restaurador.",
       "marginPreview": "Margen bruto estimado ~{pct} % al precio sugerido",
-      "errAllergens": "Los alérgenos son obligatorios — selecciona «Ninguno» si es el caso."
+      "errAllergens": "Los alérgenos son obligatorios — selecciona «Ninguno» si es el caso.",
+      "toastSignature": "Firma: {score}/100"
     },
     "stars": {
       "legend": "Estrellas Grubano — rendimiento medido en ventas reales",
@@ -1035,7 +1035,12 @@
       "pickupTimelineHeader": "Seguimiento del pedido",
       "pickupCurrentStep": "En curso",
       "statusReadyPickup": "Listo para recoger",
-      "statusCollected": "Recogido"
+      "statusCollected": "Recogido",
+      "awaitingTitle": "Pendiente de pago",
+      "awaitingDesc": "Su pedido se enviará al restaurante en cuanto se confirme el pago.",
+      "awaitingCta": "Finalizar el pago",
+      "expiredTitle": "Pedido expirado",
+      "expiredDesc": "El pago no se completó — este pedido no se envió al restaurante. No se cobró nada."
     },
     "account": {
       "title": "Mi Perfil",
@@ -1252,7 +1257,7 @@
       "commitmentNote": "Compromiso mínimo de 60 días · puedes retirar libremente una receta que no despegue.",
       "byCreator": "Por {name}",
       "followers": "{count} seguidores",
-      "benefit": "El creador se lleva el 4 %, tú te quedas con el resto.",
+      "benefit": "El creador se lleva el {pct} %, tú te quedas con el resto.",
       "promotedBy": "Promocionada por un creador · {count} seguidores",
       "priceLabel": "Tu precio de venta (€)",
       "suggestedPriceHint": "Sugerido {price} €",

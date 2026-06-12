@@ -25,9 +25,9 @@ async function getCreatorStats() {
       }).catch(() => null),
     ])
     const pct = adoptionCfg?.creatorCommissionPctReferred ?? 0.02
-    return { activeCount, approvedDishCount, commissionLabel: `${Math.round(pct * 100)}%` }
+    return { activeCount, approvedDishCount, commissionLabel: `${Math.round(pct * 100)}%`, pctValue: Math.round(pct * 100) }
   } catch {
-    return { activeCount: 0, approvedDishCount: 0, commissionLabel: '2%' }
+    return { activeCount: 0, approvedDishCount: 0, commissionLabel: '2%', pctValue: 2 }
   }
 }
 
@@ -78,7 +78,7 @@ export default async function CreatorsPage({ params: { locale } }: { params: { l
             <p className="text-xl font-display font-bold leading-tight">{t('heroLine2')}</p>
           </div>
         </div>
-        <p className="text-sm opacity-90 mb-5">{t('heroSubtitle')}</p>
+        <p className="text-sm opacity-90 mb-5">{t('heroSubtitle', { pct: stats.pctValue })}</p>
 
         <div className="grid grid-cols-3 gap-2 mb-5">
           {([
@@ -151,7 +151,7 @@ export default async function CreatorsPage({ params: { locale } }: { params: { l
         {([
           { icon: ChefHat,   title: t('how1Title'), desc: t('how1Desc') },
           { icon: Store,     title: t('how2Title'), desc: t('how2Desc') },
-          { icon: Coins,     title: t('how3Title'), desc: t('how3Desc') },
+          { icon: Coins,     title: t('how3Title', { pct: stats.pctValue }), desc: t('how3Desc', { pct: stats.pctValue }) },
           { icon: BarChart2, title: t('how4Title'), desc: t('how4Desc') },
         ] as const).map(({ icon: Icon, title, desc }, i) => (
           <div key={i} className="flex gap-3 items-start">

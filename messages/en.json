@@ -446,7 +446,7 @@
     "title": "Creators",
     "heroLine1": "Create a dish.",
     "heroLine2": "Sell it everywhere.",
-    "heroSubtitle": "Submit your recipes · Restaurants adopt them · Earn 4% on every sale",
+    "heroSubtitle": "Submit your recipes · Restaurants adopt them · Earn {pct}% on every sale",
     "statActive": "Active creators",
     "statCommission": "Commission",
     "statDishes": "Dishes on menu",
@@ -462,8 +462,8 @@
     "how1Desc": "Share your recipe, ingredients and suggested price. Our team reviews within 48h.",
     "how2Title": "Restaurants adopt",
     "how2Desc": "Your approved dishes are offered to partner kitchens across France.",
-    "how3Title": "Earn 4% on every sale",
-    "how3Desc": "Automatically receive 4% of the sale price each time a restaurant sells your dish.",
+    "how3Title": "Earn {pct}% on every sale",
+    "how3Desc": "Automatically receive {pct}% of the sale price each time a restaurant sells your dish.",
     "how4Title": "Track your performance",
     "how4Desc": "Real-time dashboard: adoptions, sales, cumulative earnings.",
     "apply": {
@@ -527,7 +527,6 @@
     },
     "dashboard": {
       "title": "Creator Space",
-      "subtitle": "4% commission",
       "verified": "✓ Verified",
       "kpiEarnings": "Total earnings",
       "kpiSales": "Sales",
@@ -674,7 +673,7 @@
     },
     "recipes": {
       "title": "My recipes",
-      "subtitle": "Create a recipe, a restaurant adopts it, you earn 4% on every sale as long as it's on the menu.",
+      "subtitle": "Create a recipe, a restaurant adopts it, you earn {pct}% on every sale as long as it’s on the menu.",
       "badge": "{pct}% / sale",
       "kpiEarnings": "Recipe earnings",
       "kpiAdoptions": "Active adoptions",
@@ -850,7 +849,8 @@
       "costLabel": "Estimated ingredient cost / serving (€)",
       "costHint": "Indicative — feeds the margin preview on the restaurant side.",
       "marginPreview": "Estimated gross margin ~{pct}% at the suggested price",
-      "errAllergens": "Allergens are mandatory — select “None” if that’s the case."
+      "errAllergens": "Allergens are mandatory — select “None” if that’s the case.",
+      "toastSignature": "Signature: {score}/100"
     },
     "stars": {
       "legend": "Grubano Stars — performance measured on real sales",
@@ -1035,7 +1035,12 @@
       "pickupTimelineHeader": "Order progress",
       "pickupCurrentStep": "In progress",
       "statusReadyPickup": "Ready for pickup",
-      "statusCollected": "Picked up"
+      "statusCollected": "Picked up",
+      "awaitingTitle": "Awaiting payment",
+      "awaitingDesc": "Your order will be sent to the restaurant as soon as the payment is confirmed.",
+      "awaitingCta": "Finish the payment",
+      "expiredTitle": "Order expired",
+      "expiredDesc": "The payment was never completed — this order was not sent to the restaurant. Nothing was charged."
     },
     "account": {
       "title": "My Profile",
@@ -1252,7 +1257,7 @@
       "commitmentNote": "Minimum 60-day commitment · you can freely withdraw a recipe that doesn't take off.",
       "byCreator": "By {name}",
       "followers": "{count} followers",
-      "benefit": "The creator earns 4%, you keep the rest.",
+      "benefit": "The creator earns {pct}%, you keep the rest.",
       "promotedBy": "Promoted by a creator · {count} followers",
       "priceLabel": "Your selling price (€)",
       "suggestedPriceHint": "Suggested {price} €",

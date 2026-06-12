@@ -1462,7 +1462,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                 {/* Benefit pitch */}
                 <div className="rounded-xl bg-grubano-tint/60 px-3 py-2">
                   <p className="flex items-center gap-1.5 text-[11px] font-semibold text-grubano-primary">
-                    <TrendingUp size={12} /> {t('benefit')}
+                    <TrendingUp size={12} /> {t('benefit', { pct: Math.round((conditions?.commissionPct ?? 0.02) * 100) })}
                   </p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     {t('promotedBy', { count: dish.creatorFollowers })}
