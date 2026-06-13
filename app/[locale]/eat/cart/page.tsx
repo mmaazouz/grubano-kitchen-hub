@@ -41,6 +41,9 @@ export default function CartScreen() {
   const [promos, setPromos] = useState<Array<{
     id: string; name: string; type: string; discount: number
     minOrderEur: number | null; itemIds: string[] | null
+    // L2 — channels is needed to mirror the server's channel guard so a promo
+    // scoped to e.g. ['delivery'] does not FALSE-BLOCK loyalty on a pickup order.
+    channels?: string[] | null
   }>>([])
 
   useEffect(() => {
@@ -175,6 +178,28 @@ export default function CartScreen() {
     [pointsBalance, centsPerPoint, subtotal],
   )
   const effectiveUsePoints = canUsePoints && usePoints
+  // L2 display flags — DO NOT change the intention sent to the server (D4):
+  // effectiveUsePoints above is untouched, the server stays the sole judge of
+  // whether the credit applies. These only drive the grayed display + message.
+  // The card is now VISIBLE whenever the consumer is logged in with a balance
+  // (it was hidden entirely under a welcome discount before). A promo
+  // deterministically blocks loyalty (D3): the welcome discount, OR an
+  // unconditional global resto promo (no itemIds) that already applies to this
+  // basket — both are reliable client-side signals.
+  const loyaltyVisible = authStatus === 'authenticated' && pointsBalance > 0
+  // Mirror the server's deterministic promo gates (lib/promotions): an
+  // unconditional GLOBAL promo blocks loyalty (D3) — but ONLY when it actually
+  // applies to THIS basket: its minOrderEur must be met AND its channels (if
+  // scoped) must include the chosen fulfillment. Without the channel guard a
+  // ['delivery']-only promo would wrongly gray the toggle on a pickup order.
+  // Targeted (itemIds) promos are intentionally NOT detected here (hard to
+  // resolve client-side; the server stays the judge — choice noted).
+  const promoBlocksLoyalty = welcomeAmount > 0 || promos.some(
+    (p) => !p.itemIds
+      && (p.minOrderEur == null || subtotal >= p.minOrderEur)
+      && (!p.channels || p.channels.includes(fulfillment)),
+  )
+  const balanceEuros = Math.round(pointsBalance * centsPerPoint) / 100
   // Chantier P2 — soft minOrder incentive: the closest GLOBAL promo whose
   // threshold isn't reached yet. DISPLAY-only arithmetic (a gap in €) — the
   // server stays the only judge of what actually applies at checkout.
@@ -434,33 +459,46 @@ export default function CartScreen() {
         </div>
       </div>
 
-      {/* Loyalty redemption (chantier fidélité L1) — INTENTION toggle only.
-          Hidden unless the consumer is logged in, has a balance and no welcome
-          discount applies (D3). The server computes & caps the real credit; the
-          exact amount lands on the checkout screen, so the total below stays the
-          honest upper amount the customer could pay. */}
-      {canUsePoints && (
-        <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">
+      {/* Loyalty redemption (chantier fidélité L1/L2) — INTENTION toggle only.
+          Shown whenever the consumer is logged in with a balance. When a promo
+          is active the card is GRAYED with a clear D3 message (the points stay
+          available for a next order) and the toggle is disabled — the server
+          stays the sole judge (effectiveUsePoints is unchanged). When usable,
+          the cap is always explained (« jusqu'à X € selon ta commande »). The
+          exact credit is resolved + shown on the checkout screen, so the total
+          below stays the honest upper amount the customer could pay. */}
+      {loyaltyVisible && (
+        <div className={`mx-4 mt-2.5 rounded-grubano-lg p-4 shadow-grubano-sm ${promoBlocksLoyalty ? 'bg-grubano-surface-muted' : 'bg-grubano-surface'}`}>
           <div className="flex items-center gap-3">
-            <Sparkles size={20} className="shrink-0 text-grubano-primary" />
+            <Sparkles size={20} className={`shrink-0 ${promoBlocksLoyalty ? 'text-grubano-ink-faint' : 'text-grubano-primary'}`} />
             <div className="min-w-0 flex-1">
-              <p className="text-grubano-sm font-bold text-grubano-ink">{t('loyaltyToggleTitle')}</p>
+              <p className={`text-grubano-sm font-bold ${promoBlocksLoyalty ? 'text-grubano-ink-muted' : 'text-grubano-ink'}`}>{t('loyaltyToggleTitle')}</p>
               <p className="mt-0.5 text-xs text-grubano-ink-muted">
                 {t('loyaltyBalance', { count: pointsBalance.toLocaleString('fr-FR') })}
+                {balanceEuros > 0 ? ` · ${t('loyaltyBalanceEur', { amount: balanceEuros.toFixed(2) })}` : ''}
               </p>
             </div>
             <button
-              onClick={() => setUsePoints((v) => !v)}
-              aria-pressed={usePoints}
+              onClick={() => { if (!promoBlocksLoyalty) setUsePoints((v) => !v) }}
+              disabled={promoBlocksLoyalty}
+              aria-pressed={usePoints && !promoBlocksLoyalty}
               aria-label={t('loyaltyToggleTitle')}
-              className={`flex h-7 w-12 shrink-0 items-center rounded-full px-0.5 transition-colors ${usePoints ? 'justify-end bg-grubano-primary' : 'justify-start bg-grubano-border'}`}
+              className={`flex h-7 w-12 shrink-0 items-center rounded-full px-0.5 transition-colors ${
+                promoBlocksLoyalty
+                  ? 'justify-start bg-grubano-border opacity-50'
+                  : usePoints ? 'justify-end bg-grubano-primary' : 'justify-start bg-grubano-border'
+              }`}
             >
               <span className="h-6 w-6 rounded-full bg-white shadow" />
             </button>
           </div>
-          {usePoints && maxLoyaltyEur > 0 && (
+          {promoBlocksLoyalty ? (
+            <p className="mt-2.5 rounded-grubano-md bg-grubano-tint/60 px-3 py-2 text-[12px] font-medium text-grubano-ink-muted">
+              {t('loyaltyPromoBlocked')}
+            </p>
+          ) : (
             <p className="mt-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
-              {t('loyaltyUpTo', { amount: maxLoyaltyEur.toFixed(2) })} · {t('loyaltyNote')}
+              {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: maxLoyaltyEur.toFixed(2) })} · ` : ''}{t('loyaltyNote')}
             </p>
           )}
         </div>

@@ -82,6 +82,12 @@ export async function GET(
         // Additive (P2) — the server-resolved discount + its promo (display).
         discount:        order.discount,
         promotion,
+        // Additive (L2) — the SERVER-resolved loyalty credit (cents) + the
+        // points it spent. Distinct from `discount` so the checkout recap shows
+        // « Crédit fidélité » on its own line, never folded into the promo line.
+        // Read-only: resolveLoyaltyCredit (L1) already wrote these at checkout.
+        loyaltyCreditCents: order.loyaltyCreditCents,
+        pointsRedeemed:     order.pointsRedeemed,
         estimatedTime:   order.estimatedTime,
         trackingUrl:     order.trackingUrl,
         deliveryAddress: order.deliveryAddress,

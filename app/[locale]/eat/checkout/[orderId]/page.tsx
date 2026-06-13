@@ -47,6 +47,11 @@ interface OrderInfo {
   // promotion display name. No client computation, ever.
   discount?:       number
   promotion?:      { id: string; name: string } | null
+  // Chantier fidélité L2 (additive GET fields) — the SERVER-resolved loyalty
+  // credit in CENTS + the points it spent. Shown on its OWN line, never folded
+  // into the promo discount. No client computation, ever (D4).
+  loyaltyCreditCents?: number
+  pointsRedeemed?:     number
 }
 interface PayInit {
   clientSecret:   string
@@ -145,13 +150,20 @@ export default function CheckoutPage() {
     [locale],
   )
   const isPickup = order?.fulfillmentType === 'pickup'
-  // Chantier P2 — the discount is the SERVER field when exposed (P1 resolved
-  // it at creation); legacy fallback: derived from the frozen amounts (C1:
-  // total = subtotal + deliveryFee − discount). Never computed from a promo.
+  // Chantier fidélité L2 — the loyalty credit (€) is a SERVER field, shown on
+  // its own line. NEVER computed client-side (D4).
+  const loyaltyCredit = order && typeof order.loyaltyCreditCents === 'number'
+    ? order.loyaltyCreditCents / 100
+    : 0
+  // Chantier P2 — the promo discount is the SERVER field when exposed (P1
+  // resolved it at creation); legacy fallback: derived from the frozen amounts
+  // (C1: total = subtotal + deliveryFee − discount − loyaltyCredit). The
+  // loyalty credit is SUBTRACTED out of the fallback so it is never folded into
+  // the promo line (L2 de-conflation).
   const discount = order
     ? (typeof order.discount === 'number' && order.discount > 0
         ? order.discount
-        : Math.max(0, order.subtotal + order.deliveryFee - order.total))
+        : Math.max(0, order.subtotal + order.deliveryFee - order.total - loyaltyCredit))
     : 0
   const ref = order ? orderRefOf(order.id) : ''
 
@@ -257,6 +269,18 @@ export default function CheckoutPage() {
                       generic label otherwise (welcome discount, legacy). */}
                   <span>{order.promotion?.name ? t('promoLine', { name: order.promotion.name }) : t('discount')}</span>
                   <span className="font-semibold">−{fmt.format(discount)}</span>
+                </div>
+              )}
+              {/* L2 — loyalty credit on its OWN line (Grubano-financed, distinct
+                  from any promo). Server field only, never computed here. */}
+              {loyaltyCredit > 0.005 && (
+                <div className="flex items-baseline justify-between text-[#16a34a]">
+                  <span>
+                    {order.pointsRedeemed && order.pointsRedeemed > 0
+                      ? t('loyaltyLinePoints', { points: order.pointsRedeemed })
+                      : t('loyaltyLine')}
+                  </span>
+                  <span className="font-semibold">−{fmt.format(loyaltyCredit)}</span>
                 </div>
               )}
               <div className="flex items-baseline justify-between pt-1 text-[15px] font-extrabold">
