@@ -203,13 +203,47 @@ model Promotion {
   brandId    String
   brand      Brand    @relation(fields: [brandId], references: [id])
   name       String
-  type       String   // percent | fixed | bundle | flash
+  type       String   // percent | fixed | second_item | threshold_reward
   discount   Float
   conditions Json     @default("{}")
   startDate  DateTime
   endDate    DateTime
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
+  // ── Promo V2 Slice 2 (CreatorCampaign opt-in, ADDITIVE + nullable) ──────────
+  // Set when this Promotion was created by a restaurateur OPTING IN to a chef's
+  // campaign. The promo is a STANDARD resto-financed Promotion (same engine,
+  // same guards) — campaignId only LINKS it back for display. Nullable so every
+  // existing promo stays valid and the column is column-tolerant before db push.
+  campaignId String?
+  campaign   CreatorCampaign? @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId])
+}
+
+// ── Chef demand-driver campaign (Promo V2 Slice 2) ────────────────────────────
+// A chef PROPOSES a discount on an ADOPTED recipe (a suggested %, a message, a
+// window). The chef NEVER finances it. Adopter restaurants OPT IN and finance it
+// via a standard resto-financed Promotion (one per resto, linked by campaignId).
+// ADDITIVE: a brand-new table — pre-db-push, every campaign read is wrapped
+// tolerant (→ no campaigns) so existing flows are untouched until the push.
+model CreatorCampaign {
+  id                   String      @id @default(cuid())
+  creatorDishId        String
+  creatorDish          CreatorDish @relation(fields: [creatorDishId], references: [id])
+  creatorId            String
+  creator              Creator     @relation(fields: [creatorId], references: [id])
+  suggestedDiscountPct Int         // 1..90 — the chef's SUGGESTION (the resto adjusts)
+  message              String      @db.Text
+  startDate            DateTime
+  endDate              DateTime
+  status               String      @default("active") // draft | active | ended
+  createdAt            DateTime    @default(now())
+  promotions           Promotion[] // the resto opt-in promos linked to this campaign
+
+  @@index([creatorDishId])
+  @@index([creatorId])
+  @@index([status])
 }
 
 // ── Stocks ────────────────────────────────────────────────────────────────────
@@ -420,6 +454,8 @@ model Creator {
   // masked/disabled by the flag only.
   isChef        Boolean       @default(true)
   isInfluencer  Boolean       @default(true)
+  // Inverse side of CreatorCampaign.creator (Promo V2 Slice 2).
+  campaigns     CreatorCampaign[]
   // Referral programme — nullable so existing creators keep working until
   // they are granted a code / slug from the back office.
   referralCode     String?    @unique           // e.g. "MARCO20"
@@ -457,6 +493,8 @@ model CreatorDish {
   adoptions      DishAdoption[]
   // Inverse side of AdoptionWaitlist.creatorDish (levier 3A) — per-city queue.
   waitlist       AdoptionWaitlist[]
+  // Inverse side of CreatorCampaign.creatorDish (Promo V2 Slice 2).
+  campaigns      CreatorCampaign[]
 }
 
 // ── Franchise applications ────────────────────────────────────────────────────
