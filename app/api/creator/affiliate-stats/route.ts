@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { readCreatorRoles } from '@/lib/creator-roles'
+import { computeTier, computeStreakWeeks, computeBadges, rankLeaderboard, type LeaderRow } from '@/lib/affiliate-status'
 
 // ── GET /api/creator/affiliate-stats ──────────────────────────────────────────
 // Dashboard Affiliés — Slice 2a. The INFLUENCER's affiliation feed, READ-ONLY.
@@ -30,6 +31,9 @@ function emptyPayload(over: Record<string, unknown> = {}) {
     referrals: { newCustomers: 0, orders: [] as unknown[] },
     payout:    { claimableCents: 0, status: 'activation_pending' as const },
     tier:      null,
+    streak:    { weeks: 0 },
+    badges:    [] as { key: string; achieved: boolean }[],
+    leaderboard: null as { top: unknown[]; myRank: number | null; total: number } | null,
     commissionPct: null as number | null,
     ...over,
   }
@@ -124,6 +128,44 @@ export async function GET() {
       maturedAt:           o.maturedAt?.toISOString() ?? null,
     }))
 
+    // ── Gamification (Slice 2c) — STATUS ONLY, computed, READ-ONLY ──────────────
+    // Tier from cumulative matured earnings; streak = consecutive weeks with ≥1
+    // real (matured|pending) referred order; badges = milestones. NONE of this
+    // touches the commission rate (30 % for everyone).
+    const orderDatesMs = refAll
+      .filter(r => r.status === 'matured' || r.status === 'pending')
+      .map(r => (r.order?.createdAt ?? r.createdAt).getTime())
+    const ordersCount = orderDatesMs.length
+    const tier   = computeTier(maturedCents)
+    const streak = { weeks: computeStreakWeeks(orderDatesMs) }
+    const badges = computeBadges({ ordersCount, newCustomers, maturedCents })
+
+    // Leaderboard — matured gains over the last 90 days across influencers; the
+    // ranker exposes NAME + RANK + TIER only (€ NEVER disclosed). Tolerant: any
+    // error → no leaderboard, never a 500. (Test volumes — revisit at scale.)
+    let leaderboard: { top: unknown[]; myRank: number | null; total: number } | null = null
+    try {
+      const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+      const rows = await prisma.referralOrder.findMany({
+        where:  { status: 'matured', order: { createdAt: { gte: since } } },
+        select: {
+          creatorEarning: true, newCustomerBonus: true,
+          referral: { select: { creator: { select: { id: true, name: true, isInfluencer: true } } } },
+        },
+      })
+      const byCreator = new Map<string, LeaderRow>()
+      for (const r of rows) {
+        const c = r.referral?.creator
+        if (!c || c.isInfluencer === false) continue
+        const prev = byCreator.get(c.id) ?? { creatorId: c.id, name: c.name, gainCents: 0 }
+        prev.gainCents += cents(r.creatorEarning) + cents(r.newCustomerBonus)
+        byCreator.set(c.id, prev)
+      }
+      leaderboard = rankLeaderboard(Array.from(byCreator.values()), creator.id, 10)
+    } catch (e) {
+      console.error('[affiliate-stats] leaderboard unavailable:', e instanceof Error ? e.message : e)
+    }
+
     return NextResponse.json({
       isInfluencer: true,
       links,
@@ -138,8 +180,11 @@ export async function GET() {
       // HONEST payout state: matured money is claimable, but payouts are gated on
       // KYC/immatriculation (B2b) → 'activation_pending', never a fake "pay now".
       payout: { claimableCents: maturedCents, status: 'activation_pending' as const },
-      // Placeholder for the future tiers/status slice — shape kept stable.
-      tier: null,
+      // Gamification (Slice 2c) — STATUS ONLY (no rate effect).
+      tier,
+      streak,
+      badges,
+      leaderboard,
       commissionPct,
     })
   } catch (err) {

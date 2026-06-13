@@ -84,18 +84,30 @@ describe('aggregation (matured vs pending) + session scoping', () => {
     expect(out.payout.status).toBe('activation_pending')
     expect(out.referrals.newCustomers).toBe(3)
     expect(out.referrals.orders).toHaveLength(3)
-    expect(out.tier).toBeNull()
+    expect(out.tier).toMatchObject({ key: 'bronze' })   // 150 c → bronze tier (status only)
+    expect(typeof out.streak.weeks).toBe('number')
+    expect(out.badges.find((b: { key: string }) => b.key === 'firstSale')?.achieved).toBe(true)
+    expect(out.leaderboard).not.toBeNull()
+    expect(Array.isArray(out.leaderboard.top)).toBe(true)
     expect(out.commissionPct).toBe(30)
     // byMonth covers matured + pending months only (paid excluded), sorted.
     const months = out.earnings.byMonth.map((m: { month: string }) => m.month)
     expect(months).toEqual(['2026-05', '2026-06'])
   })
 
-  it('scopes every read to the SESSION creator id — never a client-supplied id', async () => {
+  it('scopes the PERSONAL reads to the session creator id (the leaderboard is intentionally global)', async () => {
     await GET()
-    for (const call of db.referralOrder.findMany.mock.calls) {
+    // Personal pipes (refAll / refRecent) MUST be scoped to the session creator.
+    const personal = db.referralOrder.findMany.mock.calls.filter(c => (c[0].where as { referral?: unknown }).referral)
+    expect(personal.length).toBeGreaterThan(0)
+    for (const call of personal) {
       expect(call[0].where).toEqual({ referral: { creatorId: 'cr1' } })
     }
+    // The leaderboard query (status:matured) is NOT creator-scoped by design — it
+    // ranks across influencers and exposes only rank/name/tier (no €).
+    const board = db.referralOrder.findMany.mock.calls.find(c => (c[0].where as { status?: string }).status === 'matured')
+    expect(board).toBeTruthy()
+    expect((board![0].where as { referral?: unknown }).referral).toBeUndefined()
     expect(db.referral.count).toHaveBeenCalledWith({ where: { creatorId: 'cr1' } })
   })
 })
