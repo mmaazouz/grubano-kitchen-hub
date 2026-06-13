@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
 import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { fetchActivePromotions, pickBestPromotion } from '@/lib/promotions'
-import { resolveLoyaltyCredit } from '@/lib/loyalty'
+import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } from '@/lib/loyalty'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -255,10 +255,71 @@ export async function POST(req: NextRequest) {
           ? await prisma.loyaltyCustomer.findUnique({ where: { email }, select: { id: true, pointsBalance: true } })
           : null
         if (lc) {
+          // ── Committed claims on Grubano's commission (borne de sécurité, D-A) ──
+          // The loyalty credit must never push Grubano net-negative. On this SAME
+          // order, three claims are ALSO drawn from the commission:
+          //   • Stripe fee — destination charge → Grubano bears it. Estimated on
+          //     the FULL charge (subtotal + delivery, BEFORE any credit → highest →
+          //     tighter cap; the real fee lands post-settlement in the ledger).
+          //   • creator royalty (DishSale 5C) — mirrored read-only below.
+          //   • influencer affiliation (ReferralOrder 5B) — mirrored read-only.
+          // Loyalty is promo-exclusive (D3) → commission here is gross = net, and
+          // royalty/affiliation key off the FULL price (never the credit) → no
+          // circular dependency. The DishSale/ReferralOrder WRITE blocks below are
+          // untouched — this only SIZES the cap.
+          const chargeCents    = Math.round((subtotal + effectiveDeliveryFee) * 100)
+          const stripeFeeCents = estimateStripeFeeCents(chargeCents)
+
+          // Creator royalty committed — replicate the 5C raw-id match + per-line
+          // referred/organic tier, summed across adopted lines.
+          let royaltyCents = 0
+          try {
+            const rawIdOf = (item: (typeof data.items)[number]): string => {
+              const parent = item.options?.[0]?.parentDishId
+              if (typeof parent === 'string' && parent.length > 0) return parent
+              return item.itemId.split('::')[0]
+            }
+            const adoptions = await prisma.dishAdoption.findMany({
+              where:  { status: 'active', menuItemId: { in: data.items.map(rawIdOf) } },
+              select: { menuItemId: true, creatorDish: { select: { creatorId: true } } },
+            })
+            if (adoptions.length > 0) {
+              const cfg = await prisma.adoptionConfig.findFirst({ where: { active: true } })
+              const referredPct = cfg?.creatorCommissionPctReferred ?? 0.02
+              const organicPct  = cfg?.creatorCommissionPctOrganic  ?? 0.02
+              const byMenuItem  = new Map(adoptions.map(a => [a.menuItemId as string, a]))
+              const lines = data.items.flatMap((item) => {
+                const adoption = byMenuItem.get(rawIdOf(item))
+                if (!adoption) return []
+                const isCreatorTraffic =
+                  ref.referringCreatorId !== null && ref.referringCreatorId === adoption.creatorDish.creatorId
+                return [{ amountCents: Math.round(item.price * item.qty * 100), rate: isCreatorTraffic ? referredPct : organicPct }]
+              })
+              royaltyCents = committedRoyaltyCents(lines)
+            }
+          } catch (royErr) {
+            // PRUDENT fallback (D-A): if we can't size the royalty, assume the worst
+            // default tier (2 %) on the whole subtotal so the cap never under-protects.
+            royaltyCents = Math.round(subtotalCents * 0.02)
+            console.error('[POST /api/orders] committed-royalty sizing failed — prudent 2% fallback:',
+              royErr instanceof Error ? royErr.message : royErr)
+          }
+
+          // Influencer affiliation committed — mirrors 5B (creatorEarning =
+          // round2(grubanoFee × commissionPct)). Loyalty requires ref.discount===0
+          // → never CAS 1, so the first-order bonus never applies here; a
+          // referringCreatorId means CAS 2-valid → a ReferralOrder WILL be written.
+          const affiliationCents = ref.referringCreatorId
+            ? Math.round(grossCommissionCents * ref.commissionPct)
+            : 0
+
+          const committedClaimsCents = stripeFeeCents + royaltyCents + affiliationCents
+
           const r = resolveLoyaltyCredit({
             customerPointsBalance: lc.pointsBalance,
             subtotalCents,
             commissionFeeCents:    grossCommissionCents,
+            committedClaimsCents,
             promoApplied:          false,
             requestedUsePoints:    true,
           })
