@@ -157,10 +157,17 @@ export async function GET(
     type PublicPromo = {
       id: string; name: string; type: string; discount: number
       minOrderEur: number | null; itemIds: string[] | null; channels: string[] | null
+      // Promo V2 (additive, display only): threshold_reward params + the promo's
+      // end (for the anti-gaspi flash countdown « jusqu'à HH:MM »).
+      thresholdEur: number | null; rewardKind: string | null; rewardPct: number | null
+      endsAt: string
     }
     let promotions: PublicPromo[] = []
     const itemPromo: Record<string, {
       promotionId: string; name: string; type: string; discount: number; discountedUnitPrice: number
+      // 'second_item' marks eligible items for a « 2e à −X% » badge (no per-unit
+      // bar — the discounted 2nd unit is shown in the cart where qty is known).
+      secondItemPct?: number
     }> = {}
     try {
       const rows = await fetchActivePromotions(restaurant.id)
@@ -184,6 +191,10 @@ export async function GET(
             minOrderEur: typeof c.minOrderEur === 'number' && c.minOrderEur > 0 ? c.minOrderEur : null,
             itemIds:     Array.isArray(c.itemIds) && c.itemIds.length > 0 ? (c.itemIds as string[]) : null,
             channels:    Array.isArray(c.channels) && c.channels.length > 0 ? (c.channels as string[]) : null,
+            thresholdEur: typeof c.thresholdEur === 'number' && c.thresholdEur > 0 ? c.thresholdEur : null,
+            rewardKind:   c.rewardKind === 'percent' || c.rewardKind === 'free_item' ? c.rewardKind : null,
+            rewardPct:    typeof c.rewardPct === 'number' && c.rewardPct > 0 ? c.rewardPct : null,
+            endsAt:       r.endDate.toISOString(),
           }
         })
         // Per-item badge data for TARGETED promos: best unit discount via the
@@ -212,6 +223,25 @@ export async function GET(
               type:                p.type,
               discount:            p.discount,
               discountedUnitPrice: round2(item.price - best.d),
+            }
+          }
+        }
+        // « 2e à −X% » marker on eligible items (no per-unit bar — the engine
+        // returns 0 on a single unit; the discounted 2nd shows in the cart).
+        // Only set when no stronger percent/fixed badge already won the item.
+        for (const r of rows) {
+          const p = promotions.find(x => x.id === r.id)
+          if (!p || p.type !== 'second_item') continue
+          // Skip the per-item badge when a minOrderEur gate exists — a single
+          // dish view can't promise it (consistent with the percent « dès X € »
+          // choice: that promo surfaces via the banner, not a per-item pill).
+          if (p.minOrderEur != null) continue
+          for (const item of allItems) {
+            if (p.itemIds && !p.itemIds.includes(item.id)) continue
+            if (itemPromo[item.id]) continue
+            itemPromo[item.id] = {
+              promotionId: p.id, name: p.name, type: 'second_item',
+              discount: p.discount, discountedUnitPrice: item.price, secondItemPct: p.discount,
             }
           }
         }

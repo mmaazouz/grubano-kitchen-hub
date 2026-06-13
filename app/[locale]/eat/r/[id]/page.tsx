@@ -88,11 +88,16 @@ interface PublicHoursInfo {
 interface PublicPromo {
   id: string
   name: string
-  type: string            // percent | fixed
+  type: string            // percent | fixed | second_item | threshold_reward
   discount: number
   minOrderEur: number | null
   itemIds: string[] | null
   channels: string[] | null
+  // Promo V2 (display only).
+  thresholdEur?: number | null
+  rewardKind?: string | null
+  rewardPct?: number | null
+  endsAt?: string
 }
 interface ItemPromo {
   promotionId: string
@@ -100,6 +105,7 @@ interface ItemPromo {
   type: string
   discount: number
   discountedUnitPrice: number
+  secondItemPct?: number
 }
 
 const TABS = ['Menu', 'À propos', 'Galerie', 'Avis'] as const
@@ -320,14 +326,25 @@ export default function RestaurantScreen() {
   // their dishes instead). Display heuristic: best percent first, else best
   // fixed — the checkout server alone picks the TRUE best on the real basket.
   const globalPromos = promotions.filter((p) => !p.itemIds)
-  const promoLabel = (p: PublicPromo): string =>
-    p.type === 'percent'
-      ? p.minOrderEur
-        ? t('promoPercentMin', { pct: p.discount, min: p.minOrderEur })
-        : t('promoPercentAll', { pct: p.discount })
-      : p.minOrderEur
-        ? t('promoFixedMin', { eur: p.discount, min: p.minOrderEur })
-        : t('promoFixedAll', { eur: p.discount })
+  const promoLabel = (p: PublicPromo): string => {
+    if (p.type === 'second_item') return t('promoSecondItem', { pct: p.discount })
+    if (p.type === 'threshold_reward') {
+      const min = p.thresholdEur ?? 0
+      return p.rewardKind === 'free_item'
+        ? t('promoThresholdFree', { min })
+        : t('promoThresholdPct', { pct: p.rewardPct ?? p.discount, min })
+    }
+    return p.type === 'percent'
+      ? (p.minOrderEur ? t('promoPercentMin', { pct: p.discount, min: p.minOrderEur }) : t('promoPercentAll', { pct: p.discount }))
+      : (p.minOrderEur ? t('promoFixedMin', { eur: p.discount, min: p.minOrderEur }) : t('promoFixedAll', { eur: p.discount }))
+  }
+  // Anti-gaspi flash: a promo ending within 24h shows « jusqu'à HH:MM ».
+  const flashLabel = (p: PublicPromo): string | null => {
+    if (!p.endsAt) return null
+    const end = new Date(p.endsAt).getTime()
+    if (!Number.isFinite(end) || end <= Date.now() || end - Date.now() > 86_400_000) return null
+    return t('promoFlashUntil', { time: new Date(end).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) })
+  }
   const sortedGlobals = [...globalPromos].sort((a, b) =>
     a.type !== b.type ? (a.type === 'percent' ? -1 : 1) : b.discount - a.discount)
   const bestGlobal = sortedGlobals[0] ?? null
@@ -459,6 +476,11 @@ export default function RestaurantScreen() {
             <p className="flex items-center gap-1.5 text-grubano-sm font-bold text-grubano-primary">
               <Tag size={14} /> {promoLabel(bestGlobal)}
             </p>
+            {flashLabel(bestGlobal) && (
+              <p className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-grubano-primary/10 px-2 py-0.5 text-[10px] font-bold text-grubano-primary">
+                ⏱ {flashLabel(bestGlobal)}
+              </p>
+            )}
             {bestGlobal.name && (
               <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{bestGlobal.name}</p>
             )}
@@ -525,12 +547,17 @@ export default function RestaurantScreen() {
                 // Chantier P2 — targeted promo badge: discounted unit price was
                 // computed SERVER-side by evaluatePromotion (never locally).
                 const promo = itemPromo[dish.id]
+                // second_item is a BADGE only (no per-unit bar — the discounted
+                // 2nd unit lands in the cart where quantities are known).
+                const hasUnitDiscount = !!promo && promo.discountedUnitPrice < dish.price
                 const pill = promo ? (
                   <span className="inline-flex items-center gap-0.5 rounded-full bg-grubano-tint px-1.5 py-0.5 text-[10px] font-bold text-grubano-primary">
                     <Tag size={9} />
-                    {promo.type === 'percent'
-                      ? t('promoPill', { pct: promo.discount })
-                      : t('promoPillFixed', { eur: promo.discount })}
+                    {promo.secondItemPct != null
+                      ? t('promoPillSecond', { pct: promo.secondItemPct })
+                      : promo.type === 'percent'
+                        ? t('promoPill', { pct: promo.discount })
+                        : t('promoPillFixed', { eur: promo.discount })}
                   </span>
                 ) : null
                 const meta = (promo || dish.creator) ? (
@@ -545,8 +572,8 @@ export default function RestaurantScreen() {
                     layout="vertical"
                     name={dish.name}
                     description={dish.description}
-                    price={promo ? promo.discountedUnitPrice : dish.price}
-                    originalPrice={promo
+                    price={hasUnitDiscount ? promo!.discountedUnitPrice : dish.price}
+                    originalPrice={hasUnitDiscount
                       ? dish.price
                       : dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined}
                     photo={photoFor(dish)}

@@ -44,6 +44,8 @@ export default function CartScreen() {
     // L2 — channels is needed to mirror the server's channel guard so a promo
     // scoped to e.g. ['delivery'] does not FALSE-BLOCK loyalty on a pickup order.
     channels?: string[] | null
+    // Promo V2 — threshold_reward params (display-only progress nudge).
+    thresholdEur?: number | null; rewardKind?: string | null; rewardPct?: number | null
   }>>([])
   // Small-order fee (V1.5) — global config echoed by GET /api/restaurants/[id].
   // DISPLAY-only: the SERVER recomputes + applies the fee at order time.
@@ -254,6 +256,20 @@ export default function CartScreen() {
     if (!next) return null
     return { name: next.name, missing: Math.round((next.minOrderEur! - subtotal) * 100) / 100 }
   }, [promos, subtotal])
+  // Promo V2 — « Ajoutez X€ pour [le dessert offert / −X%] » : the nearest
+  // threshold_reward not yet reached. Display arithmetic only (the server
+  // resolves the real reward at checkout).
+  const thresholdIncentive = useMemo(() => {
+    const candidates = promos
+      .filter((p) => p.type === 'threshold_reward' && p.thresholdEur != null && p.thresholdEur > subtotal)
+      .sort((a, b) => (a.thresholdEur! - subtotal) - (b.thresholdEur! - subtotal))
+    const next = candidates[0]
+    if (!next) return null
+    const reward = next.rewardKind === 'free_item'
+      ? t('rewardFreeItemShort')
+      : t('rewardPctShort', { pct: next.rewardPct ?? next.discount })
+    return { missing: Math.round((next.thresholdEur! - subtotal) * 100) / 100, reward }
+  }, [promos, subtotal, t])
   const readyAt = useMemo(() => {
     const minutes = cart?.restaurant.deliveryTime ?? 20
     const d = new Date(Date.now() + minutes * 60_000)
@@ -596,6 +612,12 @@ export default function CartScreen() {
         {promoIncentive && (
           <p className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
             {t('promoIncentive', { amount: promoIncentive.missing.toFixed(2), name: promoIncentive.name })}
+          </p>
+        )}
+        {/* Promo V2 — threshold-reward progress: « Ajoutez X € pour [récompense] ». */}
+        {thresholdIncentive && (
+          <p className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
+            {t('thresholdIncentive', { amount: thresholdIncentive.missing.toFixed(2), reward: thresholdIncentive.reward })}
           </p>
         )}
         <div className="mt-1 flex items-center justify-between border-t border-grubano-border pt-3">
