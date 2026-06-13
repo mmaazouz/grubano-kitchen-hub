@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
-  LayoutDashboard, ChefHat, Megaphone,
+  LayoutDashboard, ChefHat, Megaphone, Link2,
   TrendingUp, ArrowLeft, Sparkles, X,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
@@ -27,6 +27,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/creators/dashboard',            labelKey: 'overview',     icon: LayoutDashboard, exact: true },
   { href: '/creators/dashboard/promotions', labelKey: 'recipes',      icon: ChefHat,   role: 'chef' },
   { href: '/creators/dashboard/audience',   labelKey: 'affiliation',  icon: Megaphone, role: 'influencer' },
+  // Dashboard Affiliés Slice 2a (Agent 14) — the influencer's affiliation hub.
+  { href: '/creators/dashboard/affiliate',  labelKey: 'affiliateHub', icon: Link2,     role: 'influencer' },
   { href: '/creators/dashboard/revenus',    labelKey: 'revenue',      icon: TrendingUp },
 ]
 
