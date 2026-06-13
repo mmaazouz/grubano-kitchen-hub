@@ -96,31 +96,49 @@ export async function POST(
       },
     })
     const subtotalCents = eurosToCents(order.subtotal)
-    // Loyalty credit on this order (chantier fidélité L1) — guarded read so a
-    // deployment before the db push (column absent) degrades to 0 (and the order
-    // total is full in that case anyway, so the math stays consistent).
+    // Loyalty credit + small-order fee on this order — guarded read so a deploy
+    // before the db push (columns absent) degrades to 0 (and order.total is the
+    // food-only total in that case, so the whole derivation stays consistent).
+    // Read each column INDEPENDENTLY: the loyalty column already exists (L1 db
+    // push) while the small-fee column is new (this push). A combined select would
+    // throw as a unit on the missing new column and wrongly zero the EXISTING
+    // loyalty credit during the deploy window — so they get separate guards.
     let loyaltyCreditCents = 0
     try {
       const extra = await prisma.order.findUnique({ where: { id: order.id }, select: { loyaltyCreditCents: true } })
       loyaltyCreditCents = extra?.loyaltyCreditCents ?? 0
     } catch { /* column missing pre-db-push → 0 */ }
+    let smallFeeCents = 0
+    try {
+      const extra = await prisma.order.findUnique({ where: { id: order.id }, select: { smallOrderFeeCents: true } })
+      smallFeeCents = extra?.smallOrderFeeCents ?? 0
+    } catch { /* column missing pre-db-push → 0 */ }
 
-    const totalDiscountCents = Math.max(0, subtotalCents + eurosToCents(order.deliveryFee) - amountCents)
+    // amountCents (= order.total) = subtotal + delivery + smallFee − promo − credit.
+    // So the discount baked into the charge = subtotal + delivery + smallFee −
+    // amount = promo + credit. The small fee MUST be added back here, else once it
+    // is in total the derived "discount" would be understated and the commission
+    // base wrong. (V1.5)
+    const totalDiscountCents = Math.max(
+      0, subtotalCents + eurosToCents(order.deliveryFee) + smallFeeCents - amountCents,
+    )
     // D1: ONLY the promo discount reduces the commission BASE. The loyalty credit
-    // is Grubano absorbing its OWN fee — it must never shrink the base nor the
-    // resto's net. So the base uses the PROMO-only portion of the total discount.
+    // and the small fee never shrink the base (the fee is not even part of it).
     const promoDiscountCents = Math.max(0, totalDiscountCents - loyaltyCreditCents)
     const baseCents = commissionBaseCents(subtotalCents, promoDiscountCents, commissionBaseMode())
     const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
     const grossFeeCents = routed ? computeApplicationFee(restaurant!, channel, baseCents) : 0
-    // D1/D5: the loyalty credit reduces Grubano's NET application fee, floored at
-    // 0 (this is the welcome-financing mechanism documented as retired in P1,
-    // rebranched HERE for the loyalty credit only). With destination charges the
-    // resto receives amount − fee; since amount = subtotal+delivery − promo −
-    // credit and feeNet = grossFee − credit, the resto receives subtotal+delivery
-    // − grossFee = PLEIN. The D5 cap (credit ≤ commission, frozen at order time)
-    // guarantees feeNet ≥ 0. THE RESTO TOUCHES PLEIN; GRUBANO ABSORBS THE CREDIT.
-    const feeCents = Math.max(0, grossFeeCents - loyaltyCreditCents)
+    // D1/D5: the loyalty credit reduces Grubano's NET application fee (floored 0).
+    // V1.5: the small-order fee is ADDED to the application_fee — kept 100 % by
+    // GRUBANO. The resto receives amount − fee = subtotal+delivery − promo −
+    // grossFee = PLEIN (the +smallFee in amount and the +smallFee in the app fee
+    // cancel for the resto; the credit cancels likewise). The D5/D-A cap guarantees
+    // grossFee − credit ≥ 0. THE RESTO TOUCHES PLEIN; GRUBANO ABSORBS THE CREDIT
+    // AND KEEPS THE FEE. On the platform fallback (not routed) the whole charge —
+    // fee included — already stays on Grubano's account, so no split is needed.
+    const feeCents = routed
+      ? Math.max(0, grossFeeCents - loyaltyCreditCents) + smallFeeCents
+      : 0
     const rate     = routed ? resolveCommissionRate(restaurant!, channel) : 0
     const connect: ConnectRouting | undefined =
       routed ? { destination: restaurant!.stripeAccountId!, applicationFeeCents: feeCents } : undefined

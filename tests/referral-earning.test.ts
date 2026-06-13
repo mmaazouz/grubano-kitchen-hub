@@ -7,8 +7,11 @@ import { NextRequest } from 'next/server'
 //   • grubanoFee  = the REAL commission via lib/commission on the PRODUCT
 //     subtotal (channel pickup 8 % / delivery 12 %, per-resto override,
 //     founders commissionFreeUntil → 0 %) — the hardcoded 10 % is GONE;
-//   • creatorEarning = grubanoFee × ReferralConfig.commissionPctOfGrubanoFee
-//     (B0 default 30 %), FROZEN at order time;
+//   • grubanoFee = that REAL gross commission (the FROZEN column, UNCHANGED);
+//   • creatorEarning = commissionPct × the NET margin (V1.5 §4: commission −
+//     Stripe estimate − creator royalty), FROZEN at order time — NOT the gross
+//     commission anymore. With no chef dish, royalty = 0, so the net = commission
+//     − estimateStripeFeeCents(subtotal + delivery) (defaults 2.9 % + 25 c);
 //   • newCustomerBonus = 5 € one-shot on the customer's FIRST Grubano order
 //     (any restaurant), independent of the commission share.
 // These tests pin those rules, the cent rounding, and the freeze-from-config.
@@ -92,12 +95,14 @@ beforeEach(() => {
 })
 
 describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
-  it('freezes grubanoFee = REAL delivery commission (12 %) and creatorEarning = 30 % — NO bonus by default (B0-quater)', async () => {
-    // subtotal 100, delivery → fee 12.00 → earning 3.60 ; bonus config 0 → none,
-    // and the new-customer count query is not even made.
+  it('freezes grubanoFee = REAL delivery commission (12 %) and creatorEarning = 30 % of the NET — NO bonus by default (B0-quater)', async () => {
+    // subtotal 100, delivery 1.99 → gross commission 12.00 (frozen grubanoFee).
+    // V1.5: net = 1200 − stripe(round(10199×0.029)+25=321) − 0 = 879c →
+    // creatorEarning = round2(8.79 × 0.30) = 2.64. Bonus config 0 → none, the
+    // new-customer count query is not even made.
     const res = await POST(makeReq(orderBody()))
     expect(res.status).toBe(201)
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 3.6, newCustomerBonus: 0 })
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 2.64, newCustomerBonus: 0 })
     expect(db.order.count).not.toHaveBeenCalled()
   })
 
@@ -112,9 +117,12 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
   })
 
   it('uses the pickup rate (8 %) when the order is a pickup', async () => {
+    // pickup → no delivery fee. gross 800 ; net = 800 − stripe(round(10000×0.029)
+    // +25=315) = 485c → creatorEarning = round2(4.85 × 0.30) = 1.45 (IEEE float:
+    // 4.85×0.30 = 1.45499… → rounds down to 1.45).
     const res = await POST(makeReq(orderBody({ fulfillmentType: 'pickup' })))
     expect(res.status).toBe(201)
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 8, creatorEarning: 2.4 })
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 8, creatorEarning: 1.45 })
   })
 
   it('honours the per-restaurant override rate (B0: real commission, never a fixed 10 %)', async () => {
@@ -123,8 +131,9 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
       commissionRateDineIn: null, commissionRatePickup: null,
       commissionRateDelivery: 0.10, commissionFreeUntil: null, // override 10 %
     })
+    // gross 1000 ; net = 1000 − stripe(321) = 679c → round2(6.79 × 0.30) = 2.04.
     await POST(makeReq(orderBody()))
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 10, creatorEarning: 3 })
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 10, creatorEarning: 2.04 })
   })
 
   it('founders offer (commissionFreeUntil future): fee 0, earning 0 — an ACTIVATED bonus still flows', async () => {
@@ -143,12 +152,13 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
     expect(referralOrderArg()).toMatchObject({ grubanoFee: 0, creatorEarning: 0, newCustomerBonus: 5 })
   })
 
-  it('rounds at the cent through lib/commission then half-up on the 30 % share', async () => {
-    // subtotal 47.50 delivery → feeCents = round(4750 × 0.12) = 570 → 5.70 €
-    // earning = round2(5.70 × 0.30) = 1.71
+  it('rounds at the cent through lib/commission then half-up on the 30 % share of the NET', async () => {
+    // subtotal 47.50 delivery 1.99 → gross feeCents = round(4750 × 0.12) = 570 →
+    // 5.70 € (frozen grubanoFee). net = 570 − stripe(round(4949×0.029)+25=169) =
+    // 401c → creatorEarning = round2(4.01 × 0.30) = 1.20.
     const res = await POST(makeReq(orderBody({ items: [{ itemId: 'i1', name: 'D', qty: 2, price: 23.75, options: [] }] })))
     expect(res.status).toBe(201)
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 5.7, creatorEarning: 1.71 })
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 5.7, creatorEarning: 1.2 })
   })
 
   it('freezes the ACTIVE ReferralConfig share at order time (param respected, not hardcoded)', async () => {
@@ -156,8 +166,9 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
       commissionPctOfGrubanoFee: 0.22, durationDays: 90,
       customerDiscountPct: 0.10, customerDiscountCapEur: 5, active: true,
     })
-    await POST(makeReq(orderBody()))// fee 12 → earning round2(12 × 0.22) = 2.64
-    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 2.64 })
+    // gross 12 (frozen) ; net = 1200 − stripe(321) = 879c → round2(8.79 × 0.22) = 1.93.
+    await POST(makeReq(orderBody()))
+    expect(referralOrderArg()).toMatchObject({ grubanoFee: 12, creatorEarning: 1.93 })
   })
 
   it('pays NO acquisition bonus to a returning customer even when activated', async () => {
@@ -204,8 +215,9 @@ describe('POST /api/orders — referral edge cases', () => {
     const json = await res.json()
     expect(json.discount).toBe(0)
     expect(db.referral.create).not.toHaveBeenCalled()
+    // net-based (V1.5): net = 1200 − stripe(321) = 879c → round2(8.79 × 0.30) = 2.64.
     expect(referralOrderArg()).toMatchObject({
-      referralId: 'refExisting', grubanoFee: 12, creatorEarning: 3.6, newCustomerBonus: 0,
+      referralId: 'refExisting', grubanoFee: 12, creatorEarning: 2.64, newCustomerBonus: 0,
     })
   })
 

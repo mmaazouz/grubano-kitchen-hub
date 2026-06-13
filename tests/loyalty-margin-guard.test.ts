@@ -108,3 +108,93 @@ describe('POST /api/orders — loyalty credit never pushes Grubano net-negative'
     expect(COMMISSION_CENTS - 35 - STRIPE_CENTS - ROYALTY_CENTS).toBeGreaterThanOrEqual(0) // = 2c, never < 0
   })
 })
+
+describe('POST /api/orders — small-order fee (V1.5)', () => {
+  // Use minOrder 5 so an 11 € order is valid yet below the 12 € fee threshold.
+  beforeEach(() => {
+    db.restaurant.findFirst.mockResolvedValue({
+      id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 5,
+      commissionRateDineIn: null, commissionRatePickup: null,
+      commissionRateDelivery: null, commissionFreeUntil: null,
+    })
+  })
+
+  it('BELOW threshold → flat 1 € fee applied to the total + the column written', async () => {
+    const res = await createOrder(makeReq(body({
+      items: [{ itemId: 'i1', name: 'Snack', qty: 1, price: 11, options: [] }],
+      usePoints: false,
+    })))
+    expect(res.status).toBe(201)
+    const out = await res.json()
+
+    expect(out.smallOrderFee).toBe(1)            // 11 € < 12 € → fee
+    expect(out.total).toBe(12)                   // 11 food + 1 fee
+    const feeUpdate = db.order.update.mock.calls.map(c => c[0] as any).find(a => a?.data?.smallOrderFeeCents !== undefined)
+    expect(feeUpdate?.data?.smallOrderFeeCents).toBe(100)
+  })
+
+  it('AT/ABOVE threshold → no fee', async () => {
+    const res = await createOrder(makeReq(body({
+      items: [{ itemId: 'i1', name: 'Plat', qty: 1, price: 15, options: [] }],
+      usePoints: false,
+    })))
+    expect(res.status).toBe(201)
+    const out = await res.json()
+
+    expect(out.smallOrderFee).toBe(0)            // 15 € ≥ 12 € → none
+    expect(out.total).toBe(15)
+    const feeUpdate = db.order.update.mock.calls.map(c => c[0] as any).find(a => a?.data?.smallOrderFeeCents !== undefined)
+    expect(feeUpdate).toBeUndefined()
+  })
+})
+
+describe('POST /api/orders — affiliation on NET margin (V1.5 §4)', () => {
+  it('a referred chef order pays the creator 30% of (commission − Stripe − royalty); Grubano net ≥ 0', async () => {
+    // Delivery 30 € chef dish via a still-valid referral binding (CAS 2). Delivery
+    // commission 12% = 360c; stripe on 32,99 € = 121c; royalty 2% of 30 € = 60c.
+    db.restaurant.findFirst.mockResolvedValue({
+      id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 10,
+      commissionRateDineIn: null, commissionRatePickup: null,
+      commissionRateDelivery: null, commissionFreeUntil: null,
+    })
+    db.creator.findFirst.mockResolvedValue({ id: 'cr1', email: 'creator@x.com', referralCode: 'CODE' })
+    db.referralConfig.findFirst.mockResolvedValue({
+      commissionPctOfGrubanoFee: 0.30, newCustomerBonusAmount: 0, durationDays: 90,
+      customerDiscountPct: 0.10, customerDiscountCapEur: 5,
+    })
+    db.referral.findFirst.mockResolvedValue({
+      id: 'rf1', creatorId: 'cr1', active: true, expiresAt: new Date(Date.now() + 30 * 86_400_000),
+    })
+    db.dishAdoption.findMany.mockResolvedValue([
+      { id: 'ad1', menuItemId: 'i1', creatorDishId: 'cd1', creatorDish: { creatorId: 'cr1' } },
+    ])
+    db.referralOrder.findUnique.mockResolvedValue(null)
+    db.referralOrder.create.mockResolvedValue({ id: 'ro1' })
+
+    const res = await createOrder(makeReq(body({
+      items: [{ itemId: 'i1', name: 'Recette chef', qty: 1, price: 30, options: [] }],
+      fulfillmentType: 'delivery',
+      referralCode: 'CODE',
+      usePoints: true,
+    })))
+    expect(res.status).toBe(201)
+    const out = await res.json()
+
+    const COMMISSION = 360, STRIPE = Math.round(3299 * 0.029) + 25, ROYALTY = 60 // 121, 60
+    const NET = COMMISSION - STRIPE - ROYALTY                                    // 179
+    const AFFILIATION = Math.round(NET * 0.30)                                   // 54
+    const CAP = COMMISSION - (STRIPE + ROYALTY + AFFILIATION)                    // 125
+
+    // Affiliation is paid on the NET (not the gross commission): 30% × 1,79 € = 0,54 €.
+    const roData = db.referralOrder.create.mock.calls[0][0].data as any
+    expect(roData.creatorEarning).toBe(Math.round((NET / 100) * 0.30 * 100) / 100) // 0.54
+    expect(roData.grubanoFee).toBe(COMMISSION / 100)                               // 3.60 (gross, unchanged column)
+
+    // Loyalty cap = commission − committed claims = 0.70 × net (floored to points).
+    expect(Math.round(out.loyaltyCredit * 100)).toBe(CAP - (CAP % 5))              // 125
+
+    // Grubano net = commission − credit − stripe − royalty − affiliation ≥ 0.
+    const creditCents = Math.round(out.loyaltyCredit * 100)
+    expect(COMMISSION - creditCents - STRIPE - ROYALTY - AFFILIATION).toBeGreaterThanOrEqual(0)
+  })
+})

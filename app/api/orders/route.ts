@@ -5,6 +5,7 @@ import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } fro
 import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { fetchActivePromotions, pickBestPromotion } from '@/lib/promotions'
 import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } from '@/lib/loyalty'
+import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -222,99 +223,103 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Apply the discounts to the paid total (clamped ≥ 0). D1: the promo is the
+    // Apply the discounts to the FOOD total (clamped ≥ 0). D1: the promo is the
     // RESTO's — the customer pays the discounted price, the resto's net absorbs it.
-    const total        = Math.max(0, round2(subtotal + effectiveDeliveryFee - ref.discount - promo.discountEur))
+    const foodTotal    = Math.max(0, round2(subtotal + effectiveDeliveryFee - ref.discount - promo.discountEur))
     // Points: 1 point per euro actually spent (rounded down). Computed on the
-    // promo-reduced total, BEFORE any loyalty credit (earning is unchanged).
-    const pointsEarned = Math.floor(total)
+    // promo-reduced FOOD total, BEFORE the small-order fee (the fee is a penalty,
+    // not loyalty-earning spend — choice noted) and BEFORE any loyalty credit.
+    const pointsEarned = Math.floor(foodTotal)
 
-    // ── Loyalty redemption resolution (L1) — Grubano-financed (D1), promo-
-    // exclusive (D3), server-computed (D4), capped so the fee never goes negative
-    // (D5). The credit is NOT applied to `total` here — it is written (and `total`
-    // reduced) in a TOLERANT post-create update so a deployment before the db
-    // push stays fully inert (no credit, no points engaged). Debited at the
-    // confirmed payment only (D6, webhook).
-    const subtotalCents      = Math.round(subtotal * 100)
-    // Grubano's commission on the FULL price (D1) — the D5 cap and the /pay net
-    // fee both key off this. Computed from the resto's rate whether or not Connect
-    // is active (the cap must hold in both flows).
+    const subtotalCents = Math.round(subtotal * 100)
+    // ── Small-order fee (V1.5) — flat fee when the ITEMS subtotal (list price) is
+    // below the threshold. Paid by the CLIENT, kept 100 % by GRUBANO (added to the
+    // application_fee in /pay), NEVER in the commission base and NEVER reduced by
+    // points/promos. Added to the charge total. Written BEST-EFFORT post-create
+    // (column-tolerant → inert before the db push, exactly like the loyalty columns).
+    const smallFeeCents = smallOrderFeeCents(subtotalCents)
+    // The order is CREATED at the FOOD-only total; the small fee (then the loyalty
+    // credit) are layered on via TOLERANT post-create updates, so a pre-db-push
+    // deploy charges neither (and /pay has nothing to mis-split). The fee portion
+    // is preserved on the /pay side via the application_fee split (resto unchanged).
+
+    // ── Loyalty resolution (L1) + shared margin base (V1.5) — Grubano-financed
+    // (D1), promo-exclusive (D3), server-computed (D4), capped so Grubano is never
+    // net-negative (D-A). The credit is NOT applied to `total` here — it is written
+    // in a TOLERANT post-create update so a pre-db-push deploy stays fully inert.
+    // Grubano's commission on the FULL price (D1).
     const grossCommissionCents = computeApplicationFee(
       restaurant,
       data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery',
       subtotalCents,
     )
+
+    // Shared net-margin base + committed claims — computed ONCE and used by BOTH
+    // the loyalty cap AND the affiliation (V1.5 §4.1). Only when the order needs it
+    // (loyalty used, or a ReferralOrder will be written) to avoid an extra query on
+    // plain orders. netBeforeAffiliate = commission − Stripe(full charge) − royalty;
+    // the affiliation earns commissionPct × that net; committedClaims = Stripe +
+    // royalty + affiliation feeds the loyalty cap (commission − committedClaims).
+    const loyaltyEligible = data.usePoints && promo.discountEur === 0 && !promo.id && ref.discount === 0
+    const willWriteReferralOrder = ref.referringCreatorId !== null
+    let committedClaimsCents = 0
+    let affiliateBaseCents   = 0
+    if (loyaltyEligible || willWriteReferralOrder) {
+      // Stripe estimate on the FULL charge (items + delivery, before credit/fee).
+      // The small fee is intentionally EXCLUDED so it does not affect the cap (its
+      // own Stripe cost is covered by the fee's own revenue — choice noted).
+      const stripeFeeCents = estimateStripeFeeCents(Math.round((subtotal + effectiveDeliveryFee) * 100))
+      // Committed creator royalty — mirror the FROZEN 5C raw-id match + per-line tier.
+      let royaltyCents = 0
+      try {
+        const rawIdOf = (item: (typeof data.items)[number]): string => {
+          const parent = item.options?.[0]?.parentDishId
+          if (typeof parent === 'string' && parent.length > 0) return parent
+          return item.itemId.split('::')[0]
+        }
+        const adoptions = await prisma.dishAdoption.findMany({
+          where:  { status: 'active', menuItemId: { in: data.items.map(rawIdOf) } },
+          select: { menuItemId: true, creatorDish: { select: { creatorId: true } } },
+        })
+        if (adoptions.length > 0) {
+          const cfg = await prisma.adoptionConfig.findFirst({ where: { active: true } })
+          const referredPct = cfg?.creatorCommissionPctReferred ?? 0.02
+          const organicPct  = cfg?.creatorCommissionPctOrganic  ?? 0.02
+          const byMenuItem  = new Map(adoptions.map(a => [a.menuItemId as string, a]))
+          const lines = data.items.flatMap((item) => {
+            const adoption = byMenuItem.get(rawIdOf(item))
+            if (!adoption) return []
+            const isCreatorTraffic =
+              ref.referringCreatorId !== null && ref.referringCreatorId === adoption.creatorDish.creatorId
+            return [{ amountCents: Math.round(item.price * item.qty * 100), rate: isCreatorTraffic ? referredPct : organicPct }]
+          })
+          royaltyCents = committedRoyaltyCents(lines)
+        }
+      } catch (royErr) {
+        // PRUDENT fallback (D-A): assume the worst default tier (2 %) on the whole
+        // subtotal so the cap/affiliation never under-protect Grubano.
+        royaltyCents = Math.round(subtotalCents * 0.02)
+        console.error('[POST /api/orders] committed-royalty sizing failed — prudent 2% fallback:',
+          royErr instanceof Error ? royErr.message : royErr)
+      }
+      // V1.5 §4: affiliation on the NET, shared base with the loyalty cap.
+      affiliateBaseCents = netBeforeAffiliateCents(grossCommissionCents, stripeFeeCents, royaltyCents)
+      const affiliationCents = ref.referringCreatorId ? Math.round(affiliateBaseCents * ref.commissionPct) : 0
+      committedClaimsCents = stripeFeeCents + royaltyCents + affiliationCents
+    }
     let loyalty: { creditCents: number; pointsSpent: number; customerId: string | null } =
       { creditCents: 0, pointsSpent: 0, customerId: null }
-    if (data.usePoints && promo.discountEur === 0 && !promo.id && ref.discount === 0) {
+    if (loyaltyEligible) {
       try {
         // LoyaltyCustomer is keyed by EMAIL (its id is its own cuid, NOT the
-        // Operator id). token.email is the connected consumer's email.
+        // Operator id). token.email is the connected consumer's email. The cap
+        // uses the SHARED committedClaimsCents (Stripe + royalty + affiliation-on-
+        // net) computed above, so Grubano's margin stays ≥ 0 (D-A).
         const email = typeof token.email === 'string' ? token.email : null
         const lc = email
           ? await prisma.loyaltyCustomer.findUnique({ where: { email }, select: { id: true, pointsBalance: true } })
           : null
         if (lc) {
-          // ── Committed claims on Grubano's commission (borne de sécurité, D-A) ──
-          // The loyalty credit must never push Grubano net-negative. On this SAME
-          // order, three claims are ALSO drawn from the commission:
-          //   • Stripe fee — destination charge → Grubano bears it. Estimated on
-          //     the FULL charge (subtotal + delivery, BEFORE any credit → highest →
-          //     tighter cap; the real fee lands post-settlement in the ledger).
-          //   • creator royalty (DishSale 5C) — mirrored read-only below.
-          //   • influencer affiliation (ReferralOrder 5B) — mirrored read-only.
-          // Loyalty is promo-exclusive (D3) → commission here is gross = net, and
-          // royalty/affiliation key off the FULL price (never the credit) → no
-          // circular dependency. The DishSale/ReferralOrder WRITE blocks below are
-          // untouched — this only SIZES the cap.
-          const chargeCents    = Math.round((subtotal + effectiveDeliveryFee) * 100)
-          const stripeFeeCents = estimateStripeFeeCents(chargeCents)
-
-          // Creator royalty committed — replicate the 5C raw-id match + per-line
-          // referred/organic tier, summed across adopted lines.
-          let royaltyCents = 0
-          try {
-            const rawIdOf = (item: (typeof data.items)[number]): string => {
-              const parent = item.options?.[0]?.parentDishId
-              if (typeof parent === 'string' && parent.length > 0) return parent
-              return item.itemId.split('::')[0]
-            }
-            const adoptions = await prisma.dishAdoption.findMany({
-              where:  { status: 'active', menuItemId: { in: data.items.map(rawIdOf) } },
-              select: { menuItemId: true, creatorDish: { select: { creatorId: true } } },
-            })
-            if (adoptions.length > 0) {
-              const cfg = await prisma.adoptionConfig.findFirst({ where: { active: true } })
-              const referredPct = cfg?.creatorCommissionPctReferred ?? 0.02
-              const organicPct  = cfg?.creatorCommissionPctOrganic  ?? 0.02
-              const byMenuItem  = new Map(adoptions.map(a => [a.menuItemId as string, a]))
-              const lines = data.items.flatMap((item) => {
-                const adoption = byMenuItem.get(rawIdOf(item))
-                if (!adoption) return []
-                const isCreatorTraffic =
-                  ref.referringCreatorId !== null && ref.referringCreatorId === adoption.creatorDish.creatorId
-                return [{ amountCents: Math.round(item.price * item.qty * 100), rate: isCreatorTraffic ? referredPct : organicPct }]
-              })
-              royaltyCents = committedRoyaltyCents(lines)
-            }
-          } catch (royErr) {
-            // PRUDENT fallback (D-A): if we can't size the royalty, assume the worst
-            // default tier (2 %) on the whole subtotal so the cap never under-protects.
-            royaltyCents = Math.round(subtotalCents * 0.02)
-            console.error('[POST /api/orders] committed-royalty sizing failed — prudent 2% fallback:',
-              royErr instanceof Error ? royErr.message : royErr)
-          }
-
-          // Influencer affiliation committed — mirrors 5B (creatorEarning =
-          // round2(grubanoFee × commissionPct)). Loyalty requires ref.discount===0
-          // → never CAS 1, so the first-order bonus never applies here; a
-          // referringCreatorId means CAS 2-valid → a ReferralOrder WILL be written.
-          const affiliationCents = ref.referringCreatorId
-            ? Math.round(grossCommissionCents * ref.commissionPct)
-            : 0
-
-          const committedClaimsCents = stripeFeeCents + royaltyCents + affiliationCents
-
           const r = resolveLoyaltyCredit({
             customerPointsBalance: lc.pointsBalance,
             subtotalCents,
@@ -346,7 +351,7 @@ export async function POST(req: NextRequest) {
         items:           data.items as unknown as Prisma.InputJsonValue,
         subtotal,
         deliveryFee:     effectiveDeliveryFee,
-        total,
+        total:           foodTotal,
         fulfillmentType: data.fulfillmentType,
         deliveryAddress: data.deliveryAddress,
         paymentMethod:   data.paymentMethod,
@@ -385,12 +390,31 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Small-order fee application (V1.5) — TOLERANT post-create update ────────
+    // Writes the fee column AND raises `total` by the fee TOGETHER, so the fee only
+    // takes effect when it is durably recorded. Pre-db-push (column missing) the
+    // update throws → caught → the order keeps the food-only total and the fee is
+    // fully inert (no charge, nothing for /pay to split → resto unchanged). Points,
+    // promos and the loyalty credit never touch the fee (it is added on top).
+    let appliedSmallFeeCents = 0
+    if (smallFeeCents > 0) {
+      try {
+        await prisma.order.update({
+          where: { id: order.id },
+          data:  { total: round2(foodTotal + smallFeeCents / 100), smallOrderFeeCents: smallFeeCents },
+        })
+        appliedSmallFeeCents = smallFeeCents
+      } catch (feeErr) {
+        console.error('[POST /api/orders] small-order fee column missing pre-db-push — fee NOT applied:',
+          feeErr instanceof Error ? feeErr.message : feeErr)
+      }
+    }
+
     // ── Loyalty credit application (L1) — TOLERANT post-create update ───────────
-    // Reduces `total` AND records pointsRedeemed/loyaltyCreditCents TOGETHER, so
-    // the discount only takes effect when it is durably traced. If the columns
-    // are missing (pre-db-push) the update throws → caught → the order keeps its
-    // full price and NO points are engaged (loyalty fully inert). Points are NOT
-    // debited here (D6 — that happens at the confirmed-payment webhook).
+    // Reduces the total (food + applied fee) by the credit AND records
+    // pointsRedeemed/loyaltyCreditCents TOGETHER, so the credit only takes effect
+    // when durably traced. Pre-db-push → throws → caught → loyalty fully inert.
+    // Points are NOT debited here (D6 — the confirmed-payment webhook does that).
     let appliedCreditCents = 0
     let appliedPointsSpent = 0
     if (loyalty.creditCents > 0) {
@@ -398,7 +422,7 @@ export async function POST(req: NextRequest) {
         await prisma.order.update({
           where: { id: order.id },
           data:  {
-            total:              Math.max(0, round2(total - loyalty.creditCents / 100)),
+            total:              Math.max(0, round2(foodTotal + appliedSmallFeeCents / 100 - loyalty.creditCents / 100)),
             pointsRedeemed:     loyalty.pointsSpent,
             loyaltyCreditCents: loyalty.creditCents,
           },
@@ -556,8 +580,14 @@ export async function POST(req: NextRequest) {
           const channel: CommissionChannel =
             data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
           const feeCents       = computeApplicationFee(restaurant, channel, Math.round(subtotal * 100))
-          const grubanoFee     = feeCents / 100                          // FROZEN — real commission (EUR)
-          const creatorEarning = round2(grubanoFee * ref.commissionPct)  // FROZEN — B0 30 % of the flow
+          const grubanoFee     = feeCents / 100                          // FROZEN — gross commission (EUR), column unchanged
+          // V1.5 §4 — the affiliation now earns commissionPct of the NET margin
+          // (commission − Stripe − royalty) = affiliateBaseCents, the SAME base
+          // that sizes the loyalty cap. Both rails share ONE positive base, so
+          // Grubano is never net-negative; the creator earns less but on REAL
+          // margin. (affiliateBaseCents was computed above whenever a ReferralOrder
+          // is written — willWriteReferralOrder ⟺ ref.referringCreatorId set.)
+          const creatorEarning = round2((affiliateBaseCents / 100) * ref.commissionPct) // FROZEN — on net (V1.5)
           // B0-quater acquisition bonus: CONFIG-driven (default 0 → no count
           // query, no write). When activated, paid once on the customer's FIRST
           // Grubano order (any restaurant), independent of the commission share.
@@ -609,11 +639,13 @@ export async function POST(req: NextRequest) {
         status:            updated.status,
         estimatedDelivery: dispatch.estimatedTime,
         trackingUrl:       dispatch.trackingUrl,
-        // Final amount the customer will pay = promo-reduced total − loyalty credit.
-        total:             Math.max(0, round2(total - appliedCreditCents / 100)),
+        // Final amount the customer will pay = food + small fee − loyalty credit.
+        total:             Math.max(0, round2(foodTotal + appliedSmallFeeCents / 100 - appliedCreditCents / 100)),
         pointsEarned,
         // Total promo/welcome discount applied (never both, D6 guard).
         discount:          round2(ref.discount + promo.discountEur),
+        // Small-order fee applied to this order (0 when items subtotal ≥ threshold — V1.5).
+        smallOrderFee:     round2(appliedSmallFeeCents / 100),
         // Loyalty redemption applied to this order (0 when none — L1).
         loyaltyCredit:     round2(appliedCreditCents / 100),
         pointsRedeemed:    appliedPointsSpent,
