@@ -7,6 +7,7 @@ import { authOptions } from '@/lib/auth'
 import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '@/lib/geocode'
 import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
+import { smallOrderFeeConfigCents, smallOrderThresholdCents } from '@/lib/pricing'
 
 // ── GET /api/restaurants/:id ──────────────────────────────────────────────────
 // Returns full restaurant details + menu grouped by category
@@ -246,6 +247,10 @@ export async function GET(
       // Additive (P2) — active promos + per-item discounted unit prices.
       promotions,
       itemPromo,
+      // Additive (V1.5) — global small-order-fee config (cents), echoed so the
+      // cart can show the « ajoutez X € » nudge + the fee line. DISPLAY ONLY: the
+      // server recomputes + applies the fee at order time (POST /api/orders).
+      smallOrder: { feeCents: smallOrderFeeConfigCents(), thresholdCents: smallOrderThresholdCents() },
     })
   } catch (err) {
     console.error('[GET /api/restaurants/:id]', err)

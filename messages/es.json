@@ -1022,7 +1022,10 @@
       "loyaltyUpTo": "Hasta {amount} € de descuento al pagar",
       "loyaltyNote": "No combinable con una promoción.",
       "loyaltyBalanceEur": "{amount} € de crédito",
-      "loyaltyPromoBlocked": "Ya hay una promoción activa — tus puntos siguen disponibles para un próximo pedido."
+      "loyaltyPromoBlocked": "Ya hay una promoción activa — tus puntos siguen disponibles para un próximo pedido.",
+      "smallOrderFeeLine": "Gastos de pedido pequeño",
+      "smallOrderNudge": "Añade {amount} € para evitar los gastos de pedido pequeño",
+      "smallOrderAddItem": "Añadir {name} ({price} €)"
     },
     "track": {
       "title": "Seguimiento en tiempo real",

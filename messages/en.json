@@ -1022,7 +1022,10 @@
       "loyaltyUpTo": "Up to €{amount} off at payment",
       "loyaltyNote": "Not combinable with a promotion.",
       "loyaltyBalanceEur": "{amount} € credit",
-      "loyaltyPromoBlocked": "A promotion is already active — your points stay available for a next order."
+      "loyaltyPromoBlocked": "A promotion is already active — your points stay available for a next order.",
+      "smallOrderFeeLine": "Small-order fee",
+      "smallOrderNudge": "Add €{amount} to avoid the small-order fee",
+      "smallOrderAddItem": "Add {name} (€{price})"
     },
     "track": {
       "title": "Live tracking",

@@ -45,6 +45,11 @@ export default function CartScreen() {
     // scoped to e.g. ['delivery'] does not FALSE-BLOCK loyalty on a pickup order.
     channels?: string[] | null
   }>>([])
+  // Small-order fee (V1.5) — global config echoed by GET /api/restaurants/[id].
+  // DISPLAY-only: the SERVER recomputes + applies the fee at order time.
+  const [smallOrderCfg, setSmallOrderCfg] = useState<{ feeCents: number; thresholdCents: number } | null>(null)
+  // The resto menu (flat) for the 1-click "add an item" nudge to clear the fee.
+  const [menuItems, setMenuItems] = useState<Array<{ id: string; name: string; price: number; photos?: string[]; category?: string }>>([])
 
   useEffect(() => {
     setCart(readCart())
@@ -58,7 +63,16 @@ export default function CartScreen() {
     fetch(`/api/restaurants/${cart.restaurantId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled && Array.isArray(d?.promotions)) setPromos(d.promotions)
+        if (cancelled || !d) return
+        if (Array.isArray(d.promotions)) setPromos(d.promotions)
+        if (d.smallOrder && typeof d.smallOrder.feeCents === 'number' && typeof d.smallOrder.thresholdCents === 'number') {
+          setSmallOrderCfg({ feeCents: d.smallOrder.feeCents, thresholdCents: d.smallOrder.thresholdCents })
+        }
+        if (Array.isArray(d.menu)) {
+          setMenuItems(d.menu.flatMap(
+            (c: { items?: Array<{ id: string; name: string; price: number; photos?: string[]; category?: string }> }) => c.items ?? [],
+          ))
+        }
       })
       .catch(() => {})
     return () => { cancelled = true }
@@ -156,12 +170,41 @@ export default function CartScreen() {
     const raw = Math.min(subtotal * welcome.discountPct, welcome.discountCap)
     return Math.round(raw * 100) / 100
   }, [welcome, subtotal])
-  // The displayed total is EXACTLY what the checkout will charge: full item
-  // prices + delivery fee - the server-confirmed welcome discount. The fake
-  // FRENCH10 client-only promo (audit C3-fix: the cart LIED vs the real debit)
-  // was removed by founder decision.
-  const total = Math.max(0, subtotal - welcomeAmount + deliveryFee)
+  // Small-order fee (V1.5) — flat fee when the ITEMS subtotal is below the
+  // threshold (config echoed by the server). Added to the displayed total; the
+  // server recomputes + applies the exact fee at order time. Points/promos never
+  // reduce it (it is added on top of the discounted food).
+  const subtotalCentsCart = Math.round(subtotal * 100)
+  const smallFeeApplies = !!smallOrderCfg && subtotal > 0 && subtotalCentsCart < smallOrderCfg.thresholdCents
+  const smallFeeEur = smallFeeApplies ? smallOrderCfg!.feeCents / 100 : 0
+  const missingToThresholdEur = smallOrderCfg ? Math.max(0, smallOrderCfg.thresholdCents - subtotalCentsCart) / 100 : 0
+  // The displayed total = full item prices + delivery − welcome discount + the
+  // small-order fee. The loyalty credit is resolved + shown on the checkout
+  // screen, so the cart never charges MORE than it displays (C3-fix doctrine).
+  const total = Math.max(0, subtotal - welcomeAmount + deliveryFee + smallFeeEur)
   const totalItems = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
+
+  // The single item the nudge proposes to clear the fee in one tap: the cheapest
+  // drink/dessert/side that crosses the threshold, else the cheapest of those,
+  // else the cheapest item overall. Display-only convenience.
+  const suggestion = useMemo(() => {
+    if (!smallFeeApplies || menuItems.length === 0) return null
+    const preferRe = /boisson|drink|dessert|accompagnement|side|extra|frite/i
+    const pool = menuItems.filter((m) => m.price > 0)
+    if (pool.length === 0) return null
+    const preferred = pool.filter((m) => preferRe.test(m.category ?? ''))
+    const source = (preferred.length ? preferred : pool).slice().sort((a, b) => a.price - b.price)
+    return source.find((m) => m.price >= missingToThresholdEur) ?? source[0] ?? null
+  }, [smallFeeApplies, menuItems, missingToThresholdEur])
+
+  function addSuggested(m: { id: string; name: string; price: number; photos?: string[] }) {
+    if (!cart) return
+    const existing = cart.items.find((l) => l.item.id === m.id)
+    const items = existing
+      ? cart.items.map((l) => (l.item.id === m.id ? { ...l, qty: l.qty + 1 } : l))
+      : [...cart.items, { item: { id: m.id, name: m.name, price: m.price, photos: m.photos ?? [] }, qty: 1 }]
+    update({ ...cart, items })
+  }
 
   // Loyalty redemption eligibility (L1, D3 promo-exclusive). Shown only for a
   // logged-in consumer WITH a balance and NO welcome discount (the server also
@@ -525,6 +568,29 @@ export default function CartScreen() {
           <span className="text-grubano-ink-muted">{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
           <span className="font-semibold text-grubano-ink">{fulfillment === 'pickup' ? t('free') : `${deliveryFee.toFixed(2)} €`}</span>
         </div>
+        {/* Small-order fee (V1.5) — line + nudge with a 1-click "add an item".
+            Disappears as soon as the items subtotal reaches the threshold. */}
+        {smallFeeApplies && (
+          <div className="mb-2.5 flex justify-between text-grubano-sm">
+            <span className="text-grubano-ink-muted">{t('smallOrderFeeLine')}</span>
+            <span className="font-semibold text-grubano-ink">{smallFeeEur.toFixed(2)} €</span>
+          </div>
+        )}
+        {smallFeeApplies && (
+          <div className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2">
+            <p className="text-[12px] font-medium text-grubano-primary">
+              {t('smallOrderNudge', { amount: missingToThresholdEur.toFixed(2) })}
+            </p>
+            {suggestion && (
+              <button
+                onClick={() => addSuggested(suggestion)}
+                className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-grubano-primary px-3 py-1 text-[11px] font-bold text-white active:scale-95"
+              >
+                <Plus size={12} /> {t('smallOrderAddItem', { name: suggestion.name, price: suggestion.price.toFixed(2) })}
+              </button>
+            )}
+          </div>
+        )}
         {/* Chantier P2 — soft incentive: « Encore X € pour profiter de {nom} ».
             Display arithmetic only — the server resolves the real promo. */}
         {promoIncentive && (

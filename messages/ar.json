@@ -1022,7 +1022,10 @@
       "loyaltyUpTo": "حتى {amount} € تُخصم عند الدفع",
       "loyaltyNote": "لا يُجمع مع عرض ترويجي.",
       "loyaltyBalanceEur": "رصيد {amount} €",
-      "loyaltyPromoBlocked": "يوجد عرض ترويجي نشط بالفعل — تبقى نقاطك متاحة لطلب قادم."
+      "loyaltyPromoBlocked": "يوجد عرض ترويجي نشط بالفعل — تبقى نقاطك متاحة لطلب قادم.",
+      "smallOrderFeeLine": "رسوم الطلب الصغير",
+      "smallOrderNudge": "أضف {amount} € لتجنّب رسوم الطلب الصغير",
+      "smallOrderAddItem": "أضف {name} ({price} €)"
     },
     "track": {
       "title": "التتبع المباشر",
