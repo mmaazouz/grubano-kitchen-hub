@@ -327,7 +327,13 @@
       "toastBack": "{name} available again",
       "error": "Couldn't update the dish",
       "todoNote": "Automatic \"until tomorrow\" reactivation: coming soon."
-    }
+    },
+    "tabTodo": "To handle",
+    "tabInProgress": "In progress",
+    "tabDone": "Completed",
+    "newOrderToast": "New order",
+    "newOrdersToast": "{count} new orders",
+    "seeMore": "Show more"
   },
   "franchise": {
     "title": "Franchise",

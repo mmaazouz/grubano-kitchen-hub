@@ -327,7 +327,13 @@
       "toastBack": "{name} de nouveau disponible",
       "error": "Impossible de mettre à jour le plat",
       "todoNote": "Réactivation automatique « jusqu'à demain » : bientôt disponible."
-    }
+    },
+    "tabTodo": "À traiter",
+    "tabInProgress": "En cours",
+    "tabDone": "Terminées",
+    "newOrderToast": "Nouvelle commande",
+    "newOrdersToast": "{count} nouvelles commandes",
+    "seeMore": "Voir plus"
   },
   "franchise": {
     "title": "Franchise",

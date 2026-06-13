@@ -18,9 +18,9 @@
  * aggregation. Mounts its own ToastProvider (operator pages have no global one).
  */
 
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import {
   Volume2, VolumeX, Pause, Power, Filter, Lock,
   ShoppingBasket, Truck, Clock, PackageX, AlertTriangle,
@@ -36,39 +36,14 @@ import EstablishmentSwitcher, {
 import {
   KNOWN_STATUS, statusTone, useOrderAdvance, OrderStatusActions,
 } from '@/components/orders/order-actions'
+import {
+  tabForStatus, type OrderView, type OrderItemView, type OrderTab,
+} from '@/lib/orders-feed'
 
-// ── Serializable view types (shared with the server page) ─────────────────────
-
-export interface OrderItemView {
-  name:      string
-  qty:       number
-  price:     number
-  options:   {
-    size?:        string
-    supplements?: { name: string; price: number }[]
-    exclusions?:  string[]
-    note?:        string
-  } | null
-  brandName: string | null
-  emoji:     string | null
-}
-
-export interface OrderView {
-  id:              string
-  status:          string
-  fulfillmentType: string
-  subtotal:        number
-  deliveryFee:     number
-  discount:        number
-  total:           number
-  referralCode:    string | null
-  timeLabel:       string
-  dateLabel:       string
-  items:           OrderItemView[]
-  itemsPreview:    string
-  brandNames:      string[]
-  customer:        { name: string; email: string; phone: string | null } | null
-}
+// ── Serializable view types ───────────────────────────────────────────────────
+// OrderView / OrderItemView now live in lib/orders-feed (shared with the server
+// page + the live endpoint). Re-exported so existing importers are unaffected.
+export type { OrderView, OrderItemView }
 
 export interface BrandView      { name: string; emoji: string }
 export interface MenuItemView   { id: string; name: string; available: boolean; brandName: string; emoji: string }
@@ -85,8 +60,9 @@ interface OrdersClientProps {
   initialOrderId?: string
 }
 
-const ACTIVE_STATUSES = new Set(['received', 'preparing', 'ready', 'picked_up'])
 const STATUS_FLOW = ['received', 'preparing', 'ready', 'picked_up', 'delivered'] as const
+const POLL_INTERVAL_MS = 15_000   // near-real-time refresh while the tab is visible
+const DONE_PAGE = 20              // "Terminées" history page size
 
 // ── Root: own ToastProvider ───────────────────────────────────────────────────
 
@@ -103,10 +79,12 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
   const ts     = useTranslations('dashboard.home.liveOrders') // status / type / action labels
   const toast  = useToast()
   const router = useRouter()
+  const locale = useLocale()
   const { advance, pendingId } = useOrderAdvance()
 
   const [brandFilter,  setBrandFilter]  = useState<string>('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'done'>('all')
+  const [tab,          setTab]           = useState<OrderTab>('todo')   // default: à traiter
+  const [doneLimit,    setDoneLimit]     = useState(DONE_PAGE)
   const [soundOn,      setSoundOn]       = useState(true)
   const [detailId,     setDetailId]      = useState<string | null>(initialOrderId ?? null)
   const [stockOpen,    setStockOpen]     = useState(false)
@@ -117,19 +95,95 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
   )
   const [availPending, setAvailPending]  = useState<string | null>(null)
 
+  // ── Near-real-time feed (Orders v2) ─────────────────────────────────────────
+  // liveOrders is seeded from the server props and refreshed by 15 s polling
+  // (visible tab only). It resyncs whenever the server re-renders (an advance →
+  // router.refresh, or an establishment switch) — resync never chimes.
+  const [liveOrders, setLiveOrders] = useState<OrderView[]>(orders)
+  const seenIds  = useRef<Set<string>>(new Set(orders.map(o => o.id)))
+  const soundRef = useRef(soundOn)
+  useEffect(() => { soundRef.current = soundOn }, [soundOn])
+  useEffect(() => {
+    setLiveOrders(orders)
+    orders.forEach(o => seenIds.current.add(o.id))
+  }, [orders])
+
+  // Web Audio chime — ZERO shipped asset. Browser autoplay rule: audio unlocks
+  // on the first user gesture anywhere (the sound toggle click is one such
+  // gesture). Never plays on the initial load (seenIds is pre-seeded) — only on
+  // an id first seen through polling.
+  const audioCtx = useRef<AudioContext | null>(null)
+  const unlockAudio = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext
+        || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!audioCtx.current && Ctx) audioCtx.current = new Ctx()
+      void audioCtx.current?.resume()
+    } catch { /* audio unavailable — the toast still fires */ }
+  }, [])
+  const playChime = useCallback(() => {
+    const ctx = audioCtx.current
+    if (!ctx) return
+    try {
+      const o = ctx.createOscillator(); const g = ctx.createGain()
+      o.connect(g); g.connect(ctx.destination)
+      o.type = 'sine'; o.frequency.value = 880
+      const now = ctx.currentTime
+      g.gain.setValueAtTime(0.0001, now)
+      g.gain.exponentialRampToValueAtTime(0.18, now + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.45)
+      o.start(now); o.stop(now + 0.45)
+    } catch { /* ignore */ }
+  }, [])
+  useEffect(() => {
+    const once = () => unlockAudio()
+    window.addEventListener('pointerdown', once, { once: true })
+    return () => window.removeEventListener('pointerdown', once)
+  }, [unlockAudio])
+
+  const fetchLive = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/orders/live?locale=${locale}`, { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json() as { orders?: OrderView[] }
+      const incoming = Array.isArray(data.orders) ? data.orders : []
+      const fresh = incoming.filter(o => !seenIds.current.has(o.id))
+      incoming.forEach(o => seenIds.current.add(o.id))
+      setLiveOrders(incoming)                       // React reconciles by id → no jump
+      if (fresh.length > 0) {
+        if (soundRef.current) playChime()           // toggle off → no sound, toast stays
+        toast.success(fresh.length === 1 ? t('newOrderToast') : t('newOrdersToast', { count: fresh.length }))
+      }
+    } catch { /* network blip — keep the current list */ }
+  }, [locale, playChime, toast, t])
+
+  // Poll every 15 s WHILE the tab is visible; immediate refresh on regaining focus.
+  useEffect(() => {
+    const tick  = () => { if (document.visibilityState === 'visible') void fetchLive() }
+    const id    = setInterval(tick, POLL_INTERVAL_MS)
+    const onVis = () => { if (document.visibilityState === 'visible') void fetchLive() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
+  }, [fetchLive])
+
   const statusLabel = (s: string): string =>
     KNOWN_STATUS.has(s) ? ts(`status_${s}`) : ts('status_unknown')
 
-  const activeCount = orders.filter(o => ACTIVE_STATUSES.has(o.status)).length
+  // Brand-filtered orders, then split into tabs. Tab badge counts respect the
+  // brand filter so the badges and the visible list stay consistent. A new order
+  // increments the 'todo' badge whatever tab is open (counts span all tabs).
+  const brandMatched = liveOrders.filter(o => brandFilter === 'all' || o.brandNames.includes(brandFilter))
+  const counts: Record<OrderTab, number> = { todo: 0, inProgress: 0, done: 0 }
+  for (const o of brandMatched) counts[tabForStatus(o.status)]++
+  const activeCount = counts.todo + counts.inProgress
 
-  const visible = orders.filter(o => {
-    if (brandFilter !== 'all' && !o.brandNames.includes(brandFilter)) return false
-    if (statusFilter === 'live' && !ACTIVE_STATUSES.has(o.status)) return false
-    if (statusFilter === 'done' &&  ACTIVE_STATUSES.has(o.status)) return false
-    return true
-  })
+  const tabOrders = brandMatched.filter(o => tabForStatus(o.status) === tab)
+  // 'Terminées' is history → capped at the last N with "Voir plus"; the
+  // operational tabs (todo/inProgress) stay small and are shown in full.
+  const visible     = tab === 'done' ? tabOrders.slice(0, doneLimit) : tabOrders
+  const doneHasMore = tab === 'done' && tabOrders.length > doneLimit
 
-  const detailOrder = detailId ? orders.find(o => o.id === detailId) ?? null : null
+  const detailOrder = detailId ? liveOrders.find(o => o.id === detailId) ?? null : null
 
   // ── Pause / resume the restaurant ──────────────────────────────────────────
   async function togglePause() {
@@ -218,7 +272,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
           size="md"
           fullWidth
           leftIcon={soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
-          onClick={() => setSoundOn(s => !s)}
+          onClick={() => { unlockAudio(); setSoundOn(s => !s) }}
         >
           {soundOn ? t('soundOn') : t('soundOff')}
         </Button>
@@ -279,12 +333,6 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
           </FilterChip>
         ))}
         <span className="mx-1 h-3 w-px shrink-0 bg-grubano-border" />
-        {([['all', t('statusAll')], ['live', t('statusLive')], ['done', t('statusDone')]] as const).map(([k, l]) => (
-          <FilterChip key={k} dark active={statusFilter === k} onClick={() => setStatusFilter(k)}>
-            {l}
-          </FilterChip>
-        ))}
-        <span className="mx-1 h-3 w-px shrink-0 bg-grubano-border" />
         <button
           onClick={() => setStockOpen(true)}
           className="inline-flex shrink-0 items-center gap-1 rounded-full border border-grubano-border bg-grubano-surface px-2.5 py-1 text-[10px] font-semibold text-grubano-ink-muted hover:border-grubano-primary/40 hover:text-grubano-primary"
@@ -293,8 +341,36 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
         </button>
       </div>
 
+      {/* Tabs — À traiter / En cours / Terminées, with live count badges */}
+      <div className="mb-3 grid grid-cols-3 gap-1 rounded-grubano-xl bg-grubano-surface-muted p-1">
+        {([
+          ['todo',       t('tabTodo'),       counts.todo],
+          ['inProgress', t('tabInProgress'), counts.inProgress],
+          ['done',       t('tabDone'),       counts.done],
+        ] as const).map(([k, label, n]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={
+              'flex items-center justify-center gap-1.5 rounded-grubano-lg px-2 py-2 text-[12px] font-bold transition-colors '
+              + (tab === k ? 'bg-grubano-surface text-grubano-ink shadow-sm' : 'text-grubano-ink-muted')
+            }
+          >
+            {label}
+            {n > 0 && (
+              <span className={
+                'inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold '
+                + (k === 'todo' ? 'bg-grubano-primary text-white' : 'bg-grubano-border text-grubano-ink')
+              }>
+                {n}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Orders list */}
-      {orders.length === 0 ? (
+      {liveOrders.length === 0 ? (
         <Card elevation="sm" padding="lg">
           <EmptyState emoji="🍽️" title={t('emptyTitle')} description={t('emptyDesc')} compact />
         </Card>
@@ -366,6 +442,13 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
               </Card>
             )
           })}
+          {doneHasMore && (
+            <div className="pt-1 text-center">
+              <Button variant="ghost" size="sm" onClick={() => setDoneLimit(n => n + DONE_PAGE)}>
+                {t('seeMore')}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

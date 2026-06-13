@@ -327,7 +327,13 @@
       "toastBack": "{name} di nuovo disponibile",
       "error": "Impossibile aggiornare il piatto",
       "todoNote": "Riattivazione automatica «fino a domani»: presto disponibile."
-    }
+    },
+    "tabTodo": "Da gestire",
+    "tabInProgress": "In corso",
+    "tabDone": "Completati",
+    "newOrderToast": "Nuovo ordine",
+    "newOrdersToast": "{count} nuovi ordini",
+    "seeMore": "Mostra altro"
   },
   "franchise": {
     "title": "Franchising",

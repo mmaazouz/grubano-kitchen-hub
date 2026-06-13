@@ -327,7 +327,13 @@
       "toastBack": "{name} متوفّر مجددًا",
       "error": "تعذّر تحديث الطبق",
       "todoNote": "إعادة التفعيل التلقائية «حتى الغد»: قريبًا."
-    }
+    },
+    "tabTodo": "قيد المعالجة",
+    "tabInProgress": "جارية",
+    "tabDone": "منتهية",
+    "newOrderToast": "طلب جديد",
+    "newOrdersToast": "{count} طلبات جديدة",
+    "seeMore": "عرض المزيد"
   },
   "franchise": {
     "title": "امتياز",
