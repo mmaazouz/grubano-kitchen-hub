@@ -306,7 +306,17 @@ export default function OrderTrackingScreen() {
             <p className="mt-1 text-[22px] font-extrabold text-[#1a1a1a]">{pickupHeadline()}</p>
             <div className="mt-2 flex justify-center">
               <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#F97316] shadow-sm">
-                {STATUS_LABEL_KEY[order.status] ? t(STATUS_LABEL_KEY[order.status]) : order.status}
+                {/* Pickup-aware badge: a collected pickup must read "Récupérée"
+                    (matching the headline above + the timeline below), never the
+                    delivery wording "En route vers vous"; "ready" reads the
+                    pickup-specific "Prête à récupérer". */}
+                {isCollected
+                  ? t('statusCollected')
+                  : isReady
+                    ? t('statusReadyPickup')
+                    : STATUS_LABEL_KEY[order.status]
+                      ? t(STATUS_LABEL_KEY[order.status])
+                      : order.status}
               </span>
             </div>
           </div>
