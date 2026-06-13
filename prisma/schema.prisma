@@ -868,6 +868,14 @@ model Order {
   // (column-tolerant until the db push → loyalty is inert before the push).
   pointsRedeemed     Int  @default(0)
   loyaltyCreditCents Int  @default(0)
+  // ── Small-order fee (V1.5, additive) ────────────────────────────────────────
+  // Flat fee added when the items subtotal is BELOW a threshold (env
+  // SMALL_ORDER_FEE_CENTS / SMALL_ORDER_THRESHOLD_CENTS). Paid by the CLIENT,
+  // kept 100 % by GRUBANO (added to the application_fee) — NEVER touched by the
+  // resto, the commission base, the chef royalty, the loyalty credit or promos.
+  // In CENTS. Written BEST-EFFORT post-create (column-tolerant until the db push
+  // → the fee is inert before the push).
+  smallOrderFeeCents Int  @default(0)
   referralOrder   ReferralOrder?
   // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
   // attributed to this order. Nullable list, no impact on existing orders.
