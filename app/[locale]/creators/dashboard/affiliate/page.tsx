@@ -29,6 +29,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
 import { buildAffiliateLink, buildAffiliateRestaurantLink } from '@/lib/affiliate-link'
+import AffiliateStudio from '@/components/creators/AffiliateStudio'
 
 // ── Contract (mirrored locally — the route is the source of truth) ────────────
 interface ByMonth { month: string; gainCents: number }
@@ -390,10 +391,13 @@ export default function AffiliateDashboardPage() {
         </div>
       </Card>
 
+      {/* ── STUDIO DE CONTENU IA (Slice 2b) — replaces the « Studio (bientôt) »
+          placeholder: pick a target → AI captions + a shareable card. ──────── */}
+      <AffiliateStudio restos={restos} />
+
       {/* ── Placeholders « bientôt » (clearly inert) ───────────────────────── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {([
-          { icon: Sparkles, title: t('soonStudioTitle'), body: t('soonStudioBody') },
           { icon: Award,    title: t('soonTiersTitle'),  body: t('soonTiersBody') },
           { icon: BarChart3,title: t('soonPerfTitle'),   body: t('soonPerfBody') },
         ]).map((p) => {

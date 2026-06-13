@@ -958,7 +958,23 @@
       "soonTiersBody": "Unlock rewards based on your performance.",
       "soonPerfTitle": "Performance",
       "soonPerfBody": "Click tracking and conversion rate.",
-      "soonBadge": "Soon"
+      "soonBadge": "Soon",
+      "studioTitle": "Content studio",
+      "studioDesc": "Pick a target, generate ready-to-post captions + a shareable card.",
+      "studioPickResto": "Choose a restaurant…",
+      "studioDishAll": "Whole restaurant",
+      "studioGenerate": "Generate",
+      "studioGenerating": "Generating…",
+      "studioErr": "Generation unavailable, try again.",
+      "studioRateLimited": "Limit reached — try again later.",
+      "studioCaptionsTitle": "Captions",
+      "studioCardTitle": "Shareable card",
+      "studioCardCta": "Order on Grubano 🍽️",
+      "studioDownloadCard": "Download card",
+      "toneEnthusiastic": "Enthusiastic",
+      "tonePunchy": "Short & punchy",
+      "toneStorytelling": "Storytelling",
+      "copyCaption": "Copy"
     }
   },
   "eat": {

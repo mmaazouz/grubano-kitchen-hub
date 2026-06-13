@@ -958,7 +958,23 @@
       "soonTiersBody": "Sblocca premi in base alle tue performance.",
       "soonPerfTitle": "Performance",
       "soonPerfBody": "Monitoraggio clic e tasso di conversione.",
-      "soonBadge": "Presto"
+      "soonBadge": "Presto",
+      "studioTitle": "Studio contenuti",
+      "studioDesc": "Scegli un obiettivo, genera didascalie pronte da pubblicare + una card condivisibile.",
+      "studioPickResto": "Scegli un ristorante…",
+      "studioDishAll": "Tutto il ristorante",
+      "studioGenerate": "Genera",
+      "studioGenerating": "Generazione…",
+      "studioErr": "Generazione non disponibile, riprova.",
+      "studioRateLimited": "Limite raggiunto — riprova più tardi.",
+      "studioCaptionsTitle": "Didascalie",
+      "studioCardTitle": "Card condivisibile",
+      "studioCardCta": "Ordina su Grubano 🍽️",
+      "studioDownloadCard": "Scarica la card",
+      "toneEnthusiastic": "Entusiasta",
+      "tonePunchy": "Breve e diretto",
+      "toneStorytelling": "Storytelling",
+      "copyCaption": "Copia"
     }
   },
   "eat": {

@@ -958,7 +958,23 @@
       "soonTiersBody": "افتح مكافآت حسب أدائك.",
       "soonPerfTitle": "الأداء",
       "soonPerfBody": "تتبّع النقرات ومعدّل التحويل.",
-      "soonBadge": "قريبًا"
+      "soonBadge": "قريبًا",
+      "studioTitle": "استوديو المحتوى",
+      "studioDesc": "اختر هدفًا، ولّد تسميات جاهزة للنشر + بطاقة قابلة للمشاركة.",
+      "studioPickResto": "اختر مطعمًا…",
+      "studioDishAll": "المطعم بالكامل",
+      "studioGenerate": "توليد",
+      "studioGenerating": "جارٍ التوليد…",
+      "studioErr": "التوليد غير متاح، حاول مجددًا.",
+      "studioRateLimited": "تم بلوغ الحد — حاول لاحقًا.",
+      "studioCaptionsTitle": "التسميات",
+      "studioCardTitle": "بطاقة للمشاركة",
+      "studioCardCta": "اطلب عبر Grubano 🍽️",
+      "studioDownloadCard": "تنزيل البطاقة",
+      "toneEnthusiastic": "متحمّس",
+      "tonePunchy": "قصير ومباشر",
+      "toneStorytelling": "سرد قصصي",
+      "copyCaption": "نسخ"
     }
   },
   "eat": {
