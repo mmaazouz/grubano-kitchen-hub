@@ -83,7 +83,7 @@ const PAGE_IDS = {
   agent2: '36dfd2c9-8146-8106-8049-cc92a50a9112',  // Dashboard
   agent3: '36dfd2c9-8146-81b4-91ec-ecdc8013bad0',  // Consumer
   agent4: '36dfd2c9-8146-8132-9fd0-f53fc6e12226',  // Portails
-  inbox:  '37dfd2c9-8146-817f-8920-c5ad7fe80eae',  // Shared inbox v5 (📥 Inbox Agent 0 v5 — archives: v4 37dfd2c9-8146-81ab-8cdf-cb8c26038bfc, v3 37cfd2c9-8146-8137-9889-ec75eea3b2e2, v2 37cfd2c9-8146-81d8-860e-c19723e09b15, v1 36efd2c9-8146-8195-a65a-d146cfed0642)
+  inbox:  '37efd2c9-8146-814a-aaed-ef6112fa41be',  // Shared inbox v6 (📥 Inbox Agent 0 v6 — archives READ-ONLY: v5 37dfd2c9-8146-817f-8920-c5ad7fe80eae, v4 37dfd2c9-8146-81ab-8cdf-cb8c26038bfc, v3 37cfd2c9-8146-8137-9889-ec75eea3b2e2, v2 37cfd2c9-8146-81d8-860e-c19723e09b15, v1 36efd2c9-8146-8195-a65a-d146cfed0642)
 }
 
 const AGENT_NAMES = {
