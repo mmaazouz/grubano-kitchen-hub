@@ -71,6 +71,12 @@ export async function GET(req: Request) {
         ? prisma.promotion.findMany({
             where:   { brandId: { in: brandIds } },
             orderBy: { createdAt: 'desc' },
+            // Explicit select (NOT the new campaignId column) → column-tolerant:
+            // the resto promo list survives the pre-db-push window (Slice 2).
+            select: {
+              id: true, brandId: true, name: true, type: true, discount: true,
+              conditions: true, startDate: true, endDate: true, active: true, createdAt: true,
+            },
           })
         : [],
       // The create form's multi-select: the establishment's own menu items.

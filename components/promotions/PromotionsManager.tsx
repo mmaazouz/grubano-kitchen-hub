@@ -35,6 +35,15 @@ export default function PromotionsManager() {
   const [loading,    setLoading]    = useState(true)
   const [loadError,  setLoadError]  = useState(false)
   const [toast,      setToast]      = useState('')
+  // Promo V2 Slice 2 — chef campaign invitations (recipes this resto adopted).
+  const [invites, setInvites] = useState<Array<{
+    campaignId: string; dishName: string; creatorName: string
+    suggestedDiscountPct: number; message: string; endsAt: string; menuItemId: string
+  }>>([])
+  const [optInTarget, setOptInTarget] = useState<typeof invites[number] | null>(null)
+  const [optInPct,    setOptInPct]    = useState('')
+  const [optInSaving, setOptInSaving] = useState(false)
+  const [optInError,  setOptInError]  = useState('')
 
   // Create form state
   const [open,      setOpen]      = useState(false)
@@ -83,7 +92,32 @@ export default function PromotionsManager() {
     } finally {
       setLoading(false)
     }
+    // Campaign invitations — best-effort, never blocks the promo list.
+    try {
+      const ic = await fetch('/api/restaurant/campaigns', { cache: 'no-store' })
+      if (ic.ok) { const dc = await ic.json(); setInvites(Array.isArray(dc.invitations) ? dc.invitations : []) }
+    } catch { /* no invitations */ }
   }, [brandId])
+
+  function openOptIn(inv: typeof invites[number]) {
+    setOptInTarget(inv); setOptInPct(String(inv.suggestedDiscountPct)); setOptInError('')
+  }
+  const optInPctNum = parseFloat(optInPct.replace(',', '.'))
+  const optInValid = !!optInTarget && Number.isFinite(optInPctNum) && optInPctNum >= 1 && optInPctNum <= 90
+  async function confirmOptIn() {
+    if (!optInValid || optInSaving || !optInTarget) return
+    setOptInSaving(true); setOptInError('')
+    try {
+      const r = await fetch('/api/restaurant/campaigns', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId: optInTarget.campaignId, discountPct: Math.round(optInPctNum) }),
+      })
+      const d = await r.json().catch(() => null)
+      if (!r.ok) { setOptInError(typeof d?.error === 'string' ? d.error : t('errGeneric')); return }
+      setOptInTarget(null); setToast(t('campaignJoinedOk'))
+      void load()
+    } catch { setOptInError(t('errGeneric')) } finally { setOptInSaving(false) }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -231,6 +265,27 @@ export default function PromotionsManager() {
 
       {toast && (
         <p className="mb-3 rounded-xl bg-navy px-3 py-2 text-[12px] font-semibold text-navy-foreground">{toast}</p>
+      )}
+
+      {/* ── Promo V2 Slice 2 — campaign invitations (adopted recipes) ── */}
+      {invites.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <p className="text-[13px] font-bold text-primary">{t('campaignInvitesTitle', { count: invites.length })}</p>
+          {invites.map(inv => (
+            <div key={inv.campaignId} className="rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <BadgePercent size={15} className="shrink-0 text-primary" />
+                <span className="text-[13px] font-bold">{t('campaignInviteHead', { creator: inv.creatorName, dish: inv.dishName })}</span>
+                <span className="ms-auto text-[14px] font-bold tabular-nums text-primary">−{inv.suggestedDiscountPct}%</span>
+              </div>
+              {inv.message && <p className="mt-1 text-[12px] italic text-muted-foreground">« {inv.message} »</p>}
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">{t('campaignInviteFinance')}</span>
+                <Button size="sm" className="ms-auto" onClick={() => openOptIn(inv)}>{t('campaignJoinCta')}</Button>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {loading ? (
@@ -476,6 +531,38 @@ export default function PromotionsManager() {
             </p>
           )}
         </div>
+      </Modal>
+
+      {/* ── Campaign opt-in modal (Promo V2 Slice 2) ── */}
+      <Modal
+        open={!!optInTarget}
+        onClose={() => !optInSaving && setOptInTarget(null)}
+        title={t('campaignOptInTitle')}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOptInTarget(null)} disabled={optInSaving}>{t('btnCancel')}</Button>
+            <Button onClick={confirmOptIn} disabled={optInSaving || !optInValid}>
+              {optInSaving ? <Loader2 size={13} className="me-1 animate-spin" /> : null}
+              {t('campaignConfirmJoin')}
+            </Button>
+          </div>
+        }
+      >
+        {optInTarget && (
+          <div className="space-y-3">
+            <p className="rounded-xl bg-accent px-3 py-2 text-[12px] text-muted-foreground">
+              {t('campaignOptInIntro', { creator: optInTarget.creatorName, dish: optInTarget.dishName, pct: optInTarget.suggestedDiscountPct })}
+            </p>
+            <Input label={t('campaignYourPct')} inputMode="decimal" value={optInPct} onChange={e => setOptInPct(e.target.value)}
+              error={optInPct && !optInValid ? t('errGeneric') : undefined} />
+            <p className="text-[11px] text-muted-foreground">{t('campaignOptInFinanceNote')}</p>
+            {optInError && (
+              <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+                <AlertCircle size={13} className="mt-0.5 shrink-0" /> {optInError}
+              </p>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   )
