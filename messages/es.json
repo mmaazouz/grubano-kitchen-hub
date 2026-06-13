@@ -894,6 +894,21 @@
       "facile": "Fácil",
       "moyen": "Medio",
       "technique": "Técnico"
+    },
+    "campaign": {
+      "launchCta": "Lanzar una campaña",
+      "launchTitle": "Lanzar una campaña",
+      "launchIntro": "Propón un descuento en «{dish}». No financias NADA: los restaurantes que la adoptaron eligen participar y financian el descuento.",
+      "fieldPct": "Descuento sugerido (%)",
+      "fieldMessage": "Tu mensaje a los clientes",
+      "fieldMessagePh": "Ej.: ¡Prueba mi receta estrella a buen precio esta semana!",
+      "fieldStart": "Inicio",
+      "fieldEnd": "Fin",
+      "financeNote": "El chef propone; cada restaurante adoptante revisa el % y financia su propio descuento.",
+      "launch": "Lanzar",
+      "cancel": "Cancelar",
+      "launchedOk": "Campaña lanzada ✓",
+      "errGeneric": "Acción imposible — reinténtalo."
     }
   },
   "eat": {
@@ -2127,7 +2142,9 @@
     "ctaRestoBody": "Adopta sus recetas en tu carta y aprovecha su audiencia.",
     "ctaRestoBtn": "Adoptar sus recetas",
     "storyTitle": "La historia de esta receta",
-    "recipeTime": "{min} min"
+    "recipeTime": "{min} min",
+    "campaignBadge": "📣 En campaña — hasta −{pct}%",
+    "campaignParticipants": "{count, plural, =1 {1 restaurante participante} other {# restaurantes participantes}}"
   },
   "promotions": {
     "title": "Promociones",
@@ -2190,6 +2207,16 @@
     "agSuggestHint": "Sugerencia: −{pct}% hasta la caducidad. Ajústalo si quieres.",
     "agLaunch": "Lanzar la flash",
     "agLaunchedOk": "Promo antidesperdicio lanzada ✓",
-    "agName": "Antidesperdicio — stock a liquidar"
+    "agName": "Antidesperdicio — stock a liquidar",
+    "campaignInvitesTitle": "{count, plural, =1 {1 invitación de campaña de chef} other {# invitaciones de campaña de chef}}",
+    "campaignInviteHead": "{creator} — «{dish}»",
+    "campaignInviteFinance": "Tú financias el descuento (tu promo de restaurante).",
+    "campaignJoinCta": "Participar",
+    "campaignJoinedOk": "Participas en la campaña ✓",
+    "campaignOptInTitle": "Participar en la campaña",
+    "campaignConfirmJoin": "Confirmar",
+    "campaignOptInIntro": "{creator} sugiere −{pct}% en «{dish}». Ajusta el % que TÚ financias; crea una promo en tu plato derivado de esta receta.",
+    "campaignYourPct": "Tu descuento (%)",
+    "campaignOptInFinanceNote": "Promo financiada por el restaurante: comisión de Grubano sobre el precio pagado, regalías del chef sobre el precio de carta. Fidelidad desactivada con promo."
   }
 }

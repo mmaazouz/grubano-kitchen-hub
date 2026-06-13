@@ -22,9 +22,9 @@ import { useTranslations } from 'next-intl'
 import {
   ChefHat, Plus, CheckCircle2, Clock, Store, Pencil, Send, Archive,
   Trash2, RotateCcw, Loader2, Lock, FileEdit, ChevronDown, ChevronUp,
-  MapPin, ShoppingBag,
+  MapPin, ShoppingBag, Megaphone,
 } from 'lucide-react'
-import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
+import { Card, Button, Badge, EmptyState, SkeletonList, Modal, Input } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
 import { getFoodImage, inferCategory } from '@/lib/food-images'
 import DishEditorModal, { type EditableDish } from '@/components/creators/DishEditorModal'
@@ -36,10 +36,11 @@ function fmt(n: number) {
 }
 
 export default function CreatorRecipesPage() {
-  const t  = useTranslations('creators.home')
-  const tr = useTranslations('creators.recipes')
-  const tn = useTranslations('creators.rolesGate')
-  const te = useTranslations('creators.editor')
+  const t   = useTranslations('creators.home')
+  const tr  = useTranslations('creators.recipes')
+  const tn  = useTranslations('creators.rolesGate')
+  const te  = useTranslations('creators.editor')
+  const tcam = useTranslations('creators.campaign')
 
   const [home,    setHome]    = useState<CreatorHomeData | null>(null)
   const [dishes,  setDishes]  = useState<MyDish[]>([])
@@ -51,6 +52,37 @@ export default function CreatorRecipesPage() {
   const [toast,     setToast]     = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null)
   // Mission 4 (1.2) — per-dish adopters analytics accordion (private studio).
   const [openAdopters, setOpenAdopters] = useState<string | null>(null)
+  // Promo V2 Slice 2 — chef campaign launch on an adopted recipe.
+  const [campaignDish, setCampaignDish] = useState<MyDish | null>(null)
+  const [campPct,   setCampPct]   = useState('20')
+  const [campMsg,   setCampMsg]   = useState('')
+  const [campStart, setCampStart] = useState('')
+  const [campEnd,   setCampEnd]   = useState('')
+  const [campSaving, setCampSaving] = useState(false)
+  const [campError,  setCampError]  = useState('')
+
+  function openCampaign(d: MyDish) {
+    setCampaignDish(d); setCampPct('20'); setCampMsg(''); setCampStart(''); setCampEnd(''); setCampError('')
+  }
+  const campPctNum = parseFloat(campPct.replace(',', '.'))
+  const campValid = !!campaignDish && Number.isFinite(campPctNum) && campPctNum >= 1 && campPctNum <= 90 &&
+    campMsg.trim().length >= 2 && !!campStart && !!campEnd && new Date(campEnd) > new Date(campStart)
+  async function launchCampaign() {
+    if (!campValid || campSaving || !campaignDish) return
+    setCampSaving(true); setCampError('')
+    try {
+      const r = await fetch('/api/creators/campaigns', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatorDishId: campaignDish.id, suggestedDiscountPct: Math.round(campPctNum),
+          message: campMsg.trim(), startDate: new Date(campStart).toISOString(), endDate: new Date(campEnd).toISOString(),
+        }),
+      })
+      const b = await r.json().catch(() => null)
+      if (!r.ok) { setCampError((b?.error as string) || tcam('errGeneric')); return }
+      setCampaignDish(null); setToast({ kind: 'ok', text: tcam('launchedOk') })
+    } catch { setCampError(tcam('errGeneric')) } finally { setCampSaving(false) }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -352,6 +384,14 @@ export default function CreatorRecipesPage() {
                       {te('actionEdit')}
                     </Button>
                   )}
+                  {/* Promo V2 Slice 2 — launch a demand-driver campaign (only on
+                      an approved recipe with ≥ 1 active adoption to drive). */}
+                  {d.status === 'approved' && d.hasActiveAdoption && (
+                    <Button variant="secondary" size="sm" leftIcon={<Megaphone size={11} />}
+                      onClick={() => openCampaign(d)}>
+                      {tcam('launchCta')}
+                    </Button>
+                  )}
                   {(d.status === 'draft' || d.status === 'rejected' || d.status === 'pending') && (
                     <Button variant="primary" size="sm" leftIcon={acting ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
                       disabled={acting} onClick={() => submitDish(d)}>
@@ -379,6 +419,47 @@ export default function CreatorRecipesPage() {
             )
           })}
         </div>
+      )}
+
+      {/* ── Campaign launch modal (Promo V2 Slice 2) ────────────────────── */}
+      {campaignDish && (
+        <Modal
+          open
+          onClose={() => !campSaving && setCampaignDish(null)}
+          title={tcam('launchTitle')}
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setCampaignDish(null)} disabled={campSaving}>{tcam('cancel')}</Button>
+              <Button onClick={launchCampaign} disabled={campSaving || !campValid}
+                leftIcon={campSaving ? <Loader2 size={13} className="animate-spin" /> : <Megaphone size={14} />}>
+                {tcam('launch')}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <p className="rounded-grubano-lg bg-grubano-tint px-3 py-2 text-[12px] text-grubano-ink-muted">
+              {tcam('launchIntro', { dish: campaignDish.name })}
+            </p>
+            <Input label={tcam('fieldPct')} inputMode="decimal" value={campPct} onChange={e => setCampPct(e.target.value)} />
+            <label className="block text-[13px]">
+              <span className="mb-1 block font-semibold">{tcam('fieldMessage')}</span>
+              <textarea value={campMsg} onChange={e => setCampMsg(e.target.value)} rows={3} maxLength={280}
+                placeholder={tcam('fieldMessagePh')}
+                className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary" />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <Input label={tcam('fieldStart')} type="datetime-local" value={campStart} onChange={e => setCampStart(e.target.value)} />
+              <Input label={tcam('fieldEnd')}   type="datetime-local" value={campEnd}   onChange={e => setCampEnd(e.target.value)} />
+            </div>
+            <p className="text-[11px] text-grubano-ink-faint">{tcam('financeNote')}</p>
+            {campError && (
+              <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2 text-[12px] text-grubano-danger">
+                {campError}
+              </p>
+            )}
+          </div>
+        </Modal>
       )}
 
       {/* ── Editor modal (create + edit) ─────────────────────────────────── */}

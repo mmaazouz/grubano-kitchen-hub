@@ -894,6 +894,21 @@
       "facile": "سهل",
       "moyen": "متوسط",
       "technique": "تقني"
+    },
+    "campaign": {
+      "launchCta": "إطلاق حملة",
+      "launchTitle": "إطلاق حملة",
+      "launchIntro": "اقترح خصمًا على «{dish}». أنت لا تموّل شيئًا: المطاعم التي تبنّت الوصفة تختار المشاركة وتموّل الخصم.",
+      "fieldPct": "الخصم المقترح (%)",
+      "fieldMessage": "رسالتك إلى العملاء",
+      "fieldMessagePh": "مثال: تذوّق وصفتي المميزة بسعر لطيف هذا الأسبوع!",
+      "fieldStart": "البداية",
+      "fieldEnd": "النهاية",
+      "financeNote": "المبدع يقترح؛ كل مطعم متبنٍّ يراجع النسبة ويموّل خصمه الخاص.",
+      "launch": "إطلاق",
+      "cancel": "إلغاء",
+      "launchedOk": "تم إطلاق الحملة ✓",
+      "errGeneric": "تعذّر تنفيذ الإجراء — أعد المحاولة."
     }
   },
   "eat": {
@@ -2127,7 +2142,9 @@
     "ctaRestoBody": "اعتمد وصفاته في قائمتك واستفد من جمهوره.",
     "ctaRestoBtn": "اعتماد وصفاته",
     "storyTitle": "قصة هذه الوصفة",
-    "recipeTime": "{min} دقيقة"
+    "recipeTime": "{min} دقيقة",
+    "campaignBadge": "📣 ضمن حملة — حتى −{pct}%",
+    "campaignParticipants": "{count, plural, =1 {مطعم مشارك واحد} other {# مطاعم مشاركة}}"
   },
   "promotions": {
     "title": "العروض",
@@ -2190,6 +2207,16 @@
     "agSuggestHint": "اقتراح: −{pct}% حتى انتهاء الصلاحية. عدّل إن لزم.",
     "agLaunch": "إطلاق العرض السريع",
     "agLaunchedOk": "تم إطلاق عرض مكافحة الهدر ✓",
-    "agName": "مكافحة الهدر — مخزون للتصريف"
+    "agName": "مكافحة الهدر — مخزون للتصريف",
+    "campaignInvitesTitle": "{count, plural, =1 {دعوة حملة طاهٍ واحدة} other {# دعوات حملة طاهٍ}}",
+    "campaignInviteHead": "{creator} — «{dish}»",
+    "campaignInviteFinance": "أنت تموّل الخصم (عرض مطعمك).",
+    "campaignJoinCta": "المشاركة",
+    "campaignJoinedOk": "أنت مشارك في الحملة ✓",
+    "campaignOptInTitle": "المشاركة في الحملة",
+    "campaignConfirmJoin": "تأكيد",
+    "campaignOptInIntro": "يقترح {creator} خصم −{pct}% على «{dish}». عدّل النسبة التي تموّلها أنت؛ يُنشئ عرضًا على طبقك المشتق من هذه الوصفة.",
+    "campaignYourPct": "خصمك (%)",
+    "campaignOptInFinanceNote": "عرض مموّل من المطعم: عمولة غروبانو على السعر المدفوع، حقوق الطاهي على سعر القائمة. الولاء معطّل أثناء العرض."
   }
 }
