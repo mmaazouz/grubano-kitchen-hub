@@ -66,24 +66,36 @@ export async function PATCH(
     })
 
     // When order is delivered: credit loyalty points to the consumer.
-    // FIX (chantier fidélité L1): LoyaltyCustomer is keyed by EMAIL, never by the
-    // Operator id — the previous updateMany({ where: { id: consumerId } }) matched
-    // nothing and silently credited zero. Resolve Operator(consumerId).email →
-    // LoyaltyCustomer.email, then increment the balance AND append a signed 'earn'
-    // ledger row in the SAME transaction. Idempotent: one 'earn' per order, so a
-    // re-PATCH to 'delivered' (or a retry) never double-credits. Best-effort: a
-    // missing loyalty account / table never blocks the status update.
+    // Loyalty is an AUTOMATIC acquis — every consumer earns, with NO opt-in. The
+    // normal consumer signup (/api/auth/register) historically created NO
+    // LoyaltyCustomer, and this earn path only ever did findUnique-then-if(lc),
+    // so the credit was silently SKIPPED for the majority of customers → "0 point
+    // à vie" (the confirmed root cause). FIX: UPSERT the LoyaltyCustomer by EMAIL
+    // (create it at 0 pts if absent — the 10-pt welcome bonus stays reserved to
+    // the explicit /api/loyalty/register opt-in, never duplicated here), THEN
+    // increment + append the signed 'earn' ledger row in the SAME transaction.
+    // Idempotent: one 'earn' per order (the [orderId,'earn'] guard), so a re-PATCH
+    // to 'delivered' / a retry never double-credits — and because the increment +
+    // the 'earn' row are atomic, a failed credit leaves no 'earn' row and safely
+    // retries. Best-effort: a loyalty hiccup never blocks the status update. This
+    // touches ONLY the points credit — zero financial amount/fee/total.
     if (newStatus === 'delivered' && order.pointsEarned > 0) {
       try {
         const already = await prisma.loyaltyTransaction.findFirst({
           where: { orderId: order.id, type: 'earn' }, select: { id: true },
         })
         if (!already) {
-          const operator = await prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true } })
-          const lc = operator?.email
-            ? await prisma.loyaltyCustomer.findUnique({ where: { email: operator.email }, select: { id: true } })
-            : null
-          if (lc) {
+          const operator = await prisma.operator.findUnique({
+            where: { id: order.consumerId }, select: { email: true, name: true },
+          })
+          if (operator?.email) {
+            // Ensure the account exists (create at 0 — NOT the welcome bonus).
+            const lc = await prisma.loyaltyCustomer.upsert({
+              where:  { email: operator.email },
+              update: {},
+              create: { name: operator.name ?? operator.email, email: operator.email, pointsBalance: 0 },
+              select: { id: true },
+            })
             await prisma.$transaction([
               prisma.loyaltyCustomer.update({ where: { id: lc.id }, data: { pointsBalance: { increment: order.pointsEarned } } }),
               prisma.loyaltyTransaction.create({ data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned } }),
@@ -91,8 +103,8 @@ export async function PATCH(
           }
         }
       } catch (e) {
-        // Non-fatal: consumer may not have a loyalty account yet, or the
-        // LoyaltyTransaction table may be absent pre-db-push.
+        // Non-fatal: a loyalty hiccup or the table being absent pre-db-push never
+        // blocks the 'delivered' transition.
         console.error('[LOYALTY MISS] earn credit failed (non-fatal):', order.id, e instanceof Error ? e.message : e)
       }
     }

@@ -88,6 +88,24 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // Loyalty is an AUTOMATIC acquis (chantier fidélité): create the consumer's
+    // LoyaltyCustomer at signup so the balance EXISTS before the first delivery
+    // (the earn path in orders/[id]/status also upserts as a safety net for
+    // pre-existing accounts). Created at 0 pts: the 10-pt welcome bonus stays
+    // reserved to the explicit /api/loyalty/register opt-in, NOT duplicated for
+    // every signup. Best-effort + idempotent (upsert) — never fails registration,
+    // leaves an existing row untouched. No financial amount involved.
+    try {
+      await prisma.loyaltyCustomer.upsert({
+        where:  { email: data.email },
+        update: {},
+        create: { name: data.name, email: data.email, pointsBalance: 0 },
+      })
+    } catch (loyErr) {
+      console.error('[POST /api/auth/register] loyalty account creation failed (non-fatal):',
+        data.email, loyErr instanceof Error ? loyErr.message : loyErr)
+    }
+
     // Welcome email — BEST-EFFORT and NEVER silent. The account is already
     // created (and the client signs in right after), so an email failure must not
     // fail the registration; but it MUST be visible: clear console.error + an
