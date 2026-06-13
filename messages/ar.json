@@ -271,6 +271,9 @@
     "subtitle": "Grubano فقط · {count} نشطة",
     "soundOn": "الصوت مفعّل",
     "soundOff": "الصوت متوقف",
+    "soundUnlockTitle": "تفعيل صوت الطلبات",
+    "soundUnlockDesc": "أوقف متصفحك الصوت مؤقتًا. نقرة واحدة تعيد تفعيله.",
+    "soundUnlockCta": "تفعيل الصوت",
     "pauseAll": "إيقاف كل شيء مؤقتًا",
     "reactivate": "إعادة التفعيل",
     "pausedBadge": "متوقف مؤقتًا",
@@ -1017,7 +1020,9 @@
       "loyaltyToggleTitle": "ادفع بنقاطي",
       "loyaltyBalance": "الرصيد: {count} نقطة",
       "loyaltyUpTo": "حتى {amount} € تُخصم عند الدفع",
-      "loyaltyNote": "لا يُجمع مع عرض ترويجي."
+      "loyaltyNote": "لا يُجمع مع عرض ترويجي.",
+      "loyaltyBalanceEur": "رصيد {amount} €",
+      "loyaltyPromoBlocked": "يوجد عرض ترويجي نشط بالفعل — تبقى نقاطك متاحة لطلب قادم."
     },
     "track": {
       "title": "التتبع المباشر",
@@ -1087,7 +1092,17 @@
       "menuPrivacy": "الخصوصية",
       "menuHelp": "المساعدة والأسئلة الشائعة",
       "menuSettings": "الإعدادات",
-      "ordersTitle": "طلباتي"
+      "ordersTitle": "طلباتي",
+      "creditEquivalent": "= رصيد {amount} €",
+      "pointsHistoryTitle": "نقاطي",
+      "histEarn": "نقاط مكتسبة",
+      "histEarnOrder": "نقاط مكتسبة — الطلب {ref}",
+      "histRedeem": "تم استخدام الرصيد",
+      "histRedeemOrder": "تم استخدام الرصيد — الطلب {ref}",
+      "histRefund": "إعادة احتساب النقاط",
+      "histRefundOrder": "استرداد — الطلب {ref}",
+      "ptsShort": "نقطة",
+      "seeMore": "عرض المزيد"
     },
     "auth": {
       "tabLogin": "تسجيل الدخول",
@@ -1257,7 +1272,9 @@
       "confirmEmail": "أرسلنا لك بريدًا للتأكيد.",
       "paidAmount": "المبلغ المدفوع: {amount}",
       "trackCta": "تتبّع طلبي",
-      "promoLine": "عرض {name}"
+      "promoLine": "عرض {name}",
+      "loyaltyLine": "رصيد الولاء",
+      "loyaltyLinePoints": "رصيد الولاء ({points} نقطة)"
     }
   },
   "menu": {

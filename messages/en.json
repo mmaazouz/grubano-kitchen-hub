@@ -271,6 +271,9 @@
     "subtitle": "Grubano only · {count} active",
     "soundOn": "Sound on",
     "soundOff": "Sound off",
+    "soundUnlockTitle": "Enable order sound",
+    "soundUnlockDesc": "Your browser paused the sound. One click re-enables it.",
+    "soundUnlockCta": "Enable sound",
     "pauseAll": "Pause everything",
     "reactivate": "Reactivate",
     "pausedBadge": "Paused",
@@ -1017,7 +1020,9 @@
       "loyaltyToggleTitle": "Pay with my points",
       "loyaltyBalance": "Balance: {count} pts",
       "loyaltyUpTo": "Up to €{amount} off at payment",
-      "loyaltyNote": "Not combinable with a promotion."
+      "loyaltyNote": "Not combinable with a promotion.",
+      "loyaltyBalanceEur": "{amount} € credit",
+      "loyaltyPromoBlocked": "A promotion is already active — your points stay available for a next order."
     },
     "track": {
       "title": "Live tracking",
@@ -1087,7 +1092,17 @@
       "menuPrivacy": "Privacy",
       "menuHelp": "Help & FAQ",
       "menuSettings": "Settings",
-      "ordersTitle": "My orders"
+      "ordersTitle": "My orders",
+      "creditEquivalent": "= {amount} € credit",
+      "pointsHistoryTitle": "My points",
+      "histEarn": "Points earned",
+      "histEarnOrder": "Points earned — order {ref}",
+      "histRedeem": "Credit used",
+      "histRedeemOrder": "Credit used — order {ref}",
+      "histRefund": "Points re-credited",
+      "histRefundOrder": "Refund — order {ref}",
+      "ptsShort": "pts",
+      "seeMore": "See more"
     },
     "auth": {
       "tabLogin": "Login",
@@ -1257,7 +1272,9 @@
       "confirmEmail": "A confirmation email is on its way.",
       "paidAmount": "Amount paid: {amount}",
       "trackCta": "Track my order",
-      "promoLine": "Promo {name}"
+      "promoLine": "Promo {name}",
+      "loyaltyLine": "Loyalty credit",
+      "loyaltyLinePoints": "Loyalty credit ({points} pts)"
     }
   },
   "menu": {

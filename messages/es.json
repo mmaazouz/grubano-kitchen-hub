@@ -271,6 +271,9 @@
     "subtitle": "Solo Grubano · {count} activos",
     "soundOn": "Sonido activado",
     "soundOff": "Sonido desactivado",
+    "soundUnlockTitle": "Activar el sonido de los pedidos",
+    "soundUnlockDesc": "Tu navegador pausó el sonido. Un clic lo reactiva.",
+    "soundUnlockCta": "Activar sonido",
     "pauseAll": "Pausar todo",
     "reactivate": "Reactivar",
     "pausedBadge": "En pausa",
@@ -1017,7 +1020,9 @@
       "loyaltyToggleTitle": "Pagar con mis puntos",
       "loyaltyBalance": "Saldo: {count} pts",
       "loyaltyUpTo": "Hasta {amount} € de descuento al pagar",
-      "loyaltyNote": "No combinable con una promoción."
+      "loyaltyNote": "No combinable con una promoción.",
+      "loyaltyBalanceEur": "{amount} € de crédito",
+      "loyaltyPromoBlocked": "Ya hay una promoción activa — tus puntos siguen disponibles para un próximo pedido."
     },
     "track": {
       "title": "Seguimiento en tiempo real",
@@ -1087,7 +1092,17 @@
       "menuPrivacy": "Privacidad",
       "menuHelp": "Ayuda y Preguntas",
       "menuSettings": "Ajustes",
-      "ordersTitle": "Mis pedidos"
+      "ordersTitle": "Mis pedidos",
+      "creditEquivalent": "= {amount} € de crédito",
+      "pointsHistoryTitle": "Mis puntos",
+      "histEarn": "Puntos ganados",
+      "histEarnOrder": "Puntos ganados — pedido {ref}",
+      "histRedeem": "Crédito utilizado",
+      "histRedeemOrder": "Crédito utilizado — pedido {ref}",
+      "histRefund": "Puntos reacreditados",
+      "histRefundOrder": "Reembolso — pedido {ref}",
+      "ptsShort": "pts",
+      "seeMore": "Ver más"
     },
     "auth": {
       "tabLogin": "Iniciar sesión",
@@ -1257,7 +1272,9 @@
       "confirmEmail": "Te hemos enviado un email de confirmación.",
       "paidAmount": "Importe pagado: {amount}",
       "trackCta": "Seguir mi pedido",
-      "promoLine": "Promo {name}"
+      "promoLine": "Promo {name}",
+      "loyaltyLine": "Crédito de fidelidad",
+      "loyaltyLinePoints": "Crédito de fidelidad ({points} pts)"
     }
   },
   "menu": {

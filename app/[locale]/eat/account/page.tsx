@@ -29,6 +29,16 @@ interface Order {
   restaurant?: { id: string; name: string } | null
 }
 
+// Chantier fidélité L2 — a points-ledger movement (read from /api/loyalty/history).
+interface LoyaltyTxn {
+  id: string
+  type: string          // earn | redeem | refund
+  points: number        // signed: +earned / −spent / +re-credited
+  euros: number         // |points| × centsPerPoint / 100 (server rate)
+  orderRef: string | null
+  date: string
+}
+
 export default function ProfileScreen() {
   const t = useTranslations('eat.account')
   const tt = useTranslations('eat.track') // status labels reused (hygiène)
@@ -36,6 +46,10 @@ export default function ProfileScreen() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [points, setPoints] = useState(0)
+  // L2 — the points balance converted to a euro credit (server rate, never client).
+  const [balanceEuros, setBalanceEuros] = useState(0)
+  const [history, setHistory] = useState<LoyaltyTxn[]>([])
+  const [historyShown, setHistoryShown] = useState(5)
   const [orders, setOrders] = useState<Order[]>([])
   const [notif, setNotif] = useState(true)
 
@@ -46,9 +60,14 @@ export default function ProfileScreen() {
     Promise.all([
       fetch('/api/loyalty/wallet').then((r) => r.json()).catch(() => ({ pointsBalance: 0 })),
       fetch('/api/orders?take=50').then((r) => r.json()).catch(() => ({ orders: [] })),
-    ]).then(([wallet, ord]) => {
+      fetch('/api/loyalty/history').then((r) => r.json()).catch(() => ({ transactions: [] })),
+    ]).then(([wallet, ord, hist]) => {
       setPoints(wallet.pointsBalance ?? 0)
+      // Euro equivalent comes straight from the wallet (server rate) — never a
+      // client-side conversion (no hardcoded points→€ rate on this surface).
+      setBalanceEuros(typeof wallet.balanceEuros === 'number' ? wallet.balanceEuros : 0)
       setOrders(ord.orders ?? [])
+      setHistory(Array.isArray(hist.transactions) ? hist.transactions : [])
     })
   }, [status])
 
@@ -139,11 +158,14 @@ export default function ProfileScreen() {
             Elements via the same factored component as /t/[tableId]. */}
         <LastReservationCard />
 
-        {/* Loyalty card */}
+        {/* Loyalty card — balance in big + its euro-credit equivalent (L2). */}
         <div className="mt-3 flex items-center gap-4 rounded-[20px] bg-[#F97316] p-5">
           <div className="flex-1">
             <p className="text-xs font-semibold text-white/80">{t('loyaltyPoints')}</p>
             <p className="mt-1 text-[28px] font-extrabold leading-none text-white">{t('pts', { count: points.toLocaleString('fr-FR') })}</p>
+            {balanceEuros > 0 && (
+              <p className="mt-1 text-[13px] font-bold text-white">{t('creditEquivalent', { amount: balanceEuros.toFixed(2) })}</p>
+            )}
             <p className="mt-1 text-[11px] text-white/80">
               {tier.label === 'Platine' ? t('maxLevel') : t('pointsToNextLevel', { count: tier.next - points, level: tierLabel(nextLabel) })}
             </p>
@@ -155,6 +177,47 @@ export default function ProfileScreen() {
             <span className="text-[11px] font-semibold text-white/90">{tierLabel(tier.label)} → {tierLabel(nextLabel)}</span>
           </div>
         </div>
+
+        {/* Mes points — the loyalty ledger (L2). earn green / redeem neutral /
+            refund amber. Read-only from /api/loyalty/history (the L1 ledger). */}
+        {history.length > 0 && (
+          <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card">
+            <p className="px-4 pb-1 pt-4 text-[15px] font-extrabold text-[#1a1a1a]">{t('pointsHistoryTitle')}</p>
+            {history.slice(0, historyShown).map((txn) => {
+              const earn   = txn.type === 'earn'
+              const refund = txn.type === 'refund'
+              const sign   = txn.points > 0 ? '+' : ''
+              const color  = earn ? 'text-[#16A34A]' : refund ? 'text-[#B45309]' : 'text-[#6B7280]'
+              const label  = earn
+                ? (txn.orderRef ? t('histEarnOrder', { ref: txn.orderRef }) : t('histEarn'))
+                : refund
+                  ? (txn.orderRef ? t('histRefundOrder', { ref: txn.orderRef }) : t('histRefund'))
+                  : (txn.orderRef ? t('histRedeemOrder', { ref: txn.orderRef }) : t('histRedeem'))
+              return (
+                <div key={txn.id} className="flex items-center gap-3 border-b border-[#f8f8f8] px-4 py-3 last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-semibold text-[#1a1a1a]">{label}</p>
+                    <p className="mt-0.5 text-[11px] text-[#888]">
+                      {txn.date ? new Date(txn.date).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
+                      {txn.euros > 0 ? ` · ${txn.euros.toFixed(2)} €` : ''}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 text-[14px] font-extrabold ${color}`}>
+                    {sign}{txn.points.toLocaleString('fr-FR')} {t('ptsShort')}
+                  </span>
+                </div>
+              )
+            })}
+            {history.length > historyShown && (
+              <button
+                onClick={() => setHistoryShown((n) => n + 10)}
+                className="w-full py-3 text-center text-[13px] font-bold text-[#F97316] active:opacity-70"
+              >
+                {t('seeMore')}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Stats */}
         <div className="mt-3 flex rounded-[20px] bg-white py-5 shadow-bolt-card">

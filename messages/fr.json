@@ -271,6 +271,9 @@
     "subtitle": "Grubano uniquement · {count} actives",
     "soundOn": "Son activé",
     "soundOff": "Son coupé",
+    "soundUnlockTitle": "Activer le son des commandes",
+    "soundUnlockDesc": "Votre navigateur a mis le son en pause. Un clic le réactive.",
+    "soundUnlockCta": "Activer le son",
     "pauseAll": "Tout mettre en pause",
     "reactivate": "Réactiver",
     "pausedBadge": "En pause",
@@ -1017,7 +1020,9 @@
       "loyaltyToggleTitle": "Payer avec mes points",
       "loyaltyBalance": "Solde : {count} pts",
       "loyaltyUpTo": "Jusqu’à {amount} € déduits au paiement",
-      "loyaltyNote": "Non cumulable avec une promotion."
+      "loyaltyNote": "Non cumulable avec une promotion.",
+      "loyaltyBalanceEur": "{amount} € de crédit",
+      "loyaltyPromoBlocked": "Une promotion est déjà active — tes points restent disponibles pour une prochaine commande."
     },
     "track": {
       "title": "Suivi en temps réel",
@@ -1087,7 +1092,17 @@
       "menuPrivacy": "Confidentialité",
       "menuHelp": "Aide & FAQ",
       "menuSettings": "Paramètres",
-      "ordersTitle": "Mes commandes"
+      "ordersTitle": "Mes commandes",
+      "creditEquivalent": "= {amount} € de crédit",
+      "pointsHistoryTitle": "Mes points",
+      "histEarn": "Points gagnés",
+      "histEarnOrder": "Points gagnés — commande {ref}",
+      "histRedeem": "Crédit utilisé",
+      "histRedeemOrder": "Crédit utilisé — commande {ref}",
+      "histRefund": "Points re-crédités",
+      "histRefundOrder": "Remboursement — commande {ref}",
+      "ptsShort": "pts",
+      "seeMore": "Voir plus"
     },
     "auth": {
       "tabLogin": "Connexion",
@@ -1257,7 +1272,9 @@
       "confirmEmail": "Un email de confirmation vous a été envoyé.",
       "paidAmount": "Montant payé : {amount}",
       "trackCta": "Suivre ma commande",
-      "promoLine": "Promo {name}"
+      "promoLine": "Promo {name}",
+      "loyaltyLine": "Crédit fidélité",
+      "loyaltyLinePoints": "Crédit fidélité ({points} pts)"
     }
   },
   "menu": {

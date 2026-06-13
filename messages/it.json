@@ -271,6 +271,9 @@
     "subtitle": "Solo Grubano · {count} attivi",
     "soundOn": "Suono attivo",
     "soundOff": "Suono disattivato",
+    "soundUnlockTitle": "Attiva il suono degli ordini",
+    "soundUnlockDesc": "Il browser ha messo in pausa il suono. Un clic lo riattiva.",
+    "soundUnlockCta": "Attiva suono",
     "pauseAll": "Metti tutto in pausa",
     "reactivate": "Riattiva",
     "pausedBadge": "In pausa",
@@ -1017,7 +1020,9 @@
       "loyaltyToggleTitle": "Paga con i miei punti",
       "loyaltyBalance": "Saldo: {count} pts",
       "loyaltyUpTo": "Fino a {amount} € di sconto al pagamento",
-      "loyaltyNote": "Non cumulabile con una promozione."
+      "loyaltyNote": "Non cumulabile con una promozione.",
+      "loyaltyBalanceEur": "{amount} € di credito",
+      "loyaltyPromoBlocked": "Una promozione è già attiva — i tuoi punti restano disponibili per un prossimo ordine."
     },
     "track": {
       "title": "Tracciamento in tempo reale",
@@ -1087,7 +1092,17 @@
       "menuPrivacy": "Privacy",
       "menuHelp": "Aiuto & FAQ",
       "menuSettings": "Impostazioni",
-      "ordersTitle": "I miei ordini"
+      "ordersTitle": "I miei ordini",
+      "creditEquivalent": "= {amount} € di credito",
+      "pointsHistoryTitle": "I miei punti",
+      "histEarn": "Punti guadagnati",
+      "histEarnOrder": "Punti guadagnati — ordine {ref}",
+      "histRedeem": "Credito utilizzato",
+      "histRedeemOrder": "Credito utilizzato — ordine {ref}",
+      "histRefund": "Punti riaccreditati",
+      "histRefundOrder": "Rimborso — ordine {ref}",
+      "ptsShort": "pts",
+      "seeMore": "Vedi altro"
     },
     "auth": {
       "tabLogin": "Accedi",
@@ -1257,7 +1272,9 @@
       "confirmEmail": "Ti abbiamo inviato un’email di conferma.",
       "paidAmount": "Importo pagato: {amount}",
       "trackCta": "Segui il mio ordine",
-      "promoLine": "Promo {name}"
+      "promoLine": "Promo {name}",
+      "loyaltyLine": "Credito fedeltà",
+      "loyaltyLinePoints": "Credito fedeltà ({points} pts)"
     }
   },
   "menu": {
