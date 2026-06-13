@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
-import { centsPerPoint } from '@/lib/loyalty'
+import { centsPerPoint, pointsToCents } from '@/lib/loyalty'
 
 const TIER_THRESHOLDS = [
   { tier: 'bronze',  min: 0,   next: 'Silver',  nextPts: 100 },
@@ -11,12 +11,19 @@ const TIER_THRESHOLDS = [
   { tier: 'platine', min: 400, next: null,       nextPts: null },
 ]
 
-const REWARDS = [
-  { name: 'Boisson offerte',  cost: 50,  tier: 'bronze'  },
-  { name: 'Dessert offert',   cost: 100, tier: 'silver'  },
-  { name: 'Plat offert',      cost: 200, tier: 'gold'    },
-  { name: 'Repas complet',    cost: 400, tier: 'platine' },
-]
+// Chantier fidélité L2 — the points now buy a GRUBANO-financed € CREDIT, not a
+// named reward. The misleading « Boisson / Dessert / Plat / Repas » catalogue is
+// replaced by a euro-credit scale computed from the REAL conversion rate
+// (lib/loyalty.pointsToCents — never a hardcoded rate). Milestones mirror the
+// tier points so the scale reads naturally. (Verified: no client read the old
+// `available_rewards` field — safe to drop, choice noted.)
+const CREDIT_MILESTONE_POINTS = [100, 200, 400]
+function creditScale() {
+  return CREDIT_MILESTONE_POINTS.map((points) => ({
+    points,
+    euros: pointsToCents(points) / 100,
+  }))
+}
 
 // ── GET /api/loyalty/wallet[?email=] ──────────────────────────────────────────
 // Two modes:
@@ -52,10 +59,6 @@ export async function GET(req: NextRequest) {
           take:    10,
           include: { brand: { select: { name: true } } },
         },
-        rewards: {
-          where:   { redeemed: false },
-          orderBy: { createdAt: 'desc' },
-        },
       },
     })
 
@@ -63,8 +66,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Client introuvable' }, { status: 404 })
     }
 
-    const tierInfo  = TIER_THRESHOLDS.find(t => t.tier === customer.tier) ?? TIER_THRESHOLDS[0]
-    const available = REWARDS.filter(r => customer.pointsBalance >= r.cost)
+    const tierInfo = TIER_THRESHOLDS.find(t => t.tier === customer.tier) ?? TIER_THRESHOLDS[0]
 
     return NextResponse.json({
       points_balance:  customer.pointsBalance,
@@ -72,6 +74,12 @@ export async function GET(req: NextRequest) {
       pointsBalance:   customer.pointsBalance,
       // Loyalty conversion scale (cents per point) for the consumer UI (L1).
       centsPerPoint:   centsPerPoint(),
+      // ── L2 — the € CREDIT view (replaces the named-reward catalogue) ─────────
+      // The balance converted to euros (server rate, never client) + a readable
+      // points→€ scale. « Tu as 240 pts = 12 € de crédit ».
+      balanceCents:    pointsToCents(customer.pointsBalance),
+      balanceEuros:    pointsToCents(customer.pointsBalance) / 100,
+      creditScale:     creditScale(),
       tier:            customer.tier,
       next_tier:       tierInfo.next,
       next_tier_pts:   tierInfo.nextPts !== null
@@ -84,7 +92,6 @@ export async function GET(req: NextRequest) {
         pointsEarned:o.pointsEarned,
         date:        o.validatedAt,
       })),
-      available_rewards: available,
       referral_code: customer.referralCode.slice(0, 8).toUpperCase(),
     })
   } catch {
