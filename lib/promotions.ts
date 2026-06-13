@@ -1,4 +1,4 @@
-// Promotions restaurateur (chantier P1) — the PURE engine + thin fetch helper.
+// Promotions restaurateur (chantier P1 → Promo V2 Slice 1) — PURE engine + fetch.
 //
 // DOCTRINE (frozen):
 //   D1 the RESTO finances its promo — the customer pays the discounted price;
@@ -6,8 +6,10 @@
 //      'discounted' (default) = what was PAID (subtotal − discount) | 'list';
 //   D4 the client NEVER sends a discount — the server resolves the brand's
 //      active promotions and applies the rule;
-//   D5 ONE promo per order (the BEST for the customer on overlap), no stacking;
-//      V1 types: percent + fixed ONLY (bundle/flash stay in the schema, ignored).
+//   D5 ONE promo per order (the BEST for the customer on overlap), no stacking.
+//   Types: percent + fixed (V1, INTACT) + second_item + threshold_reward (V2).
+//   ALL types write the SAME Order.discount/promotionId via pickBestPromotion —
+//   commission/royalty/loyalty are computed OUTSIDE this module and untouched.
 // All money maths round2 at the cent. percent is a WHOLE number (10 = 10 %).
 import { prisma } from '@/lib/prisma'
 
@@ -15,9 +17,10 @@ export const round2 = (n: number) => Math.round(n * 100) / 100
 
 export type PromotionRow = {
   id:         string
-  type:       string   // percent | fixed (bundle/flash ignored by the V1 engine)
-  discount:   number   // percent: whole 1..90 ; fixed: EUR amount
-  conditions: unknown  // V1: { minOrderEur?, itemIds?: string[], channels?: string[] } — unknown keys ignored
+  // percent | fixed (V1) · second_item | threshold_reward (V2). Unknown → ignored.
+  type:       string
+  discount:   number   // percent/second_item: whole 1..90 ; fixed: EUR amount
+  conditions: unknown  // see Conditions below — unknown keys tolerated
   startDate:  Date
   endDate:    Date
   active:     boolean
@@ -36,12 +39,21 @@ export type PromoContext = {
   now?:    Date
 }
 
-type V1Conditions = { minOrderEur?: number; itemIds?: string[]; channels?: string[] }
+type Conditions = {
+  minOrderEur?: number
+  itemIds?:     string[]
+  channels?:    string[]
+  // ── V2 (threshold_reward) ─────────────────────────────────────────────────
+  thresholdEur?: number               // subtotal gate for the reward
+  rewardKind?:   'percent' | 'free_item'
+  rewardPct?:    number               // 'percent' reward: 1..90 (else falls back to promo.discount)
+  freeItemIds?:  string[]             // 'free_item' reward: the eligible « offered » item pool
+}
 
-function parseConditions(raw: unknown): V1Conditions {
+function parseConditions(raw: unknown): Conditions {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const c = raw as Record<string, unknown>
-  const out: V1Conditions = {}
+  const out: Conditions = {}
   if (typeof c.minOrderEur === 'number' && c.minOrderEur > 0) out.minOrderEur = c.minOrderEur
   if (Array.isArray(c.itemIds) && c.itemIds.every(x => typeof x === 'string') && c.itemIds.length > 0) {
     out.itemIds = c.itemIds as string[]
@@ -49,35 +61,86 @@ function parseConditions(raw: unknown): V1Conditions {
   if (Array.isArray(c.channels) && c.channels.every(x => typeof x === 'string') && c.channels.length > 0) {
     out.channels = c.channels as string[]
   }
-  return out // any other key: tolerated and ignored (V2 room)
+  if (typeof c.thresholdEur === 'number' && c.thresholdEur > 0) out.thresholdEur = c.thresholdEur
+  if (c.rewardKind === 'percent' || c.rewardKind === 'free_item') out.rewardKind = c.rewardKind
+  if (typeof c.rewardPct === 'number' && c.rewardPct > 0) out.rewardPct = c.rewardPct
+  if (Array.isArray(c.freeItemIds) && c.freeItemIds.every(x => typeof x === 'string') && c.freeItemIds.length > 0) {
+    out.freeItemIds = c.freeItemIds as string[]
+  }
+  return out // any other key: tolerated and ignored
+}
+
+const clampPct = (x: number) => Math.min(Math.max(x, 0), 100) / 100
+
+/** Expand the (optionally id-filtered) lines into per-UNIT prices. */
+function units(items: OrderLine[], ids?: string[]): number[] {
+  const lines = ids ? items.filter(l => ids.includes(l.rawId)) : items
+  const out: number[] = []
+  for (const l of lines) {
+    const q = Math.max(0, Math.floor(l.qty))
+    for (let i = 0; i < q; i++) out.push(l.price)
+  }
+  return out
 }
 
 /** Evaluate ONE promotion against the order. Returns the discount in EUR
- *  (0 = not applicable). Bounds: never negative, never above the concerned
- *  basket (a fixed 15 € promo on a 10 € basket gives 10 €, total never < 0). */
+ *  (0 = not applicable). Bounds: never negative, never above the order subtotal
+ *  (the total can never go < 0). */
 export function evaluatePromotion(promo: PromotionRow, ctx: PromoContext): number {
   const now = ctx.now ?? new Date()
   if (!promo.active) return 0
-  if (promo.type !== 'percent' && promo.type !== 'fixed') return 0 // V1 scope (D5)
   if (now.getTime() < promo.startDate.getTime() || now.getTime() > promo.endDate.getTime()) return 0
 
   const cond = parseConditions(promo.conditions)
   if (cond.channels && !cond.channels.includes(ctx.channel)) return 0
 
-  // The full pre-discount subtotal (minOrder is evaluated on it — existing pattern).
+  // The full pre-discount subtotal (minOrder/threshold are evaluated on it).
   const subtotal = round2(ctx.items.reduce((s, l) => s + l.price * l.qty, 0))
+  if (subtotal <= 0) return 0
   if (cond.minOrderEur && subtotal < cond.minOrderEur) return 0
 
-  // The concerned basket: the targeted items only, else the whole order.
-  const basket = cond.itemIds
-    ? round2(ctx.items.filter(l => cond.itemIds!.includes(l.rawId)).reduce((s, l) => s + l.price * l.qty, 0))
-    : subtotal
-  if (basket <= 0) return 0
+  // ── V1 — percent / fixed (INTACT) ──────────────────────────────────────────
+  if (promo.type === 'percent' || promo.type === 'fixed') {
+    const basket = cond.itemIds
+      ? round2(ctx.items.filter(l => cond.itemIds!.includes(l.rawId)).reduce((s, l) => s + l.price * l.qty, 0))
+      : subtotal
+    if (basket <= 0) return 0
+    const raw = promo.type === 'percent' ? basket * clampPct(promo.discount) : promo.discount
+    return round2(Math.min(Math.max(raw, 0), basket))
+  }
 
-  const raw = promo.type === 'percent'
-    ? basket * (Math.min(Math.max(promo.discount, 0), 100) / 100)
-    : promo.discount
-  return round2(Math.min(Math.max(raw, 0), basket))
+  // ── V2 — « 2e article à −X% » ──────────────────────────────────────────────
+  // CHOIX NOTÉ : on remise la SEULE unité la moins chère du panier concerné
+  // (id-filtré si itemIds), et seulement à partir de 2 unités concernées.
+  if (promo.type === 'second_item') {
+    const u = units(ctx.items, cond.itemIds)
+    if (u.length < 2) return 0
+    const cheapest = Math.min(...u)
+    return round2(Math.min(Math.max(cheapest * clampPct(promo.discount), 0), subtotal))
+  }
+
+  // ── V2 — « Palier-récompense » ─────────────────────────────────────────────
+  // subtotal ≥ thresholdEur → récompense : 'percent' (rewardPct% du sous-total)
+  // ou 'free_item' (l'unité la moins chère du pool freeItemIds, offerte).
+  // CHOIX NOTÉ : « points bonus » reporté (écrirait au ledger fidélité dans
+  // orders/route — hors moteur pur ; non livré en Slice 1).
+  if (promo.type === 'threshold_reward') {
+    if (!cond.thresholdEur || subtotal < cond.thresholdEur) return 0
+    if (cond.rewardKind === 'free_item') {
+      // The « offered item » pool MUST be explicit (defense in depth with the
+      // create API): no freeItemIds → no reward (never « cheapest of the whole
+      // order », which would silently give away an item on every order).
+      if (!cond.freeItemIds) return 0
+      const pool = units(ctx.items, cond.freeItemIds)
+      if (pool.length === 0) return 0
+      return round2(Math.min(Math.min(...pool), subtotal))
+    }
+    // default reward kind: percent
+    const pctVal = cond.rewardPct ?? promo.discount
+    return round2(Math.min(Math.max(subtotal * clampPct(pctVal), 0), subtotal))
+  }
+
+  return 0 // unknown type
 }
 
 /** D5: pick the BEST applicable promotion (highest discount; older first on a
@@ -119,9 +182,12 @@ export async function fetchActivePromotions(restaurantId: string, now: Date = ne
       active:    true,
       startDate: { lte: now },
       endDate:   { gte: now },
-      type:      { in: ['percent', 'fixed'] },
+      type:      { in: ['percent', 'fixed', 'second_item', 'threshold_reward'] },
       brand:     { restaurantId },
     },
+    // Oldest first → pickBestPromotion's « older wins on a discount tie » is now
+    // deterministic (the DB no longer returns an arbitrary order).
+    orderBy: { createdAt: 'asc' },
     select: {
       id: true, type: true, discount: true, conditions: true,
       startDate: true, endDate: true, active: true,

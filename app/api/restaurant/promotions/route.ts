@@ -21,14 +21,21 @@ const conditionsSchema = z.object({
   minOrderEur: z.number().positive().optional(),
   itemIds:     z.array(z.string().min(1)).min(1).optional(),
   channels:    z.array(z.enum(['delivery', 'pickup'])).min(1).optional(),
+  // ── Promo V2 (threshold_reward) ─────────────────────────────────────────────
+  thresholdEur: z.number().positive().optional(),
+  rewardKind:   z.enum(['percent', 'free_item']).optional(),
+  rewardPct:    z.number().positive().optional(),
+  freeItemIds:  z.array(z.string().min(1)).min(1).optional(),
 })
 
 const createSchema = z.object({
   brandId:    z.string().min(1),
   name:       z.string().trim().min(2).max(80),
-  type:       z.enum(['percent', 'fixed']), // V1 scope (D5) — bundle/flash have no UI
-  // percent: whole 1..90 ; fixed: EUR > 0 (sane bounds)
-  discount:   z.number().positive(),
+  // V1: percent | fixed · V2: second_item (« 2e à −X% ») | threshold_reward (palier)
+  type:       z.enum(['percent', 'fixed', 'second_item', 'threshold_reward']),
+  // headline value: percent/second_item → whole 1..90 ; fixed → EUR > 0 ;
+  // threshold_reward → may be 0 (the reward params live in conditions).
+  discount:   z.number().min(0),
   startDate:  z.string().datetime(),
   endDate:    z.string().datetime(),
   conditions: conditionsSchema.optional(),
@@ -126,9 +133,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Marque non autorisée' }, { status: 403 })
     }
 
-    // Sane value bounds (V1): percent 1..90 whole, fixed > 0.
-    if (data.type === 'percent' && (data.discount < 1 || data.discount > 90)) {
+    // Sane value bounds per type.
+    if ((data.type === 'percent' || data.type === 'second_item') && (data.discount < 1 || data.discount > 90)) {
       return NextResponse.json({ error: 'Pourcentage entre 1 et 90.' }, { status: 400 })
+    }
+    if (data.type === 'fixed' && data.discount <= 0) {
+      return NextResponse.json({ error: 'Montant fixe supérieur à 0.' }, { status: 400 })
+    }
+    if (data.type === 'threshold_reward') {
+      const c = data.conditions
+      if (!c?.thresholdEur || c.thresholdEur <= 0) {
+        return NextResponse.json({ error: 'Indiquez le seuil du palier (€).' }, { status: 400 })
+      }
+      if (c.rewardKind === 'percent') {
+        const pctVal = c.rewardPct ?? data.discount
+        if (pctVal < 1 || pctVal > 90) {
+          return NextResponse.json({ error: 'Récompense en % entre 1 et 90.' }, { status: 400 })
+        }
+      } else if (c.rewardKind === 'free_item') {
+        // The « offered item » pool MUST be explicit — without it the engine
+        // would treat the WHOLE order as eligible and give away the cheapest
+        // unit of EVERY qualifying order (silent margin leak). Require a pool.
+        if (!c.freeItemIds || c.freeItemIds.length === 0) {
+          return NextResponse.json({ error: 'Choisissez le ou les articles offerts.' }, { status: 400 })
+        }
+      } else {
+        return NextResponse.json({ error: 'Choisissez la récompense (remise % ou article offert).' }, { status: 400 })
+      }
     }
     const start = new Date(data.startDate)
     const end   = new Date(data.endDate)
@@ -136,22 +167,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'La fin doit suivre le début.' }, { status: 400 })
     }
 
-    // Targeted items must belong to the establishment's own menu (D4 hygiene).
-    if (data.conditions?.itemIds?.length) {
+    // Targeted items (itemIds) AND the free-item pool (freeItemIds) must belong
+    // to the establishment's own menu (D4 hygiene).
+    const ownedIds = [
+      ...(data.conditions?.itemIds ?? []),
+      ...(data.conditions?.freeItemIds ?? []),
+    ]
+    if (ownedIds.length) {
+      const uniq = Array.from(new Set(ownedIds))
       const owned = await prisma.menuItem.count({
-        where: { id: { in: data.conditions.itemIds }, brandId: { in: ctx.brands.map(b => b.id) } },
+        where: { id: { in: uniq }, brandId: { in: ctx.brands.map(b => b.id) } },
       })
-      if (owned !== data.conditions.itemIds.length) {
+      if (owned !== uniq.length) {
         return NextResponse.json({ error: 'Plats hors de votre carte.' }, { status: 400 })
       }
     }
 
+    // percent / second_item → whole percent ; fixed / threshold_reward → € (round2).
+    const isWholePct = data.type === 'percent' || data.type === 'second_item'
     const promotion = await prisma.promotion.create({
       data: {
         brandId:    data.brandId,
         name:       data.name,
         type:       data.type,
-        discount:   data.type === 'percent' ? Math.round(data.discount) : Math.round(data.discount * 100) / 100,
+        discount:   isWholePct ? Math.round(data.discount) : Math.round(data.discount * 100) / 100,
         conditions: (data.conditions ?? {}) as object,
         startDate:  start,
         endDate:    end,

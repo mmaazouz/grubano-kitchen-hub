@@ -118,3 +118,62 @@ describe('round2 — the cent discipline', () => {
     expect(round2(1.005)).toBe(1)
   })
 })
+
+// ── Promo V2 Slice 1 — second_item + threshold_reward ─────────────────────────
+describe('evaluatePromotion — V2 « 2e article à −X% »', () => {
+  it('discounts the CHEAPEST unit at X% when ≥ 2 units are present', () => {
+    const p = promo({ type: 'second_item', discount: 50 })
+    // two units: 12 € and 8 € → cheapest 8 € at −50% = 4 €
+    const c = ctx({ items: [{ rawId: 'a', price: 12, qty: 1 }, { rawId: 'b', price: 8, qty: 1 }] })
+    expect(evaluatePromotion(p, c)).toBe(4)
+  })
+  it('same item qty 2 → the 2nd (identical) unit at −50%', () => {
+    const p = promo({ type: 'second_item', discount: 50 })
+    expect(evaluatePromotion(p, ctx({ items: [{ rawId: 'a', price: 10, qty: 2 }] }))).toBe(5)
+  })
+  it('a SINGLE unit → no discount (needs a 2nd article)', () => {
+    const p = promo({ type: 'second_item', discount: 50 })
+    expect(evaluatePromotion(p, ctx({ items: [{ rawId: 'a', price: 10, qty: 1 }] }))).toBe(0)
+  })
+  it('itemIds scopes which units count', () => {
+    const p = promo({ type: 'second_item', discount: 50, conditions: { itemIds: ['a'] } })
+    // only one 'a' unit → not enough → 0 (the 'b' unit is out of scope)
+    expect(evaluatePromotion(p, ctx({ items: [{ rawId: 'a', price: 10, qty: 1 }, { rawId: 'b', price: 6, qty: 1 }] }))).toBe(0)
+  })
+})
+
+describe('evaluatePromotion — V2 « Palier-récompense »', () => {
+  const reach = (over = {}) => ctx({ items: [{ rawId: 'a', price: 12, qty: 1 }, { rawId: 'b', price: 8, qty: 1 }], ...over }) // subtotal 20
+  it('threshold NOT reached → 0', () => {
+    const p = promo({ type: 'threshold_reward', discount: 0, conditions: { thresholdEur: 25, rewardKind: 'percent', rewardPct: 20 } })
+    expect(evaluatePromotion(p, reach())).toBe(0)            // 20 < 25
+  })
+  it('threshold reached → percent reward on the subtotal', () => {
+    const p = promo({ type: 'threshold_reward', discount: 0, conditions: { thresholdEur: 18, rewardKind: 'percent', rewardPct: 20 } })
+    expect(evaluatePromotion(p, reach())).toBe(4)            // 20 ≥ 18 → 20 % of 20 = 4
+  })
+  it('threshold reached → free_item = cheapest unit of the eligible pool', () => {
+    const p = promo({ type: 'threshold_reward', discount: 0, conditions: { thresholdEur: 18, rewardKind: 'free_item', freeItemIds: ['b'] } })
+    expect(evaluatePromotion(p, reach())).toBe(8)            // 'b' (8 €) becomes free
+  })
+  it('free_item with a pool NOT in the cart → 0 (no item to offer)', () => {
+    const p = promo({ type: 'threshold_reward', discount: 0, conditions: { thresholdEur: 18, rewardKind: 'free_item', freeItemIds: ['zzz'] } })
+    expect(evaluatePromotion(p, reach())).toBe(0)
+  })
+  it('free_item with NO pool → 0 (an explicit offered-item pool is required — no whole-order giveaway)', () => {
+    const p = promo({ type: 'threshold_reward', discount: 0, conditions: { thresholdEur: 18, rewardKind: 'free_item' } })
+    expect(evaluatePromotion(p, reach())).toBe(0)            // defense in depth with the create API
+  })
+})
+
+describe('non-régression — flat percent/fixed inchangé + pickBest sur V2', () => {
+  it('le flat percent reste identique (10 % de 10 € = 1 €)', () => {
+    expect(evaluatePromotion(promo(), ctx())).toBe(1)
+  })
+  it('pickBestPromotion choisit le meilleur entre un flat et un V2', () => {
+    const flat = promo({ id: 'flat', type: 'percent', discount: 10 })             // 10 % of 20 = 2
+    const second = promo({ id: 'sec', type: 'second_item', discount: 50 })        // 50 % of cheapest 8 = 4
+    const c = ctx({ items: [{ rawId: 'a', price: 12, qty: 1 }, { rawId: 'b', price: 8, qty: 1 }] })
+    expect(pickBestPromotion([flat, second], c)).toEqual({ promotionId: 'sec', discountEur: 4 })
+  })
+})
