@@ -5,7 +5,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
 import {
   BadgeCheck, Instagram, Youtube, Store, MapPin, Crosshair, Loader2,
-  ChevronRight, Utensils, ChefHat, Clock, ChevronDown, ChevronUp, BookOpen,
+  ChevronRight, Utensils, ChefHat, Clock, ChevronDown, ChevronUp, BookOpen, Megaphone,
 } from 'lucide-react'
 import { EmptyState, Badge, Skeleton } from '@/components/design-system'
 import { StarBadge } from '@/components/creators/StarBadge'
@@ -51,6 +51,13 @@ interface ChefRecipe {
     prepMinutes: number | null
     cookMinutes: number | null
     difficulty:  string | null
+  } | null
+  // Promo V2 Slice 2 — live demand-driver campaign (null = none).
+  campaign?: {
+    message: string
+    suggestedDiscountPct: number
+    endsAt: string
+    participants: Array<{ id: string; name: string; city: string }>
   } | null
 }
 interface ChefProfile {
@@ -440,6 +447,37 @@ export default function ChefPublicPage({ slug }: { slug: string }) {
                     <Badge>{r.cuisineType}</Badge>
                   </div>
                   <p className="mt-1 line-clamp-3 text-[12px] leading-relaxed text-grubano-ink-muted">{r.description}</p>
+
+                  {/* Promo V2 Slice 2 — live campaign highlight (badge + chef
+                      message + discount + participating restaurants). */}
+                  {r.campaign && (
+                    <div className="mt-2 rounded-grubano-lg border border-grubano-primary/40 bg-grubano-primary/5 p-3">
+                      <div className="flex items-center gap-1.5">
+                        <Megaphone size={13} className="text-grubano-primary" />
+                        <span className="text-[12px] font-bold text-grubano-primary">
+                          {t('campaignBadge', { pct: r.campaign.suggestedDiscountPct })}
+                        </span>
+                      </div>
+                      {r.campaign.message && (
+                        <p className="mt-1 text-[12px] italic text-grubano-ink-muted">« {r.campaign.message} »</p>
+                      )}
+                      {r.campaign.participants.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-grubano-ink-faint">
+                            {t('campaignParticipants', { count: r.campaign.participants.length })}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {r.campaign.participants.map((p) => (
+                              <Link key={p.id} href={`/eat/r/${p.id}`}
+                                className="inline-flex items-center gap-1 rounded-grubano-pill border border-grubano-primary/30 bg-white px-2 py-0.5 text-[11px] font-semibold text-grubano-primary active:scale-95">
+                                {p.name} <ChevronRight size={10} className="rtl:rotate-180" />
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Mission 6 — PUBLIC face only (D1): diet tags, timing,
                       difficulty + the story in a sober accordion. NOTHING

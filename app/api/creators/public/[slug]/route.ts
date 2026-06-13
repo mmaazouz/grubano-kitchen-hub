@@ -129,6 +129,46 @@ export async function GET(
     // ingredients, no steps, no plating, no cost) ever reaches this payload.
     const sheetsByDish = await readDishSheets(creator.dishes.map(d => d.id))
 
+    // ── ADDITIVE (Promo V2 Slice 2) — live campaign per recipe + participants ──
+    // A recipe « en campagne » is highlighted with the chef's message + the
+    // discount + the restaurants that opted in (active campaign-linked promos).
+    // Tolerant: pre-db-push (no CreatorCampaign / Promotion.campaignId) → no
+    // campaigns, the page renders exactly as before.
+    type CampaignInfo = {
+      message: string; suggestedDiscountPct: number; endsAt: string
+      participants: Array<{ id: string; name: string; city: string }>
+    }
+    const campaignByDish = new Map<string, CampaignInfo>()
+    try {
+      const now = new Date()
+      const camps = await prisma.creatorCampaign.findMany({
+        where:  { creatorId: creator.id, status: 'active', startDate: { lte: now }, endDate: { gte: now } },
+        select: { id: true, creatorDishId: true, message: true, suggestedDiscountPct: true, endDate: true },
+      })
+      if (camps.length > 0) {
+        const promos = await prisma.promotion.findMany({
+          where:  { campaignId: { in: camps.map(c => c.id) }, active: true },
+          select: { campaignId: true, brand: { select: { restaurant: { select: { id: true, name: true, city: true } } } } },
+        })
+        const partByCampaign = new Map<string, Array<{ id: string; name: string; city: string }>>()
+        for (const p of promos) {
+          const r = p.brand?.restaurant
+          if (!p.campaignId || !r) continue
+          const list = partByCampaign.get(p.campaignId) ?? []
+          if (!list.some(x => x.id === r.id)) list.push({ id: r.id, name: r.name, city: r.city })
+          partByCampaign.set(p.campaignId, list)
+        }
+        for (const c of camps) {
+          // One live campaign per dish (keep the first if several).
+          if (campaignByDish.has(c.creatorDishId)) continue
+          campaignByDish.set(c.creatorDishId, {
+            message: c.message, suggestedDiscountPct: c.suggestedDiscountPct,
+            endsAt: c.endDate.toISOString(), participants: partByCampaign.get(c.id) ?? [],
+          })
+        }
+      }
+    } catch { /* pre-db-push → no campaigns */ }
+
     const recipes = creator.dishes.map(d => {
       // One entry per restaurant (an operator could adopt the same recipe under
       // two brands → same restaurant twice). De-dupe by restaurant id, keep first.
@@ -169,6 +209,8 @@ export async function GET(
         restaurantsCount: servedAt.length,
         // Mission 6 additive — public face only (null = legacy, nothing shown).
         publicSheet: publicFace(sheetsByDish.get(d.id) ?? null),
+        // Promo V2 Slice 2 additive — live campaign highlight (null = none).
+        campaign: campaignByDish.get(d.id) ?? null,
       }
     })
 
