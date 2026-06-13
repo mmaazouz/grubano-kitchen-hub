@@ -58,6 +58,14 @@ export function tabForStatus(status: string): OrderTab {
   return 'inProgress'
 }
 
+// True when at least one order is still awaiting the resto's accept/refuse
+// ('received'). Drives the LOOPING new-order chime on the operator screen: the
+// sound repeats while this is true and stops the instant it turns false (every
+// order accepted/advanced). Pure + total so it can be unit-tested and reused.
+export function hasUnacceptedOrder(orders: { status: string }[]): boolean {
+  return orders.some(o => o.status === 'received')
+}
+
 // Raw cart-line option shape persisted in Order.items[].options[0].
 interface RawItemOptions {
   parentDishId?: string

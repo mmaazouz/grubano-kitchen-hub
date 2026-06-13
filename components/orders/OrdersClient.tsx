@@ -37,7 +37,7 @@ import {
   KNOWN_STATUS, statusTone, useOrderAdvance, OrderStatusActions,
 } from '@/components/orders/order-actions'
 import {
-  tabForStatus, type OrderView, type OrderItemView, type OrderTab,
+  tabForStatus, hasUnacceptedOrder, type OrderView, type OrderItemView, type OrderTab,
 } from '@/lib/orders-feed'
 
 // ── Serializable view types ───────────────────────────────────────────────────
@@ -62,7 +62,7 @@ interface OrdersClientProps {
 
 const STATUS_FLOW = ['received', 'preparing', 'ready', 'picked_up', 'delivered'] as const
 const POLL_INTERVAL_MS = 15_000   // near-real-time refresh while the tab is visible
-const REMINDER_DELAY_MS = 20_000  // single sober re-chime if an order stays unaccepted
+const SOUND_REPEAT_MS  = 25_000   // re-chime cadence while an order awaits acceptance
 const DONE_PAGE = 20              // "Terminées" history page size
 
 // ── Root: own ToastProvider ───────────────────────────────────────────────────
@@ -104,7 +104,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
   const seenIds  = useRef<Set<string>>(new Set(orders.map(o => o.id)))
   const soundRef = useRef(soundOn)
   useEffect(() => { soundRef.current = soundOn }, [soundOn])
-  // Latest list for the deferred reminder (a timeout closure must not capture a
+  // Latest list for the looping chime (the interval closure must not capture a
   // stale snapshot).
   const liveRef = useRef<OrderView[]>(orders)
   useEffect(() => { liveRef.current = liveOrders }, [liveOrders])
@@ -125,7 +125,6 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
   // id first seen through polling. soundOn OFF = muted (toast still shows).
   const audioCtx = useRef<AudioContext | null>(null)
   const [audioBlocked, setAudioBlocked] = useState(false)
-  const reminderRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const ensureCtx = useCallback((): AudioContext | null => {
     try {
@@ -178,17 +177,13 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
   // PROACTIVE: if the browser created the ctx 'suspended' (autoplay policy), raise
   // the unlock banner immediately so the operator can enable sound at the START of
   // service — not only after a first order was already missed. Any gesture (the
-  // banner, the toggle, or the once-listener below) clears it. Clears the reminder
-  // on unmount.
+  // banner, the toggle, or the once-listener below) clears it.
   useEffect(() => {
     const ctx = ensureCtx()
     if (ctx && ctx.state !== 'running') setAudioBlocked(true)
     const once = () => unlockAudio()
     window.addEventListener('pointerdown', once, { once: true })
-    return () => {
-      window.removeEventListener('pointerdown', once)
-      if (reminderRef.current) clearTimeout(reminderRef.current)
-    }
+    return () => window.removeEventListener('pointerdown', once)
   }, [ensureCtx, unlockAudio])
 
   const fetchLive = useCallback(async () => {
@@ -201,17 +196,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
       incoming.forEach(o => seenIds.current.add(o.id))
       setLiveOrders(incoming)                       // React reconciles by id → no jump
       if (fresh.length > 0) {
-        if (soundRef.current) {
-          playChime()                               // toggle off → no sound, toast stays
-          // SOBER reminder: one single nudge ~20 s later IF a still-unaccepted
-          // order ('received') remains — the resto screen stays open for hours,
-          // a missed order shouldn't go unheard. Rapid arrivals collapse to one
-          // pending timer → never a stream of beeps.
-          if (reminderRef.current) clearTimeout(reminderRef.current)
-          reminderRef.current = setTimeout(() => {
-            if (soundRef.current && liveRef.current.some(o => o.status === 'received')) playChime()
-          }, REMINDER_DELAY_MS)
-        }
+        if (soundRef.current) playChime()           // instant feedback; the loop below keeps nagging until accepted
         toast.success(fresh.length === 1 ? t('newOrderToast') : t('newOrdersToast', { count: fresh.length }))
       }
     } catch { /* network blip — keep the current list */ }
@@ -225,6 +210,25 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
     document.addEventListener('visibilitychange', onVis)
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
   }, [fetchLive])
+
+  // ── Looping new-order chime (Mohammed) ──────────────────────────────────────
+  // While at least one order is still UNACCEPTED ('received'), re-chime every
+  // SOUND_REPEAT_MS so a busy kitchen can't miss it (the arrival itself already
+  // chimed in fetchLive). The instant the last 'received' order is accepted/
+  // advanced, liveOrders changes → hasPending flips false → this effect re-runs
+  // and clears the interval → the sound STOPS at once. ONE interval at a time
+  // (effect-managed, never stacked). Sound only — the arrival toast is NOT
+  // repeated. soundOn OFF → silent (guarded per tick). 2.4: only 'received'
+  // nags, never an order already in the kitchen. The per-tick gesture/ctx checks
+  // in playChime keep the first-load-silent + autoplay-unlock guarantees intact.
+  const hasPending = hasUnacceptedOrder(liveOrders)
+  useEffect(() => {
+    if (!hasPending) return
+    const id = setInterval(() => {
+      if (soundRef.current && hasUnacceptedOrder(liveRef.current)) playChime()
+    }, SOUND_REPEAT_MS)
+    return () => clearInterval(id)
+  }, [hasPending, playChime])
 
   const statusLabel = (s: string): string =>
     KNOWN_STATUS.has(s) ? ts(`status_${s}`) : ts('status_unknown')
