@@ -1025,7 +1025,10 @@
       "loyaltyPromoBlocked": "A promotion is already active — your points stay available for a next order.",
       "smallOrderFeeLine": "Small-order fee",
       "smallOrderNudge": "Add €{amount} to avoid the small-order fee",
-      "smallOrderAddItem": "Add {name} (€{price})"
+      "smallOrderAddItem": "Add {name} (€{price})",
+      "thresholdIncentive": "Add €{amount} for {reward}",
+      "rewardFreeItemShort": "a free item",
+      "rewardPctShort": "−{pct}%"
     },
     "track": {
       "title": "Live tracking",
@@ -1189,7 +1192,12 @@
       "promoFixedAll": "🏷️ −€{eur} on your order",
       "promoFixedMin": "🏷️ −€{eur} from €{min}",
       "promoPill": "−{pct}%",
-      "promoPillFixed": "−€{eur}"
+      "promoPillFixed": "−€{eur}",
+      "promoSecondItem": "🏷️ 2nd item at −{pct}%",
+      "promoThresholdFree": "🏷️ A free item from €{min}",
+      "promoThresholdPct": "🏷️ −{pct}% from €{min}",
+      "promoFlashUntil": "until {time}",
+      "promoPillSecond": "2nd at −{pct}%"
     },
     "creator": {
       "title": "Creator profile",
@@ -2161,6 +2169,27 @@
     "updatedOk": "Promotion updated.",
     "errGeneric": "Action failed — please retry.",
     "errLoad": "Could not load your promotions.",
-    "docFinance": "The discount is on you: the customer pays the discounted price and the Grubano commission is computed on the amount paid."
+    "docFinance": "The discount is on you: the customer pays the discounted price and the Grubano commission is computed on the amount paid.",
+    "typeSecondItem": "2nd item",
+    "typeThreshold": "Threshold",
+    "fieldValueSecondItem": "Discount on the 2nd item (%)",
+    "fieldThreshold": "Threshold amount (€)",
+    "rewardPercent": "% off",
+    "rewardFreeItem": "Free item",
+    "fieldRewardPct": "Reward discount (%)",
+    "fieldFreeItems": "Item(s) eligible to be offered",
+    "fieldFreeItemsHint": "The cheapest of this selection present in the cart will be free.",
+    "valueSecondItem": "2nd at −{value}%",
+    "valueThreshold": "from {amount}",
+    "agBtn": "Anti-waste",
+    "agTitle": "Stock to clear",
+    "agIntro": "Select the items nearing expiry: we prepare a pre-filled flash promo, you launch it in one click.",
+    "agItems": "Items to clear",
+    "agExpiry": "Clear before",
+    "agPctLabel": "Discount (%)",
+    "agSuggestHint": "Suggestion: −{pct}% until expiry. Adjust if needed.",
+    "agLaunch": "Launch the flash",
+    "agLaunchedOk": "Anti-waste promo launched ✓",
+    "agName": "Anti-waste — stock to clear"
   }
 }

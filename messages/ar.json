@@ -1025,7 +1025,10 @@
       "loyaltyPromoBlocked": "يوجد عرض ترويجي نشط بالفعل — تبقى نقاطك متاحة لطلب قادم.",
       "smallOrderFeeLine": "رسوم الطلب الصغير",
       "smallOrderNudge": "أضف {amount} € لتجنّب رسوم الطلب الصغير",
-      "smallOrderAddItem": "أضف {name} ({price} €)"
+      "smallOrderAddItem": "أضف {name} ({price} €)",
+      "thresholdIncentive": "أضف {amount} € للحصول على {reward}",
+      "rewardFreeItemShort": "صنف مجاني",
+      "rewardPctShort": "−{pct}%"
     },
     "track": {
       "title": "التتبع المباشر",
@@ -1189,7 +1192,12 @@
       "promoFixedAll": "🏷️ خصم {eur} € على طلبك",
       "promoFixedMin": "🏷️ خصم {eur} € ابتداءً من {min} €",
       "promoPill": "−{pct}٪",
-      "promoPillFixed": "−{eur} €"
+      "promoPillFixed": "−{eur} €",
+      "promoSecondItem": "🏷️ الصنف الثاني بـ −{pct}%",
+      "promoThresholdFree": "🏷️ صنف مجاني ابتداءً من {min} €",
+      "promoThresholdPct": "🏷️ −{pct}% ابتداءً من {min} €",
+      "promoFlashUntil": "حتى {time}",
+      "promoPillSecond": "الثاني بـ −{pct}%"
     },
     "creator": {
       "title": "الملف الشخصي للمبدع",
@@ -2161,6 +2169,27 @@
     "updatedOk": "تم تحديث العرض.",
     "errGeneric": "تعذّر تنفيذ الإجراء — أعد المحاولة.",
     "errLoad": "تعذّر تحميل عروضك.",
-    "docFinance": "الخصم على حسابك: يدفع العميل السعر المخفَّض وتُحسب عمولة Grubano على المبلغ المدفوع."
+    "docFinance": "الخصم على حسابك: يدفع العميل السعر المخفَّض وتُحسب عمولة Grubano على المبلغ المدفوع.",
+    "typeSecondItem": "الصنف الثاني",
+    "typeThreshold": "عتبة",
+    "fieldValueSecondItem": "خصم على الصنف الثاني (%)",
+    "fieldThreshold": "قيمة العتبة (€)",
+    "rewardPercent": "خصم %",
+    "rewardFreeItem": "صنف مجاني",
+    "fieldRewardPct": "خصم العتبة (%)",
+    "fieldFreeItems": "الأصناف التي يمكن تقديمها مجانًا",
+    "fieldFreeItemsHint": "الأرخص من هذا التحديد الموجود في السلة سيكون مجانيًا.",
+    "valueSecondItem": "الثاني بـ −{value}%",
+    "valueThreshold": "من {amount}",
+    "agBtn": "مكافحة الهدر",
+    "agTitle": "مخزون للتصريف",
+    "agIntro": "اختر الأصناف القريبة من انتهاء الصلاحية: نجهّز عرضًا سريعًا معبأً مسبقًا، تطلقه بنقرة واحدة.",
+    "agItems": "الأصناف للتصريف",
+    "agExpiry": "التصريف قبل",
+    "agPctLabel": "الخصم (%)",
+    "agSuggestHint": "اقتراح: −{pct}% حتى انتهاء الصلاحية. عدّل إن لزم.",
+    "agLaunch": "إطلاق العرض السريع",
+    "agLaunchedOk": "تم إطلاق عرض مكافحة الهدر ✓",
+    "agName": "مكافحة الهدر — مخزون للتصريف"
   }
 }

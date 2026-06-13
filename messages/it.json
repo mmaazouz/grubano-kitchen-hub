@@ -1025,7 +1025,10 @@
       "loyaltyPromoBlocked": "Una promozione è già attiva — i tuoi punti restano disponibili per un prossimo ordine.",
       "smallOrderFeeLine": "Costi ordine piccolo",
       "smallOrderNudge": "Aggiungi {amount} € per evitare i costi ordine piccolo",
-      "smallOrderAddItem": "Aggiungi {name} ({price} €)"
+      "smallOrderAddItem": "Aggiungi {name} ({price} €)",
+      "thresholdIncentive": "Aggiungi {amount} € per {reward}",
+      "rewardFreeItemShort": "un articolo omaggio",
+      "rewardPctShort": "−{pct}%"
     },
     "track": {
       "title": "Tracciamento in tempo reale",
@@ -1189,7 +1192,12 @@
       "promoFixedAll": "🏷️ −{eur} € sul tuo ordine",
       "promoFixedMin": "🏷️ −{eur} € da {min} €",
       "promoPill": "−{pct} %",
-      "promoPillFixed": "−{eur} €"
+      "promoPillFixed": "−{eur} €",
+      "promoSecondItem": "🏷️ 2º articolo a −{pct}%",
+      "promoThresholdFree": "🏷️ Un articolo omaggio da {min} €",
+      "promoThresholdPct": "🏷️ −{pct}% da {min} €",
+      "promoFlashUntil": "fino alle {time}",
+      "promoPillSecond": "2º a −{pct}%"
     },
     "creator": {
       "title": "Profilo creator",
@@ -2161,6 +2169,27 @@
     "updatedOk": "Promozione aggiornata.",
     "errGeneric": "Azione impossibile — riprova.",
     "errLoad": "Impossibile caricare le promozioni.",
-    "docFinance": "Lo sconto è a tuo carico: il cliente paga il prezzo scontato e la commissione Grubano si calcola sull’importo pagato."
+    "docFinance": "Lo sconto è a tuo carico: il cliente paga il prezzo scontato e la commissione Grubano si calcola sull’importo pagato.",
+    "typeSecondItem": "2º articolo",
+    "typeThreshold": "Soglia",
+    "fieldValueSecondItem": "Sconto sul 2º articolo (%)",
+    "fieldThreshold": "Importo della soglia (€)",
+    "rewardPercent": "% sconto",
+    "rewardFreeItem": "Articolo omaggio",
+    "fieldRewardPct": "Sconto alla soglia (%)",
+    "fieldFreeItems": "Articolo/i che possono essere offerti",
+    "fieldFreeItemsHint": "Il più economico di questa selezione presente nel carrello sarà offerto.",
+    "valueSecondItem": "2º a −{value}%",
+    "valueThreshold": "da {amount}",
+    "agBtn": "Anti-spreco",
+    "agTitle": "Stock da smaltire",
+    "agIntro": "Seleziona gli articoli in scadenza: prepariamo una promo flash precompilata, la lanci in un clic.",
+    "agItems": "Articoli da smaltire",
+    "agExpiry": "Smaltire entro",
+    "agPctLabel": "Sconto (%)",
+    "agSuggestHint": "Suggerimento: −{pct}% fino alla scadenza. Modifica se serve.",
+    "agLaunch": "Lancia la flash",
+    "agLaunchedOk": "Promo anti-spreco lanciata ✓",
+    "agName": "Anti-spreco — stock da smaltire"
   }
 }

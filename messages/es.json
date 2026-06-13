@@ -1025,7 +1025,10 @@
       "loyaltyPromoBlocked": "Ya hay una promoción activa — tus puntos siguen disponibles para un próximo pedido.",
       "smallOrderFeeLine": "Gastos de pedido pequeño",
       "smallOrderNudge": "Añade {amount} € para evitar los gastos de pedido pequeño",
-      "smallOrderAddItem": "Añadir {name} ({price} €)"
+      "smallOrderAddItem": "Añadir {name} ({price} €)",
+      "thresholdIncentive": "Añade {amount} € para {reward}",
+      "rewardFreeItemShort": "un artículo gratis",
+      "rewardPctShort": "−{pct}%"
     },
     "track": {
       "title": "Seguimiento en tiempo real",
@@ -1189,7 +1192,12 @@
       "promoFixedAll": "🏷️ −{eur} € en tu pedido",
       "promoFixedMin": "🏷️ −{eur} € desde {min} €",
       "promoPill": "−{pct} %",
-      "promoPillFixed": "−{eur} €"
+      "promoPillFixed": "−{eur} €",
+      "promoSecondItem": "🏷️ 2º artículo a −{pct}%",
+      "promoThresholdFree": "🏷️ Un artículo gratis desde {min} €",
+      "promoThresholdPct": "🏷️ −{pct}% desde {min} €",
+      "promoFlashUntil": "hasta las {time}",
+      "promoPillSecond": "2º a −{pct}%"
     },
     "creator": {
       "title": "Perfil del creador",
@@ -2161,6 +2169,27 @@
     "updatedOk": "Promoción actualizada.",
     "errGeneric": "Acción imposible — inténtelo de nuevo.",
     "errLoad": "No se pudieron cargar sus promociones.",
-    "docFinance": "El descuento corre de su cuenta: el cliente paga el precio rebajado y la comisión de Grubano se calcula sobre lo pagado."
+    "docFinance": "El descuento corre de su cuenta: el cliente paga el precio rebajado y la comisión de Grubano se calcula sobre lo pagado.",
+    "typeSecondItem": "2º artículo",
+    "typeThreshold": "Umbral",
+    "fieldValueSecondItem": "Descuento en el 2º artículo (%)",
+    "fieldThreshold": "Importe del umbral (€)",
+    "rewardPercent": "% dto.",
+    "rewardFreeItem": "Artículo gratis",
+    "fieldRewardPct": "Descuento del umbral (%)",
+    "fieldFreeItems": "Artículo(s) que se pueden regalar",
+    "fieldFreeItemsHint": "El más barato de esta selección presente en el carrito será gratis.",
+    "valueSecondItem": "2º a −{value}%",
+    "valueThreshold": "desde {amount}",
+    "agBtn": "Antidesperdicio",
+    "agTitle": "Stock a liquidar",
+    "agIntro": "Selecciona los artículos próximos a caducar: preparamos una promo flash precargada y la lanzas en un clic.",
+    "agItems": "Artículos a liquidar",
+    "agExpiry": "Liquidar antes de",
+    "agPctLabel": "Descuento (%)",
+    "agSuggestHint": "Sugerencia: −{pct}% hasta la caducidad. Ajústalo si quieres.",
+    "agLaunch": "Lanzar la flash",
+    "agLaunchedOk": "Promo antidesperdicio lanzada ✓",
+    "agName": "Antidesperdicio — stock a liquidar"
   }
 }

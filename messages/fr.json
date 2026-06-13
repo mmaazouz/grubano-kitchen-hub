@@ -1025,7 +1025,10 @@
       "loyaltyPromoBlocked": "Une promotion est déjà active — tes points restent disponibles pour une prochaine commande.",
       "smallOrderFeeLine": "Frais petite commande",
       "smallOrderNudge": "Ajoutez {amount} € pour éviter les frais de petite commande",
-      "smallOrderAddItem": "Ajouter {name} ({price} €)"
+      "smallOrderAddItem": "Ajouter {name} ({price} €)",
+      "thresholdIncentive": "Ajoutez {amount} € pour {reward}",
+      "rewardFreeItemShort": "un article offert",
+      "rewardPctShort": "−{pct}%"
     },
     "track": {
       "title": "Suivi en temps réel",
@@ -1189,7 +1192,12 @@
       "promoFixedAll": "🏷️ −{eur} € sur votre commande",
       "promoFixedMin": "🏷️ −{eur} € dès {min} € de commande",
       "promoPill": "−{pct} %",
-      "promoPillFixed": "−{eur} €"
+      "promoPillFixed": "−{eur} €",
+      "promoSecondItem": "🏷️ 2e article à −{pct}%",
+      "promoThresholdFree": "🏷️ Un article offert dès {min} €",
+      "promoThresholdPct": "🏷️ −{pct}% dès {min} €",
+      "promoFlashUntil": "jusqu’à {time}",
+      "promoPillSecond": "2e à −{pct}%"
     },
     "creator": {
       "title": "Profil créateur",
@@ -2161,6 +2169,27 @@
     "updatedOk": "Promotion mise à jour.",
     "errGeneric": "Action impossible — réessayez.",
     "errLoad": "Impossible de charger vos promotions.",
-    "docFinance": "La remise est à votre charge : le client paie le prix remisé, la commission Grubano se calcule sur le montant payé."
+    "docFinance": "La remise est à votre charge : le client paie le prix remisé, la commission Grubano se calcule sur le montant payé.",
+    "typeSecondItem": "2e article",
+    "typeThreshold": "Palier",
+    "fieldValueSecondItem": "Remise sur le 2e article (%)",
+    "fieldThreshold": "Seuil du palier (€)",
+    "rewardPercent": "Remise %",
+    "rewardFreeItem": "Article offert",
+    "fieldRewardPct": "Remise au palier (%)",
+    "fieldFreeItems": "Article(s) pouvant être offert(s)",
+    "fieldFreeItemsHint": "Le moins cher de cette sélection présent au panier sera offert.",
+    "valueSecondItem": "2e à −{value}%",
+    "valueThreshold": "dès {amount}",
+    "agBtn": "Anti-gaspi",
+    "agTitle": "Stock à écouler",
+    "agIntro": "Sélectionnez les articles proches de péremption : on prépare une promo flash pré-remplie, vous lancez en un clic.",
+    "agItems": "Articles à écouler",
+    "agExpiry": "À écouler avant",
+    "agPctLabel": "Remise (%)",
+    "agSuggestHint": "Suggestion : −{pct}% jusqu’à la péremption. Ajustez si besoin.",
+    "agLaunch": "Lancer la flash",
+    "agLaunchedOk": "Promo anti-gaspi lancée ✓",
+    "agName": "Anti-gaspi — stock à écouler"
   }
 }
