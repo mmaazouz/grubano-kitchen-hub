@@ -1013,7 +1013,11 @@
       "errorNetwork": "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
       "errClosedWithOpening": "المطعم مغلق حاليًا — يفتح {label}. يمكنك الطلب حينها.",
       "errClosedNoOpening": "المطعم مغلق حاليًا. أعد المحاولة خلال ساعات عمله.",
-      "promoIncentive": "تبقّى {amount} € للاستفادة من «{name}»"
+      "promoIncentive": "تبقّى {amount} € للاستفادة من «{name}»",
+      "loyaltyToggleTitle": "ادفع بنقاطي",
+      "loyaltyBalance": "الرصيد: {count} نقطة",
+      "loyaltyUpTo": "حتى {amount} € تُخصم عند الدفع",
+      "loyaltyNote": "لا يُجمع مع عرض ترويجي."
     },
     "track": {
       "title": "التتبع المباشر",

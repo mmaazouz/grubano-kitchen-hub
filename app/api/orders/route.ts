@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
 import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { fetchActivePromotions, pickBestPromotion } from '@/lib/promotions'
+import { resolveLoyaltyCredit } from '@/lib/loyalty'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -37,6 +38,10 @@ const createOrderSchema = z.object({
   // primary source; this body field is a future-proof fallback for manual entry.
   // .optional() keeps the existing request contract intact.
   referralCode:    z.string().optional(),
+  // Chantier fidélité L1 (D4): the customer's INTENTION to spend loyalty points.
+  // The SERVER computes the euro credit, checks the balance, applies the caps —
+  // any client-sent amount is ignored. Default false keeps the contract intact.
+  usePoints:       z.boolean().default(false),
 })
 
 // ── Uber Direct mock ──────────────────────────────────────────────────────────
@@ -220,8 +225,49 @@ export async function POST(req: NextRequest) {
     // Apply the discounts to the paid total (clamped ≥ 0). D1: the promo is the
     // RESTO's — the customer pays the discounted price, the resto's net absorbs it.
     const total        = Math.max(0, round2(subtotal + effectiveDeliveryFee - ref.discount - promo.discountEur))
-    // Points: 1 point per euro actually spent (rounded down).
+    // Points: 1 point per euro actually spent (rounded down). Computed on the
+    // promo-reduced total, BEFORE any loyalty credit (earning is unchanged).
     const pointsEarned = Math.floor(total)
+
+    // ── Loyalty redemption resolution (L1) — Grubano-financed (D1), promo-
+    // exclusive (D3), server-computed (D4), capped so the fee never goes negative
+    // (D5). The credit is NOT applied to `total` here — it is written (and `total`
+    // reduced) in a TOLERANT post-create update so a deployment before the db
+    // push stays fully inert (no credit, no points engaged). Debited at the
+    // confirmed payment only (D6, webhook).
+    const subtotalCents      = Math.round(subtotal * 100)
+    // Grubano's commission on the FULL price (D1) — the D5 cap and the /pay net
+    // fee both key off this. Computed from the resto's rate whether or not Connect
+    // is active (the cap must hold in both flows).
+    const grossCommissionCents = computeApplicationFee(
+      restaurant,
+      data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery',
+      subtotalCents,
+    )
+    let loyalty: { creditCents: number; pointsSpent: number; customerId: string | null } =
+      { creditCents: 0, pointsSpent: 0, customerId: null }
+    if (data.usePoints && promo.discountEur === 0 && !promo.id && ref.discount === 0) {
+      try {
+        // LoyaltyCustomer is keyed by EMAIL (its id is its own cuid, NOT the
+        // Operator id). token.email is the connected consumer's email.
+        const email = typeof token.email === 'string' ? token.email : null
+        const lc = email
+          ? await prisma.loyaltyCustomer.findUnique({ where: { email }, select: { id: true, pointsBalance: true } })
+          : null
+        if (lc) {
+          const r = resolveLoyaltyCredit({
+            customerPointsBalance: lc.pointsBalance,
+            subtotalCents,
+            commissionFeeCents:    grossCommissionCents,
+            promoApplied:          false,
+            requestedUsePoints:    true,
+          })
+          if (r.creditCents > 0) loyalty = { creditCents: r.creditCents, pointsSpent: r.pointsSpent, customerId: lc.id }
+        }
+      } catch (loyErr) {
+        console.error('[POST /api/orders] loyalty resolution failed (order proceeds without credit):', loyErr)
+      }
+    }
 
     // Ghost-orders fix: a CARD order must NEVER be visible to the resto before
     // its payment is SERVER-confirmed (webhook). It is created as
@@ -275,6 +321,32 @@ export async function POST(req: NextRequest) {
       } catch (traceErr) {
         console.error('[POST /api/orders] promotion trace write failed (column missing pre-db-push? order stays valid):',
           traceErr instanceof Error ? traceErr.message : traceErr)
+      }
+    }
+
+    // ── Loyalty credit application (L1) — TOLERANT post-create update ───────────
+    // Reduces `total` AND records pointsRedeemed/loyaltyCreditCents TOGETHER, so
+    // the discount only takes effect when it is durably traced. If the columns
+    // are missing (pre-db-push) the update throws → caught → the order keeps its
+    // full price and NO points are engaged (loyalty fully inert). Points are NOT
+    // debited here (D6 — that happens at the confirmed-payment webhook).
+    let appliedCreditCents = 0
+    let appliedPointsSpent = 0
+    if (loyalty.creditCents > 0) {
+      try {
+        await prisma.order.update({
+          where: { id: order.id },
+          data:  {
+            total:              Math.max(0, round2(total - loyalty.creditCents / 100)),
+            pointsRedeemed:     loyalty.pointsSpent,
+            loyaltyCreditCents: loyalty.creditCents,
+          },
+        })
+        appliedCreditCents = loyalty.creditCents
+        appliedPointsSpent = loyalty.pointsSpent
+      } catch (loyErr) {
+        console.error('[POST /api/orders] loyalty columns missing pre-db-push — credit NOT applied (order at full price):',
+          loyErr instanceof Error ? loyErr.message : loyErr)
       }
     }
 
@@ -476,10 +548,14 @@ export async function POST(req: NextRequest) {
         status:            updated.status,
         estimatedDelivery: dispatch.estimatedTime,
         trackingUrl:       dispatch.trackingUrl,
-        total:             updated.total,
+        // Final amount the customer will pay = promo-reduced total − loyalty credit.
+        total:             Math.max(0, round2(total - appliedCreditCents / 100)),
         pointsEarned,
-        // Total discount applied (welcome OR promo — never both, D6 guard).
+        // Total promo/welcome discount applied (never both, D6 guard).
         discount:          round2(ref.discount + promo.discountEur),
+        // Loyalty redemption applied to this order (0 when none — L1).
+        loyaltyCredit:     round2(appliedCreditCents / 100),
+        pointsRedeemed:    appliedPointsSpent,
       },
       { status: 201 },
     )

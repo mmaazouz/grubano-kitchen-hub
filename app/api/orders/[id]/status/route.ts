@@ -65,15 +65,35 @@ export async function PATCH(
       data:  { status: newStatus },
     })
 
-    // When order is delivered: credit loyalty points to consumer
+    // When order is delivered: credit loyalty points to the consumer.
+    // FIX (chantier fidélité L1): LoyaltyCustomer is keyed by EMAIL, never by the
+    // Operator id — the previous updateMany({ where: { id: consumerId } }) matched
+    // nothing and silently credited zero. Resolve Operator(consumerId).email →
+    // LoyaltyCustomer.email, then increment the balance AND append a signed 'earn'
+    // ledger row in the SAME transaction. Idempotent: one 'earn' per order, so a
+    // re-PATCH to 'delivered' (or a retry) never double-credits. Best-effort: a
+    // missing loyalty account / table never blocks the status update.
     if (newStatus === 'delivered' && order.pointsEarned > 0) {
       try {
-        await prisma.loyaltyCustomer.updateMany({
-          where: { id: order.consumerId },
-          data:  { pointsBalance: { increment: order.pointsEarned } },
+        const already = await prisma.loyaltyTransaction.findFirst({
+          where: { orderId: order.id, type: 'earn' }, select: { id: true },
         })
-      } catch {
-        // Non-fatal: consumer may not have a loyalty account yet
+        if (!already) {
+          const operator = await prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true } })
+          const lc = operator?.email
+            ? await prisma.loyaltyCustomer.findUnique({ where: { email: operator.email }, select: { id: true } })
+            : null
+          if (lc) {
+            await prisma.$transaction([
+              prisma.loyaltyCustomer.update({ where: { id: lc.id }, data: { pointsBalance: { increment: order.pointsEarned } } }),
+              prisma.loyaltyTransaction.create({ data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned } }),
+            ])
+          }
+        }
+      } catch (e) {
+        // Non-fatal: consumer may not have a loyalty account yet, or the
+        // LoyaltyTransaction table may be absent pre-db-push.
+        console.error('[LOYALTY MISS] earn credit failed (non-fatal):', order.id, e instanceof Error ? e.message : e)
       }
     }
 

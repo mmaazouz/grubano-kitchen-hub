@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { centsPerPoint } from '@/lib/loyalty'
 
 const TIER_THRESHOLDS = [
   { tier: 'bronze',  min: 0,   next: 'Silver',  nextPts: 100 },
@@ -15,12 +18,27 @@ const REWARDS = [
   { name: 'Repas complet',    cost: 400, tier: 'platine' },
 ]
 
-// ── GET /api/loyalty/wallet?email= ───────────────────────────────────────────
+// ── GET /api/loyalty/wallet[?email=] ──────────────────────────────────────────
+// Two modes:
+//   • ?email=  → explicit lookup (operator/admin views — unchanged contract);
+//   • no param → the CONNECTED consumer's own wallet (session email). This is the
+//     mode /eat/account and the /eat/cart loyalty toggle use — previously the
+//     route 400'd without ?email, so the consumer balance silently read 0.
+// The response now also exposes a camelCase `pointsBalance` alias + the loyalty
+// conversion rate so the consumer app can render the balance and the
+// points→euros scale (the exact spendable credit is still resolved server-side
+// at checkout, chantier fidélité L1).
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const email = searchParams.get('email')
+    let email = searchParams.get('email')
+
+    // No explicit email → fall back to the authenticated consumer's session.
+    if (!email) {
+      const token = await getToken({ req })
+      email = typeof token?.email === 'string' ? token.email : null
+    }
 
     if (!email) {
       return NextResponse.json({ error: 'email requis' }, { status: 400 })
@@ -50,6 +68,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       points_balance:  customer.pointsBalance,
+      // camelCase alias — /eat/account and the cart loyalty toggle read this.
+      pointsBalance:   customer.pointsBalance,
+      // Loyalty conversion scale (cents per point) for the consumer UI (L1).
+      centsPerPoint:   centsPerPoint(),
       tier:            customer.tier,
       next_tier:       tierInfo.next,
       next_tier_pts:   tierInfo.nextPts !== null

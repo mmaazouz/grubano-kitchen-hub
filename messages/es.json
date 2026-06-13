@@ -1013,7 +1013,11 @@
       "errorNetwork": "Error de red. Por favor, inténtalo de nuevo.",
       "errClosedWithOpening": "El restaurante está cerrado ahora mismo — abre {label}. Podrás pedir entonces.",
       "errClosedNoOpening": "El restaurante está cerrado ahora mismo. Inténtalo de nuevo durante sus horarios de apertura.",
-      "promoIncentive": "Te faltan {amount} € para disfrutar de «{name}»"
+      "promoIncentive": "Te faltan {amount} € para disfrutar de «{name}»",
+      "loyaltyToggleTitle": "Pagar con mis puntos",
+      "loyaltyBalance": "Saldo: {count} pts",
+      "loyaltyUpTo": "Hasta {amount} € de descuento al pagar",
+      "loyaltyNote": "No combinable con una promoción."
     },
     "track": {
       "title": "Seguimiento en tiempo real",

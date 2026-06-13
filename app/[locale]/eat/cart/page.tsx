@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
+import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
-import { Minus, Plus, Trash2, MapPin, CreditCard, ShoppingBag, Bike, Package } from 'lucide-react'
+import { Minus, Plus, Trash2, MapPin, CreditCard, ShoppingBag, Bike, Package, Sparkles } from 'lucide-react'
 import { Button, Badge, PriceTag } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
 import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
@@ -13,6 +14,7 @@ type Fulfillment = 'delivery' | 'pickup'
 export default function CartScreen() {
   const t = useTranslations('eat.cart')
   const router = useRouter()
+  const { status: authStatus } = useSession()
   const [cart, setCart] = useState<EatCartData | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [fulfillment, setFulfillment] = useState<Fulfillment>('delivery')
@@ -20,6 +22,12 @@ export default function CartScreen() {
   const [payment, setPayment] = useState<'card' | 'cash'>('card')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Chantier fidélité L1 — loyalty redemption (D4: the client sends only the
+  // INTENTION usePoints; the SERVER computes the euro credit, checks the balance
+  // and applies the caps). The balance + conversion scale are display-only.
+  const [pointsBalance, setPointsBalance] = useState(0)
+  const [centsPerPoint, setCentsPerPoint] = useState(5)
+  const [usePoints, setUsePoints] = useState(false)
   // Welcome-discount preview (brique 5B companion). The grubano_ref cookie is
   // httpOnly so the client can't read it — GET /api/referral/preview tells us,
   // server-side, whether this visitor is eligible. INDICATIVE only: the server
@@ -53,6 +61,23 @@ export default function CartScreen() {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart?.restaurantId])
+
+  // Loyalty balance (L1) — only for the connected consumer. The session-aware
+  // wallet route returns the OWN balance when no email is passed. Display-only:
+  // the server is the sole judge of the spendable credit at checkout.
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return
+    let cancelled = false
+    fetch('/api/loyalty/wallet')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d) return
+        if (typeof d.pointsBalance === 'number') setPointsBalance(d.pointsBalance)
+        if (typeof d.centsPerPoint === 'number' && d.centsPerPoint > 0) setCentsPerPoint(d.centsPerPoint)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [authStatus])
 
   // Ask the server (once) whether a welcome discount applies for this visitor.
   // Read-only; degrades silently to "no preview" on any error or when not
@@ -134,6 +159,22 @@ export default function CartScreen() {
   // was removed by founder decision.
   const total = Math.max(0, subtotal - welcomeAmount + deliveryFee)
   const totalItems = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
+
+  // Loyalty redemption eligibility (L1, D3 promo-exclusive). Shown only for a
+  // logged-in consumer WITH a balance and NO welcome discount (the server also
+  // refuses loyalty whenever a promo resolves — usePoints is ignored then, so
+  // the points are never burned). The displayed total is intentionally NOT
+  // reduced here: the exact credit (capped by Grubano's commission, unknown
+  // client-side) is resolved on the server and shown on the checkout screen, so
+  // the cart never charges MORE than it displays (audit C3-fix doctrine).
+  const canUsePoints = authStatus === 'authenticated' && pointsBalance > 0 && welcomeAmount === 0
+  // Honest UPPER bound only: credit ≤ min(balance→€, subtotal). The commission
+  // cap can only shrink it further → "jusqu'à" never under-promises the charge.
+  const maxLoyaltyEur = useMemo(
+    () => Math.min(pointsBalance * centsPerPoint, Math.round(subtotal * 100)) / 100,
+    [pointsBalance, centsPerPoint, subtotal],
+  )
+  const effectiveUsePoints = canUsePoints && usePoints
   // Chantier P2 — soft minOrder incentive: the closest GLOBAL promo whose
   // threshold isn't reached yet. DISPLAY-only arithmetic (a gap in €) — the
   // server stays the only judge of what actually applies at checkout.
@@ -187,6 +228,9 @@ export default function CartScreen() {
           // The server (POST /api/orders) honours this: pickup → delivery fee 0,
           // and it's stored on Order.fulfillmentType for reporting.
           fulfillmentType: fulfillment,
+          // Chantier fidélité L1 (D4): INTENTION only. The server computes the
+          // euro credit, checks the balance and caps it; a promo voids it (D3).
+          usePoints: effectiveUsePoints,
         }),
       })
       if (res.status === 401) {
@@ -389,6 +433,38 @@ export default function CartScreen() {
           </button>
         </div>
       </div>
+
+      {/* Loyalty redemption (chantier fidélité L1) — INTENTION toggle only.
+          Hidden unless the consumer is logged in, has a balance and no welcome
+          discount applies (D3). The server computes & caps the real credit; the
+          exact amount lands on the checkout screen, so the total below stays the
+          honest upper amount the customer could pay. */}
+      {canUsePoints && (
+        <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">
+          <div className="flex items-center gap-3">
+            <Sparkles size={20} className="shrink-0 text-grubano-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-grubano-sm font-bold text-grubano-ink">{t('loyaltyToggleTitle')}</p>
+              <p className="mt-0.5 text-xs text-grubano-ink-muted">
+                {t('loyaltyBalance', { count: pointsBalance.toLocaleString('fr-FR') })}
+              </p>
+            </div>
+            <button
+              onClick={() => setUsePoints((v) => !v)}
+              aria-pressed={usePoints}
+              aria-label={t('loyaltyToggleTitle')}
+              className={`flex h-7 w-12 shrink-0 items-center rounded-full px-0.5 transition-colors ${usePoints ? 'justify-end bg-grubano-primary' : 'justify-start bg-grubano-border'}`}
+            >
+              <span className="h-6 w-6 rounded-full bg-white shadow" />
+            </button>
+          </div>
+          {usePoints && maxLoyaltyEur > 0 && (
+            <p className="mt-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
+              {t('loyaltyUpTo', { amount: maxLoyaltyEur.toFixed(2) })} · {t('loyaltyNote')}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Summary */}
       <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">

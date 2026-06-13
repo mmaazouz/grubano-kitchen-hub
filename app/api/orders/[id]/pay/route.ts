@@ -96,12 +96,31 @@ export async function POST(
       },
     })
     const subtotalCents = eurosToCents(order.subtotal)
-    const discountCents = Math.max(
-      0, subtotalCents + eurosToCents(order.deliveryFee) - amountCents,
-    )
-    const baseCents = commissionBaseCents(subtotalCents, discountCents, commissionBaseMode())
+    // Loyalty credit on this order (chantier fidélité L1) — guarded read so a
+    // deployment before the db push (column absent) degrades to 0 (and the order
+    // total is full in that case anyway, so the math stays consistent).
+    let loyaltyCreditCents = 0
+    try {
+      const extra = await prisma.order.findUnique({ where: { id: order.id }, select: { loyaltyCreditCents: true } })
+      loyaltyCreditCents = extra?.loyaltyCreditCents ?? 0
+    } catch { /* column missing pre-db-push → 0 */ }
+
+    const totalDiscountCents = Math.max(0, subtotalCents + eurosToCents(order.deliveryFee) - amountCents)
+    // D1: ONLY the promo discount reduces the commission BASE. The loyalty credit
+    // is Grubano absorbing its OWN fee — it must never shrink the base nor the
+    // resto's net. So the base uses the PROMO-only portion of the total discount.
+    const promoDiscountCents = Math.max(0, totalDiscountCents - loyaltyCreditCents)
+    const baseCents = commissionBaseCents(subtotalCents, promoDiscountCents, commissionBaseMode())
     const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
-    const feeCents = routed ? computeApplicationFee(restaurant!, channel, baseCents) : 0
+    const grossFeeCents = routed ? computeApplicationFee(restaurant!, channel, baseCents) : 0
+    // D1/D5: the loyalty credit reduces Grubano's NET application fee, floored at
+    // 0 (this is the welcome-financing mechanism documented as retired in P1,
+    // rebranched HERE for the loyalty credit only). With destination charges the
+    // resto receives amount − fee; since amount = subtotal+delivery − promo −
+    // credit and feeNet = grossFee − credit, the resto receives subtotal+delivery
+    // − grossFee = PLEIN. The D5 cap (credit ≤ commission, frozen at order time)
+    // guarantees feeNet ≥ 0. THE RESTO TOUCHES PLEIN; GRUBANO ABSORBS THE CREDIT.
+    const feeCents = Math.max(0, grossFeeCents - loyaltyCreditCents)
     const rate     = routed ? resolveCommissionRate(restaurant!, channel) : 0
     const connect: ConnectRouting | undefined =
       routed ? { destination: restaurant!.stripeAccountId!, applicationFeeCents: feeCents } : undefined

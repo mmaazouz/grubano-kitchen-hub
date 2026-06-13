@@ -1013,7 +1013,11 @@
       "errorNetwork": "Network error. Please try again.",
       "errClosedWithOpening": "The restaurant is currently closed — it opens {label}. You can order then.",
       "errClosedNoOpening": "The restaurant is currently closed. Try again during its opening hours.",
-      "promoIncentive": "€{amount} away from “{name}”"
+      "promoIncentive": "€{amount} away from “{name}”",
+      "loyaltyToggleTitle": "Pay with my points",
+      "loyaltyBalance": "Balance: {count} pts",
+      "loyaltyUpTo": "Up to €{amount} off at payment",
+      "loyaltyNote": "Not combinable with a promotion."
     },
     "track": {
       "title": "Live tracking",

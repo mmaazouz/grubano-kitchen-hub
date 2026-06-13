@@ -367,6 +367,41 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
       console.error('[stripe webhook] order reveal failed', e instanceof Error ? e.message : e)
     }
 
+    // ── Loyalty redemption DEBIT (chantier fidélité L1, D6) ─────────────────────
+    // Points are debited ONLY at the confirmed payment (here) — never on the
+    // browser return — so an abandoned checkout loses no points. Idempotent (one
+    // 'redeem' LoyaltyTransaction per order). The balance decrement + the ledger
+    // row are in the SAME DB transaction. Best-effort + column/table-tolerant: a
+    // failure never fails the webhook (the money is already 'paid' above).
+    try {
+      const lo = await prisma.order.findUnique({
+        where:  { id: order.id },
+        select: { pointsRedeemed: true, consumerId: true },
+      })
+      if (lo && lo.pointsRedeemed > 0) {
+        const already = await prisma.loyaltyTransaction.findFirst({
+          where: { orderId: order.id, type: 'redeem' }, select: { id: true },
+        })
+        if (!already) {
+          const operator = await prisma.operator.findUnique({ where: { id: lo.consumerId }, select: { email: true } })
+          const lc = operator?.email
+            ? await prisma.loyaltyCustomer.findUnique({ where: { email: operator.email }, select: { id: true } })
+            : null
+          if (lc) {
+            await prisma.$transaction([
+              prisma.loyaltyCustomer.update({ where: { id: lc.id }, data: { pointsBalance: { decrement: lo.pointsRedeemed } } }),
+              prisma.loyaltyTransaction.create({ data: { customerId: lc.id, orderId: order.id, type: 'redeem', points: -lo.pointsRedeemed } }),
+            ])
+          } else {
+            console.warn(`[stripe webhook] loyalty redeem: no LoyaltyCustomer for order ${order.id} — points NOT debited`)
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[LOYALTY MISS] redeem debit failed (table/columns missing? order stays paid):',
+        order.id, e instanceof Error ? e.message : e)
+    }
+
     return NextResponse.json({ received: true, order: 'paid' })
   } catch (err) {
     console.error('[stripe webhook] order paid handler error:', err instanceof Error ? err.message : err)
@@ -544,6 +579,41 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       } else if (!res.duplicate) {
         recorded++
       }
+    }
+
+    // ── Loyalty RE-CREDIT on refund (chantier fidélité L1, D6 mirror) ───────────
+    // If the refunded ORDER spent points, give them back ONCE (idempotent per
+    // [orderId,'refund']). V1: the FULL pointsRedeemed are re-credited on ANY
+    // refund (partial included) — the points were a Grubano-financed perk capped
+    // at the commission, so returning them fully is customer-friendly and safe.
+    // Best-effort + tolerant: never fails the webhook.
+    try {
+      const orderId = charge.metadata?.orderId || null
+      if (orderId) {
+        const o = await prisma.order.findUnique({
+          where:  { id: orderId },
+          select: { pointsRedeemed: true, consumerId: true },
+        })
+        if (o && o.pointsRedeemed > 0) {
+          const already = await prisma.loyaltyTransaction.findFirst({
+            where: { orderId, type: 'refund' }, select: { id: true },
+          })
+          if (!already) {
+            const operator = await prisma.operator.findUnique({ where: { id: o.consumerId }, select: { email: true } })
+            const lc = operator?.email
+              ? await prisma.loyaltyCustomer.findUnique({ where: { email: operator.email }, select: { id: true } })
+              : null
+            if (lc) {
+              await prisma.$transaction([
+                prisma.loyaltyCustomer.update({ where: { id: lc.id }, data: { pointsBalance: { increment: o.pointsRedeemed } } }),
+                prisma.loyaltyTransaction.create({ data: { customerId: lc.id, orderId, type: 'refund', points: o.pointsRedeemed } }),
+              ])
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[LOYALTY MISS] refund re-credit failed:', e instanceof Error ? e.message : e)
     }
 
     return NextResponse.json({ received: true, refunds: refunds.length, recorded })

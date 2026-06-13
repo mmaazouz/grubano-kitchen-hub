@@ -1013,7 +1013,11 @@
       "errorNetwork": "Erreur réseau. Veuillez réessayer.",
       "errClosedWithOpening": "Le restaurant est actuellement fermé — il ouvre {label}. Vous pourrez commander à ce moment-là.",
       "errClosedNoOpening": "Le restaurant est actuellement fermé. Réessayez pendant ses horaires d’ouverture.",
-      "promoIncentive": "Encore {amount} € pour profiter de « {name} »"
+      "promoIncentive": "Encore {amount} € pour profiter de « {name} »",
+      "loyaltyToggleTitle": "Payer avec mes points",
+      "loyaltyBalance": "Solde : {count} pts",
+      "loyaltyUpTo": "Jusqu’à {amount} € déduits au paiement",
+      "loyaltyNote": "Non cumulable avec une promotion."
     },
     "track": {
       "title": "Suivi en temps réel",
