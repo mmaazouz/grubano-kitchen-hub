@@ -62,6 +62,7 @@ interface OrdersClientProps {
 
 const STATUS_FLOW = ['received', 'preparing', 'ready', 'picked_up', 'delivered'] as const
 const POLL_INTERVAL_MS = 15_000   // near-real-time refresh while the tab is visible
+const REMINDER_DELAY_MS = 20_000  // single sober re-chime if an order stays unaccepted
 const DONE_PAGE = 20              // "Terminées" history page size
 
 // ── Root: own ToastProvider ───────────────────────────────────────────────────
@@ -103,27 +104,40 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
   const seenIds  = useRef<Set<string>>(new Set(orders.map(o => o.id)))
   const soundRef = useRef(soundOn)
   useEffect(() => { soundRef.current = soundOn }, [soundOn])
+  // Latest list for the deferred reminder (a timeout closure must not capture a
+  // stale snapshot).
+  const liveRef = useRef<OrderView[]>(orders)
+  useEffect(() => { liveRef.current = liveOrders }, [liveOrders])
   useEffect(() => {
     setLiveOrders(orders)
     orders.forEach(o => seenIds.current.add(o.id))
   }, [orders])
 
-  // Web Audio chime — ZERO shipped asset. Browser autoplay rule: audio unlocks
-  // on the first user gesture anywhere (the sound toggle click is one such
-  // gesture). Never plays on the initial load (seenIds is pre-seeded) — only on
-  // an id first seen through polling.
+  // ── Web Audio chime — ZERO shipped asset ────────────────────────────────────
+  // Browser autoplay rule: an AudioContext created WITHOUT a user gesture starts
+  // 'suspended', and resume() may stay pending until a gesture occurs. The resto
+  // use-case is exactly "screen left open for hours with NO click" → the ctx
+  // never unlocked and the chime was silently swallowed (the toast still fired =
+  // the observed symptom). Fix: (1) best-effort create at mount; (2) playChime
+  // resumes a suspended ctx and, if it still can't play, raises a VISIBLE unlock
+  // banner whose click IS a gesture → reliable recovery; (3) any pointer gesture
+  // also unlocks. Never plays on initial load (seenIds pre-seeded) — only on an
+  // id first seen through polling. soundOn OFF = muted (toast still shows).
   const audioCtx = useRef<AudioContext | null>(null)
-  const unlockAudio = useCallback(() => {
+  const [audioBlocked, setAudioBlocked] = useState(false)
+  const reminderRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const ensureCtx = useCallback((): AudioContext | null => {
     try {
       const Ctx = window.AudioContext
         || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
       if (!audioCtx.current && Ctx) audioCtx.current = new Ctx()
-      void audioCtx.current?.resume()
     } catch { /* audio unavailable — the toast still fires */ }
+    return audioCtx.current
   }, [])
-  const playChime = useCallback(() => {
-    const ctx = audioCtx.current
-    if (!ctx) return
+
+  // Emit the tone on an already-RUNNING context. Never throws.
+  const emitTone = useCallback((ctx: AudioContext) => {
     try {
       const o = ctx.createOscillator(); const g = ctx.createGain()
       o.connect(g); g.connect(ctx.destination)
@@ -135,11 +149,47 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
       o.start(now); o.stop(now + 0.45)
     } catch { /* ignore */ }
   }, [])
+
+  // Gesture path — a user gesture (banner/toggle click, any pointerdown) is what
+  // lets a suspended ctx actually resume. On success clear the banner and
+  // optionally play a confirmation tone.
+  const unlockAudio = useCallback((playTest = false) => {
+    const ctx = ensureCtx()
+    if (!ctx) return
+    const done = () => { setAudioBlocked(false); if (playTest) emitTone(ctx) }
+    if (ctx.state === 'running') { done(); return }
+    void ctx.resume().then(() => { if (ctx.state === 'running') done() }).catch(() => { /* ignore */ })
+  }, [ensureCtx, emitTone])
+
+  // Automatic path (new order). Plays if the ctx is running; otherwise attempts a
+  // resume and raises the unlock banner meanwhile (resume may stay pending until
+  // a gesture). Never throws.
+  const playChime = useCallback(() => {
+    const ctx = ensureCtx()
+    if (!ctx) { setAudioBlocked(true); return }
+    if (ctx.state === 'running') { emitTone(ctx); return }
+    setAudioBlocked(true)
+    void ctx.resume().then(() => {
+      if (ctx.state === 'running') { setAudioBlocked(false); emitTone(ctx) }
+    }).catch(() => { /* ignore — banner stays up for an explicit unlock */ })
+  }, [ensureCtx, emitTone])
+
+  // Best-effort create at mount + unlock on the first pointer gesture anywhere.
+  // PROACTIVE: if the browser created the ctx 'suspended' (autoplay policy), raise
+  // the unlock banner immediately so the operator can enable sound at the START of
+  // service — not only after a first order was already missed. Any gesture (the
+  // banner, the toggle, or the once-listener below) clears it. Clears the reminder
+  // on unmount.
   useEffect(() => {
+    const ctx = ensureCtx()
+    if (ctx && ctx.state !== 'running') setAudioBlocked(true)
     const once = () => unlockAudio()
     window.addEventListener('pointerdown', once, { once: true })
-    return () => window.removeEventListener('pointerdown', once)
-  }, [unlockAudio])
+    return () => {
+      window.removeEventListener('pointerdown', once)
+      if (reminderRef.current) clearTimeout(reminderRef.current)
+    }
+  }, [ensureCtx, unlockAudio])
 
   const fetchLive = useCallback(async () => {
     try {
@@ -151,7 +201,17 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
       incoming.forEach(o => seenIds.current.add(o.id))
       setLiveOrders(incoming)                       // React reconciles by id → no jump
       if (fresh.length > 0) {
-        if (soundRef.current) playChime()           // toggle off → no sound, toast stays
+        if (soundRef.current) {
+          playChime()                               // toggle off → no sound, toast stays
+          // SOBER reminder: one single nudge ~20 s later IF a still-unaccepted
+          // order ('received') remains — the resto screen stays open for hours,
+          // a missed order shouldn't go unheard. Rapid arrivals collapse to one
+          // pending timer → never a stream of beeps.
+          if (reminderRef.current) clearTimeout(reminderRef.current)
+          reminderRef.current = setTimeout(() => {
+            if (soundRef.current && liveRef.current.some(o => o.status === 'received')) playChime()
+          }, REMINDER_DELAY_MS)
+        }
         toast.success(fresh.length === 1 ? t('newOrderToast') : t('newOrdersToast', { count: fresh.length }))
       }
     } catch { /* network blip — keep the current list */ }
@@ -287,6 +347,29 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
           {isActive ? t('pauseAll') : t('reactivate')}
         </Button>
       </div>
+
+      {/* Sound locked by the browser autoplay policy: the screen sits open for
+          hours with no gesture → the ctx stays suspended. One explicit click
+          here unlocks it (a gesture) and plays a test chime; the banner then
+          disappears and subsequent orders chime on their own. */}
+      {soundOn && audioBlocked && (
+        <button
+          type="button"
+          onClick={() => unlockAudio(true)}
+          className="mb-4 flex w-full items-center gap-3 rounded-grubano-xl border border-grubano-primary/40 bg-grubano-tint/40 p-3 text-left transition-colors hover:bg-grubano-tint/60"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
+            <Volume2 size={16} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-grubano-ink">{t('soundUnlockTitle')}</p>
+            <p className="mt-0.5 text-xs text-grubano-ink-muted">{t('soundUnlockDesc')}</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-grubano-primary px-2.5 py-1 text-[11px] font-bold text-white">
+            {t('soundUnlockCta')}
+          </span>
+        </button>
+      )}
 
       {/* Paused banner */}
       {!isActive && (
