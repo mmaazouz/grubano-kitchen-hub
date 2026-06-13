@@ -974,7 +974,26 @@
       "toneEnthusiastic": "Enthusiastic",
       "tonePunchy": "Short & punchy",
       "toneStorytelling": "Storytelling",
-      "copyCaption": "Copy"
+      "copyCaption": "Copy",
+      "statusTitle": "Status & leaderboard",
+      "tierLabel": "Tier",
+      "tierBronze": "Bronze",
+      "tierSilver": "Silver",
+      "tierGold": "Gold",
+      "tierPlatinum": "Platinum",
+      "tierProgress": "{amount} to go for {tier}",
+      "tierMax": "Top tier reached 🏆",
+      "streakTitle": "Streak",
+      "streakWeeks": "{count, plural, one {# week} other {# weeks}} in a row",
+      "streakNone": "No active streak",
+      "badgesTitle": "Badges",
+      "badgeFirstSale": "First sale",
+      "badgeTenCustomers": "10 customers",
+      "badgeHundredEuros": "€100 earned",
+      "badgeFiveHundredEuros": "€500 earned",
+      "leaderboardTitle": "Leaderboard (90 d)",
+      "leaderboardEmpty": "The leaderboard appears with the first sales.",
+      "leaderboardMe": "You"
     }
   },
   "eat": {

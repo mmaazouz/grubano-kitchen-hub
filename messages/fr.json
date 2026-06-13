@@ -974,7 +974,26 @@
       "toneEnthusiastic": "Enthousiaste",
       "tonePunchy": "Court & punchy",
       "toneStorytelling": "Storytelling",
-      "copyCaption": "Copier"
+      "copyCaption": "Copier",
+      "statusTitle": "Statut & classement",
+      "tierLabel": "Palier",
+      "tierBronze": "Bronze",
+      "tierSilver": "Argent",
+      "tierGold": "Or",
+      "tierPlatinum": "Platine",
+      "tierProgress": "Plus que {amount} pour {tier}",
+      "tierMax": "Palier maximum atteint 🏆",
+      "streakTitle": "Série",
+      "streakWeeks": "{count, plural, one {# semaine} other {# semaines}} d’affilée",
+      "streakNone": "Pas de série en cours",
+      "badgesTitle": "Badges",
+      "badgeFirstSale": "1re vente",
+      "badgeTenCustomers": "10 clients",
+      "badgeHundredEuros": "100 € gagnés",
+      "badgeFiveHundredEuros": "500 € gagnés",
+      "leaderboardTitle": "Classement (90 j)",
+      "leaderboardEmpty": "Le classement s’affiche dès les premières ventes.",
+      "leaderboardMe": "Toi"
     }
   },
   "eat": {

@@ -974,7 +974,26 @@
       "toneEnthusiastic": "Entusiasta",
       "tonePunchy": "Breve e diretto",
       "toneStorytelling": "Storytelling",
-      "copyCaption": "Copia"
+      "copyCaption": "Copia",
+      "statusTitle": "Status e classifica",
+      "tierLabel": "Livello",
+      "tierBronze": "Bronzo",
+      "tierSilver": "Argento",
+      "tierGold": "Oro",
+      "tierPlatinum": "Platino",
+      "tierProgress": "Ancora {amount} per {tier}",
+      "tierMax": "Livello massimo raggiunto 🏆",
+      "streakTitle": "Serie",
+      "streakWeeks": "{count, plural, one {# settimana} other {# settimane}} di fila",
+      "streakNone": "Nessuna serie attiva",
+      "badgesTitle": "Badge",
+      "badgeFirstSale": "Prima vendita",
+      "badgeTenCustomers": "10 clienti",
+      "badgeHundredEuros": "100 € guadagnati",
+      "badgeFiveHundredEuros": "500 € guadagnati",
+      "leaderboardTitle": "Classifica (90 g)",
+      "leaderboardEmpty": "La classifica appare con le prime vendite.",
+      "leaderboardMe": "Tu"
     }
   },
   "eat": {

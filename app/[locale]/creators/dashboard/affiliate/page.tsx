@@ -25,6 +25,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import {
   Megaphone, TrendingUp, TrendingDown, Users, ShoppingBag, Copy, Check, QrCode,
   Loader2, AlertCircle, Landmark, Activity, Sparkles, BarChart3, Award, Link2, Store,
+  Trophy, Flame, Medal,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
@@ -44,7 +45,10 @@ interface AffiliatePayload {
   earnings:  { maturedCents: number; pendingCents: number; byMonth: ByMonth[] }
   referrals: { newCustomers: number; orders: AffOrder[] }
   payout:    { claimableCents: number; status: string }
-  tier:      null | { name: string }
+  tier:      null | { key: string; floorCents: number; nextKey: string | null; nextFloorCents: number | null; progressPct: number }
+  streak:    { weeks: number }
+  badges:    { key: string; achieved: boolean }[]
+  leaderboard: null | { top: { rank: number; name: string; tierKey: string; isMe: boolean }[]; myRank: number | null; total: number }
   commissionPct: number | null
 }
 
@@ -138,6 +142,11 @@ export default function AffiliateDashboardPage() {
     const prevMonth = bm.length >= 2 && idx >= 1 ? bm[idx - 1].gainCents : (bm.length && idx < 0 ? bm[bm.length - 1].gainCents : 0)
     return { thisMonth, prevMonth, up: thisMonth >= prevMonth }
   }, [data])
+
+  // Tier / badge i18n labels (dynamic key → the seed defines every one).
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  const tierLabel  = (k: string) => t(`tier${cap(k)}`)
+  const badgeLabel = (k: string) => t(`badge${cap(k)}`)
 
   const statusBadge = (status: string) => {
     switch (status) {
@@ -391,14 +400,89 @@ export default function AffiliateDashboardPage() {
         </div>
       </Card>
 
+      {/* ── STATUT & CLASSEMENT (Slice 2c) — STATUS/recognition only, computed,
+          ZERO effect on the commission rate (30 % for everyone). ──────────── */}
+      {data.tier && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Trophy size={16} className="text-grubano-primary" />
+            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('statusTitle')}</h2>
+          </div>
+
+          {/* Tier + progress to the next */}
+          <Card elevation="sm" padding="md">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-2">
+                <Medal size={16} className="text-grubano-primary" />
+                <span className="font-display text-base font-extrabold text-grubano-ink">{tierLabel(data.tier.key)}</span>
+              </span>
+              <span className="text-[11px] uppercase tracking-wide text-grubano-ink-faint">{t('tierLabel')}</span>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-grubano-surface-muted">
+              <div className="h-full rounded-full bg-grubano-primary transition-all" style={{ width: `${data.tier.progressPct}%` }} />
+            </div>
+            <p className="mt-1 text-[11px] text-grubano-ink-faint">
+              {data.tier.nextKey && data.tier.nextFloorCents !== null
+                ? t('tierProgress', { amount: fmtCents(Math.max(0, data.tier.nextFloorCents - earnings.maturedCents)), tier: tierLabel(data.tier.nextKey) })
+                : t('tierMax')}
+            </p>
+          </Card>
+
+          {/* Streak + badges */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Card elevation="sm" padding="md">
+              <div className="flex items-center gap-1.5 text-grubano-primary"><Flame size={14} /><p className="text-[11px] font-bold uppercase tracking-wider">{t('streakTitle')}</p></div>
+              <p className="mt-1 text-sm font-semibold text-grubano-ink">
+                {data.streak.weeks > 0 ? t('streakWeeks', { count: data.streak.weeks }) : t('streakNone')}
+              </p>
+            </Card>
+            <Card elevation="sm" padding="md">
+              <div className="mb-1.5 flex items-center gap-1.5 text-grubano-primary"><Award size={14} /><p className="text-[11px] font-bold uppercase tracking-wider">{t('badgesTitle')}</p></div>
+              <div className="flex flex-wrap gap-1.5">
+                {data.badges.map((b) => (
+                  <span key={b.key} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${b.achieved ? 'bg-grubano-success-tint text-grubano-success' : 'bg-grubano-surface-muted text-grubano-ink-faint opacity-60'}`}>
+                    {b.achieved ? '✓ ' : ''}{badgeLabel(b.key)}
+                  </span>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          {/* Mini-leaderboard — NAME + RANK + TIER only, never others' € (privacy). */}
+          <Card elevation="sm" padding="md">
+            <div className="mb-2 flex items-center gap-2"><BarChart3 size={14} className="text-grubano-primary" /><h3 className="font-display text-sm font-semibold text-grubano-ink">{t('leaderboardTitle')}</h3></div>
+            {data.leaderboard && data.leaderboard.top.length > 0 ? (
+              <ul className="space-y-1.5">
+                {data.leaderboard.top.map((e) => (
+                  <li key={e.rank} className={`flex items-center justify-between gap-2 rounded-grubano-md px-2.5 py-1.5 text-[12px] ${e.isMe ? 'bg-grubano-tint font-bold text-grubano-primary' : 'text-grubano-ink'}`}>
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      <span className="tabular-nums text-grubano-ink-faint">#{e.rank}</span>
+                      <span className="truncate">{e.isMe ? t('leaderboardMe') : e.name}</span>
+                    </span>
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-grubano-ink-faint">{tierLabel(e.tierKey)}</span>
+                  </li>
+                ))}
+                {data.leaderboard.myRank && data.leaderboard.myRank > data.leaderboard.top.length && (
+                  <li className="flex items-center justify-between gap-2 rounded-grubano-md bg-grubano-tint px-2.5 py-1.5 text-[12px] font-bold text-grubano-primary">
+                    <span className="inline-flex items-center gap-2"><span className="tabular-nums">#{data.leaderboard.myRank}</span><span>{t('leaderboardMe')}</span></span>
+                  </li>
+                )}
+              </ul>
+            ) : (
+              <p className="rounded-grubano-md border border-dashed border-grubano-border px-3 py-3 text-center text-[12px] text-grubano-ink-muted">{t('leaderboardEmpty')}</p>
+            )}
+          </Card>
+        </section>
+      )}
+
       {/* ── STUDIO DE CONTENU IA (Slice 2b) — replaces the « Studio (bientôt) »
           placeholder: pick a target → AI captions + a shareable card. ──────── */}
       <AffiliateStudio restos={restos} />
 
-      {/* ── Placeholders « bientôt » (clearly inert) ───────────────────────── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* ── Placeholder « bientôt » (Performance/clicks — needs click tracking,
+          a future infra slice). Tiers & Studio are now REAL above. ─────────── */}
+      <div className="grid grid-cols-1 gap-3">
         {([
-          { icon: Award,    title: t('soonTiersTitle'),  body: t('soonTiersBody') },
           { icon: BarChart3,title: t('soonPerfTitle'),   body: t('soonPerfBody') },
         ]).map((p) => {
           const Icon = p.icon

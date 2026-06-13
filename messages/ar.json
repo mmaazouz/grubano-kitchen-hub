@@ -974,7 +974,26 @@
       "toneEnthusiastic": "متحمّس",
       "tonePunchy": "قصير ومباشر",
       "toneStorytelling": "سرد قصصي",
-      "copyCaption": "نسخ"
+      "copyCaption": "نسخ",
+      "statusTitle": "الحالة والترتيب",
+      "tierLabel": "المستوى",
+      "tierBronze": "برونزي",
+      "tierSilver": "فضي",
+      "tierGold": "ذهبي",
+      "tierPlatinum": "بلاتيني",
+      "tierProgress": "تبقّى {amount} للوصول إلى {tier}",
+      "tierMax": "تم بلوغ أعلى مستوى 🏆",
+      "streakTitle": "سلسلة",
+      "streakWeeks": "{count, plural, one {أسبوع} other {# أسابيع}} متتالية",
+      "streakNone": "لا توجد سلسلة حالية",
+      "badgesTitle": "الشارات",
+      "badgeFirstSale": "أول عملية بيع",
+      "badgeTenCustomers": "10 عملاء",
+      "badgeHundredEuros": "100 € مكتسبة",
+      "badgeFiveHundredEuros": "500 € مكتسبة",
+      "leaderboardTitle": "الترتيب (90 يومًا)",
+      "leaderboardEmpty": "يظهر الترتيب مع أول عمليات البيع.",
+      "leaderboardMe": "أنت"
     }
   },
   "eat": {
