@@ -133,6 +133,23 @@ model LoyaltyCustomer {
   rewards       Reward[]
 }
 
+// ── Loyalty ledger (chantier fidélité L1) ─────────────────────────────────────
+// Points are a currency → every movement is TRACED here (like DishSale /
+// ReferralOrder), pointsBalance stays the cache. Signed `points`: +earned (at a
+// delivered order), −spent (redeemed at a confirmed payment), +re-credited (on a
+// refund). Idempotence is enforced per [orderId, type] by the callers. Additive.
+model LoyaltyTransaction {
+  id         String   @id @default(cuid())
+  customerId String   // LoyaltyCustomer.id
+  orderId    String?  // the consumer Order this movement relates to (null = manual/other)
+  type       String   // earn | redeem | refund
+  points     Int      // signed: +earned / −spent / +re-credited
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+  @@index([orderId])
+}
+
 model LoyaltyOrder {
   id              String          @id @default(cuid())
   customerId      String
@@ -843,6 +860,14 @@ model Order {
   // BEST-EFFORT post-create (column-tolerant until the db push).
   promotionId     String?
   discount        Float      @default(0)
+  // ── Loyalty redemption (chantier fidélité L1, additive) ─────────────────────
+  // Points spent on this order + the EUR credit applied, in CENTS. Grubano
+  // FINANCES the credit (D1): it reduces the NET application_fee, never the
+  // resto's net nor the commission base. Debited at the confirmed payment
+  // (webhook, D6) and re-credited on refund. Written BEST-EFFORT post-create
+  // (column-tolerant until the db push → loyalty is inert before the push).
+  pointsRedeemed     Int  @default(0)
+  loyaltyCreditCents Int  @default(0)
   referralOrder   ReferralOrder?
   // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
   // attributed to this order. Nullable list, no impact on existing orders.
