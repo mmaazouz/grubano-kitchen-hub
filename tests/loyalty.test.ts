@@ -15,9 +15,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_CENTS_PER_POINT,
+  DEFAULT_STRIPE_FEE_PCT,
+  DEFAULT_STRIPE_FEE_FIXED_CENTS,
   centsPerPoint,
   pointsToCents,
   centsToPoints,
+  estimateStripeFeeCents,
+  committedRoyaltyCents,
   resolveLoyaltyCredit,
 } from '@/lib/loyalty'
 
@@ -189,5 +193,85 @@ describe('resolveLoyaltyCredit — D5 the three caps', () => {
       requestedUsePoints: true,
     })
     expect(r).toEqual({ creditCents: 0, pointsSpent: 0 })
+  })
+})
+
+// ── Stripe fee estimation (borne de sécurité, phase 0) ────────────────────────
+describe('estimateStripeFeeCents', () => {
+  it('uses the frozen defaults: round(charge × 2.9%) + 25c fixed', () => {
+    expect(DEFAULT_STRIPE_FEE_PCT).toBe(0.029)
+    expect(DEFAULT_STRIPE_FEE_FIXED_CENTS).toBe(25)
+    expect(estimateStripeFeeCents(2000)).toBe(Math.round(2000 * 0.029) + 25) // 20,00 € → 83c
+    expect(estimateStripeFeeCents(2000)).toBe(83)
+    expect(estimateStripeFeeCents(0)).toBe(25)   // the fixed part still applies
+  })
+
+  it('clamps negative/garbage charges', () => {
+    expect(estimateStripeFeeCents(-100)).toBe(25)
+  })
+})
+
+// ── Committed creator royalty (mirrors the FROZEN DishSale formula) ───────────
+describe('committedRoyaltyCents', () => {
+  it('sums round2(amount × rate) per line → cents', () => {
+    // 20,00 € @ 2% = 0,40 € = 40c
+    expect(committedRoyaltyCents([{ amountCents: 2000, rate: 0.02 }])).toBe(40)
+    // two lines: 20,00 @ 2% (40c) + 7,50 @ 2% (round2(0.15)=0.15 → 15c) = 55c
+    expect(committedRoyaltyCents([{ amountCents: 2000, rate: 0.02 }, { amountCents: 750, rate: 0.02 }])).toBe(55)
+  })
+
+  it('no adopted lines → 0; negative inputs clamp', () => {
+    expect(committedRoyaltyCents([])).toBe(0)
+    expect(committedRoyaltyCents([{ amountCents: -100, rate: 0.02 }])).toBe(0)
+  })
+})
+
+// ── D-A — the credit cap subtracts ALL committed claims (Grubano never < 0) ───
+describe('resolveLoyaltyCredit — committedClaimsCents (margin guard)', () => {
+  const base = {
+    customerPointsBalance: 100_000, // huge → balance is never the binding cap here
+    subtotalCents: 10_000,          // 100 € → subtotal never the binding cap here
+    promoApplied: false as const,
+    requestedUsePoints: true as const,
+  }
+
+  it('(a) normal order — credit capped at commission − Stripe fee', () => {
+    // commission 160c, stripe 83c → cap 77c → floor to 15 pts = 75c.
+    const r = resolveLoyaltyCredit({ ...base, commissionFeeCents: 160, committedClaimsCents: 83 })
+    expect(r).toEqual({ pointsSpent: 15, creditCents: 75 })
+    expect(160 - 83 - r.creditCents).toBeGreaterThanOrEqual(0) // Grubano net ≥ 0
+  })
+
+  it('(b) chef dish — credit capped at commission − Stripe − royalty', () => {
+    // commission 160c, stripe 83c + royalty 40c = 123c → cap 37c → 7 pts = 35c.
+    const r = resolveLoyaltyCredit({ ...base, commissionFeeCents: 160, committedClaimsCents: 83 + 40 })
+    expect(r).toEqual({ pointsSpent: 7, creditCents: 35 })
+    expect(160 - 123 - r.creditCents).toBeGreaterThanOrEqual(0)
+  })
+
+  it('(c) chef dish + affiliation — credit capped at commission − Stripe − royalty − affiliation', () => {
+    // delivery 12% on a bigger order: commission 600c; stripe 120c + royalty 80c +
+    // affiliation 180c = 380c → cap 220c → 44 pts = 220c.
+    const r = resolveLoyaltyCredit({ ...base, commissionFeeCents: 600, committedClaimsCents: 120 + 80 + 180 })
+    expect(r).toEqual({ pointsSpent: 44, creditCents: 220 })
+    expect(600 - 380 - r.creditCents).toBeGreaterThanOrEqual(0)
+  })
+
+  it('(d) committed claims ≥ commission → credit 0 (small chef dish, fee eaten by Stripe+royalty)', () => {
+    const r = resolveLoyaltyCredit({ ...base, commissionFeeCents: 80, committedClaimsCents: 83 + 10 })
+    expect(r).toEqual({ creditCents: 0, pointsSpent: 0 })
+  })
+
+  it('(e) non-regression — committedClaimsCents omitted behaves exactly as before (cap = commission)', () => {
+    const without = resolveLoyaltyCredit({ ...base, commissionFeeCents: 300 })
+    const withZero = resolveLoyaltyCredit({ ...base, commissionFeeCents: 300, committedClaimsCents: 0 })
+    expect(without).toEqual(withZero)
+    expect(without).toEqual({ pointsSpent: 60, creditCents: 300 }) // 300c → 60 pts, full commission
+  })
+
+  it('balance/subtotal caps still bind under committed claims (3-cap min preserved)', () => {
+    // commission − claims = 500c, but balance only 3 pts = 15c → 15c wins.
+    const r = resolveLoyaltyCredit({ customerPointsBalance: 3, subtotalCents: 10_000, commissionFeeCents: 600, committedClaimsCents: 100, promoApplied: false, requestedUsePoints: true })
+    expect(r).toEqual({ pointsSpent: 3, creditCents: 15 })
   })
 })
