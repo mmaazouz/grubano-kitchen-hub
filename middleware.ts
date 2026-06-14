@@ -27,6 +27,7 @@ const intlMiddleware = createIntlMiddleware({
 //   /dashboard               → already gated restaurant/admin
 //   /account                 → gated consumer/admin
 //   /creators, /franchise    → gated via their /dashboard sub-routes
+//   /supplier                → public landing + /register; /supplier/dashboard gated
 //   /eat /business /t /chef /ref /auth/magic /login /register /design → public
 const OPERATOR_FLAT_PREFIXES = [
   '/menu', '/orders', '/stocks', '/loyalty', '/promotions', '/analytics',
@@ -72,6 +73,14 @@ export async function middleware(request: NextRequest) {
     restPath === '/franchise/dashboard' || restPath.startsWith('/franchise/dashboard/')
   const isCreatorsDashboard =
     restPath === '/creators/dashboard' || restPath.startsWith('/creators/dashboard/')
+  // B2B supplier space (Slice 0). The /supplier landing + /supplier/register are
+  // PUBLIC (self-serve signup, like /creators); only /supplier/dashboard is gated.
+  // Matched with an EXACT '/supplier' or the '/supplier/' prefix so it can NEVER
+  // catch the operator's '/suppliers' directory (singular vs plural).
+  const isSupplierSpace =
+    restPath === '/supplier' || restPath.startsWith('/supplier/')
+  const isSupplierDashboard =
+    restPath === '/supplier/dashboard' || restPath.startsWith('/supplier/dashboard/')
 
   // Public routes — no auth required. /eat/* is the consumer app (auth per-page).
   const publicRoots = ['/', '/login', '/register', '/design']
@@ -100,7 +109,11 @@ export async function middleware(request: NextRequest) {
     // Everything under /franchise and /creators is public EXCEPT the /dashboard
     // sub-routes (landing pages, /apply, etc. stay open to all).
     (restPath.startsWith('/franchise') && !isFranchiseDashboard) ||
-    (restPath.startsWith('/creators') && !isCreatorsDashboard)
+    (restPath.startsWith('/creators') && !isCreatorsDashboard) ||
+    // /supplier landing + /supplier/register are public (self-serve signup);
+    // only /supplier/dashboard is gated below. (Never matches /suppliers — the
+    // operator directory — which is exact-/-prefix-gated via OPERATOR_FLAT_PREFIXES.)
+    (isSupplierSpace && !isSupplierDashboard)
 
   if (!isPublic) {
     const token = await getToken({ req: request })
@@ -133,6 +146,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(`/${activeLocale}/franchise`, request.url))
     if (isCreatorsDashboard && !hasAny(['creator', 'admin']))
       return NextResponse.redirect(new URL(`/${activeLocale}/creators`, request.url))
+    // Supplier space (Slice 0): /supplier/dashboard requires supplier/admin. A
+    // non-supplier is sent to the HOME of their primary role (role-spaces) — its
+    // own space, always a route that role can reach (no redirect loop).
+    if (isSupplierDashboard && !hasAny(['supplier', 'admin'])) {
+      const home = spacesForRoles(roles)[0]?.href ?? '/eat'
+      return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
+    }
     if (restPath.startsWith('/account') && !hasAny(['consumer', 'admin'])) return safeFallback()
 
     // ── Operator FLAT routes gate (security hardening — defence in depth) ──────

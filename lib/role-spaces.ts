@@ -7,7 +7,7 @@
 // gate) — it only stops showing other roles' entries (the "fuite") and powers the
 // multi-role switcher. Extensible: add a row to register a future role's space.
 
-export type RoleSpaceKey = 'consumer' | 'restaurant' | 'creator' | 'franchise' | 'admin'
+export type RoleSpaceKey = 'consumer' | 'restaurant' | 'creator' | 'franchise' | 'admin' | 'supplier'
 
 export interface RoleSpace {
   key:      RoleSpaceKey
@@ -22,6 +22,7 @@ const SPACES: { role: string; space: RoleSpace }[] = [
   { role: 'restaurant', space: { key: 'restaurant', href: '/dashboard',          labelKey: 'spaceRestaurant' } },
   { role: 'franchise',  space: { key: 'franchise',  href: '/franchise',          labelKey: 'spaceFranchise' } },
   { role: 'creator',    space: { key: 'creator',    href: '/creators/dashboard', labelKey: 'spaceCreator' } },
+  { role: 'supplier',   space: { key: 'supplier',   href: '/supplier/dashboard', labelKey: 'spaceSupplier' } },
   { role: 'consumer',   space: { key: 'consumer',   href: '/eat',                labelKey: 'spaceConsumer' } },
   { role: 'admin',      space: { key: 'admin',      href: '/dashboard',          labelKey: 'spaceAdmin' } },
 ]

@@ -24,6 +24,7 @@ const ROLE_REDIRECTS: Record<string, string> = {
   admin:      '/dashboard',
   franchise:  '/franchise',
   creator:    '/creators',
+  supplier:   '/supplier/dashboard',
   consumer:   '/eat',
 }
 
