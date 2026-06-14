@@ -1,24 +1,29 @@
 import { prisma } from '@/lib/prisma'
+import { addRoleToOperator } from '@/lib/operator-roles'
 
-// ── Creator auth bridge (Phase 0, Agent 14) ───────────────────────────────────
+// ── Creator auth bridge (Phase 0 → Phase 3, Agent 14) ─────────────────────────
 //
-// Historically the creator apply/verify flow created only a `Creator` PROFILE,
-// never an `Operator` (the login account) — so a verified creator could not sign
-// in and /creators/dashboard was unreachable. This helper gives a creator a
-// PASSWORDLESS `Operator(role='creator')` (sign-in is via magic-link) and
-// activates it on approval.
+// The creator apply/verify flow creates only a `Creator` PROFILE. This bridges it
+// to an `Operator` (the login account) so a verified creator can sign in (via
+// magic-link) and reach /creators/dashboard.
 //
 // RULES:
-//   - No Operator for the email      → create one (status pending, or active on approval).
-//   - Operator exists, role='creator' → activate on approval; never downgrade.
-//   - Operator exists, OTHER role     → DO NOT clobber it (consumer/restaurant keep
-//     their account). Multi-role cumul is Phase 1 — we just report it.
-// Best-effort: callers treat it as non-fatal (the application/Creator is the
-// durable artifact; a bridge failure must never break apply/verify).
+//   - No Operator for the email        → create a PASSWORDLESS Operator(role=
+//     'creator') (status pending, or active on approval) — Phase 0.
+//   - Operator exists, role='creator'  → activate on approval; never downgrade.
+//   - Operator exists, ANOTHER role    → Phase 3 (multi-role cumul): ADD the
+//     'creator' role to its role SET (OperatorRole) on approval, WITHOUT touching
+//     its primary `role` column or password. A consumer/restaurant thus BECOMES
+//     ALSO a creator (same account, two roles).
+//
+// The 'creator' role is recorded in the SET only at APPROVAL (`activate`) so a
+// pending/abandoned application never grants it. addRoleToOperator is idempotent +
+// tolerant (missing table → no-op; the primary-role fallback still covers a fresh
+// creator Operator). Best-effort throughout: a bridge failure must never break
+// apply/verify (the Creator is the durable artifact).
 
 export type CreatorOperatorResult =
-  | { ok: true; created: boolean; activated: boolean }
-  | { ok: false; reason: 'email_taken_other_role'; role: string }
+  | { ok: true; created: boolean; activated: boolean; roleAdded: boolean }
   | { ok: false; reason: 'error' }
 
 export async function ensureCreatorOperator(
@@ -32,8 +37,13 @@ export async function ensureCreatorOperator(
       select: { id: true, role: true, status: true },
     })
 
+    let operatorId: string
+    let created = false
+    let activated = false
+
     if (!existing) {
-      await prisma.operator.create({
+      // Phase 0 — fresh email: a passwordless creator login.
+      const op = await prisma.operator.create({
         data: {
           name,
           email,
@@ -42,20 +52,27 @@ export async function ensureCreatorOperator(
           // no password — sign-in is passwordless (magic-link)
         },
       })
-      return { ok: true, created: true, activated: opts.activate }
+      operatorId = op.id
+      created    = true
+      activated  = opts.activate
+    } else {
+      operatorId = existing.id
+      // Existing PRIMARY creator: activate on approval, never downgrade. An
+      // existing OTHER-role account keeps its primary role + password untouched —
+      // it just GAINS the creator role in the SET below (Phase 3 cumul).
+      if (existing.role === 'creator' && opts.activate && existing.status !== 'active') {
+        await prisma.operator.update({ where: { id: existing.id }, data: { status: 'active' } })
+        activated = true
+      }
     }
 
-    // Email already belongs to a non-creator account → never clobber (cumul = Phase 1).
-    if (existing.role !== 'creator') {
-      return { ok: false, reason: 'email_taken_other_role', role: existing.role }
-    }
+    // Record the 'creator' role in the SET — only on APPROVAL. Idempotent +
+    // tolerant. For a fresh creator Operator this is consistency (the primary-role
+    // fallback already covers it); for an existing other-role account this is the
+    // actual multi-role grant.
+    const roleAdded = opts.activate ? await addRoleToOperator(operatorId, 'creator') : false
 
-    // Existing creator Operator: activate on approval, never downgrade.
-    if (opts.activate && existing.status !== 'active') {
-      await prisma.operator.update({ where: { id: existing.id }, data: { status: 'active' } })
-      return { ok: true, created: false, activated: true }
-    }
-    return { ok: true, created: false, activated: false }
+    return { ok: true, created, activated, roleAdded }
   } catch (err) {
     console.error('[ensureCreatorOperator] non-fatal:', email, err instanceof Error ? err.message : err)
     return { ok: false, reason: 'error' }

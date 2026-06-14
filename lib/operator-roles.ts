@@ -29,3 +29,24 @@ export async function readOperatorRoles(operatorId: string, fallbackRole: string
     return base
   }
 }
+
+// ── Add a role to an existing operator (Phase 3 — multi-role cumul) ───────────
+//
+// Idempotent (upsert on the @@unique([operatorId, role])) and TOLERANT: if the
+// OperatorRole table is missing (pre-db-push) or the write fails, it logs and
+// returns false WITHOUT throwing — the caller treats it as best-effort. NEVER
+// touches the operator's primary `role` column or password.
+export async function addRoleToOperator(operatorId: string, role: string): Promise<boolean> {
+  if (!operatorId || !role) return false
+  try {
+    await prisma.operatorRole.upsert({
+      where:  { operatorId_role: { operatorId, role } },
+      update: {},
+      create: { operatorId, role },
+    })
+    return true
+  } catch (err) {
+    console.error('[addRoleToOperator] non-fatal:', operatorId, role, err instanceof Error ? err.message : err)
+    return false
+  }
+}

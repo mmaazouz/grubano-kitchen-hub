@@ -11,8 +11,9 @@ const { db } = vi.hoisted(() => ({
   db: {
     creatorApplication: { findUnique: vi.fn(), update: vi.fn() },
     creator:            { findUnique: vi.fn(), findFirst: vi.fn(), upsert: vi.fn() },
-    // Phase 0 auth bridge — finalize() activates a creator Operator.
+    // Phase 0/3 auth bridge — finalize() activates + records the creator role.
     operator:           { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    operatorRole:       { upsert: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -57,6 +58,7 @@ beforeEach(() => {
   db.operator.findUnique.mockResolvedValue(null)
   db.operator.create.mockResolvedValue({ id: 'op1' })
   db.operator.update.mockResolvedValue({})
+  db.operatorRole.upsert.mockResolvedValue({})
   yt.hasYouTubeKey.mockReturnValue(true)
   yt.resolveChannelId.mockResolvedValue({ channelId: 'UCchannel', viaSearch: false })
   yt.getChannelStats.mockResolvedValue({ subscriberCount: 50000, title: 'NoobMaster', description: 'x', topicCategories: ['Video game culture'] })

@@ -68,13 +68,14 @@ export async function POST(req: Request) {
     // YouTube description; POST /api/creators/apply/[id]/verify re-derives it.
     const verifyCode = makeVerifyCode(application.id)
 
-    // Phase 0 auth bridge — give this creator a PASSWORDLESS Operator(role='creator',
-    // status='pending') so that, once approved at verify time, they can sign in via
-    // magic-link. Best-effort: never blocks the application. If the email already
-    // belongs to another role (consumer/restaurant), we DON'T clobber it — we just
-    // flag accountExists so the UI can hint (multi-role cumul is Phase 1).
+    // Auth bridge (Phase 0 → Phase 3) — provision the creator's login account.
+    // Fresh email → a PASSWORDLESS Operator(role='creator', pending). Existing
+    // account (any role) → left untouched here; the 'creator' role is ADDED to it
+    // on approval (Phase 3 cumul). Best-effort: never blocks the application.
+    // `accountExists` is purely informational (the email already had an account);
+    // it no longer blocks — the role is simply added at verify time.
     const bridge = await ensureCreatorOperator(data.email, data.name, { activate: false })
-    const accountExists = bridge.ok === false && bridge.reason === 'email_taken_other_role'
+    const accountExists = bridge.ok === true && bridge.created === false
 
     return NextResponse.json({ applicationId: application.id, verifyCode, accountExists }, { status: 201 })
   } catch (err) {
