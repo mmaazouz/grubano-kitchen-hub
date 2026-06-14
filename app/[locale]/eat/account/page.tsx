@@ -11,6 +11,7 @@ import {
 import { showToast } from '@/lib/eat-cart'
 import { LanguageSwitcher } from '@/components/design-system'
 import LastReservationCard from '@/components/eat/LastReservationCard'
+import RoleSwitcher from '@/components/RoleSwitcher'
 
 // Loyalty tiers per CLAUDE.md: Bronze 50 → Silver 100 → Gold 200 → Platine 400
 function tierFor(points: number) {
@@ -158,6 +159,12 @@ export default function ProfileScreen() {
             </div>
           </div>
           <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-[20px] bg-[#FFF3ED] px-3.5 py-[7px] text-[13px] font-bold text-[#F97316] active:scale-95">{t('edit')}</button>
+        </div>
+
+        {/* Phase 4 — multi-role space selector (renders only for a multi-role
+            account, e.g. consumer + creator → switch to /creators/dashboard). */}
+        <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card empty:hidden">
+          <RoleSwitcher tone="light" />
         </div>
 
         {/* Last reservation — Pay-my-bill shortcut (Brique 2). Hidden when

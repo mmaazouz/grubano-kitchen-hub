@@ -2323,5 +2323,13 @@
     "campaignOptInIntro": "{creator} suggerisce −{pct}% su «{dish}». Regola la % che finanzi TU; crea una promo sul tuo piatto derivato da questa ricetta.",
     "campaignYourPct": "Il tuo sconto (%)",
     "campaignOptInFinanceNote": "Promo finanziata dal ristorante: commissione Grubano sul prezzo pagato, royalty del cuoco sul prezzo di listino. Fedeltà disattivata con promo."
+  },
+  "roleSwitcher": {
+    "title": "I miei spazi",
+    "spaceConsumer": "Area cliente",
+    "spaceRestaurant": "Il mio ristorante",
+    "spaceCreator": "Area creator",
+    "spaceFranchise": "Franchising",
+    "spaceAdmin": "Amministrazione"
   }
 }

@@ -2323,5 +2323,13 @@
     "campaignOptInIntro": "{creator} suggests −{pct}% on “{dish}”. Adjust the % YOU finance; it creates a promo on your dish derived from this recipe.",
     "campaignYourPct": "Your discount (%)",
     "campaignOptInFinanceNote": "Standard resto-financed promo: Grubano commission on the paid price, chef royalties on the list price. Loyalty disabled under a promo."
+  },
+  "roleSwitcher": {
+    "title": "My spaces",
+    "spaceConsumer": "Customer space",
+    "spaceRestaurant": "My restaurant",
+    "spaceCreator": "Creator space",
+    "spaceFranchise": "Franchise",
+    "spaceAdmin": "Administration"
   }
 }

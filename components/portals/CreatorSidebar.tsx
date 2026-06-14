@@ -10,6 +10,7 @@ import { Link, usePathname } from '@/navigation'
 import { useSidebar } from '@/components/SidebarContext'
 import { LanguageSwitcher } from '@/components/design-system'
 import { cn } from '@/lib/utils'
+import RoleSwitcher from '@/components/RoleSwitcher'
 
 type NavItem = {
   href: string
@@ -99,6 +100,9 @@ export default function CreatorSidebar() {
             <X size={18} />
           </button>
         </div>
+
+        {/* Phase 4 — multi-role space selector (hidden for mono-role accounts). */}
+        <RoleSwitcher tone="dark" />
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">

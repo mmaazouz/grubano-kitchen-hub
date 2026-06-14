@@ -2323,5 +2323,13 @@
     "campaignOptInIntro": "يقترح {creator} خصم −{pct}% على «{dish}». عدّل النسبة التي تموّلها أنت؛ يُنشئ عرضًا على طبقك المشتق من هذه الوصفة.",
     "campaignYourPct": "خصمك (%)",
     "campaignOptInFinanceNote": "عرض مموّل من المطعم: عمولة غروبانو على السعر المدفوع، حقوق الطاهي على سعر القائمة. الولاء معطّل أثناء العرض."
+  },
+  "roleSwitcher": {
+    "title": "مساحاتي",
+    "spaceConsumer": "مساحة العميل",
+    "spaceRestaurant": "مطعمي",
+    "spaceCreator": "مساحة المنشئ",
+    "spaceFranchise": "الامتياز",
+    "spaceAdmin": "الإدارة"
   }
 }
