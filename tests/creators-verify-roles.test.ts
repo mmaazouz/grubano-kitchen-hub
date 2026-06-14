@@ -64,8 +64,13 @@ describe('influencer-only — roles assigned without a portfolio', () => {
     const arg = db.creator.upsert.mock.calls[0][0]
     expect(arg.create.isChef).toBe(false)
     expect(arg.create.isInfluencer).toBe(true)
-    // Vetting ran on the (empty) portfolio — never blocked by it.
-    expect(vetMock).toHaveBeenCalledWith({ bio: expect.any(String), dishConcepts: [] })
+    // Vetting ran on the (empty) portfolio — never blocked by it — and the
+    // role is forwarded so the OPEN influencer barème applies (Mission 14).
+    expect(vetMock).toHaveBeenCalledWith({
+      bio: expect.any(String),
+      dishConcepts: [],
+      roles: { chef: false, influencer: true },
+    })
   })
 })
 

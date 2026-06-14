@@ -223,6 +223,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         dishConcepts,
         channelTopics:      stats.topicCategories,
         recentVideoTitles,
+        // Mission 14 — role-aware barème: influencer-only → OPEN brand-safety
+        // (accept any real/owned niche); chef / chef+influencer → culinary (unchanged).
+        roles,
       })
 
       if (vet.verdict === 'reject') {
@@ -254,7 +257,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     // ── Path B: no YouTube channel — vet on bio + concepts only ────────────────
-    const vet = await vetCreator({ bio: application.bio, dishConcepts })
+    // Same role-aware barème (Mission 14): influencer-only is judged on brand
+    // safety, not culinary content.
+    const vet = await vetCreator({ bio: application.bio, dishConcepts, roles })
 
     if (vet.verdict === 'reject') {
       await prisma.creatorApplication.update({ where: { id }, data: { status: 'rejected' } })

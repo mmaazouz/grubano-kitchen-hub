@@ -38,6 +38,10 @@ export interface VetCreatorInput {
   // Real-channel signals — far stronger evidence than the self-declared bio.
   channelTopics?:      string[] // YouTube topic categories (e.g. "Food")
   recentVideoTitles?:  string[] // titles of the channel's latest uploads
+  // Mission 14 — role choice (cumulable). Influencer-ONLY (influencer ✔ /
+  // chef ✘) switches to the OPEN brand-safety barème; chef and chef+influencer
+  // keep the culinary barème. Absent ⇒ culinary (backward-compatible).
+  roles?: { chef: boolean; influencer: boolean }
 }
 
 // SAFE fallback — used whenever we cannot get a trustworthy verdict. 'flag' so a
@@ -46,7 +50,10 @@ function safeFallback(): VetResult {
   return { verdict: 'flag', reason: 'vérification auto indisponible', foodRelevance: 0 }
 }
 
-function buildPrompt(input: VetCreatorInput): string {
+// ── CHEF barème (culinary) — UNCHANGED. A chef needs real cooking content for
+// their recipe-publishing capability. Used for chef and chef+influencer (and any
+// roleless legacy input). The string below is byte-for-byte the original prompt.
+function buildChefPrompt(input: VetCreatorInput): string {
   const title    = (input.channelTitle ?? '').trim()       || '(non fourni)'
   const desc     = (input.channelDescription ?? '').trim() || '(non fourni)'
   const bio      = (input.bio ?? '').trim()                || '(non fourni)'
@@ -101,6 +108,75 @@ function buildPrompt(input: VetCreatorInput): string {
     "answer 'reject' or 'flag', EVEN IF the bio claims otherwise.",
     "Answer 'pass' ONLY when the CHANNEL content clearly shows cooking / food. When in doubt → 'flag'.",
   ].join('\n')
+}
+
+// ── Mission 14 — INFLUENCER barème (OPEN) ──────────────────────────────────────
+// A PURE influencer (influencer ✔ / chef ✘) is judged on AUDIENCE, not cooking.
+// Founder decision: accept ANY real, owned audience whatever the niche; reject
+// ONLY for brand-safety or a fake/empty/bot audience. NO culinary requirement,
+// NO dish concepts, NO size threshold. Ownership (the YouTube code in the channel
+// description) is proven separately in the verify route and is NOT re-judged here.
+function buildInfluencerPrompt(input: VetCreatorInput): string {
+  const title = (input.channelTitle ?? '').trim()       || '(non fourni)'
+  const desc  = (input.channelDescription ?? '').trim() || '(non fourni)'
+  const bio   = (input.bio ?? '').trim()                || '(non fourni)'
+
+  const topics = Array.isArray(input.channelTopics) ? input.channelTopics.filter(Boolean) : []
+  const topicsLine = topics.length ? topics.join(', ') : '(aucune)'
+
+  const titles = Array.isArray(input.recentVideoTitles) ? input.recentVideoTitles.filter(Boolean) : []
+  const titleLines = titles.length
+    ? titles.map((t, i) => `  ${i + 1}. ${String(t).trim()}`).join('\n')
+    : '  (aucun)'
+
+  return [
+    'You are a BRAND-SAFETY reviewer for Grubano, a food delivery / dark-kitchen platform.',
+    'You are evaluating an INFLUENCER applicant who will promote restaurants via an affiliate link.',
+    "An influencer's value is their AUDIENCE, not cooking skills. The niche does NOT matter:",
+    'gaming, lifestyle, travel, beauty, comedy, tech, sport, music, education… are ALL perfectly fine.',
+    '',
+    'Evaluate ONLY two things:',
+    '1. BRAND SAFETY — is this channel safe for a food brand to be associated with?',
+    '2. AUDIENCE REALITY — does it show REAL, owned content (not empty, not obviously fake / bot / engagement-farmed)?',
+    '',
+    'Creator data:',
+    `- Channel title: ${title}`,
+    `- Channel description: ${desc}`,
+    `- Bio (SELF-DECLARED by the applicant — NOT evidence): ${bio}`,
+    `- Channel topic categories (from YouTube): ${topicsLine}`,
+    '- Recent video titles (from the channel — the REAL signal of what the channel is):',
+    titleLines,
+    '',
+    'Return STRICTLY a single JSON object and NOTHING else — no markdown, no code fences, no commentary:',
+    '{"verdict":"pass|flag|reject","reason":"<short French explanation, max 1 sentence>","foodRelevance":0}',
+    '',
+    'Rules:',
+    '- "pass" = a real, owned, brand-safe channel of ANY niche → approve. This is the DEFAULT for a genuine creator.',
+    '- "reject" = ONLY if EITHER (a) the content is built around illegal activity, hate / harassment / violence,',
+    '  sexual / adult content, or content clearly unsafe for a food brand to be associated with; OR (b) the',
+    '  audience is FAKE / empty / bot (empty channel, no real content, or bot / engagement-farmed fake followers).',
+    '- "flag" = genuinely uncertain (borderline brand-safety, or you cannot tell whether the audience is real) → human review.',
+    '- Do NOT require ANY food, cooking or culinary content. Being off-topic for food is NOT a reason to reject.',
+    '- Do NOT require a minimum audience size — a small but REAL audience passes. Judge "real", not "big".',
+    '- A REAL audience that uses clickbait, giveaways or hype call-to-actions is NOT a reason to reject.',
+    '- Edgy-but-legal niches (dark humor, horror gaming, political commentary, esports / betting talk, etc.) are',
+    '  NOT grounds for rejection — only the hard categories in (a) are.',
+    '- foodRelevance is NOT used for influencers — always return 0.',
+    '',
+    'CRITICAL — judge PRIMARILY on the REAL channel content (recent video titles + topic categories),',
+    'NOT the self-declared bio. When the channel is genuine and brand-safe, the default verdict is "pass".',
+  ].join('\n')
+}
+
+/**
+ * Role-aware creator-vetting prompt (Mission 14). A PURE influencer
+ * (influencer ✔ / chef ✘) gets the OPEN brand-safety barème; chef,
+ * chef+influencer, and any roleless legacy input keep the culinary barème.
+ * Exported so the policy-per-role can be unit-tested deterministically.
+ */
+export function buildCreatorVettingPrompt(input: VetCreatorInput): string {
+  const influencerOnly = input.roles?.influencer === true && input.roles?.chef === false
+  return influencerOnly ? buildInfluencerPrompt(input) : buildChefPrompt(input)
 }
 
 /** First text block of a Claude message, or '' if none. */
@@ -167,7 +243,7 @@ export async function vetCreator(input: VetCreatorInput): Promise<VetResult> {
     const msg = await claude.messages.create({
       model:      MODEL,
       max_tokens: 300,
-      messages:   [{ role: 'user', content: buildPrompt(input) }],
+      messages:   [{ role: 'user', content: buildCreatorVettingPrompt(input) }],
     })
 
     return parseVerdict(extractText(msg.content)) ?? safeFallback()
