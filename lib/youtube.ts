@@ -40,6 +40,11 @@ interface PlaylistItemsResponse {
   }>
 }
 
+// search?type=channel returns the id under id.channelId (not a bare id).
+interface SearchResponse {
+  items?: Array<{ id?: { channelId?: string } }>
+}
+
 export interface YouTubeChannelStats {
   subscriberCount: number
   title:           string
@@ -65,52 +70,124 @@ async function getJson<T>(url: string): Promise<T | null> {
   }
 }
 
+/** True when a YouTube Data API key is configured server-side. Lets callers
+ *  distinguish a CONFIG/ENV problem (no key) from a genuine unresolved link. */
+export function hasYouTubeKey(): boolean {
+  return !!process.env.YOUTUBE_API_KEY
+}
+
+/** channels?forHandle=@handle → channel id, or null. (1 quota unit.) */
+async function lookupByHandle(handle: string, key: string): Promise<string | null> {
+  const h   = handle.startsWith('@') ? handle : '@' + handle
+  const url =
+    `${YT_BASE}/channels?part=id` +
+    `&forHandle=${encodeURIComponent(h)}` +
+    `&key=${encodeURIComponent(key)}`
+  const json = await getJson<ChannelIdResponse>(url)
+  const id   = json?.items?.[0]?.id
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+/** channels?forUsername=Legacy → channel id, or null. (1 quota unit.) */
+async function lookupByUsername(username: string, key: string): Promise<string | null> {
+  const url =
+    `${YT_BASE}/channels?part=id` +
+    `&forUsername=${encodeURIComponent(username)}` +
+    `&key=${encodeURIComponent(key)}`
+  const json = await getJson<ChannelIdResponse>(url)
+  const id   = json?.items?.[0]?.id
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+
+/** search?type=channel&q=… → best channel id, or null. Last-resort fallback for
+ *  legacy /c/ vanity names that forHandle/forUsername can't resolve. (100 units.) */
+async function searchChannelId(query: string, key: string): Promise<string | null> {
+  const url =
+    `${YT_BASE}/search?part=id&type=channel&maxResults=1` +
+    `&q=${encodeURIComponent(query)}` +
+    `&key=${encodeURIComponent(key)}`
+  const json = await getJson<SearchResponse>(url)
+  const id   = json?.items?.[0]?.id?.channelId
+  return typeof id === 'string' && id.length > 0 ? id : null
+}
+
 /**
- * Resolve a YouTube channel id (UC…) from any of:
- *   - a raw channel id           "UCxxxxxxxxxxxxxxxxxxxxxx"
- *   - a /channel/UC… URL         "https://youtube.com/channel/UCxxxx…"
- *   - a /@handle URL             "https://youtube.com/@marco.food"
- *   - a bare handle              "@marco.food"
+ * Resolve a YouTube channel id (UC…) from ANY normal channel reference:
+ *   - raw channel id        "UCxxxxxxxxxxxxxxxxxxxxxx"
+ *   - /channel/UC… URL      "https://youtube.com/channel/UCxxxx…"   (no API call)
+ *   - /@handle URL          "https://www.youtube.com/@marco.food"   (forHandle)
+ *   - bare handle           "@marco.food"  OR  "marco.food"         (forHandle → search)
+ *   - /c/Vanity URL         "https://youtube.com/c/MarcoCuisine"    (forHandle → search)
+ *   - /user/Legacy URL      "https://youtube.com/user/MarcoFood"    (forUsername → search)
+ * Tolerates a missing scheme, www./m. hosts, and trailing slashes / ?query / #hash.
  *
- * Direct ids and /channel/ URLs are returned WITHOUT an API call (no key needed).
- * Handle resolution calls channels?forHandle=… and needs YOUTUBE_API_KEY.
+ * Direct ids and /channel/ URLs need NO key. Everything else calls the YouTube
+ * Data API and needs YOUTUBE_API_KEY (use hasYouTubeKey() to surface a config
+ * error distinctly). Returns { channelId, viaSearch } or null if it can't be
+ * resolved (no key, unknown channel, network/parse error). Never throws.
  *
- * Returns the channel id, or null if it can't be resolved (no key, unknown
- * handle, network/parse error). Never throws.
+ * `viaSearch` flags a LOW-CONFIDENCE match: the id came from the fuzzy search
+ * fallback (a bare/ambiguous token or a legacy /c/ vanity), which returns
+ * YouTube's TOP channel for the query — possibly a STRANGER's. The caller treats
+ * a missing ownership code on a searched channel as "wrong link" (→ re-paste an
+ * exact link), not "code not added yet" (→ retry forever on the wrong channel).
+ * Precise matches (raw id, /channel/, forHandle, forUsername) are viaSearch=false.
  */
-export async function resolveChannelId(input: string): Promise<string | null> {
+export interface ResolvedChannel {
+  channelId: string
+  viaSearch: boolean
+}
+
+export async function resolveChannelId(input: string): Promise<ResolvedChannel | null> {
   try {
     const raw = (input ?? '').trim()
     if (!raw) return null
 
-    // 1) A bare channel id (UC + 22 url-safe chars).
-    if (/^UC[A-Za-z0-9_-]{20,}$/.test(raw)) return raw
+    // 1) A bare channel id (UC + 22 url-safe chars) — no API call.
+    if (/^UC[A-Za-z0-9_-]{20,}$/.test(raw)) return { channelId: raw, viaSearch: false }
 
-    // 2) A /channel/UC… URL → the id is in the path, no API call required.
-    const channelMatch = raw.match(/\/channel\/(UC[A-Za-z0-9_-]{20,})/)
-    if (channelMatch) return channelMatch[1]
+    // If a youtube.com URL was pasted (with/without scheme, www./m.), isolate the
+    // path; otherwise treat the whole string as a bare token. Strip ?query/#hash
+    // and any trailing slash so "/@x/videos?si=1" and "/@x/" both normalise.
+    const urlMatch    = raw.match(/^(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(.+)$/i)
+    const pathOrToken = (urlMatch ? urlMatch[1] : raw).replace(/[?#].*$/, '').replace(/\/+$/, '')
 
-    // 3) A handle, either bare ("@name") or inside a "/@name" URL.
-    let handle: string | null = null
-    if (raw.startsWith('@')) {
-      handle = raw.slice(1)
-    } else {
-      const handleMatch = raw.match(/\/@([A-Za-z0-9._-]+)/)
-      if (handleMatch) handle = handleMatch[1]
-    }
-    if (!handle) return null
+    // 2) /channel/UC… → id is in the path, no API call required.
+    const channelMatch = pathOrToken.match(/(?:^|\/)channel\/(UC[A-Za-z0-9_-]{20,})/i)
+    if (channelMatch) return { channelId: channelMatch[1], viaSearch: false }
 
     const key = process.env.YOUTUBE_API_KEY
     if (!key) return null
 
-    const url =
-      `${YT_BASE}/channels?part=id` +
-      `&forHandle=${encodeURIComponent('@' + handle)}` +
-      `&key=${encodeURIComponent(key)}`
+    // 3) /user/Legacy → forUsername (precise), with a search fallback (fuzzy).
+    const userMatch = pathOrToken.match(/(?:^|\/)user\/([^/]+)/i)
+    if (userMatch) {
+      const u = decodeURIComponent(userMatch[1])
+      const byUser = await lookupByUsername(u, key)
+      if (byUser) return { channelId: byUser, viaSearch: false }
+      const found = await searchChannelId(u, key)
+      return found ? { channelId: found, viaSearch: true } : null
+    }
 
-    const json = await getJson<ChannelIdResponse>(url)
-    const id   = json?.items?.[0]?.id
-    return typeof id === 'string' && id.length > 0 ? id : null
+    // 4) Pick a handle / vanity token:
+    //    "/@name" or "@name" → handle ; "/c/Vanity" → vanity ; a lone token → either.
+    let token: string | null = null
+    const atMatch = pathOrToken.match(/(?:^|\/)@([^/]+)/)
+    if (atMatch)              token = decodeURIComponent(atMatch[1])
+    else if (raw.startsWith('@')) token = raw.slice(1)
+    else {
+      const cMatch = pathOrToken.match(/(?:^|\/)c\/([^/]+)/i)
+      if (cMatch)                                          token = decodeURIComponent(cMatch[1])
+      else if (!urlMatch && /^[A-Za-z0-9._-]+$/.test(pathOrToken)) token = pathOrToken // bare handle/vanity
+    }
+    if (!token) return null
+
+    // forHandle (precise) covers @handles and most modern vanity (vanity ==
+    // handle today); a channel search (fuzzy) catches legacy /c/ vanity names.
+    const byHandle = await lookupByHandle(token, key)
+    if (byHandle) return { channelId: byHandle, viaSearch: false }
+    const found = await searchChannelId(token, key)
+    return found ? { channelId: found, viaSearch: true } : null
   } catch {
     return null
   }

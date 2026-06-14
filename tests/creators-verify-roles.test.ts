@@ -20,6 +20,7 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 const { vetMock } = vi.hoisted(() => ({ vetMock: vi.fn() }))
 vi.mock('@/lib/creator-vetting', () => ({ vetCreator: vetMock }))
 vi.mock('@/lib/youtube', () => ({
+  hasYouTubeKey:        vi.fn(() => true),
   resolveChannelId:     vi.fn(),
   getChannelStats:      vi.fn(),
   getRecentVideoTitles: vi.fn(),

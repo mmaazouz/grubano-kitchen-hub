@@ -532,7 +532,11 @@
       "roleChefDesc": "Tus recetas adoptadas por restaurantes — regalías por cada venta.",
       "roleInfluencerTitle": "Influencer",
       "roleInfluencerDesc": "Recomienda restaurantes a tu audiencia — comisión por los pedidos.",
-      "rolesHint": "Acumulables — al menos un rol obligatorio."
+      "rolesHint": "Acumulables — al menos un rol obligatorio.",
+      "verifyChannelNotFound": "Canal de YouTube no encontrado — revisa el enlace (p. ej. youtube.com/@TuCanal o @TuCanal).",
+      "verifyChannelUnavailable": "YouTube no está disponible por el momento (o tus suscriptores están ocultos). Inténtalo de nuevo en un momento.",
+      "verifyChannelConfig": "La verificación de YouTube no está disponible ahora mismo. Inténtalo más tarde.",
+      "youtubePlaceholder": "youtube.com/@TuCanal o @TuCanal"
     },
     "dashboard": {
       "title": "Espacio Creador",
@@ -2238,7 +2242,13 @@
     "storyTitle": "La historia de esta receta",
     "recipeTime": "{min} min",
     "campaignBadge": "📣 En campaña — hasta −{pct}%",
-    "campaignParticipants": "{count, plural, =1 {1 restaurante participante} other {# restaurantes participantes}}"
+    "campaignParticipants": "{count, plural, =1 {1 restaurante participante} other {# restaurantes participantes}}",
+    "influencerTagline": "Embajador Grubano",
+    "influencerPitchTitle": "Descubre mis restaurantes favoritos",
+    "influencerPitchBody": "Comparto mis mejores sitios de comida en Grubano. Explora los restaurantes y disfruta.",
+    "influencerCtaBtn": "Descubrir restaurantes",
+    "influencerMetaTitle": "{name} — Embajador Grubano",
+    "influencerMetaFallbackDesc": "Descubre los restaurantes recomendados por {name} en Grubano."
   },
   "promotions": {
     "title": "Promociones",

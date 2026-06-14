@@ -362,13 +362,28 @@ export default function CreatorsApplyPage() {
       )
     }
 
-    // ── F) Channel not found / unavailable ─────────────────────────────────────
+    // ── F) Channel not found / API unavailable / config — DISTINCT messages ────
+    // Mission 14B-A: one actionable message per failure bucket instead of a
+    // single "introuvable". Transient buckets (API/quota, server config) offer a
+    // retry; a wrong link sends the user back to fix it.
+    const channelMessage =
+      verifyResult.reason === 'youtube_unresolved'    ? t('verifyChannelNotFound')
+      : verifyResult.reason === 'youtube_unavailable' ? t('verifyChannelUnavailable')
+      : verifyResult.reason === 'youtube_config'      ? t('verifyChannelConfig')
+      : t('verifyChannelError')
+    const canRetry =
+      verifyResult.reason === 'youtube_unavailable' || verifyResult.reason === 'youtube_config'
     return (
       <div className="px-4 pt-12 max-w-lg mx-auto text-center">
         <div className="h-20 w-20 rounded-grubano-pill bg-grubano-danger/10 flex items-center justify-center mx-auto mb-4">
           <XCircle size={40} className="text-grubano-danger" />
         </div>
-        <p className="text-sm text-grubano-ink-muted mb-6">{t('verifyChannelError')}</p>
+        <p className="text-sm text-grubano-ink-muted mb-6">{channelMessage}</p>
+        {canRetry && (
+          <Button variant="primary" size="md" fullWidth onClick={handleVerify} loading={verifying} className="mb-3">
+            {verifying ? t('verifying') : t('verifyRetry')}
+          </Button>
+        )}
         <Button variant="secondary" size="md" fullWidth onClick={() => router.push('/creators')}>
           {t('backToPortal')}
         </Button>
@@ -495,7 +510,7 @@ export default function CreatorsApplyPage() {
               <Input
                 label={t('labelYoutube')}
                 type="text"
-                placeholder="@amina.youtube"
+                placeholder={t('youtubePlaceholder')}
                 value={form.youtube}
                 onChange={e => setField('youtube', e.target.value)}
               />

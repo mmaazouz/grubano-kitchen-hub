@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { makeVerifyCode } from '@/lib/verify-code'
-import { resolveChannelId, getChannelStats, getRecentVideoTitles } from '@/lib/youtube'
+import { resolveChannelId, getChannelStats, getRecentVideoTitles, hasYouTubeKey } from '@/lib/youtube'
 import { vetCreator } from '@/lib/creator-vetting'
 
 // Orchestration route — does live network calls (YouTube) + a Claude vetting
@@ -193,10 +193,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     // ── Path A: a YouTube channel was declared — prove ownership + count subs ──
     if (youtube) {
-      const channelId = await resolveChannelId(youtube)
-      if (!channelId) {
+      // Distinct, actionable failure buckets (Mission 14B-A) — the wizard maps
+      // each to its own message instead of one generic "introuvable":
+      //   youtube_config      → no YOUTUBE_API_KEY server-side (env/config issue)
+      //   youtube_unresolved  → the link/handle didn't match any channel
+      //   youtube_unavailable → channel found but stats unreadable (API/quota/hidden)
+      if (!hasYouTubeKey()) {
+        return NextResponse.json({ ok: false, reason: 'youtube_config' })
+      }
+
+      const resolved = await resolveChannelId(youtube)
+      if (!resolved) {
         return NextResponse.json({ ok: false, reason: 'youtube_unresolved' })
       }
+      const { channelId, viaSearch } = resolved
 
       const stats = await getChannelStats(channelId)
       if (!stats) {
@@ -205,6 +215,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
       // Ownership proof: the code must be present in the channel description.
       if (!stats.description.includes(verifyCode)) {
+        // A fuzzy SEARCH match is low-confidence — a missing code most likely
+        // means we matched the WRONG channel (a stranger's), not that the user
+        // forgot to add it. Send them back to paste an EXACT link instead of
+        // stranding them on the "retry" screen forever (adversarial-review fix).
+        if (viaSearch) {
+          return NextResponse.json({ ok: false, reason: 'youtube_unresolved' })
+        }
         return NextResponse.json({
           ok:      false,
           reason:  'code_not_found',

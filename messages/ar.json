@@ -532,7 +532,11 @@
       "roleChefDesc": "وصفاتك تتبناها المطاعم — عوائد على كل بيع.",
       "roleInfluencerTitle": "مؤثر",
       "roleInfluencerDesc": "أوصِ جمهورك بالمطاعم — عمولة على الطلبات.",
-      "rolesHint": "قابلة للجمع — دور واحد على الأقل مطلوب."
+      "rolesHint": "قابلة للجمع — دور واحد على الأقل مطلوب.",
+      "verifyChannelNotFound": "لم يتم العثور على قناة YouTube — تحقّق من الرابط (مثل youtube.com/@قناتك أو @قناتك).",
+      "verifyChannelUnavailable": "YouTube غير متاح مؤقتًا (أو عدد المشتركين مخفي). أعد المحاولة بعد قليل.",
+      "verifyChannelConfig": "التحقّق عبر YouTube غير متاح حاليًا. يُرجى المحاولة لاحقًا.",
+      "youtubePlaceholder": "youtube.com/@قناتك أو @قناتك"
     },
     "dashboard": {
       "title": "فضاء المبدع",
@@ -2238,7 +2242,13 @@
     "storyTitle": "قصة هذه الوصفة",
     "recipeTime": "{min} دقيقة",
     "campaignBadge": "📣 ضمن حملة — حتى −{pct}%",
-    "campaignParticipants": "{count, plural, =1 {مطعم مشارك واحد} other {# مطاعم مشاركة}}"
+    "campaignParticipants": "{count, plural, =1 {مطعم مشارك واحد} other {# مطاعم مشاركة}}",
+    "influencerTagline": "سفير Grubano",
+    "influencerPitchTitle": "اكتشف مطاعمي المفضّلة",
+    "influencerPitchBody": "أشارك أفضل وجهات الطعام لديّ على Grubano. استكشف المطاعم واستمتع.",
+    "influencerCtaBtn": "اكتشف المطاعم",
+    "influencerMetaTitle": "{name} — سفير Grubano",
+    "influencerMetaFallbackDesc": "اكتشف المطاعم التي يوصي بها {name} على Grubano."
   },
   "promotions": {
     "title": "العروض",
