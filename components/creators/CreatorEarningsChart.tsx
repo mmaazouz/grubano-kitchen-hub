@@ -7,12 +7,13 @@
  */
 
 import { useState } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import {
   BarChart, Bar, CartesianGrid, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from 'recharts'
 import type { ChartDatum } from '@/app/api/creators/home/route'
+import { formatEuros } from '@/lib/format-money'
 
 // ── Brand palette ──────────────────────────────────────────────────────────────
 // COLOR_RECIPE   = grubano-primary (#F97316) — via CSS variable
@@ -55,6 +56,7 @@ export function CreatorEarningsChart({
   recipeRatePct,
 }: Props) {
   const t = useTranslations('creators.home')
+  const locale = useLocale()
   const [segment, setSegment] = useState<Segment>('all')
 
   const hasData = data.some(d => d.amount > 0)
@@ -93,17 +95,17 @@ export function CreatorEarningsChart({
         </p>
         {segment !== 'referral' && (
           <p style={{ color: COLOR_RECIPE }}>
-            {t('perfSegRecipe')}: <strong>€{(d.recipeAmount ?? 0).toFixed(2)}</strong>
+            {t('perfSegRecipe')}: <strong>{formatEuros(d.recipeAmount ?? 0, locale)}</strong>
           </p>
         )}
         {segment !== 'recipe' && (
           <p style={{ color: COLOR_REFERRAL }}>
-            {t('perfSegReferral')}: <strong>€{(d.referralAmount ?? 0).toFixed(2)}</strong>
+            {t('perfSegReferral')}: <strong>{formatEuros(d.referralAmount ?? 0, locale)}</strong>
           </p>
         )}
         {segment === 'all' && d.amount > 0 && (
           <p style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4, fontWeight: 700 }}>
-            {t('perfTooltipTotal')}: €{d.amount.toFixed(2)}
+            {t('perfTooltipTotal')}: {formatEuros(d.amount, locale)}
           </p>
         )}
       </div>
@@ -139,8 +141,8 @@ export function CreatorEarningsChart({
           <XAxis dataKey="displayLabel" {...AXIS_PROPS} />
           <YAxis
             {...AXIS_PROPS}
-            tickFormatter={v => `€${v}`}
-            width={32}
+            tickFormatter={v => formatEuros(Number(v), locale, { noDecimals: true })}
+            width={40}
           />
           <Tooltip content={CustomTooltip} />
 
@@ -173,7 +175,7 @@ export function CreatorEarningsChart({
           <span className="text-[10px] text-grubano-ink-muted">
             {t('perfSegRecipe')}{recipeRatePct != null ? ` (${recipeRatePct}%)` : ''}
             {' — '}
-            <span className="font-semibold text-grubano-ink">€{recipeEarnings30d.toFixed(2)}</span>
+            <span className="font-semibold text-grubano-ink">{formatEuros(recipeEarnings30d, locale)}</span>
           </span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -181,7 +183,7 @@ export function CreatorEarningsChart({
           <span className="text-[10px] text-grubano-ink-muted">
             {t('perfSegReferral')} (22%)
             {' — '}
-            <span className="font-semibold text-grubano-ink">€{referralEarnings30d.toFixed(2)}</span>
+            <span className="font-semibold text-grubano-ink">{formatEuros(referralEarnings30d, locale)}</span>
           </span>
         </div>
       </div>

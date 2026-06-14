@@ -13,6 +13,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { Wand2, Loader2, Copy, Check, AlertCircle } from 'lucide-react'
 import { Card } from '@/components/design-system'
 import AffiliateShareCard from '@/components/creators/AffiliateShareCard'
+import { formatEuros } from '@/lib/format-money'
 
 interface Caption { tone: string; text: string }
 interface GenResult {
@@ -168,7 +169,7 @@ export default function AffiliateStudio({ restos, preset, onPresetApplied }: {
                 photo={result.target.photo}
                 title={result.target.dishName ?? result.target.restaurantName}
                 subtitle={result.target.dishName ? result.target.restaurantName : null}
-                price={typeof result.target.dishPrice === 'number' ? `${result.target.dishPrice.toFixed(2)} €` : null}
+                price={typeof result.target.dishPrice === 'number' ? formatEuros(result.target.dishPrice, locale) : null}
                 tagline={t('studioCardCta')}
                 link={result.link}
               />

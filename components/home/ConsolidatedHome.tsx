@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, EmptyState } from '@/components/design-system'
+import { formatEuros } from '@/lib/format-money'
 
 // ── Endpoint contracts (Agent 2 — DO NOT modify the endpoint) ────────────────
 
@@ -193,8 +194,10 @@ export default function ConsolidatedHome({ userName, locale }: ConsolidatedHomeP
     weekday: 'long', day: 'numeric', month: 'long',
   }).format(new Date())
 
-  const fmtCur0 = new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
-  const fmtCur2 = new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
+  // Single source of truth: lib/format-money (EUR, locale-aware). Wrappers keep
+  // the existing fmtCur0/fmtCur2.format(...) call sites unchanged.
+  const fmtCur0 = { format: (n: number) => formatEuros(n, locale, { noDecimals: true }) }
+  const fmtCur2 = { format: (n: number) => formatEuros(n, locale) }
 
   const brands = overview.alerts.brandsToUnlock
   const stock = overview.alerts.stockOut

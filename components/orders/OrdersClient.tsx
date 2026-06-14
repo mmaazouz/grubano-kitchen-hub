@@ -21,6 +21,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations, useLocale } from 'next-intl'
+import { formatEuros } from '@/lib/format-money'
 import {
   Volume2, VolumeX, Pause, Power, Filter, Lock,
   ShoppingBasket, Truck, Clock, PackageX, AlertTriangle,
@@ -509,7 +510,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
                   </div>
 
                   <div className="text-right">
-                    <p className="text-sm font-bold text-grubano-ink">€{o.total.toFixed(2)}</p>
+                    <p className="text-sm font-bold text-grubano-ink">{formatEuros(o.total, locale)}</p>
                     <p className="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-grubano-ink-faint">
                       <Clock size={10} />
                       {o.timeLabel}
@@ -652,7 +653,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
                         )}
                       </div>
                       <p className="shrink-0 text-sm font-bold text-grubano-ink">
-                        €{(it.price * it.qty).toFixed(2)}
+                        {formatEuros(it.price * it.qty, locale)}
                       </p>
                     </div>
                   </li>
@@ -663,18 +664,18 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
             {/* Totals */}
             <section className="space-y-1.5 rounded-grubano-lg bg-grubano-surface-muted p-3 text-sm">
               <div className="flex justify-between text-grubano-ink-muted">
-                <span>{t('detail.subtotal')}</span><span>€{detailOrder.subtotal.toFixed(2)}</span>
+                <span>{t('detail.subtotal')}</span><span>{formatEuros(detailOrder.subtotal, locale)}</span>
               </div>
               {detailOrder.discount > 0 && (
                 <div className="flex justify-between text-grubano-success">
-                  <span>{t('detail.discount')}</span><span>−€{detailOrder.discount.toFixed(2)}</span>
+                  <span>{t('detail.discount')}</span><span>−{formatEuros(detailOrder.discount, locale)}</span>
                 </div>
               )}
               <div className="flex justify-between text-grubano-ink-muted">
-                <span>{t('detail.deliveryFee')}</span><span>€{detailOrder.deliveryFee.toFixed(2)}</span>
+                <span>{t('detail.deliveryFee')}</span><span>{formatEuros(detailOrder.deliveryFee, locale)}</span>
               </div>
               <div className="flex justify-between border-t border-grubano-border pt-1.5 text-base font-bold text-grubano-ink">
-                <span>{t('detail.total')}</span><span>€{detailOrder.total.toFixed(2)}</span>
+                <span>{t('detail.total')}</span><span>{formatEuros(detailOrder.total, locale)}</span>
               </div>
             </section>
           </div>

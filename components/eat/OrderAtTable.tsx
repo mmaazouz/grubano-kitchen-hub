@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Loader2, AlertCircle, Plus, Minus, X, Check, UtensilsCrossed } from 'lucide-react'
+import { formatEuros } from '@/lib/format-money'
 
 // ── <OrderAtTable /> — client order-at-table (étape 3 bloc B, Agent 13) ──────
 //
@@ -81,8 +82,10 @@ export default function OrderAtTable({ tableId, restaurantId, onOrdered, onClose
     return () => { cancelled = true }
   }, [restaurantId, t])
 
+  // Single source of truth: lib/format-money (EUR, locale-aware). Wrapper keeps
+  // the existing fmt.format(...) call sites unchanged.
   const fmt = useMemo(
-    () => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }),
+    () => ({ format: (n: number) => formatEuros(n, locale) }),
     [locale],
   )
 

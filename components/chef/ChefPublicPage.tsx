@@ -12,6 +12,7 @@ import { StarBadge } from '@/components/creators/StarBadge'
 import InfluencerPublicView from '@/components/chef/InfluencerPublicView'
 import FoodImage from '@/components/eat/FoodImage'
 import { getFoodImage, inferCategory } from '@/lib/food-images'
+import { formatEuros } from '@/lib/format-money'
 import { useGeolocation } from '@/lib/use-geolocation'
 import { haversineKm } from '@/lib/geocode'
 
@@ -514,7 +515,7 @@ export default function ChefPublicPage({ slug }: { slug: string }) {
                             <span className="ms-1 text-[11px] font-normal text-grubano-ink-faint">· {s.city}</span>
                           </span>
                           <span className="shrink-0 text-[13px] font-extrabold text-grubano-primary">
-                            {s.sellingPrice.toFixed(2).replace('.', ',')} €
+                            {formatEuros(s.sellingPrice, locale)}
                           </span>
                           <ChevronRight size={14} className="shrink-0 text-grubano-ink-faint rtl:rotate-180" />
                         </a>

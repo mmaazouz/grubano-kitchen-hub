@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
+import { formatEuros } from '@/lib/format-money'
 import { BadgePercent, Plus, Loader2, AlertCircle, Clock3, Sparkles } from 'lucide-react'
 import { Modal, Button, Input } from '@/components/design-system'
 
@@ -71,8 +72,7 @@ export default function PromotionsManager() {
   const [agExpiry,  setAgExpiry]  = useState('')
   const [agPct,     setAgPct]     = useState('30') // heuristic default −30% (LLM M7 = content vetting, not a discount suggester — reuse not trivial, noted)
 
-  const eur = useMemo(() => (n: number) =>
-    new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(n), [locale])
+  const eur = useMemo(() => (n: number) => formatEuros(n, locale), [locale])
   const dateFmt = (iso: string) =>
     new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })
 

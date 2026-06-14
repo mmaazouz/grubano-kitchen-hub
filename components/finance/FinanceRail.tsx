@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
+import { formatMoney } from '@/lib/format-money'
 import {
   Banknote, Receipt, RotateCcw, FileText, Percent, Loader2, AlertCircle,
 } from 'lucide-react'
@@ -75,8 +76,7 @@ export default function FinanceRail() {
   const [refunding,    setRefunding]    = useState(false)
   const [refundError,  setRefundError]  = useState('')
 
-  const eur = useMemo(() => (cents: number) =>
-    new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100), [locale])
+  const eur = useMemo(() => (cents: number) => formatMoney(cents, locale), [locale])
   const dateFmt = useMemo(() => (iso: string) =>
     new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), [locale])
 
