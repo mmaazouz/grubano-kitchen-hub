@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
+import { formatEuros } from '@/lib/format-money'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { ArrowLeft, Navigation, MessageCircle, Phone, Check, MapPin, Store } from 'lucide-react'
@@ -257,12 +258,12 @@ export default function OrderTrackingScreen() {
             <p className="text-sm font-bold text-[#1a1a1a]">{item.name}</p>
             <p className="mt-0.5 text-xs text-[#888]">x{item.qty}</p>
           </div>
-          <span className="text-sm font-bold text-[#1a1a1a]">{(item.price * item.qty).toFixed(2)} €</span>
+          <span className="text-sm font-bold text-[#1a1a1a]">{formatEuros(item.price * item.qty, locale)}</span>
         </div>
       ))}
       <div className="mb-4 flex justify-between border-t border-[#f0f0f0] pt-3">
         <span className="text-base font-extrabold text-[#1a1a1a]">{t('totalPaid')}</span>
-        <span className="text-base font-extrabold text-[#F97316]">{order.total.toFixed(2)} €</span>
+        <span className="text-base font-extrabold text-[#F97316]">{formatEuros(order.total, locale)}</span>
       </div>
       {(order.status === 'delivered' || (isPickup && order.status === 'picked_up')) && (
         <div className="mb-4 rounded-2xl bg-[#F0FDF4] p-4 text-center">

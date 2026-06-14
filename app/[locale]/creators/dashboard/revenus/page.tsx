@@ -30,6 +30,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
 import { buildReferralLink } from '@/lib/referral-link'
 import { buildChefPageLink } from '@/lib/chef-link'
+import { formatMoney } from '@/lib/format-money'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
 
 // ── B2a contract (mirrored locally — the route is the source of truth) ────────
@@ -153,11 +154,8 @@ export default function CreatorEarningsPage() {
     } catch { /* clipboard unavailable — no crash */ }
   }
 
-  // ── Formatting (cents → localized euros) ────────────────────────────────────
-  const fmtCents = useMemo(() => {
-    const f = new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
-    return (cents: number) => f.format(cents / 100)
-  }, [locale])
+  // ── Formatting (cents → localized euros) — central source of truth ──────────
+  const fmtCents = useMemo(() => (cents: number) => formatMoney(cents, locale), [locale])
   const dateFmt = useMemo(
     () => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }),
     [locale],

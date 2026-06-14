@@ -12,6 +12,7 @@ import { showToast } from '@/lib/eat-cart'
 import { LanguageSwitcher } from '@/components/design-system'
 import LastReservationCard from '@/components/eat/LastReservationCard'
 import RoleSwitcher from '@/components/RoleSwitcher'
+import { formatEuros, formatAmount } from '@/lib/format-money'
 
 // Loyalty tiers per CLAUDE.md: Bronze 50 → Silver 100 → Gold 200 → Platine 400
 function tierFor(points: number) {
@@ -179,7 +180,7 @@ export default function ProfileScreen() {
             <p className="text-xs font-semibold text-white/80">{t('loyaltyPoints')}</p>
             <p className="mt-1 text-[28px] font-extrabold leading-none text-white">{t('pts', { count: points.toLocaleString('fr-FR') })}</p>
             {balanceEuros > 0 && (
-              <p className="mt-1 text-[13px] font-bold text-white">{t('creditEquivalent', { amount: balanceEuros.toFixed(2) })}</p>
+              <p className="mt-1 text-[13px] font-bold text-white">{t('creditEquivalent', { amount: formatAmount(balanceEuros, locale) })}</p>
             )}
             <p className="mt-1 text-[11px] text-white/80">
               {tier.label === 'Platine' ? t('maxLevel') : t('pointsToNextLevel', { count: tier.next - points, level: tierLabel(nextLabel) })}
@@ -214,7 +215,7 @@ export default function ProfileScreen() {
                     <p className="truncate text-[13px] font-semibold text-[#1a1a1a]">{label}</p>
                     <p className="mt-0.5 text-[11px] text-[#888]">
                       {txn.date ? new Date(txn.date).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
-                      {txn.euros > 0 ? ` · ${txn.euros.toFixed(2)} €` : ''}
+                      {txn.euros > 0 ? ` · ${formatEuros(txn.euros, locale)}` : ''}
                     </p>
                   </div>
                   <span className={`shrink-0 text-[14px] font-extrabold ${color}`}>
@@ -277,7 +278,7 @@ export default function ProfileScreen() {
                     <p className="truncate text-[14px] font-bold text-[#1a1a1a]">{o.restaurant?.name ?? '—'}</p>
                     <p className="mt-0.5 text-[11px] text-[#888]">
                       {o.createdAt ? new Date(o.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
-                      {' · '}{o.total.toFixed(2)} €
+                      {' · '}{formatEuros(o.total, locale)}
                     </p>
                     <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
                       {badge.label}

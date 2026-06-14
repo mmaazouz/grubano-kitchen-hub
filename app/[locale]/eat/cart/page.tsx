@@ -1,18 +1,20 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
 import { Minus, Plus, Trash2, MapPin, CreditCard, ShoppingBag, Bike, Package, Sparkles } from 'lucide-react'
 import { Button, Badge, PriceTag } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
 import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
+import { formatEuros, formatAmount } from '@/lib/format-money'
 
 type Fulfillment = 'delivery' | 'pickup'
 
 export default function CartScreen() {
   const t = useTranslations('eat.cart')
+  const locale = useLocale()
   const router = useRouter()
   const { status: authStatus } = useSession()
   const [cart, setCart] = useState<EatCartData | null>(null)
@@ -534,7 +536,7 @@ export default function CartScreen() {
               <p className={`text-grubano-sm font-bold ${promoBlocksLoyalty ? 'text-grubano-ink-muted' : 'text-grubano-ink'}`}>{t('loyaltyToggleTitle')}</p>
               <p className="mt-0.5 text-xs text-grubano-ink-muted">
                 {t('loyaltyBalance', { count: pointsBalance.toLocaleString('fr-FR') })}
-                {balanceEuros > 0 ? ` · ${t('loyaltyBalanceEur', { amount: balanceEuros.toFixed(2) })}` : ''}
+                {balanceEuros > 0 ? ` · ${t('loyaltyBalanceEur', { amount: formatAmount(balanceEuros, locale) })}` : ''}
               </p>
             </div>
             <button
@@ -557,7 +559,7 @@ export default function CartScreen() {
             </p>
           ) : (
             <p className="mt-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
-              {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: maxLoyaltyEur.toFixed(2) })} · ` : ''}{t('loyaltyNote')}
+              {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: formatAmount(maxLoyaltyEur, locale) })} · ` : ''}{t('loyaltyNote')}
             </p>
           )}
         </div>
@@ -568,7 +570,7 @@ export default function CartScreen() {
         <p className="mb-3.5 text-[17px] font-extrabold text-grubano-ink">{t('summary')}</p>
         <div className="mb-2.5 flex justify-between text-grubano-sm">
           <span className="text-grubano-ink-muted">{t('subtotal')}</span>
-          <span className="font-semibold text-grubano-ink">{subtotal.toFixed(2)} €</span>
+          <span className="font-semibold text-grubano-ink">{formatEuros(subtotal, locale)}</span>
         </div>
         {welcomeAmount > 0 && (
           <div className="mb-2.5 flex justify-between text-grubano-sm">
@@ -577,32 +579,32 @@ export default function CartScreen() {
                 ? t('welcomeDiscountFrom', { creator: welcome.creatorName })
                 : t('welcomeDiscount')}
             </span>
-            <span className="font-semibold text-grubano-success">-{welcomeAmount.toFixed(2)} €</span>
+            <span className="font-semibold text-grubano-success">-{formatEuros(welcomeAmount, locale)}</span>
           </div>
         )}
         <div className="mb-2.5 flex justify-between text-grubano-sm">
           <span className="text-grubano-ink-muted">{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
-          <span className="font-semibold text-grubano-ink">{fulfillment === 'pickup' ? t('free') : `${deliveryFee.toFixed(2)} €`}</span>
+          <span className="font-semibold text-grubano-ink">{fulfillment === 'pickup' ? t('free') : formatEuros(deliveryFee, locale)}</span>
         </div>
         {/* Small-order fee (V1.5) — line + nudge with a 1-click "add an item".
             Disappears as soon as the items subtotal reaches the threshold. */}
         {smallFeeApplies && (
           <div className="mb-2.5 flex justify-between text-grubano-sm">
             <span className="text-grubano-ink-muted">{t('smallOrderFeeLine')}</span>
-            <span className="font-semibold text-grubano-ink">{smallFeeEur.toFixed(2)} €</span>
+            <span className="font-semibold text-grubano-ink">{formatEuros(smallFeeEur, locale)}</span>
           </div>
         )}
         {smallFeeApplies && (
           <div className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2">
             <p className="text-[12px] font-medium text-grubano-primary">
-              {t('smallOrderNudge', { amount: missingToThresholdEur.toFixed(2) })}
+              {t('smallOrderNudge', { amount: formatAmount(missingToThresholdEur, locale) })}
             </p>
             {suggestion && (
               <button
                 onClick={() => addSuggested(suggestion)}
                 className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-grubano-primary px-3 py-1 text-[11px] font-bold text-white active:scale-95"
               >
-                <Plus size={12} /> {t('smallOrderAddItem', { name: suggestion.name, price: suggestion.price.toFixed(2) })}
+                <Plus size={12} /> {t('smallOrderAddItem', { name: suggestion.name, price: formatAmount(suggestion.price, locale) })}
               </button>
             )}
           </div>
@@ -611,13 +613,13 @@ export default function CartScreen() {
             Display arithmetic only — the server resolves the real promo. */}
         {promoIncentive && (
           <p className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
-            {t('promoIncentive', { amount: promoIncentive.missing.toFixed(2), name: promoIncentive.name })}
+            {t('promoIncentive', { amount: formatAmount(promoIncentive.missing, locale), name: promoIncentive.name })}
           </p>
         )}
         {/* Promo V2 — threshold-reward progress: « Ajoutez X € pour [récompense] ». */}
         {thresholdIncentive && (
           <p className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
-            {t('thresholdIncentive', { amount: thresholdIncentive.missing.toFixed(2), reward: thresholdIncentive.reward })}
+            {t('thresholdIncentive', { amount: formatAmount(thresholdIncentive.missing, locale), reward: thresholdIncentive.reward })}
           </p>
         )}
         <div className="mt-1 flex items-center justify-between border-t border-grubano-border pt-3">
@@ -642,7 +644,7 @@ export default function CartScreen() {
           onClick={placeOrder}
         >
           <span className="flex-1 text-left">{submitting ? t('submitting') : t('placeOrder')}</span>
-          {!submitting && <span>{total.toFixed(2)} €</span>}
+          {!submitting && <span>{formatEuros(total, locale)}</span>}
         </Button>
       </div>
     </div>

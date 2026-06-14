@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
+import { formatEuros, formatAmount } from '@/lib/format-money'
 import { formatCuisineList } from '@/lib/categories'
 import { ArrowLeft, Heart, Share2, Clock, MapPin, Search, ShoppingBag, Tag } from 'lucide-react'
 import {
@@ -502,7 +503,7 @@ export default function RestaurantScreen() {
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
-            <MapPin size={12} /> {restaurant.deliveryFee === 0 ? t('freeDelivery') : `${restaurant.deliveryFee.toFixed(2)} €`}
+            <MapPin size={12} /> {restaurant.deliveryFee === 0 ? t('freeDelivery') : formatEuros(restaurant.deliveryFee, locale)}
           </span>
           <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
             <Clock size={12} /> {t('minutes', { count: restaurant.deliveryTime })}
@@ -710,7 +711,7 @@ export default function RestaurantScreen() {
             }
             rightIcon={
               <span className="flex items-center gap-2">
-                {cartTotal.toFixed(2)} € <ShoppingBag size={18} />
+                {formatEuros(cartTotal, locale)} <ShoppingBag size={18} />
               </span>
             }
           >
@@ -756,6 +757,7 @@ interface ModalProps {
 
 function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps) {
   const t = useTranslations('eat.restaurant')
+  const locale = useLocale()
   const [size, setSize] = useState<string>('Petite')
   const [supplements, setSupplements] = useState<string[]>([])
   const [exclusions, setExclusions] = useState<string[]>([])
@@ -780,7 +782,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
       description={dish.description}
       footer={
         <Button variant="primary" size="pill" fullWidth onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note })}>
-          {t('addToCartPrice', { price: total.toFixed(2) })}
+          {t('addToCartPrice', { price: formatAmount(total, locale) })}
         </Button>
       }
     >
@@ -809,7 +811,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                   <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.label}</span>
                 </span>
                 <span className="text-grubano-sm font-bold text-grubano-ink">
-                  {opt.premium > 0 ? t('plusPrice', { price: opt.premium.toFixed(2) }) : t('included')}
+                  {opt.premium > 0 ? t('plusPrice', { price: formatAmount(opt.premium, locale) }) : t('included')}
                 </span>
               </label>
             )
@@ -837,7 +839,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                   />
                   <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.name}</span>
                 </span>
-                <span className="text-grubano-sm font-bold text-grubano-ink">{t('plusPrice', { price: opt.price.toFixed(2) })}</span>
+                <span className="text-grubano-sm font-bold text-grubano-ink">{t('plusPrice', { price: formatAmount(opt.price, locale) })}</span>
               </label>
             )
           })}
@@ -876,7 +878,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
 
       <div className="mt-2 flex items-center justify-between rounded-grubano-md bg-grubano-tint p-3">
         <span className="text-grubano-sm font-semibold text-grubano-ink">{t('total')}</span>
-        <span className="font-display text-[22px] font-extrabold text-grubano-primary">{total.toFixed(2)} €</span>
+        <span className="font-display text-[22px] font-extrabold text-grubano-primary">{formatEuros(total, locale)}</span>
       </div>
       {(supplements.length > 0 || exclusions.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5">

@@ -31,6 +31,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
 import { buildAffiliateLink, buildAffiliateRestaurantLink } from '@/lib/affiliate-link'
 import AffiliateStudio from '@/components/creators/AffiliateStudio'
+import { formatMoney } from '@/lib/format-money'
 
 // ── Contract (mirrored locally — the route is the source of truth) ────────────
 interface ByMonth { month: string; gainCents: number }
@@ -128,10 +129,7 @@ export default function AffiliateDashboardPage() {
     } catch { /* clipboard unavailable — no crash */ }
   }
 
-  const fmtCents = useMemo(() => {
-    const f = new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
-    return (c: number) => f.format(c / 100)
-  }, [locale])
+  const fmtCents = useMemo(() => (c: number) => formatMoney(c, locale), [locale])
   const dateFmt = useMemo(
     () => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }),
     [locale],
