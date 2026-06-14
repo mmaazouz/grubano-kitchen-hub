@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { computeStarsForCreators } from '@/lib/creator-stars'
 import { publicFace } from '@/lib/dish-sheet'
 import { readDishSheets } from '@/lib/dish-sheet-db'
+import { readCreatorRoles } from '@/lib/creator-roles'
 
 // PUBLIC, read-only, no auth. A dynamic param route is server-rendered on demand.
 export const dynamic = 'force-dynamic'
@@ -221,12 +222,18 @@ export async function GET(
       stars = (await computeStarsForCreators([creator.id])).get(creator.id)?.stars ?? 0
     } catch { stars = 0 }
 
+    // ── Role flags (Mission 14B) — drive the role-aware PUBLIC profile
+    // (a pure influencer is NOT a "chef créateur"). Tolerant read: a missing
+    // column (pre-db-push) degrades to both roles true → the unchanged chef view.
+    const roles = await readCreatorRoles(creator.id)
+
     return NextResponse.json({
       name:         creator.name,
       bio:          creator.bio,
       followers:    creator.followers,
       verified:     creator.verified,
       stars,
+      roles,
       instagram:    creator.instagram,
       tiktok:       creator.tiktok,
       youtube:      creator.youtube,

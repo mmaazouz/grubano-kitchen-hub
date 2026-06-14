@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { prisma } from '@/lib/prisma'
+import { readCreatorRoles } from '@/lib/creator-roles'
 import ChefPublicPage from '@/components/chef/ChefPublicPage'
 
 // ── /chef/[slug] — the PUBLIC creator (chef) page — Mission 1 Creator Studio ──
@@ -31,12 +32,20 @@ export async function generateMetadata(props: {
           { referralCode:     { in: candidates } },
         ],
       },
-      select: { name: true, bio: true },
+      select: { id: true, name: true, bio: true },
     })
     if (!creator) return {}
-    const description = (creator.bio ?? '').trim() || t('metaFallbackDesc', { name: creator.name })
+    // Mission 14B — a pure influencer's metadata must not say "Chef créateur".
+    const roles          = await readCreatorRoles(creator.id)
+    const influencerOnly = roles.isInfluencer && !roles.isChef
+    const description = (creator.bio ?? '').trim() ||
+      (influencerOnly
+        ? t('influencerMetaFallbackDesc', { name: creator.name })
+        : t('metaFallbackDesc', { name: creator.name }))
     return {
-      title:       t('metaTitle', { name: creator.name }),
+      title: influencerOnly
+        ? t('influencerMetaTitle', { name: creator.name })
+        : t('metaTitle', { name: creator.name }),
       description: description.slice(0, 200),
     }
   } catch {

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { EmptyState, Badge, Skeleton } from '@/components/design-system'
 import { StarBadge } from '@/components/creators/StarBadge'
+import InfluencerPublicView from '@/components/chef/InfluencerPublicView'
 import FoodImage from '@/components/eat/FoodImage'
 import { getFoodImage, inferCategory } from '@/lib/food-images'
 import { useGeolocation } from '@/lib/use-geolocation'
@@ -73,6 +74,8 @@ interface ChefProfile {
   recipes:          ChefRecipe[]
   totalSales:       number
   totalRestaurants: number
+  // Mission 14B — role flags (tolerant; absent → both true → chef view).
+  roles?:           { isChef: boolean; isInfluencer: boolean }
 }
 
 interface PartnerRestaurant {
@@ -288,6 +291,13 @@ export default function ChefPublicPage({ slug }: { slug: string }) {
         />
       </div>
     )
+  }
+
+  // Mission 14B — a PURE influencer (isInfluencer && !isChef) is NOT a "chef
+  // créateur": render the honest ambassador profile (no recipe/partner sections,
+  // no chef label). Missing roles (pre-db-push) → both true → the chef view below.
+  if (profile.roles && profile.roles.isInfluencer && !profile.roles.isChef) {
+    return <InfluencerPublicView profile={profile} />
   }
 
   const heroPhoto = profile.recipes[0] ? recipePhoto(profile.recipes[0]) : null
