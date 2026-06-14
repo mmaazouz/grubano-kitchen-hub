@@ -1,26 +1,35 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
 import { z } from 'zod'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { callerOperator } from '@/lib/operator-session'
 import { buildOrderLines } from '@/lib/marketplace'
 
 export const dynamic = 'force-dynamic'
 
-// ── POST /api/marketplace/orders — place a B2B supply order (resto side, Slice 2)
-// A restaurateur submits a per-supplier cart → a SupplyOrder + immutable line
-// SNAPSHOTS (price/name/unit captured from the catalogue AT ORDER TIME). Scoped:
-// operatorId is the SESSION operator (never the body); items must belong to the
-// (active) target supplier and be available. SEPARATE pipeline from B2C
-// /api/orders — no loyalty / promo / referral / take-rate. Total = sum of lines.
+// ── /api/marketplace/orders — place + list B2B supply orders (resto side) ─────
+// POST: a restaurateur submits a per-supplier cart → a SupplyOrder + immutable line
+// SNAPSHOTS (price/name/unit captured AT ORDER TIME). GET: the resto's own order
+// history (Slice 3). Scoped: operatorId is the SESSION operator (never the body);
+// items must belong to the (active) target supplier and be available. SEPARATE
+// pipeline from B2C /api/orders — no loyalty / promo / referral / take-rate.
 
-async function callerOperator() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) return null
-  return prisma.operator.findUnique({
-    where:  { email: session.user.email },
-    select: { id: true, role: true },
+// GET /api/marketplace/orders — the connected resto's own supply orders (Slice 3).
+export async function GET() {
+  const operator = await callerOperator()
+  if (!operator) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+  if (!['restaurant', 'admin'].includes(operator.role)) {
+    return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  }
+  const orders = await prisma.supplyOrder.findMany({
+    where:   { operatorId: operator.id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true, status: true, totalCents: true, notes: true, desiredDate: true, createdAt: true,
+      supplierProfile: { select: { companyName: true } },
+      lines: { select: { nameSnapshot: true, unitSnapshot: true, quantity: true, unitPriceCents: true, lineTotalCents: true } },
+    },
   })
+  return NextResponse.json({ orders })
 }
 
 const orderSchema = z.object({

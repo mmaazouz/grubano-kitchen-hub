@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { callerOperator } from '@/lib/operator-session'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,15 +9,6 @@ export const dynamic = 'force-dynamic'
 // catalogue items. Operator-gated (restaurant/admin). Distinct from the operator's
 // private /api/suppliers directory and from the B2C app. Prices in cents (display
 // via format-money). Zone/category filtering is a later refinement.
-
-async function callerOperator() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) return null
-  return prisma.operator.findUnique({
-    where:  { email: session.user.email },
-    select: { id: true, role: true },
-  })
-}
 
 export async function GET() {
   try {
