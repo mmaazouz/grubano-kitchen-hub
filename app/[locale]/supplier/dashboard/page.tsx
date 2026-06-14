@@ -1,8 +1,9 @@
 import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Truck, Clock3, MapPin, Tags, CreditCard, Hourglass } from 'lucide-react'
+import { Truck, Clock3, MapPin, Tags, CreditCard, Hourglass, Package, ChevronRight } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Link } from '@/navigation'
 import { Card, Badge, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
 import { formatMoney } from '@/lib/format-money'
@@ -80,6 +81,22 @@ export default async function SupplierDashboardPage(props: { params: { locale: s
                 </div>
               </Card>
             )}
+
+            {/* Slice 1 — entry point to the catalogue management. */}
+            <Link href="/supplier/catalog" className="block">
+              <Card elevation="sm" padding="md" className="transition-shadow hover:shadow-grubano-md">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
+                    <Package size={20} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-grubano-ink">{t('catalogTitle')}</p>
+                    <p className="text-sm text-grubano-ink-muted">{t('catalogCardSubtitle')}</p>
+                  </div>
+                  <ChevronRight size={18} className="shrink-0 text-grubano-ink-faint" />
+                </div>
+              </Card>
+            </Link>
 
             <Card elevation="sm" padding="lg">
               <div className="mb-4 flex items-start justify-between gap-3">
