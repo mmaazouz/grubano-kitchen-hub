@@ -255,6 +255,18 @@ describe('middleware — B2B supplier space (Slice 0) + singular/plural non-regr
     expect(passed(await middleware(reqFor('/fr/supplier/register')))).toBe(true)
   })
 
+  it('gates /supplier/orders (Slice 2 supplier) + /marketplace/suppliers (Slice 2 resto)', async () => {
+    asRole('supplier')
+    expect(passed(await middleware(reqFor('/fr/supplier/orders')))).toBe(true)
+    getTokenMock.mockReset(); asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/supplier/orders')))).toBe('/fr/eat')
+    // resto discovery hosts under operator-gated /marketplace: restaurant passes, consumer bounced
+    getTokenMock.mockReset(); asRole('restaurant')
+    expect(passed(await middleware(reqFor('/fr/marketplace/suppliers')))).toBe(true)
+    getTokenMock.mockReset(); asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/marketplace/suppliers')))).toBe('/fr/eat')
+  })
+
   it('lets an admin and a multi-role {restaurant, supplier} into /supplier/dashboard', async () => {
     asRole('admin')
     expect(passed(await middleware(reqFor('/fr/supplier/dashboard')))).toBe(true)
