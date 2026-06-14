@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Truck, Clock3, MapPin, Tags, CreditCard, Hourglass, Package, ChevronRight } from 'lucide-react'
+import { Truck, Clock3, MapPin, Tags, CreditCard, Hourglass, Package, ChevronRight, Inbox } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Link } from '@/navigation'
@@ -92,6 +92,22 @@ export default async function SupplierDashboardPage(props: { params: { locale: s
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-grubano-ink">{t('catalogTitle')}</p>
                     <p className="text-sm text-grubano-ink-muted">{t('catalogCardSubtitle')}</p>
+                  </div>
+                  <ChevronRight size={18} className="shrink-0 text-grubano-ink-faint" />
+                </div>
+              </Card>
+            </Link>
+
+            {/* Slice 2 — incoming B2B orders. */}
+            <Link href="/supplier/orders" className="block">
+              <Card elevation="sm" padding="md" className="transition-shadow hover:shadow-grubano-md">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
+                    <Inbox size={20} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-grubano-ink">{t('ordersTitle')}</p>
+                    <p className="text-sm text-grubano-ink-muted">{t('dashOrdersSubtitle')}</p>
                   </div>
                   <ChevronRight size={18} className="shrink-0 text-grubano-ink-faint" />
                 </div>

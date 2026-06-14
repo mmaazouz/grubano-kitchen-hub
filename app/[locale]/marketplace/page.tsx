@@ -18,6 +18,19 @@ export default function MarketplacePage() {
       <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Marketplace</h1>
       <p className="mb-5 text-sm text-muted-foreground">Intégrations &amp; partenaires</p>
 
+      {/* B2B supply marketplace (Slice 2) — resto sources from platform suppliers. */}
+      <Link
+        href="/marketplace/suppliers"
+        className="mb-6 flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10"
+      >
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/15 text-2xl">🏭</div>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-primary">Approvisionnement fournisseurs</p>
+          <p className="text-[11px] text-muted-foreground">Commander auprès des fournisseurs de la plateforme</p>
+        </div>
+        <ChevronRight size={16} className="shrink-0 text-primary" />
+      </Link>
+
       <SectionTitle hint="Plateformes de livraison">Connecter</SectionTitle>
       <div className="space-y-2">
         {apps.map((app) => (
