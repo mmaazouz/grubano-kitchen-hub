@@ -2434,7 +2434,16 @@
     "orderNotes": "ملاحظة",
     "orderTotal": "الإجمالي",
     "statusPlaced": "مستلَم",
-    "dashOrdersSubtitle": "الطلبات الواردة من المطاعم"
+    "dashOrdersSubtitle": "الطلبات الواردة من المطاعم",
+    "statusConfirmed": "مؤكَّد",
+    "statusPreparing": "قيد التحضير",
+    "statusDelivered": "تم التسليم",
+    "statusCancelled": "ملغاة",
+    "statusDeclined": "مرفوضة",
+    "actionConfirmed": "تأكيد",
+    "actionDeclined": "رفض",
+    "actionPreparing": "تحضير",
+    "actionDelivered": "وضع كمسلَّمة"
   },
   "marketplace": {
     "discoverTitle": "الموردون",
@@ -2460,6 +2469,13 @@
     "orderPlacedTitle": "تم إرسال الطلب",
     "orderPlacedBody": "تم إرسال طلبك إلى {supplier}.",
     "backToSuppliers": "العودة إلى الموردين",
-    "errOrder": "فشل الطلب. حاول مرة أخرى."
+    "errOrder": "فشل الطلب. حاول مرة أخرى.",
+    "myOrdersTitle": "طلباتي",
+    "myOrdersSubtitle": "تابع طلباتك من الموردين.",
+    "myOrdersEmpty": "لا توجد طلبات بعد.",
+    "myOrdersNav": "طلباتي",
+    "orderTo": "طلب إلى {supplier}",
+    "actionCancel": "إلغاء",
+    "cancelConfirm": "إلغاء هذا الطلب؟"
   }
 }

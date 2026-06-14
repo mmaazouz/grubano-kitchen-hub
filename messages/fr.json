@@ -2434,7 +2434,16 @@
     "orderNotes": "Note",
     "orderTotal": "Total",
     "statusPlaced": "Reçue",
-    "dashOrdersSubtitle": "Commandes entrantes des restaurateurs"
+    "dashOrdersSubtitle": "Commandes entrantes des restaurateurs",
+    "statusConfirmed": "Confirmée",
+    "statusPreparing": "En préparation",
+    "statusDelivered": "Livrée",
+    "statusCancelled": "Annulée",
+    "statusDeclined": "Refusée",
+    "actionConfirmed": "Confirmer",
+    "actionDeclined": "Refuser",
+    "actionPreparing": "Préparer",
+    "actionDelivered": "Marquer livrée"
   },
   "marketplace": {
     "discoverTitle": "Fournisseurs",
@@ -2460,6 +2469,13 @@
     "orderPlacedTitle": "Commande envoyée",
     "orderPlacedBody": "Votre commande a été transmise à {supplier}.",
     "backToSuppliers": "Retour aux fournisseurs",
-    "errOrder": "La commande a échoué. Réessayez."
+    "errOrder": "La commande a échoué. Réessayez.",
+    "myOrdersTitle": "Mes commandes",
+    "myOrdersSubtitle": "Suivez vos commandes fournisseurs.",
+    "myOrdersEmpty": "Aucune commande pour le moment.",
+    "myOrdersNav": "Mes commandes",
+    "orderTo": "Commande à {supplier}",
+    "actionCancel": "Annuler",
+    "cancelConfirm": "Annuler cette commande ?"
   }
 }

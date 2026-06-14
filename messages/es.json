@@ -2434,7 +2434,16 @@
     "orderNotes": "Nota",
     "orderTotal": "Total",
     "statusPlaced": "Recibido",
-    "dashOrdersSubtitle": "Pedidos entrantes de los restauradores"
+    "dashOrdersSubtitle": "Pedidos entrantes de los restauradores",
+    "statusConfirmed": "Confirmado",
+    "statusPreparing": "En preparación",
+    "statusDelivered": "Entregado",
+    "statusCancelled": "Cancelado",
+    "statusDeclined": "Rechazado",
+    "actionConfirmed": "Confirmar",
+    "actionDeclined": "Rechazar",
+    "actionPreparing": "Preparar",
+    "actionDelivered": "Marcar entregado"
   },
   "marketplace": {
     "discoverTitle": "Proveedores",
@@ -2460,6 +2469,13 @@
     "orderPlacedTitle": "Pedido enviado",
     "orderPlacedBody": "Tu pedido se envió a {supplier}.",
     "backToSuppliers": "Volver a proveedores",
-    "errOrder": "El pedido falló. Inténtalo de nuevo."
+    "errOrder": "El pedido falló. Inténtalo de nuevo.",
+    "myOrdersTitle": "Mis pedidos",
+    "myOrdersSubtitle": "Sigue tus pedidos a proveedores.",
+    "myOrdersEmpty": "Aún no hay pedidos.",
+    "myOrdersNav": "Mis pedidos",
+    "orderTo": "Pedido a {supplier}",
+    "actionCancel": "Cancelar",
+    "cancelConfirm": "¿Cancelar este pedido?"
   }
 }

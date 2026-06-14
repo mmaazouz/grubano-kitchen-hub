@@ -2434,7 +2434,16 @@
     "orderNotes": "Note",
     "orderTotal": "Total",
     "statusPlaced": "Placed",
-    "dashOrdersSubtitle": "Incoming orders from restaurateurs"
+    "dashOrdersSubtitle": "Incoming orders from restaurateurs",
+    "statusConfirmed": "Confirmed",
+    "statusPreparing": "Preparing",
+    "statusDelivered": "Delivered",
+    "statusCancelled": "Cancelled",
+    "statusDeclined": "Declined",
+    "actionConfirmed": "Confirm",
+    "actionDeclined": "Decline",
+    "actionPreparing": "Prepare",
+    "actionDelivered": "Mark delivered"
   },
   "marketplace": {
     "discoverTitle": "Suppliers",
@@ -2460,6 +2469,13 @@
     "orderPlacedTitle": "Order placed",
     "orderPlacedBody": "Your order was sent to {supplier}.",
     "backToSuppliers": "Back to suppliers",
-    "errOrder": "The order failed. Please try again."
+    "errOrder": "The order failed. Please try again.",
+    "myOrdersTitle": "My orders",
+    "myOrdersSubtitle": "Track your supplier orders.",
+    "myOrdersEmpty": "No orders yet.",
+    "myOrdersNav": "My orders",
+    "orderTo": "Order to {supplier}",
+    "actionCancel": "Cancel",
+    "cancelConfirm": "Cancel this order?"
   }
 }
