@@ -1,8 +1,10 @@
 'use client'
 
 import * as React from 'react'
+import { useLocale } from 'next-intl'
 import { Clock, Bike } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatEuros } from '@/lib/format-money'
 import { Badge } from './Badge'
 import { StarRating } from './StarRating'
 
@@ -20,7 +22,11 @@ export interface RestaurantCardProps extends Omit<React.HTMLAttributes<HTMLDivEl
   deliveryTime?: number
   deliveryFee?: number
   minOrder?: number
-  /** Currency symbol — default €. */
+  /**
+   * @deprecated The app is EUR; amounts format via lib/format-money using the
+   * ACTIVE LOCALE. This prop is IGNORED (a user's language never changes the
+   * currency — $/AED was a bug). Kept only for call-site compatibility.
+   */
   currency?: string
   /** Top-left ribbon, e.g. "Nouveau", "Promo -20%". */
   ribbon?: { label: string; tone?: 'primary' | 'success' | 'danger' | 'dark' }
@@ -117,6 +123,7 @@ function MetaRow({
   currency = '€',
   freeLabel = 'Gratuit',
 }: Pick<RestaurantCardProps, 'rating' | 'reviewCount' | 'deliveryTime' | 'deliveryFee' | 'currency' | 'freeLabel'>) {
+  const locale = useLocale()
   return (
     <div className="flex items-center gap-3 text-grubano-xs text-grubano-ink-muted">
       {typeof rating === 'number' && rating > 0 && (
@@ -131,7 +138,7 @@ function MetaRow({
       {typeof deliveryFee === 'number' && (
         <span className="inline-flex items-center gap-1 font-medium">
           <Bike size={12} />
-          {deliveryFee === 0 ? freeLabel : `${deliveryFee.toFixed(2).replace('.', ',')} ${currency}`}
+          {deliveryFee === 0 ? freeLabel : formatEuros(deliveryFee, locale)}
         </span>
       )}
     </div>
@@ -160,6 +167,7 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
   },
   ref,
 ) {
+  const locale = useLocale()
   const interactive = typeof onClick === 'function'
 
   const wrapperBase =
@@ -225,7 +233,7 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
           </div>
           {typeof minOrder === 'number' && minOrder > 0 && (
             <p className="text-grubano-xs text-grubano-ink-muted mt-1">
-              Min. {minOrder.toFixed(2).replace('.', ',')} {currency}
+              Min. {formatEuros(minOrder, locale)}
             </p>
           )}
         </div>

@@ -1,8 +1,10 @@
 'use client'
 
 import * as React from 'react'
+import { useLocale } from 'next-intl'
 import { Clock, MapPin, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatMoney, formatEuros } from '@/lib/format-money'
 import { Badge, type BadgeTone } from './Badge'
 import { PriceTag } from './PriceTag'
 
@@ -82,6 +84,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
   },
   ref,
 ) {
+  const locale = useLocale()
   const meta = STATUS_META[status]
   const interactive = typeof onClick === 'function'
   const formattedTime = formatTime(time)
@@ -131,7 +134,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
               </span>
               {typeof it.price === 'number' && (
                 <span className="font-medium tabular-nums">
-                  {(cents ? it.price / 100 : it.price).toFixed(2).replace('.', ',')} {currency ?? '€'}
+                  {cents ? formatMoney(it.price, locale) : formatEuros(it.price, locale)}
                 </span>
               )}
             </li>

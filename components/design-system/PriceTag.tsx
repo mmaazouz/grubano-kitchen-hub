@@ -1,7 +1,9 @@
 'use client'
 
 import * as React from 'react'
+import { useLocale } from 'next-intl'
 import { cn } from '@/lib/utils'
+import { formatMoney, formatEuros, formatAmount } from '@/lib/format-money'
 
 export type PriceSize = 'sm' | 'md' | 'lg' | 'xl'
 
@@ -13,11 +15,17 @@ const SIZES: Record<PriceSize, string> = {
 }
 
 export interface PriceTagProps extends React.HTMLAttributes<HTMLSpanElement> {
-  /** Final price in cents (avoids float issues) OR euros (auto-detected by < 1000 heuristic — pass cents to be safe). */
+  /** Final price in cents (avoids float issues) OR euros — pass `cents` to be safe. */
   amount: number
   /** Optional original price for strikethrough (cents or euros, same unit as `amount`). */
   originalAmount?: number
-  /** Currency symbol — default €. */
+  /**
+   * @deprecated The app is EUR; the currency symbol and its position follow the
+   * ACTIVE LOCALE via lib/format-money (single source of truth). This prop is
+   * IGNORED — kept only so existing call sites keep compiling. A user's language
+   * never changes the currency ($/AED was a bug); a real multi-currency would be
+   * driven by the market/merchant, not the UI language.
+   */
   currency?: string
   /** Treat `amount`/`originalAmount` as cents (divide by 100). Default: false (euros). */
   cents?: boolean
@@ -28,16 +36,11 @@ export interface PriceTagProps extends React.HTMLAttributes<HTMLSpanElement> {
   hideCurrency?: boolean
 }
 
-function format(value: number, cents: boolean, showDecimals: boolean): string {
-  const v = cents ? value / 100 : value
-  return showDecimals ? v.toFixed(2).replace('.', ',') : Math.round(v).toString()
-}
-
 export const PriceTag = React.forwardRef<HTMLSpanElement, PriceTagProps>(function PriceTag(
   {
     amount,
     originalAmount,
-    currency = '€',
+    currency: _currency, // deprecated — see PriceTagProps.currency; destructured out of ...rest
     cents = false,
     showDecimals = true,
     size = 'md',
@@ -47,8 +50,17 @@ export const PriceTag = React.forwardRef<HTMLSpanElement, PriceTagProps>(functio
   },
   ref,
 ) {
-  const hasDiscount =
-    typeof originalAmount === 'number' && originalAmount > amount
+  const locale = useLocale()
+  const opts = showDecimals ? undefined : { noDecimals: true }
+
+  // EUR everywhere, format (separator + symbol position) follows the active locale.
+  // hideCurrency → number only (no symbol); else full money string ("12,50 €" / "€12.50").
+  const fmt = (value: number): string => {
+    if (hideCurrency) return formatAmount(cents ? value / 100 : value, locale, opts)
+    return cents ? formatMoney(value, locale, opts) : formatEuros(value, locale, opts)
+  }
+
+  const hasDiscount = typeof originalAmount === 'number' && originalAmount > amount
 
   return (
     <span
@@ -58,14 +70,10 @@ export const PriceTag = React.forwardRef<HTMLSpanElement, PriceTagProps>(functio
     >
       {hasDiscount && (
         <span className="text-grubano-ink-faint font-medium line-through text-[0.85em]">
-          {format(originalAmount!, cents, showDecimals)}
-          {!hideCurrency && <span className="ml-0.5">{currency}</span>}
+          {fmt(originalAmount!)}
         </span>
       )}
-      <span className={cn(hasDiscount && 'text-grubano-primary')}>
-        {format(amount, cents, showDecimals)}
-        {!hideCurrency && <span className="ml-0.5">{currency}</span>}
-      </span>
+      <span className={cn(hasDiscount && 'text-grubano-primary')}>{fmt(amount)}</span>
     </span>
   )
 })
