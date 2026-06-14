@@ -1221,7 +1221,8 @@
       "histRefund": "إعادة احتساب النقاط",
       "histRefundOrder": "استرداد — الطلب {ref}",
       "ptsShort": "نقطة",
-      "seeMore": "عرض المزيد"
+      "seeMore": "عرض المزيد",
+      "menuBecomeCreator": "كن منشئًا أيضًا"
     },
     "auth": {
       "tabLogin": "تسجيل الدخول",

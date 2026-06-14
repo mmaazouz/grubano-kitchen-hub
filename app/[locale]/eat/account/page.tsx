@@ -6,7 +6,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import {
   User, MapPin, CreditCard, Tag, Bell, Settings, LogOut, ChevronRight,
-  Star, Package, Heart, MessageCircle, Shield, CircleHelp, Globe,
+  Star, Package, Heart, MessageCircle, Shield, CircleHelp, Globe, ChefHat,
 } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
 import { LanguageSwitcher } from '@/components/design-system'
@@ -72,6 +72,14 @@ export default function ProfileScreen() {
   }, [status])
 
   const MENU_ITEMS = [
+    // Phase 3 — multi-role cumul: a logged-in consumer can ALSO become a creator/
+    // influencer. Carries their email to pre-fill /creators/apply; the creator role
+    // is ADDED to this same account on approval (primary role + password untouched).
+    { icon: ChefHat, key: 'menuBecomeCreator', label: t('menuBecomeCreator'),
+      route: session?.user?.email
+        ? `/creators/apply?email=${encodeURIComponent(session.user.email)}`
+        : '/creators/apply',
+      color: '#F97316' },
     { icon: Package, key: 'menuOrders', label: t('menuOrders'), route: '/eat/account', color: '#F97316' },
     { icon: Heart, key: 'menuFavorites', label: t('menuFavorites'), route: '/eat/favorites', color: '#EF4444' },
     { icon: MapPin, key: 'menuAddresses', label: t('menuAddresses'), route: null, color: '#3B82F6' },

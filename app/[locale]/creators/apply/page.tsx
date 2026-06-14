@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2,
@@ -86,6 +86,16 @@ export default function CreatorsApplyPage() {
     instagram: '', tiktok: '', youtube: '', followers: '',
     dishConcepts: [{ ...EMPTY_CONCEPT }],
   })
+
+  // Phase 3 — a logged-in user arriving via "Devenir aussi créateur" carries their
+  // email in ?email= so the form is pre-filled (multi-role cumul: same account
+  // gains the creator role on approval). Read from the URL on mount — no
+  // useSearchParams (avoids a Suspense boundary); never overwrites a typed value.
+  useEffect(() => {
+    const email = new URLSearchParams(window.location.search).get('email')
+    if (email) setForm(f => (f.email ? f : { ...f, email }))
+  }, [])
+
   // Mission 2 — role choice (cumulable, at least one). Defaults: BOTH.
   const [roles, setRoles] = useState<{ chef: boolean; influencer: boolean }>({ chef: true, influencer: true })
 

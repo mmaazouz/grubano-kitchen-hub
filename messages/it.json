@@ -1221,7 +1221,8 @@
       "histRefund": "Punti riaccreditati",
       "histRefundOrder": "Rimborso — ordine {ref}",
       "ptsShort": "pts",
-      "seeMore": "Vedi altro"
+      "seeMore": "Vedi altro",
+      "menuBecomeCreator": "Diventa anche creator"
     },
     "auth": {
       "tabLogin": "Accedi",

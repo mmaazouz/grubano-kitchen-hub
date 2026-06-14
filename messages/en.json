@@ -1221,7 +1221,8 @@
       "histRefund": "Points re-credited",
       "histRefundOrder": "Refund — order {ref}",
       "ptsShort": "pts",
-      "seeMore": "See more"
+      "seeMore": "See more",
+      "menuBecomeCreator": "Also become a creator"
     },
     "auth": {
       "tabLogin": "Login",

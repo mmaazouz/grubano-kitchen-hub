@@ -1221,7 +1221,8 @@
       "histRefund": "Points re-crédités",
       "histRefundOrder": "Remboursement — commande {ref}",
       "ptsShort": "pts",
-      "seeMore": "Voir plus"
+      "seeMore": "Voir plus",
+      "menuBecomeCreator": "Devenir aussi créateur"
     },
     "auth": {
       "tabLogin": "Connexion",
