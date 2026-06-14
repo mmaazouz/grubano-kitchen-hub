@@ -67,3 +67,46 @@ export function buildOrderLines(
   const totalCents = lines.reduce((s, l) => s + l.lineTotalCents, 0)
   return { ok: true, lines, totalCents }
 }
+
+// ── Supply order state machine (Slice 3) ─────────────────────────────────────
+// `status` is a free String column → these VALUES need no schema migration.
+// FLOW: placed → confirmed → preparing → delivered (the supplier advances).
+// Branches: the RESTO may CANCEL while still `placed` (before confirmation); the
+// SUPPLIER may DECLINE while still `placed`. delivered / cancelled / declined are
+// TERMINAL. Only VALID transitions are allowed (server + UI).
+
+export type SupplyOrderStatus =
+  | 'placed' | 'confirmed' | 'preparing' | 'delivered' | 'cancelled' | 'declined'
+
+export const SUPPLY_ORDER_STATUSES: readonly SupplyOrderStatus[] =
+  ['placed', 'confirmed', 'preparing', 'delivered', 'cancelled', 'declined'] as const
+
+// Transitions the SUPPLIER (seller) may perform, keyed by the current status.
+const SUPPLIER_TRANSITIONS: Record<string, SupplyOrderStatus[]> = {
+  placed:    ['confirmed', 'declined'],
+  confirmed: ['preparing'],
+  preparing: ['delivered'],
+}
+
+// Transitions the OPERATOR (resto buyer) may perform — cancel only before confirmation.
+const OPERATOR_TRANSITIONS: Record<string, SupplyOrderStatus[]> = {
+  placed: ['cancelled'],
+}
+
+export type SupplyActor = 'supplier' | 'operator'
+
+/** The statuses `actor` may move an order to FROM its current status. */
+export function allowedTransitions(actor: SupplyActor, from: string): SupplyOrderStatus[] {
+  const map = actor === 'supplier' ? SUPPLIER_TRANSITIONS : OPERATOR_TRANSITIONS
+  return map[from] ?? []
+}
+
+/** True iff `actor` may move an order from `from` → `to` (the only gate). */
+export function canTransition(actor: SupplyActor, from: string, to: string): boolean {
+  return allowedTransitions(actor, from).includes(to as SupplyOrderStatus)
+}
+
+/** True iff the resto may still cancel an order in `from` (only while `placed`). */
+export function canRestoCancel(from: string): boolean {
+  return canTransition('operator', from, 'cancelled')
+}
