@@ -44,7 +44,7 @@ node scripts/notion-sync.js write-file <your-agent-id> /tmp/report.md
 node scripts/notion-sync.js write inbox "[AGENT X] [INFO/DECISION/BLOCKER] short message. Action required: yes/no"
 # OR (recommended for any non-trivial report):
 node scripts/notion-sync.js write-inbox-file /tmp/inbox-report.md
-# Inbox page ID: 37ffd2c9-8146-81da-867a-e5b1882c8e94  (📥 Inbox Agent 0 v8)
+# Inbox page ID: 37ffd2c9-8146-81d9-b80b-dc038617c533  (📥 Inbox Agent 0 v9)
 
 # 3. ALWAYS check the LAST line of stdout — the script does a read-back:
 #       ✅ Inbox mise à jour, entrée confirmée présente            → success
@@ -76,7 +76,7 @@ agent1: 36dfd2c9-8146-8143-9d64-f7efde1029e3
 agent2: 36dfd2c9-8146-8106-8049-cc92a50a9112
 agent3: 36dfd2c9-8146-81b4-91ec-ecdc8013bad0
 agent4: 36dfd2c9-8146-8132-9fd0-f53fc6e12226
-inbox:  37ffd2c9-8146-81da-867a-e5b1882c8e94   (v8 — archives READ-ONLY : v7 37ffd2c9-8146-815f-adae-de59909bc765, v6 37efd2c9-8146-814a-aaed-ef6112fa41be, v5 37dfd2c9-8146-817f-8920-c5ad7fe80eae, v4 37dfd2c9-8146-81ab-8cdf-cb8c26038bfc, v3 37cfd2c9-8146-8137-9889-ec75eea3b2e2, v2 37cfd2c9-8146-81d8-860e-c19723e09b15, v1 36efd2c9-8146-8195-a65a-d146cfed0642)
+inbox:  37ffd2c9-8146-81d9-b80b-dc038617c533   (v9 — archives READ-ONLY : v8 37ffd2c9-8146-81da-867a-e5b1882c8e94, v7 37ffd2c9-8146-815f-adae-de59909bc765, v6 37efd2c9-8146-814a-aaed-ef6112fa41be, v5 37dfd2c9-8146-817f-8920-c5ad7fe80eae, v4 37dfd2c9-8146-81ab-8cdf-cb8c26038bfc, v3 37cfd2c9-8146-8137-9889-ec75eea3b2e2, v2 37cfd2c9-8146-81d8-860e-c19723e09b15, v1 36efd2c9-8146-8195-a65a-d146cfed0642)
 ```
 
 ---
