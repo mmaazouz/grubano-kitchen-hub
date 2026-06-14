@@ -17,7 +17,11 @@ const applySchema = z.object({
   tiktok:       z.string().optional(),
   youtube:      z.string().optional(),
   followers:    z.number().int().min(0).default(0),
-  dishConcepts: z.array(dishConceptSchema).min(1).max(3),
+  // Mission 14 — the dish-concepts portfolio is CHEF-only. The blanket
+  // `.min(1)` is gone (it blocked a pure influencer who submits zero concepts);
+  // the per-role minimum is re-enforced in the superRefine below, so the CHEF
+  // contract is byte-for-byte unchanged (still rejects an empty portfolio).
+  dishConcepts: z.array(dishConceptSchema).max(3).default([]),
   // Mission 2 — role choice (chef/influencer, cumulable, both default true).
   // VALIDATED here for contract clarity; the durable storage point is the
   // Creator upsert at VERIFY time (the wizard forwards the same choice there —
@@ -27,6 +31,18 @@ const applySchema = z.object({
     chef:       z.boolean().default(true),
     influencer: z.boolean().default(true),
   }).optional(),
+}).superRefine((data, ctx) => {
+  // Mission 14 — at least one complete dish concept is required UNLESS the
+  // candidate is a pure influencer (influencer ✔ / chef ✘). Chef, chef+
+  // influencer, and any legacy client that omits `roles` all keep the ≥1 rule.
+  const influencerOnly = data.roles?.influencer === true && data.roles?.chef === false
+  if (!influencerOnly && data.dishConcepts.length < 1) {
+    ctx.addIssue({
+      code:    z.ZodIssueCode.custom,
+      path:    ['dishConcepts'],
+      message: 'Au moins un concept de plat est requis.',
+    })
+  }
 })
 
 export async function POST(req: Request) {

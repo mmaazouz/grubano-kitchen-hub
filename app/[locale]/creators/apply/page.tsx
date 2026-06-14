@@ -127,10 +127,24 @@ export default function CreatorsApplyPage() {
     setForm(f => ({ ...f, dishConcepts: f.dishConcepts.filter((_, idx) => idx !== i) }))
   }
 
+  // ── Step model (Mission 14) ───────────────────────────────────────────────────
+  // The "portfolio" (dish-concepts) step is CHEF-only. A PURE influencer
+  // (influencer on / chef off) never sees it and is never blocked by it, so they
+  // can finish the application -> isInfluencer=true, isChef=false. The role cards
+  // live ONLY on the "profile" step (always index 0), so toggling a role can
+  // never desync the numeric `step` against this array. Chef and chef+influencer
+  // keep the exact three-step flow.
+  const isInfluencerOnly = roles.influencer && !roles.chef
+  const STEP_KEYS: Array<'profile' | 'portfolio' | 'confirm'> = isInfluencerOnly
+    ? ['profile', 'confirm']
+    : ['profile', 'portfolio', 'confirm']
+  const currentKey = STEP_KEYS[step] ?? 'profile'
+  const totalSteps = STEP_KEYS.length
+
   function canProceed(): boolean {
-    if (step === 0) return !!form.name && !!form.email && form.bio.length >= 10
-    if (step === 1) return form.dishConcepts.some(c => c.name && c.description && c.cuisineType)
-    return true
+    if (currentKey === 'profile')   return !!form.name && !!form.email && form.bio.length >= 10
+    if (currentKey === 'portfolio') return form.dishConcepts.some(c => c.name && c.description && c.cuisineType)
+    return true // confirm
   }
 
   // ── Submit form ─────────────────────────────────────────────────────────────
@@ -366,7 +380,12 @@ export default function CreatorsApplyPage() {
   // FORM (steps 0–2)
   // ══════════════════════════════════════════════════════════════════════════════
 
-  const STEP_LABELS = [t('stepProfile'), t('stepPortfolio'), t('stepConfirm')]
+  const LABEL_BY_KEY: Record<'profile' | 'portfolio' | 'confirm', string> = {
+    profile:   t('stepProfile'),
+    portfolio: t('stepPortfolio'),
+    confirm:   t('stepConfirm'),
+  }
+  const STEP_LABELS = STEP_KEYS.map(k => LABEL_BY_KEY[k])
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
@@ -396,8 +415,8 @@ export default function CreatorsApplyPage() {
       <Card elevation="sm" padding="md" className="mb-4">
         <h2 className="font-bold mb-4 text-sm">{STEP_LABELS[step]}</h2>
 
-        {/* Step 0 — Profile */}
-        {step === 0 && (
+        {/* Profile */}
+        {currentKey === 'profile' && (
           <div className="space-y-3">
             {/* Mission 2 — role choice: two CUMULABLE cards, at least one
                 checked (toggleRole refuses to clear the last). Default: BOTH. */}
@@ -492,8 +511,8 @@ export default function CreatorsApplyPage() {
           </div>
         )}
 
-        {/* Step 1 — Portfolio */}
-        {step === 1 && (
+        {/* Portfolio — CHEF-only (skipped for a pure influencer) */}
+        {currentKey === 'portfolio' && (
           <div className="space-y-4">
             <p className="text-xs text-grubano-ink-muted">{t('portfolioHint')}</p>
             {form.dishConcepts.map((concept, i) => (
@@ -550,8 +569,8 @@ export default function CreatorsApplyPage() {
           </div>
         )}
 
-        {/* Step 2 — Confirmation */}
-        {step === 2 && (
+        {/* Confirmation */}
+        {currentKey === 'confirm' && (
           <div className="space-y-1">
             {([
               { label: t('summaryName'),      value: form.name },
@@ -564,11 +583,12 @@ export default function CreatorsApplyPage() {
                 label: t('summaryNetworks'),
                 value: [form.instagram, form.tiktok, form.youtube].filter(Boolean).join(', ') || t('none'),
               },
-              {
+              // Portfolio summary only when the chef step was actually shown.
+              ...(isInfluencerOnly ? [] : [{
                 label: t('stepPortfolio'),
                 value: t('summaryConcepts', { count: form.dishConcepts.filter(c => c.name).length }),
-              },
-            ] as const).map(({ label, value }) => (
+              }]),
+            ]).map(({ label, value }) => (
               <div key={label} className="flex justify-between py-2 border-b border-grubano-border last:border-0">
                 <span className="text-xs text-grubano-ink-muted">{label}</span>
                 <span className="text-xs font-semibold text-right max-w-[60%] truncate">{value}</span>
@@ -592,7 +612,7 @@ export default function CreatorsApplyPage() {
             {t('back')}
           </Button>
         )}
-        {step < 2 ? (
+        {step < totalSteps - 1 ? (
           <Button
             variant="primary"
             size="md"
