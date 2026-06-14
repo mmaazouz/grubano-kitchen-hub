@@ -993,7 +993,16 @@
       "badgeFiveHundredEuros": "500 € gagnés",
       "leaderboardTitle": "Classement (90 j)",
       "leaderboardEmpty": "Le classement s’affiche dès les premières ventes.",
-      "leaderboardMe": "Toi"
+      "leaderboardMe": "Toi",
+      "oppTitle": "Opportunités du jour",
+      "oppDesc": "Ce qu’il vaut le coup de promouvoir aujourd’hui.",
+      "oppEstGain": "~{amount} / commande (est.)",
+      "oppGenerate": "Générer le contenu",
+      "oppEmpty": "Pas encore d’opportunités — reviens bientôt.",
+      "oppReasonCampaign": "Campagne de {creator} — jusqu’à −{pct} %",
+      "oppReasonPromo": "En promo en ce moment — −{pct} %",
+      "oppReasonConverted": "Tes clients adorent ce resto",
+      "oppReasonPopular": "Populaire et bien noté"
     }
   },
   "eat": {

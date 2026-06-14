@@ -993,7 +993,16 @@
       "badgeFiveHundredEuros": "500 € مكتسبة",
       "leaderboardTitle": "الترتيب (90 يومًا)",
       "leaderboardEmpty": "يظهر الترتيب مع أول عمليات البيع.",
-      "leaderboardMe": "أنت"
+      "leaderboardMe": "أنت",
+      "oppTitle": "فرص اليوم",
+      "oppDesc": "ما يستحق الترويج له اليوم.",
+      "oppEstGain": "~{amount} / طلب (تقديري)",
+      "oppGenerate": "إنشاء المحتوى",
+      "oppEmpty": "لا فرص بعد — عُد قريبًا.",
+      "oppReasonCampaign": "حملة {creator} — حتى −{pct}٪",
+      "oppReasonPromo": "في عرض ترويجي الآن — −{pct}٪",
+      "oppReasonConverted": "عملاؤك يحبّون هذا المطعم",
+      "oppReasonPopular": "شائع وحاصل على تقييم جيد"
     }
   },
   "eat": {

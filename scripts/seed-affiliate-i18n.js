@@ -40,6 +40,10 @@ const AFF = {
     streakTitle: 'Série', streakWeeks: '{count, plural, one {# semaine} other {# semaines}} d’affilée', streakNone: 'Pas de série en cours',
     badgesTitle: 'Badges', badgeFirstSale: '1re vente', badgeTenCustomers: '10 clients', badgeHundredEuros: '100 € gagnés', badgeFiveHundredEuros: '500 € gagnés',
     leaderboardTitle: 'Classement (90 j)', leaderboardEmpty: 'Le classement s’affiche dès les premières ventes.', leaderboardMe: 'Toi',
+    oppTitle: 'Opportunités du jour', oppDesc: 'Ce qu’il vaut le coup de promouvoir aujourd’hui.', oppEstGain: '~{amount} / commande (est.)',
+    oppGenerate: 'Générer le contenu', oppEmpty: 'Pas encore d’opportunités — reviens bientôt.',
+    oppReasonCampaign: 'Campagne de {creator} — jusqu’à −{pct} %', oppReasonPromo: 'En promo en ce moment — −{pct} %',
+    oppReasonConverted: 'Tes clients adorent ce resto', oppReasonPopular: 'Populaire et bien noté',
   },
   en: {
     noProfile: 'Creator profile not found.', errLoad: "Couldn't load your affiliation.", loading: 'Loading…', retry: 'Retry',
@@ -71,6 +75,10 @@ const AFF = {
     streakTitle: 'Streak', streakWeeks: '{count, plural, one {# week} other {# weeks}} in a row', streakNone: 'No active streak',
     badgesTitle: 'Badges', badgeFirstSale: 'First sale', badgeTenCustomers: '10 customers', badgeHundredEuros: '€100 earned', badgeFiveHundredEuros: '€500 earned',
     leaderboardTitle: 'Leaderboard (90 d)', leaderboardEmpty: 'The leaderboard appears with the first sales.', leaderboardMe: 'You',
+    oppTitle: 'Today’s opportunities', oppDesc: 'What’s worth promoting today.', oppEstGain: '~{amount} / order (est.)',
+    oppGenerate: 'Generate content', oppEmpty: 'No opportunities yet — check back soon.',
+    oppReasonCampaign: 'Campaign by {creator} — up to −{pct}%', oppReasonPromo: 'On promo right now — −{pct}%',
+    oppReasonConverted: 'Your customers love this place', oppReasonPopular: 'Popular and well rated',
   },
   es: {
     noProfile: 'Perfil de creador no encontrado.', errLoad: 'No se pudo cargar tu afiliación.', loading: 'Cargando…', retry: 'Reintentar',
@@ -102,6 +110,10 @@ const AFF = {
     streakTitle: 'Racha', streakWeeks: '{count, plural, one {# semana} other {# semanas}} seguidas', streakNone: 'Sin racha activa',
     badgesTitle: 'Insignias', badgeFirstSale: 'Primera venta', badgeTenCustomers: '10 clientes', badgeHundredEuros: '100 € ganados', badgeFiveHundredEuros: '500 € ganados',
     leaderboardTitle: 'Clasificación (90 d)', leaderboardEmpty: 'La clasificación aparece con las primeras ventas.', leaderboardMe: 'Tú',
+    oppTitle: 'Oportunidades del día', oppDesc: 'Lo que vale la pena promocionar hoy.', oppEstGain: '~{amount} / pedido (est.)',
+    oppGenerate: 'Generar contenido', oppEmpty: 'Aún no hay oportunidades — vuelve pronto.',
+    oppReasonCampaign: 'Campaña de {creator} — hasta −{pct} %', oppReasonPromo: 'En promoción ahora — −{pct} %',
+    oppReasonConverted: 'A tus clientes les encanta', oppReasonPopular: 'Popular y bien valorado',
   },
   it: {
     noProfile: 'Profilo creator non trovato.', errLoad: 'Impossibile caricare la tua affiliazione.', loading: 'Caricamento…', retry: 'Riprova',
@@ -133,6 +145,10 @@ const AFF = {
     streakTitle: 'Serie', streakWeeks: '{count, plural, one {# settimana} other {# settimane}} di fila', streakNone: 'Nessuna serie attiva',
     badgesTitle: 'Badge', badgeFirstSale: 'Prima vendita', badgeTenCustomers: '10 clienti', badgeHundredEuros: '100 € guadagnati', badgeFiveHundredEuros: '500 € guadagnati',
     leaderboardTitle: 'Classifica (90 g)', leaderboardEmpty: 'La classifica appare con le prime vendite.', leaderboardMe: 'Tu',
+    oppTitle: 'Opportunità del giorno', oppDesc: 'Cosa vale la pena promuovere oggi.', oppEstGain: '~{amount} / ordine (stima)',
+    oppGenerate: 'Genera contenuto', oppEmpty: 'Ancora nessuna opportunità — torna presto.',
+    oppReasonCampaign: 'Campagna di {creator} — fino a −{pct} %', oppReasonPromo: 'In promo ora — −{pct} %',
+    oppReasonConverted: 'I tuoi clienti lo adorano', oppReasonPopular: 'Popolare e ben valutato',
   },
   ar: {
     noProfile: 'لم يتم العثور على ملف المبدع.', errLoad: 'تعذّر تحميل إحالاتك.', loading: 'جارٍ التحميل…', retry: 'إعادة المحاولة',
@@ -164,6 +180,10 @@ const AFF = {
     streakTitle: 'سلسلة', streakWeeks: '{count, plural, one {أسبوع} other {# أسابيع}} متتالية', streakNone: 'لا توجد سلسلة حالية',
     badgesTitle: 'الشارات', badgeFirstSale: 'أول عملية بيع', badgeTenCustomers: '10 عملاء', badgeHundredEuros: '100 € مكتسبة', badgeFiveHundredEuros: '500 € مكتسبة',
     leaderboardTitle: 'الترتيب (90 يومًا)', leaderboardEmpty: 'يظهر الترتيب مع أول عمليات البيع.', leaderboardMe: 'أنت',
+    oppTitle: 'فرص اليوم', oppDesc: 'ما يستحق الترويج له اليوم.', oppEstGain: '~{amount} / طلب (تقديري)',
+    oppGenerate: 'إنشاء المحتوى', oppEmpty: 'لا فرص بعد — عُد قريبًا.',
+    oppReasonCampaign: 'حملة {creator} — حتى −{pct}٪', oppReasonPromo: 'في عرض ترويجي الآن — −{pct}٪',
+    oppReasonConverted: 'عملاؤك يحبّون هذا المطعم', oppReasonPopular: 'شائع وحاصل على تقييم جيد',
   },
 }
 

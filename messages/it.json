@@ -993,7 +993,16 @@
       "badgeFiveHundredEuros": "500 € guadagnati",
       "leaderboardTitle": "Classifica (90 g)",
       "leaderboardEmpty": "La classifica appare con le prime vendite.",
-      "leaderboardMe": "Tu"
+      "leaderboardMe": "Tu",
+      "oppTitle": "Opportunità del giorno",
+      "oppDesc": "Cosa vale la pena promuovere oggi.",
+      "oppEstGain": "~{amount} / ordine (stima)",
+      "oppGenerate": "Genera contenuto",
+      "oppEmpty": "Ancora nessuna opportunità — torna presto.",
+      "oppReasonCampaign": "Campagna di {creator} — fino a −{pct} %",
+      "oppReasonPromo": "In promo ora — −{pct} %",
+      "oppReasonConverted": "I tuoi clienti lo adorano",
+      "oppReasonPopular": "Popolare e ben valutato"
     }
   },
   "eat": {

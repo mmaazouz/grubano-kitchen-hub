@@ -993,7 +993,16 @@
       "badgeFiveHundredEuros": "€500 earned",
       "leaderboardTitle": "Leaderboard (90 d)",
       "leaderboardEmpty": "The leaderboard appears with the first sales.",
-      "leaderboardMe": "You"
+      "leaderboardMe": "You",
+      "oppTitle": "Today’s opportunities",
+      "oppDesc": "What’s worth promoting today.",
+      "oppEstGain": "~{amount} / order (est.)",
+      "oppGenerate": "Generate content",
+      "oppEmpty": "No opportunities yet — check back soon.",
+      "oppReasonCampaign": "Campaign by {creator} — up to −{pct}%",
+      "oppReasonPromo": "On promo right now — −{pct}%",
+      "oppReasonConverted": "Your customers love this place",
+      "oppReasonPopular": "Popular and well rated"
     }
   },
   "eat": {

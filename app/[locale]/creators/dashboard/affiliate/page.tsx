@@ -25,7 +25,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import {
   Megaphone, TrendingUp, TrendingDown, Users, ShoppingBag, Copy, Check, QrCode,
   Loader2, AlertCircle, Landmark, Activity, Sparkles, BarChart3, Award, Link2, Store,
-  Trophy, Flame, Medal,
+  Trophy, Flame, Medal, Lightbulb, Wand2,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
@@ -51,6 +51,16 @@ interface AffiliatePayload {
   leaderboard: null | { top: { rank: number; name: string; tierKey: string; isMe: boolean }[]; myRank: number | null; total: number }
   commissionPct: number | null
 }
+interface Opportunity {
+  kind: string
+  restaurantId: string
+  restaurantName: string
+  dishId: string | null
+  dishName: string | null
+  reasonKey: string
+  reasonParams?: Record<string, string | number>
+  estimatedGainCents: number
+}
 
 export default function AffiliateDashboardPage() {
   const t = useTranslations('creators.affiliate')
@@ -64,6 +74,10 @@ export default function AffiliateDashboardPage() {
   // Deep-link generator: a small restaurant picker (public list, read-only).
   const [restos, setRestos]   = useState<{ id: string; name: string }[]>([])
   const [restoId, setRestoId] = useState('')
+  // Slice 2d — « Opportunités du jour » (read-only brief) + the studio preset it
+  // fills when the influencer clicks « Générer le contenu » on an opportunity.
+  const [opps, setOpps] = useState<Opportunity[] | null>(null)
+  const [studioPreset, setStudioPreset] = useState<{ restaurantId: string; dishId?: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -80,6 +94,16 @@ export default function AffiliateDashboardPage() {
   }, [t])
 
   useEffect(() => { load() }, [load])
+
+  // Opportunities / brief du jour (Slice 2d) — best-effort, read-only heuristic.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/creator/affiliate-opportunities', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setOpps(d && Array.isArray(d.opportunities) ? d.opportunities : []) })
+      .catch(() => { if (!cancelled) setOpps([]) })
+    return () => { cancelled = true }
+  }, [])
 
   // Public restaurant list for the deep-link generator (best-effort, read-only).
   useEffect(() => {
@@ -475,9 +499,38 @@ export default function AffiliateDashboardPage() {
         </section>
       )}
 
-      {/* ── STUDIO DE CONTENU IA (Slice 2b) — replaces the « Studio (bientôt) »
-          placeholder: pick a target → AI captions + a shareable card. ──────── */}
-      <AffiliateStudio restos={restos} />
+      {/* ── OPPORTUNITÉS / BRIEF DU JOUR (Slice 2d) — heuristic, READ-ONLY: what's
+          worth promoting today. « Générer le contenu » pre-fills the studio. ── */}
+      {opps !== null && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Lightbulb size={16} className="text-grubano-primary" />
+            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('oppTitle')}</h2>
+          </div>
+          <p className="text-[12px] text-grubano-ink-muted">{t('oppDesc')}</p>
+          {opps.length === 0 ? (
+            <p className="rounded-grubano-md border border-dashed border-grubano-border px-3 py-3 text-center text-[12px] text-grubano-ink-muted">{t('oppEmpty')}</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {opps.map((o) => (
+                <Card key={`${o.kind}-${o.restaurantId}`} elevation="sm" padding="md" className="flex flex-col">
+                  <p className="truncate text-[13px] font-bold text-grubano-ink">{o.dishName ?? o.restaurantName}</p>
+                  {o.dishName && <p className="truncate text-[11px] text-grubano-ink-faint">{o.restaurantName}</p>}
+                  <p className="mt-1 text-[11px] font-medium text-grubano-primary">{t(o.reasonKey, o.reasonParams ?? {})}</p>
+                  <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{t('oppEstGain', { amount: fmtCents(o.estimatedGainCents) })}</p>
+                  <button type="button" onClick={() => setStudioPreset({ restaurantId: o.restaurantId, dishId: o.dishId ?? undefined })}
+                    className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-grubano-lg bg-grubano-primary px-3 py-1.5 text-[11px] font-bold text-white active:scale-[0.99]">
+                    <Wand2 size={12} /> {t('oppGenerate')}
+                  </button>
+                </Card>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── STUDIO DE CONTENU IA (Slice 2b) — pre-fillable from an opportunity. ─ */}
+      <AffiliateStudio restos={restos} preset={studioPreset} onPresetApplied={() => setStudioPreset(null)} />
 
       {/* ── Placeholder « bientôt » (Performance/clicks — needs click tracking,
           a future infra slice). Tiers & Studio are now REAL above. ─────────── */}

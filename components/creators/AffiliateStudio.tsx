@@ -8,7 +8,7 @@
  * READ-ONLY). Clean idle / loading / error / rate-limited states.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Wand2, Loader2, Copy, Check, AlertCircle } from 'lucide-react'
 import { Card } from '@/components/design-system'
@@ -22,7 +22,11 @@ interface GenResult {
   target:   { restaurantName: string; dishName: string | null; dishPrice: number | null; photo: string | null }
 }
 
-export default function AffiliateStudio({ restos }: { restos: { id: string; name: string }[] }) {
+export default function AffiliateStudio({ restos, preset, onPresetApplied }: {
+  restos: { id: string; name: string }[]
+  preset?: { restaurantId: string; dishId?: string } | null
+  onPresetApplied?: () => void
+}) {
   const t = useTranslations('creators.affiliate')
   const locale = useLocale()
 
@@ -33,6 +37,10 @@ export default function AffiliateStudio({ restos }: { restos: { id: string; name
   const [error, setError]     = useState<string | null>(null)
   const [result, setResult]   = useState<GenResult | null>(null)
   const [copied, setCopied]   = useState<number | null>(null)
+  // A preset dish is applied only AFTER its menu loads (changing the resto resets
+  // the dish below). rootRef lets a preset scroll the studio into view.
+  const pendingDishRef = useRef<string | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
 
   // Load the chosen restaurant's dishes (optional finer target). Read-only.
   useEffect(() => {
@@ -44,11 +52,28 @@ export default function AffiliateStudio({ restos }: { restos: { id: string; name
       .then((d) => {
         if (cancelled || !d || !Array.isArray(d.menu)) return
         const items = d.menu.flatMap((c: { items?: { id: string; name: string; price: number }[] }) => c.items ?? [])
-        setDishes(items.filter((x: { id?: string }) => x && x.id).map((x: { id: string; name: string; price: number }) => ({ id: x.id, name: x.name, price: x.price })))
+        const list = items.filter((x: { id?: string }) => x && x.id).map((x: { id: string; name: string; price: number }) => ({ id: x.id, name: x.name, price: x.price }))
+        setDishes(list)
+        // Apply a pending preset dish now that the menu is available.
+        if (pendingDishRef.current && list.some((d: { id: string }) => d.id === pendingDishRef.current)) {
+          setDishId(pendingDishRef.current)
+        }
+        pendingDishRef.current = null
       })
       .catch(() => { /* dish picker stays empty */ })
     return () => { cancelled = true }
   }, [restoId])
+
+  // Pre-fill from an « Opportunité » click (Slice 2d): set the resto (its menu
+  // load applies the pending dish), scroll into view, then clear the parent preset.
+  useEffect(() => {
+    if (!preset?.restaurantId) return
+    pendingDishRef.current = preset.dishId ?? null
+    setRestoId(preset.restaurantId)
+    rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    onPresetApplied?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset?.restaurantId, preset?.dishId])
 
   async function generate() {
     if (!restoId || loading) return
@@ -82,6 +107,7 @@ export default function AffiliateStudio({ restos }: { restos: { id: string; name
         : tone === 'storytelling' ? t('toneStorytelling') : tone
 
   return (
+    <div ref={rootRef}>
     <Card elevation="sm" padding="md">
       <div className="mb-2 flex items-center gap-2">
         <Wand2 size={14} className="text-grubano-primary" />
@@ -151,5 +177,6 @@ export default function AffiliateStudio({ restos }: { restos: { id: string; name
         </div>
       )}
     </Card>
+    </div>
   )
 }
