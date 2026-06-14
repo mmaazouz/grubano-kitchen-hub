@@ -20,8 +20,14 @@ const INTL_LOCALE: Record<string, string> = {
   ar: 'ar-MA',
 }
 
+// Resolve to a FULL BCP-47 tag from the app's SUPPORTED locales only. Any
+// unknown/unsupported locale falls back to 'fr-FR' — DETERMINISTIC across
+// environments. We must NEVER pass a raw, unvalidated locale to Intl: for an
+// unknown tag (e.g. 'zz') Intl's own fallback is ICU/Node-version dependent
+// (fr-FR on one box, en-GB on another) → "works on my machine". Forcing the
+// fr-FR fallback in CODE guarantees "12,50 €" everywhere (marketplace = FR).
 function tag(locale: string): string {
-  return INTL_LOCALE[locale] ?? locale ?? 'fr-FR'
+  return INTL_LOCALE[locale] ?? 'fr-FR'
 }
 
 export interface MoneyOpts {
