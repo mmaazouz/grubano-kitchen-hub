@@ -69,6 +69,10 @@ export async function middleware(request: NextRequest) {
     // (the core attribution case) was bounced to /login BEFORE the cookie
     // dropped. Additive fix — the /ref handler logic itself is untouched.
     restPath === '/ref' || restPath.startsWith('/ref/') ||
+    // /auth/magic is the PUBLIC passwordless sign-in page (Phase 0 auth bridge):
+    // a visitor with no session clicks an email link here to authenticate. Scoped
+    // to the EXACT path (not /auth/*) so a future /auth/<protected> stays gated.
+    restPath === '/auth/magic' ||
     restPath.startsWith('/api/auth') ||
     // Everything under /franchise and /creators is public EXCEPT the /dashboard
     // sub-routes (landing pages, /apply, etc. stay open to all).
