@@ -1,5 +1,20 @@
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import { addRoleToOperator } from '@/lib/operator-roles'
+
+// ── Session-scoped supplier resolver (Slice 1, Agent 14) ──────────────────────
+// The ONE place catalogue routes resolve "who am I" → their own SupplierProfile,
+// from the SESSION email only (never a client-supplied id). Returns null when the
+// caller is not a supplier, so a route can never touch another supplier's data.
+export async function callerSupplierProfile(): Promise<{ id: string; status: string } | null> {
+  const session = await getServerSession(authOptions)
+  const email = session?.user?.email
+  if (!email) return null
+  return prisma.supplierProfile
+    .findUnique({ where: { email }, select: { id: true, status: true } })
+    .catch(() => null)
+}
 
 // ── Supplier auth bridge (B2B marketplace Slice 0, Agent 14) ──────────────────
 //
