@@ -22,6 +22,19 @@ describe('spacesForRoles', () => {
     expect(spacesForRoles(['creator']).map((s) => s.href)).toEqual(['/creators/dashboard'])
     expect(spacesForRoles(['consumer']).map((s) => s.href)).toEqual(['/eat'])
     expect(spacesForRoles(['franchise']).map((s) => s.href)).toEqual(['/franchise'])
+    expect(spacesForRoles(['supplier']).map((s) => s.href)).toEqual(['/supplier/dashboard'])
+  })
+
+  it('multi-role {restaurant, supplier} → both spaces (supplier space included)', () => {
+    const hrefs = spacesForRoles(['restaurant', 'supplier']).map((s) => s.href)
+    expect(hrefs).toContain('/dashboard')
+    expect(hrefs).toContain('/supplier/dashboard')
+    expect(hrefs).toHaveLength(2)
+  })
+
+  it('never includes the supplier space for a non-supplier', () => {
+    expect(spacesForRoles(['restaurant']).some((s) => s.key === 'supplier')).toBe(false)
+    expect(spacesForRoles(['consumer', 'creator']).some((s) => s.key === 'supplier')).toBe(false)
   })
 
   it('multi-role {consumer, creator} → both spaces, NO restaurant', () => {

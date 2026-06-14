@@ -227,6 +227,58 @@ describe('middleware — operator FLAT routes gate (security hardening)', () => 
   })
 })
 
+describe('middleware — B2B supplier space (Slice 0) + singular/plural non-regression', () => {
+  it('keeps the /supplier landing public for every role', async () => {
+    for (const role of ['consumer', 'restaurant', 'creator', 'supplier']) {
+      getTokenMock.mockReset(); asRole(role)
+      expect(passed(await middleware(reqFor('/fr/supplier'))), role).toBe(true)
+    }
+  })
+
+  it('keeps /supplier/register public (self-serve signup) for a consumer', async () => {
+    asRole('consumer')
+    expect(passed(await middleware(reqFor('/fr/supplier/register')))).toBe(true)
+  })
+
+  it('lets a supplier into /supplier/dashboard', async () => {
+    asRole('supplier')
+    expect(passed(await middleware(reqFor('/fr/supplier/dashboard')))).toBe(true)
+  })
+
+  it('lets an admin and a multi-role {restaurant, supplier} into /supplier/dashboard', async () => {
+    asRole('admin')
+    expect(passed(await middleware(reqFor('/fr/supplier/dashboard')))).toBe(true)
+    getTokenMock.mockReset(); asRoles(['restaurant', 'supplier'])
+    expect(passed(await middleware(reqFor('/fr/supplier/dashboard')))).toBe(true)
+  })
+
+  it('redirects a non-supplier off /supplier/dashboard to their primary space home', async () => {
+    asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/supplier/dashboard')))).toBe('/fr/eat')
+    getTokenMock.mockReset(); asRole('creator')
+    expect(redirectTo(await middleware(reqFor('/fr/supplier/dashboard')))).toBe('/fr/creators/dashboard')
+  })
+
+  it('a pure supplier is NOT granted operator flat routes (bounced to its own space)', async () => {
+    asRole('supplier')
+    expect(redirectTo(await middleware(reqFor('/fr/menu')))).toBe('/fr/supplier/dashboard')
+  })
+
+  it('NON-REGRESSION: the operator /suppliers (plural) directory is NOT leaked public by the /supplier rule', async () => {
+    // The singular /supplier landing is public, but the plural /suppliers operator
+    // directory must STAY gated to restaurant/admin (the boundary that matters).
+    asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/suppliers')))).toBe('/fr/eat')
+    getTokenMock.mockReset(); asRole('restaurant')
+    expect(passed(await middleware(reqFor('/fr/suppliers')))).toBe(true)
+  })
+
+  it('an unauthenticated user on /supplier/dashboard → /login', async () => {
+    getTokenMock.mockResolvedValue(null)
+    expect(redirectTo(await middleware(reqFor('/fr/supplier/dashboard')))).toBe('/fr/login')
+  })
+})
+
 describe('middleware — anti-infinite-loop (bounded redirects)', () => {
   // Follow the redirect chain like a browser would. A correct config reaches a
   // public page (which "passes") within a couple of hops; a loop never settles.
