@@ -30,6 +30,10 @@ const redirectTo = (res: Response) => {
 const asRole = (role: string) =>
   getTokenMock.mockResolvedValue({ role, sub: 'u1', email: 'u@example.com' })
 
+// Phase 1 — a multi-role JWT carries `roles` (the SET) + a primary `role`.
+const asRoles = (roles: string[]) =>
+  getTokenMock.mockResolvedValue({ role: roles[0], roles, sub: 'u1', email: 'u@example.com' })
+
 beforeEach(() => {
   getTokenMock.mockReset()
 })
@@ -109,6 +113,29 @@ describe('middleware — role routing after locale strip', () => {
     getTokenMock.mockResolvedValue(null)
     const res = await middleware(reqFor('/fr/dashboard'))
     expect(redirectTo(res)).toBe('/fr/login')
+  })
+})
+
+describe('middleware — multi-role gating (Phase 1) + legacy non-regression', () => {
+  it('a [creator, restaurant] operator reaches BOTH /dashboard and /creators/dashboard', async () => {
+    asRoles(['creator', 'restaurant'])
+    expect(passed(await middleware(reqFor('/fr/dashboard')))).toBe(true)
+    getTokenMock.mockReset(); asRoles(['creator', 'restaurant'])
+    expect(passed(await middleware(reqFor('/fr/creators/dashboard')))).toBe(true)
+  })
+
+  it('a multi-role set does NOT grant unrelated routes (no consumer → /account bounces)', async () => {
+    asRoles(['creator', 'restaurant'])
+    expect(redirectTo(await middleware(reqFor('/fr/account')))).toBe('/fr/eat')
+  })
+
+  it('LEGACY JWT (role only, no roles[]) still gates exactly as before — non-regression', async () => {
+    asRole('restaurant')
+    expect(passed(await middleware(reqFor('/fr/dashboard')))).toBe(true)
+    getTokenMock.mockReset(); asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/dashboard')))).toBe('/fr/eat')
+    getTokenMock.mockReset(); asRole('creator')
+    expect(passed(await middleware(reqFor('/fr/creators/dashboard')))).toBe(true)
   })
 })
 

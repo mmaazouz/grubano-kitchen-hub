@@ -7,6 +7,7 @@ import type { Provider } from 'next-auth/providers/index'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { authorizeMagicLink } from '@/lib/magic-link'
+import { readOperatorRoles } from '@/lib/operator-roles'
 
 // Build the provider list dynamically. Google / Apple are only registered when
 // their credentials exist in the environment, so the app never breaks when the
@@ -28,7 +29,10 @@ const providers: Provider[] = [
       // A valid single-use token signs the user in and is consumed. Self-contained
       // (operator derived from the token), so no email/password needed here.
       if (credentials?.magicToken) {
-        return await authorizeMagicLink(credentials.magicToken)
+        const u = await authorizeMagicLink(credentials.magicToken)
+        if (!u) return null
+        // Phase 1 — attach the full role SET (primary role + OperatorRole rows).
+        return { ...u, roles: await readOperatorRoles(u.id, u.role) }
       }
 
       // ── Password path (existing — unchanged) ───────────────────────────────
@@ -68,6 +72,8 @@ const providers: Provider[] = [
         name:  operator.name,
         email: operator.email,
         role:  operator.role,
+        // Phase 1 — the full role SET (primary role + OperatorRole rows; tolerant).
+        roles: await readOperatorRoles(operator.id, operator.role),
       }
     },
   }),
@@ -114,6 +120,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role?: string }).role ?? 'consumer'
+        // Phase 1 multi-role — carry the full role SET. Fallback to the primary
+        // role for OAuth / legacy users (no `roles` on the authorized user).
+        token.roles = (user as { roles?: string[] }).roles ?? [token.role as string]
       }
       return token
     },
@@ -121,6 +130,9 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as { id?: string }).id   = token.sub
         ;(session.user as { role?: string }).role = token.role as string
+        // Phase 1 — expose the role SET (fallback to [role] for old JWTs).
+        ;(session.user as { roles?: string[] }).roles =
+          (token.roles as string[] | undefined) ?? (token.role ? [token.role as string] : [])
       }
       return session
     },

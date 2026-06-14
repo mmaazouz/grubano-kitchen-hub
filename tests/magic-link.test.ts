@@ -7,7 +7,11 @@ import bcrypt from 'bcryptjs'
 // passwordless MAGIC path is added.
 
 const { db } = vi.hoisted(() => ({
-  db: { operator: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() } },
+  db: {
+    operator:     { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    // Phase 1 — authorize() loads the role SET via readOperatorRoles.
+    operatorRole: { findMany: vi.fn() },
+  },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
@@ -27,6 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   db.operator.update.mockResolvedValue({})
   db.operator.updateMany.mockResolvedValue({ count: 1 }) // default: this caller wins the atomic consume
+  db.operatorRole.findMany.mockResolvedValue([])         // default: mono-role → roles = [primary]
 })
 
 describe('createMagicLinkToken', () => {
@@ -94,13 +99,27 @@ describe('authorizeMagicLink', () => {
 })
 
 describe('CredentialsProvider authorize — password path intact + magic path added', () => {
-  it('PASSWORD path still authenticates (consumer/restaurant login NOT broken)', async () => {
+  it('PASSWORD path still authenticates (consumer/restaurant login NOT broken) + carries roles', async () => {
     const password = 'S3cret-passw0rd'
     db.operator.findUnique.mockResolvedValue({
       id: 'op1', name: 'Resto', email: 'resto@x.fr', role: 'restaurant', status: 'active',
       password: await bcrypt.hash(password, 12),
     })
-    expect(await authorize({ email: 'resto@x.fr', password })).toMatchObject({ id: 'op1', role: 'restaurant' })
+    const u = await authorize({ email: 'resto@x.fr', password })
+    expect(u).toMatchObject({ id: 'op1', role: 'restaurant' })
+    // Phase 1 — mono-role: roles = [primary]. Existing behaviour preserved.
+    expect((u as unknown as { roles: string[] }).roles).toEqual(['restaurant'])
+  })
+
+  it('carries the full role SET for a multi-role operator (union of primary + rows)', async () => {
+    const password = 'S3cret-passw0rd'
+    db.operator.findUnique.mockResolvedValue({
+      id: 'op2', name: 'Both', email: 'both@x.fr', role: 'restaurant', status: 'active',
+      password: await bcrypt.hash(password, 12),
+    })
+    db.operatorRole.findMany.mockResolvedValue([{ role: 'restaurant' }, { role: 'creator' }])
+    const u = await authorize({ email: 'both@x.fr', password })
+    expect((u as unknown as { roles: string[] }).roles.sort()).toEqual(['creator', 'restaurant'])
   })
 
   it('PASSWORD path rejects a wrong password', async () => {

@@ -85,22 +85,32 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL(`/${activeLocale}/login`, request.url))
     }
 
-    const role = token.role as string
+    // Phase 1 multi-role — gate on the role SET (token.roles), falling back to the
+    // single legacy role for old JWTs / OAuth sign-ins. For a MONO-role account
+    // `roles === [role]`, so every check below is byte-identical to the previous
+    // `.includes(role)` behaviour (non-regression). A MULTI-role account is let
+    // through as soon as ANY of its roles satisfies the route.
+    const tokenRoles = (token as { roles?: unknown }).roles
+    const roles: string[] = Array.isArray(tokenRoles)
+      ? (tokenRoles as string[])
+      : (typeof token.role === 'string' ? [token.role] : [])
+    const hasAny = (allowed: string[]) => roles.some((r) => allowed.includes(r))
+
     // Send a role-mismatched user to the PUBLIC consumer app, which always
     // renders. Never bounce to the locale root (`/{locale}`) — that path
     // redirects to /dashboard, which re-triggers this guard → infinite loop.
     const safeFallback = () =>
       NextResponse.redirect(new URL(`/${activeLocale}/eat`, request.url))
 
-    if (restPath.startsWith('/dashboard') && !['restaurant', 'admin'].includes(role)) return safeFallback()
+    if (restPath.startsWith('/dashboard') && !hasAny(['restaurant', 'admin'])) return safeFallback()
     // A franchisee IS a restaurateur (Mohammed): restaurant + franchise + admin.
     // Bounce to the PUBLIC /franchise landing (not /eat) so the user lands on the
     // discovery page — that page is public, so this never loops.
-    if (isFranchiseDashboard && !['franchise', 'restaurant', 'admin'].includes(role))
+    if (isFranchiseDashboard && !hasAny(['franchise', 'restaurant', 'admin']))
       return NextResponse.redirect(new URL(`/${activeLocale}/franchise`, request.url))
-    if (isCreatorsDashboard && !['creator', 'admin'].includes(role))
+    if (isCreatorsDashboard && !hasAny(['creator', 'admin']))
       return NextResponse.redirect(new URL(`/${activeLocale}/creators`, request.url))
-    if (restPath.startsWith('/account') && !['consumer', 'admin'].includes(role)) return safeFallback()
+    if (restPath.startsWith('/account') && !hasAny(['consumer', 'admin'])) return safeFallback()
   }
 
   // Locale detection + redirect of unprefixed paths to /{locale}/...
