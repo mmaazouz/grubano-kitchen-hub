@@ -63,6 +63,9 @@ model Operator {
   // `role` at migration. Reversible: drop the OperatorRole table, the model is
   // unchanged.
   operatorRoles OperatorRole[]
+  // Slice 2 — B2B supply orders this operator (as a restaurateur) placed to
+  // marketplace suppliers. Additive inverse relation; reversible.
+  supplyOrders  SupplyOrder[]
 }
 
 // ── OperatorRole (Phase 1 refonte) — one row per (operator, role) ─────────────
@@ -587,6 +590,8 @@ model SupplierProfile {
   updatedAt         DateTime @updatedAt
   // Slice 1 — the supplier's own product catalogue (additive inverse relation).
   catalogItems      SupplierCatalogItem[]
+  // Slice 2 — incoming B2B supply orders placed BY restaurateurs to this supplier.
+  supplyOrders      SupplyOrder[]
 }
 
 // ── SupplierCatalogItem (B2B supply marketplace — Slice 1 catalogue, Agent 14) ─
@@ -616,6 +621,57 @@ model SupplierCatalogItem {
   @@unique([supplierProfileId, name])
   @@index([supplierProfileId])
   @@index([category])
+  // Slice 2 — order lines snapshotting this item (soft audit FK; SetNull on delete).
+  orderLines        SupplyOrderLine[]
+}
+
+// ── SupplyOrder (B2B supply marketplace — Slice 2 order, Agent 14) ────────────
+// ADDITIVE + REVERSIBLE. The B2B PURCHASE ORDER a restaurateur places to a
+// marketplace supplier. DISTINCT from the operator's PRIVATE directory
+// `SupplierOrder` (above) AND from the B2C `Order` — a fully separate pipeline:
+// NO loyalty / promo / referral / take-rate (Slice 5). Total is the integer-CENTS
+// snapshot sum of its lines at order time. Buyer = Operator (resto, session-scoped);
+// seller = SupplierProfile. Status flow beyond "placed" is Slice 3.
+model SupplyOrder {
+  id                String          @id @default(cuid())
+  operatorId        String          // buyer — the restaurateur (from the session)
+  operator          Operator        @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  supplierProfileId String          // seller — the marketplace supplier
+  // Restrict on delete: a supplier with order history can't be removed (preserves
+  // the orders). supplierProfileId is required, so SetNull is not applicable here.
+  supplierProfile   SupplierProfile @relation(fields: [supplierProfileId], references: [id], onDelete: Restrict)
+  status            String          @default("placed")   // placed (Slice 3 adds confirm/prepare/deliver)
+  totalCents        Int             @default(0)          // snapshot sum of lines at order time
+  notes             String?         @db.Text             // optional message to the supplier
+  desiredDate       DateTime?                            // requested delivery date (optional)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  lines             SupplyOrderLine[]
+
+  @@index([operatorId])
+  @@index([supplierProfileId])
+}
+
+// ── SupplyOrderLine (B2B order line — Slice 2, Agent 14) ──────────────────────
+// IMMUTABLE snapshot of a catalogue item AT ORDER TIME (name, unit, unit price in
+// CENTS) so the order history is preserved even if the supplier later edits or
+// deletes the catalogue item. The catalogItem FK is a SOFT audit link (nullable,
+// SetNull on delete) — never re-read for pricing.
+model SupplyOrderLine {
+  id              String   @id @default(cuid())
+  supplyOrderId   String
+  supplyOrder     SupplyOrder @relation(fields: [supplyOrderId], references: [id], onDelete: Cascade)
+  catalogItemId   String?                              // soft audit FK (SetNull on item delete)
+  catalogItem     SupplierCatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  nameSnapshot    String                               // catalogue item name at order time
+  unitSnapshot    String                               // catalogue item unit at order time
+  quantity        Int      @default(1)
+  unitPriceCents  Int      @default(0)                 // price snapshot (cents)
+  lineTotalCents  Int      @default(0)                 // quantity × unitPriceCents
+  createdAt       DateTime @default(now())
+
+  @@index([supplyOrderId])
+  @@index([catalogItemId])
 }
 
 // ── Consumer app ──────────────────────────────────────────────────────────────
