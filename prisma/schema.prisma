@@ -56,6 +56,27 @@ model Operator {
   // non-franchise operators — the relation list is nullable by virtue of
   // being a list (Prisma returns []).
   pointsOfSale PointOfSale[]
+  // ── Multi-role account (Phase 1 refonte, Agent 14) — ADDITIVE ───────────────
+  // The single `role` column above is KEPT (it stays the PRIMARY role + a
+  // rollback source). This relation is the full role SET. Access gating reads the
+  // SET (middleware); redirects still use the primary `role`. Backfilled 1:1 from
+  // `role` at migration. Reversible: drop the OperatorRole table, the model is
+  // unchanged.
+  operatorRoles OperatorRole[]
+}
+
+// ── OperatorRole (Phase 1 refonte) — one row per (operator, role) ─────────────
+// The role SET behind the multi-role account model. @@unique makes the backfill
+// idempotent (one row per role per operator). Cascade-deletes with the operator.
+model OperatorRole {
+  id         String   @id @default(cuid())
+  operatorId String
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  role       String   // restaurant | franchise | creator | consumer | admin
+  createdAt  DateTime @default(now())
+
+  @@unique([operatorId, role])
+  @@index([operatorId])
 }
 
 model Brand {
