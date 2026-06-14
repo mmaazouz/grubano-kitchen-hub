@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { makeVerifyCode } from '@/lib/verify-code'
+import { ensureCreatorOperator } from '@/lib/creator-account'
 
 const dishConceptSchema = z.object({
   name:        z.string().min(1),
@@ -67,7 +68,15 @@ export async function POST(req: Request) {
     // YouTube description; POST /api/creators/apply/[id]/verify re-derives it.
     const verifyCode = makeVerifyCode(application.id)
 
-    return NextResponse.json({ applicationId: application.id, verifyCode }, { status: 201 })
+    // Phase 0 auth bridge — give this creator a PASSWORDLESS Operator(role='creator',
+    // status='pending') so that, once approved at verify time, they can sign in via
+    // magic-link. Best-effort: never blocks the application. If the email already
+    // belongs to another role (consumer/restaurant), we DON'T clobber it — we just
+    // flag accountExists so the UI can hint (multi-role cumul is Phase 1).
+    const bridge = await ensureCreatorOperator(data.email, data.name, { activate: false })
+    const accountExists = bridge.ok === false && bridge.reason === 'email_taken_other_role'
+
+    return NextResponse.json({ applicationId: application.id, verifyCode, accountExists }, { status: 201 })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })

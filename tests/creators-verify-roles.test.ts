@@ -13,6 +13,8 @@ const { db } = vi.hoisted(() => ({
   db: {
     creatorApplication: { findUnique: vi.fn(), update: vi.fn() },
     creator:            { findUnique: vi.fn(), findFirst: vi.fn(), upsert: vi.fn() },
+    // Phase 0 auth bridge — finalize() now activates a creator Operator.
+    operator:           { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -51,6 +53,9 @@ beforeEach(() => {
   db.creator.findFirst.mockResolvedValue(null)  // referral code has no clash
   db.creator.upsert.mockResolvedValue({ id: 'cr1', verified: false, referralLinkSlug: 'aminaab12' })
   db.creatorApplication.update.mockResolvedValue({})
+  db.operator.findUnique.mockResolvedValue(null) // bridge creates an active creator Operator
+  db.operator.create.mockResolvedValue({ id: 'op1' })
+  db.operator.update.mockResolvedValue({})
   vetMock.mockResolvedValue({ verdict: 'pass', reason: 'ok' })
 })
 

@@ -10,7 +10,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // mocked; makeVerifyCode runs for real (total function, empty-secret fallback).
 
 const { db } = vi.hoisted(() => ({
-  db: { creatorApplication: { create: vi.fn() } },
+  db: {
+    creatorApplication: { create: vi.fn() },
+    // Phase 0 auth bridge — apply now also ensures a pending creator Operator.
+    operator: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+  },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
@@ -29,6 +33,9 @@ const CONCEPT = { name: 'Bowl healthy', description: 'Quinoa, avocat, poulet rô
 beforeEach(() => {
   vi.clearAllMocks()
   db.creatorApplication.create.mockResolvedValue({ id: 'app1' })
+  db.operator.findUnique.mockResolvedValue(null)   // no existing account → bridge creates a pending creator Operator
+  db.operator.create.mockResolvedValue({ id: 'op1' })
+  db.operator.update.mockResolvedValue({})
 })
 
 describe('pure influencer — portfolio skipped, no block', () => {
@@ -76,5 +83,33 @@ describe('chef onboarding unchanged — portfolio required', () => {
   it('still enforces the max of 3 concepts (400)', async () => {
     const res = await post({ ...BASE, roles: { chef: true, influencer: false }, dishConcepts: [CONCEPT, CONCEPT, CONCEPT, CONCEPT] })
     expect(res.status).toBe(400)
+  })
+})
+
+describe('auth bridge (Phase 0) — pending creator Operator', () => {
+  it('creates a PASSWORDLESS Operator(role=creator, status=pending) when the email is free', async () => {
+    const res = await post({ ...BASE, roles: { chef: false, influencer: true }, dishConcepts: [] })
+    expect(res.status).toBe(201)
+    expect((await res.json()).accountExists).toBe(false)
+    expect(db.operator.create).toHaveBeenCalledTimes(1)
+    const arg = db.operator.create.mock.calls[0][0]
+    expect(arg.data.role).toBe('creator')
+    expect(arg.data.status).toBe('pending')
+    expect(arg.data.password).toBeUndefined() // passwordless — sign-in is via magic-link
+  })
+
+  it('does NOT clobber an existing non-creator account → accountExists:true, no create', async () => {
+    db.operator.findUnique.mockResolvedValue({ id: 'opC', role: 'consumer', status: 'active' })
+    const res = await post({ ...BASE, roles: { chef: false, influencer: true }, dishConcepts: [] })
+    expect(res.status).toBe(201)
+    expect((await res.json()).accountExists).toBe(true)
+    expect(db.operator.create).not.toHaveBeenCalled()
+  })
+
+  it('the application is still created even if the bridge throws (best-effort)', async () => {
+    db.operator.findUnique.mockRejectedValue(new Error('column not migrated'))
+    const res = await post({ ...BASE, roles: { chef: false, influencer: true }, dishConcepts: [] })
+    expect(res.status).toBe(201)
+    expect(db.creatorApplication.create).toHaveBeenCalledTimes(1)
   })
 })

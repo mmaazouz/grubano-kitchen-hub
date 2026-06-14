@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { makeVerifyCode } from '@/lib/verify-code'
 import { resolveChannelId, getChannelStats, getRecentVideoTitles, hasYouTubeKey } from '@/lib/youtube'
 import { vetCreator } from '@/lib/creator-vetting'
+import { ensureCreatorOperator } from '@/lib/creator-account'
 
 // Orchestration route — does live network calls (YouTube) + a Claude vetting
 // call, so it must always be server-rendered on demand.
@@ -153,6 +154,14 @@ async function finalize(
     where: { id: application.id },
     data:  { status: decidedStatus },
   })
+
+  // Phase 0 auth bridge — the creator is now approved/flagged: ACTIVATE their
+  // passwordless Operator(role='creator') so they can sign in via magic-link and
+  // reach /creators/dashboard. Both 'approved' and 'flagged' get an active login
+  // (flagged = created + connectable, just no verified badge). Best-effort: a
+  // bridge failure must never undo the Creator. Never clobbers a non-creator
+  // Operator that already owns this email (cumul = Phase 1).
+  await ensureCreatorOperator(email, application.name, { activate: true })
 
   return NextResponse.json({
     ok:               true,

@@ -11,6 +11,8 @@ const { db } = vi.hoisted(() => ({
   db: {
     creatorApplication: { findUnique: vi.fn(), update: vi.fn() },
     creator:            { findUnique: vi.fn(), findFirst: vi.fn(), upsert: vi.fn() },
+    // Phase 0 auth bridge — finalize() activates a creator Operator.
+    operator:           { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -52,6 +54,9 @@ beforeEach(() => {
   db.creator.findUnique.mockResolvedValue(null)
   db.creator.findFirst.mockResolvedValue(null)
   db.creator.upsert.mockResolvedValue({ id: 'cr1', verified: true, referralLinkSlug: 'noobab12' })
+  db.operator.findUnique.mockResolvedValue(null)
+  db.operator.create.mockResolvedValue({ id: 'op1' })
+  db.operator.update.mockResolvedValue({})
   yt.hasYouTubeKey.mockReturnValue(true)
   yt.resolveChannelId.mockResolvedValue({ channelId: 'UCchannel', viaSearch: false })
   yt.getChannelStats.mockResolvedValue({ subscriberCount: 50000, title: 'NoobMaster', description: 'x', topicCategories: ['Video game culture'] })
@@ -106,5 +111,8 @@ describe('Path A — happy path (gaming influencer accepted)', () => {
     expect(out.status).toBe('approved')
     expect(vetMock).toHaveBeenCalledWith(expect.objectContaining({ roles: { chef: false, influencer: true } }))
     expect(db.creator.upsert).toHaveBeenCalled()
+    // Phase 0 bridge — an ACTIVE passwordless creator Operator is provisioned.
+    expect(db.operator.create).toHaveBeenCalledTimes(1)
+    expect(db.operator.create.mock.calls[0][0].data).toMatchObject({ role: 'creator', status: 'active' })
   })
 })
