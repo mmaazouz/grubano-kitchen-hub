@@ -22,7 +22,7 @@ model Operator {
   // partner and kept for audit. ADDITIVE + REVERSIBLE: nullable, no backfill,
   // existing rows stay valid and dropping it leaves the model intact.
   statusReason String?
-  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin
+  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin | supplier
   createdAt  DateTime   @default(now())
   // ── Partner email verification + RGPD consent (Agent 12, brique 1) ───────────
   // ADDITIVE + REVERSIBLE: every field is nullable, so existing rows (consumers,
@@ -72,7 +72,7 @@ model OperatorRole {
   id         String   @id @default(cuid())
   operatorId String
   operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  role       String   // restaurant | franchise | creator | consumer | admin
+  role       String   // restaurant | franchise | creator | consumer | admin | supplier
   createdAt  DateTime @default(now())
 
   @@unique([operatorId, role])
@@ -557,6 +557,34 @@ model CreatorApplication {
   dishConcepts Json     @default("[]")
   status       String   @default("pending")
   createdAt    DateTime @default(now())
+}
+
+// ── SupplierProfile (B2B supply marketplace — Slice 0 foundation, Agent 14) ───
+// ADDITIVE + REVERSIBLE: a brand-new model; no existing row is touched and
+// dropping the table leaves the rest of the schema intact. DISTINCT from the
+// existing `Supplier` (an operator's PRIVATE supplier-directory entry, above):
+// this is the marketplace SUPPLIER's own business profile (the supplier-as-user).
+// Linked to the Operator LOGIN account by SHARED EMAIL (like Creator — no FK): the
+// passwordless Operator whose role / SET includes 'supplier' is provisioned by
+// lib/supplier-account.ensureSupplierOperator. BUSINESS PROFILE only — NO
+// catalogue / pricing here (those are Slice 1+). MySQL has no native array type →
+// multi-value fields are Json @default("[]").
+model SupplierProfile {
+  id                String   @id @default(cuid())
+  email             String   @unique          // shared-email link to the Operator account
+  companyName       String                    // commercial / trading name
+  contactName       String
+  phone             String?
+  city              String?
+  // Supply terms (profile only — Slice 0; NO catalogue/prices yet)
+  categories        Json     @default("[]")    // string[] — fresh|meat|fish|dairy|drinks|grocery|packaging
+  deliveryZones     Json     @default("[]")    // string[] — cities / postal areas served
+  minimumOrderCents Int      @default(0)       // minimum order (cents) — displayed via lib/format-money
+  leadTimeDays      Int      @default(1)       // delivery lead time (days)
+  paymentTerms      String?  @db.Text          // free text for now (Slice 5 formalizes the economics)
+  status            String   @default("pending")   // pending | active | suspended
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 // ── Consumer app ──────────────────────────────────────────────────────────────
