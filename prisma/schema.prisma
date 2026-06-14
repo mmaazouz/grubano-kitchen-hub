@@ -585,6 +585,37 @@ model SupplierProfile {
   status            String   @default("pending")   // pending | active | suspended
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  // Slice 1 — the supplier's own product catalogue (additive inverse relation).
+  catalogItems      SupplierCatalogItem[]
+}
+
+// ── SupplierCatalogItem (B2B supply marketplace — Slice 1 catalogue, Agent 14) ─
+// ADDITIVE + REVERSIBLE: a brand-new model; dropping it leaves the schema intact.
+// DISTINCT from the operator's PRIVATE directory `SupplierProduct` (above): this is
+// the marketplace supplier's OWN catalogue (an SKU), scoped by FK to its
+// SupplierProfile. A supplier manages ONLY its own items. Price is stored in
+// integer CENTS (displayed via lib/format-money) — never euros (no float rounding).
+// NO order / take-rate here (Slices 2 & 5). Allergens reuse the INCO ids
+// (lib/dish-sheet.INCO_ALLERGENS) and are OPTIONAL. MySQL has no native array type
+// → multi-value fields are Json @default("[]").
+model SupplierCatalogItem {
+  id                String          @id @default(cuid())
+  supplierProfileId String
+  supplierProfile   SupplierProfile @relation(fields: [supplierProfileId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?         @db.Text
+  category          String          @default("autre")   // free-text family (viande, crémerie…)
+  priceCents        Int             @default(0)          // unit price in CENTS
+  unit              String          @default("piece")    // kg | g | L | cl | piece | box | pack
+  packSize          String?                              // conditioning / lot size, e.g. "carton de 6"
+  available         Boolean         @default(true)       // false = out of stock
+  allergens         Json            @default("[]")       // AllergenChoice[] (INCO ids) — optional
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([supplierProfileId, name])
+  @@index([supplierProfileId])
+  @@index([category])
 }
 
 // ── Consumer app ──────────────────────────────────────────────────────────────
