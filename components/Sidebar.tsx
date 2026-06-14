@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils'
 import { useSidebar } from './SidebarContext'
 import { LanguageSwitcher } from '@/components/design-system'
 import { locales } from '@/i18n'
+import { hasAnyRole } from '@/lib/role-spaces'
+import RoleSwitcher from '@/components/RoleSwitcher'
 
 // Maps a NextAuth role to an i18n key under dashboard.sidebar.roles.* so the
 // label shown in the profile block is the REAL session role, never a hard-
@@ -115,9 +117,18 @@ export default function Sidebar() {
   // Adaptive establishment→brand→menu entry (real counts, existing endpoints).
   const shape = useOperatorShape(role)
 
+  // Phase 4 — the role SET (Phase 1). The operator nav below is the RESTAURATEUR
+  // space: show it only to users who actually hold restaurant/admin (fallback to
+  // the legacy single role for old JWTs). A non-restaurateur (e.g. a creator who
+  // lands on a flat operator route) sees NO restaurateur entries — only the
+  // RoleSwitcher to reach their own space. Non-regression: restaurant/admin keep
+  // the full portal.
+  const roles = (session?.user as { roles?: string[] } | undefined)?.roles ?? (role ? [role] : [])
+  const isOperator = hasAnyRole(roles, ['restaurant', 'admin'])
+
   // Five intention groups. Labels are i18n; ROUTES stay the current pages
   // (page merges land in later commits — no dead links here).
-  const groups: NavGroup[] = [
+  const allGroups: NavGroup[] = [
     {
       // Headerless: a single "Accueil" row, no group title (less visual noise).
       items: [{ href: '/dashboard', label: t('navHome'), icon: Home }],
@@ -159,10 +170,14 @@ export default function Sidebar() {
 
   // Low-emphasis utilities — reachable but de-emphasised (they move to the top
   // header in a later commit). Kept here so no page is orphaned in the interim.
-  const utilities: NavItem[] = [
+  const allUtilities: NavItem[] = [
     { href: '/briefing',      label: t('navBriefing'),      icon: Zap },
     { href: '/notifications', label: t('navNotifications'), icon: Bell },
   ]
+
+  // Phase 4 — restaurateur entries only for restaurant/admin (see above).
+  const groups: NavGroup[] = isOperator ? allGroups : []
+  const utilities: NavItem[] = isOperator ? allUtilities : []
 
   // Active = the LONGEST matching href, so /dashboard/establishments highlights
   // "Mes établissements" (not "Accueil" at /dashboard) — most specific wins.
@@ -216,6 +231,9 @@ export default function Sidebar() {
             <X size={18} />
           </button>
         </div>
+
+        {/* Phase 4 — multi-role space selector (hidden for mono-role accounts). */}
+        <RoleSwitcher tone="dark" />
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto">
