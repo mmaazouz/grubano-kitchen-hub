@@ -139,6 +139,94 @@ describe('middleware — multi-role gating (Phase 1) + legacy non-regression', (
   })
 })
 
+describe('middleware — operator FLAT routes gate (security hardening)', () => {
+  // A representative sweep of OPERATOR_FLAT_PREFIXES (the restaurateur portal's
+  // flat routes that were nav-hidden but URL-reachable before this gate).
+  const OPERATOR_ROUTES = [
+    '/fr/menu', '/fr/stocks', '/fr/suppliers', '/fr/brands', '/fr/orders',
+    '/fr/promotions', '/fr/onboarding', '/fr/analytics', '/fr/loyalty',
+    '/fr/customers', '/fr/cashflow', '/fr/pricing', '/fr/more', '/fr/premium',
+  ]
+
+  it('lets a restaurant role into EVERY operator flat route (non-regression)', async () => {
+    for (const path of OPERATOR_ROUTES) {
+      getTokenMock.mockReset(); asRole('restaurant')
+      const res = await middleware(reqFor(path))
+      expect(passed(res), path).toBe(true)
+      expect(redirectTo(res), path).toBeNull()
+    }
+  })
+
+  it('lets an admin into EVERY operator flat route', async () => {
+    for (const path of OPERATOR_ROUTES) {
+      getTokenMock.mockReset(); asRole('admin')
+      expect(passed(await middleware(reqFor(path))), path).toBe(true)
+    }
+  })
+
+  it('redirects a CONSUMER off every operator flat route to their home (/eat)', async () => {
+    for (const path of OPERATOR_ROUTES) {
+      getTokenMock.mockReset(); asRole('consumer')
+      expect(redirectTo(await middleware(reqFor(path))), path).toBe('/fr/eat')
+    }
+  })
+
+  it('redirects a CREATOR off operator routes to the creator space (not /eat)', async () => {
+    asRole('creator')
+    expect(redirectTo(await middleware(reqFor('/fr/menu')))).toBe('/fr/creators/dashboard')
+    getTokenMock.mockReset(); asRole('creator')
+    expect(redirectTo(await middleware(reqFor('/fr/stocks')))).toBe('/fr/creators/dashboard')
+  })
+
+  it('redirects a FRANCHISE off operator routes to the franchise space', async () => {
+    asRole('franchise')
+    expect(redirectTo(await middleware(reqFor('/fr/menu')))).toBe('/fr/franchise')
+  })
+
+  it('gates operator SUB-routes too (/menu/123, /stocks/x)', async () => {
+    asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/menu/abc123')))).toBe('/fr/eat')
+    getTokenMock.mockReset(); asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/stocks/x')))).toBe('/fr/eat')
+  })
+
+  it('a multi-role {consumer, restaurant} PASSES every operator flat route', async () => {
+    for (const path of OPERATOR_ROUTES) {
+      getTokenMock.mockReset(); asRoles(['consumer', 'restaurant'])
+      expect(passed(await middleware(reqFor(path))), path).toBe(true)
+    }
+  })
+
+  it('redirects an UNAUTHENTICATED user off an operator route to /login', async () => {
+    getTokenMock.mockResolvedValue(null)
+    expect(redirectTo(await middleware(reqFor('/fr/menu')))).toBe('/fr/login')
+  })
+
+  it('does NOT over-gate: public non-bare routes stay reachable for a consumer', async () => {
+    // /chef, /ref, /auth/magic, /design are public — the operator gate must not
+    // touch them (no accidental over-gating from the new prefix list).
+    for (const path of ['/fr/chef/some-slug', '/fr/ref/CODE', '/fr/auth/magic', '/fr/design']) {
+      getTokenMock.mockReset(); asRole('consumer')
+      expect(passed(await middleware(reqFor(path))), path).toBe(true)
+    }
+  })
+
+  it('does NOT regress the existing gates (/dashboard, /account, creators, franchise)', async () => {
+    // /dashboard → /eat for a consumer (unchanged)
+    asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/dashboard')))).toBe('/fr/eat')
+    // /account → /eat for a creator (unchanged)
+    getTokenMock.mockReset(); asRole('creator')
+    expect(redirectTo(await middleware(reqFor('/fr/account')))).toBe('/fr/eat')
+    // /creators/dashboard → /creators for a consumer (unchanged)
+    getTokenMock.mockReset(); asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/creators/dashboard')))).toBe('/fr/creators')
+    // /franchise/dashboard → /franchise for a consumer (unchanged)
+    getTokenMock.mockReset(); asRole('consumer')
+    expect(redirectTo(await middleware(reqFor('/fr/franchise/dashboard')))).toBe('/fr/franchise')
+  })
+})
+
 describe('middleware — anti-infinite-loop (bounded redirects)', () => {
   // Follow the redirect chain like a browser would. A correct config reaches a
   // public page (which "passes") within a couple of hops; a loop never settles.
@@ -174,6 +262,19 @@ describe('middleware — anti-infinite-loop (bounded redirects)', () => {
 
   it('consumer hitting /creators/dashboard settles within 2 hops, no cycle', async () => {
     const r = await followChain('/fr/creators/dashboard', 'consumer')
+    expect(r.settled).toBe(true)
+    expect(r.hops).toBeLessThanOrEqual(2)
+  })
+
+  it('consumer hitting /menu (operator flat) settles within 2 hops, no cycle', async () => {
+    const r = await followChain('/fr/menu', 'consumer')
+    expect(r.settled).toBe(true)
+    expect(r.hops).toBeLessThanOrEqual(2)
+  })
+
+  it('creator hitting /stocks (operator flat) settles to its own space, no cycle', async () => {
+    // creator → /creators/dashboard (gated creator/admin → creator passes there)
+    const r = await followChain('/fr/stocks', 'creator')
     expect(r.settled).toBe(true)
     expect(r.hops).toBeLessThanOrEqual(2)
   })

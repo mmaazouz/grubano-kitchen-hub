@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { locales, defaultLocale, type Locale } from './i18n'
 import { isPartnerHostValue } from './lib/partner-host'
+import { spacesForRoles } from './lib/role-spaces'
 
 const intlMiddleware = createIntlMiddleware({
   locales,
@@ -11,6 +12,28 @@ const intlMiddleware = createIntlMiddleware({
   localePrefix: 'always',
   localeDetection: true,
 })
+
+// ── Operator portal FLAT routes (security hardening) ────────────────────────
+// SINGLE SOURCE OF TRUTH for the restaurateur portal's flat routes. These are
+// every top-level route AppChrome wraps in the operator Sidebar (everything NOT
+// in its BARE_PREFIXES) — i.e. the restaurateur app minus /dashboard, which has
+// kept its own gate since day one. Phase 4 hid these from the nav for a
+// non-restaurateur, but they stayed reachable by direct URL; this list re-gates
+// them to restaurant/admin (see the gate below). Kept EXPLICIT (not a
+// "not-public" catch-all) so a future PUBLIC top-level route is never
+// accidentally locked, and a new operator route is a deliberate one-line add.
+//
+// Deliberately EXCLUDED (handled elsewhere / public, must NOT be operator-gated):
+//   /dashboard               → already gated restaurant/admin
+//   /account                 → gated consumer/admin
+//   /creators, /franchise    → gated via their /dashboard sub-routes
+//   /eat /business /t /chef /ref /auth/magic /login /register /design → public
+const OPERATOR_FLAT_PREFIXES = [
+  '/menu', '/orders', '/stocks', '/loyalty', '/promotions', '/analytics',
+  '/brands', '/reviews', '/wallet', '/suppliers', '/tables', '/customers',
+  '/notifications', '/cashflow', '/prep', '/onboarding', '/finance',
+  '/pricing', '/marketplace', '/dinein', '/more', '/briefing', '/premium',
+]
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -111,6 +134,21 @@ export async function middleware(request: NextRequest) {
     if (isCreatorsDashboard && !hasAny(['creator', 'admin']))
       return NextResponse.redirect(new URL(`/${activeLocale}/creators`, request.url))
     if (restPath.startsWith('/account') && !hasAny(['consumer', 'admin'])) return safeFallback()
+
+    // ── Operator FLAT routes gate (security hardening — defence in depth) ──────
+    // /menu, /stocks, /suppliers, … (OPERATOR_FLAT_PREFIXES) require the SAME
+    // role set as /dashboard (restaurant/admin). A multi-role {…, restaurant}
+    // passes (hasAny). A non-restaurateur is sent to the HOME of their primary
+    // role (Phase-4 role-spaces) — its own space, never an operator screen they
+    // cannot use, and always a route THAT role can reach (no redirect loop). The
+    // four gates above are unchanged; this only CLOSES the un-gated flat routes.
+    const isOperatorFlat = OPERATOR_FLAT_PREFIXES.some(
+      (p) => restPath === p || restPath.startsWith(`${p}/`),
+    )
+    if (isOperatorFlat && !hasAny(['restaurant', 'admin'])) {
+      const home = spacesForRoles(roles)[0]?.href ?? '/eat'
+      return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
+    }
   }
 
   // Locale detection + redirect of unprefixed paths to /{locale}/...
