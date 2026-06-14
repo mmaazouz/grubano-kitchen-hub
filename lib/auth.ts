@@ -6,6 +6,7 @@ import type { NextAuthOptions } from 'next-auth'
 import type { Provider } from 'next-auth/providers/index'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { authorizeMagicLink } from '@/lib/magic-link'
 
 // Build the provider list dynamically. Google / Apple are only registered when
 // their credentials exist in the environment, so the app never breaks when the
@@ -15,10 +16,22 @@ const providers: Provider[] = [
   CredentialsProvider({
     name: 'credentials',
     credentials: {
-      email:    { label: 'Email',    type: 'email' },
-      password: { label: 'Password', type: 'password' },
+      email:      { label: 'Email',      type: 'email' },
+      password:   { label: 'Password',   type: 'password' },
+      // Phase 0 — passwordless magic-link sign-in. When present (and valid), it
+      // authenticates WITHOUT a password; the email field is then optional (the
+      // operator is derived from the token). The password path below is untouched.
+      magicToken: { label: 'Magic token', type: 'text' },
     },
     async authorize(credentials) {
+      // ── Magic-link path (passwordless) ──────────────────────────────────────
+      // A valid single-use token signs the user in and is consumed. Self-contained
+      // (operator derived from the token), so no email/password needed here.
+      if (credentials?.magicToken) {
+        return await authorizeMagicLink(credentials.magicToken)
+      }
+
+      // ── Password path (existing — unchanged) ───────────────────────────────
       if (!credentials?.email || !credentials?.password) return null
 
       const operator = await prisma.operator.findUnique({

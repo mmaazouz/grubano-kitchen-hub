@@ -37,6 +37,15 @@ model Operator {
   verifyTokenHash   String?
   verifyTokenExpiry DateTime?
   consentAt         DateTime?
+  // ── Passwordless magic-link sign-in (Phase 0 auth bridge, Agent 14) ──────────
+  // ADDITIVE + REVERSIBLE: both nullable, no backfill, dropping them is safe.
+  // A SEPARATE pair from verifyToken* (partner email verification) so the two
+  // never collide. Stores ONLY the SHA-256 of the link secret + a short expiry
+  // (15 min). Single-use: cleared on a successful magic-link sign-in. Lets a
+  // passwordless account (e.g. a creator) sign in by email link, ALONGSIDE the
+  // existing password CredentialsProvider (which is untouched).
+  magicLinkTokenHash   String?
+  magicLinkTokenExpiry DateTime?
   brands       Brand[]
   accounts     Account[]
   sessions     Session[]
