@@ -6,7 +6,9 @@ import { prisma } from '@/lib/prisma'
 import { Link } from '@/navigation'
 import { Card, Badge, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
+import SupplierConnectCard from '@/components/supplier/SupplierConnectCard'
 import { formatMoney } from '@/lib/format-money'
+import { isSupplierConnectEnabled } from '@/lib/supplier-connect'
 
 // ── /supplier/dashboard — B2B supplier space shell (Slice 0, Agent 14) ────────
 // Gated by middleware (supplier/admin). Minimal landing: a welcome + the supplier's
@@ -113,6 +115,9 @@ export default async function SupplierDashboardPage(props: { params: { locale: s
                 </div>
               </Card>
             </Link>
+
+            {/* Slice 5b — Stripe Connect onboarding (payouts; TEST, gated). */}
+            <SupplierConnectCard enabled={isSupplierConnectEnabled()} initialStatus={profile.payoutStatus ?? 'none'} />
 
             <Card elevation="sm" padding="lg">
               <div className="mb-4 flex items-start justify-between gap-3">
