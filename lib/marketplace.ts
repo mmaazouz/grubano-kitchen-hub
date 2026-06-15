@@ -110,3 +110,34 @@ export function canTransition(actor: SupplyActor, from: string, to: string): boo
 export function canRestoCancel(from: string): boolean {
   return canTransition('operator', from, 'cancelled')
 }
+
+// ── Stock → reorder bridge (Slice 4) ──────────────────────────────────────────
+// READ-ONLY helpers over the existing StockItem (quantity vs minThreshold). The
+// status logic REPLICATES the /stocks page byte-for-byte (no new definition): a
+// product is "low" when its status is not 'ok'. We never WRITE stock.
+
+export type StockStatus = 'ok' | 'soon' | 'urgent'
+
+/** Same thresholds as app/[locale]/stocks/page.tsx statusOf — kept in sync. */
+export function stockStatus(quantity: number, minThreshold: number): StockStatus {
+  if (quantity <= minThreshold * 0.4) return 'urgent'
+  if (quantity < minThreshold) return 'soon'
+  return 'ok'
+}
+
+/** A product is to-reorder when it is below (or far below) its threshold. */
+export function isLowStock(quantity: number, minThreshold: number): boolean {
+  return stockStatus(quantity, minThreshold) !== 'ok'
+}
+
+/** Case-insensitive substring match of a catalogue item name against a query. */
+export function itemMatchesQuery(name: string, q: string): boolean {
+  const needle = q.trim().toLowerCase()
+  if (!needle) return false
+  return name.toLowerCase().includes(needle)
+}
+
+/** The discovery search href that the reorder bridge points a low-stock item to. */
+export function reorderSearchHref(name: string): string {
+  return `/marketplace/suppliers?q=${encodeURIComponent(name.trim())}`
+}
