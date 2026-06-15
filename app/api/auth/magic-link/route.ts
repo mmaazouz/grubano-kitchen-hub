@@ -27,6 +27,14 @@ const transporter = nodemailer.createTransport({
 })
 
 function baseUrl(req: NextRequest): string {
+  // Prefer the CANONICAL configured origin. NEXTAUTH_URL is set per environment in
+  // .env.local (https://app.grubano.com on staging, https://grubano.com on prod), so
+  // it is the reliable public base for an emailed link. Deriving the base from the
+  // request Host header is fragile behind o2switch/Passenger: a missing forwarded
+  // host (or an internal 127.0.0.1:PORT) would mint a dead, un-clickable link. We
+  // only fall back to the request host, then to the prod domain, if no env is set.
+  const configured = (process.env.NEXTAUTH_URL || process.env.APP_URL || '').trim().replace(/\/+$/, '')
+  if (/^https?:\/\//i.test(configured)) return configured
   const proto = req.headers.get('x-forwarded-proto') ?? 'https'
   const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'grubano.com'
   return `${proto}://${host}`
@@ -38,24 +46,40 @@ const GENERIC = {
 }
 
 async function sendMagicEmail(name: string, to: string, link: string) {
+  // Two ways to follow the link so it is ALWAYS actionable, whatever the client does
+  // with our HTML: (1) the styled "Me connecter" button, and (2) the FULL URL printed
+  // as visible, copyable, clickable text. The button's style is kept on ONE line and
+  // its label hugs the tags (no stray whitespace) — embedded newlines inside an <a>
+  // are what some clients render as a non-clickable blob. We also send a plain-text
+  // alternative (multipart/alternative) so text-only / sanitizing clients still get a
+  // bare URL they can tap or copy.
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1a2e">
       <h2 style="color:#F97316">Connexion à Grubano</h2>
-      <p>Bonjour ${name || ''}, voici ton lien de connexion sécurisé :</p>
+      <p>Bonjour${name ? ' ' + name : ''}, voici ton lien de connexion sécurisé :</p>
       <p style="text-align:center;margin:28px 0">
-        <a href="${link}" style="background:#F97316;color:#fff;text-decoration:none;
-           padding:14px 28px;border-radius:12px;font-weight:600;display:inline-block">
-           Me connecter
-        </a>
+        <a href="${link}" style="background:#F97316;color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:600;display:inline-block">Me connecter</a>
       </p>
-      <p style="font-size:13px;color:#6b7280">Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois.
-         Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.</p>
+      <p style="font-size:13px;color:#6b7280;margin:0 0 6px">Le bouton ne s'affiche pas ? Copie-colle ce lien dans ton navigateur :</p>
+      <p style="font-size:13px;margin:0 0 24px"><a href="${link}" style="color:#F97316;word-break:break-all">${link}</a></p>
+      <p style="font-size:13px;color:#6b7280">Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.</p>
     </div>`
+  const text = [
+    `Bonjour${name ? ' ' + name : ''},`,
+    '',
+    'Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :',
+    '',
+    link,
+    '',
+    "Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois.",
+    "Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.",
+  ].join('\n')
   await transporter.sendMail({
     from:    '"Grubano" <contact@grubano.com>',
     to,
     subject: 'Ton lien de connexion Grubano',
     html,
+    text,
   })
 }
 
