@@ -654,6 +654,18 @@ model SupplyOrder {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   lines             SupplyOrderLine[]
+  // ── Payment (B2B Slice 5c — Stripe Checkout destination charge, TEST; gated) ──
+  // ADDITIVE + REVERSIBLE: all nullable / defaulted. The resto pays `chargedCents`
+  // (= computeSupplyEconomics.restoPaysCents), the supplier nets supplierPayoutCents,
+  // Grubano keeps grubanoMarginCents (the application_fee) — ALL from lib/supply-pricing.
+  // No money moves until 5c gating passes; status flips on the B2B webhook.
+  paymentStatus           String   @default("unpaid")  // unpaid | pending | paid | failed
+  stripeCheckoutSessionId String?                       // cs_… (the Checkout session)
+  stripePaymentIntentId   String?                       // pi_… (set on payment success)
+  chargedCents            Int      @default(0)          // restoPaysCents at pay time (5a)
+  supplierPayoutCents     Int      @default(0)          // supplierPayoutCents (5a)
+  grubanoMarginCents      Int      @default(0)          // application_fee (5a)
+  paidAt                  DateTime?                      // when the payment succeeded
 
   @@index([operatorId])
   @@index([supplierProfileId])
