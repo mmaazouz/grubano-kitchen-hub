@@ -13,18 +13,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 //   1) POLICY — the prompt sent per role (the OPEN vs CULINARY barème).
 //   2) PLUMBING — a mocked model verdict flows through vetCreator unchanged.
 
-const { createMock } = vi.hoisted(() => ({ createMock: vi.fn() }))
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: class MockAnthropic {
-    messages = { create: createMock }
-  },
-}))
+// vetCreator now calls the central gateway (lib/llm), so we mock THAT, not the SDK.
+const { llmMock } = vi.hoisted(() => ({ llmMock: vi.fn() }))
+vi.mock('@/lib/llm', () => ({ llmComplete: llmMock }))
 
 import { vetCreator, buildCreatorVettingPrompt, type VetCreatorInput } from '@/lib/creator-vetting'
 
-// Canned Claude reply in the strict JSON shape the parser expects.
+// Canned gateway result: { text } in the strict JSON shape the parser expects.
 const reply = (verdict: string, reason = 'ok', foodRelevance = 0) => ({
-  content: [{ type: 'text', text: JSON.stringify({ verdict, reason, foodRelevance }) }],
+  text: JSON.stringify({ verdict, reason, foodRelevance }),
 })
 
 // A gaming channel — off-topic for FOOD, but a perfectly real, brand-safe audience.
@@ -94,16 +91,16 @@ describe('buildCreatorVettingPrompt — role routing', () => {
 // ── 2) PLUMBING — a mocked verdict flows through, with the right prompt sent ───
 describe('vetCreator — influencer-only OPEN barème', () => {
   it('gaming channel + model "pass" → ACCEPTED, and the OPEN prompt was sent', async () => {
-    createMock.mockResolvedValue(reply('pass', 'audience gaming réelle et brand-safe'))
+    llmMock.mockResolvedValue(reply('pass', 'audience gaming réelle et brand-safe'))
     const out = await vetCreator({ ...GAMING, roles: { chef: false, influencer: true } })
     expect(out.verdict).toBe('pass')
-    const sentPrompt = createMock.mock.calls[0][0].messages[0].content
+    const sentPrompt = llmMock.mock.calls[0][0].content
     expect(sentPrompt).toContain('BRAND-SAFETY reviewer')
     expect(sentPrompt).not.toContain('credible, relevant FOOD / cooking creator')
   })
 
   it('disqualifying content + model "reject" → REJECTED (brand safety)', async () => {
-    createMock.mockResolvedValue(reply('reject', 'contenu adulte / illégal'))
+    llmMock.mockResolvedValue(reply('reject', 'contenu adulte / illégal'))
     const out = await vetCreator({
       ...GAMING,
       recentVideoTitles: ['contenu adulte explicite'],
@@ -113,7 +110,7 @@ describe('vetCreator — influencer-only OPEN barème', () => {
   })
 
   it('empty / fake channel + model "reject" → REJECTED (audience not real)', async () => {
-    createMock.mockResolvedValue(reply('reject', 'chaîne vide, aucune vidéo réelle'))
+    llmMock.mockResolvedValue(reply('reject', 'chaîne vide, aucune vidéo réelle'))
     const out = await vetCreator({
       channelTitle: '', channelDescription: '', bio: '', dishConcepts: [],
       channelTopics: [], recentVideoTitles: [],
@@ -125,16 +122,16 @@ describe('vetCreator — influencer-only OPEN barème', () => {
 
 describe('vetCreator — chef barème intact', () => {
   it('chef-only non-culinary + model "reject" → REJECTED, and the CULINARY prompt was sent', async () => {
-    createMock.mockResolvedValue(reply('reject', 'chaîne gaming, pas de contenu culinaire'))
+    llmMock.mockResolvedValue(reply('reject', 'chaîne gaming, pas de contenu culinaire'))
     const out = await vetCreator({ ...GAMING, roles: { chef: true, influencer: false } })
     expect(out.verdict).toBe('reject')
-    const sentPrompt = createMock.mock.calls[0][0].messages[0].content
+    const sentPrompt = llmMock.mock.calls[0][0].content
     expect(sentPrompt).toContain('credible, relevant FOOD / cooking creator')
     expect(sentPrompt).not.toContain('BRAND-SAFETY reviewer')
   })
 
   it('chef-only culinary + model "pass" → ACCEPTED', async () => {
-    createMock.mockResolvedValue(reply('pass', 'créateur culinaire crédible'))
+    llmMock.mockResolvedValue(reply('pass', 'créateur culinaire crédible'))
     const out = await vetCreator({ ...CULINARY, roles: { chef: true, influencer: false } })
     expect(out.verdict).toBe('pass')
   })

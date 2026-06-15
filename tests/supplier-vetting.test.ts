@@ -5,16 +5,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // prompt is injection-hardened (untrusted-data framing + whitespace collapse),
 // and EVERY failure mode is FAIL-SAFE → 'doubt' (never auto-'legit').
 
-const { createMock } = vi.hoisted(() => ({ createMock: vi.fn() }))
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: class MockAnthropic {
-    messages = { create: createMock }
-  },
-}))
+// vetSupplier now calls the central gateway (lib/llm), so we mock THAT, not the SDK.
+const { llmMock } = vi.hoisted(() => ({ llmMock: vi.fn() }))
+vi.mock('@/lib/llm', () => ({ llmComplete: llmMock }))
 
 import { vetSupplier, buildSupplierVettingPrompt, parseSupplierVerdict } from '@/lib/supplier-vetting'
 
-const reply = (text: string) => ({ content: [{ type: 'text', text }] })
+const reply = (text: string) => ({ text })
 const INPUT = { companyName: 'Primeurs Lyon', contactName: 'Marie', categories: ['fresh'], deliveryZones: ['Lyon'] }
 
 beforeEach(() => {
@@ -50,37 +47,37 @@ describe('buildSupplierVettingPrompt — injection-hardened', () => {
 
 describe('vetSupplier — verdict mapping + FAIL-SAFE (never auto-legit on error)', () => {
   it('a legit verdict flows through', async () => {
-    createMock.mockResolvedValue(reply('{"verdict":"legit","reason":"entreprise crédible"}'))
+    llmMock.mockResolvedValue(reply('{"verdict":"legit","reason":"entreprise crédible"}'))
     expect((await vetSupplier(INPUT)).verdict).toBe('legit')
   })
 
   it('doubt and bad flow through', async () => {
-    createMock.mockResolvedValueOnce(reply('{"verdict":"doubt","reason":"infos incomplètes"}'))
+    llmMock.mockResolvedValueOnce(reply('{"verdict":"doubt","reason":"infos incomplètes"}'))
     expect((await vetSupplier(INPUT)).verdict).toBe('doubt')
-    createMock.mockResolvedValueOnce(reply('{"verdict":"bad","reason":"spam"}'))
+    llmMock.mockResolvedValueOnce(reply('{"verdict":"bad","reason":"spam"}'))
     expect((await vetSupplier(INPUT)).verdict).toBe('bad')
   })
 
   it('extracts the verdict from noisy output', async () => {
-    createMock.mockResolvedValue(reply('Sure: {"verdict":"legit","reason":"ok"} — done'))
+    llmMock.mockResolvedValue(reply('Sure: {"verdict":"legit","reason":"ok"} — done'))
     expect((await vetSupplier(INPUT)).verdict).toBe('legit')
   })
 
   it('FAIL-SAFE: no API key → doubt, no call', async () => {
     delete process.env.ANTHROPIC_API_KEY
     expect((await vetSupplier(INPUT)).verdict).toBe('doubt')
-    expect(createMock).not.toHaveBeenCalled()
+    expect(llmMock).not.toHaveBeenCalled()
   })
 
   it('FAIL-SAFE: API throws → doubt', async () => {
-    createMock.mockRejectedValue(new Error('500'))
+    llmMock.mockRejectedValue(new Error('500'))
     expect((await vetSupplier(INPUT)).verdict).toBe('doubt')
   })
 
   it('FAIL-SAFE: an unknown / garbage verdict is never trusted → doubt', async () => {
-    createMock.mockResolvedValueOnce(reply('{"verdict":"approve","reason":"x"}'))
+    llmMock.mockResolvedValueOnce(reply('{"verdict":"approve","reason":"x"}'))
     expect((await vetSupplier(INPUT)).verdict).toBe('doubt')
-    createMock.mockResolvedValueOnce(reply('not json at all'))
+    llmMock.mockResolvedValueOnce(reply('not json at all'))
     expect((await vetSupplier(INPUT)).verdict).toBe('doubt')
   })
 })
