@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { MailCheck, Truck, ArrowLeft } from 'lucide-react'
+import { MailCheck, Truck, ArrowLeft, CheckCircle2, Info } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 
@@ -34,6 +34,9 @@ export default function SupplierRegisterPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError]           = useState('')
   const [done, setDone]             = useState(false)
+  // Auto-onboarding outcome from the API: 'active' (instantly usable), 'pending'
+  // (manual review), or 'rejected'. Drives which success copy + icon we show.
+  const [outcome, setOutcome]       = useState<'active' | 'pending' | 'rejected'>('pending')
 
   function toggleCategory(c: string) {
     setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
@@ -64,11 +67,13 @@ export default function SupplierRegisterPage() {
           formStartedAt,
         }),
       })
+      const data = await res.json().catch(() => null)
       if (!res.ok) {
-        const data = await res.json().catch(() => null)
         setError(data?.error || t('errorGeneric'))
         return
       }
+      const o = data?.outcome
+      setOutcome(o === 'active' || o === 'rejected' ? o : 'pending')
       setDone(true)
     } catch {
       setError(t('errorGeneric'))
@@ -93,14 +98,27 @@ export default function SupplierRegisterPage() {
         <Card elevation="sm" padding="lg">
           {done ? (
             <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <span className="grid h-14 w-14 place-items-center rounded-grubano-pill bg-grubano-success-tint">
-                <MailCheck size={28} className="text-grubano-success" />
+              <span className={[
+                'grid h-14 w-14 place-items-center rounded-grubano-pill',
+                outcome === 'rejected' ? 'bg-grubano-surface-muted' : 'bg-grubano-success-tint',
+              ].join(' ')}>
+                {outcome === 'active'
+                  ? <CheckCircle2 size={28} className="text-grubano-success" />
+                  : outcome === 'rejected'
+                    ? <Info size={28} className="text-grubano-ink-muted" />
+                    : <MailCheck size={28} className="text-grubano-success" />}
               </span>
-              <p className="font-display text-base font-bold text-grubano-ink">{t('successTitle')}</p>
-              <p className="max-w-xs text-sm text-grubano-ink-muted">{t('successBody')}</p>
-              <Link href="/auth/magic" className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-grubano-primary">
-                <ArrowLeft size={14} /> {t('backToLogin')}
-              </Link>
+              <p className="font-display text-base font-bold text-grubano-ink">
+                {t((outcome === 'active' ? 'successTitleActive' : outcome === 'rejected' ? 'successTitleRejected' : 'successTitle') as 'successTitle')}
+              </p>
+              <p className="max-w-xs text-sm text-grubano-ink-muted">
+                {t((outcome === 'active' ? 'successBodyActive' : outcome === 'rejected' ? 'successBodyRejected' : 'successBody') as 'successBody')}
+              </p>
+              {outcome !== 'rejected' && (
+                <Link href="/auth/magic" className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-grubano-primary">
+                  <ArrowLeft size={14} /> {t('backToLogin')}
+                </Link>
+              )}
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">
