@@ -34,6 +34,7 @@ beforeEach(() => {
   process.env.SMTP_PASS = 'x'                       // SMTP configured → the mail is sent
   process.env.NEXTAUTH_URL = 'https://app.grubano.com'
   delete process.env.APP_URL
+  delete process.env.ALLOWED_MAGIC_HOSTS            // default allow-list applies
 })
 afterEach(() => { process.env = { ...ENV } })
 
@@ -69,11 +70,77 @@ describe('magic-link email is reliably clickable', () => {
     expect(sendMail.mock.calls[0][0].html).toContain('https://app.grubano.com/en/auth/magic?token=op1.deadbeef')
   })
 
-  it('falls back to the request host when no NEXTAUTH_URL/APP_URL is configured', async () => {
+  it('uses an allow-listed apex host (grubano.com) even with no NEXTAUTH_URL/APP_URL', async () => {
     delete process.env.NEXTAUTH_URL
     db.operator.findUnique.mockResolvedValue({ id: 'op1', name: 'R', status: 'active' })
     await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'grubano.com', 'x-forwarded-proto': 'https' })
     expect(sendMail.mock.calls[0][0].html).toContain('https://grubano.com/fr/auth/magic?token=op1.deadbeef')
+  })
+})
+
+describe('multi-domain base — allow-listed request host wins, forged host ignored', () => {
+  // NEXTAUTH_URL = app.grubano.com (canonical) is set in the outer beforeEach.
+  beforeEach(() => { db.operator.findUnique.mockResolvedValue({ id: 'op1', name: 'R', status: 'active' }) })
+
+  it('supplier on business.grubano.com → link to business (NOT app), beating the canonical base', async () => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'business.grubano.com' })
+    expect(sendMail.mock.calls[0][0].html).toContain('https://business.grubano.com/fr/auth/magic?token=op1.deadbeef')
+  })
+
+  it('app.grubano.com → app', async () => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'app.grubano.com' })
+    expect(sendMail.mock.calls[0][0].html).toContain('https://app.grubano.com/fr/auth/magic')
+  })
+
+  it('allow-listed host with a :port → port stripped, https forced', async () => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'grubano.com:443', 'x-forwarded-proto': 'http' })
+    expect(sendMail.mock.calls[0][0].html).toContain('https://grubano.com/fr/auth/magic')
+  })
+
+  it('forged host (evil.com) is IGNORED → canonical base, never the attacker domain', async () => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'evil.com' })
+    const html = sendMail.mock.calls[0][0].html
+    expect(html).toContain('https://app.grubano.com/fr/auth/magic') // canonical NEXTAUTH_URL
+    expect(html).not.toContain('evil.com')
+  })
+
+  it('internal host (127.0.0.1:3000) is IGNORED → canonical base', async () => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': '127.0.0.1:3000' })
+    const html = sendMail.mock.calls[0][0].html
+    expect(html).toContain('https://app.grubano.com/fr/auth/magic')
+    expect(html).not.toContain('127.0.0.1')
+  })
+
+  it('respects an ALLOWED_MAGIC_HOSTS env override', async () => {
+    process.env.ALLOWED_MAGIC_HOSTS = 'partner.grubano.com'
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'partner.grubano.com' })
+    expect(sendMail.mock.calls[0][0].html).toContain('https://partner.grubano.com/fr/auth/magic')
+  })
+
+  // Lock the EXACT-match guarantee: a suffix/substring of an allow-listed host must
+  // NOT match (guards against a future regression to endsWith/includes/startsWith).
+  it.each([
+    'app.grubano.com.evil.com', // allow-listed host as a left-substring
+    'evilapp.grubano.com',      // allow-listed apex as a right-substring
+    'notgrubano.com',
+    'attacker@app.grubano.com', // userinfo trick
+  ])('suffix/substring/userinfo host %s is IGNORED → canonical base', async (h) => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': h })
+    const html = sendMail.mock.calls[0][0].html
+    expect(html).toContain('https://app.grubano.com/fr/auth/magic') // canonical, not the forged host
+    expect(html).not.toContain('evil.com')
+  })
+
+  it('comma-list with an allow-listed host FIRST → used; a trailing forged host is discarded', async () => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'business.grubano.com, evil.com' })
+    const html = sendMail.mock.calls[0][0].html
+    expect(html).toContain('https://business.grubano.com/fr/auth/magic')
+    expect(html).not.toContain('evil.com')
+  })
+
+  it('comma-list with a forged host FIRST → ignored → canonical base', async () => {
+    await post({ email: 'r@x.fr', locale: 'fr' }, { 'x-forwarded-host': 'evil.com, app.grubano.com' })
+    expect(sendMail.mock.calls[0][0].html).toContain('https://app.grubano.com/fr/auth/magic')
   })
 
   it('anti-enumeration: unknown account → no email, still generic OK', async () => {
