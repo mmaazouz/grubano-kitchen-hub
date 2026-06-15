@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { ClipboardList, ArrowLeft, Loader2, Calendar, X } from 'lucide-react'
+import { ClipboardList, ArrowLeft, Loader2, Calendar, X, CreditCard } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Badge, Button, type BadgeTone } from '@/components/design-system'
 import { formatMoney } from '@/lib/format-money'
@@ -26,7 +26,8 @@ interface MyOrder {
   totalCents: number
   notes: string | null
   createdAt: string
-  supplierProfile: { companyName: string } | null
+  paymentStatus: string
+  supplierProfile: { companyName: string; payoutStatus?: string } | null
   lines: OrderLine[]
 }
 
@@ -61,6 +62,21 @@ export default function MyMarketplaceOrdersPage() {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'cancelled' }),
       })
       if (res.ok) setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status: 'cancelled' } : o)))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function pay(id: string) {
+    if (busyId) return
+    setBusyId(id); setError('')
+    try {
+      const res = await fetch(`/api/marketplace/orders/${id}/pay`, { method: 'POST' })
+      const d = await res.json().catch(() => null)
+      if (res.ok && d?.url) { window.location.href = d.url; return } // → Stripe Checkout (TEST)
+      setError(d?.error || t('payError'))
+    } catch {
+      setError(t('payError'))
     } finally {
       setBusyId(null)
     }
@@ -130,11 +146,19 @@ export default function MyMarketplaceOrdersPage() {
 
                 <div className="mt-3 flex items-center justify-between gap-3 border-t border-grubano-border pt-3">
                   <span className="text-base font-bold text-grubano-ink">{formatMoney(o.totalCents, locale)}</span>
-                  {canRestoCancel(o.status) && (
-                    <Button variant="secondary" size="sm" loading={busyId === o.id} leftIcon={busyId === o.id ? undefined : <X size={15} />} onClick={() => cancel(o.id)}>
-                      {t('actionCancel')}
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {o.paymentStatus === 'paid' && <Badge tone="success" size="md">{t('payBadgePaid')}</Badge>}
+                    {canRestoCancel(o.status) && (
+                      <Button variant="secondary" size="sm" loading={busyId === o.id} leftIcon={busyId === o.id ? undefined : <X size={15} />} onClick={() => cancel(o.id)}>
+                        {t('actionCancel')}
+                      </Button>
+                    )}
+                    {o.status === 'confirmed' && o.paymentStatus !== 'paid' && (
+                      <Button variant="primary" size="sm" loading={busyId === o.id} leftIcon={busyId === o.id ? undefined : <CreditCard size={15} />} onClick={() => pay(o.id)}>
+                        {t('actionPay')}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </Card>
             </li>
