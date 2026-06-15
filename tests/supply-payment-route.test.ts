@@ -23,7 +23,7 @@ import { POST as WEBHOOK } from '@/app/api/webhooks/stripe-supplier/route'
 
 const payReq = () => new Request('http://x/api/marketplace/orders/o1/pay', { method: 'POST' })
 const params = (id: string) => ({ params: { id } })
-const ACTIVE_SUPPLIER = { stripeAccountId: 'acct_s', payoutStatus: 'active' }
+const ACTIVE_SUPPLIER = { status: 'active', stripeAccountId: 'acct_s', payoutStatus: 'active' }
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -57,7 +57,13 @@ describe('POST /pay — gate + ownership + status + supplier-active (amounts via
   })
 
   it('403 when the supplier is not payout-active', async () => {
-    db.supplyOrder.findUnique.mockResolvedValue({ id: 'o1', operatorId: 'op1', status: 'confirmed', paymentStatus: 'unpaid', totalCents: 25000, supplierProfile: { stripeAccountId: null, payoutStatus: 'pending' } })
+    db.supplyOrder.findUnique.mockResolvedValue({ id: 'o1', operatorId: 'op1', status: 'confirmed', paymentStatus: 'unpaid', totalCents: 25000, supplierProfile: { status: 'active', stripeAccountId: null, payoutStatus: 'pending' } })
+    expect((await PAY(payReq(), params('o1'))).status).toBe(403)
+    expect(lib.startSupplyOrderCheckout).not.toHaveBeenCalled()
+  })
+
+  it('403 when the supplier business status is SUSPENDED — even if payout-active (suspension blocks payment)', async () => {
+    db.supplyOrder.findUnique.mockResolvedValue({ id: 'o1', operatorId: 'op1', status: 'confirmed', paymentStatus: 'unpaid', totalCents: 25000, supplierProfile: { status: 'suspended', stripeAccountId: 'acct_s', payoutStatus: 'active' } })
     expect((await PAY(payReq(), params('o1'))).status).toBe(403)
     expect(lib.startSupplyOrderCheckout).not.toHaveBeenCalled()
   })
