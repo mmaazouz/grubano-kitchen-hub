@@ -1316,3 +1316,25 @@ model AdoptionConfig {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
+
+// ── LlmUsage (LLM cost-governance metering — gateway step 1, Agent 14) ─────────
+// One row PER LLM call routed through lib/llm (the single gateway). Pure metering
+// for visibility + to seed step-2 per-partner quotas; it gates NOTHING and touches
+// NO money. ADDITIVE + REVERSIBLE: a brand-new table; dropping it leaves the schema
+// intact. estimatedCostCents is an ESTIMATE (Float) from configurable placeholder
+// rates — it is NOT real money (no Stripe/ledger involvement). operatorId is a free
+// string (nullable) — not all calls are operator-scoped, and step-1 does not yet
+// thread it everywhere; no FK so a metering row never blocks/owns an Operator.
+model LlmUsage {
+  id                 String   @id @default(cuid())
+  task               String                  // LlmTask (creator_vetting, dish_scan, …)
+  model              String                  // resolved model id (claude-haiku-4-5, …)
+  inputTokens        Int      @default(0)
+  outputTokens       Int      @default(0)
+  estimatedCostCents Float    @default(0)     // estimate via configurable placeholder rates
+  operatorId         String?                  // optional attribution (nullable; no FK)
+  createdAt          DateTime @default(now())
+
+  @@index([task])
+  @@index([createdAt])
+}
