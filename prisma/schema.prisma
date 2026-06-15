@@ -585,9 +585,16 @@ model SupplierProfile {
   minimumOrderCents Int      @default(0)       // minimum order (cents) — displayed via lib/format-money
   leadTimeDays      Int      @default(1)       // delivery lead time (days)
   paymentTerms      String?  @db.Text          // free text for now (Slice 5 formalizes the economics)
-  status            String   @default("pending")   // pending | active | suspended
+  status            String   @default("pending")   // pending | active | suspended (business approval)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  // Slice 5b — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
+  // SUPPLIER_CONNECT_ENABLED). ADDITIVE + REVERSIBLE. NO charge/payout here (= 5c) —
+  // this only tracks the connected account + KYB onboarding state. Mirrors the B2C
+  // Restaurant.stripeAccountId pattern but on a SEPARATE B2B path.
+  stripeAccountId   String?  @unique             // acct_… (Express, FR)
+  payoutStatus      String   @default("none")    // none | pending | active | restricted
+  stripeOnboardedAt DateTime?                     // first time the account became 'active'
   // Slice 1 — the supplier's own product catalogue (additive inverse relation).
   catalogItems      SupplierCatalogItem[]
   // Slice 2 — incoming B2B supply orders placed BY restaurateurs to this supplier.
