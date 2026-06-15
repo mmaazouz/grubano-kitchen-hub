@@ -2496,6 +2496,9 @@
     "stockSoon": "منخفض",
     "browseAll": "تصفّح كل الموردين",
     "searchPlaceholder": "ابحث عن منتج…",
-    "noMatch": "لا يوجد مورّد يقدّم «{q}»."
+    "noMatch": "لا يوجد مورّد يقدّم «{q}».",
+    "actionPay": "ادفع",
+    "payBadgePaid": "مدفوعة",
+    "payError": "تعذّر بدء الدفع. حاول مرة أخرى."
   }
 }

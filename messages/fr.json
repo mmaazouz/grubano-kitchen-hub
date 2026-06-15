@@ -2496,6 +2496,9 @@
     "stockSoon": "Bas",
     "browseAll": "Parcourir tous les fournisseurs",
     "searchPlaceholder": "Rechercher un produit…",
-    "noMatch": "Aucun fournisseur ne propose « {q} »."
+    "noMatch": "Aucun fournisseur ne propose « {q} ».",
+    "actionPay": "Payer",
+    "payBadgePaid": "Payée",
+    "payError": "Le paiement n'a pas pu démarrer. Réessayez."
   }
 }
