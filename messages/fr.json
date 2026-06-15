@@ -2453,7 +2453,11 @@
     "payoutNone": "Non raccordé",
     "payoutPending": "En cours",
     "payoutActive": "Actif",
-    "payoutRestricted": "Incomplet"
+    "payoutRestricted": "Incomplet",
+    "successTitleActive": "Espace fournisseur activé ✅",
+    "successBodyActive": "Bienvenue ! Ton espace est actif : connecte-toi par lien magique pour gérer ton catalogue. Pour encaisser les paiements, finalise l'activation Stripe depuis ton espace.",
+    "successTitleRejected": "Demande non retenue",
+    "successBodyRejected": "Nous n'avons pas pu valider automatiquement ta demande d'inscription fournisseur. Si tu penses qu'il s'agit d'une erreur, contacte-nous."
   },
   "marketplace": {
     "discoverTitle": "Fournisseurs",

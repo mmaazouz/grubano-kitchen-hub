@@ -2453,7 +2453,11 @@
     "payoutNone": "No conectado",
     "payoutPending": "En curso",
     "payoutActive": "Activo",
-    "payoutRestricted": "Incompleto"
+    "payoutRestricted": "Incompleto",
+    "successTitleActive": "Cuenta de proveedor activada ✅",
+    "successBodyActive": "¡Bienvenido! Tu cuenta está activa: inicia sesión con un enlace mágico para gestionar tu catálogo. Para recibir pagos, finaliza la activación de Stripe desde tu panel.",
+    "successTitleRejected": "Solicitud no aceptada",
+    "successBodyRejected": "No pudimos validar automáticamente tu registro de proveedor. Si crees que es un error, contáctanos."
   },
   "marketplace": {
     "discoverTitle": "Proveedores",

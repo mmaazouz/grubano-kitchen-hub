@@ -2453,7 +2453,11 @@
     "payoutNone": "Not connected",
     "payoutPending": "In progress",
     "payoutActive": "Active",
-    "payoutRestricted": "Incomplete"
+    "payoutRestricted": "Incomplete",
+    "successTitleActive": "Supplier account activated ✅",
+    "successBodyActive": "Welcome! Your account is active: sign in with a magic link to manage your catalogue. To receive payments, finish the Stripe activation from your dashboard.",
+    "successTitleRejected": "Application not accepted",
+    "successBodyRejected": "We couldn't automatically validate your supplier registration. If you believe this is a mistake, please contact us."
   },
   "marketplace": {
     "discoverTitle": "Suppliers",

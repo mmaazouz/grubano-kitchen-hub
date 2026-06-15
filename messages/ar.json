@@ -2453,7 +2453,11 @@
     "payoutNone": "غير مرتبط",
     "payoutPending": "قيد التنفيذ",
     "payoutActive": "نشط",
-    "payoutRestricted": "غير مكتمل"
+    "payoutRestricted": "غير مكتمل",
+    "successTitleActive": "تم تفعيل حساب المورّد ✅",
+    "successBodyActive": "مرحبًا! حسابك مُفعّل: سجّل الدخول عبر الرابط السحري لإدارة كتالوجك. لاستلام المدفوعات، أكمل تفعيل Stripe من لوحتك.",
+    "successTitleRejected": "لم يتم قبول الطلب",
+    "successBodyRejected": "تعذّر علينا التحقق تلقائيًا من تسجيلك كمورّد. إذا كنت تعتقد أن هذا خطأ، يرجى التواصل معنا."
   },
   "marketplace": {
     "discoverTitle": "الموردون",
