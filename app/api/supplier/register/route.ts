@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { ensureSupplierOperator } from '@/lib/supplier-account'
-import { vetSupplier } from '@/lib/supplier-vetting'
+import { verifyBusiness } from '@/lib/business-verification'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +23,10 @@ const registerSchema = z.object({
   companyName:     z.string().min(2, 'Nom commercial trop court').max(120),
   contactName:     z.string().min(2, 'Nom du contact trop court').max(80),
   email:           z.string().email('Email invalide'),
+  // SIREN (9) or SIRET (14) — spaces tolerated; verified against the official registry.
+  siren:           z.string()
+                     .transform((s) => s.replace(/\s+/g, ''))
+                     .refine((s) => /^\d{9}$/.test(s) || /^\d{14}$/.test(s), 'SIREN (9 chiffres) ou SIRET (14 chiffres) requis'),
   phone:           z.string().max(40).optional(),
   city:            z.string().max(80).optional(),
   categories:      z.array(z.enum(CATEGORIES)).max(CATEGORIES.length).default([]),
@@ -81,38 +85,42 @@ export async function POST(req: Request) {
       return ok('pending')
     }
 
-    // FRESH registration → AUTO-ONBOARDING vetting (SYNC, mirrors the creator
-    // vetting). The LLM gates VISIBILITY only — it NEVER touches money (payouts stay
-    // gated by Stripe Connect KYB, independently). FAIL-SAFE: vetSupplier returns
-    // 'doubt' on any error/unavailability, so a degraded LLM can only ever land on
-    // 'pending' — never auto-activate.
-    const vet = await vetSupplier({
-      companyName:   data.companyName,
-      contactName:   data.contactName,
-      city:          data.city,
-      categories:    data.categories,
-      deliveryZones: data.deliveryZones,
-      paymentTerms:  data.paymentTerms,
+    // FRESH registration → AUTOMATIC BUSINESS-IDENTITY verification. The official
+    // registry (recherche-entreprises.api.gouv.fr) is the authoritative judge of
+    // existence + active state; the LLM only fuzzy-matches the declared vs official
+    // name. Gates VISIBILITY only — money stays gated by Stripe Connect KYB. FAIL-SAFE:
+    // registry unreachable / LLM down → 'review' → 'pending' (never auto-reject on an
+    // incident, never auto-activate). Pre-account → NO operatorId → never quota-blocked.
+    const siren = data.siren.slice(0, 9) // SIREN = first 9 digits of a SIREN or SIRET
+    const verification = await verifyBusiness({
+      siren,
+      declaredName: data.companyName,
+      categories:   data.categories,
     })
     const status: Outcome =
-      vet.verdict === 'legit' ? 'active' : vet.verdict === 'bad' ? 'rejected' : 'pending'
+      verification.outcome === 'verified' ? 'active'
+      : verification.outcome === 'rejected' ? 'rejected'
+      : 'pending'
 
     await prisma.supplierProfile.create({
       data: {
         email,
-        companyName:       data.companyName,
-        contactName:       data.contactName,
-        phone:             data.phone,
-        city:              data.city,
-        categories:        data.categories,
-        deliveryZones:     data.deliveryZones,
+        companyName:        data.companyName,
+        contactName:        data.contactName,
+        phone:              data.phone,
+        city:               data.city,
+        categories:         data.categories,
+        deliveryZones:      data.deliveryZones,
         minimumOrderCents,
-        leadTimeDays:      data.leadTimeDays,
-        paymentTerms:      data.paymentTerms,
+        leadTimeDays:       data.leadTimeDays,
+        paymentTerms:       data.paymentTerms,
         status,
-        vettingVerdict:    vet.verdict,
-        vettingReason:     vet.reason,
-        vettingAt:         new Date(),
+        siren,
+        officialName:       verification.officialName,
+        verificationStatus: verification.outcome,
+        verifiedAt:         verification.outcome === 'verified' ? new Date() : null,
+        vettingReason:      verification.reason,
+        vettingAt:          new Date(),
       },
     })
 

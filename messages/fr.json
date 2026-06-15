@@ -2359,8 +2359,8 @@
     "consentLabel": "J'accepte que Grubano traite ces informations pour étudier ma candidature fournisseur.",
     "submit": "Envoyer ma candidature",
     "submitting": "Envoi…",
-    "successTitle": "Candidature reçue",
-    "successBody": "Notre équipe validera votre inscription. Vous recevrez un lien de connexion par email une fois votre espace activé.",
+    "successTitle": "Vérification en cours",
+    "successBody": "Nous vérifions ton entreprise auprès du registre officiel. Tu recevras un accès dès que c'est validé.",
     "backToLogin": "Aller à la connexion",
     "errorGeneric": "Une erreur est survenue. Réessayez.",
     "catFresh": "Produits frais",
@@ -2457,7 +2457,9 @@
     "successTitleActive": "Espace fournisseur activé ✅",
     "successBodyActive": "Bienvenue ! Ton espace est actif : connecte-toi par lien magique pour gérer ton catalogue. Pour encaisser les paiements, finalise l'activation Stripe depuis ton espace.",
     "successTitleRejected": "Demande non retenue",
-    "successBodyRejected": "Nous n'avons pas pu valider automatiquement ta demande d'inscription fournisseur. Si tu penses qu'il s'agit d'une erreur, contacte-nous."
+    "successBodyRejected": "Nous n'avons pas pu valider automatiquement ta demande d'inscription fournisseur. Si tu penses qu'il s'agit d'une erreur, contacte-nous.",
+    "fieldSiren": "SIREN ou SIRET",
+    "fieldSirenHint": "Numéro officiel de ton entreprise (SIREN 9 chiffres ou SIRET 14) — vérifié automatiquement."
   },
   "marketplace": {
     "discoverTitle": "Fournisseurs",

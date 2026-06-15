@@ -2359,8 +2359,8 @@
     "consentLabel": "Acepto que Grubano trate esta información para evaluar mi solicitud de proveedor.",
     "submit": "Enviar solicitud",
     "submitting": "Enviando…",
-    "successTitle": "Solicitud recibida",
-    "successBody": "Nuestro equipo validará tu registro. Recibirás un enlace de acceso por correo cuando se active tu espacio.",
+    "successTitle": "Verificación en curso",
+    "successBody": "Estamos verificando tu empresa en el registro oficial. Tendrás acceso en cuanto se confirme.",
     "backToLogin": "Ir a iniciar sesión",
     "errorGeneric": "Algo salió mal. Inténtalo de nuevo.",
     "catFresh": "Productos frescos",
@@ -2457,7 +2457,9 @@
     "successTitleActive": "Cuenta de proveedor activada ✅",
     "successBodyActive": "¡Bienvenido! Tu cuenta está activa: inicia sesión con un enlace mágico para gestionar tu catálogo. Para recibir pagos, finaliza la activación de Stripe desde tu panel.",
     "successTitleRejected": "Solicitud no aceptada",
-    "successBodyRejected": "No pudimos validar automáticamente tu registro de proveedor. Si crees que es un error, contáctanos."
+    "successBodyRejected": "No pudimos validar automáticamente tu registro de proveedor. Si crees que es un error, contáctanos.",
+    "fieldSiren": "SIREN o SIRET",
+    "fieldSirenHint": "Número oficial de tu empresa (SIREN 9 dígitos o SIRET 14) — verificado automáticamente."
   },
   "marketplace": {
     "discoverTitle": "Proveedores",

@@ -19,6 +19,7 @@ export default function SupplierRegisterPage() {
 
   const [companyName, setCompanyName]     = useState('')
   const [contactName, setContactName]     = useState('')
+  const [siren, setSiren]                 = useState('')
   const [email, setEmail]                 = useState('')
   const [phone, setPhone]                 = useState('')
   const [city, setCity]                   = useState('')
@@ -54,6 +55,7 @@ export default function SupplierRegisterPage() {
         body: JSON.stringify({
           companyName,
           contactName,
+          siren,
           email,
           phone:           phone || undefined,
           city:            city || undefined,
@@ -130,6 +132,10 @@ export default function SupplierRegisterPage() {
 
               <Input label={t('fieldCompanyName')} required value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
               <Input label={t('fieldContactName')} required value={contactName} onChange={(e) => setContactName(e.target.value)} />
+              <div>
+                <Input label={t('fieldSiren')} required inputMode="numeric" value={siren} onChange={(e) => setSiren(e.target.value)} placeholder="123 456 789" />
+                <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fieldSirenHint')}</p>
+              </div>
               <Input label={t('fieldEmail')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
               <div className="grid grid-cols-2 gap-3">
                 <Input label={t('fieldPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />

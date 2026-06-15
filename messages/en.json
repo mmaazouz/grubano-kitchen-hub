@@ -2359,8 +2359,8 @@
     "consentLabel": "I agree that Grubano may process this information to review my supplier application.",
     "submit": "Submit application",
     "submitting": "Submitting…",
-    "successTitle": "Application received",
-    "successBody": "Our team will review your registration. You'll get a sign-in link by email once your space is activated.",
+    "successTitle": "Verification in progress",
+    "successBody": "We're verifying your company against the official registry. You'll get access as soon as it's confirmed.",
     "backToLogin": "Go to sign-in",
     "errorGeneric": "Something went wrong. Please try again.",
     "catFresh": "Fresh produce",
@@ -2457,7 +2457,9 @@
     "successTitleActive": "Supplier account activated ✅",
     "successBodyActive": "Welcome! Your account is active: sign in with a magic link to manage your catalogue. To receive payments, finish the Stripe activation from your dashboard.",
     "successTitleRejected": "Application not accepted",
-    "successBodyRejected": "We couldn't automatically validate your supplier registration. If you believe this is a mistake, please contact us."
+    "successBodyRejected": "We couldn't automatically validate your supplier registration. If you believe this is a mistake, please contact us.",
+    "fieldSiren": "SIREN or SIRET",
+    "fieldSirenHint": "Your company's official number (SIREN 9 digits or SIRET 14) — verified automatically."
   },
   "marketplace": {
     "discoverTitle": "Suppliers",
