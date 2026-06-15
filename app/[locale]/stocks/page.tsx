@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Package, AlertTriangle, Check, Clock, Sparkles, Send, Mic, Filter, X, RefreshCw, Plus } from 'lucide-react'
+import { Package, AlertTriangle, Check, Clock, Sparkles, Send, Mic, Filter, X, RefreshCw, Plus, ArrowRight } from 'lucide-react'
+import { Link } from '@/navigation'
 
 type StockItem = { id: string; brandId: string; name: string; quantity: number; unit: string; minThreshold: number; dlc: string | null; lastUpdated: string }
 type StatusType = 'ok' | 'soon' | 'urgent'
@@ -53,6 +54,10 @@ export default function StocksPage() {
           <div className="flex-1">
             <p className="text-xs font-semibold">{lowItems.length} article{lowItems.length > 1 ? 's' : ''} sous le seuil</p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">Pensez à passer commande auprès de vos fournisseurs.</p>
+            {/* Slice 4 — bridge to the B2B reorder flow (read-only; no stock write). */}
+            <Link href="/marketplace/reorder" className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-primary">
+              Commander chez un fournisseur <ArrowRight size={11} />
+            </Link>
           </div>
         </div>
       )}
