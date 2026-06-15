@@ -25,7 +25,8 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
     select: {
       id: true, status: true, totalCents: true, notes: true, desiredDate: true, createdAt: true,
-      supplierProfile: { select: { companyName: true } },
+      paymentStatus: true, chargedCents: true, // Slice 5c — payment state for the Pay button / receipt
+      supplierProfile: { select: { companyName: true, payoutStatus: true } },
       lines: { select: { nameSnapshot: true, unitSnapshot: true, quantity: true, unitPriceCents: true, lineTotalCents: true } },
     },
   })
