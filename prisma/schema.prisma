@@ -585,7 +585,13 @@ model SupplierProfile {
   minimumOrderCents Int      @default(0)       // minimum order (cents) — displayed via lib/format-money
   leadTimeDays      Int      @default(1)       // delivery lead time (days)
   paymentTerms      String?  @db.Text          // free text for now (Slice 5 formalizes the economics)
-  status            String   @default("pending")   // pending | active | suspended (business approval)
+  status            String   @default("pending")   // pending | active | suspended | rejected (business state)
+  // Auto-onboarding LLM vetting (Agent 14): the verdict that DECIDED `status` at
+  // registration. ADDITIVE + REVERSIBLE. Gates VISIBILITY/catalogue ONLY — never
+  // money (Stripe Connect KYB stays the independent hard gate for payouts).
+  vettingVerdict    String?                          // legit | doubt | bad (null = legacy / not auto-vetted)
+  vettingReason     String?  @db.Text                // short FR reason from the vetting model
+  vettingAt         DateTime?                         // when the auto-vetting ran
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   // Slice 5b — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
