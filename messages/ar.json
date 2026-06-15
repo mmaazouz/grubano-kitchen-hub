@@ -2443,7 +2443,17 @@
     "actionConfirmed": "تأكيد",
     "actionDeclined": "رفض",
     "actionPreparing": "تحضير",
-    "actionDelivered": "وضع كمسلَّمة"
+    "actionDelivered": "وضع كمسلَّمة",
+    "connectTitle": "المدفوعات",
+    "connectSubtitle": "استلم تحويلاتك عبر Stripe.",
+    "connectStart": "اربط مدفوعاتي",
+    "connectContinue": "متابعة الإعداد",
+    "connectGated": "قريبًا — تفعيل المدفوعات قيد التنفيذ لدى غروبانو.",
+    "connectError": "حدث خطأ ما. حاول مرة أخرى.",
+    "payoutNone": "غير مرتبط",
+    "payoutPending": "قيد التنفيذ",
+    "payoutActive": "نشط",
+    "payoutRestricted": "غير مكتمل"
   },
   "marketplace": {
     "discoverTitle": "الموردون",

@@ -2443,7 +2443,17 @@
     "actionConfirmed": "Confirm",
     "actionDeclined": "Decline",
     "actionPreparing": "Prepare",
-    "actionDelivered": "Mark delivered"
+    "actionDelivered": "Mark delivered",
+    "connectTitle": "Payments",
+    "connectSubtitle": "Receive your payouts via Stripe.",
+    "connectStart": "Connect my payouts",
+    "connectContinue": "Continue setup",
+    "connectGated": "Coming soon — payouts activation is in progress at Grubano.",
+    "connectError": "Something went wrong. Please try again.",
+    "payoutNone": "Not connected",
+    "payoutPending": "In progress",
+    "payoutActive": "Active",
+    "payoutRestricted": "Incomplete"
   },
   "marketplace": {
     "discoverTitle": "Suppliers",

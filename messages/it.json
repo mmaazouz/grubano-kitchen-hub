@@ -2443,7 +2443,17 @@
     "actionConfirmed": "Conferma",
     "actionDeclined": "Rifiuta",
     "actionPreparing": "Prepara",
-    "actionDelivered": "Segna consegnato"
+    "actionDelivered": "Segna consegnato",
+    "connectTitle": "Pagamenti",
+    "connectSubtitle": "Ricevi i tuoi pagamenti via Stripe.",
+    "connectStart": "Collega i miei pagamenti",
+    "connectContinue": "Continua la configurazione",
+    "connectGated": "A breve — l'attivazione dei pagamenti è in corso lato Grubano.",
+    "connectError": "Qualcosa è andato storto. Riprova.",
+    "payoutNone": "Non collegato",
+    "payoutPending": "In corso",
+    "payoutActive": "Attivo",
+    "payoutRestricted": "Incompleto"
   },
   "marketplace": {
     "discoverTitle": "Fornitori",
