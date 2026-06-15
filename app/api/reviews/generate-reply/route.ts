@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { llmComplete } from '@/lib/llm'
 
 const schema = z.object({
   platform:   z.string(),
@@ -8,8 +8,6 @@ const schema = z.object({
   rating:     z.number().int().min(1).max(5),
   text:       z.string(),
 })
-
-const claude = new Anthropic()
 
 export async function POST(req: Request) {
   try {
@@ -22,22 +20,18 @@ export async function POST(req: Request) {
       ? 'warm and acknowledging the mixed feedback, mentioning improvements'
       : 'enthusiastic and grateful'
 
-    const msg = await claude.messages.create({
-      model:      'claude-sonnet-4-5',
-      max_tokens: 300,
-      messages: [{
-        role: 'user',
-        content: `You are the manager of a dark kitchen called Grubano.
+    const { text: out } = await llmComplete({
+      task: 'review_reply',
+      content: `You are the manager of a dark kitchen called Grubano.
 Write a professional reply in French to this ${platform} review (${rating}/5 stars) by ${authorName}:
 "${text}"
 
 Tone: ${tone}.
 Keep it under 3 sentences. Be genuine, not generic. Sign as "L'équipe Grubano".
 Return only the reply text, no quotes, no markdown.`,
-      }],
     })
 
-    const reply = (msg.content[0] as { text: string }).text.trim()
+    const reply = out.trim()
     return NextResponse.json({ reply })
   } catch (err) {
     if (err instanceof z.ZodError) {

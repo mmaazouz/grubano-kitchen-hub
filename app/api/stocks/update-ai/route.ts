@@ -1,31 +1,23 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { llmComplete } from '@/lib/llm'
 
 const schema = z.object({
   text:    z.string().min(1).max(2000),
   brandId: z.string().optional(),
 })
 
-const claude = new Anthropic()
-
 type ParsedItem = { name: string; quantity: number; unit: string }
 
 async function parseWithClaude(text: string): Promise<ParsedItem[]> {
-  const msg = await claude.messages.create({
-    model:      'claude-sonnet-4-5',
-    max_tokens: 512,
-    messages: [{
-      role: 'user',
-      content: `Parse this restaurant stock update text and return ONLY valid JSON array (no markdown, no extra text).
+  const { text: raw } = await llmComplete({
+    task:    'stock_parse',
+    content: `Parse this restaurant stock update text and return ONLY valid JSON array (no markdown, no extra text).
 Each item: {"name":"ingredient name in lowercase French","quantity":number,"unit":"kg|g|L|mL|u"}.
 Use unit "u" for pieces/boxes. If quantity is 0 or "finished/vide/terminé", use 0.
 Text: "${text}"`,
-    }],
   })
-
-  const raw   = (msg.content[0] as { text: string }).text
   const clean = raw.replace(/```json\n?|\n?```/g, '').trim()
   return JSON.parse(clean) as ParsedItem[]
 }

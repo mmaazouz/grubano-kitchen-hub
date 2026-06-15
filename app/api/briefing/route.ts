@@ -1,8 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-
-const claude = new Anthropic()
+import { llmComplete } from '@/lib/llm'
 
 export async function GET() {
   try {
@@ -52,13 +50,8 @@ Génère un briefing matinal en français avec :
 
 Sois concis, direct et professionnel. Maximum 120 mots au total.`
 
-    const msg = await claude.messages.create({
-      model:      'claude-sonnet-4-5',
-      max_tokens: 400,
-      messages:   [{ role: 'user', content: prompt }],
-    })
-
-    const briefing = (msg.content[0] as { text: string }).text.trim()
+    const { text } = await llmComplete({ task: 'briefing', content: prompt })
+    const briefing = text.trim()
 
     return NextResponse.json({
       briefing,

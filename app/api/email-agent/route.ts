@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import Anthropic from '@anthropic-ai/sdk'
+import { llmComplete } from '@/lib/llm'
 import nodemailer from 'nodemailer'
 
 // ── Clients ───────────────────────────────────────────────────────────────────
-
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const transporter = nodemailer.createTransport({
   host:   process.env.SMTP_HOST || 'mail.grubano.com',
@@ -20,15 +18,8 @@ const transporter = nodemailer.createTransport({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function generateEmail(prompt: string): Promise<{ html: string; tokens: number }> {
-  const msg = await claude.messages.create({
-    model:      'claude-sonnet-4-5',
-    max_tokens: 600,
-    messages:   [{ role: 'user', content: prompt }],
-  })
-  return {
-    html:   (msg.content[0] as { text: string }).text,
-    tokens: msg.usage.input_tokens + msg.usage.output_tokens,
-  }
+  const { text, usage } = await llmComplete({ task: 'email_agent', content: prompt })
+  return { html: text, tokens: usage.inputTokens + usage.outputTokens }
 }
 
 async function sendAndLog(
