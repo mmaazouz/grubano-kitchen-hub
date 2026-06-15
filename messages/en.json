@@ -2476,6 +2476,16 @@
     "myOrdersNav": "My orders",
     "orderTo": "Order to {supplier}",
     "actionCancel": "Cancel",
-    "cancelConfirm": "Cancel this order?"
+    "cancelConfirm": "Cancel this order?",
+    "reorderTitle": "To reorder",
+    "reorderSubtitle": "Your low-stock products — order from a supplier.",
+    "reorderEmpty": "No low-stock products. 👍",
+    "findSuppliers": "Find suppliers",
+    "stockMin": "threshold {min} {unit}",
+    "stockUrgent": "Critical",
+    "stockSoon": "Low",
+    "browseAll": "Browse all suppliers",
+    "searchPlaceholder": "Search a product…",
+    "noMatch": "No supplier offers “{q}”."
   }
 }

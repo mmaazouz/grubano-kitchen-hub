@@ -2476,6 +2476,16 @@
     "myOrdersNav": "Mes commandes",
     "orderTo": "Commande à {supplier}",
     "actionCancel": "Annuler",
-    "cancelConfirm": "Annuler cette commande ?"
+    "cancelConfirm": "Annuler cette commande ?",
+    "reorderTitle": "À réapprovisionner",
+    "reorderSubtitle": "Vos produits en stock bas — commandez chez un fournisseur.",
+    "reorderEmpty": "Aucun produit en stock bas. 👍",
+    "findSuppliers": "Chercher chez les fournisseurs",
+    "stockMin": "seuil {min} {unit}",
+    "stockUrgent": "Critique",
+    "stockSoon": "Bas",
+    "browseAll": "Parcourir tous les fournisseurs",
+    "searchPlaceholder": "Rechercher un produit…",
+    "noMatch": "Aucun fournisseur ne propose « {q} »."
   }
 }

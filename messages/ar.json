@@ -2476,6 +2476,16 @@
     "myOrdersNav": "طلباتي",
     "orderTo": "طلب إلى {supplier}",
     "actionCancel": "إلغاء",
-    "cancelConfirm": "إلغاء هذا الطلب؟"
+    "cancelConfirm": "إلغاء هذا الطلب؟",
+    "reorderTitle": "لإعادة التزويد",
+    "reorderSubtitle": "منتجاتك منخفضة المخزون — اطلب من مورّد.",
+    "reorderEmpty": "لا توجد منتجات منخفضة المخزون. 👍",
+    "findSuppliers": "ابحث عن موردين",
+    "stockMin": "الحد {min} {unit}",
+    "stockUrgent": "حرج",
+    "stockSoon": "منخفض",
+    "browseAll": "تصفّح كل الموردين",
+    "searchPlaceholder": "ابحث عن منتج…",
+    "noMatch": "لا يوجد مورّد يقدّم «{q}»."
   }
 }

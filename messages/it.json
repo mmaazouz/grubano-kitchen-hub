@@ -2476,6 +2476,16 @@
     "myOrdersNav": "I miei ordini",
     "orderTo": "Ordine a {supplier}",
     "actionCancel": "Annulla",
-    "cancelConfirm": "Annullare questo ordine?"
+    "cancelConfirm": "Annullare questo ordine?",
+    "reorderTitle": "Da riordinare",
+    "reorderSubtitle": "I tuoi prodotti con scorte basse — ordina da un fornitore.",
+    "reorderEmpty": "Nessun prodotto con scorte basse. 👍",
+    "findSuppliers": "Cerca fornitori",
+    "stockMin": "soglia {min} {unit}",
+    "stockUrgent": "Critico",
+    "stockSoon": "Basso",
+    "browseAll": "Sfoglia tutti i fornitori",
+    "searchPlaceholder": "Cerca un prodotto…",
+    "noMatch": "Nessun fornitore offre «{q}»."
   }
 }
