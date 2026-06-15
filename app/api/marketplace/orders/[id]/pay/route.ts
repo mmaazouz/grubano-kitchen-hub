@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       where:  { id: params.id },
       select: {
         id: true, operatorId: true, status: true, paymentStatus: true, totalCents: true,
-        supplierProfile: { select: { stripeAccountId: true, payoutStatus: true } },
+        supplierProfile: { select: { status: true, stripeAccountId: true, payoutStatus: true } },
       },
     })
     if (!order) return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
@@ -53,7 +53,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (order.paymentStatus === 'paid') {
       return NextResponse.json({ error: 'Commande déjà payée' }, { status: 409 })
     }
-    // (b) The supplier must be payout-active (Connect onboarded).
+    // (b1) The supplier's BUSINESS status must be active — a suspended/rejected
+    // supplier cannot be paid even for an already-confirmed order (defence in depth;
+    // this only READS the profile status, it never touches the money math / KYB).
+    if (order.supplierProfile?.status !== 'active') {
+      return NextResponse.json({ error: 'Le fournisseur ne peut pas recevoir de paiements' }, { status: 403 })
+    }
+    // (b2) The supplier must be payout-active (Stripe Connect KYB — independent gate).
     if (!order.supplierProfile?.stripeAccountId || order.supplierProfile.payoutStatus !== 'active') {
       return NextResponse.json({ error: 'Le fournisseur ne peut pas encore recevoir de paiements' }, { status: 403 })
     }
