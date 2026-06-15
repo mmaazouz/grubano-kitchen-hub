@@ -8,7 +8,7 @@
 // never reaches the client and is never logged.
 
 import { createHash } from 'crypto'
-import Anthropic from '@anthropic-ai/sdk'
+import { llmComplete, type LlmContent } from '@/lib/llm'
 
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8 MB
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -18,9 +18,6 @@ const CLOUDINARY_FOLDER = 'grubano/dishes'
 // Square, subject-aware, auto format+quality delivery transformation. Stored in
 // the URL so the menu grid renders uniformly without any client-side work.
 const SQUARE_TRANSFORM = 'c_fill,g_auto,ar_1:1,f_auto,q_auto'
-
-// Reads ANTHROPIC_API_KEY from the environment (same as scan-dish).
-const claude = new Anthropic()
 
 // ── Moderation ────────────────────────────────────────────────────────────────
 
@@ -50,19 +47,13 @@ export async function moderateDishImage(
   imageBase64: string,
   mediaType: DishImageType,
 ): Promise<Moderation> {
-  const msg = await claude.messages.create({
-    model:      'claude-sonnet-4-5',
-    max_tokens: 400,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
-        { type: 'text',  text: MODERATION_PROMPT },
-      ],
-    }],
-  })
-  const first = msg.content[0]
-  const raw   = first && first.type === 'text' ? first.text : ''
+  const content: LlmContent = [
+    { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+    { type: 'text',  text: MODERATION_PROMPT },
+  ]
+  // Throws on failure (no internal catch) so the caller fails CLOSED — never stores
+  // an unverified image. The gateway also throws on the kill-switch, same effect.
+  const { text: raw } = await llmComplete({ task: 'dish_moderation', content })
   const clean = raw.replace(/```json\n?|\n?```/g, '').trim()
   const parsed = JSON.parse(clean) as { allowed?: unknown; reason?: unknown; warnings?: unknown }
   return {

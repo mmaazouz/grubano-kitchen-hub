@@ -2,11 +2,11 @@
  * Claude-based creator content vetting — server-side only.
  *
  * Judges whether a CREATOR applicant should be approved to publish signature
- * dish recipes on Grubano. Uses a fast Haiku model and demands a STRICT JSON
- * verdict so the result is machine-actionable.
+ * dish recipes on Grubano. Demands a STRICT JSON verdict so the result is
+ * machine-actionable.
  *
- * Client pattern mirrors app/api/email-agent/route.ts:
- *   new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+ * Routes through the central LLM gateway (lib/llm) — tasks 'creator_vetting' and
+ * 'dish_vetting' (both on the fast Haiku model). No direct SDK use.
  *
  * SAFETY:
  *   - Never throws. Any failure (no key, API error, unreadable JSON) returns a
@@ -14,13 +14,7 @@
  *   - Logs nothing that could contain personal data.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
-
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-// Fast, cheap model for a short classification call. email-agent uses Sonnet,
-// so we name Haiku explicitly here.
-const MODEL = 'claude-haiku-4-5'
+import { llmComplete, type LlmContentBlock } from '@/lib/llm'
 
 export type VetVerdict = 'pass' | 'flag' | 'reject'
 
@@ -179,14 +173,6 @@ export function buildCreatorVettingPrompt(input: VetCreatorInput): string {
   return influencerOnly ? buildInfluencerPrompt(input) : buildChefPrompt(input)
 }
 
-/** First text block of a Claude message, or '' if none. */
-function extractText(content: Anthropic.Messages.ContentBlock[]): string {
-  for (const block of content) {
-    if (block.type === 'text' && typeof block.text === 'string') return block.text
-  }
-  return ''
-}
-
 function tryParse(raw: string): unknown {
   try {
     return JSON.parse(raw)
@@ -240,13 +226,8 @@ export async function vetCreator(input: VetCreatorInput): Promise<VetResult> {
   try {
     if (!process.env.ANTHROPIC_API_KEY) return safeFallback()
 
-    const msg = await claude.messages.create({
-      model:      MODEL,
-      max_tokens: 300,
-      messages:   [{ role: 'user', content: buildCreatorVettingPrompt(input) }],
-    })
-
-    return parseVerdict(extractText(msg.content)) ?? safeFallback()
+    const { text } = await llmComplete({ task: 'creator_vetting', content: buildCreatorVettingPrompt(input) })
+    return parseVerdict(text) ?? safeFallback()
   } catch {
     // No personal data in the log — just a generic availability note.
     console.error('[creator-vetting] vetting unavailable (API error)')
@@ -385,8 +366,8 @@ function parseDishVerdict(text: string): VetDishResult | null {
 }
 
 /** Build the multimodal content blocks — the photo leg is OPTIONAL. */
-function dishContent(input: VetDishInput, withPhoto: boolean): Anthropic.Messages.ContentBlockParam[] {
-  const blocks: Anthropic.Messages.ContentBlockParam[] = []
+function dishContent(input: VetDishInput, withPhoto: boolean): LlmContentBlock[] {
+  const blocks: LlmContentBlock[] = []
   if (withPhoto && input.photoUrl) {
     blocks.push({ type: 'image', source: { type: 'url', url: input.photoUrl } })
   }
@@ -407,22 +388,14 @@ export async function vetDish(input: VetDishInput): Promise<VetDishResult> {
 
     let parsed: VetDishResult | null = null
     try {
-      const msg = await claude.messages.create({
-        model:      MODEL,
-        max_tokens: 400,
-        messages:   [{ role: 'user', content: dishContent(input, true) }],
-      })
-      parsed = parseDishVerdict(extractText(msg.content))
+      const { text } = await llmComplete({ task: 'dish_vetting', content: dishContent(input, true) })
+      parsed = parseDishVerdict(text)
     } catch (imgErr) {
       // Image leg failed (1.5 best-effort) → text-only retry, never blocking.
       if (input.photoUrl) {
         console.error('[creator-vetting] photo leg failed — retrying text-only')
-        const msg = await claude.messages.create({
-          model:      MODEL,
-          max_tokens: 400,
-          messages:   [{ role: 'user', content: dishContent(input, false) }],
-        })
-        parsed = parseDishVerdict(extractText(msg.content))
+        const { text } = await llmComplete({ task: 'dish_vetting', content: dishContent(input, false) })
+        parsed = parseDishVerdict(text)
       } else {
         throw imgErr
       }

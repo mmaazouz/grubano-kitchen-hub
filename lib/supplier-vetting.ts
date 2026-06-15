@@ -19,12 +19,7 @@
  *     error, so a degraded LLM can never auto-activate a supplier.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
-
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-// Fast, cheap model for a short classification call (same as creator-vetting).
-const MODEL = 'claude-haiku-4-5'
+import { llmComplete } from '@/lib/llm'
 
 export type SupplierVetVerdict = 'legit' | 'doubt' | 'bad'
 
@@ -99,14 +94,6 @@ export function buildSupplierVettingPrompt(input: SupplierVetInput): string {
   ].join('\n')
 }
 
-/** First text block of a Claude message, or '' if none. */
-function extractText(content: Anthropic.Messages.ContentBlock[]): string {
-  for (const block of content) {
-    if (block.type === 'text' && typeof block.text === 'string') return block.text
-  }
-  return ''
-}
-
 function tryParse(raw: string): unknown {
   try {
     return JSON.parse(raw)
@@ -150,13 +137,8 @@ export async function vetSupplier(input: SupplierVetInput): Promise<SupplierVetR
   try {
     if (!process.env.ANTHROPIC_API_KEY) return safeFallback()
 
-    const msg = await claude.messages.create({
-      model:      MODEL,
-      max_tokens: 200,
-      messages:   [{ role: 'user', content: buildSupplierVettingPrompt(input) }],
-    })
-
-    return parseSupplierVerdict(extractText(msg.content)) ?? safeFallback()
+    const { text } = await llmComplete({ task: 'supplier_vetting', content: buildSupplierVettingPrompt(input) })
+    return parseSupplierVerdict(text) ?? safeFallback()
   } catch {
     // No personal data in the log — just a generic availability note.
     console.error('[supplier-vetting] vetting unavailable (API error)')

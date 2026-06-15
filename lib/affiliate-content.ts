@@ -1,9 +1,8 @@
 /**
  * Affiliate content studio — caption generation (Slice 2b, Agent 14).
  *
- * REUSES the EXISTING LLM wiring (lib/creator-vetting pattern): the same
- * @anthropic-ai/sdk client, the same ANTHROPIC_API_KEY, the same cheap model
- * (claude-haiku-4-5). NO new provider, NO new key. Server-side only.
+ * Routes through the central LLM gateway (lib/llm, task 'affiliate_caption' → the
+ * cheap Haiku model). NO direct SDK use, NO new provider, NO new key. Server-only.
  *
  * v1 STATELESS: generation on demand, nothing stored → no schema, no db push.
  * READ-ONLY w.r.t. money: this only writes social captions.
@@ -13,11 +12,7 @@
  * 502; it never crashes the request.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
-
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-// Same cheap model the recipe vetting uses — captions are short creative text.
-const MODEL = 'claude-haiku-4-5'
+import { llmComplete } from '@/lib/llm'
 
 // Three distinct tones (the studio surfaces one variant per tone).
 export const CONTENT_TONES = ['enthusiastic', 'punchy', 'storytelling'] as const
@@ -94,11 +89,6 @@ export function buildCaptionPrompt(input: CaptionInput): string {
   ].join('\n')
 }
 
-function extractText(content: Anthropic.Messages.ContentBlock[]): string {
-  for (const block of content) if (block.type === 'text' && typeof block.text === 'string') return block.text
-  return ''
-}
-
 /** Robust parse → up to 3 {tone,text}. Null on unusable payload. Guarantees the
  *  share link is present in every caption (appends it if the model dropped it). */
 export function parseCaptions(text: string, share: string): Caption[] | null {
@@ -128,12 +118,8 @@ export async function generateAffiliateCaptions(input: CaptionInput): Promise<Ca
   try {
     if (!process.env.ANTHROPIC_API_KEY) return null
     const share = input.link || input.code || ''
-    const msg = await claude.messages.create({
-      model:      MODEL,
-      max_tokens: 700,
-      messages:   [{ role: 'user', content: buildCaptionPrompt(input) }],
-    })
-    return parseCaptions(extractText(msg.content), share)
+    const { text } = await llmComplete({ task: 'affiliate_caption', content: buildCaptionPrompt(input) })
+    return parseCaptions(text, share)
   } catch {
     console.error('[affiliate-content] generation unavailable (API error)')
     return null
