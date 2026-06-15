@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { ensureSupplierOperator } from '@/lib/supplier-account'
+import { vetSupplier } from '@/lib/supplier-vetting'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,14 +38,13 @@ const registerSchema = z.object({
   formStartedAt:   z.number().int().optional(),
 })
 
-const GENERIC = {
-  ok: true,
-  message:
-    "Si ces informations sont valides, ta demande d'inscription fournisseur a bien " +
-    "été reçue. Notre équipe la validera avant l'activation de ton espace.",
-}
-function genericOk() {
-  return NextResponse.json(GENERIC)
+// Uniform success shape `{ ok, outcome }` for EVERY accepted submission so a bot or
+// a duplicate cannot fingerprint its path. 'pending' is the neutral default (anti-bot
+// honeypot, too-fast submit, duplicate email); only a FRESH registration returns its
+// real vetting outcome ('active' | 'pending' | 'rejected').
+type Outcome = 'active' | 'pending' | 'rejected'
+function ok(outcome: Outcome) {
+  return NextResponse.json({ ok: true, outcome })
 }
 
 export async function POST(req: Request) {
@@ -59,46 +59,72 @@ export async function POST(req: Request) {
     }
     const data = parsed.data
 
-    // Anti-bot: honeypot filled or submitted in < 2 s → behave like success.
-    if (data.website && data.website.trim() !== '') return genericOk()
+    // Anti-bot: honeypot filled or submitted in < 2 s → behave like a normal
+    // (neutral 'pending') success, never vet, never write.
+    if (data.website && data.website.trim() !== '') return ok('pending')
     if (typeof data.formStartedAt === 'number' && Date.now() - data.formStartedAt < 2000) {
-      return genericOk()
+      return ok('pending')
     }
 
     const email = data.email.trim().toLowerCase()
     const minimumOrderCents = Math.round(data.minimumOrderEur * 100)
 
-    // CREATE-IF-ABSENT (never overwrite): this is a PUBLIC endpoint, so it must not
-    // let anyone clobber an existing supplier's profile by re-posting their email.
-    // A duplicate registration just returns the same generic response.
+    // CREATE-IF-ABSENT (never overwrite): a PUBLIC endpoint must not let anyone
+    // clobber — or re-vet — an existing supplier by re-posting their email. A
+    // duplicate just gets the neutral 'pending' response (no state is leaked).
     const existingProfile = await prisma.supplierProfile.findUnique({
       where:  { email },
       select: { id: true },
     })
-    if (!existingProfile) {
-      await prisma.supplierProfile.create({
-        data: {
-          email,
-          companyName:       data.companyName,
-          contactName:       data.contactName,
-          phone:             data.phone,
-          city:              data.city,
-          categories:        data.categories,
-          deliveryZones:     data.deliveryZones,
-          minimumOrderCents,
-          leadTimeDays:      data.leadTimeDays,
-          paymentTerms:      data.paymentTerms,
-          status:            'pending',
-        },
-      })
+    if (existingProfile) {
+      await ensureSupplierOperator(email, data.contactName || data.companyName, { activate: false })
+      return ok('pending')
     }
 
-    // Provision the passwordless login account (pending). Fresh email → Operator
-    // (role='supplier', pending). Existing account (any role) → untouched; the
-    // 'supplier' role is ADDED only at approval (cumul). Best-effort — never blocks.
-    await ensureSupplierOperator(email, data.contactName || data.companyName, { activate: false })
+    // FRESH registration → AUTO-ONBOARDING vetting (SYNC, mirrors the creator
+    // vetting). The LLM gates VISIBILITY only — it NEVER touches money (payouts stay
+    // gated by Stripe Connect KYB, independently). FAIL-SAFE: vetSupplier returns
+    // 'doubt' on any error/unavailability, so a degraded LLM can only ever land on
+    // 'pending' — never auto-activate.
+    const vet = await vetSupplier({
+      companyName:   data.companyName,
+      contactName:   data.contactName,
+      city:          data.city,
+      categories:    data.categories,
+      deliveryZones: data.deliveryZones,
+      paymentTerms:  data.paymentTerms,
+    })
+    const status: Outcome =
+      vet.verdict === 'legit' ? 'active' : vet.verdict === 'bad' ? 'rejected' : 'pending'
 
-    return genericOk()
+    await prisma.supplierProfile.create({
+      data: {
+        email,
+        companyName:       data.companyName,
+        contactName:       data.contactName,
+        phone:             data.phone,
+        city:              data.city,
+        categories:        data.categories,
+        deliveryZones:     data.deliveryZones,
+        minimumOrderCents,
+        leadTimeDays:      data.leadTimeDays,
+        paymentTerms:      data.paymentTerms,
+        status,
+        vettingVerdict:    vet.verdict,
+        vettingReason:     vet.reason,
+        vettingAt:         new Date(),
+      },
+    })
+
+    // Provision the passwordless login. ACTIVATE (+ graft the 'supplier' role) ONLY
+    // when auto-approved; a 'pending' account is created un-activated (admin review
+    // activates it later). A 'rejected' (spam/fake) submission provisions NO login at
+    // all. Best-effort — a bridge failure never breaks the registration.
+    if (status !== 'rejected') {
+      await ensureSupplierOperator(email, data.contactName || data.companyName, { activate: status === 'active' })
+    }
+
+    return ok(status)
   } catch (err) {
     console.error('[POST /api/supplier/register]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
