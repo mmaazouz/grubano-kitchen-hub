@@ -13,6 +13,7 @@ const { db } = vi.hoisted(() => ({
     creator:    { findUnique: vi.fn() },
     restaurant: { findFirst: vi.fn() },
     menuItem:   { findFirst: vi.fn() },
+    operator:   { findUnique: vi.fn() }, // step-2: resolves the influencer's operator for LLM quota attribution
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -40,6 +41,7 @@ beforeEach(() => {
   db.creator.findUnique.mockResolvedValue(CREATOR)
   db.restaurant.findFirst.mockResolvedValue({ id: 'rest1', name: 'Gnocchi Bar', cuisine: ['italien'], coverPhoto: 'https://img/x.jpg' })
   db.menuItem.findFirst.mockResolvedValue(null)
+  db.operator.findUnique.mockResolvedValue({ id: 'op1' })
   rlMock.mockReturnValue({ ok: true, remaining: 29, resetMs: 1000 })
   genMock.mockResolvedValue([{ tone: 'punchy', text: 'Yum! https://grubano.com/ref/marco20' }])
 })
@@ -80,6 +82,7 @@ describe('generation', () => {
     const arg = genMock.mock.calls[0][0]
     expect(arg.link).toBe(out.link)
     expect(arg.restaurantName).toBe('Gnocchi Bar')
+    expect(arg.operatorId).toBe('op1') // step-2: partner attribution for the LLM quota
   })
   it('unknown restaurant → 404', async () => {
     db.restaurant.findFirst.mockResolvedValue(null)

@@ -8,13 +8,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const { createMock, db } = vi.hoisted(() => ({
   createMock: vi.fn(),
-  db: { llmUsage: { create: vi.fn() } },
+  db: { llmUsage: { create: vi.fn(), aggregate: vi.fn() } },
 }))
 vi.mock('@anthropic-ai/sdk', () => ({ default: class { messages = { create: createMock } } }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 import {
-  llmComplete, isLlmDisabled, estimateCostCents, LlmDisabledError,
+  llmComplete, isLlmDisabled, estimateCostCents, LlmDisabledError, LlmQuotaError,
   HAIKU, SONNET, MAX_INPUT_CHARS,
 } from '@/lib/llm'
 
@@ -26,7 +26,10 @@ const reply = (text: string, inTok = 10, outTok = 20) => ({
 beforeEach(() => {
   vi.clearAllMocks()
   db.llmUsage.create.mockResolvedValue({})
+  db.llmUsage.aggregate.mockResolvedValue({ _sum: { estimatedCostCents: 0 } }) // default: under quota
   delete process.env.LLM_DISABLED
+  delete process.env.LLM_QUOTA_DAILY_CENTS
+  delete process.env.LLM_QUOTA_MONTHLY_CENTS
 })
 
 describe('model + caps selection by task', () => {
@@ -125,6 +128,38 @@ describe('input caps + multimodal passthrough', () => {
     const sent = createMock.mock.calls[0][0].messages[0].content
     expect(Array.isArray(sent)).toBe(true)
     expect(sent[0].type).toBe('image')
+  })
+})
+
+describe('per-partner quota enforcement (step 2)', () => {
+  it('operator UNDER quota → call proceeds', async () => {
+    db.llmUsage.aggregate.mockResolvedValue({ _sum: { estimatedCostCents: 1 } })
+    createMock.mockResolvedValue(reply('ok'))
+    const r = await llmComplete({ task: 'review_reply', content: 'x', operatorId: 'op1' })
+    expect(r.text).toBe('ok')
+    expect(createMock).toHaveBeenCalled()
+  })
+
+  it('operator OVER quota → throws LlmQuotaError, NO SDK call, NO metering', async () => {
+    db.llmUsage.aggregate.mockResolvedValue({ _sum: { estimatedCostCents: 9_999_999 } })
+    await expect(llmComplete({ task: 'review_reply', content: 'x', operatorId: 'op1' })).rejects.toBeInstanceOf(LlmQuotaError)
+    expect(createMock).not.toHaveBeenCalled()
+    expect(db.llmUsage.create).not.toHaveBeenCalled()
+  })
+
+  it('NO operatorId → quota is NOT checked (system/vetting never blocked)', async () => {
+    db.llmUsage.aggregate.mockResolvedValue({ _sum: { estimatedCostCents: 9_999_999 } })
+    createMock.mockResolvedValue(reply('ok'))
+    await llmComplete({ task: 'supplier_vetting', content: 'x' })
+    expect(createMock).toHaveBeenCalled()
+    expect(db.llmUsage.aggregate).not.toHaveBeenCalled()
+  })
+
+  it('FAIL-OPEN: a quota-check error allows the call', async () => {
+    db.llmUsage.aggregate.mockRejectedValue(new Error('db down'))
+    createMock.mockResolvedValue(reply('ok'))
+    const r = await llmComplete({ task: 'review_reply', content: 'x', operatorId: 'op1' })
+    expect(r.text).toBe('ok')
   })
 })
 
