@@ -26,18 +26,42 @@ const transporter = nodemailer.createTransport({
   },
 })
 
-function baseUrl(req: NextRequest): string {
-  // Prefer the CANONICAL configured origin. NEXTAUTH_URL is set per environment in
-  // .env.local (https://app.grubano.com on staging, https://grubano.com on prod), so
-  // it is the reliable public base for an emailed link. Deriving the base from the
-  // request Host header is fragile behind o2switch/Passenger: a missing forwarded
-  // host (or an internal 127.0.0.1:PORT) would mint a dead, un-clickable link. We
-  // only fall back to the request host, then to the prod domain, if no env is set.
+// Grubano runs MULTIPLE portals on different domains (app.grubano.com for
+// consumer/restaurant, business.grubano.com for suppliers, plus the apex). A magic
+// link must point back to the portal the user actually came from — a supplier
+// signing in on business.grubano.com must receive a business.grubano.com link, not
+// an app.grubano.com one. Allow-list configurable via ALLOWED_MAGIC_HOSTS.
+const DEFAULT_ALLOWED_HOSTS = 'app.grubano.com,business.grubano.com,grubano.com'
+
+function allowedHosts(): Set<string> {
+  return new Set(
+    (process.env.ALLOWED_MAGIC_HOSTS || DEFAULT_ALLOWED_HOSTS)
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+// Canonical configured origin — the SAFE fallback. NEXTAUTH_URL is set per env in
+// .env.local (https://app.grubano.com staging, https://grubano.com prod); apex as a
+// last resort. Never derived from the request.
+function canonicalBase(): string {
   const configured = (process.env.NEXTAUTH_URL || process.env.APP_URL || '').trim().replace(/\/+$/, '')
-  if (/^https?:\/\//i.test(configured)) return configured
-  const proto = req.headers.get('x-forwarded-proto') ?? 'https'
-  const host  = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'grubano.com'
-  return `${proto}://${host}`
+  return /^https?:\/\//i.test(configured) ? configured : 'https://grubano.com'
+}
+
+function baseUrl(req: NextRequest): string {
+  // Use the REQUEST host ONLY when it is an explicitly allow-listed grubano domain,
+  // so the link follows the origin portal WITHOUT reopening host-injection: a forged,
+  // missing, or internal (127.0.0.1:PORT) host is never allow-listed → it falls back
+  // to the canonical base, never to an attacker-chosen domain. Forced to https (all
+  // grubano portals are https; an x-forwarded-proto downgrade cannot apply).
+  const fwd      = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? ''
+  const hostname = fwd.split(',')[0].trim().toLowerCase().split(':')[0] // first host, no port
+  if (hostname && allowedHosts().has(hostname)) {
+    return `https://${hostname}`
+  }
+  return canonicalBase()
 }
 
 const GENERIC = {
