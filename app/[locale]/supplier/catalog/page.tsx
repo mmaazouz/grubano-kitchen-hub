@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Plus, Upload, Pencil, Trash2, Package, ArrowLeft, X, Check, Loader2 } from 'lucide-react'
 import { Link } from '@/navigation'
-import { Card, Button, Input, Badge } from '@/components/design-system'
+import { Card, Button, Input, Badge, EmptyState } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
 import { formatMoney } from '@/lib/format-money'
 import { CATALOG_UNITS } from '@/lib/supplier-catalog'
@@ -163,10 +163,16 @@ export default function SupplierCatalogPage() {
           <Card elevation="sm" padding="lg"><p className="text-sm text-grubano-danger">{loadError}</p></Card>
         ) : items.length === 0 ? (
           <Card elevation="sm" padding="lg">
-            <div className="flex flex-col items-center gap-2 py-6 text-center">
-              <Package size={28} className="text-grubano-ink-faint" />
-              <p className="text-sm text-grubano-ink-muted">{t('catalogEmpty')}</p>
-            </div>
+            <EmptyState
+              emoji="📦"
+              title={t('catalogEmptyTitle')}
+              description={t('catalogEmptyDesc')}
+              action={
+                <Button variant="primary" size="md" leftIcon={<Plus size={16} />} onClick={openAdd}>
+                  {t('addFirstProduct')}
+                </Button>
+              }
+            />
           </Card>
         ) : (
           <ul className="space-y-2">

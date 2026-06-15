@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { MailCheck, Truck, ArrowLeft, CheckCircle2, Info } from 'lucide-react'
+import { MailCheck, Truck, ArrowLeft, CheckCircle2, Info, LogIn } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 
@@ -39,6 +39,12 @@ export default function SupplierRegisterPage() {
   // (manual review), or 'rejected'. Drives which success copy + icon we show.
   const [outcome, setOutcome]       = useState<'active' | 'pending' | 'rejected'>('pending')
 
+  // Inline SIREN/SIRET format check (9 or 14 digits, spaces tolerated) — UX only;
+  // the server re-validates and is the source of truth.
+  const sirenDigits    = siren.replace(/\s+/g, '')
+  const sirenValid     = /^\d{9}$/.test(sirenDigits) || /^\d{14}$/.test(sirenDigits)
+  const showSirenError = siren.trim().length > 0 && !sirenValid
+
   function toggleCategory(c: string) {
     setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
   }
@@ -47,6 +53,7 @@ export default function SupplierRegisterPage() {
     e.preventDefault()
     if (submitting) return
     setError('')
+    if (!sirenValid) { setError(t('fieldSirenError')); return }
     setSubmitting(true)
     try {
       const res = await fetch('/api/supplier/register', {
@@ -116,7 +123,15 @@ export default function SupplierRegisterPage() {
               <p className="max-w-xs text-sm text-grubano-ink-muted">
                 {t((outcome === 'active' ? 'successBodyActive' : outcome === 'rejected' ? 'successBodyRejected' : 'successBody') as 'successBody')}
               </p>
-              {outcome !== 'rejected' && (
+              {outcome === 'active' && (
+                <Link
+                  href="/auth/magic"
+                  className="mt-2 inline-flex items-center justify-center gap-2 rounded-grubano-lg bg-grubano-primary px-5 py-3 font-semibold text-white shadow-grubano-sm transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/30"
+                >
+                  <LogIn size={16} /> {t('successCtaActive')}
+                </Link>
+              )}
+              {outcome === 'pending' && (
                 <Link href="/auth/magic" className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-grubano-primary">
                   <ArrowLeft size={14} /> {t('backToLogin')}
                 </Link>
@@ -132,10 +147,16 @@ export default function SupplierRegisterPage() {
 
               <Input label={t('fieldCompanyName')} required value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
               <Input label={t('fieldContactName')} required value={contactName} onChange={(e) => setContactName(e.target.value)} />
-              <div>
-                <Input label={t('fieldSiren')} required inputMode="numeric" value={siren} onChange={(e) => setSiren(e.target.value)} placeholder="123 456 789" />
-                <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fieldSirenHint')}</p>
-              </div>
+              <Input
+                label={t('fieldSiren')}
+                required
+                inputMode="numeric"
+                value={siren}
+                onChange={(e) => setSiren(e.target.value)}
+                placeholder="123 456 789"
+                hint={t('fieldSirenHint')}
+                error={showSirenError ? t('fieldSirenError') : undefined}
+              />
               <Input label={t('fieldEmail')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
               <div className="grid grid-cols-2 gap-3">
                 <Input label={t('fieldPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />

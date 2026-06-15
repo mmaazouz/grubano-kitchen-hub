@@ -3,9 +3,9 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { Loader2, MailCheck, CheckCircle2, XCircle } from 'lucide-react'
-import { useRouter } from '@/navigation'
+import { Link, useRouter } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 
 // ── /auth/magic — passwordless sign-in (Phase 0 auth bridge, Agent 14) ────────
@@ -15,9 +15,8 @@ import { Card, Button, Input } from '@/components/design-system'
 //     then route the user by role (creator → /creators, etc.).
 //   • no token        → email form → POST /api/auth/magic-link (sends the link).
 //
-// NOTE (Phase-0 scope): strings are FR-only here; full i18n is a fast-follow.
-// This page ADDS a passwordless path; the password logins (/eat/auth,
-// /business/auth) are untouched.
+// Fully i18n'd (namespace `magic`), addressed as "vous". This page ADDS a
+// passwordless path; the password logins (/eat/auth, /business/auth) are untouched.
 
 const ROLE_REDIRECTS: Record<string, string> = {
   restaurant: '/dashboard',
@@ -33,10 +32,18 @@ function MagicInner() {
   const token  = params.get('token')
   const router = useRouter()
   const locale = useLocale()
+  const t      = useTranslations('magic')
 
   const [phase, setPhase] = useState<'request' | 'verifying' | 'error' | 'sent'>(token ? 'verifying' : 'request')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Portal-aware: only on the business portal do we offer the supplier sign-up link
+  // (this page is shared by every portal — a supplier link would mislead consumers).
+  const [showRegister, setShowRegister] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hostname.includes('business')) setShowRegister(true)
+  }, [])
 
   // Token present → try to sign in, then redirect by role.
   useEffect(() => {
@@ -77,52 +84,55 @@ function MagicInner() {
   return (
     <div className="min-h-screen bg-grubano-bg px-4 pt-16">
       <div className="mx-auto max-w-md">
-        <h1 className="mb-1 text-center font-display text-2xl font-extrabold text-grubano-ink">Connexion Grubano</h1>
-        <p className="mb-6 text-center text-sm text-grubano-ink-muted">Connexion sans mot de passe par lien email.</p>
+        <h1 className="mb-1 text-center font-display text-2xl font-extrabold text-grubano-ink">{t('title')}</h1>
+        <p className="mb-6 text-center text-sm text-grubano-ink-muted">{t('subtitle')}</p>
 
         <Card elevation="sm" padding="lg">
           {phase === 'verifying' && (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <div className="flex flex-col items-center gap-3 py-6 text-center" role="status" aria-live="polite">
               <Loader2 size={28} className="animate-spin text-grubano-primary" />
-              <p className="text-sm text-grubano-ink-muted">Connexion en cours…</p>
+              <p className="text-sm text-grubano-ink-muted">{t('verifying')}</p>
             </div>
           )}
 
           {phase === 'sent' && (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <div className="flex flex-col items-center gap-3 py-6 text-center" role="status" aria-live="polite">
               <span className="grid h-14 w-14 place-items-center rounded-grubano-pill bg-grubano-success-tint">
                 <MailCheck size={28} className="text-grubano-success" />
               </span>
-              <p className="font-display text-base font-bold text-grubano-ink">Vérifie ta boîte mail</p>
-              <p className="max-w-xs text-sm text-grubano-ink-muted">
-                Si un compte existe pour cet email, un lien de connexion vient d&apos;être envoyé. Le lien expire dans 15 minutes.
-              </p>
+              <p className="font-display text-base font-bold text-grubano-ink">{t('sentTitle')}</p>
+              <p className="max-w-xs text-sm text-grubano-ink-muted">{t('sentBody')}</p>
             </div>
           )}
 
           {(phase === 'request' || phase === 'error') && (
-            <form onSubmit={requestLink} className="space-y-4">
+            <form onSubmit={requestLink} className="space-y-4" noValidate>
               {phase === 'error' && (
-                <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">
+                <p role="alert" className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">
                   <XCircle size={15} className="mt-0.5 shrink-0" />
-                  <span>Ce lien est invalide ou expiré. Demande un nouveau lien ci-dessous.</span>
+                  <span>{t('errorMsg')}</span>
                 </p>
               )}
               <Input
-                label="Email"
+                label={t('emailLabel')}
                 type="email"
                 required
-                placeholder="toi@exemple.fr"
+                autoComplete="email"
+                placeholder={t('emailPlaceholder')}
                 value={email}
                 onChange={e => setEmail(e.target.value)}
               />
               <Button type="submit" variant="primary" size="md" fullWidth loading={submitting}
                 leftIcon={submitting ? undefined : <CheckCircle2 size={16} />}>
-                {submitting ? 'Envoi…' : 'Recevoir mon lien de connexion'}
+                {submitting ? t('submitting') : t('submit')}
               </Button>
-              <p className="text-center text-[11px] text-grubano-ink-faint">
-                Tu recevras un lien à usage unique, valable 15 minutes.
-              </p>
+              <p className="text-center text-[11px] text-grubano-ink-faint">{t('hint')}</p>
+              {showRegister && (
+                <p className="border-t border-grubano-border pt-3 text-center text-sm text-grubano-ink-muted">
+                  {t('registerPrompt')}{' '}
+                  <Link href="/supplier/register" className="font-semibold text-grubano-primary">{t('registerCta')}</Link>
+                </p>
+              )}
             </form>
           )}
         </Card>
