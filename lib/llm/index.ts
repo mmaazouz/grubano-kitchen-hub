@@ -19,6 +19,11 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/prisma'
+import { isOverQuota, LlmQuotaError } from '@/lib/llm/quota'
+
+// Step-2 quota surface, re-exported so callers import everything LLM from '@/lib/llm'.
+export { LlmQuotaError, QUOTA, getOperatorUsage, isOverQuota, getUsageOverview } from '@/lib/llm/quota'
+export type { OperatorUsage, UsageRow } from '@/lib/llm/quota'
 
 // Content the caller sends. Re-exported so task modules never import the SDK directly.
 export type LlmContentBlock = Anthropic.Messages.ContentBlockParam
@@ -147,6 +152,13 @@ async function recordUsage(
  */
 export async function llmComplete(input: LlmCallInput): Promise<LlmResult> {
   if (isLlmDisabled()) throw new LlmDisabledError()
+
+  // Per-partner quota (step 2) — ONLY for operator-attributed calls. System/cron and
+  // pre-account vetting pass no operatorId and are never blocked here. isOverQuota is
+  // FAIL-OPEN, so a transient metering error allows the call rather than breaking it.
+  if (input.operatorId && (await isOverQuota(input.operatorId))) {
+    throw new LlmQuotaError()
+  }
 
   const cfg    = TASKS[input.task]
   const maxOut = input.maxOutputTokens ?? cfg.maxOutputTokens
