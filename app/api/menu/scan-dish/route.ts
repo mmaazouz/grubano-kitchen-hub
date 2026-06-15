@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { llmComplete, type LlmContent } from '@/lib/llm'
+import { llmComplete, LlmQuotaError, type LlmContent } from '@/lib/llm'
+import { callerOperator } from '@/lib/operator-session'
 
 const schema = z.object({
   imageBase64: z.string().min(1),
@@ -12,6 +13,9 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { imageBase64, mediaType } = schema.parse(body)
 
+    // Per-partner LLM quota attribution (best-effort; undefined → no quota).
+    const operatorId = await callerOperator().then((o) => o?.id).catch(() => undefined)
+
     const content: LlmContent = [
       {
         type:   'image',
@@ -22,7 +26,7 @@ export async function POST(req: Request) {
         text: 'Analyze this dish photo. Return ONLY valid JSON (no markdown, no extra text) with this exact structure: {"name":"dish name in French","description":"appetizing 1-2 sentences in French","ingredients":["ingredient1","ingredient2"],"allergens":["only from: Gluten,Lactose,Oeuf,Soja,Arachide,Fruits a coque,Poisson,Crustaces,Mollusques,Celeri,Moutarde,Sesame,Sulfites,Lupin"],"calories_min":number,"calories_max":number,"category":"one of: Entrées,Plats,Desserts,Boissons","suggested_labels":["from: Veggie,Halal,Sans gluten,Épicé"]}',
       },
     ]
-    const { text: raw } = await llmComplete({ task: 'dish_scan', content })
+    const { text: raw } = await llmComplete({ task: 'dish_scan', content, operatorId })
     const clean = raw.replace(/```json\n?|\n?```/g, '').trim()
     const json  = JSON.parse(clean)
 
@@ -30,6 +34,9 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message }, { status: 400 })
+    }
+    if (err instanceof LlmQuotaError) {
+      return NextResponse.json({ error: 'Limite IA atteinte, réessaie plus tard.' }, { status: 429 })
     }
     console.error('scan-dish:', err)
     return NextResponse.json({ error: "Erreur lors de l'analyse" }, { status: 500 })

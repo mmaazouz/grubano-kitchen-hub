@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { readCreatorRoles } from '@/lib/creator-roles'
 import { buildAffiliateLink, buildAffiliateRestaurantLink } from '@/lib/affiliate-link'
 import { generateAffiliateCaptions, rateLimitCheck } from '@/lib/affiliate-content'
+import { LlmQuotaError } from '@/lib/llm'
 
 // ── POST /api/creator/affiliate-content — Studio de contenu IA (Slice 2b) ──────
 // Given a target (restaurant, optional dish), generate 2-3 caption variants with
@@ -90,8 +91,14 @@ export async function POST(req: Request) {
       ?? ''
     const code = creator.referralCode ?? null
 
+    // Per-partner LLM quota attribution: the influencer's own Operator (same session
+    // email). Best-effort — undefined → no quota. Reuses the already-loaded session.
+    const operatorId = (await prisma.operator
+      .findUnique({ where: { email: session.user.email }, select: { id: true } })
+      .catch(() => null))?.id
+
     const captions = await generateAffiliateCaptions({
-      restaurantName: restaurant.name, cuisine, dishName, dishPrice, link, code, locale,
+      restaurantName: restaurant.name, cuisine, dishName, dishPrice, link, code, locale, operatorId,
     })
     if (!captions) {
       return NextResponse.json({ error: 'generation_unavailable' }, { status: 502 })
@@ -112,6 +119,9 @@ export async function POST(req: Request) {
       },
     })
   } catch (err) {
+    if (err instanceof LlmQuotaError) {
+      return NextResponse.json({ error: 'Limite IA atteinte, réessaie plus tard.' }, { status: 429 })
+    }
     console.error('[POST /api/creator/affiliate-content]', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }

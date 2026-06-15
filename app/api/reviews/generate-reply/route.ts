@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { llmComplete } from '@/lib/llm'
+import { llmComplete, LlmQuotaError } from '@/lib/llm'
+import { callerOperator } from '@/lib/operator-session'
 
 const schema = z.object({
   platform:   z.string(),
@@ -14,6 +15,9 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { platform, authorName, rating, text } = schema.parse(body)
 
+    // Per-partner LLM quota attribution (best-effort; undefined → no quota).
+    const operatorId = await callerOperator().then((o) => o?.id).catch(() => undefined)
+
     const tone = rating <= 2
       ? 'empathetic and apologetic, offering a concrete solution'
       : rating === 3
@@ -22,6 +26,7 @@ export async function POST(req: Request) {
 
     const { text: out } = await llmComplete({
       task: 'review_reply',
+      operatorId,
       content: `You are the manager of a dark kitchen called Grubano.
 Write a professional reply in French to this ${platform} review (${rating}/5 stars) by ${authorName}:
 "${text}"
@@ -36,6 +41,9 @@ Return only the reply text, no quotes, no markdown.`,
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message }, { status: 400 })
+    }
+    if (err instanceof LlmQuotaError) {
+      return NextResponse.json({ error: 'Limite IA atteinte, réessaie plus tard.' }, { status: 429 })
     }
     return NextResponse.json({ error: 'Erreur lors de la génération' }, { status: 500 })
   }

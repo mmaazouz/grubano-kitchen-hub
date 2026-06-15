@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { llmComplete } from '@/lib/llm'
+import { llmComplete, LlmQuotaError } from '@/lib/llm'
+import { callerOperator } from '@/lib/operator-session'
 
 const schema = z.object({
   text:    z.string().min(1).max(2000),
@@ -10,9 +11,10 @@ const schema = z.object({
 
 type ParsedItem = { name: string; quantity: number; unit: string }
 
-async function parseWithClaude(text: string): Promise<ParsedItem[]> {
+async function parseWithClaude(text: string, operatorId?: string): Promise<ParsedItem[]> {
   const { text: raw } = await llmComplete({
     task:    'stock_parse',
+    operatorId,
     content: `Parse this restaurant stock update text and return ONLY valid JSON array (no markdown, no extra text).
 Each item: {"name":"ingredient name in lowercase French","quantity":number,"unit":"kg|g|L|mL|u"}.
 Use unit "u" for pieces/boxes. If quantity is 0 or "finished/vide/terminé", use 0.
@@ -42,10 +44,16 @@ export async function POST(req: Request) {
     const body          = await req.json()
     const { text, brandId } = schema.parse(body)
 
+    // Per-partner LLM quota attribution (best-effort; undefined → no quota).
+    const operatorId = await callerOperator().then((o) => o?.id).catch(() => undefined)
+
     let parsed: ParsedItem[]
     try {
-      parsed = await parseWithClaude(text)
-    } catch {
+      parsed = await parseWithClaude(text, operatorId)
+    } catch (e) {
+      if (e instanceof LlmQuotaError) {
+        return NextResponse.json({ error: 'Limite IA atteinte, réessaie plus tard.' }, { status: 429 })
+      }
       return NextResponse.json(
         { error: 'Impossible d\'analyser ce texte. Exemple : "poulet 3 kg, riz 5 kg, sauce tomate terminée"' },
         { status: 422 },

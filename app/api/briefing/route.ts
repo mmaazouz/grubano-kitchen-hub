@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { llmComplete } from '@/lib/llm'
+import { llmComplete, LlmQuotaError } from '@/lib/llm'
+import { callerOperator } from '@/lib/operator-session'
 
 export async function GET() {
   try {
@@ -50,7 +51,9 @@ Génère un briefing matinal en français avec :
 
 Sois concis, direct et professionnel. Maximum 120 mots au total.`
 
-    const { text } = await llmComplete({ task: 'briefing', content: prompt })
+    // Per-partner LLM quota attribution (best-effort; undefined → no quota).
+    const operatorId = await callerOperator().then((o) => o?.id).catch(() => undefined)
+    const { text } = await llmComplete({ task: 'briefing', content: prompt, operatorId })
     const briefing = text.trim()
 
     return NextResponse.json({
@@ -78,6 +81,9 @@ Sois concis, direct et professionnel. Maximum 120 mots au total.`
       generatedAt: now.toISOString(),
     })
   } catch (err) {
+    if (err instanceof LlmQuotaError) {
+      return NextResponse.json({ error: 'Limite IA atteinte, réessaie plus tard.' }, { status: 429 })
+    }
     console.error('briefing error:', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }

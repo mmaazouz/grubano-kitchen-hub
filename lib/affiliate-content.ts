@@ -12,7 +12,7 @@
  * 502; it never crashes the request.
  */
 
-import { llmComplete } from '@/lib/llm'
+import { llmComplete, LlmQuotaError } from '@/lib/llm'
 
 // Three distinct tones (the studio surfaces one variant per tone).
 export const CONTENT_TONES = ['enthusiastic', 'punchy', 'storytelling'] as const
@@ -30,6 +30,8 @@ export interface CaptionInput extends CaptionTarget {
   /** Fallback share token when there is no link (raw code). */
   code:   string | null
   locale: string
+  /** Partner attribution for the per-operator LLM quota (optional). */
+  operatorId?: string
 }
 export interface Caption { tone: ContentTone; text: string }
 
@@ -118,9 +120,10 @@ export async function generateAffiliateCaptions(input: CaptionInput): Promise<Ca
   try {
     if (!process.env.ANTHROPIC_API_KEY) return null
     const share = input.link || input.code || ''
-    const { text } = await llmComplete({ task: 'affiliate_caption', content: buildCaptionPrompt(input) })
+    const { text } = await llmComplete({ task: 'affiliate_caption', content: buildCaptionPrompt(input), operatorId: input.operatorId })
     return parseCaptions(text, share)
-  } catch {
+  } catch (e) {
+    if (e instanceof LlmQuotaError) throw e // surface quota → the route maps it to a clear 429
     console.error('[affiliate-content] generation unavailable (API error)')
     return null
   }
