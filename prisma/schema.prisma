@@ -590,8 +590,16 @@ model SupplierProfile {
   // registration. ADDITIVE + REVERSIBLE. Gates VISIBILITY/catalogue ONLY — never
   // money (Stripe Connect KYB stays the independent hard gate for payouts).
   vettingVerdict    String?                          // legit | doubt | bad (null = legacy / not auto-vetted)
-  vettingReason     String?  @db.Text                // short FR reason from the vetting model
+  vettingReason     String?  @db.Text                // short FR reason from the vetting/verification step
   vettingAt         DateTime?                         // when the auto-vetting ran
+  // Automatic BUSINESS-IDENTITY verification (Agent 14): the SIREN/SIRET is checked
+  // against the free official French registry (recherche-entreprises.api.gouv.fr),
+  // the LLM only fuzzy-matches the declared vs official name. ADDITIVE + REVERSIBLE.
+  // Gates VISIBILITY/activation ONLY — money stays gated by Stripe Connect KYB.
+  siren             String?                          // 9-digit SIREN (derived from a SIREN or SIRET input)
+  officialName      String?                          // dénomination from the official registry (when verified)
+  verificationStatus String?                         // verified | rejected | review (null = legacy / not auto-verified)
+  verifiedAt        DateTime?                         // when the registry verification passed
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   // Slice 5b — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
