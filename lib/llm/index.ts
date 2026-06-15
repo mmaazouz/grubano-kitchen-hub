@@ -43,6 +43,7 @@ export type LlmTask =
   | 'creator_vetting'
   | 'dish_vetting'
   | 'supplier_vetting'
+  | 'business_verification'
   | 'affiliate_caption'
   | 'dish_moderation'
   | 'dish_scan'
@@ -54,10 +55,11 @@ export type LlmTask =
 interface TaskConfig { model: string; maxOutputTokens: number }
 
 export const TASKS: Record<LlmTask, TaskConfig> = {
-  creator_vetting:   { model: HAIKU,  maxOutputTokens: 300 },
-  dish_vetting:      { model: HAIKU,  maxOutputTokens: 400 },
-  supplier_vetting:  { model: HAIKU,  maxOutputTokens: 200 },
-  affiliate_caption: { model: HAIKU,  maxOutputTokens: 700 },
+  creator_vetting:       { model: HAIKU,  maxOutputTokens: 300 },
+  dish_vetting:          { model: HAIKU,  maxOutputTokens: 400 },
+  supplier_vetting:      { model: HAIKU,  maxOutputTokens: 200 },
+  business_verification: { model: HAIKU,  maxOutputTokens: 200 },
+  affiliate_caption:     { model: HAIKU,  maxOutputTokens: 700 },
   dish_moderation:   { model: SONNET, maxOutputTokens: 400 },
   dish_scan:         { model: SONNET, maxOutputTokens: 1024 },
   stock_parse:       { model: SONNET, maxOutputTokens: 512 },
