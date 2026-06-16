@@ -59,6 +59,15 @@ describe('authorizeMagicLink', () => {
     expect(arg.data).toEqual({ magicLinkTokenHash: null, magicLinkTokenExpiry: null })
   })
 
+  it('a RESTAURANT account signs in via magic-link (login unified at /auth/magic — no lockout after S2)', async () => {
+    const { token, hash, expiry } = createMagicLinkToken('opR')
+    db.operator.findUnique.mockResolvedValue(
+      row({ id: 'opR', email: 'resto@x.fr', role: 'restaurant', magicLinkTokenHash: hash, magicLinkTokenExpiry: expiry }),
+    )
+    const u = await authorizeMagicLink(token)
+    expect(u).toMatchObject({ id: 'opR', email: 'resto@x.fr', role: 'restaurant' })
+  })
+
   it('loses the consume race (updateMany count 0) → null, no double sign-in', async () => {
     const { token, hash, expiry } = createMagicLinkToken('opX')
     db.operator.findUnique.mockResolvedValue(row({ magicLinkTokenHash: hash, magicLinkTokenExpiry: expiry }))
