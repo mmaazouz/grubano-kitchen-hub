@@ -12,7 +12,7 @@ import PartnerChrome from '@/components/business/PartnerChrome'
  * One FEATURED Restaurateur card (the heart of Grubano) + three partner cards
  * (Supplier / Chef-creator / Logistics) + a light influencer teaser + a discreet
  * Group & Franchise line. Routes to the EXISTING journeys — nothing re-implemented:
- *   - Restaurateur  → /business/auth                (partner sign-in/up → onboarding)
+ *   - Restaurateur  → /business/register            (resto sign-up → onboarding; login is unified at /auth/magic)
  *   - Fournisseur   → /supplier/register            (LIVE self-serve, intact)
  *   - Chef/Créateur → /creators/apply               (creator studio)
  *   - Logistique    → /business/logistics/register  (LIVE self-serve, Slice 1)
@@ -40,7 +40,7 @@ export default function BusinessStartPage() {
 
         {/* ── LE CŒUR DE GRUBANO — featured Restaurateur ── */}
         <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-grubano-ink-faint">{t('coreLabel')}</p>
-        <Link href="/business/auth" className="group block">
+        <Link href="/business/register" className="group block">
           <Card elevation="md" padding="lg" interactive className="border-grubano-primary/30 bg-gradient-to-br from-grubano-tint/60 to-white">
             <div className="flex items-center gap-4">
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary text-white shadow-grubano-sm">
