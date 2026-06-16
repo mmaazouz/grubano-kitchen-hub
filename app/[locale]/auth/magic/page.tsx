@@ -8,25 +8,19 @@ import { Loader2, MailCheck, CheckCircle2, XCircle } from 'lucide-react'
 import { Link, useRouter } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
+import { postLoginPath } from '@/lib/post-login-redirect'
 
 // ── /auth/magic — passwordless sign-in (Phase 0 auth bridge, Agent 14) ────────
 //
 // Two jobs on one page:
 //   • ?token=… present → consume it via signIn('credentials', { magicToken })
-//     then route the user by role (creator → /creators, etc.).
+//     then route the user by role to their SPACE (creator → /creators/dashboard, …).
 //   • no token        → email form → POST /api/auth/magic-link (sends the link).
 //
 // Fully i18n'd (namespace `magic`), addressed as "vous". This page ADDS a
 // passwordless path; the password logins (/eat/auth, /business/auth) are untouched.
-
-const ROLE_REDIRECTS: Record<string, string> = {
-  restaurant: '/dashboard',
-  admin:      '/dashboard',
-  franchise:  '/franchise',
-  creator:    '/creators',
-  supplier:   '/supplier/dashboard',
-  consumer:   '/eat',
-}
+// The role → landing table lives in lib/post-login-redirect (single source of truth,
+// unit-tested): every partner role lands on its OWN dashboard, never a public landing.
 
 function MagicInner() {
   const params = useSearchParams()
@@ -60,7 +54,7 @@ function MagicInner() {
       if (res?.ok) {
         const session = await fetch('/api/auth/session', { cache: 'no-store' }).then(r => r.json()).catch(() => null)
         const role = (session?.user as { role?: string } | undefined)?.role
-        router.push(ROLE_REDIRECTS[role ?? ''] ?? '/eat')
+        router.push(postLoginPath(role))
       } else {
         setPhase('error')
       }
