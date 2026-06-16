@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { SessionProvider } from 'next-auth/react'
 import Sidebar from '@/components/Sidebar'
@@ -34,9 +35,22 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       ? '/' + segments.slice(2).join('/') || '/'
       : raw
   const normalized = pathname === '' ? '/' : pathname
+
+  // Partner host (business.grubano.com): the passwordless sign-in /auth/magic must
+  // wear the partner chrome (PartnerChrome, mounted by the page itself), NOT the
+  // operator dashboard sidebar. Detected CLIENT-side and defaulting to false, so the
+  // app host's SSR + first hydration render are byte-identical to before (no change,
+  // no mismatch); on business the sidebar is dropped post-mount. The static root
+  // layout can't read the host server-side without deopting the whole app to dynamic.
+  const [partnerHost, setPartnerHost] = useState(false)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hostname.includes('business')) setPartnerHost(true)
+  }, [])
+
   const isBare =
     normalized === '/' ||
-    BARE_PREFIXES.some(p => normalized === p || normalized.startsWith(`${p}/`))
+    BARE_PREFIXES.some(p => normalized === p || normalized.startsWith(`${p}/`)) ||
+    (partnerHost && normalized === '/auth/magic')
 
   // Public / consumer routes: render bare, no operator chrome.
   if (isBare) return <>{children}</>

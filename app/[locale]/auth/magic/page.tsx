@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { Loader2, MailCheck, CheckCircle2, XCircle } from 'lucide-react'
 import { Link, useRouter } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
+import PartnerChrome from '@/components/business/PartnerChrome'
 
 // ── /auth/magic — passwordless sign-in (Phase 0 auth bridge, Agent 14) ────────
 //
@@ -37,12 +38,16 @@ function MagicInner() {
   const [phase, setPhase] = useState<'request' | 'verifying' | 'error' | 'sent'>(token ? 'verifying' : 'request')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  // Portal-aware: only on the business portal do we offer the supplier sign-up link
-  // (this page is shared by every portal — a supplier link would mislead consumers).
-  const [showRegister, setShowRegister] = useState(false)
+  // Host-aware presentation: on business.grubano.com this shared sign-in page wears
+  // the PARTNER chrome (PartnerChrome — clean partner header, light bg) instead of
+  // the operator dashboard sidebar, and offers the partner sign-up link. Every other
+  // host renders exactly as before. Detected CLIENT-side and defaulting to false, so
+  // the app host's SSR + first hydration are byte-identical (no change, no mismatch);
+  // business swaps to the partner chrome post-mount.
+  const [isPartner, setIsPartner] = useState(false)
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('business')) setShowRegister(true)
+    if (typeof window !== 'undefined' && window.location.hostname.includes('business')) setIsPartner(true)
   }, [])
 
   // Token present → try to sign in, then redirect by role.
@@ -81,13 +86,12 @@ function MagicInner() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-grubano-bg px-4 pt-16">
-      <div className="mx-auto max-w-md">
-        <h1 className="mb-1 text-center font-display text-2xl font-extrabold text-grubano-ink">{t('title')}</h1>
-        <p className="mb-6 text-center text-sm text-grubano-ink-muted">{t('subtitle')}</p>
+  const content = (
+    <div className="mx-auto w-full max-w-md">
+      <h1 className="mb-1 text-center font-display text-2xl font-extrabold text-grubano-ink">{t('title')}</h1>
+      <p className="mb-6 text-center text-sm text-grubano-ink-muted">{t('subtitle')}</p>
 
-        <Card elevation="sm" padding="lg">
+      <Card elevation="sm" padding="lg">
           {phase === 'verifying' && (
             <div className="flex flex-col items-center gap-3 py-6 text-center" role="status" aria-live="polite">
               <Loader2 size={28} className="animate-spin text-grubano-primary" />
@@ -127,18 +131,22 @@ function MagicInner() {
                 {submitting ? t('submitting') : t('submit')}
               </Button>
               <p className="text-center text-[11px] text-grubano-ink-faint">{t('hint')}</p>
-              {showRegister && (
+              {isPartner && (
                 <p className="border-t border-grubano-border pt-3 text-center text-sm text-grubano-ink-muted">
                   {t('registerPrompt')}{' '}
-                  <Link href="/supplier/register" className="font-semibold text-grubano-primary">{t('registerCta')}</Link>
+                  <Link href="/business/start" className="font-semibold text-grubano-primary">{t('registerCta')}</Link>
                 </p>
               )}
             </form>
           )}
         </Card>
       </div>
-    </div>
   )
+
+  // Business host → clean partner chrome (no operator sidebar). Other hosts → the
+  // existing light shell, unchanged.
+  if (isPartner) return <PartnerChrome>{content}</PartnerChrome>
+  return <div className="min-h-screen bg-grubano-bg px-4 pt-16">{content}</div>
 }
 
 export default function MagicLinkPage() {
