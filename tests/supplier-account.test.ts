@@ -14,7 +14,45 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
-import { ensureSupplierOperator } from '@/lib/supplier-account'
+import { ensureSupplierOperator, decideSupplierOutcome } from '@/lib/supplier-account'
+import type { BusinessVerificationResult } from '@/lib/business-verification'
+
+// ── decideSupplierOutcome — NAME-TOLERANT gating (P2, Agent 18) ───────────────
+// A declared (commercial) name differing from the official registry name must NEVER
+// auto-reject a supplier whose SIREN is real + active: it routes to human-review
+// 'pending' (more conservative than logistics, which auto-activates — supplier has
+// B2B payment downstream). Only a not-found / ceased SIREN (officialName=null)
+// rejects. A registry/LLM incident ('review') fails SAFE to 'pending'.
+const vres = (over: Partial<BusinessVerificationResult>): BusinessVerificationResult => ({
+  outcome: 'review', officialName: null, reason: 'x', ...over,
+})
+
+describe('decideSupplierOutcome — name-tolerant', () => {
+  it('verified → active + verificationStatus verified', () => {
+    const d = decideSupplierOutcome(vres({ outcome: 'verified', officialName: 'PRIMEURS LYON SARL' }))
+    expect(d).toMatchObject({ status: 'active', verificationStatus: 'verified' })
+  })
+
+  it('NAME MISMATCH (rejected WITH an official name) → pending review, NOT rejected', () => {
+    // The registry confirmed the company exists + is active; only the LLM name match
+    // failed. A legit supplier (enseigne / auto-entrepreneur / holding) is sent to
+    // human review, never auto-rejected.
+    const d = decideSupplierOutcome(vres({ outcome: 'rejected', officialName: 'PRIMEURS LYON SARL', reason: 'Nom déclaré incohérent…' }))
+    expect(d.status).toBe('pending')
+    expect(d.verificationStatus).toBe('review')
+  })
+
+  it('SIREN not found / ceased (rejected with NO official name) → rejected', () => {
+    const d = decideSupplierOutcome(vres({ outcome: 'rejected', officialName: null, reason: 'SIREN introuvable…' }))
+    expect(d).toMatchObject({ status: 'rejected', verificationStatus: 'rejected' })
+  })
+
+  it('FAIL-SAFE: review (registry/LLM incident) → pending, never auto-reject', () => {
+    expect(decideSupplierOutcome(vres({ outcome: 'review', officialName: null })).status).toBe('pending')
+    // even with an official name (LLM down on an active company) → pending
+    expect(decideSupplierOutcome(vres({ outcome: 'review', officialName: 'PRIMEURS LYON SARL' })).status).toBe('pending')
+  })
+})
 
 beforeEach(() => {
   vi.clearAllMocks()

@@ -2,9 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // ── POST /api/supplier/register — automatic business-identity verification ─────
 // A FRESH registration is verified against the official registry (+ LLM name match)
-// via verifyBusiness: verified → 'active' (login activated), review → 'pending',
-// rejected → 'rejected' (no login). Anti-bot (honeypot / too-fast) and a duplicate
-// email never verify, never write, and return the neutral 'pending' outcome.
+// via verifyBusiness, then re-interpreted NAME-TOLERANTLY (decideSupplierOutcome,
+// P2): verified → 'active' (login activated); rejected WITH an officialName (name
+// mismatch on a confirmed active company) → 'pending' (human review, login NOT
+// activated, never auto-rejected); rejected with NO officialName (not-found/ceased)
+// → 'rejected' (no login); review → 'pending'. Anti-bot (honeypot / too-fast) and a
+// duplicate email never verify, never write, and return the neutral 'pending'.
 
 const { db, ensureOp, verify } = vi.hoisted(() => ({
   db: { supplierProfile: { findUnique: vi.fn(), create: vi.fn() } },
@@ -12,7 +15,12 @@ const { db, ensureOp, verify } = vi.hoisted(() => ({
   verify: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-vi.mock('@/lib/supplier-account', () => ({ ensureSupplierOperator: ensureOp }))
+// Keep the REAL decideSupplierOutcome (pure, name-tolerant) so the route test
+// exercises the actual decision logic; only the side-effecting auth bridge is stubbed.
+vi.mock('@/lib/supplier-account', async (importOriginal) => {
+  const actual = await importOriginal() as typeof import('@/lib/supplier-account')
+  return { ...actual, ensureSupplierOperator: ensureOp }
+})
 vi.mock('@/lib/business-verification', () => ({ verifyBusiness: verify }))
 
 import { POST } from '@/app/api/supplier/register/route'
@@ -58,12 +66,23 @@ describe('fresh registration → registry verification decides the status', () =
     expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: false })
   })
 
-  it('REJECTED → status rejected, NO login provisioned, outcome rejected', async () => {
+  it('REJECTED (SIREN not found / ceased, NO official name) → status rejected, NO login, outcome rejected', async () => {
     verify.mockResolvedValue({ outcome: 'rejected', officialName: null, reason: 'SIREN introuvable' })
     const res = await post()
     expect((await res.json()).outcome).toBe('rejected')
     expect(db.supplierProfile.create.mock.calls[0][0].data).toMatchObject({ status: 'rejected', verificationStatus: 'rejected' })
     expect(ensureOp).not.toHaveBeenCalled()
+  })
+
+  it('NAME MISMATCH (rejected WITH an official name) → pending review, login NOT activated, NEVER auto-rejected', async () => {
+    // Real + active company, commercial name ≠ legal name: name-tolerant → pending.
+    verify.mockResolvedValue({ outcome: 'rejected', officialName: 'PRIMEURS LYON SARL', reason: 'Nom déclaré incohérent…' })
+    const res = await post()
+    expect((await res.json()).outcome).toBe('pending')
+    const data = db.supplierProfile.create.mock.calls[0][0].data
+    expect(data).toMatchObject({ status: 'pending', verificationStatus: 'review', officialName: 'PRIMEURS LYON SARL' })
+    expect(data.verifiedAt).toBeNull()
+    expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: false })
   })
 
   it('FAIL-SAFE: a registry/LLM incident surfaces as review → pending, never active', async () => {

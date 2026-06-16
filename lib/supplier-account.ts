@@ -2,6 +2,54 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { addRoleToOperator } from '@/lib/operator-roles'
+import type { BusinessVerificationResult } from '@/lib/business-verification'
+
+// ── Name-tolerant verdict → supplier profile state (P2, Agent 18) ─────────────
+//
+// verifyBusiness() rejects in three cases: SIREN not found, company ceased, OR a
+// clear declared-vs-official NAME mismatch. The first two return officialName=null
+// (the registry never confirmed the company); the third returns a NON-null
+// officialName (the registry DID confirm existence + active state — only the LLM
+// name match failed). A commercial / trading name differing from the legal name is
+// COMMON (enseigne, auto-entrepreneur « NOM Prénom », holding) → it must NEVER auto-
+// reject a legitimate supplier.
+//
+// Mirrors decideLogisticsOutcome (lib/logistics-account) but is INTENTIONALLY more
+// conservative on the name-mismatch case: logistics AUTO-ACTIVATES; a supplier has
+// B2B ordering + payment downstream, so a name-only mismatch is routed to the SAME
+// human-review 'pending' path already used for registry/LLM incidents (a human
+// confirms the trading-name ↔ legal-name link before the supplier goes live). Only a
+// genuine registry rejection (officialName=null) stays a definitive 'rejected'.
+// FAIL-SAFE 'review' (registry unreachable/ambiguous OR LLM down) → 'pending'.
+// Pure + deterministic → unit-tested. verifyBusiness itself is UNCHANGED.
+export type SupplierVettingStatus = 'active' | 'pending' | 'rejected'
+
+export interface SupplierDecision {
+  status:             SupplierVettingStatus
+  verificationStatus: 'verified' | 'review' | 'rejected'
+  reason:             string
+}
+
+export function decideSupplierOutcome(v: BusinessVerificationResult): SupplierDecision {
+  if (v.outcome === 'verified') {
+    return { status: 'active', verificationStatus: 'verified', reason: v.reason }
+  }
+  if (v.outcome === 'rejected') {
+    // NAME-TOLERANT: officialName present ⟺ the registry CONFIRMED the company is
+    // real + active and only the declared NAME mismatched → human review, NOT reject.
+    if (v.officialName) {
+      return {
+        status:             'pending',
+        verificationStatus: 'review',
+        reason:             'Entreprise confirmée au registre officiel ; nom commercial à vérifier manuellement.',
+      }
+    }
+    // officialName absent ⟺ SIREN introuvable / entreprise cessée → real rejection.
+    return { status: 'rejected', verificationStatus: 'rejected', reason: v.reason }
+  }
+  // 'review' — FAIL-SAFE (registry unreachable/ambiguous OR LLM unavailable).
+  return { status: 'pending', verificationStatus: 'review', reason: v.reason }
+}
 
 // ── Session-scoped supplier resolver (Slice 1, Agent 14) ──────────────────────
 // The ONE place catalogue routes resolve "who am I" → their own SupplierProfile,

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { ensureSupplierOperator } from '@/lib/supplier-account'
+import { ensureSupplierOperator, decideSupplierOutcome } from '@/lib/supplier-account'
 import { verifyBusiness } from '@/lib/business-verification'
 
 export const dynamic = 'force-dynamic'
@@ -97,10 +97,14 @@ export async function POST(req: Request) {
       declaredName: data.companyName,
       categories:   data.categories,
     })
-    const status: Outcome =
-      verification.outcome === 'verified' ? 'active'
-      : verification.outcome === 'rejected' ? 'rejected'
-      : 'pending'
+    // Re-interpret the verification result NAME-TOLERANTLY (decideSupplierOutcome,
+    // like the courier flow). A clear name mismatch on an OTHERWISE-confirmed active
+    // company (outcome 'rejected' WITH an officialName) is NOT an auto-reject — a
+    // commercial name ≠ legal name is common — it routes into the EXISTING human-
+    // review 'pending' path. Only a not-found / ceased SIREN (officialName=null)
+    // stays a definitive 'rejected'. 'review' (incident) stays 'pending' (fail-safe).
+    const decision = decideSupplierOutcome(verification)
+    const status: Outcome = decision.status
 
     await prisma.supplierProfile.create({
       data: {
@@ -117,9 +121,9 @@ export async function POST(req: Request) {
         status,
         siren,
         officialName:       verification.officialName,
-        verificationStatus: verification.outcome,
-        verifiedAt:         verification.outcome === 'verified' ? new Date() : null,
-        vettingReason:      verification.reason,
+        verificationStatus: decision.verificationStatus,
+        verifiedAt:         decision.status === 'active' ? new Date() : null,
+        vettingReason:      decision.reason,
         vettingAt:          new Date(),
       },
     })
