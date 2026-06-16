@@ -1773,7 +1773,9 @@
       "logistiqueSoon": "قريبًا",
       "influencerTeaser": "مؤثّر أو موقع بجمهور؟ انضم إلى نظام الإحالة في Grubano",
       "franchiseLine": "شبكة / عدة منشآت؟",
-      "franchiseCta": "مجموعة وامتياز"
+      "franchiseCta": "مجموعة وامتياز",
+      "otherActivityPrompt": "نشاط آخر؟",
+      "otherActivityCta": "راسلنا"
     },
     "franchiseSoon": {
       "badge": "قريباً",

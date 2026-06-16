@@ -1773,7 +1773,9 @@
       "logistiqueSoon": "Pronto",
       "influencerTeaser": "¿Influencer o sitio con audiencia? Únete a la afiliación Grubano",
       "franchiseLine": "¿Red / varios locales?",
-      "franchiseCta": "Grupo y franquicia"
+      "franchiseCta": "Grupo y franquicia",
+      "otherActivityPrompt": "¿Otra actividad?",
+      "otherActivityCta": "Escríbenos"
     },
     "franchiseSoon": {
       "badge": "Próximamente",

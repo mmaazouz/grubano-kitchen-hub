@@ -105,6 +105,14 @@ export default function BusinessStartPage() {
             {t('signIn')}
           </Link>
         </p>
+
+        {/* ── Other activity / contact (P4) ── */}
+        <p className="mt-2 text-center text-grubano-sm text-grubano-ink-muted">
+          {t('otherActivityPrompt')}{' '}
+          <a href="mailto:contact@grubano.com?subject=Grubano%20partenaire" className="font-semibold text-grubano-primary hover:underline">
+            {t('otherActivityCta')}
+          </a>
+        </p>
       </div>
     </PartnerChrome>
   )

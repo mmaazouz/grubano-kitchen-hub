@@ -1773,7 +1773,9 @@
       "logistiqueSoon": "Soon",
       "influencerTeaser": "Influencer or audience site? Join Grubano affiliation",
       "franchiseLine": "Network / several venues?",
-      "franchiseCta": "Group & Franchise"
+      "franchiseCta": "Group & Franchise",
+      "otherActivityPrompt": "Another activity?",
+      "otherActivityCta": "Write to us"
     },
     "franchiseSoon": {
       "badge": "Coming soon",
