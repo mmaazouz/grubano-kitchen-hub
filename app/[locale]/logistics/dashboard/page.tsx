@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import {
   Bike, ShieldCheck, Hourglass, Info, Ban, MapPin, Truck, User, Phone,
-  Building2, Hash, Package, Sparkles,
+  Building2, Hash, Package, Sparkles, Pencil,
 } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -244,6 +244,15 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
                   </Field>
                 ) : null}
               </dl>
+
+              <div className="mt-4 border-t border-grubano-border pt-3">
+                <Link
+                  href="/logistics/dashboard/profil"
+                  className="inline-flex items-center gap-1.5 text-grubano-sm font-semibold text-grubano-primary hover:underline"
+                >
+                  <Pencil size={14} /> {d('editProfileCta')}
+                </Link>
+              </div>
             </Card>
           </>
         )}
