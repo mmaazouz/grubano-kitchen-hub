@@ -15,16 +15,16 @@ import PartnerChrome from '@/components/business/PartnerChrome'
  *   - Restaurateur  → /business/auth                (partner sign-in/up → onboarding)
  *   - Fournisseur   → /supplier/register            (LIVE self-serve, intact)
  *   - Chef/Créateur → /creators/apply               (creator studio)
- *   - Logistique    → /business/logistics-soon      (graceful "soon")
+ *   - Logistique    → /business/logistics/register  (LIVE self-serve, Slice 1)
  *   - Influenceur   → /creators/apply?type=influencer
  *   - Franchise     → /business/franchise-soon
  * No dead links. PUBLIC (middleware /business allow-list).
  */
 
 const PARTNERS = [
-  { key: 'fournisseur', href: '/supplier/register',  icon: Truck,           titleKey: 'fournisseurTitle', descKey: 'fournisseurDesc', accent: 'text-grubano-primary', bg: 'bg-grubano-tint',   soon: false },
-  { key: 'creator',     href: '/creators/apply',      icon: UtensilsCrossed, titleKey: 'creatorTitle',     descKey: 'creatorDesc',     accent: 'text-[#16A34A]',      bg: 'bg-[#16A34A]/12',  soon: false },
-  { key: 'logistique',  href: '/business/logistics-soon', icon: Bike,        titleKey: 'logistiqueTitle',  descKey: 'logistiqueDesc',  accent: 'text-[#2563EB]',      bg: 'bg-[#2563EB]/12',  soon: true  },
+  { key: 'fournisseur', href: '/supplier/register',         icon: Truck,           titleKey: 'fournisseurTitle', descKey: 'fournisseurDesc', accent: 'text-grubano-primary', bg: 'bg-grubano-tint',   soon: false },
+  { key: 'creator',     href: '/creators/apply',            icon: UtensilsCrossed, titleKey: 'creatorTitle',     descKey: 'creatorDesc',     accent: 'text-[#16A34A]',      bg: 'bg-[#16A34A]/12',  soon: false },
+  { key: 'logistique',  href: '/business/logistics/register', icon: Bike,          titleKey: 'logistiqueTitle',  descKey: 'logistiqueDesc',  accent: 'text-[#2563EB]',      bg: 'bg-[#2563EB]/12',  soon: false },
 ] as const
 
 export default function BusinessStartPage() {
