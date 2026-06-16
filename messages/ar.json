@@ -536,7 +536,8 @@
       "verifyChannelNotFound": "لم يتم العثور على قناة YouTube — تحقّق من الرابط (مثل youtube.com/@قناتك أو @قناتك).",
       "verifyChannelUnavailable": "YouTube غير متاح مؤقتًا (أو عدد المشتركين مخفي). أعد المحاولة بعد قليل.",
       "verifyChannelConfig": "التحقّق عبر YouTube غير متاح حاليًا. يُرجى المحاولة لاحقًا.",
-      "youtubePlaceholder": "youtube.com/@قناتك أو @قناتك"
+      "youtubePlaceholder": "youtube.com/@قناتك أو @قناتك",
+      "titleInfluencer": "كن مؤثرًا / شريكًا في الإحالة"
     },
     "dashboard": {
       "title": "فضاء المبدع",

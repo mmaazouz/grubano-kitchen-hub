@@ -536,7 +536,8 @@
       "verifyChannelNotFound": "YouTube channel not found — check the link (e.g. youtube.com/@YourChannel or @YourChannel).",
       "verifyChannelUnavailable": "YouTube is temporarily unavailable (or your subscriber count is hidden). Try again shortly.",
       "verifyChannelConfig": "YouTube verification is unavailable right now. Please try again later.",
-      "youtubePlaceholder": "youtube.com/@YourChannel or @YourChannel"
+      "youtubePlaceholder": "youtube.com/@YourChannel or @YourChannel",
+      "titleInfluencer": "Become an influencer / affiliate partner"
     },
     "dashboard": {
       "title": "Creator Space",

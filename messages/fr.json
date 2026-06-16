@@ -536,7 +536,8 @@
       "verifyChannelNotFound": "Chaîne YouTube introuvable — vérifie le lien (ex. youtube.com/@TaChaine ou @TaChaine).",
       "verifyChannelUnavailable": "YouTube est momentanément indisponible (ou tes abonnés sont masqués). Réessaie dans un instant.",
       "verifyChannelConfig": "La vérification YouTube n'est pas disponible pour le moment. Réessaie plus tard.",
-      "youtubePlaceholder": "youtube.com/@TaChaine ou @TaChaine"
+      "youtubePlaceholder": "youtube.com/@TaChaine ou @TaChaine",
+      "titleInfluencer": "Devenir influenceur / partenaire d'affiliation"
     },
     "dashboard": {
       "title": "Espace Créateur",

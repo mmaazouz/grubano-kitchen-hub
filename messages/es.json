@@ -536,7 +536,8 @@
       "verifyChannelNotFound": "Canal de YouTube no encontrado — revisa el enlace (p. ej. youtube.com/@TuCanal o @TuCanal).",
       "verifyChannelUnavailable": "YouTube no está disponible por el momento (o tus suscriptores están ocultos). Inténtalo de nuevo en un momento.",
       "verifyChannelConfig": "La verificación de YouTube no está disponible ahora mismo. Inténtalo más tarde.",
-      "youtubePlaceholder": "youtube.com/@TuCanal o @TuCanal"
+      "youtubePlaceholder": "youtube.com/@TuCanal o @TuCanal",
+      "titleInfluencer": "Conviértete en influencer / socio de afiliación"
     },
     "dashboard": {
       "title": "Espacio Creador",

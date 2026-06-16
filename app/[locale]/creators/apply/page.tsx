@@ -87,17 +87,27 @@ export default function CreatorsApplyPage() {
     dishConcepts: [{ ...EMPTY_CONCEPT }],
   })
 
+  // Mission 2 — role choice (cumulable, at least one). Defaults: BOTH.
+  const [roles, setRoles] = useState<{ chef: boolean; influencer: boolean }>({ chef: true, influencer: true })
+  // P2 — entry via the /business/start influencer teaser (?type=influencer):
+  // pre-select the influencer role ALONE (chef off) + show the influencer title.
+  // Any other / no ?type leaves the default (both roles selectable) untouched.
+  const [influencerEntry, setInfluencerEntry] = useState(false)
+
   // Phase 3 — a logged-in user arriving via "Devenir aussi créateur" carries their
   // email in ?email= so the form is pre-filled (multi-role cumul: same account
   // gains the creator role on approval). Read from the URL on mount — no
   // useSearchParams (avoids a Suspense boundary); never overwrites a typed value.
+  // P2 — the same mount pass reads ?type to drive the influencer-only entry.
   useEffect(() => {
-    const email = new URLSearchParams(window.location.search).get('email')
+    const params = new URLSearchParams(window.location.search)
+    const email = params.get('email')
     if (email) setForm(f => (f.email ? f : { ...f, email }))
+    if (params.get('type') === 'influencer') {
+      setInfluencerEntry(true)
+      setRoles({ chef: false, influencer: true })
+    }
   }, [])
-
-  // Mission 2 — role choice (cumulable, at least one). Defaults: BOTH.
-  const [roles, setRoles] = useState<{ chef: boolean; influencer: boolean }>({ chef: true, influencer: true })
 
   function toggleRole(key: 'chef' | 'influencer') {
     setRoles(r => {
@@ -414,7 +424,7 @@ export default function CreatorsApplyPage() {
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
-      <h1 className="text-xl font-display font-bold mb-1">{t('title')}</h1>
+      <h1 className="text-xl font-display font-bold mb-1">{influencerEntry ? t('titleInfluencer') : t('title')}</h1>
       <p className="text-xs text-grubano-ink-muted mb-5">
         {t('stepOf', { current: step + 1, total: STEP_LABELS.length })}
       </p>
