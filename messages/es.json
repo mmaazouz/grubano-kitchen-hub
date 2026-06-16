@@ -1673,7 +1673,8 @@
       "signInFailed": "Email o contraseña incorrectos, o cuenta no activada.",
       "partnerOnlyNote": "Acceso reservado a los socios de Grubano.",
       "createAccount": "Crear mi cuenta de socio",
-      "legalNote": "Al crear una cuenta, confirmas que estás autorizado para representar tu establecimiento."
+      "legalNote": "Al crear una cuenta, confirmas que estás autorizado para representar tu establecimiento.",
+      "loginPrompt": "¿Ya eres socio?"
     },
     "metadata": {
       "title": "Grubano Socios",

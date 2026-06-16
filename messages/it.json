@@ -1673,7 +1673,8 @@
       "signInFailed": "Email o password errati, o account non attivato.",
       "partnerOnlyNote": "Accesso riservato ai partner Grubano.",
       "createAccount": "Crea il mio account partner",
-      "legalNote": "Creando un account confermi di essere autorizzato a rappresentare la tua attività."
+      "legalNote": "Creando un account confermi di essere autorizzato a rappresentare la tua attività.",
+      "loginPrompt": "Già partner?"
     },
     "metadata": {
       "title": "Grubano Partner",
