@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Truck, Clock3, MapPin, Tags, CreditCard, Hourglass, Package, ChevronRight, Inbox } from 'lucide-react'
+import { Truck, Clock3, MapPin, Tags, CreditCard, Hourglass, Package, ChevronRight, Inbox, Pencil } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Link } from '@/navigation'
@@ -163,6 +163,15 @@ export default async function SupplierDashboardPage(props: { params: { locale: s
                   </div>
                 ) : null}
               </dl>
+
+              <div className="mt-4 border-t border-grubano-border pt-3">
+                <Link
+                  href="/supplier/dashboard/profil"
+                  className="inline-flex items-center gap-1.5 text-grubano-sm font-semibold text-grubano-primary hover:underline"
+                >
+                  <Pencil size={14} /> {t('editProfileCta')}
+                </Link>
+              </div>
             </Card>
           </>
         )}
