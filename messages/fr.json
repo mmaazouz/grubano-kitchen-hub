@@ -1753,18 +1753,28 @@
       "errAddressInvalid": "Adresse invalide — saisis une adresse complète (numéro et rue)."
     },
     "start": {
-      "title": "Rejoins Grubano",
-      "subtitle": "Choisis le profil qui te correspond.",
+      "title": "Quel type de partenaire êtes-vous ?",
+      "subtitle": "Un seul compte — vous ajouterez d’autres activités après.",
       "restaurateurTitle": "Restaurateur",
-      "restaurateurDesc": "Vends tes plats, en livraison ou sur place",
-      "creatorTitle": "Créateur de recettes",
-      "creatorDesc": "Crée des recettes, gagne sur chaque vente",
+      "restaurateurDesc": "Servez vos clients, gérez votre établissement.",
+      "creatorTitle": "Chef & Créateur de recettes",
+      "creatorDesc": "Monétisez vos recettes.",
       "influencerTitle": "Affilié / Influenceur",
       "influencerDesc": "Amène des clients, sois payé au résultat",
       "franchisorTitle": "Franchiseur",
       "franchisorDesc": "Déploie ton enseigne sur plusieurs villes",
-      "alreadyAccount": "Tu as déjà un compte ?",
-      "signIn": "Se connecter"
+      "alreadyAccount": "Déjà partenaire ?",
+      "signIn": "Se connecter",
+      "coreLabel": "LE CŒUR DE GRUBANO",
+      "partnersLabel": "LES PARTENAIRES",
+      "fournisseurTitle": "Fournisseur",
+      "fournisseurDesc": "Vendez vos produits aux restaurants.",
+      "logistiqueTitle": "Logistique",
+      "logistiqueDesc": "Livrez repas, produits, B2B.",
+      "logistiqueSoon": "Bientôt",
+      "influencerTeaser": "Influenceur ou site à audience ? Rejoignez l’affiliation Grubano",
+      "franchiseLine": "Réseau / plusieurs établissements ?",
+      "franchiseCta": "Groupe & Franchise"
     },
     "franchiseSoon": {
       "badge": "Bientôt disponible",
@@ -1773,6 +1783,23 @@
       "dedicatedSupport": "Accompagnement dédié — on te recontacte",
       "contactCta": "Nous contacter",
       "back": "Retour aux profils"
+    },
+    "landing": {
+      "heroTitle": "Développez votre activité avec Grubano",
+      "heroSubtitle": "Restaurateurs, fournisseurs, créateurs, logistique — un seul espace.",
+      "ctaPrimary": "Devenir partenaire",
+      "ctaSecondary": "Se connecter",
+      "reassure1": "Vérification instantanée",
+      "reassure2": "Paiements sécurisés",
+      "reassure3": "Un compte, plusieurs activités"
+    },
+    "logisticsSoon": {
+      "badge": "Bientôt",
+      "title": "Livraison & logistique",
+      "body": "L’espace livreur arrive très bientôt. Livrez des repas, des produits et des commandes B2B sur Grubano.",
+      "dedicatedSupport": "Inscription prioritaire à l’ouverture",
+      "contactCta": "Être prévenu au lancement",
+      "back": "Retour"
     }
   },
   "establishment": {

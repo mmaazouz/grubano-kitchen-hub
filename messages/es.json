@@ -1753,18 +1753,28 @@
       "errAddressInvalid": "Dirección no válida — escribe una dirección completa (número y calle)."
     },
     "start": {
-      "title": "Únete a Grubano",
-      "subtitle": "Elige el perfil que te corresponde.",
+      "title": "¿Qué tipo de socio eres?",
+      "subtitle": "Una sola cuenta — podrás añadir otras actividades después.",
       "restaurateurTitle": "Restaurador",
-      "restaurateurDesc": "Vende tus platos, en entrega o recogida",
-      "creatorTitle": "Creador de recetas",
-      "creatorDesc": "Crea recetas, gana en cada venta",
+      "restaurateurDesc": "Atiende a tus clientes, gestiona tu local.",
+      "creatorTitle": "Chef y creador de recetas",
+      "creatorDesc": "Monetiza tus recetas.",
       "influencerTitle": "Afiliado / Influencer",
       "influencerDesc": "Trae clientes, cobra por resultados",
       "franchisorTitle": "Franquiciador",
       "franchisorDesc": "Expande tu marca por varias ciudades",
-      "alreadyAccount": "¿Ya tienes una cuenta?",
-      "signIn": "Iniciar sesión"
+      "alreadyAccount": "¿Ya eres socio?",
+      "signIn": "Iniciar sesión",
+      "coreLabel": "EL CORAZÓN DE GRUBANO",
+      "partnersLabel": "LOS SOCIOS",
+      "fournisseurTitle": "Proveedor",
+      "fournisseurDesc": "Vende tus productos a los restaurantes.",
+      "logistiqueTitle": "Logística",
+      "logistiqueDesc": "Entrega comidas, productos, B2B.",
+      "logistiqueSoon": "Pronto",
+      "influencerTeaser": "¿Influencer o sitio con audiencia? Únete a la afiliación Grubano",
+      "franchiseLine": "¿Red / varios locales?",
+      "franchiseCta": "Grupo y franquicia"
     },
     "franchiseSoon": {
       "badge": "Próximamente",
@@ -1773,6 +1783,23 @@
       "dedicatedSupport": "Acompañamiento dedicado — te contactaremos",
       "contactCta": "Contáctanos",
       "back": "Volver a los perfiles"
+    },
+    "landing": {
+      "heroTitle": "Haz crecer tu negocio con Grubano",
+      "heroSubtitle": "Restaurantes, proveedores, creadores, logística — un solo espacio.",
+      "ctaPrimary": "Hazte socio",
+      "ctaSecondary": "Iniciar sesión",
+      "reassure1": "Verificación instantánea",
+      "reassure2": "Pagos seguros",
+      "reassure3": "Una cuenta, varias actividades"
+    },
+    "logisticsSoon": {
+      "badge": "Pronto",
+      "title": "Entrega y logística",
+      "body": "El espacio para repartidores llega muy pronto. Entrega comidas, productos y pedidos B2B en Grubano.",
+      "dedicatedSupport": "Registro prioritario en el lanzamiento",
+      "contactCta": "Avisarme en el lanzamiento",
+      "back": "Volver"
     }
   },
   "establishment": {

@@ -1753,18 +1753,28 @@
       "errAddressInvalid": "عنوان غير صالح — أدخل عنواناً كاملاً (رقم واسم الشارع)."
     },
     "start": {
-      "title": "انضم إلى Grubano",
-      "subtitle": "اختر الملف الذي يناسبك.",
+      "title": "ما نوع الشريك الذي أنت عليه؟",
+      "subtitle": "حساب واحد — يمكنك إضافة أنشطة أخرى لاحقًا.",
       "restaurateurTitle": "صاحب مطعم",
-      "restaurateurDesc": "بِع أطباقك، توصيلاً أو استلاماً",
-      "creatorTitle": "مبدع وصفات",
-      "creatorDesc": "أنشئ وصفات واربح من كل عملية بيع",
+      "restaurateurDesc": "اخدم عملاءك وأدر منشأتك.",
+      "creatorTitle": "طاهٍ ومبتكر وصفات",
+      "creatorDesc": "حقّق دخلًا من وصفاتك.",
       "influencerTitle": "مسوّق / مؤثّر",
       "influencerDesc": "اجلب العملاء واحصل على أجرك حسب النتائج",
       "franchisorTitle": "مانح امتياز",
       "franchisorDesc": "وسّع علامتك في عدة مدن",
-      "alreadyAccount": "لديك حساب بالفعل؟",
-      "signIn": "تسجيل الدخول"
+      "alreadyAccount": "شريك بالفعل؟",
+      "signIn": "تسجيل الدخول",
+      "coreLabel": "قلب GRUBANO",
+      "partnersLabel": "الشركاء",
+      "fournisseurTitle": "مورّد",
+      "fournisseurDesc": "بِع منتجاتك للمطاعم.",
+      "logistiqueTitle": "الخدمات اللوجستية",
+      "logistiqueDesc": "وصّل الوجبات والمنتجات وطلبات B2B.",
+      "logistiqueSoon": "قريبًا",
+      "influencerTeaser": "مؤثّر أو موقع بجمهور؟ انضم إلى نظام الإحالة في Grubano",
+      "franchiseLine": "شبكة / عدة منشآت؟",
+      "franchiseCta": "مجموعة وامتياز"
     },
     "franchiseSoon": {
       "badge": "قريباً",
@@ -1773,6 +1783,23 @@
       "dedicatedSupport": "مرافقة مخصّصة — سنتواصل معك",
       "contactCta": "تواصل معنا",
       "back": "العودة إلى الملفات"
+    },
+    "landing": {
+      "heroTitle": "طوّر نشاطك مع Grubano",
+      "heroSubtitle": "مطاعم، موردون، صنّاع محتوى، خدمات لوجستية — مساحة واحدة.",
+      "ctaPrimary": "كن شريكًا",
+      "ctaSecondary": "تسجيل الدخول",
+      "reassure1": "تحقق فوري",
+      "reassure2": "مدفوعات آمنة",
+      "reassure3": "حساب واحد، أنشطة متعددة"
+    },
+    "logisticsSoon": {
+      "badge": "قريبًا",
+      "title": "التوصيل والخدمات اللوجستية",
+      "body": "مساحة عامل التوصيل قادمة قريبًا جدًا. وصّل الوجبات والمنتجات وطلبات B2B على Grubano.",
+      "dedicatedSupport": "تسجيل بأولوية عند الإطلاق",
+      "contactCta": "أبلغني عند الإطلاق",
+      "back": "رجوع"
     }
   },
   "establishment": {

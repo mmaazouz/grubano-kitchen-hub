@@ -1753,18 +1753,28 @@
       "errAddressInvalid": "Invalid address — enter a complete address (street number and name)."
     },
     "start": {
-      "title": "Join Grubano",
-      "subtitle": "Choose the profile that fits you.",
-      "restaurateurTitle": "Restaurant owner",
-      "restaurateurDesc": "Sell your dishes, for delivery or pickup",
-      "creatorTitle": "Recipe creator",
-      "creatorDesc": "Create recipes, earn on every sale",
+      "title": "What kind of partner are you?",
+      "subtitle": "One account — you can add other activities later.",
+      "restaurateurTitle": "Restaurateur",
+      "restaurateurDesc": "Serve your customers, run your venue.",
+      "creatorTitle": "Chef & Recipe creator",
+      "creatorDesc": "Monetise your recipes.",
       "influencerTitle": "Affiliate / Influencer",
       "influencerDesc": "Bring in customers, get paid on results",
       "franchisorTitle": "Franchisor",
       "franchisorDesc": "Expand your brand across several cities",
-      "alreadyAccount": "Already have an account?",
-      "signIn": "Sign in"
+      "alreadyAccount": "Already a partner?",
+      "signIn": "Sign in",
+      "coreLabel": "THE HEART OF GRUBANO",
+      "partnersLabel": "THE PARTNERS",
+      "fournisseurTitle": "Supplier",
+      "fournisseurDesc": "Sell your products to restaurants.",
+      "logistiqueTitle": "Logistics",
+      "logistiqueDesc": "Deliver meals, products, B2B.",
+      "logistiqueSoon": "Soon",
+      "influencerTeaser": "Influencer or audience site? Join Grubano affiliation",
+      "franchiseLine": "Network / several venues?",
+      "franchiseCta": "Group & Franchise"
     },
     "franchiseSoon": {
       "badge": "Coming soon",
@@ -1773,6 +1783,23 @@
       "dedicatedSupport": "Dedicated support — we’ll get back to you",
       "contactCta": "Contact us",
       "back": "Back to profiles"
+    },
+    "landing": {
+      "heroTitle": "Grow your business with Grubano",
+      "heroSubtitle": "Restaurants, suppliers, creators, logistics — one single space.",
+      "ctaPrimary": "Become a partner",
+      "ctaSecondary": "Sign in",
+      "reassure1": "Instant verification",
+      "reassure2": "Secure payments",
+      "reassure3": "One account, multiple activities"
+    },
+    "logisticsSoon": {
+      "badge": "Soon",
+      "title": "Delivery & logistics",
+      "body": "The courier space is coming very soon. Deliver meals, products and B2B orders on Grubano.",
+      "dedicatedSupport": "Priority sign-up at launch",
+      "contactCta": "Get notified at launch",
+      "back": "Back"
     }
   },
   "establishment": {
