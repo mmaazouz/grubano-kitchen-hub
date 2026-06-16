@@ -26,7 +26,7 @@ export default async function TablesPage(props: { params: { locale: string } }) 
 
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
-    redirect('/business/auth?callbackUrl=/tables')
+    redirect('/auth/magic')
   }
 
   const operator = await prisma.operator.findUnique({

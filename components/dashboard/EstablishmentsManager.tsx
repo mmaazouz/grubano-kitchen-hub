@@ -160,7 +160,7 @@ function EstablishmentsManagerInner({
           coverPhoto:  coverUrl || undefined,
         }),
       })
-      if (res.status === 401) { window.location.href = '/business/auth'; return }
+      if (res.status === 401) { window.location.href = '/auth/magic'; return }
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.restaurant?.id) {
         setError((data && (data.error as string)) || t('errCreateFailed'))

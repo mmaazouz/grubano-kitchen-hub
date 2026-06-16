@@ -43,7 +43,7 @@ function ResetInner() {
   const [done, setDone] = useState(false)
 
   const linkValid = token.length >= 32 && email.includes('@')
-  const loginHref = space === 'business' ? '/business/auth' : '/eat/auth'
+  const loginHref = space === 'business' ? '/auth/magic' : '/eat/auth'
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()

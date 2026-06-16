@@ -210,7 +210,7 @@ export default function EstablishmentHub({
           tagline:     editForm.tagline?.trim() || null,
         }),
       })
-      if (r.status === 401) { window.location.href = '/business/auth'; return }
+      if (r.status === 401) { window.location.href = '/auth/magic'; return }
       const d = await r.json().catch(() => null)
       if (!r.ok) {
         setEditError((d && (d.error as string)) || tb('errSaveFailed'))
@@ -232,7 +232,7 @@ export default function EstablishmentHub({
     setEstabDeleting(true)
     try {
       const r = await fetch(`/api/restaurants/${establishment.id}`, { method: 'DELETE' })
-      if (r.status === 401) { window.location.href = '/business/auth'; return }
+      if (r.status === 401) { window.location.href = '/auth/magic'; return }
       if (r.status === 403) { setEstabDeleteError(td('errorForbidden')); return }
       if (r.status === 404) { setEstabDeleteError(td('errorNotFound'));  return }
       const d = await r.json().catch(() => null)
@@ -265,7 +265,7 @@ export default function EstablishmentHub({
     try {
       const r = await fetch(`/api/brands/${toDelete.id}`, { method: 'DELETE' })
       const d = await r.json().catch(() => null)
-      if (r.status === 401) { window.location.href = '/business/auth'; return }
+      if (r.status === 401) { window.location.href = '/auth/magic'; return }
       if (!r.ok) {
         const reason = d?.reason as string | undefined
         setDeleteError(

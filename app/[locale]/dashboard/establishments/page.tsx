@@ -23,7 +23,7 @@ export default async function EstablishmentsPage(props: { params: { locale: stri
 
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
-    redirect('/business/auth?callbackUrl=/dashboard/establishments')
+    redirect('/auth/magic')
   }
 
   const operator = await prisma.operator.findUnique({

@@ -172,7 +172,7 @@ function BrandsCreateInner() {
           restaurantId: targetEstabId || undefined,
         }),
       })
-      if (res.status === 401) { window.location.href = '/business/auth'; return }
+      if (res.status === 401) { window.location.href = '/auth/magic'; return }
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         setError((data && (data.error as string)) || t('errSaveFailed'))
@@ -206,7 +206,7 @@ function BrandsCreateInner() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceBrandId: copySource, targetRestaurantId: copyTarget }),
       })
-      if (res.status === 401) { window.location.href = '/business/auth'; return }
+      if (res.status === 401) { window.location.href = '/auth/magic'; return }
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.brand?.id) {
         setError((data && (data.error as string)) || t('copyErrorFailed'))
