@@ -1876,7 +1876,39 @@
       "successBodyActive": "Your courier space is active. Sign in via the link sent to your email to manage your delivery missions.",
       "successCtaActive": "Go to my space",
       "successTitleRejected": "Application not accepted",
-      "successBodyRejected": "We could not verify your business automatically. Check your SIREN/SIRET and try again, or contact us if you think this is a mistake."
+      "successBodyRejected": "We could not verify your business automatically. Check your SIREN/SIRET and try again, or contact us if you think this is a mistake.",
+      "dashboard": {
+        "welcome": "Your logistics space",
+        "subtitle": "Manage your profile and delivery missions.",
+        "activeTitle": "Your account is active",
+        "activeBody": "Your courier space is ready. Your delivery missions will appear here as soon as they launch.",
+        "pendingTitle": "Verification in progress",
+        "pendingBody": "We are finalising the verification of your business with the official registry. You will get full access once validated.",
+        "rejectedTitle": "Account not verified",
+        "rejectedBody": "We could not verify your business. Contact us if you think this is a mistake.",
+        "suspendedTitle": "Account suspended",
+        "suspendedBody": "Your access is temporarily suspended. Contact Grubano support to restore it.",
+        "profileTitle": "Your partner profile",
+        "labelPartnerType": "Status",
+        "labelSiren": "SIREN",
+        "labelMissionTypes": "Mission types",
+        "labelVehicleTypes": "Vehicles",
+        "labelZones": "Delivery zones",
+        "labelContact": "Contact",
+        "labelPhone": "Phone",
+        "emptyValue": "—",
+        "verifiedBadge": "Verified",
+        "statusActive": "Active",
+        "statusPending": "Under review",
+        "statusSuspended": "Suspended",
+        "statusRejected": "Not verified",
+        "missionsTitle": "Missions",
+        "missionsSoonBadge": "Soon",
+        "missionsSoonBody": "The delivery-missions system is coming soon. You will manage your runs and rounds here.",
+        "noProfileTitle": "No logistics profile",
+        "noProfileBody": "We could not find a logistics profile for this account. Register as a logistics partner to get started.",
+        "registerCta": "Become a logistics partner"
+      }
     }
   },
   "establishment": {
@@ -2435,7 +2467,8 @@
     "spaceCreator": "Creator space",
     "spaceFranchise": "Franchise",
     "spaceAdmin": "Administration",
-    "spaceSupplier": "Supplier space"
+    "spaceSupplier": "Supplier space",
+    "spaceLogistics": "Logistics"
   },
   "supplier": {
     "landingTitle": "Become a Grubano supplier",

@@ -1876,7 +1876,39 @@
       "successBodyActive": "Tu espacio de repartidor está activo. Inicia sesión con el enlace enviado a tu correo para gestionar tus misiones de entrega.",
       "successCtaActive": "Acceder a mi espacio",
       "successTitleRejected": "Solicitud no aceptada",
-      "successBodyRejected": "No pudimos verificar tu empresa automáticamente. Comprueba tu SIREN/SIRET e inténtalo de nuevo, o contáctanos si crees que es un error."
+      "successBodyRejected": "No pudimos verificar tu empresa automáticamente. Comprueba tu SIREN/SIRET e inténtalo de nuevo, o contáctanos si crees que es un error.",
+      "dashboard": {
+        "welcome": "Tu espacio logístico",
+        "subtitle": "Gestiona tu perfil y tus misiones de entrega.",
+        "activeTitle": "Tu cuenta está activa",
+        "activeBody": "Tu espacio de repartidor está listo. Tus misiones de entrega aparecerán aquí en cuanto se lancen.",
+        "pendingTitle": "Verificación en curso",
+        "pendingBody": "Estamos finalizando la verificación de tu empresa en el registro oficial. Tendrás acceso completo en cuanto se valide.",
+        "rejectedTitle": "Cuenta no verificada",
+        "rejectedBody": "No pudimos verificar tu empresa. Contáctanos si crees que es un error.",
+        "suspendedTitle": "Cuenta suspendida",
+        "suspendedBody": "Tu acceso está temporalmente suspendido. Contacta con el soporte de Grubano para restablecerlo.",
+        "profileTitle": "Tu perfil de socio",
+        "labelPartnerType": "Estatus",
+        "labelSiren": "SIREN",
+        "labelMissionTypes": "Tipos de misión",
+        "labelVehicleTypes": "Vehículos",
+        "labelZones": "Zonas de entrega",
+        "labelContact": "Contacto",
+        "labelPhone": "Teléfono",
+        "emptyValue": "—",
+        "verifiedBadge": "Verificado",
+        "statusActive": "Activo",
+        "statusPending": "En revisión",
+        "statusSuspended": "Suspendido",
+        "statusRejected": "No verificado",
+        "missionsTitle": "Misiones",
+        "missionsSoonBadge": "Pronto",
+        "missionsSoonBody": "El sistema de misiones de entrega llegará pronto. Aquí gestionarás tus envíos y rutas.",
+        "noProfileTitle": "Sin perfil logístico",
+        "noProfileBody": "No encontramos un perfil logístico para esta cuenta. Regístrate como socio logístico para empezar.",
+        "registerCta": "Conviértete en socio logístico"
+      }
     }
   },
   "establishment": {
@@ -2435,7 +2467,8 @@
     "spaceCreator": "Espacio creador",
     "spaceFranchise": "Franquicia",
     "spaceAdmin": "Administración",
-    "spaceSupplier": "Espacio proveedor"
+    "spaceSupplier": "Espacio proveedor",
+    "spaceLogistics": "Logística"
   },
   "supplier": {
     "landingTitle": "Conviértete en proveedor Grubano",

@@ -1876,7 +1876,39 @@
       "successBodyActive": "Votre espace livreur est activé. Connectez-vous via le lien envoyé à votre email pour gérer vos missions de livraison.",
       "successCtaActive": "Accéder à mon espace",
       "successTitleRejected": "Demande non retenue",
-      "successBodyRejected": "Nous n’avons pas pu vérifier votre entreprise automatiquement. Vérifiez votre SIREN/SIRET et réessayez, ou contactez-nous si vous pensez qu’il s’agit d’une erreur."
+      "successBodyRejected": "Nous n’avons pas pu vérifier votre entreprise automatiquement. Vérifiez votre SIREN/SIRET et réessayez, ou contactez-nous si vous pensez qu’il s’agit d’une erreur.",
+      "dashboard": {
+        "welcome": "Votre espace logistique",
+        "subtitle": "Gérez votre profil et vos missions de livraison.",
+        "activeTitle": "Votre compte est actif",
+        "activeBody": "Votre espace livreur est prêt. Vos missions de livraison apparaîtront ici dès leur lancement.",
+        "pendingTitle": "Vérification en cours",
+        "pendingBody": "Nous finalisons la vérification de votre entreprise auprès du registre officiel. Vous aurez un accès complet dès validation.",
+        "rejectedTitle": "Compte non vérifié",
+        "rejectedBody": "Nous n’avons pas pu vérifier votre entreprise. Contactez-nous si vous pensez qu’il s’agit d’une erreur.",
+        "suspendedTitle": "Compte suspendu",
+        "suspendedBody": "Votre accès est temporairement suspendu. Contactez le support Grubano pour le rétablir.",
+        "profileTitle": "Votre profil partenaire",
+        "labelPartnerType": "Statut",
+        "labelSiren": "SIREN",
+        "labelMissionTypes": "Types de mission",
+        "labelVehicleTypes": "Véhicules",
+        "labelZones": "Zones de livraison",
+        "labelContact": "Contact",
+        "labelPhone": "Téléphone",
+        "emptyValue": "—",
+        "verifiedBadge": "Vérifié",
+        "statusActive": "Actif",
+        "statusPending": "En vérification",
+        "statusSuspended": "Suspendu",
+        "statusRejected": "Non vérifié",
+        "missionsTitle": "Missions",
+        "missionsSoonBadge": "Bientôt",
+        "missionsSoonBody": "Le système de missions de livraison arrive bientôt. Vous gérerez ici vos courses et tournées.",
+        "noProfileTitle": "Aucun profil logistique",
+        "noProfileBody": "Nous n’avons pas trouvé de profil logistique pour ce compte. Inscrivez-vous comme partenaire logistique pour commencer.",
+        "registerCta": "Devenir partenaire logistique"
+      }
     }
   },
   "establishment": {
@@ -2435,7 +2467,8 @@
     "spaceCreator": "Espace créateur",
     "spaceFranchise": "Franchise",
     "spaceAdmin": "Administration",
-    "spaceSupplier": "Espace fournisseur"
+    "spaceSupplier": "Espace fournisseur",
+    "spaceLogistics": "Espace logistique"
   },
   "supplier": {
     "landingTitle": "Devenez fournisseur Grubano",

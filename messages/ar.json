@@ -1876,7 +1876,39 @@
       "successBodyActive": "مساحة التوصيل الخاصة بك مُفعّلة. سجّل الدخول عبر الرابط المُرسل إلى بريدك لإدارة مهام التوصيل.",
       "successCtaActive": "الذهاب إلى مساحتي",
       "successTitleRejected": "لم يُقبل الطلب",
-      "successBodyRejected": "لم نتمكن من التحقق من شركتك تلقائيًا. تحقق من رقم SIREN/SIRET وحاول مجددًا، أو تواصل معنا إذا كنت تعتقد أن هذا خطأ."
+      "successBodyRejected": "لم نتمكن من التحقق من شركتك تلقائيًا. تحقق من رقم SIREN/SIRET وحاول مجددًا، أو تواصل معنا إذا كنت تعتقد أن هذا خطأ.",
+      "dashboard": {
+        "welcome": "مساحتك اللوجستية",
+        "subtitle": "أدِر ملفك الشخصي ومهام التوصيل الخاصة بك.",
+        "activeTitle": "حسابك نشط",
+        "activeBody": "مساحة التوصيل الخاصة بك جاهزة. ستظهر مهام التوصيل هنا فور إطلاقها.",
+        "pendingTitle": "التحقق جارٍ",
+        "pendingBody": "نقوم بإنهاء التحقق من شركتك لدى السجل الرسمي. ستحصل على وصول كامل بمجرد التحقق.",
+        "rejectedTitle": "الحساب غير مُتحقق منه",
+        "rejectedBody": "لم نتمكن من التحقق من شركتك. تواصل معنا إذا كنت تعتقد أن هذا خطأ.",
+        "suspendedTitle": "الحساب موقوف",
+        "suspendedBody": "تم تعليق وصولك مؤقتًا. تواصل مع دعم Grubano لإعادة تفعيله.",
+        "profileTitle": "ملف الشريك الخاص بك",
+        "labelPartnerType": "الوضع",
+        "labelSiren": "SIREN",
+        "labelMissionTypes": "أنواع المهام",
+        "labelVehicleTypes": "المركبات",
+        "labelZones": "مناطق التوصيل",
+        "labelContact": "جهة الاتصال",
+        "labelPhone": "الهاتف",
+        "emptyValue": "—",
+        "verifiedBadge": "مُتحقق منه",
+        "statusActive": "نشط",
+        "statusPending": "قيد التحقق",
+        "statusSuspended": "موقوف",
+        "statusRejected": "غير مُتحقق منه",
+        "missionsTitle": "المهام",
+        "missionsSoonBadge": "قريبًا",
+        "missionsSoonBody": "نظام مهام التوصيل قادم قريبًا. ستدير هنا رحلاتك وجولاتك.",
+        "noProfileTitle": "لا يوجد ملف لوجستي",
+        "noProfileBody": "لم نعثر على ملف لوجستي لهذا الحساب. سجّل كشريك لوجستي للبدء.",
+        "registerCta": "كن شريكًا لوجستيًا"
+      }
     }
   },
   "establishment": {
@@ -2435,7 +2467,8 @@
     "spaceCreator": "مساحة المنشئ",
     "spaceFranchise": "الامتياز",
     "spaceAdmin": "الإدارة",
-    "spaceSupplier": "مساحة المورّد"
+    "spaceSupplier": "مساحة المورّد",
+    "spaceLogistics": "الخدمات اللوجستية"
   },
   "supplier": {
     "landingTitle": "كن مورّدًا لدى غروبانو",
