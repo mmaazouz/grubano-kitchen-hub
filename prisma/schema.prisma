@@ -615,6 +615,41 @@ model SupplierProfile {
   supplyOrders      SupplyOrder[]
 }
 
+// ── LogisticsProfile (courier / delivery partner onboarding — Slice 1, Agent 15) ─
+// The delivery-partner analogue of SupplierProfile, calqued on it for consistency.
+// A logistics partner self-registers (independent / company), the SIREN is checked
+// against the free official French registry (reuses lib/business-verification,
+// UNMODIFIED), and on success a passwordless Operator gains the 'logistics' role
+// (multi-role cumul). PROFILE ONLY — NO payment / Stripe / KYB here (later slice,
+// exactly like the supplier path). ADDITIVE + REVERSIBLE: a brand-new model linked
+// to the Operator only by shared `email` (no FK), so dropping it leaves every
+// existing table untouched.
+model LogisticsProfile {
+  id                 String   @id @default(cuid())
+  email              String   @unique          // shared-email link to the Operator account (= contact email)
+  partnerType        String   @default("independent") // independent | company
+  contactName        String                    // human contact / display name
+  contactPhone       String?
+  // Operations (profile only — Slice 1; NO mission dispatch / pricing yet)
+  missionTypes       Json     @default("[]")    // string[] — repas|produits_fournisseurs|b2b|froid
+  vehicleTypes       Json     @default("[]")    // string[] — velo|scooter|voiture|camionnette|frigorifique
+  zones              Json     @default("[]")    // string[] — cities / postal codes served
+  status             String   @default("pending")   // pending | active | suspended | rejected (business state)
+  // Automatic BUSINESS-IDENTITY verification (reuses lib/business-verification). The
+  // SIREN/SIRET is checked against the official registry; gating is NAME-TOLERANT —
+  // the declared contact name is a display name, never a rejection criterion (a
+  // courier whose declared name differs from the registry is NOT rejected). Gates
+  // VISIBILITY/activation ONLY — money stays out of this slice entirely.
+  siren              String?                          // 9-digit SIREN (derived from a SIREN or SIRET input)
+  officialName       String?                          // dénomination from the official registry (when verified)
+  verificationStatus String?                          // verified | rejected | review (null = legacy / not auto-verified)
+  verifiedAt         DateTime?                         // when the registry verification passed
+  vettingReason      String?  @db.Text                // short FR reason from the verification step
+  vettingAt          DateTime?                         // when the auto-verification ran
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
 // ── SupplierCatalogItem (B2B supply marketplace — Slice 1 catalogue, Agent 14) ─
 // ADDITIVE + REVERSIBLE: a brand-new model; dropping it leaves the schema intact.
 // DISTINCT from the operator's PRIVATE directory `SupplierProduct` (above): this is
