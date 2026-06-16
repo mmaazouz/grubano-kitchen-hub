@@ -1644,7 +1644,6 @@
       "heroBullet1": "Inscription gratuite, paiement uniquement à la commande",
       "heroBullet2": "Tableau de bord, menu et commandes en temps réel",
       "heroBullet3": "Support dédié et paiements sécurisés",
-      "tabLogin": "Connexion",
       "tabRegister": "Inscription",
       "emailLabel": "Email professionnel",
       "emailPlaceholder": "contact@restaurant.fr",
@@ -1670,9 +1669,6 @@
       "confirmationTitle": "Email envoyé",
       "backToLogin": "Retour à la connexion",
       "signIn": "Se connecter",
-      "signInMissing": "Email et mot de passe requis.",
-      "signInFailed": "Email ou mot de passe incorrect, ou compte non activé.",
-      "partnerOnlyNote": "Connexion réservée aux partenaires Grubano.",
       "createAccount": "Créer mon compte partenaire",
       "legalNote": "En créant un compte, vous confirmez être autorisé à représenter votre établissement.",
       "loginPrompt": "Déjà partenaire ?"
@@ -1761,10 +1757,6 @@
       "restaurateurDesc": "Servez vos clients, gérez votre établissement.",
       "creatorTitle": "Chef & Créateur de recettes",
       "creatorDesc": "Monétisez vos recettes.",
-      "influencerTitle": "Affilié / Influenceur",
-      "influencerDesc": "Amène des clients, sois payé au résultat",
-      "franchisorTitle": "Franchiseur",
-      "franchisorDesc": "Déploie ton enseigne sur plusieurs villes",
       "alreadyAccount": "Déjà partenaire ?",
       "signIn": "Se connecter",
       "coreLabel": "LE CŒUR DE GRUBANO",
@@ -1792,7 +1784,7 @@
       "ctaPrimary": "Devenir partenaire",
       "ctaSecondary": "Se connecter",
       "heroEyebrow": "Espace partenaires",
-      "mockUrl": "espace.grubano.com",
+      "mockUrl": "business.grubano.com",
       "mockOrders": "Commandes",
       "mockRevenue": "Revenus",
       "mockActivity": "Activité récente",
@@ -1829,14 +1821,6 @@
       "footerTagline": "La plateforme des partenaires de la restauration.",
       "footerLegal": "Mentions légales",
       "footerRights": "© {year} Grubano. Tous droits réservés."
-    },
-    "logisticsSoon": {
-      "badge": "Bientôt",
-      "title": "Livraison & logistique",
-      "body": "L’espace livreur arrive très bientôt. Livrez des repas, des produits et des commandes B2B sur Grubano.",
-      "dedicatedSupport": "Inscription prioritaire à l’ouverture",
-      "contactCta": "Être prévenu au lancement",
-      "back": "Retour"
     },
     "logistics": {
       "registerTitle": "Devenir partenaire logistique",
