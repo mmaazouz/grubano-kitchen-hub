@@ -2,8 +2,9 @@
 
 import { useTranslations } from 'next-intl'
 import { Link } from '@/navigation'
-import { ChefHat, ShieldCheck, Building2, Mail, ArrowLeft, Sparkles } from 'lucide-react'
+import { ShieldCheck, Building2, Mail, ArrowLeft, Sparkles } from 'lucide-react'
 import { Card, Button } from '@/components/design-system'
+import PartnerChrome from '@/components/business/PartnerChrome'
 
 /**
  * Light "coming soon" placeholder for the FRANCHISOR profile (brand owner who
@@ -52,35 +53,9 @@ export default function FranchiseSoonPage() {
   )
 }
 
-// ── Brand chrome (matches /business/auth + /business/start) ─────────────────
-
+// ── Brand chrome — shared PartnerChrome (P4 unification, Agent 20) ───────────
+// Delegates the header/background to <PartnerChrome>; the placeholder card content
+// is unchanged.
 function Layout({ children }: { children: React.ReactNode }) {
-  const t = useTranslations('business.auth')
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-grubano-surface-muted/40 to-white">
-      <header className="border-b border-grubano-border bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-grubano-md bg-grubano-dark text-grubano-primary shadow-grubano-sm">
-              <ChefHat size={18} />
-            </div>
-            <div>
-              <p className="font-display text-base font-extrabold leading-none text-grubano-ink">Grubano</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-grubano-primary">
-                {t('brandPartners')}
-              </p>
-            </div>
-          </div>
-          <span className="hidden items-center gap-1.5 rounded-grubano-pill bg-grubano-tint px-3 py-1 text-xs font-semibold text-grubano-primary sm:inline-flex">
-            <ShieldCheck size={13} />
-            {t('verifiedSpace')}
-          </span>
-        </div>
-      </header>
-
-      <main className="mx-auto flex max-w-6xl items-center justify-center px-5 pb-10 pt-10 md:pt-20">
-        {children}
-      </main>
-    </div>
-  )
+  return <PartnerChrome>{children}</PartnerChrome>
 }

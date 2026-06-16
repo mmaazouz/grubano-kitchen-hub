@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { MailCheck, Truck, ArrowLeft, CheckCircle2, Info, LogIn } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
+import PartnerChrome from '@/components/business/PartnerChrome'
 
 // ── /supplier/register — self-serve B2B supplier signup (Slice 0, Agent 14) ───
 // Passwordless: submits business info to POST /api/supplier/register, which
@@ -92,8 +93,8 @@ export default function SupplierRegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-grubano-bg px-4 py-10">
-      <div className="mx-auto max-w-lg">
+    <PartnerChrome>
+      <div className="mx-auto w-full max-w-lg">
         <div className="mb-5 flex items-center gap-2.5">
           <span className="grid h-10 w-10 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
             <Truck size={20} />
@@ -235,6 +236,6 @@ export default function SupplierRegisterPage() {
           )}
         </Card>
       </div>
-    </div>
+    </PartnerChrome>
   )
 }

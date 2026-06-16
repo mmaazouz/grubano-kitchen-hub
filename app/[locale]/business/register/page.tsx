@@ -3,10 +3,11 @@
 import { useState, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import {
-  Eye, EyeOff, Mail, Lock, User as UserIcon, ChefHat, ShieldCheck, CheckCircle2, Loader2,
+  Eye, EyeOff, Mail, Lock, User as UserIcon, CheckCircle2, Loader2,
 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
+import PartnerChrome from '@/components/business/PartnerChrome'
 
 // ── /business/register — restaurateur INSCRIPTION (S2 login-unification) ──────
 // Self-serve sign-up only. The LOGIN is unified at /auth/magic for every partner
@@ -204,30 +205,15 @@ export default function PartnerRegisterScreen() {
   )
 }
 
-// ── Layout / brand chrome (matches /business/auth + /business/verified) ──────
+// ── Layout — shared partner chrome (P4 unification, Agent 20) ───────────────
+// Delegates the header/background to <PartnerChrome> (same chrome as the landing /
+// /business/start). The register-specific 2-column pitch (left) + form (right) is
+// PRESERVED as PartnerChrome's children — only the duplicated inline chrome is gone.
 function Layout({ children }: { children: React.ReactNode }) {
   const t = useTranslations('business.auth')
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-grubano-surface-muted/40 to-white">
-      <header className="border-b border-grubano-border bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-grubano-md bg-grubano-dark text-grubano-primary shadow-grubano-sm">
-              <ChefHat size={18} />
-            </div>
-            <div>
-              <p className="font-display text-base font-extrabold leading-none text-grubano-ink">Grubano</p>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-grubano-primary">{t('brandPartners')}</p>
-            </div>
-          </div>
-          <span className="hidden items-center gap-1.5 rounded-grubano-pill bg-grubano-tint px-3 py-1 text-xs font-semibold text-grubano-primary sm:inline-flex">
-            <ShieldCheck size={13} />
-            {t('verifiedSpace')}
-          </span>
-        </div>
-      </header>
-
-      <main className="mx-auto flex max-w-6xl flex-col items-center px-5 pb-10 pt-10 md:flex-row md:items-stretch md:gap-12 md:pt-16">
+    <PartnerChrome>
+      <div className="flex w-full flex-col md:flex-row md:items-stretch md:gap-12">
         {/* Pitch column (hidden on small screens — the form is the priority on mobile) */}
         <section className="hidden flex-1 flex-col justify-center md:flex">
           <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-grubano-ink">{t('heroTitle')}</h1>
@@ -244,7 +230,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Register card column */}
         <section className="mt-2 flex w-full flex-1 justify-center md:mt-0 md:justify-end">{children}</section>
-      </main>
-    </div>
+      </div>
+    </PartnerChrome>
   )
 }
