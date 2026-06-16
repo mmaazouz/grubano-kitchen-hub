@@ -81,6 +81,13 @@ export async function middleware(request: NextRequest) {
   const isSupplierPublic =
     restPath === '/supplier' ||
     restPath === '/supplier/register' || restPath.startsWith('/supplier/register/')
+  // Logistics partner space (P1, Agent 17): the courier dashboard at /logistics.
+  // The self-serve REGISTER lives under /business/logistics/register (PUBLIC via the
+  // /business allow-list); the /logistics tree itself is the AUTHENTICATED space and
+  // is gated logistics/admin in full (NO public sub-route here), calqued on the
+  // supplier gate. Distinct prefix from /business/logistics — never collides.
+  const isLogisticsSpace =
+    restPath === '/logistics' || restPath.startsWith('/logistics/')
 
   // Public routes — no auth required. /eat/* is the consumer app (auth per-page).
   const publicRoots = ['/', '/login', '/register', '/design']
@@ -151,6 +158,13 @@ export async function middleware(request: NextRequest) {
     // sent to the HOME of their primary role (role-spaces) — its own space, always
     // a route that role can reach (no redirect loop).
     if (isSupplierSpace && !isSupplierPublic && !hasAny(['supplier', 'admin'])) {
+      const home = spacesForRoles(roles)[0]?.href ?? '/eat'
+      return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
+    }
+    // Logistics space (P1): the courier dashboard requires logistics/admin. A non-
+    // logistics user is sent to the HOME of their primary role (role-spaces) — its
+    // own space, always reachable → no redirect loop. Calqued on the supplier gate.
+    if (isLogisticsSpace && !hasAny(['logistics', 'admin'])) {
       const home = spacesForRoles(roles)[0]?.href ?? '/eat'
       return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
     }
