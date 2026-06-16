@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function FranchiseSidebar() {
   const t       = useTranslations('franchise.nav')
+  const tc      = useTranslations('common')
   const pathname = usePathname()
   const { open, close } = useSidebar()
 
@@ -60,13 +61,13 @@ export default function FranchiseSidebar() {
             <Building2 size={20} className="text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <span className="text-lg font-display font-bold tracking-tight">Franchise</span>
-            <p className="text-[10px] text-white/40 leading-none mt-0.5">Grubano Network</p>
+            <span className="text-lg font-display font-bold tracking-tight">{t('brandTitle')}</span>
+            <p className="text-[10px] text-white/40 leading-none mt-0.5">{t('brandSubtitle')}</p>
           </div>
           <button
             onClick={close}
             className="md:hidden text-white/50 hover:text-white p-1 rounded-lg hover:bg-white/10"
-            aria-label="Fermer"
+            aria-label={tc('close')}
           >
             <X size={18} />
           </button>

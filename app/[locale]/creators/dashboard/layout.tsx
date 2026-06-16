@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { SidebarProvider } from '@/components/SidebarContext'
 import CreatorSidebar from '@/components/portals/CreatorSidebar'
 import PortalMobileHeader from '@/components/portals/PortalMobileHeader'
@@ -19,10 +20,11 @@ export default function CreatorDashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  const t = useTranslations('creators.nav')
   return (
     <SidebarProvider>
       <CreatorSidebar />
-      <PortalMobileHeader title="Créateurs" subtitle="Grubano Studio" />
+      <PortalMobileHeader title={t('brandTitle')} subtitle={t('brandSubtitle')} />
       <main className="md:ml-64 pt-[52px] md:pt-0 min-h-screen bg-grubano-bg pb-20 md:pb-0">
         {children}
       </main>

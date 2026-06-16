@@ -1,6 +1,7 @@
 'use client'
 
 import { Menu } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useSidebar } from '@/components/SidebarContext'
 
 interface Props {
@@ -15,13 +16,14 @@ interface Props {
  */
 export default function PortalMobileHeader({ title, subtitle }: Props) {
   const { toggle } = useSidebar()
+  const t = useTranslations('common')
 
   return (
     <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-[#1a1a2e] text-white flex items-center gap-3 px-4 py-3 shadow-lg">
       <button
         onClick={toggle}
         className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-        aria-label="Ouvrir le menu"
+        aria-label={t('openMenu')}
       >
         <Menu size={22} />
       </button>

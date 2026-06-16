@@ -15,7 +15,8 @@
     "popular": "Popolare",
     "top": "Top",
     "soldOut": "Esaurito",
-    "km": "km"
+    "km": "km",
+    "openMenu": "Apri il menu"
   },
   "docs": {
     "learnMore": "Scopri di più",
@@ -448,7 +449,9 @@
       "brands": "Marchi disponibili",
       "finances": "Royalty / Finanze",
       "apply": "Candidature",
-      "back": "Torna al portale"
+      "back": "Torna al portale",
+      "brandTitle": "Franchising",
+      "brandSubtitle": "Grubano Network"
     }
   },
   "creators": {
@@ -597,7 +600,9 @@
       "back": "Torna al portale",
       "recipes": "Le mie ricette",
       "affiliation": "La mia affiliazione",
-      "affiliateHub": "Cruscotto affiliazione"
+      "affiliateHub": "Cruscotto affiliazione",
+      "brandTitle": "Creator",
+      "brandSubtitle": "Grubano Studio"
     },
     "home": {
       "greeting": "Ciao, {name} 👋",

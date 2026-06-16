@@ -15,7 +15,8 @@
     "popular": "Popular",
     "top": "Top",
     "soldOut": "Sold out",
-    "km": "km"
+    "km": "km",
+    "openMenu": "Open menu"
   },
   "docs": {
     "learnMore": "Learn more",
@@ -448,7 +449,9 @@
       "brands": "Available brands",
       "finances": "Royalties / Finances",
       "apply": "Applications",
-      "back": "Back to portal"
+      "back": "Back to portal",
+      "brandTitle": "Franchise",
+      "brandSubtitle": "Grubano Network"
     }
   },
   "creators": {
@@ -597,7 +600,9 @@
       "back": "Back to portal",
       "recipes": "My recipes",
       "affiliation": "My affiliation",
-      "affiliateHub": "Affiliate dashboard"
+      "affiliateHub": "Affiliate dashboard",
+      "brandTitle": "Creators",
+      "brandSubtitle": "Grubano Studio"
     },
     "home": {
       "greeting": "Hello, {name} 👋",

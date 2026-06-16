@@ -15,7 +15,8 @@
     "popular": "الأكثر طلباً",
     "top": "الأفضل",
     "soldOut": "نفذت الكمية",
-    "km": "كلم"
+    "km": "كلم",
+    "openMenu": "فتح القائمة"
   },
   "docs": {
     "learnMore": "اعرف المزيد",
@@ -448,7 +449,9 @@
       "brands": "العلامات المتاحة",
       "finances": "الإتاوات / المالية",
       "apply": "الطلبات",
-      "back": "العودة إلى البوابة"
+      "back": "العودة إلى البوابة",
+      "brandTitle": "الامتياز",
+      "brandSubtitle": "Grubano Network"
     }
   },
   "creators": {
@@ -597,7 +600,9 @@
       "back": "العودة إلى البوابة",
       "recipes": "وصفاتي",
       "affiliation": "برنامج الإحالة",
-      "affiliateHub": "لوحة الإحالة"
+      "affiliateHub": "لوحة الإحالة",
+      "brandTitle": "المبدعون",
+      "brandSubtitle": "Grubano Studio"
     },
     "home": {
       "greeting": "مرحباً، {name} 👋",

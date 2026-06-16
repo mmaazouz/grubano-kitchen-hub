@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { SidebarProvider } from '@/components/SidebarContext'
 import FranchiseSidebar from '@/components/portals/FranchiseSidebar'
 import PortalMobileHeader from '@/components/portals/PortalMobileHeader'
@@ -18,10 +19,11 @@ export default function FranchiseDashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  const t = useTranslations('franchise.nav')
   return (
     <SidebarProvider>
       <FranchiseSidebar />
-      <PortalMobileHeader title="Franchise" subtitle="Grubano Network" />
+      <PortalMobileHeader title={t('brandTitle')} subtitle={t('brandSubtitle')} />
       <main className="md:ml-64 pt-[52px] md:pt-0 min-h-screen bg-grubano-bg pb-20 md:pb-0">
         {children}
       </main>
