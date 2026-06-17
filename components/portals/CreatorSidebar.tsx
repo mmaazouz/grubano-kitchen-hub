@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   LayoutDashboard, ChefHat, Megaphone, Link2,
-  TrendingUp, ArrowLeft, Sparkles, X,
+  TrendingUp, ArrowLeft, Sparkles, X, Settings,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
 import { useSidebar } from '@/components/SidebarContext'
@@ -31,6 +31,8 @@ const NAV_ITEMS: NavItem[] = [
   // Dashboard Affiliés Slice 2a (Agent 14) — the influencer's affiliation hub.
   { href: '/creators/dashboard/affiliate',  labelKey: 'affiliateHub', icon: Link2,     role: 'influencer' },
   { href: '/creators/dashboard/revenus',    labelKey: 'revenue',      icon: TrendingUp },
+  // P5b — editable profile & settings (shared chef/influencer; always shown).
+  { href: '/creators/dashboard/parametres',  labelKey: 'settings',     icon: Settings },
 ]
 
 export default function CreatorSidebar() {
