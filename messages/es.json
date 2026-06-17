@@ -2817,5 +2817,61 @@
       "actionError": "La acción falló. Inténtalo de nuevo.",
       "networkError": "No se pudo conectar. Comprueba tu red."
     }
+  },
+  "legal": {
+    "shell": {
+      "skipToContent": "Ir al contenido",
+      "backHome": "Volver al inicio",
+      "otherPages": "Otras páginas legales"
+    },
+    "draftBanner": "⚠️ Aviso legal en proceso de finalización: los datos de la empresa y del alojamiento aún no son definitivos.",
+    "nav": {
+      "mentions": "Aviso legal",
+      "confidentialite": "Política de privacidad"
+    },
+    "mentions": {
+      "title": "Aviso legal",
+      "intro": "La información siguiente identifica al editor del sitio, al director de la publicación y al alojamiento, así como las condiciones de uso del sitio.",
+      "editorTitle": "Editor del sitio",
+      "labelRaisonSociale": "Razón social",
+      "labelFormeJuridique": "Forma jurídica",
+      "labelCapital": "Capital social",
+      "labelSiren": "SIREN",
+      "labelSiret": "SIRET",
+      "labelRcs": "Registro mercantil (RCS)",
+      "labelTva": "IVA intracomunitaria",
+      "labelSiege": "Domicilio social",
+      "labelEmail": "Correo electrónico",
+      "labelTelephone": "Teléfono",
+      "directorTitle": "Director de la publicación",
+      "hostTitle": "Alojamiento",
+      "labelHostNom": "Proveedor",
+      "labelHostAdresse": "Dirección",
+      "labelHostContact": "Contacto",
+      "ipTitle": "Propiedad intelectual",
+      "ipBody": "Todos los contenidos del sitio (textos, imágenes, logotipos, marcas, diseño) están protegidos por la propiedad intelectual. Queda prohibida toda reproducción o representación, total o parcial, sin autorización previa.",
+      "dataTitle": "Datos personales (RGPD)",
+      "dataBody": "De conformidad con el Reglamento General de Protección de Datos (RGPD), usted tiene derecho de acceso, rectificación, supresión, limitación, portabilidad y oposición sobre sus datos personales. Puede ejercer estos derechos contactando con el editor en el correo indicado más arriba.",
+      "dataPrivacyLink": "Consultar nuestra política de privacidad",
+      "cookiesTitle": "Cookies",
+      "cookiesBody": "El sitio puede usar cookies necesarias para su funcionamiento y, en su caso, cookies de medición de audiencia. Puede configurar su navegador para rechazarlas. El detalle figura en la política de privacidad.",
+      "mediationTitle": "Mediación de consumo",
+      "mediationBody": "De acuerdo con el derecho de consumo, el consumidor puede recurrir gratuitamente a un mediador de consumo para resolver un litigio de forma amistosa. Los datos del mediador competente figuran a continuación.",
+      "labelMediatorNom": "Mediador",
+      "labelMediatorUrl": "Sitio de solicitud",
+      "labelMediatorAdresse": "Dirección",
+      "lawTitle": "Ley aplicable y jurisdicción",
+      "lawBody": "Este sitio y el presente aviso se rigen por el derecho francés. En caso de litigio y a falta de acuerdo amistoso, los tribunales franceses son competentes."
+    },
+    "confidentialite": {
+      "title": "Política de privacidad",
+      "draftNote": "Esta página está en preparación. Próximamente se publicará una versión detallada. A continuación se indican los principios esenciales.",
+      "collectTitle": "Datos recopilados",
+      "collectBody": "Solo recopilamos los datos necesarios para crear su cuenta, tramitar sus pedidos y prestar correctamente el servicio.",
+      "rightsTitle": "Sus derechos",
+      "rightsBody": "Tiene derecho de acceso, rectificación, supresión, limitación, portabilidad y oposición sobre sus datos, que puede ejercer ante el editor.",
+      "contactTitle": "Contacto",
+      "contactBody": "Para cualquier pregunta sobre sus datos, contacte con el editor en el correo indicado en el aviso legal."
+    }
   }
 }

@@ -252,6 +252,7 @@ export default function BusinessLandingPage() {
             <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-grubano-sm font-semibold text-grubano-ink-muted">
               <Link href="/business/start" className="transition-colors hover:text-grubano-primary">{t('ctaPrimary')}</Link>
               <Link href="/auth/magic" className="transition-colors hover:text-grubano-primary">{t('ctaSecondary')}</Link>
+              <Link href="/legal/mentions-legales" className="transition-colors hover:text-grubano-primary">{t('footerLegal')}</Link>
               <LanguageSwitcher variant="compact" />
             </nav>
           </div>

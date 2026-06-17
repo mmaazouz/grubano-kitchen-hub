@@ -2817,5 +2817,61 @@
       "actionError": "L’action a échoué. Réessayez.",
       "networkError": "Connexion impossible. Vérifiez votre réseau."
     }
+  },
+  "legal": {
+    "shell": {
+      "skipToContent": "Aller au contenu",
+      "backHome": "Retour à l’accueil",
+      "otherPages": "Autres pages légales"
+    },
+    "draftBanner": "⚠️ Mentions légales en cours de finalisation — les informations relatives à la société et à l’hébergeur ne sont pas encore définitives.",
+    "nav": {
+      "mentions": "Mentions légales",
+      "confidentialite": "Politique de confidentialité"
+    },
+    "mentions": {
+      "title": "Mentions légales",
+      "intro": "Les informations ci-dessous présentent l’éditeur du site, le directeur de la publication et l’hébergeur, ainsi que les conditions d’utilisation du site.",
+      "editorTitle": "Éditeur du site",
+      "labelRaisonSociale": "Raison sociale",
+      "labelFormeJuridique": "Forme juridique",
+      "labelCapital": "Capital social",
+      "labelSiren": "SIREN",
+      "labelSiret": "SIRET",
+      "labelRcs": "RCS",
+      "labelTva": "TVA intracommunautaire",
+      "labelSiege": "Siège social",
+      "labelEmail": "E-mail",
+      "labelTelephone": "Téléphone",
+      "directorTitle": "Directeur de la publication",
+      "hostTitle": "Hébergeur",
+      "labelHostNom": "Hébergeur",
+      "labelHostAdresse": "Adresse",
+      "labelHostContact": "Contact",
+      "ipTitle": "Propriété intellectuelle",
+      "ipBody": "L’ensemble des contenus du site (textes, visuels, logos, marques, mise en page) est protégé par le droit de la propriété intellectuelle. Toute reproduction ou représentation, totale ou partielle, sans autorisation préalable est interdite.",
+      "dataTitle": "Données personnelles (RGPD)",
+      "dataBody": "Conformément au Règlement général sur la protection des données (RGPD), vous disposez d’un droit d’accès, de rectification, d’effacement, de limitation, de portabilité et d’opposition concernant vos données personnelles. Vous pouvez exercer ces droits en contactant l’éditeur à l’adresse e-mail indiquée ci-dessus.",
+      "dataPrivacyLink": "Consulter notre politique de confidentialité",
+      "cookiesTitle": "Cookies",
+      "cookiesBody": "Le site peut déposer des cookies nécessaires à son fonctionnement et, le cas échéant, des cookies de mesure d’audience. Vous pouvez configurer votre navigateur pour les refuser. Le détail figure dans la politique de confidentialité.",
+      "mediationTitle": "Médiation de la consommation",
+      "mediationBody": "Conformément au Code de la consommation, le consommateur peut recourir gratuitement à un médiateur de la consommation en vue de la résolution amiable d’un litige. Les coordonnées du médiateur compétent sont indiquées ci-dessous.",
+      "labelMediatorNom": "Médiateur",
+      "labelMediatorUrl": "Site de saisine",
+      "labelMediatorAdresse": "Adresse",
+      "lawTitle": "Loi applicable et juridiction",
+      "lawBody": "Le présent site et les présentes mentions sont soumis au droit français. En cas de litige et à défaut de résolution amiable, les tribunaux français sont compétents."
+    },
+    "confidentialite": {
+      "title": "Politique de confidentialité",
+      "draftNote": "Cette page est en cours de préparation. Une version détaillée sera publiée prochainement. Les principes essentiels figurent ci-dessous.",
+      "collectTitle": "Données collectées",
+      "collectBody": "Nous collectons uniquement les données nécessaires à la création de votre compte, au traitement de vos commandes et au bon fonctionnement du service.",
+      "rightsTitle": "Vos droits",
+      "rightsBody": "Vous disposez d’un droit d’accès, de rectification, d’effacement, de limitation, de portabilité et d’opposition sur vos données, que vous pouvez exercer auprès de l’éditeur.",
+      "contactTitle": "Contact",
+      "contactBody": "Pour toute question relative à vos données, contactez l’éditeur à l’adresse e-mail indiquée dans les mentions légales."
+    }
   }
 }

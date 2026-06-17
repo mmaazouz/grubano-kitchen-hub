@@ -19,12 +19,13 @@ import { locales } from '@/i18n'
 //   /logistics/*    → courier/logistics space (P1 — its own sober shell, like /supplier)
 //   /business/*     → partner space served on business.grubano.com (Agent 3 / 2C)
 //   /t/*            → public "table bill" QR landing (consumer, sober, no chrome)
+//   /legal/*        → public legal pages (mentions légales…) — own sober shell
 //   /login, /register → public auth pages
 //   /               → redirects to /dashboard, never renders content
 //
 // Note: the locale prefix is stripped BEFORE matching below, so these
 // patterns work across /fr/franchise, /en/creators, /es/eat, etc.
-const BARE_PREFIXES = ['/eat', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/login', '/register', '/add-activity']
+const BARE_PREFIXES = ['/eat', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/legal', '/login', '/register', '/add-activity']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'

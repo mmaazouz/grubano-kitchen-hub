@@ -117,6 +117,9 @@ export async function middleware(request: NextRequest) {
     // a visitor with no session clicks an email link here to authenticate. Scoped
     // to the EXACT path (not /auth/*) so a future /auth/<protected> stays gated.
     restPath === '/auth/magic' ||
+    // /legal/* are the PUBLIC legal pages (mentions légales, confidentialité…):
+    // anyone, no session. Static content, rendered bare (AppChrome BARE_PREFIXES).
+    restPath === '/legal' || restPath.startsWith('/legal/') ||
     restPath.startsWith('/api/auth') ||
     // Everything under /franchise and /creators is public EXCEPT the /dashboard
     // sub-routes (landing pages, /apply, etc. stay open to all).

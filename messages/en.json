@@ -2817,5 +2817,61 @@
       "actionError": "The action failed. Please try again.",
       "networkError": "Could not connect. Check your network."
     }
+  },
+  "legal": {
+    "shell": {
+      "skipToContent": "Skip to content",
+      "backHome": "Back to home",
+      "otherPages": "Other legal pages"
+    },
+    "draftBanner": "⚠️ Legal notice being finalised — the company and hosting details are not final yet.",
+    "nav": {
+      "mentions": "Legal notice",
+      "confidentialite": "Privacy policy"
+    },
+    "mentions": {
+      "title": "Legal notice",
+      "intro": "The information below identifies the site’s publisher, the publication director and the host, together with the site’s terms of use.",
+      "editorTitle": "Site publisher",
+      "labelRaisonSociale": "Company name",
+      "labelFormeJuridique": "Legal form",
+      "labelCapital": "Share capital",
+      "labelSiren": "SIREN",
+      "labelSiret": "SIRET",
+      "labelRcs": "Trade register (RCS)",
+      "labelTva": "Intra-EU VAT",
+      "labelSiege": "Registered office",
+      "labelEmail": "Email",
+      "labelTelephone": "Phone",
+      "directorTitle": "Publication director",
+      "hostTitle": "Hosting provider",
+      "labelHostNom": "Host",
+      "labelHostAdresse": "Address",
+      "labelHostContact": "Contact",
+      "ipTitle": "Intellectual property",
+      "ipBody": "All content on the site (text, images, logos, trademarks, layout) is protected by intellectual property law. Any reproduction or representation, in whole or in part, without prior authorisation is prohibited.",
+      "dataTitle": "Personal data (GDPR)",
+      "dataBody": "In accordance with the General Data Protection Regulation (GDPR), you have the right to access, rectify, erase, restrict, port and object to the processing of your personal data. You can exercise these rights by contacting the publisher at the email address shown above.",
+      "dataPrivacyLink": "Read our privacy policy",
+      "cookiesTitle": "Cookies",
+      "cookiesBody": "The site may set cookies required for its operation and, where applicable, audience-measurement cookies. You can configure your browser to refuse them. Details are provided in the privacy policy.",
+      "mediationTitle": "Consumer mediation",
+      "mediationBody": "In accordance with consumer law, a consumer may use a consumer mediator free of charge to settle a dispute amicably. The relevant mediator’s contact details are shown below.",
+      "labelMediatorNom": "Mediator",
+      "labelMediatorUrl": "Referral website",
+      "labelMediatorAdresse": "Address",
+      "lawTitle": "Governing law and jurisdiction",
+      "lawBody": "This site and these notices are governed by French law. In the event of a dispute and failing an amicable settlement, the French courts have jurisdiction."
+    },
+    "confidentialite": {
+      "title": "Privacy policy",
+      "draftNote": "This page is being prepared. A detailed version will be published soon. The key principles are set out below.",
+      "collectTitle": "Data collected",
+      "collectBody": "We collect only the data needed to create your account, process your orders and operate the service properly.",
+      "rightsTitle": "Your rights",
+      "rightsBody": "You have the right to access, rectify, erase, restrict, port and object to the processing of your data, which you can exercise with the publisher.",
+      "contactTitle": "Contact",
+      "contactBody": "For any question about your data, contact the publisher at the email address shown in the legal notice."
+    }
   }
 }
