@@ -10,6 +10,7 @@ import PortalMobileHeader from '@/components/portals/PortalMobileHeader'
  *   /franchise/dashboard
  *   /franchise/dashboard/etablissements
  *   /franchise/dashboard/finances
+ *   /franchise/dashboard/parametres
  *
  * The public landing page (/franchise) and application form (/franchise/apply)
  * are OUTSIDE this tree and therefore never get the sidebar.

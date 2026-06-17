@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import {
   LayoutDashboard, MapPin, CreditCard,
-  ArrowLeft, Building2, X,
+  ArrowLeft, Building2, X, Settings,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
 import { useSidebar } from '@/components/SidebarContext'
@@ -22,6 +22,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/franchise/dashboard',                  labelKey: 'overview',   icon: LayoutDashboard, exact: true },
   { href: '/franchise/dashboard/etablissements',   labelKey: 'locations',  icon: MapPin },
   { href: '/franchise/dashboard/finances',         labelKey: 'finances',   icon: CreditCard },
+  // P5c — editable account profile & settings (name / phone / city).
+  { href: '/franchise/dashboard/parametres',        labelKey: 'settings',   icon: Settings },
 ]
 
 export default function FranchiseSidebar() {
