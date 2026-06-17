@@ -36,6 +36,12 @@ const FILLED: LegalInfo = {
     url:     'https://mediateur.example',
     adresse: '3 rue Médiation, 00000 Ville',
   },
+  privacy: {
+    dpoContact:       'dpo@grubano.com',
+    retentionAccount: '3 ans après la clôture du compte',
+    retentionOrders:  '10 ans (obligation comptable)',
+    nonEuTransfer:    'Néant',
+  },
 }
 
 describe('isPlaceholder', () => {
@@ -87,5 +93,18 @@ describe('isLegalInfoComplete', () => {
       mediation: { ...FILLED.mediation, nom: '[[À COMPLÉTER — nom du médiateur de la consommation]]' },
     }
     expect(isLegalInfoComplete(missingMediator)).toBe(false)
+
+    // Privacy facts (Agent 35) also gate completeness.
+    const missingDpo: LegalInfo = {
+      ...FILLED,
+      privacy: { ...FILLED.privacy, dpoContact: '[[À COMPLÉTER — contact DPO / délégué à la protection des données]]' },
+    }
+    expect(isLegalInfoComplete(missingDpo)).toBe(false)
+
+    const missingTransfer: LegalInfo = {
+      ...FILLED,
+      privacy: { ...FILLED.privacy, nonEuTransfer: '' },
+    }
+    expect(isLegalInfoComplete(missingTransfer)).toBe(false)
   })
 })

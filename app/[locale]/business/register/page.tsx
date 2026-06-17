@@ -120,7 +120,21 @@ export default function PartnerRegisterScreen() {
               className="mt-0.5 h-4 w-4 shrink-0 accent-grubano-primary"
               required
             />
-            <span className="text-xs leading-relaxed text-grubano-ink-muted">{t('consentText')}</span>
+            <span className="text-xs leading-relaxed text-grubano-ink-muted">
+              {t.rich('consentText', {
+                privacy: (chunks) => (
+                  <Link
+                    href="/legal/confidentialite"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="font-semibold text-grubano-primary hover:underline"
+                  >
+                    {chunks}
+                  </Link>
+                ),
+              })}
+            </span>
           </label>
 
           {/* Honeypot — visible only to bots that read the DOM. */}

@@ -59,6 +59,9 @@ export default async function LegalLayout({
             <Link href="/legal/confidentialite" className="transition-colors hover:text-grubano-primary">
               {t('nav.confidentialite')}
             </Link>
+            <Link href="/legal/cookies" className="transition-colors hover:text-grubano-primary">
+              {t('nav.cookies')}
+            </Link>
             <Link href="/" className="transition-colors hover:text-grubano-primary">
               {t('shell.backHome')}
             </Link>

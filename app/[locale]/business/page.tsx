@@ -57,6 +57,7 @@ const H2 = 'font-display text-grubano-2xl font-bold tracking-tight text-grubano-
 
 export default function BusinessLandingPage() {
   const t = useTranslations('business.landing')
+  const tLegal = useTranslations('legal')
   const year = new Date().getFullYear()
 
   const trades = [
@@ -253,6 +254,8 @@ export default function BusinessLandingPage() {
               <Link href="/business/start" className="transition-colors hover:text-grubano-primary">{t('ctaPrimary')}</Link>
               <Link href="/auth/magic" className="transition-colors hover:text-grubano-primary">{t('ctaSecondary')}</Link>
               <Link href="/legal/mentions-legales" className="transition-colors hover:text-grubano-primary">{t('footerLegal')}</Link>
+              <Link href="/legal/confidentialite" className="transition-colors hover:text-grubano-primary">{tLegal('nav.confidentialite')}</Link>
+              <Link href="/legal/cookies" className="transition-colors hover:text-grubano-primary">{tLegal('nav.cookies')}</Link>
               <LanguageSwitcher variant="compact" />
             </nav>
           </div>
