@@ -2801,5 +2801,21 @@
     "logisticsDesc": "Realiza entregas para restaurantes y proveedores.",
     "franchiseTitle": "Franquicia",
     "franchiseDesc": "Abre un punto de venta con una de nuestras marcas (por candidatura)."
+  },
+  "admin": {
+    "approvals": {
+      "title": "Validaciones",
+      "subtitle": "Aprueba la publicación de establecimientos y las solicitudes de franquicia.",
+      "restaurantsTitle": "Establecimientos por aprobar",
+      "restaurantsEmptyTitle": "Ningún establecimiento pendiente",
+      "restaurantsEmptyBody": "Todos los establecimientos han sido gestionados.",
+      "approvePublish": "Aprobar y publicar",
+      "franchiseTitle": "Solicitudes de franquicia",
+      "franchiseEmptyTitle": "Ninguna solicitud pendiente",
+      "franchiseEmptyBody": "Todas las solicitudes han sido gestionadas.",
+      "approveFranchise": "Aprobar",
+      "actionError": "La acción falló. Inténtalo de nuevo.",
+      "networkError": "No se pudo conectar. Comprueba tu red."
+    }
   }
 }

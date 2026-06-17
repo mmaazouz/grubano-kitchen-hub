@@ -2801,5 +2801,21 @@
     "logisticsDesc": "Run deliveries for restaurants and suppliers.",
     "franchiseTitle": "Franchise",
     "franchiseDesc": "Open an outlet under one of our brands (by application)."
+  },
+  "admin": {
+    "approvals": {
+      "title": "Approvals",
+      "subtitle": "Approve establishment go-live and franchise applications.",
+      "restaurantsTitle": "Establishments to approve",
+      "restaurantsEmptyTitle": "No establishment pending",
+      "restaurantsEmptyBody": "Every establishment has been handled.",
+      "approvePublish": "Approve & publish",
+      "franchiseTitle": "Franchise applications",
+      "franchiseEmptyTitle": "No application pending",
+      "franchiseEmptyBody": "Every application has been handled.",
+      "approveFranchise": "Approve",
+      "actionError": "The action failed. Please try again.",
+      "networkError": "Could not connect. Check your network."
+    }
   }
 }

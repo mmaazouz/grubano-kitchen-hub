@@ -2801,5 +2801,21 @@
     "logisticsDesc": "نفّذ عمليات التوصيل للمطاعم والموردين.",
     "franchiseTitle": "امتياز تجاري",
     "franchiseDesc": "افتح نقطة بيع تحت إحدى علاماتنا (بموجب طلب)."
+  },
+  "admin": {
+    "approvals": {
+      "title": "الموافقات",
+      "subtitle": "وافق على نشر المنشآت وعلى طلبات الامتياز.",
+      "restaurantsTitle": "منشآت بانتظار الموافقة",
+      "restaurantsEmptyTitle": "لا توجد منشأة قيد الانتظار",
+      "restaurantsEmptyBody": "تمت معالجة جميع المنشآت.",
+      "approvePublish": "الموافقة والنشر",
+      "franchiseTitle": "طلبات الامتياز",
+      "franchiseEmptyTitle": "لا يوجد طلب قيد الانتظار",
+      "franchiseEmptyBody": "تمت معالجة جميع الطلبات.",
+      "approveFranchise": "الموافقة",
+      "actionError": "فشل الإجراء. حاول مرة أخرى.",
+      "networkError": "تعذّر الاتصال. تحقّق من شبكتك."
+    }
   }
 }

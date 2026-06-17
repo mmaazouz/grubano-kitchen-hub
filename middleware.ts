@@ -88,6 +88,11 @@ export async function middleware(request: NextRequest) {
   // supplier gate. Distinct prefix from /business/logistics — never collides.
   const isLogisticsSpace =
     restPath === '/logistics' || restPath.startsWith('/logistics/')
+  // Admin console (B2.4 / SEC2, Agent 33): the approval console at /admin. Gated
+  // to ADMIN ONLY (defence in depth — every /admin page ALSO re-checks the session
+  // role server-side). Exact '/admin' or the '/admin/' prefix. NO public sub-route.
+  const isAdminSpace =
+    restPath === '/admin' || restPath.startsWith('/admin/')
 
   // Public routes — no auth required. /eat/* is the consumer app (auth per-page).
   const publicRoots = ['/', '/login', '/register', '/design']
@@ -165,6 +170,12 @@ export async function middleware(request: NextRequest) {
     // logistics user is sent to the HOME of their primary role (role-spaces) — its
     // own space, always reachable → no redirect loop. Calqued on the supplier gate.
     if (isLogisticsSpace && !hasAny(['logistics', 'admin'])) {
+      const home = spacesForRoles(roles)[0]?.href ?? '/eat'
+      return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
+    }
+    // Admin console (B2.4): ADMIN only. A non-admin is sent to the HOME of their
+    // primary role (role-spaces) — its own space, always reachable → no loop.
+    if (isAdminSpace && !hasAny(['admin'])) {
       const home = spacesForRoles(roles)[0]?.href ?? '/eat'
       return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
     }
