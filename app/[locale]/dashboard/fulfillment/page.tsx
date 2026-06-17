@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic'
 export default async function FulfillmentPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
-    redirect('/eat/auth?callbackUrl=/dashboard/fulfillment')
+    redirect('/auth/magic')
   }
 
   const operator = await prisma.operator.findUnique({
