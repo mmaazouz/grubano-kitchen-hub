@@ -66,6 +66,23 @@ model Operator {
   // Slice 2 — B2B supply orders this operator (as a restaurateur) placed to
   // marketplace suppliers. Additive inverse relation; reversible.
   supplyOrders  SupplyOrder[]
+  // ── Company identity anchor (B1.1, Agent 29) — ADDITIVE · REVERSIBLE · INERT ──
+  // Future "collect once" home for BUSINESS identity at the ACCOUNT level. Today
+  // company identity is siloed per-entity (SupplierProfile / LogisticsProfile,
+  // keyed by email); this is the single account-level anchor the verification
+  // flows (B1.3 / Phase 4) will populate. Field names mirror SupplierProfile
+  // (siren / officialName) for consistency. NULLABLE, no default, NO backfill →
+  // existing rows stay valid (all NULL) and dropping these columns is safe.
+  // INERT in this brick: NOTHING reads these at runtime; they are written ONLY by
+  // future SERVER-side KYB flows — never by user input (absent from the P5 profile
+  // whitelists). `kybStatus` is named distinctly from the per-entity
+  // `verificationStatus` on purpose: it is the ACCOUNT-level Know-Your-Business
+  // state, not a duplicate of the entity-scoped field.
+  siren         String?   // FR 9-digit business number (mirrors SupplierProfile.siren)
+  officialName  String?   // legal / registered company name (mirrors SupplierProfile.officialName)
+  legalForm     String?   // legal entity type — free string, no enum yet (e.g. auto_entrepreneur | sarl | sas)
+  kybStatus     String?   // account-level KYB state — free string, no enum yet (e.g. none | pending | verified | rejected)
+  kybVerifiedAt DateTime? // when account-level KYB was confirmed
 }
 
 // ── OperatorRole (Phase 1 refonte) — one row per (operator, role) ─────────────
@@ -775,6 +792,14 @@ model Restaurant {
   // column is non-destructive. ALL operator/consumer listings filter archivedAt
   // = null, so an archived establishment never reappears in the UI or aggregates.
   archivedAt   DateTime?
+  // ── Establishment lifecycle (B1.1, Agent 29) — ADDITIVE · REVERSIBLE · INERT ──
+  // Prepares SEC2 / B2.4 (admin approval lifecycle). NULLABLE, no default, NO
+  // backfill → existing rows stay valid (NULL) and dropping is safe. INERT here:
+  // NOTHING reads these at runtime. The publication / visibility barrier remains
+  // isActive ONLY (SEC1, admin-gated) — `status` does NOT gate visibility. B2.4
+  // will define the lifecycle values + stamp approvedAt on admin approval.
+  status       String?   // establishment lifecycle state — free string, no enum yet (set by B2.4)
+  approvedAt   DateTime? // when an admin approved / published this establishment (B2.4)
   // ── Fulfillment settings (operator-controlled) ──
   // Booleans toggle which fulfillment channels this restaurant offers.
   // All defaults preserve current behaviour: delivery on, pickup/reservation off.
