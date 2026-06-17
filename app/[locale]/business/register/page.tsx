@@ -1,10 +1,8 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import {
-  Eye, EyeOff, Mail, Lock, User as UserIcon, CheckCircle2, Loader2,
-} from 'lucide-react'
+import { Mail, User as UserIcon, CheckCircle2, Loader2 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
@@ -14,22 +12,9 @@ import PartnerChrome from '@/components/business/PartnerChrome'
 // (this page links there for existing partners). This is the register half that
 // used to live in /business/auth (which now redirects to /auth/magic). Logic
 // UNCHANGED — POST /api/partners/register → e-mail verification → magic-link login.
-// NOTE: register still sets a password (carried over); switching sign-up to
-// passwordless is the inscription refonte (S3), out of scope here.
-
-/**
- * Lightweight client-side password strength meter (0..4). Mirrors the server
- * regex in /api/partners/register so the user sees feedback BEFORE submit.
- */
-function passwordScore(pw: string): number {
-  if (!pw) return 0
-  let score = 0
-  if (pw.length >= 10) score++
-  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
-  if (/[0-9]/.test(pw)) score++
-  if (/[^A-Za-z0-9]/.test(pw) || pw.length >= 14) score++
-  return Math.min(4, score)
-}
+// PASSWORDLESS (P6): no password field — the account is created with password=null
+// and signs in by magic-link (/auth/magic). Only name + e-mail + RGPD consent are
+// collected; the e-mail verification flow + magic-link login are unchanged.
 
 export default function PartnerRegisterScreen() {
   const t = useTranslations('business.auth')
@@ -39,9 +24,7 @@ export default function PartnerRegisterScreen() {
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [consent, setConsent] = useState(false)
-  const [showPwd, setShowPwd] = useState(false)
   // Honeypot — must remain empty (anti-bot). Hidden from humans + assistive tech.
   const [honeypot, setHoneypot] = useState('')
   // Render time → server uses (now - formStartedAt) as a light bot signal.
@@ -49,22 +32,17 @@ export default function PartnerRegisterScreen() {
 
   const [registeredMessage, setRegisteredMessage] = useState<string | null>(null)
 
-  const pwScore = useMemo(() => passwordScore(password), [password])
-  const pwScoreColour = ['bg-gray-200', 'bg-red-400', 'bg-amber-400', 'bg-lime-400', 'bg-green-500'][pwScore] ?? 'bg-gray-200'
-  const pwScoreLabel = ['', t('pwWeak'), t('pwOk'), t('pwGood'), t('pwStrong')][pwScore] ?? ''
-
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
-    if (!name || !email || !password) { setError(t('registerMissing')); return }
+    if (!name || !email) { setError(t('registerMissing')); return }
     if (!consent) { setError(t('consentRequired')); return }
-    if (passwordScore(password) < 2 || password.length < 10) { setError(t('pwTooWeak')); return }
     setError('')
     setLoading(true)
     try {
       const res = await fetch('/api/partners/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, consent, website: honeypot, formStartedAt }),
+        body: JSON.stringify({ name, email, consent, website: honeypot, formStartedAt }),
       })
       const data = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; error?: string } | null
       if (res.status === 429) { setError(t('rateLimited')); return }
@@ -133,42 +111,6 @@ export default function PartnerRegisterScreen() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <div className="space-y-2">
-            <Input
-              label={t('passwordLabel')}
-              type={showPwd ? 'text' : 'password'}
-              autoComplete="new-password"
-              required
-              minLength={10}
-              maxLength={100}
-              hint={t('pwHint')}
-              leftIcon={<Lock size={16} />}
-              rightIcon={
-                <button
-                  type="button"
-                  aria-label={showPwd ? t('hidePassword') : t('showPassword')}
-                  onClick={() => setShowPwd((v) => !v)}
-                  className="text-grubano-ink-faint hover:text-grubano-ink-muted"
-                >
-                  {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              }
-              placeholder={t('pwPlaceholder')}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            {password.length > 0 && (
-              <div className="flex items-center gap-2">
-                <div className="flex flex-1 gap-1" aria-hidden>
-                  {[0, 1, 2, 3].map((i) => (
-                    <span key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i < pwScore ? pwScoreColour : 'bg-grubano-border'}`} />
-                  ))}
-                </div>
-                <span className="w-14 text-right text-[11px] font-semibold text-grubano-ink-muted">{pwScoreLabel}</span>
-              </div>
-            )}
-          </div>
-
           {/* Consent — RGPD: never pre-checked */}
           <label className="flex cursor-pointer items-start gap-2.5 rounded-grubano-md border border-grubano-border bg-grubano-surface-muted p-3">
             <input
