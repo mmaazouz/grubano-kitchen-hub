@@ -29,6 +29,7 @@ import * as React from 'react'
 import { Suspense, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import ConnectReturnToast from '@/components/connect/ConnectReturnToast'
+import ActivationChecklist from '@/components/dashboard/ActivationChecklist'
 import {
   Loader2, Euro, ShoppingBag, TrendingUp, Star,
   AlertTriangle, Package, Building2, Sparkles, Users,
@@ -173,6 +174,9 @@ export default function ConsolidatedHome({ userName, locale }: ConsolidatedHomeP
   if (!overview || !agg || agg.establishmentsCount === 0) {
     return (
       <div className="mx-auto max-w-xl px-5 pt-12">
+        {/* Discovery mode: guide a brand-new restaurateur through activation
+            before they have any establishment (read-only, owner-scoped). */}
+        <ActivationChecklist />
         <EmptyState
           emoji="🏪"
           title={tHome('empty.noRestaurantTitle')}
@@ -247,6 +251,10 @@ export default function ConsolidatedHome({ userName, locale }: ConsolidatedHomeP
       <Suspense fallback={null}>
         <ConnectReturnToast />
       </Suspense>
+
+      {/* B1.2 — discovery banner + activation checklist (read-only, owner-scoped).
+          Self-hides once every step is done (isDiscovery=false). */}
+      <ActivationChecklist />
 
       {/* ── EN-TÊTE ──────────────────────────────────────────────────────── */}
       <header className="mb-5">
