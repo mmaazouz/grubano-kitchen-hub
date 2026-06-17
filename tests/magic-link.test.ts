@@ -68,6 +68,18 @@ describe('authorizeMagicLink', () => {
     expect(u).toMatchObject({ id: 'opR', email: 'resto@x.fr', role: 'restaurant' })
   })
 
+  it('a PASSWORDLESS restaurant account (password=null) signs in via magic-link (P6 anti-lockout)', async () => {
+    // P6 made /business/register passwordless: the account is created with
+    // password=null and MUST still sign in by magic-link. authorizeMagicLink never
+    // reads `password` — only status + the magic token — so a null password is fine.
+    const { token, hash, expiry } = createMagicLinkToken('opP')
+    db.operator.findUnique.mockResolvedValue(
+      row({ id: 'opP', email: 'pwless@x.fr', role: 'restaurant', password: null, magicLinkTokenHash: hash, magicLinkTokenExpiry: expiry }),
+    )
+    const u = await authorizeMagicLink(token)
+    expect(u).toMatchObject({ id: 'opP', email: 'pwless@x.fr', role: 'restaurant' })
+  })
+
   it('loses the consume race (updateMany count 0) → null, no double sign-in', async () => {
     const { token, hash, expiry } = createMagicLinkToken('opX')
     db.operator.findUnique.mockResolvedValue(row({ magicLinkTokenHash: hash, magicLinkTokenExpiry: expiry }))

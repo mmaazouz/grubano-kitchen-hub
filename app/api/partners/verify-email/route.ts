@@ -15,9 +15,14 @@ export const runtime = 'nodejs'
 // email. The link is clicked from the verification email sent by
 // POST /api/partners/register.
 //
-// On success the account moves status 'pending' → 'pending_review' (email is
-// confirmed, but the restaurant is NOT yet publishable — that needs admin
-// approval). The single-use token is cleared and emailVerifiedAt is stamped.
+// On success the account moves status 'pending' → 'active' (email confirmed). P6
+// ANTI-LOCKOUT: the restaurateur signup is now PASSWORDLESS, so the ONLY sign-in is
+// the magic-link — and POST /api/auth/magic-link mints a link ONLY for an 'active'
+// account. Landing the verified partner on 'active' (instead of the old
+// intermediate 'pending_review') is what lets a passwordless partner actually sign
+// in. The restaurant is still NOT publishable on /eat until admin approval — that
+// gate is Restaurant.isActive (forced false), NOT Operator.status. The single-use
+// token is cleared and emailVerifiedAt is stamped.
 // Idempotency: a token that was already consumed (hash cleared) is reported as
 // `used` rather than 500 so the friendly page can reassure the user.
 //
@@ -81,9 +86,10 @@ export async function GET(req: NextRequest) {
     await prisma.operator.update({
       where: { id: operator.id },
       data: {
-        // Promote ONLY a still-pending account; never downgrade one already
-        // advanced (active / pending_review) by another path.
-        status:            operator.status === 'pending' ? 'pending_review' : operator.status,
+        // Promote ONLY a still-pending account to 'active' (P6: a passwordless
+        // partner can only sign in by magic-link, which requires 'active'); never
+        // downgrade one already advanced (active / pending_review) by another path.
+        status:            operator.status === 'pending' ? 'active' : operator.status,
         emailVerifiedAt:   new Date(),
         verifyTokenHash:   null,   // single-use
         verifyTokenExpiry: null,

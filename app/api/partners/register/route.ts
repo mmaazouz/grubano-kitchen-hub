@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as dns } from 'dns'
-import bcrypt from 'bcryptjs'
 import nodemailer from 'nodemailer'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
@@ -22,9 +21,11 @@ export const runtime = 'nodejs'
 //   1. Host gate   → endpoint only answers on business.grubano.com (404 elsewhere).
 //   2. Rate limit  → max 5 submissions / IP / hour (in-memory sliding window).
 //   3. Anti-bot    → honeypot field + minimum fill time (light, no dependency).
-//   4. Validate    → Zod: name, email (format + MX), strong password, RGPD consent.
+//   4. Validate    → Zod: name, email (format + MX), RGPD consent. PASSWORDLESS:
+//                    no password is collected — the partner signs in by magic-link.
 //   5. Anti-enum   → uniform generic response whether or not the email exists.
-//   6. Create      → Operator status='pending', role='restaurant', consentAt set;
+//   6. Create      → Operator status='pending', role='restaurant', consentAt set,
+//                    password=null (passwordless — sign-in is magic-link only);
 //                    SHA-256-hashed verification token (24h) stored on the row.
 //                    NO Restaurant row is created here (data minimisation — the
 //                    address/city are collected later at onboarding, and that
@@ -112,13 +113,8 @@ async function domainAcceptsMail(email: string): Promise<boolean> {
 const partnerSchema = z.object({
   name:     z.string().min(2, 'Nom trop court').max(80, 'Nom trop long'),
   email:    z.string().email('Email invalide'),
-  password: z
-    .string()
-    .min(10, 'Mot de passe trop court (10 caractères minimum)')
-    .max(100, 'Mot de passe trop long')
-    .regex(/[a-z]/, 'Le mot de passe doit contenir une minuscule')
-    .regex(/[A-Z]/, 'Le mot de passe doit contenir une majuscule')
-    .regex(/[0-9]/, 'Le mot de passe doit contenir un chiffre'),
+  // PASSWORDLESS: no password field. Sign-in is by magic-link (/auth/magic). A
+  // `password` sent by an old client is ignored (zod strips unknown keys).
   // RGPD: explicit, mandatory consent — timestamped in DB (consentAt).
   consent:  z.boolean().refine(v => v === true, { message: 'Consentement requis' }),
   // Anti-bot (light) — both optional, checked only when present:
@@ -137,8 +133,9 @@ function genericOk() {
   return NextResponse.json({
     ok: true,
     message:
-      "Si ces informations sont valides, un email de vérification vient d'être " +
-      'envoyé. Vérifie ta boîte de réception (pense à regarder les spams).',
+      "Si ces informations sont valides, un e-mail de vérification vient d'être " +
+      'envoyé. Vérifiez votre boîte de réception (pensez à regarder les spams), ' +
+      'activez votre compte, puis connectez-vous par lien magique.',
   })
 }
 
@@ -226,9 +223,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const name     = parsed.data.name.trim()
-    const email    = parsed.data.email.trim().toLowerCase()
-    const password = parsed.data.password
+    const name  = parsed.data.name.trim()
+    const email = parsed.data.email.trim().toLowerCase()
 
     if (!(await domainAcceptsMail(email))) {
       return NextResponse.json(
@@ -248,12 +244,14 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Create the pending partner account + hashed verification token.
-    const hashedPassword = await bcrypt.hash(password, 12)
+    //    PASSWORDLESS: password stays null (Operator.password is nullable). The
+    //    account signs in ONLY by magic-link (/auth/magic, role-agnostic + status-
+    //    gated) — there is no password to set or check. No schema change.
     const operator = await prisma.operator.create({
       data: {
         name,
         email,
-        password: hashedPassword,
+        password: null,         // passwordless — magic-link sign-in only
         role:     'restaurant', // forced server-side — never client-controlled
         status:   'pending',    // email not verified yet → login refused
         consentAt: new Date(),  // RGPD: explicit consent, timestamped
