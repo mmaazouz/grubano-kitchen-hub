@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { CheckCircle2, ChevronRight, ChevronLeft, Building2, User, Star, FileCheck } from 'lucide-react'
 import { useRouter } from '@/navigation'
@@ -24,6 +24,7 @@ type FormData = {
 
 function ApplyForm() {
   const t      = useTranslations('franchise.apply')
+  const tA     = useTranslations('addActivity')
   const router = useRouter()
 
   const [step,       setStep]       = useState(0)
@@ -35,10 +36,19 @@ function ApplyForm() {
     siret: '', rib: '', hasKitchen: false,
     brandName: '', motivation: '',
   })
+  // B1.3-C — from the "add an activity" hub the email arrives in ?email= and is
+  // LOCKED, so this candidature attaches to the SAME connected account at approval
+  // (FranchiseApplication.email = session email). Public visitors keep a free field.
+  const [emailLocked, setEmailLocked] = useState(false)
 
   function set(key: keyof FormData, value: string | boolean) {
     setForm(f => ({ ...f, [key]: value }))
   }
+
+  useEffect(() => {
+    const email = new URLSearchParams(window.location.search).get('email')
+    if (email) { setForm(f => (f.email ? f : { ...f, email })); setEmailLocked(true) }
+  }, [])
 
   function canProceed(): boolean {
     if (step === 0) return !!form.name && !!form.city && !!form.phone && !!form.email
@@ -152,7 +162,13 @@ function ApplyForm() {
               placeholder="jean@exemple.fr"
               value={form.email}
               onChange={e => set('email', e.target.value)}
+              disabled={emailLocked}
             />
+            {emailLocked && (
+              <p className="rounded-grubano-lg border border-grubano-primary/20 bg-grubano-tint/50 px-3 py-2 text-xs text-grubano-ink-muted">
+                {tA('emailLocked')}
+              </p>
+            )}
           </div>
         )}
 

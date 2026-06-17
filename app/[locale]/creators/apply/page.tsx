@@ -74,6 +74,7 @@ const EMPTY_CONCEPT: DishConcept = { name: '', description: '', cuisineType: '' 
 
 export default function CreatorsApplyPage() {
   const t      = useTranslations('creators.apply')
+  const tA     = useTranslations('addActivity')
   const router = useRouter()
 
   // ── Form state ──────────────────────────────────────────────────────────────
@@ -93,6 +94,10 @@ export default function CreatorsApplyPage() {
   // pre-select the influencer role ALONE (chef off) + show the influencer title.
   // Any other / no ?type leaves the default (both roles selectable) untouched.
   const [influencerEntry, setInfluencerEntry] = useState(false)
+  // B1.3-C — when arriving from the "add an activity" hub the email is carried in
+  // ?email= and LOCKED, so the creator activity attaches to the SAME connected
+  // account (never a 2nd Operator). Public visitors (no ?email) keep a free field.
+  const [emailLocked, setEmailLocked] = useState(false)
 
   // Phase 3 — a logged-in user arriving via "Devenir aussi créateur" carries their
   // email in ?email= so the form is pre-filled (multi-role cumul: same account
@@ -102,7 +107,7 @@ export default function CreatorsApplyPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const email = params.get('email')
-    if (email) setForm(f => (f.email ? f : { ...f, email }))
+    if (email) { setForm(f => (f.email ? f : { ...f, email })); setEmailLocked(true) }
     if (params.get('type') === 'influencer') {
       setInfluencerEntry(true)
       setRoles({ chef: false, influencer: true })
@@ -497,7 +502,13 @@ export default function CreatorsApplyPage() {
               placeholder="amina@exemple.fr"
               value={form.email}
               onChange={e => setField('email', e.target.value)}
+              disabled={emailLocked}
             />
+            {emailLocked && (
+              <p className="rounded-grubano-lg border border-grubano-primary/20 bg-grubano-tint/50 px-3 py-2 text-[13px] text-grubano-ink-muted">
+                {tA('emailLocked')}
+              </p>
+            )}
             <div>
               <label className="block text-xs font-semibold mb-1.5 text-grubano-ink-muted uppercase tracking-wide">
                 {t('labelBio')}

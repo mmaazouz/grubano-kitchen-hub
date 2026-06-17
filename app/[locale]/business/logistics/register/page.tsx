@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { Bike, ArrowLeft, CheckCircle2, Info, MailCheck, LogIn, ShieldCheck } from 'lucide-react'
 import { Link } from '@/navigation'
@@ -34,7 +34,8 @@ const VEHICLE_LABEL: Record<(typeof VEHICLE_TYPES)[number], string> = {
 }
 
 export default function LogisticsRegisterPage() {
-  const t = useTranslations('business.logistics')
+  const t  = useTranslations('business.logistics')
+  const tA = useTranslations('addActivity')
 
   const [partnerType, setPartnerType]   = useState<(typeof PARTNER_TYPES)[number]>('independent')
   const [contactName, setContactName]   = useState('')
@@ -56,6 +57,18 @@ export default function LogisticsRegisterPage() {
   // verified registry name).
   const [outcome, setOutcome]           = useState<'active' | 'pending' | 'rejected'>('pending')
   const [officialName, setOfficialName] = useState<string | null>(null)
+  // B1.3-C — when arriving from the "add an activity" hub: lock the email to the
+  // connected account (carried in ?email) and PREFILL the verified siren (editable).
+  // Public self-serve visitors (no ?email) keep the free form.
+  const [emailLocked, setEmailLocked] = useState(false)
+  const [prefilled, setPrefilled]     = useState(false)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const qEmail = p.get('email')
+    const qSiren = p.get('siren')
+    if (qEmail) { setContactEmail(qEmail); setEmailLocked(true) }
+    if (qSiren) { setSiren(qSiren); setPrefilled(true) }
+  }, [])
 
   // Inline SIREN/SIRET format check (9 or 14 digits, spaces tolerated) — UX only;
   // the server re-validates and is the source of truth.
@@ -267,9 +280,14 @@ export default function LogisticsRegisterPage() {
                 <p className="mt-1 text-grubano-xs text-grubano-ink-faint">{t('fieldZonesHint')}</p>
               </div>
 
+              {emailLocked && (
+                <p className="rounded-grubano-lg border border-grubano-primary/20 bg-grubano-tint/50 px-3 py-2 text-grubano-sm text-grubano-ink-muted">
+                  {tA('emailLocked')}{prefilled ? ' ' + tA('prefillNote') : ''}
+                </p>
+              )}
               <Input label={t('fieldContactName')} required value={contactName} onChange={(e) => setContactName(e.target.value)} />
               <div className="grid grid-cols-2 gap-3">
-                <Input label={t('fieldContactEmail')} type="email" required value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+                <Input label={t('fieldContactEmail')} type="email" required value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} disabled={emailLocked} />
                 <Input label={t('fieldContactPhone')} value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
               </div>
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { MailCheck, Truck, ArrowLeft, CheckCircle2, Info, LogIn } from 'lucide-react'
 import { Link } from '@/navigation'
@@ -16,7 +16,8 @@ import PartnerChrome from '@/components/business/PartnerChrome'
 const CATEGORIES = ['fresh', 'meat', 'fish', 'dairy', 'drinks', 'grocery', 'packaging'] as const
 
 export default function SupplierRegisterPage() {
-  const t = useTranslations('supplier')
+  const t  = useTranslations('supplier')
+  const tA = useTranslations('addActivity')
 
   const [companyName, setCompanyName]     = useState('')
   const [contactName, setContactName]     = useState('')
@@ -39,6 +40,20 @@ export default function SupplierRegisterPage() {
   // Auto-onboarding outcome from the API: 'active' (instantly usable), 'pending'
   // (manual review), or 'rejected'. Drives which success copy + icon we show.
   const [outcome, setOutcome]       = useState<'active' | 'pending' | 'rejected'>('pending')
+  // B1.3-C — when arriving from the "add an activity" hub: lock the email to the
+  // connected account (carried in ?email) and PREFILL the verified siren/company
+  // (editable). Public self-serve visitors (no ?email) keep the free form.
+  const [emailLocked, setEmailLocked] = useState(false)
+  const [prefilled, setPrefilled]     = useState(false)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    const qEmail = p.get('email')
+    const qSiren = p.get('siren')
+    const qCompany = p.get('company')
+    if (qEmail)   { setEmail(qEmail); setEmailLocked(true) }
+    if (qSiren)   { setSiren(qSiren); setPrefilled(true) }
+    if (qCompany) { setCompanyName(qCompany); setPrefilled(true) }
+  }, [])
 
   // Inline SIREN/SIRET format check (9 or 14 digits, spaces tolerated) — UX only;
   // the server re-validates and is the source of truth.
@@ -146,6 +161,12 @@ export default function SupplierRegisterPage() {
                 </p>
               )}
 
+              {emailLocked && (
+                <p className="rounded-grubano-lg border border-grubano-primary/20 bg-grubano-tint/50 px-3 py-2 text-[13px] text-grubano-ink-muted">
+                  {tA('emailLocked')}{prefilled ? ' ' + tA('prefillNote') : ''}
+                </p>
+              )}
+
               <Input label={t('fieldCompanyName')} required value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
               <Input label={t('fieldContactName')} required value={contactName} onChange={(e) => setContactName(e.target.value)} />
               <Input
@@ -158,7 +179,7 @@ export default function SupplierRegisterPage() {
                 hint={t('fieldSirenHint')}
                 error={showSirenError ? t('fieldSirenError') : undefined}
               />
-              <Input label={t('fieldEmail')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input label={t('fieldEmail')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={emailLocked} />
               <div className="grid grid-cols-2 gap-3">
                 <Input label={t('fieldPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
                 <Input label={t('fieldCity')} value={city} onChange={(e) => setCity(e.target.value)} />
