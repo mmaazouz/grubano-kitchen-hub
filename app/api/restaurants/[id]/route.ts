@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
+import { decidePublication } from '@/lib/publication-rule'
 import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '@/lib/geocode'
 import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
@@ -328,7 +329,7 @@ export async function PATCH(
 
     const current = await prisma.restaurant.findUnique({
       where:  { id: params.id },
-      select: { operatorId: true, address: true, city: true },
+      select: { operatorId: true, address: true, city: true, isActive: true, approvedAt: true },
     })
     if (!current) {
       return NextResponse.json({ error: 'Restaurant introuvable' }, { status: 404 })
@@ -367,17 +368,26 @@ export async function PATCH(
     let geocodeStatus: GeocodeStatus | null = null
     const data: Record<string, unknown> = { ...input }
 
-    // ── 🔒 SEC1 — Publication (isActive) is ADMIN-ONLY ────────────────────────
-    // An owner can edit every other field of their establishment, but going LIVE
-    // is a moderation decision: a restaurant is only visible on /eat when
-    // Restaurant.isActive is true (/api/restaurants filters where:{isActive:true}),
-    // so this flag IS the publication barrier. Whitelist pattern (same as the
-    // profile routes): an owner-supplied isActive (true OR false) was destructured
-    // out above and is silently dropped here; ONLY an admin can write it. Owners
-    // pause / unpublish their own restaurant via the dedicated /pause route
-    // (which still allows true→false).
-    if (isAdmin && isActiveInput !== undefined) {
-      data.isActive = isActiveInput
+    // ── 🔒 SEC1/SEC2 — Publication rule (approvedAt) ──────────────────────────
+    // Going live (isActive→true) is gated by lib/publication-rule: an OWNER may
+    // resume an already-approved resto (approvedAt != null) but can NEVER publish a
+    // never-approved one — the first go-live is admin-only (the approval console).
+    // Going offline always works; a live-but-unstamped resto going offline stamps
+    // approvedAt so the owner can resume it later (pause-capture). An owner trying
+    // to publish a never-approved resto is silently dropped here (this profile
+    // route's whitelist convention; /pause returns an explicit 403). Visibility on
+    // /eat stays gated by isActive ONLY (the /api/restaurants filter is unchanged).
+    if (isActiveInput !== undefined) {
+      const decision = decidePublication({
+        isAdmin,
+        requested:       isActiveInput,
+        currentIsActive: current.isActive,
+        approvedAt:      current.approvedAt,
+      })
+      if (!decision.rejected) {
+        data.isActive = decision.setIsActive
+        if (decision.stampApprovedAt) data.approvedAt = new Date()
+      }
     }
 
     if (addressChanged) {

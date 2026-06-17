@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
+import { decidePublication } from '@/lib/publication-rule'
 
 // ── /api/restaurants/[id]/pause ───────────────────────────────────────────────
 // Pause / resume a restaurant. Operator-only.
@@ -39,7 +40,7 @@ async function authorize(restaurantId: string) {
 
   const restaurant = await prisma.restaurant.findUnique({
     where:  { id: restaurantId },
-    select: { operatorId: true },
+    select: { operatorId: true, isActive: true, approvedAt: true },
   })
   if (!restaurant) {
     return { error: NextResponse.json({ error: 'Restaurant introuvable' }, { status: 404 }) }
@@ -51,7 +52,7 @@ async function authorize(restaurantId: string) {
     return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) }
   }
 
-  return { operatorId: operator.id, isAdmin }
+  return { operatorId: operator.id, isAdmin, currentIsActive: restaurant.isActive, approvedAt: restaurant.approvedAt }
 }
 
 export async function PATCH(
@@ -71,22 +72,32 @@ export async function PATCH(
       )
     }
 
-    // ── 🔒 SEC1 — bringing an establishment ONLINE is admin-only ──────────────
-    // Setting isActive:true is the publication / re-publication of the restaurant
-    // (it becomes visible on /eat). That is a moderation decision reserved to
-    // admins. An owner MAY pause / unpublish their own restaurant (true→false)
-    // but cannot publish or re-publish it (→true) — that requires an admin.
-    // Mirrors the whitelist in PATCH /api/restaurants/[id].
-    if (parsed.data.isActive === true && !auth.isAdmin) {
+    // ── 🔒 SEC1/SEC2 — publication rule (approvedAt) ──────────────────────────
+    // Single tested decision (lib/publication-rule). The SEC1 invariant holds: an
+    // owner can resume an ALREADY-approved resto (approvedAt!=null) but can NEVER
+    // bring a never-approved one online — the first go-live is admin-only (the
+    // approval console). Going offline always works; a live-but-unstamped resto
+    // going offline stamps approvedAt so the owner can resume it later (pause-
+    // capture). Visibility on /eat stays gated by isActive ONLY (unchanged).
+    const decision = decidePublication({
+      isAdmin:         auth.isAdmin,
+      requested:       parsed.data.isActive,
+      currentIsActive: auth.currentIsActive,
+      approvedAt:      auth.approvedAt,
+    })
+    if (decision.rejected) {
       return NextResponse.json(
-        { error: "La mise en ligne de l'établissement doit être validée par un administrateur." },
+        { error: "La première mise en ligne de l'établissement doit être validée par un administrateur." },
         { status: 403 },
       )
     }
 
     const restaurant = await prisma.restaurant.update({
       where:  { id: params.id },
-      data:   { isActive: parsed.data.isActive },
+      data:   {
+        isActive: decision.setIsActive,
+        ...(decision.stampApprovedAt ? { approvedAt: new Date() } : {}),
+      },
       select: { id: true, name: true, isActive: true },
     })
     return NextResponse.json({ restaurant })
