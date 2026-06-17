@@ -83,6 +83,17 @@ model Operator {
   legalForm     String?   // legal entity type — free string, no enum yet (e.g. auto_entrepreneur | sarl | sas)
   kybStatus     String?   // account-level KYB state — free string, no enum yet (e.g. none | pending | verified | rejected)
   kybVerifiedAt DateTime? // when account-level KYB was confirmed
+  // ── P4.1 — Stripe Connect (Express) onboarding for the FRANCHISE payout flow
+  // (TEST mode; gated by FRANCHISE_CONNECT_ENABLED). Prefixed `franchise*` because
+  // Operator is multi-purpose: this is the connected account for the 'franchise'
+  // role's FUTURE payouts, kept DISTINCT from any Creator account the same human
+  // may also hold (per-person consolidation = later, out of scope). ADDITIVE +
+  // REVERSIBLE: all nullable, NO default / NO constraint / NO backfill. NO charge /
+  // payout here (= P4.3) — only tracks the connected account + onboarding state.
+  // Status synced ON-DEMAND (no webhook in P4.1).
+  franchiseStripeAccountId   String?    // acct_… (Express, FR)
+  franchisePayoutStatus      String?    // none | pending | active | restricted (null = none)
+  franchiseStripeOnboardedAt DateTime?  // first time the franchise account became 'active'
 }
 
 // ── OperatorRole (Phase 1 refonte) — one row per (operator, role) ─────────────
@@ -512,6 +523,14 @@ model Creator {
   referralLinkSlug String?    @unique           // used in /r/{slug}
   referrals        Referral[]
   dishes        CreatorDish[]
+  // ── P4.1 — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
+  // CREATOR_CONNECT_ENABLED). ADDITIVE + REVERSIBLE: all nullable, NO default / NO
+  // constraint / NO backfill. Names mirror SupplierProfile. NO charge/payout here
+  // (= P4.3) — only tracks the connected account + onboarding state. Status is
+  // synced ON-DEMAND (no webhook in P4.1).
+  stripeAccountId   String?    // acct_… (Express, FR)
+  payoutStatus      String?    // none | pending | active | restricted (null = none)
+  stripeOnboardedAt DateTime?  // first time the account became 'active'
   createdAt     DateTime      @default(now())
 }
 
@@ -663,6 +682,14 @@ model LogisticsProfile {
   verifiedAt         DateTime?                         // when the registry verification passed
   vettingReason      String?  @db.Text                // short FR reason from the verification step
   vettingAt          DateTime?                         // when the auto-verification ran
+  // ── P4.1 — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
+  // LOGISTICS_CONNECT_ENABLED). ADDITIVE + REVERSIBLE: all nullable, NO default / NO
+  // constraint / NO backfill. Names mirror SupplierProfile. NO charge/payout here
+  // (= P4.3) — only tracks the connected account + onboarding state. Status synced
+  // ON-DEMAND (no webhook in P4.1).
+  stripeAccountId    String?                           // acct_… (Express, FR)
+  payoutStatus       String?                           // none | pending | active | restricted (null = none)
+  stripeOnboardedAt  DateTime?                         // first time the account became 'active'
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -837,12 +864,14 @@ model Restaurant {
   stripeAccountId     String?   @unique  // acct_... (Express, country FR)
   stripeAccountStatus String?            // pending | active | restricted
   stripeOnboardedAt   DateTime?          // first time the account became 'active'
-  // ── Commission overrides — POSED FOR A2, NOT USED YET ───────────────────────
+  // ── Commission overrides — WIRED (read by lib/commission.resolveCommissionRate) ─
   // Per-establishment override of the platform defaults (A0 decisions: 5 %
   // dine-in/table, 8 % pickup, 12 % delivery — Stripe fees included). null =
   // platform default applies. commissionFreeUntil = bounded founders offer
-  // (0 % until this date). NOTHING reads these fields until A2 wires the
-  // payment routing + application_fee.
+  // (0 % until this date). These fields ARE read & applied at checkout (A2/C1):
+  // lib/commission.resolveCommissionRate + computeApplicationFee, used by the
+  // orders/tickets/reservations pay routes + finance/summary. (Corrected by Agent
+  // 37: the previous "NOT USED YET" note was stale.)
   commissionRateDineIn   Float?
   commissionRatePickup   Float?
   commissionRateDelivery Float?
