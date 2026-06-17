@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureSupplierOperator } from '@/lib/supplier-account'
+import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,6 +63,15 @@ export async function POST(req: Request) {
         profile.contactName || profile.companyName,
         { activate: true },
       )
+      // B1.3-B "collect once": propagate the verified identity to the account anchor
+      // (best-effort; no-op unless the profile is genuinely verified). An admin force-
+      // activating a 'review' profile therefore does NOT mark the account 'verified'.
+      await propagateVerifiedCompanyIdentity({
+        email:              profile.email,
+        siren:              profile.siren,
+        officialName:       profile.officialName,
+        verificationStatus: profile.verificationStatus,
+      })
     }
 
     return NextResponse.json({ ok: true, status, bridge })

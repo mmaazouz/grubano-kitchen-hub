@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureSupplierOperator } from '@/lib/supplier-account'
+import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +51,16 @@ export async function POST(req: Request) {
       profile.contactName || profile.companyName,
       { activate: true },
     )
+
+    // B1.3-B "collect once": propagate the entity's already-verified identity to the
+    // shared account anchor (best-effort; no-op unless the profile is genuinely
+    // verified). Reads the stored result only — verification + silo gating untouched.
+    await propagateVerifiedCompanyIdentity({
+      email:              profile.email,
+      siren:              profile.siren,
+      officialName:       profile.officialName,
+      verificationStatus: profile.verificationStatus,
+    })
 
     return NextResponse.json({ ok: true, status: 'active', bridge })
   } catch (err) {

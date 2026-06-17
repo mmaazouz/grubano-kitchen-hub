@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { ensureLogisticsOperator, decideLogisticsOutcome } from '@/lib/logistics-account'
 import { verifyBusiness } from '@/lib/business-verification'
+import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 
 export const dynamic = 'force-dynamic'
 
@@ -129,6 +130,15 @@ export async function POST(req: Request) {
     // bridge failure never breaks the registration.
     if (status !== 'rejected') {
       await ensureLogisticsOperator(email, data.contactName, { activate: status === 'active' })
+      // B1.3-B "collect once": copy the VERIFIED company identity to the shared
+      // account anchor (best-effort; no-op unless verificationStatus==='verified').
+      // Reads the just-computed result only — verification logic is untouched.
+      await propagateVerifiedCompanyIdentity({
+        email,
+        siren,
+        officialName:       verification.officialName,
+        verificationStatus: decision.verificationStatus,
+      })
     }
 
     return ok(status, verification.officialName)
