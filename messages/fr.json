@@ -277,6 +277,8 @@
     "soundUnlockCta": "Activer le son",
     "pauseAll": "Tout mettre en pause",
     "reactivate": "Réactiver",
+    "awaitingApproval": "En attente de validation",
+    "awaitingApprovalDesc": "La mise en ligne de votre établissement est validée par un administrateur. Vous pouvez tout préparer en attendant.",
     "pausedBadge": "En pause",
     "pausedTitle": "Restaurant en pause",
     "pausedDesc": "Vous ne recevez plus de nouvelles commandes. Réactivez pour réapparaître sur Grubano.",

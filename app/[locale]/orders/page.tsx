@@ -23,6 +23,10 @@ interface PageData {
   orders:         OrderView[]
   brands:         BrandView[]
   menuItems:      MenuItemView[]
+  // SEC1 — only an admin can bring an establishment online (isActive:true). The
+  // operator's "Réactiver" control is gated on this so an owner sees an
+  // "awaiting validation" state instead of an action that the server refuses.
+  canPublish:     boolean
 }
 
 async function loadData(
@@ -32,7 +36,8 @@ async function loadData(
   const operator = await prisma.operator.findUnique({
     where:  { email: operatorEmail },
     select: {
-      id: true,
+      id:   true,
+      role: true, // SEC1 — admin may publish (isActive:true); owner may not
       restaurants: {
         select:  { id: true, name: true, city: true, isActive: true },
         orderBy: { createdAt: 'asc' },
@@ -40,6 +45,8 @@ async function loadData(
       brands:     { select: { id: true, name: true, emoji: true } },
     },
   })
+
+  const canPublish = operator?.role === 'admin'
 
   // Option B (step 5): Operator.restaurants is a list; the operator picks the
   // active establishment via the header switcher (durable cookie). Absent/stale
@@ -54,7 +61,7 @@ async function loadData(
   )
 
   if (!operator || !restaurant) {
-    return { restaurant: null, establishments, orders: [], brands: [], menuItems: [] }
+    return { restaurant: null, establishments, orders: [], brands: [], menuItems: [], canPublish }
   }
 
   const restaurantId = restaurant.id
@@ -101,6 +108,7 @@ async function loadData(
     orders,
     brands: operator.brands,
     menuItems,
+    canPublish,
   }
 }
 
@@ -148,6 +156,7 @@ export default async function OrdersPage(props: {
       orders={d.orders}
       brands={d.brands}
       menuItems={d.menuItems}
+      canPublish={d.canPublish}
       initialOrderId={props.searchParams.order}
     />
   )

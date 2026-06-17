@@ -51,7 +51,7 @@ async function authorize(restaurantId: string) {
     return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) }
   }
 
-  return { operatorId: operator.id }
+  return { operatorId: operator.id, isAdmin }
 }
 
 export async function PATCH(
@@ -68,6 +68,19 @@ export async function PATCH(
       return NextResponse.json(
         { error: 'Données invalides', issues: parsed.error.flatten() },
         { status: 400 },
+      )
+    }
+
+    // ── 🔒 SEC1 — bringing an establishment ONLINE is admin-only ──────────────
+    // Setting isActive:true is the publication / re-publication of the restaurant
+    // (it becomes visible on /eat). That is a moderation decision reserved to
+    // admins. An owner MAY pause / unpublish their own restaurant (true→false)
+    // but cannot publish or re-publish it (→true) — that requires an admin.
+    // Mirrors the whitelist in PATCH /api/restaurants/[id].
+    if (parsed.data.isActive === true && !auth.isAdmin) {
+      return NextResponse.json(
+        { error: "La mise en ligne de l'établissement doit être validée par un administrateur." },
+        { status: 403 },
       )
     }
 

@@ -277,6 +277,8 @@
     "soundUnlockCta": "Activar sonido",
     "pauseAll": "Pausar todo",
     "reactivate": "Reactivar",
+    "awaitingApproval": "Pendiente de validación",
+    "awaitingApprovalDesc": "Tu establecimiento se publica cuando un administrador lo aprueba. Mientras tanto, puedes prepararlo todo.",
     "pausedBadge": "En pausa",
     "pausedTitle": "Restaurante en pausa",
     "pausedDesc": "Ya no recibes pedidos nuevos. Reactiva para volver a aparecer en Grubano.",

@@ -58,6 +58,11 @@ interface OrdersClientProps {
   orders:         OrderView[]
   brands:         BrandView[]
   menuItems:      MenuItemView[]
+  // SEC1 — true only for admins. An owner may pause their restaurant (true→false)
+  // but cannot bring it (back) online: publication is admin-validated. When false
+  // and the restaurant is offline, the "Réactiver" action is replaced by a clear
+  // "awaiting validation" state (the server enforces this regardless of the UI).
+  canPublish?:    boolean
   initialOrderId?: string
 }
 
@@ -76,7 +81,7 @@ export default function OrdersClient(props: OrdersClientProps) {
   )
 }
 
-function OrdersInner({ restaurant, establishments, orders, brands, menuItems, initialOrderId }: OrdersClientProps) {
+function OrdersInner({ restaurant, establishments, orders, brands, menuItems, canPublish = false, initialOrderId }: OrdersClientProps) {
   const t      = useTranslations('orders')
   const ts     = useTranslations('dashboard.home.liveOrders') // status / type / action labels
   const toast  = useToast()
@@ -341,16 +346,30 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
         >
           {soundOn ? t('soundOn') : t('soundOff')}
         </Button>
-        <Button
-          variant={isActive ? 'danger' : 'primary'}
-          size="md"
-          fullWidth
-          loading={pausePending}
-          leftIcon={isActive ? <Pause size={15} /> : <Power size={15} />}
-          onClick={togglePause}
-        >
-          {isActive ? t('pauseAll') : t('reactivate')}
-        </Button>
+        {!isActive && !canPublish ? (
+          // SEC1 — owner cannot self-publish; show the awaiting-validation state
+          // instead of a "Réactiver" button the server would refuse (403).
+          <Button
+            variant="secondary"
+            size="md"
+            fullWidth
+            disabled
+            leftIcon={<Clock size={15} />}
+          >
+            {t('awaitingApproval')}
+          </Button>
+        ) : (
+          <Button
+            variant={isActive ? 'danger' : 'primary'}
+            size="md"
+            fullWidth
+            loading={pausePending}
+            leftIcon={isActive ? <Pause size={15} /> : <Power size={15} />}
+            onClick={togglePause}
+          >
+            {isActive ? t('pauseAll') : t('reactivate')}
+          </Button>
+        )}
       </div>
 
       {/* Sound locked by the browser autoplay policy: the screen sits open for
@@ -376,20 +395,23 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, in
         </button>
       )}
 
-      {/* Paused banner */}
+      {/* Paused / awaiting-validation banner */}
       {!isActive && (
         <Card elevation="sm" padding="md" className="mb-3 border border-grubano-danger/30 bg-grubano-danger-tint">
           <div className="flex items-start gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-grubano-lg bg-grubano-danger/15 text-grubano-danger">
-              <Pause size={16} />
+              {canPublish ? <Pause size={16} /> : <Clock size={16} />}
             </span>
             <div className="flex-1">
-              <p className="text-sm font-bold text-grubano-ink">{t('pausedTitle')}</p>
-              <p className="mt-0.5 text-xs text-grubano-ink-muted">{t('pausedDesc')}</p>
+              <p className="text-sm font-bold text-grubano-ink">{canPublish ? t('pausedTitle') : t('awaitingApproval')}</p>
+              <p className="mt-0.5 text-xs text-grubano-ink-muted">{canPublish ? t('pausedDesc') : t('awaitingApprovalDesc')}</p>
             </div>
-            <Button variant="primary" size="sm" loading={pausePending} onClick={togglePause}>
-              {t('reactivate')}
-            </Button>
+            {/* SEC1 — publication is admin-only: no "Réactiver" action for owners. */}
+            {canPublish && (
+              <Button variant="primary" size="sm" loading={pausePending} onClick={togglePause}>
+                {t('reactivate')}
+              </Button>
+            )}
           </div>
         </Card>
       )}

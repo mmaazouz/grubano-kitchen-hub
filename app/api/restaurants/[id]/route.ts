@@ -347,7 +347,7 @@ export async function PATCH(
         { status: 400 },
       )
     }
-    const { postalCode, ...input } = parsed.data
+    const { postalCode, isActive: isActiveInput, ...input } = parsed.data
 
     // Address sanity check (vague 1 fix): when an address is supplied, reject an
     // implausible one (empty / too short / "gogo") before touching the DB.
@@ -366,6 +366,19 @@ export async function PATCH(
     let geocoded: boolean | null = null
     let geocodeStatus: GeocodeStatus | null = null
     const data: Record<string, unknown> = { ...input }
+
+    // ── 🔒 SEC1 — Publication (isActive) is ADMIN-ONLY ────────────────────────
+    // An owner can edit every other field of their establishment, but going LIVE
+    // is a moderation decision: a restaurant is only visible on /eat when
+    // Restaurant.isActive is true (/api/restaurants filters where:{isActive:true}),
+    // so this flag IS the publication barrier. Whitelist pattern (same as the
+    // profile routes): an owner-supplied isActive (true OR false) was destructured
+    // out above and is silently dropped here; ONLY an admin can write it. Owners
+    // pause / unpublish their own restaurant via the dedicated /pause route
+    // (which still allows true→false).
+    if (isAdmin && isActiveInput !== undefined) {
+      data.isActive = isActiveInput
+    }
 
     if (addressChanged) {
       const nextAddress = input.address ?? current.address
