@@ -44,7 +44,7 @@ const providers: Provider[] = [
       if (!operator) return null
 
       // Partner accounts self-register in status 'pending' and must confirm their
-      // email (GET /api/partners/verify-email → 'pending_review') before they can
+      // email (GET /api/partners/verify-email → 'active') before they can
       // sign in. A 'suspended' account is blocked by an admin (statusReason kept
       // for audit). Both refusals return null so the surfaced message stays a
       // generic "invalid credentials" — we never leak the account's real state.

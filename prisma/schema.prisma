@@ -30,7 +30,7 @@ model Operator {
   // columns leaves the rest of the model untouched. A partner self-registers via
   // POST /api/partners/register in status 'pending' with a SHA-256-hashed,
   // single-use verification token (24h). GET /api/partners/verify-email promotes
-  // the account to 'pending_review' and stamps emailVerifiedAt. Login is refused
+  // the account to 'active' and stamps emailVerifiedAt. Login is refused
   // while status='pending'. consentAt records the explicit, timestamped RGPD
   // consent given at registration.
   emailVerifiedAt   DateTime?
