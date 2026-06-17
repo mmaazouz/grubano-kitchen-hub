@@ -23,8 +23,8 @@ import PartnerChrome from '@/components/business/PartnerChrome'
 
 const PARTNERS = [
   { key: 'fournisseur', href: '/supplier/register',         icon: Truck,           titleKey: 'fournisseurTitle', descKey: 'fournisseurDesc', accent: 'text-grubano-primary', bg: 'bg-grubano-tint',   soon: false },
-  { key: 'creator',     href: '/creators/apply',            icon: UtensilsCrossed, titleKey: 'creatorTitle',     descKey: 'creatorDesc',     accent: 'text-[#16A34A]',      bg: 'bg-[#16A34A]/12',  soon: false },
-  { key: 'logistique',  href: '/business/logistics/register', icon: Bike,          titleKey: 'logistiqueTitle',  descKey: 'logistiqueDesc',  accent: 'text-[#2563EB]',      bg: 'bg-[#2563EB]/12',  soon: false },
+  { key: 'creator',     href: '/creators/apply',            icon: UtensilsCrossed, titleKey: 'creatorTitle',     descKey: 'creatorDesc',     accent: 'text-grubano-role-creator',   bg: 'bg-grubano-role-creator/12',   soon: false },
+  { key: 'logistique',  href: '/business/logistics/register', icon: Bike,          titleKey: 'logistiqueTitle',  descKey: 'logistiqueDesc',  accent: 'text-grubano-role-logistics', bg: 'bg-grubano-role-logistics/12', soon: false },
 ] as const
 
 export default function BusinessStartPage() {
@@ -83,9 +83,9 @@ export default function BusinessStartPage() {
         {/* ── Influencer teaser (light) ── */}
         <Link
           href="/creators/apply?type=influencer"
-          className="group mt-4 flex items-center gap-2.5 rounded-grubano-lg border border-grubano-border bg-white px-4 py-3 transition-colors hover:border-[#8B5CF6]/40 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#8B5CF6]/20"
+          className="group mt-4 flex items-center gap-2.5 rounded-grubano-lg border border-grubano-border bg-white px-4 py-3 transition-colors hover:border-grubano-role-influencer/40 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-role-influencer/20"
         >
-          <Megaphone size={18} className="shrink-0 text-[#8B5CF6]" />
+          <Megaphone size={18} className="shrink-0 text-grubano-role-influencer" />
           <span className="flex-1 text-grubano-sm text-grubano-ink-muted">{t('influencerTeaser')}</span>
           <ArrowRight size={16} className="shrink-0 text-grubano-ink-faint transition-transform duration-150 group-hover:translate-x-0.5" />
         </Link>

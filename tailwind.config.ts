@@ -61,6 +61,11 @@ const config: Config = {
           'warning-tint': t.warningTint,
           info:           t.info,
           'info-tint':    t.infoTint,
+          // Partner-role accents (business portal role icons/badges)
+          'role-creator':    t.roleCreator,
+          'role-logistics':  t.roleLogistics,
+          'role-franchise':  t.roleFranchise,
+          'role-influencer': t.roleInfluencer,
           // Legacy operator-app aliases (kept for backward compat with
           // existing /dashboard code — do not use in new components)
           orange:         t.primary,

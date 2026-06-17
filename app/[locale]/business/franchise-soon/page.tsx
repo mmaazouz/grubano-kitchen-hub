@@ -19,7 +19,7 @@ export default function FranchiseSoonPage() {
   return (
     <Layout>
       <Card elevation="premium" padding="lg" className="w-full max-w-md text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#2563EB]/12 text-[#2563EB]">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-grubano-role-franchise/12 text-grubano-role-franchise">
           <Building2 size={32} />
         </div>
 

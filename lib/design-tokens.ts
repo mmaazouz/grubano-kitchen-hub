@@ -39,6 +39,15 @@ export const colors = {
   warningTint:    '#FEF3C7',
   info:           '#3B82F6',
   infoTint:       '#DBEAFE',
+
+  // ── Partner-role accents (business portal role icons/badges)
+  // One hue per partner family. The restaurateur role uses `primary` above
+  // (the heart of Grubano), so it has no separate token here. Logistics and
+  // franchise share the same blue but stay distinct roles → one token each.
+  roleCreator:    '#16A34A', // chef / créateur — green
+  roleLogistics:  '#2563EB', // logistics partner — blue
+  roleFranchise:  '#2563EB', // franchise / group — blue (shares the logistics hue)
+  roleInfluencer: '#8B5CF6', // influencer — violet
 } as const
 
 export const typography = {

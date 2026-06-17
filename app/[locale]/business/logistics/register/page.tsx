@@ -113,7 +113,7 @@ export default function LogisticsRegisterPage() {
     <PartnerChrome>
       <div className="w-full max-w-lg">
         <div className="mb-5 flex items-center gap-2.5">
-          <span className="grid h-11 w-11 place-items-center rounded-grubano-lg bg-[#2563EB]/12 text-[#2563EB]">
+          <span className="grid h-11 w-11 place-items-center rounded-grubano-lg bg-grubano-role-logistics/12 text-grubano-role-logistics">
             <Bike size={22} />
           </span>
           <div>
