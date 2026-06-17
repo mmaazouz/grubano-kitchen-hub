@@ -602,7 +602,8 @@
       "affiliation": "My affiliation",
       "affiliateHub": "Affiliate dashboard",
       "brandTitle": "Creators",
-      "brandSubtitle": "Grubano Studio"
+      "brandSubtitle": "Grubano Studio",
+      "settings": "Profile & settings"
     },
     "home": {
       "greeting": "Hello, {name} 👋",
@@ -1013,6 +1014,26 @@
       "oppReasonPromo": "On promo right now — −{pct}%",
       "oppReasonConverted": "Your customers love this place",
       "oppReasonPopular": "Popular and well rated"
+    },
+    "settings": {
+      "navLink": "Profile & settings",
+      "title": "Profile & settings",
+      "subtitle": "Update your public profile.",
+      "socialsTitle": "Social networks",
+      "save": "Save",
+      "saving": "Saving…",
+      "savedTitle": "Profile updated ✅",
+      "savedBody": "Your information has been saved.",
+      "errorGeneric": "Something went wrong. Please try again.",
+      "loadError": "Could not load your profile.",
+      "lockedTitle": "Verified information",
+      "lockedNote": "Not editable — your verified channel and roles require a new application to change.",
+      "lockedYoutube": "Verified YouTube channel",
+      "lockedVerification": "Verification",
+      "lockedRoles": "Your roles",
+      "verifVerified": "Verified",
+      "verifPending": "Not verified",
+      "none": "—"
     }
   },
   "eat": {

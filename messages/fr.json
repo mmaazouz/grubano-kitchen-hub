@@ -602,7 +602,8 @@
       "affiliation": "Mon affiliation",
       "affiliateHub": "Tableau affilié",
       "brandTitle": "Créateurs",
-      "brandSubtitle": "Grubano Studio"
+      "brandSubtitle": "Grubano Studio",
+      "settings": "Profil & paramètres"
     },
     "home": {
       "greeting": "Bonjour, {name} 👋",
@@ -1013,6 +1014,26 @@
       "oppReasonPromo": "En promo en ce moment — −{pct} %",
       "oppReasonConverted": "Tes clients adorent ce resto",
       "oppReasonPopular": "Populaire et bien noté"
+    },
+    "settings": {
+      "navLink": "Profil & paramètres",
+      "title": "Profil & paramètres",
+      "subtitle": "Mettez à jour votre profil public.",
+      "socialsTitle": "Réseaux sociaux",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "savedTitle": "Profil mis à jour ✅",
+      "savedBody": "Vos informations ont été enregistrées.",
+      "errorGeneric": "Une erreur est survenue. Réessayez.",
+      "loadError": "Impossible de charger votre profil.",
+      "lockedTitle": "Informations vérifiées",
+      "lockedNote": "Non modifiable — votre chaîne vérifiée et vos rôles relèvent d’une nouvelle candidature.",
+      "lockedYoutube": "Chaîne YouTube vérifiée",
+      "lockedVerification": "Vérification",
+      "lockedRoles": "Vos rôles",
+      "verifVerified": "Vérifié",
+      "verifPending": "Non vérifié",
+      "none": "—"
     }
   },
   "eat": {

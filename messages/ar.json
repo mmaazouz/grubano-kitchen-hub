@@ -602,7 +602,8 @@
       "affiliation": "برنامج الإحالة",
       "affiliateHub": "لوحة الإحالة",
       "brandTitle": "المبدعون",
-      "brandSubtitle": "Grubano Studio"
+      "brandSubtitle": "Grubano Studio",
+      "settings": "الملف والإعدادات"
     },
     "home": {
       "greeting": "مرحباً، {name} 👋",
@@ -1013,6 +1014,26 @@
       "oppReasonPromo": "في عرض ترويجي الآن — −{pct}٪",
       "oppReasonConverted": "عملاؤك يحبّون هذا المطعم",
       "oppReasonPopular": "شائع وحاصل على تقييم جيد"
+    },
+    "settings": {
+      "navLink": "الملف والإعدادات",
+      "title": "الملف والإعدادات",
+      "subtitle": "حدّث ملفك العام.",
+      "socialsTitle": "الشبكات الاجتماعية",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "savedTitle": "تم تحديث الملف ✅",
+      "savedBody": "تم حفظ معلوماتك.",
+      "errorGeneric": "حدث خطأ. حاول مرة أخرى.",
+      "loadError": "تعذّر تحميل ملفك.",
+      "lockedTitle": "معلومات مُتحقَّق منها",
+      "lockedNote": "غير قابل للتعديل — قناتك المُوثّقة وأدوارك تتطلّب طلبًا جديدًا.",
+      "lockedYoutube": "قناة يوتيوب موثّقة",
+      "lockedVerification": "التحقق",
+      "lockedRoles": "أدوارك",
+      "verifVerified": "مُتحقَّق منه",
+      "verifPending": "غير مُتحقَّق منه",
+      "none": "—"
     }
   },
   "eat": {
