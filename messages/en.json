@@ -2727,5 +2727,60 @@
     "hint": "You'll get a single-use link, valid for 15 minutes.",
     "registerPrompt": "Not registered yet?",
     "registerCta": "Register my business"
+  },
+  "activation": {
+    "banner": {
+      "title": "Welcome to Grubano",
+      "subtitle": "Here are the steps to get your establishment online. Go at your own pace — each detail is asked for only when it is needed."
+    },
+    "title": "Your activation",
+    "progress": "{done} of {total} steps done",
+    "activeTitle": "Your establishment is live",
+    "activeSubtitle": "Every step is done. You are visible on Grubano.",
+    "loadError": "We could not load your progress. Please try again later.",
+    "status": {
+      "done": "Done",
+      "current": "In progress",
+      "todo": "To do",
+      "locked": "Locked"
+    },
+    "steps": {
+      "account": {
+        "title": "Account created",
+        "desc": "Your email is verified and you are signed in."
+      },
+      "establishment": {
+        "title": "Create your establishment",
+        "desc": "Set up your brand and establishment (name, address, cuisine).",
+        "cta": "Complete my establishment"
+      },
+      "menu": {
+        "title": "Build your menu",
+        "desc": "Add at least one dish so you can go live.",
+        "cta": "Add a dish"
+      },
+      "publish": {
+        "title": "Go live",
+        "descOnline": "Your establishment is live and visible to customers.",
+        "descAwaiting": "Your establishment is complete. The Grubano team will validate it before it goes live.",
+        "descLocked": "Finish your menu before going live."
+      },
+      "payments": {
+        "title": "Enable payments",
+        "desc": "Connect your Stripe account to collect online orders.",
+        "cta": "Set up payments"
+      },
+      "payouts": {
+        "title": "Receive your payouts",
+        "descActive": "Your payouts are enabled: Stripe automatically transfers your earnings.",
+        "descLocked": "Enable payments first to receive your payouts."
+      }
+    },
+    "blocked": {
+      "needEstablishment": "Create your establishment first.",
+      "awaitingApproval": "Awaiting validation by the Grubano team.",
+      "completeMenuFirst": "Finish your menu to unlock this step.",
+      "activatePaymentsFirst": "Enable payments to unlock this step."
+    }
   }
 }

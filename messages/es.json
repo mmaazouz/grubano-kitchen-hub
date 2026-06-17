@@ -2727,5 +2727,60 @@
     "hint": "Recibirás un enlace de un solo uso, válido 15 minutos.",
     "registerPrompt": "¿Aún no te has registrado?",
     "registerCta": "Registrar mi empresa"
+  },
+  "activation": {
+    "banner": {
+      "title": "Bienvenido a Grubano",
+      "subtitle": "Estos son los pasos para poner tu establecimiento en línea. Ve a tu ritmo: te pedimos cada dato solo cuando hace falta."
+    },
+    "title": "Tu activación",
+    "progress": "{done} de {total} pasos completados",
+    "activeTitle": "Tu establecimiento está activo",
+    "activeSubtitle": "Todos los pasos están completados. Ya eres visible en Grubano.",
+    "loadError": "No pudimos cargar tu progreso. Inténtalo de nuevo más tarde.",
+    "status": {
+      "done": "Completado",
+      "current": "En curso",
+      "todo": "Pendiente",
+      "locked": "Bloqueado"
+    },
+    "steps": {
+      "account": {
+        "title": "Cuenta creada",
+        "desc": "Tu correo está verificado y has iniciado sesión."
+      },
+      "establishment": {
+        "title": "Crea tu establecimiento",
+        "desc": "Configura tu marca y tu establecimiento (nombre, dirección, cocina).",
+        "cta": "Completar mi establecimiento"
+      },
+      "menu": {
+        "title": "Crea tu menú",
+        "desc": "Añade al menos un plato para poder publicarte.",
+        "cta": "Añadir un plato"
+      },
+      "publish": {
+        "title": "Publicación",
+        "descOnline": "Tu establecimiento está en línea y visible para los clientes.",
+        "descAwaiting": "Tu establecimiento está completo. El equipo de Grubano lo validará antes de publicarlo.",
+        "descLocked": "Termina tu menú antes de publicarte."
+      },
+      "payments": {
+        "title": "Activar los pagos",
+        "desc": "Conecta tu cuenta de Stripe para cobrar los pedidos en línea.",
+        "cta": "Configurar los pagos"
+      },
+      "payouts": {
+        "title": "Recibe tus transferencias",
+        "descActive": "Tus transferencias están activadas: Stripe te abona automáticamente tus ingresos.",
+        "descLocked": "Activa primero los pagos para recibir tus transferencias."
+      }
+    },
+    "blocked": {
+      "needEstablishment": "Crea primero tu establecimiento.",
+      "awaitingApproval": "A la espera de la validación del equipo de Grubano.",
+      "completeMenuFirst": "Termina tu menú para desbloquear este paso.",
+      "activatePaymentsFirst": "Activa los pagos para desbloquear este paso."
+    }
   }
 }

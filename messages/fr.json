@@ -2727,5 +2727,60 @@
     "hint": "Vous recevrez un lien à usage unique, valable 15 minutes.",
     "registerPrompt": "Pas encore inscrit ?",
     "registerCta": "Inscrire mon entreprise"
+  },
+  "activation": {
+    "banner": {
+      "title": "Bienvenue sur Grubano",
+      "subtitle": "Voici les étapes pour mettre votre établissement en ligne. Avancez à votre rythme — chaque information vous est demandée au bon moment."
+    },
+    "title": "Votre activation",
+    "progress": "{done} étape(s) sur {total} terminée(s)",
+    "activeTitle": "Votre établissement est actif",
+    "activeSubtitle": "Toutes les étapes sont terminées. Vous êtes visible sur Grubano.",
+    "loadError": "Impossible de charger votre progression. Réessayez plus tard.",
+    "status": {
+      "done": "Terminé",
+      "current": "En cours",
+      "todo": "À faire",
+      "locked": "Verrouillé"
+    },
+    "steps": {
+      "account": {
+        "title": "Compte créé",
+        "desc": "Votre adresse e-mail est vérifiée et vous êtes connecté."
+      },
+      "establishment": {
+        "title": "Créer votre établissement",
+        "desc": "Renseignez votre marque et votre établissement (nom, adresse, cuisine).",
+        "cta": "Compléter mon établissement"
+      },
+      "menu": {
+        "title": "Composer votre menu",
+        "desc": "Ajoutez au moins un plat pour pouvoir passer en ligne.",
+        "cta": "Ajouter un plat"
+      },
+      "publish": {
+        "title": "Mise en ligne",
+        "descOnline": "Votre établissement est en ligne et visible des clients.",
+        "descAwaiting": "Votre établissement est complet. L'équipe Grubano le validera avant sa mise en ligne.",
+        "descLocked": "Terminez votre menu avant la mise en ligne."
+      },
+      "payments": {
+        "title": "Activer les paiements",
+        "desc": "Connectez votre compte Stripe pour encaisser les commandes en ligne.",
+        "cta": "Configurer les paiements"
+      },
+      "payouts": {
+        "title": "Recevoir vos virements",
+        "descActive": "Vos virements sont activés : Stripe vous reverse automatiquement vos recettes.",
+        "descLocked": "Activez d'abord les paiements pour recevoir vos virements."
+      }
+    },
+    "blocked": {
+      "needEstablishment": "Créez d'abord votre établissement.",
+      "awaitingApproval": "En attente de validation par l'équipe Grubano.",
+      "completeMenuFirst": "Terminez votre menu pour débloquer cette étape.",
+      "activatePaymentsFirst": "Activez les paiements pour débloquer cette étape."
+    }
   }
 }

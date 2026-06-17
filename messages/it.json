@@ -2727,5 +2727,60 @@
     "hint": "Riceverai un link monouso, valido 15 minuti.",
     "registerPrompt": "Non sei ancora registrato?",
     "registerCta": "Registra la mia azienda"
+  },
+  "activation": {
+    "banner": {
+      "title": "Benvenuto su Grubano",
+      "subtitle": "Ecco i passaggi per mettere online il tuo locale. Vai al tuo ritmo: ogni informazione ti viene chiesta solo quando serve."
+    },
+    "title": "La tua attivazione",
+    "progress": "{done} di {total} passaggi completati",
+    "activeTitle": "Il tuo locale è attivo",
+    "activeSubtitle": "Tutti i passaggi sono completati. Sei visibile su Grubano.",
+    "loadError": "Non è stato possibile caricare i tuoi progressi. Riprova più tardi.",
+    "status": {
+      "done": "Completato",
+      "current": "In corso",
+      "todo": "Da fare",
+      "locked": "Bloccato"
+    },
+    "steps": {
+      "account": {
+        "title": "Account creato",
+        "desc": "La tua email è verificata e hai effettuato l'accesso."
+      },
+      "establishment": {
+        "title": "Crea il tuo locale",
+        "desc": "Imposta il tuo brand e il tuo locale (nome, indirizzo, cucina).",
+        "cta": "Completa il mio locale"
+      },
+      "menu": {
+        "title": "Crea il tuo menu",
+        "desc": "Aggiungi almeno un piatto per poter andare online.",
+        "cta": "Aggiungi un piatto"
+      },
+      "publish": {
+        "title": "Pubblicazione",
+        "descOnline": "Il tuo locale è online e visibile ai clienti.",
+        "descAwaiting": "Il tuo locale è completo. Il team Grubano lo convaliderà prima della pubblicazione.",
+        "descLocked": "Completa il tuo menu prima della pubblicazione."
+      },
+      "payments": {
+        "title": "Attiva i pagamenti",
+        "desc": "Collega il tuo account Stripe per incassare gli ordini online.",
+        "cta": "Configura i pagamenti"
+      },
+      "payouts": {
+        "title": "Ricevi i tuoi versamenti",
+        "descActive": "I tuoi versamenti sono attivi: Stripe ti trasferisce automaticamente i ricavi.",
+        "descLocked": "Attiva prima i pagamenti per ricevere i tuoi versamenti."
+      }
+    },
+    "blocked": {
+      "needEstablishment": "Crea prima il tuo locale.",
+      "awaitingApproval": "In attesa di convalida da parte del team Grubano.",
+      "completeMenuFirst": "Completa il tuo menu per sbloccare questo passaggio.",
+      "activatePaymentsFirst": "Attiva i pagamenti per sbloccare questo passaggio."
+    }
   }
 }
