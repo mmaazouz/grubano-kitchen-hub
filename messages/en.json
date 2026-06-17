@@ -451,7 +451,29 @@
       "apply": "Applications",
       "back": "Back to portal",
       "brandTitle": "Franchise",
-      "brandSubtitle": "Grubano Network"
+      "brandSubtitle": "Grubano Network",
+      "settings": "Profile & settings"
+    },
+    "settings": {
+      "navLink": "Profile & settings",
+      "title": "Profile & settings",
+      "subtitle": "Update your contact details.",
+      "fieldName": "Name",
+      "fieldPhone": "Phone",
+      "fieldCity": "City",
+      "save": "Save",
+      "saving": "Saving…",
+      "savedTitle": "Profile updated ✅",
+      "savedBody": "Your information has been saved.",
+      "errorGeneric": "Something went wrong. Please try again.",
+      "loadError": "Could not load your profile.",
+      "lockedTitle": "Account information",
+      "lockedNote": "Not editable — your login e-mail and account status are managed by Grubano. Finances and locations are managed in their own tabs.",
+      "lockedEmail": "Login e-mail",
+      "lockedStatus": "Account status",
+      "statusActive": "Active",
+      "statusPending": "Pending",
+      "statusSuspended": "Suspended"
     }
   },
   "creators": {

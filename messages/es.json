@@ -451,7 +451,29 @@
       "apply": "Candidaturas",
       "back": "Volver al portal",
       "brandTitle": "Franquicia",
-      "brandSubtitle": "Grubano Network"
+      "brandSubtitle": "Grubano Network",
+      "settings": "Perfil y ajustes"
+    },
+    "settings": {
+      "navLink": "Perfil y ajustes",
+      "title": "Perfil y ajustes",
+      "subtitle": "Actualiza tus datos de contacto.",
+      "fieldName": "Nombre",
+      "fieldPhone": "Teléfono",
+      "fieldCity": "Ciudad",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "savedTitle": "Perfil actualizado ✅",
+      "savedBody": "Tu información se ha guardado.",
+      "errorGeneric": "Se produjo un error. Inténtalo de nuevo.",
+      "loadError": "No se pudo cargar tu perfil.",
+      "lockedTitle": "Información de la cuenta",
+      "lockedNote": "No editable: tu correo de acceso y el estado de la cuenta los gestiona Grubano. Las finanzas y los establecimientos se gestionan en sus pestañas.",
+      "lockedEmail": "Correo de acceso",
+      "lockedStatus": "Estado de la cuenta",
+      "statusActive": "Activo",
+      "statusPending": "Pendiente",
+      "statusSuspended": "Suspendido"
     }
   },
   "creators": {

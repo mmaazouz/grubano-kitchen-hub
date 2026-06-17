@@ -451,7 +451,29 @@
       "apply": "الطلبات",
       "back": "العودة إلى البوابة",
       "brandTitle": "الامتياز",
-      "brandSubtitle": "Grubano Network"
+      "brandSubtitle": "Grubano Network",
+      "settings": "الملف والإعدادات"
+    },
+    "settings": {
+      "navLink": "الملف والإعدادات",
+      "title": "الملف والإعدادات",
+      "subtitle": "حدّث بيانات الاتصال الخاصة بك.",
+      "fieldName": "الاسم",
+      "fieldPhone": "الهاتف",
+      "fieldCity": "المدينة",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "savedTitle": "تم تحديث الملف ✅",
+      "savedBody": "تم حفظ معلوماتك.",
+      "errorGeneric": "حدث خطأ. حاول مرة أخرى.",
+      "loadError": "تعذّر تحميل ملفك.",
+      "lockedTitle": "معلومات الحساب",
+      "lockedNote": "غير قابل للتعديل — يُدير Grubano بريد الدخول وحالة الحساب. تُدار الماليات والمنشآت في علاماتها المخصّصة.",
+      "lockedEmail": "بريد الدخول",
+      "lockedStatus": "حالة الحساب",
+      "statusActive": "نشط",
+      "statusPending": "قيد الانتظار",
+      "statusSuspended": "موقوف"
     }
   },
   "creators": {
