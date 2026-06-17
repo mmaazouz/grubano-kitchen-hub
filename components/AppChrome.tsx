@@ -24,7 +24,7 @@ import { locales } from '@/i18n'
 //
 // Note: the locale prefix is stripped BEFORE matching below, so these
 // patterns work across /fr/franchise, /en/creators, /es/eat, etc.
-const BARE_PREFIXES = ['/eat', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/login', '/register']
+const BARE_PREFIXES = ['/eat', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/login', '/register', '/add-activity']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'

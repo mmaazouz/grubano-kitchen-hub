@@ -2514,7 +2514,8 @@
     "spaceFranchise": "الامتياز",
     "spaceAdmin": "الإدارة",
     "spaceSupplier": "مساحة المورّد",
-    "spaceLogistics": "الخدمات اللوجستية"
+    "spaceLogistics": "الخدمات اللوجستية",
+    "addActivity": "إضافة نشاط"
   },
   "supplier": {
     "landingTitle": "كن مورّدًا لدى غروبانو",
@@ -2782,5 +2783,23 @@
       "completeMenuFirst": "أكمل قائمتك لإلغاء قفل هذه الخطوة.",
       "activatePaymentsFirst": "فعّل المدفوعات لإلغاء قفل هذه الخطوة."
     }
+  },
+  "addActivity": {
+    "title": "إضافة نشاط",
+    "subtitle": "طوّر حسابك في Grubano. تُعاد تعبئة بياناتك المُوثّقة — تُدخلها مرة واحدة فقط.",
+    "empty": "لديك بالفعل جميع الأنشطة المتاحة.",
+    "prefillNote": "مملوء مسبقًا من حسابك — قابل للتعديل.",
+    "emailLocked": "سيتم ربط هذا النشاط بحسابك المتصل.",
+    "start": "ابدأ",
+    "apply": "تقديم طلب",
+    "candidatureBadge": "بموجب طلب",
+    "supplierTitle": "مورّد",
+    "supplierDesc": "بِع منتجاتك للمطاعم عبر سوق B2B.",
+    "creatorTitle": "صانع محتوى",
+    "creatorDesc": "قدّم وصفاتك أو روّج للمنشآت.",
+    "logisticsTitle": "الخدمات اللوجستية",
+    "logisticsDesc": "نفّذ عمليات التوصيل للمطاعم والموردين.",
+    "franchiseTitle": "امتياز تجاري",
+    "franchiseDesc": "افتح نقطة بيع تحت إحدى علاماتنا (بموجب طلب)."
   }
 }

@@ -2514,7 +2514,8 @@
     "spaceFranchise": "Franchise",
     "spaceAdmin": "Administration",
     "spaceSupplier": "Supplier space",
-    "spaceLogistics": "Logistics"
+    "spaceLogistics": "Logistics",
+    "addActivity": "Add an activity"
   },
   "supplier": {
     "landingTitle": "Become a Grubano supplier",
@@ -2782,5 +2783,23 @@
       "completeMenuFirst": "Finish your menu to unlock this step.",
       "activatePaymentsFirst": "Enable payments to unlock this step."
     }
+  },
+  "addActivity": {
+    "title": "Add an activity",
+    "subtitle": "Grow your Grubano account. Your verified details are reused — entered only once.",
+    "empty": "You already have every available activity.",
+    "prefillNote": "Prefilled from your account — editable.",
+    "emailLocked": "This activity will be linked to your connected account.",
+    "start": "Get started",
+    "apply": "Apply",
+    "candidatureBadge": "By application",
+    "supplierTitle": "Supplier",
+    "supplierDesc": "Sell your products to restaurants on the B2B marketplace.",
+    "creatorTitle": "Creator",
+    "creatorDesc": "Offer your recipes or promote establishments.",
+    "logisticsTitle": "Logistics",
+    "logisticsDesc": "Run deliveries for restaurants and suppliers.",
+    "franchiseTitle": "Franchise",
+    "franchiseDesc": "Open an outlet under one of our brands (by application)."
   }
 }
