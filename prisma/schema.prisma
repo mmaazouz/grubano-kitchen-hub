@@ -1080,6 +1080,13 @@ model Payout {
   status             String    @default("pending") // pending | paid | failed
   paidAt             DateTime?                     // when the transfer settled
   stripeTransferId   String?                       // tr_… (set by P4.3 when executed)
+  // ── P4.3 anti-double-payment lock (Agent 39) — ADDITIVE, nullable @unique ────
+  // Deterministic per-cursor key (e.g. "creator:<id>:earned:<earnedCents>"): the
+  // @unique makes a concurrent/re-run create for the SAME earnings cursor fail
+  // (P2002) → never two Payout rows (nor two transfers) for the same balance. Also
+  // reused as the Stripe Transfer idempotency key. Nullable so non-keyed rows stay
+  // valid; the table is empty (P4.2) so the @unique index is risk-free.
+  idempotencyKey     String?   @unique
   createdAt          DateTime  @default(now())
 
   @@index([role, status])
