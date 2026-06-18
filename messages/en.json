@@ -3083,5 +3083,63 @@
       "manageTitle": "Managing cookies",
       "manageBody": "Strictly necessary cookies cannot be disabled without preventing the site from working. You can, however, configure your browser to block or delete them."
     }
+  },
+  "claims": {
+    "reason": {
+      "missing_item": "Missing item",
+      "wrong_order": "Wrong order",
+      "quality": "Quality issue",
+      "not_delivered": "Not delivered",
+      "other": "Other"
+    },
+    "status": {
+      "restaurant_review": "Awaiting restaurant response",
+      "approved": "Approved — refund in progress",
+      "refunding": "Refund in progress",
+      "refunded": "Refunded",
+      "refused": "Refused"
+    },
+    "client": {
+      "reportProblem": "Report a problem",
+      "title": "Request a refund",
+      "description": "Tell us what happened. The restaurant has 24h to respond.",
+      "reasonLabel": "Reason",
+      "amountLabel": "Amount to refund",
+      "wholeOrder": "Whole order",
+      "customAmount": "A specific amount",
+      "descriptionLabel": "Details (optional)",
+      "descriptionPlaceholder": "Describe the problem…",
+      "photoLabel": "Photo (optional)",
+      "photoHint": "Add a photo to support your request.",
+      "submit": "Submit claim",
+      "submitting": "Submitting…",
+      "success": "Claim submitted. The restaurant has 24h to respond.",
+      "statusTitle": "Your claim",
+      "refusedReason": "Refusal reason",
+      "maxRefundable": "Maximum refundable: {amount}",
+      "cancel": "Cancel",
+      "errorGeneric": "Something went wrong. Please try again."
+    },
+    "restaurant": {
+      "title": "Customer claims",
+      "empty": "No pending claims.",
+      "order": "Order",
+      "reason": "Reason",
+      "requested": "Requested amount",
+      "details": "Details",
+      "viewPhoto": "View photo",
+      "timeLeft": "{hours}h left to respond",
+      "expired": "Deadline passed — auto-approval imminent",
+      "accept": "Accept and refund",
+      "refuse": "Refuse",
+      "refuseReasonLabel": "Refusal reason",
+      "refuseReasonPlaceholder": "Explain why…",
+      "confirmRefuse": "Confirm refusal",
+      "accepted": "Claim accepted, refund triggered.",
+      "refused": "Claim refused.",
+      "refundPending": "Accepted — refund pending activation.",
+      "processing": "Processing…",
+      "autoApproveNote": "Without a response within 24h, the claim is approved automatically."
+    }
   }
 }

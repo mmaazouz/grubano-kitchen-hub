@@ -13,6 +13,8 @@ import OrdersClient, {
   type RestaurantView,
 } from '@/components/orders/OrdersClient'
 import { buildOrderViews } from '@/lib/orders-feed'
+import { isClaimsEnabled } from '@/lib/claims'
+import RestaurantClaimsPanel from '@/components/claims/RestaurantClaimsPanel'
 
 // Per-session, per-current-time data → never prerender, always run on demand.
 export const dynamic = 'force-dynamic'
@@ -150,14 +152,19 @@ export default async function OrdersPage(props: {
   }
 
   return (
-    <OrdersClient
-      restaurant={d.restaurant}
-      establishments={d.establishments}
-      orders={d.orders}
-      brands={d.brands}
-      menuItems={d.menuItems}
-      canPublish={d.canPublish}
-      initialOrderId={props.searchParams.order}
-    />
+    <>
+      {/* P4.5-C1 — claims awaiting response (server-gated; renders nothing when the
+          flag is OFF or there are no pending claims → byte-identical otherwise). */}
+      {isClaimsEnabled() && <RestaurantClaimsPanel />}
+      <OrdersClient
+        restaurant={d.restaurant}
+        establishments={d.establishments}
+        orders={d.orders}
+        brands={d.brands}
+        menuItems={d.menuItems}
+        canPublish={d.canPublish}
+        initialOrderId={props.searchParams.order}
+      />
+    </>
   )
 }

@@ -3083,5 +3083,63 @@
       "manageTitle": "Gestire i cookie",
       "manageBody": "I cookie strettamente necessari non possono essere disattivati senza impedire il funzionamento del sito. Puoi comunque configurare il browser per bloccarli o eliminarli."
     }
+  },
+  "claims": {
+    "reason": {
+      "missing_item": "Articolo mancante",
+      "wrong_order": "Ordine sbagliato",
+      "quality": "Problema di qualità",
+      "not_delivered": "Non consegnato",
+      "other": "Altro"
+    },
+    "status": {
+      "restaurant_review": "In attesa di risposta del ristorante",
+      "approved": "Approvata — rimborso in corso",
+      "refunding": "Rimborso in corso",
+      "refunded": "Rimborsata",
+      "refused": "Rifiutata"
+    },
+    "client": {
+      "reportProblem": "Segnala un problema",
+      "title": "Richiedi un rimborso",
+      "description": "Ci dica cosa è successo. Il ristorante ha 24 h per rispondere.",
+      "reasonLabel": "Motivo",
+      "amountLabel": "Importo da rimborsare",
+      "wholeOrder": "Tutto l’ordine",
+      "customAmount": "Un importo specifico",
+      "descriptionLabel": "Dettagli (facoltativo)",
+      "descriptionPlaceholder": "Descriva il problema…",
+      "photoLabel": "Foto (facoltativo)",
+      "photoHint": "Aggiunga una foto a supporto della richiesta.",
+      "submit": "Invia il reclamo",
+      "submitting": "Invio…",
+      "success": "Reclamo inviato. Il ristorante ha 24 h per rispondere.",
+      "statusTitle": "Il suo reclamo",
+      "refusedReason": "Motivo del rifiuto",
+      "maxRefundable": "Massimo rimborsabile: {amount}",
+      "cancel": "Annulla",
+      "errorGeneric": "Si è verificato un errore. Riprovi."
+    },
+    "restaurant": {
+      "title": "Reclami dei clienti",
+      "empty": "Nessun reclamo in sospeso.",
+      "order": "Ordine",
+      "reason": "Motivo",
+      "requested": "Importo richiesto",
+      "details": "Dettagli",
+      "viewPhoto": "Vedi foto",
+      "timeLeft": "{hours} h rimaste per rispondere",
+      "expired": "Termine scaduto — approvazione automatica imminente",
+      "accept": "Accetta e rimborsa",
+      "refuse": "Rifiuta",
+      "refuseReasonLabel": "Motivo del rifiuto",
+      "refuseReasonPlaceholder": "Spieghi perché…",
+      "confirmRefuse": "Conferma il rifiuto",
+      "accepted": "Reclamo accettato, rimborso avviato.",
+      "refused": "Reclamo rifiutato.",
+      "refundPending": "Accettata — rimborso in attesa di attivazione.",
+      "processing": "Elaborazione…",
+      "autoApproveNote": "Senza risposta entro 24 h, il reclamo viene approvato automaticamente."
+    }
   }
 }

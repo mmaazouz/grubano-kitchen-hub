@@ -3083,5 +3083,63 @@
       "manageTitle": "Gestionar las cookies",
       "manageBody": "Las cookies estrictamente necesarias no pueden desactivarse sin impedir el funcionamiento del sitio. No obstante, puede configurar su navegador para bloquearlas o eliminarlas."
     }
+  },
+  "claims": {
+    "reason": {
+      "missing_item": "Artículo faltante",
+      "wrong_order": "Pedido equivocado",
+      "quality": "Problema de calidad",
+      "not_delivered": "No entregado",
+      "other": "Otro"
+    },
+    "status": {
+      "restaurant_review": "Esperando respuesta del restaurante",
+      "approved": "Aprobada — reembolso en curso",
+      "refunding": "Reembolso en curso",
+      "refunded": "Reembolsada",
+      "refused": "Rechazada"
+    },
+    "client": {
+      "reportProblem": "Reportar un problema",
+      "title": "Solicitar un reembolso",
+      "description": "Cuéntenos qué pasó. El restaurante tiene 24 h para responder.",
+      "reasonLabel": "Motivo",
+      "amountLabel": "Importe a reembolsar",
+      "wholeOrder": "Todo el pedido",
+      "customAmount": "Un importe específico",
+      "descriptionLabel": "Detalles (opcional)",
+      "descriptionPlaceholder": "Describa el problema…",
+      "photoLabel": "Foto (opcional)",
+      "photoHint": "Añada una foto para respaldar su solicitud.",
+      "submit": "Enviar reclamación",
+      "submitting": "Enviando…",
+      "success": "Reclamación enviada. El restaurante tiene 24 h para responder.",
+      "statusTitle": "Su reclamación",
+      "refusedReason": "Motivo del rechazo",
+      "maxRefundable": "Máximo reembolsable: {amount}",
+      "cancel": "Cancelar",
+      "errorGeneric": "Se produjo un error. Inténtelo de nuevo."
+    },
+    "restaurant": {
+      "title": "Reclamaciones de clientes",
+      "empty": "No hay reclamaciones pendientes.",
+      "order": "Pedido",
+      "reason": "Motivo",
+      "requested": "Importe reclamado",
+      "details": "Detalles",
+      "viewPhoto": "Ver foto",
+      "timeLeft": "{hours} h restantes para responder",
+      "expired": "Plazo vencido — aprobación automática inminente",
+      "accept": "Aceptar y reembolsar",
+      "refuse": "Rechazar",
+      "refuseReasonLabel": "Motivo del rechazo",
+      "refuseReasonPlaceholder": "Explique por qué…",
+      "confirmRefuse": "Confirmar rechazo",
+      "accepted": "Reclamación aceptada, reembolso iniciado.",
+      "refused": "Reclamación rechazada.",
+      "refundPending": "Aceptada — reembolso pendiente de activación.",
+      "processing": "Procesando…",
+      "autoApproveNote": "Sin respuesta en 24 h, la reclamación se aprueba automáticamente."
+    }
   }
 }

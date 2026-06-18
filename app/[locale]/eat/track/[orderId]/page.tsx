@@ -8,6 +8,7 @@ import { useRouter } from '@/navigation'
 import { ArrowLeft, Navigation, MessageCircle, Phone, Check, MapPin, Store } from 'lucide-react'
 import FoodImage from '@/components/eat/FoodImage'
 import { Button } from '@/components/design-system'
+import ClaimSection from '@/components/claims/ClaimSection'
 import { getFoodImage, inferCategory } from '@/lib/food-images'
 import { formatTime } from '@/lib/format'
 
@@ -361,6 +362,7 @@ export default function OrderTrackingScreen() {
           )}
 
           {Summary}
+          <ClaimSection orderId={order.id} />
         </div>
       </div>
     )
@@ -467,6 +469,7 @@ export default function OrderTrackingScreen() {
         <div className="my-3.5 h-px bg-[#f0f0f0]" />
 
         {Summary}
+        <ClaimSection orderId={order.id} />
       </div>
     </div>
   )

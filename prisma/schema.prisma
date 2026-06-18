@@ -1285,6 +1285,61 @@ model Dispute {
   @@index([status])
 }
 
+// ── P4.5-C1 — Customer refund claim cycle (Agent 52) ─────────────────────────────
+// ADDITIVE + STANDALONE (no @relation, mirrors Refund/Dispute/Payout → existing models
+// stay byte-identical; dropping the table leaves the schema intact). ONE row per
+// customer claim, written by lib/claims (gated by CLAIMS_ENABLED, default OFF → table
+// stays empty, no UI exposed, byte-identical).
+//
+// CYCLE: a consumer who OWNS a paid order, within CLAIM_WINDOW_HOURS (default 48h,
+// anchored on Order.updatedAt — the delivery/last-activity time; no deliveredAt column
+// exists and the status route is off-limits), files a claim (reason + optional photo +
+// requested amount ≤ order total). The OWNING restaurant responds within
+// CLAIM_RESPONSE_HOURS (default 24h): ACCEPT → triggers the P4.5-A engine
+// (lib/refund.executeRefund) for the requested amount / REFUSE (motivated, terminal in
+// C1 — contest = C2). NO restaurant response by responseDeadlineAt → AUTO-APPROVED by
+// the internal cron (a resto cannot block by ignoring).
+//
+// MONEY: C1 does NOT compute any split — it CALLS executeRefund (royalty-aware engine).
+// The real refund only happens when REFUNDS_ENABLED is ON; with CLAIMS on but REFUNDS
+// off, an accepted/auto-approved claim rests at 'approved' (refundAttempted=false,
+// refundId=null) — refund PENDING activation, NOT silently lost.
+//
+// IDEMPOTENCE: executeRefund is called AT MOST ONCE per claim — `refundAttempted`
+// flips false→true via an atomic updateMany guard (count===1 winner); a double-accept /
+// re-click / cron+accept race / replay never refunds twice. `activeOrderKey` (= orderId
+// while active, null when terminal) is @unique → at most ONE active claim per order
+// (race-safe; a terminal claim frees the order for a future C2 re-claim). CENTS = ints.
+model Claim {
+  id                       String   @id @default(cuid())
+  orderId                  String
+  consumerId               String           // Operator.id (role consumer) — the claimant
+  restaurantId             String           // the owning restaurant (resolved from the order)
+  reason                   String           // missing_item | wrong_order | quality | not_delivered | other
+  description              String?  @db.Text // optional free-text detail
+  requestedAmountCents     Int              // claimed amount (server-validated: 1 ≤ x ≤ order total cents)
+  photoUrl                 String?          // optional evidence (Cloudinary, via processDishImage)
+  status                   String   @default("restaurant_review") // restaurant_review | approved | refunding | refunded | refused
+  restaurantResponse       String?          // accepted | refused (what the resto chose; null if auto/none)
+  restaurantResponseReason String?  @db.Text // refusal motive
+  responseDeadlineAt       DateTime         // createdAt + CLAIM_RESPONSE_HOURS → auto-approve after
+  decidedBy                String?          // restaurant | auto_timeout
+  refundAttempted          Boolean  @default(false) // executeRefund called at most once (idempotence guard)
+  refundId                 String?          // → Refund.id (set when the engine refund succeeds)
+  refundError              String?  @db.Text // last refund failure (audit; refund still pending)
+  // = orderId WHILE the claim is active (restaurant_review|approved|refunding); set to
+  // null on a terminal status (refunded|refused). @unique ⇒ one ACTIVE claim per order,
+  // race-safe (MySQL allows many NULLs), without blocking a future re-claim (C2).
+  activeOrderKey           String?  @unique
+  createdAt                DateTime @default(now())
+  decidedAt                DateTime?
+
+  @@index([consumerId, createdAt])
+  @@index([restaurantId, status])
+  @@index([status, responseDeadlineAt])
+  @@index([orderId])
+}
+
 // ── Commission invoices — rail financier A4 ───────────────────────────────────
 // One invoice per establishment per month, totals COMPUTED FROM LedgerEntry
 // (∑ applicationFeeAmount of the period — never recomputed from rates). A0-bis:

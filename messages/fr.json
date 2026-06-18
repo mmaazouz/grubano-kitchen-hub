@@ -3083,5 +3083,63 @@
       "manageTitle": "Gérer les cookies",
       "manageBody": "Les cookies strictement nécessaires ne peuvent pas être désactivés sans empêcher le site de fonctionner. Vous pouvez toutefois configurer votre navigateur pour les bloquer ou les supprimer."
     }
+  },
+  "claims": {
+    "reason": {
+      "missing_item": "Article manquant",
+      "wrong_order": "Mauvaise commande",
+      "quality": "Problème de qualité",
+      "not_delivered": "Non livrée",
+      "other": "Autre"
+    },
+    "status": {
+      "restaurant_review": "En attente de réponse du restaurant",
+      "approved": "Approuvée — remboursement en cours",
+      "refunding": "Remboursement en cours",
+      "refunded": "Remboursée",
+      "refused": "Refusée"
+    },
+    "client": {
+      "reportProblem": "Signaler un problème",
+      "title": "Demander un remboursement",
+      "description": "Dites-nous ce qui s’est passé. Le restaurant a 24 h pour répondre.",
+      "reasonLabel": "Motif",
+      "amountLabel": "Montant à rembourser",
+      "wholeOrder": "Toute la commande",
+      "customAmount": "Un montant précis",
+      "descriptionLabel": "Détails (facultatif)",
+      "descriptionPlaceholder": "Décrivez le problème…",
+      "photoLabel": "Photo (facultatif)",
+      "photoHint": "Ajoutez une photo pour appuyer votre demande.",
+      "submit": "Envoyer la réclamation",
+      "submitting": "Envoi…",
+      "success": "Réclamation envoyée. Le restaurant a 24 h pour répondre.",
+      "statusTitle": "Votre réclamation",
+      "refusedReason": "Motif du refus",
+      "maxRefundable": "Maximum remboursable : {amount}",
+      "cancel": "Annuler",
+      "errorGeneric": "Une erreur est survenue. Réessayez."
+    },
+    "restaurant": {
+      "title": "Réclamations clients",
+      "empty": "Aucune réclamation en attente.",
+      "order": "Commande",
+      "reason": "Motif",
+      "requested": "Montant réclamé",
+      "details": "Détails",
+      "viewPhoto": "Voir la photo",
+      "timeLeft": "{hours} h restantes pour répondre",
+      "expired": "Délai dépassé — approbation automatique imminente",
+      "accept": "Accepter et rembourser",
+      "refuse": "Refuser",
+      "refuseReasonLabel": "Motif du refus",
+      "refuseReasonPlaceholder": "Expliquez pourquoi…",
+      "confirmRefuse": "Confirmer le refus",
+      "accepted": "Réclamation acceptée, remboursement déclenché.",
+      "refused": "Réclamation refusée.",
+      "refundPending": "Acceptée — remboursement en attente d’activation.",
+      "processing": "Traitement…",
+      "autoApproveNote": "Sans réponse sous 24 h, la réclamation est approuvée automatiquement."
+    }
   }
 }

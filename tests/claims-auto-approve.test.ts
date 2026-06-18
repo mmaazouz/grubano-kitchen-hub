@@ -1,0 +1,70 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+// ── P4.5-C1 — POST /api/admin/claims/auto-approve (cron) ─────────────────────────
+// Gate order: CLAIMS_ENABLED (403 gated) BEFORE auth; then X-Internal-Token OR admin
+// session (401/403). Mirrors creator-payouts/run.
+
+const { flag, runMock } = vi.hoisted(() => ({ flag: vi.fn(), runMock: vi.fn() }))
+vi.mock('@/lib/claims', () => ({ isClaimsEnabled: flag, runClaimAutoApproval: runMock }))
+
+const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
+vi.mock('next-auth', () => ({ getServerSession: sessionMock }))
+vi.mock('@/lib/auth', () => ({ authOptions: {} }))
+
+const { db } = vi.hoisted(() => ({ db: { operator: { findUnique: vi.fn() } } }))
+vi.mock('@/lib/prisma', () => ({ prisma: db }))
+
+import { POST } from '@/app/api/admin/claims/auto-approve/route'
+
+const post = (opts: { token?: string } = {}) =>
+  POST(new Request('https://app.grubano.com/api/admin/claims/auto-approve', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(opts.token ? { 'x-internal-token': opts.token } : {}) },
+    body: '{}',
+  }))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  flag.mockReturnValue(true)
+  runMock.mockResolvedValue({ autoApproved: 2, refundsTriggered: 2, refundsPending: 0, refundsFailed: 0, scannedExpired: 2, scannedPending: 0 })
+  process.env.INTERNAL_CRON_TOKEN = 'secret-cron'
+})
+afterEach(() => { delete process.env.INTERNAL_CRON_TOKEN })
+
+describe('POST /api/admin/claims/auto-approve', () => {
+  it('(f) flag OFF → 403 gated, BEFORE auth', async () => {
+    flag.mockReturnValue(false)
+    const res = await post()
+    expect(res.status).toBe(403)
+    expect(runMock).not.toHaveBeenCalled()
+    expect(sessionMock).not.toHaveBeenCalled()
+  })
+
+  it('no token + no session → 401', async () => {
+    sessionMock.mockResolvedValue(null)
+    expect((await post()).status).toBe(401)
+    expect(runMock).not.toHaveBeenCalled()
+  })
+
+  it('wrong token + non-admin session → 403', async () => {
+    sessionMock.mockResolvedValue({ user: { email: 'resto@x' } })
+    db.operator.findUnique.mockResolvedValue({ role: 'restaurant' })
+    expect((await post({ token: 'nope' })).status).toBe(403)
+    expect(runMock).not.toHaveBeenCalled()
+  })
+
+  it('cron token → runs the sweep', async () => {
+    sessionMock.mockResolvedValue(null)
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).toBe(200)
+    expect(runMock).toHaveBeenCalledTimes(1)
+    expect(await res.json()).toMatchObject({ ok: true, autoApproved: 2, refundsTriggered: 2 })
+  })
+
+  it('admin session → runs', async () => {
+    sessionMock.mockResolvedValue({ user: { email: 'admin@x' } })
+    db.operator.findUnique.mockResolvedValue({ role: 'admin' })
+    expect((await post()).status).toBe(200)
+    expect(runMock).toHaveBeenCalledTimes(1)
+  })
+})

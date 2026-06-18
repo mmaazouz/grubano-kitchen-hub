@@ -3083,5 +3083,63 @@
       "manageTitle": "إدارة ملفات الارتباط",
       "manageBody": "لا يمكن تعطيل الملفات الضرورية تمامًا دون تعطيل عمل الموقع. ومع ذلك يمكنك ضبط متصفحك لحظرها أو حذفها."
     }
+  },
+  "claims": {
+    "reason": {
+      "missing_item": "عنصر مفقود",
+      "wrong_order": "طلب خاطئ",
+      "quality": "مشكلة في الجودة",
+      "not_delivered": "لم يتم التوصيل",
+      "other": "أخرى"
+    },
+    "status": {
+      "restaurant_review": "بانتظار رد المطعم",
+      "approved": "تمت الموافقة — جارٍ رد المبلغ",
+      "refunding": "جارٍ رد المبلغ",
+      "refunded": "تم رد المبلغ",
+      "refused": "مرفوضة"
+    },
+    "client": {
+      "reportProblem": "الإبلاغ عن مشكلة",
+      "title": "طلب استرداد",
+      "description": "أخبرنا بما حدث. أمام المطعم 24 ساعة للرد.",
+      "reasonLabel": "السبب",
+      "amountLabel": "المبلغ المطلوب رده",
+      "wholeOrder": "الطلب بالكامل",
+      "customAmount": "مبلغ محدد",
+      "descriptionLabel": "تفاصيل (اختياري)",
+      "descriptionPlaceholder": "صف المشكلة…",
+      "photoLabel": "صورة (اختياري)",
+      "photoHint": "أضف صورة لدعم طلبك.",
+      "submit": "إرسال الشكوى",
+      "submitting": "جارٍ الإرسال…",
+      "success": "تم إرسال الشكوى. أمام المطعم 24 ساعة للرد.",
+      "statusTitle": "شكواك",
+      "refusedReason": "سبب الرفض",
+      "maxRefundable": "الحد الأقصى القابل للرد: {amount}",
+      "cancel": "إلغاء",
+      "errorGeneric": "حدث خطأ. حاول مرة أخرى."
+    },
+    "restaurant": {
+      "title": "شكاوى العملاء",
+      "empty": "لا توجد شكاوى معلقة.",
+      "order": "الطلب",
+      "reason": "السبب",
+      "requested": "المبلغ المطلوب",
+      "details": "التفاصيل",
+      "viewPhoto": "عرض الصورة",
+      "timeLeft": "يتبقى {hours} ساعة للرد",
+      "expired": "انتهى الموعد — الموافقة التلقائية وشيكة",
+      "accept": "القبول ورد المبلغ",
+      "refuse": "رفض",
+      "refuseReasonLabel": "سبب الرفض",
+      "refuseReasonPlaceholder": "اشرح السبب…",
+      "confirmRefuse": "تأكيد الرفض",
+      "accepted": "تم قبول الشكوى وبدء رد المبلغ.",
+      "refused": "تم رفض الشكوى.",
+      "refundPending": "تم القبول — رد المبلغ بانتظار التفعيل.",
+      "processing": "جارٍ المعالجة…",
+      "autoApproveNote": "بدون رد خلال 24 ساعة، تتم الموافقة على الشكوى تلقائيًا."
+    }
   }
 }
