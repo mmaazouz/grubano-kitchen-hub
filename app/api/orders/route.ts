@@ -6,6 +6,7 @@ import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { fetchActivePromotions, pickBestPromotion } from '@/lib/promotions'
 import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } from '@/lib/loyalty'
 import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
+import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -343,6 +344,18 @@ export async function POST(req: NextRequest) {
     // → visible at creation, the legitimate current flow.
     const initialStatus = data.paymentMethod === 'card' ? 'awaiting_payment' : 'received'
 
+    // B5 (FRANCHISE_POS_TAGGING_ENABLED, default OFF): tag the order with its franchise
+    // point of sale, DERIVED SERVER-SIDE from the linked restaurant (Restaurant.pointOfSaleId,
+    // the 1:1 link from B2/B3) — NEVER from client input (createOrderSchema has no such
+    // field). When OFF, this spread is empty → the create `data` below is BYTE-IDENTICAL to
+    // before this brick (pointOfSaleId stays unset = null, exactly as today). When ON, a
+    // non-franchised restaurant has pointOfSaleId=null → Order.pointOfSaleId=null (= today).
+    // This is what re-activates Franchise-A accrual (still separately gated by
+    // FRANCHISE_ROYALTY_ENABLED) and the franchise my-dashboard; nothing else changes.
+    const franchisePosTag = isFranchisePosTaggingEnabled()
+      ? { pointOfSaleId: restaurant.pointOfSaleId ?? null }
+      : {}
+
     // Create order in DB (referralCode stored for reporting; 5B writes follow).
     const order = await prisma.order.create({
       data: {
@@ -358,6 +371,7 @@ export async function POST(req: NextRequest) {
         pointsEarned,
         referralCode:    ref.code,
         status:          initialStatus,
+        ...franchisePosTag,
       },
     })
 
