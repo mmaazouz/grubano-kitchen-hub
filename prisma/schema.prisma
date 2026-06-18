@@ -1054,6 +1054,42 @@ model LedgerEntry {
   @@index([createdAt])
 }
 
+// ── Payout (rail financier P4.2, Agent 38) — partner disbursement record ──────
+// ADDITIVE + REVERSIBLE: a brand-new STANDALONE table (no relation added to any
+// existing model → those stay byte-identical; dropping it leaves the schema
+// intact). It RECORDS a disbursement to a partner — it does NOT move money. In
+// P4.2 it is WRITTEN ONLY BY TESTS (starts EMPTY in prod → "versé"=0). P4.3 will
+// write real rows when a transfer is executed, and stamp a companion ledger line
+// of the (String, convention-only) type 'partner_transfer' (no enum migration).
+//
+// Beneficiary: `role` + exactly ONE of the nullable ref columns is set (keyed by
+// role). Kept as bare scalar ids (NO @relation) on purpose, so no back-relation
+// field is added to Creator / SupplierProfile / LogisticsProfile / Operator /
+// Restaurant (they remain untouched). All amounts in integer CENTS.
+model Payout {
+  id                 String    @id @default(cuid())
+  role               String    // creator | supplier | logistics | franchise | restaurant
+  // Beneficiary reference — exactly one set, per `role` (no FK relation by design):
+  creatorId          String?   // role = creator
+  supplierProfileId  String?   // role = supplier
+  logisticsProfileId String?   // role = logistics
+  operatorId         String?   // role = franchise (the Operator holding 'franchise')
+  restaurantId       String?   // role = restaurant
+  amountCents        Int                          // disbursed amount (cents)
+  currency           String    @default("eur")
+  status             String    @default("pending") // pending | paid | failed
+  paidAt             DateTime?                     // when the transfer settled
+  stripeTransferId   String?                       // tr_… (set by P4.3 when executed)
+  createdAt          DateTime  @default(now())
+
+  @@index([role, status])
+  @@index([creatorId])
+  @@index([supplierProfileId])
+  @@index([logisticsProfileId])
+  @@index([operatorId])
+  @@index([restaurantId])
+}
+
 // ── Commission invoices — rail financier A4 ───────────────────────────────────
 // One invoice per establishment per month, totals COMPUTED FROM LedgerEntry
 // (∑ applicationFeeAmount of the period — never recomputed from rates). A0-bis:
