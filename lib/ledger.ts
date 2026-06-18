@@ -31,6 +31,48 @@ export type LedgerWriteResult =
   | { ok: true; id: null; duplicate: true }   // unique [sourceEventId, type] hit — already recorded
   | { ok: false; error: string }
 
+/** Record ONE compensating NEGATIVE 'refund' ledger line (rail A5 / P4.5-A).
+ *  APPEND-ONLY (a new line, never a rewrite). The golden equation holds with
+ *  negatives by construction: net = gross − fee ⇒ gross = fee + net. The dedupe
+ *  key is the Stripe refund id (sourceEventId), so this is SAFE to call from
+ *  lib/refund's executeRefund alongside the byte-identical charge.refunded webhook
+ *  — @@unique([sourceEventId,'refund']) means whichever runs first wins and the
+ *  other is a silent idempotent duplicate (never two lines for one give-back).
+ *  stripeFeeAmount = 0: Stripe keeps its processing fee on a refund — a zero fee
+ *  MOVEMENT, affirmed (same convention as the webhook). amounts in integer CENTS. */
+export async function recordRefundLedgerEntry(input: {
+  refundId:                  string  // re_… — the deterministic dedupe key (sourceEventId)
+  restaurantId:              string
+  refundedCents:             number  // POSITIVE amount returned to the customer
+  applicationFeeRefundCents: number  // POSITIVE fee given back (commission + held-back royalty)
+  stripePaymentIntentId?:    string | null
+  stripeChargeId?:           string | null
+  stripeTransferId?:         string | null
+  routed:                    boolean
+  destinationAccountId?:     string | null
+  channel?:                  string | null
+  currency?:                 string
+  createdAt?:                Date
+}): Promise<LedgerWriteResult> {
+  return recordLedgerEntry({
+    type:                  'refund',
+    restaurantId:          input.restaurantId,
+    stripePaymentIntentId: input.stripePaymentIntentId ?? null,
+    stripeChargeId:        input.stripeChargeId ?? null,
+    stripeTransferId:      input.stripeTransferId ?? null,
+    grossAmount:           -input.refundedCents,
+    applicationFeeAmount:  -input.applicationFeeRefundCents,
+    stripeFeeAmount:       0,
+    netToRestaurant:       -input.refundedCents + input.applicationFeeRefundCents, // gross − fee
+    routed:                input.routed,
+    destinationAccountId:  input.destinationAccountId ?? null,
+    currency:              input.currency ?? 'eur',
+    channel:               input.channel ?? null,
+    sourceEventId:         input.refundId,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+  })
+}
+
 /** Insert ONE ledger line. NEVER throws: a duplicate (replayed event / backfill
  *  overlap) is SUCCESS (idempotent); any real failure returns ok:false so the
  *  caller can log the full payload ([LEDGER MISS]) without ever blocking a

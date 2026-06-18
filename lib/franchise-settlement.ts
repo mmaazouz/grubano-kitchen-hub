@@ -41,16 +41,17 @@ import { prisma } from '@/lib/prisma'
 // Payout/transfer); on any post-transfer failure the batch stays 'settling'/Payout
 // 'pending' (recoverable), NEVER 'settled' without a real disbursement.
 //
-// Amount = server-computed sum of the claimed lines' royaltyCents (the real held-back),
-// cent-exact, NEVER a client input. Below the threshold → skip. Franchisor must have an
-// ACTIVE Connect account (P4.1) → else skip with a reason.
+// Amount = server-computed sum of the claimed lines' NON-REFUNDED royalty
+// (royaltyCents − refundedCents), cent-exact, NEVER a client input. Below the
+// threshold → skip. Franchisor must have an ACTIVE Connect account (P4.1) → else skip.
 //
-// NOT handled here (FLAGGED for later bricks): a refund/cancellation of an order whose
-// royalty is still 'pending' is NOT detected/skipped — franchised orders keep their
-// status/paymentStatus on refund (only a ledger line is written), so refund-aware
-// settlement is not cleanly separable from clawback proration (= P4.5). We settle on the
-// stored royaltyCents; reconciliation against the PI metadata (Franchise-A's rare
-// double-clamp cents divergence) is also deferred to P4.5.
+// REFUND-AWARE (P4.5-A, Agent 49): a 'pending' royalty partially refunded settles
+// ONLY on its non-refunded part — every amount/threshold here nets refundedCents (set
+// by lib/refund.executeRefund). BYTE-IDENTICAL while no line has refundedCents > 0
+// (Math.max(0, royaltyCents − 0) = royaltyCents everywhere). A refund AFTER settlement
+// is the OTHER direction (the slice already left for the franchisor): lib/refund claws
+// it back via transfers.createReversal — NOT here. A line fully refunded before
+// settlement (net 0) is marked 'settled' with no transfer.
 
 export function isFranchiseSettlementEnabled(): boolean {
   return process.env.FRANCHISE_SETTLEMENT_ENABLED === 'true'
@@ -68,12 +69,18 @@ export type SettlementOutcome =
   | { status: 'skipped'; operatorId: string; reason: string }
   | { status: 'failed';  operatorId: string; reason: string }
 
-type ClaimedLine    = { id: string; royaltyCents: number; settlementId: string | null }
+type ClaimedLine    = { id: string; royaltyCents: number; refundedCents: number; settlementId: string | null }
 type FranchisorRef  = { id: string; stripeAccountId: string }
 type BatchPayout    = { id: string; amountCents: number; currency: string; status: string; stripeTransferId: string | null }
 
 const PAYOUT_SELECT = { id: true, amountCents: true, currency: true, status: true, stripeTransferId: true } as const
-const LINE_SELECT   = { id: true, royaltyCents: true, settlementId: true } as const
+const LINE_SELECT   = { id: true, royaltyCents: true, refundedCents: true, settlementId: true } as const
+
+/** Royalty STILL owed to the franchisor for one line = held-back minus what was
+ *  refunded to the customer (P4.5-A). `refundedCents` is null/absent on legacy rows
+ *  and pre-refund rows → 0 → byte-identical to the raw royaltyCents. */
+const netOwedCents = (l: { royaltyCents: number; refundedCents?: number | null }): number =>
+  Math.max(0, l.royaltyCents - (l.refundedCents ?? 0))
 
 const transferGroupOf = (settlementId: string) => `frset_${settlementId}`
 
@@ -106,13 +113,23 @@ async function finalizePaid(payoutId: string, transferId: string, settlementId: 
 async function finalizeBatch(
   ref: FranchisorRef, settlementId: string, lines: ClaimedLine[], resumed: boolean,
 ): Promise<SettlementOutcome> {
-  const amount = lines.reduce((s, l) => s + l.royaltyCents, 0)
+  // REFUND-AWARE sum: only the NON-refunded royalty is owed (byte-identical to
+  // Σ royaltyCents while no line was refunded). NEVER a client input.
+  const amount = lines.reduce((s, l) => s + netOwedCents(l), 0)
   const idempotencyKey = `franchise:${ref.id}:${settlementId}`
   const transferGroup  = transferGroupOf(settlementId)
 
-  // Nothing to disburse (e.g. a concurrent orphan-heal loser claimed an empty set) → skip
-  // before creating any Payout/transfer. Real batches always sum > 0 (royaltyCents > 0).
-  if (amount <= 0) return { status: 'skipped', operatorId: ref.id, reason: 'nothing_to_settle' }
+  // Nothing to disburse: an empty claimed set (concurrent orphan-heal loser) OR a
+  // batch whose lines are all fully refunded (net 0). Mark any such 'settling' lines
+  // 'settled' (no transfer — nothing is owed) so they don't linger, then skip BEFORE
+  // creating any Payout/transfer. Without refunds, real batches always sum > 0.
+  if (amount <= 0) {
+    await prisma.franchiseRoyalty.updateMany({
+      where: { settlementId, status: 'settling' },
+      data:  { status: 'settled', settledAt: new Date() },
+    })
+    return { status: 'skipped', operatorId: ref.id, reason: 'nothing_to_settle' }
+  }
 
   // Create-or-find the Payout (BEFORE the transfer). @unique(idempotencyKey) makes the
   // create idempotent: a concurrent finalize → P2002 → reuse the existing row.
@@ -229,13 +246,16 @@ export async function settleFranchisor(operatorId: string): Promise<SettlementOu
   }
 
   // 2. NORMAL — pre-check the threshold on PENDING (read-only), then CLAIM atomically.
+  // Refund-aware: compare the NON-refunded sum (Σ royaltyCents − Σ refundedCents) —
+  // byte-identical to Σ royaltyCents while nothing was refunded.
   const agg = await prisma.franchiseRoyalty.aggregate({
     where: { franchisorOperatorId: operatorId, status: 'pending' },
-    _sum:  { royaltyCents: true },
+    _sum:  { royaltyCents: true, refundedCents: true },
     _count: true,
   })
   if (agg._count === 0) return { status: 'skipped', operatorId, reason: 'nothing_pending' }
-  if ((agg._sum.royaltyCents ?? 0) < minSettlementCents()) {
+  const pendingNetCents = (agg._sum.royaltyCents ?? 0) - (agg._sum.refundedCents ?? 0)
+  if (pendingNetCents < minSettlementCents()) {
     return { status: 'skipped', operatorId, reason: 'below_threshold' }
   }
 
@@ -254,7 +274,7 @@ export async function settleFranchisor(operatorId: string): Promise<SettlementOu
   // Re-validate the threshold against the ACTUALLY-claimed sum (the pre-check set can be
   // shrunk by a concurrent run between the aggregate and the claim). Revert + skip BEFORE
   // any Payout/transfer if the claimed batch fell below the threshold.
-  const claimedSum = lines.reduce((s, l) => s + l.royaltyCents, 0)
+  const claimedSum = lines.reduce((s, l) => s + netOwedCents(l), 0)
   if (claimedSum < minSettlementCents()) {
     await prisma.franchiseRoyalty.updateMany({
       where: { settlementId, status: 'settling' },

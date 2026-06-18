@@ -1164,6 +1164,15 @@ model FranchiseRoyalty {
   baseRevenueCents     Int               // = order.subtotal in cents (consistent w/ my-dashboard)
   royaltyCents         Int               // = round(baseRevenueCents * rate) — the held-back amount
   rate                 Float             // royalty rate snapshot at accrual (0.06)
+  // ── P4.5-A refund-awareness (Agent 49, ADDITIVE) ────────────────────────────
+  // Cumulative royalty CENTS given back to the customer across all (partial)
+  // refunds of this order — the absolute, self-healing prorata target
+  // round(royaltyCents × refundedTotal / chargeTotal), capped at royaltyCents.
+  // The franchise SETTLEMENT pays only the NON-refunded part (royaltyCents −
+  // refundedCents); a refund AFTER settlement claws the delta back from the
+  // franchisor. @default(0) ⇒ every existing row stays valid with NO backfill, and
+  // the settlement is BYTE-IDENTICAL while no row has refundedCents > 0.
+  refundedCents        Int      @default(0)
   status               String   @default("pending") // pending | settling | settled
   createdAt            DateTime @default(now())
   // ── P4-Franchise-B settlement (Agent 42, ADDITIVE) ──────────────────────────
@@ -1180,6 +1189,51 @@ model FranchiseRoyalty {
   @@index([franchisorOperatorId, status])
   @@index([restaurantId])
   @@index([settlementId])
+}
+
+// ── P4.5-A — Refund audit + cumulative cursor + idempotence (Agent 49) ───────────
+// ADDITIVE + STANDALONE (no @relation, mirrors Payout/FranchiseRoyalty → existing
+// models stay byte-identical; dropping the table leaves the schema intact). ONE row
+// per executed refund of an order, written by lib/refund's executeRefund (gated by
+// REFUNDS_ENABLED, default OFF → table stays empty, charge byte-identical).
+//
+// PRORATA decomposition recorded for audit (all server-derived from the live Stripe
+// charge + the order, NEVER a client input): the customer got back `amountCents`,
+// of which `restaurantReverseCents` was pulled back from the resto's Connect account
+// (reverse_transfer) and `applicationFeeRefundCents` came back from Grubano's fee
+// (refund_application_fee) — together exactly `amountCents`. `royaltyRefundCents` is
+// the franchise-royalty slice INSIDE applicationFeeRefundCents; `royaltyClawbackCents`
+// is the part of it actually reversed FROM the franchisor (only when the royalty was
+// already settled — else 0, the held-back never left Grubano's balance).
+//
+// ANTI-DOUBLE-REFUND (payout pattern): idempotencyKey @unique = the monotone cumul
+// cursor `refund:<orderId>:<alreadyRefundedCents>` (alreadyRefundedCents read from
+// Stripe — the true cross-path cumul). Two concurrent attempts at the same cumul
+// derive the SAME key → only one create wins (P2002) → the cumul can never be
+// double-spent. The SAME key is the Stripe refund idempotency key (≤24h dedupe). A
+// 'pending' row (Stripe refund issued but DB finalize failed) is RESUMED before any
+// new refund. All amounts integer CENTS.
+model Refund {
+  id                        String   @id @default(cuid())
+  orderId                   String
+  restaurantId              String
+  stripePaymentIntentId     String?
+  stripeRefundId            String?  // re_… — set once Stripe accepted the refund
+  idempotencyKey            String   @unique // refund:<orderId>:<alreadyRefundedCents>
+  amountCents               Int               // refunded to the customer (this refund)
+  restaurantReverseCents    Int      @default(0) // pulled back from the resto (reverse_transfer)
+  applicationFeeRefundCents Int      @default(0) // came back from Grubano's fee (commission + royalty)
+  royaltyRefundCents        Int      @default(0) // franchise-royalty slice inside the fee refund
+  royaltyClawbackCents      Int      @default(0) // royalty actually reversed FROM the franchisor (settled case)
+  franchiseRoyaltyStatus    String?           // snapshot of the royalty status at refund time (pending|settling|settled)
+  reason                    String?
+  status                    String   @default("pending") // pending | succeeded | failed
+  createdAt                 DateTime @default(now())
+  settledAt                 DateTime?
+
+  @@index([orderId])
+  @@index([restaurantId])
+  @@index([status])
 }
 
 // ── Commission invoices — rail financier A4 ───────────────────────────────────
