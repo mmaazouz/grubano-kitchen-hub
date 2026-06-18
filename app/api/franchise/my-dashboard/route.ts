@@ -2,12 +2,21 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { resolveFranchiseRate } from '@/lib/franchise-royalty'
+import { resolveFranchiseRate, isFranchiseRoyaltyEnabled } from '@/lib/franchise-royalty'
+import { getFranchiseEarnings } from '@/lib/franchise-earnings'
 
 // B4: the royalty rate is now PER-BRAND, resolved through the SAME helper the accrual
 // uses (resolveFranchiseRate(brand) = brand.royaltyPct ?? 6%) → the dashboard estimate
 // can never diverge from the real held-back. Each POS uses the rate of the brand it
 // operates; a POS with no brand / no royaltyPct falls back to 6% (= pre-B4 behaviour).
+//
+// B6 (Agent 47): the dashboard now ALSO returns the AUTHORITATIVE royalty totals read
+// from the FranchiseRoyalty table (accrued / settled / pending) — the real held-back —
+// alongside the live `revenue × rate` ESTIMATE (royaltiesDue). The estimate is a
+// projection of the rolling 30-day window; `royaltyEnabled` lets the client label it
+// honestly (when the held-back rail is OFF, no money is actually retained → the
+// authoritative totals stay 0 and the estimate is a mere projection). READ-ONLY: no
+// write, no settlement trigger. Existing fields are unchanged (backward-compatible).
 
 // Network average revenue benchmark (per franchise, 30-day window). Kept as the
 // pre-existing constant the front already displays.
@@ -80,8 +89,17 @@ export async function GET() {
     const revenueThisMonth = brandsPerf.reduce((s, b) => s + b.revenue, 0)
     const revenueLastMonth = prevOrders.reduce((s, o) => s + o.subtotal, 0)
     // Sum of per-POS (per-brand-rate) royalties → consistent with the accrual. With a
-    // uniform 6% this equals the old revenueThisMonth * 0.06.
+    // uniform 6% this equals the old revenueThisMonth * 0.06. This is the live ESTIMATE
+    // (projection of the 30-day window), NOT the real held-back.
     const royaltiesDue     = brandsPerf.reduce((s, b) => s + b.royalties, 0)
+
+    // B6 — AUTHORITATIVE totals from the FranchiseRoyalty table (the real held-back),
+    // owner-scoped to THIS franchisor (operatorId from the session). All-time, in cents →
+    // converted to euros to match the rest of this euro-denominated response. When the
+    // held-back rail is OFF (royaltyEnabled=false) no rows are accrued → these stay 0 and
+    // royaltiesDue is purely a projection.
+    const earnings     = await getFranchiseEarnings(operatorId)
+    const royaltyEnabled = isFranchiseRoyaltyEnabled()
 
     return NextResponse.json({
       revenueThisMonth,
@@ -89,6 +107,11 @@ export async function GET() {
       royaltiesDue,
       networkAvg: NETWORK_AVG,
       brands: brandsPerf,
+      // B6 — real held-back (authoritative), euros. royaltiesDue above is the estimate.
+      royaltyEnabled,
+      royaltiesAccrued: earnings.accruedCents / 100,
+      royaltiesSettled: earnings.settledCents / 100,
+      royaltiesPending: earnings.pendingCents / 100,
     })
   } catch (err) {
     console.error('[GET /api/franchise/my-dashboard]', err)

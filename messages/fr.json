@@ -443,7 +443,17 @@
       "emptyDesc": "Soumettez une candidature pour démarrer votre franchise",
       "applyCta": "Candidater",
       "errorNetwork": "Erreur réseau",
-      "backToPortal": "Retour au portail"
+      "backToPortal": "Retour au portail",
+      "kpiRoyaltiesEstimate": "Royalties (estimation)",
+      "estimateBadge": "estimation",
+      "royaltyInactiveHint": "Prélèvement non activé — projection indicative.",
+      "realRoyaltiesTitle": "Royalties réelles",
+      "realRoyaltiesHint": "Montants réellement retenus pour le franchiseur.",
+      "realAccrued": "Accumulées",
+      "realSettled": "Réglées",
+      "realPending": "En attente",
+      "realInactiveNote": "Le prélèvement réel des royalties n’est pas encore activé — ces montants restent à 0.",
+      "financesLink": "Voir les règlements"
     },
     "nav": {
       "overview": "Vue d'ensemble",
@@ -510,6 +520,28 @@
       "creating": "Création…",
       "deleteConfirm": "Supprimer ce point de vente ? Le restaurant lié sera délié (le restaurant lui-même n’est pas supprimé).",
       "errorGeneric": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "finances": {
+      "title": "Finances",
+      "subtitle": "Royalties accumulées et historique des règlements.",
+      "accruedLabel": "Accumulées",
+      "settledLabel": "Réglées",
+      "pendingLabel": "En attente",
+      "pendingHint": "Royalties retenues, en attente de règlement au franchiseur.",
+      "inactiveNote": "Le prélèvement réel des royalties n’est pas encore activé. Les montants ci-dessous restent à 0 tant qu’aucun prélèvement n’a eu lieu.",
+      "historyTitle": "Historique des règlements",
+      "emptyTitle": "Aucun règlement",
+      "emptyDesc": "Vos règlements apparaîtront ici une fois effectués.",
+      "colAmount": "Montant",
+      "colDate": "Date",
+      "colStatus": "Statut",
+      "colRef": "Référence",
+      "statusPending": "En attente",
+      "statusPaid": "Réglé",
+      "statusFailed": "Échoué",
+      "loadError": "Impossible de charger les finances.",
+      "errorNetwork": "Erreur réseau.",
+      "backToDashboard": "Tableau de bord"
     }
   },
   "creators": {

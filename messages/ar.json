@@ -443,7 +443,17 @@
       "emptyDesc": "قدّم طلباً لبدء امتيازك",
       "applyCta": "تقدّم",
       "errorNetwork": "خطأ في الشبكة",
-      "backToPortal": "العودة إلى البوابة"
+      "backToPortal": "العودة إلى البوابة",
+      "kpiRoyaltiesEstimate": "الإتاوات (تقدير)",
+      "estimateBadge": "تقدير",
+      "royaltyInactiveHint": "الاستقطاع غير مُفعّل — تقدير إرشادي.",
+      "realRoyaltiesTitle": "الإتاوات الفعلية",
+      "realRoyaltiesHint": "المبالغ المُحتجزة فعليًا لمانح الامتياز.",
+      "realAccrued": "متراكمة",
+      "realSettled": "مُسوّاة",
+      "realPending": "قيد الانتظار",
+      "realInactiveNote": "استقطاع الإتاوات الفعلي غير مُفعّل بعد — تبقى هذه المبالغ على 0.",
+      "financesLink": "عرض التسويات"
     },
     "nav": {
       "overview": "نظرة عامة",
@@ -510,6 +520,28 @@
       "creating": "جارٍ الإنشاء…",
       "deleteConfirm": "حذف نقطة البيع هذه؟ سيتم فصل المطعم المرتبط (لا يُحذف المطعم نفسه).",
       "errorGeneric": "حدث خطأ. يرجى المحاولة مرة أخرى."
+    },
+    "finances": {
+      "title": "المالية",
+      "subtitle": "الإتاوات المتراكمة وسجل التسويات.",
+      "accruedLabel": "متراكمة",
+      "settledLabel": "مُسوّاة",
+      "pendingLabel": "قيد الانتظار",
+      "pendingHint": "إتاوات مُحتجزة بانتظار تسويتها لمانح الامتياز.",
+      "inactiveNote": "استقطاع الإتاوات الفعلي غير مُفعّل بعد. تبقى المبالغ أدناه على 0 إلى أن يتم أي استقطاع.",
+      "historyTitle": "سجل التسويات",
+      "emptyTitle": "لا توجد تسويات",
+      "emptyDesc": "ستظهر تسوياتك هنا بمجرد تنفيذها.",
+      "colAmount": "المبلغ",
+      "colDate": "التاريخ",
+      "colStatus": "الحالة",
+      "colRef": "المرجع",
+      "statusPending": "قيد الانتظار",
+      "statusPaid": "مدفوع",
+      "statusFailed": "فشل",
+      "loadError": "تعذّر تحميل البيانات المالية.",
+      "errorNetwork": "خطأ في الشبكة.",
+      "backToDashboard": "لوحة التحكم"
     }
   },
   "creators": {

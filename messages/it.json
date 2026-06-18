@@ -443,7 +443,17 @@
       "emptyDesc": "Invia una candidatura per avviare il tuo franchising",
       "applyCta": "Candidati",
       "errorNetwork": "Errore di rete",
-      "backToPortal": "Torna al portale"
+      "backToPortal": "Torna al portale",
+      "kpiRoyaltiesEstimate": "Royalty (stima)",
+      "estimateBadge": "stima",
+      "royaltyInactiveHint": "Prelievo non attivato — proiezione indicativa.",
+      "realRoyaltiesTitle": "Royalty effettive",
+      "realRoyaltiesHint": "Importi effettivamente trattenuti per il franchisor.",
+      "realAccrued": "Maturate",
+      "realSettled": "Liquidate",
+      "realPending": "In attesa",
+      "realInactiveNote": "Il prelievo reale delle royalty non è ancora attivo — questi importi restano a 0.",
+      "financesLink": "Vedi liquidazioni"
     },
     "nav": {
       "overview": "Panoramica",
@@ -510,6 +520,28 @@
       "creating": "Creazione…",
       "deleteConfirm": "Eliminare questo punto vendita? Il ristorante collegato verrà scollegato (il ristorante non viene eliminato).",
       "errorGeneric": "Si è verificato un errore. Riprova."
+    },
+    "finances": {
+      "title": "Finanze",
+      "subtitle": "Royalty maturate e storico delle liquidazioni.",
+      "accruedLabel": "Maturate",
+      "settledLabel": "Liquidate",
+      "pendingLabel": "In attesa",
+      "pendingHint": "Royalty trattenute, in attesa di liquidazione al franchisor.",
+      "inactiveNote": "Il prelievo reale delle royalty non è ancora attivo. Gli importi sottostanti restano a 0 finché non avviene alcun prelievo.",
+      "historyTitle": "Storico delle liquidazioni",
+      "emptyTitle": "Nessuna liquidazione",
+      "emptyDesc": "Le tue liquidazioni appariranno qui una volta effettuate.",
+      "colAmount": "Importo",
+      "colDate": "Data",
+      "colStatus": "Stato",
+      "colRef": "Riferimento",
+      "statusPending": "In attesa",
+      "statusPaid": "Pagato",
+      "statusFailed": "Fallito",
+      "loadError": "Impossibile caricare le finanze.",
+      "errorNetwork": "Errore di rete.",
+      "backToDashboard": "Dashboard"
     }
   },
   "creators": {

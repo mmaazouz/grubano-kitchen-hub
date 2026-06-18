@@ -443,7 +443,17 @@
       "emptyDesc": "Presenta una solicitud para iniciar tu franquicia",
       "applyCta": "Postular",
       "errorNetwork": "Error de red",
-      "backToPortal": "Volver al portal"
+      "backToPortal": "Volver al portal",
+      "kpiRoyaltiesEstimate": "Royalties (estimación)",
+      "estimateBadge": "estimación",
+      "royaltyInactiveHint": "Cobro no activado — proyección indicativa.",
+      "realRoyaltiesTitle": "Royalties reales",
+      "realRoyaltiesHint": "Importes realmente retenidos para el franquiciador.",
+      "realAccrued": "Acumuladas",
+      "realSettled": "Liquidadas",
+      "realPending": "Pendientes",
+      "realInactiveNote": "El cobro real de royalties aún no está activado — estos importes permanecen en 0.",
+      "financesLink": "Ver liquidaciones"
     },
     "nav": {
       "overview": "Visión general",
@@ -510,6 +520,28 @@
       "creating": "Creando…",
       "deleteConfirm": "¿Eliminar este punto de venta? El restaurante vinculado se desvinculará (el restaurante no se elimina).",
       "errorGeneric": "Ocurrió un error. Inténtalo de nuevo."
+    },
+    "finances": {
+      "title": "Finanzas",
+      "subtitle": "Royalties acumuladas e historial de liquidaciones.",
+      "accruedLabel": "Acumuladas",
+      "settledLabel": "Liquidadas",
+      "pendingLabel": "Pendientes",
+      "pendingHint": "Royalties retenidas, pendientes de liquidación al franquiciador.",
+      "inactiveNote": "El cobro real de royalties aún no está activado. Los importes siguientes permanecen en 0 mientras no se realice ningún cobro.",
+      "historyTitle": "Historial de liquidaciones",
+      "emptyTitle": "Sin liquidaciones",
+      "emptyDesc": "Tus liquidaciones aparecerán aquí una vez realizadas.",
+      "colAmount": "Importe",
+      "colDate": "Fecha",
+      "colStatus": "Estado",
+      "colRef": "Referencia",
+      "statusPending": "Pendiente",
+      "statusPaid": "Pagado",
+      "statusFailed": "Fallido",
+      "loadError": "No se pudieron cargar las finanzas.",
+      "errorNetwork": "Error de red.",
+      "backToDashboard": "Panel"
     }
   },
   "creators": {

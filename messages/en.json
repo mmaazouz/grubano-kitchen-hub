@@ -443,7 +443,17 @@
       "emptyDesc": "Submit an application to start your franchise",
       "applyCta": "Apply",
       "errorNetwork": "Network error",
-      "backToPortal": "Back to portal"
+      "backToPortal": "Back to portal",
+      "kpiRoyaltiesEstimate": "Royalties (estimate)",
+      "estimateBadge": "estimate",
+      "royaltyInactiveHint": "Collection not enabled — indicative projection.",
+      "realRoyaltiesTitle": "Actual royalties",
+      "realRoyaltiesHint": "Amounts actually held back for the franchisor.",
+      "realAccrued": "Accrued",
+      "realSettled": "Settled",
+      "realPending": "Pending",
+      "realInactiveNote": "Real royalty collection is not enabled yet — these amounts stay at 0.",
+      "financesLink": "View settlements"
     },
     "nav": {
       "overview": "Overview",
@@ -510,6 +520,28 @@
       "creating": "Creating…",
       "deleteConfirm": "Delete this point of sale? The linked restaurant will be unlinked (the restaurant itself is not deleted).",
       "errorGeneric": "Something went wrong. Please try again."
+    },
+    "finances": {
+      "title": "Finances",
+      "subtitle": "Accrued royalties and settlement history.",
+      "accruedLabel": "Accrued",
+      "settledLabel": "Settled",
+      "pendingLabel": "Pending",
+      "pendingHint": "Royalties held back, awaiting settlement to the franchisor.",
+      "inactiveNote": "Real royalty collection is not enabled yet. The amounts below stay at 0 until a collection has occurred.",
+      "historyTitle": "Settlement history",
+      "emptyTitle": "No settlements",
+      "emptyDesc": "Your settlements will appear here once executed.",
+      "colAmount": "Amount",
+      "colDate": "Date",
+      "colStatus": "Status",
+      "colRef": "Reference",
+      "statusPending": "Pending",
+      "statusPaid": "Paid",
+      "statusFailed": "Failed",
+      "loadError": "Could not load finances.",
+      "errorNetwork": "Network error.",
+      "backToDashboard": "Dashboard"
     }
   },
   "creators": {

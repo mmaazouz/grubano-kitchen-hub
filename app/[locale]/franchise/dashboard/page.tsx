@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { TrendingUp, TrendingDown, MapPin, ChevronDown, ChevronUp, PlusCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, MapPin, ChevronDown, ChevronUp, PlusCircle, ArrowRight } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
 
@@ -22,6 +22,11 @@ type DashData = {
   royaltiesDue:     number
   networkAvg:       number
   brands:           BrandPerf[]
+  // B6 — authoritative held-back (real), euros. royaltiesDue is the live estimate.
+  royaltyEnabled?:  boolean
+  royaltiesAccrued?: number
+  royaltiesSettled?: number
+  royaltiesPending?: number
 }
 
 export default function FranchiseDashboard() {
@@ -114,11 +119,17 @@ export default function FranchiseDashboard() {
           )}
         </Card>
 
-        {/* Royalties dues */}
+        {/* Royalties — live ESTIMATE (projection of the window), distinct from the real
+            held-back shown in the "real royalties" block below. */}
         <Card elevation="sm" padding="md">
-          <p className="text-xs text-grubano-ink-muted mb-1">{t('kpiRoyalties')}</p>
+          <div className="flex items-center gap-1.5 mb-1">
+            <p className="text-xs text-grubano-ink-muted">{t('kpiRoyaltiesEstimate')}</p>
+            <Badge tone="neutral" size="sm">{t('estimateBadge')}</Badge>
+          </div>
           <p className="text-xl font-bold text-grubano-danger">{fmt(data?.royaltiesDue ?? 0)}€</p>
-          <p className="text-xs text-grubano-ink-muted mt-1">{t('kpiRoyaltiesHint')}</p>
+          <p className="text-xs text-grubano-ink-muted mt-1">
+            {data?.royaltyEnabled ? t('kpiRoyaltiesHint') : t('royaltyInactiveHint')}
+          </p>
         </Card>
 
         {/* Mois précédent */}
@@ -142,6 +153,38 @@ export default function FranchiseDashboard() {
           </p>
         </Card>
       </div>
+
+      {/* Royalties réelles — AUTHORITATIVE held-back read from FranchiseRoyalty/Payout
+          (B6). Distinct from the live estimate above; links to the Finances page. */}
+      <Card elevation="sm" padding="md" className="mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <p className="text-sm font-bold">{t('realRoyaltiesTitle')}</p>
+            <p className="text-[11px] text-grubano-ink-muted">{t('realRoyaltiesHint')}</p>
+          </div>
+          <Link
+            href="/franchise/dashboard/finances"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-grubano-primary hover:underline shrink-0"
+          >
+            {t('financesLink')} <ArrowRight size={12} className="rtl:rotate-180" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { label: t('realAccrued'), value: data?.royaltiesAccrued ?? 0, cls: '' },
+            { label: t('realSettled'), value: data?.royaltiesSettled ?? 0, cls: 'text-grubano-success' },
+            { label: t('realPending'), value: data?.royaltiesPending ?? 0, cls: 'text-grubano-primary' },
+          ] as const).map(({ label, value, cls }) => (
+            <div key={label} className="rounded-grubano-md bg-grubano-bg px-2 py-1.5 text-center">
+              <p className={`text-sm font-bold ${cls}`}>{fmt(value)}€</p>
+              <p className="text-[10px] text-grubano-ink-muted">{label}</p>
+            </div>
+          ))}
+        </div>
+        {!data?.royaltyEnabled && (
+          <p className="text-[11px] text-grubano-ink-muted mt-2">{t('realInactiveNote')}</p>
+        )}
+      </Card>
 
       {/* Points de vente */}
       <div className="flex items-center justify-between mb-3">
