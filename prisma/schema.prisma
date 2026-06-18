@@ -1097,6 +1097,39 @@ model Payout {
   @@index([restaurantId])
 }
 
+// ── P4-Franchise-A — Franchise royalty accrued by HELD-BACK at the source ────────
+// When a FRANCHISED restaurant (Order.pointOfSaleId → PointOfSale.franchiseId) is
+// paid on a revenue channel, an EXTRA `rate` (6%) of the food subtotal is retained
+// in the charge's application_fee ON TOP of the Grubano commission — composed at the
+// orders/pay call site (lib/commission + lib/ledger UNCHANGED) — and accrued HERE as
+// a 'pending' obligation owed to the franchisor. 100% pass-through: this is NOT
+// Grubano revenue. Tracked SEPARATELY from LedgerEntry (the ledger records the
+// composed application_fee so the golden equation gross = fee + net still holds;
+// THIS table records who is owed what). NO settlement yet (= step B). Gated by
+// FRANCHISE_ROYALTY_ENABLED (default OFF → fee = commission ALONE, NO row, charge
+// byte-identical to today). Base = order.subtotal × rate — the SAME definition as
+// franchise my-dashboard's royaltiesDue, kept consistent on purpose. No @relation
+// (mirrors Payout) to keep the schema surface minimal. orderId @unique makes the
+// accrual idempotent and STABLE across PI recreation (unlike paymentIntentId, which
+// changes when orders/pay cancels + recreates a stale intent → would double-accrue).
+model FranchiseRoyalty {
+  id                   String   @id @default(cuid())
+  orderId              String   @unique // idempotency key — one royalty per order
+  paymentIntentId      String?           // pi_… at accrual time (recoverable from Stripe)
+  franchisorOperatorId String            // = PointOfSale.franchiseId (the franchisor Operator)
+  restaurantId         String            // the franchised resto that collected the sale
+  pointOfSaleId        String            // the franchise POS the order was attached to
+  channel              String            // pickup | delivery (revenue channel)
+  baseRevenueCents     Int               // = order.subtotal in cents (consistent w/ my-dashboard)
+  royaltyCents         Int               // = round(baseRevenueCents * rate) — the held-back amount
+  rate                 Float             // royalty rate snapshot at accrual (0.06)
+  status               String   @default("pending") // pending | settled (settlement = step B)
+  createdAt            DateTime @default(now())
+
+  @@index([franchisorOperatorId, status])
+  @@index([restaurantId])
+}
+
 // ── Commission invoices — rail financier A4 ───────────────────────────────────
 // One invoice per establishment per month, totals COMPUTED FROM LedgerEntry
 // (∑ applicationFeeAmount of the period — never recomputed from rates). A0-bis:

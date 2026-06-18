@@ -8,6 +8,7 @@ import {
 } from '@/lib/stripe'
 import { computeApplicationFee, resolveCommissionRate, type CommissionChannel } from '@/lib/commission'
 import { commissionBaseCents, commissionBaseMode } from '@/lib/promotions'
+import { computeFranchiseRoyalty, recordFranchiseRoyalty } from '@/lib/franchise-royalty'
 
 // ── POST /api/orders/[id]/pay ─────────────────────────────────────────────────
 // Chantier checkout C1 (décision C0: pickup AND delivery are paid IMMEDIATELY at
@@ -55,6 +56,9 @@ export async function POST(
         id: true, consumerId: true, restaurantId: true, status: true,
         subtotal: true, deliveryFee: true, total: true, fulfillmentType: true,
         stripePaymentIntentId: true, paymentStatus: true,
+        // P4-Franchise-A: needed to resolve the franchisor (PointOfSale.franchiseId)
+        // for the held-back royalty. Inert (null) when the order is not franchised.
+        pointOfSaleId: true,
       },
     })
     if (!order) {
@@ -128,6 +132,21 @@ export async function POST(
     const baseCents = commissionBaseCents(subtotalCents, promoDiscountCents, commissionBaseMode())
     const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
     const grossFeeCents = routed ? computeApplicationFee(restaurant!, channel, baseCents) : 0
+    // ── Franchise royalty (P4-Franchise-A) — HELD-BACK at the source ──────────────
+    // ADDITIVE + flag-gated. computeFranchiseRoyalty returns 0 (and does NOT touch
+    // the DB) when FRANCHISE_ROYALTY_ENABLED is OFF (default) OR the order is not
+    // attached to a franchise point of sale → feeCents, the PaymentIntent, its
+    // idempotency key and the ledger line stay BYTE-IDENTICAL to today and NO royalty
+    // row is created. When ON for a franchised order, an EXTRA `rate` (6%) of the food
+    // subtotal is retained in the application_fee ON TOP of the Grubano commission —
+    // composed HERE, at the call site (lib/commission is UNCHANGED) — and accrued
+    // (below, after the PI is created) as a 'pending' obligation owed to the franchisor
+    // (100% pass-through, NOT Grubano revenue). Base = order.subtotal, the SAME
+    // definition as the franchise my-dashboard. Only routed (destination) charges can
+    // hold money back, so this is gated on `routed` like the rest of the fee.
+    const royalty = routed
+      ? await computeFranchiseRoyalty({ pointOfSaleId: order.pointOfSaleId, subtotalCents })
+      : { royaltyCents: 0, franchisorOperatorId: null, pointOfSaleId: null, rate: 0 }
     // D1/D5: the loyalty credit reduces Grubano's NET application fee (floored 0).
     // V1.5: the small-order fee is ADDED to the application_fee — kept 100 % by
     // GRUBANO. The resto receives amount − fee = subtotal+delivery − promo −
@@ -136,14 +155,60 @@ export async function POST(
     // grossFee − credit ≥ 0. THE RESTO TOUCHES PLEIN; GRUBANO ABSORBS THE CREDIT
     // AND KEEPS THE FEE. On the platform fallback (not routed) the whole charge —
     // fee included — already stays on Grubano's account, so no split is needed.
-    const feeCents = routed
-      ? Math.max(0, grossFeeCents - loyaltyCreditCents) + smallFeeCents
+    // P4-Franchise-A: the franchisor's HELD-BACK is composed onto the application_fee
+    // at the source. Stripe REJECTS application_fee_amount > amount, and the royalty is
+    // computed on the FULL list subtotal while amountCents is the DISCOUNTED total — so
+    // on a heavily-discounted franchised order the raw royalty could push the fee past
+    // the charge and break the payment. CLAMP it to the room left under amountCents: the
+    // charge can NEVER fail, and we accrue EXACTLY what was held (royaltyChargedCents),
+    // so the obligation row matches Stripe to the cent. The resto's net = gross − feeCents
+    // drops by exactly the charged royalty; the ledger records this composed fee (golden
+    // equation holds); the franchisor's share is tracked separately (FranchiseRoyalty).
+    // When the flag is OFF (or not franchised), royaltyChargedCents = 0 and feeCents
+    // reduces to the exact pre-feature expression → byte-identical.
+    const baseFeeCents = routed ? Math.max(0, grossFeeCents - loyaltyCreditCents) + smallFeeCents : 0
+    const royaltyChargedCents = routed
+      ? Math.min(royalty.royaltyCents, Math.max(0, amountCents - baseFeeCents))
       : 0
+    const feeCents = baseFeeCents + royaltyChargedCents
     const rate     = routed ? resolveCommissionRate(restaurant!, channel) : 0
     const connect: ConnectRouting | undefined =
       routed ? { destination: restaurant!.stripeAccountId!, applicationFeeCents: feeCents } : undefined
 
     const publishableKey = getPublishableKey()
+
+    // P4-Franchise-A: idempotent, BEST-EFFORT accrual of the franchise royalty for THIS
+    // order, pointing the obligation row at the LIVE PaymentIntent. Safe to call on EVERY
+    // path — fresh create AND reuse/early-return — because recordFranchiseRoyalty
+    // reconciles a 'pending' row (or creates one) keyed on orderId. That dual role matters:
+    //   • it HEALS a first accrual that failed transiently — the reuse path retries it
+    //     (otherwise the early return would strand the held-back with no obligation row);
+    //   • it RE-POINTS the row (paymentIntentId + the live held-back amount) when a stale
+    //     PI was cancelled + recreated with a different fee, instead of leaving the row on
+    //     the cancelled intent with a stale royalty.
+    // It NEVER throws into the payment: a failure is logged for reconciliation only, and
+    // it is a no-op when no royalty applies (flag OFF / not franchised → byte-identical).
+    const accrueFranchiseRoyalty = async (piId: string) => {
+      if (!(royaltyChargedCents > 0 && royalty.franchisorOperatorId && order.pointOfSaleId)) return
+      try {
+        await recordFranchiseRoyalty({
+          orderId:              order.id,
+          paymentIntentId:      piId,
+          franchisorOperatorId: royalty.franchisorOperatorId,
+          restaurantId:         order.restaurantId,
+          pointOfSaleId:        order.pointOfSaleId,
+          channel,
+          baseRevenueCents:     subtotalCents,
+          royaltyCents:         royaltyChargedCents,
+          rate:                 royalty.rate,
+        })
+      } catch (err) {
+        console.error(
+          `[order pay] franchise royalty accrual failed for order ${order.id} (payment unaffected): ` +
+          (err instanceof Error ? err.message : String(err)),
+        )
+      }
+    }
 
     // Idempotent reuse — an order's amount is FIXED at creation (not a live
     // document like the table bill), so reuse needs only the routing check:
@@ -167,11 +232,23 @@ export async function POST(
             : !existingDest
           const feeMatches = (existing.application_fee_amount ?? 0) === feeCents
           if (routingMatches && feeMatches && existing.amount === amountCents) {
+            // Reused PI carries the same TOTAL fee → reconcile/heal the accrual against
+            // THIS live intent before returning (covers a failed first accrual). Note:
+            // feeMatches compares the total only; in the rare doubly-clamped regime the
+            // royalty split could differ by cents from what the PI stamped — the PI
+            // metadata (franchise_royalty_cents) stays the authoritative source for
+            // step-B settlement, which reconciles against it.
+            await accrueFranchiseRoyalty(existing.id)
             return NextResponse.json({
               clientSecret: existing.client_secret, publishableKey, amount: amountCents, currency,
             })
           }
           if (existing.status === 'processing') {
+            // Deliberately NO accrual here: this branch is only reached when the fee did
+            // NOT match (the matching case returned above), so the in-flight PI may hold a
+            // different held-back than the freshly-computed one — re-pointing the row to it
+            // could record a stale royalty. The accrual heals on the fee-consistent reuse
+            // path or at (re)creation; the PI metadata remains the recoverable source.
             return NextResponse.json({
               clientSecret: existing.client_secret, publishableKey, amount: existing.amount, currency,
             })
@@ -198,6 +275,17 @@ export async function POST(
         orderId:         order.id,
         grubano_channel: channel,
         commission_rate: String(rate),
+        // P4-Franchise-A: stamp the ACTUALLY-HELD-BACK amount (post-clamp) on the
+        // (immutable) PI when it applies, so the franchisor obligation is recoverable
+        // from Stripe even if the DB row write below fails. Spreads NOTHING when no
+        // royalty → byte-identical metadata.
+        ...(royaltyChargedCents > 0 && royalty.franchisorOperatorId
+          ? {
+              franchise_royalty_cents: String(royaltyChargedCents),
+              franchisor_operator_id:  royalty.franchisorOperatorId,
+              franchise_royalty_rate:  String(royalty.rate),
+            }
+          : {}),
       },
       idempotencyKey: `orderpay-${order.id}-${amountCents}-${feeCents}-${order.stripePaymentIntentId ?? 'first'}`,
     })
@@ -206,6 +294,10 @@ export async function POST(
       where: { id: order.id },
       data:  { stripePaymentIntentId: pi.id, paymentStatus: 'pending' },
     })
+
+    // P4-Franchise-A: accrue/reconcile the franchise royalty against the freshly-created
+    // PI (no-op when no royalty applies → byte-identical when OFF). See the helper above.
+    await accrueFranchiseRoyalty(pi.id)
 
     return NextResponse.json(
       { clientSecret: pi.client_secret, publishableKey, amount: amountCents, currency },
