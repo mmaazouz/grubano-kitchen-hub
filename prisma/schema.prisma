@@ -884,6 +884,16 @@ model Restaurant {
   // push trivial; the application default is handled later (UI step / brique 4B).
   // Nothing reads this field yet, so runtime behaviour is unchanged.
   openingHours Json?
+  // ── Franchise link (B2, additive) — Restaurant ↔ PointOfSale 1:1 ─────────────
+  // ADDITIVE + REVERSIBLE: a FRANCHISED restaurant maps to exactly ONE PointOfSale
+  // (the franchisor's tracked location). Nullable → existing rows stay valid, NO
+  // backfill; @unique → a POS is referenced by AT MOST ONE restaurant (and a
+  // restaurant holds AT MOST ONE pointOfSaleId), i.e. a strict 1:1. WRITTEN only by
+  // the franchisor POS CRUD (/api/franchise/pos, owner-scoped). INERT until the
+  // order-tagging brick (B5) reads it — nothing reads it yet, so runtime behaviour
+  // (orders, payment, my-dashboard, royalties) is BYTE-IDENTICAL.
+  pointOfSaleId String?      @unique
+  pointOfSale   PointOfSale? @relation("RestaurantPointOfSale", fields: [pointOfSaleId], references: [id])
   createdAt    DateTime @default(now())
   orders       Order[]
   // Inverse side of Brand.restaurant (Option B, additive step 1) — the brands
@@ -1312,6 +1322,9 @@ model PointOfSale {
   brand_ref   Brand?   @relation(fields: [brandId], references: [id])
   isActive    Boolean  @default(true)
   orders      Order[]
+  // Inverse side of Restaurant.pointOfSale (B2) — the franchised restaurant this POS
+  // maps to (1:1). Zero extra column on PointOfSale.
+  restaurant  Restaurant? @relation("RestaurantPointOfSale")
   createdAt   DateTime @default(now())
 
   @@index([franchiseId])
