@@ -1236,6 +1236,55 @@ model Refund {
   @@index([status])
 }
 
+// ── P4.5-B — Chargeback / dispute lifecycle + loss reversal (Agent 51) ───────────
+// ADDITIVE + STANDALONE (no @relation, mirrors Payout/Refund/FranchiseRoyalty →
+// existing models stay byte-identical; dropping the table leaves the schema intact).
+// ONE row per Stripe dispute, written by lib/dispute (gated by CHARGEBACKS_ENABLED,
+// default OFF → table stays empty, charge byte-identical).
+//
+// ⚠️ DISPUTE LIABILITY REALITY (confirmed Stripe docs + code, Agent 50): GRUBANO uses
+// DESTINATION charges → WITH OR WITHOUT on_behalf_of, STRIPE DEBITS GRUBANO'S PLATFORM
+// BALANCE for the disputed amount + the dispute fee Φ; the resto keeps its net, the
+// franchisor keeps its royalty. On a LOST dispute we UNWIND the sale (policy B-i,
+// Mohammed): reverse_transfer the resto's NET (proportional to the disputed amount) +
+// clawback the franchise royalty (reverse the settlement transfer if settled, else
+// reduce the pending obligation via FranchiseRoyalty.refundedCents) — and crucially
+// NO refund_application_fee (the fee was already swept into Stripe's principal debit;
+// refunding it would OVER-credit the resto). Grubano absorbs Φ. Target arithmetic
+// (full dispute): Grubano = −Φ, resto = 0, franchisor = 0, sum = 0.
+//
+// IDEMPOTENCE: stripeDisputeId @unique (one row, upsert on every event → order-
+// independent, closed-before-created safe) + splitReversed (the loss reversal runs
+// EXACTLY once) + deterministic Stripe keys (dispute-reverse:<id>, dispute-claw:<id>
+// → Stripe dedupes even on a concurrent double-fire). All amounts integer CENTS.
+model Dispute {
+  id                   String   @id @default(cuid())
+  stripeDisputeId      String   @unique // dp_…
+  stripeChargeId       String?           // ch_…
+  paymentIntentId      String?           // pi_…
+  orderId              String?
+  restaurantId         String?
+  amountCents          Int      @default(0) // the DISPUTED amount (dispute.amount)
+  feeCents             Int      @default(0) // the dispute fee Φ borne by Grubano (audit)
+  currency             String   @default("eur")
+  reason               String?            // Stripe dispute.reason
+  status               String   @default("open")  // open | won | lost
+  outcome              String?            // raw Stripe dispute.status snapshot
+  fundsWithdrawn       Boolean  @default(false)   // Stripe provisionally pulled funds
+  // ── Loss reversal (set ONCE, when the dispute is closed LOST) ────────────────
+  splitReversed        Boolean  @default(false)   // the unwind ran exactly once
+  reverseTransferCents Int      @default(0)        // resto NET pulled back (reverse_transfer)
+  royaltyClawbackCents Int      @default(0)        // royalty reversed FROM the franchisor (settled case)
+  royaltyRefundedCents Int      @default(0)        // royalty slice removed from the franchise obligation
+  stripeReversalId     String?            // trr_… of the resto-net reversal (audit)
+  createdAt            DateTime @default(now())
+  resolvedAt           DateTime?
+
+  @@index([orderId])
+  @@index([restaurantId])
+  @@index([status])
+}
+
 // ── Commission invoices — rail financier A4 ───────────────────────────────────
 // One invoice per establishment per month, totals COMPUTED FROM LedgerEntry
 // (∑ applicationFeeAmount of the period — never recomputed from rates). A0-bis:

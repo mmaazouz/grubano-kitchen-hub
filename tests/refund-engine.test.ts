@@ -18,6 +18,7 @@ const { db } = vi.hoisted(() => ({
   db: {
     order:            { findUnique: vi.fn() },
     refund:           { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), aggregate: vi.fn() },
+    dispute:          { aggregate: vi.fn() }, // cross-rail royalty-refunded (P4.5-B)
     franchiseRoyalty: { findUnique: vi.fn(), update: vi.fn() },
     payout:           { findUnique: vi.fn() },
   },
@@ -56,6 +57,7 @@ beforeEach(() => {
     Promise.resolve({ ...refundRow(), ...data, id: 'rf1' }))
   db.refund.update.mockResolvedValue({})
   db.refund.aggregate.mockResolvedValue({ _sum: { royaltyRefundCents: 0 } })
+  db.dispute.aggregate.mockResolvedValue({ _sum: { royaltyRefundedCents: 0 } })
   db.franchiseRoyalty.update.mockResolvedValue({})
   db.payout.findUnique.mockResolvedValue(null)
   stripeMock.refunds.list.mockResolvedValue({ data: [] })
@@ -112,6 +114,21 @@ describe('(b)+(c) prorata + clawback — FRANCHISED', () => {
     expect(res.royaltyClawbackCents).toBe(0)                 // pending → still in Grubano's balance
     expect(stripeMock.transfers.createReversal).not.toHaveBeenCalled()
     // Settlement-awareness: cumulative refunded written, capped at royaltyCents.
+    expect(db.franchiseRoyalty.update).toHaveBeenCalledWith({ where: { orderId: 'o1' }, data: { refundedCents: 300 } })
+  })
+
+  it('(cross-rail) a refund AFTER a lost dispute does NOT erase the dispute clawback', async () => {
+    // The exact bug the adversarial review caught: a partial dispute already lost 150 of
+    // the royalty (Dispute.royaltyRefundedCents, splitReversed) and this refund's own
+    // slice is 150 → refundedCents must be 300 (both rails), NOT 150 (refund-only).
+    stripeMock.paymentIntents.retrieve.mockResolvedValue(makePI({ application_fee_amount: 900 }))
+    db.franchiseRoyalty.findUnique.mockResolvedValue({ ...royaltyPending, refundedCents: 150 })
+    db.refund.aggregate.mockResolvedValue({ _sum: { royaltyRefundCents: 150 } })   // this refund's slice
+    db.dispute.aggregate.mockResolvedValue({ _sum: { royaltyRefundedCents: 150 } }) // the prior lost dispute
+
+    const res = await executeRefund({ orderId: 'o1', amountCents: 2500 })
+    expect(res.ok).toBe(true)
+    // cross-rail: 150 (refund) + 150 (dispute) = 300, capped at royaltyCents — dispute NOT erased.
     expect(db.franchiseRoyalty.update).toHaveBeenCalledWith({ where: { orderId: 'o1' }, data: { refundedCents: 300 } })
   })
 

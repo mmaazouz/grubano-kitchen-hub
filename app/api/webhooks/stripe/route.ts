@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getStripe, mapAccountStatus, retrieveChargeFacts, type DepositStatus } from '@/lib/stripe'
 import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
+import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
 // Stripe pushes PaymentIntent lifecycle events here so payment state is synced
@@ -98,6 +99,28 @@ export async function POST(req: Request) {
   //        payload lacks the charge context.
   if (event.type === 'charge.refunded') {
     return handleChargeRefunded(event.data.object as Stripe.Charge)
+  }
+
+  // 3-dispute) CHARGEBACK / DISPUTE branch (rail P4.5-B, Agent 51) — charge.dispute.*
+  //        carries a Dispute (not a PI). GATED by CHARGEBACKS_ENABLED: OFF → the event
+  //        is ACKNOWLEDGED without any processing — byte-identical IN BEHAVIOUR to today,
+  //        where a dispute event already falls through to the EVENT_TO_STATUS lookup and
+  //        returns {received:true, ignored}. This branch is ADDITIVE: it matches ONLY
+  //        charge.dispute.* (which no existing handler touches), so EVERY other event
+  //        takes the exact same path as before. ON → record the dispute lifecycle and,
+  //        on a LOST dispute, UNWIND the sale (reverse the resto's net + clawback the
+  //        franchise royalty, NO refund_application_fee — see lib/dispute).
+  if (event.type.startsWith('charge.dispute.')) {
+    if (!isChargebacksEnabled()) {
+      return NextResponse.json({ received: true, ignored: event.type, gated: true })
+    }
+    try {
+      const result = await handleDisputeEvent(event)
+      return NextResponse.json({ received: true, ...result })
+    } catch (err) {
+      console.error('[stripe webhook] dispute handler error:', err instanceof Error ? err.message : err)
+      return NextResponse.json({ error: 'Handler error' }, { status: 500 })
+    }
   }
 
   const pi = event.data.object as Stripe.PaymentIntent

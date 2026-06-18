@@ -39,6 +39,7 @@ import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { recordRefundLedgerEntry } from '@/lib/ledger'
+import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 
 /** Kill-switch — default OFF. Only the exact string 'true' enables the rail
  *  (mirrors isFranchiseRoyaltyEnabled / isCreatorPayoutEnabled). */
@@ -314,15 +315,17 @@ async function finalizeRefund(
     data:  { status: 'succeeded', stripeRefundId: stripeRefund.id, royaltyClawbackCents, settledAt: new Date() },
   })
 
-  // (d) Refund-aware settlement accrual: the royalty's cumulative refunded = the sum
-  //     of THIS order's succeeded royalty slices, capped at royaltyCents. Idempotent
-  //     and self-healing (recomputed from succeeded rows on every finalize/resume).
+  // (d) Refund-aware settlement accrual: the royalty's cumulative refunded across BOTH
+  //     rails (refunds + lost disputes), capped at royaltyCents, monotone. This refund's
+  //     Refund row is already 'succeeded' (step c) → counted by the aggregate. CROSS-RAIL
+  //     (P4.5-B): includes lost-dispute slices so a refund can NEVER erase a chargeback's
+  //     clawback. Byte-identical for refund-only orders (no disputes → the old value).
   if (royalty) {
-    const agg = await prisma.refund.aggregate({
-      where: { orderId: order.id, status: 'succeeded' },
-      _sum:  { royaltyRefundCents: true },
+    const cum = await recomputeRoyaltyRefundedCents({
+      orderId:               order.id,
+      royaltyCents:          royalty.royaltyCents,
+      existingRefundedCents: royalty.refundedCents,
     })
-    const cum = Math.min(agg._sum.royaltyRefundCents ?? 0, royalty.royaltyCents)
     await prisma.franchiseRoyalty.update({ where: { orderId: order.id }, data: { refundedCents: cum } })
   }
 
