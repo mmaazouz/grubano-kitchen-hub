@@ -18,6 +18,8 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 import {
   FRANCHISE_ROYALTY_RATE,
+  MAX_FRANCHISE_ROYALTY_RATE,
+  resolveFranchiseRate,
   isFranchiseRoyaltyEnabled,
   computeFranchiseRoyalty,
   recordFranchiseRoyalty,
@@ -38,6 +40,28 @@ afterEach(() => { OFF() })
 describe('rate constant — must match franchise my-dashboard', () => {
   it('is exactly 0.06', () => {
     expect(FRANCHISE_ROYALTY_RATE).toBe(0.06)
+  })
+})
+
+describe('resolveFranchiseRate (B4) — per-brand rate, default 6%, clamped', () => {
+  it('null / undefined / no-brand / NaN → 6% default (byte-identical)', () => {
+    expect(resolveFranchiseRate(null)).toBe(0.06)
+    expect(resolveFranchiseRate(undefined)).toBe(0.06)
+    expect(resolveFranchiseRate({})).toBe(0.06)
+    expect(resolveFranchiseRate({ royaltyPct: null })).toBe(0.06)
+    expect(resolveFranchiseRate({ royaltyPct: NaN })).toBe(0.06)
+  })
+  it('a fraction is used as-is (unit: fraction, NOT percent — no ×100)', () => {
+    expect(resolveFranchiseRate({ royaltyPct: 0.08 })).toBe(0.08)
+    expect(resolveFranchiseRate({ royaltyPct: 0.05 })).toBe(0.05)
+  })
+  it('explicit 0 is honoured (a 0% brand), negatives floor to 0', () => {
+    expect(resolveFranchiseRate({ royaltyPct: 0 })).toBe(0)
+    expect(resolveFranchiseRate({ royaltyPct: -0.1 })).toBe(0)
+  })
+  it('clamped to the MAX ceiling', () => {
+    expect(resolveFranchiseRate({ royaltyPct: 0.9 })).toBe(MAX_FRANCHISE_ROYALTY_RATE)
+    expect(MAX_FRANCHISE_ROYALTY_RATE).toBe(0.5)
   })
 })
 
@@ -68,15 +92,41 @@ describe('computeFranchiseRoyalty — CENTRAL INVARIANT: OFF is byte-identical',
 })
 
 describe('computeFranchiseRoyalty — ON', () => {
-  it('(franchised) holds back round(subtotal × 6%) and names the franchisor', async () => {
+  it('(franchised, brand has NO royaltyPct) holds back round(subtotal × 6%) — DEFAULT rate, byte-identical', async () => {
     ON()
+    // Default mock returns { franchiseId } with no brand_ref → resolveFranchiseRate → 6%.
     const q = await computeFranchiseRoyalty({ pointOfSaleId: 'pos-1', subtotalCents: 5000 })
     expect(q).toEqual({
       royaltyCents: 300, franchisorOperatorId: 'franchisor-op-1', pointOfSaleId: 'pos-1', rate: 0.06,
     })
+    // B4: the POS select now also pulls the brand's royaltyPct (the rate SOURCE).
     expect(db.pointOfSale.findUnique).toHaveBeenCalledWith({
-      where: { id: 'pos-1' }, select: { franchiseId: true },
+      where: { id: 'pos-1' }, select: { franchiseId: true, brand_ref: { select: { royaltyPct: true } } },
     })
+  })
+
+  it('(B4) per-brand rate — brand.royaltyPct drives the held-back', async () => {
+    ON()
+    // 8% brand → round(5000 × 0.08) = 400.
+    db.pointOfSale.findUnique.mockResolvedValue({ franchiseId: 'franchisor-op-1', brand_ref: { royaltyPct: 0.08 } })
+    const q = await computeFranchiseRoyalty({ pointOfSaleId: 'pos-1', subtotalCents: 5000 })
+    expect(q.rate).toBe(0.08)
+    expect(q.royaltyCents).toBe(400)
+  })
+
+  it('(B4) brand royaltyPct null → 6% default (byte-identical)', async () => {
+    ON()
+    db.pointOfSale.findUnique.mockResolvedValue({ franchiseId: 'franchisor-op-1', brand_ref: { royaltyPct: null } })
+    const q = await computeFranchiseRoyalty({ pointOfSaleId: 'pos-1', subtotalCents: 5000 })
+    expect(q.rate).toBe(0.06)
+    expect(q.royaltyCents).toBe(300)
+  })
+
+  it('(B4) brand rate is CLAMPED to the 50% ceiling (defensive)', async () => {
+    ON()
+    db.pointOfSale.findUnique.mockResolvedValue({ franchiseId: 'franchisor-op-1', brand_ref: { royaltyPct: 0.9 } })
+    const q = await computeFranchiseRoyalty({ pointOfSaleId: 'pos-1', subtotalCents: 5000 })
+    expect(q.rate).toBe(0.5)
   })
 
   it('(not franchised: order has no pointOfSaleId) → ZERO, no DB read', async () => {

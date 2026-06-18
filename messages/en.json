@@ -1741,7 +1741,33 @@
     "brandKind": "Virtual brand",
     "pageTitleCreate": "New brand",
     "pageDescCreate": "Create a brand from scratch, or copy an existing brand into this establishment.",
-    "backToHub": "Back to my establishments"
+    "backToHub": "Back to my establishments",
+    "franchise": {
+      "editLink": "Franchise terms",
+      "title": "Franchise terms",
+      "subtitle": "Set the terms on which your brand is offered for franchising.",
+      "back": "Back",
+      "loadError": "Could not load the brand.",
+      "openLabel": "Open to franchising",
+      "openHint": "Makes your brand visible to franchise candidates on the discovery page.",
+      "royaltyLabel": "Royalty rate (%)",
+      "royaltyHint": "Share of revenue paid to the franchisor. Leave empty for the default rate (6%).",
+      "royaltyError": "The rate must be between 0 and 50%.",
+      "setupFeeLabel": "Setup fee (€)",
+      "setupFeeHint": "One-off fee paid by the franchisee at opening (optional).",
+      "zonesLabel": "Allowed zones / cities",
+      "zonesHint": "One city per line (or comma-separated).",
+      "zonesPlaceholder": "Paris\nLyon\nMarseille",
+      "statusLabel": "Franchise status",
+      "statusNone": "None",
+      "statusOpen": "Open",
+      "statusFull": "Full",
+      "save": "Save",
+      "saving": "Saving…",
+      "savedTitle": "Terms saved",
+      "savedBody": "Your brand’s franchise terms have been updated.",
+      "errorGeneric": "Something went wrong. Please try again."
+    }
   },
   "business": {
     "auth": {

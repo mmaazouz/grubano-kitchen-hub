@@ -1741,7 +1741,33 @@
     "brandKind": "Marca virtual",
     "pageTitleCreate": "Nueva marca",
     "pageDescCreate": "Crea una marca desde cero o copia una marca existente a este establecimiento.",
-    "backToHub": "Volver a mis establecimientos"
+    "backToHub": "Volver a mis establecimientos",
+    "franchise": {
+      "editLink": "Condiciones de franquicia",
+      "title": "Condiciones de franquicia",
+      "subtitle": "Define las condiciones con las que tu marca se ofrece en franquicia.",
+      "back": "Volver",
+      "loadError": "No se pudo cargar la marca.",
+      "openLabel": "Abierta a franquicia",
+      "openHint": "Hace tu marca visible para candidatos a franquicia en la página de descubrimiento.",
+      "royaltyLabel": "Tasa de royalties (%)",
+      "royaltyHint": "Parte de los ingresos pagada al franquiciador. Déjalo vacío para la tasa por defecto (6 %).",
+      "royaltyError": "La tasa debe estar entre 0 y 50 %.",
+      "setupFeeLabel": "Coste de instalación (€)",
+      "setupFeeHint": "Tarifa única que paga el franquiciado en la apertura (opcional).",
+      "zonesLabel": "Zonas / ciudades permitidas",
+      "zonesHint": "Una ciudad por línea (o separadas por comas).",
+      "zonesPlaceholder": "Madrid\nBarcelona\nValencia",
+      "statusLabel": "Estado de la franquicia",
+      "statusNone": "Ninguno",
+      "statusOpen": "Abierta",
+      "statusFull": "Completa",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "savedTitle": "Condiciones guardadas",
+      "savedBody": "Las condiciones de franquicia de tu marca se han actualizado.",
+      "errorGeneric": "Ocurrió un error. Inténtalo de nuevo."
+    }
   },
   "business": {
     "auth": {

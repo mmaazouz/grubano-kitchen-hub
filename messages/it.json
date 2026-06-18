@@ -1741,7 +1741,33 @@
     "brandKind": "Marchio virtuale",
     "pageTitleCreate": "Nuovo marchio",
     "pageDescCreate": "Crea un marchio da zero o copia un marchio esistente in questa struttura.",
-    "backToHub": "Torna alle mie strutture"
+    "backToHub": "Torna alle mie strutture",
+    "franchise": {
+      "editLink": "Condizioni di franchising",
+      "title": "Condizioni di franchising",
+      "subtitle": "Definisci le condizioni con cui il tuo marchio è offerto in franchising.",
+      "back": "Indietro",
+      "loadError": "Impossibile caricare il marchio.",
+      "openLabel": "Aperta al franchising",
+      "openHint": "Rende il tuo marchio visibile ai candidati franchisee nella pagina di scoperta.",
+      "royaltyLabel": "Tasso di royalty (%)",
+      "royaltyHint": "Quota del fatturato versata al franchisor. Lascia vuoto per il tasso predefinito (6%).",
+      "royaltyError": "Il tasso deve essere compreso tra 0 e 50%.",
+      "setupFeeLabel": "Costo di avvio (€)",
+      "setupFeeHint": "Costo una tantum pagato dal franchisee all’apertura (facoltativo).",
+      "zonesLabel": "Zone / città consentite",
+      "zonesHint": "Una città per riga (o separate da virgole).",
+      "zonesPlaceholder": "Roma\nMilano\nNapoli",
+      "statusLabel": "Stato del franchising",
+      "statusNone": "Nessuno",
+      "statusOpen": "Aperta",
+      "statusFull": "Completa",
+      "save": "Salva",
+      "saving": "Salvataggio…",
+      "savedTitle": "Condizioni salvate",
+      "savedBody": "Le condizioni di franchising del tuo marchio sono state aggiornate.",
+      "errorGeneric": "Si è verificato un errore. Riprova."
+    }
   },
   "business": {
     "auth": {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
+import { MAX_FRANCHISE_ROYALTY_RATE } from '@/lib/franchise-royalty'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +29,11 @@ async function authorize(brandId: string) {
   }
   const brand = await prisma.brand.findUnique({
     where:  { id: brandId },
-    select: { id: true, operatorId: true, name: true, emoji: true, cuisineType: true, tagline: true, status: true },
+    select: {
+      id: true, operatorId: true, name: true, emoji: true, cuisineType: true, tagline: true, status: true,
+      // B4 — franchise conditions (owner-editable below).
+      openToFranchise: true, royaltyPct: true, setupFee: true, franchiseZones: true, franchiseStatus: true,
+    },
   })
   if (!brand) {
     return { error: NextResponse.json({ error: 'Marque introuvable' }, { status: 404 }) }
@@ -54,6 +59,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       cuisineType: brand.cuisineType,
       tagline:     brand.tagline,
       status:      brand.status,
+      // B4 — franchise conditions (fraction royaltyPct; null = 6% default applies).
+      openToFranchise: brand.openToFranchise,
+      royaltyPct:      brand.royaltyPct,
+      setupFee:        brand.setupFee,
+      franchiseZones:  Array.isArray(brand.franchiseZones) ? brand.franchiseZones : [],
+      franchiseStatus: brand.franchiseStatus,
     },
   })
 }
@@ -65,6 +76,14 @@ const patchSchema = z
     emoji:       z.string().min(1).max(8).optional(),
     cuisineType: z.string().max(60).optional().nullable(),
     tagline:     z.string().max(140).optional().nullable(),
+    // ── B4 — franchise conditions (owner-editable) ───────────────────────────
+    // royaltyPct is a FRACTION (0.06 = 6%), bounded [0, MAX]. setupFee in €.
+    // franchiseZones = array of city/zone strings. franchiseStatus is an enum.
+    openToFranchise: z.boolean().optional(),
+    royaltyPct:      z.number().min(0).max(MAX_FRANCHISE_ROYALTY_RATE).nullable().optional(),
+    setupFee:        z.number().min(0).max(1_000_000).nullable().optional(),
+    franchiseZones:  z.array(z.string().trim().min(1).max(80)).max(50).optional(),
+    franchiseStatus: z.enum(['none', 'open', 'full']).optional(),
   })
   // `operatorId`, `status`, etc. are intentionally absent — they can never be
   // changed through this route. zod strips any extra body key by default.
@@ -88,7 +107,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const brand = await prisma.brand.update({
     where: { id: params.id }, // ownership already proven by authorize()
     data:  parsed.data,
-    select: { id: true, name: true, emoji: true, cuisineType: true, tagline: true, status: true },
+    select: {
+      id: true, name: true, emoji: true, cuisineType: true, tagline: true, status: true,
+      openToFranchise: true, royaltyPct: true, setupFee: true, franchiseZones: true, franchiseStatus: true,
+    },
   })
   return NextResponse.json({ ok: true, brand })
 }

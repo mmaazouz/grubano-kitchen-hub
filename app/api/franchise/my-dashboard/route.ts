@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { resolveFranchiseRate } from '@/lib/franchise-royalty'
 
-// Franchise royalty rate applied to a point of sale's revenue.
-// TODO (étape 2): rendre configurable + par-marque quand le modèle marque
-// sera réconcilié avec PointOfSale (table de config ou champ sur la marque).
-const FRANCHISE_ROYALTY_RATE = 0.06
+// B4: the royalty rate is now PER-BRAND, resolved through the SAME helper the accrual
+// uses (resolveFranchiseRate(brand) = brand.royaltyPct ?? 6%) → the dashboard estimate
+// can never diverge from the real held-back. Each POS uses the rate of the brand it
+// operates; a POS with no brand / no royaltyPct falls back to 6% (= pre-B4 behaviour).
 
 // Network average revenue benchmark (per franchise, 30-day window). Kept as the
 // pre-existing constant the front already displays.
@@ -41,6 +42,7 @@ export async function GET() {
           where: { status: 'delivered', createdAt: { gte: windowStart } },
           select: { subtotal: true },
         },
+        brand_ref: { select: { royaltyPct: true } }, // B4: per-brand royalty rate
       },
       orderBy: { createdAt: 'asc' },
     })
@@ -68,14 +70,18 @@ export async function GET() {
         emoji:     POS_EMOJI,
         revenue,
         orders:    p.orders.length,
-        royalties: revenue * FRANCHISE_ROYALTY_RATE,
+        // B4: each POS at the rate of its brand (default 6%). When every POS resolves
+        // to 6% this equals the pre-B4 `revenue * 0.06`.
+        royalties: revenue * resolveFranchiseRate(p.brand_ref),
         topDishes: [] as string[], // a POS has no menu items of its own (yet)
       }
     })
 
     const revenueThisMonth = brandsPerf.reduce((s, b) => s + b.revenue, 0)
     const revenueLastMonth = prevOrders.reduce((s, o) => s + o.subtotal, 0)
-    const royaltiesDue     = revenueThisMonth * FRANCHISE_ROYALTY_RATE
+    // Sum of per-POS (per-brand-rate) royalties → consistent with the accrual. With a
+    // uniform 6% this equals the old revenueThisMonth * 0.06.
+    const royaltiesDue     = brandsPerf.reduce((s, b) => s + b.royalties, 0)
 
     return NextResponse.json({
       revenueThisMonth,

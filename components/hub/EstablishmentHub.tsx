@@ -531,6 +531,14 @@ export default function EstablishmentHub({
               placeholder={tb('fieldTaglinePlaceholder')}
             />
 
+            {/* B4 — franchise conditions of this brand (separate owner-scoped page). */}
+            <Link
+              href={`/brands/${editForm.id}/franchise`}
+              className="inline-flex items-center gap-1.5 text-grubano-sm font-semibold text-grubano-primary transition-colors hover:underline"
+            >
+              {tb('franchise.editLink')} →
+            </Link>
+
             <div className="flex gap-2 pt-1">
               <Button type="button" variant="secondary" size="md" onClick={() => setEditForm(null)}>
                 {tb('cancel')}

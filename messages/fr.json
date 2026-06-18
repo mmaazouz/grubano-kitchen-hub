@@ -1741,7 +1741,33 @@
     "brandKind": "Marque virtuelle",
     "pageTitleCreate": "Nouvelle marque",
     "pageDescCreate": "Créez une marque à partir de zéro ou copiez une marque existante vers cet établissement.",
-    "backToHub": "Retour à mes établissements"
+    "backToHub": "Retour à mes établissements",
+    "franchise": {
+      "editLink": "Conditions de franchise",
+      "title": "Conditions de franchise",
+      "subtitle": "Définissez les conditions auxquelles votre marque est proposée en franchise.",
+      "back": "Retour",
+      "loadError": "Impossible de charger la marque.",
+      "openLabel": "Ouverte à la franchise",
+      "openHint": "Rend votre marque visible aux candidats franchisés sur la page découverte.",
+      "royaltyLabel": "Taux de royalties (%)",
+      "royaltyHint": "Part du chiffre d’affaires reversée à l’enseigne. Laissez vide pour le taux par défaut (6 %).",
+      "royaltyError": "Le taux doit être compris entre 0 et 50 %.",
+      "setupFeeLabel": "Frais d’installation (€)",
+      "setupFeeHint": "Frais unique payé par le franchisé à l’ouverture (facultatif).",
+      "zonesLabel": "Zones / villes autorisées",
+      "zonesHint": "Une ville par ligne (ou séparées par des virgules).",
+      "zonesPlaceholder": "Paris\nLyon\nMarseille",
+      "statusLabel": "Statut de la franchise",
+      "statusNone": "Aucun",
+      "statusOpen": "Ouverte",
+      "statusFull": "Complète",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "savedTitle": "Conditions enregistrées",
+      "savedBody": "Les conditions de franchise de votre marque ont été mises à jour.",
+      "errorGeneric": "Une erreur est survenue. Veuillez réessayer."
+    }
   },
   "business": {
     "auth": {

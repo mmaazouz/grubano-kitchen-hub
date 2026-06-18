@@ -20,7 +20,27 @@ import { prisma } from '@/lib/prisma'
 // my-dashboard's `royaltiesDue` (revenue = Order.subtotal × FRANCHISE_ROYALTY_RATE),
 // kept deliberately consistent so the two views cannot diverge in definition.
 
-export const FRANCHISE_ROYALTY_RATE = 0.06 // MUST match my-dashboard FRANCHISE_ROYALTY_RATE
+// Default rate when a brand has no royaltyPct set. THE single source of 0.06 — the
+// accrual (here) AND my-dashboard both resolve their rate through resolveFranchiseRate,
+// so the dashboard estimate can never diverge from the real held-back. (B4, Agent 46.)
+export const FRANCHISE_ROYALTY_RATE = 0.06
+// Defensive ceiling — a corrupted/aberrant stored royaltyPct can never produce a rate
+// above 50%. The edit API validates a tighter business range; this is the last guard.
+export const MAX_FRANCHISE_ROYALTY_RATE = 0.5
+
+/**
+ * Effective royalty rate (a FRACTION, e.g. 0.06 = 6%) for a franchise sale, resolved
+ * from the BRAND operated at the point of sale. `royaltyPct` is stored as a fraction
+ * (seed/discovery convention). null/undefined/NaN → the 6% default (byte-identical to
+ * the pre-B4 hardcoded constant). An explicit 0 is honoured (a 0% brand). Clamped to
+ * [0, MAX] so a bad value can never blow up the held-back. The SAME helper is used by
+ * the accrual and my-dashboard → the two are guaranteed consistent.
+ */
+export function resolveFranchiseRate(brand?: { royaltyPct?: number | null } | null): number {
+  const v = brand?.royaltyPct
+  if (v == null || !Number.isFinite(v)) return FRANCHISE_ROYALTY_RATE
+  return Math.min(Math.max(v, 0), MAX_FRANCHISE_ROYALTY_RATE)
+}
 
 /** Kill-switch — default OFF. Only the exact string 'true' enables the rail. */
 export function isFranchiseRoyaltyEnabled(): boolean {
@@ -56,12 +76,14 @@ export async function computeFranchiseRoyalty(input: {
 
   const pos = await prisma.pointOfSale.findUnique({
     where:  { id: pointOfSaleId },
-    select: { franchiseId: true },
+    select: { franchiseId: true, brand_ref: { select: { royaltyPct: true } } },
   })
   // No POS row, or a POS with no franchisor → not a franchise sale → no royalty.
   if (!pos?.franchiseId) return ZERO
 
-  const rate = FRANCHISE_ROYALTY_RATE
+  // B4: per-brand rate (the brand operated at this POS), default 6% when unset →
+  // byte-identical to the pre-B4 hardcoded rate. Only the rate's SOURCE changed.
+  const rate = resolveFranchiseRate(pos.brand_ref)
   const royaltyCents = Math.round(subtotalCents * rate)
   if (royaltyCents <= 0) return ZERO
   return { royaltyCents, franchisorOperatorId: pos.franchiseId, pointOfSaleId, rate }
