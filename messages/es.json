@@ -464,7 +464,8 @@
       "back": "Volver al portal",
       "brandTitle": "Franquicia",
       "brandSubtitle": "Grubano Network",
-      "settings": "Perfil y ajustes"
+      "settings": "Perfil y ajustes",
+      "applications": "Candidaturas"
     },
     "settings": {
       "navLink": "Perfil y ajustes",
@@ -542,7 +543,43 @@
       "loadError": "No se pudieron cargar las finanzas.",
       "errorNetwork": "Error de red.",
       "backToDashboard": "Panel"
-    }
+    },
+    "join": {
+      "cta": "Unirme con mi restaurante",
+      "modalTitle": "Unirse a {name}",
+      "pickRestaurant": "Su restaurante",
+      "messageLabel": "Mensaje al franquiciador (opcional)",
+      "messagePlaceholder": "Presente su restaurante en pocas palabras…",
+      "submit": "Enviar candidatura",
+      "submitting": "Enviando…",
+      "cancel": "Cancelar",
+      "close": "Cerrar",
+      "successTitle": "Candidatura enviada",
+      "successBody": "El franquiciador revisará su solicitud.",
+      "alreadyPending": "Ya tiene una candidatura pendiente para esta marca.",
+      "alreadyApproved": "Su restaurante ya está vinculado a esta marca.",
+      "noEligible": "Ningún restaurante elegible (ya vinculado, o no tiene restaurante).",
+      "errorGeneric": "Ocurrió un error. Inténtelo de nuevo.",
+      "myApplicationsTitle": "Mis candidaturas",
+      "statusPending": "Pendiente",
+      "statusApproved": "Aprobada",
+      "statusRejected": "Rechazada"
+    },
+    "applications": {
+      "title": "Candidaturas",
+      "subtitle": "Restauradores que desean unirse a sus marcas.",
+      "empty": "No hay candidaturas pendientes.",
+      "joinBrand": "Quiere unirse a {brand}",
+      "approve": "Aprobar",
+      "reject": "Rechazar",
+      "statusPending": "Pendiente",
+      "statusApproved": "Aprobada",
+      "statusRejected": "Rechazada",
+      "loadError": "No se pudieron cargar las candidaturas.",
+      "errorNetwork": "Error de red.",
+      "backToDashboard": "Panel"
+    },
+    "becomeFranchisor": "Crear mi propia marca"
   },
   "creators": {
     "title": "Creadores",

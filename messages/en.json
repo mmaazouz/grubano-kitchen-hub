@@ -464,7 +464,8 @@
       "back": "Back to portal",
       "brandTitle": "Franchise",
       "brandSubtitle": "Grubano Network",
-      "settings": "Profile & settings"
+      "settings": "Profile & settings",
+      "applications": "Applications"
     },
     "settings": {
       "navLink": "Profile & settings",
@@ -542,7 +543,43 @@
       "loadError": "Could not load finances.",
       "errorNetwork": "Network error.",
       "backToDashboard": "Dashboard"
-    }
+    },
+    "join": {
+      "cta": "Join with my restaurant",
+      "modalTitle": "Join {name}",
+      "pickRestaurant": "Your restaurant",
+      "messageLabel": "Message to the franchisor (optional)",
+      "messagePlaceholder": "Introduce your restaurant in a few words…",
+      "submit": "Send application",
+      "submitting": "Sending…",
+      "cancel": "Cancel",
+      "close": "Close",
+      "successTitle": "Application sent",
+      "successBody": "The franchisor will review your request.",
+      "alreadyPending": "You already have a pending application for this brand.",
+      "alreadyApproved": "Your restaurant is already attached to this brand.",
+      "noEligible": "No eligible restaurant (already attached, or you have no restaurant).",
+      "errorGeneric": "Something went wrong. Please try again.",
+      "myApplicationsTitle": "My applications",
+      "statusPending": "Pending",
+      "statusApproved": "Approved",
+      "statusRejected": "Rejected"
+    },
+    "applications": {
+      "title": "Applications",
+      "subtitle": "Restaurateurs who want to join your brands.",
+      "empty": "No pending applications.",
+      "joinBrand": "Wants to join {brand}",
+      "approve": "Approve",
+      "reject": "Reject",
+      "statusPending": "Pending",
+      "statusApproved": "Approved",
+      "statusRejected": "Rejected",
+      "loadError": "Could not load applications.",
+      "errorNetwork": "Network error.",
+      "backToDashboard": "Dashboard"
+    },
+    "becomeFranchisor": "Create my own brand"
   },
   "creators": {
     "title": "Creators",

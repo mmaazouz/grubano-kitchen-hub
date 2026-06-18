@@ -464,7 +464,8 @@
       "back": "العودة إلى البوابة",
       "brandTitle": "الامتياز",
       "brandSubtitle": "Grubano Network",
-      "settings": "الملف والإعدادات"
+      "settings": "الملف والإعدادات",
+      "applications": "الطلبات"
     },
     "settings": {
       "navLink": "الملف والإعدادات",
@@ -542,7 +543,43 @@
       "loadError": "تعذّر تحميل البيانات المالية.",
       "errorNetwork": "خطأ في الشبكة.",
       "backToDashboard": "لوحة التحكم"
-    }
+    },
+    "join": {
+      "cta": "الانضمام بمطعمي",
+      "modalTitle": "الانضمام إلى {name}",
+      "pickRestaurant": "مطعمك",
+      "messageLabel": "رسالة إلى مانح الامتياز (اختياري)",
+      "messagePlaceholder": "قدّم مطعمك بإيجاز…",
+      "submit": "إرسال الطلب",
+      "submitting": "جارٍ الإرسال…",
+      "cancel": "إلغاء",
+      "close": "إغلاق",
+      "successTitle": "تم إرسال الطلب",
+      "successBody": "سيراجع مانح الامتياز طلبك.",
+      "alreadyPending": "لديك بالفعل طلب قيد الانتظار لهذه العلامة.",
+      "alreadyApproved": "مطعمك مرتبط بالفعل بهذه العلامة.",
+      "noEligible": "لا يوجد مطعم مؤهل (مرتبط بالفعل، أو ليس لديك مطعم).",
+      "errorGeneric": "حدث خطأ. يرجى المحاولة مرة أخرى.",
+      "myApplicationsTitle": "طلباتي",
+      "statusPending": "قيد الانتظار",
+      "statusApproved": "مقبولة",
+      "statusRejected": "مرفوضة"
+    },
+    "applications": {
+      "title": "الطلبات",
+      "subtitle": "أصحاب المطاعم الراغبون في الانضمام إلى علاماتك.",
+      "empty": "لا توجد طلبات قيد الانتظار.",
+      "joinBrand": "يرغب في الانضمام إلى {brand}",
+      "approve": "قبول",
+      "reject": "رفض",
+      "statusPending": "قيد الانتظار",
+      "statusApproved": "مقبولة",
+      "statusRejected": "مرفوضة",
+      "loadError": "تعذّر تحميل الطلبات.",
+      "errorNetwork": "خطأ في الشبكة.",
+      "backToDashboard": "لوحة التحكم"
+    },
+    "becomeFranchisor": "إنشاء علامتي الخاصة"
   },
   "creators": {
     "title": "المبدعون",

@@ -598,6 +598,37 @@ model CreatorApplication {
   createdAt    DateTime @default(now())
 }
 
+// ── FranchiseeApplication (B7, Agent 48) — a restaurateur applies to JOIN a brand ──
+// ADDITIVE + REVERSIBLE: a brand-new table; no existing row/column is touched, no
+// backfill, and dropping it leaves the rest of the schema intact.
+// DISTINCT from FranchiseApplication above (which is a candidacy to BECOME a franchisor,
+// admin-approved, grants the 'franchise' role). HERE an independent restaurateur asks to
+// attach ONE of THEIR OWN restaurants (restaurantId, owned by applicantOperatorId) to an
+// OPEN Brand (brandId). The BRAND OWNER (the franchisor) approves → a PointOfSale is
+// created (franchiseId = the franchisor, brandId) and the restaurant is linked
+// (Restaurant.pointOfSaleId, strict 1:1). The cross-operator link (applicant's resto ↔
+// franchisor's POS) is created ONLY by this double accord: the applicant POSTED + the
+// franchisor APPROVED. Scalar refs only (no @relation — mirrors Payout / FranchiseRoyalty)
+// to keep the surface minimal. @@unique([restaurantId, brandId]) = ONE application row per
+// (restaurant, brand): re-applying after a rejection flips the SAME row back to pending,
+// so there can never be two live candidacies for the same pair.
+model FranchiseeApplication {
+  id                  String    @id @default(cuid())
+  restaurantId        String              // the applicant's restaurant to enrol
+  brandId             String              // the open brand being joined
+  applicantOperatorId String              // = Restaurant.operatorId (the candidate)
+  status              String    @default("pending") // pending | approved | rejected
+  message             String?   @db.Text  // optional note to the franchisor
+  pointOfSaleId       String?             // the POS created on approval (the link result)
+  decidedAt           DateTime?           // when approved / rejected
+  createdAt           DateTime  @default(now())
+
+  @@unique([restaurantId, brandId])       // one candidacy per (restaurant, brand)
+  @@index([brandId, status])
+  @@index([applicantOperatorId])
+  @@index([restaurantId])
+}
+
 // ── SupplierProfile (B2B supply marketplace — Slice 0 foundation, Agent 14) ───
 // ADDITIVE + REVERSIBLE: a brand-new model; no existing row is touched and
 // dropping the table leaves the rest of the schema intact. DISTINCT from the

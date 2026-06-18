@@ -464,7 +464,8 @@
       "back": "Torna al portale",
       "brandTitle": "Franchising",
       "brandSubtitle": "Grubano Network",
-      "settings": "Profilo e impostazioni"
+      "settings": "Profilo e impostazioni",
+      "applications": "Candidature"
     },
     "settings": {
       "navLink": "Profilo e impostazioni",
@@ -542,7 +543,43 @@
       "loadError": "Impossibile caricare le finanze.",
       "errorNetwork": "Errore di rete.",
       "backToDashboard": "Dashboard"
-    }
+    },
+    "join": {
+      "cta": "Unisciti col mio ristorante",
+      "modalTitle": "Unisciti a {name}",
+      "pickRestaurant": "Il suo ristorante",
+      "messageLabel": "Messaggio al franchisor (facoltativo)",
+      "messagePlaceholder": "Presenti il suo ristorante in poche parole…",
+      "submit": "Invia candidatura",
+      "submitting": "Invio…",
+      "cancel": "Annulla",
+      "close": "Chiudi",
+      "successTitle": "Candidatura inviata",
+      "successBody": "Il franchisor esaminerà la sua richiesta.",
+      "alreadyPending": "Ha già una candidatura in attesa per questo marchio.",
+      "alreadyApproved": "Il suo ristorante è già collegato a questo marchio.",
+      "noEligible": "Nessun ristorante idoneo (già collegato, o non ha ristoranti).",
+      "errorGeneric": "Si è verificato un errore. Riprovi.",
+      "myApplicationsTitle": "Le mie candidature",
+      "statusPending": "In attesa",
+      "statusApproved": "Approvata",
+      "statusRejected": "Rifiutata"
+    },
+    "applications": {
+      "title": "Candidature",
+      "subtitle": "Ristoratori che desiderano unirsi ai suoi marchi.",
+      "empty": "Nessuna candidatura in attesa.",
+      "joinBrand": "Desidera unirsi a {brand}",
+      "approve": "Approva",
+      "reject": "Rifiuta",
+      "statusPending": "In attesa",
+      "statusApproved": "Approvata",
+      "statusRejected": "Rifiutata",
+      "loadError": "Impossibile caricare le candidature.",
+      "errorNetwork": "Errore di rete.",
+      "backToDashboard": "Dashboard"
+    },
+    "becomeFranchisor": "Crea il mio marchio"
   },
   "creators": {
     "title": "Creatori",

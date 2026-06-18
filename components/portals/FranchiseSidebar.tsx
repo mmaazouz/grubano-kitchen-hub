@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import {
   LayoutDashboard, MapPin, CreditCard,
-  ArrowLeft, Building2, X, Settings,
+  ArrowLeft, Building2, X, Settings, Inbox,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
 import { useSidebar } from '@/components/SidebarContext'
@@ -19,9 +19,11 @@ type NavItem = {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/franchise/dashboard',                  labelKey: 'overview',   icon: LayoutDashboard, exact: true },
-  { href: '/franchise/dashboard/etablissements',   labelKey: 'locations',  icon: MapPin },
-  { href: '/franchise/dashboard/finances',         labelKey: 'finances',   icon: CreditCard },
+  { href: '/franchise/dashboard',                  labelKey: 'overview',     icon: LayoutDashboard, exact: true },
+  { href: '/franchise/dashboard/etablissements',   labelKey: 'locations',    icon: MapPin },
+  // B7 — join requests from independent restaurateurs to this franchisor's brands.
+  { href: '/franchise/dashboard/candidatures',     labelKey: 'applications', icon: Inbox },
+  { href: '/franchise/dashboard/finances',         labelKey: 'finances',     icon: CreditCard },
   // P5c — editable account profile & settings (name / phone / city).
   { href: '/franchise/dashboard/parametres',        labelKey: 'settings',   icon: Settings },
 ]

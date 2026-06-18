@@ -464,7 +464,8 @@
       "back": "Retour au portail",
       "brandTitle": "Franchise",
       "brandSubtitle": "Grubano Network",
-      "settings": "Profil & paramètres"
+      "settings": "Profil & paramètres",
+      "applications": "Candidatures"
     },
     "settings": {
       "navLink": "Profil & paramètres",
@@ -542,7 +543,43 @@
       "loadError": "Impossible de charger les finances.",
       "errorNetwork": "Erreur réseau.",
       "backToDashboard": "Tableau de bord"
-    }
+    },
+    "join": {
+      "cta": "Rejoindre avec mon restaurant",
+      "modalTitle": "Rejoindre {name}",
+      "pickRestaurant": "Votre restaurant",
+      "messageLabel": "Message au franchiseur (facultatif)",
+      "messagePlaceholder": "Présentez votre restaurant en quelques mots…",
+      "submit": "Envoyer la candidature",
+      "submitting": "Envoi…",
+      "cancel": "Annuler",
+      "close": "Fermer",
+      "successTitle": "Candidature envoyée",
+      "successBody": "Le franchiseur examinera votre demande.",
+      "alreadyPending": "Vous avez déjà une candidature en attente pour cette enseigne.",
+      "alreadyApproved": "Votre restaurant est déjà rattaché à cette enseigne.",
+      "noEligible": "Aucun restaurant éligible (déjà rattaché, ou vous n’avez pas de restaurant).",
+      "errorGeneric": "Une erreur est survenue. Veuillez réessayer.",
+      "myApplicationsTitle": "Mes candidatures",
+      "statusPending": "En attente",
+      "statusApproved": "Approuvée",
+      "statusRejected": "Refusée"
+    },
+    "applications": {
+      "title": "Candidatures",
+      "subtitle": "Les restaurateurs qui souhaitent rejoindre vos enseignes.",
+      "empty": "Aucune candidature en attente.",
+      "joinBrand": "Souhaite rejoindre {brand}",
+      "approve": "Approuver",
+      "reject": "Refuser",
+      "statusPending": "En attente",
+      "statusApproved": "Approuvée",
+      "statusRejected": "Refusée",
+      "loadError": "Impossible de charger les candidatures.",
+      "errorNetwork": "Erreur réseau.",
+      "backToDashboard": "Tableau de bord"
+    },
+    "becomeFranchisor": "Créer ma propre enseigne"
   },
   "creators": {
     "title": "Créateurs",

@@ -1,9 +1,11 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { CheckCircle2, Lock, ChevronRight, LayoutDashboard } from 'lucide-react'
+import { Lock, ChevronRight, LayoutDashboard } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Badge, EmptyState } from '@/components/design-system'
 import { prisma } from '@/lib/prisma'
 import { RevenueCalculator } from './RevenueCalculator'
+import BrandJoinCTA from './BrandJoinCTA'
+import MyFranchiseeApplications from './MyFranchiseeApplications'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -133,11 +135,13 @@ export default async function FranchisePage({
           ))}
         </div>
 
+        {/* Hero CTA = BECOME A FRANCHISOR (create your own brand). Distinct from the
+            per-brand "join with my restaurant" CTA below (the B7 franchisee flow). */}
         <Link
           href="/franchise/apply"
           className="flex items-center justify-center gap-2 w-full rounded-grubano-lg bg-white text-grubano-primary py-3 text-sm font-bold hover:bg-white/90 transition"
         >
-          {t('applyNow')} <ChevronRight size={16} />
+          {t('becomeFranchisor')} <ChevronRight size={16} />
         </Link>
       </div>
 
@@ -153,6 +157,10 @@ export default async function FranchisePage({
           </Button>
         </Link>
       </div>
+
+      {/* ── My franchisee candidacies (restaurateur, B7) — renders only if signed in
+              with at least one candidacy; invisible to anonymous visitors. ────────── */}
+      <MyFranchiseeApplications />
 
       {/* ── Brands grid ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-3">
@@ -211,11 +219,9 @@ export default async function FranchisePage({
             </div>
 
             {brand.available ? (
-              <Link href={`/franchise/apply?brandId=${brand.id}`} className="block w-full">
-                <Button variant="primary" size="sm" fullWidth leftIcon={<CheckCircle2 size={13} />}>
-                  {t('brandApply', { name: brand.name })}
-                </Button>
-              </Link>
+              // B7 — join THIS brand with one of MY restaurants (franchisee flow), NOT the
+              // become-a-franchisor form. Client island: owner-scoped, auth-aware.
+              <BrandJoinCTA brandId={brand.id} brandName={brand.name} />
             ) : (
               <Button variant="ghost" size="sm" fullWidth disabled leftIcon={<Lock size={13} />}>
                 {t('brandWaitlist')}
