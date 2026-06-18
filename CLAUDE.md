@@ -44,7 +44,7 @@ node scripts/notion-sync.js write-file <your-agent-id> /tmp/report.md
 node scripts/notion-sync.js write inbox "[AGENT X] [INFO/DECISION/BLOCKER] short message. Action required: yes/no"
 # OR (recommended for any non-trivial report):
 node scripts/notion-sync.js write-inbox-file /tmp/inbox-report.md
-# Inbox page ID: 383fd2c9-8146-8155-a904-f1b7d23a54ef  (📥 Inbox rapports v19)
+# Inbox page ID: 383fd2c9-8146-8127-b725-eba2f0fa375c  (📥 Inbox rapports v21)
 
 # 3. ALWAYS check the LAST line of stdout — the script does a read-back:
 #       ✅ Inbox mise à jour, entrée confirmée présente            → success
@@ -76,7 +76,7 @@ agent1: 36dfd2c9-8146-8143-9d64-f7efde1029e3
 agent2: 36dfd2c9-8146-8106-8049-cc92a50a9112
 agent3: 36dfd2c9-8146-81b4-91ec-ecdc8013bad0
 agent4: 36dfd2c9-8146-8132-9fd0-f53fc6e12226
-inbox:  383fd2c9-8146-816d-8439-cfb4c8d00d53   (v20 — archives READ-ONLY : v19 383fd2c9-8146-8155-a904-f1b7d23a54ef, v18 383fd2c9-8146-816b-a199-f2234c066a76, v17 382fd2c9-8146-81cd-a328-ca0627138786, v16 382fd2c9-8146-81ed-baaf-f6e81c119aa4, v15 382fd2c9-8146-8108-911a-fe4febc65e8d, v14 381fd2c9-8146-81bb-947e-f7d0f8ab0cb5, v13 381fd2c9-8146-81f7-bff1-fedc1a2acb4e, v12 380fd2c9-8146-811b-a76b-f436a57b170c, v11 380fd2c9-8146-81aa-8e51-c732972fe4b5, v10 37ffd2c9-8146-8173-ab59-dbd3d7011fcf, v9 37ffd2c9-8146-81d9-b80b-dc038617c533, v8 37ffd2c9-8146-81da-867a-e5b1882c8e94, v7 37ffd2c9-8146-815f-adae-de59909bc765, v6 37efd2c9-8146-814a-aaed-ef6112fa41be, v5 37dfd2c9-8146-817f-8920-c5ad7fe80eae, v4 37dfd2c9-8146-81ab-8cdf-cb8c26038bfc, v3 37cfd2c9-8146-8137-9889-ec75eea3b2e2, v2 37cfd2c9-8146-81d8-860e-c19723e09b15, v1 36efd2c9-8146-8195-a65a-d146cfed0642)
+inbox:  383fd2c9-8146-8127-b725-eba2f0fa375c   (v21 — archives READ-ONLY : v20 383fd2c9-8146-816d-8439-cfb4c8d00d53, v19 383fd2c9-8146-8155-a904-f1b7d23a54ef, v18 383fd2c9-8146-816b-a199-f2234c066a76, v17 382fd2c9-8146-81cd-a328-ca0627138786, v16 382fd2c9-8146-81ed-baaf-f6e81c119aa4, v15 382fd2c9-8146-8108-911a-fe4febc65e8d, v14 381fd2c9-8146-81bb-947e-f7d0f8ab0cb5, v13 381fd2c9-8146-81f7-bff1-fedc1a2acb4e, v12 380fd2c9-8146-811b-a76b-f436a57b170c, v11 380fd2c9-8146-81aa-8e51-c732972fe4b5, v10 37ffd2c9-8146-8173-ab59-dbd3d7011fcf, v9 37ffd2c9-8146-81d9-b80b-dc038617c533, v8 37ffd2c9-8146-81da-867a-e5b1882c8e94, v7 37ffd2c9-8146-815f-adae-de59909bc765, v6 37efd2c9-8146-814a-aaed-ef6112fa41be, v5 37dfd2c9-8146-817f-8920-c5ad7fe80eae, v4 37dfd2c9-8146-81ab-8cdf-cb8c26038bfc, v3 37cfd2c9-8146-8137-9889-ec75eea3b2e2, v2 37cfd2c9-8146-81d8-860e-c19723e09b15, v1 36efd2c9-8146-8195-a65a-d146cfed0642)
 ```
 
 ---
