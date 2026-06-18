@@ -1058,6 +1058,30 @@
       "verifVerified": "Verificato",
       "verifPending": "Non verificato",
       "none": "—"
+    },
+    "payments": {
+      "sectionTitle": "Pagamenti",
+      "errLoad": "Impossibile caricare le tue informazioni di pagamento.",
+      "connectTitle": "Account per i versamenti",
+      "connectSubtitle": "Configura il tuo account per ricevere i versamenti.",
+      "connectStart": "Configura i versamenti",
+      "connectContinue": "Continua la configurazione",
+      "connectGated": "I versamenti non sono ancora attivi. L’opzione sarà presto disponibile.",
+      "connectError": "Configurazione non riuscita. Riprova.",
+      "payoutNone": "Non configurato",
+      "payoutPending": "In attesa",
+      "payoutActive": "Attivo",
+      "payoutRestricted": "Azione richiesta",
+      "balanceTitle": "Il tuo saldo",
+      "earned": "Guadagnato",
+      "paidOut": "Versato",
+      "available": "Disponibile",
+      "maturationHint": "I tuoi guadagni diventano disponibili dopo un periodo di maturazione (7 giorni dopo l’ordine). I versamenti avvengono automaticamente.",
+      "historyTitle": "Storico dei versamenti",
+      "historyEmpty": "Nessun versamento per ora.",
+      "poStatusPending": "In corso",
+      "poStatusPaid": "Versato",
+      "poStatusFailed": "Non riuscito"
     }
   },
   "eat": {

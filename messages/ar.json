@@ -1058,6 +1058,30 @@
       "verifVerified": "مُتحقَّق منه",
       "verifPending": "غير مُتحقَّق منه",
       "none": "—"
+    },
+    "payments": {
+      "sectionTitle": "المدفوعات",
+      "errLoad": "تعذّر تحميل معلومات الدفع الخاصة بك.",
+      "connectTitle": "حساب الدفع",
+      "connectSubtitle": "أعدّ حسابك لتلقّي مدفوعاتك.",
+      "connectStart": "إعداد المدفوعات",
+      "connectContinue": "متابعة الإعداد",
+      "connectGated": "لم تُفتح المدفوعات بعد. سيتوفّر هذا الخيار قريبًا.",
+      "connectError": "فشل الإعداد. حاول مرة أخرى.",
+      "payoutNone": "غير مُعدّ",
+      "payoutPending": "قيد الانتظار",
+      "payoutActive": "نشط",
+      "payoutRestricted": "مطلوب إجراء",
+      "balanceTitle": "رصيدك",
+      "earned": "المكتسب",
+      "paidOut": "المدفوع",
+      "available": "المتاح",
+      "maturationHint": "تصبح أرباحك متاحة بعد فترة استحقاق (7 أيام بعد الطلب). تُنفَّذ المدفوعات تلقائيًّا.",
+      "historyTitle": "سجل المدفوعات",
+      "historyEmpty": "لا توجد مدفوعات حتى الآن.",
+      "poStatusPending": "قيد التنفيذ",
+      "poStatusPaid": "مدفوع",
+      "poStatusFailed": "فشل"
     }
   },
   "eat": {

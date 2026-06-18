@@ -1058,6 +1058,30 @@
       "verifVerified": "Verified",
       "verifPending": "Not verified",
       "none": "—"
+    },
+    "payments": {
+      "sectionTitle": "Payments",
+      "errLoad": "Could not load your payment information.",
+      "connectTitle": "Payout account",
+      "connectSubtitle": "Set up your account to receive your payouts.",
+      "connectStart": "Set up payouts",
+      "connectContinue": "Continue setup",
+      "connectGated": "Payouts are not open yet. This option will be available soon.",
+      "connectError": "Setup failed. Please try again.",
+      "payoutNone": "Not set up",
+      "payoutPending": "Pending",
+      "payoutActive": "Active",
+      "payoutRestricted": "Action required",
+      "balanceTitle": "Your balance",
+      "earned": "Earned",
+      "paidOut": "Paid out",
+      "available": "Available",
+      "maturationHint": "Your earnings become available after a maturation period (7 days after the order). Payouts are made automatically.",
+      "historyTitle": "Payout history",
+      "historyEmpty": "No payouts yet.",
+      "poStatusPending": "In progress",
+      "poStatusPaid": "Paid",
+      "poStatusFailed": "Failed"
     }
   },
   "eat": {

@@ -1058,6 +1058,30 @@
       "verifVerified": "Verificado",
       "verifPending": "No verificado",
       "none": "—"
+    },
+    "payments": {
+      "sectionTitle": "Pagos",
+      "errLoad": "No se pudo cargar tu información de pago.",
+      "connectTitle": "Cuenta de pagos",
+      "connectSubtitle": "Configura tu cuenta para recibir tus pagos.",
+      "connectStart": "Configurar pagos",
+      "connectContinue": "Continuar configuración",
+      "connectGated": "Los pagos aún no están disponibles. Esta opción estará disponible pronto.",
+      "connectError": "La configuración falló. Inténtalo de nuevo.",
+      "payoutNone": "Sin configurar",
+      "payoutPending": "Pendiente",
+      "payoutActive": "Activo",
+      "payoutRestricted": "Acción requerida",
+      "balanceTitle": "Tu saldo",
+      "earned": "Ganado",
+      "paidOut": "Pagado",
+      "available": "Disponible",
+      "maturationHint": "Tus ganancias quedan disponibles tras un período de maduración (7 días después del pedido). Los pagos se realizan automáticamente.",
+      "historyTitle": "Historial de pagos",
+      "historyEmpty": "Aún no hay pagos.",
+      "poStatusPending": "En curso",
+      "poStatusPaid": "Pagado",
+      "poStatusFailed": "Fallido"
     }
   },
   "eat": {

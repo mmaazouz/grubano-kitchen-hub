@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import {
   TrendingUp, Hourglass, CheckCircle2, Wallet, Copy, Check, QrCode,
-  Loader2, AlertCircle, ShoppingBag, ChefHat, Landmark, Share2,
+  Loader2, AlertCircle, ShoppingBag, ChefHat, Share2,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Card } from '@/components/design-system'
@@ -32,6 +32,7 @@ import { buildReferralLink } from '@/lib/referral-link'
 import { buildChefPageLink } from '@/lib/chef-link'
 import { formatMoney } from '@/lib/format-money'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
+import CreatorPaymentsSection from '@/components/creator/CreatorPaymentsSection'
 
 // ── B2a contract (mirrored locally — the route is the source of truth) ────────
 interface EarningsTotals {
@@ -532,18 +533,10 @@ export default function CreatorEarningsPage() {
       </section>
       )}
 
-      {/* ── Versements — elegant placeholder (B2b) ─────────────────────────── */}
-      <Card elevation="sm" padding="md" className="border-dashed">
-        <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-grubano-surface-muted text-grubano-ink-faint">
-            <Landmark size={17} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('payoutsTitle')}</h2>
-            <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{t('payoutsSoon')}</p>
-          </div>
-        </div>
-      </Card>
+      {/* ── Paiements — real payouts section (P4-UI). Renders itself ONLY when
+          the creator payout rail is enabled (CREATOR_CONNECT_ENABLED); otherwise
+          nothing. Replaces the former B2b placeholder. */}
+      <CreatorPaymentsSection />
     </div>
   )
 }
