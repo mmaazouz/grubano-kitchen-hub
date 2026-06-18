@@ -1123,11 +1123,22 @@ model FranchiseRoyalty {
   baseRevenueCents     Int               // = order.subtotal in cents (consistent w/ my-dashboard)
   royaltyCents         Int               // = round(baseRevenueCents * rate) — the held-back amount
   rate                 Float             // royalty rate snapshot at accrual (0.06)
-  status               String   @default("pending") // pending | settled (settlement = step B)
+  status               String   @default("pending") // pending | settling | settled
   createdAt            DateTime @default(now())
+  // ── P4-Franchise-B settlement (Agent 42, ADDITIVE) ──────────────────────────
+  // The settlement run CLAIMS pending lines atomically into a batch: 'pending' ->
+  // 'settling' + settlementId (one UPDATE), transfers the batch sum to the
+  // franchisor's Connect account, then marks them 'settled' (+ payoutId, settledAt).
+  // settlementId is the idempotency anchor (Stripe key = franchise:<op>:<settlementId>);
+  // a line is NEVER reverted out of 'settling', so an interrupted run resumes the
+  // SAME batch with the SAME key (Stripe dedupes) — never a second transfer.
+  settlementId         String?  // batch id that claimed this line (set at 'settling')
+  payoutId             String?  // the Payout row that disbursed this line (set at 'settled')
+  settledAt            DateTime?
 
   @@index([franchisorOperatorId, status])
   @@index([restaurantId])
+  @@index([settlementId])
 }
 
 // ── Commission invoices — rail financier A4 ───────────────────────────────────
