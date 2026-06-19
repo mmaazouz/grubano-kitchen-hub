@@ -2527,7 +2527,8 @@
     "rateDelivery": "Consegna",
     "rateReservation": "Prenotazione",
     "rateFreeBadge": "Offerta fondatore: 0% fino al {date}",
-    "rateFree": "Gratis"
+    "rateFree": "Gratis",
+    "invoicePdf": "PDF"
   },
   "auth": {
     "reset": {

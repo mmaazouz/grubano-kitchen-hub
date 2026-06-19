@@ -291,6 +291,12 @@ export default function FinanceRail() {
               >
                 {t('invoiceOpen')}
               </a>
+              <a
+                href={`/api/restaurants/${restaurantId}/invoices/${inv.id}/pdf`}
+                className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold"
+              >
+                {t('invoicePdf')}
+              </a>
             </div>
           ))}
         </div>

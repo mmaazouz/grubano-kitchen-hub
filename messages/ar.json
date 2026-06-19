@@ -2527,7 +2527,8 @@
     "rateDelivery": "توصيل",
     "rateReservation": "حجز",
     "rateFreeBadge": "عرض المؤسسين: 0% حتى {date}",
-    "rateFree": "مجاني"
+    "rateFree": "مجاني",
+    "invoicePdf": "PDF"
   },
   "auth": {
     "reset": {
