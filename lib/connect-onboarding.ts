@@ -21,7 +21,7 @@ import { prisma } from '@/lib/prisma'
 // the calling route resolves the entity from the SESSION only (never a client id)
 // and is idempotent (reuses the stored accountId, never a 2nd Stripe account).
 
-export type ConnectBeneficiaryType = 'creator' | 'logistics' | 'franchise'
+export type ConnectBeneficiaryType = 'creator' | 'logistics' | 'franchise' | 'affiliate'
 
 export type ConnectPayoutStatus = 'none' | ConnectAccountStatus // none | pending | active | restricted
 
@@ -32,6 +32,7 @@ const FLAG_ENV: Record<ConnectBeneficiaryType, string> = {
   creator:   'CREATOR_CONNECT_ENABLED',
   logistics: 'LOGISTICS_CONNECT_ENABLED',
   franchise: 'FRANCHISE_CONNECT_ENABLED',
+  affiliate: 'AFFILIATE_CONNECT_ENABLED', // Brique D1 — top-level affiliate payout rail (default OFF)
 }
 
 export function isConnectOnboardingEnabled(type: ConnectBeneficiaryType): boolean {
@@ -44,13 +45,14 @@ const META_KEY: Record<ConnectBeneficiaryType, string> = {
   creator:   'creatorId',
   logistics: 'logisticsProfileId',
   franchise: 'franchiseOperatorId',
+  affiliate: 'affiliateOperatorId', // distinct from franchiseOperatorId → accounts never collide
 }
 
 /** Create the beneficiary's Express account (FR, TEST), tagged with its id. Same
  *  shape as createExpressAccount / createSupplierExpressAccount (daily payouts set
  *  at creation), only the metadata marker differs. */
 async function createConnectExpressAccount(type: ConnectBeneficiaryType, id: string): Promise<Stripe.Account> {
-  return getStripe().accounts.create({
+  const params: Stripe.AccountCreateParams = {
     type:    'express',
     country: 'FR',
     capabilities: {
@@ -59,7 +61,12 @@ async function createConnectExpressAccount(type: ConnectBeneficiaryType, id: str
     },
     settings: { payouts: { schedule: { interval: 'daily' } } },
     metadata: { [META_KEY[type]]: id },
-  })
+  }
+  // Brique D1 — an affiliate is a PARTICULIER: pin business_type=individual (lighter
+  // KYC, no company). ADDITIVE: only the affiliate type carries it; creator /
+  // logistics / franchise keep the exact previous params (Stripe's default).
+  if (type === 'affiliate') params.business_type = 'individual'
+  return getStripe().accounts.create(params)
 }
 
 /** Persist a freshly-created account id on the right model + field names. */
@@ -68,6 +75,10 @@ async function persistNewAccount(type: ConnectBeneficiaryType, id: string, accou
     await prisma.creator.update({ where: { id }, data: { stripeAccountId: accountId, payoutStatus: 'pending' } })
   } else if (type === 'logistics') {
     await prisma.logisticsProfile.update({ where: { id }, data: { stripeAccountId: accountId, payoutStatus: 'pending' } })
+  } else if (type === 'affiliate') {
+    // Brique D1 — affiliate Connect lives on the Operator's affiliate* fields (distinct
+    // from franchise*). The id IS the affiliate's Operator id.
+    await prisma.operator.update({ where: { id }, data: { affiliateStripeAccountId: accountId, affiliatePayoutStatus: 'pending' } })
   } else {
     await prisma.operator.update({ where: { id }, data: { franchiseStripeAccountId: accountId, franchisePayoutStatus: 'pending' } })
   }
@@ -86,6 +97,11 @@ async function persistStatus(type: ConnectBeneficiaryType, id: string, status: C
     await prisma.logisticsProfile.update({
       where: { id },
       data:  { payoutStatus: status, ...(stampedAt ? { stripeOnboardedAt: stampedAt } : {}) },
+    })
+  } else if (type === 'affiliate') {
+    await prisma.operator.update({
+      where: { id },
+      data:  { affiliatePayoutStatus: status, ...(stampedAt ? { affiliateStripeOnboardedAt: stampedAt } : {}) },
     })
   } else {
     await prisma.operator.update({

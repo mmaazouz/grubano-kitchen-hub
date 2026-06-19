@@ -1,16 +1,26 @@
 import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
-import { computePartnerBalance } from '@/lib/partner-balance'
+import { computePartnerBalance, type PartnerBalanceRole } from '@/lib/partner-balance'
 
-// ── Creator payout (rail financier P4.3, Agent 39) — REAL Stripe Transfer (TEST) ─
+// ── Partner payout (rail financier P4.3, Agent 39 — GÉNÉRALISÉ Brique D1, Agent 63) ─
 //
-// Transfers a creator's AVAILABLE balance (computed by lib/partner-balance, P4.2)
+// Transfers a partner's AVAILABLE balance (computed by lib/partner-balance, P4.2)
 // to their Stripe Connect account, records a Payout row, in TEST mode, gated OFF.
 // THIS MOVES REAL MONEY (in TEST) → idempotence + atomicity are the whole point.
 //
+// D1 generalises the rail from creator-only to role-aware WITHOUT changing the
+// creator behaviour: payPartner(role, refId) carries the SINGLE transfer core +
+// the SINGLE triple-idempotence implementation, parameterised by a per-role
+// ADAPTER (entity lookup, balance role, Payout ref column, flag). payCreator stays
+// a thin wrapper → payPartner('creator', creatorId) returning the legacy outcome
+// shape, so every existing caller AND the existing creator tests are unchanged
+// (= the proof that 'creator' is byte-identical). 'affiliate' (gated by
+// AFFILIATE_CONNECT_ENABLED, OFF) pays the affiliate's OPERATOR via its own
+// Operator Connect fields + Payout{role:'affiliate', operatorId}.
+//
 // ANTI-DOUBLE-PAYMENT (three layers, all on a DETERMINISTIC cursor key
-// `creator:<id>:paid:<paidCents>` — the ALREADY-DISBURSED cursor, monotonic). Why
+// `<role>:<refId>:paid:<paidCents>` — the ALREADY-DISBURSED cursor, monotonic). Why
 // the PAID cursor (not earned): two concurrent runs read the SAME paidCents (until
 // one commits its 'paid'), so they derive the SAME key and SERIALISE — even if
 // they observe different earned levels (e.g. earnings matured in between). Only one
@@ -27,14 +37,21 @@ import { computePartnerBalance } from '@/lib/partner-balance'
 //      any new payout — Stripe dedupes, so we complete it without a second money
 //      movement. A failure leaves the row 'pending' (recoverable), never paid twice.
 //      Because a new cursor only opens once paidCents grows, at most ONE pending
-//      payout per creator can exist at a time.
+//      payout per partner can exist at a time.
 //
 // Amount = the server-computed available balance, NEVER a client input. Below the
-// minimum threshold → skip (no transfer). Creator must have an ACTIVE Connect
+// minimum threshold → skip (no transfer). The partner must have an ACTIVE Connect
 // account (P4.1) → else skip with a reason. Cent-exact.
 
 export function isCreatorPayoutEnabled(): boolean {
   return process.env.CREATOR_PAYOUT_ENABLED === 'true'
+}
+
+/** Affiliate payout/Connect kill-switch (Brique D1) — default OFF. Same env var the
+ *  connect-onboarding 'affiliate' beneficiary reads, so the affiliate payout rail and
+ *  its onboarding open together. The CREATOR rail is unaffected (no internal gate). */
+export function isAffiliateConnectEnabled(): boolean {
+  return process.env.AFFILIATE_CONNECT_ENABLED === 'true'
 }
 
 /** Minimum payout (cents). Default 20 € (2000), env CREATOR_PAYOUT_MIN_CENTS. */
@@ -43,26 +60,83 @@ export function minPayoutCents(): number {
   return Number.isFinite(v) && v > 0 ? v : 2000
 }
 
+// Roles the generalised rail can pay (extensible — franchise keeps its own settlement).
+export type PayoutPartnerRole = 'creator' | 'affiliate'
+
+// ── Legacy creator-shaped outcome — UNCHANGED. Existing callers + tests depend on
+// the `creatorId` field, so payCreator keeps returning EXACTLY this shape. ───────
 export type PayoutOutcome =
   | { status: 'paid';    creatorId: string; amountCents: number; stripeTransferId: string; resumed: boolean }
   | { status: 'skipped'; creatorId: string; reason: string }
   | { status: 'failed';  creatorId: string; reason: string }
 
+// ── Generalised outcome (role + refId) returned by payPartner. ──────────────────
+export type PartnerPayoutOutcome =
+  | { status: 'paid';    role: PayoutPartnerRole; refId: string; amountCents: number; stripeTransferId: string; resumed: boolean }
+  | { status: 'skipped'; role: PayoutPartnerRole; refId: string; reason: string }
+  | { status: 'failed';  role: PayoutPartnerRole; refId: string; reason: string }
+
 type PendingPayout = { id: string; amountCents: number; currency: string; idempotencyKey: string | null }
-type CreatorRef    = { id: string; stripeAccountId: string }
+type PartnerRef    = { id: string; stripeAccountId: string }
+// The beneficiary reference column for this role (exactly one set per Payout row).
+type RefData = { creatorId: string } | { operatorId: string }
+
+// ── Per-role adapter — the ONLY thing that differs between rails. The transfer
+// core + the triple idempotence (settlePending / payPartner below) are SHARED, a
+// single implementation. ────────────────────────────────────────────────────────
+interface RoleAdapter {
+  balanceRole:    PartnerBalanceRole          // role passed to computePartnerBalance
+  notFoundReason: string                      // skip reason when the entity is absent
+  /** Internal enable gate. creator → always true (its gating is external, at the
+   *  caller — byte-identical to today). affiliate → AFFILIATE_CONNECT_ENABLED. */
+  enabled(): boolean
+  /** Load the beneficiary's Connect account + status (null if the entity is absent). */
+  loadAccount(refId: string): Promise<{ stripeAccountId: string | null; payoutStatus: string | null } | null>
+  /** The Payout beneficiary column + Stripe metadata key for this role/refId. */
+  refData(refId: string): RefData
+}
+
+const ADAPTERS: Record<PayoutPartnerRole, RoleAdapter> = {
+  creator: {
+    balanceRole:    'creator',
+    notFoundReason: 'creator_not_found',
+    enabled:        () => true,
+    loadAccount:    (refId) => prisma.creator.findUnique({
+      where:  { id: refId },
+      select: { stripeAccountId: true, payoutStatus: true },
+    }),
+    refData:        (refId) => ({ creatorId: refId }),
+  },
+  affiliate: {
+    balanceRole:    'affiliate',
+    notFoundReason: 'affiliate_not_found',
+    enabled:        () => isAffiliateConnectEnabled(),
+    loadAccount:    async (refId) => {
+      const op = await prisma.operator.findUnique({
+        where:  { id: refId },
+        select: { affiliateStripeAccountId: true, affiliatePayoutStatus: true },
+      })
+      if (!op) return null
+      return { stripeAccountId: op.affiliateStripeAccountId, payoutStatus: op.affiliatePayoutStatus }
+    },
+    refData:        (refId) => ({ operatorId: refId }),
+  },
+}
 
 /** Execute the Stripe Transfer for a 'pending' Payout (idempotent on its stored
  *  key) then mark it 'paid'. Throws on Stripe/DB failure → caller leaves the row
  *  'pending' (recoverable). The Stripe idempotency key guarantees that a retry
- *  after a partial failure never creates a SECOND transfer. */
-async function settlePending(payout: PendingPayout, creator: CreatorRef, resumed: boolean): Promise<PayoutOutcome> {
+ *  after a partial failure never creates a SECOND transfer. SHARED by all roles. */
+async function settlePending(
+  payout: PendingPayout, ref: PartnerRef, role: PayoutPartnerRole, refData: RefData, resumed: boolean,
+): Promise<PartnerPayoutOutcome> {
   const idempotencyKey = payout.idempotencyKey ?? `payout_${payout.id}`
   const transfer = await getStripe().transfers.create(
     {
       amount:      payout.amountCents,
       currency:    payout.currency,
-      destination: creator.stripeAccountId,
-      metadata:    { creatorId: creator.id, payoutId: payout.id },
+      destination: ref.stripeAccountId,
+      metadata:    { ...refData, payoutId: payout.id },
     },
     { idempotencyKey },
   )
@@ -70,52 +144,59 @@ async function settlePending(payout: PendingPayout, creator: CreatorRef, resumed
     where: { id: payout.id },
     data:  { status: 'paid', paidAt: new Date(), stripeTransferId: transfer.id },
   })
-  return { status: 'paid', creatorId: creator.id, amountCents: payout.amountCents, stripeTransferId: transfer.id, resumed }
+  return { status: 'paid', role, refId: ref.id, amountCents: payout.amountCents, stripeTransferId: transfer.id, resumed }
 }
 
 /**
- * Pay ONE creator their available balance. Safe to call repeatedly / concurrently
- * / on a schedule — never pays the same balance twice.
+ * Pay ONE partner their available balance. Safe to call repeatedly / concurrently
+ * / on a schedule — never pays the same balance twice. Role-aware via ADAPTERS;
+ * the transfer core + triple idempotence are shared (single implementation).
  */
-export async function payCreator(creatorId: string): Promise<PayoutOutcome> {
-  const creator = await prisma.creator.findUnique({
-    where:  { id: creatorId },
-    select: { id: true, stripeAccountId: true, payoutStatus: true },
-  })
-  if (!creator) return { status: 'skipped', creatorId, reason: 'creator_not_found' }
-  if (!creator.stripeAccountId || creator.payoutStatus !== 'active') {
-    return { status: 'skipped', creatorId, reason: 'no_active_connect' }
+export async function payPartner(role: PayoutPartnerRole, refId: string): Promise<PartnerPayoutOutcome> {
+  const adapter = ADAPTERS[role]
+
+  // Internal kill-switch. creator: always enabled (unchanged — its gate is at the
+  // caller). affiliate: OFF by default → no entity/DB/Stripe touch when disabled.
+  if (!adapter.enabled()) {
+    return { status: 'skipped', role, refId, reason: 'rail_disabled' }
   }
-  const ref: CreatorRef = { id: creator.id, stripeAccountId: creator.stripeAccountId }
+
+  const acct = await adapter.loadAccount(refId)
+  if (!acct) return { status: 'skipped', role, refId, reason: adapter.notFoundReason }
+  if (!acct.stripeAccountId || acct.payoutStatus !== 'active') {
+    return { status: 'skipped', role, refId, reason: 'no_active_connect' }
+  }
+  const ref: PartnerRef = { id: refId, stripeAccountId: acct.stripeAccountId }
+  const refData = adapter.refData(refId)
 
   // 1. RESUME any stuck 'pending' payout first (idempotent completion).
   const pending = await prisma.payout.findFirst({
-    where:   { role: 'creator', creatorId, status: 'pending' },
+    where:   { role, ...refData, status: 'pending' },
     orderBy: { createdAt: 'asc' },
     select:  { id: true, amountCents: true, currency: true, idempotencyKey: true },
   })
   if (pending) {
     try {
-      return await settlePending(pending, ref, true)
+      return await settlePending(pending, ref, role, refData, true)
     } catch {
-      return { status: 'failed', creatorId, reason: 'transfer_failed_resume' }
+      return { status: 'failed', role, refId, reason: 'transfer_failed_resume' }
     }
   }
 
   // 2. NORMAL path — compute available, enforce threshold, take the lock, transfer.
-  const bal = await computePartnerBalance('creator', creatorId)
+  const bal = await computePartnerBalance(adapter.balanceRole, refId)
   if (bal.availableCents < minPayoutCents()) {
-    return { status: 'skipped', creatorId, reason: 'below_threshold' }
+    return { status: 'skipped', role, refId, reason: 'below_threshold' }
   }
 
   // Cursor = the already-PAID amount (monotonic): concurrent runs share it and
   // serialise via the @unique; the next run (after paidCents grows) pays the rest.
-  const idempotencyKey = `creator:${creatorId}:paid:${bal.paidCents}`
+  const idempotencyKey = `${role}:${refId}:paid:${bal.paidCents}`
   let payout: PendingPayout
   try {
     payout = await prisma.payout.create({
       data: {
-        role: 'creator', creatorId,
+        role, ...refData,
         amountCents: bal.availableCents, currency: bal.currency,
         status: 'pending', idempotencyKey,
       },
@@ -125,18 +206,34 @@ export async function payCreator(creatorId: string): Promise<PayoutOutcome> {
     // @unique(idempotencyKey) collision = a concurrent run already locked this
     // cursor → no-op (NEVER a second payout / transfer for the same balance).
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      return { status: 'skipped', creatorId, reason: 'already_in_progress' }
+      return { status: 'skipped', role, refId, reason: 'already_in_progress' }
     }
     throw err
   }
 
   try {
-    return await settlePending(payout, ref, false)
+    return await settlePending(payout, ref, role, refData, false)
   } catch {
     // Transfer or mark-paid failed → row stays 'pending' (recoverable on re-run).
     // The deterministic Stripe idempotency key guarantees no double transfer.
-    return { status: 'failed', creatorId, reason: 'transfer_failed' }
+    return { status: 'failed', role, refId, reason: 'transfer_failed' }
   }
+}
+
+/**
+ * Pay ONE creator their available balance. THIN WRAPPER over payPartner('creator')
+ * that maps back to the legacy creator-shaped outcome — so every existing caller
+ * and the existing creator tests are byte-identical (the equivalence proof).
+ */
+export async function payCreator(creatorId: string): Promise<PayoutOutcome> {
+  const out = await payPartner('creator', creatorId)
+  if (out.status === 'paid') {
+    return { status: 'paid', creatorId, amountCents: out.amountCents, stripeTransferId: out.stripeTransferId, resumed: out.resumed }
+  }
+  if (out.status === 'failed') {
+    return { status: 'failed', creatorId, reason: out.reason }
+  }
+  return { status: 'skipped', creatorId, reason: out.reason }
 }
 
 export type PayoutRunSummary = {

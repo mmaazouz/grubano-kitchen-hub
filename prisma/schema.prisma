@@ -115,6 +115,16 @@ model Operator {
   franchiseStripeAccountId   String?    // acct_… (Express, FR)
   franchisePayoutStatus      String?    // none | pending | active | restricted (null = none)
   franchiseStripeOnboardedAt DateTime?  // first time the franchise account became 'active'
+  // ── Affiliate payout Connect (Phase 6 Brique D1, Agent 63) — top-level affiliate ──
+  // The affiliate is 1:1 with this Operator (model Affiliate). Its payout Connect
+  // account lives HERE, kept DISTINCT from the franchise* account above (the same
+  // human could hold both roles). ADDITIVE + REVERSIBLE: all nullable, NO default /
+  // constraint / backfill. NO charge/payout in the schema — it tracks the connected
+  // account + onboarding state; the transfer is payPartner('affiliate') (gated by
+  // AFFILIATE_CONNECT_ENABLED). Status synced ON-DEMAND (mirror of franchise*).
+  affiliateStripeAccountId   String?    // acct_… (Express, FR, business_type=individual)
+  affiliatePayoutStatus      String?    // none | pending | active | restricted (null = none)
+  affiliateStripeOnboardedAt DateTime?  // first time the affiliate account became 'active'
 }
 
 // ── OperatorRole (Phase 1 refonte) — one row per (operator, role) ─────────────
@@ -1130,12 +1140,12 @@ model LedgerEntry {
 // Restaurant (they remain untouched). All amounts in integer CENTS.
 model Payout {
   id                 String    @id @default(cuid())
-  role               String    // creator | supplier | logistics | franchise | restaurant
+  role               String    // creator | supplier | logistics | franchise | restaurant | affiliate
   // Beneficiary reference — exactly one set, per `role` (no FK relation by design):
   creatorId          String?   // role = creator
   supplierProfileId  String?   // role = supplier
   logisticsProfileId String?   // role = logistics
-  operatorId         String?   // role = franchise (the Operator holding 'franchise')
+  operatorId         String?   // role = franchise OR affiliate (the Operator holding that role; Brique D1)
   restaurantId       String?   // role = restaurant
   amountCents        Int                          // disbursed amount (cents)
   currency           String    @default("eur")
