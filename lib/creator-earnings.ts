@@ -78,6 +78,9 @@ export async function matureCreatorEarnings(now: Date = new Date()): Promise<Mat
       where: { status: 'pending' },
       select: {
         id: true, createdAt: true,
+        // Brique B (Agent 59): the affiliate referrer (operator id) for the self-referral
+        // belt — null on a creator accrual (which uses referral.creator.email below).
+        affiliateId: true,
         referral: { select: { creator: { select: { email: true } } } },
         order: {
           select: {
@@ -141,6 +144,9 @@ export async function matureCreatorEarnings(now: Date = new Date()): Promise<Mat
     id: string
     createdAt: Date
     creatorEmail: string | null
+    // Brique B — the affiliate referrer's OPERATOR id (null for creator/dish rows).
+    // Compared directly to order.consumerId (also an operator id) → self-referral.
+    affiliateOperatorId: string | null
     order: {
       createdAt: Date; paymentStatus: string | null; total: number
       stripePaymentIntentId: string | null; consumerId: string
@@ -151,11 +157,13 @@ export async function matureCreatorEarnings(now: Date = new Date()): Promise<Mat
     ...referralOrders.map(r => ({
       id: r.id, createdAt: r.createdAt, kind: 'referralOrder' as const,
       creatorEmail: r.referral?.creator?.email?.toLowerCase() ?? null,
+      affiliateOperatorId: r.affiliateId ?? null,
       order: r.order,
     })),
     ...dishSales.map(r => ({
       id: r.id, createdAt: r.createdAt, kind: 'dishSale' as const,
       creatorEmail: r.adoption?.creatorDish?.creator?.email?.toLowerCase() ?? null,
+      affiliateOperatorId: null,
       order: r.order,
     })),
   ]
@@ -171,7 +179,12 @@ export async function matureCreatorEarnings(now: Date = new Date()): Promise<Mat
       refundedCents:      row.order?.stripePaymentIntentId
         ? refundedByPi.get(row.order.stripePaymentIntentId) ?? 0
         : 0,
-      isSelfReferral: !!row.creatorEmail && !!buyerEmail && row.creatorEmail === buyerEmail,
+      // Self-referral belt: creator (email match) OR affiliate (the referrer's operator
+      // id == the buyer's operator id). The creation-time guard already blocks both;
+      // this is the durable belt, now generalized to the affiliate rail (Brique B).
+      isSelfReferral:
+        (!!row.creatorEmail && !!buyerEmail && row.creatorEmail === buyerEmail) ||
+        (!!row.affiliateOperatorId && !!row.order && row.affiliateOperatorId === row.order.consumerId),
     })
 
     if (verdict.status === 'pending') { summary.pending++; continue }

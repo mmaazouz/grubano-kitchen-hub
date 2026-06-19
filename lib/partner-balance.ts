@@ -31,7 +31,7 @@ import { prisma } from '@/lib/prisma'
 // (revenue × rate), not an amount paid TO it; logistics has no earnings source
 // yet. Their payable balance is defined in P4.3.
 
-export type PartnerBalanceRole = 'creator' | 'supplier' | 'restaurant'
+export type PartnerBalanceRole = 'creator' | 'supplier' | 'restaurant' | 'affiliate'
 
 export interface PartnerBalance {
   role:           PartnerBalanceRole
@@ -83,14 +83,29 @@ async function restaurantEarnedCents(restaurantId: string): Promise<number> {
   return lines.reduce((sum, l) => sum + l.netToRestaurant, 0)
 }
 
+// ── Affiliate (Brique B, Agent 59) — Σ matured ReferralOrder.creatorEarning ────────
+// A top-level affiliate's earnings are the matured ReferralOrders attributed to them.
+// `refId` is the affiliate's OPERATOR id (Affiliate is 1:1 with Operator) =
+// ReferralOrder.affiliateId. creatorEarning (a euro Float) holds the earning for EITHER
+// rail — the affiliate rows are the ones tagged with affiliateId. READ-ONLY; per-row
+// rounding keeps the sum cent-exact, exactly like the creator path.
+async function affiliateEarnedCents(operatorId: string): Promise<number> {
+  const rows = await prisma.referralOrder.findMany({
+    where:  { status: { in: ['matured', 'paid'] }, affiliateId: operatorId },
+    select: { creatorEarning: true },
+  })
+  return rows.reduce((sum, r) => sum + eurosToCents(r.creatorEarning), 0)
+}
+
 async function payoutPaidCents(role: PartnerBalanceRole, refId: string): Promise<number> {
   // Build the where field-by-field (TS-safe) — exactly one ref column per role.
   const where: {
     role: string; status: string
-    creatorId?: string; supplierProfileId?: string; restaurantId?: string
+    creatorId?: string; supplierProfileId?: string; restaurantId?: string; operatorId?: string
   } = { role, status: 'paid' }
   if (role === 'creator')          where.creatorId = refId
   else if (role === 'supplier')    where.supplierProfileId = refId
+  else if (role === 'affiliate')   where.operatorId = refId   // Brique B — Payout.operatorId, role='affiliate' (Brique D writes these)
   else                             where.restaurantId = refId
 
   const payouts = await prisma.payout.findMany({ where, select: { amountCents: true } })
@@ -109,6 +124,7 @@ export async function computePartnerBalance(
   let earnedCents = 0
   if (role === 'creator')        earnedCents = await creatorEarnedCents(refId)
   else if (role === 'supplier')  earnedCents = await supplierEarnedCents(refId)
+  else if (role === 'affiliate') earnedCents = await affiliateEarnedCents(refId)
   else                           earnedCents = await restaurantEarnedCents(refId)
 
   const paidCents      = await payoutPaidCents(role, refId)

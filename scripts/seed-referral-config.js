@@ -42,8 +42,11 @@ const prisma = new PrismaClient()
 
 // Defaults — kept in sync with the @default() values in prisma/schema.prisma
 // so a programme that never updates the row still behaves exactly as designed.
+// Brique B (Agent 59): canon = 0.30 (was a stale 0.22 here, diverging from the
+// schema @default(0.30)). 30 % of Grubano's REAL fee, on the NET margin, for BOTH the
+// creator rail AND the new top-level affiliate (uniform; no live impact — nothing paid).
 const DEFAULTS = {
-  commissionPctOfGrubanoFee: 0.22,  // 22 % of Grubano's fee, not the basket
+  commissionPctOfGrubanoFee: 0.30,  // 30 % of Grubano's fee (canon), not the basket
   durationDays:              90,
   customerDiscountPct:       0.10,
   customerDiscountCapEur:    5,

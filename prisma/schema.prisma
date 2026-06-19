@@ -1588,8 +1588,14 @@ model ReferralConfig {
 // retroactively shorten an existing referral window.
 model Referral {
   id         String         @id @default(cuid())
-  creatorId  String
-  creator    Creator        @relation(fields: [creatorId], references: [id])
+  // ── Brique B (Agent 59) — creatorId RELAXED to nullable ──────────────────────
+  // A Referral now binds a customer to a creator XOR a top-level affiliate. For an
+  // AFFILIATE binding, creatorId is null and `affiliateId` carries the referrer. For
+  // a CREATOR binding (the existing rail), creatorId is set and affiliateId is null —
+  // EXACTLY one referrer per binding. Relaxing NOT NULL → nullable is additive + safe:
+  // every existing row keeps its creatorId, no backfill. (db push: MODIFY ... NULL.)
+  creatorId  String?
+  creator    Creator?       @relation(fields: [creatorId], references: [id])
   // customerId is an Operator.id with role=consumer. Kept as a plain string
   // (same convention as Order.consumerId) to avoid a second relation back
   // into Operator and keep this migration purely additive on existing models.
@@ -1600,12 +1606,11 @@ model Referral {
   active     Boolean        @default(true)
   orders     ReferralOrder[]
   createdAt  DateTime       @default(now())
-  // ── Top-level affiliate seam (Phase 6 Brique A, Agent 58) — ADDITIVE · NULLABLE · UN-WIRED ──
-  // Reserved for Brique B: when an order is attributed to a top-level AFFILIATE (not a
-  // creator), B will bind this Referral to the Affiliate via this column, REUSING this
-  // very table instead of a parallel system. Plain scalar (no @relation) — same
-  // convention as `customerId` above. NOT written by ANY code in Brique A (the creator
-  // rail uses `creatorId` only). Nullable → no backfill, every existing row stays valid.
+  // ── Top-level affiliate referrer (Brique A seam, WIRED in Brique B, Agent 59) ──
+  // The AFFILIATE this binding credits — identified by the affiliate's OPERATOR id
+  // (Affiliate is 1:1 with Operator; operator-keyed so self-referral / balance /
+  // payout (Brique D) are all lookup-free, like Payout.operatorId). null on a creator
+  // binding. Plain scalar (no @relation) — same convention as `customerId`.
   affiliateId String?
 
   @@index([creatorId])
@@ -1637,8 +1642,11 @@ model ReferralOrder {
   status         String   @default("pending") // pending | matured | cancelled | paid
   maturedAt      DateTime?
   createdAt      DateTime @default(now())
-  // Brique A seam (Agent 58) — the Affiliate credited by this row (null = creator rail).
-  // ADDITIVE · NULLABLE · UN-WIRED: no code in A writes it; Brique B will populate it.
+  // ── Affiliate referrer (Brique A seam, WIRED in Brique B, Agent 59) ──────────
+  // The AFFILIATE credited by this accrual row — identified by the affiliate's OPERATOR
+  // id (Affiliate is 1:1 with Operator; operator-keyed so balance + payout (Brique D)
+  // are lookup-free). null = creator rail (the creator is linked via referral.creatorId,
+  // unchanged). EXACTLY one referrer per row: creatorId-binding XOR affiliateId.
   affiliateId    String?
 
   @@index([referralId])

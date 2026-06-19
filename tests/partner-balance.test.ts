@@ -27,6 +27,34 @@ beforeEach(() => {
   db.payout.findMany.mockResolvedValue([])
 })
 
+// ── Brique B (Agent 59) — affiliate balance (operator-keyed, read-only) ──────────────
+describe('computePartnerBalance — affiliate', () => {
+  it('(B) Σ matured ReferralOrder.affiliateId − Σ Payout(role=affiliate) → available, clamped ≥0', async () => {
+    db.referralOrder.findMany.mockResolvedValue([{ creatorEarning: 3 }, { creatorEarning: 1 }]) // 400c
+    db.payout.findMany.mockResolvedValue([{ amountCents: 150 }])
+    const b = await computePartnerBalance('affiliate', 'aff-op')
+    expect(b.earnedCents).toBe(400)
+    expect(b.paidCents).toBe(150)
+    expect(b.availableCents).toBe(250)
+    expect(b.role).toBe('affiliate')
+    // earnings scoped to the affiliate's operator id (= ReferralOrder.affiliateId), matured-only
+    const reWhere = db.referralOrder.findMany.mock.calls[0][0].where
+    expect(reWhere.affiliateId).toBe('aff-op')
+    expect(reWhere.status).toEqual({ in: ['matured', 'paid'] })
+    // payouts scoped to role=affiliate + operatorId
+    expect(db.payout.findMany.mock.calls[0][0].where).toMatchObject({ role: 'affiliate', status: 'paid', operatorId: 'aff-op' })
+    // affiliate balance does NOT read the creator's dishSale pipe
+    expect(db.dishSale.findMany).not.toHaveBeenCalled()
+  })
+
+  it('(B) paid ≥ earned → available clamped at 0 (never negative)', async () => {
+    db.referralOrder.findMany.mockResolvedValue([{ creatorEarning: 1 }]) // 100c
+    db.payout.findMany.mockResolvedValue([{ amountCents: 500 }])
+    const b = await computePartnerBalance('affiliate', 'aff-op')
+    expect(b.availableCents).toBe(0)
+  })
+})
+
 describe('computePartnerBalance — creator', () => {
   it('(a) matured referral + dish earnings minus a paid Payout → available = earned − paid', async () => {
     db.referralOrder.findMany.mockResolvedValue([{ creatorEarning: 2 }, { creatorEarning: 1.5 }]) // 350c

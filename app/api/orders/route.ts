@@ -7,6 +7,7 @@ import { fetchActivePromotions, pickBestPromotion } from '@/lib/promotions'
 import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } from '@/lib/loyalty'
 import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
+import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -142,19 +143,37 @@ export async function POST(req: NextRequest) {
       // produce no ReferralOrder, so the 5C recipe rate must stay on the reduced
       // (organic) tier. Read-only here; the 5C block uses it, the 5B writes do not.
       referringCreatorId:      null as string | null,
+      // ── Brique B (Agent 59) — top-level affiliate, gated by AFFILIATE_ENABLED ────
+      // The AFFILIATE (by OPERATOR id) to credit for THIS order — set ONLY when the
+      // code resolves to an Affiliate (not a creator), the flag is ON, and it is not a
+      // self-referral. EXACTLY one referrer: referringCreatorId XOR referringAffiliateId.
+      // The affiliate path is ACCRUAL-ONLY: it NEVER sets `discount` → the charge /
+      // amount encaissé is byte-identical (the welcome discount stays creator-only).
+      createReferralAffiliateId: null as string | null, // CAS 1 → bind a new Referral to this affiliate (operatorId)
+      referringAffiliateId:      null as string | null, // the affiliate (operatorId) credited by the ReferralOrder
     }
     try {
       const rawCode = (data.referralCode ?? req.cookies.get('grubano_ref')?.value ?? '').trim().toUpperCase()
       if (rawCode) {
         const creator = await prisma.creator.findFirst({ where: { referralCode: rawCode } })
-        // Anti-self-referral: a creator cannot refer themselves. The Creator↔
-        // Operator link is by EMAIL (there is no Creator.operatorId column), so we
-        // compare the buyer's token email to the creator's email. If the token
-        // carries no email we skip the self-check (best-effort) — to be refined if
-        // a direct Creator→Operator FK is ever added.
+        // Brique B — a code resolves to a CREATOR or (gated) a top-level AFFILIATE.
+        // Codes are UNIQUE cross-table (Brique A) → at most one matches; we only look
+        // for an affiliate when no creator matched AND AFFILIATE_ENABLED is ON, so when
+        // the flag is OFF this is a no-op and the path below is byte-identical.
+        const affiliate = (!creator && isAffiliateEnabled())
+          ? await prisma.affiliate.findFirst({ where: { referralCode: rawCode } })
+          : null
+        // Anti-self-referral: a referrer cannot refer themselves. Creator↔Operator is
+        // by EMAIL (no Creator.operatorId), so we compare the buyer's token email to the
+        // creator's email. The AFFILIATE is 1:1 with an Operator, so the self-check is a
+        // direct operator-id comparison (affiliate.operatorId === buyer). No email → skip
+        // the creator self-check (best-effort), as before.
         const buyerEmail = typeof token.email === 'string' ? token.email.toLowerCase() : null
-        const isSelf = !!creator && !!buyerEmail && creator.email.toLowerCase() === buyerEmail
-        if (creator && !isSelf) {
+        const isSelfCreator   = !!creator && !!buyerEmail && creator.email.toLowerCase() === buyerEmail
+        const isSelfAffiliate = !!affiliate && affiliate.operatorId === token.sub
+        const creatorOk   = !!creator && !isSelfCreator
+        const affiliateOk = !!affiliate && !isSelfAffiliate
+        if (creatorOk || affiliateOk) {
           const cfg = await prisma.referralConfig.findFirst({ where: { active: true } })
           ref.commissionPct = cfg?.commissionPctOfGrubanoFee ?? 0.30
           ref.bonusAmount   = cfg?.newCustomerBonusAmount ?? 0
@@ -163,24 +182,34 @@ export async function POST(req: NextRequest) {
           const discountCap = cfg?.customerDiscountCapEur ?? 5
           ref.code = rawCode // tag the order for reporting, independent of expiry
 
-          // Binding is per-customer: once a customer is linked to a creator via
-          // first-touch, we stay on that link while it is active.
+          // Binding is per-customer (referrer-agnostic): once a customer is linked to a
+          // referrer via first-touch, we stay on that link while it is active — so a
+          // customer has AT MOST one active binding (creator XOR affiliate).
           const existing = await prisma.referral.findFirst({
             where: { customerId: token.sub!, active: true },
           })
           if (!existing) {
-            // CAS 1 — first referred order for this customer → bind + discount.
-            ref.createReferralCreatorId = creator.id
-            ref.referringCreatorId      = creator.id // payout goes to this creator
-            ref.discount = round2(Math.min(subtotal * discountPct, discountCap))
+            // CAS 1 — first referred order for this customer → bind. The welcome
+            // DISCOUNT is creator-only (the affiliate path is accrual-only → the charge
+            // / amount encaissé stays byte-identical).
+            if (creatorOk) {
+              ref.createReferralCreatorId = creator!.id
+              ref.referringCreatorId      = creator!.id // payout goes to this creator
+              ref.discount = round2(Math.min(subtotal * discountPct, discountCap))
+            } else {
+              ref.createReferralAffiliateId = affiliate!.operatorId
+              ref.referringAffiliateId      = affiliate!.operatorId // accrual goes to this affiliate
+            }
           } else if (existing.expiresAt > new Date()) {
-            // CAS 2 — window still open → reuse the binding, NO discount. The payout
-            // goes to the ALREADY-bound creator, not necessarily the code's creator.
-            ref.reuseReferralId    = existing.id
-            ref.referringCreatorId = existing.creatorId
+            // CAS 2 — window still open → reuse the binding, NO discount. The accrual
+            // goes to the ALREADY-bound referrer (creator XOR affiliate), not necessarily
+            // the code's referrer (first-touch wins).
+            ref.reuseReferralId = existing.id
+            if (existing.creatorId)        ref.referringCreatorId   = existing.creatorId
+            else if (existing.affiliateId) ref.referringAffiliateId = existing.affiliateId
           } else {
             // CAS 2 — window expired → no payout, no discount (close it later).
-            // referringCreatorId stays null → 5C uses the organic (reduced) rate.
+            // referring*Id stays null → 5C uses the organic (reduced) rate.
             ref.expiredReferralId = existing.id
           }
         }
@@ -262,7 +291,12 @@ export async function POST(req: NextRequest) {
     // the affiliation earns commissionPct × that net; committedClaims = Stripe +
     // royalty + affiliation feeds the loyalty cap (commission − committedClaims).
     const loyaltyEligible = data.usePoints && promo.discountEur === 0 && !promo.id && ref.discount === 0
-    const willWriteReferralOrder = ref.referringCreatorId !== null
+    // A ReferralOrder is written for a creator OR (Brique B) an affiliate referrer. This
+    // only widens to affiliate when AFFILIATE_ENABLED is ON (referringAffiliateId stays
+    // null otherwise) → byte-identical when OFF. It triggers the NET-base read below so
+    // the affiliate accrual uses the SAME base; the loyalty cap stays creator-only (the
+    // affiliation claim added to committedClaims is gated on referringCreatorId).
+    const willWriteReferralOrder = ref.referringCreatorId !== null || ref.referringAffiliateId !== null
     let committedClaimsCents = 0
     let affiliateBaseCents   = 0
     if (loyaltyEligible || willWriteReferralOrder) {
@@ -566,7 +600,8 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      // CAS 1 → create the customer↔creator binding with a FROZEN expiresAt.
+      // CAS 1 → create the customer↔referrer binding with a FROZEN expiresAt. The
+      // binding is a creator XOR an affiliate (Brique B) — never both.
       let referralId = ref.reuseReferralId
       if (ref.createReferralCreatorId) {
         const now = new Date()
@@ -578,6 +613,21 @@ export async function POST(req: NextRequest) {
             startedAt:  now,
             expiresAt:  new Date(now.getTime() + ref.durationDays * 24 * 60 * 60 * 1000),
             active:     true,
+          },
+        })
+        referralId = created.id
+      } else if (ref.createReferralAffiliateId) {
+        // Brique B — affiliate binding: creatorId stays null, affiliateId = the
+        // affiliate's operator id. Same expiresAt window as the creator rail.
+        const now = new Date()
+        const created = await prisma.referral.create({
+          data: {
+            affiliateId: ref.createReferralAffiliateId,
+            customerId:  token.sub!,
+            codeUsed:    ref.code!,
+            startedAt:   now,
+            expiresAt:   new Date(now.getTime() + ref.durationDays * 24 * 60 * 60 * 1000),
+            active:      true,
           },
         })
         referralId = created.id
@@ -595,12 +645,13 @@ export async function POST(req: NextRequest) {
             data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
           const feeCents       = computeApplicationFee(restaurant, channel, Math.round(subtotal * 100))
           const grubanoFee     = feeCents / 100                          // FROZEN — gross commission (EUR), column unchanged
-          // V1.5 §4 — the affiliation now earns commissionPct of the NET margin
-          // (commission − Stripe − royalty) = affiliateBaseCents, the SAME base
-          // that sizes the loyalty cap. Both rails share ONE positive base, so
-          // Grubano is never net-negative; the creator earns less but on REAL
-          // margin. (affiliateBaseCents was computed above whenever a ReferralOrder
-          // is written — willWriteReferralOrder ⟺ ref.referringCreatorId set.)
+          // V1.5 §4 — the referrer (creator OR affiliate) earns commissionPct of the
+          // NET margin (commission − Stripe − royalty) = affiliateBaseCents, the SAME
+          // base that sizes the loyalty cap. One positive base, so Grubano is never
+          // net-negative. (affiliateBaseCents was computed above whenever a ReferralOrder
+          // is written — willWriteReferralOrder ⟺ a creator OR affiliate referrer.) The
+          // `creatorEarning` column holds the earning for EITHER rail (the referrer is
+          // distinguished by referral.creatorId vs ReferralOrder.affiliateId).
           const creatorEarning = round2((affiliateBaseCents / 100) * ref.commissionPct) // FROZEN — on net (V1.5)
           // B0-quater acquisition bonus: CONFIG-driven (default 0 → no count
           // query, no write). When activated, paid once on the customer's FIRST
@@ -612,8 +663,12 @@ export async function POST(req: NextRequest) {
             })
             newCustomerBonus = priorOrders === 0 ? ref.bonusAmount : 0
           }
+          // Brique B — tag the accrual with the AFFILIATE (operator id) when the
+          // referrer is an affiliate; a creator accrual leaves affiliateId null (the
+          // creator is linked via referral.creatorId). EXACTLY one referrer per row.
+          const affiliateTag = ref.referringAffiliateId ? { affiliateId: ref.referringAffiliateId } : {}
           await prisma.referralOrder.create({
-            data: { referralId, orderId: order.id, grubanoFee, creatorEarning, newCustomerBonus },
+            data: { referralId, orderId: order.id, grubanoFee, creatorEarning, newCustomerBonus, ...affiliateTag },
           })
         }
       }
