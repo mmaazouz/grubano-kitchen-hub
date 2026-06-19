@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
-  LayoutDashboard, ChefHat, Megaphone, Link2,
+  LayoutDashboard, ChefHat, Megaphone,
   TrendingUp, ArrowLeft, Sparkles, X, Settings,
 } from 'lucide-react'
 import { Link, usePathname } from '@/navigation'
@@ -27,9 +27,9 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { href: '/creators/dashboard',            labelKey: 'overview',     icon: LayoutDashboard, exact: true },
   { href: '/creators/dashboard/promotions', labelKey: 'recipes',      icon: ChefHat,   role: 'chef' },
-  { href: '/creators/dashboard/audience',   labelKey: 'affiliation',  icon: Megaphone, role: 'influencer' },
-  // Dashboard Affiliés Slice 2a (Agent 14) — the influencer's affiliation hub.
-  { href: '/creators/dashboard/affiliate',  labelKey: 'affiliateHub', icon: Link2,     role: 'influencer' },
+  // Affiliation hub (Dashboard Affiliés Slice 2a, Agent 14). The legacy
+  // /audience page (Brique C, Agent 60) now redirects here — single entry.
+  { href: '/creators/dashboard/affiliate',  labelKey: 'affiliation',  icon: Megaphone, role: 'influencer' },
   { href: '/creators/dashboard/revenus',    labelKey: 'revenue',      icon: TrendingUp },
   // P5b — editable profile & settings (shared chef/influencer; always shown).
   { href: '/creators/dashboard/parametres',  labelKey: 'settings',     icon: Settings },

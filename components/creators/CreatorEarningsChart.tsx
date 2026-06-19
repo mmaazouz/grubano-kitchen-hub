@@ -31,6 +31,9 @@ interface Props {
   /** Real adoption rate %, from AdoptionConfig — the legend hides the figure
    *  when absent (never a hardcoded 4%, point dur E). */
   recipeRatePct?:       number
+  /** Referral commission rate % (config-driven, canon 30). Defaults to 30 so the
+   *  legend never shows a stale figure (was a hardcoded "22%", Brique C debt). */
+  referralRatePct?:     number
 }
 
 // Shared recharts axis props to avoid duplication
@@ -54,6 +57,7 @@ export function CreatorEarningsChart({
   recipeEarnings30d   = 0,
   referralEarnings30d = 0,
   recipeRatePct,
+  referralRatePct     = 30,
 }: Props) {
   const t = useTranslations('creators.home')
   const locale = useLocale()
@@ -181,7 +185,7 @@ export function CreatorEarningsChart({
         <div className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: COLOR_REFERRAL }} />
           <span className="text-[10px] text-grubano-ink-muted">
-            {t('perfSegReferral')} (22%)
+            {t('perfSegReferral')} ({referralRatePct}%)
             {' — '}
             <span className="font-semibold text-grubano-ink">{formatEuros(referralEarnings30d, locale)}</span>
           </span>

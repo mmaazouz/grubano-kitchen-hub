@@ -1,7 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Sparkles } from 'lucide-react'
 import { Link } from '@/navigation'
 import { authOptions } from '@/lib/auth'
 import { isAffiliateEnabled, getAffiliateByOperator } from '@/lib/affiliate-account'
@@ -9,6 +8,7 @@ import { buildAffiliateLink } from '@/lib/affiliate-link'
 import { Card, Button } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
 import AffiliateLinkCard from '@/components/affiliate/AffiliateLinkCard'
+import AffiliateDashboardClient from '@/components/affiliate/AffiliateDashboardClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,14 +45,8 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
               link={buildAffiliateLink(affiliate.referralLinkSlug) ?? ''}
               code={affiliate.referralCode}
             />
-            {/* Earnings / gamification land in Brique C — honest placeholder for now. */}
-            <Card elevation="sm" padding="md" className="border-grubano-border bg-grubano-surface-muted/50">
-              <div className="flex items-center gap-2 mb-1">
-                <Sparkles size={16} className="text-grubano-ink-muted" />
-                <p className="text-sm font-bold text-grubano-ink-muted">{t('earningsSoonTitle')}</p>
-              </div>
-              <p className="text-xs text-grubano-ink-faint">{t('earningsSoonBody')}</p>
-            </Card>
+            {/* Brique C — real earnings + gamification + click funnel (fetches /api/affiliate/stats). */}
+            <AffiliateDashboardClient />
           </>
         ) : (
           <Card elevation="sm" padding="lg" className="text-center">

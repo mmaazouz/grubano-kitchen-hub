@@ -40,6 +40,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { readCreatorRoles } from '@/lib/creator-roles'
+import { isAffiliateEnabled } from '@/lib/affiliate-account'
+import { recordAffiliateClick } from '@/lib/affiliate-clicks'
 import { locales, defaultLocale } from '@/i18n'
 
 const COOKIE_NAME = 'grubano_ref'
@@ -120,6 +122,21 @@ export async function GET(
   }
   const upper = raw.toUpperCase()
   const lower = raw.toLowerCase()
+
+  // 1-bis. Brique C (Agent 60) — best-effort, flag-gated, privacy-safe AFFILIATE click
+  // tracking. Records a click ONLY when the code belongs to a top-level affiliate; stores
+  // no PII. Wrapped + awaited in try/catch so a failure can NEVER affect the cookie or the
+  // redirect below (those stay BYTE-IDENTICAL). Skipped entirely when AFFILIATE_ENABLED is
+  // OFF. The cookie-drop itself is UNCHANGED (still creator-only) — an affiliate link's
+  // cookie attribution is tracked separately as a follow-up; this only counts the click.
+  if (isAffiliateEnabled()) {
+    try {
+      await recordAffiliateClick(upper)
+    } catch (clickErr) {
+      console.error('[GET /api/ref/:code] affiliate click record failed (non-fatal):',
+        clickErr instanceof Error ? clickErr.message : clickErr)
+    }
+  }
 
   // 2. Look up the creator. The displayed link is grubano.com/ref/{slug} where
   //    slug is either `referralLinkSlug` (vanity) or `referralCode.toLowerCase()`

@@ -290,7 +290,7 @@ export default function CreatorDashboardHome() {
                       : t('audienceNoCodeDesc')}
                   </p>
                 </div>
-                <Link href="/creators/dashboard/audience">
+                <Link href="/creators/dashboard/affiliate">
                   <Button variant="primary" size="sm" rightIcon={<ArrowRight size={13} />}>
                     {t('actionRefCta')}
                   </Button>
@@ -592,6 +592,7 @@ export default function CreatorDashboardHome() {
             recipeEarnings30d={roles.isChef ? recipeEarnings30d : 0}
             referralEarnings30d={roles.isInfluencer ? referralEarnings30d : 0}
             recipeRatePct={Math.round((data?.adoptionCommissionPct ?? 0.02) * 100)}
+            referralRatePct={rates ? Math.round(rates.commissionPct * 100) : undefined}
           />
         </div>
 

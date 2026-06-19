@@ -1673,6 +1673,23 @@ model Affiliate {
   createdAt        DateTime @default(now())
 }
 
+// ── ReferralClick (Phase 6 Brique C, Agent 60) — affiliate link click tracking ───────
+// ADDITIVE + REVERSIBLE: a brand-new table; no existing model/column touched, no backfill,
+// dropping it leaves the schema intact. One row per click on an AFFILIATE /ref/<code> link
+// (recorded best-effort + flag-gated in GET /api/ref/[code]; the cookie/redirect there are
+// byte-identical). PRIVACY BY DESIGN: stores ONLY the affiliate's OPERATOR id (= the
+// affiliateId convention used by ReferralOrder, so the dashboard counts clicks per affiliate
+// with NO join) + the code clicked + a timestamp. NO IP, NO user-agent, NO consumer/PII —
+// a pure per-affiliate click COUNTER feeding the clicks→conversion funnel.
+model ReferralClick {
+  id          String   @id @default(cuid())
+  affiliateId String   // the affiliate's OPERATOR id (same convention as ReferralOrder.affiliateId)
+  code        String   // the referral code clicked (uppercase canonical) — traceability only
+  createdAt   DateTime @default(now())
+
+  @@index([affiliateId, createdAt])
+}
+
 // ── Creator-recipe adoption mechanic (brique 3A) ──────────────────────────────
 // ADDITIVE + REVERSIBLE: these three models are brand-new tables with no FK back
 // onto existing rows that isn't nullable, so `db push` creates them with zero
