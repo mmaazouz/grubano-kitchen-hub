@@ -33,12 +33,31 @@ function envHours(name: string, def: number): number {
 export function claimWindowHours(): number { return envHours('CLAIM_WINDOW_HOURS', 48) }
 /** Restaurant response delay before auto-approval (default 24h). */
 export function claimResponseHours(): number { return envHours('CLAIM_RESPONSE_HOURS', 24) }
+/** Contest window (default 48h) — a client may contest a refusal within this delay (C2). */
+export function claimContestHours(): number { return envHours('CLAIM_CONTEST_HOURS', 48) }
+/** Auto-resolution ceiling in CENTS (default 1000 = 10€). A claim at/below this — from a
+ *  non-flagged consumer — is approved directly (carried by the resto via the engine's
+ *  prorata), no resto round-trip. 0 disables auto-resolution. (C2) */
+export function claimAutoApproveMaxCents(): number {
+  const v = Number.parseInt(process.env.CLAIM_AUTO_APPROVE_MAX_CENTS ?? '', 10)
+  return Number.isFinite(v) && v >= 0 ? v : 1000
+}
+/** SOFT anti-abuse orientation thresholds (no money sanction, no hard block). */
+function abuseRecentThreshold(): number {
+  const v = Number.parseInt(process.env.CLAIM_ABUSE_RECENT_THRESHOLD ?? '', 10)
+  return Number.isFinite(v) && v > 0 ? v : 3
+}
+function abuseWindowDays(): number {
+  const v = Number.parseInt(process.env.CLAIM_ABUSE_WINDOW_DAYS ?? '', 10)
+  return Number.isFinite(v) && v > 0 ? v : 30
+}
 
 export const CLAIM_REASONS = ['missing_item', 'wrong_order', 'quality', 'not_delivered', 'other'] as const
 export type ClaimReason = (typeof CLAIM_REASONS)[number]
 
 // Active statuses (the order is "locked" against a second claim while in these).
-const ACTIVE_STATUSES = ['restaurant_review', 'approved', 'refunding'] as const
+// C2 adds 'arbitration' (a contested claim is active). C1 never reaches it → byte-identical.
+const ACTIVE_STATUSES = ['restaurant_review', 'approved', 'refunding', 'arbitration'] as const
 
 export type ClaimActionResult =
   | { ok: true; claim: unknown; refund?: RefundTriggerResult }
@@ -125,7 +144,10 @@ export type ClaimEligibility = {
   reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim'
   maxRefundableCents: number
   windowHours: number
-  existingClaim: { id: string; status: string } | null
+  // C2: existingClaim carries the refusal reason + whether the client may still CONTEST.
+  existingClaim:
+    | { id: string; status: string; canContest: boolean; restaurantResponseReason: string | null; arbitrationReason: string | null }
+    | null
 }
 
 /** Server-derived eligibility for the client UI (owner + paid + within window + no
@@ -144,9 +166,14 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   const existing = await prisma.claim.findFirst({
     where:   { orderId: input.orderId, consumerId: input.consumerId },
     orderBy: { createdAt: 'desc' },
-    select:  { id: true, status: true },
+    select:  { id: true, status: true, decidedAt: true, restaurantResponseReason: true, arbitrationReason: true },
   })
-  const existingClaim = existing ?? null
+  // C2: a refused claim can be contested while within the contest window.
+  const canContest = !!existing && existing.status === 'refused' && !!existing.decidedAt &&
+    (Date.now() - existing.decidedAt.getTime() <= claimContestHours() * 3600 * 1000)
+  const existingClaim = existing
+    ? { id: existing.id, status: existing.status, canContest, restaurantResponseReason: existing.restaurantResponseReason, arbitrationReason: existing.arbitrationReason }
+    : null
   if (order.paymentStatus !== 'paid') return { canClaim: false, reason: 'not_paid', maxRefundableCents, windowHours, existingClaim }
   if (Date.now() - order.updatedAt.getTime() > windowHours * 3600 * 1000) {
     return { canClaim: false, reason: 'window_expired', maxRefundableCents, windowHours, existingClaim }
@@ -207,7 +234,7 @@ async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult>
 }
 
 // ── APPROVE — restaurant accept OR auto-timeout ───────────────────────────────────
-async function approveClaim(claimId: string, decidedBy: 'restaurant' | 'auto_timeout'): Promise<RefundTriggerResult> {
+async function approveClaim(claimId: string, decidedBy: 'restaurant' | 'auto_timeout' | 'auto_small' | 'admin'): Promise<RefundTriggerResult> {
   // ATOMIC transition restaurant_review → approved (only one caller wins).
   const claimed = await prisma.claim.updateMany({
     where: { id: claimId, status: 'restaurant_review' },
@@ -311,4 +338,140 @@ export async function runClaimAutoApproval(): Promise<ClaimSweepSummary> {
   }
 
   return summary
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// P4.5-C2 — neutrality & anti-abuse layer (Agent 53): auto-resolution of small cases,
+// contest → ADMIN arbitration, and read-only abuse signals. Reuses the C1 idempotent
+// refund trigger; the C1 cycle (createClaim/respondToClaim/runClaimAutoApproval) is
+// untouched. The arbiter is ALWAYS a neutral Grubano admin — never a party.
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/** SOFT abuse orientation (no money sanction, no hard block): a consumer with ≥ N claims
+ *  in the last M days is routed to the normal resto review instead of auto-resolution. */
+export async function isConsumerAbuseFlagged(consumerId: string): Promise<boolean> {
+  const since = new Date(Date.now() - abuseWindowDays() * 24 * 3600 * 1000)
+  const recent = await prisma.claim.count({ where: { consumerId, createdAt: { gte: since } } })
+  return recent >= abuseRecentThreshold()
+}
+
+// ── AUTO-RESOLUTION of small, obvious claims (called by the create route post-create) ──
+// At/below the ceiling, from a non-flagged consumer → approve immediately (carried by
+// the resto via the engine prorata), no resto round-trip. Otherwise a NO-OP → the claim
+// stays 'restaurant_review' = the exact C1 flow. Reuses approveClaim (CAS) +
+// triggerClaimRefund (≤1 refund/claim). Never a second refund (refundAttempted guard).
+export async function autoResolveSmallClaim(
+  claim: { id: string; consumerId: string; requestedAmountCents: number; status: string },
+): Promise<RefundTriggerResult | { state: 'not_eligible' }> {
+  if (claim.status !== 'restaurant_review') return { state: 'not_eligible' }
+  const ceiling = claimAutoApproveMaxCents()
+  if (ceiling <= 0 || claim.requestedAmountCents > ceiling) return { state: 'not_eligible' }
+  if (await isConsumerAbuseFlagged(claim.consumerId)) return { state: 'not_eligible' } // orient to resto review
+  return approveClaim(claim.id, 'auto_small')
+}
+
+// ── CLIENT — contest a refusal → admin arbitration ───────────────────────────────
+export async function contestClaim(input: { claimId: string; consumerId: string; reason?: string | null }): Promise<ClaimActionResult> {
+  const claim = await prisma.claim.findUnique({
+    where:  { id: input.claimId },
+    select: { id: true, consumerId: true, orderId: true, status: true, decidedAt: true },
+  })
+  // Owner-scoping: a claim that is not the caller's is INVISIBLE (404 — no IDOR).
+  if (!claim || claim.consumerId !== input.consumerId) {
+    return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+  }
+  if (claim.status !== 'refused') {
+    return { ok: false, status: 409, error: 'Cette réclamation ne peut pas être contestée.' }
+  }
+  const anchor = claim.decidedAt?.getTime() ?? 0
+  if (!anchor || Date.now() - anchor > claimContestHours() * 3600 * 1000) {
+    return { ok: false, status: 409, error: `Le délai de contestation (${claimContestHours()} h) est dépassé.` }
+  }
+  // CAS refused → arbitration (count===1 winner); re-acquire activeOrderKey (active again).
+  try {
+    const moved = await prisma.claim.updateMany({
+      where: { id: claim.id, status: 'refused' },
+      data:  { status: 'arbitration', contestedAt: new Date(), contestReason: input.reason ?? null, activeOrderKey: claim.orderId },
+    })
+    if (moved.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation ne peut plus être contestée.' }
+  } catch (err) {
+    // A newer active claim already holds activeOrderKey for this order → cannot re-activate.
+    if (isP2002(err)) return { ok: false, status: 409, error: 'Une réclamation active existe déjà pour cette commande.' }
+    throw err
+  }
+  const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
+  return { ok: true, claim: updated }
+}
+
+// ── ADMIN — arbitrate a contested claim (NEUTRAL third party, never a party) ──────
+export async function arbitrateClaim(input: { claimId: string; adminId: string; decision: 'approve' | 'refuse_final'; reason?: string | null }): Promise<ClaimActionResult> {
+  const claim = await prisma.claim.findUnique({ where: { id: input.claimId }, select: { id: true, status: true } })
+  if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+  if (claim.status !== 'arbitration') {
+    return { ok: false, status: 409, error: 'Cette réclamation n’est pas en arbitrage.' }
+  }
+
+  if (input.decision === 'refuse_final') {
+    const done = await prisma.claim.updateMany({
+      where: { id: claim.id, status: 'arbitration' },
+      data:  {
+        status: 'refused_final', arbitratedBy: input.adminId, arbitrationDecision: 'refused_final',
+        arbitrationReason: input.reason ?? null, arbitratedAt: new Date(), decidedBy: 'admin',
+        decidedAt: new Date(), activeOrderKey: null, // terminal
+      },
+    })
+    if (done.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' }
+    const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
+    return { ok: true, claim: updated }
+  }
+
+  // approve → CAS arbitration → approved (count===1), then the SAME idempotent refund.
+  const moved = await prisma.claim.updateMany({
+    where: { id: claim.id, status: 'arbitration' },
+    data:  {
+      status: 'approved', arbitratedBy: input.adminId, arbitrationDecision: 'approved',
+      arbitrationReason: input.reason ?? null, arbitratedAt: new Date(), decidedBy: 'admin', decidedAt: new Date(),
+    },
+  })
+  if (moved.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été arbitrée.' }
+  const refund = await triggerClaimRefund(claim.id)
+  const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
+  return { ok: true, claim: updated, refund }
+}
+
+// ── ANTI-ABUSE SIGNALS — read-only aggregation (display + orientation, NO sanction) ──
+export type ConsumerClaimStats = { total: number; recent: number; approved: number; refused: number; approvalRate: number; flagged: boolean }
+export async function consumerClaimStats(consumerId: string): Promise<ConsumerClaimStats> {
+  const since = new Date(Date.now() - abuseWindowDays() * 24 * 3600 * 1000)
+  const [total, recent, byStatus] = await Promise.all([
+    prisma.claim.count({ where: { consumerId } }),
+    prisma.claim.count({ where: { consumerId, createdAt: { gte: since } } }),
+    prisma.claim.groupBy({ by: ['status'], where: { consumerId }, _count: true }),
+  ])
+  const cnt = (s: string) => byStatus.find((g) => g.status === s)?._count ?? 0
+  const approved = cnt('approved') + cnt('refunding') + cnt('refunded')
+  const refused = cnt('refused') + cnt('refused_final')
+  const decided = approved + refused
+  return { total, recent, approved, refused, approvalRate: decided ? approved / decided : 0, flagged: recent >= abuseRecentThreshold() }
+}
+
+export type RestaurantRefusalStats = { refused: number; overturned: number; overturnRate: number; flagged: boolean }
+export async function restaurantRefusalStats(restaurantId: string): Promise<RestaurantRefusalStats> {
+  const [refused, overturned] = await Promise.all([
+    prisma.claim.count({ where: { restaurantId, restaurantResponse: 'refused' } }),
+    // overturned = the resto refused but a neutral admin later APPROVED on contest.
+    prisma.claim.count({ where: { restaurantId, restaurantResponse: 'refused', arbitrationDecision: 'approved' } }),
+  ])
+  const overturnRate = refused ? overturned / refused : 0
+  return { refused, overturned, overturnRate, flagged: refused >= 3 && overturnRate >= 0.5 }
+}
+
+/** The admin arbitration queue, each claim enriched with both parties' abuse signals. */
+export async function listArbitrationQueue() {
+  const claims = await prisma.claim.findMany({ where: { status: 'arbitration' }, orderBy: { contestedAt: 'asc' }, take: 200 })
+  return Promise.all(claims.map(async (c) => ({
+    ...c,
+    consumerStats:   await consumerClaimStats(c.consumerId),
+    restaurantStats: await restaurantRefusalStats(c.restaurantId),
+  })))
 }

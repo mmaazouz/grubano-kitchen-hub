@@ -4,6 +4,7 @@ import { getToken } from 'next-auth/jwt'
 import { z } from 'zod'
 import {
   isClaimsEnabled, createClaim, listConsumerClaims, getClaimEligibility, CLAIM_REASONS,
+  autoResolveSmallClaim,
 } from '@/lib/claims'
 import { processDishImage, ALLOWED_IMAGE_TYPES, type DishImageType } from '@/lib/dish-photo'
 
@@ -57,6 +58,10 @@ export async function POST(req: NextRequest) {
     photoUrl,
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  // C2 auto-resolution — a small, obvious claim from a non-flagged consumer is approved
+  // immediately (→ engine refund). NO-OP for non-small/flagged → exactly the C1 flow.
+  // The client refetches eligibility right after, so it sees the resolved status.
+  await autoResolveSmallClaim(result.claim as { id: string; consumerId: string; requestedAmountCents: number; status: string })
   return NextResponse.json({ claim: result.claim }, { status: 201 })
 }
 

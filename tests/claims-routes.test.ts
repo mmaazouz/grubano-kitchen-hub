@@ -4,8 +4,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // Flag gating, auth, owner-scoping, optional-photo pass-through. lib/claims, the photo
 // chain, the establishment scope and auth are mocked.
 
-const { flag, createMock, listMock, eligMock, respondMock } = vi.hoisted(() => ({
-  flag: vi.fn(), createMock: vi.fn(), listMock: vi.fn(), eligMock: vi.fn(), respondMock: vi.fn(),
+const { flag, createMock, listMock, eligMock, respondMock, autoMock } = vi.hoisted(() => ({
+  flag: vi.fn(), createMock: vi.fn(), listMock: vi.fn(), eligMock: vi.fn(), respondMock: vi.fn(), autoMock: vi.fn(),
 }))
 vi.mock('@/lib/claims', () => ({
   isClaimsEnabled: flag,
@@ -13,6 +13,7 @@ vi.mock('@/lib/claims', () => ({
   listConsumerClaims: listMock,
   getClaimEligibility: eligMock,
   respondToClaim: respondMock,
+  autoResolveSmallClaim: autoMock, // C2 — called by the create route post-create (no-op for non-small)
   CLAIM_REASONS: ['missing_item', 'wrong_order', 'quality', 'not_delivered', 'other'],
 }))
 
@@ -35,7 +36,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   flag.mockReturnValue(true)
   tokenMock.mockResolvedValue({ sub: 'c1' })
-  createMock.mockResolvedValue({ ok: true, claim: { id: 'cl1' } })
+  createMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', consumerId: 'c1', requestedAmountCents: 2500, status: 'restaurant_review' } })
+  autoMock.mockResolvedValue({ state: 'not_eligible' })
   listMock.mockResolvedValue([])
   eligMock.mockResolvedValue({ canClaim: true, maxRefundableCents: 5000, windowHours: 48, existingClaim: null })
   respondMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', status: 'refunded' }, refund: { state: 'refunded', refundId: 'rf1' } })

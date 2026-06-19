@@ -3097,7 +3097,9 @@
       "approved": "Aprobada — reembolso en curso",
       "refunding": "Reembolso en curso",
       "refunded": "Reembolsada",
-      "refused": "Rechazada"
+      "refused": "Rechazada",
+      "arbitration": "En arbitraje de Grubano",
+      "refused_final": "Rechazo confirmado"
     },
     "client": {
       "reportProblem": "Reportar un problema",
@@ -3118,7 +3120,16 @@
       "refusedReason": "Motivo del rechazo",
       "maxRefundable": "Máximo reembolsable: {amount}",
       "cancel": "Cancelar",
-      "errorGeneric": "Se produjo un error. Inténtelo de nuevo."
+      "errorGeneric": "Se produjo un error. Inténtelo de nuevo.",
+      "contest": "Impugnar la decisión",
+      "contestTitle": "Impugnar el rechazo",
+      "contestDescription": "Grubano revisará su reclamación de forma neutral.",
+      "contestReasonLabel": "¿Por qué impugna?",
+      "contestReasonPlaceholder": "Explique su desacuerdo…",
+      "contestSubmit": "Enviar impugnación",
+      "contestSuccess": "Impugnación enviada. Grubano decidirá.",
+      "arbitrationInfo": "Su impugnación está siendo revisada por Grubano.",
+      "refusalReasonShown": "Motivo del rechazo"
     },
     "restaurant": {
       "title": "Reclamaciones de clientes",
@@ -3140,6 +3151,30 @@
       "refundPending": "Aceptada — reembolso pendiente de activación.",
       "processing": "Procesando…",
       "autoApproveNote": "Sin respuesta en 24 h, la reclamación se aprueba automáticamente."
+    },
+    "admin": {
+      "title": "Arbitraje de reclamaciones",
+      "subtitle": "Decida de forma neutral las reclamaciones impugnadas (no es ni el cliente ni el restaurante).",
+      "empty": "No hay reclamaciones en arbitraje.",
+      "order": "Pedido",
+      "reason": "Motivo del cliente",
+      "requested": "Importe reclamado",
+      "clientDetails": "Detalles del cliente",
+      "refusalReason": "Motivo del rechazo (restaurante)",
+      "contestReason": "Impugnación del cliente",
+      "viewPhoto": "Ver foto",
+      "approve": "Aprobar y reembolsar",
+      "refuseFinal": "Confirmar el rechazo",
+      "decisionReasonLabel": "Justificación (opcional)",
+      "decisionReasonPlaceholder": "Explique su decisión…",
+      "approved": "Reclamación aprobada, reembolso iniciado.",
+      "refusedFinalDone": "Rechazo confirmado.",
+      "processing": "Procesando…",
+      "signalsTitle": "Señales",
+      "consumerSignal": "Cliente: {recent} reclamación(es) reciente(s), {rate}% aprobadas",
+      "restaurantSignal": "Restaurante: {overturned}/{refused} rechazos revocados en arbitraje",
+      "flaggedConsumer": "Cliente a vigilar",
+      "flaggedRestaurant": "Restaurante a vigilar"
     }
   }
 }

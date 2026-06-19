@@ -15,12 +15,13 @@ import { formatEuros } from '@/lib/format-money'
 const REASONS = ['missing_item', 'wrong_order', 'quality', 'not_delivered', 'other'] as const
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp']
 
+type ExistingClaim = { id: string; status: string; canContest: boolean; restaurantResponseReason: string | null; arbitrationReason: string | null }
 type Eligibility = {
   canClaim: boolean
   reason?: string
   maxRefundableCents: number
   windowHours: number
-  existingClaim: { id: string; status: string } | null
+  existingClaim: ExistingClaim | null
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -46,6 +47,10 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
   const [amountEuros, setAmountEuros] = useState('')
   const [description, setDescription] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  // C2 contest
+  const [contesting, setContesting] = useState(false)
+  const [contestReason, setContestReason] = useState('')
+  const [contestBusy, setContestBusy] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -61,13 +66,55 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
 
   if (!enabled || !el) return null
 
-  // Existing claim → show its status (+ refusal reason).
+  // Existing claim → status (+ refusal reason) + (C2) contest a refusal within the delay.
   if (el.existingClaim) {
-    const s = el.existingClaim.status
+    const ec = el.existingClaim
+    const s = ec.status
+    const showRefusalReason = (s === 'refused' || s === 'refused_final') && ec.restaurantResponseReason
+    const submitContest = async () => {
+      setContestBusy(true)
+      try {
+        const res = await fetch(`/api/claims/${ec.id}/contest`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ reason: contestReason || undefined }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) { toast.error(data.error || t('client.errorGeneric')); return }
+        toast.success(t('client.contestSuccess'))
+        setContesting(false); setContestReason('')
+        await load()
+      } catch {
+        toast.error(t('client.errorGeneric'))
+      } finally { setContestBusy(false) }
+    }
     return (
       <div className="mt-4 rounded-2xl border border-[#f0f0f0] bg-[#fafafa] p-4">
         <p className="text-sm font-bold text-[#1a1a1a]">{t('client.statusTitle')}</p>
         <p className="mt-1 text-[13px] text-[#666]">{t(`status.${s}`)}</p>
+        {showRefusalReason && (
+          <p className="mt-2 text-[13px] text-[#666]">
+            <span className="font-semibold">{t('client.refusalReasonShown')}:</span> {ec.restaurantResponseReason}
+          </p>
+        )}
+        {s === 'arbitration' && <p className="mt-2 text-[13px] text-[#F97316]">{t('client.arbitrationInfo')}</p>}
+        {ec.canContest && !contesting && (
+          <Button className="mt-3" size="sm" variant="secondary" onClick={() => setContesting(true)}>{t('client.contest')}</Button>
+        )}
+        {ec.canContest && contesting && (
+          <div className="mt-3 space-y-2">
+            <p className="text-[13px] font-semibold text-[#1a1a1a]">{t('client.contestTitle')}</p>
+            <p className="text-xs text-[#888]">{t('client.contestDescription')}</p>
+            <textarea
+              value={contestReason} onChange={(e) => setContestReason(e.target.value)} rows={3} maxLength={1000}
+              placeholder={t('client.contestReasonPlaceholder')}
+              className="w-full rounded-grubano-lg border border-grubano-border-strong bg-white px-3 py-2.5 text-[14px]"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => { setContesting(false); setContestReason('') }} disabled={contestBusy}>{t('client.cancel')}</Button>
+              <Button size="sm" variant="primary" loading={contestBusy} onClick={submitContest}>{t('client.contestSubmit')}</Button>
+            </div>
+          </div>
+        )}
       </div>
     )
   }

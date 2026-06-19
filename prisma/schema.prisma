@@ -1319,20 +1319,35 @@ model Claim {
   description              String?  @db.Text // optional free-text detail
   requestedAmountCents     Int              // claimed amount (server-validated: 1 ≤ x ≤ order total cents)
   photoUrl                 String?          // optional evidence (Cloudinary, via processDishImage)
-  status                   String   @default("restaurant_review") // restaurant_review | approved | refunding | refunded | refused
+  // C1: restaurant_review | approved | refunding | refunded | refused
+  // C2 (P4.5-C2, Agent 53, additive string values — NO enum migration):
+  //   + arbitration   (a refused claim CONTESTED by the client, awaiting an admin)
+  //   + refused_final (admin confirmed the refusal — terminal)
+  status                   String   @default("restaurant_review")
   restaurantResponse       String?          // accepted | refused (what the resto chose; null if auto/none)
   restaurantResponseReason String?  @db.Text // refusal motive
   responseDeadlineAt       DateTime         // createdAt + CLAIM_RESPONSE_HOURS → auto-approve after
-  decidedBy                String?          // restaurant | auto_timeout
+  decidedBy                String?          // restaurant | auto_timeout | auto_small | admin
   refundAttempted          Boolean  @default(false) // executeRefund called at most once (idempotence guard)
   refundId                 String?          // → Refund.id (set when the engine refund succeeds)
   refundError              String?  @db.Text // last refund failure (audit; refund still pending)
-  // = orderId WHILE the claim is active (restaurant_review|approved|refunding); set to
-  // null on a terminal status (refunded|refused). @unique ⇒ one ACTIVE claim per order,
-  // race-safe (MySQL allows many NULLs), without blocking a future re-claim (C2).
+  // = orderId WHILE the claim is active (restaurant_review|approved|refunding|arbitration);
+  // null on a terminal status (refunded|refused|refused_final). @unique ⇒ one ACTIVE claim
+  // per order, race-safe (MySQL allows many NULLs), without blocking a future re-claim.
   activeOrderKey           String?  @unique
   createdAt                DateTime @default(now())
   decidedAt                DateTime?
+  // ── P4.5-C2 — contest → admin arbitration (Agent 53, additive nullable) ──────
+  // A REFUSED claim can be contested by the CLIENT within CLAIM_CONTEST_HOURS →
+  // 'arbitration'; a NEUTRAL admin then approves (→ refund) or confirms the refusal
+  // ('refused_final'). The admin is NEVER an interested party (not the resto, not the
+  // client). All nullable / no default change → every existing row stays valid, no backfill.
+  contestedAt              DateTime?        // when the client contested
+  contestReason            String?  @db.Text // the client's contest justification
+  arbitratedBy             String?          // Operator.id of the deciding admin
+  arbitrationDecision      String?          // approved | refused_final
+  arbitrationReason        String?  @db.Text // the admin's motive
+  arbitratedAt             DateTime?
 
   @@index([consumerId, createdAt])
   @@index([restaurantId, status])

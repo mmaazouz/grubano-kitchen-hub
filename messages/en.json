@@ -3097,7 +3097,9 @@
       "approved": "Approved — refund in progress",
       "refunding": "Refund in progress",
       "refunded": "Refunded",
-      "refused": "Refused"
+      "refused": "Refused",
+      "arbitration": "Under Grubano arbitration",
+      "refused_final": "Refusal confirmed"
     },
     "client": {
       "reportProblem": "Report a problem",
@@ -3118,7 +3120,16 @@
       "refusedReason": "Refusal reason",
       "maxRefundable": "Maximum refundable: {amount}",
       "cancel": "Cancel",
-      "errorGeneric": "Something went wrong. Please try again."
+      "errorGeneric": "Something went wrong. Please try again.",
+      "contest": "Contest the decision",
+      "contestTitle": "Contest the refusal",
+      "contestDescription": "Grubano will review your claim neutrally.",
+      "contestReasonLabel": "Why are you contesting?",
+      "contestReasonPlaceholder": "Explain your disagreement…",
+      "contestSubmit": "Submit contest",
+      "contestSuccess": "Contest submitted. Grubano will decide.",
+      "arbitrationInfo": "Your contest is being reviewed by Grubano.",
+      "refusalReasonShown": "Refusal reason"
     },
     "restaurant": {
       "title": "Customer claims",
@@ -3140,6 +3151,30 @@
       "refundPending": "Accepted — refund pending activation.",
       "processing": "Processing…",
       "autoApproveNote": "Without a response within 24h, the claim is approved automatically."
+    },
+    "admin": {
+      "title": "Claim arbitration",
+      "subtitle": "Neutrally decide contested claims (you are neither the customer nor the restaurant).",
+      "empty": "No claims in arbitration.",
+      "order": "Order",
+      "reason": "Customer reason",
+      "requested": "Requested amount",
+      "clientDetails": "Customer details",
+      "refusalReason": "Refusal reason (restaurant)",
+      "contestReason": "Customer contest",
+      "viewPhoto": "View photo",
+      "approve": "Approve & refund",
+      "refuseFinal": "Confirm refusal",
+      "decisionReasonLabel": "Reasoning (optional)",
+      "decisionReasonPlaceholder": "Explain your decision…",
+      "approved": "Claim approved, refund triggered.",
+      "refusedFinalDone": "Refusal confirmed.",
+      "processing": "Processing…",
+      "signalsTitle": "Signals",
+      "consumerSignal": "Customer: {recent} recent claim(s), {rate}% approved",
+      "restaurantSignal": "Restaurant: {overturned}/{refused} refusals overturned in arbitration",
+      "flaggedConsumer": "Customer to watch",
+      "flaggedRestaurant": "Restaurant to watch"
     }
   }
 }

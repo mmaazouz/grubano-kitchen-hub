@@ -3097,7 +3097,9 @@
       "approved": "Approvata — rimborso in corso",
       "refunding": "Rimborso in corso",
       "refunded": "Rimborsata",
-      "refused": "Rifiutata"
+      "refused": "Rifiutata",
+      "arbitration": "In arbitrato Grubano",
+      "refused_final": "Rifiuto confermato"
     },
     "client": {
       "reportProblem": "Segnala un problema",
@@ -3118,7 +3120,16 @@
       "refusedReason": "Motivo del rifiuto",
       "maxRefundable": "Massimo rimborsabile: {amount}",
       "cancel": "Annulla",
-      "errorGeneric": "Si è verificato un errore. Riprovi."
+      "errorGeneric": "Si è verificato un errore. Riprovi.",
+      "contest": "Contesta la decisione",
+      "contestTitle": "Contesta il rifiuto",
+      "contestDescription": "Grubano esaminerà il suo reclamo in modo neutrale.",
+      "contestReasonLabel": "Perché contesta?",
+      "contestReasonPlaceholder": "Spieghi il suo disaccordo…",
+      "contestSubmit": "Invia contestazione",
+      "contestSuccess": "Contestazione inviata. Grubano deciderà.",
+      "arbitrationInfo": "La sua contestazione è in esame da Grubano.",
+      "refusalReasonShown": "Motivo del rifiuto"
     },
     "restaurant": {
       "title": "Reclami dei clienti",
@@ -3140,6 +3151,30 @@
       "refundPending": "Accettata — rimborso in attesa di attivazione.",
       "processing": "Elaborazione…",
       "autoApproveNote": "Senza risposta entro 24 h, il reclamo viene approvato automaticamente."
+    },
+    "admin": {
+      "title": "Arbitrato dei reclami",
+      "subtitle": "Decida in modo neutrale i reclami contestati (non è né il cliente né il ristorante).",
+      "empty": "Nessun reclamo in arbitrato.",
+      "order": "Ordine",
+      "reason": "Motivo del cliente",
+      "requested": "Importo richiesto",
+      "clientDetails": "Dettagli del cliente",
+      "refusalReason": "Motivo del rifiuto (ristorante)",
+      "contestReason": "Contestazione del cliente",
+      "viewPhoto": "Vedi foto",
+      "approve": "Approva e rimborsa",
+      "refuseFinal": "Conferma il rifiuto",
+      "decisionReasonLabel": "Motivazione (facoltativo)",
+      "decisionReasonPlaceholder": "Spieghi la sua decisione…",
+      "approved": "Reclamo approvato, rimborso avviato.",
+      "refusedFinalDone": "Rifiuto confermato.",
+      "processing": "Elaborazione…",
+      "signalsTitle": "Segnali",
+      "consumerSignal": "Cliente: {recent} reclamo/i recente/i, {rate}% approvati",
+      "restaurantSignal": "Ristorante: {overturned}/{refused} rifiuti ribaltati in arbitrato",
+      "flaggedConsumer": "Cliente da monitorare",
+      "flaggedRestaurant": "Ristorante da monitorare"
     }
   }
 }

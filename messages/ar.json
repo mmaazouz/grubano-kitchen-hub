@@ -3097,7 +3097,9 @@
       "approved": "تمت الموافقة — جارٍ رد المبلغ",
       "refunding": "جارٍ رد المبلغ",
       "refunded": "تم رد المبلغ",
-      "refused": "مرفوضة"
+      "refused": "مرفوضة",
+      "arbitration": "قيد تحكيم Grubano",
+      "refused_final": "تم تأكيد الرفض"
     },
     "client": {
       "reportProblem": "الإبلاغ عن مشكلة",
@@ -3118,7 +3120,16 @@
       "refusedReason": "سبب الرفض",
       "maxRefundable": "الحد الأقصى القابل للرد: {amount}",
       "cancel": "إلغاء",
-      "errorGeneric": "حدث خطأ. حاول مرة أخرى."
+      "errorGeneric": "حدث خطأ. حاول مرة أخرى.",
+      "contest": "الاعتراض على القرار",
+      "contestTitle": "الاعتراض على الرفض",
+      "contestDescription": "ستراجع Grubano شكواك بحياد.",
+      "contestReasonLabel": "لماذا تعترض؟",
+      "contestReasonPlaceholder": "اشرح اعتراضك…",
+      "contestSubmit": "إرسال الاعتراض",
+      "contestSuccess": "تم إرسال الاعتراض. ستبتّ Grubano.",
+      "arbitrationInfo": "يخضع اعتراضك للمراجعة من Grubano.",
+      "refusalReasonShown": "سبب الرفض"
     },
     "restaurant": {
       "title": "شكاوى العملاء",
@@ -3140,6 +3151,30 @@
       "refundPending": "تم القبول — رد المبلغ بانتظار التفعيل.",
       "processing": "جارٍ المعالجة…",
       "autoApproveNote": "بدون رد خلال 24 ساعة، تتم الموافقة على الشكوى تلقائيًا."
+    },
+    "admin": {
+      "title": "تحكيم الشكاوى",
+      "subtitle": "احكم بحياد في الشكاوى المتنازع عليها (لست العميل ولا المطعم).",
+      "empty": "لا توجد شكاوى قيد التحكيم.",
+      "order": "الطلب",
+      "reason": "سبب العميل",
+      "requested": "المبلغ المطلوب",
+      "clientDetails": "تفاصيل العميل",
+      "refusalReason": "سبب الرفض (المطعم)",
+      "contestReason": "اعتراض العميل",
+      "viewPhoto": "عرض الصورة",
+      "approve": "الموافقة ورد المبلغ",
+      "refuseFinal": "تأكيد الرفض",
+      "decisionReasonLabel": "التبرير (اختياري)",
+      "decisionReasonPlaceholder": "اشرح قرارك…",
+      "approved": "تمت الموافقة على الشكوى وبدء رد المبلغ.",
+      "refusedFinalDone": "تم تأكيد الرفض.",
+      "processing": "جارٍ المعالجة…",
+      "signalsTitle": "المؤشرات",
+      "consumerSignal": "العميل: {recent} شكوى حديثة، {rate}% موافق عليها",
+      "restaurantSignal": "المطعم: {overturned}/{refused} رفض أُلغي في التحكيم",
+      "flaggedConsumer": "عميل يستحق المتابعة",
+      "flaggedRestaurant": "مطعم يستحق المتابعة"
     }
   }
 }

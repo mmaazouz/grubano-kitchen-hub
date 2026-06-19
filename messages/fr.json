@@ -3097,7 +3097,9 @@
       "approved": "Approuvée — remboursement en cours",
       "refunding": "Remboursement en cours",
       "refunded": "Remboursée",
-      "refused": "Refusée"
+      "refused": "Refusée",
+      "arbitration": "En arbitrage Grubano",
+      "refused_final": "Refus confirmé"
     },
     "client": {
       "reportProblem": "Signaler un problème",
@@ -3118,7 +3120,16 @@
       "refusedReason": "Motif du refus",
       "maxRefundable": "Maximum remboursable : {amount}",
       "cancel": "Annuler",
-      "errorGeneric": "Une erreur est survenue. Réessayez."
+      "errorGeneric": "Une erreur est survenue. Réessayez.",
+      "contest": "Contester la décision",
+      "contestTitle": "Contester le refus",
+      "contestDescription": "Grubano examinera votre réclamation de façon neutre.",
+      "contestReasonLabel": "Pourquoi contestez-vous ?",
+      "contestReasonPlaceholder": "Expliquez votre désaccord…",
+      "contestSubmit": "Envoyer la contestation",
+      "contestSuccess": "Contestation envoyée. Grubano va trancher.",
+      "arbitrationInfo": "Votre contestation est en cours d’examen par Grubano.",
+      "refusalReasonShown": "Motif du refus"
     },
     "restaurant": {
       "title": "Réclamations clients",
@@ -3140,6 +3151,30 @@
       "refundPending": "Acceptée — remboursement en attente d’activation.",
       "processing": "Traitement…",
       "autoApproveNote": "Sans réponse sous 24 h, la réclamation est approuvée automatiquement."
+    },
+    "admin": {
+      "title": "Arbitrage des réclamations",
+      "subtitle": "Tranchez de façon neutre les réclamations contestées (vous n’êtes ni le client ni le restaurant).",
+      "empty": "Aucune réclamation en arbitrage.",
+      "order": "Commande",
+      "reason": "Motif client",
+      "requested": "Montant réclamé",
+      "clientDetails": "Détails du client",
+      "refusalReason": "Motif du refus (restaurant)",
+      "contestReason": "Contestation du client",
+      "viewPhoto": "Voir la photo",
+      "approve": "Approuver & rembourser",
+      "refuseFinal": "Confirmer le refus",
+      "decisionReasonLabel": "Motivation (facultatif)",
+      "decisionReasonPlaceholder": "Expliquez votre décision…",
+      "approved": "Réclamation approuvée, remboursement déclenché.",
+      "refusedFinalDone": "Refus confirmé.",
+      "processing": "Traitement…",
+      "signalsTitle": "Signaux",
+      "consumerSignal": "Client : {recent} réclamation(s) récente(s), {rate}% approuvées",
+      "restaurantSignal": "Restaurant : {overturned}/{refused} refus infirmés en arbitrage",
+      "flaggedConsumer": "Client à surveiller",
+      "flaggedRestaurant": "Restaurant à surveiller"
     }
   }
 }
