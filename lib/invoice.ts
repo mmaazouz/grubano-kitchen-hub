@@ -2,13 +2,16 @@
 // (∑ applicationFeeAmount over the period) — never from the rates. A0-bis: the
 // levied commission is TTC; HT/TVA are split FROM it. All amounts integer CENTS.
 import { prisma } from '@/lib/prisma'
+import { resolveVatRate, DEFAULT_VAT_COUNTRY } from '@/lib/tax'
+import { LEGAL_INFO } from '@/lib/legal-info'
 
-export const VAT_RATE = 0.20 // French standard rate on services (A0-bis default)
-
-/** Split a TTC amount into HT + TVA, cent-exact by construction:
- *  HT = round(ttc / 1.2), TVA = ttc − HT → HT + TVA always re-adds to ttc. */
-export function splitTtc(ttcCents: number): { htCents: number; tvaCents: number } {
-  const htCents = Math.round(ttcCents / (1 + VAT_RATE))
+/** Split a TTC amount into HT + TVA at the country's VAT rate (P4.4-A), cent-exact by
+ *  construction: HT = round(ttc / (1 + rate)), TVA = ttc − HT → HT + TVA always re-adds
+ *  to ttc. country defaults to FR (rate 0.20) → IDENTICAL to the former hardcoded split
+ *  (HT = round(ttc / 1.2)). Splits the ALREADY-LEVIED commission — never money charged. */
+export function splitTtc(ttcCents: number, country: string = DEFAULT_VAT_COUNTRY): { htCents: number; tvaCents: number } {
+  const rate = resolveVatRate(country)
+  const htCents = Math.round(ttcCents / (1 + rate))
   return { htCents, tvaCents: ttcCents - htCents }
 }
 
@@ -44,8 +47,10 @@ export async function issueInvoice(opts: {
   periodEnd:    Date
   totalTtc:     number
   entriesCount: number
+  /** VAT-rate country of the partner (P4.4-A). Defaults to FR → 0.20 → byte-identical. */
+  country?:     string
 }): Promise<IssuedInvoice> {
-  const { htCents, tvaCents } = splitTtc(opts.totalTtc)
+  const { htCents, tvaCents } = splitTtc(opts.totalTtc, opts.country ?? DEFAULT_VAT_COUNTRY)
 
   return prisma.$transaction(async (tx) => {
     const existing = await tx.invoice.findUnique({
@@ -79,13 +84,16 @@ export async function issueInvoice(opts: {
   })
 }
 
-/** Grubano's legal identity on invoices — env-configured, with EXPLICIT
- *  placeholders so a missing value is impossible to mistake for a real one. */
+/** Grubano's legal identity on invoices — sourced from lib/legal-info (the SINGLE
+ *  source of company facts, P4.4-A). Values are placeholders until Mohammed fills
+ *  legal-info → the invoice shows the SAME placeholder the legal pages do (coherent),
+ *  without bypassing the legal-info guard-rail (we only READ the value verbatim). */
 export function issuerIdentity() {
+  const e = LEGAL_INFO.editor
   return {
-    name:    process.env.GRUBANO_LEGAL_NAME    ?? '[Raison sociale Grubano — à configurer]',
-    address: process.env.GRUBANO_LEGAL_ADDRESS ?? '[Adresse du siège — à configurer]',
-    siren:   process.env.GRUBANO_SIREN         ?? '[SIREN — à configurer]',
-    vat:     process.env.GRUBANO_VAT_NUMBER    ?? '[N° TVA intracommunautaire — à configurer]',
+    name:    e.raisonSociale,
+    address: e.siegeAdresse,
+    siren:   e.siren,
+    vat:     e.tvaIntra,
   }
 }

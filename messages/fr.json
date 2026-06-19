@@ -3176,5 +3176,16 @@
       "flaggedConsumer": "Client à surveiller",
       "flaggedRestaurant": "Restaurant à surveiller"
     }
+  },
+  "fiscal": {
+    "title": "Informations fiscales",
+    "subtitle": "Votre n° de TVA apparaîtra sur les factures de commission Grubano.",
+    "vatLabel": "N° de TVA intracommunautaire",
+    "vatPlaceholder": "FR 12 345 678 901",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saved": "N° de TVA enregistré.",
+    "cleared": "N° de TVA effacé.",
+    "error": "Une erreur est survenue. Réessayez."
   }
 }

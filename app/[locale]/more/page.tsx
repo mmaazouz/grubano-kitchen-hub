@@ -3,6 +3,7 @@ import {
   BarChart3, Building2, ShoppingBag, Receipt, Globe, Bell,
   HelpCircle, LogOut, ChevronRight, User,
 } from 'lucide-react'
+import VatNumberForm from '@/components/fiscal/VatNumberForm'
 
 const sections = [
   {
@@ -56,6 +57,9 @@ export default function MorePage() {
           </div>
         </div>
       ))}
+
+      {/* P4.4-A — partner VAT number for Grubano commission invoices (owner-scoped). */}
+      <VatNumberForm />
     </div>
   )
 }

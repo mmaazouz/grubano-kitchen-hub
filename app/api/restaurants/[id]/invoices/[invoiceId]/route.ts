@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
-import { issuerIdentity, VAT_RATE } from '@/lib/invoice'
+import { issuerIdentity } from '@/lib/invoice'
+import { resolveVatRate } from '@/lib/tax'
 
 // ── GET /api/restaurants/[id]/invoices/[invoiceId] ────────────────────────────
 // Rail A4 — V1 render: a CLEAN, PRINTABLE HTML invoice (étape-0 inventory found
@@ -55,7 +56,11 @@ export async function GET(
     }
     const restaurant = await prisma.restaurant.findUnique({
       where:  { id: params.id },
-      select: { id: true, operatorId: true, name: true, address: true, city: true },
+      select: {
+        id: true, operatorId: true, name: true, address: true, city: true,
+        // P4.4-A — partner fiscal id + VAT-rate country (from the owning operator).
+        operator: { select: { vatNumber: true, country: true } },
+      },
     })
     if (!restaurant) {
       return NextResponse.json({ error: 'Restaurant introuvable' }, { status: 404 })
@@ -90,6 +95,11 @@ export async function GET(
         : (g.channel && CHANNEL_LABELS[g.channel]) ?? TYPE_LABELS[g.type] ?? g.type
 
     const issuer = issuerIdentity()
+    // P4.4-A — VAT rate from the partner's country (FR → 0.20, byte-identical). The
+    // stored totalTva was split at the SAME rate at issuance, so the label matches.
+    const vatRate = resolveVatRate(restaurant.operator?.country)
+    const vatPct = (vatRate * 100).toFixed(0)
+    const partnerVat = restaurant.operator?.vatNumber || '—'
     const rows = groups.map(g => `
       <tr>
         <td>${esc(labelFor(g))}</td>
@@ -164,7 +174,8 @@ export async function GET(
         <h2>Destinataire</h2>
         <strong>${esc(restaurant.name)}</strong>
         ${esc(restaurant.address ?? '')}<br>
-        ${esc(restaurant.city ?? '')}
+        ${esc(restaurant.city ?? '')}<br>
+        N° TVA intracommunautaire : ${esc(partnerVat)}
       </div>
     </div>
 
@@ -182,7 +193,7 @@ export async function GET(
 
     <table class="totals">
       <tr><td>Total HT</td><td class="num">${eur(invoice.totalHt)}</td></tr>
-      <tr><td>TVA ${(VAT_RATE * 100).toFixed(0)} %</td><td class="num">${eur(invoice.totalTva)}</td></tr>
+      <tr><td>TVA ${vatPct} %</td><td class="num">${eur(invoice.totalTva)}</td></tr>
       <tr class="grand"><td>Total TTC</td><td class="num">${eur(invoice.totalTtc)}</td></tr>
     </table>
 
@@ -198,7 +209,7 @@ export async function GET(
     <footer>
       Facture établie par ${esc(issuer.name)} pour le compte de la plateforme Grubano.
       Numérotation continue ${esc(invoice.number)} — document généré électroniquement, valable sans signature.
-      TVA sur les services de commission au taux normal de ${(VAT_RATE * 100).toFixed(0)} %.
+      TVA sur les services de commission au taux normal de ${vatPct} %.
     </footer>
   </div>
 </body>

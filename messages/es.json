@@ -3176,5 +3176,16 @@
       "flaggedConsumer": "Cliente a vigilar",
       "flaggedRestaurant": "Restaurante a vigilar"
     }
+  },
+  "fiscal": {
+    "title": "Información fiscal",
+    "subtitle": "Su número de IVA aparecerá en sus facturas de comisión de Grubano.",
+    "vatLabel": "Número de IVA intracomunitario",
+    "vatPlaceholder": "ES X1234567X",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saved": "Número de IVA guardado.",
+    "cleared": "Número de IVA borrado.",
+    "error": "Se produjo un error. Inténtelo de nuevo."
   }
 }

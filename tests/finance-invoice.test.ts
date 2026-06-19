@@ -6,11 +6,17 @@
 // elsewhere through the existing routes; here we lock down the math.
 
 import { describe, it, expect } from 'vitest'
-import { splitTtc, monthBounds, VAT_RATE } from '@/lib/invoice'
+import { splitTtc, monthBounds } from '@/lib/invoice'
+import { resolveVatRate } from '@/lib/tax'
 
-describe('VAT_RATE — frozen at A0-bis default', () => {
-  it('is the French standard rate on services (20 %)', () => {
-    expect(VAT_RATE).toBe(0.20)
+describe('VAT rate — France stays the A0-bis default (P4.4-A byte-identical)', () => {
+  it('resolveVatRate("FR") is the French standard rate on services (20 %)', () => {
+    expect(resolveVatRate('FR')).toBe(0.20)
+  })
+  it('an unset / unknown country falls back to FR (0.20) — no invoice can blow up', () => {
+    expect(resolveVatRate(undefined)).toBe(0.20)
+    expect(resolveVatRate(null)).toBe(0.20)
+    expect(resolveVatRate('ZZ')).toBe(0.20)
   })
 })
 

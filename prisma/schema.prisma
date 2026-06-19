@@ -83,6 +83,15 @@ model Operator {
   legalForm     String?   // legal entity type — free string, no enum yet (e.g. auto_entrepreneur | sarl | sas)
   kybStatus     String?   // account-level KYB state — free string, no enum yet (e.g. none | pending | verified | rejected)
   kybVerifiedAt DateTime? // when account-level KYB was confirmed
+  // ── P4.4-A — invoice fiscal content (Agent 54, ADDITIVE) ─────────────────────
+  // vatNumber: the PARTNER's own VAT id, shown on Grubano's commission invoice to
+  // them. Nullable, USER-set (owner-scoped POST /api/operator/vat-number) — blank
+  // until the partner fills it. country: drives the per-country VAT RATE on that
+  // invoice (lib/tax.resolveVatRate); @default("FR") ⇒ every existing operator is
+  // France → 0.20 → byte-identical, and no non-FR establishment is active. Neither
+  // field touches any money charged (invoice accounting/display only).
+  vatNumber     String?   // partner's intra-community VAT number (display on their invoice)
+  country       String    @default("FR") // ISO alpha-2; VAT-rate country for their invoice
   // ── P4.1 — Stripe Connect (Express) onboarding for the FRANCHISE payout flow
   // (TEST mode; gated by FRANCHISE_CONNECT_ENABLED). Prefixed `franchise*` because
   // Operator is multi-purpose: this is the connected account for the 'franchise'

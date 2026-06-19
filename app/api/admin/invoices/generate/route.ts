@@ -63,6 +63,17 @@ export async function POST(req: Request) {
       _count: { _all: true },
     })
 
+    // P4.4-A — VAT-rate country per establishment (its operator's country, @default 'FR').
+    // All FR today → rate 0.20 → byte-identical splits. Batched to avoid N queries.
+    const restaurantIds = groups.map((g) => g.restaurantId)
+    const restos = restaurantIds.length
+      ? await prisma.restaurant.findMany({
+          where:  { id: { in: restaurantIds } },
+          select: { id: true, operator: { select: { country: true } } },
+        })
+      : []
+    const countryByRestaurant = new Map(restos.map((r) => [r.id, r.operator?.country ?? 'FR']))
+
     const invoices = []
     for (const g of groups) {
       const ttc = g._sum.applicationFeeAmount ?? 0
@@ -73,6 +84,7 @@ export async function POST(req: Request) {
         periodEnd:    bounds.periodEnd,
         totalTtc:     ttc,
         entriesCount: g._count._all,
+        country:      countryByRestaurant.get(g.restaurantId) ?? 'FR',
       })
       invoices.push({
         invoiceId:      inv.id,

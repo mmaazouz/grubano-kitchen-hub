@@ -3176,5 +3176,16 @@
       "flaggedConsumer": "Customer to watch",
       "flaggedRestaurant": "Restaurant to watch"
     }
+  },
+  "fiscal": {
+    "title": "Tax information",
+    "subtitle": "Your VAT number will appear on your Grubano commission invoices.",
+    "vatLabel": "Intra-community VAT number",
+    "vatPlaceholder": "FR 12 345 678 901",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "VAT number saved.",
+    "cleared": "VAT number cleared.",
+    "error": "Something went wrong. Please try again."
   }
 }
