@@ -92,6 +92,18 @@ model Operator {
   // field touches any money charged (invoice accounting/display only).
   vatNumber     String?   // partner's intra-community VAT number (display on their invoice)
   country       String    @default("FR") // ISO alpha-2; VAT-rate country for their invoice
+  // ── P4.4-C — DAC7 seller data (Agent 56, ADDITIVE) ───────────────────────────
+  // Self-declared seller identity fields the DAC7 platform-operator report needs and
+  // that aren't already captured (siren/officialName/vatNumber/country above + the
+  // restaurant's stripeAccountId as the financial-account REFERENCE — the real IBAN
+  // lives at Stripe). All NULLABLE / no default / NO backfill → existing rows stay
+  // valid and the DAC7 aggregation flags any still-missing field. Set ONLY by the
+  // owner (POST /api/operator/dac7, zod-whitelisted) — never read on any money path.
+  registeredAddress String?   // registered/seat address (DAC7 seller address)
+  taxId             String?   // TIN — tax identification number
+  taxIdCountry      String?   // ISO alpha-2 issuing country of the TIN
+  dateOfBirth       DateTime? // for INDIVIDUAL sellers (DAC7 requires DOB for natural persons)
+  sellerType        String?   // entity | individual (when not derivable from legalForm)
   // ── P4.1 — Stripe Connect (Express) onboarding for the FRANCHISE payout flow
   // (TEST mode; gated by FRANCHISE_CONNECT_ENABLED). Prefixed `franchise*` because
   // Operator is multi-purpose: this is the connected account for the 'franchise'

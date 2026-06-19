@@ -3188,5 +3188,28 @@
     "saved": "VAT number saved.",
     "cleared": "VAT number cleared.",
     "error": "Something went wrong. Please try again."
+  },
+  "dac7": {
+    "admin": {
+      "title": "DAC7 export",
+      "subtitle": "Annual seller-revenue report (platform reporting). Administrators only.",
+      "yearLabel": "Year",
+      "exportCsv": "Export CSV",
+      "exportJson": "Export JSON",
+      "note": "Mechanics only — classification, reportable sellers, thresholds and the official format (DGFiP XML) to be validated by the accountant/lawyer."
+    },
+    "title": "DAC7 tax information",
+    "subtitle": "Required for the EU platform-operator report.",
+    "sellerType": "Seller type",
+    "entity": "Entity",
+    "individual": "Individual",
+    "unspecified": "Unspecified",
+    "registeredAddress": "Registered address",
+    "taxId": "Tax identification number (TIN)",
+    "taxIdCountry": "TIN issuing country (ISO code)",
+    "dateOfBirth": "Date of birth (individuals)",
+    "save": "Save",
+    "saved": "Tax information saved.",
+    "error": "Something went wrong. Please try again."
   }
 }

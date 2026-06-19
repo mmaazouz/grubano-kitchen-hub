@@ -3188,5 +3188,28 @@
     "saved": "Partita IVA salvata.",
     "cleared": "Partita IVA cancellata.",
     "error": "Si è verificato un errore. Riprovi."
+  },
+  "dac7": {
+    "admin": {
+      "title": "Esportazione DAC7",
+      "subtitle": "Rapporto annuale sui ricavi dei venditori (dichiarazione piattaforma). Solo amministratori.",
+      "yearLabel": "Anno",
+      "exportCsv": "Esporta CSV",
+      "exportJson": "Esporta JSON",
+      "note": "Solo meccanica — classificazione, venditori dichiarabili, soglie e formato ufficiale da validare dal commercialista/legale."
+    },
+    "title": "Informazioni fiscali DAC7",
+    "subtitle": "Richieste per la dichiarazione degli operatori di piattaforma (UE).",
+    "sellerType": "Tipo di venditore",
+    "entity": "Società",
+    "individual": "Privato",
+    "unspecified": "Non specificato",
+    "registeredAddress": "Indirizzo della sede",
+    "taxId": "Codice fiscale (TIN)",
+    "taxIdCountry": "Paese di rilascio del TIN (codice ISO)",
+    "dateOfBirth": "Data di nascita (privati)",
+    "save": "Salva",
+    "saved": "Informazioni fiscali salvate.",
+    "error": "Si è verificato un errore. Riprovi."
   }
 }

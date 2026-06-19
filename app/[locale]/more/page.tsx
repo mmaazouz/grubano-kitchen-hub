@@ -4,6 +4,7 @@ import {
   HelpCircle, LogOut, ChevronRight, User,
 } from 'lucide-react'
 import VatNumberForm from '@/components/fiscal/VatNumberForm'
+import Dac7FiscalForm from '@/components/fiscal/Dac7FiscalForm'
 
 const sections = [
   {
@@ -60,6 +61,9 @@ export default function MorePage() {
 
       {/* P4.4-A — partner VAT number for Grubano commission invoices (owner-scoped). */}
       <VatNumberForm />
+
+      {/* P4.4-C — partner DAC7 self-declaration (owner-scoped, money-neutral). */}
+      <Dac7FiscalForm />
     </div>
   )
 }

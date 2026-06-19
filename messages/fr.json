@@ -3188,5 +3188,28 @@
     "saved": "N° de TVA enregistré.",
     "cleared": "N° de TVA effacé.",
     "error": "Une erreur est survenue. Réessayez."
+  },
+  "dac7": {
+    "admin": {
+      "title": "Export DAC7",
+      "subtitle": "Rapport annuel des revenus vendeurs (déclaration plateforme). Réservé aux administrateurs.",
+      "yearLabel": "Année",
+      "exportCsv": "Exporter en CSV",
+      "exportJson": "Exporter en JSON",
+      "note": "Mécanique uniquement — classification, vendeurs déclarables, seuils et format officiel (XML DGFiP) à valider par le comptable/juriste."
+    },
+    "title": "Informations fiscales DAC7",
+    "subtitle": "Requises pour la déclaration des opérateurs de plateforme (UE).",
+    "sellerType": "Type de vendeur",
+    "entity": "Société",
+    "individual": "Particulier",
+    "unspecified": "Non spécifié",
+    "registeredAddress": "Adresse du siège",
+    "taxId": "Numéro d'identification fiscale (TIN)",
+    "taxIdCountry": "Pays émetteur du TIN (code ISO)",
+    "dateOfBirth": "Date de naissance (particuliers)",
+    "save": "Enregistrer",
+    "saved": "Informations fiscales enregistrées.",
+    "error": "Une erreur est survenue. Réessayez."
   }
 }

@@ -3188,5 +3188,28 @@
     "saved": "Número de IVA guardado.",
     "cleared": "Número de IVA borrado.",
     "error": "Se produjo un error. Inténtelo de nuevo."
+  },
+  "dac7": {
+    "admin": {
+      "title": "Exportación DAC7",
+      "subtitle": "Informe anual de ingresos de vendedores (declaración de plataforma). Solo administradores.",
+      "yearLabel": "Año",
+      "exportCsv": "Exportar CSV",
+      "exportJson": "Exportar JSON",
+      "note": "Solo mecánica — clasificación, vendedores declarables, umbrales y formato oficial a validar por el contable/jurista."
+    },
+    "title": "Información fiscal DAC7",
+    "subtitle": "Requeridas para la declaración de operadores de plataforma (UE).",
+    "sellerType": "Tipo de vendedor",
+    "entity": "Sociedad",
+    "individual": "Particular",
+    "unspecified": "No especificado",
+    "registeredAddress": "Domicilio social",
+    "taxId": "Número de identificación fiscal (NIF)",
+    "taxIdCountry": "País emisor del NIF (código ISO)",
+    "dateOfBirth": "Fecha de nacimiento (particulares)",
+    "save": "Guardar",
+    "saved": "Información fiscal guardada.",
+    "error": "Se produjo un error. Inténtelo de nuevo."
   }
 }
