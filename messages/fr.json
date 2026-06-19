@@ -2957,6 +2957,18 @@
       "approveFranchise": "Approuver",
       "actionError": "L’action a échoué. Réessayez.",
       "networkError": "Connexion impossible. Vérifiez votre réseau."
+    },
+    "influencerVerif": {
+      "title": "Vérifications d'audience",
+      "subtitle": "Approuvez ou refusez les demandes de statut influenceur des affiliés.",
+      "emptyTitle": "Aucune demande",
+      "emptyBody": "Aucune demande de vérification d'audience pour le moment.",
+      "approve": "Approuver",
+      "reject": "Refuser",
+      "proof": "Preuve",
+      "status_pending": "En attente",
+      "status_approved": "Approuvée",
+      "status_rejected": "Refusée"
     }
   },
   "legal": {
@@ -3259,6 +3271,26 @@
     "withdrawHistoryTitle": "Historique des versements",
     "payout_pending": "En cours",
     "payout_paid": "Versé",
-    "payout_failed": "Échec"
+    "payout_failed": "Échec",
+    "verifyTitle": "Devenir influenceur",
+    "verifyBody": "Faites vérifier votre audience pour débloquer le statut influenceur. (Sans effet sur vos commissions pour le moment.)",
+    "verifyPlatform": "Plateforme",
+    "verifyHandle": "Identifiant / chaîne",
+    "verifyFollowers": "Nombre d'abonnés",
+    "verifyProofUrl": "Lien de preuve (optionnel)",
+    "verifySubmit": "Demander la vérification",
+    "verifyReapply": "Renvoyer une demande",
+    "verifyPending": "Votre demande est en attente de validation.",
+    "verifyApprovedTitle": "Audience vérifiée",
+    "verifyApprovedBody": "Vous êtes influenceur. Vos commissions ne changent pas encore — c'est pour bientôt.",
+    "verifiedBadge": "Influenceur",
+    "verifyRejected": "Votre demande a été refusée. Vous pouvez la renvoyer.",
+    "verifyError": "Action impossible — réessayez.",
+    "verifyAlreadyPending": "Une demande est déjà en attente.",
+    "verifyAlreadyVerified": "Votre audience est déjà vérifiée.",
+    "platform_youtube": "YouTube",
+    "platform_instagram": "Instagram",
+    "platform_tiktok": "TikTok",
+    "platform_other": "Autre"
   }
 }

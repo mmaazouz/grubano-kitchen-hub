@@ -2957,6 +2957,18 @@
       "approveFranchise": "Approva",
       "actionError": "L’azione non è riuscita. Riprova.",
       "networkError": "Impossibile connettersi. Controlla la rete."
+    },
+    "influencerVerif": {
+      "title": "Verifiche del pubblico",
+      "subtitle": "Approva o rifiuta le richieste di status influencer degli affiliati.",
+      "emptyTitle": "Nessuna richiesta",
+      "emptyBody": "Ancora nessuna richiesta di verifica del pubblico.",
+      "approve": "Approva",
+      "reject": "Rifiuta",
+      "proof": "Prova",
+      "status_pending": "In attesa",
+      "status_approved": "Approvata",
+      "status_rejected": "Rifiutata"
     }
   },
   "legal": {
@@ -3259,6 +3271,26 @@
     "withdrawHistoryTitle": "Cronologia dei versamenti",
     "payout_pending": "In corso",
     "payout_paid": "Versato",
-    "payout_failed": "Fallito"
+    "payout_failed": "Fallito",
+    "verifyTitle": "Diventa influencer",
+    "verifyBody": "Fai verificare il tuo pubblico per sbloccare lo status di influencer. (Nessun effetto sulle tue commissioni per ora.)",
+    "verifyPlatform": "Piattaforma",
+    "verifyHandle": "Handle / canale",
+    "verifyFollowers": "Numero di follower",
+    "verifyProofUrl": "Link di prova (opzionale)",
+    "verifySubmit": "Richiedi la verifica",
+    "verifyReapply": "Reinvia una richiesta",
+    "verifyPending": "La tua richiesta è in attesa di revisione.",
+    "verifyApprovedTitle": "Pubblico verificato",
+    "verifyApprovedBody": "Sei un influencer. Le tue commissioni non cambiano ancora — arriverà presto.",
+    "verifiedBadge": "Influencer",
+    "verifyRejected": "La tua richiesta è stata rifiutata. Puoi reinviarla.",
+    "verifyError": "Azione non disponibile — riprova.",
+    "verifyAlreadyPending": "Una richiesta è già in attesa.",
+    "verifyAlreadyVerified": "Il tuo pubblico è già verificato.",
+    "platform_youtube": "YouTube",
+    "platform_instagram": "Instagram",
+    "platform_tiktok": "TikTok",
+    "platform_other": "Altro"
   }
 }

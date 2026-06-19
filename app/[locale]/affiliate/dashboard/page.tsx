@@ -10,6 +10,7 @@ import PartnerChrome from '@/components/business/PartnerChrome'
 import AffiliateLinkCard from '@/components/affiliate/AffiliateLinkCard'
 import AffiliateDashboardClient from '@/components/affiliate/AffiliateDashboardClient'
 import AffiliateWithdrawCard from '@/components/affiliate/AffiliateWithdrawCard'
+import AffiliateVerifyCard from '@/components/affiliate/AffiliateVerifyCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,9 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
             {/* Brique D2 — self-service withdrawal (KYC + fiscal + payout). Hides itself
                 when AFFILIATE_CONNECT_ENABLED is OFF → dashboard byte-identical. */}
             <AffiliateWithdrawCard />
+            {/* INF-1 — audience verification (become an influencer). Hides itself when
+                INFLUENCER_ENABLED is OFF → dashboard byte-identical. No money effect. */}
+            <AffiliateVerifyCard />
           </>
         ) : (
           <Card elevation="sm" padding="lg" className="text-center">

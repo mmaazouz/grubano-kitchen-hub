@@ -1681,6 +1681,43 @@ model Affiliate {
   referralLinkSlug String   @unique // public /ref/<slug> alias (= code.toLowerCase())
   status           String   @default("active") // active | suspended (reserved)
   createdAt        DateTime @default(now())
+  // ── Influencer tier (Phase 6 INF-1, Agent 66) — AUDIENCE verification state ────────
+  // ADDITIVE + nullable/default: an "influencer" is an affiliate whose AUDIENCE is
+  // VERIFIED (audienceVerified === true), set ONLY by an admin approval of an
+  // AudienceVerificationRequest. DISTINCT from the Stripe Connect identity-KYC (D1/D2,
+  // for moving money) — it carries NO money effect here. The BETTER commissions of a
+  // verified influencer are a SEPARATE later brick (INF-3, money-adjacent). Gated by
+  // INFLUENCER_ENABLED (default OFF). platform/handle/followers = snapshot from the
+  // approved request (display only).
+  audienceVerified   Boolean   @default(false)
+  audienceVerifiedAt DateTime?
+  primaryPlatform    String?   // youtube | instagram | tiktok | other (snapshot)
+  declaredFollowers  Int?      // snapshot at verification (declarative)
+  handle             String?   // social handle snapshot
+}
+
+// ── AudienceVerificationRequest (Phase 6 INF-1, Agent 66) — influencer verification ───
+// The "apply → pending → admin approve/reject → grant" workflow for the influencer tier
+// (calqued on FranchiseeApplication B7 — that model is NOT modified). ONE row per affiliate
+// (operatorId @unique), transitioned in place; a re-apply after a rejection resets it to
+// pending. The grant (Affiliate.audienceVerified=true) happens ONLY in the admin approve
+// path. operatorId = the affiliate's OPERATOR id (the session operator — owner-scoped, never
+// a client value). NO money: a pure audience-verification state machine, gated by
+// INFLUENCER_ENABLED. ADDITIVE: brand-new table, no FK onto existing rows, no backfill.
+model AudienceVerificationRequest {
+  id                String    @id @default(cuid())
+  operatorId        String    @unique // the affiliate's OPERATOR id (1 request per affiliate)
+  platform          String              // youtube | instagram | tiktok | other
+  handle            String              // social handle / channel
+  declaredFollowers Int       @default(0) // self-declared audience size
+  proofUrl          String?             // optional link the admin can inspect (read-only aid)
+  status            String    @default("pending") // pending | approved | rejected
+  reviewedBy        String?             // admin operator id (audit) — set on decision
+  reviewedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, createdAt])
 }
 
 // ── ReferralClick (Phase 6 Brique C, Agent 60) — affiliate link click tracking ───────

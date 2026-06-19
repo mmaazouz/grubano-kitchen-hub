@@ -2957,6 +2957,18 @@
       "approveFranchise": "الموافقة",
       "actionError": "فشل الإجراء. حاول مرة أخرى.",
       "networkError": "تعذّر الاتصال. تحقّق من شبكتك."
+    },
+    "influencerVerif": {
+      "title": "عمليات التحقّق من الجمهور",
+      "subtitle": "وافق على طلبات حالة المؤثّر للمسوّقين أو ارفضها.",
+      "emptyTitle": "لا طلبات",
+      "emptyBody": "لا توجد طلبات تحقّق من الجمهور بعد.",
+      "approve": "موافقة",
+      "reject": "رفض",
+      "proof": "إثبات",
+      "status_pending": "قيد الانتظار",
+      "status_approved": "موافَق عليها",
+      "status_rejected": "مرفوضة"
     }
   },
   "legal": {
@@ -3259,6 +3271,26 @@
     "withdrawHistoryTitle": "سجل الدفعات",
     "payout_pending": "قيد التنفيذ",
     "payout_paid": "مدفوع",
-    "payout_failed": "فشل"
+    "payout_failed": "فشل",
+    "verifyTitle": "كن مؤثّرًا",
+    "verifyBody": "تحقّق من جمهورك لفتح حالة المؤثّر. (لا تأثير على عمولاتك حاليًا.)",
+    "verifyPlatform": "المنصّة",
+    "verifyHandle": "المعرّف / القناة",
+    "verifyFollowers": "عدد المتابعين",
+    "verifyProofUrl": "رابط إثبات (اختياري)",
+    "verifySubmit": "طلب التحقّق",
+    "verifyReapply": "إعادة إرسال الطلب",
+    "verifyPending": "طلبك قيد المراجعة.",
+    "verifyApprovedTitle": "تم التحقّق من الجمهور",
+    "verifyApprovedBody": "أنت مؤثّر الآن. عمولاتك لا تتغيّر بعد — قريبًا.",
+    "verifiedBadge": "مؤثّر",
+    "verifyRejected": "تم رفض طلبك. يمكنك إعادة إرساله.",
+    "verifyError": "الإجراء غير متاح — حاول مجددًا.",
+    "verifyAlreadyPending": "هناك طلب قيد الانتظار بالفعل.",
+    "verifyAlreadyVerified": "تم التحقّق من جمهورك بالفعل.",
+    "platform_youtube": "يوتيوب",
+    "platform_instagram": "إنستغرام",
+    "platform_tiktok": "تيك توك",
+    "platform_other": "أخرى"
   }
 }

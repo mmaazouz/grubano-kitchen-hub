@@ -2957,6 +2957,18 @@
       "approveFranchise": "Approve",
       "actionError": "The action failed. Please try again.",
       "networkError": "Could not connect. Check your network."
+    },
+    "influencerVerif": {
+      "title": "Audience verifications",
+      "subtitle": "Approve or decline affiliates’ influencer-status requests.",
+      "emptyTitle": "No requests",
+      "emptyBody": "No audience-verification requests yet.",
+      "approve": "Approve",
+      "reject": "Decline",
+      "proof": "Proof",
+      "status_pending": "Pending",
+      "status_approved": "Approved",
+      "status_rejected": "Declined"
     }
   },
   "legal": {
@@ -3259,6 +3271,26 @@
     "withdrawHistoryTitle": "Payout history",
     "payout_pending": "In progress",
     "payout_paid": "Paid",
-    "payout_failed": "Failed"
+    "payout_failed": "Failed",
+    "verifyTitle": "Become an influencer",
+    "verifyBody": "Get your audience verified to unlock the influencer status. (No effect on your commissions yet.)",
+    "verifyPlatform": "Platform",
+    "verifyHandle": "Handle / channel",
+    "verifyFollowers": "Follower count",
+    "verifyProofUrl": "Proof link (optional)",
+    "verifySubmit": "Request verification",
+    "verifyReapply": "Re-submit a request",
+    "verifyPending": "Your request is awaiting review.",
+    "verifyApprovedTitle": "Audience verified",
+    "verifyApprovedBody": "You're an influencer. Your commissions don't change yet — that's coming soon.",
+    "verifiedBadge": "Influencer",
+    "verifyRejected": "Your request was declined. You can re-submit it.",
+    "verifyError": "Action unavailable — try again.",
+    "verifyAlreadyPending": "A request is already pending.",
+    "verifyAlreadyVerified": "Your audience is already verified.",
+    "platform_youtube": "YouTube",
+    "platform_instagram": "Instagram",
+    "platform_tiktok": "TikTok",
+    "platform_other": "Other"
   }
 }
