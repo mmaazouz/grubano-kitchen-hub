@@ -59,9 +59,10 @@ describe('(b) affiliate happy path — right entity / balance / Payout', () => {
   })
 
   it('amount = the server matured balance remainder (paid cursor), never client', async () => {
-    balMock.mockResolvedValue({ role: 'affiliate', refId: 'op1', earnedCents: 7000, paidCents: 5000, availableCents: 2000, currency: 'eur' })
+    // available 4000 ≥ the unified 2500 threshold (Brique D2) — the cursor/amount is under test.
+    balMock.mockResolvedValue({ role: 'affiliate', refId: 'op1', earnedCents: 9000, paidCents: 5000, availableCents: 4000, currency: 'eur' })
     await payPartner('affiliate', 'op1')
-    expect(db.payout.create.mock.calls[0][0].data.amountCents).toBe(2000)
+    expect(db.payout.create.mock.calls[0][0].data.amountCents).toBe(4000)
     expect(db.payout.create.mock.calls[0][0].data.idempotencyKey).toBe('affiliate:op1:paid:5000')
   })
 })

@@ -20,9 +20,11 @@ const base = {
 }
 
 describe('evaluateEarningMaturity — B0 rules', () => {
-  it('constants pin the B0 defaults (7 days, 20 € threshold)', () => {
+  it('constants pin the B0 defaults (7 days, 25 € threshold — unified in Brique D2)', () => {
     expect(MATURATION_DAYS).toBe(7)
-    expect(PAYOUT_THRESHOLD_CENTS).toBe(2000)
+    // Brique D2 (Agent 64): the payout threshold is unified to the doctrine 25 € via the
+    // single source lib/payout-threshold (was a split 2000). Deliberate change.
+    expect(PAYOUT_THRESHOLD_CENTS).toBe(2500)
   })
 
   it('stays pending before 7 days, even when paid', () => {
@@ -63,9 +65,9 @@ describe('evaluateEarningMaturity — B0 rules', () => {
     })).toEqual({ status: 'matured', reason: 'no_order_link' })
   })
 
-  it('threshold progression: matured cents measure against 2000c (B1 progressPct contract)', () => {
-    // 12 € matured of the 20 € threshold → 60 %.
-    const maturedCents = 1200
+  it('threshold progression: matured cents measure against the unified 2500c (B1 progressPct contract)', () => {
+    // 15 € matured of the 25 € threshold → 60 %.
+    const maturedCents = 1500
     expect(Math.min(100, Math.round((maturedCents / PAYOUT_THRESHOLD_CENTS) * 100))).toBe(60)
     // 25 € matured → capped at 100 %.
     expect(Math.min(100, Math.round((2500 / PAYOUT_THRESHOLD_CENTS) * 100))).toBe(100)

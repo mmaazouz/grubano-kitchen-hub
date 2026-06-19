@@ -3244,6 +3244,21 @@
     "badge_firstSale": "أول عملية بيع",
     "badge_tenCustomers": "10 عملاء",
     "badge_hundredEuros": "100 € مكتسبة",
-    "badge_fiveHundredEuros": "500 € مكتسبة"
+    "badge_fiveHundredEuros": "500 € مكتسبة",
+    "withdrawTitle": "السحب",
+    "withdrawBelowThreshold": "ينقصك {missing} € للوصول إلى الحد الأدنى {threshold} €.",
+    "withdrawCta": "اسحب أرباحي",
+    "withdrawKycTitle": "التحقق من الهوية مطلوب",
+    "withdrawKycBody": "قبل أي دفعة، تحقّق من هويتك (فرد) عبر مزوّد الدفع لدينا.",
+    "withdrawKycCta": "تحقّق من هويتي",
+    "withdrawFiscalTitle": "المعلومات الضريبية مطلوبة",
+    "withdrawFiscalBody": "أكمل معلوماتك الضريبية قبل أول دفعة لك.",
+    "withdrawInProgress": "هناك دفعة قيد التنفيذ بالفعل.",
+    "withdrawPaid": "تمت الدفعة: {amount} €.",
+    "withdrawFailed": "فشلت الدفعة. حاول مرة أخرى لاحقًا.",
+    "withdrawHistoryTitle": "سجل الدفعات",
+    "payout_pending": "قيد التنفيذ",
+    "payout_paid": "مدفوع",
+    "payout_failed": "فشل"
   }
 }

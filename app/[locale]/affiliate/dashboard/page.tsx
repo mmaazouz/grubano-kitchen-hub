@@ -9,6 +9,7 @@ import { Card, Button } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
 import AffiliateLinkCard from '@/components/affiliate/AffiliateLinkCard'
 import AffiliateDashboardClient from '@/components/affiliate/AffiliateDashboardClient'
+import AffiliateWithdrawCard from '@/components/affiliate/AffiliateWithdrawCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +48,9 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
             />
             {/* Brique C — real earnings + gamification + click funnel (fetches /api/affiliate/stats). */}
             <AffiliateDashboardClient />
+            {/* Brique D2 — self-service withdrawal (KYC + fiscal + payout). Hides itself
+                when AFFILIATE_CONNECT_ENABLED is OFF → dashboard byte-identical. */}
+            <AffiliateWithdrawCard />
           </>
         ) : (
           <Card elevation="sm" padding="lg" className="text-center">

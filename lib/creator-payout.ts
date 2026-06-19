@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { computePartnerBalance, type PartnerBalanceRole } from '@/lib/partner-balance'
+import { payoutMinCents } from '@/lib/payout-threshold'
 
 // ── Partner payout (rail financier P4.3, Agent 39 — GÉNÉRALISÉ Brique D1, Agent 63) ─
 //
@@ -54,10 +55,11 @@ export function isAffiliateConnectEnabled(): boolean {
   return process.env.AFFILIATE_CONNECT_ENABLED === 'true'
 }
 
-/** Minimum payout (cents). Default 20 € (2000), env CREATOR_PAYOUT_MIN_CENTS. */
+/** Minimum payout (cents) — delegates to the SINGLE source (lib/payout-threshold,
+ *  env CREATOR_PAYOUT_MIN_CENTS, default 25 € since Brique D2). Re-exported as the
+ *  rail's threshold; payPartner logic below is otherwise unchanged. */
 export function minPayoutCents(): number {
-  const v = Number.parseInt(process.env.CREATOR_PAYOUT_MIN_CENTS ?? '', 10)
-  return Number.isFinite(v) && v > 0 ? v : 2000
+  return payoutMinCents()
 }
 
 // Roles the generalised rail can pay (extensible — franchise keeps its own settlement).

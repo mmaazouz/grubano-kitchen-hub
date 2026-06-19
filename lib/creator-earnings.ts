@@ -11,9 +11,12 @@
 // Partial refund: the gain still matures — the pro-rata take-back becomes a
 // compensating line at payout time (B0), never a mutation of this row.
 import { prisma } from '@/lib/prisma'
+import { payoutMinCents } from '@/lib/payout-threshold'
 
 export const MATURATION_DAYS        = 7    // B0
-export const PAYOUT_THRESHOLD_CENTS = 2000 // B0: 20 € minimum payout
+// B0: minimum payout — SINGLE SOURCE (Brique D2 unified the creator + affiliate rails
+// to 25 €, env CREATOR_PAYOUT_MIN_CENTS; was a hardcoded 2000). Read once at load.
+export const PAYOUT_THRESHOLD_CENTS = payoutMinCents()
 
 export type MaturityInput = {
   /** When the gain was generated = the ORDER's date (fallback: the row's). */

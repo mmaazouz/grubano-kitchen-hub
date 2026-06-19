@@ -49,12 +49,13 @@ describe('payCreator — happy path', () => {
   })
 
   it('cursor key is the PAID amount — two concurrent runs at different EARNED but same PAID share a key (serialise)', async () => {
-    // A creator who has already been paid 5000, now earned 7000 → available 2000.
-    balMock.mockResolvedValue({ role: 'creator', refId: 'c1', earnedCents: 7000, paidCents: 5000, availableCents: 2000, currency: 'eur' })
+    // A creator who has already been paid 5000, now earned 9000 → available 4000
+    // (≥ the unified 2500 threshold — Brique D2; the cursor logic is what's under test).
+    balMock.mockResolvedValue({ role: 'creator', refId: 'c1', earnedCents: 9000, paidCents: 5000, availableCents: 4000, currency: 'eur' })
     await payCreator('c1')
     expect(db.payout.create.mock.calls[0][0].data.idempotencyKey).toBe('creator:c1:paid:5000')
     // amount is the remainder, not the gross earned
-    expect(db.payout.create.mock.calls[0][0].data.amountCents).toBe(2000)
+    expect(db.payout.create.mock.calls[0][0].data.amountCents).toBe(4000)
     expect(stripeMock.transfers.create.mock.calls[0][1]).toEqual({ idempotencyKey: 'creator:c1:paid:5000' })
   })
 })

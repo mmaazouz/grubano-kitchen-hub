@@ -3244,6 +3244,21 @@
     "badge_firstSale": "Primera venta",
     "badge_tenCustomers": "10 clientes",
     "badge_hundredEuros": "100 € ganados",
-    "badge_fiveHundredEuros": "500 € ganados"
+    "badge_fiveHundredEuros": "500 € ganados",
+    "withdrawTitle": "Retiro",
+    "withdrawBelowThreshold": "Te faltan {missing} € para alcanzar el umbral de {threshold} €.",
+    "withdrawCta": "Retirar mis ganancias",
+    "withdrawKycTitle": "Verificación de identidad requerida",
+    "withdrawKycBody": "Antes de cualquier pago, verifica tu identidad (particular) a través de nuestro proveedor de pagos.",
+    "withdrawKycCta": "Verificar mi identidad",
+    "withdrawFiscalTitle": "Información fiscal requerida",
+    "withdrawFiscalBody": "Completa tu información fiscal antes de tu primer pago.",
+    "withdrawInProgress": "Ya hay un pago en curso.",
+    "withdrawPaid": "Pago realizado: {amount} €.",
+    "withdrawFailed": "El pago falló. Inténtalo de nuevo más tarde.",
+    "withdrawHistoryTitle": "Historial de pagos",
+    "payout_pending": "En curso",
+    "payout_paid": "Pagado",
+    "payout_failed": "Fallido"
   }
 }
