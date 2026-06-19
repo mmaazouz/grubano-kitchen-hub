@@ -30,6 +30,22 @@ describe('addableActivities', () => {
     expect(a).not.toContain('consumer')
     expect(a).not.toContain('admin')
   })
+
+  // ── Phase 6 Brique A — affiliate is gated behind AFFILIATE_ENABLED (Agent 58) ──
+  it('affiliate is NOT offered by default (flag OFF → byte-identical)', () => {
+    expect(addableActivities(['restaurant'])).not.toContain('affiliate')
+    expect(addableActivities(['restaurant'], {})).not.toContain('affiliate')
+    expect(addableActivities(['restaurant'], { includeAffiliate: false })).not.toContain('affiliate')
+  })
+
+  it('affiliate is appended only when includeAffiliate is true (flag ON)', () => {
+    expect(addableActivities(['restaurant'], { includeAffiliate: true }))
+      .toEqual(['supplier', 'creator', 'logistics', 'franchise', 'affiliate'])
+  })
+
+  it('an existing affiliate is not re-offered even when the flag is ON', () => {
+    expect(addableActivities(['restaurant', 'affiliate'], { includeAffiliate: true })).not.toContain('affiliate')
+  })
 })
 
 describe('activityMode', () => {

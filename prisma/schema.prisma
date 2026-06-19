@@ -22,7 +22,7 @@ model Operator {
   // partner and kept for audit. ADDITIVE + REVERSIBLE: nullable, no backfill,
   // existing rows stay valid and dropping it leaves the model intact.
   statusReason String?
-  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin | supplier
+  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate
   createdAt  DateTime   @default(now())
   // ── Partner email verification + RGPD consent (Agent 12, brique 1) ───────────
   // ADDITIVE + REVERSIBLE: every field is nullable, so existing rows (consumers,
@@ -124,7 +124,7 @@ model OperatorRole {
   id         String   @id @default(cuid())
   operatorId String
   operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  role       String   // restaurant | franchise | creator | consumer | admin | supplier
+  role       String   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate
   createdAt  DateTime @default(now())
 
   @@unique([operatorId, role])
@@ -1600,10 +1600,18 @@ model Referral {
   active     Boolean        @default(true)
   orders     ReferralOrder[]
   createdAt  DateTime       @default(now())
+  // ── Top-level affiliate seam (Phase 6 Brique A, Agent 58) — ADDITIVE · NULLABLE · UN-WIRED ──
+  // Reserved for Brique B: when an order is attributed to a top-level AFFILIATE (not a
+  // creator), B will bind this Referral to the Affiliate via this column, REUSING this
+  // very table instead of a parallel system. Plain scalar (no @relation) — same
+  // convention as `customerId` above. NOT written by ANY code in Brique A (the creator
+  // rail uses `creatorId` only). Nullable → no backfill, every existing row stays valid.
+  affiliateId String?
 
   @@index([creatorId])
   @@index([customerId])
   @@index([codeUsed])
+  @@index([affiliateId])
 }
 
 // One row per qualifying order routed through a referral. `creatorEarning`
@@ -1629,8 +1637,32 @@ model ReferralOrder {
   status         String   @default("pending") // pending | matured | cancelled | paid
   maturedAt      DateTime?
   createdAt      DateTime @default(now())
+  // Brique A seam (Agent 58) — the Affiliate credited by this row (null = creator rail).
+  // ADDITIVE · NULLABLE · UN-WIRED: no code in A writes it; Brique B will populate it.
+  affiliateId    String?
 
   @@index([referralId])
+  @@index([affiliateId])
+}
+
+// ── Affiliate (Phase 6 Brique A, Agent 58) — top-level affiliate identity ─────────
+// ADDITIVE + REVERSIBLE: a brand-new table; no existing model/column is touched and
+// dropping it leaves the schema intact. The affiliate is a FIRST-CLASS role (decision
+// Agent 0 / Mohammed), DISTINCT from the creator's `isInfluencer` sub-flag. One row per
+// login Operator (operatorId @unique → 1:1, and the DB-level idempotence guard so a
+// re-join never creates a second entity). The referral code/slug are minted INSTANTLY at
+// signup (no upfront verification — doctrine "lien instantané"); they are kept UNIQUE
+// across BOTH this table AND Creator.referralCode/Slug so Brique B can resolve either
+// rail without collision. NO money here: granting the role + a code gives only the
+// ability to share a link; the credit (attribution) = Brique B, the withdrawal+KYC =
+// Brique D. `status` is reserved (A only ever writes 'active').
+model Affiliate {
+  id               String   @id @default(cuid())
+  operatorId       String   @unique // the login Operator that is this affiliate (1:1)
+  referralCode     String   @unique // instant-minted at signup, e.g. "ALEX9F2K"
+  referralLinkSlug String   @unique // public /ref/<slug> alias (= code.toLowerCase())
+  status           String   @default("active") // active | suspended (reserved)
+  createdAt        DateTime @default(now())
 }
 
 // ── Creator-recipe adoption mechanic (brique 3A) ──────────────────────────────

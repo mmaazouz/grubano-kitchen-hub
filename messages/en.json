@@ -2669,7 +2669,8 @@
     "spaceAdmin": "Administration",
     "spaceSupplier": "Supplier space",
     "spaceLogistics": "Logistics",
-    "addActivity": "Add an activity"
+    "addActivity": "Add an activity",
+    "spaceAffiliate": "Affiliate"
   },
   "supplier": {
     "landingTitle": "Become a Grubano supplier",
@@ -2954,7 +2955,9 @@
     "logisticsTitle": "Logistics",
     "logisticsDesc": "Run deliveries for restaurants and suppliers.",
     "franchiseTitle": "Franchise",
-    "franchiseDesc": "Open an outlet under one of our brands (by application)."
+    "franchiseDesc": "Open an outlet under one of our brands (by application).",
+    "affiliateTitle": "Become an affiliate",
+    "affiliateDesc": "Share your referral link and earn a commission on the orders you bring. Instant link, no verification."
   },
   "admin": {
     "approvals": {
@@ -3211,5 +3214,29 @@
     "save": "Save",
     "saved": "Tax information saved.",
     "error": "Something went wrong. Please try again."
+  },
+  "affiliate": {
+    "joinTitle": "Become a Grubano affiliate",
+    "joinSubtitle": "Share your link, get Grubano discovered and earn a commission on the orders you bring.",
+    "joinPoint1": "Instant referral link, with no verification.",
+    "joinPoint2": "A commission on every order you bring.",
+    "joinPoint3": "Identity and bank details only at your first withdrawal.",
+    "joinCta": "Become an affiliate",
+    "joining": "Activating…",
+    "joinNoVerif": "No verification required — your link is created instantly.",
+    "joinedTitle": "You're an affiliate 🎉",
+    "joinedBody": "Your referral link is ready. Share it to get started.",
+    "goToDashboard": "Go to my affiliate space",
+    "errorGeneric": "Something went wrong. Please try again.",
+    "yourLinkTitle": "Your referral link",
+    "yourLinkHint": "Share this link. Orders placed through it will earn you a commission.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "yourCode": "Your code:",
+    "dashTitle": "Affiliate space",
+    "dashSubtitle": "Your referral link and soon your earnings.",
+    "earningsSoonTitle": "Your earnings are coming soon",
+    "earningsSoonBody": "Tracking of referred orders and your commissions will be available soon.",
+    "notYetAffiliate": "You're not an affiliate yet."
   }
 }

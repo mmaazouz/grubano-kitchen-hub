@@ -88,6 +88,15 @@ export async function middleware(request: NextRequest) {
   // supplier gate. Distinct prefix from /business/logistics — never collides.
   const isLogisticsSpace =
     restPath === '/logistics' || restPath.startsWith('/logistics/')
+  // Affiliate space (Phase 6 Brique A, Agent 58): the affiliate home at /affiliate/
+  // dashboard (role affiliate/admin). /affiliate/join is the INSTANT self-serve
+  // onboarding, reachable by ANY authenticated user (they are BECOMING an affiliate) →
+  // session-only, no role gate. Distinct top-level prefix (never collides). The whole
+  // surface 404s when AFFILIATE_ENABLED is OFF (page-level), so this gate is inert then.
+  const isAffiliateSpace =
+    restPath === '/affiliate' || restPath.startsWith('/affiliate/')
+  const isAffiliateJoin =
+    restPath === '/affiliate/join' || restPath.startsWith('/affiliate/join/')
   // Admin console (B2.4 / SEC2, Agent 33): the approval console at /admin. Gated
   // to ADMIN ONLY (defence in depth — every /admin page ALSO re-checks the session
   // role server-side). Exact '/admin' or the '/admin/' prefix. NO public sub-route.
@@ -175,6 +184,12 @@ export async function middleware(request: NextRequest) {
     if (isLogisticsSpace && !hasAny(['logistics', 'admin'])) {
       const home = spacesForRoles(roles)[0]?.href ?? '/eat'
       return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
+    }
+    // Affiliate space (Brique A): /affiliate/dashboard (+ any /affiliate route EXCEPT the
+    // open /affiliate/join) requires affiliate/admin. A non-affiliate is sent to
+    // /affiliate/join (instant onboarding) — which they CAN reach (session-only) → no loop.
+    if (isAffiliateSpace && !isAffiliateJoin && !hasAny(['affiliate', 'admin'])) {
+      return NextResponse.redirect(new URL(`/${activeLocale}/affiliate/join`, request.url))
     }
     // Admin console (B2.4): ADMIN only. A non-admin is sent to the HOME of their
     // primary role (role-spaces) — its own space, always reachable → no loop.

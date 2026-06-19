@@ -2669,7 +2669,8 @@
     "spaceAdmin": "Administration",
     "spaceSupplier": "Espace fournisseur",
     "spaceLogistics": "Espace logistique",
-    "addActivity": "Ajouter une activité"
+    "addActivity": "Ajouter une activité",
+    "spaceAffiliate": "Affiliation"
   },
   "supplier": {
     "landingTitle": "Devenez fournisseur Grubano",
@@ -2954,7 +2955,9 @@
     "logisticsTitle": "Logistique",
     "logisticsDesc": "Effectuez des livraisons pour les restaurants et les fournisseurs.",
     "franchiseTitle": "Franchise",
-    "franchiseDesc": "Ouvrez un point de vente sous l’une de nos marques (sur candidature)."
+    "franchiseDesc": "Ouvrez un point de vente sous l’une de nos marques (sur candidature).",
+    "affiliateTitle": "Devenir affilié",
+    "affiliateDesc": "Partagez votre lien de parrainage et gagnez une commission sur les commandes apportées. Lien immédiat, sans vérification."
   },
   "admin": {
     "approvals": {
@@ -3211,5 +3214,29 @@
     "save": "Enregistrer",
     "saved": "Informations fiscales enregistrées.",
     "error": "Une erreur est survenue. Réessayez."
+  },
+  "affiliate": {
+    "joinTitle": "Devenez affilié Grubano",
+    "joinSubtitle": "Partagez votre lien, faites découvrir Grubano et gagnez une commission sur les commandes que vous apportez.",
+    "joinPoint1": "Lien de parrainage immédiat, sans aucune vérification.",
+    "joinPoint2": "Une commission sur chaque commande que vous apportez.",
+    "joinPoint3": "Identité et coordonnées bancaires uniquement au premier retrait.",
+    "joinCta": "Devenir affilié",
+    "joining": "Activation…",
+    "joinNoVerif": "Aucune vérification requise — votre lien est créé instantanément.",
+    "joinedTitle": "Vous êtes affilié 🎉",
+    "joinedBody": "Votre lien de parrainage est prêt. Partagez-le pour commencer.",
+    "goToDashboard": "Aller à mon espace affilié",
+    "errorGeneric": "Une erreur est survenue. Veuillez réessayer.",
+    "yourLinkTitle": "Votre lien de parrainage",
+    "yourLinkHint": "Partagez ce lien. Les commandes passées via votre lien vous rapporteront une commission.",
+    "copy": "Copier",
+    "copied": "Copié",
+    "yourCode": "Votre code :",
+    "dashTitle": "Espace affilié",
+    "dashSubtitle": "Votre lien de parrainage et bientôt vos gains.",
+    "earningsSoonTitle": "Vos gains arrivent bientôt",
+    "earningsSoonBody": "Le suivi des commandes parrainées et de vos commissions sera disponible prochainement.",
+    "notYetAffiliate": "Vous n'êtes pas encore affilié."
   }
 }

@@ -10,9 +10,13 @@
 
 /** Partner activities a user can ADD on top of their account. The primary
  *  'restaurant' role has its own dedicated onboarding and is NOT offered here
- *  (a restaurateur sees exactly these four; see the mission spec). */
-export type AddableActivity = 'supplier' | 'creator' | 'logistics' | 'franchise'
+ *  (a restaurateur sees exactly these four; see the mission spec). 'affiliate'
+ *  (Phase 6 Brique A) is offered ONLY behind the AFFILIATE_ENABLED flag — see
+ *  `addableActivities(roles, { includeAffiliate })`. */
+export type AddableActivity = 'supplier' | 'creator' | 'logistics' | 'franchise' | 'affiliate'
 
+// The always-on activities (the four vetted journeys). 'affiliate' is intentionally
+// NOT here so the default behaviour is byte-identical when the flag is OFF.
 export const ADDABLE_ACTIVITIES: readonly AddableActivity[] = ['supplier', 'creator', 'logistics', 'franchise']
 
 /** The verified company identity read from the account anchor (B1.1), used for
@@ -23,13 +27,22 @@ export interface AnchorIdentity {
 }
 
 /** Activities the account can add = the partner activities it does NOT hold yet.
- *  Tolerant of a missing/empty role set (→ all four). */
-export function addableActivities(roles: string[] | undefined | null): AddableActivity[] {
+ *  Tolerant of a missing/empty role set (→ all four). `includeAffiliate` (default
+ *  false → byte-identical to before) appends the 'affiliate' activity when the
+ *  AFFILIATE_ENABLED flag is ON (resolved by the caller, never read here so this
+ *  stays pure). When OFF, the affiliate activity is NEVER offered. */
+export function addableActivities(
+  roles: string[] | undefined | null,
+  opts?: { includeAffiliate?: boolean },
+): AddableActivity[] {
   const have = new Set(Array.isArray(roles) ? roles : [])
-  return ADDABLE_ACTIVITIES.filter((a) => !have.has(a))
+  const base = ADDABLE_ACTIVITIES.filter((a) => !have.has(a))
+  if (opts?.includeAffiliate && !have.has('affiliate')) return [...base, 'affiliate']
+  return base
 }
 
-/** 'apply' = admin-approved (franchise, a candidature); 'register' = self-serve. */
+/** 'apply' = admin-approved (franchise, a candidature); 'register' = self-serve
+ *  (incl. 'affiliate', whose grant is INSTANT — no vetting). */
 export function activityMode(activity: AddableActivity): 'register' | 'apply' {
   return activity === 'franchise' ? 'apply' : 'register'
 }
@@ -39,6 +52,7 @@ const BASE: Record<AddableActivity, string> = {
   creator:   '/creators/apply',
   logistics: '/business/logistics/register',
   franchise: '/franchise/apply',
+  affiliate: '/affiliate/join',
 }
 
 /** Only the company-backed journeys can prefill a verified siren/company name. */

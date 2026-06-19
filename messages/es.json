@@ -2669,7 +2669,8 @@
     "spaceAdmin": "Administración",
     "spaceSupplier": "Espacio proveedor",
     "spaceLogistics": "Logística",
-    "addActivity": "Añadir una actividad"
+    "addActivity": "Añadir una actividad",
+    "spaceAffiliate": "Afiliación"
   },
   "supplier": {
     "landingTitle": "Conviértete en proveedor Grubano",
@@ -2954,7 +2955,9 @@
     "logisticsTitle": "Logística",
     "logisticsDesc": "Realiza entregas para restaurantes y proveedores.",
     "franchiseTitle": "Franquicia",
-    "franchiseDesc": "Abre un punto de venta con una de nuestras marcas (por candidatura)."
+    "franchiseDesc": "Abre un punto de venta con una de nuestras marcas (por candidatura).",
+    "affiliateTitle": "Hazte afiliado",
+    "affiliateDesc": "Comparte tu enlace de referido y gana una comisión por los pedidos que traigas. Enlace inmediato, sin verificación."
   },
   "admin": {
     "approvals": {
@@ -3211,5 +3214,29 @@
     "save": "Guardar",
     "saved": "Información fiscal guardada.",
     "error": "Se produjo un error. Inténtelo de nuevo."
+  },
+  "affiliate": {
+    "joinTitle": "Conviértete en afiliado de Grubano",
+    "joinSubtitle": "Comparte tu enlace, da a conocer Grubano y gana una comisión por los pedidos que traigas.",
+    "joinPoint1": "Enlace de referido inmediato, sin ninguna verificación.",
+    "joinPoint2": "Una comisión por cada pedido que traigas.",
+    "joinPoint3": "Identidad y datos bancarios solo en tu primer retiro.",
+    "joinCta": "Hazte afiliado",
+    "joining": "Activando…",
+    "joinNoVerif": "No se requiere verificación — tu enlace se crea al instante.",
+    "joinedTitle": "Ya eres afiliado 🎉",
+    "joinedBody": "Tu enlace de referido está listo. Compártelo para empezar.",
+    "goToDashboard": "Ir a mi espacio de afiliado",
+    "errorGeneric": "Ocurrió un error. Inténtelo de nuevo.",
+    "yourLinkTitle": "Tu enlace de referido",
+    "yourLinkHint": "Comparte este enlace. Los pedidos realizados a través de él te darán una comisión.",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "yourCode": "Tu código:",
+    "dashTitle": "Espacio de afiliado",
+    "dashSubtitle": "Tu enlace de referido y pronto tus ganancias.",
+    "earningsSoonTitle": "Tus ganancias llegan pronto",
+    "earningsSoonBody": "El seguimiento de los pedidos referidos y tus comisiones estará disponible pronto.",
+    "notYetAffiliate": "Todavía no eres afiliado."
   }
 }
