@@ -100,6 +100,51 @@ function redirectRelative(path: string): NextResponse {
   })
 }
 
+/**
+ * Drop the first-touch attribution cookie, SHARED by the creator and the
+ * affiliate rails (Brique B2, Agent 61). Centralising it guarantees BOTH rails
+ * write `grubano_ref` with byte-identical attributes (httpOnly / 90-day window
+ * from ReferralConfig / SameSite=lax / path=/ / secure in prod) and the SAME
+ * first-touch semantics — the first referrer wins, an existing cookie is never
+ * overwritten. `code` is the CANONICAL referralCode (upper-case) the order path
+ * (5B) looks up. This is the exact logic that was previously inlined for the
+ * creator rail (steps 4-6) — behaviour is unchanged for creators.
+ */
+async function applyFirstTouchCookie(
+  req: NextRequest,
+  homePath: string,
+  code: string,
+): Promise<NextResponse> {
+  // First-touch: keep an existing attribution if any (the first referrer wins).
+  const existing = req.cookies.get(COOKIE_NAME)?.value
+  if (existing && existing.trim().length > 0) {
+    return redirectRelative(homePath)
+  }
+
+  // Resolve cookie lifetime from ReferralConfig (single row), 90-day fallback.
+  let durationDays = FALLBACK_DURATION_DAYS
+  try {
+    const cfg = await prisma.referralConfig.findFirst({ select: { durationDays: true } })
+    if (cfg && Number.isFinite(cfg.durationDays) && cfg.durationDays > 0) {
+      durationDays = cfg.durationDays
+    }
+  } catch {
+    /* fallback already in place */
+  }
+
+  const res = redirectRelative(homePath)
+  res.cookies.set({
+    name:     COOKIE_NAME,
+    value:    code, // stored canonical, e.g. "DEMO20"
+    maxAge:   durationDays * 24 * 60 * 60,
+    path:     '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure:   process.env.NODE_ENV === 'production',
+  })
+  return res
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { code: string } },
@@ -162,8 +207,32 @@ export async function GET(
     return redirectRelative(homePath)
   }
 
-  // 3. Unknown / no canonical referralCode → no attribution, but never block.
+  // 3. Not a CREATOR code. Brique B2 (Agent 61) — CLOSE THE AFFILIATE LOOP: when
+  //    AFFILIATE_ENABLED is ON and the code belongs to a top-level AFFILIATE, drop
+  //    the SAME first-touch cookie so the order path (5B) credits the affiliate
+  //    (today the click is counted by Brique C but no cookie was ever set for an
+  //    affiliate code). Resolution mirrors recordAffiliateClick EXACTLY (referralCode
+  //    upper / referralLinkSlug lower) so the click and the cookie resolve to the
+  //    SAME affiliate. Codes are unique cross-table (Brique A) and the creator is
+  //    tried FIRST → one deterministic referrer. The cookie stores the canonical
+  //    referralCode (upper-case), the value 5B looks up. Lookup is best-effort
+  //    (a DB hiccup falls through to the unchanged no-cookie redirect).
+  //    FLAG OFF / UNKNOWN code → byte-identical: no cookie, just redirect home.
   if (!creator || !creator.referralCode) {
+    if (isAffiliateEnabled()) {
+      let affiliate: { referralCode: string } | null = null
+      try {
+        affiliate = await prisma.affiliate.findFirst({
+          where:  { OR: [{ referralCode: upper }, { referralLinkSlug: lower }] },
+          select: { referralCode: true },
+        })
+      } catch (affErr) {
+        console.error('[GET /api/ref/:code] affiliate lookup failed', affErr)
+      }
+      if (affiliate?.referralCode) {
+        return applyFirstTouchCookie(req, homePath, affiliate.referralCode)
+      }
+    }
     return redirectRelative(homePath)
   }
 
@@ -182,35 +251,8 @@ export async function GET(
     return redirectRelative(homePath)
   }
 
-  // 4. First-touch: keep an existing attribution if any.
-  const existing = req.cookies.get(COOKIE_NAME)?.value
-  if (existing && existing.trim().length > 0) {
-    // Already attributed — leave the cookie untouched.
-    return redirectRelative(homePath)
-  }
-
-  // 5. Resolve cookie lifetime from ReferralConfig (single row).
-  let durationDays = FALLBACK_DURATION_DAYS
-  try {
-    const cfg = await prisma.referralConfig.findFirst({ select: { durationDays: true } })
-    if (cfg && Number.isFinite(cfg.durationDays) && cfg.durationDays > 0) {
-      durationDays = cfg.durationDays
-    }
-  } catch {
-    /* fallback already in place */
-  }
-
-  // 6. Drop the attribution cookie (canonical referralCode, upper-case)
-  //    on the same relative-redirect response.
-  const res = redirectRelative(homePath)
-  res.cookies.set({
-    name:    COOKIE_NAME,
-    value:   creator.referralCode, // stored canonical, e.g. "DEMO20"
-    maxAge:  durationDays * 24 * 60 * 60,
-    path:    '/',
-    httpOnly: true,
-    sameSite: 'lax',
-    secure:  process.env.NODE_ENV === 'production',
-  })
-  return res
+  // 4-6. Drop the creator attribution cookie via the SHARED helper (first-touch +
+  //      ReferralConfig duration + identical cookie attributes). Behaviour is
+  //      unchanged from the previous inline steps 4-6.
+  return applyFirstTouchCookie(req, homePath, creator.referralCode)
 }
