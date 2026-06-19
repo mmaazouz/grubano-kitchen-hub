@@ -3291,6 +3291,23 @@
     "platform_youtube": "YouTube",
     "platform_instagram": "Instagram",
     "platform_tiktok": "TikTok",
-    "platform_other": "Autre"
+    "platform_other": "Autre",
+    "studioTitle": "Studio de contenu",
+    "studioDesc": "Choisissez une cible, générez des légendes prêtes à poster + une carte partageable.",
+    "studioPickResto": "Choisir un restaurant…",
+    "studioDishAll": "Tout le restaurant",
+    "studioGenerate": "Générer",
+    "studioGenerating": "Génération…",
+    "studioErr": "Génération indisponible, réessayez.",
+    "studioRateLimited": "Limite atteinte — réessayez plus tard.",
+    "studioCaptionsTitle": "Légendes",
+    "studioCardTitle": "Carte partageable",
+    "studioCardCta": "Commandez sur Grubano 🍽️",
+    "copyCaption": "Copier",
+    "toneEnthusiastic": "Enthousiaste",
+    "tonePunchy": "Court & punchy",
+    "toneStorytelling": "Storytelling",
+    "studioLockedTitle": "Studio de contenu",
+    "studioLockedBody": "Faites vérifier votre audience pour débloquer le studio de contenu IA."
   }
 }

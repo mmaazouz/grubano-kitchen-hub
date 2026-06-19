@@ -3291,6 +3291,23 @@
     "platform_youtube": "YouTube",
     "platform_instagram": "Instagram",
     "platform_tiktok": "TikTok",
-    "platform_other": "Altro"
+    "platform_other": "Altro",
+    "studioTitle": "Studio contenuti",
+    "studioDesc": "Scegli un obiettivo, genera didascalie pronte da pubblicare + una card condivisibile.",
+    "studioPickResto": "Scegli un ristorante…",
+    "studioDishAll": "Tutto il ristorante",
+    "studioGenerate": "Genera",
+    "studioGenerating": "Generazione…",
+    "studioErr": "Generazione non disponibile, riprova.",
+    "studioRateLimited": "Limite raggiunto — riprova più tardi.",
+    "studioCaptionsTitle": "Didascalie",
+    "studioCardTitle": "Card condivisibile",
+    "studioCardCta": "Ordina su Grubano 🍽️",
+    "copyCaption": "Copia",
+    "toneEnthusiastic": "Entusiasta",
+    "tonePunchy": "Breve e diretto",
+    "toneStorytelling": "Storytelling",
+    "studioLockedTitle": "Studio contenuti",
+    "studioLockedBody": "Fai verificare il tuo pubblico per sbloccare lo studio contenuti IA."
   }
 }

@@ -3291,6 +3291,23 @@
     "platform_youtube": "YouTube",
     "platform_instagram": "Instagram",
     "platform_tiktok": "TikTok",
-    "platform_other": "Other"
+    "platform_other": "Other",
+    "studioTitle": "Content studio",
+    "studioDesc": "Pick a target, generate ready-to-post captions + a shareable card.",
+    "studioPickResto": "Choose a restaurant…",
+    "studioDishAll": "Whole restaurant",
+    "studioGenerate": "Generate",
+    "studioGenerating": "Generating…",
+    "studioErr": "Generation unavailable, try again.",
+    "studioRateLimited": "Limit reached — try again later.",
+    "studioCaptionsTitle": "Captions",
+    "studioCardTitle": "Shareable card",
+    "studioCardCta": "Order on Grubano 🍽️",
+    "copyCaption": "Copy",
+    "toneEnthusiastic": "Enthusiastic",
+    "tonePunchy": "Short & punchy",
+    "toneStorytelling": "Storytelling",
+    "studioLockedTitle": "Content studio",
+    "studioLockedBody": "Get your audience verified to unlock the AI content studio."
   }
 }

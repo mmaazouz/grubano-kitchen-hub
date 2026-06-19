@@ -3291,6 +3291,23 @@
     "platform_youtube": "YouTube",
     "platform_instagram": "Instagram",
     "platform_tiktok": "TikTok",
-    "platform_other": "Otra"
+    "platform_other": "Otra",
+    "studioTitle": "Estudio de contenido",
+    "studioDesc": "Elige un objetivo, genera leyendas listas para publicar + una tarjeta para compartir.",
+    "studioPickResto": "Elegir un restaurante…",
+    "studioDishAll": "Todo el restaurante",
+    "studioGenerate": "Generar",
+    "studioGenerating": "Generando…",
+    "studioErr": "Generación no disponible, inténtalo de nuevo.",
+    "studioRateLimited": "Límite alcanzado — inténtalo más tarde.",
+    "studioCaptionsTitle": "Leyendas",
+    "studioCardTitle": "Tarjeta para compartir",
+    "studioCardCta": "Pide en Grubano 🍽️",
+    "copyCaption": "Copiar",
+    "toneEnthusiastic": "Entusiasta",
+    "tonePunchy": "Corto y directo",
+    "toneStorytelling": "Storytelling",
+    "studioLockedTitle": "Estudio de contenido",
+    "studioLockedBody": "Verifica tu audiencia para desbloquear el estudio de contenido IA."
   }
 }

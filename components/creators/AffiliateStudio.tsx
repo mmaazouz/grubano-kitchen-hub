@@ -23,12 +23,22 @@ interface GenResult {
   target:   { restaurantName: string; dishName: string | null; dishPrice: number | null; photo: string | null }
 }
 
-export default function AffiliateStudio({ restos, preset, onPresetApplied }: {
+export default function AffiliateStudio({
+  restos, preset, onPresetApplied,
+  // INF-2 (Agent 67): optional reuse seams for the top-level affiliate space. The
+  // DEFAULTS preserve the creator usage byte-identical (creators.affiliate tutoiement +
+  // the creator route). The affiliate dashboard passes tNamespace='affiliate' (vouvoiement)
+  // + endpoint='/api/affiliate/content' (operator-keyed, verified-gated twin).
+  endpoint = '/api/creator/affiliate-content',
+  tNamespace = 'creators.affiliate',
+}: {
   restos: { id: string; name: string }[]
   preset?: { restaurantId: string; dishId?: string } | null
   onPresetApplied?: () => void
+  endpoint?: string
+  tNamespace?: string
 }) {
-  const t = useTranslations('creators.affiliate')
+  const t = useTranslations(tNamespace)
   const locale = useLocale()
 
   const [restoId, setRestoId] = useState('')
@@ -80,7 +90,7 @@ export default function AffiliateStudio({ restos, preset, onPresetApplied }: {
     if (!restoId || loading) return
     setLoading(true); setError(null); setResult(null)
     try {
-      const res = await fetch('/api/creator/affiliate-content', {
+      const res = await fetch(endpoint, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ restaurantId: restoId, dishId: dishId || undefined, locale }),

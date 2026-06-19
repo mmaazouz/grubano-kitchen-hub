@@ -11,6 +11,7 @@ import AffiliateLinkCard from '@/components/affiliate/AffiliateLinkCard'
 import AffiliateDashboardClient from '@/components/affiliate/AffiliateDashboardClient'
 import AffiliateWithdrawCard from '@/components/affiliate/AffiliateWithdrawCard'
 import AffiliateVerifyCard from '@/components/affiliate/AffiliateVerifyCard'
+import AffiliateStudioCard from '@/components/affiliate/AffiliateStudioCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,6 +56,9 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
             {/* INF-1 — audience verification (become an influencer). Hides itself when
                 INFLUENCER_ENABLED is OFF → dashboard byte-identical. No money effect. */}
             <AffiliateVerifyCard />
+            {/* INF-2 — content studio (verified-influencer advantage). Hides itself when
+                the flag is OFF; shows a "reserved to verified" hint otherwise. No money. */}
+            <AffiliateStudioCard />
           </>
         ) : (
           <Card elevation="sm" padding="lg" className="text-center">
