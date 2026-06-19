@@ -8,6 +8,7 @@ import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } f
 import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
+import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -211,6 +212,25 @@ export async function POST(req: NextRequest) {
             // CAS 2 — window expired → no payout, no discount (close it later).
             // referring*Id stays null → 5C uses the organic (reduced) rate.
             ref.expiredReferralId = existing.id
+          }
+
+          // INF-3 (Phase 6) — VERIFIED-affiliate (influencer) commission uplift.
+          // The accrual recipient for THIS order is ref.referringAffiliateId (the
+          // first-touch-bound affiliate in CAS 2, the resolved one in CAS 1; null
+          // for the creator / organic / expired-window paths). When the influencer
+          // tier is ON and THAT affiliate's audience is verified, the SAME pot is
+          // shared at the higher influencerCommissionPct. The guards short-circuit
+          // in order so that with INFLUENCER_ENABLED OFF nothing new is read and
+          // ref.commissionPct stays EXACTLY the base rate (byte-identical). It is
+          // NEVER applied to a creator (referringAffiliateId is null there); an
+          // unverified affiliate keeps the base 30 %. The resolved rate is frozen
+          // into the ReferralOrder below → non-retroactive (past rows untouched).
+          // The charge / application_fee are unaffected: only creatorEarning reads
+          // ref.commissionPct on the affiliate rail; the loyalty-cap affiliation
+          // term (affiliationCents) is creator-gated → 0 for an affiliate.
+          if (ref.referringAffiliateId && isInfluencerEnabled()
+              && (await isAffiliateVerified(ref.referringAffiliateId))) {
+            ref.commissionPct = cfg?.influencerCommissionPct ?? 0.40
           }
         }
       }

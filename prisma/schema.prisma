@@ -1577,6 +1577,14 @@ model ReferralConfig {
   // B0 (11 June 2026): 30 % of Grubano's REAL fee — the creator is paid from
   // Grubano's share, never a surcharge on the resto.
   commissionPctOfGrubanoFee Float   @default(0.30)
+  // INF-3 (Phase 6, 19 June 2026): a VERIFIED affiliate (influencer tier —
+  // Affiliate.audienceVerified) earns a HIGHER share of the SAME pot. Read at
+  // order time ONLY when INFLUENCER_ENABLED is ON and the order's affiliate
+  // referrer is verified; otherwise the base commissionPctOfGrubanoFee applies.
+  // NON-retroactive: the resolved rate is frozen per ReferralOrder at write time.
+  // The amount charged to the customer and Grubano's commission are unchanged —
+  // only the affiliate's reversed share moves from 30 % to 40 % of the same pot.
+  influencerCommissionPct   Float   @default(0.40)
   // B0-quater (11 June, evening): the creator is paid in PERCENTAGES ONLY — the
   // fixed 5 € acquisition bonus is REMOVED. 0 = no bonus is ever written (the
   // default); Mohammed can re-activate a bonus by setting an amount here.
