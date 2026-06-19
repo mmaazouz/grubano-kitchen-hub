@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { ensureSupplierOperator, decideSupplierOutcome } from '@/lib/supplier-account'
+import { ensureSupplierOperator, decideSupplierOutcome, combineVettingDecision } from '@/lib/supplier-account'
 import { verifyBusiness } from '@/lib/business-verification'
+import { vetSupplier } from '@/lib/supplier-vetting'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 
 export const dynamic = 'force-dynamic'
@@ -104,7 +105,27 @@ export async function POST(req: Request) {
     // commercial name ≠ legal name is common — it routes into the EXISTING human-
     // review 'pending' path. Only a not-found / ceased SIREN (officialName=null)
     // stays a definitive 'rejected'. 'review' (incident) stays 'pending' (fail-safe).
-    const decision = decideSupplierOutcome(verification)
+    const registryDecision = decideSupplierOutcome(verification)
+
+    // LLM TRUST-&-SAFETY VETTING (lib/supplier-vetting) — DEFENCE IN DEPTH, ADDITIVE.
+    // Runs through the CAPPED LLM gateway (task 'supplier_vetting'; no operatorId pre-
+    // account → never quota-blocked, exactly like verifyBusiness). FAIL-SAFE: any failure
+    // returns 'doubt' (it never throws, never auto-'legit'). The verdict can ONLY HARDEN
+    // the registry decision (combineVettingDecision): it never auto-approves a refusal and
+    // never auto-rejects a registry-confirmed company. ZERO money effect — this gates
+    // ONBOARDING VISIBILITY only (payouts stay hard-gated by Stripe Connect KYB).
+    const vet = await vetSupplier({
+      companyName:   data.companyName,
+      contactName:   data.contactName,
+      city:          data.city,
+      categories:    data.categories,
+      deliveryZones: data.deliveryZones,
+      paymentTerms:  data.paymentTerms,
+    }).catch(() => ({ verdict: 'doubt' as const, reason: 'vérification auto indisponible' }))
+    // ↑ defence in depth: vetSupplier already converts any internal failure to 'doubt',
+    // but a raw throw must NEVER break a registration nor auto-reject — fall back to
+    // 'doubt' (human review), never 'legit'.
+    const decision = combineVettingDecision(registryDecision, vet.verdict, vet.reason)
     const status: Outcome = decision.status
 
     await prisma.supplierProfile.create({
@@ -122,9 +143,14 @@ export async function POST(req: Request) {
         status,
         siren,
         officialName:       verification.officialName,
-        verificationStatus: decision.verificationStatus,
-        verifiedAt:         decision.status === 'active' ? new Date() : null,
-        vettingReason:      decision.reason,
+        // REGISTRY identity result — UNCHANGED by the vetting (a separate signal). The
+        // registry's own verifiedAt logic is preserved byte-for-byte (tied to the registry
+        // decision, not the vetting-hardened gate), so a registry-verified company keeps
+        // its verifiedAt even if the vetting routes it to human review.
+        verificationStatus: registryDecision.verificationStatus,
+        verifiedAt:         registryDecision.status === 'active' ? new Date() : null,
+        vettingVerdict:     vet.verdict,     // the LLM trust-&-safety verdict (admin signal)
+        vettingReason:      decision.reason, // explains the FINAL gate (registry OR vetting reason)
         vettingAt:          new Date(),
       },
     })

@@ -14,8 +14,9 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
-import { ensureSupplierOperator, decideSupplierOutcome } from '@/lib/supplier-account'
+import { ensureSupplierOperator, decideSupplierOutcome, combineVettingDecision } from '@/lib/supplier-account'
 import type { BusinessVerificationResult } from '@/lib/business-verification'
+import type { SupplierDecision } from '@/lib/supplier-account'
 
 // ── decideSupplierOutcome — NAME-TOLERANT gating (P2, Agent 18) ───────────────
 // A declared (commercial) name differing from the official registry name must NEVER
@@ -51,6 +52,40 @@ describe('decideSupplierOutcome — name-tolerant', () => {
     expect(decideSupplierOutcome(vres({ outcome: 'review', officialName: null })).status).toBe('pending')
     // even with an official name (LLM down on an active company) → pending
     expect(decideSupplierOutcome(vres({ outcome: 'review', officialName: 'PRIMEURS LYON SARL' })).status).toBe('pending')
+  })
+})
+
+// ── combineVettingDecision — the LLM verdict can only HARDEN the registry (S2) ────
+// CONSERVATIVE, additive: never auto-approves a refusal, never auto-rejects a
+// registry-confirmed company; gates ONBOARDING VISIBILITY only (never money).
+describe('combineVettingDecision — vetting only hardens', () => {
+  const active:   SupplierDecision = { status: 'active',   verificationStatus: 'verified', reason: 'ok' }
+  const pending:  SupplierDecision = { status: 'pending',  verificationStatus: 'review',   reason: 'review' }
+  const rejected: SupplierDecision = { status: 'rejected', verificationStatus: 'rejected', reason: 'introuvable' }
+
+  it('legit → registry decision UNCHANGED (active stays active, etc.)', () => {
+    expect(combineVettingDecision(active, 'legit', 'r')).toEqual(active)
+    expect(combineVettingDecision(pending, 'legit', 'r')).toEqual(pending)
+    expect(combineVettingDecision(rejected, 'legit', 'r')).toEqual(rejected)
+  })
+
+  it('doubt → softens ONLY an auto-activation to pending; never blocks, never escalates', () => {
+    expect(combineVettingDecision(active, 'doubt', 'doute IA')).toEqual({ status: 'pending', verificationStatus: 'verified', reason: 'doute IA' })
+    expect(combineVettingDecision(pending, 'doubt', 'r')).toEqual(pending)   // unchanged
+    expect(combineVettingDecision(rejected, 'doubt', 'r')).toEqual(rejected) // never resurrects nor re-rejects
+  })
+
+  it('bad → keeps a definitive registry rejection; otherwise routes to human-review pending', () => {
+    expect(combineVettingDecision(rejected, 'bad', 'r')).toEqual(rejected) // both negative → rejected
+    expect(combineVettingDecision(active, 'bad', 'abus')).toEqual({ status: 'pending', verificationStatus: 'verified', reason: 'abus' })
+    expect(combineVettingDecision(pending, 'bad', 'abus')).toEqual({ status: 'pending', verificationStatus: 'review', reason: 'abus' })
+  })
+
+  it('NEVER auto-approves a refusal: no verdict turns a rejected/pending into active', () => {
+    for (const v of ['legit', 'doubt', 'bad'] as const) {
+      expect(combineVettingDecision(rejected, v, 'r').status).not.toBe('active')
+      expect(combineVettingDecision(pending, v, 'r').status).not.toBe('active')
+    }
   })
 })
 

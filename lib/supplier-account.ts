@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { addRoleToOperator } from '@/lib/operator-roles'
 import type { BusinessVerificationResult } from '@/lib/business-verification'
+import type { SupplierVetVerdict } from '@/lib/supplier-vetting'
 
 // ── Name-tolerant verdict → supplier profile state (P2, Agent 18) ─────────────
 //
@@ -49,6 +50,40 @@ export function decideSupplierOutcome(v: BusinessVerificationResult): SupplierDe
   }
   // 'review' — FAIL-SAFE (registry unreachable/ambiguous OR LLM unavailable).
   return { status: 'pending', verificationStatus: 'review', reason: v.reason }
+}
+
+// ── Fold the LLM trust-&-safety verdict into the registry decision (S2, Agent 70) ─
+//
+// DEFENCE IN DEPTH, ADDITIVE, CONSERVATIVE. The vetSupplier verdict (lib/supplier-
+// vetting) can ONLY HARDEN the registry decision — it can NEVER auto-approve a company
+// the registry refused, and NEVER auto-reject a company the registry confirmed. This
+// gates ONBOARDING VISIBILITY only — it has ZERO effect on money (payouts stay
+// independently hard-gated by Stripe Connect KYB, payoutStatus==='active').
+//   - 'legit'  → the registry decision stands (verified→active, name-mismatch→pending…).
+//   - 'doubt'  → (this is ALSO the fail-safe when the LLM is unavailable) an auto-
+//                ACTIVATION is routed to human-review 'pending'; a 'pending'/'rejected'
+//                registry outcome is left unchanged. It NEVER blocks the registration.
+//   - 'bad'    → a DEFINITIVE registry rejection (officialName=null) stays 'rejected';
+//                otherwise (registry-confirmed company) it routes to human-review
+//                'pending' — never auto-activate a 'bad', never auto-reject a confirmed
+//                company on the LLM signal alone (safest reading of the policy).
+// verificationStatus stays the REGISTRY identity verdict (the vetting is a separate
+// signal, recorded as vettingVerdict). Pure + deterministic → unit-tested.
+export function combineVettingDecision(
+  registry: SupplierDecision,
+  verdict: SupplierVetVerdict,
+  vettingReason: string,
+): SupplierDecision {
+  if (verdict === 'legit') return registry
+  if (verdict === 'doubt') {
+    // Only an auto-activation is softened to human review; never block, never escalate
+    // a pending/rejected. The vetting reason explains why it now needs a human.
+    if (registry.status !== 'active') return registry
+    return { status: 'pending', verificationStatus: registry.verificationStatus, reason: vettingReason }
+  }
+  // 'bad' — strong abuse signal. Keep a definitive registry rejection; otherwise human review.
+  if (registry.status === 'rejected') return registry
+  return { status: 'pending', verificationStatus: registry.verificationStatus, reason: vettingReason }
 }
 
 // ── Session-scoped supplier resolver (Slice 1, Agent 14) ──────────────────────

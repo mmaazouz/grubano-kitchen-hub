@@ -9,19 +9,24 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // → 'rejected' (no login); review → 'pending'. Anti-bot (honeypot / too-fast) and a
 // duplicate email never verify, never write, and return the neutral 'pending'.
 
-const { db, ensureOp, verify } = vi.hoisted(() => ({
+const { db, ensureOp, verify, vet } = vi.hoisted(() => ({
   db: { supplierProfile: { findUnique: vi.fn(), create: vi.fn() } },
   ensureOp: vi.fn(),
   verify: vi.fn(),
+  vet: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-// Keep the REAL decideSupplierOutcome (pure, name-tolerant) so the route test
-// exercises the actual decision logic; only the side-effecting auth bridge is stubbed.
+// Keep the REAL decideSupplierOutcome + combineVettingDecision (pure) so the route test
+// exercises the actual decision + conservative-combination logic; only the side-effecting
+// auth bridge is stubbed.
 vi.mock('@/lib/supplier-account', async (importOriginal) => {
   const actual = await importOriginal() as typeof import('@/lib/supplier-account')
   return { ...actual, ensureSupplierOperator: ensureOp }
 })
 vi.mock('@/lib/business-verification', () => ({ verifyBusiness: verify }))
+// S2 — the LLM trust-&-safety vetting is mocked (no real LLM in tests). Default 'legit'
+// → the registry decision stands, so the registry-only assertions below are byte-identical.
+vi.mock('@/lib/supplier-vetting', () => ({ vetSupplier: vet }))
 
 import { POST } from '@/app/api/supplier/register/route'
 
@@ -40,6 +45,7 @@ beforeEach(() => {
   db.supplierProfile.findUnique.mockResolvedValue(null) // default: fresh email
   db.supplierProfile.create.mockResolvedValue({})
   ensureOp.mockResolvedValue({ ok: true })
+  vet.mockResolvedValue({ verdict: 'legit', reason: 'Entreprise cohérente' }) // default: no hardening
 })
 
 describe('fresh registration → registry verification decides the status', () => {
@@ -53,6 +59,7 @@ describe('fresh registration → registry verification decides the status', () =
       siren: '123456789', email: 'm@primeurs.fr',
     })
     expect(data.verifiedAt).toBeInstanceOf(Date)
+    expect(data.vettingVerdict).toBe('legit') // S2 — the verdict is persisted
     expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: true })
     // verifyBusiness got the derived 9-digit SIREN + declared name
     expect(verify.mock.calls[0][0]).toMatchObject({ siren: '123456789', declaredName: 'Primeurs Lyon' })
@@ -99,25 +106,105 @@ describe('fresh registration → registry verification decides the status', () =
   })
 })
 
+describe('S2 — LLM vetting only HARDENS the onboarding decision (never money)', () => {
+  beforeEach(() => {
+    // Registry says VERIFIED (would be 'active') for this whole block; the vetting verdict
+    // is what varies — proving it can only make the gate more prudent, never the reverse.
+    verify.mockResolvedValue({ outcome: 'verified', officialName: 'PRIMEURS LYON SARL', reason: 'Entreprise vérifiée' })
+  })
+
+  it('(a) legit → follows the registry (active); verdict persisted', async () => {
+    vet.mockResolvedValue({ verdict: 'legit', reason: 'ok' })
+    const res = await post()
+    expect((await res.json()).outcome).toBe('active')
+    const data = db.supplierProfile.create.mock.calls[0][0].data
+    expect(data).toMatchObject({ status: 'active', vettingVerdict: 'legit', verificationStatus: 'verified' })
+    expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: true })
+    // vetSupplier received the registration fields (owner/legitimacy signal)
+    expect(vet.mock.calls[0][0]).toMatchObject({ companyName: 'Primeurs Lyon', categories: ['fresh'] })
+  })
+
+  it('(b) bad on a registry-confirmed company → NEVER auto-active: pending review, login NOT activated', async () => {
+    vet.mockResolvedValue({ verdict: 'bad', reason: 'Contenu incohérent' })
+    const res = await post()
+    expect((await res.json()).outcome).toBe('pending')
+    const data = db.supplierProfile.create.mock.calls[0][0].data
+    expect(data).toMatchObject({ status: 'pending', vettingVerdict: 'bad', vettingReason: 'Contenu incohérent' })
+    // registry identity stays the registry's own verdict (unchanged by vetting)
+    expect(data.verificationStatus).toBe('verified')
+    expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: false })
+  })
+
+  it('(c) doubt → pending review, registration NOT blocked, login NOT activated', async () => {
+    vet.mockResolvedValue({ verdict: 'doubt', reason: 'Activité peu claire' })
+    const res = await post()
+    expect(res.status).toBe(200)
+    expect((await res.json()).outcome).toBe('pending')
+    const data = db.supplierProfile.create.mock.calls[0][0].data
+    expect(data).toMatchObject({ status: 'pending', vettingVerdict: 'doubt' })
+    expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: false })
+  })
+
+  it('(d) FAIL-SAFE: vetSupplier throws → treated as doubt → pending; registration completes, never auto-reject/auto-activate', async () => {
+    vet.mockRejectedValue(new Error('llm exploded'))
+    const res = await post()
+    // The call-site .catch falls back to 'doubt' → registration COMPLETES (no crash), and a
+    // registry-active company is routed to human-review pending (never rejected, never active).
+    expect(res.status).toBe(200)
+    expect((await res.json()).outcome).toBe('pending')
+    expect(db.supplierProfile.create.mock.calls[0][0].data).toMatchObject({ status: 'pending', vettingVerdict: 'doubt' })
+    expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: false })
+  })
+
+  it('(e) NEVER auto-approve a refusal: registry rejected + vetting legit → stays rejected', async () => {
+    verify.mockResolvedValue({ outcome: 'rejected', officialName: null, reason: 'SIREN introuvable' })
+    vet.mockResolvedValue({ verdict: 'legit', reason: 'semble ok' })
+    const res = await post()
+    expect((await res.json()).outcome).toBe('rejected')
+    expect(db.supplierProfile.create.mock.calls[0][0].data).toMatchObject({ status: 'rejected', vettingVerdict: 'legit' })
+    expect(ensureOp).not.toHaveBeenCalled() // no login for a registry rejection
+  })
+
+  it('(f) bad + registry rejected → rejected (both negative), no login', async () => {
+    verify.mockResolvedValue({ outcome: 'rejected', officialName: null, reason: 'SIREN introuvable' })
+    vet.mockResolvedValue({ verdict: 'bad', reason: 'spam' })
+    const res = await post()
+    expect((await res.json()).outcome).toBe('rejected')
+    expect(ensureOp).not.toHaveBeenCalled()
+  })
+
+  it('(g) PLAFOND LLM: the route NEVER calls llmComplete directly — vetting goes through the capped gateway', async () => {
+    // The route imports vetSupplier (which alone calls the capped llmComplete). It must not
+    // bypass the cap by calling the gateway itself.
+    const fs = await import('node:fs')
+    const src = fs.readFileSync(new URL('../app/api/supplier/register/route.ts', import.meta.url), 'utf8')
+    expect(src).toContain('vetSupplier')
+    expect(src).not.toContain('llmComplete')
+  })
+})
+
 describe('anti-bot + duplicate never verify / never write (neutral pending)', () => {
-  it('honeypot filled → pending, no verify, no create', async () => {
+  it('honeypot filled → pending, no verify, NO LLM vetting, no create', async () => {
     const res = await post({ website: 'http://spam.example' })
     expect((await res.json()).outcome).toBe('pending')
     expect(verify).not.toHaveBeenCalled()
+    expect(vet).not.toHaveBeenCalled() // S2 — bot traffic never burns an LLM call
     expect(db.supplierProfile.create).not.toHaveBeenCalled()
   })
 
-  it('too-fast submit → pending, no verify', async () => {
+  it('too-fast submit → pending, no verify, NO LLM vetting', async () => {
     const res = await post({ formStartedAt: Date.now() }) // < 2s ago
     expect((await res.json()).outcome).toBe('pending')
     expect(verify).not.toHaveBeenCalled()
+    expect(vet).not.toHaveBeenCalled() // S2 — too-fast bot never burns an LLM call
   })
 
-  it('duplicate email → pending, no verify, no create, login not activated', async () => {
+  it('duplicate email → pending, no verify, NO LLM vetting, no create, login not activated', async () => {
     db.supplierProfile.findUnique.mockResolvedValue({ id: 'sp1' })
     const res = await post()
     expect((await res.json()).outcome).toBe('pending')
     expect(verify).not.toHaveBeenCalled()
+    expect(vet).not.toHaveBeenCalled() // S2 — a re-post never re-vets (no clobber, no LLM)
     expect(db.supplierProfile.create).not.toHaveBeenCalled()
     expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: false })
   })
