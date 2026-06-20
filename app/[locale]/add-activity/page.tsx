@@ -1,13 +1,14 @@
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Truck, ChefHat, Bike, Building2, Megaphone, ArrowRight } from 'lucide-react'
+import { Truck, ChefHat, Bike, Building2, Megaphone, Wrench, ArrowRight } from 'lucide-react'
 import { Link } from '@/navigation'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { readOperatorRoles } from '@/lib/operator-roles'
 import { getOperatorCompanyIdentity } from '@/lib/operator-identity'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
+import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { addableActivities, activityHref, activityMode, type AddableActivity } from '@/lib/add-activity'
 import { Card, EmptyState } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
@@ -31,8 +32,8 @@ const CARDS: Record<AddableActivity, {
   Icon:     typeof Truck
   accent:   string
   bg:       string
-  titleKey: 'supplierTitle' | 'creatorTitle' | 'logisticsTitle' | 'franchiseTitle' | 'affiliateTitle'
-  descKey:  'supplierDesc'  | 'creatorDesc'  | 'logisticsDesc'  | 'franchiseDesc'  | 'affiliateDesc'
+  titleKey: 'supplierTitle' | 'creatorTitle' | 'logisticsTitle' | 'franchiseTitle' | 'affiliateTitle' | 'prestataireTitle'
+  descKey:  'supplierDesc'  | 'creatorDesc'  | 'logisticsDesc'  | 'franchiseDesc'  | 'affiliateDesc'  | 'prestataireDesc'
 }> = {
   supplier:  { Icon: Truck,     accent: 'text-grubano-primary',        bg: 'bg-grubano-tint',              titleKey: 'supplierTitle',  descKey: 'supplierDesc' },
   creator:   { Icon: ChefHat,   accent: 'text-grubano-role-creator',   bg: 'bg-grubano-role-creator/12',   titleKey: 'creatorTitle',   descKey: 'creatorDesc' },
@@ -40,6 +41,8 @@ const CARDS: Record<AddableActivity, {
   franchise: { Icon: Building2, accent: 'text-grubano-role-franchise', bg: 'bg-grubano-role-franchise/12', titleKey: 'franchiseTitle', descKey: 'franchiseDesc' },
   // Phase 6 Brique A — only ever reached when AFFILIATE_ENABLED is ON (gated below).
   affiliate: { Icon: Megaphone, accent: 'text-grubano-primary',        bg: 'bg-grubano-tint',              titleKey: 'affiliateTitle', descKey: 'affiliateDesc' },
+  // Phase 6 P1 — only ever reached when PRESTATAIRE_ENABLED is ON (gated below).
+  prestataire: { Icon: Wrench,  accent: 'text-grubano-primary',        bg: 'bg-grubano-tint',              titleKey: 'prestataireTitle', descKey: 'prestataireDesc' },
 }
 
 export default async function AddActivityPage({ params }: { params: { locale: string } }) {
@@ -56,8 +59,11 @@ export default async function AddActivityPage({ params }: { params: { locale: st
   if (!operator) redirect('/auth/magic')
 
   const roles = await readOperatorRoles(operator.id, operator.role)
-  // Phase 6 Brique A — the affiliate activity is offered ONLY when AFFILIATE_ENABLED is ON.
-  const addable = addableActivities(roles, { includeAffiliate: isAffiliateEnabled() })
+  // Phase 6 — the affiliate + prestataire activities are offered ONLY when their flag is ON.
+  const addable = addableActivities(roles, {
+    includeAffiliate:   isAffiliateEnabled(),
+    includePrestataire: isPrestataireEnabled(),
+  })
   // Best-effort: the B1.1 columns may not be migrated yet → no prefill, page still works.
   const anchor = await getOperatorCompanyIdentity(operator.id).catch(() => null)
 

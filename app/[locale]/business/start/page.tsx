@@ -1,34 +1,51 @@
-'use client'
-
-import { useTranslations } from 'next-intl'
+import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { Link } from '@/navigation'
-import { Store, Truck, UtensilsCrossed, Bike, Megaphone, ChevronRight, ArrowRight } from 'lucide-react'
+import { Store, Truck, UtensilsCrossed, Bike, Wrench, Megaphone, ChevronRight, ArrowRight } from 'lucide-react'
 import { Card } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
+import { isPrestataireEnabled } from '@/lib/prestataire-account'
 
 /**
  * Account-type choice — « Quel type de partenaire êtes-vous ? » (maquette v1.5).
  *
- * One FEATURED Restaurateur card (the heart of Grubano) + three partner cards
- * (Supplier / Chef-creator / Logistics) + a light influencer teaser + a discreet
- * Group & Franchise line. Routes to the EXISTING journeys — nothing re-implemented:
- *   - Restaurateur  → /business/register            (resto sign-up → onboarding; login is unified at /auth/magic)
- *   - Fournisseur   → /supplier/register            (LIVE self-serve, intact)
- *   - Chef/Créateur → /creators/apply               (creator studio)
- *   - Logistique    → /business/logistics/register  (LIVE self-serve, Slice 1)
+ * One FEATURED Restaurateur card (the heart of Grubano) + the partner cards
+ * (Supplier / Chef-creator / Logistics, + Prestataire when PRESTATAIRE_ENABLED is ON) +
+ * a light influencer teaser + a discreet Group & Franchise line. Routes to the EXISTING
+ * journeys — nothing re-implemented:
+ *   - Restaurateur  → /business/register
+ *   - Fournisseur   → /supplier/register
+ *   - Chef/Créateur → /creators/apply
+ *   - Logistique    → /business/logistics/register
+ *   - Prestataire   → /business/prestataire/register   (P1, gated PRESTATAIRE_ENABLED)
  *   - Influenceur   → /creators/apply?type=influencer
  *   - Franchise     → /business/franchise-soon
- * No dead links. PUBLIC (middleware /business allow-list).
+ * No dead links. PUBLIC (middleware /business allow-list). SERVER component so the
+ * prestataire card can be gated by the server-side PRESTATAIRE_ENABLED flag (no client
+ * interactivity here — only Links + translations).
  */
 
-const PARTNERS = [
-  { key: 'fournisseur', href: '/supplier/register',         icon: Truck,           titleKey: 'fournisseurTitle', descKey: 'fournisseurDesc', accent: 'text-grubano-primary', bg: 'bg-grubano-tint',   soon: false },
-  { key: 'creator',     href: '/creators/apply',            icon: UtensilsCrossed, titleKey: 'creatorTitle',     descKey: 'creatorDesc',     accent: 'text-grubano-role-creator',   bg: 'bg-grubano-role-creator/12',   soon: false },
-  { key: 'logistique',  href: '/business/logistics/register', icon: Bike,          titleKey: 'logistiqueTitle',  descKey: 'logistiqueDesc',  accent: 'text-grubano-role-logistics', bg: 'bg-grubano-role-logistics/12', soon: false },
-] as const
+type Partner = {
+  key: string; href: string; icon: typeof Truck; titleKey: string; descKey: string
+  accent: string; bg: string; soon: boolean
+}
 
-export default function BusinessStartPage() {
-  const t = useTranslations('business.start')
+const BASE_PARTNERS: Partner[] = [
+  { key: 'fournisseur', href: '/supplier/register',           icon: Truck,           titleKey: 'fournisseurTitle', descKey: 'fournisseurDesc', accent: 'text-grubano-primary',        bg: 'bg-grubano-tint',              soon: false },
+  { key: 'creator',     href: '/creators/apply',              icon: UtensilsCrossed, titleKey: 'creatorTitle',     descKey: 'creatorDesc',     accent: 'text-grubano-role-creator',   bg: 'bg-grubano-role-creator/12',   soon: false },
+  { key: 'logistique',  href: '/business/logistics/register', icon: Bike,            titleKey: 'logistiqueTitle',  descKey: 'logistiqueDesc',  accent: 'text-grubano-role-logistics', bg: 'bg-grubano-role-logistics/12', soon: false },
+]
+
+// P1 — the prestataire (services) card is offered ONLY when PRESTATAIRE_ENABLED is ON.
+const PRESTATAIRE_PARTNER: Partner = {
+  key: 'prestataire', href: '/business/prestataire/register', icon: Wrench, titleKey: 'prestataireTitle', descKey: 'prestataireDesc',
+  accent: 'text-grubano-primary', bg: 'bg-grubano-tint', soon: false,
+}
+
+export default async function BusinessStartPage({ params }: { params: { locale: string } }) {
+  setRequestLocale(params.locale)
+  const t = await getTranslations('business.start')
+
+  const partners = isPrestataireEnabled() ? [...BASE_PARTNERS, PRESTATAIRE_PARTNER] : BASE_PARTNERS
 
   return (
     <PartnerChrome>
@@ -57,10 +74,10 @@ export default function BusinessStartPage() {
           </Card>
         </Link>
 
-        {/* ── LES PARTENAIRES — 3 cards ── */}
+        {/* ── LES PARTENAIRES — cards ── */}
         <p className="mb-2 mt-6 text-[11px] font-bold uppercase tracking-widest text-grubano-ink-faint">{t('partnersLabel')}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {PARTNERS.map(({ key, href, icon: Icon, titleKey, descKey, accent, bg, soon }) => (
+          {partners.map(({ key, href, icon: Icon, titleKey, descKey, accent, bg, soon }) => (
             <Link key={key} href={href} className="group block">
               <Card elevation="sm" padding="md" interactive className="flex h-full flex-col gap-2.5">
                 <span className={`grid h-11 w-11 place-items-center rounded-grubano-md ${bg} ${accent}`}>

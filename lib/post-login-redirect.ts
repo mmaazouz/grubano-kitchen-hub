@@ -19,6 +19,7 @@ export const POST_LOGIN_REDIRECTS: Record<string, string> = {
   creator:    '/creators/dashboard',
   supplier:   '/supplier/dashboard',
   logistics:  '/logistics/dashboard',
+  prestataire: '/prestataire/dashboard',
   affiliate:  '/affiliate/dashboard',
   consumer:   '/eat',
 }

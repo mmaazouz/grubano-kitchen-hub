@@ -22,7 +22,7 @@ model Operator {
   // partner and kept for audit. ADDITIVE + REVERSIBLE: nullable, no backfill,
   // existing rows stay valid and dropping it leaves the model intact.
   statusReason String?
-  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate
+  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate | prestataire
   createdAt  DateTime   @default(now())
   // ── Partner email verification + RGPD consent (Agent 12, brique 1) ───────────
   // ADDITIVE + REVERSIBLE: every field is nullable, so existing rows (consumers,
@@ -134,7 +134,7 @@ model OperatorRole {
   id         String   @id @default(cuid())
   operatorId String
   operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  role       String   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate
+  role       String   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate | prestataire
   createdAt  DateTime @default(now())
 
   @@unique([operatorId, role])
@@ -751,6 +751,55 @@ model LogisticsProfile {
   // ON-DEMAND (no webhook in P4.1).
   stripeAccountId    String?                           // acct_… (Express, FR)
   payoutStatus       String?                           // none | pending | active | restricted (null = none)
+  stripeOnboardedAt  DateTime?                         // first time the account became 'active'
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+// ── PrestataireProfile (SERVICES marketplace — P1 foundation, Agent 74) ────────
+// The SERVICES-marketplace analogue of SupplierProfile (products), CLONED 1:1 so the
+// onboarding behaviour + guarantees are identical: a prestataire self-registers (a
+// company with a SIREN), the registry is checked via lib/business-verification
+// (REUSED UNMODIFIED, shared with supplier + logistics), an LLM vets the registration,
+// and on success a passwordless Operator gains the 'prestataire' role (multi-role
+// cumul). PROFILE + ONBOARDING ONLY — services list / quotes / missions / calendar /
+// reviews / invoicing / PAYMENT are LATER bricks (P2+). The whole role is gated by
+// PRESTATAIRE_ENABLED (default OFF). ADDITIVE + REVERSIBLE: a brand-new model linked to
+// the Operator only by shared `email` (no FK), so dropping it leaves every existing
+// table untouched. Differs from SupplierProfile in the OPERATIONAL fields only: a
+// service has NO fixed-price catalogue / stock (priced per quote later) → serviceCategories
+// + coverageZones + modality + an optional free-text indicativeRate replace the supply
+// fields. The Stripe Connect columns are INERT in P1 (no charge/payout is wired here).
+model PrestataireProfile {
+  id                 String   @id @default(cuid())
+  email              String   @unique          // shared-email link to the Operator account
+  companyName        String                    // commercial / trading name
+  contactName        String
+  phone              String?
+  city               String?
+  // SERVICES (P1) — a prestataire OFFERS services; NO fixed-price catalogue / stock
+  // (unlike a supplier). Quotes / missions / calendar / invoicing = LATER bricks (P2+).
+  serviceCategories  Json     @default("[]")    // string[] — electricity|plumbing|haccp|cleaning|pest_control|fridge|kitchen|accounting|training|other
+  coverageZones      Json     @default("[]")    // string[] — cities / postal areas served
+  modality           String   @default("on_site") // on_site | remote | both
+  indicativeRate     String?  @db.Text          // free text (« sur devis », « dès 80€/h ») — NOT a fixed price
+  status             String   @default("pending")   // pending | active | suspended | rejected (business state)
+  // Auto-onboarding LLM vetting (clone of SupplierProfile). Gates VISIBILITY only —
+  // never money (any future payout stays independently hard-gated by Stripe Connect KYB).
+  vettingVerdict     String?                          // legit | doubt | bad (null = legacy / not auto-vetted)
+  vettingReason      String?  @db.Text                // short FR reason from the vetting/verification step
+  vettingAt          DateTime?                         // when the auto-vetting ran
+  // Automatic BUSINESS-IDENTITY verification (reuses lib/business-verification, SIREN
+  // registry). Gates VISIBILITY/activation ONLY — money stays out of this brick entirely.
+  siren              String?                          // 9-digit SIREN (derived from a SIREN or SIRET input)
+  officialName       String?                          // dénomination from the official registry (when verified)
+  verificationStatus String?                          // verified | rejected | review (null = legacy / not auto-verified)
+  verifiedAt         DateTime?                         // when the registry verification passed
+  // Stripe Connect (Express) payout columns — INERT in P1: NO charge / payout / Connect
+  // is wired to a prestataire yet (the services payment rail is a LATER money brick).
+  // Nullable, no default money flow. Names mirror SupplierProfile / LogisticsProfile.
+  stripeAccountId    String?  @unique                 // acct_… (Express, FR) — unused in P1
+  payoutStatus       String?                          // none | pending | active | restricted (null = none)
   stripeOnboardedAt  DateTime?                         // first time the account became 'active'
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

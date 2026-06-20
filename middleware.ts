@@ -88,6 +88,14 @@ export async function middleware(request: NextRequest) {
   // supplier gate. Distinct prefix from /business/logistics — never collides.
   const isLogisticsSpace =
     restPath === '/logistics' || restPath.startsWith('/logistics/')
+  // Prestataire (services) space (P1, Agent 74): the prestataire dashboard at /prestataire.
+  // The self-serve REGISTER lives under /business/prestataire/register (PUBLIC via the
+  // /business allow-list); the /prestataire tree itself is the AUTHENTICATED space, gated
+  // prestataire/admin in full, calqued on the logistics gate. Distinct prefix from
+  // /business/prestataire — never collides. The whole role 404s page-level when
+  // PRESTATAIRE_ENABLED is OFF, so this gate is inert then (nobody holds the role).
+  const isPrestataireSpace =
+    restPath === '/prestataire' || restPath.startsWith('/prestataire/')
   // Affiliate space (Phase 6 Brique A, Agent 58): the affiliate home at /affiliate/
   // dashboard (role affiliate/admin). /affiliate/join is the INSTANT self-serve
   // onboarding, reachable by ANY authenticated user (they are BECOMING an affiliate) →
@@ -182,6 +190,13 @@ export async function middleware(request: NextRequest) {
     // logistics user is sent to the HOME of their primary role (role-spaces) — its
     // own space, always reachable → no redirect loop. Calqued on the supplier gate.
     if (isLogisticsSpace && !hasAny(['logistics', 'admin'])) {
+      const home = spacesForRoles(roles)[0]?.href ?? '/eat'
+      return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
+    }
+    // Prestataire space (P1): the prestataire dashboard requires prestataire/admin. A non-
+    // prestataire user is sent to the HOME of their primary role (role-spaces) — its own
+    // space, always reachable → no redirect loop. Calqued on the supplier/logistics gate.
+    if (isPrestataireSpace && !hasAny(['prestataire', 'admin'])) {
       const home = spacesForRoles(roles)[0]?.href ?? '/eat'
       return NextResponse.redirect(new URL(`/${activeLocale}${home}`, request.url))
     }

@@ -13,7 +13,7 @@
  *  (a restaurateur sees exactly these four; see the mission spec). 'affiliate'
  *  (Phase 6 Brique A) is offered ONLY behind the AFFILIATE_ENABLED flag — see
  *  `addableActivities(roles, { includeAffiliate })`. */
-export type AddableActivity = 'supplier' | 'creator' | 'logistics' | 'franchise' | 'affiliate'
+export type AddableActivity = 'supplier' | 'creator' | 'logistics' | 'franchise' | 'affiliate' | 'prestataire'
 
 // The always-on activities (the four vetted journeys). 'affiliate' is intentionally
 // NOT here so the default behaviour is byte-identical when the flag is OFF.
@@ -33,12 +33,16 @@ export interface AnchorIdentity {
  *  stays pure). When OFF, the affiliate activity is NEVER offered. */
 export function addableActivities(
   roles: string[] | undefined | null,
-  opts?: { includeAffiliate?: boolean },
+  opts?: { includeAffiliate?: boolean; includePrestataire?: boolean },
 ): AddableActivity[] {
   const have = new Set(Array.isArray(roles) ? roles : [])
-  const base = ADDABLE_ACTIVITIES.filter((a) => !have.has(a))
-  if (opts?.includeAffiliate && !have.has('affiliate')) return [...base, 'affiliate']
-  return base
+  let out: AddableActivity[] = ADDABLE_ACTIVITIES.filter((a) => !have.has(a))
+  // 'prestataire' (Phase 6 P1) is offered ONLY when PRESTATAIRE_ENABLED is ON (resolved by
+  // the caller, never read here so this stays pure). When OFF it is NEVER offered → byte-
+  // identical to before this brick.
+  if (opts?.includePrestataire && !have.has('prestataire')) out = [...out, 'prestataire']
+  if (opts?.includeAffiliate && !have.has('affiliate')) out = [...out, 'affiliate']
+  return out
 }
 
 /** 'apply' = admin-approved (franchise, a candidature); 'register' = self-serve
@@ -48,16 +52,17 @@ export function activityMode(activity: AddableActivity): 'register' | 'apply' {
 }
 
 const BASE: Record<AddableActivity, string> = {
-  supplier:  '/supplier/register',
-  creator:   '/creators/apply',
-  logistics: '/business/logistics/register',
-  franchise: '/franchise/apply',
-  affiliate: '/affiliate/join',
+  supplier:    '/supplier/register',
+  creator:     '/creators/apply',
+  logistics:   '/business/logistics/register',
+  franchise:   '/franchise/apply',
+  affiliate:   '/affiliate/join',
+  prestataire: '/business/prestataire/register',
 }
 
 /** Only the company-backed journeys can prefill a verified siren/company name. */
 function collectsCompanyIdentity(activity: AddableActivity): boolean {
-  return activity === 'supplier' || activity === 'logistics'
+  return activity === 'supplier' || activity === 'logistics' || activity === 'prestataire'
 }
 
 /**
