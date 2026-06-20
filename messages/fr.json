@@ -1685,6 +1685,28 @@
       "equipmentTitle": "Matériel",
       "platingTitle": "Dressage",
       "completenessLine": "Fiche complète à {pct} % — fournie par le créateur via Grubano."
+    },
+    "aiCard": {
+      "title": "Importer ma carte (photo ou PDF)",
+      "subtitle": "L’IA lit votre carte et vous propose une liste de plats. Vous relisez, corrigez et confirmez — rien n’est enregistré avant votre confirmation.",
+      "choose": "Choisir un fichier",
+      "extracting": "Analyse de la carte…",
+      "reviewTitle": "Plats proposés — relisez et corrigez",
+      "reviewHint": "Aucun plat n’est ajouté tant que vous n’avez pas confirmé.",
+      "colName": "Nom",
+      "colPrice": "Prix (€)",
+      "colDesc": "Description",
+      "remove": "Retirer",
+      "confirm": "Confirmer et ajouter à la carte",
+      "confirming": "Ajout…",
+      "empty": "Aucun plat détecté. Essayez une photo plus nette, ou ajoutez vos plats manuellement.",
+      "added": "{count} plat(s) ajouté(s) à votre carte.",
+      "partial": "{ok} ajouté(s), {failed} à vérifier (prix manquant ?).",
+      "errorFile": "Format non pris en charge. Utilisez une image (JPG, PNG, WEBP) ou un PDF.",
+      "errorTooLarge": "Fichier trop volumineux (8 Mo maximum).",
+      "errorQuota": "Limite IA atteinte. Réessayez plus tard.",
+      "errorGeneric": "L’analyse a échoué. Réessayez.",
+      "restart": "Importer une autre carte"
     }
   },
   "finance": {

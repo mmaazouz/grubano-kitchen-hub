@@ -1685,6 +1685,28 @@
       "equipmentTitle": "Attrezzatura",
       "platingTitle": "Impiattamento",
       "completenessLine": "Scheda completa al {pct} % — fornita dal creatore via Grubano."
+    },
+    "aiCard": {
+      "title": "Importare il mio menù (foto o PDF)",
+      "subtitle": "L’IA legge il suo menù e le propone un elenco di piatti. Lei rilegge, corregge e conferma — nulla viene salvato prima della conferma.",
+      "choose": "Scegliere un file",
+      "extracting": "Lettura del menù…",
+      "reviewTitle": "Piatti proposti — rilegga e corregga",
+      "reviewHint": "Nessun piatto viene aggiunto finché non conferma.",
+      "colName": "Nome",
+      "colPrice": "Prezzo (€)",
+      "colDesc": "Descrizione",
+      "remove": "Rimuovere",
+      "confirm": "Confermare e aggiungere al menù",
+      "confirming": "Aggiunta…",
+      "empty": "Nessun piatto rilevato. Provi una foto più nitida o aggiunga i piatti manualmente.",
+      "added": "{count} piatto/i aggiunto/i al suo menù.",
+      "partial": "{ok} aggiunto/i, {failed} da verificare (prezzo mancante?).",
+      "errorFile": "Formato non supportato. Usi un’immagine (JPG, PNG, WEBP) o un PDF.",
+      "errorTooLarge": "File troppo grande (8 MB massimo).",
+      "errorQuota": "Limite IA raggiunto. Riprovi più tardi.",
+      "errorGeneric": "Analisi non riuscita. Riprovi.",
+      "restart": "Importare un altro menù"
     }
   },
   "finance": {

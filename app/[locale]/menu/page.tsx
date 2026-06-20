@@ -23,6 +23,7 @@ import {
 } from '@/components/design-system'
 import { StarBadge } from '@/components/creators/StarBadge'
 import DishSheetModal from '@/components/menu/DishSheetModal'
+import MenuPrefillImport from '@/components/menu/MenuPrefillImport'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -641,11 +642,15 @@ function MenuBuilder() {
       </div>
 
       {tab === 'items' && (
-        loading
-          ? <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-              <RefreshCw size={16} className="animate-spin" /> Chargement…
-            </div>
-          : <ItemsTab items={items} categories={categories} onToggle={toggleAvail} onEdit={setEditing} />
+        <>
+          {/* AI menu prefill (Agent 89) — self-gating: renders null when the flag is OFF. */}
+          <MenuPrefillImport brandId={brandId} onConfirmed={() => loadItems(brandId)} />
+          {loading
+            ? <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
+                <RefreshCw size={16} className="animate-spin" /> Chargement…
+              </div>
+            : <ItemsTab items={items} categories={categories} onToggle={toggleAvail} onEdit={setEditing} />}
+        </>
       )}
       {tab === 'categories' && (
         <CategoriesTab

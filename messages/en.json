@@ -1685,6 +1685,28 @@
       "equipmentTitle": "Equipment",
       "platingTitle": "Plating",
       "completenessLine": "Sheet {pct}% complete — provided by the creator via Grubano."
+    },
+    "aiCard": {
+      "title": "Import my menu (photo or PDF)",
+      "subtitle": "The AI reads your menu and suggests a dish list. You review, correct and confirm — nothing is saved before you confirm.",
+      "choose": "Choose a file",
+      "extracting": "Reading the menu…",
+      "reviewTitle": "Suggested dishes — review and correct",
+      "reviewHint": "No dish is added until you confirm.",
+      "colName": "Name",
+      "colPrice": "Price (€)",
+      "colDesc": "Description",
+      "remove": "Remove",
+      "confirm": "Confirm and add to the menu",
+      "confirming": "Adding…",
+      "empty": "No dish detected. Try a sharper photo, or add your dishes manually.",
+      "added": "{count} dish(es) added to your menu.",
+      "partial": "{ok} added, {failed} to check (missing price?).",
+      "errorFile": "Unsupported format. Use an image (JPG, PNG, WEBP) or a PDF.",
+      "errorTooLarge": "File too large (8 MB maximum).",
+      "errorQuota": "AI limit reached. Try again later.",
+      "errorGeneric": "Analysis failed. Please try again.",
+      "restart": "Import another menu"
     }
   },
   "finance": {

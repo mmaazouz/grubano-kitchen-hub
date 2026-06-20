@@ -48,6 +48,7 @@ export type LlmTask =
   | 'affiliate_caption'
   | 'dish_moderation'
   | 'dish_scan'
+  | 'menu_extract'
   | 'stock_parse'
   | 'review_reply'
   | 'briefing'
@@ -64,6 +65,9 @@ export const TASKS: Record<LlmTask, TaskConfig> = {
   affiliate_caption:     { model: HAIKU,  maxOutputTokens: 700 },
   dish_moderation:   { model: SONNET, maxOutputTokens: 400 },
   dish_scan:         { model: SONNET, maxOutputTokens: 1024 },
+  // Onboarding menu prefill (Agent 89): vision/PDF extraction of a WHOLE card → many
+  // dishes, so a larger output cap than a single dish_scan. Sonnet (vision-capable).
+  menu_extract:      { model: SONNET, maxOutputTokens: 4096 },
   stock_parse:       { model: SONNET, maxOutputTokens: 512 },
   review_reply:      { model: SONNET, maxOutputTokens: 300 },
   briefing:          { model: SONNET, maxOutputTokens: 400 },

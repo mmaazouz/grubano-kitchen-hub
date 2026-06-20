@@ -1685,6 +1685,28 @@
       "equipmentTitle": "Material",
       "platingTitle": "Emplatado",
       "completenessLine": "Ficha completa al {pct} % — proporcionada por el creador vía Grubano."
+    },
+    "aiCard": {
+      "title": "Importar mi carta (foto o PDF)",
+      "subtitle": "La IA lee su carta y le propone una lista de platos. Usted revisa, corrige y confirma — no se guarda nada antes de su confirmación.",
+      "choose": "Elegir un archivo",
+      "extracting": "Leyendo la carta…",
+      "reviewTitle": "Platos propuestos — revise y corrija",
+      "reviewHint": "No se añade ningún plato hasta que usted confirme.",
+      "colName": "Nombre",
+      "colPrice": "Precio (€)",
+      "colDesc": "Descripción",
+      "remove": "Quitar",
+      "confirm": "Confirmar y añadir a la carta",
+      "confirming": "Añadiendo…",
+      "empty": "No se detectó ningún plato. Pruebe una foto más nítida o añada sus platos manualmente.",
+      "added": "{count} plato(s) añadido(s) a su carta.",
+      "partial": "{ok} añadido(s), {failed} por revisar (¿falta el precio?).",
+      "errorFile": "Formato no admitido. Use una imagen (JPG, PNG, WEBP) o un PDF.",
+      "errorTooLarge": "Archivo demasiado grande (8 MB máximo).",
+      "errorQuota": "Límite de IA alcanzado. Inténtelo más tarde.",
+      "errorGeneric": "El análisis ha fallado. Inténtelo de nuevo.",
+      "restart": "Importar otra carta"
     }
   },
   "finance": {
