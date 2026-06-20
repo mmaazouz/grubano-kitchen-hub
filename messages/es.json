@@ -2876,7 +2876,40 @@
       "quoteSoonBody": "El contacto y el presupuesto en línea llegarán pronto.",
       "onQuote": "A presupuesto",
       "discoverCardTitle": "Proveedores de servicios",
-      "discoverCardDesc": "Electricidad, HACCP, limpieza, reparaciones… encuentre un proveedor."
+      "discoverCardDesc": "Electricidad, HACCP, limpieza, reparaciones… encuentre un proveedor.",
+      "myRequestsNav": "Mis solicitudes",
+      "requestQuoteCta": "Solicitar presupuesto",
+      "requestQuoteTitle": "Solicitar presupuesto",
+      "requestQuoteDesc": "Describa su necesidad; el proveedor le responderá con un presupuesto.",
+      "requestServiceCta": "Solicitar presupuesto",
+      "requestForService": "Para: {service}",
+      "requestDetailsLabel": "Su necesidad",
+      "requestDetailsPlaceholder": "Describa el servicio deseado, el contexto, la urgencia…",
+      "requestDetailsRequired": "Describa su necesidad",
+      "requestSend": "Enviar solicitud",
+      "requestSending": "Enviando…",
+      "requestCancel": "Cancelar",
+      "requestErr": "No se pudo enviar, inténtelo de nuevo.",
+      "requestDoneTitle": "Solicitud enviada",
+      "requestDoneBody": "El proveedor revisará su solicitud y le enviará un presupuesto.",
+      "requestDoneCta": "Ver mis solicitudes"
+    },
+    "prestataireMissions": {
+      "title": "Mis solicitudes",
+      "subtitle": "Sus solicitudes de presupuesto y misiones con los proveedores.",
+      "discoverNav": "Buscar un proveedor",
+      "empty": "Aún no ha realizado ninguna solicitud.",
+      "errLoad": "No se pudieron cargar sus solicitudes.",
+      "status_requested": "Esperando presupuesto",
+      "status_quoted": "Presupuesto recibido",
+      "status_accepted": "Aceptada",
+      "status_declined": "Rechazada",
+      "status_cancelled": "Cancelada",
+      "status_done": "Realizada",
+      "quoteLabel": "Presupuesto",
+      "acceptCta": "Aceptar",
+      "declineCta": "Rechazar",
+      "cancelCta": "Cancelar"
     }
   },
   "magic": {
@@ -3409,7 +3442,9 @@
       "emptyValue": "No indicado",
       "editProfileCta": "Editar mi perfil",
       "manageServicesTitle": "Mis servicios",
-      "manageServicesBody": "Gestione los servicios que ofrece a los restaurantes."
+      "manageServicesBody": "Gestione los servicios que ofrece a los restaurantes.",
+      "missionsTitle": "Solicitudes y misiones",
+      "missionsBody": "Responda a las solicitudes de presupuesto y siga sus misiones."
     },
     "services": {
       "title": "Mis servicios",
@@ -3440,6 +3475,34 @@
       "errLoad": "No se pudieron cargar sus servicios.",
       "errSave": "No se pudo guardar, inténtelo de nuevo.",
       "confirmDelete": "¿Eliminar «{title}»?"
+    },
+    "missions": {
+      "title": "Solicitudes y misiones",
+      "subtitle": "Las solicitudes de presupuesto recibidas y sus misiones en curso.",
+      "back": "Panel",
+      "emptyTitle": "Sin solicitudes",
+      "emptyDesc": "Las solicitudes de presupuesto de los restaurantes aparecerán aquí.",
+      "errLoad": "No se pudieron cargar sus misiones.",
+      "errSave": "No se pudo guardar, inténtelo de nuevo.",
+      "errAmount": "Importe no válido",
+      "errDescription": "Descripción obligatoria",
+      "status_requested": "Presupuesto solicitado",
+      "status_quoted": "Presupuesto enviado",
+      "status_accepted": "Aceptada",
+      "status_declined": "Rechazada",
+      "status_cancelled": "Cancelada",
+      "status_done": "Realizada",
+      "quoteCta": "Presupuestar",
+      "declineCta": "Rechazar",
+      "doneCta": "Marcar realizada",
+      "quoteTitle": "Crear un presupuesto",
+      "quoteSend": "Enviar presupuesto",
+      "quoteHint": "El importe es indicativo y se confirmará; aún no se cobra ningún pago.",
+      "fAmount": "Importe (€)",
+      "fDescription": "Descripción del presupuesto",
+      "fProposedDate": "Fecha propuesta",
+      "cancel": "Cancelar",
+      "saving": "Enviando…"
     }
   }
 }

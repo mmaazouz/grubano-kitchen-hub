@@ -2876,7 +2876,40 @@
       "quoteSoonBody": "La prise de contact et le devis en ligne arriveront prochainement.",
       "onQuote": "Sur devis",
       "discoverCardTitle": "Prestataires de services",
-      "discoverCardDesc": "Électricité, HACCP, nettoyage, dépannage… trouvez un prestataire."
+      "discoverCardDesc": "Électricité, HACCP, nettoyage, dépannage… trouvez un prestataire.",
+      "myRequestsNav": "Mes demandes",
+      "requestQuoteCta": "Demander un devis",
+      "requestQuoteTitle": "Demander un devis",
+      "requestQuoteDesc": "Décrivez votre besoin ; le prestataire vous répondra avec un devis.",
+      "requestServiceCta": "Demander un devis",
+      "requestForService": "Pour : {service}",
+      "requestDetailsLabel": "Votre besoin",
+      "requestDetailsPlaceholder": "Décrivez la prestation souhaitée, le contexte, l’urgence…",
+      "requestDetailsRequired": "Décrivez votre besoin",
+      "requestSend": "Envoyer la demande",
+      "requestSending": "Envoi…",
+      "requestCancel": "Annuler",
+      "requestErr": "Impossible d’envoyer, réessayez.",
+      "requestDoneTitle": "Demande envoyée",
+      "requestDoneBody": "Le prestataire va étudier votre demande et vous proposer un devis.",
+      "requestDoneCta": "Voir mes demandes"
+    },
+    "prestataireMissions": {
+      "title": "Mes demandes",
+      "subtitle": "Vos demandes de devis et missions auprès des prestataires.",
+      "discoverNav": "Trouver un prestataire",
+      "empty": "Vous n’avez pas encore fait de demande.",
+      "errLoad": "Impossible de charger vos demandes.",
+      "status_requested": "En attente de devis",
+      "status_quoted": "Devis reçu",
+      "status_accepted": "Acceptée",
+      "status_declined": "Refusée",
+      "status_cancelled": "Annulée",
+      "status_done": "Réalisée",
+      "quoteLabel": "Devis",
+      "acceptCta": "Accepter",
+      "declineCta": "Refuser",
+      "cancelCta": "Annuler"
     }
   },
   "magic": {
@@ -3409,7 +3442,9 @@
       "emptyValue": "Non renseigné",
       "editProfileCta": "Modifier mon profil",
       "manageServicesTitle": "Mes services",
-      "manageServicesBody": "Gérez les services que vous proposez aux restaurants."
+      "manageServicesBody": "Gérez les services que vous proposez aux restaurants.",
+      "missionsTitle": "Demandes & missions",
+      "missionsBody": "Répondez aux demandes de devis et suivez vos missions."
     },
     "services": {
       "title": "Mes services",
@@ -3440,6 +3475,34 @@
       "errLoad": "Impossible de charger vos services.",
       "errSave": "Impossible d’enregistrer, réessayez.",
       "confirmDelete": "Supprimer « {title} » ?"
+    },
+    "missions": {
+      "title": "Demandes & missions",
+      "subtitle": "Les demandes de devis reçues et vos missions en cours.",
+      "back": "Tableau de bord",
+      "emptyTitle": "Aucune demande",
+      "emptyDesc": "Les demandes de devis des restaurants apparaîtront ici.",
+      "errLoad": "Impossible de charger vos missions.",
+      "errSave": "Impossible d’enregistrer, réessayez.",
+      "errAmount": "Montant invalide",
+      "errDescription": "Description requise",
+      "status_requested": "Devis demandé",
+      "status_quoted": "Devis envoyé",
+      "status_accepted": "Acceptée",
+      "status_declined": "Refusée",
+      "status_cancelled": "Annulée",
+      "status_done": "Réalisée",
+      "quoteCta": "Chiffrer",
+      "declineCta": "Refuser",
+      "doneCta": "Marquer réalisée",
+      "quoteTitle": "Établir un devis",
+      "quoteSend": "Envoyer le devis",
+      "quoteHint": "Le montant est indicatif et sera confirmé ; aucun paiement n’est encore prélevé.",
+      "fAmount": "Montant (€)",
+      "fDescription": "Description du devis",
+      "fProposedDate": "Date proposée",
+      "cancel": "Annuler",
+      "saving": "Envoi…"
     }
   }
 }

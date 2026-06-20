@@ -66,6 +66,9 @@ model Operator {
   // Slice 2 — B2B supply orders this operator (as a restaurateur) placed to
   // marketplace suppliers. Additive inverse relation; reversible.
   supplyOrders  SupplyOrder[]
+  // P3 (Agent 76) — service quote/mission requests this operator (as a restaurateur)
+  // sent to prestataires. Additive inverse relation; reversible. NO money.
+  serviceMissions ServiceMission[]
   // ── Company identity anchor (B1.1, Agent 29) — ADDITIVE · REVERSIBLE · INERT ──
   // Future "collect once" home for BUSINESS identity at the ACCOUNT level. Today
   // company identity is siloed per-entity (SupplierProfile / LogisticsProfile,
@@ -806,6 +809,8 @@ model PrestataireProfile {
   // P2 (Agent 75) — the services this prestataire lists (1-N). Additive BACK-relation:
   // no column is added to PrestataireProfile, the FK lives on ServiceOffering. NO money.
   serviceOfferings   ServiceOffering[]
+  // P3 (Agent 76) — quote/mission requests this prestataire received. Additive BACK-relation.
+  serviceMissions    ServiceMission[]
 }
 
 // ── ServiceOffering (SERVICES marketplace — P2 service listing, Agent 75) ─────
@@ -831,10 +836,50 @@ model ServiceOffering {
   active               Boolean            @default(true)       // false = hidden from discovery (« masqué »)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
+  // P3 (Agent 76) — missions/quotes that reference this offering (optional soft link). Additive.
+  serviceMissions      ServiceMission[]
 
   @@unique([prestataireProfileId, title])
   @@index([prestataireProfileId])
   @@index([category])
+}
+
+// ── ServiceMission (SERVICES marketplace — P3 devis + mission, Agent 76) ──────
+// ADDITIVE + REVERSIBLE. The DEVIS → MISSION cycle between a restaurant (buyer) and a
+// prestataire (seller), CLONED from SupplyOrder + the lib/marketplace state machine and
+// adapted to services. A restaurant REQUESTS a quote → the prestataire QUOTES (amount +
+// description + proposed date) → the restaurant ACCEPTS / DECLINES → the prestataire marks
+// it DONE. State machine in lib/service-mission (only valid transitions, per role).
+//
+// 100% OFF THE MONEY PATH: quoteAmountCents is a STORED NUMBER that is merely DISPLAYED —
+// NO payment / charge / commission / payout / Connect is computed or moved here. The
+// payment + invoice + commission rail is a LATER brick (P6). There is deliberately NO
+// paymentStatus / chargedCents / payout column (unlike SupplyOrder's Slice-5c fields).
+// Owner-scoped: the restaurantOperatorId (session operator) and the prestataireProfileId
+// (session prestataire) each only ever touch their own missions. FK cascade with both
+// parents; the offering link is a SOFT nullable audit FK (SetNull). The real calendar is
+// P4 — scheduledDate is just an agreed date posed at acceptance.
+model ServiceMission {
+  id                   String             @id @default(cuid())
+  restaurantOperatorId String                                  // buyer — the restaurateur (from the session)
+  restaurantOperator   Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
+  prestataireProfileId String                                  // seller — the prestataire
+  prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
+  serviceOfferingId    String?                                 // optional soft link to the offering (SetNull on delete)
+  serviceOffering      ServiceOffering?   @relation(fields: [serviceOfferingId], references: [id], onDelete: SetNull)
+  requestDetails       String             @db.Text             // the resto's description of the need
+  // ── Quote (DEVIS) — DATA ONLY. Displayed, NEVER charged in P3 (payment = P6). ──
+  quoteAmountCents     Int?                                    // quoted amount in CENTS (pure data; no money moves)
+  quoteDescription     String?            @db.Text             // what the quote covers (set with the quote)
+  proposedDate         DateTime?                               // date the prestataire proposes in the quote
+  scheduledDate        DateTime?                               // agreed date, posed when the resto accepts (real calendar = P4)
+  status               String             @default("requested") // requested|quoted|accepted|declined|cancelled|done
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([restaurantOperatorId])
+  @@index([prestataireProfileId])
+  @@index([serviceOfferingId])
 }
 
 // ── SupplierCatalogItem (B2B supply marketplace — Slice 1 catalogue, Agent 14) ─

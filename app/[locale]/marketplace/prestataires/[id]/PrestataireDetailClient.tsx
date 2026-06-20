@@ -2,16 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Info } from 'lucide-react'
+import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Send, X, CheckCircle2 } from 'lucide-react'
 import { Link } from '@/navigation'
-import { Card, Badge } from '@/components/design-system'
+import { Card, Badge, Button } from '@/components/design-system'
 
-// ── /marketplace/prestataires/[id] — read-only prestataire fiche (P2, Agent 75) ──
-// A restaurateur views ONE prestataire + its active services. Reuses the discovery
-// endpoint (already ACTIVE-only + restaurant/admin-gated) and finds the id — the same
-// pattern as the supplier storefront, but READ-ONLY: NO cart / order / price. Services are
-// « sur devis » — the quote / contact flow is a LATER brick (P3+), shown as an honest
-// "coming soon" notice. Operator-gated; the parent server page 404s when the flag is OFF.
+// ── /marketplace/prestataires/[id] — prestataire fiche + REQUEST A QUOTE (P3, Agent 76) ──
+// A restaurateur views ONE prestataire + its active services. Reuses the discovery endpoint
+// (ACTIVE-only + restaurant/admin-gated) and finds the id. P3 replaces the P2 "coming soon"
+// notice with a real « Demander un devis » flow: the resto describes the need (optionally for
+// a specific service) → POST /api/marketplace/prestataire-missions creates a ServiceMission
+// in status 'requested'. NO money — the prestataire will quote an amount later (pure data).
+// NO cart / price here. Operator-gated; the parent server page 404s when the flag is OFF.
 
 interface DiscoverOffering { id: string; title: string; description: string | null; category: string; modality: string; indicativeRate: string | null }
 interface DiscoverPrestataire {
@@ -64,6 +65,45 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
     return Array.from(map.entries())
   }, [p])
 
+  // ── « Demander un devis » (P3) — create a ServiceMission in status 'requested'. ──
+  // NO money: the prestataire quotes an amount later; here we only describe the need.
+  const [reqOpen, setReqOpen]             = useState(false)
+  const [reqOfferingId, setReqOfferingId] = useState<string | null>(null)
+  const [details, setDetails]             = useState('')
+  const [submitting, setSubmitting]       = useState(false)
+  const [reqError, setReqError]           = useState('')
+  const [reqDone, setReqDone]             = useState(false)
+
+  function openRequest(offeringId: string | null) {
+    setReqError(''); setReqDone(false); setDetails(''); setReqOfferingId(offeringId); setReqOpen(true)
+  }
+
+  async function submitRequest(e: React.FormEvent) {
+    e.preventDefault()
+    if (submitting || !p) return
+    if (!details.trim()) { setReqError(tm('requestDetailsRequired')); return }
+    setSubmitting(true); setReqError('')
+    try {
+      const res = await fetch('/api/marketplace/prestataire-missions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ prestataireProfileId: p.id, serviceOfferingId: reqOfferingId, requestDetails: details.trim() }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setReqError(d?.error || tm('requestErr'))
+        return
+      }
+      setReqDone(true)
+    } catch {
+      setReqError(tm('requestErr'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const selectedOffering = p?.serviceOfferings.find((o) => o.id === reqOfferingId) ?? null
+
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-grubano-primary" /></div>
   if (missing || !p) {
     return (
@@ -98,14 +138,16 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
         </p>
       )}
 
-      {/* Quote / contact = a LATER brick (P3+). Honest notice, no dead button. */}
+      {/* P3 — « Demander un devis » (real flow; replaces the P2 "coming soon" notice). */}
       <Card elevation="sm" padding="md" className="mb-5 border-grubano-primary/20 bg-grubano-tint/40">
-        <div className="flex items-start gap-2.5">
-          <Info size={18} className="mt-0.5 shrink-0 text-grubano-primary" />
-          <div>
-            <p className="font-semibold text-grubano-ink">{tm('quoteSoonTitle')}</p>
-            <p className="text-sm text-grubano-ink-muted">{tm('quoteSoonBody')}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold text-grubano-ink">{tm('requestQuoteTitle')}</p>
+            <p className="text-sm text-grubano-ink-muted">{tm('requestQuoteDesc')}</p>
           </div>
+          <Button variant="primary" size="md" leftIcon={<Send size={15} />} onClick={() => openRequest(null)}>
+            {tm('requestQuoteCta')}
+          </Button>
         </div>
       </Card>
 
@@ -125,7 +167,12 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
                       </div>
                       <Badge tone="neutral" size="sm">{modLabel(o.modality)}</Badge>
                     </div>
-                    <p className="mt-2 text-sm font-medium text-grubano-ink">{o.indicativeRate?.trim() || tm('onQuote')}</p>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-grubano-ink">{o.indicativeRate?.trim() || tm('onQuote')}</p>
+                      <button onClick={() => openRequest(o.id)} className="shrink-0 text-sm font-semibold text-grubano-primary hover:underline">
+                        {tm('requestServiceCta')}
+                      </button>
+                    </div>
                   </Card>
                 </li>
               ))}
@@ -133,6 +180,50 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
           </div>
         ))}
       </div>
+
+      {/* ── Request-a-quote modal (P3) ── */}
+      {reqOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={() => !submitting && setReqOpen(false)}>
+          <div className="w-full max-w-lg rounded-t-grubano-2xl bg-grubano-surface p-5 sm:rounded-grubano-2xl" onClick={(e) => e.stopPropagation()}>
+            {reqDone ? (
+              <div className="flex flex-col items-center gap-3 py-4 text-center">
+                <span className="grid h-14 w-14 place-items-center rounded-grubano-pill bg-grubano-success-tint">
+                  <CheckCircle2 size={28} className="text-grubano-success" />
+                </span>
+                <p className="font-display text-base font-bold text-grubano-ink">{tm('requestDoneTitle')}</p>
+                <p className="max-w-xs text-sm text-grubano-ink-muted">{tm('requestDoneBody')}</p>
+                <Link href="/marketplace/prestataire-missions" className="mt-1 inline-flex items-center justify-center gap-2 rounded-grubano-lg bg-grubano-primary px-5 py-2.5 font-semibold text-white">
+                  {tm('requestDoneCta')}
+                </Link>
+              </div>
+            ) : (
+              <form onSubmit={submitRequest} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-lg font-bold text-grubano-ink">{tm('requestQuoteTitle')}</h2>
+                  <button type="button" onClick={() => setReqOpen(false)} aria-label={tm('requestCancel')}><X size={18} className="text-grubano-ink-muted" /></button>
+                </div>
+                {selectedOffering && (
+                  <p className="rounded-grubano-md bg-grubano-tint/50 px-3 py-2 text-[13px] text-grubano-ink-muted">
+                    {tm('requestForService', { service: selectedOffering.title })}
+                  </p>
+                )}
+                {reqError && <p className="rounded-grubano-lg bg-grubano-danger-tint px-3 py-2 text-sm text-grubano-danger">{reqError}</p>}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-grubano-ink">{tm('requestDetailsLabel')}</label>
+                  <textarea rows={4} required value={details} onChange={(e) => setDetails(e.target.value)} placeholder={tm('requestDetailsPlaceholder')}
+                    className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2 text-sm text-grubano-ink focus:border-grubano-primary focus:outline-none focus:ring-4 focus:ring-grubano-primary/20" />
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button type="button" variant="secondary" size="md" fullWidth onClick={() => setReqOpen(false)}>{tm('requestCancel')}</Button>
+                  <Button type="submit" variant="primary" size="md" fullWidth loading={submitting} leftIcon={submitting ? undefined : <Send size={16} />}>
+                    {submitting ? tm('requestSending') : tm('requestSend')}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

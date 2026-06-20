@@ -2876,7 +2876,40 @@
       "quoteSoonBody": "Online contact and quoting will arrive shortly.",
       "onQuote": "On quote",
       "discoverCardTitle": "Service providers",
-      "discoverCardDesc": "Electricity, HACCP, cleaning, repairs… find a provider."
+      "discoverCardDesc": "Electricity, HACCP, cleaning, repairs… find a provider.",
+      "myRequestsNav": "My requests",
+      "requestQuoteCta": "Request a quote",
+      "requestQuoteTitle": "Request a quote",
+      "requestQuoteDesc": "Describe your need; the provider will reply with a quote.",
+      "requestServiceCta": "Request a quote",
+      "requestForService": "For: {service}",
+      "requestDetailsLabel": "Your need",
+      "requestDetailsPlaceholder": "Describe the service, context, urgency…",
+      "requestDetailsRequired": "Describe your need",
+      "requestSend": "Send request",
+      "requestSending": "Sending…",
+      "requestCancel": "Cancel",
+      "requestErr": "Couldn't send, please try again.",
+      "requestDoneTitle": "Request sent",
+      "requestDoneBody": "The provider will review your request and send a quote.",
+      "requestDoneCta": "View my requests"
+    },
+    "prestataireMissions": {
+      "title": "My requests",
+      "subtitle": "Your quote requests and missions with providers.",
+      "discoverNav": "Find a provider",
+      "empty": "You haven't made any request yet.",
+      "errLoad": "Couldn't load your requests.",
+      "status_requested": "Awaiting quote",
+      "status_quoted": "Quote received",
+      "status_accepted": "Accepted",
+      "status_declined": "Declined",
+      "status_cancelled": "Cancelled",
+      "status_done": "Completed",
+      "quoteLabel": "Quote",
+      "acceptCta": "Accept",
+      "declineCta": "Decline",
+      "cancelCta": "Cancel"
     }
   },
   "magic": {
@@ -3409,7 +3442,9 @@
       "emptyValue": "Not provided",
       "editProfileCta": "Edit my profile",
       "manageServicesTitle": "My services",
-      "manageServicesBody": "Manage the services you offer to restaurants."
+      "manageServicesBody": "Manage the services you offer to restaurants.",
+      "missionsTitle": "Requests & missions",
+      "missionsBody": "Answer quote requests and track your missions."
     },
     "services": {
       "title": "My services",
@@ -3440,6 +3475,34 @@
       "errLoad": "Couldn't load your services.",
       "errSave": "Couldn't save, please try again.",
       "confirmDelete": "Delete “{title}”?"
+    },
+    "missions": {
+      "title": "Requests & missions",
+      "subtitle": "Quote requests received and your ongoing missions.",
+      "back": "Dashboard",
+      "emptyTitle": "No requests",
+      "emptyDesc": "Quote requests from restaurants will appear here.",
+      "errLoad": "Couldn't load your missions.",
+      "errSave": "Couldn't save, please try again.",
+      "errAmount": "Invalid amount",
+      "errDescription": "Description required",
+      "status_requested": "Quote requested",
+      "status_quoted": "Quote sent",
+      "status_accepted": "Accepted",
+      "status_declined": "Declined",
+      "status_cancelled": "Cancelled",
+      "status_done": "Completed",
+      "quoteCta": "Quote",
+      "declineCta": "Decline",
+      "doneCta": "Mark completed",
+      "quoteTitle": "Prepare a quote",
+      "quoteSend": "Send quote",
+      "quoteHint": "The amount is indicative and will be confirmed; no payment is taken yet.",
+      "fAmount": "Amount (€)",
+      "fDescription": "Quote description",
+      "fProposedDate": "Proposed date",
+      "cancel": "Cancel",
+      "saving": "Sending…"
     }
   }
 }

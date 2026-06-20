@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { Wrench, MapPin, ListChecks, ChevronRight, Loader2, Search, MonitorSmartphone } from 'lucide-react'
+import { Wrench, MapPin, ListChecks, ChevronRight, Loader2, Search, MonitorSmartphone, ClipboardList } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Badge } from '@/components/design-system'
 import { SERVICE_CATEGORIES, filterPrestataires } from '@/lib/service-offering'
@@ -62,14 +62,19 @@ export default function PrestatairesDiscoverClient() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 md:px-6">
-      <div className="mb-4 flex items-center gap-2.5">
-        <span className="grid h-10 w-10 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
-          <Wrench size={20} />
-        </span>
-        <div>
-          <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{tm('title')}</h1>
-          <p className="text-sm text-grubano-ink-muted">{tm('subtitle')}</p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-10 w-10 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
+            <Wrench size={20} />
+          </span>
+          <div>
+            <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{tm('title')}</h1>
+            <p className="text-sm text-grubano-ink-muted">{tm('subtitle')}</p>
+          </div>
         </div>
+        <Link href="/marketplace/prestataire-missions" className="inline-flex shrink-0 items-center gap-1 rounded-grubano-lg border border-grubano-border px-3 py-2 text-sm font-medium text-grubano-ink-muted hover:text-grubano-ink">
+          <ClipboardList size={15} /> {tm('myRequestsNav')}
+        </Link>
       </div>
 
       {/* Filters: trade (category) + zone */}

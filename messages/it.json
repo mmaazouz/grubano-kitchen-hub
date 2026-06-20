@@ -2876,7 +2876,40 @@
       "quoteSoonBody": "Il contatto e il preventivo online arriveranno a breve.",
       "onQuote": "Su preventivo",
       "discoverCardTitle": "Prestatori di servizi",
-      "discoverCardDesc": "Elettricità, HACCP, pulizie, riparazioni… trovate un prestatore."
+      "discoverCardDesc": "Elettricità, HACCP, pulizie, riparazioni… trovate un prestatore.",
+      "myRequestsNav": "Le mie richieste",
+      "requestQuoteCta": "Richiedere un preventivo",
+      "requestQuoteTitle": "Richiedere un preventivo",
+      "requestQuoteDesc": "Descrivete la vostra esigenza; il prestatore vi risponderà con un preventivo.",
+      "requestServiceCta": "Richiedere un preventivo",
+      "requestForService": "Per: {service}",
+      "requestDetailsLabel": "La vostra esigenza",
+      "requestDetailsPlaceholder": "Descrivete il servizio desiderato, il contesto, l’urgenza…",
+      "requestDetailsRequired": "Descrivete la vostra esigenza",
+      "requestSend": "Invia richiesta",
+      "requestSending": "Invio…",
+      "requestCancel": "Annulla",
+      "requestErr": "Impossibile inviare, riprovate.",
+      "requestDoneTitle": "Richiesta inviata",
+      "requestDoneBody": "Il prestatore esaminerà la vostra richiesta e vi invierà un preventivo.",
+      "requestDoneCta": "Vedi le mie richieste"
+    },
+    "prestataireMissions": {
+      "title": "Le mie richieste",
+      "subtitle": "Le vostre richieste di preventivo e missioni con i prestatori.",
+      "discoverNav": "Trovare un prestatore",
+      "empty": "Non avete ancora fatto richieste.",
+      "errLoad": "Impossibile caricare le vostre richieste.",
+      "status_requested": "In attesa di preventivo",
+      "status_quoted": "Preventivo ricevuto",
+      "status_accepted": "Accettata",
+      "status_declined": "Rifiutata",
+      "status_cancelled": "Annullata",
+      "status_done": "Completata",
+      "quoteLabel": "Preventivo",
+      "acceptCta": "Accetta",
+      "declineCta": "Rifiuta",
+      "cancelCta": "Annulla"
     }
   },
   "magic": {
@@ -3409,7 +3442,9 @@
       "emptyValue": "Non indicato",
       "editProfileCta": "Modifica il mio profilo",
       "manageServicesTitle": "I miei servizi",
-      "manageServicesBody": "Gestite i servizi che offrite ai ristoranti."
+      "manageServicesBody": "Gestite i servizi che offrite ai ristoranti.",
+      "missionsTitle": "Richieste e missioni",
+      "missionsBody": "Rispondete alle richieste di preventivo e seguite le vostre missioni."
     },
     "services": {
       "title": "I miei servizi",
@@ -3440,6 +3475,34 @@
       "errLoad": "Impossibile caricare i vostri servizi.",
       "errSave": "Impossibile salvare, riprovate.",
       "confirmDelete": "Eliminare «{title}»?"
+    },
+    "missions": {
+      "title": "Richieste e missioni",
+      "subtitle": "Le richieste di preventivo ricevute e le vostre missioni in corso.",
+      "back": "Pannello",
+      "emptyTitle": "Nessuna richiesta",
+      "emptyDesc": "Le richieste di preventivo dei ristoranti appariranno qui.",
+      "errLoad": "Impossibile caricare le vostre missioni.",
+      "errSave": "Impossibile salvare, riprovate.",
+      "errAmount": "Importo non valido",
+      "errDescription": "Descrizione obbligatoria",
+      "status_requested": "Preventivo richiesto",
+      "status_quoted": "Preventivo inviato",
+      "status_accepted": "Accettata",
+      "status_declined": "Rifiutata",
+      "status_cancelled": "Annullata",
+      "status_done": "Completata",
+      "quoteCta": "Preventivare",
+      "declineCta": "Rifiutare",
+      "doneCta": "Segna completata",
+      "quoteTitle": "Creare un preventivo",
+      "quoteSend": "Invia preventivo",
+      "quoteHint": "L’importo è indicativo e sarà confermato; nessun pagamento viene ancora addebitato.",
+      "fAmount": "Importo (€)",
+      "fDescription": "Descrizione del preventivo",
+      "fProposedDate": "Data proposta",
+      "cancel": "Annulla",
+      "saving": "Invio…"
     }
   }
 }

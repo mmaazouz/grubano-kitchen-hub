@@ -2876,7 +2876,40 @@
       "quoteSoonBody": "سيتوفّر التواصل وطلب عرض السعر عبر الإنترنت قريبًا.",
       "onQuote": "حسب عرض السعر",
       "discoverCardTitle": "مقدّمو الخدمات",
-      "discoverCardDesc": "كهرباء، HACCP، تنظيف، إصلاح… ابحث عن مقدّم خدمة."
+      "discoverCardDesc": "كهرباء، HACCP، تنظيف، إصلاح… ابحث عن مقدّم خدمة.",
+      "myRequestsNav": "طلباتي",
+      "requestQuoteCta": "طلب عرض سعر",
+      "requestQuoteTitle": "طلب عرض سعر",
+      "requestQuoteDesc": "صِف حاجتك؛ سيردّ عليك مقدّم الخدمة بعرض سعر.",
+      "requestServiceCta": "طلب عرض سعر",
+      "requestForService": "لِـ: {service}",
+      "requestDetailsLabel": "حاجتك",
+      "requestDetailsPlaceholder": "صِف الخدمة المطلوبة والسياق ودرجة الاستعجال…",
+      "requestDetailsRequired": "صِف حاجتك",
+      "requestSend": "إرسال الطلب",
+      "requestSending": "جارٍ الإرسال…",
+      "requestCancel": "إلغاء",
+      "requestErr": "تعذّر الإرسال، حاول مجدّدًا.",
+      "requestDoneTitle": "تمّ إرسال الطلب",
+      "requestDoneBody": "سيدرس مقدّم الخدمة طلبك ويرسل لك عرض سعر.",
+      "requestDoneCta": "عرض طلباتي"
+    },
+    "prestataireMissions": {
+      "title": "طلباتي",
+      "subtitle": "طلبات عروض الأسعار ومهامك مع مقدّمي الخدمات.",
+      "discoverNav": "ابحث عن مقدّم خدمة",
+      "empty": "لم تقدّم أي طلب بعد.",
+      "errLoad": "تعذّر تحميل طلباتك.",
+      "status_requested": "بانتظار عرض السعر",
+      "status_quoted": "تمّ استلام عرض السعر",
+      "status_accepted": "مقبولة",
+      "status_declined": "مرفوضة",
+      "status_cancelled": "ملغاة",
+      "status_done": "منجزة",
+      "quoteLabel": "عرض السعر",
+      "acceptCta": "قبول",
+      "declineCta": "رفض",
+      "cancelCta": "إلغاء"
     }
   },
   "magic": {
@@ -3409,7 +3442,9 @@
       "emptyValue": "غير محدّد",
       "editProfileCta": "تعديل ملفي",
       "manageServicesTitle": "خدماتي",
-      "manageServicesBody": "أدِر الخدمات التي تقدّمها للمطاعم."
+      "manageServicesBody": "أدِر الخدمات التي تقدّمها للمطاعم.",
+      "missionsTitle": "الطلبات والمهام",
+      "missionsBody": "ردّ على طلبات عروض الأسعار وتابع مهامك."
     },
     "services": {
       "title": "خدماتي",
@@ -3440,6 +3475,34 @@
       "errLoad": "تعذّر تحميل خدماتك.",
       "errSave": "تعذّر الحفظ، حاول مجدّدًا.",
       "confirmDelete": "حذف «{title}»؟"
+    },
+    "missions": {
+      "title": "الطلبات والمهام",
+      "subtitle": "طلبات عروض الأسعار المستلمة ومهامك الجارية.",
+      "back": "لوحة التحكم",
+      "emptyTitle": "لا توجد طلبات",
+      "emptyDesc": "ستظهر هنا طلبات عروض الأسعار من المطاعم.",
+      "errLoad": "تعذّر تحميل مهامك.",
+      "errSave": "تعذّر الحفظ، حاول مجدّدًا.",
+      "errAmount": "مبلغ غير صالح",
+      "errDescription": "الوصف مطلوب",
+      "status_requested": "طُلب عرض سعر",
+      "status_quoted": "أُرسل عرض السعر",
+      "status_accepted": "مقبولة",
+      "status_declined": "مرفوضة",
+      "status_cancelled": "ملغاة",
+      "status_done": "منجزة",
+      "quoteCta": "تسعير",
+      "declineCta": "رفض",
+      "doneCta": "وضع علامة منجزة",
+      "quoteTitle": "إعداد عرض سعر",
+      "quoteSend": "إرسال عرض السعر",
+      "quoteHint": "المبلغ استرشادي وسيُؤكَّد؛ لا يُخصم أي مبلغ بعد.",
+      "fAmount": "المبلغ (€)",
+      "fDescription": "وصف عرض السعر",
+      "fProposedDate": "التاريخ المقترح",
+      "cancel": "إلغاء",
+      "saving": "جارٍ الإرسال…"
     }
   }
 }

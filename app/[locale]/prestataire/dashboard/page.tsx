@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth'
 import { notFound } from 'next/navigation'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Wrench, MapPin, Tags, Hourglass, ChevronRight, Sparkles, Pencil, MonitorSmartphone } from 'lucide-react'
+import { Wrench, MapPin, Tags, Hourglass, ChevronRight, Sparkles, Pencil, MonitorSmartphone, Inbox } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Link } from '@/navigation'
@@ -73,7 +73,8 @@ export default async function PrestataireDashboardPage(props: { params: { locale
   // The LATER bricks (P2+) — shown as a single « à venir » card so the shell is honest
   // about what is not built yet. NO link / no work is offered here.
   // P2 (Agent 75) — « Services » is now BUILT (managed below), so it leaves the soon list.
-  const SOON = ['soonQuotes', 'soonMissions', 'soonCalendar', 'soonReviews', 'soonInvoicing'] as const
+  // P3 (Agent 76) — « Devis » + « Missions » are now BUILT (managed below), so they leave the soon list.
+  const SOON = ['soonCalendar', 'soonReviews', 'soonInvoicing'] as const
 
   return (
     <div className="min-h-screen bg-grubano-bg">
@@ -138,7 +139,23 @@ export default async function PrestataireDashboardPage(props: { params: { locale
               </Card>
             )}
 
-            {/* Future bricks (P3+) — devis / missions / calendrier / avis / facturation. */}
+            {/* P3 (Agent 76) — « Demandes & missions » (the devis/mission inbox). Active only. */}
+            {profile.status === 'active' && (
+              <Card elevation="sm" padding="md" interactive>
+                <Link href="/prestataire/missions" className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
+                    <Inbox size={20} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-grubano-ink">{d('missionsTitle')}</p>
+                    <p className="text-sm text-grubano-ink-muted">{d('missionsBody')}</p>
+                  </div>
+                  <ChevronRight size={18} className="shrink-0 text-grubano-ink-faint" />
+                </Link>
+              </Card>
+            )}
+
+            {/* Future bricks (P4+) — calendrier / avis / facturation. */}
             <Card elevation="sm" padding="md">
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
