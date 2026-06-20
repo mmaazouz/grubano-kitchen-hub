@@ -72,6 +72,9 @@ model Operator {
   // P5 (Agent 78) — reviews this operator (as a restaurateur) left on prestataires.
   // Additive inverse relation; reversible. NO money.
   serviceReviews  ServiceReview[]
+  // P6 (Agent 79) — service-mission invoices billed to this operator (as a restaurateur).
+  // Additive inverse relation; reversible. DOCUMENT only — NO money movement.
+  serviceInvoices ServiceInvoice[]
   // ── Company identity anchor (B1.1, Agent 29) — ADDITIVE · REVERSIBLE · INERT ──
   // Future "collect once" home for BUSINESS identity at the ACCOUNT level. Today
   // company identity is siloed per-entity (SupplierProfile / LogisticsProfile,
@@ -823,6 +826,8 @@ model PrestataireProfile {
   unavailabilities   PrestataireUnavailability[]
   // P5 (Agent 78) — reviews left on this prestataire by restaurants. Additive BACK-relation.
   serviceReviews     ServiceReview[]
+  // P6 (Agent 79) — service-mission invoices issued by this prestataire. Additive BACK-relation.
+  serviceInvoices    ServiceInvoice[]
 }
 
 // ── PrestataireUnavailability (SERVICES — P4 simple declarative calendar, Agent 77) ──
@@ -909,6 +914,8 @@ model ServiceMission {
   updatedAt            DateTime           @updatedAt
   // P5 (Agent 78) — the optional single review for this mission (1:1; created only when 'done'). Additive.
   review               ServiceReview?
+  // P6 (Agent 79) — the optional single invoice for this mission (1:1; lazily issued when 'done'). Additive.
+  invoice              ServiceInvoice?
 
   @@index([restaurantOperatorId])
   @@index([prestataireProfileId])
@@ -940,6 +947,45 @@ model ServiceReview {
 
   @@index([prestataireProfileId])
   @@index([restaurantOperatorId])
+}
+
+// ── ServiceInvoice (SERVICES marketplace — P6 mission invoice, Agent 79) ──────
+// ADDITIVE + REVERSIBLE. The invoice of a 'done' ServiceMission: the prestataire bills the
+// restaurant the AGREED amount (= the P3 quote). MONEY-ADJACENT but with ZERO money movement
+// — this is a DOCUMENT + a stored amount, NOT a payment. There is deliberately NO Stripe /
+// charge / PaymentIntent / Connect / payout / transfer / application_fee anywhere here: the
+// real payment is a LATER brick (P7). The 5% Grubano commission split is COMPUTED on read by
+// the PURE lib/service-pricing (restaurantPays = amount, grubanoMargin = round(amount × 5%),
+// prestataireNet = amount − grubanoMargin) — it is shown, never moved.
+//
+// IDEMPOTENT + GAPLESS: one invoice per mission (serviceMissionId @unique); the number is a
+// continuous PRS-YYYY-NNNNN sequence issued from a DEDICATED ServiceInvoiceCounter — it REUSES
+// the resto gapless MECHANISM but in a SEPARATE series, so the resto GRB-… counter/Invoice
+// stay byte-identical. Cascade-deleted with the mission / operator / prestataire.
+model ServiceInvoice {
+  id                   String             @id @default(cuid())
+  serviceMissionId     String             @unique
+  serviceMission       ServiceMission     @relation(fields: [serviceMissionId], references: [id], onDelete: Cascade)
+  restaurantOperatorId String                                  // the billed restaurant
+  restaurantOperator   Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
+  prestataireProfileId String                                  // the issuing prestataire
+  prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
+  number               String             @unique              // gapless PRS-YYYY-NNNNN (dedicated series)
+  amountCents          Int                                     // = the agreed quote amount (no money charged)
+  status               String             @default("issued")   // issued | paid ('paid' is set in P7, never here)
+  issuedAt             DateTime           @default(now())
+  createdAt            DateTime           @default(now())
+
+  @@index([restaurantOperatorId])
+  @@index([prestataireProfileId])
+}
+
+// The gapless-sequence counter behind ServiceInvoice.number — one row per year, incremented
+// ONLY inside the invoice-creation transaction (never MAX+1). SEPARATE from the resto
+// InvoiceCounter (GRB-…): this is the dedicated prestataire series (PRS-…).
+model ServiceInvoiceCounter {
+  year Int @id
+  seq  Int @default(0)
 }
 
 // ── SupplierCatalogItem (B2B supply marketplace — Slice 1 catalogue, Agent 14) ─

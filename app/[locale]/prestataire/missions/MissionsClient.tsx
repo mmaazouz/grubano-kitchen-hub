@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { Wrench, ArrowLeft, X, Check, Loader2, Inbox, Calendar } from 'lucide-react'
+import { Wrench, ArrowLeft, X, Check, Loader2, Inbox, Calendar, FileText } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input, Badge, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
+import ServiceInvoiceModal from '@/components/ServiceInvoiceModal'
 import { formatMoney } from '@/lib/format-money'
 
 // ── /prestataire/missions — the prestataire's received missions (P3, Agent 76) ──
@@ -46,6 +47,7 @@ export default function MissionsClient() {
   const [saving, setSaving]   = useState(false)
   const [formError, setFormError] = useState('')
   const [busyId, setBusyId]   = useState<string | null>(null)
+  const [invoiceFor, setInvoiceFor] = useState<string | null>(null) // missionId | null — invoice viewer (P6)
 
   function load() {
     setLoading(true)
@@ -173,6 +175,11 @@ export default function MissionsClient() {
                           {t('doneCta')}
                         </Button>
                       )}
+                      {m.status === 'done' && (
+                        <Button variant="ghost" size="sm" leftIcon={<FileText size={14} />} onClick={() => setInvoiceFor(m.id)}>
+                          {t('invoiceCta')}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </Card>
@@ -210,6 +217,11 @@ export default function MissionsClient() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── Invoice viewer (P6) — prestataire view: the server returns the 5% split here + PDF ── */}
+      {invoiceFor && (
+        <ServiceInvoiceModal missionId={invoiceFor} onClose={() => setInvoiceFor(null)} />
       )}
     </div>
   )

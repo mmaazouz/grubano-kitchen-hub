@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { Wrench, ChevronLeft, Loader2, ClipboardList, Calendar, Check, X, Star, Send } from 'lucide-react'
+import { Wrench, ChevronLeft, Loader2, ClipboardList, Calendar, Check, X, Star, Send, FileText } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Badge, type BadgeTone } from '@/components/design-system'
 import { formatMoney } from '@/lib/format-money'
 import { RATING_MIN, RATING_MAX } from '@/lib/service-review'
+import ServiceInvoiceModal from '@/components/ServiceInvoiceModal'
 
 // ── /marketplace/prestataire-missions — the resto's quote requests (P3, Agent 76) ──
 // CLONE of /marketplace/orders (resto order history), adapted to the DEVIS cycle. Renders
@@ -41,6 +42,7 @@ export default function RestoMissionsClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
   const [busyId, setBusyId]   = useState<string | null>(null)
+  const [invoiceFor, setInvoiceFor] = useState<string | null>(null) // missionId | null — invoice viewer (P6)
 
   function load() {
     setLoading(true)
@@ -184,6 +186,11 @@ export default function RestoMissionsClient() {
                         <Star size={13} className="text-grubano-warning" /> {t('reviewed')} · {m.review.rating}/5
                       </span>
                     )}
+                    {m.status === 'done' && (
+                      <Button variant="ghost" size="sm" leftIcon={<FileText size={14} />} onClick={() => setInvoiceFor(m.id)}>
+                        {t('invoiceCta')}
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -226,6 +233,11 @@ export default function RestoMissionsClient() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── Invoice viewer (P6) — resto view: amount + PDF; the commission split is server-withheld ── */}
+      {invoiceFor && (
+        <ServiceInvoiceModal missionId={invoiceFor} onClose={() => setInvoiceFor(null)} />
       )}
     </div>
   )

@@ -2924,7 +2924,8 @@
       "reviewSending": "جارٍ النشر…",
       "reviewCancel": "إلغاء",
       "reviewErr": "تعذّر النشر، حاول مجدّدًا.",
-      "reviewRatingRequired": "اختر تقييمًا"
+      "reviewRatingRequired": "اختر تقييمًا",
+      "invoiceCta": "فاتورة"
     }
   },
   "magic": {
@@ -3519,7 +3520,8 @@
       "fDescription": "وصف عرض السعر",
       "fProposedDate": "التاريخ المقترح",
       "cancel": "إلغاء",
-      "saving": "جارٍ الإرسال…"
+      "saving": "جارٍ الإرسال…",
+      "invoiceCta": "فاتورة"
     },
     "wdMon": "الاثنين",
     "wdTue": "الثلاثاء",
@@ -3554,6 +3556,18 @@
       "missionsTitle": "المهام المجدولة",
       "missionsHint": "تظهر هنا مهامك المقبولة ذات التاريخ المحدّد (للقراءة فقط).",
       "missionsEmpty": "لا توجد مهام مجدولة بعد."
+    },
+    "invoice": {
+      "title": "فاتورة",
+      "close": "إغلاق",
+      "number": "الرقم",
+      "issuedAt": "صدرت في",
+      "amount": "المبلغ",
+      "commission": "عمولة Grubano ({pct}%)",
+      "net": "صافي مزوّد الخدمة",
+      "noPaymentNote": "لم يُخصم أي مبلغ بعد. تُثبّت هذه الوثيقة المبلغ المتّفق عليه والتوزيع؛ وتتم التسوية لاحقًا.",
+      "errLoad": "تعذّر تحميل الفاتورة.",
+      "download": "تنزيل ملف PDF"
     }
   }
 }

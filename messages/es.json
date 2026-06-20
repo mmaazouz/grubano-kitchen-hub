@@ -2924,7 +2924,8 @@
       "reviewSending": "Publicando…",
       "reviewCancel": "Cancelar",
       "reviewErr": "No se pudo publicar, inténtelo de nuevo.",
-      "reviewRatingRequired": "Elija una valoración"
+      "reviewRatingRequired": "Elija una valoración",
+      "invoiceCta": "Factura"
     }
   },
   "magic": {
@@ -3519,7 +3520,8 @@
       "fDescription": "Descripción del presupuesto",
       "fProposedDate": "Fecha propuesta",
       "cancel": "Cancelar",
-      "saving": "Enviando…"
+      "saving": "Enviando…",
+      "invoiceCta": "Factura"
     },
     "wdMon": "Lun",
     "wdTue": "Mar",
@@ -3554,6 +3556,18 @@
       "missionsTitle": "Misiones planificadas",
       "missionsHint": "Sus misiones aceptadas con fecha prevista aparecen aquí (solo lectura).",
       "missionsEmpty": "Aún no hay misiones planificadas."
+    },
+    "invoice": {
+      "title": "Factura",
+      "close": "Cerrar",
+      "number": "Número",
+      "issuedAt": "Emitida el",
+      "amount": "Importe",
+      "commission": "Comisión Grubano ({pct} %)",
+      "net": "Neto del prestador",
+      "noPaymentNote": "Aún no se ha cobrado ningún pago. Este documento fija el importe acordado y el reparto; la liquidación se realizará más adelante.",
+      "errLoad": "No se pudo cargar la factura.",
+      "download": "Descargar el PDF"
     }
   }
 }

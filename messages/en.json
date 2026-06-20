@@ -2924,7 +2924,8 @@
       "reviewSending": "Publishing…",
       "reviewCancel": "Cancel",
       "reviewErr": "Couldn't publish, please try again.",
-      "reviewRatingRequired": "Choose a rating"
+      "reviewRatingRequired": "Choose a rating",
+      "invoiceCta": "Invoice"
     }
   },
   "magic": {
@@ -3519,7 +3520,8 @@
       "fDescription": "Quote description",
       "fProposedDate": "Proposed date",
       "cancel": "Cancel",
-      "saving": "Sending…"
+      "saving": "Sending…",
+      "invoiceCta": "Invoice"
     },
     "wdMon": "Mon",
     "wdTue": "Tue",
@@ -3554,6 +3556,18 @@
       "missionsTitle": "Planned missions",
       "missionsHint": "Your accepted missions with a planned date appear here (read-only).",
       "missionsEmpty": "No planned mission yet."
+    },
+    "invoice": {
+      "title": "Invoice",
+      "close": "Close",
+      "number": "Number",
+      "issuedAt": "Issued on",
+      "amount": "Amount",
+      "commission": "Grubano commission ({pct}%)",
+      "net": "Provider net",
+      "noPaymentNote": "No payment has been taken yet. This document records the agreed amount and the split; settlement happens later.",
+      "errLoad": "Couldn’t load the invoice.",
+      "download": "Download the PDF"
     }
   }
 }
