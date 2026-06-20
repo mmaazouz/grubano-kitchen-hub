@@ -7,7 +7,9 @@ import { prisma } from '@/lib/prisma'
 import { Link } from '@/navigation'
 import { Card, Badge, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
+import PrestataireConnectCard from '@/components/prestataire/PrestataireConnectCard'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
+import { isPrestataireConnectLive } from '@/lib/prestataire-connect'
 
 // ── /prestataire/dashboard — SERVICES marketplace space shell (P1, Agent 74) ──
 // A CLONE of /supplier/dashboard, adapted to services. Gated by middleware
@@ -170,6 +172,14 @@ export default async function PrestataireDashboardPage(props: { params: { locale
                   <ChevronRight size={18} className="shrink-0 text-grubano-ink-faint" />
                 </Link>
               </Card>
+            )}
+
+            {/* P7 (Agent 80) — Stripe Connect payout onboarding (TEST, DOUBLE-FLAG gated:
+                PRESTATAIRE_ENABLED + PRESTATAIRE_CONNECT_ENABLED). ⚠️ Account onboarding only —
+                NO money moves (the real payment is P8). Mounted only when the double flag is
+                live → OFF = nothing renders. Active prestataires only. */}
+            {profile.status === 'active' && isPrestataireConnectLive() && (
+              <PrestataireConnectCard initialStatus={profile.payoutStatus ?? 'none'} />
             )}
 
             {/* Future bricks (P5+) — avis / facturation. */}

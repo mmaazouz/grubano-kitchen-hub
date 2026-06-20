@@ -3568,6 +3568,17 @@
       "noPaymentNote": "Aún no se ha cobrado ningún pago. Este documento fija el importe acordado y el reparto; la liquidación se realizará más adelante.",
       "errLoad": "No se pudo cargar la factura.",
       "download": "Descargar el PDF"
+    },
+    "connect": {
+      "title": "Pagos",
+      "subtitle": "Reciba sus pagos mediante Stripe.",
+      "start": "Activar los pagos",
+      "continue": "Continuar la configuración",
+      "error": "Se ha producido un error. Inténtelo de nuevo.",
+      "payoutNone": "No conectado",
+      "payoutPending": "En curso",
+      "payoutActive": "Activo",
+      "payoutRestricted": "Incompleto"
     }
   }
 }

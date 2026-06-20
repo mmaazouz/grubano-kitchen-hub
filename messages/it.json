@@ -3568,6 +3568,17 @@
       "noPaymentNote": "Nessun pagamento è ancora stato prelevato. Questo documento fissa l’importo concordato e la ripartizione; il saldo avverrà in seguito.",
       "errLoad": "Impossibile caricare la fattura.",
       "download": "Scarica il PDF"
+    },
+    "connect": {
+      "title": "Pagamenti",
+      "subtitle": "Ricevete i vostri versamenti tramite Stripe.",
+      "start": "Attivare i pagamenti",
+      "continue": "Continuare la configurazione",
+      "error": "Si è verificato un errore. Riprovate.",
+      "payoutNone": "Non collegato",
+      "payoutPending": "In corso",
+      "payoutActive": "Attivo",
+      "payoutRestricted": "Incompleto"
     }
   }
 }

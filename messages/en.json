@@ -3568,6 +3568,17 @@
       "noPaymentNote": "No payment has been taken yet. This document records the agreed amount and the split; settlement happens later.",
       "errLoad": "Couldn’t load the invoice.",
       "download": "Download the PDF"
+    },
+    "connect": {
+      "title": "Payments",
+      "subtitle": "Receive your payouts via Stripe.",
+      "start": "Enable payments",
+      "continue": "Continue setup",
+      "error": "Something went wrong. Please try again.",
+      "payoutNone": "Not connected",
+      "payoutPending": "In progress",
+      "payoutActive": "Active",
+      "payoutRestricted": "Incomplete"
     }
   }
 }
