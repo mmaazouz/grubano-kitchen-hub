@@ -2928,7 +2928,10 @@
       "reviewCancel": "إلغاء",
       "reviewErr": "تعذّر النشر، حاول مجدّدًا.",
       "reviewRatingRequired": "اختر تقييمًا",
-      "invoiceCta": "فاتورة"
+      "invoiceCta": "فاتورة",
+      "payDepositCta": "ادفع العربون ({pct}%)",
+      "payDepositErr": "تعذّر بدء دفع العربون. حاول مجدّدًا.",
+      "depositPaid": "تم دفع العربون"
     }
   },
   "magic": {
@@ -3528,7 +3531,9 @@
       "fProposedDate": "التاريخ المقترح",
       "cancel": "إلغاء",
       "saving": "جارٍ الإرسال…",
-      "invoiceCta": "فاتورة"
+      "invoiceCta": "فاتورة",
+      "fDepositPct": "العربون (%)",
+      "fDepositPctHint": "اختياري. نسبة من التسعيرة تُدفع عند القبول (0 = بدون عربون). يُدفع الرصيد عند الإنجاز."
     },
     "wdMon": "الاثنين",
     "wdTue": "الثلاثاء",

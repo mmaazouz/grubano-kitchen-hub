@@ -10,7 +10,7 @@ const { db, caller, conn, inv, lib, stripe } = vi.hoisted(() => ({
   caller: vi.fn(),
   conn: { isPrestataireConnectLive: vi.fn(), applyPrestataireAccountStatus: vi.fn() },
   inv: vi.fn(), // issueServiceInvoice
-  lib: { startServiceInvoiceCheckout: vi.fn(), applyServiceInvoicePaid: vi.fn(), MIN_SERVICE_CHARGE_CENTS: 50, SERVICE_PAY_CHANNEL: 'service_invoice' },
+  lib: { startServiceInvoiceCheckout: vi.fn(), startServiceBalanceCheckout: vi.fn(), applyServiceInvoicePaid: vi.fn(), applyServiceDepositPaid: vi.fn(), MIN_SERVICE_CHARGE_CENTS: 50, SERVICE_PAY_CHANNEL: 'service_invoice', SERVICE_DEPOSIT_CHANNEL: 'service_deposit' },
   stripe: { getStripe: vi.fn(), mapAccountStatus: vi.fn() },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))

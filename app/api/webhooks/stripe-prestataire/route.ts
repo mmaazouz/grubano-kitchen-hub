@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe, mapAccountStatus } from '@/lib/stripe'
 import { isPrestataireConnectLive, applyPrestataireAccountStatus } from '@/lib/prestataire-connect'
-import { applyServiceInvoicePaid, SERVICE_PAY_CHANNEL } from '@/lib/service-payment'
+import { applyServiceInvoicePaid, applyServiceDepositPaid, SERVICE_PAY_CHANNEL, SERVICE_DEPOSIT_CHANNEL } from '@/lib/service-payment'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -38,13 +38,18 @@ export async function POST(req: Request) {
       const account = event.data.object as Stripe.Account
       await applyPrestataireAccountStatus(account.id, mapAccountStatus(account))
     } else if (event.type === 'checkout.session.completed') {
-      // P8 — a service-invoice payment completed. Idempotent mark-paid; no-op for any
-      // non-service session (different grubano_channel / missing serviceInvoiceId).
       const session = event.data.object as Stripe.Checkout.Session
-      if (session.metadata?.grubano_channel === SERVICE_PAY_CHANNEL && session.metadata?.serviceInvoiceId) {
-        const piId = typeof session.payment_intent === 'string'
-          ? session.payment_intent
-          : session.payment_intent?.id ?? null
+      const channel = session.metadata?.grubano_channel
+      const piId = typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null
+      if (channel === SERVICE_DEPOSIT_CHANNEL && session.metadata?.serviceMissionId) {
+        // P8c — a DEPOSIT (acompte) completed. Marks the deposit paid on the mission, NOT the
+        // invoice (the invoice flips 'paid' only after the balance). Idempotent; no-op otherwise.
+        await applyServiceDepositPaid(session.metadata.serviceMissionId, piId)
+      } else if (channel === SERVICE_PAY_CHANNEL && session.metadata?.serviceInvoiceId) {
+        // P8 — a service-invoice payment completed (full quote, or the balance after a deposit).
+        // Idempotent mark-paid; no-op for any non-service session. UNCHANGED from P8.
         await applyServiceInvoicePaid(session.metadata.serviceInvoiceId, piId)
       }
     }

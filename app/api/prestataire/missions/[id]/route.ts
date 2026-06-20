@@ -19,6 +19,9 @@ const bodySchema = z.object({
   quoteAmountCents: z.number().int().min(0).max(100_000_000).nullish(),
   quoteDescription: z.string().trim().max(2000).nullish(),
   proposedDate:     z.string().datetime().nullish(),
+  // P8c — optional DEPOSIT % the prestataire attaches to the quote (0..100, default 0 = no deposit).
+  // Stored on the mission; the actual deposit/balance AMOUNTS are derived server-side at charge time.
+  depositPct:       z.number().int().min(0).max(100).nullish(),
 })
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -40,7 +43,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: 'Transition invalide' }, { status: 409 })
     }
 
-    const patch: { status: string; quoteAmountCents?: number; quoteDescription?: string | null; proposedDate?: Date | null } =
+    const patch: { status: string; quoteAmountCents?: number; quoteDescription?: string | null; proposedDate?: Date | null; depositPct?: number } =
       { status: data.status }
     if (data.status === 'quoted') {
       // A quote MUST carry an amount + a description (the resto decides on these).
@@ -50,11 +53,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       patch.quoteAmountCents  = data.quoteAmountCents   // ← DATA only; never charged (no money moves)
       patch.quoteDescription  = data.quoteDescription
       patch.proposedDate      = data.proposedDate ? new Date(data.proposedDate) : null
+      // P8c — the deposit % is part of the quote (0..100); clamped, defaults to 0 (no deposit).
+      patch.depositPct        = Math.min(100, Math.max(0, data.depositPct ?? 0))
     }
 
     const updated = await prisma.serviceMission.update({
       where: { id: params.id }, data: patch,
-      select: { id: true, status: true, quoteAmountCents: true, quoteDescription: true, proposedDate: true },
+      select: { id: true, status: true, quoteAmountCents: true, quoteDescription: true, proposedDate: true, depositPct: true },
     })
     return NextResponse.json({ ok: true, mission: updated })
   } catch (err) {

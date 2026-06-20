@@ -2928,7 +2928,10 @@
       "reviewCancel": "Cancel",
       "reviewErr": "Couldn't publish, please try again.",
       "reviewRatingRequired": "Choose a rating",
-      "invoiceCta": "Invoice"
+      "invoiceCta": "Invoice",
+      "payDepositCta": "Pay the deposit ({pct}%)",
+      "payDepositErr": "The deposit payment couldn’t start. Please try again.",
+      "depositPaid": "Deposit paid"
     }
   },
   "magic": {
@@ -3528,7 +3531,9 @@
       "fProposedDate": "Proposed date",
       "cancel": "Cancel",
       "saving": "Sending…",
-      "invoiceCta": "Invoice"
+      "invoiceCta": "Invoice",
+      "fDepositPct": "Deposit (%)",
+      "fDepositPctHint": "Optional. % of the quote due at acceptance (0 = no deposit). The balance is paid at completion."
     },
     "wdMon": "Mon",
     "wdTue": "Tue",

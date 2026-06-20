@@ -29,6 +29,9 @@ export async function GET() {
     select: {
       id: true, status: true, requestDetails: true,
       quoteAmountCents: true, quoteDescription: true, proposedDate: true, scheduledDate: true, createdAt: true,
+      // P8c — deposit sub-state (read-only) so the resto sees « Payer l'acompte » on an accepted
+      // mission with an unpaid deposit. The amounts are derived server-side at charge time.
+      depositPct: true, depositStatus: true, depositPaidCents: true,
       prestataireProfile: { select: { id: true, companyName: true, city: true } },
       serviceOffering:    { select: { id: true, title: true, category: true } },
       // P5 (Agent 78) — the existing review (if any), so the « Laisser un avis » button only

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { Wrench, ChevronLeft, Loader2, ClipboardList, Calendar, Check, X, Star, Send, FileText } from 'lucide-react'
+import { Wrench, ChevronLeft, Loader2, ClipboardList, Calendar, Check, X, Star, Send, FileText, CreditCard, CheckCircle2 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Badge, type BadgeTone } from '@/components/design-system'
 import { formatMoney } from '@/lib/format-money'
@@ -28,6 +28,10 @@ interface Mission {
   prestataireProfile: { id: string; companyName: string; city: string | null } | null
   serviceOffering: { id: string; title: string; category: string } | null
   review: { id: string; rating: number } | null
+  // P8c — deposit (acompte) sub-state (read-only).
+  depositPct: number
+  depositStatus: string | null
+  depositPaidCents: number
 }
 
 const STATUS_TONE: Record<string, BadgeTone> = {
@@ -64,6 +68,23 @@ export default function RestoMissionsClient({ payEnabled = false }: { payEnabled
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
       })
       if (res.ok) load()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // P8c — pay the DEPOSIT (acompte) of an accepted mission. The amount is NEVER sent: the server
+  // charges the deposit (quote × depositPct) and routes the payout to the prestataire. TEST.
+  async function payDeposit(missionId: string) {
+    if (busyId) return
+    setBusyId(missionId); setError('')
+    try {
+      const res = await fetch(`/api/prestataire-invoices/${missionId}/deposit`, { method: 'POST' })
+      const d = await res.json().catch(() => null)
+      if (res.ok && d?.url) { window.location.href = d.url; return }
+      setError(d?.error || t('payDepositErr'))
+    } catch {
+      setError(t('payDepositErr'))
     } finally {
       setBusyId(null)
     }
@@ -175,6 +196,17 @@ export default function RestoMissionsClient({ payEnabled = false }: { payEnabled
                           {t('declineCta')}
                         </Button>
                       </>
+                    )}
+                    {/* P8c — « Payer l'acompte » on an accepted mission whose quote has a deposit (under the double flag). */}
+                    {m.status === 'accepted' && m.depositPct > 0 && m.depositStatus !== 'paid' && payEnabled && (
+                      <Button variant="primary" size="sm" loading={busyId === m.id} leftIcon={<CreditCard size={14} />} onClick={() => payDeposit(m.id)}>
+                        {t('payDepositCta', { pct: m.depositPct })}
+                      </Button>
+                    )}
+                    {m.status === 'accepted' && m.depositPct > 0 && m.depositStatus === 'paid' && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-grubano-success">
+                        <CheckCircle2 size={13} /> {t('depositPaid')}
+                      </span>
                     )}
                     {m.status === 'done' && !m.review && (
                       <Button variant="secondary" size="sm" leftIcon={<Star size={14} />} onClick={() => openReview(m)}>

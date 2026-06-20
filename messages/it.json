@@ -2928,7 +2928,10 @@
       "reviewCancel": "Annulla",
       "reviewErr": "Impossibile pubblicare, riprovate.",
       "reviewRatingRequired": "Scegliete una valutazione",
-      "invoiceCta": "Fattura"
+      "invoiceCta": "Fattura",
+      "payDepositCta": "Pagare l’acconto ({pct} %)",
+      "payDepositErr": "Impossibile avviare il pagamento dell’acconto. Riprovate.",
+      "depositPaid": "Acconto pagato"
     }
   },
   "magic": {
@@ -3528,7 +3531,9 @@
       "fProposedDate": "Data proposta",
       "cancel": "Annulla",
       "saving": "Invio…",
-      "invoiceCta": "Fattura"
+      "invoiceCta": "Fattura",
+      "fDepositPct": "Acconto (%)",
+      "fDepositPctHint": "Facoltativo. % del preventivo da pagare all’accettazione (0 = nessun acconto). Il saldo si paga al completamento."
     },
     "wdMon": "Lun",
     "wdTue": "Mar",

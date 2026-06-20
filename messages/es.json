@@ -2928,7 +2928,10 @@
       "reviewCancel": "Cancelar",
       "reviewErr": "No se pudo publicar, inténtelo de nuevo.",
       "reviewRatingRequired": "Elija una valoración",
-      "invoiceCta": "Factura"
+      "invoiceCta": "Factura",
+      "payDepositCta": "Pagar el anticipo ({pct} %)",
+      "payDepositErr": "No se pudo iniciar el pago del anticipo. Inténtelo de nuevo.",
+      "depositPaid": "Anticipo pagado"
     }
   },
   "magic": {
@@ -3528,7 +3531,9 @@
       "fProposedDate": "Fecha propuesta",
       "cancel": "Cancelar",
       "saving": "Enviando…",
-      "invoiceCta": "Factura"
+      "invoiceCta": "Factura",
+      "fDepositPct": "Anticipo (%)",
+      "fDepositPctHint": "Opcional. % del presupuesto a pagar en la aceptación (0 = sin anticipo). El saldo se paga al finalizar."
     },
     "wdMon": "Lun",
     "wdTue": "Mar",

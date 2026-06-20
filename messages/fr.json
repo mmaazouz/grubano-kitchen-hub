@@ -2928,7 +2928,10 @@
       "reviewCancel": "Annuler",
       "reviewErr": "Impossible de publier, réessayez.",
       "reviewRatingRequired": "Choisissez une note",
-      "invoiceCta": "Facture"
+      "invoiceCta": "Facture",
+      "payDepositCta": "Payer l’acompte ({pct} %)",
+      "payDepositErr": "Le paiement de l’acompte n’a pas pu démarrer. Réessayez.",
+      "depositPaid": "Acompte payé"
     }
   },
   "magic": {
@@ -3528,7 +3531,9 @@
       "fProposedDate": "Date proposée",
       "cancel": "Annuler",
       "saving": "Envoi…",
-      "invoiceCta": "Facture"
+      "invoiceCta": "Facture",
+      "fDepositPct": "Acompte (%)",
+      "fDepositPctHint": "Optionnel. % du devis à régler à l’acceptation (0 = pas d’acompte). Le solde est payé à la réalisation."
     },
     "wdMon": "Lun",
     "wdTue": "Mar",

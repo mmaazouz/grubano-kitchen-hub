@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { callerOperator } from '@/lib/operator-session'
 import { isPrestataireConnectLive } from '@/lib/prestataire-connect'
 import { issueServiceInvoice } from '@/lib/service-invoice'
-import { startServiceInvoiceCheckout, MIN_SERVICE_CHARGE_CENTS } from '@/lib/service-payment'
+import { startServiceInvoiceCheckout, startServiceBalanceCheckout, MIN_SERVICE_CHARGE_CENTS } from '@/lib/service-payment'
+import { computeDepositSplit } from '@/lib/service-deposit'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,7 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
       where:  { id: params.missionId },
       select: {
         id: true, status: true, quoteAmountCents: true, restaurantOperatorId: true, prestataireProfileId: true,
+        depositPct: true, depositStatus: true, // P8c — drive the balance vs full-quote completion charge
         prestataireProfile: { select: { status: true, stripeAccountId: true, payoutStatus: true } },
         invoice:            { select: { id: true, status: true } },
       },
@@ -71,8 +73,17 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
     if (!mission.prestataireProfile?.stripeAccountId || mission.prestataireProfile.payoutStatus !== 'active') {
       return NextResponse.json({ error: 'Le prestataire ne peut pas encore recevoir de paiements' }, { status: 403 })
     }
-    // (6) Server-side amount guard — the amount comes from the agreed quote, never the body.
-    if (mission.quoteAmountCents < MIN_SERVICE_CHARGE_CENTS) {
+    // P8c — if this mission carries a DEPOSIT, the deposit MUST be settled before the balance.
+    // A mission with NO deposit (depositPct=0) skips this and charges the FULL quote (= P8).
+    if (mission.depositPct > 0 && mission.depositStatus !== 'paid') {
+      return NextResponse.json({ error: 'L’acompte doit être réglé avant le solde' }, { status: 409 })
+    }
+
+    // (6) Server-side amounts. The COMPLETION charges the BALANCE (quote − deposit) with the
+    // remaining fee (totalFee − depositFee), both derived by computeDepositSplit. For depositPct=0
+    // the split is { balance: quote, balanceFee: totalFee } → the FULL P8 amount (byte-identical).
+    const split = computeDepositSplit(mission.quoteAmountCents, mission.depositPct)
+    if (split.balanceCents < MIN_SERVICE_CHARGE_CENTS) {
       return NextResponse.json({ error: 'Montant trop faible' }, { status: 400 })
     }
 
@@ -89,11 +100,21 @@ export async function POST(req: Request, { params }: { params: { missionId: stri
       return NextResponse.json({ error: 'Facture déjà payée' }, { status: 409 })
     }
 
-    const { url } = await startServiceInvoiceCheckout({
-      invoice:              { id: invoice.id, number: invoice.number, amountCents: invoice.amountCents },
-      prestataireAccountId: mission.prestataireProfile.stripeAccountId,
-      origin:               baseUrl(req),
-    })
+    // depositPct=0 → the EXACT P8 full-quote charge (startServiceInvoiceCheckout, UNCHANGED).
+    // depositPct>0 (deposit settled above) → the BALANCE charge (quote − deposit, remaining fee).
+    const { url } = mission.depositPct > 0
+      ? await startServiceBalanceCheckout({
+          invoice:              { id: invoice.id, number: invoice.number },
+          balanceCents:         split.balanceCents,
+          balanceFeeCents:      split.balanceFeeCents,
+          prestataireAccountId: mission.prestataireProfile.stripeAccountId,
+          origin:               baseUrl(req),
+        })
+      : await startServiceInvoiceCheckout({
+          invoice:              { id: invoice.id, number: invoice.number, amountCents: invoice.amountCents },
+          prestataireAccountId: mission.prestataireProfile.stripeAccountId,
+          origin:               baseUrl(req),
+        })
     return NextResponse.json({ url })
   } catch (err) {
     console.error('[POST /api/prestataire-invoices/[missionId]/pay]', err)

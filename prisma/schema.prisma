@@ -920,6 +920,17 @@ model ServiceMission {
   // behaviour, byte-identical), no backfill. Purely descriptive: the money still flows through the
   // SAME ServiceInvoice + lib/service-payment; the timing differs.
   paymentTiming        String             @default("on_completion")
+  // P8c (Agent 83) — optional DEPOSIT (acompte). The prestataire may attach a deposit % to a quote;
+  // the resto then pays the deposit at ACCEPTANCE and the BALANCE at completion. ADDITIVE with
+  // @default/nullable → existing rows are neutral (depositPct=0 ⇒ no deposit ⇒ the P8 full charge at
+  // completion, byte-identical). All amounts are SERVER-derived (lib/service-deposit.computeDepositSplit
+  // on quoteAmountCents × depositPct); nothing money-bearing is trusted from the client. The
+  // ServiceInvoice only flips to 'paid' after the BALANCE — the deposit is a partial sub-state here.
+  depositPct                   Int       @default(0)  // 0..100 — % of the quote paid up front (0 = no deposit = P8)
+  depositStatus                String?                // null = none/not started | 'pending' (checkout created) | 'paid'
+  depositPaidCents             Int       @default(0)  // the deposit amount (= computeDepositSplit.depositCents) once charged
+  depositStripeSessionId       String?                // the deposit Checkout session (TEST)
+  depositStripePaymentIntentId String?                // the deposit PaymentIntent (destination charge)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   // P5 (Agent 78) — the optional single review for this mission (1:1; created only when 'done'). Additive.

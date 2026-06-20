@@ -33,7 +33,7 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   requested: 'warning', quoted: 'neutral', accepted: 'success', done: 'success', declined: 'danger', cancelled: 'neutral',
 }
 
-type QuoteForm = { id: string; amountEur: string; description: string; proposedDate: string }
+type QuoteForm = { id: string; amountEur: string; description: string; proposedDate: string; depositPctStr: string }
 
 export default function MissionsClient() {
   const t  = useTranslations('prestataire.missions')
@@ -81,6 +81,8 @@ export default function MissionsClient() {
     const cents = Math.round(Number(quote.amountEur.replace(',', '.')) * 100)
     if (!Number.isFinite(cents) || cents < 0) { setFormError(t('errAmount')); return }
     if (!quote.description.trim()) { setFormError(t('errDescription')); return }
+    // P8c — optional deposit %: clamp 0..100; empty/invalid → 0 (no deposit).
+    const depositPct = Math.min(100, Math.max(0, Math.round(Number(quote.depositPctStr.replace(',', '.')) || 0)))
     setSaving(true); setFormError('')
     try {
       const res = await fetch(`/api/prestataire/missions/${quote.id}`, {
@@ -90,6 +92,7 @@ export default function MissionsClient() {
           quoteAmountCents: cents,
           quoteDescription: quote.description.trim(),
           proposedDate: quote.proposedDate ? new Date(quote.proposedDate).toISOString() : null,
+          depositPct,
         }),
       })
       if (!res.ok) {
@@ -162,7 +165,7 @@ export default function MissionsClient() {
                       {m.status === 'requested' && (
                         <>
                           <Button variant="primary" size="sm" disabled={busyId === m.id}
-                            onClick={() => { setFormError(''); setQuote({ id: m.id, amountEur: '', description: '', proposedDate: '' }) }}>
+                            onClick={() => { setFormError(''); setQuote({ id: m.id, amountEur: '', description: '', proposedDate: '', depositPctStr: '' }) }}>
                             {t('quoteCta')}
                           </Button>
                           <Button variant="secondary" size="sm" loading={busyId === m.id} onClick={() => advance(m.id, 'declined')}>
@@ -207,6 +210,11 @@ export default function MissionsClient() {
                   className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2 text-sm text-grubano-ink focus:border-grubano-primary focus:outline-none focus:ring-4 focus:ring-grubano-primary/20" />
               </div>
               <Input label={t('fProposedDate')} type="date" value={quote.proposedDate} onChange={(e) => setQuote({ ...quote, proposedDate: e.target.value })} />
+              <div>
+                <Input label={t('fDepositPct')} type="number" inputMode="numeric" min={0} max={100} step="1"
+                  value={quote.depositPctStr} onChange={(e) => setQuote({ ...quote, depositPctStr: e.target.value })} placeholder="0" />
+                <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fDepositPctHint')}</p>
+              </div>
               <p className="text-[11px] text-grubano-ink-faint">{t('quoteHint')}</p>
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="secondary" size="md" fullWidth onClick={() => setQuote(null)}>{t('cancel')}</Button>
