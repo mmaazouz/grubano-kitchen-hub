@@ -2947,7 +2947,12 @@
     "submitting": "Invio…",
     "hint": "Riceverai un link monouso, valido 15 minuti.",
     "registerPrompt": "Non sei ancora registrato?",
-    "registerCta": "Registra la mia azienda"
+    "registerCta": "Registra la mia azienda",
+    "otpPrompt": "Il link si è aperto nel browser sbagliato? Inserisca il codice a 6 cifre ricevuto via e-mail.",
+    "otpLabel": "Codice a 6 cifre",
+    "otpSubmit": "Convalidare il codice",
+    "otpSubmitting": "Verifica…",
+    "otpError": "Codice non valido o scaduto. Lo verifichi o richieda un nuovo link."
   },
   "activation": {
     "banner": {

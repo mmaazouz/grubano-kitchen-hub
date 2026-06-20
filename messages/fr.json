@@ -2947,7 +2947,12 @@
     "submitting": "Envoi…",
     "hint": "Vous recevrez un lien à usage unique, valable 15 minutes.",
     "registerPrompt": "Pas encore inscrit ?",
-    "registerCta": "Inscrire mon entreprise"
+    "registerCta": "Inscrire mon entreprise",
+    "otpPrompt": "Le lien s’ouvre dans le mauvais navigateur ? Saisissez le code à 6 chiffres reçu par e-mail.",
+    "otpLabel": "Code à 6 chiffres",
+    "otpSubmit": "Valider le code",
+    "otpSubmitting": "Vérification…",
+    "otpError": "Code invalide ou expiré. Vérifiez-le ou demandez un nouveau lien."
   },
   "activation": {
     "banner": {

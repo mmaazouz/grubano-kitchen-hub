@@ -1428,6 +1428,30 @@ model Payout {
   @@index([restaurantId])
 }
 
+// ── EmailOtp (Phase 3 auth hardening — Agent 88) — email one-time codes ───────────
+// ADDITIVE + STANDALONE (no @relation → existing models byte-identical; dropping it
+// leaves the schema intact). One row per issued code. The CLEAR code is NEVER stored —
+// only codeHash = sha256(pepper:purpose:email:code), peppered with NEXTAUTH_SECRET AND
+// bound to email + purpose (so a code is non-transferable across purposes and a DB read
+// alone can't brute-force the 6-digit space). Short TTL, single-use (consumedAt), a
+// per-code attempt cap (attempts), and a per-(email,purpose) request throttle. Powers
+// the login OTP (purpose 'login') + the money step-up (purpose 'stepup:*'). Gated by
+// AUTH_EMAIL_OTP_ENABLED / AUTH_MONEY_STEPUP_ENABLED (both default OFF → table empty,
+// every flow byte-identical).
+model EmailOtp {
+  id         String    @id @default(cuid())
+  email      String                  // lowercased account email the code is bound to
+  purpose    String                  // 'login' | 'stepup:withdraw' | 'stepup:bank' | 'stepup:email_change'
+  codeHash   String                  // sha256(pepper:purpose:email:code) — never the clear code
+  expiresAt  DateTime
+  attempts   Int       @default(0)   // failed verify attempts; >= max → invalid
+  consumedAt DateTime?               // set on success OR when superseded — single-use
+  createdAt  DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@index([expiresAt])
+}
+
 // ── P4-Franchise-A — Franchise royalty accrued by HELD-BACK at the source ────────
 // When a FRANCHISED restaurant (Order.pointOfSaleId → PointOfSale.franchiseId) is
 // paid on a revenue channel, an EXTRA `rate` (6%) of the food subtotal is retained

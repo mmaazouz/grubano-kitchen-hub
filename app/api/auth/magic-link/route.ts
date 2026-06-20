@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/prisma'
 import { createMagicLinkToken } from '@/lib/magic-link'
+import { issueEmailOtp, isEmailOtpEnabled } from '@/lib/email-otp'
 import { locales, defaultLocale } from '@/i18n'
 
 export const runtime = 'nodejs'
@@ -69,7 +70,7 @@ const GENERIC = {
   message: "Si un compte existe pour cet email, un lien de connexion vient d'être envoyé. Vérifie ta boîte de réception (et les spams).",
 }
 
-async function sendMagicEmail(name: string, to: string, link: string) {
+async function sendMagicEmail(name: string, to: string, link: string, code?: string | null) {
   // Two ways to follow the link so it is ALWAYS actionable, whatever the client does
   // with our HTML: (1) the styled "Me connecter" button, and (2) the FULL URL printed
   // as visible, copyable, clickable text. The button's style is kept on ONE line and
@@ -86,7 +87,9 @@ async function sendMagicEmail(name: string, to: string, link: string) {
       </p>
       <p style="font-size:13px;color:#6b7280;margin:0 0 6px">Le bouton ne s'affiche pas ? Copie-colle ce lien dans ton navigateur :</p>
       <p style="font-size:13px;margin:0 0 24px"><a href="${link}" style="color:#F97316;word-break:break-all">${link}</a></p>
-      <p style="font-size:13px;color:#6b7280">Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.</p>
+      ${code ? `<p style="font-size:13px;color:#6b7280;margin:0 0 6px">Le lien s'ouvre dans le mauvais navigateur ? Saisis plutôt ce code sur la page de connexion :</p>
+      <p style="text-align:center;margin:0 0 24px"><span style="display:inline-block;font-family:monospace;font-size:26px;font-weight:700;letter-spacing:6px;color:#1a1a2e;background:#f3f4f6;border-radius:10px;padding:10px 18px">${code}</span></p>` : ''}
+      <p style="font-size:13px;color:#6b7280">Ce lien${code ? ' et ce code sont valables' : ' est valable'} 15 minutes et ne fonctionne${code ? 'nt' : ''} qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.</p>
     </div>`
   const text = [
     `Bonjour${name ? ' ' + name : ''},`,
@@ -94,8 +97,9 @@ async function sendMagicEmail(name: string, to: string, link: string) {
     'Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :',
     '',
     link,
+    ...(code ? ['', `Ou saisis ce code à 6 chiffres sur la page de connexion : ${code}`] : []),
     '',
-    "Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois.",
+    `Ce lien${code ? ' et ce code sont valables' : ' est valable'} 15 minutes et ne fonctionne${code ? 'nt' : ''} qu'une seule fois.`,
     "Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.",
   ].join('\n')
   await transporter.sendMail({
@@ -128,9 +132,22 @@ export async function POST(req: NextRequest) {
           where: { id: operator.id },
           data:  { magicLinkTokenHash: hash, magicLinkTokenExpiry: expiry },
         })
+        // Phase 3 (Agent 88) — when the login OTP is enabled, mint a 6-digit code
+        // (purpose 'login', bound to this email) and include it in the SAME email as
+        // the link. Throttled → no code (the link still works). OFF → no code, email
+        // byte-identical. Best-effort: a code failure never blocks the link.
+        let otpCode: string | null = null
+        if (isEmailOtpEnabled()) {
+          try {
+            const issued = await issueEmailOtp(email, 'login')
+            if (issued.ok) otpCode = issued.code
+          } catch (e) {
+            console.error('[magic-link] otp issue non-fatal:', e instanceof Error ? e.message : e)
+          }
+        }
         const link = `${baseUrl(req)}/${locale}/auth/magic?token=${encodeURIComponent(token)}`
         if (process.env.SMTP_PASS) {
-          await sendMagicEmail(operator.name, email, link)
+          await sendMagicEmail(operator.name, email, link, otpCode)
         } else {
           // No SMTP secret (e.g. staging) → log the link so a dev can still test.
           console.error('[magic-link] SMTP_PASS missing — link NOT emailed for', email)
@@ -141,7 +158,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(GENERIC)
+    // The login-OTP availability is a GLOBAL config flag (not account-specific) → it
+    // leaks no enumeration signal. OFF → exactly GENERIC (byte-identical response).
+    return NextResponse.json(isEmailOtpEnabled() ? { ...GENERIC, otpEnabled: true } : GENERIC)
   } catch {
     return NextResponse.json(GENERIC)
   }

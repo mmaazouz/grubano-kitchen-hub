@@ -2947,7 +2947,12 @@
     "submitting": "Sending…",
     "hint": "You'll get a single-use link, valid for 15 minutes.",
     "registerPrompt": "Not registered yet?",
-    "registerCta": "Register my business"
+    "registerCta": "Register my business",
+    "otpPrompt": "Link opened in the wrong browser? Enter the 6-digit code from your email.",
+    "otpLabel": "6-digit code",
+    "otpSubmit": "Verify code",
+    "otpSubmitting": "Verifying…",
+    "otpError": "Invalid or expired code. Check it or request a new link."
   },
   "activation": {
     "banner": {

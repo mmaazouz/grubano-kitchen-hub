@@ -32,6 +32,13 @@ function MagicInner() {
   const [phase, setPhase] = useState<'request' | 'verifying' | 'error' | 'sent'>(token ? 'verifying' : 'request')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Phase 3 (Agent 88) — login email-code fallback. The magic-link response reports
+  // whether the global OTP flag is ON (a config boolean, no enumeration leak); when so,
+  // the "sent" screen also offers a 6-digit code box → same session as the link.
+  const [otpEnabled, setOtpEnabled] = useState(false)
+  const [code, setCode] = useState('')
+  const [otpSubmitting, setOtpSubmitting] = useState(false)
+  const [otpError, setOtpError] = useState(false)
   // Host-aware presentation: on business.grubano.com this shared sign-in page wears
   // the PARTNER chrome (PartnerChrome — clean partner header, light bg) instead of
   // the operator dashboard sidebar, and offers the partner sign-up link. Every other
@@ -67,16 +74,42 @@ function MagicInner() {
     if (!email || submitting) return
     setSubmitting(true)
     try {
-      await fetch('/api/auth/magic-link', {
+      const res = await fetch('/api/auth/magic-link', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ email, locale }),
       })
+      const data = await res.json().catch(() => null)
+      setOtpEnabled(!!(data as { otpEnabled?: boolean } | null)?.otpEnabled)
       setPhase('sent')
     } catch {
       setPhase('sent') // generic by design — never reveal account state
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Code path (alternative to the link) → consume the OTP via the credentials provider,
+  // then route by role EXACTLY like the token path. Errors stay generic.
+  async function verifyCode(e: React.FormEvent) {
+    e.preventDefault()
+    const c = code.trim()
+    if (!/^\d{6}$/.test(c) || otpSubmitting) return
+    setOtpSubmitting(true)
+    setOtpError(false)
+    try {
+      const res = await signIn('credentials', { email, otp: c, redirect: false })
+      if (res?.ok) {
+        const session = await fetch('/api/auth/session', { cache: 'no-store' }).then(r => r.json()).catch(() => null)
+        const role = (session?.user as { role?: string } | undefined)?.role
+        router.push(postLoginPath(role))
+      } else {
+        setOtpError(true)
+      }
+    } catch {
+      setOtpError(true)
+    } finally {
+      setOtpSubmitting(false)
     }
   }
 
@@ -100,6 +133,32 @@ function MagicInner() {
               </span>
               <p className="font-display text-base font-bold text-grubano-ink">{t('sentTitle')}</p>
               <p className="max-w-xs text-sm text-grubano-ink-muted">{t('sentBody')}</p>
+
+              {otpEnabled && (
+                <form onSubmit={verifyCode} className="mt-4 w-full max-w-xs space-y-3 border-t border-grubano-border pt-4" noValidate>
+                  <p className="text-sm text-grubano-ink-muted">{t('otpPrompt')}</p>
+                  {otpError && (
+                    <p role="alert" className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2 text-left text-sm text-grubano-danger">
+                      <XCircle size={15} className="mt-0.5 shrink-0" />
+                      <span>{t('otpError')}</span>
+                    </p>
+                  )}
+                  <Input
+                    label={t('otpLabel')}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="••••••"
+                    value={code}
+                    onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  />
+                  <Button type="submit" variant="primary" size="md" fullWidth loading={otpSubmitting}
+                    disabled={code.trim().length !== 6}>
+                    {otpSubmitting ? t('otpSubmitting') : t('otpSubmit')}
+                  </Button>
+                </form>
+              )}
             </div>
           )}
 

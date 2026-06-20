@@ -2947,7 +2947,12 @@
     "submitting": "Enviando…",
     "hint": "Recibirás un enlace de un solo uso, válido 15 minutos.",
     "registerPrompt": "¿Aún no te has registrado?",
-    "registerCta": "Registrar mi empresa"
+    "registerCta": "Registrar mi empresa",
+    "otpPrompt": "¿El enlace se abrió en el navegador equivocado? Introduzca el código de 6 dígitos recibido por correo.",
+    "otpLabel": "Código de 6 dígitos",
+    "otpSubmit": "Validar el código",
+    "otpSubmitting": "Verificando…",
+    "otpError": "Código no válido o caducado. Compruébelo o solicite un nuevo enlace."
   },
   "activation": {
     "banner": {

@@ -7,6 +7,7 @@ import type { Provider } from 'next-auth/providers/index'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { authorizeMagicLink } from '@/lib/magic-link'
+import { authorizeEmailOtpLogin, isEmailOtpEnabled } from '@/lib/email-otp'
 import { readOperatorRoles } from '@/lib/operator-roles'
 
 // Build the provider list dynamically. Google / Apple are only registered when
@@ -23,6 +24,10 @@ const providers: Provider[] = [
       // authenticates WITHOUT a password; the email field is then optional (the
       // operator is derived from the token). The password path below is untouched.
       magicToken: { label: 'Magic token', type: 'text' },
+      // Phase 3 (Agent 88) — passwordless EMAIL CODE sign-in (the 6-digit OTP sent in
+      // the SAME email as the magic link). GATED by AUTH_EMAIL_OTP_ENABLED; the
+      // magic-link + password paths are untouched.
+      otp:        { label: 'Email code', type: 'text' },
     },
     async authorize(credentials) {
       // ── Magic-link path (passwordless) ──────────────────────────────────────
@@ -33,6 +38,16 @@ const providers: Provider[] = [
         if (!u) return null
         // Phase 1 — attach the full role SET (primary role + OperatorRole rows).
         return { ...u, roles: await readOperatorRoles(u.id, u.role) }
+      }
+
+      // ── Email OTP path (passwordless code — Agent 88, GATED) ─────────────────
+      // The 6-digit code from the login email. ONLY active when AUTH_EMAIL_OTP_ENABLED
+      // (OFF → this branch is inert, the flow is byte-identical to before). Yields the
+      // EXACT same user shape as the magic-link path → an identical session. The OTP is
+      // single-use + consumed inside authorizeEmailOtpLogin. The magic-link + password
+      // paths above/below are unchanged.
+      if (isEmailOtpEnabled() && credentials?.email && credentials?.otp) {
+        return await authorizeEmailOtpLogin(credentials.email, credentials.otp)
       }
 
       // ── Password path (existing — unchanged) ───────────────────────────────
