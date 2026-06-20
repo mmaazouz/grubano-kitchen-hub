@@ -57,6 +57,44 @@ export function decideLogisticsOutcome(v: BusinessVerificationResult): Logistics
   return { status: 'pending', verificationStatus: 'review', reason: v.reason }
 }
 
+// ── Courier ACTIVATION gate — defensive WAITLIST (LA, Agent 72) ───────────────
+//
+// The legal salarié-vs-indépendant question is NOT settled. Until it is, courier
+// onboarding must NEVER produce an ACTIVE courier (one who could take a mission or be
+// paid). The registration page stays OPEN (we collect candidates / pre-seed the
+// network), but every applicant lands on a non-active WAITLIST. This is purely
+// DEFENSIVE — strictly more restrictive than before; it activates NOTHING. It has ZERO
+// money effect (courier missions + payout do not exist, and Connect is independently
+// gated by LOGISTICS_CONNECT_ENABLED — untouched here).
+//
+// Reuses the EXISTING 'pending' status as the waitlist state (no migration). Gated by
+// LOGISTICS_COURIER_ACTIVATION_ENABLED (DEFAULT OFF) — distinct from
+// LOGISTICS_CONNECT_ENABLED. When OFF (default), NO path can reach 'active'. When ON
+// (future, after the legal green light) the prior activation behaviour is restored.
+export function isCourierActivationEnabled(): boolean {
+  return process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED === 'true'
+}
+
+/**
+ * Fold the activation gate into the registry decision. Pure + deterministic. When
+ * activation is DISABLED (default), any would-be 'active' (incl. the name-tolerant
+ * auto-activation above) is demoted to the non-active 'pending' WAITLIST; a genuine
+ * registry 'rejected' (invalid/ceased SIREN — not a real candidate) and an incident
+ * 'pending' are left unchanged. It can ONLY make the outcome LESS active, never more.
+ * When activation is ENABLED, the decision passes through untouched.
+ */
+export function applyCourierActivationGate(
+  decision: LogisticsDecision,
+  activationEnabled: boolean,
+): LogisticsDecision {
+  if (activationEnabled) return decision
+  if (decision.status === 'active') {
+    // Keep the registry verification fact; only the activation GATE moves it to waitlist.
+    return { status: 'pending', verificationStatus: decision.verificationStatus, reason: 'waitlist' }
+  }
+  return decision
+}
+
 // ── Logistics auth bridge ─────────────────────────────────────────────────────
 //
 // Mirrors ensureSupplierOperator for the 'logistics' role (same no-clobber contract
@@ -83,6 +121,15 @@ export async function ensureLogisticsOperator(
   name: string,
   opts: { activate: boolean },
 ): Promise<LogisticsOperatorResult> {
+  // DEFENSIVE activation gate (LA, Agent 72): an activation request is honoured ONLY
+  // while courier activation is ENABLED. By default (flag OFF, pending the legal
+  // salarié-vs-indépendant decision) `activate` is forced FALSE — so this bridge NEVER
+  // sets status='active' and NEVER grafts the 'logistics' role into the active SET. The
+  // applicant still gets a passwordless WAITLIST login (status 'pending', primary role
+  // only) to sign in and see their waitlist state, but is NOT an active courier. This is
+  // the single chokepoint that grants the role + active status — belt-and-suspenders with
+  // the register's status gate. ZERO money effect.
+  const activate = opts.activate && isCourierActivationEnabled()
   try {
     const existing = await prisma.operator.findUnique({
       where:  { email },
@@ -100,19 +147,19 @@ export async function ensureLogisticsOperator(
           name,
           email,
           role:   'logistics',
-          status: opts.activate ? 'active' : 'pending',
+          status: activate ? 'active' : 'pending',
           // no password — sign-in is passwordless (magic-link)
         },
       })
       operatorId = op.id
       created    = true
-      activated  = opts.activate
+      activated  = activate
     } else {
       operatorId = existing.id
       // Existing PRIMARY logistics: activate on approval, never downgrade. An
       // existing OTHER-role account keeps its primary role + password untouched —
       // it just GAINS the logistics role in the SET below (multi-role cumul).
-      if (existing.role === 'logistics' && opts.activate && existing.status !== 'active') {
+      if (existing.role === 'logistics' && activate && existing.status !== 'active') {
         await prisma.operator.update({ where: { id: existing.id }, data: { status: 'active' } })
         activated = true
       }
@@ -122,7 +169,7 @@ export async function ensureLogisticsOperator(
     // tolerant. For a fresh logistics Operator this is consistency (the primary-role
     // fallback already covers it); for an existing other-role account this is the
     // actual multi-role grant.
-    const roleAdded = opts.activate ? await addRoleToOperator(operatorId, 'logistics') : false
+    const roleAdded = activate ? await addRoleToOperator(operatorId, 'logistics') : false
 
     return { ok: true, created, activated, roleAdded }
   } catch (err) {

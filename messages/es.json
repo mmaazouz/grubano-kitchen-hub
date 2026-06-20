@@ -2090,8 +2090,12 @@
         "verifVerified": "Verificado",
         "verifReview": "En revisión",
         "verifRejected": "No verificado",
-        "verifNone": "—"
-      }
+        "verifNone": "—",
+        "waitlistTitle": "Repartidor fundador — en lista de espera",
+        "waitlistBody": "Tu solicitud está guardada. La red de reparto de Grubano (comidas + proveedores) se está construyendo; te avisaremos en cuanto se abran misiones cerca de ti."
+      },
+      "successTitleWaitlist": "Estás en la lista 🚀",
+      "successBodyWaitlist": "¡Gracias! Estamos construyendo la red de repartidores de Grubano — comidas Y pedidos de proveedores. Te contactaremos en cuanto se abran las misiones en tu zona."
     }
   },
   "establishment": {

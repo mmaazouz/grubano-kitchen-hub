@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 // ── Logistics onboarding (courier / delivery partner — Slice 1, Agent 15) ─────
 // Two units, both calqued on the supplier flow:
@@ -17,8 +17,12 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
-import { decideLogisticsOutcome, ensureLogisticsOperator } from '@/lib/logistics-account'
-import type { BusinessVerificationResult } from '@/lib/business-verification'
+import {
+  decideLogisticsOutcome, ensureLogisticsOperator,
+  applyCourierActivationGate, isCourierActivationEnabled,
+} from '@/lib/logistics-account'
+import type { BusinessVerificationResult, } from '@/lib/business-verification'
+import type { LogisticsDecision } from '@/lib/logistics-account'
 
 const result = (over: Partial<BusinessVerificationResult>): BusinessVerificationResult => ({
   outcome: 'review', officialName: null, reason: 'x', ...over,
@@ -57,13 +61,17 @@ describe('decideLogisticsOutcome — NAME-TOLERANT gating', () => {
   })
 })
 
-describe('ensureLogisticsOperator — auth bridge', () => {
+describe('ensureLogisticsOperator — auth bridge (activation ENABLED)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // These tests exercise the activation MECHANISM, so the activation flag is ON. The
+    // DEFAULT-OFF waitlist behaviour is covered in the "courier activation gate" block.
+    process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED = 'true'
     db.operator.create.mockResolvedValue({ id: 'opNew' })
     db.operator.update.mockResolvedValue({})
     db.operatorRole.upsert.mockResolvedValue({})
   })
+  afterEach(() => { delete process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED })
 
   it('fresh email + register (activate:false) → pending logistics, no password, role NOT yet granted', async () => {
     db.operator.findUnique.mockResolvedValue(null)
@@ -116,5 +124,63 @@ describe('ensureLogisticsOperator — auth bridge', () => {
   it('best-effort: a DB error → { ok:false, reason:error }, no throw', async () => {
     db.operator.findUnique.mockRejectedValue(new Error('db down'))
     expect(await ensureLogisticsOperator('l@x.fr', 'L', { activate: true })).toEqual({ ok: false, reason: 'error' })
+  })
+})
+
+// ── Courier ACTIVATION gate — DEFENSIVE waitlist (LA, Agent 72) ───────────────
+// Default OFF: NO path can produce an active courier; the auto-activation is neutralised.
+describe('courier activation gate (LA) — default OFF → waitlist', () => {
+  const active:   LogisticsDecision = { status: 'active',   verificationStatus: 'verified', reason: 'ok' }
+  const pending:  LogisticsDecision = { status: 'pending',  verificationStatus: 'review',   reason: 'r' }
+  const rejected: LogisticsDecision = { status: 'rejected', verificationStatus: 'rejected', reason: 'introuvable' }
+
+  beforeEach(() => { vi.clearAllMocks(); delete process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED })
+  afterEach(() => { delete process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED })
+
+  it('flag default OFF (only the exact string "true" enables)', () => {
+    expect(isCourierActivationEnabled()).toBe(false)
+    process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED = 'TRUE'; expect(isCourierActivationEnabled()).toBe(false)
+    process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED = '1';    expect(isCourierActivationEnabled()).toBe(false)
+    process.env.LOGISTICS_COURIER_ACTIVATION_ENABLED = 'true'; expect(isCourierActivationEnabled()).toBe(true)
+  })
+
+  it('applyCourierActivationGate OFF → demotes active to the pending WAITLIST; rejected/pending unchanged', () => {
+    expect(applyCourierActivationGate(active, false)).toEqual({ status: 'pending', verificationStatus: 'verified', reason: 'waitlist' })
+    expect(applyCourierActivationGate(pending, false)).toEqual(pending)   // unchanged
+    expect(applyCourierActivationGate(rejected, false)).toEqual(rejected) // invalid SIREN stays rejected
+  })
+
+  it('applyCourierActivationGate ON → passthrough (activation restored, future)', () => {
+    expect(applyCourierActivationGate(active, true)).toEqual(active)
+    expect(applyCourierActivationGate(pending, true)).toEqual(pending)
+    expect(applyCourierActivationGate(rejected, true)).toEqual(rejected)
+  })
+
+  it('NEVER more active: no decision/flag combination turns pending or rejected into active', () => {
+    for (const enabled of [true, false]) {
+      expect(applyCourierActivationGate(pending, enabled).status).not.toBe('active')
+      expect(applyCourierActivationGate(rejected, enabled).status).not.toBe('active')
+    }
+  })
+
+  it('ensureLogisticsOperator with activate:true is NEUTRALISED under flag OFF → WAITLIST (pending, no role in SET)', async () => {
+    db.operator.create.mockResolvedValue({ id: 'opNew' })
+    db.operatorRole.upsert.mockResolvedValue({})
+    db.operator.findUnique.mockResolvedValue(null)
+    // Even though the caller asks to activate, the flag is OFF → forced to a waitlist login.
+    const r = await ensureLogisticsOperator('l@x.fr', 'L', { activate: true })
+    expect(r).toEqual({ ok: true, created: true, activated: false, roleAdded: false })
+    expect(db.operator.create.mock.calls[0][0].data.status).toBe('pending') // NOT active
+    expect(db.operatorRole.upsert).not.toHaveBeenCalled()                    // role NOT in the SET
+  })
+
+  it('existing OTHER-role account: activate:true under flag OFF does NOT graft the logistics role', async () => {
+    db.operator.update.mockResolvedValue({})
+    db.operatorRole.upsert.mockResolvedValue({})
+    db.operator.findUnique.mockResolvedValue({ id: 'opR', role: 'restaurant', status: 'active' })
+    const r = await ensureLogisticsOperator('r@x.fr', 'R', { activate: true })
+    expect(r).toEqual({ ok: true, created: false, activated: false, roleAdded: false })
+    expect(db.operatorRole.upsert).not.toHaveBeenCalled() // no active-SET grant under flag OFF
+    expect(db.operator.update).not.toHaveBeenCalled()
   })
 })

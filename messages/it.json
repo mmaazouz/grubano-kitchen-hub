@@ -2090,8 +2090,12 @@
         "verifVerified": "Verificato",
         "verifReview": "In revisione",
         "verifRejected": "Non verificato",
-        "verifNone": "—"
-      }
+        "verifNone": "—",
+        "waitlistTitle": "Rider fondatore — in lista d’attesa",
+        "waitlistBody": "La tua candidatura è salvata. La rete di consegna Grubano (pasti + fornitori) è in costruzione; ti avviseremo appena le missioni apriranno vicino a te."
+      },
+      "successTitleWaitlist": "Sei in lista 🚀",
+      "successBodyWaitlist": "Grazie! Stiamo costruendo la rete di rider Grubano — pasti E ordini fornitori. Ti ricontatteremo non appena le missioni saranno disponibili nella tua zona."
     }
   },
   "establishment": {

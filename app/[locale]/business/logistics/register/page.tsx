@@ -57,6 +57,10 @@ export default function LogisticsRegisterPage() {
   // verified registry name).
   const [outcome, setOutcome]           = useState<'active' | 'pending' | 'rejected'>('pending')
   const [officialName, setOfficialName] = useState<string | null>(null)
+  // LA — courier activation is gated OFF: a successful registration lands on the
+  // WAITLIST (network pre-seeding). `waitlist` (from the API) switches the success copy
+  // to the "you're on the list — we build, we'll reach out at launch" message.
+  const [waitlist, setWaitlist]         = useState(false)
   // B1.3-C — when arriving from the "add an activity" hub: lock the email to the
   // connected account (carried in ?email) and PREFILL the verified siren (editable).
   // Public self-serve visitors (no ?email) keep the free form.
@@ -114,6 +118,7 @@ export default function LogisticsRegisterPage() {
       const o = data?.outcome
       setOutcome(o === 'active' || o === 'rejected' ? o : 'pending')
       setOfficialName(typeof data?.officialName === 'string' ? data.officialName : null)
+      setWaitlist(data?.waitlist === true)
       setDone(true)
     } catch {
       setError(t('errorGeneric'))
@@ -149,7 +154,7 @@ export default function LogisticsRegisterPage() {
                     : <MailCheck size={28} className="text-grubano-success" />}
               </span>
               <p className="font-display text-base font-bold text-grubano-ink">
-                {t((outcome === 'active' ? 'successTitleActive' : outcome === 'rejected' ? 'successTitleRejected' : 'successTitle') as 'successTitle')}
+                {t((outcome === 'active' ? 'successTitleActive' : outcome === 'rejected' ? 'successTitleRejected' : waitlist ? 'successTitleWaitlist' : 'successTitle') as 'successTitle')}
               </p>
               {outcome === 'active' && officialName && (
                 <span className="inline-flex items-center gap-1.5 rounded-grubano-pill bg-grubano-tint px-3 py-1 text-grubano-sm font-semibold text-grubano-primary">
@@ -157,7 +162,7 @@ export default function LogisticsRegisterPage() {
                 </span>
               )}
               <p className="max-w-xs text-grubano-sm text-grubano-ink-muted">
-                {t((outcome === 'active' ? 'successBodyActive' : outcome === 'rejected' ? 'successBodyRejected' : 'successBody') as 'successBody')}
+                {t((outcome === 'active' ? 'successBodyActive' : outcome === 'rejected' ? 'successBodyRejected' : waitlist ? 'successBodyWaitlist' : 'successBody') as 'successBody')}
               </p>
               {outcome === 'active' && (
                 <Link

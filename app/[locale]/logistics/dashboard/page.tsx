@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isCourierActivationEnabled } from '@/lib/logistics-account'
 import { Link } from '@/navigation'
 import { Card, Badge, Button, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
@@ -72,6 +73,12 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
 
   const profile = await prisma.logisticsProfile.findUnique({ where: { email } }).catch(() => null)
 
+  // LA (Agent 72) — courier activation is gated OFF: a 'pending' profile is a WAITLIST
+  // candidate (network pre-seed), NOT a review-pending one. Under the waitlist regime we
+  // show the waitlist state instead of the generic pending banner + the "missions coming
+  // soon" card (which would imply imminent active missions). No work is offered.
+  const onWaitlist = profile?.status === 'pending' && !isCourierActivationEnabled()
+
   const missions = profile ? asStringArray(profile.missionTypes) : []
   const vehicles = profile ? asStringArray(profile.vehicleTypes) : []
   const zones    = profile ? asStringArray(profile.zones) : []
@@ -112,6 +119,20 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
           />
         ) : (
           <>
+            {/* LA — WAITLIST state (courier activation gated OFF). Replaces the generic
+                pending banner + the missions placeholder; the read-only profile stays. */}
+            {onWaitlist && (
+              <Card elevation="sm" padding="md" className="border-grubano-primary/30 bg-grubano-tint/40">
+                <div className="flex items-start gap-2.5">
+                  <Sparkles size={18} className="mt-0.5 shrink-0 text-grubano-primary" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-grubano-ink">{d('waitlistTitle')}</p>
+                    <p className="text-sm text-grubano-ink-muted">{d('waitlistBody')}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {/* Status banner */}
             {profile.status === 'active' && (
               <Card elevation="sm" padding="md" className="border-grubano-success/40 bg-grubano-success-tint">
@@ -129,7 +150,7 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
                 </div>
               </Card>
             )}
-            {profile.status === 'pending' && (
+            {!onWaitlist && profile.status === 'pending' && (
               <Card elevation="sm" padding="md" className="border-grubano-warning/40 bg-grubano-warning-tint">
                 <div className="flex items-start gap-2.5">
                   <Hourglass size={18} className="mt-0.5 shrink-0 text-grubano-warning" />
@@ -163,7 +184,9 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
               </Card>
             )}
 
-            {/* Missions — coming soon (no dispatch system yet). */}
+            {/* Missions — coming soon (no dispatch system yet). Hidden under the WAITLIST
+                regime: it would imply imminent active missions. */}
+            {!onWaitlist && (
             <Card elevation="sm" padding="md">
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
@@ -180,6 +203,7 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
                 </div>
               </div>
             </Card>
+            )}
 
             {/* Read-only profile summary. */}
             <Card elevation="sm" padding="lg">

@@ -2090,8 +2090,12 @@
         "verifVerified": "Vérifié",
         "verifReview": "En revue",
         "verifRejected": "Non vérifié",
-        "verifNone": "—"
-      }
+        "verifNone": "—",
+        "waitlistTitle": "Livreur fondateur — sur la liste d’attente",
+        "waitlistBody": "Votre candidature est bien enregistrée. Le réseau de livraison Grubano (repas + fournisseurs) se construit ; nous vous préviendrons dès l’ouverture des missions près de chez vous."
+      },
+      "successTitleWaitlist": "Vous êtes sur la liste 🚀",
+      "successBodyWaitlist": "Merci ! Nous construisons le réseau de livreurs Grubano — repas ET commandes fournisseurs. Nous vous recontacterons dès l’ouverture des missions dans votre zone."
     }
   },
   "establishment": {

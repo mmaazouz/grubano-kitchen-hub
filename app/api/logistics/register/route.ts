@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { ensureLogisticsOperator, decideLogisticsOutcome } from '@/lib/logistics-account'
+import { ensureLogisticsOperator, decideLogisticsOutcome, applyCourierActivationGate, isCourierActivationEnabled } from '@/lib/logistics-account'
 import { verifyBusiness } from '@/lib/business-verification'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 
@@ -50,11 +50,17 @@ type Outcome = 'active' | 'pending' | 'rejected'
 // success the applicant reached with their own valid SIREN — so the confirmation can
 // greet them by their official name. The neutral 'pending' / 'rejected' paths never
 // echo it (anti-enumeration: a bot / duplicate must learn nothing).
-function ok(outcome: Outcome, officialName?: string | null) {
+// `waitlist` is a CONSTANT per request (= courier activation is OFF) attached UNIFORMLY
+// to every accepted response, so it cannot fingerprint a path (honeypot / too-fast /
+// duplicate / fresh all carry the same value). It tells the page to show the waitlist
+// messaging. officialName stays 'active'-only (anti-enumeration) — and under the waitlist
+// regime no response is ever 'active', so it is never echoed.
+function ok(outcome: Outcome, officialName?: string | null, waitlist = false) {
   return NextResponse.json({
     ok: true,
     outcome,
     officialName: outcome === 'active' ? officialName ?? null : undefined,
+    waitlist,
   })
 }
 
@@ -70,11 +76,17 @@ export async function POST(req: Request) {
     }
     const data = parsed.data
 
+    // Courier activation is gated (LA, Agent 72): while OFF (default, pending the legal
+    // decision) the registration page stays OPEN but every applicant lands on a non-active
+    // WAITLIST. `waitlist` is a constant attached uniformly to every response below.
+    const activationEnabled = isCourierActivationEnabled()
+    const waitlist = !activationEnabled
+
     // Anti-bot: honeypot filled or submitted in < 2 s → behave like a normal
     // (neutral 'pending') success, never vet, never write.
-    if (data.website && data.website.trim() !== '') return ok('pending')
+    if (data.website && data.website.trim() !== '') return ok('pending', null, waitlist)
     if (typeof data.formStartedAt === 'number' && Date.now() - data.formStartedAt < 2000) {
-      return ok('pending')
+      return ok('pending', null, waitlist)
     }
 
     const email = data.contactEmail.trim().toLowerCase()
@@ -88,7 +100,7 @@ export async function POST(req: Request) {
     })
     if (existingProfile) {
       await ensureLogisticsOperator(email, data.contactName, { activate: false })
-      return ok('pending')
+      return ok('pending', null, waitlist)
     }
 
     // FRESH registration → AUTOMATIC BUSINESS-IDENTITY verification (REUSED, UNMODIFIED).
@@ -102,7 +114,11 @@ export async function POST(req: Request) {
       declaredName: data.contactName,
       categories:   data.missionTypes,
     })
-    const decision = decideLogisticsOutcome(verification)
+    // Apply the ACTIVATION GATE: while courier activation is OFF (default), a would-be
+    // 'active' outcome (incl. the name-tolerant auto-activation) is demoted to the
+    // non-active 'pending' WAITLIST. The registry verification fact (verificationStatus /
+    // officialName) is preserved; only the activation status moves.
+    const decision = applyCourierActivationGate(decideLogisticsOutcome(verification), activationEnabled)
     const status = decision.status
 
     await prisma.logisticsProfile.create({
@@ -141,7 +157,7 @@ export async function POST(req: Request) {
       })
     }
 
-    return ok(status, verification.officialName)
+    return ok(status, verification.officialName, waitlist)
   } catch (err) {
     console.error('[POST /api/logistics/register]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

@@ -2090,8 +2090,12 @@
         "verifVerified": "مُتحقَّق منه",
         "verifReview": "قيد المراجعة",
         "verifRejected": "غير مُتحقَّق منه",
-        "verifNone": "—"
-      }
+        "verifNone": "—",
+        "waitlistTitle": "موصّل مؤسّس — على قائمة الانتظار",
+        "waitlistBody": "تم حفظ طلبك. شبكة التوصيل في Grubano (وجبات + مورّدون) قيد الإنشاء؛ سنُعلِمك فور فتح المهام بالقرب منك."
+      },
+      "successTitleWaitlist": "أنت على القائمة 🚀",
+      "successBodyWaitlist": "شكرًا لك! نحن نبني شبكة موصّلي Grubano — وجبات وطلبات المورّدين معًا. سنتواصل معك فور فتح المهام في منطقتك."
     }
   },
   "establishment": {

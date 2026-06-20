@@ -2090,8 +2090,12 @@
         "verifVerified": "Verified",
         "verifReview": "Under review",
         "verifRejected": "Not verified",
-        "verifNone": "—"
-      }
+        "verifNone": "—",
+        "waitlistTitle": "Founding courier — on the waitlist",
+        "waitlistBody": "Your application is saved. The Grubano delivery network (meals + suppliers) is being built; we’ll notify you as soon as missions open near you."
+      },
+      "successTitleWaitlist": "You’re on the list 🚀",
+      "successBodyWaitlist": "Thank you! We’re building the Grubano courier network — meals AND supplier orders. We’ll reach out as soon as missions open in your area."
     }
   },
   "establishment": {
