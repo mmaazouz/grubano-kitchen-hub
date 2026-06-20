@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Send, X, CheckCircle2, CalendarDays } from 'lucide-react'
+import { useTranslations, useLocale } from 'next-intl'
+import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Send, X, CheckCircle2, CalendarDays, Star } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Badge, Button } from '@/components/design-system'
 
@@ -36,9 +36,12 @@ const SVC_LABEL: Record<string, string> = {
 const MOD_LABEL: Record<string, string> = { on_site: 'modalityOnSite', remote: 'modalityRemote', both: 'modalityBoth' }
 const WD_LABEL: Record<string, string> = { mon: 'wdMon', tue: 'wdTue', wed: 'wdWed', thu: 'wdThu', fri: 'wdFri', sat: 'wdSat', sun: 'wdSun' }
 
+interface Review { id: string; rating: number; comment: string | null; createdAt: string }
+
 export default function PrestataireDetailClient({ id }: { id: string }) {
   const t  = useTranslations('prestataire')
   const tm = useTranslations('marketplace.prestataires')
+  const locale = useLocale()
 
   const [p, setP] = useState<DiscoverPrestataire | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,6 +57,22 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
       })
       .catch(() => setMissing(true))
       .finally(() => setLoading(false))
+  }, [id])
+
+  // P5 — reviews + average (operator-gated GET, calque discovery). Best-effort: a failure
+  // simply leaves the section empty (the fiche still renders the rest).
+  const [reviews, setReviews]         = useState<Review[]>([])
+  const [avg, setAvg]                 = useState(0)
+  const [reviewCount, setReviewCount] = useState(0)
+  useEffect(() => {
+    fetch(`/api/prestataire-reviews?prestataireProfileId=${encodeURIComponent(id)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        setReviews(Array.isArray(d.reviews) ? d.reviews : [])
+        setAvg(typeof d.average === 'number' ? d.average : 0)
+        setReviewCount(typeof d.count === 'number' ? d.count : 0)
+      })
+      .catch(() => {})
   }, [id])
 
   const svcLabel = (c: string) => (c in SVC_LABEL ? t(SVC_LABEL[c] as 'svcOther') : c)
@@ -135,6 +154,12 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
       <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-grubano-ink-muted">
         {p.city && <span className="inline-flex items-center gap-1"><MapPin size={13} /> {p.city}</span>}
         <span className="inline-flex items-center gap-1"><MonitorSmartphone size={13} /> {modLabel(p.modality)}</span>
+        {reviewCount > 0 && (
+          <span className="inline-flex items-center gap-1">
+            <Star size={13} className="fill-current text-grubano-warning" />
+            <span className="font-semibold text-grubano-ink">{avg.toFixed(1)}</span> {tm('reviewsCount', { count: reviewCount })}
+          </span>
+        )}
       </p>
       {p.coverageZones.length > 0 && (
         <p className="mb-3 text-sm text-grubano-ink-muted">
@@ -199,6 +224,33 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
           </div>
         ))}
       </div>
+
+      {/* P5 — reviews (READ-ONLY; from restaurants that had a 'done' mission). */}
+      {reviewCount > 0 && (
+        <div className="mt-6">
+          <h2 className="mb-2 flex flex-wrap items-center gap-2 font-display text-lg font-bold text-grubano-ink">
+            {tm('reviewsTitle')}
+            <span className="inline-flex items-center gap-1 text-sm font-medium text-grubano-ink-muted">
+              <Star size={14} className="fill-current text-grubano-warning" /> {avg.toFixed(1)} · {tm('reviewsCount', { count: reviewCount })}
+            </span>
+          </h2>
+          <ul className="space-y-2">
+            {reviews.map((rv) => (
+              <li key={rv.id}>
+                <Card elevation="sm" padding="md">
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: 5 }, (_, i) => i + 1).map((n) => (
+                      <Star key={n} size={14} className={n <= rv.rating ? 'fill-current text-grubano-warning' : 'text-grubano-border'} />
+                    ))}
+                    <span className="ml-1 text-xs text-grubano-ink-faint">{new Date(rv.createdAt).toLocaleDateString(locale)}</span>
+                  </div>
+                  {rv.comment && <p className="mt-1 text-sm text-grubano-ink-muted whitespace-pre-line">{rv.comment}</p>}
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* ── Request-a-quote modal (P3) ── */}
       {reqOpen && (

@@ -2894,7 +2894,9 @@
       "requestDoneBody": "Il prestatore esaminerà la vostra richiesta e vi invierà un preventivo.",
       "requestDoneCta": "Vedi le mie richieste",
       "availabilityTitle": "Disponibilità",
-      "availabilityDaysLabel": "Giorni lavorativi"
+      "availabilityDaysLabel": "Giorni lavorativi",
+      "reviewsTitle": "Recensioni",
+      "reviewsCount": "{count} recensioni"
     },
     "prestataireMissions": {
       "title": "Le mie richieste",
@@ -2911,7 +2913,18 @@
       "quoteLabel": "Preventivo",
       "acceptCta": "Accetta",
       "declineCta": "Rifiuta",
-      "cancelCta": "Annulla"
+      "cancelCta": "Annulla",
+      "reviewCta": "Lascia una recensione",
+      "reviewed": "Recensione inviata",
+      "reviewTitle": "Lascia una recensione",
+      "reviewRatingLabel": "Valutazione",
+      "reviewCommentLabel": "Commento (facoltativo)",
+      "reviewCommentPlaceholder": "Descrivete la vostra esperienza…",
+      "reviewSend": "Pubblica recensione",
+      "reviewSending": "Pubblicazione…",
+      "reviewCancel": "Annulla",
+      "reviewErr": "Impossibile pubblicare, riprovate.",
+      "reviewRatingRequired": "Scegliete una valutazione"
     }
   },
   "magic": {

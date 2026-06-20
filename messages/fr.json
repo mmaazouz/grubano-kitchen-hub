@@ -2894,7 +2894,9 @@
       "requestDoneBody": "Le prestataire va étudier votre demande et vous proposer un devis.",
       "requestDoneCta": "Voir mes demandes",
       "availabilityTitle": "Disponibilités",
-      "availabilityDaysLabel": "Jours travaillés"
+      "availabilityDaysLabel": "Jours travaillés",
+      "reviewsTitle": "Avis",
+      "reviewsCount": "{count} avis"
     },
     "prestataireMissions": {
       "title": "Mes demandes",
@@ -2911,7 +2913,18 @@
       "quoteLabel": "Devis",
       "acceptCta": "Accepter",
       "declineCta": "Refuser",
-      "cancelCta": "Annuler"
+      "cancelCta": "Annuler",
+      "reviewCta": "Laisser un avis",
+      "reviewed": "Avis déposé",
+      "reviewTitle": "Laisser un avis",
+      "reviewRatingLabel": "Note",
+      "reviewCommentLabel": "Commentaire (facultatif)",
+      "reviewCommentPlaceholder": "Décrivez votre expérience…",
+      "reviewSend": "Publier l’avis",
+      "reviewSending": "Publication…",
+      "reviewCancel": "Annuler",
+      "reviewErr": "Impossible de publier, réessayez.",
+      "reviewRatingRequired": "Choisissez une note"
     }
   },
   "magic": {

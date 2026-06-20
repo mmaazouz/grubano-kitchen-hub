@@ -2894,7 +2894,9 @@
       "requestDoneBody": "El proveedor revisará su solicitud y le enviará un presupuesto.",
       "requestDoneCta": "Ver mis solicitudes",
       "availabilityTitle": "Disponibilidad",
-      "availabilityDaysLabel": "Días laborables"
+      "availabilityDaysLabel": "Días laborables",
+      "reviewsTitle": "Opiniones",
+      "reviewsCount": "{count} opiniones"
     },
     "prestataireMissions": {
       "title": "Mis solicitudes",
@@ -2911,7 +2913,18 @@
       "quoteLabel": "Presupuesto",
       "acceptCta": "Aceptar",
       "declineCta": "Rechazar",
-      "cancelCta": "Cancelar"
+      "cancelCta": "Cancelar",
+      "reviewCta": "Dejar una opinión",
+      "reviewed": "Opinión enviada",
+      "reviewTitle": "Dejar una opinión",
+      "reviewRatingLabel": "Valoración",
+      "reviewCommentLabel": "Comentario (opcional)",
+      "reviewCommentPlaceholder": "Describa su experiencia…",
+      "reviewSend": "Publicar opinión",
+      "reviewSending": "Publicando…",
+      "reviewCancel": "Cancelar",
+      "reviewErr": "No se pudo publicar, inténtelo de nuevo.",
+      "reviewRatingRequired": "Elija una valoración"
     }
   },
   "magic": {

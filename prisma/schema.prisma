@@ -69,6 +69,9 @@ model Operator {
   // P3 (Agent 76) — service quote/mission requests this operator (as a restaurateur)
   // sent to prestataires. Additive inverse relation; reversible. NO money.
   serviceMissions ServiceMission[]
+  // P5 (Agent 78) — reviews this operator (as a restaurateur) left on prestataires.
+  // Additive inverse relation; reversible. NO money.
+  serviceReviews  ServiceReview[]
   // ── Company identity anchor (B1.1, Agent 29) — ADDITIVE · REVERSIBLE · INERT ──
   // Future "collect once" home for BUSINESS identity at the ACCOUNT level. Today
   // company identity is siloed per-entity (SupplierProfile / LogisticsProfile,
@@ -818,6 +821,8 @@ model PrestataireProfile {
   serviceMissions    ServiceMission[]
   // P4 (Agent 77) — declared leave/holiday periods (simple availability). Additive BACK-relation.
   unavailabilities   PrestataireUnavailability[]
+  // P5 (Agent 78) — reviews left on this prestataire by restaurants. Additive BACK-relation.
+  serviceReviews     ServiceReview[]
 }
 
 // ── PrestataireUnavailability (SERVICES — P4 simple declarative calendar, Agent 77) ──
@@ -902,10 +907,39 @@ model ServiceMission {
   status               String             @default("requested") // requested|quoted|accepted|declined|cancelled|done
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
+  // P5 (Agent 78) — the optional single review for this mission (1:1; created only when 'done'). Additive.
+  review               ServiceReview?
 
   @@index([restaurantOperatorId])
   @@index([prestataireProfileId])
   @@index([serviceOfferingId])
+}
+
+// ── ServiceReview (SERVICES marketplace — P5 reviews, Agent 78) ───────────────
+// ADDITIVE + REVERSIBLE. A restaurant rates a prestataire AFTER a mission is 'done'. The
+// prestataire's fiche shows the average + the reviews. 100% OFF the money path — a review
+// carries NO amount / charge / payout / commission concept.
+//
+// ANTI-FRAUD ANCHOR: a review is bound 1:1 to a ServiceMission (serviceMissionId @unique →
+// a SECOND review on the same mission is impossible at the DB level). The route additionally
+// verifies, server-side, that the mission status is 'done' AND the author is its
+// restaurantOperator (session) — no off-mission review, no review on a non-done mission, no
+// review by a third party. Reciprocal / prestataire reply = a LATER brick (out of P5 scope).
+// Owner-scoped; cascade-deleted with the mission / operator / prestataire.
+model ServiceReview {
+  id                   String             @id @default(cuid())
+  serviceMissionId     String             @unique
+  serviceMission       ServiceMission     @relation(fields: [serviceMissionId], references: [id], onDelete: Cascade)
+  restaurantOperatorId String                                  // author — the resto that owned the 'done' mission
+  restaurantOperator   Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
+  prestataireProfileId String                                  // the rated prestataire
+  prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
+  rating               Int                                     // 1..5 (validated in lib/service-review + Zod)
+  comment              String?            @db.Text             // optional free-text comment
+  createdAt            DateTime           @default(now())
+
+  @@index([prestataireProfileId])
+  @@index([restaurantOperatorId])
 }
 
 // ── SupplierCatalogItem (B2B supply marketplace — Slice 1 catalogue, Agent 14) ─

@@ -2894,7 +2894,9 @@
       "requestDoneBody": "سيدرس مقدّم الخدمة طلبك ويرسل لك عرض سعر.",
       "requestDoneCta": "عرض طلباتي",
       "availabilityTitle": "التوفّر",
-      "availabilityDaysLabel": "أيام العمل"
+      "availabilityDaysLabel": "أيام العمل",
+      "reviewsTitle": "التقييمات",
+      "reviewsCount": "{count} تقييمات"
     },
     "prestataireMissions": {
       "title": "طلباتي",
@@ -2911,7 +2913,18 @@
       "quoteLabel": "عرض السعر",
       "acceptCta": "قبول",
       "declineCta": "رفض",
-      "cancelCta": "إلغاء"
+      "cancelCta": "إلغاء",
+      "reviewCta": "اترك تقييمًا",
+      "reviewed": "تمّ التقييم",
+      "reviewTitle": "اترك تقييمًا",
+      "reviewRatingLabel": "التقييم",
+      "reviewCommentLabel": "تعليق (اختياري)",
+      "reviewCommentPlaceholder": "صِف تجربتك…",
+      "reviewSend": "نشر التقييم",
+      "reviewSending": "جارٍ النشر…",
+      "reviewCancel": "إلغاء",
+      "reviewErr": "تعذّر النشر، حاول مجدّدًا.",
+      "reviewRatingRequired": "اختر تقييمًا"
     }
   },
   "magic": {

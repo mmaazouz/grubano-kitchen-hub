@@ -31,6 +31,9 @@ export async function GET() {
       quoteAmountCents: true, quoteDescription: true, proposedDate: true, scheduledDate: true, createdAt: true,
       prestataireProfile: { select: { id: true, companyName: true, city: true } },
       serviceOffering:    { select: { id: true, title: true, category: true } },
+      // P5 (Agent 78) — the existing review (if any), so the « Laisser un avis » button only
+      // shows on 'done' missions not yet reviewed. Additive read of the 1:1 back-relation.
+      review:             { select: { id: true, rating: true } },
     },
   })
   return NextResponse.json({ missions })

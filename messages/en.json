@@ -2894,7 +2894,9 @@
       "requestDoneBody": "The provider will review your request and send a quote.",
       "requestDoneCta": "View my requests",
       "availabilityTitle": "Availability",
-      "availabilityDaysLabel": "Working days"
+      "availabilityDaysLabel": "Working days",
+      "reviewsTitle": "Reviews",
+      "reviewsCount": "{count} reviews"
     },
     "prestataireMissions": {
       "title": "My requests",
@@ -2911,7 +2913,18 @@
       "quoteLabel": "Quote",
       "acceptCta": "Accept",
       "declineCta": "Decline",
-      "cancelCta": "Cancel"
+      "cancelCta": "Cancel",
+      "reviewCta": "Leave a review",
+      "reviewed": "Reviewed",
+      "reviewTitle": "Leave a review",
+      "reviewRatingLabel": "Rating",
+      "reviewCommentLabel": "Comment (optional)",
+      "reviewCommentPlaceholder": "Describe your experience…",
+      "reviewSend": "Publish review",
+      "reviewSending": "Publishing…",
+      "reviewCancel": "Cancel",
+      "reviewErr": "Couldn't publish, please try again.",
+      "reviewRatingRequired": "Choose a rating"
     }
   },
   "magic": {

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { Wrench, ChevronLeft, Loader2, ClipboardList, Calendar, Check, X } from 'lucide-react'
+import { Wrench, ChevronLeft, Loader2, ClipboardList, Calendar, Check, X, Star, Send } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Badge, type BadgeTone } from '@/components/design-system'
 import { formatMoney } from '@/lib/format-money'
+import { RATING_MIN, RATING_MAX } from '@/lib/service-review'
 
 // ── /marketplace/prestataire-missions — the resto's quote requests (P3, Agent 76) ──
 // CLONE of /marketplace/orders (resto order history), adapted to the DEVIS cycle. Renders
@@ -25,6 +26,7 @@ interface Mission {
   createdAt: string
   prestataireProfile: { id: string; companyName: string; city: string | null } | null
   serviceOffering: { id: string; title: string; category: string } | null
+  review: { id: string; rating: number } | null
 }
 
 const STATUS_TONE: Record<string, BadgeTone> = {
@@ -62,6 +64,41 @@ export default function RestoMissionsClient() {
       if (res.ok) load()
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // ── Review (P5) — only on a 'done' mission not yet reviewed (anti-fraud server-side too). ──
+  const [reviewFor, setReviewFor] = useState<{ id: string; name: string } | null>(null) // null = closed
+  const [rating, setRating]       = useState(0)
+  const [comment, setComment]     = useState('')
+  const [posting, setPosting]     = useState(false)
+  const [reviewError, setReviewError] = useState('')
+
+  function openReview(m: Mission) {
+    setReviewError(''); setRating(0); setComment('')
+    setReviewFor({ id: m.id, name: m.prestataireProfile?.companyName ?? '' })
+  }
+
+  async function submitReview(e: React.FormEvent) {
+    e.preventDefault()
+    if (!reviewFor || posting) return
+    if (rating < RATING_MIN || rating > RATING_MAX) { setReviewError(t('reviewRatingRequired')); return }
+    setPosting(true); setReviewError('')
+    try {
+      const res = await fetch('/api/prestataire-reviews', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceMissionId: reviewFor.id, rating, comment: comment.trim() || null }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setReviewError(d?.error || t('reviewErr'))
+        return
+      }
+      setReviewFor(null); load()
+    } catch {
+      setReviewError(t('reviewErr'))
+    } finally {
+      setPosting(false)
     }
   }
 
@@ -137,12 +174,58 @@ export default function RestoMissionsClient() {
                         </Button>
                       </>
                     )}
+                    {m.status === 'done' && !m.review && (
+                      <Button variant="secondary" size="sm" leftIcon={<Star size={14} />} onClick={() => openReview(m)}>
+                        {t('reviewCta')}
+                      </Button>
+                    )}
+                    {m.status === 'done' && m.review && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-grubano-ink-muted">
+                        <Star size={13} className="text-grubano-warning" /> {t('reviewed')} · {m.review.rating}/5
+                      </span>
+                    )}
                   </div>
                 </div>
               </Card>
             </li>
           ))}
         </ul>
+      )}
+
+      {/* ── Review modal (P5) — only reachable from a 'done', un-reviewed mission ── */}
+      {reviewFor && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={() => !posting && setReviewFor(null)}>
+          <div className="w-full max-w-lg rounded-t-grubano-2xl bg-grubano-surface p-5 sm:rounded-grubano-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-display text-lg font-bold text-grubano-ink">{t('reviewTitle')}{reviewFor.name ? ` — ${reviewFor.name}` : ''}</h2>
+              <button onClick={() => !posting && setReviewFor(null)} aria-label={t('reviewCancel')}><X size={18} className="text-grubano-ink-muted" /></button>
+            </div>
+            <form onSubmit={submitReview} className="space-y-3">
+              {reviewError && <p className="rounded-grubano-lg bg-grubano-danger-tint px-3 py-2 text-sm text-grubano-danger">{reviewError}</p>}
+              <div>
+                <p className="mb-1.5 text-sm font-medium text-grubano-ink">{t('reviewRatingLabel')}</p>
+                <div className="flex gap-1">
+                  {Array.from({ length: RATING_MAX }, (_, i) => i + 1).map((n) => (
+                    <button key={n} type="button" onClick={() => setRating(n)} aria-label={`${n}/${RATING_MAX}`} className="p-0.5">
+                      <Star size={28} className={n <= rating ? 'fill-current text-grubano-warning' : 'text-grubano-border'} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-grubano-ink">{t('reviewCommentLabel')}</label>
+                <textarea rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={t('reviewCommentPlaceholder')}
+                  className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2 text-sm text-grubano-ink focus:border-grubano-primary focus:outline-none focus:ring-4 focus:ring-grubano-primary/20" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="secondary" size="md" fullWidth onClick={() => setReviewFor(null)}>{t('reviewCancel')}</Button>
+                <Button type="submit" variant="primary" size="md" fullWidth loading={posting} leftIcon={posting ? undefined : <Send size={16} />}>
+                  {posting ? t('reviewSending') : t('reviewSend')}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )
