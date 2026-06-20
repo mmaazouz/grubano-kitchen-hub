@@ -3,6 +3,7 @@ import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { computePartnerBalance, type PartnerBalanceRole } from '@/lib/partner-balance'
 import { payoutMinCents } from '@/lib/payout-threshold'
+import { recordPartnerTransferLedgerEntry } from '@/lib/ledger'
 
 // ── Partner payout (rail financier P4.3, Agent 39 — GÉNÉRALISÉ Brique D1, Agent 63) ─
 //
@@ -146,6 +147,30 @@ async function settlePending(
     where: { id: payout.id },
     data:  { status: 'paid', paidAt: new Date(), stripeTransferId: transfer.id },
   })
+
+  // ── LEDGER TRACE (rail A3) — record the disbursement append-only & idempotent ──
+  // PURE ADD-ON: this RECORDS the (already-completed, already-persisted) payout; it
+  // NEVER moves money nor alters the transfer/payout. recordPartnerTransferLedgerEntry
+  // NEVER throws (it catches internally) and its result is NOT awaited into the
+  // outcome — so removing this whole block leaves settlePending BYTE-IDENTICAL to the
+  // pre-trace transfer path. Covers BOTH rails (this fn is shared) and BOTH the
+  // resume + normal paths. Idempotent on the Payout id (sourceEventId): a replay /
+  // re-driven resume hits @@unique([sourceEventId,'partner_transfer']) → no 2nd line.
+  // A failure is logged ([LEDGER MISS]) for manual reconciliation, exactly like the
+  // B2C webhook — it must never block or undo a settled payout.
+  const led = await recordPartnerTransferLedgerEntry({
+    payoutId:             payout.id,
+    role,
+    beneficiaryId:        ref.id,
+    amountCents:          payout.amountCents,
+    currency:             payout.currency,
+    stripeTransferId:     transfer.id,
+    destinationAccountId: ref.stripeAccountId,
+  })
+  if (!led.ok) {
+    console.error(`[LEDGER MISS] partner_transfer payout=${payout.id} role=${role} ref=${ref.id}: ${led.error}`)
+  }
+
   return { status: 'paid', role, refId: ref.id, amountCents: payout.amountCents, stripeTransferId: transfer.id, resumed }
 }
 

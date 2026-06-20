@@ -5,7 +5,12 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 
 export type LedgerEntryInput = {
-  type:                  'payment' | 'deposit_capture' | 'refund' | 'adjustment'
+  // 'partner_transfer' (rail A3 / payout trace) is an OUTBOUND disbursement to a
+  // creator/affiliate — additive, convention-only (the DB `type` is a free String,
+  // no migration). Its `restaurantId` carries the BENEFICIARY partner id, NOT a
+  // restaurant (see recordPartnerTransferLedgerEntry); every restaurantId-scoped
+  // reader keys on a real Restaurant.id, so these lines never join one.
+  type:                  'payment' | 'deposit_capture' | 'refund' | 'adjustment' | 'partner_transfer'
   restaurantId:          string
   ticketId?:             string | null
   reservationId?:        string | null
@@ -69,6 +74,58 @@ export async function recordRefundLedgerEntry(input: {
     currency:              input.currency ?? 'eur',
     channel:               input.channel ?? null,
     sourceEventId:         input.refundId,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+  })
+}
+
+/** Record ONE 'partner_transfer' ledger line for a SUCCESSFUL partner payout (a
+ *  disbursement to a creator/affiliate's Connect account — rail A3 / P4 payout trace).
+ *  APPEND-ONLY + IDEMPOTENT: the dedupe key is the internal Payout id (sourceEventId),
+ *  so @@unique([sourceEventId,'partner_transfer']) makes a replay (or the payout's
+ *  triple-idempotence resume re-driving the same row) a silent duplicate — never a
+ *  2nd line for one disbursement.
+ *
+ *  FIELD MAPPING — chosen to be PROVABLY NEUTRAL to every existing ledger reader:
+ *    • restaurantId = the BENEFICIARY partner id (Creator.id | Operator.id). It is a
+ *      bare scalar (no FK) and is NEVER a Restaurant.id, so every restaurantId-scoped
+ *      reader (partner-balance.restaurantEarnedCents, dac7, invoice generate/detail,
+ *      finance summary/operations) keys on a real Restaurant.id and never fetches it;
+ *      it lands in its OWN groupBy bucket, never mixing into a restaurant's totals.
+ *    • applicationFeeAmount = 0  → a payout earns Grubano NO commission (literally
+ *      true), AND the monthly invoice generator (groupBy restaurantId, Σ fee, then
+ *      `if ttc<=0 continue`) therefore SKIPS this bucket → no spurious invoice.
+ *    • netToRestaurant = amountCents  → forced by the golden equation gross = fee + net
+ *      (= amount = 0 + amount), so the admin ledger-check passes line-by-line and in
+ *      aggregate. (Repurposed counterweight for this type; never summed for a real
+ *      restaurant because restaurantId is a partner id.)
+ *    • grossAmount = amountCents (the human-readable disbursed amount), routed = true,
+ *      destinationAccountId = the partner's Connect account, stripeTransferId = the
+ *      Stripe transfer. The Stripe-reconciliation + refund branches of the check route
+ *      filter by type ∈ {payment,deposit_capture,refund} → this line is invisible there.
+ *  All amounts in integer CENTS. */
+export async function recordPartnerTransferLedgerEntry(input: {
+  payoutId:             string  // internal Payout id — the deterministic dedupe key (sourceEventId)
+  role:                 string  // creator | affiliate (audit/log only; not a column)
+  beneficiaryId:        string  // the paid partner id (Creator.id | Operator.id) → restaurantId scalar
+  amountCents:          number  // POSITIVE disbursed amount
+  currency?:            string
+  stripeTransferId:     string  // tr_… the Stripe transfer reference
+  destinationAccountId: string  // acct_… the partner's connected account
+  createdAt?:           Date
+}): Promise<LedgerWriteResult> {
+  return recordLedgerEntry({
+    type:                 'partner_transfer',
+    restaurantId:         input.beneficiaryId,
+    stripeTransferId:     input.stripeTransferId,
+    grossAmount:          input.amountCents,
+    applicationFeeAmount: 0,
+    stripeFeeAmount:      null,
+    netToRestaurant:      input.amountCents, // gross − fee (fee 0) ⇒ golden equation holds
+    routed:               true,
+    destinationAccountId: input.destinationAccountId,
+    currency:             input.currency ?? 'eur',
+    channel:              null,
+    sourceEventId:        input.payoutId,
     ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   })
 }
