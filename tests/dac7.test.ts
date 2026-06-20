@@ -9,9 +9,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const { db } = vi.hoisted(() => ({
   db: {
-    operator:    { findMany: vi.fn() },
-    restaurant:  { findMany: vi.fn() },
-    ledgerEntry: { findMany: vi.fn() },
+    operator:      { findMany: vi.fn() },
+    restaurant:    { findMany: vi.fn() },
+    ledgerEntry:   { findMany: vi.fn() },
+    referralOrder: { findMany: vi.fn() }, // Agent 86: affiliate collector source (default [] → no affiliate rows here)
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -34,6 +35,7 @@ beforeEach(() => {
   db.operator.findMany.mockResolvedValue([OP()])
   db.restaurant.findMany.mockResolvedValue([{ id: 'r1', operatorId: 'op1', stripeAccountId: 'acct_1' }])
   db.ledgerEntry.findMany.mockResolvedValue([])
+  db.referralOrder.findMany.mockResolvedValue([]) // no affiliate earnings here → restaurant output unchanged
 })
 
 describe('aggregateDac7Year — perimeter & config', () => {
