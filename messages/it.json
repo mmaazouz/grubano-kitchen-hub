@@ -2892,7 +2892,9 @@
       "requestErr": "Impossibile inviare, riprovate.",
       "requestDoneTitle": "Richiesta inviata",
       "requestDoneBody": "Il prestatore esaminerà la vostra richiesta e vi invierà un preventivo.",
-      "requestDoneCta": "Vedi le mie richieste"
+      "requestDoneCta": "Vedi le mie richieste",
+      "availabilityTitle": "Disponibilità",
+      "availabilityDaysLabel": "Giorni lavorativi"
     },
     "prestataireMissions": {
       "title": "Le mie richieste",
@@ -3444,7 +3446,9 @@
       "manageServicesTitle": "I miei servizi",
       "manageServicesBody": "Gestite i servizi che offrite ai ristoranti.",
       "missionsTitle": "Richieste e missioni",
-      "missionsBody": "Rispondete alle richieste di preventivo e seguite le vostre missioni."
+      "missionsBody": "Rispondete alle richieste di preventivo e seguite le vostre missioni.",
+      "calendarTitle": "Il mio calendario",
+      "calendarBody": "Dichiarate la vostra disponibilità e consultate le missioni pianificate."
     },
     "services": {
       "title": "I miei servizi",
@@ -3503,6 +3507,40 @@
       "fProposedDate": "Data proposta",
       "cancel": "Annulla",
       "saving": "Invio…"
+    },
+    "wdMon": "Lun",
+    "wdTue": "Mar",
+    "wdWed": "Mer",
+    "wdThu": "Gio",
+    "wdFri": "Ven",
+    "wdSat": "Sab",
+    "wdSun": "Dom",
+    "calendar": {
+      "title": "Il mio calendario",
+      "subtitle": "La vostra disponibilità e le vostre missioni pianificate.",
+      "back": "Pannello",
+      "errLoad": "Impossibile caricare il vostro calendario.",
+      "errSave": "Impossibile salvare, riprovate.",
+      "availabilityTitle": "La mia disponibilità",
+      "weekdaysLabel": "Giorni lavorativi",
+      "noteLabel": "Nota di disponibilità",
+      "notePlaceholder": "es. 8-18 nei giorni feriali, urgenze 24/7",
+      "saveAvailability": "Salva",
+      "saving": "Salvataggio…",
+      "savedOk": "Disponibilità salvata",
+      "leaveTitle": "Periodi di indisponibilità",
+      "leaveEmpty": "Nessun periodo dichiarato.",
+      "addLeave": "Aggiungi un periodo",
+      "leaveAdding": "Aggiunta…",
+      "leaveStart": "Dal",
+      "leaveEnd": "Al",
+      "leaveReason": "Motivo (facoltativo)",
+      "leaveReasonPlaceholder": "es. ferie",
+      "leaveDelete": "Elimina",
+      "leaveErrDates": "La data di fine deve essere uguale o successiva a quella di inizio.",
+      "missionsTitle": "Missioni pianificate",
+      "missionsHint": "Le vostre missioni accettate con una data prevista appaiono qui (sola lettura).",
+      "missionsEmpty": "Nessuna missione pianificata per ora."
     }
   }
 }

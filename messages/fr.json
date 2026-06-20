@@ -2892,7 +2892,9 @@
       "requestErr": "Impossible d’envoyer, réessayez.",
       "requestDoneTitle": "Demande envoyée",
       "requestDoneBody": "Le prestataire va étudier votre demande et vous proposer un devis.",
-      "requestDoneCta": "Voir mes demandes"
+      "requestDoneCta": "Voir mes demandes",
+      "availabilityTitle": "Disponibilités",
+      "availabilityDaysLabel": "Jours travaillés"
     },
     "prestataireMissions": {
       "title": "Mes demandes",
@@ -3444,7 +3446,9 @@
       "manageServicesTitle": "Mes services",
       "manageServicesBody": "Gérez les services que vous proposez aux restaurants.",
       "missionsTitle": "Demandes & missions",
-      "missionsBody": "Répondez aux demandes de devis et suivez vos missions."
+      "missionsBody": "Répondez aux demandes de devis et suivez vos missions.",
+      "calendarTitle": "Mon calendrier",
+      "calendarBody": "Déclarez vos disponibilités et voyez vos missions planifiées."
     },
     "services": {
       "title": "Mes services",
@@ -3503,6 +3507,40 @@
       "fProposedDate": "Date proposée",
       "cancel": "Annuler",
       "saving": "Envoi…"
+    },
+    "wdMon": "Lun",
+    "wdTue": "Mar",
+    "wdWed": "Mer",
+    "wdThu": "Jeu",
+    "wdFri": "Ven",
+    "wdSat": "Sam",
+    "wdSun": "Dim",
+    "calendar": {
+      "title": "Mon calendrier",
+      "subtitle": "Vos disponibilités et vos missions planifiées.",
+      "back": "Tableau de bord",
+      "errLoad": "Impossible de charger votre calendrier.",
+      "errSave": "Impossible d’enregistrer, réessayez.",
+      "availabilityTitle": "Mes disponibilités",
+      "weekdaysLabel": "Jours travaillés",
+      "noteLabel": "Note de disponibilité",
+      "notePlaceholder": "ex. 8h-18h en semaine, urgences 24/7",
+      "saveAvailability": "Enregistrer",
+      "saving": "Enregistrement…",
+      "savedOk": "Disponibilités enregistrées",
+      "leaveTitle": "Périodes d’indisponibilité",
+      "leaveEmpty": "Aucune période déclarée.",
+      "addLeave": "Ajouter une période",
+      "leaveAdding": "Ajout…",
+      "leaveStart": "Du",
+      "leaveEnd": "Au",
+      "leaveReason": "Motif (facultatif)",
+      "leaveReasonPlaceholder": "ex. congés",
+      "leaveDelete": "Supprimer",
+      "leaveErrDates": "La date de fin doit être après la date de début.",
+      "missionsTitle": "Missions planifiées",
+      "missionsHint": "Vos missions acceptées avec une date prévue apparaissent ici (lecture seule).",
+      "missionsEmpty": "Aucune mission planifiée pour le moment."
     }
   }
 }

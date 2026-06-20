@@ -2892,7 +2892,9 @@
       "requestErr": "تعذّر الإرسال، حاول مجدّدًا.",
       "requestDoneTitle": "تمّ إرسال الطلب",
       "requestDoneBody": "سيدرس مقدّم الخدمة طلبك ويرسل لك عرض سعر.",
-      "requestDoneCta": "عرض طلباتي"
+      "requestDoneCta": "عرض طلباتي",
+      "availabilityTitle": "التوفّر",
+      "availabilityDaysLabel": "أيام العمل"
     },
     "prestataireMissions": {
       "title": "طلباتي",
@@ -3444,7 +3446,9 @@
       "manageServicesTitle": "خدماتي",
       "manageServicesBody": "أدِر الخدمات التي تقدّمها للمطاعم.",
       "missionsTitle": "الطلبات والمهام",
-      "missionsBody": "ردّ على طلبات عروض الأسعار وتابع مهامك."
+      "missionsBody": "ردّ على طلبات عروض الأسعار وتابع مهامك.",
+      "calendarTitle": "تقويمي",
+      "calendarBody": "أعلن توفّرك واطّلع على مهامك المجدولة."
     },
     "services": {
       "title": "خدماتي",
@@ -3503,6 +3507,40 @@
       "fProposedDate": "التاريخ المقترح",
       "cancel": "إلغاء",
       "saving": "جارٍ الإرسال…"
+    },
+    "wdMon": "الاثنين",
+    "wdTue": "الثلاثاء",
+    "wdWed": "الأربعاء",
+    "wdThu": "الخميس",
+    "wdFri": "الجمعة",
+    "wdSat": "السبت",
+    "wdSun": "الأحد",
+    "calendar": {
+      "title": "تقويمي",
+      "subtitle": "توفّرك ومهامك المجدولة.",
+      "back": "لوحة التحكم",
+      "errLoad": "تعذّر تحميل تقويمك.",
+      "errSave": "تعذّر الحفظ، حاول مجدّدًا.",
+      "availabilityTitle": "توفّري",
+      "weekdaysLabel": "أيام العمل",
+      "noteLabel": "ملاحظة التوفّر",
+      "notePlaceholder": "مثال: 8ص-6م في أيام الأسبوع، الطوارئ على مدار الساعة",
+      "saveAvailability": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "savedOk": "تم حفظ التوفّر",
+      "leaveTitle": "فترات عدم التوفّر",
+      "leaveEmpty": "لا توجد فترة معلنة.",
+      "addLeave": "إضافة فترة",
+      "leaveAdding": "جارٍ الإضافة…",
+      "leaveStart": "من",
+      "leaveEnd": "إلى",
+      "leaveReason": "السبب (اختياري)",
+      "leaveReasonPlaceholder": "مثال: إجازة",
+      "leaveDelete": "حذف",
+      "leaveErrDates": "يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده.",
+      "missionsTitle": "المهام المجدولة",
+      "missionsHint": "تظهر هنا مهامك المقبولة ذات التاريخ المحدّد (للقراءة فقط).",
+      "missionsEmpty": "لا توجد مهام مجدولة بعد."
     }
   }
 }

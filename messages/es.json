@@ -2892,7 +2892,9 @@
       "requestErr": "No se pudo enviar, inténtelo de nuevo.",
       "requestDoneTitle": "Solicitud enviada",
       "requestDoneBody": "El proveedor revisará su solicitud y le enviará un presupuesto.",
-      "requestDoneCta": "Ver mis solicitudes"
+      "requestDoneCta": "Ver mis solicitudes",
+      "availabilityTitle": "Disponibilidad",
+      "availabilityDaysLabel": "Días laborables"
     },
     "prestataireMissions": {
       "title": "Mis solicitudes",
@@ -3444,7 +3446,9 @@
       "manageServicesTitle": "Mis servicios",
       "manageServicesBody": "Gestione los servicios que ofrece a los restaurantes.",
       "missionsTitle": "Solicitudes y misiones",
-      "missionsBody": "Responda a las solicitudes de presupuesto y siga sus misiones."
+      "missionsBody": "Responda a las solicitudes de presupuesto y siga sus misiones.",
+      "calendarTitle": "Mi calendario",
+      "calendarBody": "Declare su disponibilidad y vea sus misiones planificadas."
     },
     "services": {
       "title": "Mis servicios",
@@ -3503,6 +3507,40 @@
       "fProposedDate": "Fecha propuesta",
       "cancel": "Cancelar",
       "saving": "Enviando…"
+    },
+    "wdMon": "Lun",
+    "wdTue": "Mar",
+    "wdWed": "Mié",
+    "wdThu": "Jue",
+    "wdFri": "Vie",
+    "wdSat": "Sáb",
+    "wdSun": "Dom",
+    "calendar": {
+      "title": "Mi calendario",
+      "subtitle": "Su disponibilidad y sus misiones planificadas.",
+      "back": "Panel",
+      "errLoad": "No se pudo cargar su calendario.",
+      "errSave": "No se pudo guardar, inténtelo de nuevo.",
+      "availabilityTitle": "Mi disponibilidad",
+      "weekdaysLabel": "Días laborables",
+      "noteLabel": "Nota de disponibilidad",
+      "notePlaceholder": "ej. 8h-18h entre semana, urgencias 24/7",
+      "saveAvailability": "Guardar",
+      "saving": "Guardando…",
+      "savedOk": "Disponibilidad guardada",
+      "leaveTitle": "Períodos de indisponibilidad",
+      "leaveEmpty": "Ningún período declarado.",
+      "addLeave": "Añadir un período",
+      "leaveAdding": "Añadiendo…",
+      "leaveStart": "Desde",
+      "leaveEnd": "Hasta",
+      "leaveReason": "Motivo (opcional)",
+      "leaveReasonPlaceholder": "ej. vacaciones",
+      "leaveDelete": "Eliminar",
+      "leaveErrDates": "La fecha de fin debe ser posterior o igual a la de inicio.",
+      "missionsTitle": "Misiones planificadas",
+      "missionsHint": "Sus misiones aceptadas con fecha prevista aparecen aquí (solo lectura).",
+      "missionsEmpty": "Aún no hay misiones planificadas."
     }
   }
 }

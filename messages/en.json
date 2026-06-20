@@ -2892,7 +2892,9 @@
       "requestErr": "Couldn't send, please try again.",
       "requestDoneTitle": "Request sent",
       "requestDoneBody": "The provider will review your request and send a quote.",
-      "requestDoneCta": "View my requests"
+      "requestDoneCta": "View my requests",
+      "availabilityTitle": "Availability",
+      "availabilityDaysLabel": "Working days"
     },
     "prestataireMissions": {
       "title": "My requests",
@@ -3444,7 +3446,9 @@
       "manageServicesTitle": "My services",
       "manageServicesBody": "Manage the services you offer to restaurants.",
       "missionsTitle": "Requests & missions",
-      "missionsBody": "Answer quote requests and track your missions."
+      "missionsBody": "Answer quote requests and track your missions.",
+      "calendarTitle": "My calendar",
+      "calendarBody": "Declare your availability and see your planned missions."
     },
     "services": {
       "title": "My services",
@@ -3503,6 +3507,40 @@
       "fProposedDate": "Proposed date",
       "cancel": "Cancel",
       "saving": "Sending…"
+    },
+    "wdMon": "Mon",
+    "wdTue": "Tue",
+    "wdWed": "Wed",
+    "wdThu": "Thu",
+    "wdFri": "Fri",
+    "wdSat": "Sat",
+    "wdSun": "Sun",
+    "calendar": {
+      "title": "My calendar",
+      "subtitle": "Your availability and your planned missions.",
+      "back": "Dashboard",
+      "errLoad": "Couldn't load your calendar.",
+      "errSave": "Couldn't save, please try again.",
+      "availabilityTitle": "My availability",
+      "weekdaysLabel": "Working days",
+      "noteLabel": "Availability note",
+      "notePlaceholder": "e.g. 8am-6pm on weekdays, emergencies 24/7",
+      "saveAvailability": "Save",
+      "saving": "Saving…",
+      "savedOk": "Availability saved",
+      "leaveTitle": "Time-off periods",
+      "leaveEmpty": "No period declared.",
+      "addLeave": "Add a period",
+      "leaveAdding": "Adding…",
+      "leaveStart": "From",
+      "leaveEnd": "To",
+      "leaveReason": "Reason (optional)",
+      "leaveReasonPlaceholder": "e.g. holidays",
+      "leaveDelete": "Delete",
+      "leaveErrDates": "The end date must be on or after the start date.",
+      "missionsTitle": "Planned missions",
+      "missionsHint": "Your accepted missions with a planned date appear here (read-only).",
+      "missionsEmpty": "No planned mission yet."
     }
   }
 }

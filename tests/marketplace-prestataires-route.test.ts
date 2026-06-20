@@ -86,4 +86,14 @@ describe('discovery — only active-with-services + filters', () => {
     expect(d.prestataires[0].coverageZones).toEqual([])
     expect(d.prestataires[0].serviceCategories).toEqual([])
   })
+
+  // P4 (Agent 77) — the fiche shows the prestataire's DECLARED availability READ-ONLY.
+  it('exposes declared availability (canonical weekdays + note) for the fiche', async () => {
+    db.prestataireProfile.findMany.mockResolvedValue([{
+      ...ROWS[0], availableWeekdays: ['fri', 'mon', 'mon', 'junk'], availabilityNote: '8h-18h',
+    }])
+    const d = await (await get()).json()
+    expect(d.prestataires[0].availableWeekdays).toEqual(['mon', 'fri']) // normalized, unique, junk dropped
+    expect(d.prestataires[0].availabilityNote).toBe('8h-18h')
+  })
 })

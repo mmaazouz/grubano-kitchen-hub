@@ -786,6 +786,11 @@ model PrestataireProfile {
   coverageZones      Json     @default("[]")    // string[] — cities / postal areas served
   modality           String   @default("on_site") // on_site | remote | both
   indicativeRate     String?  @db.Text          // free text (« sur devis », « dès 80€/h ») — NOT a fixed price
+  // P4 (Agent 77) — SIMPLE DECLARATIVE availability. NO bookable slots / NO appointment
+  // booking / NO conflict detection (a future maybe, per Mohammed) — just a declaration.
+  // Additive + reversible. Leave/holiday periods live in PrestataireUnavailability. NO money.
+  availableWeekdays  Json     @default("[]")    // string[] — mon|tue|wed|thu|fri|sat|sun (declared working days)
+  availabilityNote   String?  @db.Text          // free-text availability note (« 8h-18h, urgences 24/7 »)
   status             String   @default("pending")   // pending | active | suspended | rejected (business state)
   // Auto-onboarding LLM vetting (clone of SupplierProfile). Gates VISIBILITY only —
   // never money (any future payout stays independently hard-gated by Stripe Connect KYB).
@@ -811,6 +816,27 @@ model PrestataireProfile {
   serviceOfferings   ServiceOffering[]
   // P3 (Agent 76) — quote/mission requests this prestataire received. Additive BACK-relation.
   serviceMissions    ServiceMission[]
+  // P4 (Agent 77) — declared leave/holiday periods (simple availability). Additive BACK-relation.
+  unavailabilities   PrestataireUnavailability[]
+}
+
+// ── PrestataireUnavailability (SERVICES — P4 simple declarative calendar, Agent 77) ──
+// ADDITIVE + REVERSIBLE. A SIMPLE, DECLARATIVE leave/holiday period a prestataire posts so
+// restaurants and itself know when it is away. This is NOT a bookable-slot / appointment
+// system and NOT conflict detection (a future maybe, per Mohammed) — just a declared
+// start->end range with an optional reason. Owner-scoped by prestataireProfileId;
+// cascade-deleted with the profile. 100% OFF the money path. The mission "calendar" view
+// simply READS the existing ServiceMission.scheduledDate (P3) — that write logic is untouched.
+model PrestataireUnavailability {
+  id                   String             @id @default(cuid())
+  prestataireProfileId String
+  prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
+  startDate            DateTime                                // declared period start (date)
+  endDate              DateTime                                // declared period end (date)
+  reason               String?            @db.Text            // optional free-text reason (« congés »)
+  createdAt            DateTime           @default(now())
+
+  @@index([prestataireProfileId])
 }
 
 // ── ServiceOffering (SERVICES marketplace — P2 service listing, Agent 75) ─────

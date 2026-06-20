@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { callerOperator } from '@/lib/operator-session'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { asStringArray, filterPrestataires } from '@/lib/service-offering'
+import { normalizeWeekdays } from '@/lib/availability'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,7 @@ export async function GET(req: Request) {
       select: {
         id: true, companyName: true, city: true,
         serviceCategories: true, coverageZones: true, modality: true, indicativeRate: true,
+        availableWeekdays: true, availabilityNote: true, // P4 — declared availability (read-only on the fiche)
         serviceOfferings: {
           where:   { active: true },
           select:  { id: true, title: true, description: true, category: true, modality: true, indicativeRate: true },
@@ -47,6 +49,7 @@ export async function GET(req: Request) {
       ...p,
       serviceCategories: asStringArray(p.serviceCategories),
       coverageZones:     asStringArray(p.coverageZones),
+      availableWeekdays: normalizeWeekdays(p.availableWeekdays), // P4 — canonical weekday[]
     }))
 
     const url = new URL(req.url)

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Send, X, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Send, X, CheckCircle2, CalendarDays } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Badge, Button } from '@/components/design-system'
 
@@ -23,6 +23,8 @@ interface DiscoverPrestataire {
   coverageZones: string[]
   modality: string
   indicativeRate: string | null
+  availableWeekdays: string[]
+  availabilityNote: string | null
   serviceOfferings: DiscoverOffering[]
 }
 
@@ -32,6 +34,7 @@ const SVC_LABEL: Record<string, string> = {
   accounting: 'svcAccounting', training: 'svcTraining', other: 'svcOther',
 }
 const MOD_LABEL: Record<string, string> = { on_site: 'modalityOnSite', remote: 'modalityRemote', both: 'modalityBoth' }
+const WD_LABEL: Record<string, string> = { mon: 'wdMon', tue: 'wdTue', wed: 'wdWed', thu: 'wdThu', fri: 'wdFri', sat: 'wdSat', sun: 'wdSun' }
 
 export default function PrestataireDetailClient({ id }: { id: string }) {
   const t  = useTranslations('prestataire')
@@ -55,6 +58,7 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
 
   const svcLabel = (c: string) => (c in SVC_LABEL ? t(SVC_LABEL[c] as 'svcOther') : c)
   const modLabel = (m: string) => t((MOD_LABEL[m] ?? 'modalityOnSite') as 'modalityOnSite')
+  const wdLabel  = (dd: string) => (dd in WD_LABEL ? t(WD_LABEL[dd] as 'wdMon') : dd)
 
   const byCategory = useMemo(() => {
     const map = new Map<string, DiscoverOffering[]>()
@@ -133,9 +137,24 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
         <span className="inline-flex items-center gap-1"><MonitorSmartphone size={13} /> {modLabel(p.modality)}</span>
       </p>
       {p.coverageZones.length > 0 && (
-        <p className="mb-5 text-sm text-grubano-ink-muted">
+        <p className="mb-3 text-sm text-grubano-ink-muted">
           <span className="font-medium text-grubano-ink">{tm('coverageLabel')}:</span> {p.coverageZones.join(', ')}
         </p>
+      )}
+
+      {/* P4 — declared availability (READ-ONLY for the restaurant; NO booking). */}
+      {(p.availableWeekdays.length > 0 || p.availabilityNote) && (
+        <div className="mb-5 rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3.5 py-3">
+          <p className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-grubano-ink">
+            <CalendarDays size={14} className="text-grubano-ink-muted" /> {tm('availabilityTitle')}
+          </p>
+          {p.availableWeekdays.length > 0 && (
+            <p className="text-sm text-grubano-ink-muted">
+              <span className="font-medium text-grubano-ink">{tm('availabilityDaysLabel')}:</span> {p.availableWeekdays.map(wdLabel).join(', ')}
+            </p>
+          )}
+          {p.availabilityNote && <p className="mt-0.5 text-sm text-grubano-ink-muted whitespace-pre-line">{p.availabilityNote}</p>}
+        </div>
       )}
 
       {/* P3 — « Demander un devis » (real flow; replaces the P2 "coming soon" notice). */}
