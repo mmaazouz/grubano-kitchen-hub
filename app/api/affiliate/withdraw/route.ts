@@ -7,6 +7,8 @@ import { isAffiliateConnectEnabled, payPartner } from '@/lib/creator-payout'
 import { startConnectOnboarding, syncConnectStatus } from '@/lib/connect-onboarding'
 import { computePartnerBalance } from '@/lib/partner-balance'
 import { payoutMinCents } from '@/lib/payout-threshold'
+import { requireStepUp } from '@/lib/step-up'
+import { isMoneyStepUpEnabled } from '@/lib/email-otp'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,6 +46,7 @@ function flagsOn(): boolean {
 
 type OperatorRow = {
   id: string
+  email: string
   affiliateStripeAccountId: string | null
   affiliatePayoutStatus: string | null
   registeredAddress: string | null
@@ -63,7 +66,7 @@ async function callerOperator(): Promise<OperatorRow | null> {
   return prisma.operator.findUnique({
     where:  { id: operatorId },
     select: {
-      id: true, affiliateStripeAccountId: true, affiliatePayoutStatus: true,
+      id: true, email: true, affiliateStripeAccountId: true, affiliatePayoutStatus: true,
       registeredAddress: true, taxId: true, taxIdCountry: true, dateOfBirth: true, sellerType: true,
     },
   })
@@ -109,6 +112,9 @@ export async function GET() {
     hasAccount:     !!op.affiliateStripeAccountId,
     fiscalComplete: isFiscalComplete(op),
     payouts:        await recentPayouts(op.id),
+    // Phase 3 (Agent 88): tell the client a step-up code is required before a withdrawal.
+    // Included ONLY when the flag is ON → OFF response is byte-identical.
+    ...(isMoneyStepUpEnabled() ? { stepUp: true } : {}),
   })
 }
 
@@ -117,6 +123,19 @@ export async function POST(req: Request) {
     if (!flagsOn()) return NextResponse.json({ error: 'Indisponible', gated: true }, { status: 404 })
     const op = await callerOperator()
     if (!op) return NextResponse.json({ error: 'Profil affilié introuvable' }, { status: 401 })
+
+    // ── Phase 3 (Agent 88) — money STEP-UP guard, BEFORE any money logic. Gated by
+    //    AUTH_MONEY_STEPUP_ENABLED: OFF → requireStepUp returns ok → the withdrawal
+    //    behaves EXACTLY as before (byte-identical). ON → a fresh single-use email code
+    //    (purpose 'stepup:withdraw', bound to the SESSION email) is required; without it
+    //    → stepup_required, with a wrong/expired one → stepup_invalid. The body carries
+    //    ONLY the code — the amount stays server-derived (computePartnerBalance) below.
+    const body = (await req.json().catch(() => null)) as { stepUpCode?: unknown } | null
+    const stepUp = await requireStepUp(
+      op.email, 'stepup:withdraw',
+      typeof body?.stepUpCode === 'string' ? body.stepUpCode : null,
+    )
+    if (!stepUp.ok) return NextResponse.json({ status: stepUp.reason }, { status: stepUp.status })
 
     // 1. Amount = the SERVER matured balance (NEVER a client value; the body is ignored).
     const balance        = await computePartnerBalance('affiliate', op.id)

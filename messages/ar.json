@@ -3419,7 +3419,13 @@
     "tonePunchy": "قصير ومباشر",
     "toneStorytelling": "سرد قصصي",
     "studioLockedTitle": "استوديو المحتوى",
-    "studioLockedBody": "تحقّق من جمهورك لفتح استوديو المحتوى بالذكاء الاصطناعي."
+    "studioLockedBody": "تحقّق من جمهورك لفتح استوديو المحتوى بالذكاء الاصطناعي.",
+    "withdrawStepUpTitle": "التأكيد مطلوب",
+    "withdrawStepUpPrompt": "أدخل الرمز المكوّن من 6 أرقام المُرسَل إلى بريدك لتأكيد هذا السحب.",
+    "withdrawStepUpLabel": "رمز التأكيد",
+    "withdrawStepUpConfirm": "تأكيد السحب",
+    "withdrawStepUpResend": "إعادة إرسال رمز",
+    "withdrawStepUpError": "رمز غير صالح أو منتهي الصلاحية. أعد المحاولة أو اطلب رمزًا جديدًا."
   },
   "prestataire": {
     "registerTitle": "كن مقدّم خدمات",

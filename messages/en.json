@@ -3419,7 +3419,13 @@
     "tonePunchy": "Short & punchy",
     "toneStorytelling": "Storytelling",
     "studioLockedTitle": "Content studio",
-    "studioLockedBody": "Get your audience verified to unlock the AI content studio."
+    "studioLockedBody": "Get your audience verified to unlock the AI content studio.",
+    "withdrawStepUpTitle": "Confirmation required",
+    "withdrawStepUpPrompt": "Enter the 6-digit code sent to your email to confirm this withdrawal.",
+    "withdrawStepUpLabel": "Confirmation code",
+    "withdrawStepUpConfirm": "Confirm withdrawal",
+    "withdrawStepUpResend": "Resend a code",
+    "withdrawStepUpError": "Invalid or expired code. Try again or resend a code."
   },
   "prestataire": {
     "registerTitle": "Become a service provider",

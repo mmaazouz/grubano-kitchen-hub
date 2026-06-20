@@ -3419,7 +3419,13 @@
     "tonePunchy": "Court & punchy",
     "toneStorytelling": "Storytelling",
     "studioLockedTitle": "Studio de contenu",
-    "studioLockedBody": "Faites vérifier votre audience pour débloquer le studio de contenu IA."
+    "studioLockedBody": "Faites vérifier votre audience pour débloquer le studio de contenu IA.",
+    "withdrawStepUpTitle": "Confirmation requise",
+    "withdrawStepUpPrompt": "Saisissez le code à 6 chiffres envoyé à votre adresse e-mail pour confirmer ce retrait.",
+    "withdrawStepUpLabel": "Code de confirmation",
+    "withdrawStepUpConfirm": "Confirmer le retrait",
+    "withdrawStepUpResend": "Renvoyer un code",
+    "withdrawStepUpError": "Code invalide ou expiré. Réessayez ou renvoyez un code."
   },
   "prestataire": {
     "registerTitle": "Devenez prestataire de services",

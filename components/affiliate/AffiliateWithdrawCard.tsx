@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { Loader2, Banknote, ShieldCheck, FileText } from 'lucide-react'
-import { Card, Button } from '@/components/design-system'
+import { Loader2, Banknote, ShieldCheck, FileText, KeyRound } from 'lucide-react'
+import { Card, Button, Input } from '@/components/design-system'
 import Dac7FiscalForm from '@/components/fiscal/Dac7FiscalForm'
 
 // ── AffiliateWithdrawCard — self-service payout UI (Brique D2, Agent 64) ───────────────
@@ -21,6 +21,9 @@ type Status = {
   hasAccount: boolean
   fiscalComplete: boolean
   payouts: { id: string; amountCents: number; status: string; createdAt: string }[]
+  // Phase 3 (Agent 88): present + true only when AUTH_MONEY_STEPUP_ENABLED → a fresh
+  // email code is required before a withdrawal. Absent → OFF → unchanged flow.
+  stepUp?: boolean
 }
 type PostResult =
   | { status: 'below_threshold'; availableCents: number; thresholdCents: number }
@@ -30,6 +33,8 @@ type PostResult =
   | { status: 'paid'; amountCents: number }
   | { status: 'failed' }
   | { status: 'unavailable' }
+  | { status: 'stepup_required' }
+  | { status: 'stepup_invalid' }
 
 const eur = (cents: number) => (cents / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 
@@ -40,6 +45,10 @@ export default function AffiliateWithdrawCard() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult]   = useState<PostResult | null>(null)
+  // Phase 3 step-up (only used when status.stepUp): request a code → enter it → confirm.
+  const [stepUpPhase, setStepUpPhase]     = useState<'idle' | 'sent'>('idle')
+  const [stepUpCode, setStepUpCode]       = useState('')
+  const [stepUpSending, setStepUpSending] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -58,17 +67,36 @@ export default function AffiliateWithdrawCard() {
 
   const below = status.availableCents < status.thresholdCents
 
-  async function submit() {
+  async function submit(code?: string) {
     setSubmitting(true); setResult(null)
     try {
-      const res = await fetch('/api/affiliate/withdraw', { method: 'POST' })
+      const res = await fetch('/api/affiliate/withdraw', {
+        method: 'POST',
+        // The body carries ONLY the step-up code (when present) — the amount is always
+        // server-derived. No body → byte-identical to the pre-step-up call.
+        ...(code ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stepUpCode: code }) } : {}),
+      })
       const data = (await res.json().catch(() => ({ status: 'failed' }))) as PostResult
       setResult(data)
-      if (data.status === 'paid') load() // refresh balance + history
+      if (data.status === 'paid') { setStepUpPhase('idle'); setStepUpCode(''); load() } // refresh balance + history
     } catch {
       setResult({ status: 'failed' })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Ask the server to email a fresh step-up code (purpose 'stepup:withdraw'), then reveal
+  // the code box. Generic by design — never reveals whether the send succeeded.
+  async function requestStepUp() {
+    setStepUpSending(true); setResult(null)
+    try {
+      await fetch('/api/auth/step-up/request', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose: 'stepup:withdraw' }),
+      })
+    } catch { /* generic */ } finally {
+      setStepUpPhase('sent'); setStepUpSending(false)
     }
   }
 
@@ -87,8 +115,37 @@ export default function AffiliateWithdrawCard() {
         <p className="mt-2 rounded-grubano-md bg-grubano-bg px-3 py-2 text-[12px] text-grubano-ink-muted">
           {t('withdrawBelowThreshold', { missing: eur(status.thresholdCents - status.availableCents), threshold: eur(status.thresholdCents) })}
         </p>
+      ) : status.stepUp ? (
+        stepUpPhase === 'idle' ? (
+          <Button variant="primary" size="sm" className="mt-3" loading={stepUpSending} onClick={requestStepUp}>
+            {t('withdrawCta')}
+          </Button>
+        ) : (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center gap-2"><KeyRound size={15} className="text-grubano-primary" /><p className="text-[13px] font-bold">{t('withdrawStepUpTitle')}</p></div>
+            <p className="text-[12px] text-grubano-ink-muted">{t('withdrawStepUpPrompt')}</p>
+            <Input
+              label={t('withdrawStepUpLabel')}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="••••••"
+              value={stepUpCode}
+              onChange={e => setStepUpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            />
+            <div className="flex gap-2">
+              <Button variant="primary" size="sm" loading={submitting} disabled={stepUpCode.length !== 6} onClick={() => submit(stepUpCode)}>
+                {t('withdrawStepUpConfirm')}
+              </Button>
+              <Button variant="ghost" size="sm" loading={stepUpSending} onClick={requestStepUp}>
+                {t('withdrawStepUpResend')}
+              </Button>
+            </div>
+            {result?.status === 'stepup_invalid' && <p className="text-[12px] text-grubano-danger">{t('withdrawStepUpError')}</p>}
+          </div>
+        )
       ) : (
-        <Button variant="primary" size="sm" className="mt-3" loading={submitting} onClick={submit}>
+        <Button variant="primary" size="sm" className="mt-3" loading={submitting} onClick={() => submit()}>
           {t('withdrawCta')}
         </Button>
       )}
