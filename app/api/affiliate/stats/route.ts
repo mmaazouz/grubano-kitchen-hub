@@ -6,6 +6,7 @@ import { isAffiliateEnabled, getAffiliateByOperator } from '@/lib/affiliate-acco
 import { computePartnerBalance } from '@/lib/partner-balance'
 import { countAffiliateClicks } from '@/lib/affiliate-clicks'
 import { computeTier, computeStreakWeeks, computeBadges, rankLeaderboard, type LeaderRow } from '@/lib/affiliate-status'
+import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -46,6 +47,26 @@ export async function GET() {
         commissionPct = Math.round(cfg.commissionPctOfGrubanoFee * 100)
       }
     } catch { /* line hidden */ }
+
+    // Influencer-tier transparency — DISPLAY ONLY (Agent 90). A VERIFIED affiliate (INF-1,
+    // Affiliate.audienceVerified) earns a HIGHER share of the SAME pot (INF-3, default 40 %).
+    // We READ the configured rate (ReferralConfig.influencerCommissionPct) + the verified
+    // state; we NEVER compute or move a cent — the APPLIED rate is FROZEN per ReferralOrder at
+    // order time (orders/route, untouched). Gated by INFLUENCER_ENABLED: when OFF the tier is
+    // inactive and NO extra query runs → the response stays byte-identical to today.
+    let influencer: { verified: boolean; ratePct: number | null } = { verified: false, ratePct: null }
+    if (isInfluencerEnabled()) {
+      try {
+        const [verified, infCfg] = await Promise.all([
+          isAffiliateVerified(operatorId),
+          prisma.referralConfig.findFirst({ select: { influencerCommissionPct: true } }),
+        ])
+        const ratePct = infCfg && Number.isFinite(infCfg.influencerCommissionPct) && infCfg.influencerCommissionPct > 0
+          ? Math.round(infCfg.influencerCommissionPct * 100)
+          : null
+        influencer = { verified, ratePct }
+      } catch { /* influencer line hidden */ }
+    }
 
     // Owner-scoped reads, keyed on the affiliate's OPERATOR id (= ReferralOrder.affiliateId).
     const affiliateWhere = { affiliateId: operatorId }
@@ -151,6 +172,7 @@ export async function GET() {
       badges,
       leaderboard,
       commissionPct,
+      influencer,
     })
   } catch (err) {
     console.error('[GET /api/affiliate/stats]', err instanceof Error ? err.message : err)

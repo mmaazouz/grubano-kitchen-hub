@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 // ── GET /api/affiliate/stats — TOP-LEVEL affiliate dashboard feed (Brique C, Agent 60) ──
 // Operator-keyed twin of the creator route. The affiliate is resolved from the
@@ -29,6 +29,7 @@ const { db } = vi.hoisted(() => ({
     referral:       { count: vi.fn() },
     referralConfig: { findFirst: vi.fn() },
     operator:       { findMany: vi.fn() },
+    affiliate:      { findUnique: vi.fn() }, // read by the real isAffiliateVerified (influencer tier)
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -155,5 +156,40 @@ describe('privacy-safe leaderboard', () => {
     for (const e of out.leaderboard.top) {
       expect(Object.keys(e).sort()).toEqual(['isMe', 'name', 'rank', 'tierKey'])
     }
+  })
+})
+
+// ── Influencer-tier transparency — DISPLAY ONLY (Agent 90, finitions) ──────────────
+// A VERIFIED affiliate (INF-1, Affiliate.audienceVerified) earns a higher share of the
+// SAME pot (INF-3, default 40 %). The route READS the configured rate + verified state;
+// it NEVER computes or moves a cent (the applied rate is frozen per ReferralOrder). Gated
+// by INFLUENCER_ENABLED → OFF means no rate surfaced AND no extra query (byte-identical).
+describe('influencer-tier transparency (display only)', () => {
+  afterEach(() => { delete process.env.INFLUENCER_ENABLED })
+
+  it('INFLUENCER_ENABLED OFF (default) → {verified:false, ratePct:null}, no affiliate lookup', async () => {
+    const out = await (await GET()).json()
+    expect(out.influencer).toEqual({ verified: false, ratePct: null })
+    expect(db.affiliate.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('flag ON + verified affiliate → exposes the configured influencer rate (40 %), owner-scoped', async () => {
+    process.env.INFLUENCER_ENABLED = 'true'
+    db.affiliate.findUnique.mockResolvedValue({ audienceVerified: true })
+    db.referralConfig.findFirst.mockResolvedValue({ commissionPctOfGrubanoFee: 0.30, influencerCommissionPct: 0.40 })
+    const out = await (await GET()).json()
+    expect(out.influencer).toEqual({ verified: true, ratePct: 40 })
+    expect(out.commissionPct).toBe(30)                                   // base line still exposed (UI chooses)
+    // the verified read is keyed on the SESSION operator id (IDOR-safe), never a client value
+    expect(db.affiliate.findUnique).toHaveBeenCalledWith({ where: { operatorId: OP_ID }, select: { audienceVerified: true } })
+  })
+
+  it('flag ON + NON-verified affiliate → verified:false (UI falls back to the base rate)', async () => {
+    process.env.INFLUENCER_ENABLED = 'true'
+    db.affiliate.findUnique.mockResolvedValue({ audienceVerified: false })
+    db.referralConfig.findFirst.mockResolvedValue({ commissionPctOfGrubanoFee: 0.30, influencerCommissionPct: 0.40 })
+    const out = await (await GET()).json()
+    expect(out.influencer.verified).toBe(false)
+    expect(out.influencer.ratePct).toBe(40)                             // rate is read; UI gates on verified
   })
 })

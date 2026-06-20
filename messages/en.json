@@ -3447,7 +3447,9 @@
     "withdrawStepUpLabel": "Confirmation code",
     "withdrawStepUpConfirm": "Confirm withdrawal",
     "withdrawStepUpResend": "Resend a code",
-    "withdrawStepUpError": "Invalid or expired code. Try again or resend a code."
+    "withdrawStepUpError": "Invalid or expired code. Try again or resend a code.",
+    "influencerBadge": "Verified influencer",
+    "influencerCommissionLine": "As a verified influencer, you earn {pct} % of Grubano’s commission (on the net margin)."
   },
   "prestataire": {
     "registerTitle": "Become a service provider",

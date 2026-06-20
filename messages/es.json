@@ -3447,7 +3447,9 @@
     "withdrawStepUpLabel": "Código de confirmación",
     "withdrawStepUpConfirm": "Confirmar la retirada",
     "withdrawStepUpResend": "Reenviar un código",
-    "withdrawStepUpError": "Código no válido o caducado. Inténtelo de nuevo o reenvíe un código."
+    "withdrawStepUpError": "Código no válido o caducado. Inténtelo de nuevo o reenvíe un código.",
+    "influencerBadge": "Influencer verificado",
+    "influencerCommissionLine": "Como influencer verificado, usted recibe el {pct} % de la comisión de Grubano (sobre el margen neto)."
   },
   "prestataire": {
     "registerTitle": "Conviértete en proveedor de servicios",

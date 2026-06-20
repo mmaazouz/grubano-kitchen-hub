@@ -20,6 +20,10 @@ type Stats = {
   badges:   { key: string; achieved: boolean }[]
   leaderboard: { top: { rank: number; name: string; tierKey: string; isMe: boolean }[]; myRank: number | null; total: number } | null
   commissionPct: number | null
+  // Influencer-tier transparency (Agent 90) — DISPLAY ONLY. A VERIFIED affiliate sees the
+  // higher influencer rate; everyone else sees the base commission line. Optional for back-
+  // compat: absent/false → the base line renders exactly as before.
+  influencer?: { verified: boolean; ratePct: number | null }
 }
 
 const eur = (cents: number) => (cents / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -68,9 +72,17 @@ export default function AffiliateDashboardClient() {
             </div>
           ))}
         </div>
-        {stats.commissionPct != null && (
+        {/* Commission transparency — a VERIFIED influencer sees the higher rate + badge; every
+            other affiliate sees the base line (unchanged). DISPLAY ONLY: both rates are read
+            from the server (config), never computed here. */}
+        {stats.influencer?.verified && stats.influencer.ratePct != null ? (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-grubano-ink-faint">
+            <Badge tone="primary" size="sm">{t('influencerBadge')}</Badge>
+            <span>{t('influencerCommissionLine', { pct: stats.influencer.ratePct })}</span>
+          </p>
+        ) : stats.commissionPct != null ? (
           <p className="mt-2 text-[11px] text-grubano-ink-faint">{t('commissionLine', { pct: stats.commissionPct })}</p>
-        )}
+        ) : null}
       </Card>
 
       {/* Click → conversion funnel */}

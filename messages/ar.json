@@ -3447,7 +3447,9 @@
     "withdrawStepUpLabel": "رمز التأكيد",
     "withdrawStepUpConfirm": "تأكيد السحب",
     "withdrawStepUpResend": "إعادة إرسال رمز",
-    "withdrawStepUpError": "رمز غير صالح أو منتهي الصلاحية. أعد المحاولة أو اطلب رمزًا جديدًا."
+    "withdrawStepUpError": "رمز غير صالح أو منتهي الصلاحية. أعد المحاولة أو اطلب رمزًا جديدًا.",
+    "influencerBadge": "مؤثّر موثَّق",
+    "influencerCommissionLine": "بصفتك مؤثّرًا موثَّقًا، تحصل على {pct} % من عمولة Grubano (على الهامش الصافي)."
   },
   "prestataire": {
     "registerTitle": "كن مقدّم خدمات",
