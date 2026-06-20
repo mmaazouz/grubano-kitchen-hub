@@ -2896,7 +2896,10 @@
       "availabilityTitle": "Disponibilités",
       "availabilityDaysLabel": "Jours travaillés",
       "reviewsTitle": "Avis",
-      "reviewsCount": "{count} avis"
+      "reviewsCount": "{count} avis",
+      "forfaitLabel": "forfait",
+      "orderForfaitCta": "Commander (prix fixe)",
+      "orderForfaitErr": "La commande n’a pas pu démarrer. Réessayez."
     },
     "prestataireMissions": {
       "title": "Mes demandes",
@@ -3492,7 +3495,11 @@
       "onQuote": "Sur devis",
       "errLoad": "Impossible de charger vos services.",
       "errSave": "Impossible d’enregistrer, réessayez.",
-      "confirmDelete": "Supprimer « {title} » ?"
+      "confirmDelete": "Supprimer « {title} » ?",
+      "fForfait": "Forfait (prix fixe)",
+      "fForfaitPlaceholder": "ex. 150",
+      "fForfaitHint": "Laissez vide pour « sur devis ». Si renseigné, le restaurant peut commander et payer ce service d’avance.",
+      "forfaitBadge": "Forfait {price}"
     },
     "missions": {
       "title": "Demandes & missions",

@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { Plus, Pencil, Trash2, Wrench, ArrowLeft, X, Check, Loader2, EyeOff } from 'lucide-react'
+import { useTranslations, useLocale } from 'next-intl'
+import { Plus, Pencil, Trash2, Wrench, ArrowLeft, X, Check, Loader2, EyeOff, Tag } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input, Badge, EmptyState } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
 import { SERVICE_CATEGORIES, SERVICE_MODALITIES } from '@/lib/service-offering'
+import { formatMoney } from '@/lib/format-money'
 
 // ── /prestataire/services — the prestataire's OWN service listings (P2, Agent 75) ──
 // A CLONE of /supplier/catalog, adapted to SERVICES. List + add/edit/delete, all scoped
@@ -22,6 +23,7 @@ interface ServiceItem {
   category: string
   modality: string
   indicativeRate: string | null
+  fixedPriceCents: number | null
   active: boolean
 }
 type FormState = {
@@ -31,10 +33,11 @@ type FormState = {
   modality: string
   description: string
   indicativeRate: string
+  fixedPriceEur: string // P8b — optional forfait price (euros input → cents on save)
   active: boolean
 }
 const EMPTY_FORM: FormState = {
-  title: '', category: 'other', modality: 'on_site', description: '', indicativeRate: '', active: true,
+  title: '', category: 'other', modality: 'on_site', description: '', indicativeRate: '', fixedPriceEur: '', active: true,
 }
 
 // category / modality → prestataire.* i18n keys (shared with the P1 register form + dashboard).
@@ -48,6 +51,7 @@ const MOD_LABEL: Record<string, string> = { on_site: 'modalityOnSite', remote: '
 export default function ServicesClient() {
   const t  = useTranslations('prestataire')          // shared svc* + modality* labels
   const ts = useTranslations('prestataire.services') // page-specific copy
+  const locale = useLocale()
 
   const [items, setItems]       = useState<ServiceItem[]>([])
   const [loading, setLoading]   = useState(true)
@@ -72,7 +76,9 @@ export default function ServicesClient() {
     setFormError('')
     setForm({
       id: it.id, title: it.title, category: it.category, modality: it.modality,
-      description: it.description ?? '', indicativeRate: it.indicativeRate ?? '', active: it.active,
+      description: it.description ?? '', indicativeRate: it.indicativeRate ?? '',
+      fixedPriceEur: it.fixedPriceCents != null ? (it.fixedPriceCents / 100).toString() : '',
+      active: it.active,
     })
   }
 
@@ -80,12 +86,18 @@ export default function ServicesClient() {
     e.preventDefault()
     if (!form || saving) return
     setSaving(true); setFormError('')
+    // P8b — optional forfait: euros → integer cents; empty/invalid/≤0 → null (« sur devis »).
+    const eur = Number(form.fixedPriceEur.replace(',', '.'))
+    const fixedPriceCents = form.fixedPriceEur.trim() && Number.isFinite(eur) && eur > 0
+      ? Math.round(eur * 100)
+      : null
     const payload = {
       title:          form.title.trim(),
       category:       form.category,
       modality:       form.modality,
       description:    form.description.trim() || null,
       indicativeRate: form.indicativeRate.trim() || null,
+      fixedPriceCents,
       active:         form.active,
     }
     try {
@@ -170,6 +182,11 @@ export default function ServicesClient() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-semibold text-grubano-ink truncate">{it.title}</h3>
                         <Badge tone="neutral" size="sm">{svcLabel(it.category)}</Badge>
+                        {it.fixedPriceCents != null && (
+                          <Badge tone="success" size="sm">
+                            <span className="inline-flex items-center gap-1"><Tag size={11} /> {ts('forfaitBadge', { price: formatMoney(it.fixedPriceCents, locale) })}</span>
+                          </Badge>
+                        )}
                         {!it.active && (
                           <Badge tone="neutral" size="sm">
                             <span className="inline-flex items-center gap-1"><EyeOff size={11} /> {ts('hidden')}</span>
@@ -243,6 +260,11 @@ export default function ServicesClient() {
               <div>
                 <Input label={ts('fRate')} value={form.indicativeRate} onChange={(e) => setForm({ ...form, indicativeRate: e.target.value })} placeholder={ts('fRatePlaceholder')} />
                 <p className="mt-1 text-[11px] text-grubano-ink-faint">{ts('fRateHint')}</p>
+              </div>
+              <div>
+                <Input label={ts('fForfait')} type="number" inputMode="decimal" min={0} step="0.01"
+                  value={form.fixedPriceEur} onChange={(e) => setForm({ ...form, fixedPriceEur: e.target.value })} placeholder={ts('fForfaitPlaceholder')} />
+                <p className="mt-1 text-[11px] text-grubano-ink-faint">{ts('fForfaitHint')}</p>
               </div>
               <label className="flex items-center gap-2 text-sm text-grubano-ink-muted">
                 <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="h-4 w-4 accent-grubano-primary" />

@@ -36,7 +36,7 @@ export async function GET(req: Request) {
         availableWeekdays: true, availabilityNote: true, // P4 — declared availability (read-only on the fiche)
         serviceOfferings: {
           where:   { active: true },
-          select:  { id: true, title: true, description: true, category: true, modality: true, indicativeRate: true },
+          select:  { id: true, title: true, description: true, category: true, modality: true, indicativeRate: true, fixedPriceCents: true },
           orderBy: [{ category: 'asc' }, { title: 'asc' }],
         },
       },

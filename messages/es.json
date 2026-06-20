@@ -2896,7 +2896,10 @@
       "availabilityTitle": "Disponibilidad",
       "availabilityDaysLabel": "Días laborables",
       "reviewsTitle": "Opiniones",
-      "reviewsCount": "{count} opiniones"
+      "reviewsCount": "{count} opiniones",
+      "forfaitLabel": "forfait",
+      "orderForfaitCta": "Pedir (precio fijo)",
+      "orderForfaitErr": "No se pudo iniciar el pedido. Inténtelo de nuevo."
     },
     "prestataireMissions": {
       "title": "Mis solicitudes",
@@ -3492,7 +3495,11 @@
       "onQuote": "A presupuesto",
       "errLoad": "No se pudieron cargar sus servicios.",
       "errSave": "No se pudo guardar, inténtelo de nuevo.",
-      "confirmDelete": "¿Eliminar «{title}»?"
+      "confirmDelete": "¿Eliminar «{title}»?",
+      "fForfait": "Tarifa fija (forfait)",
+      "fForfaitPlaceholder": "p. ej. 150",
+      "fForfaitHint": "Déjelo vacío para « presupuesto ». Si lo indica, el restaurante puede pedir y pagar este servicio por adelantado.",
+      "forfaitBadge": "Forfait {price}"
     },
     "missions": {
       "title": "Solicitudes y misiones",

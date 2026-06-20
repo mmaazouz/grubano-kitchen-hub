@@ -869,6 +869,10 @@ model ServiceOffering {
   category             String             @default("other")    // service family: electricity|plumbing|haccp|cleaning|pest_control|fridge_repair|kitchen_maintenance|accounting|training|other
   modality             String             @default("on_site")  // on_site | remote | both
   indicativeRate       String?            @db.Text             // free text « sur devis », « dès 80 €/h » — NOT a fixed price
+  // P8b (Agent 82) — FORFAIT: an optional FIXED price in CENTS. null = « sur devis » (the default,
+  // priced per quote, P3); when SET, the offering is a forfait the resto can order + pay UPFRONT
+  // (P8b). ADDITIVE + nullable → no backfill. The charged amount derives from THIS (server-only).
+  fixedPriceCents      Int?
   active               Boolean            @default(true)       // false = hidden from discovery (« masqué »)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
@@ -910,6 +914,12 @@ model ServiceMission {
   proposedDate         DateTime?                               // date the prestataire proposes in the quote
   scheduledDate        DateTime?                               // agreed date, posed when the resto accepts (real calendar = P4)
   status               String             @default("requested") // requested|quoted|accepted|declined|cancelled|done
+  // P8b (Agent 82) — when is this mission paid? 'on_completion' = the P3/P8 devis flow (the resto
+  // pays the invoice once the mission is 'done'); 'upfront' = a FORFAIT ordered + paid at order
+  // time, then executed. ADDITIVE with @default → existing rows become 'on_completion' (= the P8
+  // behaviour, byte-identical), no backfill. Purely descriptive: the money still flows through the
+  // SAME ServiceInvoice + lib/service-payment; the timing differs.
+  paymentTiming        String             @default("on_completion")
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   // P5 (Agent 78) — the optional single review for this mission (1:1; created only when 'done'). Additive.

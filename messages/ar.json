@@ -2896,7 +2896,10 @@
       "availabilityTitle": "التوفّر",
       "availabilityDaysLabel": "أيام العمل",
       "reviewsTitle": "التقييمات",
-      "reviewsCount": "{count} تقييمات"
+      "reviewsCount": "{count} تقييمات",
+      "forfaitLabel": "سعر ثابت",
+      "orderForfaitCta": "اطلب (سعر ثابت)",
+      "orderForfaitErr": "تعذّر بدء الطلب. حاول مجدّدًا."
     },
     "prestataireMissions": {
       "title": "طلباتي",
@@ -3492,7 +3495,11 @@
       "onQuote": "حسب عرض السعر",
       "errLoad": "تعذّر تحميل خدماتك.",
       "errSave": "تعذّر الحفظ، حاول مجدّدًا.",
-      "confirmDelete": "حذف «{title}»؟"
+      "confirmDelete": "حذف «{title}»؟",
+      "fForfait": "سعر ثابت (forfait)",
+      "fForfaitPlaceholder": "مثال 150",
+      "fForfaitHint": "اتركه فارغًا لـ « حسب التسعيرة ». إذا حُدِّد، يمكن للمطعم طلب هذه الخدمة ودفعها مسبقًا.",
+      "forfaitBadge": "سعر ثابت {price}"
     },
     "missions": {
       "title": "الطلبات والمهام",

@@ -2896,7 +2896,10 @@
       "availabilityTitle": "Availability",
       "availabilityDaysLabel": "Working days",
       "reviewsTitle": "Reviews",
-      "reviewsCount": "{count} reviews"
+      "reviewsCount": "{count} reviews",
+      "forfaitLabel": "package",
+      "orderForfaitCta": "Order (fixed price)",
+      "orderForfaitErr": "Couldn’t start the order. Please try again."
     },
     "prestataireMissions": {
       "title": "My requests",
@@ -3492,7 +3495,11 @@
       "onQuote": "On quote",
       "errLoad": "Couldn't load your services.",
       "errSave": "Couldn't save, please try again.",
-      "confirmDelete": "Delete “{title}”?"
+      "confirmDelete": "Delete “{title}”?",
+      "fForfait": "Fixed-price package",
+      "fForfaitPlaceholder": "e.g. 150",
+      "fForfaitHint": "Leave empty for « on quote ». If set, the restaurant can order and pay for this service upfront.",
+      "forfaitBadge": "Package {price}"
     },
     "missions": {
       "title": "Requests & missions",

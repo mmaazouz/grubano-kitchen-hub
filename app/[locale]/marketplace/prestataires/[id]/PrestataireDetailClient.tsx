@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Send, X, CheckCircle2, CalendarDays, Star } from 'lucide-react'
+import { ArrowLeft, MapPin, Wrench, Loader2, MonitorSmartphone, Send, X, CheckCircle2, CalendarDays, Star, CreditCard } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Badge, Button } from '@/components/design-system'
+import { formatMoney } from '@/lib/format-money'
 
 // ── /marketplace/prestataires/[id] — prestataire fiche + REQUEST A QUOTE (P3, Agent 76) ──
 // A restaurateur views ONE prestataire + its active services. Reuses the discovery endpoint
@@ -14,7 +15,7 @@ import { Card, Badge, Button } from '@/components/design-system'
 // in status 'requested'. NO money — the prestataire will quote an amount later (pure data).
 // NO cart / price here. Operator-gated; the parent server page 404s when the flag is OFF.
 
-interface DiscoverOffering { id: string; title: string; description: string | null; category: string; modality: string; indicativeRate: string | null }
+interface DiscoverOffering { id: string; title: string; description: string | null; category: string; modality: string; indicativeRate: string | null; fixedPriceCents: number | null }
 interface DiscoverPrestataire {
   id: string
   companyName: string
@@ -38,7 +39,7 @@ const WD_LABEL: Record<string, string> = { mon: 'wdMon', tue: 'wdTue', wed: 'wdW
 
 interface Review { id: string; rating: number; comment: string | null; createdAt: string }
 
-export default function PrestataireDetailClient({ id }: { id: string }) {
+export default function PrestataireDetailClient({ id, forfaitEnabled = false }: { id: string; forfaitEnabled?: boolean }) {
   const t  = useTranslations('prestataire')
   const tm = useTranslations('marketplace.prestataires')
   const locale = useLocale()
@@ -96,6 +97,26 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
   const [submitting, setSubmitting]       = useState(false)
   const [reqError, setReqError]           = useState('')
   const [reqDone, setReqDone]             = useState(false)
+
+  // ── P8b — « Commander (prix fixe) »: order + pay a FORFAIT upfront (resto, double-flag). ──
+  // The amount is NEVER sent: the server charges the offering's fixed price and routes the
+  // payout to the prestataire (5% to Grubano). Redirects to the Stripe Checkout (TEST).
+  const [orderingId, setOrderingId] = useState<string | null>(null)
+  const [orderErr, setOrderErr]     = useState('')
+  async function orderForfait(offeringId: string) {
+    if (orderingId) return
+    setOrderingId(offeringId); setOrderErr('')
+    try {
+      const res = await fetch(`/api/prestataire-forfait/${offeringId}/order`, { method: 'POST' })
+      const d = await res.json().catch(() => null)
+      if (res.ok && d?.url) { window.location.href = d.url; return }
+      setOrderErr(d?.error || tm('orderForfaitErr'))
+    } catch {
+      setOrderErr(tm('orderForfaitErr'))
+    } finally {
+      setOrderingId(null)
+    }
+  }
 
   function openRequest(offeringId: string | null) {
     setReqError(''); setReqDone(false); setDetails(''); setReqOfferingId(offeringId); setReqOpen(true)
@@ -196,6 +217,7 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
       </Card>
 
       <h2 className="mb-2 font-display text-lg font-bold text-grubano-ink">{tm('servicesTitle')}</h2>
+      {orderErr && <p className="mb-3 rounded-grubano-lg bg-grubano-danger-tint px-3 py-2 text-sm text-grubano-danger">{orderErr}</p>}
       <div className="space-y-5">
         {byCategory.map(([cat, offerings]) => (
           <div key={cat}>
@@ -211,11 +233,27 @@ export default function PrestataireDetailClient({ id }: { id: string }) {
                       </div>
                       <Badge tone="neutral" size="sm">{modLabel(o.modality)}</Badge>
                     </div>
-                    <div className="mt-2 flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-grubano-ink">{o.indicativeRate?.trim() || tm('onQuote')}</p>
-                      <button onClick={() => openRequest(o.id)} className="shrink-0 text-sm font-semibold text-grubano-primary hover:underline">
-                        {tm('requestServiceCta')}
-                      </button>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                      {/* A forfait shows its FIXED price; otherwise the free-text rate / « sur devis ». */}
+                      {o.fixedPriceCents != null ? (
+                        <p className="text-sm font-bold text-grubano-ink">
+                          {formatMoney(o.fixedPriceCents, locale)} <span className="font-medium text-grubano-ink-muted">· {tm('forfaitLabel')}</span>
+                        </p>
+                      ) : (
+                        <p className="text-sm font-medium text-grubano-ink">{o.indicativeRate?.trim() || tm('onQuote')}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-3">
+                        {/* P8b — « Commander (prix fixe) »: pay upfront. Only for a forfait, under the double flag. */}
+                        {o.fixedPriceCents != null && forfaitEnabled && (
+                          <button onClick={() => orderForfait(o.id)} disabled={orderingId === o.id}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-grubano-lg bg-grubano-primary px-3.5 py-1.5 text-sm font-semibold text-white shadow-grubano-sm disabled:opacity-60">
+                            {orderingId === o.id ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />} {tm('orderForfaitCta')}
+                          </button>
+                        )}
+                        <button onClick={() => openRequest(o.id)} className="shrink-0 text-sm font-semibold text-grubano-primary hover:underline">
+                          {tm('requestServiceCta')}
+                        </button>
+                      </div>
                     </div>
                   </Card>
                 </li>

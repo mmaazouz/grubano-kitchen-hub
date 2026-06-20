@@ -116,3 +116,32 @@ describe('CRUD owner-scoped (no IDOR) + NO money', () => {
     expect(db.serviceOffering.delete).toHaveBeenCalledWith({ where: { id: 'so1' } })
   })
 })
+
+describe('P8b — fixedPriceCents (forfait), additive', () => {
+  it('POST stores fixedPriceCents when set; null = « sur devis » when absent', async () => {
+    let res = await send(POST, { title: 'Forfait HACCP', category: 'haccp', fixedPriceCents: 15000 })
+    expect(res.status).toBe(201)
+    expect(db.serviceOffering.create.mock.calls[0][0].data.fixedPriceCents).toBe(15000)
+
+    vi.clearAllMocks(); caller.mockResolvedValue({ id: 'pp1', status: 'active' })
+    db.serviceOffering.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'so2', ...data }))
+    res = await send(POST, { title: 'Sur devis', category: 'haccp' })
+    expect(res.status).toBe(201)
+    expect(db.serviceOffering.create.mock.calls[0][0].data.fixedPriceCents).toBeNull()
+  })
+  it('POST rejects a non-positive fixed price → 400 (no 0 / negative forfait)', async () => {
+    expect((await send(POST, { title: 'x', category: 'haccp', fixedPriceCents: 0 })).status).toBe(400)
+    expect((await send(POST, { title: 'x', category: 'haccp', fixedPriceCents: -100 })).status).toBe(400)
+  })
+  it('PATCH can set and CLEAR the fixed price (null → back to « sur devis »)', async () => {
+    db.serviceOffering.findUnique.mockResolvedValue({ prestataireProfileId: 'pp1' })
+    await send(PATCH, { id: 'so1', fixedPriceCents: 9900 }, 'PATCH')
+    expect(db.serviceOffering.update.mock.calls[0][0].data).toMatchObject({ fixedPriceCents: 9900 })
+
+    vi.clearAllMocks(); caller.mockResolvedValue({ id: 'pp1', status: 'active' })
+    db.serviceOffering.findUnique.mockResolvedValue({ prestataireProfileId: 'pp1' })
+    db.serviceOffering.update.mockResolvedValue({ id: 'so1' })
+    await send(PATCH, { id: 'so1', fixedPriceCents: null }, 'PATCH')
+    expect(db.serviceOffering.update.mock.calls[0][0].data).toMatchObject({ fixedPriceCents: null })
+  })
+})

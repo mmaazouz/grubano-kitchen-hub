@@ -27,6 +27,9 @@ const offeringSchema = z.object({
   category:       z.enum(SERVICE_CATEGORIES).default('other'),
   modality:       z.enum(SERVICE_MODALITIES).default('on_site'),
   indicativeRate: z.string().max(200).nullish(),
+  // P8b — optional FORFAIT price in CENTS. null = « sur devis ». When set, the offering becomes
+  // orderable + payable upfront (the charge derives from this server value, never the buyer).
+  fixedPriceCents: z.number().int().positive().max(100_000_000).nullish(),
   active:         z.boolean().default(true),
 })
 const updateSchema = offeringSchema.partial().extend({ id: z.string().min(1) })
@@ -58,6 +61,7 @@ export async function POST(req: Request) {
         category:       data.category,
         modality:       data.modality,
         indicativeRate: data.indicativeRate?.trim() || null,
+        fixedPriceCents: data.fixedPriceCents ?? null,
         active:         data.active,
       },
     })
@@ -96,6 +100,7 @@ export async function PATCH(req: Request) {
     if (rest.category !== undefined)       data.category = rest.category
     if (rest.modality !== undefined)       data.modality = rest.modality
     if (rest.indicativeRate !== undefined) data.indicativeRate = rest.indicativeRate?.trim() || null
+    if (rest.fixedPriceCents !== undefined) data.fixedPriceCents = rest.fixedPriceCents ?? null
     if (rest.active !== undefined)         data.active = rest.active
 
     const item = await prisma.serviceOffering.update({ where: { id }, data })
