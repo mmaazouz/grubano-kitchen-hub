@@ -3567,7 +3567,10 @@
       "net": "Provider net",
       "noPaymentNote": "No payment has been taken yet. This document records the agreed amount and the split; settlement happens later.",
       "errLoad": "Couldn’t load the invoice.",
-      "download": "Download the PDF"
+      "download": "Download the PDF",
+      "pay": "Pay",
+      "paid": "Paid",
+      "payErr": "Payment couldn’t start. Please try again."
     },
     "connect": {
       "title": "Payments",

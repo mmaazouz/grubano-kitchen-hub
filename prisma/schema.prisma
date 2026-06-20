@@ -971,10 +971,16 @@ model ServiceInvoice {
   prestataireProfileId String                                  // the issuing prestataire
   prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
   number               String             @unique              // gapless PRS-YYYY-NNNNN (dedicated series)
-  amountCents          Int                                     // = the agreed quote amount (no money charged)
-  status               String             @default("issued")   // issued | paid ('paid' is set in P7, never here)
+  amountCents          Int                                     // = the agreed quote amount (the charged amount; server-only)
+  status               String             @default("issued")   // issued | paid (set by the P8 payment webhook, atomically)
   issuedAt             DateTime           @default(now())
   createdAt            DateTime           @default(now())
+  // P8 (Agent 81) — REAL payment of the invoice (resto → prestataire via a Stripe destination-
+  // charge; Grubano keeps 5% as the application_fee). ADDITIVE + nullable → no backfill. The
+  // charged amount is ALWAYS amountCents (server-derived); nothing money-bearing is added here.
+  paidAt                  DateTime?                            // set once, when the payment webhook marks it paid
+  stripeCheckoutSessionId String?                             // the Checkout session that charges the resto (TEST)
+  stripePaymentIntentId   String?                             // the resulting PaymentIntent (destination charge)
 
   @@index([restaurantOperatorId])
   @@index([prestataireProfileId])

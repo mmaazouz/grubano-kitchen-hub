@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
+import { isPrestataireConnectLive } from '@/lib/prestataire-connect'
 import RestoMissionsClient from './RestoMissionsClient'
 
 // ── /marketplace/prestataire-missions — SERVER flag gate (P3, Agent 76) ──────
@@ -14,5 +15,6 @@ export default function MarketplacePrestataireMissionsPage({ params }: { params:
   setRequestLocale(params.locale)
   if (!isPrestataireEnabled()) notFound()
 
-  return <RestoMissionsClient />
+  // P8 — the « Payer » action is shown only under the DOUBLE flag (server-evaluated).
+  return <RestoMissionsClient payEnabled={isPrestataireConnectLive()} />
 }

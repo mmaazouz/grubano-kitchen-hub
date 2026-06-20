@@ -3567,7 +3567,10 @@
       "net": "Neto del prestador",
       "noPaymentNote": "Aún no se ha cobrado ningún pago. Este documento fija el importe acordado y el reparto; la liquidación se realizará más adelante.",
       "errLoad": "No se pudo cargar la factura.",
-      "download": "Descargar el PDF"
+      "download": "Descargar el PDF",
+      "pay": "Pagar",
+      "paid": "Pagada",
+      "payErr": "No se pudo iniciar el pago. Inténtelo de nuevo."
     },
     "connect": {
       "title": "Pagos",

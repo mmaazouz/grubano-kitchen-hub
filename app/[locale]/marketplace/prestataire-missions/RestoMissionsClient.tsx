@@ -34,7 +34,7 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   requested: 'neutral', quoted: 'warning', accepted: 'success', done: 'success', declined: 'danger', cancelled: 'neutral',
 }
 
-export default function RestoMissionsClient() {
+export default function RestoMissionsClient({ payEnabled = false }: { payEnabled?: boolean }) {
   const t  = useTranslations('marketplace.prestataireMissions')
   const locale = useLocale()
 
@@ -237,7 +237,7 @@ export default function RestoMissionsClient() {
 
       {/* ── Invoice viewer (P6) — resto view: amount + PDF; the commission split is server-withheld ── */}
       {invoiceFor && (
-        <ServiceInvoiceModal missionId={invoiceFor} onClose={() => setInvoiceFor(null)} />
+        <ServiceInvoiceModal missionId={invoiceFor} onClose={() => setInvoiceFor(null)} canPay={payEnabled} />
       )}
     </div>
   )

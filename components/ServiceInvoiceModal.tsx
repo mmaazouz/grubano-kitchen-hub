@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { X, Loader2, Download, FileText } from 'lucide-react'
+import { X, Loader2, Download, FileText, CreditCard, CheckCircle2 } from 'lucide-react'
 import { formatMoney } from '@/lib/format-money'
 
 // ── ServiceInvoiceModal — the mission invoice viewer (P6, Agent 79) ───────────
@@ -22,14 +22,16 @@ interface InvoiceData {
 }
 
 export default function ServiceInvoiceModal({
-  missionId, onClose,
-}: { missionId: string; onClose: () => void }) {
+  missionId, onClose, canPay = false,
+}: { missionId: string; onClose: () => void; canPay?: boolean }) {
   const t = useTranslations('prestataire.invoice')
   const locale = useLocale()
 
   const [data, setData]       = useState<InvoiceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
+  const [paying, setPaying]   = useState(false)
+  const [payErr, setPayErr]   = useState('')
 
   useEffect(() => {
     fetch(`/api/prestataire-invoices/${missionId}`, { cache: 'no-store' })
@@ -40,6 +42,23 @@ export default function ServiceInvoiceModal({
   }, [missionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const pct = data?.economics ? Math.round(data.economics.rate * 100) : 5
+
+  // P8 — pay this invoice (resto only, under the double flag). The amount is NEVER sent: the
+  // server charges the issued invoice and routes the payout to the prestataire's account.
+  async function pay() {
+    if (paying) return
+    setPaying(true); setPayErr('')
+    try {
+      const res = await fetch(`/api/prestataire-invoices/${missionId}/pay`, { method: 'POST' })
+      const d = await res.json().catch(() => null)
+      if (res.ok && d?.url) { window.location.href = d.url; return }
+      setPayErr(d?.error || t('payErr'))
+    } catch {
+      setPayErr(t('payErr'))
+    } finally {
+      setPaying(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
@@ -85,12 +104,31 @@ export default function ServiceInvoiceModal({
               )}
             </div>
 
-            <p className="text-[12px] text-grubano-ink-faint">{t('noPaymentNote')}</p>
+            {data.invoice.status === 'paid' ? (
+              <p className="inline-flex w-full items-center justify-center gap-2 rounded-grubano-lg bg-grubano-success-tint px-4 py-2.5 text-sm font-semibold text-grubano-success">
+                <CheckCircle2 size={16} /> {t('paid')}
+              </p>
+            ) : (
+              <p className="text-[12px] text-grubano-ink-faint">{t('noPaymentNote')}</p>
+            )}
+
+            {/* P8 — « Payer » (resto only, under the double flag, unpaid invoices). */}
+            {canPay && data.invoice.status !== 'paid' && (
+              <>
+                {payErr && <p className="rounded-grubano-lg bg-grubano-danger-tint px-3 py-2 text-sm text-grubano-danger">{payErr}</p>}
+                <button
+                  onClick={pay} disabled={paying}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-grubano-lg bg-grubano-primary px-5 py-3 font-semibold text-white shadow-grubano-sm transition-transform active:scale-[0.99] disabled:opacity-60"
+                >
+                  {paying ? <Loader2 size={16} className="animate-spin" /> : <CreditCard size={16} />} {t('pay')}
+                </button>
+              </>
+            )}
 
             <a
               href={`/api/prestataire-invoices/${missionId}/pdf`}
               target="_blank" rel="noopener noreferrer"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-grubano-lg bg-grubano-primary px-5 py-3 font-semibold text-white shadow-grubano-sm transition-transform active:scale-[0.99]"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-grubano-lg border border-grubano-border px-5 py-3 font-semibold text-grubano-ink transition-transform active:scale-[0.99]"
             >
               <Download size={16} /> {t('download')}
             </a>

@@ -3567,7 +3567,10 @@
       "net": "Net prestataire",
       "noPaymentNote": "Aucun paiement n’est encore prélevé. Ce document fige le montant convenu et la répartition ; le règlement interviendra plus tard.",
       "errLoad": "Impossible de charger la facture.",
-      "download": "Télécharger le PDF"
+      "download": "Télécharger le PDF",
+      "pay": "Payer",
+      "paid": "Payée",
+      "payErr": "Le paiement n’a pas pu démarrer. Réessayez."
     },
     "connect": {
       "title": "Paiements",
