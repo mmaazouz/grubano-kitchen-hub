@@ -3052,6 +3052,29 @@
       "status_pending": "En attente",
       "status_approved": "Approuvée",
       "status_rejected": "Refusée"
+    },
+    "suppliers": {
+      "title": "Fournisseurs",
+      "subtitle": "Gérez les fournisseurs du réseau : consultez leur statut et leur vérification, activez ou suspendez un compte.",
+      "emptyTitle": "Aucun fournisseur",
+      "emptyBody": "Aucun fournisseur n’est encore inscrit.",
+      "siren": "SIREN",
+      "sirenNone": "non renseigné",
+      "status_pending": "En attente",
+      "status_active": "Actif",
+      "status_suspended": "Suspendu",
+      "status_rejected": "Refusé",
+      "verdict_legit": "Vetting : fiable",
+      "verdict_doubt": "Vetting : à vérifier",
+      "verdict_bad": "Vetting : douteux",
+      "verdict_unknown": "Vetting : non évalué",
+      "verif_verified": "SIREN vérifié",
+      "verif_review": "SIREN à vérifier",
+      "verif_rejected": "SIREN introuvable",
+      "verif_unknown": "SIREN non vérifié",
+      "activate": "Activer",
+      "suspend": "Suspendre",
+      "actionError": "L’action a échoué. Réessayez."
     }
   },
   "legal": {

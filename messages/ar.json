@@ -3052,6 +3052,29 @@
       "status_pending": "قيد الانتظار",
       "status_approved": "موافَق عليها",
       "status_rejected": "مرفوضة"
+    },
+    "suppliers": {
+      "title": "الموردون",
+      "subtitle": "أدِر موردي الشبكة: اطّلِع على حالتهم والتحقق منهم، وفعِّل حسابًا أو علِّقه.",
+      "emptyTitle": "لا يوجد موردون",
+      "emptyBody": "لم يُسجَّل أي مورد بعد.",
+      "siren": "SIREN",
+      "sirenNone": "غير محدَّد",
+      "status_pending": "قيد الانتظار",
+      "status_active": "نشط",
+      "status_suspended": "موقوف",
+      "status_rejected": "مرفوض",
+      "verdict_legit": "التحقق: موثوق",
+      "verdict_doubt": "التحقق: للمراجعة",
+      "verdict_bad": "التحقق: مشكوك فيه",
+      "verdict_unknown": "التحقق: غير مُقيَّم",
+      "verif_verified": "تم التحقق من SIREN",
+      "verif_review": "SIREN للمراجعة",
+      "verif_rejected": "تعذّر العثور على SIREN",
+      "verif_unknown": "SIREN غير مُتحقَّق منه",
+      "activate": "تفعيل",
+      "suspend": "تعليق",
+      "actionError": "فشل الإجراء. حاول مجدّدًا."
     }
   },
   "legal": {

@@ -3052,6 +3052,29 @@
       "status_pending": "Pendiente",
       "status_approved": "Aprobada",
       "status_rejected": "Rechazada"
+    },
+    "suppliers": {
+      "title": "Proveedores",
+      "subtitle": "Gestione los proveedores de la red: consulte su estado y verificación, active o suspenda una cuenta.",
+      "emptyTitle": "Sin proveedores",
+      "emptyBody": "Aún no se ha registrado ningún proveedor.",
+      "siren": "SIREN",
+      "sirenNone": "no indicado",
+      "status_pending": "Pendiente",
+      "status_active": "Activo",
+      "status_suspended": "Suspendido",
+      "status_rejected": "Rechazado",
+      "verdict_legit": "Verificación: fiable",
+      "verdict_doubt": "Verificación: por revisar",
+      "verdict_bad": "Verificación: dudoso",
+      "verdict_unknown": "Verificación: sin evaluar",
+      "verif_verified": "SIREN verificado",
+      "verif_review": "SIREN por revisar",
+      "verif_rejected": "SIREN no encontrado",
+      "verif_unknown": "SIREN sin verificar",
+      "activate": "Activar",
+      "suspend": "Suspender",
+      "actionError": "La acción ha fallado. Inténtelo de nuevo."
     }
   },
   "legal": {

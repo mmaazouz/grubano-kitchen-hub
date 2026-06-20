@@ -3052,6 +3052,29 @@
       "status_pending": "Pending",
       "status_approved": "Approved",
       "status_rejected": "Declined"
+    },
+    "suppliers": {
+      "title": "Suppliers",
+      "subtitle": "Manage network suppliers: review their status and verification, activate or suspend an account.",
+      "emptyTitle": "No suppliers",
+      "emptyBody": "No supplier has registered yet.",
+      "siren": "SIREN",
+      "sirenNone": "not provided",
+      "status_pending": "Pending",
+      "status_active": "Active",
+      "status_suspended": "Suspended",
+      "status_rejected": "Rejected",
+      "verdict_legit": "Vetting: trusted",
+      "verdict_doubt": "Vetting: to review",
+      "verdict_bad": "Vetting: doubtful",
+      "verdict_unknown": "Vetting: not assessed",
+      "verif_verified": "SIREN verified",
+      "verif_review": "SIREN to review",
+      "verif_rejected": "SIREN not found",
+      "verif_unknown": "SIREN unverified",
+      "activate": "Activate",
+      "suspend": "Suspend",
+      "actionError": "The action failed. Please try again."
     }
   },
   "legal": {

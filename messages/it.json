@@ -3052,6 +3052,29 @@
       "status_pending": "In attesa",
       "status_approved": "Approvata",
       "status_rejected": "Rifiutata"
+    },
+    "suppliers": {
+      "title": "Fornitori",
+      "subtitle": "Gestite i fornitori della rete: consultate stato e verifica, attivate o sospendete un account.",
+      "emptyTitle": "Nessun fornitore",
+      "emptyBody": "Nessun fornitore si è ancora registrato.",
+      "siren": "SIREN",
+      "sirenNone": "non indicato",
+      "status_pending": "In attesa",
+      "status_active": "Attivo",
+      "status_suspended": "Sospeso",
+      "status_rejected": "Rifiutato",
+      "verdict_legit": "Verifica: affidabile",
+      "verdict_doubt": "Verifica: da controllare",
+      "verdict_bad": "Verifica: dubbio",
+      "verdict_unknown": "Verifica: non valutato",
+      "verif_verified": "SIREN verificato",
+      "verif_review": "SIREN da controllare",
+      "verif_rejected": "SIREN non trovato",
+      "verif_unknown": "SIREN non verificato",
+      "activate": "Attivare",
+      "suspend": "Sospendere",
+      "actionError": "L’azione non è riuscita. Riprovate."
     }
   },
   "legal": {
