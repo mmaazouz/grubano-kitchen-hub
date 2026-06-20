@@ -72,7 +72,8 @@ export default async function PrestataireDashboardPage(props: { params: { locale
 
   // The LATER bricks (P2+) — shown as a single « à venir » card so the shell is honest
   // about what is not built yet. NO link / no work is offered here.
-  const SOON = ['soonServices', 'soonQuotes', 'soonMissions', 'soonCalendar', 'soonReviews', 'soonInvoicing'] as const
+  // P2 (Agent 75) — « Services » is now BUILT (managed below), so it leaves the soon list.
+  const SOON = ['soonQuotes', 'soonMissions', 'soonCalendar', 'soonReviews', 'soonInvoicing'] as const
 
   return (
     <div className="min-h-screen bg-grubano-bg">
@@ -120,7 +121,24 @@ export default async function PrestataireDashboardPage(props: { params: { locale
               </Card>
             )}
 
-            {/* Future bricks (P2+) — services / devis / missions / calendrier / avis / facturation. */}
+            {/* P2 (Agent 75) — « Mes services » management (services are now BUILT). Only an
+                ACTIVE prestataire can add/edit; a pending one sees the banner above. */}
+            {profile.status === 'active' && (
+              <Card elevation="sm" padding="md" interactive>
+                <Link href="/prestataire/services" className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
+                    <Wrench size={20} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-grubano-ink">{d('manageServicesTitle')}</p>
+                    <p className="text-sm text-grubano-ink-muted">{d('manageServicesBody')}</p>
+                  </div>
+                  <ChevronRight size={18} className="shrink-0 text-grubano-ink-faint" />
+                </Link>
+              </Card>
+            )}
+
+            {/* Future bricks (P3+) — devis / missions / calendrier / avis / facturation. */}
             <Card elevation="sm" padding="md">
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">

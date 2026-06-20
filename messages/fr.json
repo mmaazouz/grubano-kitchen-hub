@@ -2858,7 +2858,26 @@
     "noMatch": "Aucun fournisseur ne propose « {q} ».",
     "actionPay": "Payer",
     "payBadgePaid": "Payée",
-    "payError": "Le paiement n'a pas pu démarrer. Réessayez."
+    "payError": "Le paiement n'a pas pu démarrer. Réessayez.",
+    "prestataires": {
+      "title": "Prestataires de services",
+      "subtitle": "Trouvez un prestataire par métier et par zone.",
+      "allTrades": "Tous les métiers",
+      "zonePlaceholder": "Ville ou code postal",
+      "empty": "Aucun prestataire pour le moment.",
+      "noMatch": "Aucun prestataire ne correspond à votre recherche.",
+      "servicesCount": "{count} services",
+      "errLoad": "Impossible de charger les prestataires.",
+      "backToList": "Retour à la liste",
+      "notFound": "Prestataire introuvable.",
+      "servicesTitle": "Services proposés",
+      "coverageLabel": "Zones couvertes",
+      "quoteSoonTitle": "Demande de devis bientôt disponible",
+      "quoteSoonBody": "La prise de contact et le devis en ligne arriveront prochainement.",
+      "onQuote": "Sur devis",
+      "discoverCardTitle": "Prestataires de services",
+      "discoverCardDesc": "Électricité, HACCP, nettoyage, dépannage… trouvez un prestataire."
+    }
   },
   "magic": {
     "title": "Connexion à Grubano",
@@ -3388,7 +3407,39 @@
       "labelModality": "Modalité",
       "labelRate": "Tarif indicatif",
       "emptyValue": "Non renseigné",
-      "editProfileCta": "Modifier mon profil"
+      "editProfileCta": "Modifier mon profil",
+      "manageServicesTitle": "Mes services",
+      "manageServicesBody": "Gérez les services que vous proposez aux restaurants."
+    },
+    "services": {
+      "title": "Mes services",
+      "subtitle": "Les services que vous proposez aux restaurants.",
+      "back": "Tableau de bord",
+      "add": "Ajouter un service",
+      "addFirst": "Ajouter mon premier service",
+      "emptyTitle": "Aucun service",
+      "emptyDesc": "Ajoutez les services que vous proposez pour apparaître dans la découverte des restaurants.",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "cancel": "Annuler",
+      "save": "Enregistrer",
+      "saving": "Enregistrement…",
+      "addTitle": "Nouveau service",
+      "editTitle": "Modifier le service",
+      "fTitle": "Intitulé du service",
+      "fTitlePlaceholder": "ex. Dépannage frigorifique 24/7",
+      "fCategory": "Catégorie",
+      "fModality": "Modalité",
+      "fDescription": "Description",
+      "fRate": "Tarif indicatif (facultatif)",
+      "fRatePlaceholder": "ex. sur devis, dès 80 €/h",
+      "fRateHint": "Indicatif uniquement — chaque mission fera l’objet d’un devis (à venir).",
+      "fActive": "Visible dans la découverte",
+      "hidden": "Masqué",
+      "onQuote": "Sur devis",
+      "errLoad": "Impossible de charger vos services.",
+      "errSave": "Impossible d’enregistrer, réessayez.",
+      "confirmDelete": "Supprimer « {title} » ?"
     }
   }
 }

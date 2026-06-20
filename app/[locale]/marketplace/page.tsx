@@ -1,7 +1,9 @@
 import Link from 'next/link'
-import { ShoppingBag, Star, Lock, ChevronRight } from 'lucide-react'
+import { ShoppingBag, Star, Lock, ChevronRight, Wrench } from 'lucide-react'
+import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { Card } from '@/components/grubano/Card'
 import { SectionTitle } from '@/components/grubano/SectionTitle'
+import { isPrestataireEnabled } from '@/lib/prestataire-account'
 
 const apps = [
   { name: 'UberEats',   icon: '🟠', category: 'Livraison', commission: '25%', rating: 4.8, connected: false },
@@ -12,7 +14,11 @@ const apps = [
   { name: 'Mailchimp',  icon: '🐒', category: 'Marketing', commission: 'gratuit', rating: 4.5, connected: false },
 ]
 
-export default function MarketplacePage() {
+export default async function MarketplacePage({ params }: { params: { locale: string } }) {
+  setRequestLocale(params.locale)
+  const t = await getTranslations('marketplace.prestataires')
+  // P2 (Agent 75) — the services-discovery card is server-gated: hidden (no leak) when OFF.
+  const showPrestataires = isPrestataireEnabled()
   return (
     <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
       <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Marketplace</h1>
@@ -30,6 +36,21 @@ export default function MarketplacePage() {
         </div>
         <ChevronRight size={16} className="shrink-0 text-primary" />
       </Link>
+
+      {/* P2 (Agent 75) — SERVICES discovery (prestataires). Flag-gated: hidden when OFF. */}
+      {showPrestataires && (
+        <Link
+          href="/marketplace/prestataires"
+          className="mb-6 flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10"
+        >
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary"><Wrench size={22} /></div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-primary">{t('discoverCardTitle')}</p>
+            <p className="text-[11px] text-muted-foreground">{t('discoverCardDesc')}</p>
+          </div>
+          <ChevronRight size={16} className="shrink-0 text-primary" />
+        </Link>
+      )}
 
       <SectionTitle hint="Plateformes de livraison">Connecter</SectionTitle>
       <div className="space-y-2">

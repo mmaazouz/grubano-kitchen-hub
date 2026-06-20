@@ -803,6 +803,38 @@ model PrestataireProfile {
   stripeOnboardedAt  DateTime?                         // first time the account became 'active'
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  // P2 (Agent 75) — the services this prestataire lists (1-N). Additive BACK-relation:
+  // no column is added to PrestataireProfile, the FK lives on ServiceOffering. NO money.
+  serviceOfferings   ServiceOffering[]
+}
+
+// ── ServiceOffering (SERVICES marketplace — P2 service listing, Agent 75) ─────
+// ADDITIVE + REVERSIBLE. The services analogue of SupplierCatalogItem (products),
+// CLONED 1:1 and adapted to SERVICES. A prestataire LISTS the services it offers to
+// restaurants; a restaurant browses/filters prestataires by trade + zone (discovery).
+// KEY DELTA vs a product: a service has NO fixed price and NO stock → priceCents / unit
+// / packSize / available / allergens are DROPPED. A service = a title + description +
+// category + intervention modality (on_site|remote|both) + an OPTIONAL free-text
+// indicative rate (« sur devis ») — pricing is per-quote (DEVIS = a LATER brick, P3+).
+// `active=false` simply HIDES the offering from discovery (« masqué »). Owner-scoped by
+// prestataireProfileId; cascade-deleted with the profile. 100% OFF the money path: no
+// quote / order / payment / commission / Connect is wired here (that is P3+).
+model ServiceOffering {
+  id                   String             @id @default(cuid())
+  prestataireProfileId String
+  prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
+  title                String                                  // e.g. « Dépannage frigorifique 24/7 »
+  description          String?            @db.Text             // free-text details (no fixed price)
+  category             String             @default("other")    // service family: electricity|plumbing|haccp|cleaning|pest_control|fridge_repair|kitchen_maintenance|accounting|training|other
+  modality             String             @default("on_site")  // on_site | remote | both
+  indicativeRate       String?            @db.Text             // free text « sur devis », « dès 80 €/h » — NOT a fixed price
+  active               Boolean            @default(true)       // false = hidden from discovery (« masqué »)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@unique([prestataireProfileId, title])
+  @@index([prestataireProfileId])
+  @@index([category])
 }
 
 // ── SupplierCatalogItem (B2B supply marketplace — Slice 1 catalogue, Agent 14) ─

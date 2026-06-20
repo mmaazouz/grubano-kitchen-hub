@@ -2858,7 +2858,26 @@
     "noMatch": "Ningún proveedor ofrece «{q}».",
     "actionPay": "Pagar",
     "payBadgePaid": "Pagado",
-    "payError": "No se pudo iniciar el pago. Inténtalo de nuevo."
+    "payError": "No se pudo iniciar el pago. Inténtalo de nuevo.",
+    "prestataires": {
+      "title": "Proveedores de servicios",
+      "subtitle": "Encuentre un proveedor por oficio y zona.",
+      "allTrades": "Todos los oficios",
+      "zonePlaceholder": "Ciudad o código postal",
+      "empty": "Aún no hay proveedores.",
+      "noMatch": "Ningún proveedor coincide con su búsqueda.",
+      "servicesCount": "{count} servicios",
+      "errLoad": "No se pudieron cargar los proveedores.",
+      "backToList": "Volver a la lista",
+      "notFound": "Proveedor no encontrado.",
+      "servicesTitle": "Servicios ofrecidos",
+      "coverageLabel": "Zonas cubiertas",
+      "quoteSoonTitle": "Solicitud de presupuesto próximamente",
+      "quoteSoonBody": "El contacto y el presupuesto en línea llegarán pronto.",
+      "onQuote": "A presupuesto",
+      "discoverCardTitle": "Proveedores de servicios",
+      "discoverCardDesc": "Electricidad, HACCP, limpieza, reparaciones… encuentre un proveedor."
+    }
   },
   "magic": {
     "title": "Conectarse a Grubano",
@@ -3388,7 +3407,39 @@
       "labelModality": "Modalidad",
       "labelRate": "Tarifa indicativa",
       "emptyValue": "No indicado",
-      "editProfileCta": "Editar mi perfil"
+      "editProfileCta": "Editar mi perfil",
+      "manageServicesTitle": "Mis servicios",
+      "manageServicesBody": "Gestione los servicios que ofrece a los restaurantes."
+    },
+    "services": {
+      "title": "Mis servicios",
+      "subtitle": "Los servicios que ofrece a los restaurantes.",
+      "back": "Panel",
+      "add": "Añadir un servicio",
+      "addFirst": "Añadir mi primer servicio",
+      "emptyTitle": "Aún no hay servicios",
+      "emptyDesc": "Añada los servicios que ofrece para aparecer en la búsqueda de los restaurantes.",
+      "edit": "Editar",
+      "delete": "Eliminar",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "addTitle": "Nuevo servicio",
+      "editTitle": "Editar servicio",
+      "fTitle": "Título del servicio",
+      "fTitlePlaceholder": "ej. Reparación frigorífica 24/7",
+      "fCategory": "Categoría",
+      "fModality": "Modalidad",
+      "fDescription": "Descripción",
+      "fRate": "Tarifa indicativa (opcional)",
+      "fRatePlaceholder": "ej. a presupuesto, desde 80 €/h",
+      "fRateHint": "Solo indicativo — cada misión se presupuestará (próximamente).",
+      "fActive": "Visible en la búsqueda",
+      "hidden": "Oculto",
+      "onQuote": "A presupuesto",
+      "errLoad": "No se pudieron cargar sus servicios.",
+      "errSave": "No se pudo guardar, inténtelo de nuevo.",
+      "confirmDelete": "¿Eliminar «{title}»?"
     }
   }
 }

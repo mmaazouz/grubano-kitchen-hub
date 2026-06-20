@@ -2858,7 +2858,26 @@
     "noMatch": "No supplier offers “{q}”.",
     "actionPay": "Pay",
     "payBadgePaid": "Paid",
-    "payError": "Could not start the payment. Please try again."
+    "payError": "Could not start the payment. Please try again.",
+    "prestataires": {
+      "title": "Service providers",
+      "subtitle": "Find a provider by trade and area.",
+      "allTrades": "All trades",
+      "zonePlaceholder": "City or postal code",
+      "empty": "No providers yet.",
+      "noMatch": "No provider matches your search.",
+      "servicesCount": "{count} services",
+      "errLoad": "Couldn't load providers.",
+      "backToList": "Back to list",
+      "notFound": "Provider not found.",
+      "servicesTitle": "Services offered",
+      "coverageLabel": "Coverage areas",
+      "quoteSoonTitle": "Quote request coming soon",
+      "quoteSoonBody": "Online contact and quoting will arrive shortly.",
+      "onQuote": "On quote",
+      "discoverCardTitle": "Service providers",
+      "discoverCardDesc": "Electricity, HACCP, cleaning, repairs… find a provider."
+    }
   },
   "magic": {
     "title": "Sign in to Grubano",
@@ -3388,7 +3407,39 @@
       "labelModality": "Modality",
       "labelRate": "Indicative rate",
       "emptyValue": "Not provided",
-      "editProfileCta": "Edit my profile"
+      "editProfileCta": "Edit my profile",
+      "manageServicesTitle": "My services",
+      "manageServicesBody": "Manage the services you offer to restaurants."
+    },
+    "services": {
+      "title": "My services",
+      "subtitle": "The services you offer to restaurants.",
+      "back": "Dashboard",
+      "add": "Add a service",
+      "addFirst": "Add my first service",
+      "emptyTitle": "No services yet",
+      "emptyDesc": "Add the services you offer to appear in restaurant discovery.",
+      "edit": "Edit",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "addTitle": "New service",
+      "editTitle": "Edit service",
+      "fTitle": "Service title",
+      "fTitlePlaceholder": "e.g. 24/7 refrigeration repair",
+      "fCategory": "Category",
+      "fModality": "Modality",
+      "fDescription": "Description",
+      "fRate": "Indicative rate (optional)",
+      "fRatePlaceholder": "e.g. on quote, from €80/h",
+      "fRateHint": "Indicative only — each mission will be quoted (coming soon).",
+      "fActive": "Visible in discovery",
+      "hidden": "Hidden",
+      "onQuote": "On quote",
+      "errLoad": "Couldn't load your services.",
+      "errSave": "Couldn't save, please try again.",
+      "confirmDelete": "Delete “{title}”?"
     }
   }
 }

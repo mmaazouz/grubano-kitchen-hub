@@ -2858,7 +2858,26 @@
     "noMatch": "Nessun fornitore offre «{q}».",
     "actionPay": "Paga",
     "payBadgePaid": "Pagato",
-    "payError": "Impossibile avviare il pagamento. Riprova."
+    "payError": "Impossibile avviare il pagamento. Riprova.",
+    "prestataires": {
+      "title": "Prestatori di servizi",
+      "subtitle": "Trovate un prestatore per mestiere e zona.",
+      "allTrades": "Tutti i mestieri",
+      "zonePlaceholder": "Città o CAP",
+      "empty": "Nessun prestatore per ora.",
+      "noMatch": "Nessun prestatore corrisponde alla ricerca.",
+      "servicesCount": "{count} servizi",
+      "errLoad": "Impossibile caricare i prestatori.",
+      "backToList": "Torna alla lista",
+      "notFound": "Prestatore non trovato.",
+      "servicesTitle": "Servizi offerti",
+      "coverageLabel": "Zone coperte",
+      "quoteSoonTitle": "Richiesta di preventivo presto disponibile",
+      "quoteSoonBody": "Il contatto e il preventivo online arriveranno a breve.",
+      "onQuote": "Su preventivo",
+      "discoverCardTitle": "Prestatori di servizi",
+      "discoverCardDesc": "Elettricità, HACCP, pulizie, riparazioni… trovate un prestatore."
+    }
   },
   "magic": {
     "title": "Accedi a Grubano",
@@ -3388,7 +3407,39 @@
       "labelModality": "Modalità",
       "labelRate": "Tariffa indicativa",
       "emptyValue": "Non indicato",
-      "editProfileCta": "Modifica il mio profilo"
+      "editProfileCta": "Modifica il mio profilo",
+      "manageServicesTitle": "I miei servizi",
+      "manageServicesBody": "Gestite i servizi che offrite ai ristoranti."
+    },
+    "services": {
+      "title": "I miei servizi",
+      "subtitle": "I servizi che offrite ai ristoranti.",
+      "back": "Pannello",
+      "add": "Aggiungi un servizio",
+      "addFirst": "Aggiungi il mio primo servizio",
+      "emptyTitle": "Nessun servizio",
+      "emptyDesc": "Aggiungete i servizi che offrite per apparire nella ricerca dei ristoranti.",
+      "edit": "Modifica",
+      "delete": "Elimina",
+      "cancel": "Annulla",
+      "save": "Salva",
+      "saving": "Salvataggio…",
+      "addTitle": "Nuovo servizio",
+      "editTitle": "Modifica servizio",
+      "fTitle": "Titolo del servizio",
+      "fTitlePlaceholder": "es. Riparazione frigorifera 24/7",
+      "fCategory": "Categoria",
+      "fModality": "Modalità",
+      "fDescription": "Descrizione",
+      "fRate": "Tariffa indicativa (facoltativa)",
+      "fRatePlaceholder": "es. su preventivo, da 80 €/h",
+      "fRateHint": "Solo indicativa — ogni intervento sarà preventivato (prossimamente).",
+      "fActive": "Visibile nella ricerca",
+      "hidden": "Nascosto",
+      "onQuote": "Su preventivo",
+      "errLoad": "Impossibile caricare i vostri servizi.",
+      "errSave": "Impossibile salvare, riprovate.",
+      "confirmDelete": "Eliminare «{title}»?"
     }
   }
 }

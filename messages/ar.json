@@ -2858,7 +2858,26 @@
     "noMatch": "لا يوجد مورّد يقدّم «{q}».",
     "actionPay": "ادفع",
     "payBadgePaid": "مدفوعة",
-    "payError": "تعذّر بدء الدفع. حاول مرة أخرى."
+    "payError": "تعذّر بدء الدفع. حاول مرة أخرى.",
+    "prestataires": {
+      "title": "مقدّمو الخدمات",
+      "subtitle": "ابحث عن مقدّم خدمة حسب المهنة والمنطقة.",
+      "allTrades": "كل المهن",
+      "zonePlaceholder": "المدينة أو الرمز البريدي",
+      "empty": "لا يوجد مقدّمو خدمات بعد.",
+      "noMatch": "لا يوجد مقدّم خدمة يطابق بحثك.",
+      "servicesCount": "{count} خدمات",
+      "errLoad": "تعذّر تحميل مقدّمي الخدمات.",
+      "backToList": "العودة إلى القائمة",
+      "notFound": "مقدّم الخدمة غير موجود.",
+      "servicesTitle": "الخدمات المقدّمة",
+      "coverageLabel": "المناطق المغطّاة",
+      "quoteSoonTitle": "طلب عرض السعر قريبًا",
+      "quoteSoonBody": "سيتوفّر التواصل وطلب عرض السعر عبر الإنترنت قريبًا.",
+      "onQuote": "حسب عرض السعر",
+      "discoverCardTitle": "مقدّمو الخدمات",
+      "discoverCardDesc": "كهرباء، HACCP، تنظيف، إصلاح… ابحث عن مقدّم خدمة."
+    }
   },
   "magic": {
     "title": "تسجيل الدخول إلى Grubano",
@@ -3388,7 +3407,39 @@
       "labelModality": "الطريقة",
       "labelRate": "السعر الاسترشادي",
       "emptyValue": "غير محدّد",
-      "editProfileCta": "تعديل ملفي"
+      "editProfileCta": "تعديل ملفي",
+      "manageServicesTitle": "خدماتي",
+      "manageServicesBody": "أدِر الخدمات التي تقدّمها للمطاعم."
+    },
+    "services": {
+      "title": "خدماتي",
+      "subtitle": "الخدمات التي تقدّمها للمطاعم.",
+      "back": "لوحة التحكم",
+      "add": "إضافة خدمة",
+      "addFirst": "إضافة أوّل خدمة",
+      "emptyTitle": "لا توجد خدمات",
+      "emptyDesc": "أضِف الخدمات التي تقدّمها لتظهر في بحث المطاعم.",
+      "edit": "تعديل",
+      "delete": "حذف",
+      "cancel": "إلغاء",
+      "save": "حفظ",
+      "saving": "جارٍ الحفظ…",
+      "addTitle": "خدمة جديدة",
+      "editTitle": "تعديل الخدمة",
+      "fTitle": "عنوان الخدمة",
+      "fTitlePlaceholder": "مثال: إصلاح التبريد على مدار الساعة",
+      "fCategory": "الفئة",
+      "fModality": "طريقة التقديم",
+      "fDescription": "الوصف",
+      "fRate": "السعر الاسترشادي (اختياري)",
+      "fRatePlaceholder": "مثال: حسب عرض السعر، من 80 €/س",
+      "fRateHint": "استرشادي فقط — كل مهمة ستكون محلّ عرض سعر (قريبًا).",
+      "fActive": "مرئي في البحث",
+      "hidden": "مخفي",
+      "onQuote": "حسب عرض السعر",
+      "errLoad": "تعذّر تحميل خدماتك.",
+      "errSave": "تعذّر الحفظ، حاول مجدّدًا.",
+      "confirmDelete": "حذف «{title}»؟"
     }
   }
 }
