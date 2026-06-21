@@ -3676,6 +3676,25 @@
       "errorQuota": "Límite de IA alcanzado. Inténtelo más tarde.",
       "errorEmpty": "Ningún campo que guardar.",
       "errorGeneric": "El análisis ha fallado. Inténtelo de nuevo."
+    },
+    "logoImport": {
+      "title": "Obtener mi logo desde mi sitio web",
+      "subtitle": "Pegue la dirección de su sitio: detectamos su logo y se lo mostramos en vista previa. No se aplica nada antes de su confirmación. La imagen se descarga en nuestro almacenamiento (sin enlace externo).",
+      "urlLabel": "Dirección de su sitio",
+      "detect": "Detectar mi logo",
+      "detecting": "Buscando el logo…",
+      "reviewTitle": "Logo detectado — revise la vista previa",
+      "reviewHint": "El logo solo se guarda tras su confirmación.",
+      "previewAlt": "Vista previa del logo detectado",
+      "confirm": "Confirmar este logo",
+      "applying": "Guardando…",
+      "restart": "Empezar de nuevo",
+      "saved": "Logo guardado.",
+      "notFound": "No se detectó ningún logo en este sitio. Puede añadir uno manualmente.",
+      "errorUrl": "Dirección inaccesible. Compruebe la URL de su sitio público.",
+      "errorTimeout": "El sitio no respondió a tiempo. Inténtelo de nuevo.",
+      "errorTooLarge": "Imagen demasiado grande.",
+      "errorGeneric": "La operación ha fallado. Inténtelo de nuevo."
     }
   }
 }

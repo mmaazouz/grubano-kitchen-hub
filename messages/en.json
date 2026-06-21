@@ -3676,6 +3676,25 @@
       "errorQuota": "AI limit reached. Try again later.",
       "errorEmpty": "No field to save.",
       "errorGeneric": "Analysis failed. Please try again."
+    },
+    "logoImport": {
+      "title": "Fetch my logo from my website",
+      "subtitle": "Paste your website address: we detect your logo and show you a preview. Nothing is applied before you confirm. The image is downloaded to our storage (no external link).",
+      "urlLabel": "Your website address",
+      "detect": "Detect my logo",
+      "detecting": "Looking for the logo…",
+      "reviewTitle": "Detected logo — review the preview",
+      "reviewHint": "The logo is saved only after you confirm.",
+      "previewAlt": "Preview of the detected logo",
+      "confirm": "Confirm this logo",
+      "applying": "Saving…",
+      "restart": "Start over",
+      "saved": "Logo saved.",
+      "notFound": "No logo detected on this site. You can add one manually.",
+      "errorUrl": "Address unreachable. Check your public website URL.",
+      "errorTimeout": "The site did not respond in time. Try again.",
+      "errorTooLarge": "Image too large.",
+      "errorGeneric": "The operation failed. Please try again."
     }
   }
 }

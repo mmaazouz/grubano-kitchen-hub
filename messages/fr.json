@@ -3676,6 +3676,25 @@
       "errorQuota": "Limite IA atteinte. Réessayez plus tard.",
       "errorEmpty": "Aucun champ à enregistrer.",
       "errorGeneric": "L’analyse a échoué. Réessayez."
+    },
+    "logoImport": {
+      "title": "Récupérer mon logo depuis mon site",
+      "subtitle": "Collez l’adresse de votre site : nous détectons votre logo et vous le montrons en aperçu. Rien n’est appliqué avant votre confirmation. L’image est téléchargée chez nous (pas de lien externe).",
+      "urlLabel": "Adresse de votre site",
+      "detect": "Détecter mon logo",
+      "detecting": "Recherche du logo…",
+      "reviewTitle": "Logo détecté — validez l’aperçu",
+      "reviewHint": "Le logo n’est enregistré qu’après votre confirmation.",
+      "previewAlt": "Aperçu du logo détecté",
+      "confirm": "Confirmer ce logo",
+      "applying": "Enregistrement…",
+      "restart": "Recommencer",
+      "saved": "Logo enregistré.",
+      "notFound": "Aucun logo détecté sur ce site. Vous pouvez en ajouter un manuellement.",
+      "errorUrl": "Adresse inaccessible. Vérifiez l’URL de votre site public.",
+      "errorTimeout": "Le site n’a pas répondu à temps. Réessayez.",
+      "errorTooLarge": "Image trop volumineuse.",
+      "errorGeneric": "L’opération a échoué. Réessayez."
     }
   }
 }

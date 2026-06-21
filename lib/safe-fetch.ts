@@ -313,3 +313,128 @@ export async function fetchSiteText(rawUrl: string): Promise<string> {
   }
   throw new SafeFetchError('fetch_failed')
 }
+
+// ── Image fetch (ADDITIVE — Agent 92, brique 3) ───────────────────────────────────────
+// A SECOND, binary fetch path for logo/image prefill. It RE-USES the SAME SSRF guards as
+// the text path — validateRequestUrl (scheme/port/encoding) + guardedLookup (connect-time
+// IP re-validation + pinning, anti-rebinding) + per-hop re-validation on redirects — so an
+// image hosted on an internal IP, or a redirect to one, is BLOCKED exactly like the text
+// path. The text functions above are UNCHANGED (their tests stay green); only this image
+// voie is added. Raster only (jpeg/png/webp) — gated further by a MAGIC-BYTE sniff so the
+// CONTENT, not just the HTTP header, must really be that image type. SVG is EXCLUDED (it can
+// carry script). The bytes are bounded and returned RAW; the caller validates + uploads them
+// to our own storage (never hotlinks, never hands the external URL to a third party).
+
+export const ALLOWED_IMAGE_MEDIA = ['image/jpeg', 'image/png', 'image/webp'] as const
+export type ImageMedia = (typeof ALLOWED_IMAGE_MEDIA)[number]
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB cap on a fetched logo/image
+
+/**
+ * Identify the image type from the CONTENT's magic bytes (not the HTTP header). Returns the
+ * canonical media type for JPEG/PNG/WEBP, or null for anything else (incl. SVG/GIF/HTML/an
+ * .jpg that isn't really an image). This is the authoritative content check.
+ */
+export function sniffImageType(buf: Buffer): ImageMedia | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg'
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) return 'image/png'
+  if (
+    buf.length >= 12 &&
+    buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP'
+  ) return 'image/webp'
+  return null
+}
+
+interface ImageHopResult {
+  status:   number
+  location: string | null
+  bytes:    Buffer | null
+}
+
+// Same guarded request as the text path (reuses guardedLookup → validated-IP pinning), but
+// reads RAW bytes, requires an image/* Content-Type, and caps at MAX_IMAGE_BYTES.
+function requestImageOnce(url: URL): Promise<ImageHopResult> {
+  return new Promise((resolve, reject) => {
+    const isHttps = url.protocol === 'https:'
+    const lib = isHttps ? https : http
+    const req = lib.request(
+      {
+        protocol: url.protocol,
+        hostname: stripBrackets(url.hostname),
+        port:     url.port || (isHttps ? 443 : 80),
+        path:     url.pathname + url.search,
+        method:   'GET',
+        lookup:   guardedLookup as unknown as undefined, // SAME anti-rebinding guard as the text path
+        headers:  { 'User-Agent': 'GrubanoBot/1.0 (+onboarding)', Accept: 'image/*' },
+        timeout:  FETCH_TIMEOUT_MS,
+      },
+      (res) => {
+        const status = res.statusCode ?? 0
+        if (status >= 300 && status < 400) {
+          res.resume()
+          return resolve({ status, location: res.headers.location ?? null, bytes: null })
+        }
+        const ct = String(res.headers['content-type'] ?? '')
+        if (!/^image\//i.test(ct)) {
+          res.destroy()
+          return reject(new SafeFetchError('bad_content'))
+        }
+        let size = 0
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => {
+          size += c.length
+          if (size > MAX_IMAGE_BYTES) {
+            res.destroy()
+            return reject(new SafeFetchError('too_large'))
+          }
+          chunks.push(c)
+        })
+        res.on('end', () => resolve({ status, location: null, bytes: Buffer.concat(chunks) }))
+        res.on('error', () => reject(new SafeFetchError('fetch_failed')))
+      },
+    )
+    req.on('timeout', () => { req.destroy(new SafeFetchError('timeout')) })
+    req.on('error', (e) => reject(e instanceof SafeFetchError ? e : new SafeFetchError('fetch_failed')))
+    req.end()
+  })
+}
+
+export interface FetchedImage { bytes: Buffer; mediaType: ImageMedia }
+
+/**
+ * Fetch a user-supplied IMAGE URL SAFELY and return its raw bytes + sniffed type. Same SSRF
+ * guarantees as fetchSiteText (validated URL, redirects ≤ MAX_REDIRECTS each re-validated,
+ * IP pinned to a validated public address, timeout, byte cap, no oracle). The downloaded
+ * content MUST pass the magic-byte sniff (raster jpeg/png/webp) — otherwise bad_content.
+ * Throws a generic SafeFetchError on any failure.
+ */
+export async function fetchSiteImage(rawUrl: string): Promise<FetchedImage> {
+  let url = validateRequestUrl(rawUrl)
+  if (!url) throw new SafeFetchError('invalid_url')
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const res = await requestImageOnce(url)
+    if (res.status >= 300 && res.status < 400) {
+      if (!res.location || hop === MAX_REDIRECTS) throw new SafeFetchError('fetch_failed')
+      let next: URL | null
+      try {
+        next = validateRequestUrl(new URL(res.location, url).toString())
+      } catch {
+        next = null
+      }
+      if (!next) throw new SafeFetchError('blocked') // redirect to a non-public/invalid target
+      url = next
+      continue
+    }
+    if (res.status < 200 || res.status >= 300 || res.bytes == null) {
+      throw new SafeFetchError('fetch_failed')
+    }
+    const mediaType = sniffImageType(res.bytes)
+    if (!mediaType) throw new SafeFetchError('bad_content') // not a real raster image (or SVG/GIF)
+    return { bytes: res.bytes, mediaType }
+  }
+  throw new SafeFetchError('fetch_failed')
+}

@@ -14,6 +14,7 @@ import {
 import OpeningHoursSection from '@/components/hours/OpeningHoursSection'
 import ConnectCard from '@/components/connect/ConnectCard'
 import SitePrefillImport from '@/components/restaurant/SitePrefillImport'
+import LogoPrefillImport from '@/components/restaurant/LogoPrefillImport'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 
 // ── Establishment HUB (C13-2) ─────────────────────────────────────────────────
@@ -336,6 +337,11 @@ export default function EstablishmentHub({
           website. SELF-GATING: renders null when ONBOARDING_AI_SITE_PREFILL_ENABLED is OFF →
           the hub stays byte-identical. Confirms via the existing PATCH /api/restaurants/[id]. */}
       <SitePrefillImport restaurantId={establishment.id} onConfirmed={() => window.location.reload()} />
+
+      {/* AI onboarding copilot brique 3 (Agent 92) — prefill the LOGO from the resto's own
+          website (SSRF-safe fetch → preview → upload to our storage → existing PATCH).
+          SELF-GATING: renders null when ONBOARDING_AI_LOGO_PREFILL_ENABLED is OFF. */}
+      <LogoPrefillImport restaurantId={establishment.id} onConfirmed={() => window.location.reload()} />
 
       {/* ── Central section: the brands (the point of the hub) ────────────── */}
       <div className="mb-2 flex items-baseline justify-between gap-2">

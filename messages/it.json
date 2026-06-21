@@ -3676,6 +3676,25 @@
       "errorQuota": "Limite IA raggiunto. Riprovi più tardi.",
       "errorEmpty": "Nessun campo da salvare.",
       "errorGeneric": "Analisi non riuscita. Riprovi."
+    },
+    "logoImport": {
+      "title": "Recuperare il mio logo dal mio sito",
+      "subtitle": "Incolli l’indirizzo del suo sito: rileviamo il suo logo e glielo mostriamo in anteprima. Nulla viene applicato prima della conferma. L’immagine viene scaricata sul nostro spazio (nessun link esterno).",
+      "urlLabel": "Indirizzo del suo sito",
+      "detect": "Rilevare il mio logo",
+      "detecting": "Ricerca del logo…",
+      "reviewTitle": "Logo rilevato — verifichi l’anteprima",
+      "reviewHint": "Il logo viene salvato solo dopo la conferma.",
+      "previewAlt": "Anteprima del logo rilevato",
+      "confirm": "Confermare questo logo",
+      "applying": "Salvataggio…",
+      "restart": "Ricominciare",
+      "saved": "Logo salvato.",
+      "notFound": "Nessun logo rilevato su questo sito. Può aggiungerne uno manualmente.",
+      "errorUrl": "Indirizzo non raggiungibile. Verifichi l’URL del suo sito pubblico.",
+      "errorTimeout": "Il sito non ha risposto in tempo. Riprovi.",
+      "errorTooLarge": "Immagine troppo grande.",
+      "errorGeneric": "Operazione non riuscita. Riprovi."
     }
   }
 }

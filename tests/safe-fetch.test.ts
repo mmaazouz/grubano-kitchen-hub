@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   validateRequestUrl, isBlockedIp, ipv4ToBytes, ipv6ToBytes, htmlToText,
   fetchSiteText, SafeFetchError, MAX_TEXT_CHARS,
+  sniffImageType, fetchSiteImage, ALLOWED_IMAGE_MEDIA,
 } from '@/lib/safe-fetch'
 
 // ── SSRF-safe outbound fetch — security core (Agent 91) ───────────────────────────────
@@ -136,5 +137,38 @@ describe('fetchSiteText — rejects unsafe schemes synchronously (no socket)', (
     await expect(fetchSiteText('ftp://example.com')).rejects.toMatchObject({ code: 'invalid_url' })
     await expect(fetchSiteText('file:///etc/passwd')).rejects.toMatchObject({ code: 'invalid_url' })
     await expect(fetchSiteText('http://example.com:8080')).rejects.toMatchObject({ code: 'invalid_url' })
+  })
+})
+
+// ── Image voie (Agent 92, brique 3) — ADDITIVE; reuses the SAME SSRF guards ──────────────
+describe('sniffImageType — magic bytes are authoritative (raster jpeg/png/webp only)', () => {
+  const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 1, 2, 3, 4])
+  const PNG  = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
+  const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0, 0, 0, 0]), Buffer.from('WEBP'), Buffer.from([0, 0, 0, 0])])
+
+  it('recognises real JPEG/PNG/WEBP by content', () => {
+    expect(sniffImageType(JPEG)).toBe('image/jpeg')
+    expect(sniffImageType(PNG)).toBe('image/png')
+    expect(sniffImageType(WEBP)).toBe('image/webp')
+  })
+
+  it('⚠️ rejects SVG, GIF, HTML, and a fake .jpg that is not really an image', () => {
+    expect(sniffImageType(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>x()</script></svg>'))).toBeNull()
+    expect(sniffImageType(Buffer.from('GIF89a'))).toBeNull()              // GIF excluded
+    expect(sniffImageType(Buffer.from('<!DOCTYPE html><html></html>'))).toBeNull()
+    expect(sniffImageType(Buffer.from('this is not an image at all'))).toBeNull()
+    expect(sniffImageType(Buffer.alloc(0))).toBeNull()
+  })
+
+  it('the allow-list is raster-only (no svg, no gif) — matches the Cloudinary uploader', () => {
+    expect([...ALLOWED_IMAGE_MEDIA]).toEqual(['image/jpeg', 'image/png', 'image/webp'])
+  })
+})
+
+describe('fetchSiteImage — same SSRF guards as the text path (scheme rejected synchronously)', () => {
+  it('throws SafeFetchError(invalid_url) on a non-http(s) scheme / encoded-IP literal', async () => {
+    await expect(fetchSiteImage('ftp://example.com/logo.png')).rejects.toMatchObject({ code: 'invalid_url' })
+    await expect(fetchSiteImage('file:///etc/passwd')).rejects.toMatchObject({ code: 'invalid_url' })
+    await expect(fetchSiteImage('http://example.com:8080/logo.png')).rejects.toMatchObject({ code: 'invalid_url' })
   })
 })
