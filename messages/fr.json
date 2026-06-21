@@ -3702,5 +3702,16 @@
     "subtitle": "Terminez votre installation pour passer en ligne.",
     "progress": "{done} étape(s) sur {total}",
     "resume": "Reprendre : {step}"
+  },
+  "onboardingNudge": {
+    "subject": "Il vous reste {steps, plural, one {# étape} other {# étapes}} pour activer votre restaurant",
+    "title": "Votre restaurant est presque prêt",
+    "greeting": "Bonjour {name},",
+    "body": "Il vous reste {steps, plural, one {# étape} other {# étapes}} pour finaliser votre installation et passer en ligne sur Grubano. Reprenez là où vous vous êtes arrêté.",
+    "resumeCta": "Reprendre mon installation",
+    "unsubPrefix": "Vous ne souhaitez plus recevoir ces rappels ?",
+    "unsubLink": "Se désabonner",
+    "unsubDoneTitle": "Désabonnement confirmé",
+    "unsubDoneBody": "Vous ne recevrez plus de rappels d’installation. Vous pouvez fermer cette page."
   }
 }

@@ -3702,5 +3702,16 @@
     "subtitle": "Finish setting up to go live.",
     "progress": "{done} of {total} step(s)",
     "resume": "Resume: {step}"
+  },
+  "onboardingNudge": {
+    "subject": "You have {steps, plural, one {# step} other {# steps}} left to activate your restaurant",
+    "title": "Your restaurant is almost ready",
+    "greeting": "Hello {name},",
+    "body": "You have {steps, plural, one {# step} other {# steps}} left to finish your setup and go live on Grubano. Pick up where you left off.",
+    "resumeCta": "Resume my setup",
+    "unsubPrefix": "No longer want these reminders?",
+    "unsubLink": "Unsubscribe",
+    "unsubDoneTitle": "Unsubscribe confirmed",
+    "unsubDoneBody": "You will no longer receive setup reminders. You can close this page."
   }
 }

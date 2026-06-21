@@ -3702,5 +3702,16 @@
     "subtitle": "Termine la configuración para publicarse.",
     "progress": "{done} de {total} paso(s)",
     "resume": "Reanudar: {step}"
+  },
+  "onboardingNudge": {
+    "subject": "Le quedan {steps, plural, one {# paso} other {# pasos}} para activar su restaurante",
+    "title": "Su restaurante ya casi está listo",
+    "greeting": "Hola {name}:",
+    "body": "Le quedan {steps, plural, one {# paso} other {# pasos}} para completar la configuración y publicarse en Grubano. Continúe donde lo dejó.",
+    "resumeCta": "Reanudar mi configuración",
+    "unsubPrefix": "¿Ya no desea recibir estos recordatorios?",
+    "unsubLink": "Darse de baja",
+    "unsubDoneTitle": "Baja confirmada",
+    "unsubDoneBody": "Ya no recibirá recordatorios de configuración. Puede cerrar esta página."
   }
 }

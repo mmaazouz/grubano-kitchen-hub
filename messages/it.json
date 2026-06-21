@@ -3702,5 +3702,16 @@
     "subtitle": "Completi la configurazione per andare online.",
     "progress": "{done} passaggio/i su {total}",
     "resume": "Riprendere: {step}"
+  },
+  "onboardingNudge": {
+    "subject": "Le restano {steps, plural, one {# passaggio} other {# passaggi}} per attivare il suo ristorante",
+    "title": "Il suo ristorante è quasi pronto",
+    "greeting": "Buongiorno {name},",
+    "body": "Le restano {steps, plural, one {# passaggio} other {# passaggi}} per completare la configurazione e andare online su Grubano. Riprenda da dove si era fermato.",
+    "resumeCta": "Riprendere la configurazione",
+    "unsubPrefix": "Non desidera più ricevere questi promemoria?",
+    "unsubLink": "Annullare l’iscrizione",
+    "unsubDoneTitle": "Disiscrizione confermata",
+    "unsubDoneBody": "Non riceverà più promemoria di configurazione. Può chiudere questa pagina."
   }
 }

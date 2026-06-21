@@ -134,6 +134,31 @@ model Operator {
   affiliateStripeAccountId   String?    // acct_… (Express, FR, business_type=individual)
   affiliatePayoutStatus      String?    // none | pending | active | restricted (null = none)
   affiliateStripeOnboardedAt DateTime?  // first time the affiliate account became 'active'
+  // ── Onboarding nudge emails (anti-abandon cron, Agent 95) — ADDITIVE · REVERSIBLE ──
+  // `locale` = the operator's preferred EMAIL/UI language (fr|en|es|it|ar); NULL falls back
+  // to 'fr' (lib/onboarding-nudge.resolveNudgeLocale). `onboardingNudgeUnsub` = the
+  // unsubscribe flag set by the tokenised /onboarding/unsubscribe endpoint → once true the
+  // nudge cron skips this account forever. Both nullable/defaulted, NO backfill, dropping
+  // them leaves the model intact. The per-LEVEL send log + its idempotence guard live in the
+  // standalone OnboardingNudge table below (NOT here) so a re-run never double-sends.
+  locale               String?  // fr | en | es | it | ar (preferred email language; null ⇒ fr)
+  onboardingNudgeUnsub Boolean  @default(false)
+}
+
+// ── OnboardingNudge (anti-abandon relance log, Agent 95) — ADDITIVE · standalone ───
+// ONE row per (operator, nudge level 1|2|3) actually SENT. @@unique([operatorId,level]) is
+// the CONCURRENCY GUARD: the cron INSERTS this row BEFORE sending, so a re-run OR a
+// concurrent run hits P2002 and SKIPS the send → a given level is emailed AT MOST ONCE.
+// `operatorId` is a bare scalar (no FK relation, like LedgerEntry.restaurantId) → no change
+// to the Operator relations; dropping this table leaves the rest of the model intact.
+model OnboardingNudge {
+  id         String   @id @default(cuid())
+  operatorId String
+  level      Int      // 1 | 2 | 3
+  sentAt     DateTime @default(now())
+
+  @@unique([operatorId, level])
+  @@index([operatorId])
 }
 
 // ── OperatorRole (Phase 1 refonte) — one row per (operator, role) ─────────────
