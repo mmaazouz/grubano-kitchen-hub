@@ -3653,5 +3653,29 @@
       "payoutActive": "Active",
       "payoutRestricted": "Incomplete"
     }
+  },
+  "restaurant": {
+    "siteImport": {
+      "title": "Prefill from my website",
+      "subtitle": "Paste your website address: the AI suggests a presentation you review, correct and confirm. Nothing is saved before you confirm. Your legal details (company number, legal name) are never taken from the site.",
+      "urlLabel": "Your website address",
+      "import": "Analyse my site",
+      "extracting": "Reading your site…",
+      "reviewTitle": "Suggestion — review and correct",
+      "reviewHint": "No information is saved until you confirm.",
+      "fieldName": "Display name",
+      "fieldDescription": "Description",
+      "fieldCuisine": "Cuisine types",
+      "fieldCuisineHint": "Separate with commas (e.g. italian, pizza)",
+      "confirm": "Confirm and update",
+      "confirming": "Updating…",
+      "restart": "Start over",
+      "saved": "Profile updated.",
+      "errorUrl": "Address unreachable. Check your public website URL.",
+      "errorTimeout": "The site did not respond in time. Try again.",
+      "errorQuota": "AI limit reached. Try again later.",
+      "errorEmpty": "No field to save.",
+      "errorGeneric": "Analysis failed. Please try again."
+    }
   }
 }

@@ -49,6 +49,7 @@ export type LlmTask =
   | 'dish_moderation'
   | 'dish_scan'
   | 'menu_extract'
+  | 'site_extract'
   | 'stock_parse'
   | 'review_reply'
   | 'briefing'
@@ -68,6 +69,9 @@ export const TASKS: Record<LlmTask, TaskConfig> = {
   // Onboarding menu prefill (Agent 89): vision/PDF extraction of a WHOLE card → many
   // dishes, so a larger output cap than a single dish_scan. Sonnet (vision-capable).
   menu_extract:      { model: SONNET, maxOutputTokens: 4096 },
+  // Onboarding profile prefill from a website (Agent 91): extract a small NON-LEGAL
+  // marketing draft (name/description/cuisine) from bounded site TEXT. Cheap Haiku default.
+  site_extract:      { model: HAIKU,  maxOutputTokens: 1024 },
   stock_parse:       { model: SONNET, maxOutputTokens: 512 },
   review_reply:      { model: SONNET, maxOutputTokens: 300 },
   briefing:          { model: SONNET, maxOutputTokens: 400 },

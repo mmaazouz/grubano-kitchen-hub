@@ -3653,5 +3653,29 @@
       "payoutActive": "Actif",
       "payoutRestricted": "Incomplet"
     }
+  },
+  "restaurant": {
+    "siteImport": {
+      "title": "Pré-remplir depuis mon site web",
+      "subtitle": "Collez l’adresse de votre site : l’IA vous propose une présentation que vous relisez, corrigez et confirmez. Rien n’est enregistré avant votre confirmation. Vos informations légales (SIREN, raison sociale) ne sont jamais reprises du site.",
+      "urlLabel": "Adresse de votre site",
+      "import": "Analyser mon site",
+      "extracting": "Lecture de votre site…",
+      "reviewTitle": "Proposition — relisez et corrigez",
+      "reviewHint": "Aucune information n’est enregistrée tant que vous n’avez pas confirmé.",
+      "fieldName": "Nom affiché",
+      "fieldDescription": "Description",
+      "fieldCuisine": "Types de cuisine",
+      "fieldCuisineHint": "Séparez par des virgules (ex. italien, pizza)",
+      "confirm": "Confirmer et mettre à jour",
+      "confirming": "Mise à jour…",
+      "restart": "Recommencer",
+      "saved": "Profil mis à jour.",
+      "errorUrl": "Adresse inaccessible. Vérifiez l’URL de votre site public.",
+      "errorTimeout": "Le site n’a pas répondu à temps. Réessayez.",
+      "errorQuota": "Limite IA atteinte. Réessayez plus tard.",
+      "errorEmpty": "Aucun champ à enregistrer.",
+      "errorGeneric": "L’analyse a échoué. Réessayez."
+    }
   }
 }

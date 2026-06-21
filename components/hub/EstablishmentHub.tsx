@@ -13,6 +13,7 @@ import {
 } from '@/components/design-system'
 import OpeningHoursSection from '@/components/hours/OpeningHoursSection'
 import ConnectCard from '@/components/connect/ConnectCard'
+import SitePrefillImport from '@/components/restaurant/SitePrefillImport'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 
 // ── Establishment HUB (C13-2) ─────────────────────────────────────────────────
@@ -330,6 +331,11 @@ export default function EstablishmentHub({
           <AccessChip href="/tables"                icon={CalendarDays} label={t('accessTables')} />
         </div>
       </header>
+
+      {/* AI onboarding copilot brique 2 (Agent 91) — prefill profile from the resto's own
+          website. SELF-GATING: renders null when ONBOARDING_AI_SITE_PREFILL_ENABLED is OFF →
+          the hub stays byte-identical. Confirms via the existing PATCH /api/restaurants/[id]. */}
+      <SitePrefillImport restaurantId={establishment.id} onConfirmed={() => window.location.reload()} />
 
       {/* ── Central section: the brands (the point of the hub) ────────────── */}
       <div className="mb-2 flex items-baseline justify-between gap-2">
