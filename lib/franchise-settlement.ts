@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
+import { recordPartnerTransferLedgerEntry } from '@/lib/ledger'
 
 // ── Franchise royalty SETTLEMENT (rail financier P4-Franchise-B, Agent 42) ───────
 //
@@ -103,6 +104,41 @@ async function finalizePaid(payoutId: string, transferId: string, settlementId: 
   ])
 }
 
+/** LEDGER TRACE (rail A3) — RECORD an already-finalized franchise payout, append-only &
+ *  idempotent. PURE ADD-ON, mirroring lib/creator-payout.payPartner (Agent 84): it RECORDS
+ *  the (already-'paid', already-persisted) disbursement; it NEVER moves money, NEVER alters
+ *  the transfer/Payout, and recordPartnerTransferLedgerEntry NEVER throws (it catches
+ *  internally) — its result is NOT folded into the SettlementOutcome, so removing this whole
+ *  function leaves every settled path BYTE-IDENTICAL. Idempotent on the Payout id
+ *  (@@unique([sourceEventId,'partner_transfer'])): a resume / re-driven finalize → silent
+ *  duplicate, never a 2nd line. restaurantId carries the FRANCHISOR operator id (beneficiary),
+ *  NEVER a Restaurant.id → every restaurantId-scoped ledger reader stays neutral (identical
+ *  shape to the affiliate trace already shipped by Agent 84). A failure is logged
+ *  ([LEDGER MISS]) for manual reconciliation — it must never block or undo a settled batch. */
+async function recordFranchisePayoutTrace(p: BatchPayout, ref: FranchisorRef, transferId: string | null): Promise<void> {
+  if (!transferId) return // no transfer reference (e.g. nothing was moved) → nothing to trace
+  // Belt-and-suspenders best-effort: recordPartnerTransferLedgerEntry already NEVER throws
+  // (it catches internally), and this extra try/catch GUARANTEES that even a hypothetical
+  // throw can never propagate to the settlement caller — a ledger MISS must never undo a
+  // settled batch.
+  try {
+    const led = await recordPartnerTransferLedgerEntry({
+      payoutId:             p.id,
+      role:                 'franchise',
+      beneficiaryId:        ref.id,            // franchisor OPERATOR id — never a Restaurant.id
+      amountCents:          p.amountCents,
+      currency:             p.currency,
+      stripeTransferId:     transferId,
+      destinationAccountId: ref.stripeAccountId,
+    })
+    if (!led.ok) {
+      console.error(`[LEDGER MISS] partner_transfer payout=${p.id} role=franchise ref=${ref.id}: ${led.error}`)
+    }
+  } catch (err) {
+    console.error(`[LEDGER MISS] partner_transfer payout=${p.id} role=franchise ref=${ref.id}: ${err instanceof Error ? err.message : err}`)
+  }
+}
+
 /**
  * Disburse a CLAIMED batch (lines already 'settling' under `settlementId`): create the
  * 'pending' Payout (idempotent on its key), transfer the sum, then atomically mark the
@@ -156,6 +192,7 @@ async function finalizeBatch(
   // Already fully disbursed (finalize ran before) → just ensure the lines are settled.
   if (p.status === 'paid') {
     await markLinesSettled(settlementId, p.id)
+    await recordFranchisePayoutTrace(p, ref, p.stripeTransferId) // best-effort, idempotent (recovery on resume)
     return { status: 'settled', operatorId: ref.id, amountCents: p.amountCents, lineCount: lines.length, stripeTransferId: p.stripeTransferId ?? '', settlementId, resumed }
   }
 
@@ -170,6 +207,7 @@ async function finalizeBatch(
     const existing = await getStripe().transfers.list({ transfer_group: transferGroup, limit: 1 })
     if (existing.data.length > 0) {
       await finalizePaid(p.id, existing.data[0].id, settlementId)
+      await recordFranchisePayoutTrace(p, ref, existing.data[0].id) // best-effort, after 'paid'
       return { status: 'settled', operatorId: ref.id, amountCents: p.amountCents, lineCount: lines.length, stripeTransferId: existing.data[0].id, settlementId, resumed }
     }
     // No prior transfer → we are about to create one: the disbursed amount is the FROZEN
@@ -195,6 +233,7 @@ async function finalizeBatch(
     { idempotencyKey },
   )
   await finalizePaid(p.id, transfer.id, settlementId)
+  await recordFranchisePayoutTrace(p, ref, transfer.id) // best-effort, after 'paid'
   return { status: 'settled', operatorId: ref.id, amountCents: p.amountCents, lineCount: lines.length, stripeTransferId: transfer.id, settlementId, resumed }
 }
 
