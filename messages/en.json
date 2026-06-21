@@ -3696,5 +3696,11 @@
       "errorTooLarge": "Image too large.",
       "errorGeneric": "The operation failed. Please try again."
     }
+  },
+  "onboardingGuide": {
+    "title": "You're almost there",
+    "subtitle": "Finish setting up to go live.",
+    "progress": "{done} of {total} step(s)",
+    "resume": "Resume: {step}"
   }
 }

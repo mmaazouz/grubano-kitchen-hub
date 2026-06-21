@@ -3696,5 +3696,11 @@
       "errorTooLarge": "الصورة كبيرة جدًا.",
       "errorGeneric": "فشلت العملية. حاول مجدّدًا."
     }
+  },
+  "onboardingGuide": {
+    "title": "أوشكت على الانتهاء",
+    "subtitle": "أكمِل الإعداد لتصبح متاحًا على المنصّة.",
+    "progress": "{done} من {total} خطوة",
+    "resume": "المتابعة: {step}"
   }
 }

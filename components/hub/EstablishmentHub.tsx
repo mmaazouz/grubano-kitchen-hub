@@ -15,6 +15,7 @@ import OpeningHoursSection from '@/components/hours/OpeningHoursSection'
 import ConnectCard from '@/components/connect/ConnectCard'
 import SitePrefillImport from '@/components/restaurant/SitePrefillImport'
 import LogoPrefillImport from '@/components/restaurant/LogoPrefillImport'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 
 // ── Establishment HUB (C13-2) ─────────────────────────────────────────────────
@@ -290,6 +291,11 @@ export default function EstablishmentHub({
   return (
     <div className="mx-auto max-w-lg px-5 pb-24 pt-4 md:max-w-3xl">
       {crumbs.length > 0 && <Breadcrumb items={crumbs} className="mb-3" />}
+
+      {/* AI onboarding copilot — anti-abandon guide (Agent 93). SELF-GATING: renders null
+          when ONBOARDING_GUIDE_ENABLED is OFF → the hub stays byte-identical. Reads the
+          EXISTING owner-scoped activation engine; shows progress + a "resume" CTA. */}
+      <OnboardingGuide />
 
       {/* ── Sober header ──────────────────────────────────────────────────── */}
       <header className="mb-5">

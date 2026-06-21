@@ -3696,5 +3696,11 @@
       "errorTooLarge": "Imagen demasiado grande.",
       "errorGeneric": "La operación ha fallado. Inténtelo de nuevo."
     }
+  },
+  "onboardingGuide": {
+    "title": "Ya casi está",
+    "subtitle": "Termine la configuración para publicarse.",
+    "progress": "{done} de {total} paso(s)",
+    "resume": "Reanudar: {step}"
   }
 }

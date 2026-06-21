@@ -3696,5 +3696,11 @@
       "errorTooLarge": "Image trop volumineuse.",
       "errorGeneric": "L’opération a échoué. Réessayez."
     }
+  },
+  "onboardingGuide": {
+    "title": "Vous y êtes presque",
+    "subtitle": "Terminez votre installation pour passer en ligne.",
+    "progress": "{done} étape(s) sur {total}",
+    "resume": "Reprendre : {step}"
   }
 }

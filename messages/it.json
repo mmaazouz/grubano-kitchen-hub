@@ -3696,5 +3696,11 @@
       "errorTooLarge": "Immagine troppo grande.",
       "errorGeneric": "Operazione non riuscita. Riprovi."
     }
+  },
+  "onboardingGuide": {
+    "title": "Ci siamo quasi",
+    "subtitle": "Completi la configurazione per andare online.",
+    "progress": "{done} passaggio/i su {total}",
+    "resume": "Riprendere: {step}"
   }
 }
