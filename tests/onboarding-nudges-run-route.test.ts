@@ -10,13 +10,15 @@ import { Prisma } from '@prisma/client'
 const { session, db, sendMock } = vi.hoisted(() => ({
   session: vi.fn(),
   db: {
-    operator:        { findMany: vi.fn(), findUnique: vi.fn() },
-    brand:           { findFirst: vi.fn() },
-    restaurant:      { findFirst: vi.fn() },
-    menuItem:        { count: vi.fn() },
-    affiliate:       { findMany: vi.fn() }, // Agent 102 cohort — empty here (restaurant-path tests)
-    creator:         { findMany: vi.fn() }, // Agent 102 cohort — empty here
-    onboardingNudge: { findMany: vi.fn(), create: vi.fn() },
+    operator:           { findMany: vi.fn(), findUnique: vi.fn() },
+    brand:              { findFirst: vi.fn(), count: vi.fn() },
+    restaurant:         { findFirst: vi.fn() },
+    menuItem:           { count: vi.fn() },
+    affiliate:          { findMany: vi.fn() }, // Agent 102 cohort — empty here (restaurant-path tests)
+    creator:            { findMany: vi.fn() }, // Agent 102 cohort — empty here
+    supplierProfile:    { findMany: vi.fn() }, // Agent 107 cohort — empty here
+    prestataireProfile: { findMany: vi.fn() }, // Agent 107 cohort — empty here
+    onboardingNudge:    { findMany: vi.fn(), create: vi.fn() },
   },
   sendMock: vi.fn(),
 }))
@@ -44,14 +46,20 @@ beforeEach(() => {
   process.env.ONBOARDING_NUDGE_ENABLED = 'true'
   process.env.INTERNAL_CRON_TOKEN = 'cron-secret'
   // Incomplete onboarding: no brand / no restaurant / no menu → checklist isDiscovery=true.
-  db.operator.findMany.mockResolvedValue([INCOMPLETE_OP])
+  // Role-scoped so the RESTAURANT cohort gets the candidate and the franchisor cohort (role
+  // 'franchise', Agent 107) gets none — these are restaurant-path tests.
+  db.operator.findMany.mockImplementation(({ where }: { where: { role?: string } }) =>
+    where?.role === 'restaurant' ? Promise.resolve([INCOMPLETE_OP]) : Promise.resolve([]))
   db.brand.findFirst.mockResolvedValue(null)
+  db.brand.count.mockResolvedValue(0)
   db.restaurant.findFirst.mockResolvedValue(null)
   db.menuItem.count.mockResolvedValue(0)
   db.onboardingNudge.findMany.mockResolvedValue([]) // no prior nudge
   db.onboardingNudge.create.mockResolvedValue({ id: 'n1' })
-  db.affiliate.findMany.mockResolvedValue([]) // restaurant-path tests: other cohorts empty
+  db.affiliate.findMany.mockResolvedValue([])          // restaurant-path tests: other cohorts empty
   db.creator.findMany.mockResolvedValue([])
+  db.supplierProfile.findMany.mockResolvedValue([])    // Agent 107 cohorts empty here
+  db.prestataireProfile.findMany.mockResolvedValue([])
 })
 afterEach(() => { delete process.env.ONBOARDING_NUDGE_ENABLED; delete process.env.INTERNAL_CRON_TOKEN })
 
@@ -114,7 +122,8 @@ describe('STOP conditions (no send)', () => {
 describe('best-effort per account', () => {
   it('one account throwing does not stop the batch (isolated)', async () => {
     const OP2 = { ...INCOMPLETE_OP, id: 'op2', email: 'b@x.fr' }
-    db.operator.findMany.mockResolvedValue([INCOMPLETE_OP, OP2])
+    db.operator.findMany.mockImplementation(({ where }: { where: { role?: string } }) =>
+      where?.role === 'restaurant' ? Promise.resolve([INCOMPLETE_OP, OP2]) : Promise.resolve([]))
     // op1's signal read throws; op2 proceeds.
     db.brand.findFirst.mockImplementation(({ where }: { where: { operatorId: string } }) =>
       where.operatorId === 'op1' ? Promise.reject(new Error('db blip')) : Promise.resolve(null))

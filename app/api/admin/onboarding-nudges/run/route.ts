@@ -30,11 +30,17 @@ export const dynamic = 'force-dynamic'
 // restaurant cohort is EQUIVALENT to Agent 95. READS onboarding state; WRITES only nudge state — ZERO money.
 
 const BATCH_CAP = 500
-type NudgeRole = 'restaurant' | 'affiliate' | 'creator'
+// Agent 107 adds the supplier/prestataire/franchisor cohorts. 'franchisor' is the nudge `role`
+// column value (matches the checklist def + distinct from the others); the cohort is SELECTED by
+// the operator's primary role string 'franchise' (readOperatorRoles never returns 'franchisor').
+type NudgeRole = 'restaurant' | 'affiliate' | 'creator' | 'supplier' | 'prestataire' | 'franchisor'
 const DEFAULT_PATH: Record<NudgeRole, string> = {
-  restaurant: '/dashboard',
-  affiliate:  '/affiliate/dashboard',
-  creator:    '/creators/dashboard',
+  restaurant:  '/dashboard',
+  affiliate:   '/affiliate/dashboard',
+  creator:     '/creators/dashboard',
+  supplier:    '/supplier/dashboard',
+  prestataire: '/prestataire/dashboard',
+  franchisor:  '/franchise/dashboard',
 }
 
 function baseUrl(): string {
@@ -257,6 +263,126 @@ export async function POST(req: Request) {
       } catch (err) {
         skipped++
         console.error('[onboarding-nudge] creator failed', cr.email, err instanceof Error ? err.message : err)
+      }
+    }
+
+    // ── Cohort 4 — SUPPLIER (email-keyed, calque of creator) ─────────────────────────────
+    // SupplierProfiles old enough, joined to their NON-unsubscribed operator by SHARED EMAIL (the
+    // login identity that carries unsub + locale + the claim key). A supplier with no operator is
+    // unreachable for unsub → skipped (respects the global opt-out). Cadence = SupplierProfile.createdAt.
+    // Signals from the EXISTING SupplierProfile (SIREN/KYB, catalogue count, payout), read-only.
+    const suppliers = await prisma.supplierProfile.findMany({
+      where:   { createdAt: { lte: earliest } },
+      select:  { email: true, createdAt: true, verificationStatus: true, payoutStatus: true, _count: { select: { catalogItems: true } } },
+      orderBy: { createdAt: 'asc' },
+      take:    BATCH_CAP,
+    })
+    const supplierOps = suppliers.length
+      ? await prisma.operator.findMany({
+          where:  { email: { in: suppliers.map((s) => s.email) }, onboardingNudgeUnsub: false },
+          select: { id: true, email: true, name: true, locale: true, status: true },
+        })
+      : []
+    const supOpByEmail = new Map(supplierOps.map((o) => [o.email, o]))
+    considered += suppliers.length
+    for (const sp of suppliers) {
+      const op = supOpByEmail.get(sp.email)
+      if (!op) { skipped++; continue } // no login operator OR unsubscribed → skip, no send
+      try {
+        const signals: ChecklistSignals = {
+          accountActive: op.status === 'active',
+          hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+          supplierCompanyVerified: sp.verificationStatus === 'verified',
+          supplierCatalogueReady:  (sp._count?.catalogItems ?? 0) >= 1,
+          supplierPayoutReady:     sp.payoutStatus === 'active',
+        }
+        const progress = deriveOnboardingProgress(buildActivationChecklist('supplier', signals))
+        const r = await processCandidate(
+          { operatorId: op.id, email: op.email, name: op.name, locale: op.locale, roleCreatedAtMs: sp.createdAt.getTime() },
+          'supplier', progress, now,
+        )
+        if (r === 'sent') sent++; else skipped++
+      } catch (err) {
+        skipped++
+        console.error('[onboarding-nudge] supplier failed', sp.email, err instanceof Error ? err.message : err)
+      }
+    }
+
+    // ── Cohort 5 — PRESTATAIRE (email-keyed, calque of creator) ──────────────────────────
+    // Same email-keyed pattern as supplier. Cadence = PrestataireProfile.createdAt. Signals from
+    // the EXISTING PrestataireProfile (service categories, SIREN/KYB, payout), read-only.
+    const prestataires = await prisma.prestataireProfile.findMany({
+      where:   { createdAt: { lte: earliest } },
+      select:  { email: true, createdAt: true, serviceCategories: true, verificationStatus: true, payoutStatus: true },
+      orderBy: { createdAt: 'asc' },
+      take:    BATCH_CAP,
+    })
+    const prestaOps = prestataires.length
+      ? await prisma.operator.findMany({
+          where:  { email: { in: prestataires.map((p) => p.email) }, onboardingNudgeUnsub: false },
+          select: { id: true, email: true, name: true, locale: true, status: true },
+        })
+      : []
+    const prestaOpByEmail = new Map(prestaOps.map((o) => [o.email, o]))
+    considered += prestataires.length
+    for (const pr of prestataires) {
+      const op = prestaOpByEmail.get(pr.email)
+      if (!op) { skipped++; continue } // no login operator OR unsubscribed → skip, no send
+      try {
+        const cats = pr.serviceCategories
+        const signals: ChecklistSignals = {
+          accountActive: op.status === 'active',
+          hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+          prestataireProfileComplete: Array.isArray(cats) && cats.length > 0,
+          prestataireCompanyVerified: pr.verificationStatus === 'verified',
+          prestatairePayoutReady:     pr.payoutStatus === 'active',
+        }
+        const progress = deriveOnboardingProgress(buildActivationChecklist('prestataire', signals))
+        const r = await processCandidate(
+          { operatorId: op.id, email: op.email, name: op.name, locale: op.locale, roleCreatedAtMs: pr.createdAt.getTime() },
+          'prestataire', progress, now,
+        )
+        if (r === 'sent') sent++; else skipped++
+      } catch (err) {
+        skipped++
+        console.error('[onboarding-nudge] prestataire failed', pr.email, err instanceof Error ? err.message : err)
+      }
+    }
+
+    // ── Cohort 6 — FRANCHISOR (operator-keyed) ───────────────────────────────────────────
+    // The nudge `role` column value is 'franchisor' (matches the checklist def + distinct from the
+    // others), while the cohort is SELECTED by the operator's PRIMARY role 'franchise' (the real
+    // OperatorRole string; mirrors the restaurant cohort's primary-role + direct unsub filter).
+    // Cadence = Operator.createdAt. Signals are read-only mirrors (account-level KYB + a franchisable
+    // brand + stored franchise payout status) — NO royalty amount; the franchise rail is untouched.
+    // deriveOnboardingProgress skips the CTA-less "verify company" step, so the resume link points
+    // at the next ACTIONABLE step (configure the franchise).
+    const franchisors = await prisma.operator.findMany({
+      where:   { role: 'franchise', onboardingNudgeUnsub: false, createdAt: { lte: earliest } },
+      select:  { id: true, email: true, name: true, locale: true, createdAt: true, status: true, kybStatus: true, franchisePayoutStatus: true },
+      orderBy: { createdAt: 'asc' },
+      take:    BATCH_CAP,
+    })
+    considered += franchisors.length
+    for (const op of franchisors) {
+      try {
+        const openBrandCount = await prisma.brand.count({ where: { operatorId: op.id, openToFranchise: true } })
+        const signals: ChecklistSignals = {
+          accountActive: op.status === 'active',
+          hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+          franchisorCompanyVerified:     op.kybStatus === 'verified',
+          franchisorFranchiseConfigured: openBrandCount >= 1,
+          franchisorPayoutReady:         op.franchisePayoutStatus === 'active',
+        }
+        const progress = deriveOnboardingProgress(buildActivationChecklist('franchisor', signals))
+        const r = await processCandidate(
+          { operatorId: op.id, email: op.email, name: op.name, locale: op.locale, roleCreatedAtMs: op.createdAt.getTime() },
+          'franchisor', progress, now,
+        )
+        if (r === 'sent') sent++; else skipped++
+      } catch (err) {
+        skipped++
+        console.error('[onboarding-nudge] franchisor failed', op.id, err instanceof Error ? err.message : err)
       }
     }
 

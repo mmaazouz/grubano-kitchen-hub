@@ -13,11 +13,13 @@ const { session, db, sendMock } = vi.hoisted(() => ({
   session: vi.fn(),
   db: {
     operator:        { findMany: vi.fn(), findUnique: vi.fn() },
-    brand:           { findFirst: vi.fn() },
+    brand:           { findFirst: vi.fn(), count: vi.fn() },
     restaurant:      { findFirst: vi.fn() },
     menuItem:        { count: vi.fn() },
     affiliate:       { findMany: vi.fn() },
     creator:         { findMany: vi.fn() },
+    supplierProfile:    { findMany: vi.fn() }, // Agent 107 cohort — empty here
+    prestataireProfile: { findMany: vi.fn() }, // Agent 107 cohort — empty here
     onboardingNudge: { findMany: vi.fn(), create: vi.fn() },
   },
   sendMock: vi.fn(),
@@ -56,8 +58,11 @@ beforeEach(() => {
   db.affiliate.findMany.mockResolvedValue([{ operatorId: 'op1', createdAt: old(), status: 'active' }])
   db.creator.findMany.mockResolvedValue([])
   db.brand.findFirst.mockResolvedValue(null)
+  db.brand.count.mockResolvedValue(0)
   db.restaurant.findFirst.mockResolvedValue(null)
   db.menuItem.count.mockResolvedValue(0)
+  db.supplierProfile.findMany.mockResolvedValue([])    // Agent 107 cohorts empty here
+  db.prestataireProfile.findMany.mockResolvedValue([])
   db.onboardingNudge.findMany.mockResolvedValue([])
   db.onboardingNudge.create.mockResolvedValue({ id: 'n1' })
 })
