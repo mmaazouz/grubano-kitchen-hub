@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { Link } from '@/navigation'
 import { Card, Badge, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 import PrestataireConnectCard from '@/components/prestataire/PrestataireConnectCard'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { isPrestataireConnectLive } from '@/lib/prestataire-connect'
@@ -113,6 +114,12 @@ export default async function PrestataireDashboardPage(props: { params: { locale
           />
         ) : (
           <>
+            {/* Onboarding copilote (Agent 104) — role-aware activation guide for the prestataire.
+                Self-gating: renders null unless ONBOARDING_GUIDE_ENABLED is on (probe in the
+                component) → the dashboard is byte-identical when the flag is OFF. READ-ONLY,
+                moves no money; fetches /api/business/activation?role=prestataire. */}
+            <OnboardingGuide role="prestataire" />
+
             {profile.status === 'pending' && (
               <Card elevation="sm" padding="md" className="border-grubano-warning/40 bg-grubano-warning-tint">
                 <div className="flex items-start gap-2.5">

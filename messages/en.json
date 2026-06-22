@@ -3072,6 +3072,26 @@
         "descReady": "Your identity and bank are verified: you can be paid.",
         "descTodo": "To receive your payments, verify your identity and bank. Do it whenever you like — it never blocks your sales.",
         "cta": "Set up my payments"
+      },
+      "prestataireAccount": {
+        "title": "Account created",
+        "desc": "Your provider account is active and you are signed in."
+      },
+      "prestataireProfile": {
+        "title": "Complete your service profile",
+        "desc": "Pick at least one service category so restaurateurs can find you.",
+        "cta": "Complete my profile"
+      },
+      "prestataireCompany": {
+        "title": "Verify your company",
+        "desc": "Enter your SIREN: we verify your company against the official registry.",
+        "cta": "Verify my company"
+      },
+      "prestatairePayout": {
+        "title": "To get paid: identity and bank",
+        "descReady": "Your identity and bank are verified: you can be paid.",
+        "descTodo": "To receive your payments, verify your identity and bank. Do it whenever you like — it never blocks your jobs.",
+        "cta": "Set up my payments"
       }
     },
     "blocked": {
@@ -3710,7 +3730,25 @@
       "payoutPending": "In progress",
       "payoutActive": "Active",
       "payoutRestricted": "Incomplete"
-    }
+    },
+    "profileTitle": "My profile",
+    "profileBack": "Back to dashboard",
+    "profileSubtitle": "Update your business information. Your SIREN and company verification remain read-only.",
+    "profileSavedTitle": "Profile saved",
+    "profileSavedBody": "Your changes have been saved.",
+    "profileLoadError": "Could not load your profile. Please try again later.",
+    "profileSave": "Save",
+    "profileSaving": "Saving…",
+    "profileLockedTitle": "Verified information",
+    "profileLockedNote": "This information is set when you register and cannot be edited here.",
+    "lockedSiren": "SIREN",
+    "lockedOfficialName": "Legal name",
+    "lockedVerification": "Verification",
+    "lockedAccountStatus": "Account status",
+    "verifVerified": "Verified",
+    "verifReview": "Under review",
+    "verifRejected": "Rejected",
+    "verifNone": "—"
   },
   "restaurant": {
     "siteImport": {

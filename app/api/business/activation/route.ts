@@ -76,6 +76,15 @@ export async function GET(req: Request) {
       return supplierActivation(session.user.email, operator.status === 'active')
     }
 
+    // ── Prestataire surface (Agent 104, ADDITIVE — calque of the supplier branch) — the guide on
+    //    the prestataire dashboard requests ?role=prestataire. Served owner-scoped (PrestataireProfile
+    //    resolved by the SESSION email; a non-prestataire gets an empty, non-discovery checklist).
+    //    READ-ONLY: signals come from the EXISTING PrestataireProfile (no money, no write; the
+    //    prestataire payment rail is untouched). The branches above + the restaurant path below are UNCHANGED.
+    if (new URL(req.url).searchParams.get('role') === 'prestataire') {
+      return prestataireActivation(session.user.email, operator.status === 'active')
+    }
+
     const role  = roles.includes('restaurant') ? 'restaurant' : operator.role
 
     // No definition for this role yet (e.g. a pure creator/supplier on the
@@ -235,4 +244,37 @@ async function supplierActivation(email: string, accountActive: boolean) {
   }
 
   return NextResponse.json({ ok: true, role: 'supplier', checklist: buildActivationChecklist('supplier', signals) })
+}
+
+// ── Prestataire activation (Agent 104) — owner-scoped, READ-ONLY (calque of supplierActivation) ──
+// Empty (non-discovery) checklist when the session user is not a prestataire → the guide renders
+// nothing. Otherwise signals come from the EXISTING PrestataireProfile (service profile filled?
+// company verified? payout active?) — no money, no write; the prestataire payment rail untouched.
+const EMPTY_PRESTATAIRE = {
+  role: 'prestataire', steps: [] as never[], progressPct: 100, currentStepId: null, isDiscovery: false,
+}
+
+async function prestataireActivation(email: string, accountActive: boolean) {
+  // Owner-scoped: the PrestataireProfile is resolved from the SESSION email (never a client value),
+  // the same way /prestataire/dashboard does. No profile → empty checklist (no cross-role leak).
+  const profile = await prisma.prestataireProfile.findUnique({
+    where:  { email },
+    select: { id: true, serviceCategories: true, verificationStatus: true, payoutStatus: true },
+  })
+  if (!profile) {
+    return NextResponse.json({ ok: true, role: 'prestataire', checklist: EMPTY_PRESTATAIRE })
+  }
+
+  const categories = Array.isArray(profile.serviceCategories) ? profile.serviceCategories : []
+
+  const signals: ChecklistSignals = {
+    accountActive,
+    // Required restaurant fields are neutral placeholders — the 'prestataire' definition ignores them.
+    hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+    prestataireProfileComplete: categories.length > 0,
+    prestataireCompanyVerified: profile.verificationStatus === 'verified',
+    prestatairePayoutReady:     profile.payoutStatus === 'active',
+  }
+
+  return NextResponse.json({ ok: true, role: 'prestataire', checklist: buildActivationChecklist('prestataire', signals) })
 }

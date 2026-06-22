@@ -3072,6 +3072,26 @@
         "descReady": "Votre identité et votre banque sont vérifiées : vous pouvez être payé.",
         "descTodo": "Pour recevoir vos paiements, vérifiez votre identité et votre banque. À faire quand vous voulez — cela ne bloque pas vos ventes.",
         "cta": "Configurer mes paiements"
+      },
+      "prestataireAccount": {
+        "title": "Compte créé",
+        "desc": "Votre compte prestataire est actif et vous êtes connecté."
+      },
+      "prestataireProfile": {
+        "title": "Complétez votre profil de service",
+        "desc": "Choisissez au moins une catégorie de service pour que les restaurateurs vous trouvent.",
+        "cta": "Compléter mon profil"
+      },
+      "prestataireCompany": {
+        "title": "Vérifiez votre entreprise",
+        "desc": "Renseignez votre SIREN : nous vérifions votre entreprise auprès du registre officiel.",
+        "cta": "Vérifier mon entreprise"
+      },
+      "prestatairePayout": {
+        "title": "Pour être payé : identité et banque",
+        "descReady": "Votre identité et votre banque sont vérifiées : vous pouvez être payé.",
+        "descTodo": "Pour recevoir vos paiements, vérifiez votre identité et votre banque. À faire quand vous voulez — cela ne bloque pas vos missions.",
+        "cta": "Configurer mes paiements"
       }
     },
     "blocked": {
@@ -3710,7 +3730,25 @@
       "payoutPending": "En cours",
       "payoutActive": "Actif",
       "payoutRestricted": "Incomplet"
-    }
+    },
+    "profileTitle": "Mon profil",
+    "profileBack": "Retour au tableau de bord",
+    "profileSubtitle": "Mettez à jour les informations de votre activité. Votre SIREN et la vérification de votre entreprise restent en lecture seule.",
+    "profileSavedTitle": "Profil enregistré",
+    "profileSavedBody": "Vos modifications ont bien été enregistrées.",
+    "profileLoadError": "Impossible de charger votre profil. Réessayez plus tard.",
+    "profileSave": "Enregistrer",
+    "profileSaving": "Enregistrement…",
+    "profileLockedTitle": "Informations vérifiées",
+    "profileLockedNote": "Ces informations sont définies lors de votre inscription et ne sont pas modifiables ici.",
+    "lockedSiren": "SIREN",
+    "lockedOfficialName": "Raison sociale",
+    "lockedVerification": "Vérification",
+    "lockedAccountStatus": "Statut du compte",
+    "verifVerified": "Vérifiée",
+    "verifReview": "En cours de vérification",
+    "verifRejected": "Refusée",
+    "verifNone": "—"
   },
   "restaurant": {
     "siteImport": {

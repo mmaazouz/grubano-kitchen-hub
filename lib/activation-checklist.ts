@@ -112,6 +112,17 @@ export interface ChecklistSignals {
   /** Supplier payout Connect 'active' (identity + bank done) — read-only mirror of the stored
    *  SupplierProfile.payoutStatus; the guide moves no money and the supplier rail is untouched. */
   supplierPayoutReady?: boolean
+
+  // ── Prestataire signals (Agent 104) — read-only, derived from the EXISTING PrestataireProfile.
+  //    OPTIONAL by design: ONLY the 'prestataire' definition reads them; the 4 other definitions
+  //    and their required fields above are untouched (equivalence ×4).
+  /** At least one service category is declared (the service profile is filled). */
+  prestataireProfileComplete?: boolean
+  /** PrestataireProfile.verificationStatus === 'verified' (SIREN/KYB checked against the registry). */
+  prestataireCompanyVerified?: boolean
+  /** Prestataire payout Connect 'active' (identity + bank done) — read-only mirror of the stored
+   *  PrestataireProfile.payoutStatus; the guide moves no money and the prestataire rail is untouched. */
+  prestatairePayoutReady?: boolean
 }
 
 // ── Restaurateur definition (the 6 steps, mapped to the 4 gates) ──────────────
@@ -380,12 +391,79 @@ function supplierSteps(s: ChecklistSignals): ChecklistStep[] {
   return [account, company, catalogue, payout]
 }
 
+// ── Prestataire definition (Agent 104) — 4 steps, per « Informations par partenaire » ──
+// Doctrine: signup = name+email (done) ; complete the SERVICE PROFILE (category) ; verify the
+// COMPANY (SIREN/KYB, instant against the registry — usually already done at registration) ;
+// identity + bank are DEFERRED, required ONLY to be PAID. The company step is a 'todo' until the
+// profile is filled (the service profile is the first frontier), then 'current'; it is NEVER
+// locked (verification is independent and often already passed). The "get paid" step is a
+// NON-BLOCKING 'todo'. READ-ONLY: every state is derived from the EXISTING PrestataireProfile
+// (serviceCategories / verificationStatus / payoutStatus) — never a recomputed money value, never
+// a write, and the prestataire payment rail is untouched.
+function prestataireSteps(s: ChecklistSignals): ChecklistStep[] {
+  // 1 — Compte créé (P0). An active session ⇒ done.
+  const account: ChecklistStep = {
+    id: 'account', gate: 0,
+    titleKey: 'steps.prestataireAccount.title',
+    descriptionKey: 'steps.prestataireAccount.desc',
+    state: s.accountActive ? 'done' : 'current',
+  }
+
+  // 2 — Compléter le profil de service (catégorie) (P1). The first active frontier.
+  const profile: ChecklistStep = {
+    id: 'prestataireProfile', gate: 1,
+    titleKey: 'steps.prestataireProfile.title',
+    descriptionKey: 'steps.prestataireProfile.desc',
+    state: s.prestataireProfileComplete ? 'done' : 'current',
+    ...(s.prestataireProfileComplete
+      ? {}
+      : { ctaKey: 'steps.prestataireProfile.cta', ctaHref: '/prestataire/dashboard/profil' }),
+  }
+
+  // 3 — Vérifier l'entreprise (SIREN/KYB) (P2). Done once the registry check passes (usually at
+  //     registration). NOT locked — independent of the profile; it is a 'todo' until the profile
+  //     is filled (so the profile is the single frontier first), then 'current'.
+  const company: ChecklistStep = {
+    id: 'prestataireCompany', gate: 2,
+    titleKey: 'steps.prestataireCompany.title',
+    descriptionKey: 'steps.prestataireCompany.desc',
+    state: s.prestataireCompanyVerified
+      ? 'done'
+      : s.prestataireProfileComplete ? 'current' : 'todo',
+    ...(s.prestataireCompanyVerified
+      ? {}
+      : { ctaKey: 'steps.prestataireCompany.cta', ctaHref: '/prestataire/dashboard/profil' }),
+  }
+
+  // 4 — Être payé : identité + banque (P3). DEFERRED + NON-BLOCKING: needed ONLY to be paid, never
+  //     to start. A 'todo' with a CTA (never 'locked'/'current') until payout-ready. The CTA opens
+  //     the EXISTING prestataire dashboard (Connect card) — the guide moves no money.
+  const payout: ChecklistStep = s.prestatairePayoutReady
+    ? {
+        id: 'prestatairePayout', gate: 3,
+        titleKey: 'steps.prestatairePayout.title',
+        descriptionKey: 'steps.prestatairePayout.descReady',
+        state: 'done',
+      }
+    : {
+        id: 'prestatairePayout', gate: 3,
+        titleKey: 'steps.prestatairePayout.title',
+        descriptionKey: 'steps.prestatairePayout.descTodo',
+        state: 'todo',
+        ctaKey: 'steps.prestatairePayout.cta',
+        ctaHref: '/prestataire/dashboard',
+      }
+
+  return [account, profile, company, payout]
+}
+
 /** Per-role step builders. Add other roles here without touching the core. */
 const DEFINITIONS: Record<string, (s: ChecklistSignals) => ChecklistStep[]> = {
-  restaurant: restaurantSteps,
-  affiliate:  affiliateSteps,
-  creator:    creatorSteps,
-  supplier:   supplierSteps,
+  restaurant:  restaurantSteps,
+  affiliate:   affiliateSteps,
+  creator:     creatorSteps,
+  supplier:    supplierSteps,
+  prestataire: prestataireSteps,
 }
 
 /** Roles that currently have a checklist definition. */

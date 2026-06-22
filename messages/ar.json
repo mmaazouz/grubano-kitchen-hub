@@ -3072,6 +3072,26 @@
         "descReady": "تم التحقق من هويتك وبنكك: يمكنك تلقّي أجرك.",
         "descTodo": "لتلقّي مدفوعاتك، تحقّق من هويتك وبنكك. يمكنك ذلك متى شئت — فهو لا يوقف مبيعاتك.",
         "cta": "إعداد مدفوعاتي"
+      },
+      "prestataireAccount": {
+        "title": "تم إنشاء الحساب",
+        "desc": "حساب مزوّد الخدمة الخاص بك مفعّل وأنت متصل."
+      },
+      "prestataireProfile": {
+        "title": "أكمِل ملفّك الخدمي",
+        "desc": "اختر فئة خدمة واحدة على الأقل حتى يتمكّن أصحاب المطاعم من العثور عليك.",
+        "cta": "إكمال ملفّي"
+      },
+      "prestataireCompany": {
+        "title": "وثّق شركتك",
+        "desc": "أدخِل رقم SIREN: نتحقّق من شركتك لدى السجلّ الرسمي.",
+        "cta": "توثيق شركتي"
+      },
+      "prestatairePayout": {
+        "title": "لتتقاضى أجرك: الهوية والبنك",
+        "descReady": "تم التحقق من هويتك وبنكك: يمكنك تلقّي أجرك.",
+        "descTodo": "لتلقّي مدفوعاتك، تحقّق من هويتك وبنكك. يمكنك ذلك متى شئت — فهو لا يوقف مهامك.",
+        "cta": "إعداد مدفوعاتي"
       }
     },
     "blocked": {
@@ -3710,7 +3730,25 @@
       "payoutPending": "قيد الإنجاز",
       "payoutActive": "نشط",
       "payoutRestricted": "غير مكتمل"
-    }
+    },
+    "profileTitle": "ملفّي",
+    "profileBack": "العودة إلى لوحة التحكّم",
+    "profileSubtitle": "حدّث معلومات نشاطك. يبقى رقم SIREN والتحقّق من شركتك للقراءة فقط.",
+    "profileSavedTitle": "تم حفظ الملف",
+    "profileSavedBody": "تم حفظ تعديلاتك.",
+    "profileLoadError": "تعذّر تحميل ملفك. أعِد المحاولة لاحقًا.",
+    "profileSave": "حفظ",
+    "profileSaving": "جارٍ الحفظ…",
+    "profileLockedTitle": "معلومات مُوثّقة",
+    "profileLockedNote": "تُحدَّد هذه المعلومات عند التسجيل ولا يمكن تعديلها هنا.",
+    "lockedSiren": "SIREN",
+    "lockedOfficialName": "الاسم القانوني",
+    "lockedVerification": "التحقّق",
+    "lockedAccountStatus": "حالة الحساب",
+    "verifVerified": "مُوثّقة",
+    "verifReview": "قيد التحقّق",
+    "verifRejected": "مرفوضة",
+    "verifNone": "—"
   },
   "restaurant": {
     "siteImport": {
