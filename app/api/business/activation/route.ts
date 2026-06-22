@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { readOperatorRoles } from '@/lib/operator-roles'
+import { isAffiliateEnabled, getAffiliateByOperator } from '@/lib/affiliate-account'
 import {
   buildActivationChecklist,
   hasChecklistDefinition,
@@ -27,7 +28,7 @@ export const dynamic = 'force-dynamic'
  * v1 ships the 'restaurant' definition. A connected partner without the
  * restaurant role gets an empty (non-discovery) checklist — nothing to nag.
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
@@ -46,6 +47,17 @@ export async function GET() {
     // operator actually holds the restaurant role (primary OR cumulative set),
     // mirroring /api/business/me which keys onboarding off the restaurant role.
     const roles = await readOperatorRoles(operator.id, operator.role)
+
+    // ── Role-aware surface (Agent 98, ADDITIVE) — the guide on the affiliate dashboard
+    //    requests ?role=affiliate. Served ONLY when the operator actually holds the
+    //    affiliate role (owner-scoped) and AFFILIATE_ENABLED is on; otherwise an empty,
+    //    non-discovery checklist (no guide). READ-ONLY: signals come from the EXISTING
+    //    Affiliate entity + the operator's stored payout/fiscal fields (NO Stripe sync, NO
+    //    money). When no ?role param is sent, the RESTAURANT path below runs UNCHANGED.
+    if (new URL(req.url).searchParams.get('role') === 'affiliate') {
+      return affiliateActivation(operator.id, operator.status === 'active', roles.includes('affiliate'))
+    }
+
     const role  = roles.includes('restaurant') ? 'restaurant' : operator.role
 
     // No definition for this role yet (e.g. a pure creator/supplier on the
@@ -92,4 +104,56 @@ export async function GET() {
     console.error('[GET /api/business/activation]', err)
     return NextResponse.json({ ok: false, error: 'Erreur serveur' }, { status: 500 })
   }
+}
+
+// ── Affiliate activation (Agent 98) — owner-scoped, READ-ONLY ─────────────────────────
+// The empty (non-discovery) checklist is returned when the affiliate surface is off or the
+// operator is not an affiliate → the guide renders nothing. Otherwise signals are derived
+// from the EXISTING Affiliate entity + the operator's STORED payout/fiscal fields (no Stripe
+// sync, no money movement; the withdrawal rail /api/affiliate/withdraw is never touched).
+const EMPTY_AFFILIATE = {
+  role: 'affiliate', steps: [] as never[], progressPct: 100, currentStepId: null, isDiscovery: false,
+}
+
+/** DAC7 self-declaration complete enough to withdraw (read-only mirror of the withdraw rail's
+ *  own check — replicated here so that route stays byte-identical; no money, no Stripe). */
+function affiliateFiscalComplete(op: {
+  registeredAddress: string | null; taxId: string | null
+  taxIdCountry: string | null; sellerType: string | null; dateOfBirth: Date | null
+}): boolean {
+  if (!op.registeredAddress || !op.taxId || !op.taxIdCountry || !op.sellerType) return false
+  if (op.sellerType === 'individual' && !op.dateOfBirth) return false
+  return true
+}
+
+async function affiliateActivation(operatorId: string, accountActive: boolean, hasAffiliateRole: boolean) {
+  if (!isAffiliateEnabled() || !hasAffiliateRole) {
+    return NextResponse.json({ ok: true, role: 'affiliate', checklist: EMPTY_AFFILIATE })
+  }
+
+  // Owner-scoped reads (operatorId from the SESSION, never a client value).
+  const affiliate = await getAffiliateByOperator(operatorId)
+  const payoutOp  = await prisma.operator.findUnique({
+    where:  { id: operatorId },
+    select: {
+      affiliatePayoutStatus: true,
+      registeredAddress: true, taxId: true, taxIdCountry: true, sellerType: true, dateOfBirth: true,
+    },
+  })
+
+  const signals: ChecklistSignals = {
+    accountActive,
+    // Required restaurant fields are neutral placeholders — the 'affiliate' definition ignores them.
+    hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+    affiliateActive:        affiliate?.status === 'active',
+    affiliateWithdrawReady: payoutOp?.affiliatePayoutStatus === 'active' && affiliateFiscalComplete({
+      registeredAddress: payoutOp?.registeredAddress ?? null,
+      taxId:             payoutOp?.taxId ?? null,
+      taxIdCountry:      payoutOp?.taxIdCountry ?? null,
+      sellerType:        payoutOp?.sellerType ?? null,
+      dateOfBirth:       payoutOp?.dateOfBirth ?? null,
+    }),
+  }
+
+  return NextResponse.json({ ok: true, role: 'affiliate', checklist: buildActivationChecklist('affiliate', signals) })
 }

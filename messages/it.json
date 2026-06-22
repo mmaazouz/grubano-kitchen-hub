@@ -3022,6 +3022,21 @@
         "title": "Ricevi i tuoi versamenti",
         "descActive": "I tuoi versamenti sono attivi: Stripe ti trasferisce automaticamente i ricavi.",
         "descLocked": "Attiva prima i pagamenti per ricevere i tuoi versamenti."
+      },
+      "affiliateAccount": {
+        "title": "Account creato",
+        "desc": "Il suo account affiliato è attivo ed è connesso."
+      },
+      "affiliateLink": {
+        "title": "Il suo link di affiliazione è attivo",
+        "desc": "Condivida subito il suo link: i suoi guadagni vengono conteggiati immediatamente.",
+        "cta": "Vedi il mio link"
+      },
+      "affiliateWithdraw": {
+        "title": "Prepari i suoi prelievi",
+        "descReady": "La sua identità e la sua banca sono verificate: può prelevare i suoi guadagni.",
+        "descTodo": "Per prelevare i suoi guadagni, verifichi la sua identità e la sua banca. Lo faccia quando vuole: non blocca i suoi guadagni.",
+        "cta": "Configurare i prelievi"
       }
     },
     "blocked": {

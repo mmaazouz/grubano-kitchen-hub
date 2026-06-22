@@ -3022,6 +3022,21 @@
         "title": "Recibe tus transferencias",
         "descActive": "Tus transferencias están activadas: Stripe te abona automáticamente tus ingresos.",
         "descLocked": "Activa primero los pagos para recibir tus transferencias."
+      },
+      "affiliateAccount": {
+        "title": "Cuenta creada",
+        "desc": "Su cuenta de afiliado está activa y ha iniciado sesión."
+      },
+      "affiliateLink": {
+        "title": "Su enlace de afiliado está activo",
+        "desc": "Comparta su enlace ahora mismo: sus ganancias se contabilizan de inmediato.",
+        "cta": "Ver mi enlace"
+      },
+      "affiliateWithdraw": {
+        "title": "Prepare sus retiros",
+        "descReady": "Su identidad y su banco están verificados: ya puede retirar sus ganancias.",
+        "descTodo": "Para retirar sus ganancias, verifique su identidad y su banco. Hágalo cuando quiera: no bloquea sus ganancias.",
+        "cta": "Configurar mis retiros"
       }
     },
     "blocked": {

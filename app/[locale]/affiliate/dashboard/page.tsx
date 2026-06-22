@@ -12,6 +12,7 @@ import AffiliateDashboardClient from '@/components/affiliate/AffiliateDashboardC
 import AffiliateWithdrawCard from '@/components/affiliate/AffiliateWithdrawCard'
 import AffiliateVerifyCard from '@/components/affiliate/AffiliateVerifyCard'
 import AffiliateStudioCard from '@/components/affiliate/AffiliateStudioCard'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,6 +45,11 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
 
         {affiliate ? (
           <>
+            {/* Onboarding copilot — role-aware guide (Agent 98). SELF-GATING: renders null when
+                ONBOARDING_GUIDE_ENABLED is OFF → dashboard byte-identical. role="affiliate" →
+                reads the owner-scoped affiliate checklist; shows progress + a "resume" CTA toward
+                the next step (e.g. "préparez vos retraits"). Reads state only — moves no money. */}
+            <OnboardingGuide role="affiliate" />
             <AffiliateLinkCard
               link={buildAffiliateLink(affiliate.referralLinkSlug) ?? ''}
               code={affiliate.referralCode}

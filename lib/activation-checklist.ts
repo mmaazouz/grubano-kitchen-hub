@@ -82,6 +82,16 @@ export interface ChecklistSignals {
   stripeConnected: boolean
   /** Raw Restaurant.stripeAccountStatus for sub-labelling ('pending'|'active'|'restricted'|null). */
   stripeStatus?:  string | null
+
+  // ── Affiliate signals (Agent 98) — read-only, derived from the EXISTING Affiliate entity
+  //    + the operator's stored payout/fiscal fields. OPTIONAL by design: ONLY the 'affiliate'
+  //    definition reads them; the 'restaurant' definition and its required fields above are
+  //    untouched (strict equivalence). The guide never moves money — these mirror state only.
+  /** Affiliate row exists and is active (the referral link is live). */
+  affiliateActive?:       boolean
+  /** Payout Connect 'active' AND the DAC7 fiscal self-declaration is complete (read-only
+   *  mirror of stored fields; the actual withdrawal stays /api/affiliate/withdraw). */
+  affiliateWithdrawReady?: boolean
 }
 
 // ── Restaurateur definition (the 6 steps, mapped to the 4 gates) ──────────────
@@ -187,9 +197,59 @@ function restaurantSteps(s: ChecklistSignals): ChecklistStep[] {
   return [account, establishment, menu, publishStep, payments, payouts]
 }
 
+// ── Affiliate definition (Agent 98) — 3 steps, per « Informations par partenaire » ───
+// Doctrine "lien instantané" : signup = name+email (done) ; the referral link is INSTANT
+// (nothing to do to start earning) ; identity + bank + fiscal are DEFERRED, required ONLY at
+// the 1st withdrawal (threshold). So earning starts at 0€ and the "prepare your withdrawals"
+// step is a NON-BLOCKING 'todo' (never gates the start). READ-ONLY: every state is derived
+// from the EXISTING Affiliate entity + the operator's stored payout/fiscal fields — never a
+// recomputed money value, never a write, and the affiliate withdrawal rail is untouched.
+function affiliateSteps(s: ChecklistSignals): ChecklistStep[] {
+  // 1 — Compte créé (P0). The affiliate is granted at signup; an active session ⇒ done.
+  const account: ChecklistStep = {
+    id: 'account', gate: 0,
+    titleKey: 'steps.affiliateAccount.title',
+    descriptionKey: 'steps.affiliateAccount.desc',
+    state: s.accountActive ? 'done' : 'current',
+  }
+
+  // 2 — Lien d'affiliation actif (P1). Instant at signup → normally done. If the row is
+  //     somehow inactive, point back to the dashboard (no money action).
+  const link: ChecklistStep = {
+    id: 'affiliateLink', gate: 1,
+    titleKey: 'steps.affiliateLink.title',
+    descriptionKey: 'steps.affiliateLink.desc',
+    state: s.affiliateActive ? 'done' : 'current',
+    ...(s.affiliateActive ? {} : { ctaKey: 'steps.affiliateLink.cta', ctaHref: '/affiliate/dashboard' }),
+  }
+
+  // 3 — Préparer ses retraits (P2). DEFERRED + NON-BLOCKING: identity + bank + fiscal are
+  //     needed ONLY to withdraw, never to earn. So this is a 'todo' with a CTA (never
+  //     'locked'/'current') until the affiliate is withdraw-ready. The CTA opens the EXISTING
+  //     dashboard withdrawal section — the guide itself moves no money.
+  const withdraw: ChecklistStep = s.affiliateWithdrawReady
+    ? {
+        id: 'affiliateWithdraw', gate: 2,
+        titleKey: 'steps.affiliateWithdraw.title',
+        descriptionKey: 'steps.affiliateWithdraw.descReady',
+        state: 'done',
+      }
+    : {
+        id: 'affiliateWithdraw', gate: 2,
+        titleKey: 'steps.affiliateWithdraw.title',
+        descriptionKey: 'steps.affiliateWithdraw.descTodo',
+        state: 'todo',
+        ctaKey: 'steps.affiliateWithdraw.cta',
+        ctaHref: '/affiliate/dashboard',
+      }
+
+  return [account, link, withdraw]
+}
+
 /** Per-role step builders. Add other roles here without touching the core. */
 const DEFINITIONS: Record<string, (s: ChecklistSignals) => ChecklistStep[]> = {
   restaurant: restaurantSteps,
+  affiliate:  affiliateSteps,
 }
 
 /** Roles that currently have a checklist definition. */

@@ -18,7 +18,11 @@ import type { ActivationChecklist } from '@/lib/activation-checklist'
 
 type ActivationResp = { ok: boolean; checklist?: ActivationChecklist }
 
-export default function OnboardingGuide() {
+// ROLE-AWARE (Agent 98): the guide is mounted PER SURFACE with that surface's role — the
+// establishment hub mounts <OnboardingGuide /> (no role → restaurant, byte-identical), the
+// affiliate dashboard mounts <OnboardingGuide role="affiliate" />. The role only selects the
+// activation query; the rendering (bar, step list, resume CTA) is role-agnostic and unchanged.
+export default function OnboardingGuide({ role }: { role?: string } = {}) {
   const t  = useTranslations('onboardingGuide')
   const ta = useTranslations('activation') // reuse the EXISTING step titles (no new step labels)
   const [enabled, setEnabled]   = useState<boolean | null>(null)
@@ -34,11 +38,13 @@ export default function OnboardingGuide() {
     return () => { cancelled = true }
   }, [])
 
-  // 2) When enabled, read the EXISTING owner-scoped activation engine + derive.
+  // 2) When enabled, read the EXISTING owner-scoped activation engine + derive. The role (if
+  //    any) selects the surface's checklist; no role → restaurant (byte-identical request).
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    fetch('/api/business/activation', { cache: 'no-store' })
+    const url = role ? `/api/business/activation?role=${encodeURIComponent(role)}` : '/api/business/activation'
+    fetch(url, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: ActivationResp | null) => {
         if (cancelled) return
@@ -46,7 +52,7 @@ export default function OnboardingGuide() {
       })
       .catch(() => { /* non-blocking — guide simply doesn't show */ })
     return () => { cancelled = true }
-  }, [enabled])
+  }, [enabled, role])
 
   // OFF / unknown / not loaded / already complete → render nothing (byte-identical space).
   if (!enabled || !progress || progress.isComplete || progress.total === 0) return null

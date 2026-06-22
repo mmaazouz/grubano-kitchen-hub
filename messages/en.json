@@ -3022,6 +3022,21 @@
         "title": "Receive your payouts",
         "descActive": "Your payouts are enabled: Stripe automatically transfers your earnings.",
         "descLocked": "Enable payments first to receive your payouts."
+      },
+      "affiliateAccount": {
+        "title": "Account created",
+        "desc": "Your affiliate account is active and you are signed in."
+      },
+      "affiliateLink": {
+        "title": "Your affiliate link is live",
+        "desc": "Share your link right away — your earnings are counted immediately.",
+        "cta": "View my link"
+      },
+      "affiliateWithdraw": {
+        "title": "Set up your withdrawals",
+        "descReady": "Your identity and bank are verified: you can withdraw your earnings.",
+        "descTodo": "To withdraw your earnings, verify your identity and bank. Do it whenever you like — it never blocks your earnings.",
+        "cta": "Set up withdrawals"
       }
     },
     "blocked": {

@@ -3022,6 +3022,21 @@
         "title": "Recevoir vos virements",
         "descActive": "Vos virements sont activés : Stripe vous reverse automatiquement vos recettes.",
         "descLocked": "Activez d'abord les paiements pour recevoir vos virements."
+      },
+      "affiliateAccount": {
+        "title": "Compte créé",
+        "desc": "Votre compte affilié est actif et vous êtes connecté."
+      },
+      "affiliateLink": {
+        "title": "Votre lien d’affiliation est actif",
+        "desc": "Partagez votre lien dès maintenant : vos gains sont comptabilisés immédiatement.",
+        "cta": "Voir mon lien"
+      },
+      "affiliateWithdraw": {
+        "title": "Préparez vos retraits",
+        "descReady": "Votre identité et votre banque sont vérifiées : vous pouvez retirer vos gains.",
+        "descTodo": "Pour retirer vos gains, vérifiez votre identité et votre banque. À faire quand vous voulez — cela ne bloque pas vos gains.",
+        "cta": "Configurer mes retraits"
       }
     },
     "blocked": {
