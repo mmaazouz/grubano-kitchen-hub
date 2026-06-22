@@ -24,7 +24,10 @@
  * other concurrent request gets count===0 and bails out, so two simultaneous
  * profile-saves / item-adds can never double-call the (quota-metered) LLM. It REUSES
  * vetSupplier (lib/supplier-vetting) + the capped LLM gateway unchanged — no new LLM
- * surface. A cleared (pending=false) supplier is never re-vetted on later edits.
+ * surface. A cleared (pending=false) supplier is never re-vetted on later edits. The final
+ * write is itself a GUARDED updateMany (where pending:true + verdict:null) so an admin override
+ * (/api/admin/suppliers/coherence) landing DURING the in-flight vet call is never clobbered —
+ * the admin decision always wins.
  *
  * Best-effort: it NEVER throws — a failure leaves the supplier safely invisible
  * (pending) and never breaks the profile-save / catalogue-item call that triggered it.
@@ -92,8 +95,13 @@ export async function maybeRunSupplierCoherenceCheck(profileId: string): Promise
       paymentTerms:  p.paymentTerms ?? undefined,
     })
 
-    await prisma.supplierProfile.update({
-      where: { id: p.id },
+    // GUARDED write (updateMany, not update) — persist the verdict ONLY if the row is STILL the
+    // one we claimed (pending + unvetted). If an admin cleared marketplaceCoherencePending (made
+    // it visible) via /api/admin/suppliers/coherence DURING the vetSupplier call above, this
+    // matches 0 rows and we DO NOT clobber the admin decision — the admin override always wins. (A
+    // 'doubt'/'bad' verdict completing after an admin approval must never silently re-hide it.)
+    await prisma.supplierProfile.updateMany({
+      where: { id: p.id, marketplaceCoherencePending: true, vettingVerdict: null },
       data: {
         vettingVerdict: vet.verdict,
         vettingReason:  vet.reason,
