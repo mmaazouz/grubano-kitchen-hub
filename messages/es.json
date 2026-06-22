@@ -3052,13 +3052,34 @@
         "descReady": "Su identidad y su banco están verificados: ya puede cobrar.",
         "descTodo": "Para recibir sus ganancias, verifique su identidad y su banco. Hágalo cuando quiera: no bloquea su actividad.",
         "cta": "Configurar mis pagos"
+      },
+      "supplierAccount": {
+        "title": "Cuenta creada",
+        "desc": "Su cuenta de proveedor está activa y ha iniciado sesión."
+      },
+      "supplierCompany": {
+        "title": "Verifique su empresa",
+        "desc": "Indique su SIREN: verificamos su empresa en el registro oficial.",
+        "cta": "Verificar mi empresa"
+      },
+      "supplierCatalogue": {
+        "title": "Cree su catálogo",
+        "desc": "Añada al menos un producto para que los restauradores puedan pedir.",
+        "cta": "Añadir un producto"
+      },
+      "supplierPayout": {
+        "title": "Para cobrar: identidad y banco",
+        "descReady": "Su identidad y su banco están verificados: ya puede cobrar.",
+        "descTodo": "Para recibir sus pagos, verifique su identidad y su banco. Hágalo cuando quiera: no bloquea sus ventas.",
+        "cta": "Configurar mis pagos"
       }
     },
     "blocked": {
       "needEstablishment": "Crea primero tu establecimiento.",
       "awaitingApproval": "A la espera de la validación del equipo de Grubano.",
       "completeMenuFirst": "Termina tu menú para desbloquear este paso.",
-      "activatePaymentsFirst": "Activa los pagos para desbloquear este paso."
+      "activatePaymentsFirst": "Activa los pagos para desbloquear este paso.",
+      "supplierVerifyCompanyFirst": "Verifique antes su empresa."
     }
   },
   "addActivity": {

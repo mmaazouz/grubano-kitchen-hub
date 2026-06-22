@@ -101,6 +101,17 @@ export interface ChecklistSignals {
   /** Creator payout Connect 'active' (identity + bank done) — read-only mirror of the stored
    *  Creator.payoutStatus; the guide moves no money and the creator-payout rail is untouched. */
   creatorPayoutReady?: boolean
+
+  // ── Supplier signals (Agent 103) — read-only, derived from the EXISTING SupplierProfile.
+  //    OPTIONAL by design: ONLY the 'supplier' definition reads them; the restaurant/affiliate/
+  //    creator definitions and their required fields above are untouched (equivalence ×3).
+  /** SupplierProfile.verificationStatus === 'verified' (SIREN/KYB checked against the registry). */
+  supplierCompanyVerified?: boolean
+  /** At least one SupplierCatalogItem exists (the catalogue has a product). */
+  supplierCatalogueReady?: boolean
+  /** Supplier payout Connect 'active' (identity + bank done) — read-only mirror of the stored
+   *  SupplierProfile.payoutStatus; the guide moves no money and the supplier rail is untouched. */
+  supplierPayoutReady?: boolean
 }
 
 // ── Restaurateur definition (the 6 steps, mapped to the 4 gates) ──────────────
@@ -304,11 +315,77 @@ function creatorSteps(s: ChecklistSignals): ChecklistStep[] {
   return [account, profile, payout]
 }
 
+// ── Supplier definition (Agent 103) — 4 steps, per « Informations par partenaire » ───
+// Doctrine: signup = name+email (done) ; the COMPANY is verified first (SIREN/KYB, instant
+// against the official registry) ; THEN the catalogue (gated behind verification, mirroring the
+// restaurateur's menu-after-establishment) ; identity + bank are DEFERRED, required ONLY to be
+// PAID. So the "get paid" step is a NON-BLOCKING 'todo'. READ-ONLY: every state is derived from
+// the EXISTING SupplierProfile (verificationStatus / catalogue count / payoutStatus) — never a
+// recomputed money value, never a write, and the supplier payment rail is untouched.
+function supplierSteps(s: ChecklistSignals): ChecklistStep[] {
+  // 1 — Compte créé (P0). An active session ⇒ done.
+  const account: ChecklistStep = {
+    id: 'account', gate: 0,
+    titleKey: 'steps.supplierAccount.title',
+    descriptionKey: 'steps.supplierAccount.desc',
+    state: s.accountActive ? 'done' : 'current',
+  }
+
+  // 2 — Vérifier l'entreprise (SIREN) (P1). The active frontier until the registry check passes.
+  const company: ChecklistStep = {
+    id: 'supplierCompany', gate: 1,
+    titleKey: 'steps.supplierCompany.title',
+    descriptionKey: 'steps.supplierCompany.desc',
+    state: s.supplierCompanyVerified ? 'done' : 'current',
+    ...(s.supplierCompanyVerified
+      ? {}
+      : { ctaKey: 'steps.supplierCompany.cta', ctaHref: '/supplier/dashboard/profil' }),
+  }
+
+  // 3 — Créer le catalogue (P2). LOCKED until the company is verified (SIREN d'abord, puis
+  //     catalogue), mirroring the restaurateur's menu-locked-until-establishment.
+  const catalogue: ChecklistStep = {
+    id: 'supplierCatalogue', gate: 2,
+    titleKey: 'steps.supplierCatalogue.title',
+    descriptionKey: 'steps.supplierCatalogue.desc',
+    state: !s.supplierCompanyVerified
+      ? 'locked'
+      : s.supplierCatalogueReady ? 'done' : 'current',
+    ...(!s.supplierCompanyVerified
+      ? { blockedReasonKey: 'blocked.supplierVerifyCompanyFirst' }
+      : s.supplierCatalogueReady
+        ? {}
+        : { ctaKey: 'steps.supplierCatalogue.cta', ctaHref: '/supplier/catalog' }),
+  }
+
+  // 4 — Être payé : identité + banque (P3). DEFERRED + NON-BLOCKING: needed ONLY to be paid,
+  //     never to start selling. A 'todo' with a CTA (never 'locked'/'current') until payout-ready.
+  //     The CTA opens the EXISTING supplier dashboard (Connect card) — the guide moves no money.
+  const payout: ChecklistStep = s.supplierPayoutReady
+    ? {
+        id: 'supplierPayout', gate: 3,
+        titleKey: 'steps.supplierPayout.title',
+        descriptionKey: 'steps.supplierPayout.descReady',
+        state: 'done',
+      }
+    : {
+        id: 'supplierPayout', gate: 3,
+        titleKey: 'steps.supplierPayout.title',
+        descriptionKey: 'steps.supplierPayout.descTodo',
+        state: 'todo',
+        ctaKey: 'steps.supplierPayout.cta',
+        ctaHref: '/supplier/dashboard',
+      }
+
+  return [account, company, catalogue, payout]
+}
+
 /** Per-role step builders. Add other roles here without touching the core. */
 const DEFINITIONS: Record<string, (s: ChecklistSignals) => ChecklistStep[]> = {
   restaurant: restaurantSteps,
   affiliate:  affiliateSteps,
   creator:    creatorSteps,
+  supplier:   supplierSteps,
 }
 
 /** Roles that currently have a checklist definition. */

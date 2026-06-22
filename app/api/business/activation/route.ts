@@ -67,6 +67,15 @@ export async function GET(req: Request) {
       return creatorActivation(session.user.email, operator.status === 'active')
     }
 
+    // ── Supplier surface (Agent 103, ADDITIVE — calque of the creator branch) — the guide on
+    //    the supplier dashboard requests ?role=supplier. Served owner-scoped (SupplierProfile
+    //    resolved by the SESSION email; a non-supplier gets an empty, non-discovery checklist).
+    //    READ-ONLY: signals come from the EXISTING SupplierProfile (no money, no write; the
+    //    supplier payment rail is untouched). The branches above + the restaurant path below are UNCHANGED.
+    if (new URL(req.url).searchParams.get('role') === 'supplier') {
+      return supplierActivation(session.user.email, operator.status === 'active')
+    }
+
     const role  = roles.includes('restaurant') ? 'restaurant' : operator.role
 
     // No definition for this role yet (e.g. a pure creator/supplier on the
@@ -195,4 +204,35 @@ async function creatorActivation(email: string, accountActive: boolean) {
   }
 
   return NextResponse.json({ ok: true, role: 'creator', checklist: buildActivationChecklist('creator', signals) })
+}
+
+// ── Supplier activation (Agent 103) — owner-scoped, READ-ONLY (calque of creatorActivation) ──
+// Empty (non-discovery) checklist when the session user is not a supplier → the guide renders
+// nothing. Otherwise signals come from the EXISTING SupplierProfile (SIREN/KYB verified? catalogue
+// has a product? payout Connect active?) — no money, no write; the supplier payment rail untouched.
+const EMPTY_SUPPLIER = {
+  role: 'supplier', steps: [] as never[], progressPct: 100, currentStepId: null, isDiscovery: false,
+}
+
+async function supplierActivation(email: string, accountActive: boolean) {
+  // Owner-scoped: the SupplierProfile is resolved from the SESSION email (never a client value),
+  // the same way /supplier/dashboard does. No profile → empty checklist (no cross-role leak).
+  const profile = await prisma.supplierProfile.findUnique({
+    where:  { email },
+    select: { id: true, verificationStatus: true, payoutStatus: true, _count: { select: { catalogItems: true } } },
+  })
+  if (!profile) {
+    return NextResponse.json({ ok: true, role: 'supplier', checklist: EMPTY_SUPPLIER })
+  }
+
+  const signals: ChecklistSignals = {
+    accountActive,
+    // Required restaurant fields are neutral placeholders — the 'supplier' definition ignores them.
+    hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+    supplierCompanyVerified: profile.verificationStatus === 'verified',
+    supplierCatalogueReady:  (profile._count?.catalogItems ?? 0) >= 1,
+    supplierPayoutReady:     profile.payoutStatus === 'active',
+  }
+
+  return NextResponse.json({ ok: true, role: 'supplier', checklist: buildActivationChecklist('supplier', signals) })
 }

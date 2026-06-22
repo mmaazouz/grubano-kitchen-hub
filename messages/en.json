@@ -3052,13 +3052,34 @@
         "descReady": "Your identity and bank are verified: you can be paid.",
         "descTodo": "To receive your earnings, verify your identity and bank. Do it whenever you like — it never blocks your activity.",
         "cta": "Set up my payments"
+      },
+      "supplierAccount": {
+        "title": "Account created",
+        "desc": "Your supplier account is active and you are signed in."
+      },
+      "supplierCompany": {
+        "title": "Verify your company",
+        "desc": "Enter your SIREN: we verify your company against the official registry.",
+        "cta": "Verify my company"
+      },
+      "supplierCatalogue": {
+        "title": "Build your catalogue",
+        "desc": "Add at least one product so restaurateurs can order.",
+        "cta": "Add a product"
+      },
+      "supplierPayout": {
+        "title": "To get paid: identity and bank",
+        "descReady": "Your identity and bank are verified: you can be paid.",
+        "descTodo": "To receive your payments, verify your identity and bank. Do it whenever you like — it never blocks your sales.",
+        "cta": "Set up my payments"
       }
     },
     "blocked": {
       "needEstablishment": "Create your establishment first.",
       "awaitingApproval": "Awaiting validation by the Grubano team.",
       "completeMenuFirst": "Finish your menu to unlock this step.",
-      "activatePaymentsFirst": "Enable payments to unlock this step."
+      "activatePaymentsFirst": "Enable payments to unlock this step.",
+      "supplierVerifyCompanyFirst": "Verify your company first."
     }
   },
   "addActivity": {

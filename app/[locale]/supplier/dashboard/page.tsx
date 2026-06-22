@@ -7,6 +7,7 @@ import { Link } from '@/navigation'
 import { Card, Badge, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
 import SupplierConnectCard from '@/components/supplier/SupplierConnectCard'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 import { formatMoney } from '@/lib/format-money'
 import { isSupplierConnectEnabled } from '@/lib/supplier-connect'
 
@@ -72,6 +73,13 @@ export default async function SupplierDashboardPage(props: { params: { locale: s
           <EmptyState emoji="📦" title={t('noProfileTitle')} description={t('noProfileBody')} />
         ) : (
           <>
+            {/* Onboarding copilot — role-aware guide (Agent 103, calque creator). SELF-GATING:
+                renders null when ONBOARDING_GUIDE_ENABLED is OFF → dashboard byte-identical.
+                role="supplier" reads the owner-scoped supplier checklist; shows progress + a
+                "resume" CTA toward the next step (verify SIREN / catalogue / get paid). Reads
+                state only — moves no money. */}
+            <OnboardingGuide role="supplier" />
+
             {profile.status === 'pending' && (
               <Card elevation="sm" padding="md" className="border-grubano-warning/40 bg-grubano-warning-tint">
                 <div className="flex items-start gap-2.5">
