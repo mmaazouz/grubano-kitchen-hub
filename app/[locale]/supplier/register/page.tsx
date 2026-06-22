@@ -23,12 +23,13 @@ export default function SupplierRegisterPage() {
   const [contactName, setContactName]     = useState('')
   const [siren, setSiren]                 = useState('')
   const [email, setEmail]                 = useState('')
-  const [phone, setPhone]                 = useState('')
+  // Agent 109 — lean signup: phone / minimumOrder / leadTime are DEFERRED to the supplier
+  // profile (/supplier/dashboard/profil), not collected at registration. The fields below stay
+  // at signup because they FEED the SIREN/vetting decision (verifyBusiness + vetSupplier) — see
+  // route comment; removing them would change the auto-onboarding status (active→pending).
   const [city, setCity]                   = useState('')
   const [categories, setCategories]       = useState<string[]>([])
   const [deliveryZones, setDeliveryZones] = useState('')
-  const [minimumOrderEur, setMinOrder]    = useState('')
-  const [leadTimeDays, setLeadTime]       = useState('1')
   const [paymentTerms, setPaymentTerms]   = useState('')
   const [consent, setConsent]             = useState(false)
   const [website, setWebsite]             = useState('') // honeypot — must stay empty
@@ -80,12 +81,10 @@ export default function SupplierRegisterPage() {
           contactName,
           siren,
           email,
-          phone:           phone || undefined,
+          // phone / minimumOrderEur / leadTimeDays DEFERRED (Agent 109) — set later in the profile.
           city:            city || undefined,
           categories,
           deliveryZones:   deliveryZones.split(',').map((z) => z.trim()).filter(Boolean),
-          minimumOrderEur: Number(minimumOrderEur) || 0,
-          leadTimeDays:    Number(leadTimeDays) || 0,
           paymentTerms:    paymentTerms || undefined,
           consent,
           website,
@@ -180,10 +179,7 @@ export default function SupplierRegisterPage() {
                 error={showSirenError ? t('fieldSirenError') : undefined}
               />
               <Input label={t('fieldEmail')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={emailLocked} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={t('fieldPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
-                <Input label={t('fieldCity')} value={city} onChange={(e) => setCity(e.target.value)} />
-              </div>
+              <Input label={t('fieldCity')} value={city} onChange={(e) => setCity(e.target.value)} />
 
               <div>
                 <p className="mb-1.5 text-sm font-medium text-grubano-ink">{t('fieldCategories')}</p>
@@ -213,11 +209,6 @@ export default function SupplierRegisterPage() {
               <div>
                 <Input label={t('fieldDeliveryZones')} value={deliveryZones} onChange={(e) => setDeliveryZones(e.target.value)} placeholder="Lyon, Villeurbanne, 69003" />
                 <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fieldDeliveryZonesHint')}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={t('fieldMinimumOrder')} type="number" inputMode="decimal" min={0} value={minimumOrderEur} onChange={(e) => setMinOrder(e.target.value)} placeholder="50" />
-                <Input label={t('fieldLeadTime')} type="number" inputMode="numeric" min={0} value={leadTimeDays} onChange={(e) => setLeadTime(e.target.value)} />
               </div>
 
               <div>

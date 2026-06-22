@@ -221,3 +221,57 @@ describe('anti-bot + duplicate never verify / never write (neutral pending)', ()
     expect(verify).not.toHaveBeenCalled()
   })
 })
+
+// ── Agent 109 — LEAN signup: phone / minimumOrderEur / leadTimeDays DEFERRED ───────────
+// The supplier registration no longer collects phone / minimum-order / lead-time (deferred to
+// /supplier/dashboard/profil). They are NOT inputs to verifyBusiness / vetSupplier → the SIREN
+// verification + vetting + status decision stay BYTE-IDENTICAL. The create omits them so Prisma
+// uses the schema defaults (minimumOrderCents @default(0), leadTimeDays @default(1)); phone → null.
+describe('Agent 109 — lean signup (deferred operational fields)', () => {
+  // A lean payload: NO phone / minimumOrderEur / leadTimeDays. The 4 vetting-input fields
+  // (categories, city, deliveryZones, paymentTerms) are KEPT (they feed verifyBusiness/vetSupplier).
+  const LEAN = {
+    companyName: 'Primeurs Lyon', contactName: 'Marie', email: 'M@Primeurs.fr', siren: '123456789',
+    categories: ['fresh'], deliveryZones: ['Lyon'], city: 'Lyon', paymentTerms: 'Net 30',
+    consent: true, formStartedAt: 0,
+  }
+  const postLean = (over: Record<string, unknown> = {}) =>
+    POST(new Request('http://x/api/supplier/register', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...LEAN, ...over }),
+    }))
+
+  it('(a) lean payload creates a valid SupplierProfile WITHOUT phone/minimumOrderCents/leadTimeDays (schema defaults apply)', async () => {
+    verify.mockResolvedValue({ outcome: 'verified', officialName: 'PRIMEURS LYON SARL', reason: 'ok' })
+    const res = await postLean()
+    expect(res.status).toBe(200)
+    expect((await res.json()).outcome).toBe('active')
+    const data = db.supplierProfile.create.mock.calls[0][0].data
+    // Required fields present; deferred fields OMITTED → Prisma falls back to @default / null.
+    expect(data).toMatchObject({ email: 'm@primeurs.fr', companyName: 'Primeurs Lyon', contactName: 'Marie', status: 'active' })
+    expect('phone' in data).toBe(false)
+    expect('minimumOrderCents' in data).toBe(false)
+    expect('leadTimeDays' in data).toBe(false)
+    expect(ensureOp).toHaveBeenCalledWith('m@primeurs.fr', 'Marie', { activate: true })
+  })
+
+  it('(b) SIREN/vetting inputs UNCHANGED: verifyBusiness gets categories; vetSupplier gets the 4 kept fields', async () => {
+    verify.mockResolvedValue({ outcome: 'verified', officialName: 'PRIMEURS LYON SARL', reason: 'ok' })
+    await postLean()
+    expect(verify.mock.calls[0][0]).toMatchObject({ siren: '123456789', declaredName: 'Primeurs Lyon', categories: ['fresh'] })
+    expect(vet.mock.calls[0][0]).toMatchObject({
+      companyName: 'Primeurs Lyon', contactName: 'Marie', city: 'Lyon', categories: ['fresh'],
+      deliveryZones: ['Lyon'], paymentTerms: 'Net 30',
+    })
+    // the deferred fields are NOT passed to the vetting (they never were)
+    expect('phone' in vet.mock.calls[0][0]).toBe(false)
+  })
+
+  it('(c) stale phone/minimumOrderEur/leadTimeDays in the body are IGNORED (zod strips) — create still omits them', async () => {
+    verify.mockResolvedValue({ outcome: 'verified', officialName: 'X', reason: 'ok' })
+    await postLean({ phone: '0600000000', minimumOrderEur: 999, leadTimeDays: 9 })
+    const data = db.supplierProfile.create.mock.calls[0][0].data
+    expect('phone' in data).toBe(false)
+    expect('minimumOrderCents' in data).toBe(false)
+    expect('leadTimeDays' in data).toBe(false)
+  })
+})

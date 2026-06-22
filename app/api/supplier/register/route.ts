@@ -29,13 +29,13 @@ const registerSchema = z.object({
   siren:           z.string()
                      .transform((s) => s.replace(/\s+/g, ''))
                      .refine((s) => /^\d{9}$/.test(s) || /^\d{14}$/.test(s), 'SIREN (9 chiffres) ou SIRET (14 chiffres) requis'),
-  phone:           z.string().max(40).optional(),
+  // Agent 109 — lean signup: phone / minimumOrderEur / leadTimeDays are DEFERRED (set later in the
+  // supplier profile). They are NOT inputs to verifyBusiness / vetSupplier, so dropping them leaves
+  // the SIREN verification + vetting + status decision BYTE-IDENTICAL. minimumOrderCents (@default 0)
+  // and leadTimeDays (@default 1) fall back to their schema defaults; phone stays null.
   city:            z.string().max(80).optional(),
   categories:      z.array(z.enum(CATEGORIES)).max(CATEGORIES.length).default([]),
   deliveryZones:   z.array(z.string().min(1).max(80)).max(50).default([]),
-  // Euros in (the form field is in €); stored as integer CENTS (display via format-money).
-  minimumOrderEur: z.number().min(0).max(100000).default(0),
-  leadTimeDays:    z.number().int().min(0).max(60).default(1),
   paymentTerms:    z.string().max(500).optional(),
   consent:         z.boolean().refine((v) => v === true, { message: 'Consentement requis' }),
   // Anti-bot traps (mirror the partner register flow): a filled honeypot or an
@@ -73,7 +73,6 @@ export async function POST(req: Request) {
     }
 
     const email = data.email.trim().toLowerCase()
-    const minimumOrderCents = Math.round(data.minimumOrderEur * 100)
 
     // CREATE-IF-ABSENT (never overwrite): a PUBLIC endpoint must not let anyone
     // clobber — or re-vet — an existing supplier by re-posting their email. A
@@ -133,12 +132,11 @@ export async function POST(req: Request) {
         email,
         companyName:        data.companyName,
         contactName:        data.contactName,
-        phone:              data.phone,
+        // phone / minimumOrderCents / leadTimeDays DEFERRED (Agent 109) — fall back to schema
+        // defaults (minimumOrderCents @default 0, leadTimeDays @default 1; phone nullable → null).
         city:               data.city,
         categories:         data.categories,
         deliveryZones:      data.deliveryZones,
-        minimumOrderCents,
-        leadTimeDays:       data.leadTimeDays,
         paymentTerms:       data.paymentTerms,
         status,
         siren,
