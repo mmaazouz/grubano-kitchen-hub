@@ -3037,6 +3037,21 @@
         "descReady": "Su identidad y su banco están verificados: ya puede retirar sus ganancias.",
         "descTodo": "Para retirar sus ganancias, verifique su identidad y su banco. Hágalo cuando quiera: no bloquea sus ganancias.",
         "cta": "Configurar mis retiros"
+      },
+      "creatorAccount": {
+        "title": "Cuenta creada",
+        "desc": "Su cuenta de creador está activa y ha iniciado sesión."
+      },
+      "creatorProfile": {
+        "title": "Complete su perfil público",
+        "desc": "Indique su nombre y su biografía: es lo que verá su audiencia.",
+        "cta": "Completar mi perfil"
+      },
+      "creatorPayout": {
+        "title": "Para cobrar: identidad y banco",
+        "descReady": "Su identidad y su banco están verificados: ya puede cobrar.",
+        "descTodo": "Para recibir sus ganancias, verifique su identidad y su banco. Hágalo cuando quiera: no bloquea su actividad.",
+        "cta": "Configurar mis pagos"
       }
     },
     "blocked": {

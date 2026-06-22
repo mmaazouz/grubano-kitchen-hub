@@ -3037,6 +3037,21 @@
         "descReady": "La sua identità e la sua banca sono verificate: può prelevare i suoi guadagni.",
         "descTodo": "Per prelevare i suoi guadagni, verifichi la sua identità e la sua banca. Lo faccia quando vuole: non blocca i suoi guadagni.",
         "cta": "Configurare i prelievi"
+      },
+      "creatorAccount": {
+        "title": "Account creato",
+        "desc": "Il suo account creator è attivo ed è connesso."
+      },
+      "creatorProfile": {
+        "title": "Completi il suo profilo pubblico",
+        "desc": "Indichi il suo nome e la sua bio: è ciò che vedrà il suo pubblico.",
+        "cta": "Completare il mio profilo"
+      },
+      "creatorPayout": {
+        "title": "Per essere pagato: identità e banca",
+        "descReady": "La sua identità e la sua banca sono verificate: può essere pagato.",
+        "descTodo": "Per ricevere i suoi guadagni, verifichi la sua identità e la sua banca. Lo faccia quando vuole: non blocca la sua attività.",
+        "cta": "Configurare i miei pagamenti"
       }
     },
     "blocked": {

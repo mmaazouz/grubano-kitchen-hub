@@ -58,6 +58,15 @@ export async function GET(req: Request) {
       return affiliateActivation(operator.id, operator.status === 'active', roles.includes('affiliate'))
     }
 
+    // ── Creator surface (Agent 100, ADDITIVE — calque of the affiliate branch) — the guide on
+    //    the creator dashboard requests ?role=creator. Served owner-scoped (Creator resolved by
+    //    the SESSION email; a non-creator gets an empty, non-discovery checklist). READ-ONLY:
+    //    signals come from the EXISTING Creator entity (no money, no write; the creator-payout
+    //    rail is untouched). The affiliate branch above + the restaurant path below are UNCHANGED.
+    if (new URL(req.url).searchParams.get('role') === 'creator') {
+      return creatorActivation(session.user.email, operator.status === 'active')
+    }
+
     const role  = roles.includes('restaurant') ? 'restaurant' : operator.role
 
     // No definition for this role yet (e.g. a pure creator/supplier on the
@@ -156,4 +165,34 @@ async function affiliateActivation(operatorId: string, accountActive: boolean, h
   }
 
   return NextResponse.json({ ok: true, role: 'affiliate', checklist: buildActivationChecklist('affiliate', signals) })
+}
+
+// ── Creator activation (Agent 100) — owner-scoped, READ-ONLY (calque of affiliateActivation) ──
+// The empty (non-discovery) checklist is returned when the session user is not a creator → the
+// guide renders nothing. Otherwise signals are derived from the EXISTING Creator entity (public
+// profile filled? payout Connect active?) — no money, no write, the creator-payout rail untouched.
+const EMPTY_CREATOR = {
+  role: 'creator', steps: [] as never[], progressPct: 100, currentStepId: null, isDiscovery: false,
+}
+
+async function creatorActivation(email: string, accountActive: boolean) {
+  // Owner-scoped: the Creator is resolved from the SESSION email (never a client value), the
+  // same way /api/creators/home does. No creator row → empty checklist (no cross-role leak).
+  const creator = await prisma.creator.findUnique({
+    where:  { email },
+    select: { id: true, bio: true, payoutStatus: true },
+  })
+  if (!creator) {
+    return NextResponse.json({ ok: true, role: 'creator', checklist: EMPTY_CREATOR })
+  }
+
+  const signals: ChecklistSignals = {
+    accountActive,
+    // Required restaurant fields are neutral placeholders — the 'creator' definition ignores them.
+    hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+    creatorProfileComplete: !!creator.bio && creator.bio.trim().length > 0,
+    creatorPayoutReady:     creator.payoutStatus === 'active',
+  }
+
+  return NextResponse.json({ ok: true, role: 'creator', checklist: buildActivationChecklist('creator', signals) })
 }

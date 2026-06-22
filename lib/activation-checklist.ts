@@ -92,6 +92,15 @@ export interface ChecklistSignals {
   /** Payout Connect 'active' AND the DAC7 fiscal self-declaration is complete (read-only
    *  mirror of stored fields; the actual withdrawal stays /api/affiliate/withdraw). */
   affiliateWithdrawReady?: boolean
+
+  // ── Creator signals (Agent 100) — read-only, derived from the EXISTING Creator entity.
+  //    OPTIONAL by design: ONLY the 'creator' definition reads them; the 'restaurant' and
+  //    'affiliate' definitions and their required fields above are untouched (equivalence).
+  /** Creator public profile complete (name is mandatory at signup; a bio is filled). */
+  creatorProfileComplete?: boolean
+  /** Creator payout Connect 'active' (identity + bank done) — read-only mirror of the stored
+   *  Creator.payoutStatus; the guide moves no money and the creator-payout rail is untouched. */
+  creatorPayoutReady?: boolean
 }
 
 // ── Restaurateur definition (the 6 steps, mapped to the 4 gates) ──────────────
@@ -246,10 +255,60 @@ function affiliateSteps(s: ChecklistSignals): ChecklistStep[] {
   return [account, link, withdraw]
 }
 
+// ── Creator definition (Agent 100) — 3 steps, per « Informations par partenaire » ────
+// Calque of the affiliate journey: signup = name+email (done); the PUBLIC PROFILE (name +
+// bio) comes before publishing; identity + bank are DEFERRED, required ONLY to be PAID (before
+// earnings/withdrawal). So the "get paid" step is a NON-BLOCKING 'todo' (never gates the start).
+// READ-ONLY: every state is derived from the EXISTING Creator entity (bio filled? payout Connect
+// active?) — never a recomputed money value, never a write, and the creator-payout rail is
+// untouched. Mirrors restaurantSteps/affiliateSteps; adds 'creator' WITHOUT touching them.
+function creatorSteps(s: ChecklistSignals): ChecklistStep[] {
+  // 1 — Compte créé (P0). An active session ⇒ done.
+  const account: ChecklistStep = {
+    id: 'account', gate: 0,
+    titleKey: 'steps.creatorAccount.title',
+    descriptionKey: 'steps.creatorAccount.desc',
+    state: s.accountActive ? 'done' : 'current',
+  }
+
+  // 2 — Compléter le profil public (nom, bio) (P1). The active frontier until the bio is set.
+  const profile: ChecklistStep = {
+    id: 'creatorProfile', gate: 1,
+    titleKey: 'steps.creatorProfile.title',
+    descriptionKey: 'steps.creatorProfile.desc',
+    state: s.creatorProfileComplete ? 'done' : 'current',
+    ...(s.creatorProfileComplete
+      ? {}
+      : { ctaKey: 'steps.creatorProfile.cta', ctaHref: '/creators/dashboard/parametres' }),
+  }
+
+  // 3 — Être payé : identité + banque (P2). DEFERRED + NON-BLOCKING: needed ONLY to be paid,
+  //     never to start. So a 'todo' with a CTA (never 'locked'/'current') until payout-ready.
+  //     The CTA opens the EXISTING revenue/Connect page — the guide itself moves no money.
+  const payout: ChecklistStep = s.creatorPayoutReady
+    ? {
+        id: 'creatorPayout', gate: 2,
+        titleKey: 'steps.creatorPayout.title',
+        descriptionKey: 'steps.creatorPayout.descReady',
+        state: 'done',
+      }
+    : {
+        id: 'creatorPayout', gate: 2,
+        titleKey: 'steps.creatorPayout.title',
+        descriptionKey: 'steps.creatorPayout.descTodo',
+        state: 'todo',
+        ctaKey: 'steps.creatorPayout.cta',
+        ctaHref: '/creators/dashboard/revenus',
+      }
+
+  return [account, profile, payout]
+}
+
 /** Per-role step builders. Add other roles here without touching the core. */
 const DEFINITIONS: Record<string, (s: ChecklistSignals) => ChecklistStep[]> = {
   restaurant: restaurantSteps,
   affiliate:  affiliateSteps,
+  creator:    creatorSteps,
 }
 
 /** Roles that currently have a checklist definition. */

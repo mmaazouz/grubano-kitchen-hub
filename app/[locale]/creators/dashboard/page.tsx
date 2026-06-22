@@ -16,6 +16,7 @@ import { useCategoryLabel } from '@/lib/categories'
 import { buildReferralLink } from '@/lib/referral-link'
 import { CreatorEarningsChart } from '@/components/creators/CreatorEarningsChart'
 import { StarProgressCard } from '@/components/creators/StarBadge'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 import type {
   CreatorHomeData, CreatorHomeDish, DishAdopter,
 } from '@/app/api/creators/home/route'
@@ -175,6 +176,12 @@ export default function CreatorDashboardHome() {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="px-4 pb-16 pt-5 max-w-2xl mx-auto space-y-6">
+
+      {/* Onboarding copilot — role-aware guide (Agent 100, calque affiliate). SELF-GATING:
+          renders null when ONBOARDING_GUIDE_ENABLED is OFF → dashboard byte-identical. role="creator"
+          reads the owner-scoped creator checklist; shows progress + a "resume" CTA toward the next
+          step (complete public profile / get paid). Reads state only — moves no money. */}
+      <OnboardingGuide role="creator" />
 
       {/* ══════════════════════════════════════════════════════════════════════
           SECTION 1 — MOTIVATING HEADER

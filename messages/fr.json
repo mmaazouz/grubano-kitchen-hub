@@ -3037,6 +3037,21 @@
         "descReady": "Votre identité et votre banque sont vérifiées : vous pouvez retirer vos gains.",
         "descTodo": "Pour retirer vos gains, vérifiez votre identité et votre banque. À faire quand vous voulez — cela ne bloque pas vos gains.",
         "cta": "Configurer mes retraits"
+      },
+      "creatorAccount": {
+        "title": "Compte créé",
+        "desc": "Votre compte créateur est actif et vous êtes connecté."
+      },
+      "creatorProfile": {
+        "title": "Complétez votre profil public",
+        "desc": "Renseignez votre nom et votre bio : c’est ce que verra votre audience.",
+        "cta": "Compléter mon profil"
+      },
+      "creatorPayout": {
+        "title": "Pour être payé : identité et banque",
+        "descReady": "Votre identité et votre banque sont vérifiées : vous pouvez être payé.",
+        "descTodo": "Pour recevoir vos gains, vérifiez votre identité et votre banque. À faire quand vous voulez — cela ne bloque pas votre activité.",
+        "cta": "Configurer mes paiements"
       }
     },
     "blocked": {
