@@ -6,6 +6,7 @@ import { TrendingUp, TrendingDown, MapPin, ChevronDown, ChevronUp, PlusCircle, A
 import { Link } from '@/navigation'
 import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
+import OnboardingChat from '@/components/onboarding/OnboardingChat'
 
 type BrandPerf = {
   id:        string
@@ -109,6 +110,12 @@ export default function FranchiseDashboard() {
           → the dashboard is byte-identical when the flag is OFF. READ-ONLY, moves no money, cites
           no royalty figure; fetches /api/business/activation?role=franchisor. */}
       <OnboardingGuide role="franchisor" />
+
+      {/* Onboarding help chat (Agent 106) — constrained how-to copilot anchored on the franchisor
+          checklist. Self-gating (ONBOARDING_AI_CHAT_ENABLED) → null when OFF, byte-identical.
+          Governance unchanged: refuses legal/fiscal/financial + NEVER quotes a royalty rate/amount.
+          Reads state only; the franchise money rail is untouched. */}
+      <OnboardingChat role="franchisor" />
 
       {/* KPI grid — consolidated totals */}
       <div className="grid grid-cols-2 gap-3 mb-6">

@@ -39,11 +39,26 @@ export const dynamic = 'force-dynamic'
 // only when the session operator actually holds it. The restaurant path is unchanged.
 
 const SUPPORTED_LOCALES = ['fr', 'en', 'es', 'it', 'ar'] as const
-const ANCHOR_ROLES = ['restaurant', 'affiliate', 'creator'] as const
+// Anchor roles are CHECKLIST identifiers (the param the surface sends) — Agent 106 adds the
+// supplier/prestataire/franchisor cohorts next to restaurant/affiliate/creator.
+const ANCHOR_ROLES = ['restaurant', 'affiliate', 'creator', 'supplier', 'prestataire', 'franchisor'] as const
 type AnchorRole = (typeof ANCHOR_ROLES)[number]
+// Map a checklist anchor param to the actual OperatorRole STRING that grants it. Identity for
+// every role EXCEPT 'franchisor', whose held role string is 'franchise' (the def/param is named
+// 'franchisor' but readOperatorRoles never returns 'franchisor'). Used for BOTH the gate and the
+// owner-scoped anchor check, so a user is only anchored on a role they actually hold.
+const HELD_ROLE_FOR: Record<AnchorRole, string> = {
+  restaurant:  'restaurant',
+  affiliate:   'affiliate',
+  creator:     'creator',
+  supplier:    'supplier',
+  prestataire: 'prestataire',
+  franchisor:  'franchise',
+}
 // Roles allowed to use the onboarding chat at all (LLM-abuse gate). Owner-scoping of the
 // CONTEXT is enforced separately by the per-role reads below (a user only ever sees their own).
-const CHAT_ROLES = ['restaurant', 'admin', 'affiliate', 'creator']
+// NB: the franchisor cohort is admitted via its held role string 'franchise' (not 'franchisor').
+const CHAT_ROLES = ['restaurant', 'admin', 'affiliate', 'creator', 'supplier', 'prestataire', 'franchise']
 
 async function callerOperator(): Promise<{ id: string; role: string; email: string } | null> {
   const session = await getServerSession(authOptions)
@@ -124,6 +139,48 @@ async function buildAnchorContext(
       creatorProfileComplete: !!creator?.bio && creator.bio.trim().length > 0,
       creatorPayoutReady:     creator?.payoutStatus === 'active',
     })
+  } else if (anchorRole === 'supplier') {
+    // Supplier (Agent 103) — EMAIL-keyed, same read-only signals as supplierActivation.
+    const profile = await prisma.supplierProfile.findUnique({
+      where:  { email: operator.email },
+      select: { verificationStatus: true, payoutStatus: true, _count: { select: { catalogItems: true } } },
+    })
+    checklist = buildActivationChecklist('supplier', {
+      accountActive,
+      hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+      supplierCompanyVerified: profile?.verificationStatus === 'verified',
+      supplierCatalogueReady:  (profile?._count?.catalogItems ?? 0) >= 1,
+      supplierPayoutReady:     profile?.payoutStatus === 'active',
+    })
+  } else if (anchorRole === 'prestataire') {
+    // Prestataire (Agent 104) — EMAIL-keyed, same read-only signals as prestataireActivation.
+    const profile = await prisma.prestataireProfile.findUnique({
+      where:  { email: operator.email },
+      select: { serviceCategories: true, verificationStatus: true, payoutStatus: true },
+    })
+    const cats = profile?.serviceCategories
+    checklist = buildActivationChecklist('prestataire', {
+      accountActive,
+      hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+      prestataireProfileComplete: Array.isArray(cats) && cats.length > 0,
+      prestataireCompanyVerified: profile?.verificationStatus === 'verified',
+      prestatairePayoutReady:     profile?.payoutStatus === 'active',
+    })
+  } else if (anchorRole === 'franchisor') {
+    // Franchisor (Agent 105) — OPERATOR-keyed (role string 'franchise'), same read-only signals as
+    // franchisorActivation: account-level KYB + a franchisable Brand + the stored franchise payout
+    // status. NO royalty amount is read; the franchise money rail is untouched.
+    const [fop, openBrandCount] = await Promise.all([
+      prisma.operator.findUnique({ where: { id: operator.id }, select: { kybStatus: true, franchisePayoutStatus: true } }),
+      prisma.brand.count({ where: { operatorId: operator.id, openToFranchise: true } }),
+    ])
+    checklist = buildActivationChecklist('franchisor', {
+      accountActive,
+      hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+      franchisorCompanyVerified:     fop?.kybStatus === 'verified',
+      franchisorFranchiseConfigured: openBrandCount >= 1,
+      franchisorPayoutReady:         fop?.franchisePayoutStatus === 'active',
+    })
   } else {
     // ── restaurant — the unchanged Agent 97 gather (owner-scoped, existing fields only) ──
     const isResto = roles.includes('restaurant') || op?.role === 'restaurant'
@@ -198,9 +255,10 @@ export async function POST(req: Request) {
 
   // Anchor on the SURFACE's role — but only when the session operator ACTUALLY holds it
   // (owner-scoped by role); otherwise fall back to restaurant. No ?role → restaurant (the
-  // EstablishmentHub usage is byte-identical).
+  // EstablishmentHub usage is byte-identical). The held-role check uses HELD_ROLE_FOR so the
+  // 'franchisor' param is validated against the real role string 'franchise'.
   const requested  = parsed.data.role
-  const anchorRole: AnchorRole = requested && roles.includes(requested) ? requested : 'restaurant'
+  const anchorRole: AnchorRole = requested && roles.includes(HELD_ROLE_FOR[requested]) ? requested : 'restaurant'
 
   try {
     const checklistContext = await buildAnchorContext(anchorRole, { id: operator.id, email: operator.email }, roles, locale)

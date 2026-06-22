@@ -15,12 +15,15 @@ import { MessageCircle, Send, Loader2, Sparkles, X } from 'lucide-react'
 
 type Turn = { role: 'user' | 'assistant'; content: string }
 
-// ROLE-AWARE (Agent 101): the chat is mounted PER SURFACE with that surface's role — the
-// establishment hub mounts <OnboardingChat /> (no role → restaurant, byte-identical request),
-// the affiliate dashboard mounts <OnboardingChat role="affiliate" />, the creator dashboard
-// <OnboardingChat role="creator" />. The role only selects the server-side ANCHORING checklist;
-// the chrome + the constrained governance are role-agnostic and unchanged.
-export default function OnboardingChat({ role }: { role?: 'affiliate' | 'creator' } = {}) {
+// ROLE-AWARE (Agent 101; cohorts Agent 106): the chat is mounted PER SURFACE with that surface's
+// role — the establishment hub mounts <OnboardingChat /> (no role → restaurant, byte-identical
+// request), the affiliate/creator/supplier/prestataire/franchisor dashboards mount the matching
+// role. The role only selects the server-side ANCHORING checklist; the chrome + the constrained
+// governance are role-agnostic and unchanged. ('franchisor' is the checklist param; the server
+// validates it against the held role string 'franchise'.)
+export default function OnboardingChat(
+  { role }: { role?: 'affiliate' | 'creator' | 'supplier' | 'prestataire' | 'franchisor' } = {},
+) {
   const t      = useTranslations('onboardingChat')
   const locale = useLocale()
   const [enabled, setEnabled] = useState<boolean | null>(null)

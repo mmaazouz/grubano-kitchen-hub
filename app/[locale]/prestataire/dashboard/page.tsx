@@ -8,6 +8,7 @@ import { Link } from '@/navigation'
 import { Card, Badge, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
+import OnboardingChat from '@/components/onboarding/OnboardingChat'
 import PrestataireConnectCard from '@/components/prestataire/PrestataireConnectCard'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { isPrestataireConnectLive } from '@/lib/prestataire-connect'
@@ -119,6 +120,12 @@ export default async function PrestataireDashboardPage(props: { params: { locale
                 component) → the dashboard is byte-identical when the flag is OFF. READ-ONLY,
                 moves no money; fetches /api/business/activation?role=prestataire. */}
             <OnboardingGuide role="prestataire" />
+
+            {/* Onboarding help chat (Agent 106) — constrained how-to copilot anchored on the
+                prestataire checklist. Self-gating (ONBOARDING_AI_CHAT_ENABLED) → null when OFF,
+                byte-identical. Governance unchanged: refuses legal/fiscal/financial + never quotes
+                a rate. Reads state only. */}
+            <OnboardingChat role="prestataire" />
 
             {profile.status === 'pending' && (
               <Card elevation="sm" padding="md" className="border-grubano-warning/40 bg-grubano-warning-tint">

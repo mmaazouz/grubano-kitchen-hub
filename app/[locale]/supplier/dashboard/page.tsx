@@ -8,6 +8,7 @@ import { Card, Badge, EmptyState, type BadgeTone } from '@/components/design-sys
 import RoleSwitcher from '@/components/RoleSwitcher'
 import SupplierConnectCard from '@/components/supplier/SupplierConnectCard'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
+import OnboardingChat from '@/components/onboarding/OnboardingChat'
 import { formatMoney } from '@/lib/format-money'
 import { isSupplierConnectEnabled } from '@/lib/supplier-connect'
 
@@ -79,6 +80,12 @@ export default async function SupplierDashboardPage(props: { params: { locale: s
                 "resume" CTA toward the next step (verify SIREN / catalogue / get paid). Reads
                 state only — moves no money. */}
             <OnboardingGuide role="supplier" />
+
+            {/* Onboarding help chat (Agent 106) — constrained how-to copilot anchored on the
+                supplier checklist. Self-gating (ONBOARDING_AI_CHAT_ENABLED) → renders null when
+                OFF, byte-identical. Governance unchanged: refuses legal/fiscal/financial + never
+                quotes a rate. Reads state only. */}
+            <OnboardingChat role="supplier" />
 
             {profile.status === 'pending' && (
               <Card elevation="sm" padding="md" className="border-grubano-warning/40 bg-grubano-warning-tint">
