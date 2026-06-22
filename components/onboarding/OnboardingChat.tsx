@@ -15,7 +15,12 @@ import { MessageCircle, Send, Loader2, Sparkles, X } from 'lucide-react'
 
 type Turn = { role: 'user' | 'assistant'; content: string }
 
-export default function OnboardingChat() {
+// ROLE-AWARE (Agent 101): the chat is mounted PER SURFACE with that surface's role — the
+// establishment hub mounts <OnboardingChat /> (no role → restaurant, byte-identical request),
+// the affiliate dashboard mounts <OnboardingChat role="affiliate" />, the creator dashboard
+// <OnboardingChat role="creator" />. The role only selects the server-side ANCHORING checklist;
+// the chrome + the constrained governance are role-agnostic and unchanged.
+export default function OnboardingChat({ role }: { role?: 'affiliate' | 'creator' } = {}) {
   const t      = useTranslations('onboardingChat')
   const locale = useLocale()
   const [enabled, setEnabled] = useState<boolean | null>(null)
@@ -56,8 +61,9 @@ export default function OnboardingChat() {
       const r = await fetch('/api/onboarding/chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Send only the prior turns as context (the new message is separate).
-        body: JSON.stringify({ message, locale, history: turns.slice(-10) }),
+        // Send only the prior turns as context (the new message is separate). `role` (when set)
+        // selects the surface's anchoring checklist server-side; omitted → restaurant.
+        body: JSON.stringify({ message, locale, history: turns.slice(-10), ...(role ? { role } : {}) }),
       })
       if (r.status === 401) { window.location.href = '/auth/magic'; return }
       const d = await r.json().catch(() => null)

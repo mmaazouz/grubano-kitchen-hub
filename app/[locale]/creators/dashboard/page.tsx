@@ -17,6 +17,7 @@ import { buildReferralLink } from '@/lib/referral-link'
 import { CreatorEarningsChart } from '@/components/creators/CreatorEarningsChart'
 import { StarProgressCard } from '@/components/creators/StarBadge'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
+import OnboardingChat from '@/components/onboarding/OnboardingChat'
 import type {
   CreatorHomeData, CreatorHomeDish, DishAdopter,
 } from '@/app/api/creators/home/route'
@@ -182,6 +183,11 @@ export default function CreatorDashboardHome() {
           reads the owner-scoped creator checklist; shows progress + a "resume" CTA toward the next
           step (complete public profile / get paid). Reads state only — moves no money. */}
       <OnboardingGuide role="creator" />
+
+      {/* Onboarding help chat (Agent 101) — role-aware anchoring on the creator journey.
+          SELF-GATING: renders null when ONBOARDING_AI_CHAT_ENABLED is OFF → byte-identical.
+          Constrained server-side (refuses legal/fiscal/financial, never quotes a rate). */}
+      <OnboardingChat role="creator" />
 
       {/* ══════════════════════════════════════════════════════════════════════
           SECTION 1 — MOTIVATING HEADER

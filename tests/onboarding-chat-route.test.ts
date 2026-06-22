@@ -67,11 +67,12 @@ describe('POST — gating + owner-scoping (no LLM until authorised)', () => {
     expect(llm.llmComplete).not.toHaveBeenCalled()
   })
 
-  it('no session → 401; non-restaurant role → 403 (no LLM)', async () => {
+  it('no session → 401; role set with no chat-cohort (consumer) → 403 (no LLM)', async () => {
     session.mockResolvedValue(null)
     expect((await post({ message: 'hi' })).status).toBe(401)
     session.mockResolvedValue({ user: { email: 'c@x.fr' } })
     db.operator.findUnique.mockResolvedValue({ id: 'c1', role: 'consumer' })
+    roles.readOperatorRoles.mockResolvedValue(['consumer']) // Agent 101: gate is on the role SET
     expect((await post({ message: 'hi' })).status).toBe(403)
     expect(llm.llmComplete).not.toHaveBeenCalled()
   })

@@ -14,6 +14,7 @@ import AffiliateVerifyCard from '@/components/affiliate/AffiliateVerifyCard'
 import AffiliateStudioCard from '@/components/affiliate/AffiliateStudioCard'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 import OnboardingInfluencerUpgrade from '@/components/affiliate/OnboardingInfluencerUpgrade'
+import OnboardingChat from '@/components/onboarding/OnboardingChat'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +57,10 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
                 EXISTING verification state + request action (AffiliateVerifyCard below, anchored at
                 #influencer-verify). Self-gating: hides when INFLUENCER_ENABLED is OFF → byte-identical. */}
             <OnboardingInfluencerUpgrade />
+            {/* Onboarding help chat (Agent 101) — role-aware anchoring on the affiliate journey.
+                SELF-GATING: renders null when ONBOARDING_AI_CHAT_ENABLED is OFF → byte-identical.
+                Constrained server-side (refuses legal/fiscal/financial, never quotes a rate). */}
+            <OnboardingChat role="affiliate" />
             <AffiliateLinkCard
               link={buildAffiliateLink(affiliate.referralLinkSlug) ?? ''}
               code={affiliate.referralCode}

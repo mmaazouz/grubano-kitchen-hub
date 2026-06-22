@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { readOperatorRoles } from '@/lib/operator-roles'
+import { getAffiliateByOperator } from '@/lib/affiliate-account'
 import { llmComplete, LlmQuotaError, LlmDisabledError } from '@/lib/llm'
 import { buildActivationChecklist, type ChecklistSignals } from '@/lib/activation-checklist'
 import {
@@ -20,22 +21,36 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// ── /api/onboarding/chat — constrained AI onboarding help (Agent 97) ───────────────────
-// POST: a signed-in restaurateur asks a "how-to" question during onboarding → the SERVER
-// builds a GROUNDED, injection-hardened prompt from the FIXED constrained system prompt +
-// the partner's OWN activation checklist (owner-scoped, NUMBER-FREE) + a bounded history,
-// then calls the LLM GATEWAY (task 'onboarding_help', per-partner quota). It REFUSES legal/
-// fiscal/financial advice and NEVER quotes a rate/amount (governance lives in the system
-// prompt). NOTHING is persisted (ephemeral, client-held history). GET: reports the flag so
-// the client mounts the chat only when ON. Gated by ONBOARDING_AI_CHAT_ENABLED (POST 404s
-// OFF; GET enabled:false → space byte-identical). NON-MONEY, read/assist only.
+// ── /api/onboarding/chat — constrained AI onboarding help (Agent 97; cohorts Agent 101) ─
+// POST: a signed-in partner asks a "how-to" question during onboarding → the SERVER builds a
+// GROUNDED, injection-hardened prompt from the FIXED constrained system prompt + the partner's
+// OWN activation checklist (owner-scoped, NUMBER-FREE) + a bounded history, then calls the LLM
+// GATEWAY (task 'onboarding_help', per-partner quota). It REFUSES legal/fiscal/financial advice
+// and NEVER quotes a rate/amount (governance lives in the FIXED system prompt). NOTHING is
+// persisted (ephemeral, client-held history). GET: reports the flag so the client mounts the
+// chat only when ON. Gated by ONBOARDING_AI_CHAT_ENABLED (POST 404s OFF). NON-MONEY.
+//
+// ROLE-AWARE ANCHORING (Agent 101): the chat serves restaurant + affiliate + creator. The
+// anchoring is the ONLY role-dependent part — the surface passes its role and we ground on
+// THAT role's checklist (reusing the same role-aware activation logic as GET /api/business/
+// activation). The FIXED system prompt + formatChecklistContext are UNCHANGED and role-agnostic
+// (the checklist context stays NUMBER-FREE for every cohort → no rate can leak). Owner-scoped:
+// signals are read from the SESSION operator's OWN entities only, and the anchor role is honored
+// only when the session operator actually holds it. The restaurant path is unchanged.
 
 const SUPPORTED_LOCALES = ['fr', 'en', 'es', 'it', 'ar'] as const
+const ANCHOR_ROLES = ['restaurant', 'affiliate', 'creator'] as const
+type AnchorRole = (typeof ANCHOR_ROLES)[number]
+// Roles allowed to use the onboarding chat at all (LLM-abuse gate). Owner-scoping of the
+// CONTEXT is enforced separately by the per-role reads below (a user only ever sees their own).
+const CHAT_ROLES = ['restaurant', 'admin', 'affiliate', 'creator']
 
-async function callerOperator(): Promise<{ id: string; role: string } | null> {
+async function callerOperator(): Promise<{ id: string; role: string; email: string } | null> {
   const session = await getServerSession(authOptions)
-  if (!session?.user?.email) return null
-  return prisma.operator.findUnique({ where: { email: session.user.email }, select: { id: true, role: true } })
+  const email = session?.user?.email
+  if (!email) return null
+  const op = await prisma.operator.findUnique({ where: { email }, select: { id: true, role: true } })
+  return op ? { id: op.id, role: op.role, email } : null
 }
 
 export async function GET() {
@@ -45,42 +60,75 @@ export async function GET() {
 const bodySchema = z.object({
   message: z.string().min(1).max(MAX_MESSAGE_CHARS),
   locale:  z.enum(SUPPORTED_LOCALES).optional(),
+  role:    z.enum(ANCHOR_ROLES).optional(),
   history: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).max(50).optional(),
 })
 
-export async function POST(req: Request) {
-  // Flag gate FIRST → OFF = invisible (no auth probe, no DB read, no LLM).
-  if (!isOnboardingChatEnabled()) return NextResponse.json({ error: 'Indisponible' }, { status: 404 })
+/** DAC7 self-declaration complete enough to withdraw (read-only mirror of the affiliate withdraw
+ *  rail's own check — replicated so that rail stays byte-identical; no money, no Stripe). */
+function affiliateFiscalComplete(op: {
+  registeredAddress: string | null; taxId: string | null
+  taxIdCountry: string | null; sellerType: string | null; dateOfBirth: Date | null
+}): boolean {
+  if (!op.registeredAddress || !op.taxId || !op.taxIdCountry || !op.sellerType) return false
+  if (op.sellerType === 'individual' && !op.dateOfBirth) return false
+  return true
+}
 
-  // Owner-scoped: an authenticated restaurant/admin only. The operator is resolved from the
-  // SESSION (email → Operator), never from a client-supplied id → no IDOR, and ONLY this
-  // partner's own onboarding context ever reaches the model.
-  const operator = await callerOperator()
-  if (!operator) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-  if (!['restaurant', 'admin'].includes(operator.role)) {
-    return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
-  }
+/**
+ * Build the NUMBER-FREE anchoring context for the surface's role, owner-scoped (the SESSION
+ * operator's OWN entities only). Reuses the role-aware activation logic (buildActivationChecklist
+ * + the same per-role signal reads as GET /api/business/activation) and the SHARED, role-agnostic
+ * formatChecklistContext. READ-ONLY: no write, no Stripe sync, no money; the affiliate/creator
+ * payout rails are never touched. The 'restaurant' branch is the unchanged Agent 97 gather.
+ */
+async function buildAnchorContext(
+  anchorRole: AnchorRole,
+  operator: { id: string; email: string },
+  roles: string[],
+  locale: string,
+): Promise<string> {
+  const op = await prisma.operator.findUnique({
+    where:  { id: operator.id },
+    select: { id: true, role: true, status: true, emailVerifiedAt: true },
+  })
+  const accountActive = op?.status === 'active'
 
-  const parsed = bodySchema.safeParse(await req.json().catch(() => null))
-  if (!parsed.success) return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 })
-
-  const locale   = parsed.data.locale ?? 'fr'
-  const language = CHAT_LOCALE_NAMES[locale] ?? CHAT_LOCALE_NAMES.fr
-  const history  = sanitizeHistory(parsed.data.history)
-
-  try {
-    // ── Anchoring: build the partner's REAL checklist (owner-scoped, existing fields only) ──
-    // Mirrors GET /api/business/activation. v1 ships the 'restaurant' definition; the chat is
-    // the restaurateur onboarding helper, so we ground on the restaurant checklist.
-    const op = await prisma.operator.findUnique({
+  let checklist
+  if (anchorRole === 'affiliate') {
+    const affiliate = await getAffiliateByOperator(operator.id)
+    const payoutOp  = await prisma.operator.findUnique({
       where:  { id: operator.id },
-      select: { id: true, role: true, status: true, emailVerifiedAt: true },
+      select: { affiliatePayoutStatus: true, registeredAddress: true, taxId: true, taxIdCountry: true, sellerType: true, dateOfBirth: true },
     })
-    const roles = op ? await readOperatorRoles(op.id, op.role) : []
+    checklist = buildActivationChecklist('affiliate', {
+      accountActive,
+      hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+      affiliateActive:        affiliate?.status === 'active',
+      affiliateWithdrawReady: payoutOp?.affiliatePayoutStatus === 'active' && affiliateFiscalComplete({
+        registeredAddress: payoutOp?.registeredAddress ?? null,
+        taxId:             payoutOp?.taxId ?? null,
+        taxIdCountry:      payoutOp?.taxIdCountry ?? null,
+        sellerType:        payoutOp?.sellerType ?? null,
+        dateOfBirth:       payoutOp?.dateOfBirth ?? null,
+      }),
+    })
+  } else if (anchorRole === 'creator') {
+    const creator = await prisma.creator.findUnique({
+      where:  { email: operator.email },
+      select: { id: true, bio: true, payoutStatus: true },
+    })
+    checklist = buildActivationChecklist('creator', {
+      accountActive,
+      hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+      creatorProfileComplete: !!creator?.bio && creator.bio.trim().length > 0,
+      creatorPayoutReady:     creator?.payoutStatus === 'active',
+    })
+  } else {
+    // ── restaurant — the unchanged Agent 97 gather (owner-scoped, existing fields only) ──
     const isResto = roles.includes('restaurant') || op?.role === 'restaurant'
-
     let signals: ChecklistSignals = {
-      accountActive: op?.status === 'active',
+      accountActive,
       hasBrand: false, hasRestaurant: false, menuItemCount: 0,
       isActive: false, stripeConnected: false, stripeStatus: null,
     }
@@ -94,7 +142,7 @@ export async function POST(req: Request) {
         prisma.menuItem.count({ where: { brand: { operatorId: operator.id } } }),
       ])
       signals = {
-        accountActive:   op?.status === 'active',
+        accountActive,
         emailVerified:   op?.emailVerifiedAt != null,
         hasBrand:        brand !== null,
         hasRestaurant:   restaurant !== null,
@@ -104,22 +152,58 @@ export async function POST(req: Request) {
         stripeStatus:    restaurant?.stripeAccountStatus ?? null,
       }
     }
+    checklist = buildActivationChecklist('restaurant', signals)
+  }
 
-    const checklist = buildActivationChecklist('restaurant', signals)
-    const ta = await getTranslations({ locale, namespace: 'activation' })
-    const steps: ChatContextStep[] = checklist.steps.map((s) => ({
-      title:     ta(s.titleKey),
-      done:      s.state === 'done',
-      isCurrent: s.state === 'current',
-    }))
-    const doneCount = steps.filter((s) => s.done).length
-    const current   = checklist.steps.find((s) => s.state === 'current')
-    const checklistContext = formatChecklistContext({
-      steps,
-      done:  doneCount,
-      total: steps.length,
-      nextStepTitle: current ? ta(current.titleKey) : null,
-    })
+  // SHARED, role-agnostic: resolve step titles (under the 'activation' namespace) and format the
+  // NUMBER-FREE context (titles + done/current marks + next step). Identical for every cohort.
+  const ta = await getTranslations({ locale, namespace: 'activation' })
+  const steps: ChatContextStep[] = checklist.steps.map((s) => ({
+    title:     ta(s.titleKey),
+    done:      s.state === 'done',
+    isCurrent: s.state === 'current',
+  }))
+  const current = checklist.steps.find((s) => s.state === 'current')
+  return formatChecklistContext({
+    steps,
+    done:  steps.filter((s) => s.done).length,
+    total: steps.length,
+    nextStepTitle: current ? ta(current.titleKey) : null,
+  })
+}
+
+export async function POST(req: Request) {
+  // Flag gate FIRST → OFF = invisible (no auth probe, no DB read, no LLM).
+  if (!isOnboardingChatEnabled()) return NextResponse.json({ error: 'Indisponible' }, { status: 404 })
+
+  // Owner-scoped: an authenticated partner. The operator is resolved from the SESSION (email →
+  // Operator), never from a client-supplied id → no IDOR, and ONLY this partner's own onboarding
+  // context ever reaches the model.
+  const operator = await callerOperator()
+  if (!operator) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  // The chat serves the onboarding cohorts (restaurant/affiliate/creator) + admin. Gate on the
+  // ROLE SET (primary + cumulative), so a multi-role partner on any of their dashboards is allowed.
+  const roles = await readOperatorRoles(operator.id, operator.role)
+  if (!roles.some((r) => CHAT_ROLES.includes(r))) {
+    return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  }
+
+  const parsed = bodySchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 })
+
+  const locale   = parsed.data.locale ?? 'fr'
+  const language = CHAT_LOCALE_NAMES[locale] ?? CHAT_LOCALE_NAMES.fr
+  const history  = sanitizeHistory(parsed.data.history)
+
+  // Anchor on the SURFACE's role — but only when the session operator ACTUALLY holds it
+  // (owner-scoped by role); otherwise fall back to restaurant. No ?role → restaurant (the
+  // EstablishmentHub usage is byte-identical).
+  const requested  = parsed.data.role
+  const anchorRole: AnchorRole = requested && roles.includes(requested) ? requested : 'restaurant'
+
+  try {
+    const checklistContext = await buildAnchorContext(anchorRole, { id: operator.id, email: operator.email }, roles, locale)
 
     // ── The ONLY LLM path: through the gateway, attributed to this operator (quota). ──
     const content = buildOnboardingChatContent({ language, checklistContext, history, message: parsed.data.message })
