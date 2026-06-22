@@ -19,7 +19,11 @@ export async function GET() {
     }
 
     const suppliers = await prisma.supplierProfile.findMany({
-      where:  { status: 'active' },
+      // VISIBILITY gate (Agent 111): status='active' AND coherence cleared. The added
+      // condition keeps EXISTING active suppliers visible (marketplaceCoherencePending
+      // @default(false)) and HIDES lean-signup suppliers until the publication coherence
+      // check (lib/supplier-coherence) clears them — the anti-abuse holds before visibility.
+      where:  { status: 'active', marketplaceCoherencePending: false },
       select: {
         id: true, companyName: true, city: true, categories: true,
         deliveryZones: true, minimumOrderCents: true, leadTimeDays: true,

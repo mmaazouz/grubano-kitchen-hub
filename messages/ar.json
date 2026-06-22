@@ -2834,7 +2834,9 @@
     "verifReview": "قيد المراجعة",
     "verifRejected": "غير مُتحقَّق منه",
     "verifNone": "—",
-    "statusRejected": "غير مقبول"
+    "statusRejected": "غير مقبول",
+    "coherencePendingTitle": "التحقق قبل النشر",
+    "coherencePendingBody": "حسابك مُفعَّل: يمكنك تسجيل الدخول وإنشاء كتالوجك. أكمِل عرضك (الفئات والمناطق) وأضِف منتجًا واحدًا على الأقل؛ سنتحقق من الاتساق قبل إظهار كتالوجك للمطاعم."
   },
   "marketplace": {
     "discoverTitle": "الموردون",
@@ -3193,7 +3195,9 @@
       "verif_unknown": "SIREN غير مُتحقَّق منه",
       "activate": "تفعيل",
       "suspend": "تعليق",
-      "actionError": "فشل الإجراء. حاول مجدّدًا."
+      "actionError": "فشل الإجراء. حاول مجدّدًا.",
+      "coherencePending": "بانتظار التحقق من الاتساق",
+      "coherenceApprove": "الموافقة (النشر)"
     }
   },
   "legal": {

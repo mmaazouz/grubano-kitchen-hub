@@ -2834,7 +2834,9 @@
     "verifReview": "Under review",
     "verifRejected": "Not verified",
     "verifNone": "—",
-    "statusRejected": "Not accepted"
+    "statusRejected": "Not accepted",
+    "coherencePendingTitle": "Verification before going live",
+    "coherencePendingBody": "Your account is active: you can sign in and build your catalogue. Fill in your offer (categories, zones) and add at least one product; we'll check coherence before making your catalogue visible to restaurants."
   },
   "marketplace": {
     "discoverTitle": "Suppliers",
@@ -3193,7 +3195,9 @@
       "verif_unknown": "SIREN unverified",
       "activate": "Activate",
       "suspend": "Suspend",
-      "actionError": "The action failed. Please try again."
+      "actionError": "The action failed. Please try again.",
+      "coherencePending": "Coherence pending",
+      "coherenceApprove": "Approve (publish)"
     }
   },
   "legal": {

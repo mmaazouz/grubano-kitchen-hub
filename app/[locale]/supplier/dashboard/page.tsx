@@ -99,6 +99,22 @@ export default async function SupplierDashboardPage(props: { params: { locale: s
               </Card>
             )}
 
+            {/* Lean signup étape 2 (Agent 111): an ACTIVE supplier can log in + build its catalogue,
+                but stays HIDDEN from restaurants until the publication coherence check clears it. This
+                microcopy explains the "verification before going live" state (reads the visibility flag
+                only — no money, no status change). */}
+            {profile.status === 'active' && profile.marketplaceCoherencePending && (
+              <Card elevation="sm" padding="md" className="border-grubano-warning/40 bg-grubano-warning-tint">
+                <div className="flex items-start gap-2.5">
+                  <Hourglass size={18} className="mt-0.5 shrink-0 text-grubano-warning" />
+                  <div>
+                    <p className="font-semibold text-grubano-ink">{t('coherencePendingTitle')}</p>
+                    <p className="text-sm text-grubano-ink-muted">{t('coherencePendingBody')}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {/* Slice 1 — entry point to the catalogue management. */}
             <Link href="/supplier/catalog" className="block">
               <Card elevation="sm" padding="md" className="transition-shadow hover:shadow-grubano-md">

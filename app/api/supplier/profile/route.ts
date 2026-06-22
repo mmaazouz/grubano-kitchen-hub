@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
+import { maybeRunSupplierCoherenceCheck } from '@/lib/supplier-coherence'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,6 +118,12 @@ export async function PATCH(req: Request) {
         paymentTerms:      d.paymentTerms?.trim() || null,
       },
     })
+
+    // Lean signup étape 2 (Agent 111): saving the offer may complete the "ready to publish"
+    // transition (offer filled + ≥1 catalogue item) → run the DEPLACED coherence check once.
+    // Best-effort + idempotent + quota-safe: never throws, runs vetSupplier at most once,
+    // only flips the marketplace-visibility flag (never status/auth/money).
+    await maybeRunSupplierCoherenceCheck(existing.id)
 
     return NextResponse.json({ ok: true })
   } catch (err) {

@@ -45,6 +45,8 @@ export async function GET(req: Request) {
       contactName:        true,
       city:               true,
       status:             true,
+      // marketplace visibility gate (Agent 111) — surfaces the coherence review queue.
+      marketplaceCoherencePending: true,
       // the stored verdicts — DISPLAYED, not recomputed.
       vettingVerdict:     true,
       vettingReason:      true,

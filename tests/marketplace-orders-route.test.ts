@@ -79,7 +79,8 @@ describe('GET /api/marketplace/suppliers — discovery (active only)', () => {
     db.operator.findUnique.mockResolvedValue({ id: 'op1', role: 'restaurant' })
     db.supplierProfile.findMany.mockResolvedValue([])
     expect((await DISCOVER()).status).toBe(200)
-    expect(db.supplierProfile.findMany.mock.calls[0][0].where).toEqual({ status: 'active' })
+    // Agent 111: visibility gate = active AND coherence cleared (lean-pending suppliers hidden).
+    expect(db.supplierProfile.findMany.mock.calls[0][0].where).toEqual({ status: 'active', marketplaceCoherencePending: false })
 
     db.operator.findUnique.mockResolvedValue({ id: 'op1', role: 'consumer' })
     expect((await DISCOVER()).status).toBe(403)

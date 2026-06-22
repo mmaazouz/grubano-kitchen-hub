@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { ensureSupplierOperator, decideSupplierOutcome, combineVettingDecision } from '@/lib/supplier-account'
+import { ensureSupplierOperator, decideSupplierOutcome } from '@/lib/supplier-account'
 import { verifyBusiness } from '@/lib/business-verification'
-import { vetSupplier } from '@/lib/supplier-vetting'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 
 export const dynamic = 'force-dynamic'
@@ -18,9 +17,6 @@ export const dynamic = 'force-dynamic'
 // here. NO catalogue / pricing (Slice 1+). Singular /api/supplier/* namespace,
 // distinct from the operator's plural /api/suppliers (its private directory).
 
-// Supply categories — kept in sync with the i18n `supplier.cat*` keys + the form.
-const CATEGORIES = ['fresh', 'meat', 'fish', 'dairy', 'drinks', 'grocery', 'packaging'] as const
-
 const registerSchema = z.object({
   companyName:     z.string().min(2, 'Nom commercial trop court').max(120),
   contactName:     z.string().min(2, 'Nom du contact trop court').max(80),
@@ -29,14 +25,14 @@ const registerSchema = z.object({
   siren:           z.string()
                      .transform((s) => s.replace(/\s+/g, ''))
                      .refine((s) => /^\d{9}$/.test(s) || /^\d{14}$/.test(s), 'SIREN (9 chiffres) ou SIRET (14 chiffres) requis'),
-  // Agent 109 — lean signup: phone / minimumOrderEur / leadTimeDays are DEFERRED (set later in the
-  // supplier profile). They are NOT inputs to verifyBusiness / vetSupplier, so dropping them leaves
-  // the SIREN verification + vetting + status decision BYTE-IDENTICAL. minimumOrderCents (@default 0)
-  // and leadTimeDays (@default 1) fall back to their schema defaults; phone stays null.
-  city:            z.string().max(80).optional(),
-  categories:      z.array(z.enum(CATEGORIES)).max(CATEGORIES.length).default([]),
-  deliveryZones:   z.array(z.string().min(1).max(80)).max(50).default([]),
-  paymentTerms:    z.string().max(500).optional(),
+  // Agent 111 — lean signup étape 2: the OPERATIONAL/offer fields (city, categories, deliveryZones,
+  // paymentTerms) are DEFERRED to the supplier profile (PATCH /api/supplier/profile) — no longer
+  // collected at signup. (Agent 109 already deferred phone / minimumOrderEur / leadTimeDays.) The
+  // registration now collects ONLY the IDENTITY: companyName + contactName + email + SIREN + consent.
+  // The SIREN registry verification (verifyBusiness/lookupRegistry — the authoritative gate) is
+  // UNCHANGED; the LLM COHERENCE check (vetSupplier) is MOVED to the catalogue-publication trigger
+  // (lib/supplier-coherence), judged on the supplier's REAL offer + catalogue. zod (non-strict)
+  // silently strips any deferred key still posted by a stale client.
   consent:         z.boolean().refine((v) => v === true, { message: 'Consentement requis' }),
   // Anti-bot traps (mirror the partner register flow): a filled honeypot or an
   // impossibly fast submit → silent generic OK (no signal to the bot).
@@ -96,7 +92,10 @@ export async function POST(req: Request) {
     const verification = await verifyBusiness({
       siren,
       declaredName: data.companyName,
-      categories:   data.categories,
+      // categories DEFERRED (lean signup) — the authoritative gate (lookupRegistry) uses ONLY the
+      // SIREN, so the SIREN verification is BYTE-IDENTICAL; the optional declared categories were
+      // only auxiliary context for the name match. Category coherence is now judged later, on the
+      // REAL offer + catalogue, by the publication coherence trigger (lib/supplier-coherence).
     })
     // Re-interpret the verification result NAME-TOLERANTLY (decideSupplierOutcome,
     // like the courier flow). A clear name mismatch on an OTHERWISE-confirmed active
@@ -105,51 +104,42 @@ export async function POST(req: Request) {
     // review 'pending' path. Only a not-found / ceased SIREN (officialName=null)
     // stays a definitive 'rejected'. 'review' (incident) stays 'pending' (fail-safe).
     const registryDecision = decideSupplierOutcome(verification)
-
-    // LLM TRUST-&-SAFETY VETTING (lib/supplier-vetting) — DEFENCE IN DEPTH, ADDITIVE.
-    // Runs through the CAPPED LLM gateway (task 'supplier_vetting'; no operatorId pre-
-    // account → never quota-blocked, exactly like verifyBusiness). FAIL-SAFE: any failure
-    // returns 'doubt' (it never throws, never auto-'legit'). The verdict can ONLY HARDEN
-    // the registry decision (combineVettingDecision): it never auto-approves a refusal and
-    // never auto-rejects a registry-confirmed company. ZERO money effect — this gates
-    // ONBOARDING VISIBILITY only (payouts stay hard-gated by Stripe Connect KYB).
-    const vet = await vetSupplier({
-      companyName:   data.companyName,
-      contactName:   data.contactName,
-      city:          data.city,
-      categories:    data.categories,
-      deliveryZones: data.deliveryZones,
-      paymentTerms:  data.paymentTerms,
-    }).catch(() => ({ verdict: 'doubt' as const, reason: 'vérification auto indisponible' }))
-    // ↑ defence in depth: vetSupplier already converts any internal failure to 'doubt',
-    // but a raw throw must NEVER break a registration nor auto-reject — fall back to
-    // 'doubt' (human review), never 'legit'.
-    const decision = combineVettingDecision(registryDecision, vet.verdict, vet.reason)
-    const status: Outcome = decision.status
+    // Lean signup étape 2 (Agent 111): the status is decided by the SIREN registry ALONE
+    // (verifyBusiness → decideSupplierOutcome). The LLM COHERENCE check (vetSupplier) no longer
+    // runs at signup — it is DEPLACED to the catalogue-publication trigger (lib/supplier-coherence),
+    // which judges the supplier's REAL offer + catalogue BEFORE they become visible to restaurants.
+    // The anti-abuse is PRESERVED (moved, never removed): a fresh SIREN-verified supplier is created
+    // status='active' (can log in + build its catalogue) but marketplaceCoherencePending=true
+    // (HIDDEN from the marketplace) until that coherence check clears it.
+    const status: Outcome = registryDecision.status
 
     await prisma.supplierProfile.create({
       data: {
         email,
         companyName:        data.companyName,
         contactName:        data.contactName,
-        // phone / minimumOrderCents / leadTimeDays DEFERRED (Agent 109) — fall back to schema
-        // defaults (minimumOrderCents @default 0, leadTimeDays @default 1; phone nullable → null).
-        city:               data.city,
-        categories:         data.categories,
-        deliveryZones:      data.deliveryZones,
-        paymentTerms:       data.paymentTerms,
+        // OPERATIONAL/offer fields DEFERRED to the profile: phone / minimumOrderCents / leadTimeDays
+        // (Agent 109) + city / categories / deliveryZones / paymentTerms (Agent 111) all fall back to
+        // their schema defaults (categories/deliveryZones @default([]); minimumOrderCents @default(0);
+        // leadTimeDays @default(1); city/paymentTerms/phone nullable → null). Edited later via
+        // PATCH /api/supplier/profile and read by the publication coherence trigger.
         status,
+        // Lean signup: HIDDEN from the marketplace until the publication coherence check clears it.
+        // A SIREN-verified supplier is status='active' (can log in + build its catalogue) but
+        // marketplaceCoherencePending=true (invisible) — the anti-abuse is moved, not removed.
+        marketplaceCoherencePending: true,
         siren,
         officialName:       verification.officialName,
-        // REGISTRY identity result — UNCHANGED by the vetting (a separate signal). The
-        // registry's own verifiedAt logic is preserved byte-for-byte (tied to the registry
-        // decision, not the vetting-hardened gate), so a registry-verified company keeps
-        // its verifiedAt even if the vetting routes it to human review.
+        // REGISTRY identity result (a separate signal). The registry's own verifiedAt logic is
+        // preserved byte-for-byte, so a registry-verified company keeps its verifiedAt.
         verificationStatus: registryDecision.verificationStatus,
         verifiedAt:         registryDecision.status === 'active' ? new Date() : null,
-        vettingVerdict:     vet.verdict,     // the LLM trust-&-safety verdict (admin signal)
-        vettingReason:      decision.reason, // explains the FINAL gate (registry OR vetting reason)
-        vettingAt:          new Date(),
+        // The coherence VERDICT is no longer produced at signup → null (= "not yet auto-vetted",
+        // the idempotence marker the publication trigger keys on). vettingReason keeps the registry's
+        // own reason for the admin console; vettingAt stays null until the coherence trigger runs.
+        vettingVerdict:     null,
+        vettingReason:      registryDecision.reason,
+        vettingAt:          null,
       },
     })
 
@@ -166,7 +156,7 @@ export async function POST(req: Request) {
         email,
         siren,
         officialName:       verification.officialName,
-        verificationStatus: decision.verificationStatus,
+        verificationStatus: registryDecision.verificationStatus,
       })
     }
 

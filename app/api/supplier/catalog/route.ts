@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { callerSupplierProfile } from '@/lib/supplier-account'
+import { maybeRunSupplierCoherenceCheck } from '@/lib/supplier-coherence'
 import { CATALOG_UNITS, eurosToCents, normalizeAllergens } from '@/lib/supplier-catalog'
 
 export const dynamic = 'force-dynamic'
@@ -59,6 +60,11 @@ export async function POST(req: Request) {
         allergens:   normalizeAllergens(data.allergens),
       },
     })
+    // Lean signup étape 2 (Agent 111): adding a catalogue item may complete the "ready to
+    // publish" transition (offer filled + ≥1 item) → run the DEPLACED coherence check once.
+    // Best-effort + idempotent + quota-safe: never throws, runs vetSupplier at most once,
+    // only flips the marketplace-visibility flag (never status/auth/money).
+    await maybeRunSupplierCoherenceCheck(profile.id)
     return NextResponse.json({ item }, { status: 201 })
   } catch (err) {
     if (err instanceof z.ZodError) {

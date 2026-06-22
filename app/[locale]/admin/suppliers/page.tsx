@@ -8,6 +8,7 @@ import { readOperatorRoles } from '@/lib/operator-roles'
 import { Card, Badge, EmptyState } from '@/components/design-system'
 import type { BadgeTone } from '@/components/design-system'
 import SupplierStatusActions from '@/components/admin/SupplierStatusActions'
+import SupplierCoherenceAction from '@/components/admin/SupplierCoherenceAction'
 
 // ── /admin/suppliers — ADMIN supplier moderation console (Agent 85) ──────────────
 // ADMIN-only (triple-gated: middleware /admin, this server role re-check, and the
@@ -34,7 +35,7 @@ export default async function AdminSuppliersPage(props: { params: { locale: stri
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     select: {
       id: true, email: true, companyName: true, contactName: true, city: true,
-      status: true, vettingVerdict: true, vettingReason: true,
+      status: true, marketplaceCoherencePending: true, vettingVerdict: true, vettingReason: true,
       verificationStatus: true, siren: true, officialName: true, createdAt: true,
     },
   })
@@ -74,6 +75,11 @@ export default async function AdminSuppliersPage(props: { params: { locale: stri
                     <p className="flex flex-wrap items-center gap-2 font-semibold text-grubano-ink">
                       <span className="truncate">{s.companyName}</span>
                       <Badge tone={statusTone(s.status)} size="sm">{statusLabel(s.status)}</Badge>
+                      {/* Coherence review queue (Agent 111): an ACTIVE supplier still hidden from
+                          the marketplace until the publication coherence check clears it. */}
+                      {s.status === 'active' && s.marketplaceCoherencePending && (
+                        <Badge tone="warning" size="sm" icon={<Clock3 size={12} />}>{t('coherencePending')}</Badge>
+                      )}
                     </p>
                     <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-grubano-ink-muted">
                       <span className="inline-flex items-center gap-1"><Building2 size={13} className="shrink-0" />{s.contactName}{s.city ? ` · ${s.city}` : ''}</span>
@@ -94,13 +100,23 @@ export default async function AdminSuppliersPage(props: { params: { locale: stri
                       <p className="mt-1 text-xs text-grubano-ink-muted italic">{s.vettingReason}</p>
                     )}
                   </div>
-                  <SupplierStatusActions
-                    email={s.email}
-                    status={s.status}
-                    activateLabel={t('activate')}
-                    suspendLabel={t('suspend')}
-                    errorLabel={t('actionError')}
-                  />
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <SupplierStatusActions
+                      email={s.email}
+                      status={s.status}
+                      activateLabel={t('activate')}
+                      suspendLabel={t('suspend')}
+                      errorLabel={t('actionError')}
+                    />
+                    {/* Approve coherence → make visible (Agent 111). Only when active-but-pending. */}
+                    {s.status === 'active' && s.marketplaceCoherencePending && (
+                      <SupplierCoherenceAction
+                        email={s.email}
+                        label={t('coherenceApprove')}
+                        errorLabel={t('actionError')}
+                      />
+                    )}
+                  </div>
                 </div>
               </Card>
             </li>

@@ -9,11 +9,11 @@ import PartnerChrome from '@/components/business/PartnerChrome'
 
 // ── /supplier/register — self-serve B2B supplier signup (Slice 0, Agent 14) ───
 // Passwordless: submits business info to POST /api/supplier/register, which
-// creates a pending SupplierProfile + a passwordless Operator(role='supplier').
-// Login is by magic-link AFTER an admin approval. Anti-bot: hidden honeypot +
-// a form-open timestamp (mirrors the partner register flow).
-
-const CATEGORIES = ['fresh', 'meat', 'fish', 'dairy', 'drinks', 'grocery', 'packaging'] as const
+// creates a SupplierProfile + a passwordless Operator(role='supplier'). Login is
+// by magic-link. Anti-bot: hidden honeypot + a form-open timestamp (mirrors the
+// partner register flow). LEAN signup (Agent 111): collects ONLY company + contact
+// + SIREN + email + consent — the offer (city/categories/zones/terms) is set later
+// in the profile, and the coherence check runs at catalogue publication.
 
 export default function SupplierRegisterPage() {
   const t  = useTranslations('supplier')
@@ -23,14 +23,10 @@ export default function SupplierRegisterPage() {
   const [contactName, setContactName]     = useState('')
   const [siren, setSiren]                 = useState('')
   const [email, setEmail]                 = useState('')
-  // Agent 109 — lean signup: phone / minimumOrder / leadTime are DEFERRED to the supplier
-  // profile (/supplier/dashboard/profil), not collected at registration. The fields below stay
-  // at signup because they FEED the SIREN/vetting decision (verifyBusiness + vetSupplier) — see
-  // route comment; removing them would change the auto-onboarding status (active→pending).
-  const [city, setCity]                   = useState('')
-  const [categories, setCategories]       = useState<string[]>([])
-  const [deliveryZones, setDeliveryZones] = useState('')
-  const [paymentTerms, setPaymentTerms]   = useState('')
+  // Agent 111 — lean signup étape 2: city / categories / deliveryZones / paymentTerms are DEFERRED
+  // to the supplier profile (/supplier/dashboard/profil), not collected at registration. (Agent 109
+  // already deferred phone / minimum-order / lead-time.) The SIREN registry verification is unchanged;
+  // the coherence check (vetSupplier) moved to the catalogue-publication trigger (lib/supplier-coherence).
   const [consent, setConsent]             = useState(false)
   const [website, setWebsite]             = useState('') // honeypot — must stay empty
   const [formStartedAt]                   = useState(() => Date.now())
@@ -62,10 +58,6 @@ export default function SupplierRegisterPage() {
   const sirenValid     = /^\d{9}$/.test(sirenDigits) || /^\d{14}$/.test(sirenDigits)
   const showSirenError = siren.trim().length > 0 && !sirenValid
 
-  function toggleCategory(c: string) {
-    setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (submitting) return
@@ -81,11 +73,8 @@ export default function SupplierRegisterPage() {
           contactName,
           siren,
           email,
-          // phone / minimumOrderEur / leadTimeDays DEFERRED (Agent 109) — set later in the profile.
-          city:            city || undefined,
-          categories,
-          deliveryZones:   deliveryZones.split(',').map((z) => z.trim()).filter(Boolean),
-          paymentTerms:    paymentTerms || undefined,
+          // city / categories / deliveryZones / paymentTerms DEFERRED (Agent 111) — set later in the
+          // supplier profile; phone / minimum-order / lead-time already deferred (Agent 109).
           consent,
           website,
           formStartedAt,
@@ -179,48 +168,6 @@ export default function SupplierRegisterPage() {
                 error={showSirenError ? t('fieldSirenError') : undefined}
               />
               <Input label={t('fieldEmail')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={emailLocked} />
-              <Input label={t('fieldCity')} value={city} onChange={(e) => setCity(e.target.value)} />
-
-              <div>
-                <p className="mb-1.5 text-sm font-medium text-grubano-ink">{t('fieldCategories')}</p>
-                <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map((c) => {
-                    const active = categories.includes(c)
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => toggleCategory(c)}
-                        aria-pressed={active}
-                        className={[
-                          'rounded-grubano-pill border px-3 py-1.5 text-sm font-medium transition-colors',
-                          active
-                            ? 'border-grubano-primary bg-grubano-primary text-white'
-                            : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:border-grubano-primary/40',
-                        ].join(' ')}
-                      >
-                        {t(`cat${c.charAt(0).toUpperCase()}${c.slice(1)}` as 'catFresh')}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <Input label={t('fieldDeliveryZones')} value={deliveryZones} onChange={(e) => setDeliveryZones(e.target.value)} placeholder="Lyon, Villeurbanne, 69003" />
-                <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fieldDeliveryZonesHint')}</p>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-grubano-ink">{t('fieldPaymentTerms')}</label>
-                <textarea
-                  value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
-                  rows={2}
-                  className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2 text-sm text-grubano-ink focus:border-grubano-primary focus:outline-none focus:ring-4 focus:ring-grubano-primary/20"
-                />
-                <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fieldPaymentTermsHint')}</p>
-              </div>
 
               {/* Honeypot — visually hidden, must stay empty (anti-bot). */}
               <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">

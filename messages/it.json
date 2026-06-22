@@ -2834,7 +2834,9 @@
     "verifReview": "In revisione",
     "verifRejected": "Non verificato",
     "verifNone": "—",
-    "statusRejected": "Non accettato"
+    "statusRejected": "Non accettato",
+    "coherencePendingTitle": "Verifica prima della pubblicazione",
+    "coherencePendingBody": "Il suo account è attivo: può accedere e creare il suo catalogo. Completi la sua offerta (categorie, zone) e aggiunga almeno un prodotto; verificheremo la coerenza prima di rendere il suo catalogo visibile ai ristoranti."
   },
   "marketplace": {
     "discoverTitle": "Fornitori",
@@ -3193,7 +3195,9 @@
       "verif_unknown": "SIREN non verificato",
       "activate": "Attivare",
       "suspend": "Sospendere",
-      "actionError": "L’azione non è riuscita. Riprovate."
+      "actionError": "L’azione non è riuscita. Riprovate.",
+      "coherencePending": "Coerenza da validare",
+      "coherenceApprove": "Approva (pubblica)"
     }
   },
   "legal": {
