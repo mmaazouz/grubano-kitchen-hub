@@ -6,8 +6,11 @@ import { authOptions } from '@/lib/auth'
 
 const applySchema = z.object({
   name:       z.string().min(2),
-  city:       z.string().min(2),
-  phone:      z.string().min(8),
+  // Agent 115 — lean signup: city + phone DEFERRED to the dashboard (edited later on the Operator
+  // account via PATCH /api/franchise/profile). They are NOT inputs to the admin approval
+  // (/api/franchise/approve reads only email/name/siret), so the approval gate is byte-identical.
+  // FranchiseApplication.city/phone are now nullable (migration) → the create (data: {...data})
+  // simply omits them. zod (non-strict) silently strips any stale city/phone still posted.
   email:      z.string().email(),
   siret:      z.string().optional(),
   rib:        z.string().optional(),

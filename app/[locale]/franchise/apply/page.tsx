@@ -12,8 +12,7 @@ const STEP_ICONS = [User, Building2, Star, FileCheck]
 
 type FormData = {
   name:       string
-  city:       string
-  phone:      string
+  // Agent 115 — city + phone deferred to the dashboard (set later on the Operator account).
   email:      string
   siret:      string
   rib:        string
@@ -32,7 +31,7 @@ function ApplyForm() {
   const [done,       setDone]       = useState(false)
   const [error,      setError]      = useState('')
   const [form,       setForm]       = useState<FormData>({
-    name: '', city: '', phone: '', email: '',
+    name: '', email: '',
     siret: '', rib: '', hasKitchen: false,
     brandName: '', motivation: '',
   })
@@ -51,7 +50,7 @@ function ApplyForm() {
   }, [])
 
   function canProceed(): boolean {
-    if (step === 0) return !!form.name && !!form.city && !!form.phone && !!form.email
+    if (step === 0) return !!form.name && !!form.email
     if (step === 1) return true
     if (step === 2) return !!form.brandName && form.motivation.length >= 10
     return true
@@ -143,20 +142,6 @@ function ApplyForm() {
               onChange={e => set('name', e.target.value)}
             />
             <Input
-              label={t('labelCity')}
-              type="text"
-              placeholder="Paris"
-              value={form.city}
-              onChange={e => set('city', e.target.value)}
-            />
-            <Input
-              label={t('labelPhone')}
-              type="tel"
-              placeholder="06 12 34 56 78"
-              value={form.phone}
-              onChange={e => set('phone', e.target.value)}
-            />
-            <Input
               label={t('labelEmail')}
               type="email"
               placeholder="jean@exemple.fr"
@@ -240,9 +225,7 @@ function ApplyForm() {
           <div className="space-y-1">
             {([
               { label: t('summaryName'),    value: form.name      },
-              { label: t('summaryCity'),    value: form.city      },
               { label: t('summaryEmail'),   value: form.email     },
-              { label: t('summaryPhone'),   value: form.phone     },
               { label: t('summaryBrand'),   value: form.brandName },
               { label: t('summaryKitchen'), value: form.hasKitchen ? t('kitchenYes') : t('kitchenNo') },
             ] as const).map(({ label, value }) => (

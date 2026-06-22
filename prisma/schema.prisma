@@ -644,8 +644,14 @@ model FranchiseApplication {
   id          String   @id @default(cuid())
   operatorId  String?
   name        String
-  city        String
-  phone       String
+  // Agent 115 — lean signup: city + phone DEFERRED to the dashboard (edited later on the Operator
+  // account via PATCH /api/franchise/profile). RELAX of a NOT NULL constraint → nullable (NON-
+  // destructive: existing rows keep their values; new lean applications leave them null). They are
+  // NOT inputs to the admin approval (/api/franchise/approve reads only email/name/siret), so the
+  // approval gate is byte-identical. ⚠️ This migration MUST be pushed for the lean signup to work
+  // (the apply create omits city/phone → NOT NULL would reject them).
+  city        String?
+  phone       String?
   email       String
   siret       String?
   rib         String?
