@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { isPrestataireEnabled, callerPrestataireProfile } from '@/lib/prestataire-account'
+import { maybeRunPrestataireCoherenceCheck } from '@/lib/prestataire-coherence'
 import { SERVICE_CATEGORIES, SERVICE_MODALITIES } from '@/lib/service-offering'
 
 export const dynamic = 'force-dynamic'
@@ -65,6 +66,11 @@ export async function POST(req: Request) {
         active:         data.active,
       },
     })
+    // Lean signup (Agent 112): adding a service may complete the "ready to publish" transition
+    // (offer filled + ≥1 service) → run the DEPLACED coherence check once. Best-effort +
+    // idempotent + quota-safe: never throws, runs vetPrestataire at most once, only flips the
+    // marketplace-visibility flag (never status/auth/money).
+    await maybeRunPrestataireCoherenceCheck(profile.id)
     return NextResponse.json({ item }, { status: 201 })
   } catch (err) {
     if (err instanceof z.ZodError) {

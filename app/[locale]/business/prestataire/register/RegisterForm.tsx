@@ -16,21 +16,6 @@ import PartnerChrome from '@/components/business/PartnerChrome'
 // magic-link AFTER verification/approval. Anti-bot: hidden honeypot + form-open
 // timestamp. NO services list / quotes / payment in P1.
 
-const SERVICE_CATEGORIES = [
-  'electricity', 'plumbing', 'haccp', 'cleaning', 'pest_control',
-  'fridge_repair', 'kitchen_maintenance', 'accounting', 'training', 'other',
-] as const
-const MODALITIES = ['on_site', 'remote', 'both'] as const
-
-const SVC_LABEL: Record<(typeof SERVICE_CATEGORIES)[number], string> = {
-  electricity: 'svcElectricity', plumbing: 'svcPlumbing', haccp: 'svcHaccp', cleaning: 'svcCleaning',
-  pest_control: 'svcPestControl', fridge_repair: 'svcFridgeRepair', kitchen_maintenance: 'svcKitchenMaintenance',
-  accounting: 'svcAccounting', training: 'svcTraining', other: 'svcOther',
-}
-const MODALITY_LABEL: Record<(typeof MODALITIES)[number], string> = {
-  on_site: 'modalityOnSite', remote: 'modalityRemote', both: 'modalityBoth',
-}
-
 export default function PrestataireRegisterForm() {
   const t  = useTranslations('prestataire')
   const tA = useTranslations('addActivity')
@@ -39,12 +24,10 @@ export default function PrestataireRegisterForm() {
   const [contactName, setContactName]       = useState('')
   const [siren, setSiren]                   = useState('')
   const [email, setEmail]                   = useState('')
-  const [phone, setPhone]                   = useState('')
-  const [city, setCity]                     = useState('')
-  const [serviceCategories, setServices]    = useState<string[]>([])
-  const [coverageZones, setCoverageZones]   = useState('')
-  const [modality, setModality]             = useState<(typeof MODALITIES)[number]>('on_site')
-  const [indicativeRate, setIndicativeRate] = useState('')
+  // Agent 112 — lean signup: phone / city / serviceCategories / coverageZones / modality /
+  // indicativeRate are DEFERRED to the prestataire profile (/prestataire/dashboard/profil), not
+  // collected at registration. The SIREN registry verification is unchanged; the coherence check
+  // (vetPrestataire) moved to the service-publication trigger (lib/prestataire-coherence).
   const [consent, setConsent]               = useState(false)
   const [website, setWebsite]               = useState('') // honeypot — must stay empty
   const [formStartedAt]                     = useState(() => Date.now())
@@ -68,10 +51,6 @@ export default function PrestataireRegisterForm() {
   const sirenValid     = /^\d{9}$/.test(sirenDigits) || /^\d{14}$/.test(sirenDigits)
   const showSirenError = siren.trim().length > 0 && !sirenValid
 
-  function toggleService(c: string) {
-    setServices((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (submitting) return
@@ -87,12 +66,8 @@ export default function PrestataireRegisterForm() {
           contactName,
           siren,
           email,
-          phone:          phone || undefined,
-          city:           city || undefined,
-          serviceCategories,
-          coverageZones:  coverageZones.split(',').map((z) => z.trim()).filter(Boolean),
-          modality,
-          indicativeRate: indicativeRate || undefined,
+          // phone / city / serviceCategories / coverageZones / modality / indicativeRate DEFERRED
+          // (Agent 112) — set later in the prestataire profile.
           consent,
           website,
           formStartedAt,
@@ -186,70 +161,6 @@ export default function PrestataireRegisterForm() {
                 error={showSirenError ? t('fieldSirenError') : undefined}
               />
               <Input label={t('fieldEmail')} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={emailLocked} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={t('fieldPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
-                <Input label={t('fieldCity')} value={city} onChange={(e) => setCity(e.target.value)} />
-              </div>
-
-              <div>
-                <p className="mb-1.5 text-sm font-medium text-grubano-ink">{t('fieldServices')}</p>
-                <div className="flex flex-wrap gap-2">
-                  {SERVICE_CATEGORIES.map((c) => {
-                    const active = serviceCategories.includes(c)
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => toggleService(c)}
-                        aria-pressed={active}
-                        className={[
-                          'rounded-grubano-pill border px-3 py-1.5 text-sm font-medium transition-colors',
-                          active
-                            ? 'border-grubano-primary bg-grubano-primary text-white'
-                            : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:border-grubano-primary/40',
-                        ].join(' ')}
-                      >
-                        {t(SVC_LABEL[c] as 'svcOther')}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-1.5 text-sm font-medium text-grubano-ink">{t('fieldModality')}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {MODALITIES.map((m) => {
-                    const active = modality === m
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setModality(m)}
-                        aria-pressed={active}
-                        className={[
-                          'rounded-grubano-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/20',
-                          active
-                            ? 'border-grubano-primary bg-grubano-primary text-white'
-                            : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:border-grubano-primary/40',
-                        ].join(' ')}
-                      >
-                        {t(MODALITY_LABEL[m] as 'modalityOnSite')}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <Input label={t('fieldCoverageZones')} value={coverageZones} onChange={(e) => setCoverageZones(e.target.value)} placeholder="Lyon, Villeurbanne, 69003" />
-                <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fieldCoverageZonesHint')}</p>
-              </div>
-
-              <div>
-                <Input label={t('fieldIndicativeRate')} value={indicativeRate} onChange={(e) => setIndicativeRate(e.target.value)} placeholder={t('fieldIndicativeRatePlaceholder')} />
-                <p className="mt-1 text-[11px] text-grubano-ink-faint">{t('fieldIndicativeRateHint')}</p>
-              </div>
 
               {/* Honeypot — visually hidden, must stay empty (anti-bot). */}
               <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">

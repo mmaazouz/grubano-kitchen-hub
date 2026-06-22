@@ -840,6 +840,15 @@ model PrestataireProfile {
   availableWeekdays  Json     @default("[]")    // string[] — mon|tue|wed|thu|fri|sat|sun (declared working days)
   availabilityNote   String?  @db.Text          // free-text availability note (« 8h-18h, urgences 24/7 »)
   status             String   @default("pending")   // pending | active | suspended | rejected (business state)
+  // Marketplace COHERENCE gate (Agent 112 — lean signup, calque of SupplierProfile Agent 111).
+  // ADDITIVE + REVERSIBLE. Decouples "visible to restaurants" from status='active': a SIREN-
+  // verified prestataire is created status='active' (can log in + list its services) but starts
+  // marketplaceCoherencePending=true → HIDDEN from the directory until the coherence check
+  // (vetPrestataire, run at the "ready to publish" transition: offer filled + ≥1 active service)
+  // clears it. INVERSE flag: @default(false) so EXISTING active prestataires (and all legacy rows)
+  // stay VISIBLE with no backfill. The marketplace reader gates on status='active' AND
+  // marketplaceCoherencePending=false. Gates VISIBILITY only — never money, never login/services.
+  marketplaceCoherencePending Boolean @default(false)
   // Auto-onboarding LLM vetting (clone of SupplierProfile). Gates VISIBILITY only —
   // never money (any future payout stays independently hard-gated by Stripe Connect KYB).
   vettingVerdict     String?                          // legit | doubt | bad (null = legacy / not auto-vetted)

@@ -3198,6 +3198,31 @@
       "actionError": "L’azione non è riuscita. Riprovate.",
       "coherencePending": "Coerenza da validare",
       "coherenceApprove": "Approva (pubblica)"
+    },
+    "prestataires": {
+      "title": "Prestatori di servizi",
+      "subtitle": "Gestisci i prestatori di servizi della rete: consulta il loro stato e la verifica, attiva o sospendi un account.",
+      "emptyTitle": "Nessun prestatore",
+      "emptyBody": "Nessun prestatore si è ancora registrato.",
+      "siren": "SIREN",
+      "sirenNone": "non indicato",
+      "status_pending": "In attesa",
+      "status_active": "Attivo",
+      "status_suspended": "Sospeso",
+      "status_rejected": "Rifiutato",
+      "verdict_legit": "Verifica: affidabile",
+      "verdict_doubt": "Verifica: da verificare",
+      "verdict_bad": "Verifica: dubbio",
+      "verdict_unknown": "Verifica: non valutato",
+      "verif_verified": "SIREN verificato",
+      "verif_review": "SIREN da verificare",
+      "verif_rejected": "SIREN non trovato",
+      "verif_unknown": "SIREN non verificato",
+      "activate": "Attiva",
+      "suspend": "Sospendi",
+      "actionError": "L'azione non è riuscita. Riprova.",
+      "coherencePending": "Coerenza da validare",
+      "coherenceApprove": "Approva (pubblica)"
     }
   },
   "legal": {
@@ -3629,7 +3654,9 @@
       "missionsTitle": "Richieste e missioni",
       "missionsBody": "Rispondete alle richieste di preventivo e seguite le vostre missioni.",
       "calendarTitle": "Il mio calendario",
-      "calendarBody": "Dichiarate la vostra disponibilità e consultate le missioni pianificate."
+      "calendarBody": "Dichiarate la vostra disponibilità e consultate le missioni pianificate.",
+      "coherencePendingTitle": "Verifica prima della pubblicazione",
+      "coherencePendingBody": "Il suo account è attivo: può accedere e pubblicare i suoi servizi. Completi la sua offerta (categorie, zone) e aggiunga almeno un servizio; verificheremo la coerenza prima di rendere la sua scheda visibile ai ristoranti."
     },
     "services": {
       "title": "I miei servizi",

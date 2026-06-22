@@ -59,6 +59,7 @@ describe('discovery — only active-with-services + filters', () => {
     await get()
     const arg = db.prestataireProfile.findMany.mock.calls[0][0]
     expect(arg.where.status).toBe('active')
+    expect(arg.where.marketplaceCoherencePending).toBe(false) // Agent 112 — visibility coherence gate
     expect(arg.where.serviceOfferings).toEqual({ some: { active: true } })
     expect(arg.select.serviceOfferings.where).toEqual({ active: true })
   })

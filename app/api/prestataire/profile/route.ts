@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
+import { maybeRunPrestataireCoherenceCheck } from '@/lib/prestataire-coherence'
 
 export const dynamic = 'force-dynamic'
 
@@ -115,6 +116,12 @@ export async function PATCH(req: Request) {
         indicativeRate:    d.indicativeRate?.trim() || null,
       },
     })
+
+    // Lean signup (Agent 112): saving the offer may complete the "ready to publish" transition
+    // (offer filled + ≥1 service) → run the DEPLACED coherence check once. Best-effort +
+    // idempotent + quota-safe: never throws, runs vetPrestataire at most once, only flips the
+    // marketplace-visibility flag (never status/auth/money).
+    await maybeRunPrestataireCoherenceCheck(existing.id)
 
     return NextResponse.json({ ok: true })
   } catch (err) {

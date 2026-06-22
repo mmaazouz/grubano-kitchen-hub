@@ -3198,6 +3198,31 @@
       "actionError": "L’action a échoué. Réessayez.",
       "coherencePending": "Cohérence à valider",
       "coherenceApprove": "Approuver (mettre en ligne)"
+    },
+    "prestataires": {
+      "title": "Prestataires",
+      "subtitle": "Gérez les prestataires de services du réseau : consultez leur statut et leur vérification, activez ou suspendez un compte.",
+      "emptyTitle": "Aucun prestataire",
+      "emptyBody": "Aucun prestataire n'est encore inscrit.",
+      "siren": "SIREN",
+      "sirenNone": "non renseigné",
+      "status_pending": "En attente",
+      "status_active": "Actif",
+      "status_suspended": "Suspendu",
+      "status_rejected": "Refusé",
+      "verdict_legit": "Vetting : fiable",
+      "verdict_doubt": "Vetting : à vérifier",
+      "verdict_bad": "Vetting : douteux",
+      "verdict_unknown": "Vetting : non évalué",
+      "verif_verified": "SIREN vérifié",
+      "verif_review": "SIREN à vérifier",
+      "verif_rejected": "SIREN introuvable",
+      "verif_unknown": "SIREN non vérifié",
+      "activate": "Activer",
+      "suspend": "Suspendre",
+      "actionError": "L'action a échoué. Réessayez.",
+      "coherencePending": "Cohérence à valider",
+      "coherenceApprove": "Approuver (mettre en ligne)"
     }
   },
   "legal": {
@@ -3629,7 +3654,9 @@
       "missionsTitle": "Demandes & missions",
       "missionsBody": "Répondez aux demandes de devis et suivez vos missions.",
       "calendarTitle": "Mon calendrier",
-      "calendarBody": "Déclarez vos disponibilités et voyez vos missions planifiées."
+      "calendarBody": "Déclarez vos disponibilités et voyez vos missions planifiées.",
+      "coherencePendingTitle": "Vérification avant mise en ligne",
+      "coherencePendingBody": "Votre compte est actif : vous pouvez vous connecter et lister vos services. Renseignez votre offre (catégories, zones) et ajoutez au moins un service ; nous vérifierons la cohérence avant de rendre votre fiche visible des restaurants."
     },
     "services": {
       "title": "Mes services",

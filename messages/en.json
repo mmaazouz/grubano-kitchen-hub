@@ -3198,6 +3198,31 @@
       "actionError": "The action failed. Please try again.",
       "coherencePending": "Coherence pending",
       "coherenceApprove": "Approve (publish)"
+    },
+    "prestataires": {
+      "title": "Service providers",
+      "subtitle": "Manage the network's service providers: review their status and verification, activate or suspend an account.",
+      "emptyTitle": "No service provider",
+      "emptyBody": "No service provider has registered yet.",
+      "siren": "SIREN",
+      "sirenNone": "not provided",
+      "status_pending": "Pending",
+      "status_active": "Active",
+      "status_suspended": "Suspended",
+      "status_rejected": "Rejected",
+      "verdict_legit": "Vetting: trusted",
+      "verdict_doubt": "Vetting: to review",
+      "verdict_bad": "Vetting: suspicious",
+      "verdict_unknown": "Vetting: not assessed",
+      "verif_verified": "SIREN verified",
+      "verif_review": "SIREN to verify",
+      "verif_rejected": "SIREN not found",
+      "verif_unknown": "SIREN not verified",
+      "activate": "Activate",
+      "suspend": "Suspend",
+      "actionError": "The action failed. Try again.",
+      "coherencePending": "Coherence pending",
+      "coherenceApprove": "Approve (publish)"
     }
   },
   "legal": {
@@ -3629,7 +3654,9 @@
       "missionsTitle": "Requests & missions",
       "missionsBody": "Answer quote requests and track your missions.",
       "calendarTitle": "My calendar",
-      "calendarBody": "Declare your availability and see your planned missions."
+      "calendarBody": "Declare your availability and see your planned missions.",
+      "coherencePendingTitle": "Verification before going live",
+      "coherencePendingBody": "Your account is active: you can sign in and list your services. Fill in your offer (categories, zones) and add at least one service; we'll check coherence before making your listing visible to restaurants."
     },
     "services": {
       "title": "My services",

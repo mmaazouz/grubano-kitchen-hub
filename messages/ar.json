@@ -3198,6 +3198,31 @@
       "actionError": "فشل الإجراء. حاول مجدّدًا.",
       "coherencePending": "بانتظار التحقق من الاتساق",
       "coherenceApprove": "الموافقة (النشر)"
+    },
+    "prestataires": {
+      "title": "مزودو الخدمات",
+      "subtitle": "أدِر مزودي الخدمات في الشبكة: راجِع حالتهم والتحقق منهم، وفعّل أو علّق حسابًا.",
+      "emptyTitle": "لا يوجد مزود خدمة",
+      "emptyBody": "لم يسجل أي مزود خدمة بعد.",
+      "siren": "SIREN",
+      "sirenNone": "غير محدد",
+      "status_pending": "قيد الانتظار",
+      "status_active": "نشط",
+      "status_suspended": "موقوف",
+      "status_rejected": "مرفوض",
+      "verdict_legit": "التدقيق: موثوق",
+      "verdict_doubt": "التدقيق: للمراجعة",
+      "verdict_bad": "التدقيق: مشبوه",
+      "verdict_unknown": "التدقيق: غير مُقيَّم",
+      "verif_verified": "SIREN مُتحقَّق",
+      "verif_review": "SIREN قيد التحقق",
+      "verif_rejected": "SIREN غير موجود",
+      "verif_unknown": "SIREN غير مُتحقَّق",
+      "activate": "تفعيل",
+      "suspend": "تعليق",
+      "actionError": "فشل الإجراء. حاوِل مرة أخرى.",
+      "coherencePending": "بانتظار التحقق من الاتساق",
+      "coherenceApprove": "الموافقة (النشر)"
     }
   },
   "legal": {
@@ -3629,7 +3654,9 @@
       "missionsTitle": "الطلبات والمهام",
       "missionsBody": "ردّ على طلبات عروض الأسعار وتابع مهامك.",
       "calendarTitle": "تقويمي",
-      "calendarBody": "أعلن توفّرك واطّلع على مهامك المجدولة."
+      "calendarBody": "أعلن توفّرك واطّلع على مهامك المجدولة.",
+      "coherencePendingTitle": "التحقق قبل النشر",
+      "coherencePendingBody": "حسابك مُفعَّل: يمكنك تسجيل الدخول ونشر خدماتك. أكمِل عرضك (الفئات والمناطق) وأضِف خدمة واحدة على الأقل؛ سنتحقق من الاتساق قبل إظهار بطاقتك للمطاعم."
     },
     "services": {
       "title": "خدماتي",

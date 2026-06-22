@@ -28,6 +28,11 @@ export async function GET(req: Request) {
     const rows = await prisma.prestataireProfile.findMany({
       where: {
         status:           'active',
+        // Visibility gate (Agent 112): coherence cleared. The added condition keeps EXISTING
+        // active prestataires visible (marketplaceCoherencePending @default(false)) and HIDES
+        // lean-signup prestataires until the publication coherence check (lib/prestataire-coherence)
+        // clears them — the anti-abuse holds before visibility.
+        marketplaceCoherencePending: false,
         serviceOfferings: { some: { active: true } }, // only directories with ≥1 live service
       },
       select: {
