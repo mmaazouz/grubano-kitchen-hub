@@ -3092,6 +3092,27 @@
         "descReady": "Su identidad y su banco están verificados: ya puede cobrar.",
         "descTodo": "Para recibir sus pagos, verifique su identidad y su banco. Hágalo cuando quiera: no bloquea sus misiones.",
         "cta": "Configurar mis pagos"
+      },
+      "franchisorAccount": {
+        "title": "Cuenta creada",
+        "desc": "Su cuenta de franquiciador está activa y ha iniciado sesión."
+      },
+      "franchisorCompany": {
+        "title": "Verifique su empresa",
+        "descReview": "Estamos verificando su empresa (SIREN) en el registro oficial. No tiene que hacer nada: nos pondremos en contacto con usted.",
+        "descVerified": "Su empresa ha sido verificada."
+      },
+      "franchisorFranchise": {
+        "title": "Configure su franquicia",
+        "descTodo": "Abra una marca a la franquicia: defina su modelo y sus estándares para acoger a franquiciados.",
+        "descDone": "Su franquicia está configurada.",
+        "cta": "Configurar mi franquicia"
+      },
+      "franchisorPayout": {
+        "title": "Para recibir sus regalías: identidad y banco",
+        "descReady": "Su identidad y su banco están verificados: ya puede recibir sus regalías.",
+        "descTodo": "Para recibir sus regalías, verifique su identidad y su banco. Hágalo cuando quiera: no bloquea su red.",
+        "cta": "Configurar mis pagos"
       }
     },
     "blocked": {

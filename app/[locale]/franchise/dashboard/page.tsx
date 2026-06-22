@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { TrendingUp, TrendingDown, MapPin, ChevronDown, ChevronUp, PlusCircle, ArrowRight } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
+import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 
 type BrandPerf = {
   id:        string
@@ -102,6 +103,12 @@ export default function FranchiseDashboard() {
           </Button>
         </Link>
       </div>
+
+      {/* Onboarding copilote (Agent 105) — role-aware activation guide for the franchisor.
+          Self-gating: renders null unless ONBOARDING_GUIDE_ENABLED is on (probe in the component)
+          → the dashboard is byte-identical when the flag is OFF. READ-ONLY, moves no money, cites
+          no royalty figure; fetches /api/business/activation?role=franchisor. */}
+      <OnboardingGuide role="franchisor" />
 
       {/* KPI grid — consolidated totals */}
       <div className="grid grid-cols-2 gap-3 mb-6">

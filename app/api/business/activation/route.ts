@@ -85,6 +85,18 @@ export async function GET(req: Request) {
       return prestataireActivation(session.user.email, operator.status === 'active')
     }
 
+    // ── Franchisor surface (Agent 105, ADDITIVE — calque of the prestataire branch) — the guide on
+    //    the franchisor dashboard requests ?role=franchisor. The franchisor is operator-keyed (the
+    //    role STRING is 'franchise'); served ONLY when the operator actually holds that role
+    //    (owner-scoped, like the affiliate branch); otherwise an empty, non-discovery checklist (no
+    //    guide). READ-ONLY + MONEY-ADJACENT: signals come from the EXISTING franchise state (Operator
+    //    KYB + a franchisable Brand + stored franchise payout status) — NO royalty amount, NO Stripe
+    //    sync, NO write; the franchise money rail (settlement/royalty/refund) is untouched. The
+    //    branches above + the restaurant path below are UNCHANGED.
+    if (new URL(req.url).searchParams.get('role') === 'franchisor') {
+      return franchisorActivation(operator.id, operator.status === 'active', roles.includes('franchise'))
+    }
+
     const role  = roles.includes('restaurant') ? 'restaurant' : operator.role
 
     // No definition for this role yet (e.g. a pure creator/supplier on the
@@ -277,4 +289,42 @@ async function prestataireActivation(email: string, accountActive: boolean) {
   }
 
   return NextResponse.json({ ok: true, role: 'prestataire', checklist: buildActivationChecklist('prestataire', signals) })
+}
+
+// ── Franchisor activation (Agent 105) — owner-scoped, READ-ONLY (calque of affiliateActivation) ──
+// Empty (non-discovery) checklist when the operator does not hold the 'franchise' role → the guide
+// renders nothing. Otherwise signals come from the EXISTING franchise state on the Operator
+// (account-level KYB + a franchisable Brand + the stored franchise payout status) — NO royalty amount
+// is read or computed, no Stripe call, no write; the franchise money rail (settlement/royalty/refund)
+// is untouched. The franchisor is OPERATOR-keyed (the role string is 'franchise'); operatorId comes
+// from the SESSION (never a client value) → no IDOR.
+const EMPTY_FRANCHISOR = {
+  role: 'franchisor', steps: [] as never[], progressPct: 100, currentStepId: null, isDiscovery: false,
+}
+
+async function franchisorActivation(operatorId: string, accountActive: boolean, hasFranchiseRole: boolean) {
+  if (!hasFranchiseRole) {
+    return NextResponse.json({ ok: true, role: 'franchisor', checklist: EMPTY_FRANCHISOR })
+  }
+
+  // Owner-scoped reads (operatorId from the SESSION). Only status mirrors + a membership COUNT —
+  // never a royalty amount, never a money-rail call.
+  const [op, openBrandCount] = await Promise.all([
+    prisma.operator.findUnique({
+      where:  { id: operatorId },
+      select: { kybStatus: true, franchisePayoutStatus: true },
+    }),
+    prisma.brand.count({ where: { operatorId, openToFranchise: true } }),
+  ])
+
+  const signals: ChecklistSignals = {
+    accountActive,
+    // Required restaurant fields are neutral placeholders — the 'franchisor' definition ignores them.
+    hasBrand: false, hasRestaurant: false, menuItemCount: 0, isActive: false, stripeConnected: false,
+    franchisorCompanyVerified:     op?.kybStatus === 'verified',
+    franchisorFranchiseConfigured: openBrandCount >= 1,
+    franchisorPayoutReady:         op?.franchisePayoutStatus === 'active',
+  }
+
+  return NextResponse.json({ ok: true, role: 'franchisor', checklist: buildActivationChecklist('franchisor', signals) })
 }

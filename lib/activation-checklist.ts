@@ -123,6 +123,20 @@ export interface ChecklistSignals {
   /** Prestataire payout Connect 'active' (identity + bank done) — read-only mirror of the stored
    *  PrestataireProfile.payoutStatus; the guide moves no money and the prestataire rail is untouched. */
   prestatairePayoutReady?: boolean
+
+  // ── Franchisor signals (Agent 105) — read-only, derived from the EXISTING franchise state on the
+  //    Operator (account-level KYB) + the operator's franchisable Brand(s). OPTIONAL by design: ONLY
+  //    the 'franchisor' definition reads them; the 5 other definitions and their required fields above
+  //    are untouched (equivalence ×5). MONEY-ADJACENT role: these mirror state only — never a royalty
+  //    amount/rate, never a write, and the franchise money rail (settlement/royalty/refund) is untouched.
+  /** Operator.kybStatus === 'verified' (account-level SIREN/KYB checked — Grubano/server-side). */
+  franchisorCompanyVerified?: boolean
+  /** At least one Brand owned by the operator is opened to franchising (Brand.openToFranchise) —
+   *  the franchise model (brand + royalty terms) is configured. NO royalty amount is read. */
+  franchisorFranchiseConfigured?: boolean
+  /** Franchise payout Connect 'active' (identity + bank done) — read-only mirror of the stored
+   *  Operator.franchisePayoutStatus; the guide moves no money and the franchise rail is untouched. */
+  franchisorPayoutReady?: boolean
 }
 
 // ── Restaurateur definition (the 6 steps, mapped to the 4 gates) ──────────────
@@ -457,6 +471,79 @@ function prestataireSteps(s: ChecklistSignals): ChecklistStep[] {
   return [account, profile, company, payout]
 }
 
+// ── Franchisor definition (Agent 105) — 4 steps, per « Informations par partenaire » ──
+// The franchisor is the brand owner who franchises their concept. Doctrine: signup = name+email
+// (done) ; the COMPANY (SIREN/KYB) is verified Grubano/server-side ; CONFIGURE the franchise (open a
+// brand to franchising = brand + royalty model + standards) ; identity + bank are DEFERRED, required
+// ONLY to RECEIVE royalties. MONEY-ADJACENT role, but this is READ-ONLY: every state is derived from
+// the EXISTING franchise state (Operator.kybStatus, a franchisable Brand, Operator.franchisePayoutStatus)
+// — never a recomputed royalty value, never a write, and the franchise money rail (settlement / royalty
+// / refund) is untouched. The company step is Grubano-side → it carries NO CTA (it mirrors the
+// restaurant "awaiting validation" pattern); the "receive royalties" step is a NON-BLOCKING 'todo'.
+function franchisorSteps(s: ChecklistSignals): ChecklistStep[] {
+  // 1 — Compte créé (P0). An active session ⇒ done.
+  const account: ChecklistStep = {
+    id: 'account', gate: 0,
+    titleKey: 'steps.franchisorAccount.title',
+    descriptionKey: 'steps.franchisorAccount.desc',
+    state: s.accountActive ? 'done' : 'current',
+  }
+
+  // 2 — Vérifier l'entreprise (SIREN/KYB) (P1). Grubano/server-side verification (no self-service
+  //     KYB page today) → NO CTA: shown as an in-progress frontier until verified, exactly like the
+  //     restaurant "publish — awaiting validation" step. deriveOnboardingProgress skips CTA-less
+  //     steps for "Reprendre", so the resume button points at the next ACTIONABLE step.
+  const company: ChecklistStep = s.franchisorCompanyVerified
+    ? {
+        id: 'franchisorCompany', gate: 1,
+        titleKey: 'steps.franchisorCompany.title',
+        descriptionKey: 'steps.franchisorCompany.descVerified',
+        state: 'done',
+      }
+    : {
+        id: 'franchisorCompany', gate: 1,
+        titleKey: 'steps.franchisorCompany.title',
+        descriptionKey: 'steps.franchisorCompany.descReview',
+        state: 'current',
+      }
+
+  // 3 — Configurer la franchise : marque + modèle de royalties + standards (P2). The actionable
+  //     frontier. Done once at least one brand is opened to franchising. CTA opens the EXISTING
+  //     franchisor establishments screen — the guide configures nothing and reads no royalty value.
+  const franchise: ChecklistStep = {
+    id: 'franchisorFranchise', gate: 2,
+    titleKey: 'steps.franchisorFranchise.title',
+    descriptionKey: s.franchisorFranchiseConfigured
+      ? 'steps.franchisorFranchise.descDone'
+      : 'steps.franchisorFranchise.descTodo',
+    state: s.franchisorFranchiseConfigured ? 'done' : 'current',
+    ...(s.franchisorFranchiseConfigured
+      ? {}
+      : { ctaKey: 'steps.franchisorFranchise.cta', ctaHref: '/franchise/dashboard/etablissements' }),
+  }
+
+  // 4 — Pour recevoir vos royalties : identité + banque (P3). DEFERRED + NON-BLOCKING: needed ONLY
+  //     to be paid, never to operate. A 'todo' with a CTA (never 'locked'/'current') until payout-ready.
+  //     The CTA opens the EXISTING franchise finances page — the guide moves no money.
+  const payout: ChecklistStep = s.franchisorPayoutReady
+    ? {
+        id: 'franchisorPayout', gate: 3,
+        titleKey: 'steps.franchisorPayout.title',
+        descriptionKey: 'steps.franchisorPayout.descReady',
+        state: 'done',
+      }
+    : {
+        id: 'franchisorPayout', gate: 3,
+        titleKey: 'steps.franchisorPayout.title',
+        descriptionKey: 'steps.franchisorPayout.descTodo',
+        state: 'todo',
+        ctaKey: 'steps.franchisorPayout.cta',
+        ctaHref: '/franchise/dashboard/finances',
+      }
+
+  return [account, company, franchise, payout]
+}
+
 /** Per-role step builders. Add other roles here without touching the core. */
 const DEFINITIONS: Record<string, (s: ChecklistSignals) => ChecklistStep[]> = {
   restaurant:  restaurantSteps,
@@ -464,6 +551,7 @@ const DEFINITIONS: Record<string, (s: ChecklistSignals) => ChecklistStep[]> = {
   creator:     creatorSteps,
   supplier:    supplierSteps,
   prestataire: prestataireSteps,
+  franchisor:  franchisorSteps,
 }
 
 /** Roles that currently have a checklist definition. */

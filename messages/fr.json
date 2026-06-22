@@ -3092,6 +3092,27 @@
         "descReady": "Votre identité et votre banque sont vérifiées : vous pouvez être payé.",
         "descTodo": "Pour recevoir vos paiements, vérifiez votre identité et votre banque. À faire quand vous voulez — cela ne bloque pas vos missions.",
         "cta": "Configurer mes paiements"
+      },
+      "franchisorAccount": {
+        "title": "Compte créé",
+        "desc": "Votre compte franchiseur est actif et vous êtes connecté."
+      },
+      "franchisorCompany": {
+        "title": "Vérifiez votre entreprise",
+        "descReview": "Nous vérifions votre entreprise (SIREN) auprès du registre officiel. Vous n’avez rien à faire — nous revenons vers vous.",
+        "descVerified": "Votre entreprise a été vérifiée."
+      },
+      "franchisorFranchise": {
+        "title": "Configurez votre franchise",
+        "descTodo": "Ouvrez une marque à la franchise : définissez votre modèle et vos standards pour accueillir des franchisés.",
+        "descDone": "Votre franchise est configurée.",
+        "cta": "Configurer ma franchise"
+      },
+      "franchisorPayout": {
+        "title": "Pour recevoir vos royalties : identité et banque",
+        "descReady": "Votre identité et votre banque sont vérifiées : vous pouvez recevoir vos royalties.",
+        "descTodo": "Pour recevoir vos royalties, vérifiez votre identité et votre banque. À faire quand vous voulez — cela ne bloque pas votre réseau.",
+        "cta": "Configurer mes paiements"
       }
     },
     "blocked": {
