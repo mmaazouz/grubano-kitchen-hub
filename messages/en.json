@@ -3713,5 +3713,18 @@
     "unsubLink": "Unsubscribe",
     "unsubDoneTitle": "Unsubscribe confirmed",
     "unsubDoneBody": "You will no longer receive setup reminders. You can close this page."
+  },
+  "onboardingChat": {
+    "title": "A question? The assistant can help",
+    "subtitle": "Onboarding help — how to do it, where to click.",
+    "greeting": "Ask about your onboarding: “how do I add a dish?”, “what is this step for?”…",
+    "placeholder": "Your onboarding question…",
+    "send": "Send",
+    "thinking": "The assistant is thinking…",
+    "disclaimer": "Onboarding help assistant. It does not give legal, tax or financial advice — for that, consult a professional or the relevant page.",
+    "errorGeneric": "Something went wrong. Please try again.",
+    "errorQuota": "Assistance limit reached, please try again later.",
+    "errorDisabled": "Assistant temporarily unavailable.",
+    "errorEmpty": "I don’t have an answer for that. Try rephrasing or check the relevant page."
   }
 }

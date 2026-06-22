@@ -16,6 +16,7 @@ import ConnectCard from '@/components/connect/ConnectCard'
 import SitePrefillImport from '@/components/restaurant/SitePrefillImport'
 import LogoPrefillImport from '@/components/restaurant/LogoPrefillImport'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
+import OnboardingChat from '@/components/onboarding/OnboardingChat'
 import { Breadcrumb, type Crumb } from './Breadcrumb'
 
 // ── Establishment HUB (C13-2) ─────────────────────────────────────────────────
@@ -296,6 +297,12 @@ export default function EstablishmentHub({
           when ONBOARDING_GUIDE_ENABLED is OFF → the hub stays byte-identical. Reads the
           EXISTING owner-scoped activation engine; shows progress + a "resume" CTA. */}
       <OnboardingGuide />
+
+      {/* AI onboarding copilot — conversational "how-to" help chat (Agent 97). SELF-GATING:
+          renders null when ONBOARDING_AI_CHAT_ENABLED is OFF → the hub stays byte-identical.
+          Constrained server-side (how-to only; refuses legal/fiscal/financial, never quotes a
+          rate); grounded on the owner's OWN activation checklist; history is in-memory only. */}
+      <OnboardingChat />
 
       {/* ── Sober header ──────────────────────────────────────────────────── */}
       <header className="mb-5">

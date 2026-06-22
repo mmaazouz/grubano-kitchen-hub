@@ -50,6 +50,7 @@ export type LlmTask =
   | 'dish_scan'
   | 'menu_extract'
   | 'site_extract'
+  | 'onboarding_help'
   | 'stock_parse'
   | 'review_reply'
   | 'briefing'
@@ -72,6 +73,10 @@ export const TASKS: Record<LlmTask, TaskConfig> = {
   // Onboarding profile prefill from a website (Agent 91): extract a small NON-LEGAL
   // marketing draft (name/description/cuisine) from bounded site TEXT. Cheap Haiku default.
   site_extract:      { model: HAIKU,  maxOutputTokens: 1024 },
+  // Onboarding HELP chat (Agent 97): a constrained, grounded "how-to" assistant. Sonnet is
+  // chosen for RELIABLE adherence to the strict refuse/redirect governance (legal/fiscal/
+  // financial + never quote a rate); short answers → small output cap.
+  onboarding_help:   { model: SONNET, maxOutputTokens: 600 },
   stock_parse:       { model: SONNET, maxOutputTokens: 512 },
   review_reply:      { model: SONNET, maxOutputTokens: 300 },
   briefing:          { model: SONNET, maxOutputTokens: 400 },

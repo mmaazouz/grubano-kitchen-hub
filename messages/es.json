@@ -3713,5 +3713,18 @@
     "unsubLink": "Darse de baja",
     "unsubDoneTitle": "Baja confirmada",
     "unsubDoneBody": "Ya no recibirá recordatorios de configuración. Puede cerrar esta página."
+  },
+  "onboardingChat": {
+    "title": "¿Una pregunta? El asistente le ayuda",
+    "subtitle": "Ayuda con el alta — cómo hacerlo, dónde hacer clic.",
+    "greeting": "Pregunte sobre su alta: «¿cómo añado un plato?», «¿para qué sirve este paso?»…",
+    "placeholder": "Su pregunta sobre el alta…",
+    "send": "Enviar",
+    "thinking": "El asistente está pensando…",
+    "disclaimer": "Asistente de ayuda con el alta. No ofrece asesoramiento jurídico, fiscal ni financiero; para ello, consulte a un profesional o la página correspondiente.",
+    "errorGeneric": "Se ha producido un error. Inténtelo de nuevo.",
+    "errorQuota": "Límite de asistencia alcanzado, inténtelo más tarde.",
+    "errorDisabled": "Asistente no disponible por el momento.",
+    "errorEmpty": "No tengo una respuesta para eso. Reformule o consulte la página correspondiente."
   }
 }

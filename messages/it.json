@@ -3713,5 +3713,18 @@
     "unsubLink": "Annullare l’iscrizione",
     "unsubDoneTitle": "Disiscrizione confermata",
     "unsubDoneBody": "Non riceverà più promemoria di configurazione. Può chiudere questa pagina."
+  },
+  "onboardingChat": {
+    "title": "Una domanda? L’assistente la aiuta",
+    "subtitle": "Aiuto per l’iscrizione — come fare, dove cliccare.",
+    "greeting": "Chieda informazioni sull’iscrizione: «come aggiungo un piatto?», «a cosa serve questo passaggio?»…",
+    "placeholder": "La sua domanda sull’iscrizione…",
+    "send": "Invia",
+    "thinking": "L’assistente sta pensando…",
+    "disclaimer": "Assistente di aiuto all’iscrizione. Non fornisce consulenza legale, fiscale o finanziaria — per questo si rivolga a un professionista o alla pagina dedicata.",
+    "errorGeneric": "Si è verificato un errore. Riprovi.",
+    "errorQuota": "Limite di assistenza raggiunto, riprovi più tardi.",
+    "errorDisabled": "Assistente momentaneamente non disponibile.",
+    "errorEmpty": "Non ho una risposta per questo. Riformuli o consulti la pagina dedicata."
   }
 }
