@@ -13,6 +13,7 @@ import AffiliateWithdrawCard from '@/components/affiliate/AffiliateWithdrawCard'
 import AffiliateVerifyCard from '@/components/affiliate/AffiliateVerifyCard'
 import AffiliateStudioCard from '@/components/affiliate/AffiliateStudioCard'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
+import OnboardingInfluencerUpgrade from '@/components/affiliate/OnboardingInfluencerUpgrade'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +51,11 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
                 reads the owner-scoped affiliate checklist; shows progress + a "resume" CTA toward
                 the next step (e.g. "préparez vos retraits"). Reads state only — moves no money. */}
             <OnboardingGuide role="affiliate" />
+            {/* INF onboarding (Agent 99) — OPTIONAL "become an influencer" upgrade, OUTSIDE the
+                affiliate checklist (so a normal affiliate is never marked incomplete). Reuses the
+                EXISTING verification state + request action (AffiliateVerifyCard below, anchored at
+                #influencer-verify). Self-gating: hides when INFLUENCER_ENABLED is OFF → byte-identical. */}
+            <OnboardingInfluencerUpgrade />
             <AffiliateLinkCard
               link={buildAffiliateLink(affiliate.referralLinkSlug) ?? ''}
               code={affiliate.referralCode}
@@ -60,8 +66,11 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
                 when AFFILIATE_CONNECT_ENABLED is OFF → dashboard byte-identical. */}
             <AffiliateWithdrawCard />
             {/* INF-1 — audience verification (become an influencer). Hides itself when
-                INFLUENCER_ENABLED is OFF → dashboard byte-identical. No money effect. */}
-            <AffiliateVerifyCard />
+                INFLUENCER_ENABLED is OFF → dashboard byte-identical. No money effect. The
+                #influencer-verify anchor is the target of the Agent 99 onboarding upgrade CTA. */}
+            <div id="influencer-verify" className="scroll-mt-4">
+              <AffiliateVerifyCard />
+            </div>
             {/* INF-2 — content studio (verified-influencer advantage). Hides itself when
                 the flag is OFF; shows a "reserved to verified" hint otherwise. No money. */}
             <AffiliateStudioCard />

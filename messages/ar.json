@@ -3464,7 +3464,14 @@
     "withdrawStepUpResend": "إعادة إرسال رمز",
     "withdrawStepUpError": "رمز غير صالح أو منتهي الصلاحية. أعد المحاولة أو اطلب رمزًا جديدًا.",
     "influencerBadge": "مؤثّر موثَّق",
-    "influencerCommissionLine": "بصفتك مؤثّرًا موثَّقًا، تحصل على {pct} % من عمولة Grubano (على الهامش الصافي)."
+    "influencerCommissionLine": "بصفتك مؤثّرًا موثَّقًا، تحصل على {pct} % من عمولة Grubano (على الهامش الصافي).",
+    "upgradeTitle": "كن مؤثّرًا",
+    "upgradeBody": "وثّق جمهورك لفتح أفضل نسبة. هذا اختياري: يبقى حساب الإحالة الخاص بك مكتملًا من دونه.",
+    "upgradeCta": "توثيق جمهوري",
+    "upgradePendingTitle": "التوثيق قيد المعالجة",
+    "upgradePendingBody": "يقوم فريقنا بمراجعة طلب توثيق جمهورك.",
+    "upgradeVerifiedTitle": "تم توثيق الجمهور",
+    "upgradeVerifiedBody": "أنت مؤثّر موثَّق: تحصل على أفضل نسبة، معروضة في لوحة التحكم الخاصة بك."
   },
   "prestataire": {
     "registerTitle": "كن مقدّم خدمات",

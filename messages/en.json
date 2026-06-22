@@ -3464,7 +3464,14 @@
     "withdrawStepUpResend": "Resend a code",
     "withdrawStepUpError": "Invalid or expired code. Try again or resend a code.",
     "influencerBadge": "Verified influencer",
-    "influencerCommissionLine": "As a verified influencer, you earn {pct} % of Grubano’s commission (on the net margin)."
+    "influencerCommissionLine": "As a verified influencer, you earn {pct} % of Grubano’s commission (on the net margin).",
+    "upgradeTitle": "Become an influencer",
+    "upgradeBody": "Get your audience verified to unlock the best rate. It’s optional — your affiliate account stays complete without it.",
+    "upgradeCta": "Verify my audience",
+    "upgradePendingTitle": "Verification in progress",
+    "upgradePendingBody": "Your audience-verification request is being reviewed by our team.",
+    "upgradeVerifiedTitle": "Audience verified",
+    "upgradeVerifiedBody": "You are a verified influencer: you get the best rate, shown on your dashboard."
   },
   "prestataire": {
     "registerTitle": "Become a service provider",

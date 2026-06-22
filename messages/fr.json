@@ -3464,7 +3464,14 @@
     "withdrawStepUpResend": "Renvoyer un code",
     "withdrawStepUpError": "Code invalide ou expiré. Réessayez ou renvoyez un code.",
     "influencerBadge": "Influenceur vérifié",
-    "influencerCommissionLine": "En tant qu’influenceur vérifié, vous touchez {pct} % de la commission Grubano (sur la marge nette)."
+    "influencerCommissionLine": "En tant qu’influenceur vérifié, vous touchez {pct} % de la commission Grubano (sur la marge nette).",
+    "upgradeTitle": "Devenez influenceur",
+    "upgradeBody": "Faites vérifier votre audience pour débloquer le meilleur taux. C’est facultatif : votre compte affilié reste complet sans cela.",
+    "upgradeCta": "Faire vérifier mon audience",
+    "upgradePendingTitle": "Vérification en cours",
+    "upgradePendingBody": "Votre demande de vérification d’audience est en cours d’examen par notre équipe.",
+    "upgradeVerifiedTitle": "Audience vérifiée",
+    "upgradeVerifiedBody": "Vous êtes influenceur vérifié : vous bénéficiez du meilleur taux, affiché sur votre tableau de bord."
   },
   "prestataire": {
     "registerTitle": "Devenez prestataire de services",

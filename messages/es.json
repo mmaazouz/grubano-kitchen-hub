@@ -3464,7 +3464,14 @@
     "withdrawStepUpResend": "Reenviar un código",
     "withdrawStepUpError": "Código no válido o caducado. Inténtelo de nuevo o reenvíe un código.",
     "influencerBadge": "Influencer verificado",
-    "influencerCommissionLine": "Como influencer verificado, usted recibe el {pct} % de la comisión de Grubano (sobre el margen neto)."
+    "influencerCommissionLine": "Como influencer verificado, usted recibe el {pct} % de la comisión de Grubano (sobre el margen neto).",
+    "upgradeTitle": "Conviértase en influencer",
+    "upgradeBody": "Verifique su audiencia para desbloquear la mejor tarifa. Es opcional: su cuenta de afiliado sigue estando completa sin ello.",
+    "upgradeCta": "Verificar mi audiencia",
+    "upgradePendingTitle": "Verificación en curso",
+    "upgradePendingBody": "Nuestro equipo está revisando su solicitud de verificación de audiencia.",
+    "upgradeVerifiedTitle": "Audiencia verificada",
+    "upgradeVerifiedBody": "Es usted influencer verificado: disfruta de la mejor tarifa, mostrada en su panel."
   },
   "prestataire": {
     "registerTitle": "Conviértete en proveedor de servicios",
