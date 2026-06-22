@@ -3749,7 +3749,13 @@
     "unsubPrefix": "¿Ya no desea recibir estos recordatorios?",
     "unsubLink": "Darse de baja",
     "unsubDoneTitle": "Baja confirmada",
-    "unsubDoneBody": "Ya no recibirá recordatorios de configuración. Puede cerrar esta página."
+    "unsubDoneBody": "Ya no recibirá recordatorios de configuración. Puede cerrar esta página.",
+    "generic": {
+      "subject": "Le quedan {steps, plural, one {# paso} other {# pasos}} para completar su registro",
+      "title": "Ya casi está",
+      "body": "Le quedan {steps, plural, one {# paso} other {# pasos}} para completar su registro en Grubano. Continúe donde lo dejó.",
+      "resumeCta": "Reanudar mi registro"
+    }
   },
   "onboardingChat": {
     "title": "¿Una pregunta? El asistente le ayuda",

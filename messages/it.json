@@ -3749,7 +3749,13 @@
     "unsubPrefix": "Non desidera più ricevere questi promemoria?",
     "unsubLink": "Annullare l’iscrizione",
     "unsubDoneTitle": "Disiscrizione confermata",
-    "unsubDoneBody": "Non riceverà più promemoria di configurazione. Può chiudere questa pagina."
+    "unsubDoneBody": "Non riceverà più promemoria di configurazione. Può chiudere questa pagina.",
+    "generic": {
+      "subject": "Le restano {steps, plural, one {# passaggio} other {# passaggi}} per completare la registrazione",
+      "title": "Ci siamo quasi",
+      "body": "Le restano {steps, plural, one {# passaggio} other {# passaggi}} per completare la registrazione su Grubano. Riprenda da dove si era fermato.",
+      "resumeCta": "Riprendere la registrazione"
+    }
   },
   "onboardingChat": {
     "title": "Una domanda? L’assistente la aiuta",

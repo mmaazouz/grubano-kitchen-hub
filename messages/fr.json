@@ -3749,7 +3749,13 @@
     "unsubPrefix": "Vous ne souhaitez plus recevoir ces rappels ?",
     "unsubLink": "Se désabonner",
     "unsubDoneTitle": "Désabonnement confirmé",
-    "unsubDoneBody": "Vous ne recevrez plus de rappels d’installation. Vous pouvez fermer cette page."
+    "unsubDoneBody": "Vous ne recevrez plus de rappels d’installation. Vous pouvez fermer cette page.",
+    "generic": {
+      "subject": "Il vous reste {steps, plural, one {# étape} other {# étapes}} pour finaliser votre inscription",
+      "title": "Vous y êtes presque",
+      "body": "Il vous reste {steps, plural, one {# étape} other {# étapes}} pour finaliser votre inscription sur Grubano. Reprenez là où vous vous êtes arrêté.",
+      "resumeCta": "Reprendre mon inscription"
+    }
   },
   "onboardingChat": {
     "title": "Une question ? L’assistant vous aide",

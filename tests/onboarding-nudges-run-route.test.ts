@@ -14,6 +14,8 @@ const { session, db, sendMock } = vi.hoisted(() => ({
     brand:           { findFirst: vi.fn() },
     restaurant:      { findFirst: vi.fn() },
     menuItem:        { count: vi.fn() },
+    affiliate:       { findMany: vi.fn() }, // Agent 102 cohort — empty here (restaurant-path tests)
+    creator:         { findMany: vi.fn() }, // Agent 102 cohort — empty here
     onboardingNudge: { findMany: vi.fn(), create: vi.fn() },
   },
   sendMock: vi.fn(),
@@ -48,6 +50,8 @@ beforeEach(() => {
   db.menuItem.count.mockResolvedValue(0)
   db.onboardingNudge.findMany.mockResolvedValue([]) // no prior nudge
   db.onboardingNudge.create.mockResolvedValue({ id: 'n1' })
+  db.affiliate.findMany.mockResolvedValue([]) // restaurant-path tests: other cohorts empty
+  db.creator.findMany.mockResolvedValue([])
 })
 afterEach(() => { delete process.env.ONBOARDING_NUDGE_ENABLED; delete process.env.INTERNAL_CRON_TOKEN })
 
@@ -74,8 +78,8 @@ describe('send + claim-before-send idempotence', () => {
   it('incomplete account due for level 1 → claims OnboardingNudge then sends', async () => {
     const body = await (await run({ 'x-internal-token': 'cron-secret' })).json()
     expect(body).toMatchObject({ ok: true, considered: 1, sent: 1 })
-    // CLAIM happened with the right (operatorId, level)
-    expect(db.onboardingNudge.create).toHaveBeenCalledWith({ data: { operatorId: 'op1', level: 1 } })
+    // CLAIM happened with the right (operatorId, role, level) — Agent 102 role-keyed
+    expect(db.onboardingNudge.create).toHaveBeenCalledWith({ data: { operatorId: 'op1', role: 'restaurant', level: 1 } })
     // then SEND through the existing best-effort sender, tagged + addressed
     expect(sendMock).toHaveBeenCalledTimes(1)
     expect(sendMock.mock.calls[0][0]).toMatchObject({ to: 'r@x.fr', trigger: 'onboarding_nudge' })

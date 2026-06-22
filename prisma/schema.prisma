@@ -154,10 +154,17 @@ model Operator {
 model OnboardingNudge {
   id         String   @id @default(cuid())
   operatorId String
+  // ── Per-role tracking (Agent 102) — the nudge cadence is tracked PER ROLE so the same
+  // operator can be nudged independently for restaurant / affiliate / creator onboarding.
+  // ADDITIVE + REVERSIBLE: `@default("restaurant")` BACKFILLS every existing row to
+  // 'restaurant' (all rows to date are restaurant nudges), so the new composite unique
+  // [operatorId, role, level] never conflicts with the data created under the old
+  // [operatorId, level] key. The claim-before-send guard becomes per (operator, role, level).
+  role       String   @default("restaurant") // restaurant | affiliate | creator
   level      Int      // 1 | 2 | 3
   sentAt     DateTime @default(now())
 
-  @@unique([operatorId, level])
+  @@unique([operatorId, role, level])
   @@index([operatorId])
 }
 
