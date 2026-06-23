@@ -88,12 +88,6 @@ export default function CreatorsApplyPage() {
     dishConcepts: [{ ...EMPTY_CONCEPT }],
   })
 
-  // Mission 2 — role choice (cumulable, at least one). Defaults: BOTH.
-  const [roles, setRoles] = useState<{ chef: boolean; influencer: boolean }>({ chef: true, influencer: true })
-  // P2 — entry via the /business/start influencer teaser (?type=influencer):
-  // pre-select the influencer role ALONE (chef off) + show the influencer title.
-  // Any other / no ?type leaves the default (both roles selectable) untouched.
-  const [influencerEntry, setInfluencerEntry] = useState(false)
   // B1.3-C — when arriving from the "add an activity" hub the email is carried in
   // ?email= and LOCKED, so the creator activity attaches to the SAME connected
   // account (never a 2nd Operator). Public visitors (no ?email) keep a free field.
@@ -103,25 +97,14 @@ export default function CreatorsApplyPage() {
   // email in ?email= so the form is pre-filled (multi-role cumul: same account
   // gains the creator role on approval). Read from the URL on mount — no
   // useSearchParams (avoids a Suspense boundary); never overwrites a typed value.
-  // P2 — the same mount pass reads ?type to drive the influencer-only entry.
+  // Agent 120 (unification « recommander » incr. 3/3) — the creator wizard is now
+  // CHEF-ONLY: the recommend rail moved to the Affiliate programme (/affiliate/apply),
+  // so there is no role choice and the legacy ?type=influencer entry is gone.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const email = params.get('email')
     if (email) { setForm(f => (f.email ? f : { ...f, email })); setEmailLocked(true) }
-    if (params.get('type') === 'influencer') {
-      setInfluencerEntry(true)
-      setRoles({ chef: false, influencer: true })
-    }
   }, [])
-
-  function toggleRole(key: 'chef' | 'influencer') {
-    setRoles(r => {
-      const next = { ...r, [key]: !r[key] }
-      // At least one role stays active — flipping the last one off is a no-op.
-      if (!next.chef && !next.influencer) return r
-      return next
-    })
-  }
 
   // ── Verification state ──────────────────────────────────────────────────────
   const [applicationId, setApplicationId] = useState<string | null>(null)
@@ -152,17 +135,12 @@ export default function CreatorsApplyPage() {
     setForm(f => ({ ...f, dishConcepts: f.dishConcepts.filter((_, idx) => idx !== i) }))
   }
 
-  // ── Step model (Mission 14) ───────────────────────────────────────────────────
-  // The "portfolio" (dish-concepts) step is CHEF-only. A PURE influencer
-  // (influencer on / chef off) never sees it and is never blocked by it, so they
-  // can finish the application -> isInfluencer=true, isChef=false. The role cards
-  // live ONLY on the "profile" step (always index 0), so toggling a role can
-  // never desync the numeric `step` against this array. Chef and chef+influencer
-  // keep the exact three-step flow.
-  const isInfluencerOnly = roles.influencer && !roles.chef
-  const STEP_KEYS: Array<'profile' | 'portfolio' | 'confirm'> = isInfluencerOnly
-    ? ['profile', 'confirm']
-    : ['profile', 'portfolio', 'confirm']
+  // ── Step model ────────────────────────────────────────────────────────────────
+  // Agent 120 — the creator is now purely a CHEF: always the three-step flow
+  // (profile · portfolio · confirm), and the dish-concepts portfolio is mandatory
+  // (≥1 concept, enforced by canProceed + the apply route). The recommend/influencer
+  // rail moved to the Affiliate programme.
+  const STEP_KEYS: Array<'profile' | 'portfolio' | 'confirm'> = ['profile', 'portfolio', 'confirm']
   const currentKey = STEP_KEYS[step] ?? 'profile'
   const totalSteps = STEP_KEYS.length
 
@@ -189,7 +167,6 @@ export default function CreatorsApplyPage() {
           youtube:      form.youtube  || undefined,
           followers:    parseInt(form.followers || '0', 10),
           dishConcepts: form.dishConcepts.filter(c => c.name && c.description && c.cuisineType),
-          roles,
         }),
       })
       if (res.ok) {
@@ -216,7 +193,9 @@ export default function CreatorsApplyPage() {
       const res = await fetch(`/api/creators/apply/${applicationId}/verify`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ roles }),
+        // Agent 120 — chef-only: no roles sent; the verify route defaults a new creator
+        // to chef-only (isInfluencer=false) and grandfathers any existing influencer.
+        body:    JSON.stringify({}),
       })
       const d   = await res.json()
       setVerifyResult(d as VerifyOutcome)
@@ -429,7 +408,7 @@ export default function CreatorsApplyPage() {
 
   return (
     <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
-      <h1 className="text-xl font-display font-bold mb-1">{influencerEntry ? t('titleInfluencer') : t('title')}</h1>
+      <h1 className="text-xl font-display font-bold mb-1">{t('title')}</h1>
       <p className="text-xs text-grubano-ink-muted mb-5">
         {t('stepOf', { current: step + 1, total: STEP_LABELS.length })}
       </p>
@@ -458,37 +437,6 @@ export default function CreatorsApplyPage() {
         {/* Profile */}
         {currentKey === 'profile' && (
           <div className="space-y-3">
-            {/* Mission 2 — role choice: two CUMULABLE cards, at least one
-                checked (toggleRole refuses to clear the last). Default: BOTH. */}
-            <div>
-              <p className="mb-1.5 text-sm font-semibold text-grubano-ink">{t('rolesTitle')}</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => toggleRole('chef')}
-                  aria-pressed={roles.chef}
-                  className={`rounded-grubano-lg border-2 p-3 text-start transition ${
-                    roles.chef ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-grubano-surface'
-                  }`}
-                >
-                  <p className="text-sm font-bold text-grubano-ink">🍳 {t('roleChefTitle')}</p>
-                  <p className="mt-0.5 text-[11px] leading-snug text-grubano-ink-muted">{t('roleChefDesc')}</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toggleRole('influencer')}
-                  aria-pressed={roles.influencer}
-                  className={`rounded-grubano-lg border-2 p-3 text-start transition ${
-                    roles.influencer ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-grubano-surface'
-                  }`}
-                >
-                  <p className="text-sm font-bold text-grubano-ink">📣 {t('roleInfluencerTitle')}</p>
-                  <p className="mt-0.5 text-[11px] leading-snug text-grubano-ink-muted">{t('roleInfluencerDesc')}</p>
-                </button>
-              </div>
-              <p className="mt-1 text-[10px] text-grubano-ink-faint">{t('rolesHint')}</p>
-            </div>
-
             <Input
               label={t('labelName')}
               type="text"
@@ -629,11 +577,10 @@ export default function CreatorsApplyPage() {
                 label: t('summaryNetworks'),
                 value: [form.instagram, form.tiktok, form.youtube].filter(Boolean).join(', ') || t('none'),
               },
-              // Portfolio summary only when the chef step was actually shown.
-              ...(isInfluencerOnly ? [] : [{
+              {
                 label: t('stepPortfolio'),
                 value: t('summaryConcepts', { count: form.dishConcepts.filter(c => c.name).length }),
-              }]),
+              },
             ]).map(({ label, value }) => (
               <div key={label} className="flex justify-between py-2 border-b border-grubano-border last:border-0">
                 <span className="text-xs text-grubano-ink-muted">{label}</span>

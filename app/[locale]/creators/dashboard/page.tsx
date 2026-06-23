@@ -693,8 +693,12 @@ export default function CreatorDashboardHome() {
         <p className="text-[11px] text-grubano-ink-muted mb-3">{t('rolesHint')}</p>
         <div className="space-y-2">
           {([
-            { key: 'isChef' as const,       label: t('roleChefLabel') },
-            { key: 'isInfluencer' as const, label: t('roleInfluencerLabel') },
+            { key: 'isChef' as const, label: t('roleChefLabel') },
+            // Agent 120 (unification incr. 3/3) — the influencer toggle is shown ONLY to
+            // creators who ALREADY hold the role (grandfather). A chef-only creator can no
+            // longer activate it here (the recommend rail moved to the Affiliate programme;
+            // PATCH /api/creators/me/roles enforces this server-side too).
+            ...(roles.isInfluencer ? [{ key: 'isInfluencer' as const, label: t('roleInfluencerLabel') }] : []),
           ]).map((r) => (
             <div key={r.key} className="flex items-center justify-between gap-3">
               <span className="text-[13px] font-semibold text-grubano-ink">{r.label}</span>

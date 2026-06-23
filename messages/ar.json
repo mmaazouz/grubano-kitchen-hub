@@ -653,17 +653,12 @@
       "verifyCodeNotFound": "لم يتم اكتشاف الرمز بعد. تحقق من نشر وصفك، انتظر ~دقيقة، ثم حاول مرة أخرى.",
       "verifyRetry": "إعادة المحاولة",
       "verifyChannelError": "قناة يوتيوب غير موجودة — تحقق من الرابط الذي أدخلته في ترشيحك.",
-      "rolesTitle": "ماذا تريد أن تفعل على Grubano؟",
       "roleChefTitle": "شيف مبدع",
-      "roleChefDesc": "وصفاتك تتبناها المطاعم — عوائد على كل بيع.",
       "roleInfluencerTitle": "مؤثر",
-      "roleInfluencerDesc": "أوصِ جمهورك بالمطاعم — عمولة على الطلبات.",
-      "rolesHint": "قابلة للجمع — دور واحد على الأقل مطلوب.",
       "verifyChannelNotFound": "لم يتم العثور على قناة YouTube — تحقّق من الرابط (مثل youtube.com/@قناتك أو @قناتك).",
       "verifyChannelUnavailable": "YouTube غير متاح مؤقتًا (أو عدد المشتركين مخفي). أعد المحاولة بعد قليل.",
       "verifyChannelConfig": "التحقّق عبر YouTube غير متاح حاليًا. يُرجى المحاولة لاحقًا.",
-      "youtubePlaceholder": "youtube.com/@قناتك أو @قناتك",
-      "titleInfluencer": "كن مؤثرًا / شريكًا في الإحالة"
+      "youtubePlaceholder": "youtube.com/@قناتك أو @قناتك"
     },
     "dashboard": {
       "title": "فضاء المبدع",

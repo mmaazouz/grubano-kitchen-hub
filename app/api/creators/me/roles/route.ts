@@ -49,6 +49,18 @@ export async function PATCH(req: Request) {
       isChef:       parsed.data.isChef       ?? current.isChef,
       isInfluencer: parsed.data.isInfluencer ?? current.isInfluencer,
     }
+    // Agent 120 (unification « recommander » incr. 3/3) — the recommend/influencer rail
+    // moved to the Affiliate programme (/affiliate/apply). A creator can no longer ACTIVATE
+    // the influencer flag from here: if it is currently OFF it stays OFF (false→true is
+    // refused). An EXISTING influencer is GRANDFATHERED — they keep it (current=true → not
+    // refused; they may still turn it off themselves). readCreatorRoles is null-tolerant
+    // (legacy null → true), so a legacy influencer is never wrongly blocked.
+    if (next.isInfluencer && !current.isInfluencer) {
+      return NextResponse.json(
+        { error: "Le parrainage de restaurants passe désormais par le programme d'affiliation." },
+        { status: 409 },
+      )
+    }
     if (!next.isChef && !next.isInfluencer) {
       return NextResponse.json(
         { error: 'Au moins un rôle doit rester actif — activez Chef créateur ou Influenceur.' },

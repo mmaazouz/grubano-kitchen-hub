@@ -61,49 +61,73 @@ beforeEach(() => {
   vetMock.mockResolvedValue({ verdict: 'pass', reason: 'ok' })
 })
 
-describe('influencer-only — roles assigned without a portfolio', () => {
-  it('upserts the Creator with isChef=false / isInfluencer=true (Path B)', async () => {
-    const res = await verify('app1', { roles: { chef: false, influencer: true } })
-    expect(res.status).toBe(200)
-    const out = await res.json()
-    expect(out.ok).toBe(true)
+// ── Agent 120 (unification « recommander » incr. 3/3) ──────────────────────────
+// Decision B: a creator is now purely a CHEF (recipes → royalties); the recommend/
+// influencer rail moved to the Affiliate programme. A NEW creator is created CHEF-ONLY
+// (isChef=true, isInfluencer=FALSE) regardless of any requested role. An EXISTING creator
+// is GRANDFATHERED — finalize() preserves their stored flags exactly (null treated as true,
+// matching readCreatorRoles), never downgrading an influencer nor (re)granting the role.
 
-    expect(db.creator.upsert).toHaveBeenCalledTimes(1)
-    const arg = db.creator.upsert.mock.calls[0][0]
-    expect(arg.create.isChef).toBe(false)
-    expect(arg.create.isInfluencer).toBe(true)
-    // Vetting ran on the (empty) portfolio — never blocked by it — and the
-    // role is forwarded so the OPEN influencer barème applies (Mission 14).
-    expect(vetMock).toHaveBeenCalledWith({
-      bio: expect.any(String),
-      dishConcepts: [],
-      roles: { chef: false, influencer: true },
-    })
-  })
-})
-
-describe('chef / both / legacy paths unchanged', () => {
-  it('upserts isChef=true / isInfluencer=false when only chef is chosen', async () => {
-    const res = await verify('app1', { roles: { chef: true, influencer: false } })
+describe('new creators are CHEF-ONLY (decision B)', () => {
+  it('omit roles → isChef=true, isInfluencer=false', async () => {
+    const res = await verify('app1', {})
     expect(res.status).toBe(200)
     const arg = db.creator.upsert.mock.calls[0][0]
     expect(arg.create.isChef).toBe(true)
     expect(arg.create.isInfluencer).toBe(false)
   })
 
-  it('defaults to BOTH roles when the body omits roles (legacy client)', async () => {
-    const res = await verify('app1', {})
-    expect(res.status).toBe(200)
+  it('explicit chef-only → isChef=true, isInfluencer=false', async () => {
+    await verify('app1', { roles: { chef: true, influencer: false } })
     const arg = db.creator.upsert.mock.calls[0][0]
     expect(arg.create.isChef).toBe(true)
-    expect(arg.create.isInfluencer).toBe(true)
+    expect(arg.create.isInfluencer).toBe(false)
   })
 
-  it('coerces both-false to both-true (never a roleless creator)', async () => {
-    const res = await verify('app1', { roles: { chef: false, influencer: false } })
-    expect(res.status).toBe(200)
+  it('EVEN an explicit influencer request creates a chef-only creator (no creator-influencer signup)', async () => {
+    await verify('app1', { roles: { chef: false, influencer: true } })
     const arg = db.creator.upsert.mock.calls[0][0]
     expect(arg.create.isChef).toBe(true)
-    expect(arg.create.isInfluencer).toBe(true)
+    expect(arg.create.isInfluencer).toBe(false)
+  })
+
+  it('both-false → still chef-only (never a roleless creator)', async () => {
+    await verify('app1', { roles: { chef: false, influencer: false } })
+    const arg = db.creator.upsert.mock.calls[0][0]
+    expect(arg.create.isChef).toBe(true)
+    expect(arg.create.isInfluencer).toBe(false)
+  })
+})
+
+describe('GRANDFATHER — existing creators preserved (never downgraded)', () => {
+  it('an existing isInfluencer=true creator re-verifying KEEPS isInfluencer=true', async () => {
+    db.creator.findUnique.mockResolvedValue({
+      id: 'cr1', isChef: true, isInfluencer: true, verified: false,
+      referralCode: 'AMINAX', referralLinkSlug: 'aminax',
+    })
+    await verify('app1', {}) // wizard sends no roles now
+    const arg = db.creator.upsert.mock.calls[0][0]
+    expect(arg.update.isInfluencer).toBe(true)  // grandfather: kept
+    expect(arg.update.isChef).toBe(true)
+  })
+
+  it('a legacy isInfluencer=null creator is treated as influencer (preserved true)', async () => {
+    db.creator.findUnique.mockResolvedValue({
+      id: 'cr2', isChef: null, isInfluencer: null, verified: false,
+      referralCode: 'LEGACYX', referralLinkSlug: 'legacyx',
+    })
+    await verify('app1', {})
+    const arg = db.creator.upsert.mock.calls[0][0]
+    expect(arg.update.isInfluencer).toBe(true)  // null → true (matches readCreatorRoles)
+  })
+
+  it('an existing chef-only creator stays chef-only on re-verify (no auto-grant)', async () => {
+    db.creator.findUnique.mockResolvedValue({
+      id: 'cr3', isChef: true, isInfluencer: false, verified: false,
+      referralCode: 'CHEFX', referralLinkSlug: 'chefx',
+    })
+    await verify('app1', { roles: { chef: false, influencer: true } }) // even if influencer requested
+    const arg = db.creator.upsert.mock.calls[0][0]
+    expect(arg.update.isInfluencer).toBe(false) // stays chef-only
   })
 })

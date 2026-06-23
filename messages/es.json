@@ -653,17 +653,12 @@
       "verifyCodeNotFound": "Código no detectado aún. Comprueba que tu descripción esté publicada, espera ~1 min y vuelve a intentarlo.",
       "verifyRetry": "Reintentar",
       "verifyChannelError": "Canal de YouTube no encontrado — verifica el enlace indicado en tu candidatura.",
-      "rolesTitle": "¿Qué quieres hacer en Grubano?",
       "roleChefTitle": "Chef creador",
-      "roleChefDesc": "Tus recetas adoptadas por restaurantes — regalías por cada venta.",
       "roleInfluencerTitle": "Influencer",
-      "roleInfluencerDesc": "Recomienda restaurantes a tu audiencia — comisión por los pedidos.",
-      "rolesHint": "Acumulables — al menos un rol obligatorio.",
       "verifyChannelNotFound": "Canal de YouTube no encontrado — revisa el enlace (p. ej. youtube.com/@TuCanal o @TuCanal).",
       "verifyChannelUnavailable": "YouTube no está disponible por el momento (o tus suscriptores están ocultos). Inténtalo de nuevo en un momento.",
       "verifyChannelConfig": "La verificación de YouTube no está disponible ahora mismo. Inténtalo más tarde.",
-      "youtubePlaceholder": "youtube.com/@TuCanal o @TuCanal",
-      "titleInfluencer": "Conviértete en influencer / socio de afiliación"
+      "youtubePlaceholder": "youtube.com/@TuCanal o @TuCanal"
     },
     "dashboard": {
       "title": "Espacio Creador",

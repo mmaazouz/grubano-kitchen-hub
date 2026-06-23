@@ -93,8 +93,6 @@ async function finalize(
   followers:      number,
   reason:         string,
   subscriberCount?: number,
-  // Mission 2 — role choice from the wizard (chef/influencer, cumulable).
-  roles: { chef: boolean; influencer: boolean } = { chef: true, influencer: true },
 ) {
   const email    = application.email
   const existing = await prisma.creator.findUnique({ where: { email } })
@@ -114,6 +112,16 @@ async function finalize(
   // Never downgrade a creator who is already verified.
   const finalVerified = existing?.verified === true ? true : verified
 
+  // Agent 120 (unification « recommander » incr. 3/3) — decision B: a creator is now
+  // purely a CHEF (recipes → royalties); the recommend/influencer rail moved to the
+  // Affiliate programme (/affiliate/apply). A NEW creator (existing === null) is therefore
+  // CHEF-ONLY (isInfluencer=false). An EXISTING creator is GRANDFATHERED — both flags are
+  // PRESERVED EXACTLY (null treated as true, matching lib/creator-roles.readCreatorRoles),
+  // so an existing isInfluencer creator keeps their /chef link attribution + dashboard.
+  // The wizard no longer sends a role choice; influencer is NEVER (re)granted here.
+  const finalIsChef       = existing ? existing.isChef       !== false : true
+  const finalIsInfluencer = existing ? existing.isInfluencer !== false : false
+
   const creator = await prisma.creator.upsert({
     where: { email },
     create: {
@@ -125,9 +133,9 @@ async function finalize(
       youtube:          application.youtube,
       followers,
       verified,
-      // Mission 2 — the wizard's role choice (both default true).
-      isChef:       roles.chef,
-      isInfluencer: roles.influencer,
+      // New creators are CHEF-ONLY (decision B).
+      isChef:       finalIsChef,
+      isInfluencer: finalIsInfluencer,
       referralCode,
       referralLinkSlug,
     },
@@ -140,11 +148,10 @@ async function finalize(
       followers,
       // …but never downgrade verified, never clobber an existing code/slug.
       verified:         finalVerified,
-      // Mission 2 — NEVER downgrade an existing role flag to false on
-      // re-verification (same rule as verified); an upgrade (false→true via a
-      // new application) is allowed.
-      isChef:       existing?.isChef       === true ? true : roles.chef,
-      isInfluencer: existing?.isInfluencer === true ? true : roles.influencer,
+      // GRANDFATHER — preserve the existing role flags EXACTLY (never downgrade an
+      // existing influencer, never auto-grant influencer to a chef-only creator).
+      isChef:       finalIsChef,
+      isInfluencer: finalIsInfluencer,
       referralCode,
       referralLinkSlug,
     },
@@ -180,12 +187,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // a transient vetting artifact; the durable truth is the Creator upsert).
     // Tolerant: missing/invalid body → both roles (compat with old clients);
     // both false → coerced to both true (the wizard prevents it anyway).
+    // Agent 120 (unification incr. 3/3) — CHEF-ONLY by default (decision B): the vetCreator
+    // barème uses the CHEF (culinary) lens for new creators. `influencer` is true ONLY if
+    // EXPLICITLY requested true (legacy/compat); it no longer auto-defaults on. The DURABLE
+    // isInfluencer write is decided in finalize() (new = false; existing preserved), so this
+    // barème choice never grants the recommend rail.
     const rawBody = await req.json().catch(() => null) as { roles?: { chef?: unknown; influencer?: unknown } } | null
     let roles = {
       chef:       rawBody?.roles?.chef       !== false,
-      influencer: rawBody?.roles?.influencer !== false,
+      influencer: rawBody?.roles?.influencer === true,
     }
-    if (!roles.chef && !roles.influencer) roles = { chef: true, influencer: true }
+    if (!roles.chef && !roles.influencer) roles = { chef: true, influencer: false }
     const application = await prisma.creatorApplication.findUnique({ where: { id } })
     if (!application) {
       return NextResponse.json({ ok: false, error: 'Candidature introuvable' }, { status: 404 })
@@ -267,7 +279,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           `Profil créé ✅. Le badge vérifié s'active dès ` +
           `${MIN_VERIFIED_SUBS.toLocaleString('fr-FR')} abonnés ` +
           `(tu en as ${stats.subscriberCount.toLocaleString('fr-FR')}).`
-        return finalize(application, 'flagged', false, stats.subscriberCount, reason, stats.subscriberCount, roles)
+        return finalize(application, 'flagged', false, stats.subscriberCount, reason, stats.subscriberCount)
       }
 
       const verified = vet.verdict === 'pass'
@@ -278,7 +290,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         stats.subscriberCount,
         vet.reason,
         stats.subscriberCount,
-        roles,
       )
     }
 
@@ -293,7 +304,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     // No channel = no ownership/sub-count proof → never auto-verified, always flagged.
-    return finalize(application, 'flagged', false, application.followers, vet.reason, undefined, roles)
+    return finalize(application, 'flagged', false, application.followers, vet.reason, undefined)
   } catch (err) {
     console.error('[POST /api/creators/apply/[id]/verify]', err)
     return NextResponse.json({ ok: false, error: 'Erreur serveur' }, { status: 500 })

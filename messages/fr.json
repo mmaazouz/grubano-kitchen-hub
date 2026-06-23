@@ -653,17 +653,12 @@
       "verifyCodeNotFound": "Code pas encore détecté. Vérifiez que votre description est publiée, attendez ~1 min, puis réessayez.",
       "verifyRetry": "Réessayer",
       "verifyChannelError": "Chaîne YouTube introuvable — vérifiez le lien renseigné dans votre candidature.",
-      "rolesTitle": "Que voulez-vous faire sur Grubano ?",
       "roleChefTitle": "Chef créateur",
-      "roleChefDesc": "Vos recettes adoptées par des restaurants — royalties sur chaque vente.",
       "roleInfluencerTitle": "Influenceur",
-      "roleInfluencerDesc": "Recommandez des restaurants à votre audience — commission sur les commandes.",
-      "rolesHint": "Cumulables — au moins un rôle requis.",
       "verifyChannelNotFound": "Chaîne YouTube introuvable — vérifiez le lien (ex. youtube.com/@VotreChaine ou @VotreChaine).",
       "verifyChannelUnavailable": "YouTube est momentanément indisponible (ou vos abonnés sont masqués). Réessayez dans un instant.",
       "verifyChannelConfig": "La vérification YouTube n’est pas disponible pour le moment. Réessayez plus tard.",
-      "youtubePlaceholder": "youtube.com/@VotreChaine ou @VotreChaine",
-      "titleInfluencer": "Devenir influenceur / partenaire d'affiliation"
+      "youtubePlaceholder": "youtube.com/@VotreChaine ou @VotreChaine"
     },
     "dashboard": {
       "title": "Espace Créateur",
