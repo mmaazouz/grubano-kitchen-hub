@@ -813,6 +813,10 @@ model LogisticsProfile {
   // Inverse side of Mission.courier; gated LOGISTICS_MISSIONS_ENABLED. Nullable list →
   // ZERO impact on the existing profile / waitlist / Connect behaviour.
   missions           Mission[]
+  // ── Brique 2 logistique (Agent 123, ADDITIVE) — missions this courier PASSED ON. Inverse
+  // side of MissionDecline.courier. ONLY used to stop re-offering — NEVER a penalty/score on
+  // the courier (refusal without penalty, doc §8). Virtual list → no column on the profile.
+  declines           MissionDecline[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -863,9 +867,35 @@ model Mission {
   cancelledAt    DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  // ── Brick 2 (Agent 123, ADDITIVE) — per-courier declines of THIS mission. Inverse side of
+  // MissionDecline.mission. Exists ONLY to stop re-offering a mission a courier passed on —
+  // it is NEVER a counter/score/penalty (courier autonomy, doc §8). Virtual list → no column.
+  declines       MissionDecline[]
 
   @@index([status])
   @@index([orderId])
+  @@index([courierId])
+}
+
+// ── MissionDecline (logistics attribution — Brick 2/4, Agent 123) ──────────────
+//
+// Records that a courier PASSED ON a given mission. Its ONLY purpose is to stop re-offering
+// THAT mission to THAT courier (offeredMissionsForCourier filters on it). It is NOT a penalty
+// mechanism: there is NO count/score/rank column, NOTHING aggregates or reads it to deprioritize
+// or deactivate a courier, and a decline NEVER changes the courier's status or future eligibility
+// (courier autonomy + refusal-without-penalty, doc §8 / EU dir. 2024). The @@unique makes a
+// decline idempotent (a courier declines a mission at most once) — it is a SET membership, not a
+// tally. Gated by LOGISTICS_MISSIONS_ENABLED (default OFF). ADDITIVE / reversible (drop the table
+// and Mission/LogisticsProfile are byte-identical — declines are virtual inverse lists).
+model MissionDecline {
+  id         String           @id @default(cuid())
+  missionId  String
+  mission    Mission          @relation(fields: [missionId], references: [id])
+  courierId  String
+  courier    LogisticsProfile @relation(fields: [courierId], references: [id])
+  declinedAt DateTime         @default(now())
+
+  @@unique([missionId, courierId])
   @@index([courierId])
 }
 
