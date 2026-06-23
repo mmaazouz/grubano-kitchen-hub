@@ -1951,7 +1951,7 @@
       "restaurateurTitle": "Restaurateur",
       "restaurateurDesc": "Serve your customers, run your venue.",
       "creatorTitle": "Chef & Recipe creator",
-      "creatorDesc": "Monetise your recipes.",
+      "creatorDesc": "Create recipes that restaurants adopt → royalties on sales.",
       "alreadyAccount": "Already a partner?",
       "signIn": "Sign in",
       "coreLabel": "THE HEART OF GRUBANO",
@@ -1961,13 +1961,14 @@
       "logistiqueTitle": "Logistics",
       "logistiqueDesc": "Deliver meals, products, B2B.",
       "logistiqueSoon": "Soon",
-      "influencerTeaser": "Influencer or audience site? Join Grubano affiliation",
       "franchiseLine": "Network / several venues?",
       "franchiseCta": "Group & Franchise",
       "otherActivityPrompt": "Another activity?",
       "otherActivityCta": "Write to us",
       "prestataireTitle": "Provider",
-      "prestataireDesc": "Sell your services to restaurants (electricity, HACCP, cleaning…)."
+      "prestataireDesc": "Sell your services to restaurants (electricity, HACCP, cleaning…).",
+      "affiliateTitle": "Recommend Grubano",
+      "affiliateDesc": "Recommend restaurants to your audience → commission on every order (40% if your audience is verified)."
     },
     "franchiseSoon": {
       "badge": "Coming soon",

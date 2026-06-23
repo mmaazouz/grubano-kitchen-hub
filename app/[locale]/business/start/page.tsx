@@ -1,26 +1,29 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { Link } from '@/navigation'
-import { Store, Truck, UtensilsCrossed, Bike, Wrench, Megaphone, ChevronRight, ArrowRight } from 'lucide-react'
+import { Store, Truck, UtensilsCrossed, Bike, Wrench, Megaphone, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
+import { isAffiliateEnabled } from '@/lib/affiliate-account'
 
 /**
  * Account-type choice — « Quel type de partenaire êtes-vous ? » (maquette v1.5).
  *
  * One FEATURED Restaurateur card (the heart of Grubano) + the partner cards
- * (Supplier / Chef-creator / Logistics, + Prestataire when PRESTATAIRE_ENABLED is ON) +
- * a light influencer teaser + a discreet Group & Franchise line. Routes to the EXISTING
- * journeys — nothing re-implemented:
+ * (Supplier / Chef-creator / Logistics, + Prestataire when PRESTATAIRE_ENABLED is ON,
+ * + Affiliate when AFFILIATE_ENABLED is ON) + a discreet Group & Franchise line. Routes
+ * to the EXISTING journeys — nothing re-implemented:
  *   - Restaurateur  → /business/register
  *   - Fournisseur   → /supplier/register
  *   - Chef/Créateur → /creators/apply
  *   - Logistique    → /business/logistics/register
  *   - Prestataire   → /business/prestataire/register   (P1, gated PRESTATAIRE_ENABLED)
- *   - Influenceur   → /creators/apply?type=influencer
- *   - Franchise     → /business/franchise-soon
+ *   - Recommander   → /affiliate/apply                 (Agent 118 pre-login affiliate
+ *                     signup; gated AFFILIATE_ENABLED — the page 404s when OFF, so the
+ *                     card is hidden then to avoid a dead link)
+ *   - Franchise     → /franchise/apply                 (the real public franchise wizard)
  * No dead links. PUBLIC (middleware /business allow-list). SERVER component so the
- * prestataire card can be gated by the server-side PRESTATAIRE_ENABLED flag (no client
+ * prestataire + affiliate cards can be gated by the server-side flags (no client
  * interactivity here — only Links + translations).
  */
 
@@ -41,11 +44,26 @@ const PRESTATAIRE_PARTNER: Partner = {
   accent: 'text-grubano-primary', bg: 'bg-grubano-tint', soon: false,
 }
 
+// Agent 119 (unification « recommander » incr. 2/3) — the affiliate (« recommander ») card
+// points to the PRE-LOGIN affiliate signup /affiliate/apply (Agent 118). Offered ONLY when
+// AFFILIATE_ENABLED is ON (the page 404s when OFF → a hidden card avoids a dead link, same
+// pattern as the prestataire card). The « influenceur » 40 % tier is mentioned in the card
+// copy, NOT a separate card. Replaces the old teaser that wrongly pointed to the creator wizard.
+const AFFILIATE_PARTNER: Partner = {
+  key: 'affiliate', href: '/affiliate/apply', icon: Megaphone, titleKey: 'affiliateTitle', descKey: 'affiliateDesc',
+  accent: 'text-grubano-role-influencer', bg: 'bg-grubano-role-influencer/12', soon: false,
+}
+
 export default async function BusinessStartPage({ params }: { params: { locale: string } }) {
   setRequestLocale(params.locale)
   const t = await getTranslations('business.start')
 
-  const partners = isPrestataireEnabled() ? [...BASE_PARTNERS, PRESTATAIRE_PARTNER] : BASE_PARTNERS
+  // Conditional cards avoid dead links: each gated surface 404s when its flag is OFF, so the
+  // card is shown ONLY when its flag is ON (prestataire = PRESTATAIRE_ENABLED, affiliate =
+  // AFFILIATE_ENABLED). The base partners are always shown.
+  const partners: Partner[] = [...BASE_PARTNERS]
+  if (isPrestataireEnabled()) partners.push(PRESTATAIRE_PARTNER)
+  if (isAffiliateEnabled()) partners.push(AFFILIATE_PARTNER)
 
   return (
     <PartnerChrome>
@@ -97,20 +115,10 @@ export default async function BusinessStartPage({ params }: { params: { locale: 
           ))}
         </div>
 
-        {/* ── Influencer teaser (light) ── */}
-        <Link
-          href="/creators/apply?type=influencer"
-          className="group mt-4 flex items-center gap-2.5 rounded-grubano-lg border border-grubano-border bg-white px-4 py-3 transition-colors hover:border-grubano-role-influencer/40 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-role-influencer/20"
-        >
-          <Megaphone size={18} className="shrink-0 text-grubano-role-influencer" />
-          <span className="flex-1 text-grubano-sm text-grubano-ink-muted">{t('influencerTeaser')}</span>
-          <ArrowRight size={16} className="shrink-0 text-grubano-ink-faint transition-transform duration-150 group-hover:translate-x-0.5" />
-        </Link>
-
         {/* ── Group & Franchise — discreet line ── */}
         <p className="mt-5 text-center text-grubano-sm text-grubano-ink-muted">
           {t('franchiseLine')}{' '}
-          <Link href="/business/franchise-soon" className="font-semibold text-grubano-primary hover:underline">
+          <Link href="/franchise/apply" className="font-semibold text-grubano-primary hover:underline">
             {t('franchiseCta')}
           </Link>
         </p>

@@ -1951,7 +1951,7 @@
       "restaurateurTitle": "صاحب مطعم",
       "restaurateurDesc": "اخدم عملاءك وأدر منشأتك.",
       "creatorTitle": "طاهٍ ومبتكر وصفات",
-      "creatorDesc": "حقّق دخلًا من وصفاتك.",
+      "creatorDesc": "ابتكر وصفات تتبنّاها المطاعم → عوائد على المبيعات.",
       "alreadyAccount": "شريك بالفعل؟",
       "signIn": "تسجيل الدخول",
       "coreLabel": "قلب GRUBANO",
@@ -1961,13 +1961,14 @@
       "logistiqueTitle": "الخدمات اللوجستية",
       "logistiqueDesc": "وصّل الوجبات والمنتجات وطلبات B2B.",
       "logistiqueSoon": "قريبًا",
-      "influencerTeaser": "مؤثّر أو موقع بجمهور؟ انضم إلى نظام الإحالة في Grubano",
       "franchiseLine": "شبكة / عدة منشآت؟",
       "franchiseCta": "مجموعة وامتياز",
       "otherActivityPrompt": "نشاط آخر؟",
       "otherActivityCta": "راسلنا",
       "prestataireTitle": "مقدّم خدمات",
-      "prestataireDesc": "بِع خدماتك للمطاعم (كهرباء، HACCP، تنظيف…)."
+      "prestataireDesc": "بِع خدماتك للمطاعم (كهرباء، HACCP، تنظيف…).",
+      "affiliateTitle": "أوصِ بغروبانو",
+      "affiliateDesc": "أوصِ بالمطاعم لجمهورك → عمولة على كل طلب (40% إذا تم التحقق من جمهورك)."
     },
     "franchiseSoon": {
       "badge": "قريباً",

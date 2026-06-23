@@ -1951,7 +1951,7 @@
       "restaurateurTitle": "Restaurador",
       "restaurateurDesc": "Atiende a tus clientes, gestiona tu local.",
       "creatorTitle": "Chef y creador de recetas",
-      "creatorDesc": "Monetiza tus recetas.",
+      "creatorDesc": "Cree recetas que los restaurantes adoptan → regalías sobre las ventas.",
       "alreadyAccount": "¿Ya eres socio?",
       "signIn": "Iniciar sesión",
       "coreLabel": "EL CORAZÓN DE GRUBANO",
@@ -1961,13 +1961,14 @@
       "logistiqueTitle": "Logística",
       "logistiqueDesc": "Entrega comidas, productos, B2B.",
       "logistiqueSoon": "Pronto",
-      "influencerTeaser": "¿Influencer o sitio con audiencia? Únete a la afiliación Grubano",
       "franchiseLine": "¿Red / varios locales?",
       "franchiseCta": "Grupo y franquicia",
       "otherActivityPrompt": "¿Otra actividad?",
       "otherActivityCta": "Escríbenos",
       "prestataireTitle": "Proveedor",
-      "prestataireDesc": "Vende tus servicios a los restaurantes (electricidad, APPCC, limpieza…)."
+      "prestataireDesc": "Vende tus servicios a los restaurantes (electricidad, APPCC, limpieza…).",
+      "affiliateTitle": "Recomendar Grubano",
+      "affiliateDesc": "Recomiende restaurantes a su audiencia → comisión por cada pedido (40 % si su audiencia está verificada)."
     },
     "franchiseSoon": {
       "badge": "Próximamente",
