@@ -2163,6 +2163,26 @@
         "status_declined": "Declined",
         "status_expired": "Expired",
         "status_cancelled": "Cancelled"
+      },
+      "justificatifs": {
+        "title": "Documents",
+        "subtitle": "Declare your insurance and professional liability (RC Pro) so your courier account can be activated.",
+        "status_none": "To provide",
+        "status_submitted": "Under review",
+        "status_verified": "Verified",
+        "insuranceLegend": "Insurance",
+        "insurerLabel": "Insurer",
+        "policyLabel": "Policy number",
+        "expiryLabel": "Expiry date",
+        "rcProLegend": "Professional liability (RC Pro)",
+        "rcProInsurerLabel": "RC Pro insurer",
+        "rcProNumberLabel": "RC Pro policy number",
+        "note": "Your documents are reviewed by a Grubano administrator. Activation stays closed until the delivery service opens — you remain on the waitlist until then.",
+        "submit": "Submit my documents",
+        "submitting": "Sending…",
+        "savedTitle": "Documents submitted.",
+        "savedBody": "An administrator will review them before your account is activated.",
+        "errorGeneric": "Something went wrong. Try again."
       }
     }
   },
@@ -3267,6 +3287,27 @@
       "actionError": "The action failed. Try again.",
       "coherencePending": "Coherence pending",
       "coherenceApprove": "Approve (publish)"
+    },
+    "logistics": {
+      "title": "Courier activation",
+      "subtitle": "Review documents and activate courier accounts (human supervision).",
+      "emptyTitle": "No couriers",
+      "emptyBody": "No courier partner registered yet.",
+      "disabledTitle": "Activation disabled",
+      "disabledBody": "Courier activation is closed (waitlist). No account can be activated while the switch is off — everyone stays on the waitlist.",
+      "status_active": "Active",
+      "status_pending": "Pending",
+      "status_suspended": "Suspended",
+      "status_rejected": "Rejected",
+      "just_none": "Documents missing",
+      "just_submitted": "Documents submitted",
+      "just_verified": "Documents verified",
+      "sirenNone": "SIREN —",
+      "insurance": "Insurance",
+      "rcPro": "RC Pro",
+      "activate": "Verify & Activate",
+      "activateDisabled": "Activation closed (waitlist).",
+      "actionError": "Action failed. Try again."
     }
   },
   "legal": {

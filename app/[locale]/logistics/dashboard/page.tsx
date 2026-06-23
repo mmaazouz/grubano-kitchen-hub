@@ -12,6 +12,7 @@ import { Link } from '@/navigation'
 import { Card, Badge, Button, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
 import CourierMissions from '@/components/logistics/CourierMissions'
+import CourierJustificatifs from '@/components/logistics/CourierJustificatifs'
 
 // ── /logistics/dashboard — courier / logistics space shell (P1, Agent 17) ─────
 // Gated by middleware (logistics/admin), calqued 1:1 on /supplier/dashboard. A
@@ -188,6 +189,11 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
                 </div>
               </Card>
             )}
+
+            {/* Compliance justificatifs (Agent 125) — the courier declares insurance + RC Pro so
+                an admin can verify + activate (but ONLY when the activation flag is ON). Self-
+                fetches its own state (column-tolerant before the additive migration is pushed). */}
+            <CourierJustificatifs />
 
             {/* Missions. ON (LOGISTICS_MISSIONS_ENABLED) → the live offered-missions surface
                 (free accept/refuse, brick 3). OFF → the original "coming soon" placeholder

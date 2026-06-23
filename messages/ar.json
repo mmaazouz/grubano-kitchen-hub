@@ -2163,6 +2163,26 @@
         "status_declined": "مرفوضة",
         "status_expired": "منتهية",
         "status_cancelled": "ملغاة"
+      },
+      "justificatifs": {
+        "title": "المستندات",
+        "subtitle": "صرّح بتأمينك وبمسؤوليتك المدنية المهنية (RC Pro) للسماح بتفعيل حساب الموزّع الخاص بك.",
+        "status_none": "مطلوب تقديمها",
+        "status_submitted": "قيد التحقق",
+        "status_verified": "مُتحقَّق منها",
+        "insuranceLegend": "التأمين",
+        "insurerLabel": "شركة التأمين",
+        "policyLabel": "رقم وثيقة التأمين",
+        "expiryLabel": "تاريخ الانتهاء",
+        "rcProLegend": "المسؤولية المدنية المهنية (RC Pro)",
+        "rcProInsurerLabel": "شركة تأمين RC Pro",
+        "rcProNumberLabel": "رقم وثيقة RC Pro",
+        "note": "تتم مراجعة مستنداتك من قبل مسؤول في Grubano. يبقى التفعيل مغلقاً إلى أن تُفتَح خدمة التوصيل، وتبقى حتى ذلك الحين على قائمة الانتظار.",
+        "submit": "إرسال مستنداتي",
+        "submitting": "جارٍ الإرسال…",
+        "savedTitle": "تم إرسال المستندات.",
+        "savedBody": "سيراجعها مسؤول قبل تفعيل حسابك.",
+        "errorGeneric": "حدث خطأ. يرجى إعادة المحاولة."
       }
     }
   },
@@ -3267,6 +3287,27 @@
       "actionError": "فشل الإجراء. حاوِل مرة أخرى.",
       "coherencePending": "بانتظار التحقق من الاتساق",
       "coherenceApprove": "الموافقة (النشر)"
+    },
+    "logistics": {
+      "title": "تفعيل الموزّعين",
+      "subtitle": "راجع المستندات وفعّل حسابات الموزّعين (إشراف بشري).",
+      "emptyTitle": "لا يوجد موزّعون",
+      "emptyBody": "لا يوجد شريك موزّع مسجّل حالياً.",
+      "disabledTitle": "التفعيل معطّل",
+      "disabledBody": "تفعيل الموزّعين مغلق (قائمة انتظار). لا يمكن تفعيل أي حساب طالما أن المفتاح مُطفأ: يبقى الجميع في الانتظار.",
+      "status_active": "نشط",
+      "status_pending": "قيد الانتظار",
+      "status_suspended": "موقوف",
+      "status_rejected": "مرفوض",
+      "just_none": "مستندات ناقصة",
+      "just_submitted": "مستندات مُرسَلة",
+      "just_verified": "مستندات مُتحقَّق منها",
+      "sirenNone": "SIREN —",
+      "insurance": "التأمين",
+      "rcPro": "RC Pro",
+      "activate": "تحقّق وفعّل",
+      "activateDisabled": "التفعيل مغلق (قائمة انتظار).",
+      "actionError": "تعذّر تنفيذ الإجراء. أعد المحاولة."
     }
   },
   "legal": {

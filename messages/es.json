@@ -2163,6 +2163,26 @@
         "status_declined": "Rechazada",
         "status_expired": "Expirada",
         "status_cancelled": "Cancelada"
+      },
+      "justificatifs": {
+        "title": "Justificantes",
+        "subtitle": "Declare su seguro y su RC Pro para permitir la activación de su cuenta de repartidor.",
+        "status_none": "Por aportar",
+        "status_submitted": "En verificación",
+        "status_verified": "Verificado",
+        "insuranceLegend": "Seguro",
+        "insurerLabel": "Aseguradora",
+        "policyLabel": "N.º de póliza",
+        "expiryLabel": "Fecha de vencimiento",
+        "rcProLegend": "Responsabilidad civil profesional (RC Pro)",
+        "rcProInsurerLabel": "Aseguradora RC Pro",
+        "rcProNumberLabel": "N.º de póliza RC Pro",
+        "note": "Sus justificantes son verificados por un administrador de Grubano. La activación permanece cerrada hasta que se abra el servicio de entrega; hasta entonces, usted permanece en lista de espera.",
+        "submit": "Enviar mis justificantes",
+        "submitting": "Enviando…",
+        "savedTitle": "Justificantes enviados.",
+        "savedBody": "Un administrador los verificará antes de activar su cuenta.",
+        "errorGeneric": "Se produjo un error. Inténtelo de nuevo."
       }
     }
   },
@@ -3267,6 +3287,27 @@
       "actionError": "La acción falló. Inténtelo de nuevo.",
       "coherencePending": "Coherencia pendiente",
       "coherenceApprove": "Aprobar (publicar)"
+    },
+    "logistics": {
+      "title": "Activación de repartidores",
+      "subtitle": "Verifique los justificantes y active las cuentas de repartidor (supervisión humana).",
+      "emptyTitle": "Ningún repartidor",
+      "emptyBody": "Ningún socio repartidor registrado por ahora.",
+      "disabledTitle": "Activación desactivada",
+      "disabledBody": "La activación de repartidores está cerrada (lista de espera). Ninguna cuenta puede activarse mientras el interruptor esté apagado: todos permanecen en espera.",
+      "status_active": "Activo",
+      "status_pending": "Pendiente",
+      "status_suspended": "Suspendido",
+      "status_rejected": "Rechazado",
+      "just_none": "Justificantes faltantes",
+      "just_submitted": "Justificantes enviados",
+      "just_verified": "Justificantes verificados",
+      "sirenNone": "SIREN —",
+      "insurance": "Seguro",
+      "rcPro": "RC Pro",
+      "activate": "Verificar y activar",
+      "activateDisabled": "Activación cerrada (lista de espera).",
+      "actionError": "Acción imposible. Inténtelo de nuevo."
     }
   },
   "legal": {

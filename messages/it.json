@@ -2163,6 +2163,26 @@
         "status_declined": "Rifiutata",
         "status_expired": "Scaduta",
         "status_cancelled": "Annullata"
+      },
+      "justificatifs": {
+        "title": "Documenti",
+        "subtitle": "Dichiari la sua assicurazione e la sua RC Pro per consentire l’attivazione del suo account corriere.",
+        "status_none": "Da fornire",
+        "status_submitted": "In verifica",
+        "status_verified": "Verificato",
+        "insuranceLegend": "Assicurazione",
+        "insurerLabel": "Assicuratore",
+        "policyLabel": "N. di polizza",
+        "expiryLabel": "Data di scadenza",
+        "rcProLegend": "Responsabilità civile professionale (RC Pro)",
+        "rcProInsurerLabel": "Assicuratore RC Pro",
+        "rcProNumberLabel": "N. di polizza RC Pro",
+        "note": "I suoi documenti sono verificati da un amministratore Grubano. L’attivazione resta chiusa finché il servizio di consegna non viene aperto: fino ad allora rimane in lista d’attesa.",
+        "submit": "Inviare i miei documenti",
+        "submitting": "Invio…",
+        "savedTitle": "Documenti inviati.",
+        "savedBody": "Un amministratore li verificherà prima di attivare il suo account.",
+        "errorGeneric": "Si è verificato un errore. Riprova."
       }
     }
   },
@@ -3267,6 +3287,27 @@
       "actionError": "L'azione non è riuscita. Riprova.",
       "coherencePending": "Coerenza da validare",
       "coherenceApprove": "Approva (pubblica)"
+    },
+    "logistics": {
+      "title": "Attivazione dei corrieri",
+      "subtitle": "Verifichi i documenti e attivi gli account dei corrieri (supervisione umana).",
+      "emptyTitle": "Nessun corriere",
+      "emptyBody": "Nessun partner corriere registrato al momento.",
+      "disabledTitle": "Attivazione disattivata",
+      "disabledBody": "L’attivazione dei corrieri è chiusa (lista d’attesa). Nessun account può essere attivato finché l’interruttore è spento: tutti restano in attesa.",
+      "status_active": "Attivo",
+      "status_pending": "In attesa",
+      "status_suspended": "Sospeso",
+      "status_rejected": "Rifiutato",
+      "just_none": "Documenti mancanti",
+      "just_submitted": "Documenti inviati",
+      "just_verified": "Documenti verificati",
+      "sirenNone": "SIREN —",
+      "insurance": "Assicurazione",
+      "rcPro": "RC Pro",
+      "activate": "Verifica e attiva",
+      "activateDisabled": "Attivazione chiusa (lista d’attesa).",
+      "actionError": "Azione impossibile. Riprova."
     }
   },
   "legal": {

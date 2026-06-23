@@ -809,6 +809,20 @@ model LogisticsProfile {
   stripeAccountId    String?                           // acct_… (Express, FR)
   payoutStatus       String?                           // none | pending | active | restricted (null = none)
   stripeOnboardedAt  DateTime?                         // first time the account became 'active'
+  // ── Compliance justificatifs (Agent 125, ADDITIVE) — courier-declared insurance + RC Pro
+  // (SIRET already collected at signup). Structured DECLARATION only (no file storage in this
+  // brick). justificatifsStatus drives the dashboard + the admin activation queue. ⚠️ These do
+  // NOT activate anything by themselves: activation stays gated by LOGISTICS_COURIER_ACTIVATION_
+  // ENABLED (Agent 72 waitlist) — an admin can only flip status→active when that flag is ON. NO
+  // money. All nullable / @default → additive, reversible, inert until db-pushed.
+  insuranceInsurer      String?                        // assureur (responsabilité civile véhicule / activité)
+  insurancePolicyNumber String?                        // n° de police d'assurance
+  insuranceExpiry       String?                        // date d'expiration déclarée (YYYY-MM-DD, déclaration)
+  rcProInsurer          String?                        // assureur RC Pro
+  rcProPolicyNumber     String?                        // n° de police RC Pro
+  justificatifsStatus   String   @default("none")      // none | submitted | verified
+  justificatifsSubmittedAt DateTime?                   // when the courier submitted the declaration
+  justificatifsVerifiedAt  DateTime?                   // when an admin verified it (human supervision, §8)
   // ── Brique 1 logistique (Agent 122, ADDITIVE) — missions ACCEPTED by this courier.
   // Inverse side of Mission.courier; gated LOGISTICS_MISSIONS_ENABLED. Nullable list →
   // ZERO impact on the existing profile / waitlist / Connect behaviour.
