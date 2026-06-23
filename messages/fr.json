@@ -3573,7 +3573,18 @@
     "upgradePendingTitle": "Vérification en cours",
     "upgradePendingBody": "Votre demande de vérification d’audience est en cours d’examen par notre équipe.",
     "upgradeVerifiedTitle": "Audience vérifiée",
-    "upgradeVerifiedBody": "Vous êtes influenceur vérifié : vous bénéficiez du meilleur taux, affiché sur votre tableau de bord."
+    "upgradeVerifiedBody": "Vous êtes influenceur vérifié : vous bénéficiez du meilleur taux, affiché sur votre tableau de bord.",
+    "applyTitle": "Devenez affilié Grubano",
+    "applySubtitle": "Inscrivez-vous avec votre nom et votre email — pas besoin de compte. Vous recevrez un lien de connexion sécurisé.",
+    "applyNameLabel": "Nom",
+    "applyNamePlaceholder": "Votre nom ou pseudo",
+    "applyEmailLabel": "Email",
+    "applyEmailPlaceholder": "vous@exemple.fr",
+    "applyConsent": "J'accepte de rejoindre le programme d'affiliation et de recevoir un lien de connexion par email.",
+    "applySubmit": "Rejoindre l'affiliation",
+    "applySubmitting": "Inscription…",
+    "applySuccessTitle": "Vérifiez votre email 📬",
+    "applySuccessBody": "Votre compte affilié est créé. Cliquez sur le lien de connexion que nous venons de vous envoyer pour accéder à votre espace et à votre lien de parrainage."
   },
   "prestataire": {
     "registerTitle": "Devenez prestataire de services",

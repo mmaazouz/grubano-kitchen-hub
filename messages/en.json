@@ -3573,7 +3573,18 @@
     "upgradePendingTitle": "Verification in progress",
     "upgradePendingBody": "Your audience-verification request is being reviewed by our team.",
     "upgradeVerifiedTitle": "Audience verified",
-    "upgradeVerifiedBody": "You are a verified influencer: you get the best rate, shown on your dashboard."
+    "upgradeVerifiedBody": "You are a verified influencer: you get the best rate, shown on your dashboard.",
+    "applyTitle": "Become a Grubano affiliate",
+    "applySubtitle": "Sign up with your name and email — no account needed. You'll receive a secure sign-in link.",
+    "applyNameLabel": "Name",
+    "applyNamePlaceholder": "Your name or handle",
+    "applyEmailLabel": "Email",
+    "applyEmailPlaceholder": "you@example.com",
+    "applyConsent": "I agree to join the affiliate programme and to receive a sign-in link by email.",
+    "applySubmit": "Join the affiliate programme",
+    "applySubmitting": "Signing up…",
+    "applySuccessTitle": "Check your email 📬",
+    "applySuccessBody": "Your affiliate account is created. Click the sign-in link we just sent you to reach your space and your referral link."
   },
   "prestataire": {
     "registerTitle": "Become a service provider",

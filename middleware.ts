@@ -105,6 +105,13 @@ export async function middleware(request: NextRequest) {
     restPath === '/affiliate' || restPath.startsWith('/affiliate/')
   const isAffiliateJoin =
     restPath === '/affiliate/join' || restPath.startsWith('/affiliate/join/')
+  // Agent 118 (unification incr. 1) — /affiliate/apply is the PRE-LOGIN self-serve affiliate
+  // signup (email-based, passwordless, calqued on /supplier/register + /creators/apply). Unlike
+  // /affiliate/join (session-only instant join), a visitor with NO session must reach it → it is
+  // PUBLIC (added to the allow-list below). The whole surface 404s when AFFILIATE_ENABLED is OFF
+  // (page-level), so this is inert then.
+  const isAffiliateApply =
+    restPath === '/affiliate/apply' || restPath.startsWith('/affiliate/apply/')
   // Admin console (B2.4 / SEC2, Agent 33): the approval console at /admin. Gated
   // to ADMIN ONLY (defence in depth — every /admin page ALSO re-checks the session
   // role server-side). Exact '/admin' or the '/admin/' prefix. NO public sub-route.
@@ -134,6 +141,9 @@ export async function middleware(request: NextRequest) {
     // a visitor with no session clicks an email link here to authenticate. Scoped
     // to the EXACT path (not /auth/*) so a future /auth/<protected> stays gated.
     restPath === '/auth/magic' ||
+    // /affiliate/apply is the PUBLIC pre-login affiliate signup (Agent 118) — a visitor with no
+    // session joins here (passwordless). /affiliate/join (session-only instant join) stays gated.
+    isAffiliateApply ||
     // /legal/* are the PUBLIC legal pages (mentions légales, confidentialité…):
     // anyone, no session. Static content, rendered bare (AppChrome BARE_PREFIXES).
     restPath === '/legal' || restPath.startsWith('/legal/') ||
