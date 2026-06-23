@@ -3976,5 +3976,161 @@
     "errorQuota": "تم بلوغ حدّ المساعدة، حاول لاحقًا.",
     "errorDisabled": "المساعد غير متوفّر مؤقّتًا.",
     "errorEmpty": "ليس لديّ إجابة عن ذلك. أعد الصياغة أو راجع الصفحة المعنية."
+  },
+  "eatNext": {
+    "layout": {
+      "badge": "نموذج أولي",
+      "disclaimer": "نموذج أولي · بيانات تجريبية · الدفع غير مُفعّل"
+    },
+    "nav": {
+      "home": "الرئيسية",
+      "search": "بحث",
+      "cart": "السلة",
+      "track": "التتبّع"
+    },
+    "home": {
+      "deliverTo": "التوصيل إلى",
+      "address": "12 rue de la République",
+      "searchEntry": "ماذا تشتهي؟",
+      "searchEntryTail": "— طبق، مطبخ، رغبة…",
+      "nearby": "مطاعم قريبة منك",
+      "empty": "لا يوجد مطعم متاح حاليًا.",
+      "freeDelivery": "توصيل مجاني",
+      "minimum": "الحد الأدنى",
+      "reviews": "{count} تقييم"
+    },
+    "search": {
+      "placeholder": "ماذا تشتهي؟ (طبق، مطبخ، رغبة…)",
+      "byCraving": "حسب الرغبة",
+      "cuisine": "المطبخ",
+      "sortRating": "الأعلى تقييمًا",
+      "sortFast": "الأسرع",
+      "sortCheap": "الأرخص",
+      "results": "النتائج",
+      "resultsFor": "· « {q} »",
+      "loading": "جارٍ البحث…",
+      "empty": "لا توجد نتائج.",
+      "freeDelivery": "توصيل مجاني",
+      "intentions": {
+        "comfort": "طعام مريح",
+        "light": "خفيف على الغداء",
+        "share": "وجبة للمشاركة",
+        "glutenFree": "خالٍ من الغلوتين",
+        "cheapest": "الأرخص",
+        "fast": "توصيل خلال 20 دقيقة"
+      },
+      "cuisines": {
+        "burgers": "برغر",
+        "pizza": "بيتزا",
+        "sushi": "سوشي",
+        "healthy": "صحي",
+        "pasta": "باستا",
+        "desserts": "حلويات"
+      }
+    },
+    "restaurant": {
+      "fallbackName": "مطعم",
+      "reviews": "{count} تقييم",
+      "delivery": "التوصيل",
+      "deliveryFree": "مجاني",
+      "eta": "المدة",
+      "etaValue": "{min} دقيقة",
+      "minimum": "الحد الأدنى",
+      "menuEmpty": "قائمة هذا المطعم غير متاحة بعد.",
+      "add": "إضافة",
+      "viewCart": "عرض السلة"
+    },
+    "dish": {
+      "unavailable": "الطبق غير متاح.",
+      "quantity": "الكمية",
+      "addToCart": "أضف إلى السلة",
+      "replaceConfirm": "تحتوي سلتك على أطباق من « {current} ». هل تريد استبدالها بـ « {next} »؟",
+      "otherRestaurant": "مطعم آخر"
+    },
+    "cart": {
+      "loading": "جارٍ التحميل…",
+      "empty": "سلتك فارغة.",
+      "discover": "اكتشف المطاعم",
+      "title": "سلتك",
+      "fallbackRestaurant": "مطعم",
+      "decrease": "إنقاص",
+      "increase": "زيادة",
+      "remove": "إزالة",
+      "subtotal": "المجموع الفرعي",
+      "deliveryFee": "رسوم التوصيل",
+      "feeAtPayment": "تُحتسب عند الدفع",
+      "totalEstimated": "الإجمالي التقديري",
+      "goToPayment": "الانتقال إلى الدفع",
+      "noAccount": "لا حاجة لحساب للمتابعة · يُحتسب الإجمالي النهائي عند الدفع."
+    },
+    "checkout": {
+      "title": "الدفع",
+      "loading": "جارٍ التحميل…",
+      "connectedAs": "متصل بصفة",
+      "emailLabel": "بريدك الإلكتروني",
+      "emailPlaceholder": "you@email.com",
+      "emailHint": "بدون كلمة مرور: نرسل لك رمزًا من 6 أرقام (أو رابطًا). يُنشأ حسابك تلقائيًا.",
+      "sendCode": "استلام الرمز",
+      "sending": "جارٍ الإرسال…",
+      "codeSent": "تم إرسال رمز من 6 أرقام إلى {email}. أدخله أدناه.",
+      "codeError": "رمز غير صحيح أو منتهي الصلاحية. حاول مجددًا.",
+      "codeLabel": "رمز الدخول",
+      "validateCode": "تأكيد الرمز",
+      "verifying": "جارٍ التحقق…",
+      "changeEmail": "تغيير البريد",
+      "linkSentTitle": "تم إرسال الرابط 📬",
+      "linkSentBody": "إذا كان هناك حساب لـ {email}، فقد أُرسل رابط دخول للتو. افتحه للاتصال ثم عُد إلى هنا.",
+      "cartEmpty": "سلتك فارغة.",
+      "discover": "اكتشف المطاعم",
+      "cardPayment": "الدفع بالبطاقة",
+      "delivery": "توصيل",
+      "pickup": "استلام",
+      "addressDelivery": "عنوان التوصيل",
+      "addressPickup": "العنوان (الفوترة)",
+      "addressPlaceholder": "12 rue de la République, Lyon",
+      "oneTap": "ادفع بنقرة واحدة",
+      "walletLabel": "Apple Pay / G Pay",
+      "soon": "(قريبًا)",
+      "errAddress": "العنوان مطلوب (5 أحرف على الأقل).",
+      "errSessionExpiredKept": "انتهت الجلسة — أعد الاتصال (سلتك محفوظة).",
+      "errSessionExpired": "انتهت الجلسة — أعد الاتصال.",
+      "errOrder": "تعذّر إنشاء الطلب. حاول مجددًا.",
+      "errPay": "الدفع غير متاح. حاول مجددًا.",
+      "errNetwork": "خطأ في الشبكة. حاول مجددًا.",
+      "processing": "جارٍ المعالجة…",
+      "payCard": "الدفع بالبطاقة",
+      "payNote": "يُحتسب المبلغ النهائي ويُؤكَّد من الخادم. دفع آمن عبر Stripe (وضع الاختبار).",
+      "subtotal": "المجموع الفرعي",
+      "totalToPay": "الإجمالي للدفع",
+      "totalEstimated": "الإجمالي التقديري",
+      "connectToPay": "اتصل عبر البريد للدفع."
+    },
+    "track": {
+      "loading": "جارٍ تحميل التتبّع…",
+      "notFound": "الطلب غير موجود.",
+      "backHome": "العودة إلى الرئيسية",
+      "cancelled": "تم إلغاء الطلب",
+      "awaiting": "في انتظار الدفع",
+      "confirmed": "تم تأكيد الطلب!",
+      "reference": "المرجع {id}",
+      "awaitingNote": "لم يتم تأكيد دفع هذا الطلب بعد.",
+      "autoUpdate": "يتم تحديث الحالة تلقائيًا.",
+      "steps": {
+        "received": "تم استلام الطلب",
+        "preparing": "قيد التحضير",
+        "ready": "جاهز",
+        "enRoute": "في الطريق",
+        "delivered": "تم التوصيل"
+      }
+    },
+    "trackMock": {
+      "placed": "تم تقديم الطلب!",
+      "eta": "الوصول المُقدَّر خلال {min} دقيقة",
+      "reference": "المرجع GRB-WF-0000 (نموذج)",
+      "courier": "موصّلك (نموذج)",
+      "courierStatus": "في الطريق إلى المطعم · دراجة",
+      "call": "اتصال",
+      "backHome": "العودة إلى الرئيسية"
+    }
   }
 }

@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server'
 import { getDish } from '../../data'
 import DishClient from './DishClient'
 
@@ -7,9 +8,10 @@ import DishClient from './DishClient'
 export const dynamic = 'force-dynamic'
 
 export default async function EatNextDishPage({ params }: { params: { id: string } }) {
+  const t = await getTranslations('eatNext.dish')
   const dish = await getDish(params.id)
   if (!dish) {
-    return <div className="p-4 text-stellar-muted-fg">Plat indisponible.</div>
+    return <div className="p-4 text-stellar-muted-fg">{t('unavailable')}</div>
   }
   return (
     <DishClient

@@ -3976,5 +3976,161 @@
     "errorQuota": "Limite d’assistance atteinte, réessayez plus tard.",
     "errorDisabled": "Assistant momentanément indisponible.",
     "errorEmpty": "Je n’ai pas de réponse pour cela. Reformulez ou consultez la page concernée."
+  },
+  "eatNext": {
+    "layout": {
+      "badge": "Prototype",
+      "disclaimer": "Prototype · données d'exemple · paiement non branché"
+    },
+    "nav": {
+      "home": "Accueil",
+      "search": "Recherche",
+      "cart": "Panier",
+      "track": "Suivi"
+    },
+    "home": {
+      "deliverTo": "Livrer à",
+      "address": "12 rue de la République",
+      "searchEntry": "Envie de quoi ?",
+      "searchEntryTail": "— un plat, une cuisine, une envie…",
+      "nearby": "Restaurants près de vous",
+      "empty": "Aucun restaurant disponible pour le moment.",
+      "freeDelivery": "Livraison offerte",
+      "minimum": "Minimum",
+      "reviews": "{count} avis"
+    },
+    "search": {
+      "placeholder": "Envie de quoi ? (plat, cuisine, envie…)",
+      "byCraving": "Par envie",
+      "cuisine": "Cuisine",
+      "sortRating": "Mieux notés",
+      "sortFast": "Plus rapides",
+      "sortCheap": "Moins chers",
+      "results": "Résultats",
+      "resultsFor": "· « {q} »",
+      "loading": "Recherche…",
+      "empty": "Aucun résultat.",
+      "freeDelivery": "Livraison offerte",
+      "intentions": {
+        "comfort": "Envie de réconfort",
+        "light": "Léger ce midi",
+        "share": "Repas à partager",
+        "glutenFree": "Sans gluten",
+        "cheapest": "Le moins cher",
+        "fast": "Livré en 20 min"
+      },
+      "cuisines": {
+        "burgers": "Burgers",
+        "pizza": "Pizza",
+        "sushi": "Sushi",
+        "healthy": "Healthy",
+        "pasta": "Pâtes",
+        "desserts": "Desserts"
+      }
+    },
+    "restaurant": {
+      "fallbackName": "Restaurant",
+      "reviews": "{count} avis",
+      "delivery": "Livraison",
+      "deliveryFree": "offerte",
+      "eta": "Délai",
+      "etaValue": "{min} min",
+      "minimum": "Minimum",
+      "menuEmpty": "Le menu de ce restaurant n'est pas encore disponible.",
+      "add": "Ajouter",
+      "viewCart": "Voir le panier"
+    },
+    "dish": {
+      "unavailable": "Plat indisponible.",
+      "quantity": "Quantité",
+      "addToCart": "Ajouter au panier",
+      "replaceConfirm": "Votre panier contient des plats de « {current} ». Le remplacer par « {next} » ?",
+      "otherRestaurant": "un autre restaurant"
+    },
+    "cart": {
+      "loading": "Chargement…",
+      "empty": "Votre panier est vide.",
+      "discover": "Découvrir des restaurants",
+      "title": "Votre panier",
+      "fallbackRestaurant": "Restaurant",
+      "decrease": "Réduire",
+      "increase": "Augmenter",
+      "remove": "Retirer",
+      "subtotal": "Sous-total",
+      "deliveryFee": "Frais de livraison",
+      "feeAtPayment": "calculés au paiement",
+      "totalEstimated": "Total estimé",
+      "goToPayment": "Aller au paiement",
+      "noAccount": "Aucun compte requis pour continuer · total final calculé au paiement."
+    },
+    "checkout": {
+      "title": "Paiement",
+      "loading": "Chargement…",
+      "connectedAs": "Connecté en tant que",
+      "emailLabel": "Votre email",
+      "emailPlaceholder": "vous@email.com",
+      "emailHint": "Pas de mot de passe : on vous envoie un code à 6 chiffres (ou un lien). Votre compte se crée tout seul.",
+      "sendCode": "Recevoir mon code",
+      "sending": "Envoi…",
+      "codeSent": "Un code à 6 chiffres a été envoyé à {email}. Saisissez-le ci-dessous.",
+      "codeError": "Code incorrect ou expiré. Réessayez.",
+      "codeLabel": "Code de connexion",
+      "validateCode": "Valider le code",
+      "verifying": "Vérification…",
+      "changeEmail": "Changer d'email",
+      "linkSentTitle": "Lien envoyé 📬",
+      "linkSentBody": "Si un compte existe pour {email}, un lien de connexion vient d'être envoyé. Ouvrez-le pour vous connecter, puis revenez ici.",
+      "cartEmpty": "Votre panier est vide.",
+      "discover": "Découvrir des restaurants",
+      "cardPayment": "Paiement par carte",
+      "delivery": "Livraison",
+      "pickup": "À emporter",
+      "addressDelivery": "Adresse de livraison",
+      "addressPickup": "Adresse (facturation)",
+      "addressPlaceholder": "12 rue de la République, Lyon",
+      "oneTap": "Payer en 1 geste",
+      "walletLabel": "Apple Pay / G Pay",
+      "soon": "(bientôt)",
+      "errAddress": "Adresse requise (5 caractères minimum).",
+      "errSessionExpiredKept": "Session expirée — reconnectez-vous (votre panier est conservé).",
+      "errSessionExpired": "Session expirée — reconnectez-vous.",
+      "errOrder": "Commande impossible. Réessayez.",
+      "errPay": "Paiement indisponible. Réessayez.",
+      "errNetwork": "Erreur réseau. Réessayez.",
+      "processing": "Traitement…",
+      "payCard": "Payer par carte",
+      "payNote": "Le montant final est calculé et confirmé par le serveur. Paiement sécurisé Stripe (mode test).",
+      "subtotal": "Sous-total",
+      "totalToPay": "Total à payer",
+      "totalEstimated": "Total estimé",
+      "connectToPay": "Connectez-vous par email pour payer."
+    },
+    "track": {
+      "loading": "Chargement du suivi…",
+      "notFound": "Commande introuvable.",
+      "backHome": "Retour à l'accueil",
+      "cancelled": "Commande annulée",
+      "awaiting": "En attente de paiement",
+      "confirmed": "Commande confirmée !",
+      "reference": "Référence {id}",
+      "awaitingNote": "Le paiement de cette commande n'est pas encore confirmé.",
+      "autoUpdate": "Statut mis à jour automatiquement.",
+      "steps": {
+        "received": "Commande reçue",
+        "preparing": "En préparation",
+        "ready": "Prête",
+        "enRoute": "En route",
+        "delivered": "Livrée"
+      }
+    },
+    "trackMock": {
+      "placed": "Commande passée !",
+      "eta": "arrivée estimée dans {min} min",
+      "reference": "Référence GRB-WF-0000 (maquette)",
+      "courier": "Votre livreur (maquette)",
+      "courierStatus": "En route vers le restaurant · vélo",
+      "call": "Appeler",
+      "backHome": "Retour à l'accueil"
+    }
   }
 }

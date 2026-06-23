@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { getTranslations } from 'next-intl/server'
 import { Link } from '@/navigation'
 import { StellarCard, StellarPriceTag } from '@/components/stellar'
 import { getRestaurant } from '../../data'
@@ -11,6 +12,7 @@ export const dynamic = 'force-dynamic'
 const addBtn = 'shrink-0 rounded-stellar-md border border-stellar-primary px-3 py-1.5 font-stellar-display text-sm font-semibold text-stellar-primary'
 
 export default async function EatNextRestaurant({ params }: { params: { id: string } }) {
+  const t = await getTranslations('eatNext.restaurant')
   const r = await getRestaurant(params.id)
   if (!r) notFound()
 
@@ -20,19 +22,19 @@ export default async function EatNextRestaurant({ params }: { params: { id: stri
       <div className="space-y-4 p-4">
         <div>
           <h1 className="font-stellar-display text-2xl font-extrabold text-stellar-fg">{r.name}</h1>
-          <p className="text-sm text-stellar-muted-fg">{r.cuisine || 'Restaurant'} · ★ {r.rating.toFixed(1)} ({r.reviewCount} avis)</p>
+          <p className="text-sm text-stellar-muted-fg">{r.cuisine || t('fallbackName')} · ★ {r.rating.toFixed(1)} ({t('reviews', { count: r.reviewCount })})</p>
         </div>
 
         {/* Bataille 2 — transparency banner, up front. */}
         <StellarCard elevation="soft" padding="md" className="flex flex-wrap gap-x-4 gap-y-1 bg-stellar-primary-soft text-sm text-stellar-accent-fg">
-          <span>🛵 Livraison&nbsp;: <b>{r.deliveryFeeEur === 0 ? 'offerte' : <StellarPriceTag amountEur={r.deliveryFeeEur} size="sm" />}</b></span>
-          <span>⏱ Délai&nbsp;: <b>{r.etaMin} min</b></span>
-          <span>🧺 Minimum&nbsp;: <b><StellarPriceTag amountEur={r.minOrderEur} size="sm" /></b></span>
+          <span>🛵 {t('delivery')}&nbsp;: <b>{r.deliveryFeeEur === 0 ? t('deliveryFree') : <StellarPriceTag amountEur={r.deliveryFeeEur} size="sm" />}</b></span>
+          <span>⏱ {t('eta')}&nbsp;: <b>{t('etaValue', { min: r.etaMin })}</b></span>
+          <span>🧺 {t('minimum')}&nbsp;: <b><StellarPriceTag amountEur={r.minOrderEur} size="sm" /></b></span>
         </StellarCard>
 
         {r.menu.length === 0 ? (
           <p className="rounded-stellar-lg border border-stellar-border bg-stellar-surface-1 p-6 text-center text-sm text-stellar-muted-fg">
-            Le menu de ce restaurant n’est pas encore disponible.
+            {t('menuEmpty')}
           </p>
         ) : (
           r.menu.map((section) => (
@@ -47,7 +49,7 @@ export default async function EatNextRestaurant({ params }: { params: { id: stri
                         {d.description && <p className="truncate text-sm text-stellar-muted-fg">{d.description}</p>}
                         <p className="mt-0.5"><StellarPriceTag amountEur={d.priceEur} size="sm" /></p>
                       </div>
-                      <Link href={`/eat-next/dish/${d.id}`} className={addBtn}>Ajouter</Link>
+                      <Link href={`/eat-next/dish/${d.id}`} className={addBtn}>{t('add')}</Link>
                     </StellarCard>
                   </li>
                 ))}
@@ -57,7 +59,7 @@ export default async function EatNextRestaurant({ params }: { params: { id: stri
         )}
 
         <Link href="/eat-next/cart" className="block rounded-stellar-lg bg-stellar-primary py-3 text-center font-stellar-display font-semibold text-stellar-primary-fg shadow-stellar-soft">
-          Voir le panier
+          {t('viewCart')}
         </Link>
       </div>
     </div>

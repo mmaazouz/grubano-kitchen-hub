@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 const { nav } = vi.hoisted(() => ({ nav: { notFound: vi.fn() } }))
 vi.mock('next/navigation', () => ({ notFound: nav.notFound }))
-vi.mock('next-intl/server', () => ({ setRequestLocale: vi.fn() }))
+vi.mock('next-intl/server', () => ({ setRequestLocale: vi.fn(), getTranslations: vi.fn(async () => (k: string) => k) }))
 vi.mock('@/components/eat-next/WireframeNav', () => ({ default: () => null }))
 
 import { isConsumerRedesignEnabled } from '@/lib/consumer-redesign'
@@ -29,19 +29,21 @@ describe('(a) gating — CONSUMER_REDESIGN_ENABLED', () => {
     expect(isConsumerRedesignEnabled()).toBe(true)
   })
 
-  it('layout calls notFound() when OFF, and does NOT when ON', () => {
-    // Mirror the real notFound(): it THROWS to halt rendering (so OFF never reaches JSX).
+  it('layout calls notFound() when OFF, and does NOT when ON', async () => {
+    // Mirror the real notFound(): it THROWS to halt rendering. The layout is an ASYNC server
+    // component (Agent 135 — it awaits getTranslations), so a thrown notFound() surfaces as a
+    // REJECTED promise rather than a synchronous throw.
     nav.notFound.mockImplementation(() => { throw new Error('NEXT_NOT_FOUND') })
 
     process.env.CONSUMER_REDESIGN_ENABLED = 'false'
-    expect(() => EatNextLayout({ children: null, params: { locale: 'fr' } })).toThrow('NEXT_NOT_FOUND')
+    await expect(EatNextLayout({ children: null, params: { locale: 'fr' } })).rejects.toThrow('NEXT_NOT_FOUND')
     expect(nav.notFound).toHaveBeenCalledTimes(1)
 
-    // ON → the gate passes; notFound is NOT called. (The JSX return isn't exercised in a
-    // node test runtime — any render-time ReferenceError is irrelevant to the gate.)
+    // ON → the gate passes; notFound is NOT called. (A render-time error in the node test runtime
+    // is irrelevant to the gate — we only assert notFound was not invoked.)
     nav.notFound.mockClear()
     process.env.CONSUMER_REDESIGN_ENABLED = 'true'
-    try { EatNextLayout({ children: null, params: { locale: 'fr' } }) } catch { /* JSX render in node — ignored */ }
+    await EatNextLayout({ children: null, params: { locale: 'fr' } }).catch(() => { /* JSX render in node — ignored */ })
     expect(nav.notFound).not.toHaveBeenCalled()
   })
 })

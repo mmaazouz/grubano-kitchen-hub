@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server'
 import { Link } from '@/navigation'
 import { StellarRestaurantCard, StellarPriceTag } from '@/components/stellar'
 import { listRestaurants } from './data'
@@ -9,6 +10,7 @@ import { listRestaurants } from './data'
 export const dynamic = 'force-dynamic'
 
 export default async function EatNextHome() {
+  const t = await getTranslations('eatNext.home')
   const restaurants = await listRestaurants()
   // Real category pills, derived from the loaded restaurants' cuisines (read-only).
   const categories = Array.from(new Set(restaurants.map((r) => r.cuisine).filter(Boolean))).slice(0, 8)
@@ -17,12 +19,12 @@ export default async function EatNextHome() {
     <div className="space-y-4 p-4">
       <div className="flex items-center gap-2 text-sm text-stellar-muted-fg">
         <span className="h-4 w-4 rounded-full bg-stellar-primary-soft" aria-hidden />
-        Livrer à <span className="font-semibold text-stellar-fg">12 rue de la République</span> ›
+        {t('deliverTo')} <span className="font-semibold text-stellar-fg">{t('address')}</span> ›
       </div>
 
       {/* Bataille 3 — intention-first search entry. */}
       <Link href="/eat-next/search" className="block rounded-stellar-xl border border-stellar-border bg-stellar-surface-1 px-4 py-3 text-stellar-muted-fg shadow-stellar-soft">
-        🔎 <span className="font-stellar-display font-semibold text-stellar-fg">Envie de quoi&nbsp;?</span> <span className="text-stellar-muted-fg">— un plat, une cuisine, une envie…</span>
+        🔎 <span className="font-stellar-display font-semibold text-stellar-fg">{t('searchEntry')}</span> <span className="text-stellar-muted-fg">{t('searchEntryTail')}</span>
       </Link>
 
       {categories.length > 0 && (
@@ -35,11 +37,11 @@ export default async function EatNextHome() {
         </div>
       )}
 
-      <h2 className="pt-2 font-stellar-display text-sm font-bold uppercase tracking-wide text-stellar-muted-fg">Restaurants près de vous</h2>
+      <h2 className="pt-2 font-stellar-display text-sm font-bold uppercase tracking-wide text-stellar-muted-fg">{t('nearby')}</h2>
 
       {restaurants.length === 0 ? (
         <p className="rounded-stellar-lg border border-stellar-border bg-stellar-surface-1 p-6 text-center text-sm text-stellar-muted-fg">
-          Aucun restaurant disponible pour le moment.
+          {t('empty')}
         </p>
       ) : (
         <ul className="space-y-3">
@@ -52,11 +54,11 @@ export default async function EatNextHome() {
                   rating={r.rating}
                   deliveryFeeEur={r.deliveryFeeEur}
                   etaMin={r.etaMin}
-                  tag={r.deliveryFeeEur === 0 ? 'Livraison offerte' : undefined}
+                  tag={r.deliveryFeeEur === 0 ? t('freeDelivery') : undefined}
                 />
                 {/* Bataille 2 — minimum order also shown up front. */}
                 <p className="mt-1 px-1 text-xs text-stellar-muted-fg">
-                  Minimum&nbsp;: <StellarPriceTag amountEur={r.minOrderEur} size="sm" muted /> · {r.reviewCount} avis
+                  {t('minimum')}&nbsp;: <StellarPriceTag amountEur={r.minOrderEur} size="sm" muted /> · {t('reviews', { count: r.reviewCount })}
                 </p>
               </Link>
             </li>

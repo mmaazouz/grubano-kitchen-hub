@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { setRequestLocale } from 'next-intl/server'
+import { setRequestLocale, getTranslations } from 'next-intl/server'
 import { isConsumerRedesignEnabled } from '@/lib/consumer-redesign'
 import WireframeNav from '@/components/eat-next/WireframeNav'
 import { StellarLogo } from '@/components/stellar'
@@ -12,7 +12,7 @@ import '../../stellar-theme.css'
 // stellar-theme.css is loaded. Still mock data, still NO money wired (the checkout is a mock).
 export const dynamic = 'force-dynamic'
 
-export default function EatNextLayout({
+export default async function EatNextLayout({
   children,
   params,
 }: {
@@ -21,6 +21,7 @@ export default function EatNextLayout({
 }) {
   setRequestLocale(params.locale)
   if (!isConsumerRedesignEnabled()) notFound()
+  const t = await getTranslations('eatNext.layout')
 
   return (
     <div className="grubano-v2 flex min-h-screen justify-center bg-stellar-surface-2 font-stellar-display">
@@ -29,12 +30,12 @@ export default function EatNextLayout({
         <header className="sticky top-0 z-50 flex items-center justify-between border-b border-stellar-border bg-stellar-bg/95 px-4 py-2.5 backdrop-blur">
           <StellarLogo variant="full" size={26} />
           <span className="rounded-full bg-stellar-primary-soft px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-stellar-accent-fg">
-            Prototype
+            {t('badge')}
           </span>
         </header>
         {/* Disclaimer — this is a prototype on sample data, payment not wired. */}
         <p className="bg-stellar-surface-1 px-4 py-1 text-center text-[11px] text-stellar-muted-fg">
-          Prototype · données d’exemple · paiement non branché
+          {t('disclaimer')}
         </p>
         <main className="flex-1 pb-16 text-stellar-fg">{children}</main>
         <WireframeNav />

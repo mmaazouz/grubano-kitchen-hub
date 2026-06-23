@@ -3976,5 +3976,161 @@
     "errorQuota": "Limite di assistenza raggiunto, riprovi più tardi.",
     "errorDisabled": "Assistente momentaneamente non disponibile.",
     "errorEmpty": "Non ho una risposta per questo. Riformuli o consulti la pagina dedicata."
+  },
+  "eatNext": {
+    "layout": {
+      "badge": "Prototipo",
+      "disclaimer": "Prototipo · dati di esempio · pagamento non collegato"
+    },
+    "nav": {
+      "home": "Home",
+      "search": "Cerca",
+      "cart": "Carrello",
+      "track": "Tracciamento"
+    },
+    "home": {
+      "deliverTo": "Consegna a",
+      "address": "12 rue de la République",
+      "searchEntry": "Di cosa hai voglia?",
+      "searchEntryTail": "— un piatto, una cucina, una voglia…",
+      "nearby": "Ristoranti vicino a te",
+      "empty": "Nessun ristorante disponibile al momento.",
+      "freeDelivery": "Consegna gratuita",
+      "minimum": "Minimo",
+      "reviews": "{count} recensioni"
+    },
+    "search": {
+      "placeholder": "Di cosa hai voglia? (piatto, cucina, voglia…)",
+      "byCraving": "Per voglia",
+      "cuisine": "Cucina",
+      "sortRating": "Più votati",
+      "sortFast": "Più veloci",
+      "sortCheap": "Più economici",
+      "results": "Risultati",
+      "resultsFor": "· « {q} »",
+      "loading": "Ricerca…",
+      "empty": "Nessun risultato.",
+      "freeDelivery": "Consegna gratuita",
+      "intentions": {
+        "comfort": "Voglia di comfort food",
+        "light": "Leggero a pranzo",
+        "share": "Pasto da condividere",
+        "glutenFree": "Senza glutine",
+        "cheapest": "Il più economico",
+        "fast": "Consegnato in 20 min"
+      },
+      "cuisines": {
+        "burgers": "Burger",
+        "pizza": "Pizza",
+        "sushi": "Sushi",
+        "healthy": "Healthy",
+        "pasta": "Pasta",
+        "desserts": "Dolci"
+      }
+    },
+    "restaurant": {
+      "fallbackName": "Ristorante",
+      "reviews": "{count} recensioni",
+      "delivery": "Consegna",
+      "deliveryFree": "gratuita",
+      "eta": "Tempo",
+      "etaValue": "{min} min",
+      "minimum": "Minimo",
+      "menuEmpty": "Il menu di questo ristorante non è ancora disponibile.",
+      "add": "Aggiungi",
+      "viewCart": "Vedi il carrello"
+    },
+    "dish": {
+      "unavailable": "Piatto non disponibile.",
+      "quantity": "Quantità",
+      "addToCart": "Aggiungi al carrello",
+      "replaceConfirm": "Il tuo carrello contiene piatti di « {current} ». Sostituirlo con « {next} »?",
+      "otherRestaurant": "un altro ristorante"
+    },
+    "cart": {
+      "loading": "Caricamento…",
+      "empty": "Il tuo carrello è vuoto.",
+      "discover": "Scopri i ristoranti",
+      "title": "Il tuo carrello",
+      "fallbackRestaurant": "Ristorante",
+      "decrease": "Riduci",
+      "increase": "Aumenta",
+      "remove": "Rimuovi",
+      "subtotal": "Subtotale",
+      "deliveryFee": "Costo di consegna",
+      "feeAtPayment": "calcolati al pagamento",
+      "totalEstimated": "Totale stimato",
+      "goToPayment": "Vai al pagamento",
+      "noAccount": "Nessun account richiesto per continuare · totale finale calcolato al pagamento."
+    },
+    "checkout": {
+      "title": "Pagamento",
+      "loading": "Caricamento…",
+      "connectedAs": "Connesso come",
+      "emailLabel": "La tua email",
+      "emailPlaceholder": "tu@email.com",
+      "emailHint": "Nessuna password: ti inviamo un codice a 6 cifre (o un link). Il tuo account si crea da solo.",
+      "sendCode": "Ricevi il mio codice",
+      "sending": "Invio…",
+      "codeSent": "Un codice a 6 cifre è stato inviato a {email}. Inseriscilo qui sotto.",
+      "codeError": "Codice errato o scaduto. Riprova.",
+      "codeLabel": "Codice di accesso",
+      "validateCode": "Convalida il codice",
+      "verifying": "Verifica…",
+      "changeEmail": "Cambia l'email",
+      "linkSentTitle": "Link inviato 📬",
+      "linkSentBody": "Se esiste un account per {email}, è stato appena inviato un link di accesso. Aprilo per accedere, poi torna qui.",
+      "cartEmpty": "Il tuo carrello è vuoto.",
+      "discover": "Scopri i ristoranti",
+      "cardPayment": "Pagamento con carta",
+      "delivery": "Consegna",
+      "pickup": "Da asporto",
+      "addressDelivery": "Indirizzo di consegna",
+      "addressPickup": "Indirizzo (fatturazione)",
+      "addressPlaceholder": "12 rue de la République, Lyon",
+      "oneTap": "Paga con un tocco",
+      "walletLabel": "Apple Pay / G Pay",
+      "soon": "(presto)",
+      "errAddress": "Indirizzo obbligatorio (5 caratteri minimo).",
+      "errSessionExpiredKept": "Sessione scaduta — accedi di nuovo (il tuo carrello è conservato).",
+      "errSessionExpired": "Sessione scaduta — accedi di nuovo.",
+      "errOrder": "Ordine non riuscito. Riprova.",
+      "errPay": "Pagamento non disponibile. Riprova.",
+      "errNetwork": "Errore di rete. Riprova.",
+      "processing": "Elaborazione…",
+      "payCard": "Paga con carta",
+      "payNote": "L'importo finale è calcolato e confermato dal server. Pagamento sicuro Stripe (modalità test).",
+      "subtotal": "Subtotale",
+      "totalToPay": "Totale da pagare",
+      "totalEstimated": "Totale stimato",
+      "connectToPay": "Accedi via email per pagare."
+    },
+    "track": {
+      "loading": "Caricamento del tracciamento…",
+      "notFound": "Ordine non trovato.",
+      "backHome": "Torna alla home",
+      "cancelled": "Ordine annullato",
+      "awaiting": "In attesa di pagamento",
+      "confirmed": "Ordine confermato!",
+      "reference": "Riferimento {id}",
+      "awaitingNote": "Il pagamento di questo ordine non è ancora confermato.",
+      "autoUpdate": "Stato aggiornato automaticamente.",
+      "steps": {
+        "received": "Ordine ricevuto",
+        "preparing": "In preparazione",
+        "ready": "Pronto",
+        "enRoute": "In arrivo",
+        "delivered": "Consegnato"
+      }
+    },
+    "trackMock": {
+      "placed": "Ordine effettuato!",
+      "eta": "arrivo stimato tra {min} min",
+      "reference": "Riferimento GRB-WF-0000 (mockup)",
+      "courier": "Il tuo corriere (mockup)",
+      "courierStatus": "In arrivo al ristorante · bici",
+      "call": "Chiama",
+      "backHome": "Torna alla home"
+    }
   }
 }

@@ -3976,5 +3976,161 @@
     "errorQuota": "Assistance limit reached, please try again later.",
     "errorDisabled": "Assistant temporarily unavailable.",
     "errorEmpty": "I don’t have an answer for that. Try rephrasing or check the relevant page."
+  },
+  "eatNext": {
+    "layout": {
+      "badge": "Prototype",
+      "disclaimer": "Prototype · sample data · payment not connected"
+    },
+    "nav": {
+      "home": "Home",
+      "search": "Search",
+      "cart": "Cart",
+      "track": "Tracking"
+    },
+    "home": {
+      "deliverTo": "Deliver to",
+      "address": "12 rue de la République",
+      "searchEntry": "What are you craving?",
+      "searchEntryTail": "— a dish, a cuisine, a craving…",
+      "nearby": "Restaurants near you",
+      "empty": "No restaurant available right now.",
+      "freeDelivery": "Free delivery",
+      "minimum": "Minimum",
+      "reviews": "{count} reviews"
+    },
+    "search": {
+      "placeholder": "What are you craving? (dish, cuisine, craving…)",
+      "byCraving": "By craving",
+      "cuisine": "Cuisine",
+      "sortRating": "Top rated",
+      "sortFast": "Fastest",
+      "sortCheap": "Cheapest",
+      "results": "Results",
+      "resultsFor": "· « {q} »",
+      "loading": "Searching…",
+      "empty": "No results.",
+      "freeDelivery": "Free delivery",
+      "intentions": {
+        "comfort": "Comfort food",
+        "light": "Light lunch",
+        "share": "Meal to share",
+        "glutenFree": "Gluten-free",
+        "cheapest": "Cheapest",
+        "fast": "Delivered in 20 min"
+      },
+      "cuisines": {
+        "burgers": "Burgers",
+        "pizza": "Pizza",
+        "sushi": "Sushi",
+        "healthy": "Healthy",
+        "pasta": "Pasta",
+        "desserts": "Desserts"
+      }
+    },
+    "restaurant": {
+      "fallbackName": "Restaurant",
+      "reviews": "{count} reviews",
+      "delivery": "Delivery",
+      "deliveryFree": "free",
+      "eta": "ETA",
+      "etaValue": "{min} min",
+      "minimum": "Minimum",
+      "menuEmpty": "This restaurant's menu is not available yet.",
+      "add": "Add",
+      "viewCart": "View cart"
+    },
+    "dish": {
+      "unavailable": "Dish unavailable.",
+      "quantity": "Quantity",
+      "addToCart": "Add to cart",
+      "replaceConfirm": "Your cart contains dishes from « {current} ». Replace it with « {next} »?",
+      "otherRestaurant": "another restaurant"
+    },
+    "cart": {
+      "loading": "Loading…",
+      "empty": "Your cart is empty.",
+      "discover": "Discover restaurants",
+      "title": "Your cart",
+      "fallbackRestaurant": "Restaurant",
+      "decrease": "Decrease",
+      "increase": "Increase",
+      "remove": "Remove",
+      "subtotal": "Subtotal",
+      "deliveryFee": "Delivery fee",
+      "feeAtPayment": "calculated at payment",
+      "totalEstimated": "Estimated total",
+      "goToPayment": "Go to payment",
+      "noAccount": "No account required to continue · final total calculated at payment."
+    },
+    "checkout": {
+      "title": "Payment",
+      "loading": "Loading…",
+      "connectedAs": "Signed in as",
+      "emailLabel": "Your email",
+      "emailPlaceholder": "you@email.com",
+      "emailHint": "No password: we send you a 6-digit code (or a link). Your account is created automatically.",
+      "sendCode": "Get my code",
+      "sending": "Sending…",
+      "codeSent": "A 6-digit code has been sent to {email}. Enter it below.",
+      "codeError": "Incorrect or expired code. Please try again.",
+      "codeLabel": "Sign-in code",
+      "validateCode": "Validate code",
+      "verifying": "Verifying…",
+      "changeEmail": "Change email",
+      "linkSentTitle": "Link sent 📬",
+      "linkSentBody": "If an account exists for {email}, a sign-in link has just been sent. Open it to sign in, then come back here.",
+      "cartEmpty": "Your cart is empty.",
+      "discover": "Discover restaurants",
+      "cardPayment": "Card payment",
+      "delivery": "Delivery",
+      "pickup": "Pickup",
+      "addressDelivery": "Delivery address",
+      "addressPickup": "Address (billing)",
+      "addressPlaceholder": "12 rue de la République, Lyon",
+      "oneTap": "Pay in one tap",
+      "walletLabel": "Apple Pay / G Pay",
+      "soon": "(soon)",
+      "errAddress": "Address required (5 characters minimum).",
+      "errSessionExpiredKept": "Session expired — please sign in again (your cart is kept).",
+      "errSessionExpired": "Session expired — please sign in again.",
+      "errOrder": "Order failed. Please try again.",
+      "errPay": "Payment unavailable. Please try again.",
+      "errNetwork": "Network error. Please try again.",
+      "processing": "Processing…",
+      "payCard": "Pay by card",
+      "payNote": "The final amount is computed and confirmed by the server. Secure Stripe payment (test mode).",
+      "subtotal": "Subtotal",
+      "totalToPay": "Total to pay",
+      "totalEstimated": "Estimated total",
+      "connectToPay": "Sign in by email to pay."
+    },
+    "track": {
+      "loading": "Loading tracking…",
+      "notFound": "Order not found.",
+      "backHome": "Back to home",
+      "cancelled": "Order cancelled",
+      "awaiting": "Awaiting payment",
+      "confirmed": "Order confirmed!",
+      "reference": "Reference {id}",
+      "awaitingNote": "The payment for this order is not confirmed yet.",
+      "autoUpdate": "Status updated automatically.",
+      "steps": {
+        "received": "Order received",
+        "preparing": "Preparing",
+        "ready": "Ready",
+        "enRoute": "On the way",
+        "delivered": "Delivered"
+      }
+    },
+    "trackMock": {
+      "placed": "Order placed!",
+      "eta": "estimated arrival in {min} min",
+      "reference": "Reference GRB-WF-0000 (mockup)",
+      "courier": "Your courier (mockup)",
+      "courierStatus": "On the way to the restaurant · bike",
+      "call": "Call",
+      "backHome": "Back to home"
+    }
   }
 }

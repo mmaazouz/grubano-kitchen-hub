@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { StellarButton, StellarPriceTag } from '@/components/stellar'
+import { formatEuros } from '@/lib/format-money'
 import { addItem, readCart } from '../../cart-store'
 
 // Client child of the dish screen (Agent 130 → Agent 133 real cart). Pure UI state (qty) over a
@@ -20,6 +22,8 @@ export default function DishClient({
   restaurantId: string
   restaurantName: string
 }) {
+  const t = useTranslations('eatNext.dish')
+  const locale = useLocale()
   const router = useRouter()
   const [qty, setQty] = useState(1)
   const lineTotal = priceEur * qty
@@ -29,7 +33,7 @@ export default function DishClient({
     const current = readCart()
     if (current && current.items.length && current.restaurantId !== restaurantId) {
       const ok = window.confirm(
-        `Votre panier contient des plats de « ${current.restaurantName || 'un autre restaurant'} ». Le remplacer par « ${restaurantName} » ?`,
+        t('replaceConfirm', { current: current.restaurantName || t('otherRestaurant'), next: restaurantName }),
       )
       if (!ok) return
     }
@@ -48,14 +52,14 @@ export default function DishClient({
       </div>
 
       <div className="flex items-center gap-3">
-        <span className="font-stellar-display text-sm font-semibold text-stellar-fg">Quantité</span>
+        <span className="font-stellar-display text-sm font-semibold text-stellar-fg">{t('quantity')}</span>
         <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="h-8 w-8 rounded-full border border-stellar-border text-lg text-stellar-fg">−</button>
         <span className="w-6 text-center text-stellar-fg">{qty}</span>
         <button onClick={() => setQty((q) => q + 1)} className="h-8 w-8 rounded-full border border-stellar-border text-lg text-stellar-fg">+</button>
       </div>
 
       <StellarButton variant="primary" fullWidth onClick={onAdd}>
-        Ajouter au panier · {lineTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+        {t('addToCart')} · {formatEuros(lineTotal, locale)}
       </StellarButton>
     </div>
   )

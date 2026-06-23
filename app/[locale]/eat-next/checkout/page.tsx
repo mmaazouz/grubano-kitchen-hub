@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { signIn, getSession } from 'next-auth/react'
-import { useLocale } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { StellarCard, StellarButton, StellarInput, StellarPriceTag } from '@/components/stellar'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
+import { formatEuros } from '@/lib/format-money'
 import { useEatNextCart } from '../cart-store'
 import { buildOrderBody } from '../checkout-order'
 
@@ -22,6 +23,7 @@ type PayInit = { clientSecret: string; publishableKey: string; amount: number; c
 const isEmail = (s: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)
 
 export default function EatNextCheckout() {
+  const t = useTranslations('eatNext.checkout')
   const router = useRouter()
   const locale = useLocale()
   // Real cart (Agent 133). subtotalEur is a NAÏVE estimate; the SERVER total (from the 201) is the
@@ -99,10 +101,10 @@ export default function EatNextCheckout() {
         setConnectedEmail((s?.user as { email?: string } | undefined)?.email ?? email.trim().toLowerCase())
         setAuthState('connected')
       } else {
-        setAuthError('Code incorrect ou expiré. Réessayez.')
+        setAuthError(t('codeError'))
       }
     } catch {
-      setAuthError('Code incorrect ou expiré. Réessayez.')
+      setAuthError(t('codeError'))
     } finally {
       setVerifying(false)
     }
@@ -111,8 +113,8 @@ export default function EatNextCheckout() {
   // ── Order + pay (Agent 134) — REUSES the byte-identical money routes ──
   async function handlePay() {
     if (submitting || authState !== 'connected') return
-    if (!cart || cart.items.length === 0) { setOrderError('Votre panier est vide.'); return }
-    if (deliveryAddress.trim().length < 5) { setOrderError('Adresse requise (5 caractères minimum).'); return }
+    if (!cart || cart.items.length === 0) { setOrderError(t('cartEmpty')); return }
+    if (deliveryAddress.trim().length < 5) { setOrderError(t('errAddress')); return }
     setSubmitting(true) // guard → no second POST /api/orders while in-flight
     setOrderError(null)
     try {
@@ -124,9 +126,9 @@ export default function EatNextCheckout() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildOrderBody(cart, { deliveryAddress: deliveryAddress.trim(), fulfillmentType })),
         })
-        if (res.status === 401) { setAuthState('email'); setOrderError('Session expirée — reconnectez-vous (votre panier est conservé).'); return }
+        if (res.status === 401) { setAuthState('email'); setOrderError(t('errSessionExpiredKept')); return }
         const data = await res.json().catch(() => null)
-        if (!res.ok || !data?.orderId) { setOrderError((data?.error as string) || 'Commande impossible. Réessayez.'); return }
+        if (!res.ok || !data?.orderId) { setOrderError((data?.error as string) || t('errOrder')); return }
         oid = data.orderId as string
         setOrderId(oid)
         if (typeof data.total === 'number') setServerTotal(data.total) // SERVER total = authority
@@ -134,15 +136,15 @@ export default function EatNextCheckout() {
       // 2) Init the payment (server reads order.total — client sends nothing).
       const payRes = await fetch(`/api/orders/${oid}/pay`, { method: 'POST' })
       if (payRes.status === 409) { clearCart(); router.push(`/eat-next/track/${oid}`); return } // already paid
-      if (payRes.status === 401) { setAuthState('email'); setOrderError('Session expirée — reconnectez-vous.'); return }
+      if (payRes.status === 401) { setAuthState('email'); setOrderError(t('errSessionExpired')); return }
       const payData = await payRes.json().catch(() => null)
       if (!payRes.ok || !payData?.clientSecret || !payData?.publishableKey) {
-        setOrderError((payData?.error as string) || 'Paiement indisponible. Réessayez.')
+        setOrderError((payData?.error as string) || t('errPay'))
         return
       }
       setPayInit({ clientSecret: payData.clientSecret, publishableKey: payData.publishableKey, amount: payData.amount, currency: payData.currency })
     } catch {
-      setOrderError('Erreur réseau. Réessayez.')
+      setOrderError(t('errNetwork'))
     } finally {
       setSubmitting(false)
     }
@@ -159,16 +161,16 @@ export default function EatNextCheckout() {
 
   return (
     <div className="space-y-5 p-4">
-      <h1 className="font-stellar-display text-xl font-extrabold text-stellar-fg">Paiement</h1>
+      <h1 className="font-stellar-display text-xl font-extrabold text-stellar-fg">{t('title')}</h1>
 
       {/* Bataille 1 — account AT payment: email → code → connected, NO password ever (Agent 132). */}
       <StellarCard elevation="soft" padding="md" className="space-y-3">
-        {authState === 'init' && <p className="text-sm text-stellar-muted-fg">Chargement…</p>}
+        {authState === 'init' && <p className="text-sm text-stellar-muted-fg">{t('loading')}</p>}
 
         {authState === 'connected' && (
           <p className="flex items-center gap-2 font-stellar-display text-sm font-semibold text-stellar-fg">
             <span className="grid h-6 w-6 place-items-center rounded-full bg-stellar-primary text-xs text-stellar-primary-fg">✓</span>
-            Connecté en tant que <span className="font-bold">{connectedEmail}</span>
+            {t('connectedAs')} <span className="font-bold">{connectedEmail}</span>
           </p>
         )}
 
@@ -176,44 +178,44 @@ export default function EatNextCheckout() {
           <form onSubmit={sendCode} className="space-y-3" noValidate>
             <StellarInput
               type="email"
-              label="Votre email"
+              label={t('emailLabel')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="vous@email.com"
-              hint="Pas de mot de passe : on vous envoie un code à 6 chiffres (ou un lien). Votre compte se crée tout seul."
+              placeholder={t('emailPlaceholder')}
+              hint={t('emailHint')}
             />
             <StellarButton type="submit" variant="primary" fullWidth disabled={!isEmail(email.trim()) || sending}>
-              {sending ? 'Envoi…' : 'Recevoir mon code'}
+              {sending ? t('sending') : t('sendCode')}
             </StellarButton>
           </form>
         )}
 
         {authState === 'code' && (
           <form onSubmit={verifyCode} className="space-y-3" noValidate>
-            <p className="text-sm text-stellar-muted-fg">Un code à 6 chiffres a été envoyé à <span className="font-semibold text-stellar-fg">{email.trim().toLowerCase()}</span>. Saisissez-le ci-dessous.</p>
+            <p className="text-sm text-stellar-muted-fg">{t('codeSent', { email: email.trim().toLowerCase() })}</p>
             {authError && <p className="rounded-stellar-md border border-stellar-border bg-stellar-surface-1 px-3 py-2 text-sm text-stellar-fg" role="alert">{authError}</p>}
             <StellarInput
               type="text"
               inputMode="numeric"
               autoComplete="one-time-code"
-              label="Code de connexion"
+              label={t('codeLabel')}
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="••••••"
             />
             <StellarButton type="submit" variant="primary" fullWidth disabled={code.trim().length !== 6 || verifying}>
-              {verifying ? 'Vérification…' : 'Valider le code'}
+              {verifying ? t('verifying') : t('validateCode')}
             </StellarButton>
             <button type="button" onClick={() => setAuthState('email')} className="w-full text-center text-xs text-stellar-muted-fg underline">
-              Changer d’email
+              {t('changeEmail')}
             </button>
           </form>
         )}
 
         {authState === 'linkSent' && (
           <div className="space-y-1">
-            <p className="font-stellar-display text-sm font-semibold text-stellar-fg">Lien envoyé&nbsp;📬</p>
-            <p className="text-sm text-stellar-muted-fg">Si un compte existe pour <span className="font-semibold text-stellar-fg">{email.trim().toLowerCase()}</span>, un lien de connexion vient d’être envoyé. Ouvrez-le pour vous connecter, puis revenez ici.</p>
+            <p className="font-stellar-display text-sm font-semibold text-stellar-fg">{t('linkSentTitle')}</p>
+            <p className="text-sm text-stellar-muted-fg">{t('linkSentBody', { email: email.trim().toLowerCase() })}</p>
           </div>
         )}
       </StellarCard>
@@ -221,15 +223,15 @@ export default function EatNextCheckout() {
       {/* Empty-cart guard (connected but nothing to pay). */}
       {authState === 'connected' && cartEmpty && (
         <StellarCard elevation="soft" padding="md" className="space-y-3 text-center">
-          <p className="text-sm text-stellar-muted-fg">Votre panier est vide.</p>
-          <StellarButton variant="primary" onClick={() => router.push('/eat-next')}>Découvrir des restaurants</StellarButton>
+          <p className="text-sm text-stellar-muted-fg">{t('cartEmpty')}</p>
+          <StellarButton variant="primary" onClick={() => router.push('/eat-next')}>{t('discover')}</StellarButton>
         </StellarCard>
       )}
 
       {/* PAY STAGE — Stripe Elements (REUSED byte-identical). Card form for the created order. */}
       {authState === 'connected' && !cartEmpty && payInit && (
         <StellarCard elevation="soft" padding="md" className="space-y-2">
-          <p className="font-stellar-display text-sm font-semibold text-stellar-fg">Paiement par carte</p>
+          <p className="font-stellar-display text-sm font-semibold text-stellar-fg">{t('cardPayment')}</p>
           <StripeTicketPayment
             clientSecret={payInit.clientSecret}
             publishableKey={payInit.publishableKey}
@@ -252,46 +254,46 @@ export default function EatNextCheckout() {
                   onClick={() => setFulfillmentType(f)}
                   className={`flex-1 rounded-stellar-md border px-3 py-2 font-stellar-display text-sm ${fulfillmentType === f ? 'border-stellar-primary bg-stellar-primary text-stellar-primary-fg' : 'border-stellar-border bg-stellar-card text-stellar-fg'}`}
                 >
-                  {f === 'delivery' ? 'Livraison' : 'À emporter'}
+                  {f === 'delivery' ? t('delivery') : t('pickup')}
                 </button>
               ))}
             </div>
             <StellarInput
               type="text"
-              label={fulfillmentType === 'delivery' ? 'Adresse de livraison' : 'Adresse (facturation)'}
+              label={fulfillmentType === 'delivery' ? t('addressDelivery') : t('addressPickup')}
               value={deliveryAddress}
               onChange={(e) => setDeliveryAddress(e.target.value)}
-              placeholder="12 rue de la République, Lyon"
+              placeholder={t('addressPlaceholder')}
             />
           </StellarCard>
 
           {/* Wallet 1-tap — DEFERRED (next brick). Disabled placeholders; only the card path works in 2d. */}
           <section className="space-y-2">
-            <p className="font-stellar-display text-sm font-semibold text-stellar-muted-fg">Payer en 1 geste</p>
-            <button disabled className="flex w-full items-center justify-center gap-2 rounded-stellar-lg border border-stellar-border bg-stellar-card py-3 font-stellar-display text-sm font-semibold text-stellar-muted-fg opacity-60">  Apple Pay / G Pay <span className="text-xs font-normal">(bientôt)</span></button>
+            <p className="font-stellar-display text-sm font-semibold text-stellar-muted-fg">{t('oneTap')}</p>
+            <button disabled className="flex w-full items-center justify-center gap-2 rounded-stellar-lg border border-stellar-border bg-stellar-card py-3 font-stellar-display text-sm font-semibold text-stellar-muted-fg opacity-60">  {t('walletLabel')} <span className="text-xs font-normal">{t('soon')}</span></button>
           </section>
 
           {orderError && <p className="rounded-stellar-md border border-stellar-border bg-stellar-surface-1 px-3 py-2 text-sm text-stellar-fg" role="alert">{orderError}</p>}
 
           <StellarButton variant="primary" fullWidth onClick={handlePay} disabled={submitting || deliveryAddress.trim().length < 5}>
-            {submitting ? 'Traitement…' : `Payer par carte · ${displayTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}`}
+            {submitting ? t('processing') : `${t('payCard')} · ${formatEuros(displayTotal, locale)}`}
           </StellarButton>
-          <p className="text-center text-xs text-stellar-muted-fg">Le montant final est calculé et confirmé par le serveur. Paiement sécurisé Stripe (mode test).</p>
+          <p className="text-center text-xs text-stellar-muted-fg">{t('payNote')}</p>
         </>
       )}
 
       {/* Recap (estimate until the order is created; then the SERVER total). */}
       {!cartEmpty && (
         <StellarCard elevation="soft" padding="md" className="space-y-1 text-sm">
-          <div className="flex justify-between text-stellar-muted-fg"><span>Sous-total</span><StellarPriceTag amountEur={subtotalEur} size="sm" /></div>
+          <div className="flex justify-between text-stellar-muted-fg"><span>{t('subtotal')}</span><StellarPriceTag amountEur={subtotalEur} size="sm" /></div>
           <div className="mt-1 flex items-center justify-between border-t border-stellar-border pt-2 font-stellar-display text-base font-bold text-stellar-fg">
-            <span>{serverTotal !== null ? 'Total à payer' : 'Total estimé'}</span><StellarPriceTag amountEur={displayTotal} size="lg" />
+            <span>{serverTotal !== null ? t('totalToPay') : t('totalEstimated')}</span><StellarPriceTag amountEur={displayTotal} size="lg" />
           </div>
         </StellarCard>
       )}
 
       {authState !== 'connected' && authState !== 'init' && (
-        <p className="text-center text-xs text-stellar-muted-fg">Connectez-vous par email pour payer.</p>
+        <p className="text-center text-xs text-stellar-muted-fg">{t('connectToPay')}</p>
       )}
     </div>
   )
