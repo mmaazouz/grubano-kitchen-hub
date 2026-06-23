@@ -57,12 +57,16 @@ describe('(b) money isolation — wireframes never touch the money engine', () =
   }
   for (const r of roots) walk(join(process.cwd(), r))
 
-  // Forbidden: any money route or money lib (the engine is byte-identical + untouched).
-  // NOTE (Agent 130, brick 2a): `@/lib/prisma` is NO LONGER forbidden — the navigation
-  // screens now READ real restaurants/menus via a read-only data module. Reads are allowed;
-  // WRITES are not — enforced by the separate "reads only" mutation scan below.
+  // Forbidden: the money ENGINE must never be re-implemented inside /eat-next.
+  // NOTE (Agent 130, brick 2a): `@/lib/prisma` is NO LONGER forbidden — the navigation screens READ
+  // real restaurants/menus via a read-only data module (reads allowed, writes not — see the mutation
+  // scan below).
+  // NOTE (Agent 134, brick 2d): `/api/orders` + `/pay` are NO LONGER forbidden — the checkout now
+  // CALLS those PUBLIC routes (byte-identical, server is the money authority). What stays forbidden:
+  // importing a money LIB or the webhook (no client-side money RECOMPUTE; the engine is reused, never
+  // forked). consumerId/total/discount are server-set — verified by the order-body unit test.
   const FORBIDDEN = [
-    /api\/orders/, /\/pay\b/, /webhooks\/stripe/,
+    /webhooks\/stripe/,
     /lib\/commission/, /lib\/ledger/, /lib\/stripe/, /lib\/loyalty/, /lib\/promotions/, /lib\/pricing/,
     /computeApplicationFee/, /recordLedgerEntry/, /createTicketPayment/,
   ]
@@ -88,13 +92,15 @@ describe('(b) money isolation — wireframes never touch the money engine', () =
     expect(offenders).toEqual([])
   })
 
-  it('no wireframe file does a fetch() to an /api/orders or pay endpoint', () => {
-    const offenders: string[] = []
-    for (const f of files) {
-      const src = readFileSync(f, 'utf8')
-      if (/fetch\(\s*['"`][^'"`]*\/api\/(orders|.*pay)/.test(src)) offenders.push(f)
-    }
-    expect(offenders).toEqual([])
+  // (Agent 134, brick 2d) The checkout now CALLS /api/orders + /pay (byte-identical routes), but its
+  // NAVIGATION must stay inside the redesign: it goes to its OWN /eat-next/track/[orderId], never to
+  // /eat or the API's trackingUrl (which points at /eat). Every router.push target in the checkout
+  // must start with '/eat-next'.
+  it('checkout navigations stay within /eat-next (never /eat or an external trackingUrl)', () => {
+    const src = stripComments(readFileSync(join(process.cwd(), 'app/[locale]/eat-next/checkout/page.tsx'), 'utf8'))
+    const targets = Array.from(src.matchAll(/router\.push\(\s*[`'"]([^`'"$]*)/g), (m) => m[1])
+    expect(targets.length).toBeGreaterThan(0)
+    for (const t of targets) expect(t.startsWith('/eat-next')).toBe(true)
   })
 
   // READ-ONLY (Agent 130): the data layer may READ Prisma but must never MUTATE. No file in the
@@ -110,11 +116,4 @@ describe('(b) money isolation — wireframes never touch the money engine', () =
     expect(offenders).toEqual([])
   })
 
-  // The Stellar-dressed checkout (Agent 129) is STILL a mock: its only navigation target
-  // is the tracking screen — it never confirms an order via any money route.
-  it('checkout navigates ONLY to /eat-next/track (still a mock, not wired)', () => {
-    const src = stripComments(readFileSync(join(process.cwd(), 'app/[locale]/eat-next/checkout/page.tsx'), 'utf8'))
-    const targets = Array.from(src.matchAll(/router\.push\(\s*['"`]([^'"`]+)['"`]/g), (m) => m[1])
-    expect(targets).toEqual(['/eat-next/track'])
-  })
 })

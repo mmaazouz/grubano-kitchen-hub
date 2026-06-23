@@ -5,24 +5,30 @@ import { signIn, getSession } from 'next-auth/react'
 import { useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { StellarCard, StellarButton, StellarInput, StellarPriceTag } from '@/components/stellar'
+import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import { useEatNextCart } from '../cart-store'
+import { buildOrderBody } from '../checkout-order'
 
-// SCREEN 6/7 — CHECKOUT, account-AT-payment AUTH part (Agent 132, brick 2c). Bataille 1 (kill the
-// account wall): email only (NO password) → provisioning + mint (existing /api/auth/magic-link) →
-// in-page 6-digit OTP → signIn → "Connecté ✓". Fallback magic-link when AUTH_EMAIL_OTP_ENABLED is
-// OFF. ⚠️ STOPS AT "connected": the recap + "Confirmer" STILL navigate to /eat-next/track only —
-// NO /api/orders, NO /pay, NO money route is called (the order/payment wiring is brick 2d). Uses the
-// standalone next-auth/react signIn + getSession (no SessionProvider needed). Stellar tokens, mock cart.
+// SCREEN 6/7 — CHECKOUT, REAL order + payment (Agent 132 auth + 133 cart + 134 money). 🔴 MONEY ZONE.
+// Flow once connected: address → POST /api/orders (REUSED byte-identical) → 201 {orderId, total
+// (SERVER authority)} → POST /api/orders/[id]/pay (REUSED) → {clientSecret, publishableKey} →
+// StripeTicketPayment (REUSED Elements) → onPaid → clear cart → /eat-next/track/[orderId] (real
+// status). The client sends NO amount (server is the authority); consumerId is server-set. Anti-
+// double-submit guard. Errors are graceful (cart never lost on failure; never double-charge). The
+// money engine (orders/pay/webhook/commission/ledger/pricing/stripe) + StripeTicketPayment are
+// REUSED byte-identical — NOT modified, NOT forked. Stellar tokens.
 type AuthState = 'init' | 'email' | 'code' | 'linkSent' | 'connected'
+type PayInit = { clientSecret: string; publishableKey: string; amount: number; currency: string }
 const isEmail = (s: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)
 
 export default function EatNextCheckout() {
   const router = useRouter()
   const locale = useLocale()
-  // Real cart (Agent 133). Total is a NAÏVE display sum — NO money route is called (brick 2d/2e).
-  const { cart, subtotalEur } = useEatNextCart()
-  const total = subtotalEur
+  // Real cart (Agent 133). subtotalEur is a NAÏVE estimate; the SERVER total (from the 201) is the
+  // authority once the order is created.
+  const { cart, subtotalEur, clearCart } = useEatNextCart()
 
+  // ── Auth (Agent 132, UNCHANGED) ──
   const [authState, setAuthState] = useState<AuthState>('init')
   const [email, setEmail] = useState('')
   const [connectedEmail, setConnectedEmail] = useState('')
@@ -30,10 +36,16 @@ export default function EatNextCheckout() {
   const [sending, setSending] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
-  const [method, setMethod] = useState<'apple' | 'google' | 'card'>('apple')
 
-  // Already signed in (e.g. returning consumer) → skip straight to "connected". Uses the
-  // standalone getSession() (a fetch to /api/auth/session) so no SessionProvider is required.
+  // ── Order + payment (Agent 134) ──
+  const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [fulfillmentType, setFulfillmentType] = useState<'delivery' | 'pickup'>('delivery')
+  const [submitting, setSubmitting] = useState(false) // anti-double-submit guard
+  const [orderId, setOrderId] = useState<string | null>(null)
+  const [serverTotal, setServerTotal] = useState<number | null>(null)
+  const [payInit, setPayInit] = useState<PayInit | null>(null)
+  const [orderError, setOrderError] = useState<string | null>(null)
+
   useEffect(() => {
     let cancelled = false
     getSession()
@@ -47,10 +59,7 @@ export default function EatNextCheckout() {
     return () => { cancelled = true }
   }, [])
 
-  // ⚠️ MOCK — pure navigation. NO money route is ever called (brick 2d wires the real order/pay).
-  const confirm = () => router.push('/eat-next/track')
-
-  // Step 1: provision a passwordless consumer (generic) + trigger the EXISTING mint.
+  // ── Auth handlers (Agent 132, UNCHANGED) ──
   async function sendCode(e: React.FormEvent) {
     e.preventDefault()
     const addr = email.trim().toLowerCase()
@@ -58,14 +67,11 @@ export default function EatNextCheckout() {
     setSending(true)
     setAuthError(null)
     try {
-      // Ensure the account exists so the (unchanged) mint can send a code/link. Generic — never
-      // reveals whether the email already existed.
       await fetch('/api/eat-next/consumer-provision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: addr }),
       }).catch(() => {})
-      // The EXISTING mint (byte-identical): sends code + link in one email and reports otpEnabled.
       const res = await fetch('/api/auth/magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -74,13 +80,12 @@ export default function EatNextCheckout() {
       const data = await res.json().catch(() => null)
       setAuthState((data as { otpEnabled?: boolean } | null)?.otpEnabled ? 'code' : 'linkSent')
     } catch {
-      setAuthState('linkSent') // generic by design — never reveal account state
+      setAuthState('linkSent')
     } finally {
       setSending(false)
     }
   }
 
-  // Step 2: consume the 6-digit code via the EXISTING credentials provider → session posed.
   async function verifyCode(e: React.FormEvent) {
     e.preventDefault()
     const c = code.trim()
@@ -103,11 +108,60 @@ export default function EatNextCheckout() {
     }
   }
 
+  // ── Order + pay (Agent 134) — REUSES the byte-identical money routes ──
+  async function handlePay() {
+    if (submitting || authState !== 'connected') return
+    if (!cart || cart.items.length === 0) { setOrderError('Votre panier est vide.'); return }
+    if (deliveryAddress.trim().length < 5) { setOrderError('Adresse requise (5 caractères minimum).'); return }
+    setSubmitting(true) // guard → no second POST /api/orders while in-flight
+    setOrderError(null)
+    try {
+      // 1) Create the order ONCE (re-use the existing orderId on a payment retry → no double order).
+      let oid = orderId
+      if (!oid) {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildOrderBody(cart, { deliveryAddress: deliveryAddress.trim(), fulfillmentType })),
+        })
+        if (res.status === 401) { setAuthState('email'); setOrderError('Session expirée — reconnectez-vous (votre panier est conservé).'); return }
+        const data = await res.json().catch(() => null)
+        if (!res.ok || !data?.orderId) { setOrderError((data?.error as string) || 'Commande impossible. Réessayez.'); return }
+        oid = data.orderId as string
+        setOrderId(oid)
+        if (typeof data.total === 'number') setServerTotal(data.total) // SERVER total = authority
+      }
+      // 2) Init the payment (server reads order.total — client sends nothing).
+      const payRes = await fetch(`/api/orders/${oid}/pay`, { method: 'POST' })
+      if (payRes.status === 409) { clearCart(); router.push(`/eat-next/track/${oid}`); return } // already paid
+      if (payRes.status === 401) { setAuthState('email'); setOrderError('Session expirée — reconnectez-vous.'); return }
+      const payData = await payRes.json().catch(() => null)
+      if (!payRes.ok || !payData?.clientSecret || !payData?.publishableKey) {
+        setOrderError((payData?.error as string) || 'Paiement indisponible. Réessayez.')
+        return
+      }
+      setPayInit({ clientSecret: payData.clientSecret, publishableKey: payData.publishableKey, amount: payData.amount, currency: payData.currency })
+    } catch {
+      setOrderError('Erreur réseau. Réessayez.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Payment confirmed by Stripe → clear the cart (ONLY now) and go to the REAL tracking screen.
+  function onPaid() {
+    clearCart()
+    if (orderId) router.push(`/eat-next/track/${orderId}`)
+  }
+
+  const displayTotal = serverTotal ?? subtotalEur
+  const cartEmpty = !cart || cart.items.length === 0
+
   return (
     <div className="space-y-5 p-4">
       <h1 className="font-stellar-display text-xl font-extrabold text-stellar-fg">Paiement</h1>
 
-      {/* Bataille 1 — account AT payment: email → code → connected, NO password ever. */}
+      {/* Bataille 1 — account AT payment: email → code → connected, NO password ever (Agent 132). */}
       <StellarCard elevation="soft" padding="md" className="space-y-3">
         {authState === 'init' && <p className="text-sm text-stellar-muted-fg">Chargement…</p>}
 
@@ -164,34 +218,81 @@ export default function EatNextCheckout() {
         )}
       </StellarCard>
 
-      {/* Adresse + restaurant (réassurance amont). */}
-      <StellarCard elevation="soft" padding="md" className="space-y-1 text-sm text-stellar-fg">
-        <div className="flex justify-between"><span>📍 Livraison</span><span className="font-medium">12 rue de la République</span></div>
-        {cart?.restaurantName && <div className="flex justify-between"><span>🍽 Restaurant</span><span className="font-medium">{cart.restaurantName}</span></div>}
-      </StellarCard>
+      {/* Empty-cart guard (connected but nothing to pay). */}
+      {authState === 'connected' && cartEmpty && (
+        <StellarCard elevation="soft" padding="md" className="space-y-3 text-center">
+          <p className="text-sm text-stellar-muted-fg">Votre panier est vide.</p>
+          <StellarButton variant="primary" onClick={() => router.push('/eat-next')}>Découvrir des restaurants</StellarButton>
+        </StellarCard>
+      )}
 
-      {/* Bataille 1 — 1-tap WALLET primary, card fallback. (Placeholders — no real SDK; brick 2d.) */}
-      <section className="space-y-2">
-        <p className="font-stellar-display text-sm font-semibold text-stellar-fg">Payer en 1 geste</p>
-        <button onClick={() => setMethod('apple')} className={`flex w-full items-center justify-center gap-2 rounded-stellar-lg border py-3 font-stellar-display text-sm font-semibold ${method === 'apple' ? 'border-stellar-primary bg-stellar-primary text-stellar-primary-fg' : 'border-stellar-border bg-stellar-card text-stellar-fg'}`}>  Apple Pay <span className="text-xs font-normal opacity-70">(maquette)</span></button>
-        <button onClick={() => setMethod('google')} className={`flex w-full items-center justify-center gap-2 rounded-stellar-lg border py-3 font-stellar-display text-sm font-semibold ${method === 'google' ? 'border-stellar-primary bg-stellar-primary text-stellar-primary-fg' : 'border-stellar-border bg-stellar-card text-stellar-fg'}`}>  G Pay <span className="text-xs font-normal opacity-70">(maquette)</span></button>
-        <button onClick={() => setMethod('card')} className={`w-full rounded-stellar-lg border py-2.5 font-stellar-display text-sm ${method === 'card' ? 'border-stellar-primary bg-stellar-primary-soft text-stellar-accent-fg' : 'border-stellar-border bg-stellar-card text-stellar-muted-fg'}`}>  Payer par carte (repli)</button>
-      </section>
+      {/* PAY STAGE — Stripe Elements (REUSED byte-identical). Card form for the created order. */}
+      {authState === 'connected' && !cartEmpty && payInit && (
+        <StellarCard elevation="soft" padding="md" className="space-y-2">
+          <p className="font-stellar-display text-sm font-semibold text-stellar-fg">Paiement par carte</p>
+          <StripeTicketPayment
+            clientSecret={payInit.clientSecret}
+            publishableKey={payInit.publishableKey}
+            amount={payInit.amount}
+            currency={payInit.currency}
+            onPaid={onPaid}
+          />
+        </StellarCard>
+      )}
 
-      {/* Bataille 2 — transparent recap. Total is an ESTIMATE; final total + fees = at payment (2d/2e). */}
-      <StellarCard elevation="soft" padding="md" className="space-y-1 text-sm">
-        <div className="flex justify-between text-stellar-muted-fg"><span>Sous-total</span><StellarPriceTag amountEur={subtotalEur} size="sm" /></div>
-        <div className="flex justify-between text-stellar-muted-fg"><span>Frais de livraison</span><span className="text-xs">calculés au paiement</span></div>
-        <div className="mt-1 flex items-center justify-between border-t border-stellar-border pt-2 font-stellar-display text-base font-bold text-stellar-fg"><span>Total estimé</span><StellarPriceTag amountEur={total} size="lg" /></div>
-      </StellarCard>
+      {/* COLLECT STAGE — address + fulfillment + "Payer par carte". Hidden once the card form is up. */}
+      {authState === 'connected' && !cartEmpty && !payInit && (
+        <>
+          <StellarCard elevation="soft" padding="md" className="space-y-3">
+            <div className="flex gap-2">
+              {(['delivery', 'pickup'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFulfillmentType(f)}
+                  className={`flex-1 rounded-stellar-md border px-3 py-2 font-stellar-display text-sm ${fulfillmentType === f ? 'border-stellar-primary bg-stellar-primary text-stellar-primary-fg' : 'border-stellar-border bg-stellar-card text-stellar-fg'}`}
+                >
+                  {f === 'delivery' ? 'Livraison' : 'À emporter'}
+                </button>
+              ))}
+            </div>
+            <StellarInput
+              type="text"
+              label={fulfillmentType === 'delivery' ? 'Adresse de livraison' : 'Adresse (facturation)'}
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
+              placeholder="12 rue de la République, Lyon"
+            />
+          </StellarCard>
 
-      {/* STOPS AT "connected": Confirmer remains a MOCK → /eat-next/track. Enabled once connected. */}
-      <StellarButton variant="primary" fullWidth onClick={confirm} disabled={authState !== 'connected'}>
-        Confirmer la commande · {total.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
-      </StellarButton>
-      <p className="text-center text-xs text-stellar-muted-fg">
-        {authState === 'connected' ? 'Maquette — aucun paiement réel n’est effectué (branchement à venir).' : 'Connectez-vous par email pour continuer.'}
-      </p>
+          {/* Wallet 1-tap — DEFERRED (next brick). Disabled placeholders; only the card path works in 2d. */}
+          <section className="space-y-2">
+            <p className="font-stellar-display text-sm font-semibold text-stellar-muted-fg">Payer en 1 geste</p>
+            <button disabled className="flex w-full items-center justify-center gap-2 rounded-stellar-lg border border-stellar-border bg-stellar-card py-3 font-stellar-display text-sm font-semibold text-stellar-muted-fg opacity-60">  Apple Pay / G Pay <span className="text-xs font-normal">(bientôt)</span></button>
+          </section>
+
+          {orderError && <p className="rounded-stellar-md border border-stellar-border bg-stellar-surface-1 px-3 py-2 text-sm text-stellar-fg" role="alert">{orderError}</p>}
+
+          <StellarButton variant="primary" fullWidth onClick={handlePay} disabled={submitting || deliveryAddress.trim().length < 5}>
+            {submitting ? 'Traitement…' : `Payer par carte · ${displayTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}`}
+          </StellarButton>
+          <p className="text-center text-xs text-stellar-muted-fg">Le montant final est calculé et confirmé par le serveur. Paiement sécurisé Stripe (mode test).</p>
+        </>
+      )}
+
+      {/* Recap (estimate until the order is created; then the SERVER total). */}
+      {!cartEmpty && (
+        <StellarCard elevation="soft" padding="md" className="space-y-1 text-sm">
+          <div className="flex justify-between text-stellar-muted-fg"><span>Sous-total</span><StellarPriceTag amountEur={subtotalEur} size="sm" /></div>
+          <div className="mt-1 flex items-center justify-between border-t border-stellar-border pt-2 font-stellar-display text-base font-bold text-stellar-fg">
+            <span>{serverTotal !== null ? 'Total à payer' : 'Total estimé'}</span><StellarPriceTag amountEur={displayTotal} size="lg" />
+          </div>
+        </StellarCard>
+      )}
+
+      {authState !== 'connected' && authState !== 'init' && (
+        <p className="text-center text-xs text-stellar-muted-fg">Connectez-vous par email pour payer.</p>
+      )}
     </div>
   )
 }
