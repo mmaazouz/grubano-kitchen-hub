@@ -118,4 +118,11 @@ describe('(b) money isolation — wireframes never touch the money engine', () =
     expect(offenders).toEqual([])
   })
 
+  // (Agent 136) The track screen MIRRORS /eat's webhook-race handling by POSTing the EXISTING
+  // (byte-identical) /api/orders/[id]/confirm route — it only CALLS it (no money recompute, no write).
+  it('track/[orderId] POSTs the confirm route (webhook-race email mirror of /eat)', () => {
+    const src = readFileSync(join(process.cwd(), 'app/[locale]/eat-next/track/[orderId]/page.tsx'), 'utf8')
+    expect(/fetch\(`\/api\/orders\/\$\{orderId\}\/confirm`,\s*\{\s*method:\s*'POST'\s*\}\)/.test(src)).toBe(true)
+  })
+
 })

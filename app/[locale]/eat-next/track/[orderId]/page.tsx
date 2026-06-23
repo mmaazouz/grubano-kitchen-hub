@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Link } from '@/navigation'
 import { StellarCard, StellarPriceTag } from '@/components/stellar'
@@ -53,6 +53,31 @@ export default function EatNextTrackOrder({ params }: { params: { orderId: strin
     const poll = setInterval(fetchOrder, 15_000) // mirror /eat/track (read-only polling)
     return () => clearInterval(poll)
   }, [fetchOrder])
+
+  // ── Server-side confirmation email (webhook race → bounded retries) ──────────
+  // Byte-identical MIRROR of /eat/checkout's post-payment confirm-poll: POST the EXISTING (unchanged)
+  // /api/orders/[id]/confirm a few times so the confirmation EMAIL goes out fast once the webhook has
+  // flipped Order.paymentStatus to 'paid'. The route is owner-only + idempotent server-side and NEVER
+  // touches Stripe/the webhook/the money math — this only CALLS it. Best-effort: the webhook stays the
+  // source of truth, so any failure here is harmless (it just means the email waits for the webhook).
+  const confirmFiredRef = useRef(false)
+  useEffect(() => {
+    if (confirmFiredRef.current || !orderId) return
+    confirmFiredRef.current = true
+    let cancelled = false
+    ;(async () => {
+      for (let attempt = 0; attempt < 5 && !cancelled; attempt++) {
+        try {
+          const r = await fetch(`/api/orders/${orderId}/confirm`, { method: 'POST' })
+          if (!r.ok) break
+          const d = (await r.json()) as { paymentStatus: string | null; emailSent: boolean }
+          if (d.paymentStatus === 'paid') break // email sent (or already sent) — done
+        } catch { /* best-effort — the webhook is the source of truth */ }
+        await new Promise((res) => setTimeout(res, 2000))
+      }
+    })()
+    return () => { cancelled = true }
+  }, [orderId])
 
   if (loading && !order) {
     return <div className="p-6 text-center text-sm text-stellar-muted-fg">{t('loading')}</div>

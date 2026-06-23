@@ -114,17 +114,24 @@ export async function getRestaurant(id: string): Promise<EatNextRestaurantDetail
   }
 }
 
-// Single dish by id — surfaced only when its menu item is available. Also returns its parent
-// restaurant (id + name, read-only via brand→restaurant) so the cart can scope mono-restaurant.
+// Single dish by id — surfaced only when (a) the menu item is available AND (b) its parent
+// restaurant exists and is NOT archived. This ALIGNS the dish's direct-URL visibility with
+// getRestaurant's gate (archivedAt:null), so a dish whose restaurant is archived is no longer
+// reachable via /eat-next/dish/[id]. Read-only (findFirst). Also returns the parent restaurant
+// (id + name, via brand→restaurant) so the cart can scope mono-restaurant.
 export async function getDish(id: string): Promise<EatNextDish | null> {
-  const d = await prisma.menuItem.findUnique({
-    where: { id },
+  const d = await prisma.menuItem.findFirst({
+    where: {
+      id,
+      available: true,
+      brand: { restaurant: { archivedAt: null } }, // parent restaurant must exist + not be archived
+    },
     select: {
-      id: true, name: true, description: true, price: true, category: true, available: true,
+      id: true, name: true, description: true, price: true, category: true,
       brand: { select: { restaurant: { select: { id: true, name: true } } } },
     },
   })
-  if (!d || !d.available) return null
+  if (!d) return null
   return {
     id: d.id,
     name: d.name,

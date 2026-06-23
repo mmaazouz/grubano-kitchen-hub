@@ -1,18 +1,17 @@
-import { getTranslations } from 'next-intl/server'
+import { notFound } from 'next/navigation'
 import { getDish } from '../../data'
 import DishClient from './DishClient'
 
-// SCREEN 4/7 — DISH detail (Agent 127 → Agent 129 Stellar → Agent 130 real data). Loads the REAL
-// menu item by id (read-only, available-only) on the server, then hands it to a small client child
-// for the qty stepper + add-to-cart navigation. No money, no write.
+// SCREEN 4/7 — DISH detail (Agent 127 → Agent 130 real data → Agent 136 hardening). Loads the REAL
+// menu item by id (read-only) on the server, then hands it to a small client child for the qty
+// stepper + add-to-cart navigation. notFound() when the dish is not visible (unavailable, or its
+// parent restaurant is archived) — consistent with the restaurant page's notFound() gate. No money,
+// no write.
 export const dynamic = 'force-dynamic'
 
 export default async function EatNextDishPage({ params }: { params: { id: string } }) {
-  const t = await getTranslations('eatNext.dish')
   const dish = await getDish(params.id)
-  if (!dish) {
-    return <div className="p-4 text-stellar-muted-fg">{t('unavailable')}</div>
-  }
+  if (!dish) notFound()
   return (
     <DishClient
       itemId={dish.id}
