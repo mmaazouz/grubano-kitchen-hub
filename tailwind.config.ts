@@ -90,6 +90,43 @@ const config: Config = {
           danger:         t.danger,
           'danger-bg':    t.dangerTint,
         },
+
+        // ── Stellar Unity — consumer redesign tokens (Agent 128) ──────────
+        // ADDITIVE namespace. Maps to the `--st-*` CSS variables defined SCOPED
+        // under `.grubano-v2` (app/stellar-theme.css), so these classes only
+        // resolve inside that wrapper and NEVER affect the existing app.
+        stellar: {
+          bg:              'var(--st-background)',
+          fg:              'var(--st-foreground)',
+          ink:             'var(--st-ink)',
+          'surface-1':     'var(--st-surface-1)',
+          'surface-2':     'var(--st-surface-2)',
+          card:            'var(--st-card)',
+          'card-fg':       'var(--st-card-foreground)',
+          primary:         'var(--st-primary)',
+          'primary-fg':    'var(--st-primary-foreground)',
+          'primary-soft':  'var(--st-primary-soft)',
+          secondary:       'var(--st-secondary)',
+          'secondary-fg':  'var(--st-secondary-foreground)',
+          muted:           'var(--st-muted)',
+          'muted-fg':      'var(--st-muted-foreground)',
+          accent:          'var(--st-accent)',
+          'accent-fg':     'var(--st-accent-foreground)',
+          destructive:     'var(--st-destructive)',
+          'destructive-fg':'var(--st-destructive-foreground)',
+          success:         'var(--st-success)',
+          warning:         'var(--st-warning)',
+          'warning-soft':  'var(--st-warning-soft)',
+          info:            'var(--st-info)',
+          'info-soft':     'var(--st-info-soft)',
+          ai:              'var(--st-ai)',
+          'ai-fg':         'var(--st-ai-foreground)',
+          'ai-soft':       'var(--st-ai-soft)',
+          'destructive-soft': 'var(--st-destructive-soft)',
+          border:          'var(--st-border)',
+          input:           'var(--st-input)',
+          ring:            'var(--st-ring)',
+        },
       },
 
       // ── Shadows ────────────────────────────────────────────────────────
@@ -103,6 +140,11 @@ const config: Config = {
         'bolt-card': shadows.md,
         'bolt-soft': shadows.md,
         'bolt-cta':  shadows.cta,
+        // Stellar Unity (Agent 128) — additive; values from --st-* (scoped).
+        'stellar-soft': 'var(--st-shadow-soft)',
+        'stellar-elev': 'var(--st-shadow-elev)',
+        'stellar-glow': 'var(--st-shadow-glow)',
+        'stellar-ai':   'var(--st-shadow-ai)',
       },
 
       // ── Border radius ──────────────────────────────────────────────────
@@ -118,12 +160,22 @@ const config: Config = {
         'grubano-xl':   radii.xl,
         'grubano-2xl':  radii['2xl'],
         'grubano-pill': radii.pill,
+        // Stellar Unity (Agent 128) — additive.
+        'stellar-sm':  'var(--st-radius-sm)',
+        'stellar-md':  'var(--st-radius-md)',
+        'stellar-lg':  'var(--st-radius-lg)',
+        'stellar-xl':  'var(--st-radius-xl)',
+        'stellar-2xl': 'var(--st-radius-2xl)',
+        'stellar-3xl': 'var(--st-radius-3xl)',
       },
 
       // ── Typography ─────────────────────────────────────────────────────
       fontFamily: {
         sans:    ['Inter', 'system-ui', 'sans-serif'],
         display: ['Space Grotesk', 'system-ui', 'sans-serif'],
+        // Stellar Unity (Agent 128) — additive; used inside .grubano-v2 only.
+        'stellar-display': ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        'stellar-mono':    ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
 
       fontSize: {
