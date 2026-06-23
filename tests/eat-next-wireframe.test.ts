@@ -93,4 +93,12 @@ describe('(b) money isolation — wireframes never touch the money engine', () =
     }
     expect(offenders).toEqual([])
   })
+
+  // The Stellar-dressed checkout (Agent 129) is STILL a mock: its only navigation target
+  // is the tracking screen — it never confirms an order via any money route.
+  it('checkout navigates ONLY to /eat-next/track (still a mock, not wired)', () => {
+    const src = stripComments(readFileSync(join(process.cwd(), 'app/[locale]/eat-next/checkout/page.tsx'), 'utf8'))
+    const targets = [...src.matchAll(/router\.push\(\s*['"`]([^'"`]+)['"`]/g)].map((m) => m[1])
+    expect(targets).toEqual(['/eat-next/track'])
+  })
 })

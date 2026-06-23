@@ -1,9 +1,9 @@
 import { Link } from '@/navigation'
-import { WF_CART, eur } from '../mock'
+import { StellarCard, StellarPriceTag } from '@/components/stellar'
+import { WF_CART } from '../mock'
 
-// WIREFRAME 7/7 — SUIVI. Reached from the checkout mock ("Confirmer" → here). Shows the
-// "commande passée" confirmation + a status timeline (reçue → préparation → prête → en
-// route → livrée) + ETA + a MOCK courier card. Reassurance. Server, static mock, no money.
+// SCREEN 7/7 — SUIVI (Agent 127 → Agent 129 Stellar). Reached from the checkout mock. Shows the
+// confirmation + a status timeline + ETA + a mock courier card. Stellar tokens, static mock, no money.
 export const dynamic = 'force-dynamic'
 
 const STEPS = ['Commande reçue', 'En préparation', 'Prête', 'En route', 'Livrée'] as const
@@ -15,12 +15,12 @@ export default function EatNextTrack() {
 
   return (
     <div className="space-y-5 p-4">
-      <div className="rounded-xl border border-neutral-300 bg-neutral-50 p-4 text-center">
-        <p className="text-2xl" aria-hidden>✅</p>
-        <p className="font-bold text-neutral-900">Commande passée&nbsp;!</p>
-        <p className="text-sm text-neutral-600">{r.name} · {eur(total)} · arrivée estimée dans {r.etaMin} min</p>
-        <p className="mt-1 text-xs text-neutral-400">Référence GRB-WF-0000 (maquette)</p>
-      </div>
+      <StellarCard elevation="elev" padding="lg" className="bg-stellar-primary-soft text-center">
+        <p className="text-3xl" aria-hidden>✅</p>
+        <p className="font-stellar-display text-lg font-extrabold text-stellar-accent-fg">Commande passée&nbsp;!</p>
+        <p className="text-sm text-stellar-fg">{r.name} · <StellarPriceTag amountEur={total} size="sm" /> · arrivée estimée dans {r.etaMin} min</p>
+        <p className="mt-1 text-xs text-stellar-muted-fg">Référence GRB-WF-0000 (maquette)</p>
+      </StellarCard>
 
       <ol className="space-y-3">
         {STEPS.map((s, i) => {
@@ -28,28 +28,28 @@ export default function EatNextTrack() {
           const active = i === CURRENT
           return (
             <li key={s} className="flex items-center gap-3">
-              <span className={`grid h-7 w-7 place-items-center rounded-full text-xs ${done ? 'bg-neutral-800 text-white' : active ? 'border-2 border-neutral-800 text-neutral-800' : 'border border-neutral-300 text-neutral-400'}`}>
+              <span className={`grid h-7 w-7 place-items-center rounded-full font-stellar-mono text-xs ${done ? 'bg-stellar-primary text-stellar-primary-fg' : active ? 'border-2 border-stellar-primary text-stellar-primary' : 'border border-stellar-border text-stellar-muted-fg'}`}>
                 {done ? '✓' : i + 1}
               </span>
-              <span className={active ? 'font-semibold text-neutral-900' : done ? 'text-neutral-700' : 'text-neutral-400'}>{s}</span>
+              <span className={`font-stellar-display ${active ? 'font-semibold text-stellar-fg' : done ? 'text-stellar-fg' : 'text-stellar-muted-fg'}`}>{s}</span>
             </li>
           )
         })}
       </ol>
 
       {/* Mock courier reassurance card. */}
-      <div className="flex items-center gap-3 rounded-xl border border-neutral-300 bg-white p-3">
-        <div className="h-12 w-12 rounded-full bg-neutral-200" aria-hidden />
+      <StellarCard elevation="soft" padding="md" className="flex items-center gap-3">
+        <div className="h-12 w-12 rounded-full bg-stellar-surface-2" aria-hidden />
         <div className="flex-1">
-          <p className="text-sm font-semibold text-neutral-900">Votre livreur (maquette)</p>
-          <p className="text-xs text-neutral-500">En route vers le restaurant · vélo</p>
+          <p className="font-stellar-display text-sm font-semibold text-stellar-fg">Votre livreur (maquette)</p>
+          <p className="text-xs text-stellar-muted-fg">En route vers le restaurant · vélo</p>
         </div>
-        <span className="rounded-lg border border-neutral-300 px-3 py-1 text-sm text-neutral-700">Appeler</span>
-      </div>
+        <span className="rounded-stellar-md border border-stellar-border px-3 py-1 text-sm text-stellar-fg">Appeler</span>
+      </StellarCard>
 
-      <div className="h-40 w-full rounded-xl bg-neutral-200" aria-hidden />
+      <div className="h-40 w-full rounded-stellar-2xl bg-stellar-surface-2" aria-hidden />
 
-      <Link href="/eat-next" className="block rounded-xl border border-neutral-800 py-3 text-center font-semibold text-neutral-800">
+      <Link href="/eat-next" className="block rounded-stellar-lg border border-stellar-primary py-3 text-center font-stellar-display font-semibold text-stellar-primary">
         Retour à l’accueil
       </Link>
     </div>
