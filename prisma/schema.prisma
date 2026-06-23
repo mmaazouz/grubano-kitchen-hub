@@ -809,8 +809,64 @@ model LogisticsProfile {
   stripeAccountId    String?                           // acct_… (Express, FR)
   payoutStatus       String?                           // none | pending | active | restricted (null = none)
   stripeOnboardedAt  DateTime?                         // first time the account became 'active'
+  // ── Brique 1 logistique (Agent 122, ADDITIVE) — missions ACCEPTED by this courier.
+  // Inverse side of Mission.courier; gated LOGISTICS_MISSIONS_ENABLED. Nullable list →
+  // ZERO impact on the existing profile / waitlist / Connect behaviour.
+  missions           Mission[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+// ── Mission (logistics delivery to perform — Brique 1/4, Agent 122) ────────────
+//
+// ADDITIVE foundation for the independent-courier fleet. A Mission is a delivery to
+// perform; it does NOT belong to the payment rail (HELD pending legal review) — there
+// is NO commission, NO ledger, NO payout, NO Stripe link here. priceCents is INERT
+// DATA (a proposed amount) with NO money logic attached.
+//
+// Two cases, by DESIGN (audit Agent 121, validated):
+//   (a) B2C delivery tied to a consumer Order → orderId is set.
+//   (b) Autonomous B2B / supplier mission      → orderId is null.
+// courierId is NULL until a courier FREELY ACCEPTS (brique 2) — there is NO forced
+// assignment encoded here. Lifecycle is a String state machine (codebase convention,
+// no native enum — see lib/missions.ts): offered → accepted → picked_up → delivered,
+// with declined | expired | cancelled as NEUTRAL terminals (NO penalty/score is ever
+// stored — courier autonomy, doc §8). Gated by LOGISTICS_MISSIONS_ENABLED (default OFF).
+model Mission {
+  id             String   @id @default(cuid())
+  // (a) optional link to a consumer Order (B2C). NULL for an autonomous B2B mission.
+  orderId        String?
+  order          Order?   @relation(fields: [orderId], references: [id])
+  // The courier who ACCEPTED (brique 2, FREE acceptance). NULL until accepted — no
+  // forced assignment. FK → LogisticsProfile (the courier's business profile).
+  courierId      String?
+  courier        LogisticsProfile? @relation(fields: [courierId], references: [id])
+  // Mission kind — mirrors the LogisticsProfile.missionTypes taxonomy.
+  type           String   @default("repas")  // repas | produits_fournisseurs | b2b | froid
+  pickupAddress  String
+  dropoffAddress String
+  zone           String?
+  // Lifecycle state (String — codebase convention, no native enum). Transitions are
+  // validated by the PURE helpers in lib/missions.ts.
+  status         String   @default("offered") // offered|accepted|picked_up|delivered|declined|expired|cancelled
+  // Proposed price in CENTS — INERT DATA ONLY. NO money logic / commission / ledger /
+  // payout in this brick (payment rail = HELD). Snapshot = stable offer context (JSON).
+  priceCents     Int      @default(0)
+  snapshot       Json     @default("{}")
+  // Lifecycle timestamps (nullable; stamped as the mission moves through its states).
+  offeredAt      DateTime @default(now())
+  acceptedAt     DateTime?
+  pickedUpAt     DateTime?
+  deliveredAt    DateTime?
+  declinedAt     DateTime?
+  expiredAt      DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status])
+  @@index([orderId])
+  @@index([courierId])
 }
 
 // ── PrestataireProfile (SERVICES marketplace — P1 foundation, Agent 74) ────────
@@ -1863,6 +1919,11 @@ model Order {
   // affiliation rail (that's grubano_ref / ReferralOrder, influencer role).
   // Nullable → zero backfill, existing rows untouched.
   chefSlug        String?
+  // ── Brique 1 logistique (Agent 122, ADDITIVE) — delivery missions for this consumer
+  // order. Inverse side of Mission.order; gated LOGISTICS_MISSIONS_ENABLED. Nullable list
+  // → ZERO impact on Order behaviour (no money, no flow change). A B2C delivery order may
+  // have 0..n missions (re-offer on decline/expiry); a B2B mission carries no orderId.
+  deliveryMissions Mission[]
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
