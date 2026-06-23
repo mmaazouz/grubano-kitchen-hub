@@ -58,10 +58,13 @@ describe('(b) money isolation — wireframes never touch the money engine', () =
   for (const r of roots) walk(join(process.cwd(), r))
 
   // Forbidden: any money route or money lib (the engine is byte-identical + untouched).
+  // NOTE (Agent 130, brick 2a): `@/lib/prisma` is NO LONGER forbidden — the navigation
+  // screens now READ real restaurants/menus via a read-only data module. Reads are allowed;
+  // WRITES are not — enforced by the separate "reads only" mutation scan below.
   const FORBIDDEN = [
     /api\/orders/, /\/pay\b/, /webhooks\/stripe/,
     /lib\/commission/, /lib\/ledger/, /lib\/stripe/, /lib\/loyalty/, /lib\/promotions/, /lib\/pricing/,
-    /@\/lib\/prisma/, /computeApplicationFee/, /recordLedgerEntry/, /createTicketPayment/,
+    /computeApplicationFee/, /recordLedgerEntry/, /createTicketPayment/,
   ]
 
   it('collected the wireframe source files', () => {
@@ -94,11 +97,24 @@ describe('(b) money isolation — wireframes never touch the money engine', () =
     expect(offenders).toEqual([])
   })
 
+  // READ-ONLY (Agent 130): the data layer may READ Prisma but must never MUTATE. No file in the
+  // eat-next surface may call a Prisma write method or raw SQL — only findMany/findFirst/findUnique/
+  // count are allowed (comments stripped so prose mentioning a method does not trip the scan).
+  it('no eat-next file performs a Prisma mutation or raw SQL — reads only', () => {
+    const MUTATION = /\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(|\$(execute|query)Raw/
+    const offenders: string[] = []
+    for (const f of files) {
+      const code = stripComments(readFileSync(f, 'utf8'))
+      if (MUTATION.test(code)) offenders.push(f)
+    }
+    expect(offenders).toEqual([])
+  })
+
   // The Stellar-dressed checkout (Agent 129) is STILL a mock: its only navigation target
   // is the tracking screen — it never confirms an order via any money route.
   it('checkout navigates ONLY to /eat-next/track (still a mock, not wired)', () => {
     const src = stripComments(readFileSync(join(process.cwd(), 'app/[locale]/eat-next/checkout/page.tsx'), 'utf8'))
-    const targets = [...src.matchAll(/router\.push\(\s*['"`]([^'"`]+)['"`]/g)].map((m) => m[1])
+    const targets = Array.from(src.matchAll(/router\.push\(\s*['"`]([^'"`]+)['"`]/g), (m) => m[1])
     expect(targets).toEqual(['/eat-next/track'])
   })
 })
