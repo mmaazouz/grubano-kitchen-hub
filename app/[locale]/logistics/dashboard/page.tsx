@@ -7,9 +7,11 @@ import {
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isCourierActivationEnabled } from '@/lib/logistics-account'
+import { isMissionsEnabled } from '@/lib/missions'
 import { Link } from '@/navigation'
 import { Card, Badge, Button, EmptyState, type BadgeTone } from '@/components/design-system'
 import RoleSwitcher from '@/components/RoleSwitcher'
+import CourierMissions from '@/components/logistics/CourierMissions'
 
 // ── /logistics/dashboard — courier / logistics space shell (P1, Agent 17) ─────
 // Gated by middleware (logistics/admin), calqued 1:1 on /supplier/dashboard. A
@@ -78,6 +80,9 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
   // show the waitlist state instead of the generic pending banner + the "missions coming
   // soon" card (which would imply imminent active missions). No work is offered.
   const onWaitlist = profile?.status === 'pending' && !isCourierActivationEnabled()
+  // Brick 3 (Agent 124): the LIVE missions surface replaces the "coming soon" placeholder
+  // ONLY when LOGISTICS_MISSIONS_ENABLED is ON. OFF → the existing placeholder is byte-identical.
+  const missionsEnabled = isMissionsEnabled()
 
   const missions = profile ? asStringArray(profile.missionTypes) : []
   const vehicles = profile ? asStringArray(profile.vehicleTypes) : []
@@ -184,9 +189,13 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
               </Card>
             )}
 
-            {/* Missions — coming soon (no dispatch system yet). Hidden under the WAITLIST
-                regime: it would imply imminent active missions. */}
-            {!onWaitlist && (
+            {/* Missions. ON (LOGISTICS_MISSIONS_ENABLED) → the live offered-missions surface
+                (free accept/refuse, brick 3). OFF → the original "coming soon" placeholder
+                (byte-identical). Hidden under the WAITLIST regime either way: it would imply
+                imminent active missions. */}
+            {!onWaitlist && (missionsEnabled ? (
+              <CourierMissions />
+            ) : (
             <Card elevation="sm" padding="md">
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
@@ -203,7 +212,7 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
                 </div>
               </div>
             </Card>
-            )}
+            ))}
 
             {/* Read-only profile summary. */}
             <Card elevation="sm" padding="lg">
