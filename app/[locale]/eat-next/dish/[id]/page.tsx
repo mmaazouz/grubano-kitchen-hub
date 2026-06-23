@@ -11,5 +11,15 @@ export default async function EatNextDishPage({ params }: { params: { id: string
   if (!dish) {
     return <div className="p-4 text-stellar-muted-fg">Plat indisponible.</div>
   }
-  return <DishClient name={dish.name} description={dish.description} priceEur={dish.priceEur} category={dish.category} />
+  return (
+    <DishClient
+      itemId={dish.id}
+      name={dish.name}
+      description={dish.description}
+      priceEur={dish.priceEur}
+      category={dish.category}
+      restaurantId={dish.restaurantId}
+      restaurantName={dish.restaurantName}
+    />
+  )
 }

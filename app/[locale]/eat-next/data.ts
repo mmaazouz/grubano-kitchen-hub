@@ -30,6 +30,8 @@ export interface EatNextDish {
   description: string
   priceEur: number // MenuItem.price — stored in EUROS
   category: string
+  restaurantId: string // parent restaurant (for mono-restaurant cart scoping) — may be '' if unlinked
+  restaurantName: string
 }
 
 export interface EatNextMenuCategory {
@@ -95,7 +97,7 @@ export async function getRestaurant(id: string): Promise<EatNextRestaurantDetail
     category,
     items: items
       .filter((i) => i.category === category)
-      .map((i) => ({ id: i.id, name: i.name, description: i.description ?? '', priceEur: i.price, category: i.category })),
+      .map((i) => ({ id: i.id, name: i.name, description: i.description ?? '', priceEur: i.price, category: i.category, restaurantId: r.id, restaurantName: r.name })),
   }))
 
   return {
@@ -112,12 +114,24 @@ export async function getRestaurant(id: string): Promise<EatNextRestaurantDetail
   }
 }
 
-// Single dish by id — surfaced only when its menu item is available.
+// Single dish by id — surfaced only when its menu item is available. Also returns its parent
+// restaurant (id + name, read-only via brand→restaurant) so the cart can scope mono-restaurant.
 export async function getDish(id: string): Promise<EatNextDish | null> {
   const d = await prisma.menuItem.findUnique({
     where: { id },
-    select: { id: true, name: true, description: true, price: true, category: true, available: true },
+    select: {
+      id: true, name: true, description: true, price: true, category: true, available: true,
+      brand: { select: { restaurant: { select: { id: true, name: true } } } },
+    },
   })
   if (!d || !d.available) return null
-  return { id: d.id, name: d.name, description: d.description ?? '', priceEur: d.price, category: d.category }
+  return {
+    id: d.id,
+    name: d.name,
+    description: d.description ?? '',
+    priceEur: d.price,
+    category: d.category,
+    restaurantId: d.brand?.restaurant?.id ?? '',
+    restaurantName: d.brand?.restaurant?.name ?? '',
+  }
 }

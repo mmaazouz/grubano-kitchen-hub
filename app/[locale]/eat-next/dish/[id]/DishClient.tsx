@@ -3,21 +3,39 @@
 import { useState } from 'react'
 import { useRouter } from '@/navigation'
 import { StellarButton, StellarPriceTag } from '@/components/stellar'
+import { addItem, readCart } from '../../cart-store'
 
-// Client child of the dish screen (Agent 130). Pure UI state (qty) over a REAL dish passed as
-// props. "Ajouter au panier" only NAVIGATES to the cart (the cart stays a mock for now — wiring
-// real cart state is a later brick). No money route, no write.
+// Client child of the dish screen (Agent 130 → Agent 133 real cart). Pure UI state (qty) over a
+// REAL dish passed as props. "Ajouter au panier" now adds the REAL dish to the shared /eat-next
+// cart store (mono-restaurant: a dish from another restaurant replaces the cart, after a simple
+// confirmation) then navigates to the cart. NO money route, NO DB write, NO lib/pricing.
 export default function DishClient({
-  name, description, priceEur, category,
+  itemId, name, description, priceEur, category, restaurantId, restaurantName,
 }: {
+  itemId: string
   name: string
   description: string
   priceEur: number
   category: string
+  restaurantId: string
+  restaurantName: string
 }) {
   const router = useRouter()
   const [qty, setQty] = useState(1)
   const lineTotal = priceEur * qty
+
+  function onAdd() {
+    // MONO-RESTAURANT: if the cart already holds another restaurant, confirm before replacing.
+    const current = readCart()
+    if (current && current.items.length && current.restaurantId !== restaurantId) {
+      const ok = window.confirm(
+        `Votre panier contient des plats de « ${current.restaurantName || 'un autre restaurant'} ». Le remplacer par « ${restaurantName} » ?`,
+      )
+      if (!ok) return
+    }
+    addItem({ restaurantId, restaurantName }, { itemId, name, priceEur, qty })
+    router.push('/eat-next/cart')
+  }
 
   return (
     <div className="space-y-4 p-4">
@@ -36,7 +54,7 @@ export default function DishClient({
         <button onClick={() => setQty((q) => q + 1)} className="h-8 w-8 rounded-full border border-stellar-border text-lg text-stellar-fg">+</button>
       </div>
 
-      <StellarButton variant="primary" fullWidth onClick={() => router.push('/eat-next/cart')}>
+      <StellarButton variant="primary" fullWidth onClick={onAdd}>
         Ajouter au panier · {lineTotal.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
       </StellarButton>
     </div>

@@ -5,7 +5,7 @@ import { signIn, getSession } from 'next-auth/react'
 import { useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { StellarCard, StellarButton, StellarInput, StellarPriceTag } from '@/components/stellar'
-import { WF_CART } from '../mock'
+import { useEatNextCart } from '../cart-store'
 
 // SCREEN 6/7 — CHECKOUT, account-AT-payment AUTH part (Agent 132, brick 2c). Bataille 1 (kill the
 // account wall): email only (NO password) → provisioning + mint (existing /api/auth/magic-link) →
@@ -19,9 +19,9 @@ const isEmail = (s: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)
 export default function EatNextCheckout() {
   const router = useRouter()
   const locale = useLocale()
-  const r = WF_CART.restaurant
-  const subtotal = WF_CART.lines.reduce((s, l) => s + l.priceEur * l.qty, 0)
-  const total = subtotal + r.deliveryFeeEur
+  // Real cart (Agent 133). Total is a NAÏVE display sum — NO money route is called (brick 2d/2e).
+  const { cart, subtotalEur } = useEatNextCart()
+  const total = subtotalEur
 
   const [authState, setAuthState] = useState<AuthState>('init')
   const [email, setEmail] = useState('')
@@ -164,10 +164,10 @@ export default function EatNextCheckout() {
         )}
       </StellarCard>
 
-      {/* Adresse + ETA (réassurance amont). */}
+      {/* Adresse + restaurant (réassurance amont). */}
       <StellarCard elevation="soft" padding="md" className="space-y-1 text-sm text-stellar-fg">
         <div className="flex justify-between"><span>📍 Livraison</span><span className="font-medium">12 rue de la République</span></div>
-        <div className="flex justify-between"><span>⏱ Estimation</span><span className="font-medium">{r.etaMin} min</span></div>
+        {cart?.restaurantName && <div className="flex justify-between"><span>🍽 Restaurant</span><span className="font-medium">{cart.restaurantName}</span></div>}
       </StellarCard>
 
       {/* Bataille 1 — 1-tap WALLET primary, card fallback. (Placeholders — no real SDK; brick 2d.) */}
@@ -178,11 +178,11 @@ export default function EatNextCheckout() {
         <button onClick={() => setMethod('card')} className={`w-full rounded-stellar-lg border py-2.5 font-stellar-display text-sm ${method === 'card' ? 'border-stellar-primary bg-stellar-primary-soft text-stellar-accent-fg' : 'border-stellar-border bg-stellar-card text-stellar-muted-fg'}`}>  Payer par carte (repli)</button>
       </section>
 
-      {/* Bataille 2 — transparent FINAL recap. */}
+      {/* Bataille 2 — transparent recap. Total is an ESTIMATE; final total + fees = at payment (2d/2e). */}
       <StellarCard elevation="soft" padding="md" className="space-y-1 text-sm">
-        <div className="flex justify-between text-stellar-muted-fg"><span>Sous-total</span><StellarPriceTag amountEur={subtotal} size="sm" /></div>
-        <div className="flex justify-between text-stellar-muted-fg"><span>Frais de livraison</span><span>{r.deliveryFeeEur === 0 ? 'Offerts' : <StellarPriceTag amountEur={r.deliveryFeeEur} size="sm" />}</span></div>
-        <div className="mt-1 flex items-center justify-between border-t border-stellar-border pt-2 font-stellar-display text-base font-bold text-stellar-fg"><span>Total à payer</span><StellarPriceTag amountEur={total} size="lg" /></div>
+        <div className="flex justify-between text-stellar-muted-fg"><span>Sous-total</span><StellarPriceTag amountEur={subtotalEur} size="sm" /></div>
+        <div className="flex justify-between text-stellar-muted-fg"><span>Frais de livraison</span><span className="text-xs">calculés au paiement</span></div>
+        <div className="mt-1 flex items-center justify-between border-t border-stellar-border pt-2 font-stellar-display text-base font-bold text-stellar-fg"><span>Total estimé</span><StellarPriceTag amountEur={total} size="lg" /></div>
       </StellarCard>
 
       {/* STOPS AT "connected": Confirmer remains a MOCK → /eat-next/track. Enabled once connected. */}
