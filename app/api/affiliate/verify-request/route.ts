@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
+import { sendAdminNewPartnerEmail } from '@/lib/transactional-emails'
 import {
   isInfluencerEnabled, getVerificationState, createVerificationRequest, VERIFY_PLATFORMS,
 } from '@/lib/influencer-verification'
@@ -42,7 +43,25 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'Données invalides' }, { status: 400 })
 
   const out = await createVerificationRequest(operatorId, parsed.data)
-  if (out.ok) return NextResponse.json({ ok: true, status: out.status })
+  if (out.ok) {
+    // Email B5a (Agent 145) — alert the admin a new influencer audience-verification dossier awaits
+    // review. BEST-EFFORT (never blocks the response); idempotent (admin_partner_pending,
+    // influencer:<operatorId>) + a day-bucket discriminant so a re-application (a rejected request
+    // resets to pending) RE-alerts on another day. Recipient = ALERT_EMAIL, skipped cleanly if unset.
+    // NO money / NO webhook (this route is already off the money path).
+    try {
+      await sendAdminNewPartnerEmail({
+        role:        'influencer',
+        partnerName: `${parsed.data.platform} @${parsed.data.handle}`,
+        dedupeScope: `influencer:${operatorId}`,
+        occurrence:  new Date().toISOString().slice(0, 10),
+      })
+    } catch (e) {
+      console.error('[EMAIL MISS] [affiliate/verify-request] admin alert failed (non-fatal):',
+        operatorId, e instanceof Error ? e.message : e)
+    }
+    return NextResponse.json({ ok: true, status: out.status })
+  }
   switch (out.reason) {
     case 'not_affiliate':    return NextResponse.json({ error: 'Profil affilié introuvable' }, { status: 404 })
     case 'already_verified': return NextResponse.json({ error: 'Déjà vérifié', reason: out.reason }, { status: 409 })

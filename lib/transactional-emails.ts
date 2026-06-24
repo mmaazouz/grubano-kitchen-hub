@@ -383,6 +383,46 @@ export async function sendPartnerStatusEmail(p: {
   return sendOnce(trigger, dedupeKey, { to: p.to, subject, html: shell(title, body) })
 }
 
+// ── Admin alert: new partner dossier pending validation (Email B5a, Agent 145) ──
+// When a partner (restaurant / supplier / influencer) submits a registration, alert the
+// ADMIN that a dossier awaits validation. Fired best-effort from the registration routes
+// AFTER the profile is created — NEVER from the money path or the Stripe webhook. Recipient
+// = ALERT_EMAIL (the same env the ledger/invoice crons already use); if it is unset/empty
+// at runtime, the send is SKIPPED cleanly (no-op, never throws). ONE mutualised fn for the
+// 3 roles (the label adapts: restaurant / fournisseur / influenceur). FR sober.
+// IDEMPOTENCY: single trigger 'admin_partner_pending', dedupeKey = `<role>:<id>` → ONE admin
+// alert per dossier. Re-registration of restaurants/suppliers is blocked upstream (anti-enum
+// / create-if-absent) so a fixed key = once. Influencer re-application (a rejected request
+// resets to pending) CAN legitimately re-alert → the caller passes an `occurrence`
+// discriminant (day-bucket), mirroring B4's repeatable-status discipline.
+export type AdminPartnerRole = 'restaurant' | 'supplier' | 'influencer'
+
+export async function sendAdminNewPartnerEmail(p: {
+  role:        AdminPartnerRole
+  partnerName: string
+  /** Stable dossier-scoped id, e.g. `restaurant:<operatorId>` / `supplier:<profileId>` / `influencer:<operatorId>`. */
+  dedupeScope: string
+  /** Optional discriminant for a legitimately repeatable alert (e.g. influencer re-application). */
+  occurrence?: string
+}): Promise<{ status: SendStatus }> {
+  const to = (process.env.ALERT_EMAIL || '').trim()
+  if (!to) return { status: 'skipped' } // ALERT_EMAIL not configured → no admin alert (clean no-op)
+
+  const label =
+    p.role === 'restaurant' ? 'restaurant'
+    : p.role === 'supplier' ? 'fournisseur'
+    :                         'influenceur'
+  const name = esc(p.partnerName)
+  const dedupeKey = p.occurrence ? `${p.dedupeScope}:${p.occurrence}` : p.dedupeScope
+
+  const subject = `[Grubano] Nouveau dossier ${label} à valider`
+  const body =
+    `<p>Un nouveau ${label} vient de soumettre son inscription et attend une validation administrateur.</p>`
+    + table(row('Type', label) + row('Partenaire', name))
+    + `<p style="font-size:13px;color:#6b7280">Ouvrez la console d'administration pour examiner et valider ce dossier.</p>`
+  return sendOnce('admin_partner_pending', dedupeKey, { to, subject, html: shell('Nouveau dossier à valider', body) })
+}
+
 export async function sendReservationConfirmation(p: {
   dedupeKey?:     string  // Email B0 (Agent 141) — at-most-once when set (e.g. `resv:<id>`)
   to:             string

@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { ensureSupplierOperator, decideSupplierOutcome } from '@/lib/supplier-account'
 import { verifyBusiness } from '@/lib/business-verification'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
+import { sendAdminNewPartnerEmail } from '@/lib/transactional-emails'
 
 export const dynamic = 'force-dynamic'
 
@@ -113,7 +114,7 @@ export async function POST(req: Request) {
     // (HIDDEN from the marketplace) until that coherence check clears it.
     const status: Outcome = registryDecision.status
 
-    await prisma.supplierProfile.create({
+    const created = await prisma.supplierProfile.create({
       data: {
         email,
         companyName:        data.companyName,
@@ -141,6 +142,9 @@ export async function POST(req: Request) {
         vettingReason:      registryDecision.reason,
         vettingAt:          null,
       },
+      // Capture the id for the B5a admin-alert dedupeKey (below). Behaviour-preserving: the row
+      // created is identical; the previously-ignored return is now narrowed to { id }.
+      select: { id: true },
     })
 
     // Provision the passwordless login. ACTIVATE (+ graft the 'supplier' role) ONLY
@@ -158,6 +162,24 @@ export async function POST(req: Request) {
         officialName:       verification.officialName,
         verificationStatus: registryDecision.verificationStatus,
       })
+    }
+
+    // Email B5a (Agent 145) — a FRESH supplier on the human-review path ('pending') is a dossier
+    // that awaits admin validation → alert the admin. Auto-'active' (SIREN-verified) and 'rejected'
+    // (auto-refused) need no admin action → no alert. BEST-EFFORT (never blocks the response);
+    // idempotent (admin_partner_pending, supplier:<id>); recipient = ALERT_EMAIL, skipped cleanly if
+    // unset. NO money / NO Connect / NO webhook — only an email after the profile write.
+    if (status === 'pending') {
+      try {
+        await sendAdminNewPartnerEmail({
+          role:        'supplier',
+          partnerName: data.companyName,
+          dedupeScope: `supplier:${created.id}`,
+        })
+      } catch (e) {
+        console.error('[EMAIL MISS] [supplier/register] admin alert failed (non-fatal):',
+          created.id, e instanceof Error ? e.message : e)
+      }
     }
 
     return ok(status)

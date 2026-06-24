@@ -4,6 +4,7 @@ import nodemailer from 'nodemailer'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { createVerificationToken } from '@/lib/partner-verification'
+import { sendAdminNewPartnerEmail } from '@/lib/transactional-emails'
 
 // Live network (DNS MX lookup + SMTP) + DB writes — must always run on demand on
 // the Node.js runtime (dns / nodemailer are unavailable on the edge runtime).
@@ -286,6 +287,22 @@ export async function POST(req: NextRequest) {
       })
     } catch {
       /* audit log is best-effort */
+    }
+
+    // Email B5a (Agent 145) — alert the admin a NEW restaurant dossier awaits validation (reached
+    // ONLY after a fresh pending account was created; the existing-email branch returned earlier).
+    // BEST-EFFORT (never blocks the response); idempotent (admin_partner_pending, restaurant:<id>);
+    // recipient = ALERT_EMAIL, skipped cleanly if unset. NO money / NO webhook. This is SEPARATE
+    // from the partner_verify email sent to the partner above (which is untouched).
+    try {
+      await sendAdminNewPartnerEmail({
+        role:        'restaurant',
+        partnerName: name,
+        dedupeScope: `restaurant:${operator.id}`,
+      })
+    } catch (e) {
+      console.error('[EMAIL MISS] [partners/register] admin alert failed (non-fatal):',
+        operator.id, e instanceof Error ? e.message : e)
     }
 
     return genericOk()
