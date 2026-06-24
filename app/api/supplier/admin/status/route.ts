@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureSupplierOperator } from '@/lib/supplier-account'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
+import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,16 @@ export async function POST(req: Request) {
     const email  = parsed.data.email.trim().toLowerCase()
     const status = parsed.data.status
 
-    const profile = await prisma.supplierProfile.findUnique({ where: { email } })
+    // Explicit select — load ONLY the fields this route uses (status/identity), never the
+    // Connect/payout columns (stripeAccountId/payoutStatus/stripeOnboardedAt). Money stays out of
+    // this business-status route (Email B4 / Agent 144 — no Connect read).
+    const profile = await prisma.supplierProfile.findUnique({
+      where:  { email },
+      select: {
+        id: true, status: true, email: true, contactName: true, companyName: true,
+        siren: true, officialName: true, verificationStatus: true,
+      },
+    })
     if (!profile) {
       return NextResponse.json({ error: 'Fournisseur introuvable' }, { status: 404 })
     }
@@ -72,6 +82,25 @@ export async function POST(req: Request) {
         officialName:       profile.officialName,
         verificationStatus: profile.verificationStatus,
       })
+    }
+
+    // Email B4 (Agent 144) — notify the supplier on an ACTUAL status change (mirrors the DB-update
+    // guard above: profile holds the PRE-change status). BEST-EFFORT (never blocks the response);
+    // idempotent via sendOnce. validated (active) once; rejected re-sendable after a re-submission.
+    // suspended/pending send no email (out of scope / back-to-queue). No money touched.
+    if (profile.status !== status && (status === 'active' || status === 'rejected')) {
+      try {
+        await sendPartnerStatusEmail({
+          role:        'supplier',
+          status:      status === 'active' ? 'validated' : 'rejected',
+          to:          profile.email,
+          partnerName: profile.contactName || profile.companyName,
+          dedupeScope: `supplier:${profile.id}`,
+        })
+      } catch (e) {
+        console.error('[EMAIL MISS] [supplier/admin/status] partner email failed (non-fatal):',
+          profile.id, e instanceof Error ? e.message : e)
+      }
     }
 
     return NextResponse.json({ ok: true, status, bridge })

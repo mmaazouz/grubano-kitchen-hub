@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,6 +58,29 @@ export async function POST(
       },
       select: { id: true, name: true, isActive: true, approvedAt: true, status: true },
     })
+
+    // Email B4 (Agent 144) — notify the owner their establishment is validated. POST-success,
+    // BEST-EFFORT (never blocks the response); idempotent via sendOnce (partner_validated, resto:<id>)
+    // → one validation email per restaurant even if re-approved. No money touched.
+    try {
+      const owner = await prisma.restaurant.findUnique({
+        where:  { id: params.id },
+        select: { name: true, operator: { select: { email: true, name: true } } },
+      })
+      const ownerEmail = owner?.operator?.email
+      if (ownerEmail) {
+        await sendPartnerStatusEmail({
+          role:        'restaurant',
+          status:      'validated',
+          to:          ownerEmail,
+          partnerName: owner?.operator?.name ?? owner?.name ?? 'partenaire',
+          dedupeScope: `resto:${params.id}`,
+        })
+      }
+    } catch (e) {
+      console.error('[EMAIL MISS] [admin/restaurants/approve] partner email failed (non-fatal):',
+        params.id, e instanceof Error ? e.message : e)
+    }
 
     return NextResponse.json({ ok: true, restaurant: updated })
   } catch (err) {

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
 import { isInfluencerEnabled, listVerificationRequests, decideVerification } from '@/lib/influencer-verification'
 
 export const runtime = 'nodejs'
@@ -51,7 +53,36 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'Données invalides' }, { status: 400 })
 
   const out = await decideVerification(parsed.data.id, parsed.data.action, admin.id ?? 'admin')
-  if (out.ok) return NextResponse.json({ ok: true, status: out.status })
+  if (out.ok) {
+    // Email B4 (Agent 144) — notify the influencer/affiliate of the decision. POST-success,
+    // BEST-EFFORT (never blocks the response); idempotent via sendOnce (validated once;
+    // rejected re-sendable after a re-application resets the request to pending). No money.
+    try {
+      const reqRow = await prisma.audienceVerificationRequest.findUnique({
+        where:  { id: parsed.data.id },
+        select: { operatorId: true },
+      })
+      if (reqRow?.operatorId) {
+        const op = await prisma.operator.findUnique({
+          where:  { id: reqRow.operatorId },
+          select: { email: true, name: true },
+        })
+        if (op?.email) {
+          await sendPartnerStatusEmail({
+            role:        'influencer',
+            status:      out.status === 'approved' ? 'validated' : 'rejected',
+            to:          op.email,
+            partnerName: op.name ?? op.email,
+            dedupeScope: `affiliate:${reqRow.operatorId}`,
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[EMAIL MISS] [admin/influencer-verifications] partner email failed (non-fatal):',
+        parsed.data.id, e instanceof Error ? e.message : e)
+    }
+    return NextResponse.json({ ok: true, status: out.status })
+  }
   switch (out.reason) {
     case 'not_found':       return NextResponse.json({ error: 'Demande introuvable' }, { status: 404 })
     case 'already_decided': return NextResponse.json({ error: 'Demande déjà traitée' }, { status: 409 })

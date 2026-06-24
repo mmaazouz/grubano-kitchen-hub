@@ -313,6 +313,76 @@ export async function sendRestaurantNewReservationEmail(p: {
 
 // ── 1) Reservation confirmation (consumer booking) ──────────────────────────────
 
+// ── Partner lifecycle (Email B4, Agent 144) ────────────────────────────────────
+// ONE mutualised email for the partner lifecycle, parametrised by {role}: restaurant / supplier /
+// influencer (the wording adapts). Fired from the admin validation routes AFTER the status change,
+// best-effort + idempotent via sendOnce. NO money (Connect/IBAN/payout are out of scope). FR sober.
+// IDEMPOTENCY KEYS: 'validated' = ONCE per partner (dedupeKey = the stable scope, e.g. resto:<id>).
+// 'rejected'/'docs_needed' are REPEATABLE (a partner can be rejected, fix + re-submit, be rejected
+// again) → the key carries a day-bucket discriminant so a re-decision on another day RE-NOTIFIES,
+// while a same-day double is still deduped. (Calque of B0's discipline: never over-suppress a
+// legitimate notification.)
+export type PartnerEmailRole = 'restaurant' | 'supplier' | 'influencer'
+export type PartnerEmailStatus = 'validated' | 'rejected' | 'docs_needed'
+
+export async function sendPartnerStatusEmail(p: {
+  role:        PartnerEmailRole
+  status:      PartnerEmailStatus
+  to:          string
+  partnerName: string
+  /** Stable partner-scoped id for idempotency, e.g. `resto:<id>` / `supplier:<id>` / `affiliate:<operatorId>`. */
+  dedupeScope: string
+  /** Optional public reason (rejection / missing documents). */
+  reason?:     string
+  /** Discriminant for REPEATABLE statuses (rejected / docs_needed). Defaults to today's date
+   *  (YYYY-MM-DD): a re-decision on another day re-sends; a same-day double is deduped. Ignored
+   *  by 'validated' (one validation per partner). */
+  occurrence?: string
+}): Promise<{ status: SendStatus }> {
+  const name = esc(p.partnerName)
+  const noun =
+    p.role === 'restaurant' ? 'votre établissement'
+    : p.role === 'supplier' ? 'votre compte fournisseur'
+    :                         'votre compte'
+  const why = p.reason ? `<p style="font-size:13px;color:#6b7280">Motif : ${esc(p.reason)}.</p>` : ''
+  const day = () => p.occurrence ?? new Date().toISOString().slice(0, 10)
+
+  let trigger: string
+  let dedupeKey: string
+  let subject: string
+  let title: string
+  let body: string
+  switch (p.status) {
+    case 'validated':
+      trigger   = 'partner_validated'
+      dedupeKey = p.dedupeScope // once per partner
+      subject   = 'Votre compte Grubano est validé'
+      title     = 'Compte validé ✓'
+      body      = `<p>Bonjour ${name}, bonne nouvelle : ${noun} est validé et activé sur Grubano.</p>`
+        + `<p style="font-size:13px;color:#6b7280">Vous pouvez dès maintenant accéder à votre espace.</p>`
+      break
+    case 'rejected':
+      trigger   = 'partner_rejected'
+      dedupeKey = `${p.dedupeScope}:${day()}`
+      subject   = `Votre demande Grubano n'a pas été validée`
+      title     = 'Demande non validée'
+      body      = `<p>Bonjour ${name}, après examen, ${noun} n'a pas pu être validé pour le moment.</p>${why}`
+        + `<p style="font-size:13px;color:#6b7280">Vous pouvez corriger votre dossier et le soumettre à nouveau.</p>`
+      break
+    case 'docs_needed':
+      trigger   = 'partner_docs_needed'
+      dedupeKey = `${p.dedupeScope}:${day()}`
+      subject   = 'Documents à fournir — Grubano'
+      title     = 'Documents à fournir'
+      body      = `<p>Bonjour ${name}, pour finaliser la validation de ${noun}, des documents complémentaires sont nécessaires.</p>${why}`
+        + `<p style="font-size:13px;color:#6b7280">Complétez votre dossier depuis votre espace pour débloquer la validation.</p>`
+      break
+    default:
+      return { status: 'skipped' }
+  }
+  return sendOnce(trigger, dedupeKey, { to: p.to, subject, html: shell(title, body) })
+}
+
 export async function sendReservationConfirmation(p: {
   dedupeKey?:     string  // Email B0 (Agent 141) — at-most-once when set (e.g. `resv:<id>`)
   to:             string
