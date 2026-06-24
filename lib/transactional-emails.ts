@@ -262,6 +262,55 @@ export async function sendOrderStatusEmail(p: {
   return sendOnce(trigger, `order:${p.orderId}`, { to: p.to, subject, html: shell(title, body) })
 }
 
+// ── Restaurant notifications (Email B2, Agent 142→143) ──────────────────────────
+// Owner-facing alerts when a new (paid) order / a new reservation lands. Fired from the
+// confirm route (order, post-payment — NEVER the webhook) and from reservations/public
+// (reservation, post-create), best-effort + idempotent via sendOnce (DISTINCT triggers from
+// the consumer emails that share the same dedupeKey). FR, sober shell. The order amount is the
+// SERVER total passed in (eurosFromCents) — NEVER recomputed here.
+
+export async function sendRestaurantNewOrderEmail(p: {
+  orderId:         string
+  to:              string
+  restaurantName:  string
+  orderRef:        string
+  fulfillmentType: string
+  items:           Array<{ name: string; qty: number }>
+  /** order.total in CENTS (SERVER value, display only). */
+  totalCents:      number
+}): Promise<{ status: SendStatus }> {
+  const lines = p.items.map((it) => row(`${it.qty}×`, esc(it.name))).join('')
+  const mode  = p.fulfillmentType === 'pickup' ? 'À emporter / retrait' : 'Livraison'
+  return sendOnce('resto_order_received', `order:${p.orderId}`, {
+    to:      p.to,
+    subject: `Nouvelle commande ${p.orderRef} — ${p.restaurantName}`,
+    html: shell('Nouvelle commande reçue', `
+      <p>Vous avez reçu une nouvelle commande payée chez <strong>${esc(p.restaurantName)}</strong>.</p>
+      ${table(row('Commande', esc(p.orderRef)) + lines + row('Mode', mode) + row('Montant', eurosFromCents(p.totalCents)))}
+      <p style="font-size:13px;color:#6b7280">Retrouvez-la dans votre tableau de bord pour l'accepter et la préparer.</p>`),
+  })
+}
+
+export async function sendRestaurantNewReservationEmail(p: {
+  reservationId:  string
+  to:             string
+  restaurantName: string
+  customerName:   string
+  date:           Date
+  guests:         number
+  /** Short session code (#XXXX). */
+  code:           string
+}): Promise<{ status: SendStatus }> {
+  return sendOnce('resto_reservation_received', `resv:${p.reservationId}`, {
+    to:      p.to,
+    subject: `Nouvelle réservation — ${formatDateFr(p.date)}`,
+    html: shell('Nouvelle réservation reçue', `
+      <p>Une nouvelle réservation vient d'être prise chez <strong>${esc(p.restaurantName)}</strong>.</p>
+      ${table(row('Client', esc(p.customerName)) + row('Date', formatDateFr(p.date)) + row('Couverts', String(p.guests)) + row('N° de session', esc(p.code)))}
+      <p style="font-size:13px;color:#6b7280">Retrouvez-la dans votre espace réservations.</p>`),
+  })
+}
+
 // ── 1) Reservation confirmation (consumer booking) ──────────────────────────────
 
 export async function sendReservationConfirmation(p: {

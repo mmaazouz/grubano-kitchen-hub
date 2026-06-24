@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import { reservationCode } from '@/lib/reservation-code'
-import { sendReservationConfirmation } from '@/lib/transactional-emails'
+import { sendReservationConfirmation, sendRestaurantNewReservationEmail } from '@/lib/transactional-emails'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -222,6 +222,31 @@ export async function POST(req: Request) {
         depositEur,
         dedupeKey:      `resv:${reservation.id}`,
       })
+    }
+
+    // Email B2 (Agent 143) — also notify the RESTAURANT of the new reservation. POST-create,
+    // BEST-EFFORT, idempotent via sendOnce (trigger resto_reservation_received, dedupeKey resv:<id>).
+    // Independent of the guest email above — the resto is notified even for an anonymous booking.
+    try {
+      const owner = await prisma.restaurant.findUnique({
+        where:  { id: restaurant.id },
+        select: { operator: { select: { email: true } } },
+      })
+      const ownerEmail = owner?.operator?.email
+      if (ownerEmail) {
+        await sendRestaurantNewReservationEmail({
+          reservationId:  reservation.id,
+          to:             ownerEmail,
+          restaurantName: restaurant.name,
+          customerName:   data.customerName,
+          date:           reservation.date,
+          guests:         reservation.guests,
+          code:           reservationCode(reservation.id),
+        })
+      }
+    } catch (e) {
+      console.error('[EMAIL MISS] [reservations/public] restaurant new-reservation email failed (non-fatal):',
+        reservation.id, e instanceof Error ? e.message : e)
     }
 
     return NextResponse.json(

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
-import { sendOrderConfirmation } from '@/lib/transactional-emails'
+import { sendOrderConfirmation, sendRestaurantNewOrderEmail } from '@/lib/transactional-emails'
 import type { NextRequest } from 'next/server'
 
 // ── POST /api/orders/[id]/confirm — checkout C2 server-side confirmation ───────
@@ -52,6 +52,36 @@ export async function POST(
     }
 
     const ref = orderRef(order.id)
+
+    // Email B2 (Agent 143) — also notify the RESTAURANT of the new (paid) order. Fired HERE
+    // (order paid + confirmed), NEVER from the Stripe webhook (golden rule). Additive + BEST-EFFORT
+    // + idempotent via sendOnce (trigger resto_order_received, dedupeKey order:<id>). Placed BEFORE
+    // the consumer idempotence short-circuit so a re-poll keeps retrying until it lands. The amount
+    // is the SERVER order.total RAW (display only) — no recompute, no money lib.
+    try {
+      const orderOwner = await prisma.order.findUnique({
+        where:  { id: order.id },
+        select: { restaurant: { select: { operator: { select: { email: true } } } } },
+      })
+      const ownerEmail = orderOwner?.restaurant?.operator?.email
+      if (ownerEmail) {
+        const restoItems = (Array.isArray(order.items) ? (order.items as Array<Record<string, unknown>>) : [])
+          .filter((it) => typeof it?.name === 'string')
+          .map((it) => ({ name: String(it.name), qty: Number(it.qty) || 1 }))
+        await sendRestaurantNewOrderEmail({
+          orderId:         order.id,
+          to:              ownerEmail,
+          restaurantName:  order.restaurant?.name ?? 'votre restaurant',
+          orderRef:        ref,
+          fulfillmentType: order.fulfillmentType,
+          items:           restoItems,
+          totalCents:      Math.round(order.total * 100),
+        })
+      }
+    } catch (e) {
+      console.error('[EMAIL MISS] [confirm] restaurant new-order email failed (non-fatal):',
+        order.id, e instanceof Error ? e.message : e)
+    }
 
     // Idempotence — one confirmation email per order, ever. The ref lives in
     // the subject; recipient narrows it to this customer.
