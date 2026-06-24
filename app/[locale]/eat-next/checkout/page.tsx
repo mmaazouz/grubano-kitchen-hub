@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { StellarCard, StellarButton, StellarInput, StellarPriceTag } from '@/components/stellar'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
+import WalletPaymentButton from '@/components/eat-next/WalletPaymentButton'
 import { formatEuros } from '@/lib/format-money'
 import { useEatNextCart } from '../cart-store'
 import { buildOrderBody } from '../checkout-order'
@@ -228,9 +229,22 @@ export default function EatNextCheckout() {
         </StellarCard>
       )}
 
-      {/* PAY STAGE — Stripe Elements (REUSED byte-identical). Card form for the created order. */}
+      {/* PAY STAGE — Stripe Elements (REUSED byte-identical). The wallet 1-tap (Apple/Google Pay) and
+          the card form CONFIRM THE SAME PaymentIntent (same payInit.clientSecret); the wallet sheet
+          shows the SERVER amount (payInit.amount/currency). The wallet hides itself when no wallet is
+          available on the device → card-only. Both share the SAME onPaid (clearCart → tracking). */}
       {authState === 'connected' && !cartEmpty && payInit && (
-        <StellarCard elevation="soft" padding="md" className="space-y-2">
+        <StellarCard elevation="soft" padding="md" className="space-y-3">
+          <WalletPaymentButton
+            clientSecret={payInit.clientSecret}
+            publishableKey={payInit.publishableKey}
+            amount={payInit.amount}
+            currency={payInit.currency}
+            label={t('totalToPay')}
+            heading={t('oneTap')}
+            errorLabel={t('errPay')}
+            onPaid={onPaid}
+          />
           <p className="font-stellar-display text-sm font-semibold text-stellar-fg">{t('cardPayment')}</p>
           <StripeTicketPayment
             clientSecret={payInit.clientSecret}
@@ -267,11 +281,10 @@ export default function EatNextCheckout() {
             />
           </StellarCard>
 
-          {/* Wallet 1-tap — DEFERRED (next brick). Disabled placeholders; only the card path works in 2d. */}
-          <section className="space-y-2">
-            <p className="font-stellar-display text-sm font-semibold text-stellar-muted-fg">{t('oneTap')}</p>
-            <button disabled className="flex w-full items-center justify-center gap-2 rounded-stellar-lg border border-stellar-border bg-stellar-card py-3 font-stellar-display text-sm font-semibold text-stellar-muted-fg opacity-60">  {t('walletLabel')} <span className="text-xs font-normal">{t('soon')}</span></button>
-          </section>
+          {/* Wallet 1-tap (Apple/Google Pay) now lives in the PAY stage, where the SERVER amount is
+              known (payInit). It can only reflect the server total — never the client estimate — so it
+              appears after the order + PaymentIntent are created, alongside the card. */}
+          <p className="text-center text-xs text-stellar-muted-fg">{t('oneTap')}</p>
 
           {orderError && <p className="rounded-stellar-md border border-stellar-border bg-stellar-surface-1 px-3 py-2 text-sm text-stellar-fg" role="alert">{orderError}</p>}
 
