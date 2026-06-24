@@ -188,6 +188,80 @@ export async function sendOnce(
   return sendTransactional({ to: email.to, subject: email.subject, html: email.html, trigger, dedupeKey })
 }
 
+// ── Order status emails (Email B1, Agent 142) ───────────────────────────────────
+// Consumer notification on each order-status transition (PATCH /api/orders/[id]/status).
+// STATUS-ONLY: no price is read or recomputed, no amount is shown. Idempotent per
+// (status, order) via sendOnce — trigger `order_<status>` + dedupeKey `order:<id>` (DISTINCT
+// triggers ⇒ one email per status per order, no collision on the shared dedupeKey). Best-effort
+// (sendOnce never throws). FR, sober shell — no design, no i18n (deferred). 'ready' / 'delivered'
+// wording adapts to pickup vs delivery; a non-notifiable status (e.g. 'received') is skipped.
+type OrderStatusForEmail = 'preparing' | 'ready' | 'picked_up' | 'delivered' | 'cancelled'
+
+export async function sendOrderStatusEmail(p: {
+  orderId:         string
+  to:              string
+  customerName:    string
+  restaurantName:  string
+  /** Short customer-facing ref, e.g. "#AB12CD". */
+  orderRef:        string
+  /** The NEW order status; non-notifiable statuses (e.g. 'received') yield a no-op skip. */
+  status:          string
+  /** 'pickup' | 'delivery' | other — tunes the 'ready' / 'delivered' wording. */
+  fulfillmentType: string
+}): Promise<{ status: SendStatus }> {
+  const name   = esc(p.customerName)
+  const resto  = esc(p.restaurantName)
+  const refRow = table(row('Commande', esc(p.orderRef)))
+  const pickup = p.fulfillmentType === 'pickup'
+
+  let trigger: string
+  let subject: string
+  let title:   string
+  let body:    string
+
+  switch (p.status as OrderStatusForEmail) {
+    case 'preparing':
+      trigger = 'order_accepted'
+      subject = `Commande ${p.orderRef} acceptée — ${p.restaurantName}`
+      title   = 'Commande acceptée ✓'
+      body    = `<p>Bonjour ${name}, bonne nouvelle : <strong>${resto}</strong> a accepté votre commande et la prépare.</p>${refRow}`
+      break
+    case 'ready':
+      trigger = 'order_ready'
+      subject = `Commande ${p.orderRef} prête — ${p.restaurantName}`
+      title   = 'Commande prête ✓'
+      body    = pickup
+        ? `<p>Bonjour ${name}, votre commande chez <strong>${resto}</strong> est prête — vous pouvez venir la récupérer.</p>${refRow}`
+        : `<p>Bonjour ${name}, votre commande chez <strong>${resto}</strong> est prête et part bientôt en livraison.</p>${refRow}`
+      break
+    case 'picked_up':
+      trigger = 'order_enroute'
+      subject = `Commande ${p.orderRef} en route — ${p.restaurantName}`
+      title   = 'Commande en route'
+      body    = `<p>Bonjour ${name}, votre commande de <strong>${resto}</strong> est en route — elle arrive bientôt !</p>${refRow}`
+      break
+    case 'delivered':
+      trigger = 'order_delivered'
+      subject = `Commande ${p.orderRef} ${pickup ? 'récupérée' : 'livrée'} — ${p.restaurantName}`
+      title   = pickup ? 'Commande récupérée ✓' : 'Commande livrée ✓'
+      body    = `<p>Bonjour ${name}, votre commande chez <strong>${resto}</strong> est ${pickup ? 'récupérée' : 'livrée'}. Bon appétit !</p>${refRow}`
+        + `<p style="font-size:13px;color:#6b7280">Un avis sur votre expérience aiderait beaucoup le restaurant — vous pouvez le partager depuis votre espace.</p>`
+      break
+    case 'cancelled':
+      trigger = 'order_cancelled'
+      subject = `Commande ${p.orderRef} annulée — ${p.restaurantName}`
+      title   = 'Commande annulée'
+      body    = `<p>Bonjour ${name}, votre commande chez <strong>${resto}</strong> a été annulée.</p>${refRow}`
+        + `<p style="font-size:13px;color:#6b7280">Pour toute question, contactez directement le restaurant.</p>`
+      break
+    default:
+      // Non-notifiable status (e.g. 'received') — nothing to send.
+      return { status: 'skipped' }
+  }
+
+  return sendOnce(trigger, `order:${p.orderId}`, { to: p.to, subject, html: shell(title, body) })
+}
+
 // ── 1) Reservation confirmation (consumer booking) ──────────────────────────────
 
 export async function sendReservationConfirmation(p: {

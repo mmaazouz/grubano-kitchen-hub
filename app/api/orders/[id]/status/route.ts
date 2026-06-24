@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { sendOrderStatusEmail } from '@/lib/transactional-emails'
 import { z } from 'zod'
 
 // ── Valid status machine ──────────────────────────────────────────────────────
@@ -107,6 +108,32 @@ export async function PATCH(
         // blocks the 'delivered' transition.
         console.error('[LOYALTY MISS] earn credit failed (non-fatal):', order.id, e instanceof Error ? e.message : e)
       }
+    }
+
+    // Email B1 (Agent 142) — notify the CONSUMER of the new status. POST-update, BEST-EFFORT
+    // (calque of the loyalty block above): a send failure NEVER blocks/fails the transition.
+    // Idempotent per (status, order) via sendOnce inside sendOrderStatusEmail (trigger
+    // `order_<status>` + dedupeKey `order:<id>`). STATUS-ONLY: no amount is read or recomputed.
+    // GOLDEN RULE preserved — this fires from the restaurant/admin PATCH, never from the webhook.
+    try {
+      const [consumer, resto] = await Promise.all([
+        prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true } }),
+        prisma.restaurant.findUnique({ where: { id: order.restaurantId }, select: { name: true } }),
+      ])
+      if (consumer?.email) {
+        await sendOrderStatusEmail({
+          orderId:         order.id,
+          to:              consumer.email,
+          customerName:    consumer.name ?? consumer.email,
+          restaurantName:  resto?.name ?? 'votre restaurant',
+          orderRef:        `#${order.id.slice(-6).toUpperCase()}`,
+          status:          newStatus,
+          fulfillmentType: order.fulfillmentType,
+        })
+      }
+    } catch (e) {
+      console.error('[EMAIL MISS] [PATCH /api/orders/:id/status] status email failed (non-fatal):',
+        order.id, e instanceof Error ? e.message : e)
     }
 
     return NextResponse.json({
