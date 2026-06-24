@@ -423,6 +423,47 @@ export async function sendAdminNewPartnerEmail(p: {
   return sendOnce('admin_partner_pending', dedupeKey, { to, subject, html: shell('Nouveau dossier à valider', body) })
 }
 
+// ── Account email change (Agent 147) ───────────────────────────────────────────
+// Four ADDITIVE best-effort senders for the email-change flow (flag-gated upstream). All go
+// through the B0 sendOnce rail; the dedupeKey is supplied by the caller (a per-mint discriminant
+// for the link so a re-request re-sends; a per-(operator,newEmail) key for the post-mutation
+// alert/confirm so each change notifies once). FR sober. None ever throws (best-effort) and none
+// can roll back an already-committed mutation — they fire AFTER the commit (or independently).
+
+/** REQUEST step: the actionable confirmation LINK sent to the NEW address (proves possession). */
+export async function sendEmailChangeLink(p: { to: string; link: string; dedupeKey: string }): Promise<{ status: SendStatus }> {
+  const body =
+    `<p>Vous avez demandé à utiliser cette adresse comme nouvel e-mail de connexion à votre compte Grubano.</p>`
+    + `<p style="text-align:center;margin:24px 0"><a href="${p.link}" style="background:#F97316;color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:600;display:inline-block">Confirmer ma nouvelle adresse</a></p>`
+    + `<p style="font-size:13px;color:#6b7280">Ce lien expire dans 15 minutes et ne fonctionne qu'une seule fois. Tant que vous ne cliquez pas, rien ne change et vous restez connecté avec votre adresse actuelle. Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>`
+  return sendOnce('email_change_link', p.dedupeKey, { to: p.to, subject: 'Confirmez votre nouvelle adresse e-mail — Grubano', html: shell('Confirmez votre nouvelle adresse', body) })
+}
+
+/** CONFIRM step: security ALERT to the OLD address so the real owner can react to a takeover. */
+export async function sendEmailChangedAlert(p: { to: string; newEmailMasked: string; dedupeKey: string }): Promise<{ status: SendStatus }> {
+  const body =
+    `<p>L'adresse e-mail de connexion de votre compte Grubano vient d'être remplacée par ${esc(p.newEmailMasked)}.</p>`
+    + `<p style="font-size:13px;color:#6b7280">Si vous êtes à l'origine de ce changement, aucune action n'est nécessaire. Sinon, contactez-nous immédiatement : votre compte a pu être compromis.</p>`
+  return sendOnce('email_changed_alert', p.dedupeKey, { to: p.to, subject: 'Sécurité : votre e-mail de connexion a été modifié — Grubano', html: shell('Votre e-mail a été modifié', body) })
+}
+
+/** CONFIRM step: confirmation to the NEW address that it is now the login email. */
+export async function sendEmailChangeConfirm(p: { to: string; dedupeKey: string }): Promise<{ status: SendStatus }> {
+  const body =
+    `<p>C'est confirmé : cette adresse est désormais l'e-mail de connexion de votre compte Grubano.</p>`
+    + `<p style="font-size:13px;color:#6b7280">Utilisez-la pour vos prochaines connexions.</p>`
+  return sendOnce('email_change_confirm', p.dedupeKey, { to: p.to, subject: 'Votre nouvelle adresse e-mail est active — Grubano', html: shell('Adresse e-mail mise à jour', body) })
+}
+
+/** REQUEST step, anti-enum: the NEW address is ALREADY a Grubano account → notify THAT address
+ *  (no code, no leak to the requester). Fixed dedupeKey → at most one notice per address. */
+export async function sendEmailAlreadyUsedNotice(p: { to: string }): Promise<{ status: SendStatus }> {
+  const body =
+    `<p>Quelqu'un vient de tenter d'associer cette adresse à un compte Grubano, mais elle est déjà utilisée.</p>`
+    + `<p style="font-size:13px;color:#6b7280">Si c'était vous, connectez-vous directement avec cette adresse. Sinon, ignorez cet e-mail — aucun changement n'a eu lieu sur votre compte.</p>`
+  return sendOnce('email_change_taken', `email_change_taken:${p.to.trim().toLowerCase()}`, { to: p.to, subject: 'À propos de votre adresse e-mail — Grubano', html: shell('Adresse déjà utilisée', body) })
+}
+
 export async function sendReservationConfirmation(p: {
   dedupeKey?:     string  // Email B0 (Agent 141) — at-most-once when set (e.g. `resv:<id>`)
   to:             string

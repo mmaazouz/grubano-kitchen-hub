@@ -46,6 +46,18 @@ model Operator {
   // existing password CredentialsProvider (which is untouched).
   magicLinkTokenHash   String?
   magicLinkTokenExpiry DateTime?
+  // ── Pending account email change (Agent 147) — ADDITIVE · REVERSIBLE ─────────
+  // Flag-gated (AUTH_EMAIL_CHANGE_ENABLED). A logged-in user requests a change to a
+  // NEW email; after proving CURRENT identity (email OTP, purpose 'stepup:email_change')
+  // the NEW address is parked here with a single-use, short-lived (15 min) confirmation
+  // token — only the SHA-256 of the secret is persisted (SAME shape as magicLinkToken*).
+  // operator.email is mutated ONLY when the user clicks the confirmation link sent to the
+  // NEW address. All THREE nullable, no default, no backfill; dropping them leaves the
+  // model intact. ⭐ Login keys on `email` (UNCHANGED until confirmation) → an abandoned
+  // change never locks anyone out. A SEPARATE pair from verifyToken*/magicLinkToken*.
+  pendingEmail            String?
+  pendingEmailTokenHash   String?
+  pendingEmailTokenExpiry DateTime?
   brands       Brand[]
   accounts     Account[]
   sessions     Session[]

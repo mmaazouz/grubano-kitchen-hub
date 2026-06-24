@@ -6,7 +6,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import {
   User, MapPin, CreditCard, Tag, Bell, Settings, LogOut, ChevronRight,
-  Star, Package, Heart, MessageCircle, Shield, CircleHelp, Globe, ChefHat,
+  Star, Package, Heart, MessageCircle, Shield, CircleHelp, Globe, ChefHat, Mail,
 } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
 import { LanguageSwitcher } from '@/components/design-system'
@@ -92,6 +92,10 @@ export default function ProfileScreen() {
     { icon: Shield, key: 'menuPrivacy', label: t('menuPrivacy'), route: null, color: '#64748B' },
     { icon: CircleHelp, key: 'menuHelp', label: t('menuHelp'), route: null, color: '#94A3B8' },
     { icon: Settings, key: 'menuSettings', label: t('menuSettings'), route: null, color: '#6B7280' },
+    // Agent 147 — account email change (flag-gated server-side; the screen surfaces a neutral
+    // notice when AUTH_EMAIL_CHANGE_ENABLED is OFF). Inline FR label (no i18n key) — minimal,
+    // functional; restyled + localised at the design/i18n pass.
+    { icon: Mail, key: 'menuChangeEmail', label: "Changer d'e-mail", route: '/eat/account/email', color: '#0EA5E9' },
   ]
 
   // Guest
