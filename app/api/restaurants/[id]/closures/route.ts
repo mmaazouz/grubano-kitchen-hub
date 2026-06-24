@@ -212,6 +212,7 @@ export async function POST(
             restaurantName: restaurantNameForEmails,
             date:           r.date,
             closureReason:  data.reason?.trim() || null,
+            dedupeKey:      `resv:${r.id}`,
           })
         } else {
           await logEmailSkipped(

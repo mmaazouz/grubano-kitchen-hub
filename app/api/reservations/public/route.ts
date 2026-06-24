@@ -220,6 +220,7 @@ export async function POST(req: Request) {
         guests:         reservation.guests,
         code:           reservationCode(reservation.id),
         depositEur,
+        dedupeKey:      `resv:${reservation.id}`,
       })
     }
 

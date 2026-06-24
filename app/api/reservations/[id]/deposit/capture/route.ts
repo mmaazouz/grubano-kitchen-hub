@@ -55,6 +55,7 @@ export async function POST(
           restaurantName: resto?.name ?? 'votre restaurant',
           capturedCents:  settle.capturedAmount,
           date:           reservation.date,
+          dedupeKey:      `resv:${reservation.id}`,
         })
       } catch (e) {
         console.error('[EMAIL MISS] [POST deposit/capture] context lookup failed',

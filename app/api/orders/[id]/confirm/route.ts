@@ -62,12 +62,12 @@ export async function POST(
     if (!consumer?.email) {
       return NextResponse.json({ paymentStatus: 'paid', emailSent: false })
     }
-    const already = await prisma.emailLog.findFirst({
-      where: {
-        trigger:   'order_confirmation',
-        recipient: consumer.email,
-        subject:   { contains: ref },
-      },
+    // Idempotence (Email B0) — race-safe via the EmailDispatch @@unique claim performed INSIDE
+    // sendOrderConfirmation(dedupeKey). This pre-check only drives the COSMETIC `alreadySent`
+    // flag for the UI; correctness no longer depends on a read-then-write (the unique INSERT does).
+    const dedupeKey = `order:${order.id}`
+    const already = await prisma.emailDispatch.findFirst({
+      where:  { trigger: 'order_confirmation', dedupeKey },
       select: { id: true },
     })
     if (already) {
@@ -85,6 +85,7 @@ export async function POST(
         .filter((it) => typeof it?.name === 'string')
         .map((it) => ({ name: String(it.name), qty: Number(it.qty) || 1 })),
       paidCents: Math.round(order.total * 100),
+      dedupeKey,
     })
 
     return NextResponse.json({ paymentStatus: 'paid', emailSent: true })

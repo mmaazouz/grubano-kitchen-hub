@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 // ── Transactional emails v1 (Agent 13) ─────────────────────────────────────────
 //
@@ -110,14 +111,39 @@ export async function logEmailSkipped(trigger: string, subject: string, context:
 
 // ── Core best-effort sender ─────────────────────────────────────────────────────
 
+export type SendStatus = 'sent' | 'skipped' | 'failed' | 'duplicate'
+
 export async function sendTransactional(opts: {
   to:      string
   subject: string
   html:    string
   /** EmailLog trigger key — also the [EMAIL MISS] context tag. */
   trigger: string
-}): Promise<void> {
-  let status = 'sent'
+  /** Email B0 (Agent 141) — when set, the send is IDEMPOTENT: a prior (trigger,dedupeKey)
+   *  already claimed in EmailDispatch → return {status:'duplicate'} WITHOUT resending.
+   *  Race-safe via the @@unique([trigger,dedupeKey]) constraint (a unique INSERT, not a
+   *  read-then-write). Omitted → unchanged behaviour (always sends + logs, as before). */
+  dedupeKey?: string
+}): Promise<{ status: SendStatus }> {
+  // ── Idempotency claim (race-safe) ──────────────────────────────────────────
+  // Claim BEFORE sending via a UNIQUE INSERT: concurrent callers race here and exactly
+  // one wins; the losers get P2002 → 'duplicate' (no send). A non-P2002 failure (e.g. the
+  // table not yet db-pushed → P2021) DEGRADES to a normal send so a real transactional
+  // email is never swallowed by an idempotency-store hiccup. Never throws to the caller.
+  if (opts.dedupeKey) {
+    try {
+      await prisma.emailDispatch.create({ data: { trigger: opts.trigger, dedupeKey: opts.dedupeKey } })
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return { status: 'duplicate' } // already dispatched → skip cleanly, never resend
+      }
+      console.error(`[EMAIL DEDUP] [${opts.trigger}] claim failed — sending WITHOUT idempotency`,
+        JSON.stringify({ dedupeKey: opts.dedupeKey }), err instanceof Error ? err.message : err)
+      // fall through: degrade to a normal (non-deduped) send
+    }
+  }
+
+  let status: Exclude<SendStatus, 'duplicate'> = 'sent'
   try {
     if (!process.env.SMTP_PASS) {
       status = 'skipped'
@@ -138,11 +164,34 @@ export async function sendTransactional(opts: {
       data: { recipient: opts.to, subject: opts.subject, trigger: opts.trigger, status },
     })
   } catch { /* audit log is best-effort */ }
+
+  // Release the idempotency claim when the email did NOT actually go out (failed / skipped),
+  // so a later attempt can re-send instead of being permanently suppressed (best-effort).
+  if (opts.dedupeKey && status !== 'sent') {
+    try {
+      await prisma.emailDispatch.deleteMany({ where: { trigger: opts.trigger, dedupeKey: opts.dedupeKey } })
+    } catch { /* best-effort: the registry release is non-critical */ }
+  }
+
+  return { status }
+}
+
+// ── sendOnce — idempotent transactional send (Email B0, Agent 141) ──────────────
+// Named convenience over sendTransactional({dedupeKey}): a 2nd call with the same
+// (trigger, dedupeKey) returns {status:'duplicate'} WITHOUT resending. Race-safe
+// (DB unique constraint, not findFirst) + best-effort (never throws to the caller).
+export async function sendOnce(
+  trigger:   string,
+  dedupeKey: string,
+  email:     { to: string; subject: string; html: string },
+): Promise<{ status: SendStatus }> {
+  return sendTransactional({ to: email.to, subject: email.subject, html: email.html, trigger, dedupeKey })
 }
 
 // ── 1) Reservation confirmation (consumer booking) ──────────────────────────────
 
 export async function sendReservationConfirmation(p: {
+  dedupeKey?:     string  // Email B0 (Agent 141) — at-most-once when set (e.g. `resv:<id>`)
   to:             string
   customerName:   string
   restaurantName: string
@@ -167,6 +216,7 @@ export async function sendReservationConfirmation(p: {
     to:      p.to,
     subject: `Réservation confirmée — ${p.restaurantName}`,
     trigger: 'reservation_confirmation',
+    dedupeKey: p.dedupeKey,
     html: shell(`Réservation confirmée ✓`, `
       <p>Bonjour ${esc(p.customerName)}, votre table est réservée.</p>
       ${table(rows)}
@@ -179,12 +229,14 @@ export async function sendReservationConfirmation(p: {
 //        yet; wire these the day the route ships) ──────────────────────────────
 
 export async function sendReservationCancelledByClientToClient(p: {
+  dedupeKey?: string // Email B0 — at-most-once when set
   to: string; customerName: string; restaurantName: string; date: Date
 }): Promise<void> {
   await sendTransactional({
     to:      p.to,
     subject: `Annulation confirmée — ${p.restaurantName}`,
     trigger: 'reservation_cancelled_by_client_client',
+    dedupeKey: p.dedupeKey,
     html: shell('Annulation confirmée', `
       <p>Bonjour ${esc(p.customerName)}, votre réservation chez <strong>${esc(p.restaurantName)}</strong>
          du ${formatDateFr(p.date)} est bien annulée.</p>
@@ -193,12 +245,14 @@ export async function sendReservationCancelledByClientToClient(p: {
 }
 
 export async function sendReservationCancelledByClientToOwner(p: {
+  dedupeKey?: string // Email B0 — at-most-once when set
   to: string; customerName: string; restaurantName: string; date: Date; guests: number
 }): Promise<void> {
   await sendTransactional({
     to:      p.to,
     subject: `Réservation annulée par le client — ${formatDateFr(p.date)}`,
     trigger: 'reservation_cancelled_by_client_owner',
+    dedupeKey: p.dedupeKey,
     html: shell('Réservation annulée par le client', `
       <p>${esc(p.customerName)} a annulé sa réservation chez <strong>${esc(p.restaurantName)}</strong>.</p>
       ${table(row('Date', formatDateFr(p.date)) + row('Couverts', String(p.guests)))}
@@ -209,6 +263,7 @@ export async function sendReservationCancelledByClientToOwner(p: {
 // ── 2b) Cancellation BY THE RESTAURANT → inform the client ──────────────────────
 
 export async function sendReservationCancelledByOwner(p: {
+  dedupeKey?:     string  // Email B0 — at-most-once when set
   to:             string
   customerName:   string
   restaurantName: string
@@ -224,6 +279,7 @@ export async function sendReservationCancelledByOwner(p: {
     to:      p.to,
     subject: `Votre réservation a été annulée — ${p.restaurantName}`,
     trigger: 'reservation_cancelled_by_owner',
+    dedupeKey: p.dedupeKey,
     html: shell('Réservation annulée', `
       <p>Bonjour ${esc(p.customerName)}, nous sommes désolés : <strong>${esc(p.restaurantName)}</strong>
          a dû annuler votre réservation du ${formatDateFr(p.date)}.</p>
@@ -243,6 +299,7 @@ export async function sendReservationCancelledByOwner(p: {
 // one-off dashboard cancel. Sorry tone — the restaurant closed on the guest.
 
 export async function sendReservationCancelledByClosure(p: {
+  dedupeKey?:     string  // Email B0 — at-most-once when set
   to:             string
   customerName:   string
   restaurantName: string
@@ -257,6 +314,7 @@ export async function sendReservationCancelledByClosure(p: {
     to:      p.to,
     subject: `Votre réservation a été annulée — fermeture exceptionnelle de ${p.restaurantName}`,
     trigger: 'reservation_cancelled_by_closure',
+    dedupeKey: p.dedupeKey,
     html: shell('Réservation annulée — fermeture exceptionnelle', `
       <p>Bonjour ${esc(p.customerName)}, nous sommes sincèrement désolés :
          <strong>${esc(p.restaurantName)}</strong> sera exceptionnellement fermé et a dû annuler
@@ -315,6 +373,7 @@ export async function sendPasswordChangedEmail(p: {
 // ── 3) Refund confirmation (bill refund or captured-empreinte refund) ───────────
 
 export async function sendRefundConfirmation(p: {
+  dedupeKey?:     string  // Email B0 — at-most-once when set
   to:             string
   customerName:   string
   restaurantName: string
@@ -327,6 +386,7 @@ export async function sendRefundConfirmation(p: {
     to:      p.to,
     subject: `Remboursement ${p.partial ? 'partiel ' : ''}effectué — ${p.restaurantName}`,
     trigger: 'refund_confirmation',
+    dedupeKey: p.dedupeKey,
     html: shell('Remboursement effectué', `
       <p>Bonjour ${esc(p.customerName)}, un remboursement ${p.partial ? '<strong>partiel</strong> ' : ''}de
          <strong>${eurosFromCents(p.refundedCents)}</strong> vient d’être effectué par
@@ -338,6 +398,7 @@ export async function sendRefundConfirmation(p: {
 // ── 5) Order confirmation — checkout C2 (paid pickup/delivery order) ───────────
 
 export async function sendOrderConfirmation(p: {
+  dedupeKey?:     string  // Email B0 — at-most-once when set (e.g. `order:<id>`)
   to:             string
   customerName:   string
   restaurantName: string
@@ -359,6 +420,7 @@ export async function sendOrderConfirmation(p: {
     to:      p.to,
     subject: `Commande ${p.orderRef} confirmée — ${p.restaurantName}`,
     trigger: 'order_confirmation',
+    dedupeKey: p.dedupeKey,
     html: shell('Commande confirmée ✓', `
       <p>Bonjour ${esc(p.customerName)}, votre paiement de
          <strong>${eurosFromCents(p.paidCents)}</strong> est confirmé —
@@ -443,6 +505,7 @@ export async function sendWaitlistOfferToRestaurant(p: {
 // ── 4) No-show penalty charged ───────────────────────────────────────────────────
 
 export async function sendNoShowPenaltyCharged(p: {
+  dedupeKey?:     string  // Email B0 — at-most-once when set (e.g. `resv:<id>`)
   to:             string
   customerName:   string
   restaurantName: string
@@ -455,6 +518,7 @@ export async function sendNoShowPenaltyCharged(p: {
     to:      p.to,
     subject: `Pénalité no-show débitée — ${p.restaurantName}`,
     trigger: 'noshow_penalty_charged',
+    dedupeKey: p.dedupeKey,
     html: shell('Pénalité no-show', `
       <p>Bonjour ${esc(p.customerName)}, votre réservation chez <strong>${esc(p.restaurantName)}</strong>
          du ${formatDateFr(p.date)} n’a pas été honorée.</p>

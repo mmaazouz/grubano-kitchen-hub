@@ -327,6 +327,7 @@ export async function PATCH(req: Request) {
               customerName:   reservation.customerName,
               restaurantName,
               date:           reservation.date,
+              dedupeKey:      `resv:${reservation.id}`,
             })
           } else {
             await logEmailSkipped(
@@ -342,6 +343,7 @@ export async function PATCH(req: Request) {
             restaurantName,
             capturedCents,
             date:           reservation.date,
+            dedupeKey:      `resv:${reservation.id}`,
           })
         }
       } catch (e) {

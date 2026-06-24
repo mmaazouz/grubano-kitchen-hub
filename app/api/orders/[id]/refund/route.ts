@@ -73,6 +73,7 @@ export async function POST(
           restaurantName: resto?.name ?? 'votre restaurant',
           refundedCents:  result.refundedCents,
           partial:        result.remainingCents > 0,
+          dedupeKey:      `order:${order.id}:${result.refundedCents}`,
         })
       }
     } catch (e) {

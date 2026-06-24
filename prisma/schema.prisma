@@ -564,6 +564,23 @@ model EmailLog {
   sentAt       DateTime @default(now())
 }
 
+// ── Email idempotency registry (Email B0, Agent 141) ──────────────────────────
+// Race-safe dedup for transactional emails: lib/transactional-emails.sendOnce /
+// sendTransactional({dedupeKey}) claims a slot here via a UNIQUE INSERT before
+// sending. A duplicate (trigger,dedupeKey) → unique violation (P2002) → the send
+// is skipped (never resent). DISTINCT from EmailLog (the send audit log): this is
+// the "has this email already gone out?" registry. Additive table, no FK — safe to
+// add without touching any existing model. NOTE: a failed/skipped send releases its
+// claim (deleteMany) so a later retry can re-send.
+model EmailDispatch {
+  id        String   @id @default(cuid())
+  trigger   String
+  dedupeKey String
+  createdAt DateTime @default(now())
+
+  @@unique([trigger, dedupeKey])
+}
+
 // ── Creator economy ───────────────────────────────────────────────────────────
 
 model Creator {

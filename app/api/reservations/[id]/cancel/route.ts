@@ -144,6 +144,7 @@ export async function POST(
         customerName:   reservation.customerName,
         restaurantName,
         date:           reservation.date,
+        dedupeKey:      `resv:${reservation.id}`,
       })
     } else {
       await logEmailSkipped(
@@ -160,6 +161,7 @@ export async function POST(
         restaurantName,
         date:           reservation.date,
         guests:         reservation.guests,
+        dedupeKey:      `resv:${reservation.id}`,
       })
     }
 
