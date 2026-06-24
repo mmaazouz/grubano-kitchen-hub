@@ -8,6 +8,7 @@ import {
   ArrowLeft, Loader2, AlertCircle, Check, ShoppingBag, Store, Bike,
 } from 'lucide-react'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
+import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
 
 // ── /eat/checkout/[orderId] — chantier checkout C2 (Agent 13) ──────────────────
 //
@@ -316,7 +317,21 @@ export default function CheckoutPage() {
           )}
 
           {stage === 'pay' && payInit && (
-            <div className="rounded-[20px] bg-white p-4 shadow-bolt-card">
+            <div className="space-y-3 rounded-[20px] bg-white p-4 shadow-bolt-card">
+              {/* Wallet 1-tap (Apple/Google Pay) — CONFIRMS THE SAME PaymentIntent (payInit.clientSecret)
+                  as the card, server amount (payInit.amount). Hidden when no wallet is available on the
+                  device → card-only. Success → SAME onPaid as the card (setStage('paid') → confirm-poll
+                  + tracking). Look = current /eat. */}
+              <WalletPaymentButton
+                clientSecret={payInit.clientSecret}
+                publishableKey={payInit.publishableKey}
+                amount={payInit.amount}
+                currency={payInit.currency}
+                label={t('total')}
+                heading={t('walletHeading')}
+                errorLabel={t('walletError')}
+                onPaid={() => setStage('paid')}
+              />
               <StripeTicketPayment
                 clientSecret={payInit.clientSecret}
                 publishableKey={payInit.publishableKey}

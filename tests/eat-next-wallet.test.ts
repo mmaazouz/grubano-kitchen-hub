@@ -112,9 +112,12 @@ describe('(4) /eat byte-identical — shared StripeTicketPayment untouched, wall
     expect(/PaymentRequestButton|paymentRequest\(|WalletPaymentButton/.test(ticket)).toBe(false)
   })
 
-  it('the /eat consumer checkout does NOT import the wallet (it lives only in /eat-next)', () => {
+  it('the /eat consumer checkout does NOT import the EAT-NEXT wallet (it lives only in /eat-next)', () => {
+    // Agent 139 added a SEPARATE dedicated /eat wallet (@/components/eat/WalletPaymentButton) to the live
+    // /eat checkout — that is allowed. What must stay true is that the EAT-NEXT component never leaks into
+    // /eat (each surface mounts its own; StripeTicketPayment stays shared + byte-identical).
     const eat = read(EAT_CHECKOUT)
-    expect(/WalletPaymentButton/.test(eat)).toBe(false)
+    expect(/eat-next\/WalletPaymentButton/.test(eat)).toBe(false)
   })
 })
 

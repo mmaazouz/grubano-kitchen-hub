@@ -1552,7 +1552,9 @@
       "trackCta": "Track my order",
       "promoLine": "Promo {name}",
       "loyaltyLine": "Loyalty credit",
-      "loyaltyLinePoints": "Loyalty credit ({points} pts)"
+      "loyaltyLinePoints": "Loyalty credit ({points} pts)",
+      "walletHeading": "Express checkout",
+      "walletError": "Express payment failed. Try again or pay by card."
     },
     "checkoutAuth": {
       "title": "Sign in",

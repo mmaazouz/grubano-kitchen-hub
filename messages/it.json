@@ -1552,7 +1552,9 @@
       "trackCta": "Segui il mio ordine",
       "promoLine": "Promo {name}",
       "loyaltyLine": "Credito fedeltà",
-      "loyaltyLinePoints": "Credito fedeltà ({points} pts)"
+      "loyaltyLinePoints": "Credito fedeltà ({points} pts)",
+      "walletHeading": "Paga in un tocco",
+      "walletError": "Pagamento espresso non riuscito. Riprova o paga con carta."
     },
     "checkoutAuth": {
       "title": "Accedi",

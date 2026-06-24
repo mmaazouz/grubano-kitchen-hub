@@ -1552,7 +1552,9 @@
       "trackCta": "Seguir mi pedido",
       "promoLine": "Promo {name}",
       "loyaltyLine": "Crédito de fidelidad",
-      "loyaltyLinePoints": "Crédito de fidelidad ({points} pts)"
+      "loyaltyLinePoints": "Crédito de fidelidad ({points} pts)",
+      "walletHeading": "Pago en 1 toque",
+      "walletError": "El pago exprés falló. Inténtalo de nuevo o paga con tarjeta."
     },
     "checkoutAuth": {
       "title": "Iniciar sesión",

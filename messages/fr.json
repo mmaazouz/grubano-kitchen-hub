@@ -1552,7 +1552,9 @@
       "trackCta": "Suivre ma commande",
       "promoLine": "Promo {name}",
       "loyaltyLine": "Crédit fidélité",
-      "loyaltyLinePoints": "Crédit fidélité ({points} pts)"
+      "loyaltyLinePoints": "Crédit fidélité ({points} pts)",
+      "walletHeading": "Payer en 1 geste",
+      "walletError": "Le paiement express a échoué. Réessayez ou payez par carte."
     },
     "checkoutAuth": {
       "title": "Connexion",

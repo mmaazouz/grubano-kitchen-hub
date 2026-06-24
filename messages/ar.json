@@ -1552,7 +1552,9 @@
       "trackCta": "تتبّع طلبي",
       "promoLine": "عرض {name}",
       "loyaltyLine": "رصيد الولاء",
-      "loyaltyLinePoints": "رصيد الولاء ({points} نقطة)"
+      "loyaltyLinePoints": "رصيد الولاء ({points} نقطة)",
+      "walletHeading": "ادفع بنقرة واحدة",
+      "walletError": "فشل الدفع السريع. حاول مرة أخرى أو ادفع بالبطاقة."
     },
     "checkoutAuth": {
       "title": "تسجيل الدخول",
