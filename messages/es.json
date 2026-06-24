@@ -1553,6 +1553,24 @@
       "promoLine": "Promo {name}",
       "loyaltyLine": "Crédito de fidelidad",
       "loyaltyLinePoints": "Crédito de fidelidad ({points} pts)"
+    },
+    "checkoutAuth": {
+      "title": "Iniciar sesión",
+      "subtitle": "Introduce tu email para recibir un código de 6 dígitos, sin contraseña.",
+      "emailLabel": "Email",
+      "emailPlaceholder": "tu@email.com",
+      "sendCode": "Recibir mi código",
+      "sending": "Enviando…",
+      "codeLabel": "Código de 6 dígitos",
+      "codeSent": "Código enviado a {email}. Revisa tu bandeja (y el spam).",
+      "verify": "Validar y continuar",
+      "verifying": "Verificando…",
+      "codeError": "Código no válido o caducado. Inténtalo de nuevo.",
+      "linkSentTitle": "Enlace enviado",
+      "linkSentBody": "Si existe una cuenta para {email}, acabamos de enviar un enlace de acceso.",
+      "changeEmail": "Cambiar de email",
+      "usePassword": "Iniciar sesión con contraseña",
+      "close": "Cerrar"
     }
   },
   "menu": {

@@ -7,6 +7,7 @@ import { useRouter } from '@/navigation'
 import { Minus, Plus, Trash2, MapPin, CreditCard, ShoppingBag, Bike, Package, Sparkles } from 'lucide-react'
 import { Button, Badge, PriceTag } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
+import CheckoutAuthSheet from '@/components/eat/CheckoutAuthSheet'
 import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
 import { formatEuros, formatAmount } from '@/lib/format-money'
 
@@ -24,6 +25,8 @@ export default function CartScreen() {
   const [payment, setPayment] = useState<'card' | 'cash'>('card')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Account-AT-payment (Agent 138) — passwordless email+code sheet for guests at checkout.
+  const [authSheet, setAuthSheet] = useState(false)
   // Chantier fidélité L1 — loyalty redemption (D4: the client sends only the
   // INTENTION usePoints; the SERVER computes the euro credit, checks the balance
   // and applies the caps). The balance + conversion scale are display-only.
@@ -352,6 +355,15 @@ export default function CartScreen() {
     }
   }
 
+  // Account-AT-payment (Agent 138): a guest taps "Commander" → open the passwordless sheet (email +
+  // 6-digit code, NO password). Once connected (signIn set the session cookie), continue STRAIGHT to
+  // placeOrder — its POST /api/orders now carries the cookie (no 401), mirroring the password flow.
+  // placeOrder keeps its own 401 → /eat/auth fallback for an expired session mid-flow.
+  function handleCheckout() {
+    if (authStatus !== 'authenticated') { setAuthSheet(true); return }
+    placeOrder()
+  }
+
   if (!hydrated) {
     return (
       <div className="min-h-screen bg-grubano-bg p-4">
@@ -641,12 +653,21 @@ export default function CartScreen() {
           size="pill"
           fullWidth
           loading={submitting}
-          onClick={placeOrder}
+          onClick={handleCheckout}
         >
           <span className="flex-1 text-left">{submitting ? t('submitting') : t('placeOrder')}</span>
           {!submitting && <span>{formatEuros(total, locale)}</span>}
         </Button>
       </div>
+
+      {/* Passwordless account-AT-payment (Agent 138) — guests authenticate inline, then the order
+          continues. Look = current /eat (no Stellar). Password sign-in stays reachable inside it. */}
+      {authSheet && (
+        <CheckoutAuthSheet
+          onClose={() => setAuthSheet(false)}
+          onConnected={() => { setAuthSheet(false); placeOrder() }}
+        />
+      )}
     </div>
   )
 }

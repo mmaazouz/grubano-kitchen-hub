@@ -1553,6 +1553,24 @@
       "promoLine": "Promo {name}",
       "loyaltyLine": "Loyalty credit",
       "loyaltyLinePoints": "Loyalty credit ({points} pts)"
+    },
+    "checkoutAuth": {
+      "title": "Sign in",
+      "subtitle": "Enter your email to get a 6-digit code — no password.",
+      "emailLabel": "Email",
+      "emailPlaceholder": "you@email.com",
+      "sendCode": "Send my code",
+      "sending": "Sending…",
+      "codeLabel": "6-digit code",
+      "codeSent": "Code sent to {email}. Check your inbox (and spam).",
+      "verify": "Verify and continue",
+      "verifying": "Verifying…",
+      "codeError": "Invalid or expired code. Try again.",
+      "linkSentTitle": "Link sent",
+      "linkSentBody": "If an account exists for {email}, a sign-in link has just been sent.",
+      "changeEmail": "Change email",
+      "usePassword": "Sign in with a password",
+      "close": "Close"
     }
   },
   "menu": {

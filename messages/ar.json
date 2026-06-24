@@ -1553,6 +1553,24 @@
       "promoLine": "عرض {name}",
       "loyaltyLine": "رصيد الولاء",
       "loyaltyLinePoints": "رصيد الولاء ({points} نقطة)"
+    },
+    "checkoutAuth": {
+      "title": "تسجيل الدخول",
+      "subtitle": "أدخل بريدك الإلكتروني لتلقّي رمز من 6 أرقام — بدون كلمة مرور.",
+      "emailLabel": "البريد الإلكتروني",
+      "emailPlaceholder": "you@email.com",
+      "sendCode": "إرسال الرمز",
+      "sending": "جارٍ الإرسال…",
+      "codeLabel": "رمز من 6 أرقام",
+      "codeSent": "تم إرسال الرمز إلى {email}. تحقّق من بريدك (والبريد المزعج).",
+      "verify": "تأكيد ومتابعة",
+      "verifying": "جارٍ التحقق…",
+      "codeError": "رمز غير صالح أو منتهٍ. حاول مرة أخرى.",
+      "linkSentTitle": "تم إرسال الرابط",
+      "linkSentBody": "إذا كان هناك حساب لـ {email}، فقد تم إرسال رابط تسجيل دخول للتو.",
+      "changeEmail": "تغيير البريد الإلكتروني",
+      "usePassword": "تسجيل الدخول بكلمة المرور",
+      "close": "إغلاق"
     }
   },
   "menu": {
