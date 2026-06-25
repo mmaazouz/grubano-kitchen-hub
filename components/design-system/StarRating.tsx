@@ -8,9 +8,9 @@ export type StarSize = 'sm' | 'md' | 'lg'
 
 const ICON_SIZES: Record<StarSize, number> = { sm: 12, md: 16, lg: 20 }
 const TEXT_SIZES: Record<StarSize, string> = {
-  sm: 'text-grubano-xs',
-  md: 'text-grubano-sm',
-  lg: 'text-grubano-base',
+  sm: 'text-xs',
+  md: 'text-sm',
+  lg: 'text-base',
 }
 
 export interface StarRatingProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
@@ -61,12 +61,12 @@ export const StarRating = React.forwardRef<HTMLDivElement, StarRatingProps>(func
               aria-checked={active}
               aria-label={`${star} étoile${star > 1 ? 's' : ''}`}
               onClick={() => onChange!(star)}
-              className="p-1 -m-1 transition-transform active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-grubano-primary rounded-grubano-sm"
+              className="p-1 -m-1 transition-transform active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent rounded-gb-sm"
             >
               <Star
                 size={iconSize}
                 className={cn(
-                  active ? 'fill-grubano-warning stroke-grubano-warning' : 'fill-transparent stroke-grubano-border-strong',
+                  active ? 'fill-gb-warning stroke-gb-warning' : 'fill-transparent stroke-gb-stroke-strong',
                 )}
               />
             </button>
@@ -80,13 +80,13 @@ export const StarRating = React.forwardRef<HTMLDivElement, StarRatingProps>(func
   return (
     <div
       ref={ref}
-      className={cn('inline-flex items-center gap-1 font-semibold text-grubano-ink', TEXT_SIZES[size], className)}
+      className={cn('inline-flex items-center gap-1 font-semibold text-gb-content', TEXT_SIZES[size], className)}
       {...rest}
     >
-      <Star size={iconSize} className="fill-grubano-warning stroke-grubano-warning" />
+      <Star size={iconSize} className="fill-gb-warning stroke-gb-warning" />
       {showValue && <span>{value.toFixed(1)}</span>}
       {reviewCount !== undefined && (
-        <span className="font-medium text-grubano-ink-muted">({formatCount(reviewCount)})</span>
+        <span className="font-medium text-gb-content-muted">({formatCount(reviewCount)})</span>
       )}
     </div>
   )

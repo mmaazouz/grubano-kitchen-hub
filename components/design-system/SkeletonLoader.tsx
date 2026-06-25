@@ -4,7 +4,7 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 
 const SHIMMER =
-  'bg-gradient-to-r from-grubano-surface-muted via-grubano-border to-grubano-surface-muted ' +
+  'bg-gradient-to-r from-gb-oat-100 via-gb-oat-200 to-gb-oat-100 ' +
   '[background-size:200%_100%] animate-shimmer'
 
 export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -14,10 +14,10 @@ export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const ROUNDED = {
   none: 'rounded-none',
-  sm:   'rounded-grubano-sm',
-  md:   'rounded-grubano-md',
-  lg:   'rounded-grubano-lg',
-  pill: 'rounded-grubano-pill',
+  sm:   'rounded-gb-sm',
+  md:   'rounded-gb-md',
+  lg:   'rounded-gb-lg',
+  pill: 'rounded-gb-full',
 } as const
 
 /**
@@ -40,7 +40,7 @@ export const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(function
 /** Restaurant/dish card skeleton — match RestaurantCard footprint. */
 export function SkeletonCard({ className }: { className?: string }) {
   return (
-    <div className={cn('rounded-grubano-xl overflow-hidden bg-grubano-surface border border-grubano-border', className)}>
+    <div className={cn('rounded-gb-xl overflow-hidden bg-gb-surface-elevated border border-gb-stroke', className)}>
       <Skeleton rounded="none" className="h-40" />
       <div className="p-4 flex flex-col gap-2">
         <Skeleton className="h-5 w-2/3" />
@@ -57,7 +57,7 @@ export function SkeletonCard({ className }: { className?: string }) {
 /** Horizontal dish-row skeleton — match DishCard horizontal variant. */
 export function SkeletonRow({ className }: { className?: string }) {
   return (
-    <div className={cn('flex gap-3 p-3 bg-grubano-surface rounded-grubano-lg border border-grubano-border', className)}>
+    <div className={cn('flex gap-3 p-3 bg-gb-surface-elevated rounded-gb-lg border border-gb-stroke', className)}>
       <Skeleton className="h-20 w-20 shrink-0" />
       <div className="flex-1 flex flex-col gap-2 py-1">
         <Skeleton className="h-4 w-3/4" />

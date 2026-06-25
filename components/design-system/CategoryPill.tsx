@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils'
 export type CategoryPillSize = 'sm' | 'md' | 'lg'
 
 const SIZES: Record<CategoryPillSize, string> = {
-  sm: 'h-8  px-3 text-grubano-xs gap-1',
-  md: 'h-10 px-4 text-grubano-sm gap-1.5',
-  lg: 'h-12 px-5 text-grubano-base gap-2',
+  sm: 'h-8  px-3 text-xs gap-1',
+  md: 'h-10 px-4 text-sm gap-1.5',
+  lg: 'h-12 px-5 text-base gap-2',
 }
 
 export interface CategoryPillProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -29,13 +29,13 @@ export const CategoryPill = React.forwardRef<HTMLButtonElement, CategoryPillProp
       type="button"
       aria-pressed={active}
       className={cn(
-        'inline-flex items-center font-semibold rounded-grubano-pill whitespace-nowrap',
+        'inline-flex items-center font-semibold rounded-gb-full whitespace-nowrap',
         'transition-all duration-150 active:scale-95',
-        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/30',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent',
         SIZES[size],
         active
-          ? 'bg-grubano-primary text-white shadow-grubano-cta'
-          : 'bg-grubano-surface text-grubano-ink border border-grubano-border-strong hover:bg-grubano-surface-muted',
+          ? 'bg-gb-accent-strong text-white shadow-gb-md'
+          : 'bg-gb-surface-elevated text-gb-content border border-gb-stroke-strong hover:bg-gb-oat-100',
         className,
       )}
       {...rest}

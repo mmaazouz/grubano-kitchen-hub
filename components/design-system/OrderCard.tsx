@@ -99,9 +99,9 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
       onClick={onClick}
       onKeyDown={(e) => interactive && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick!())}
       className={cn(
-        'bg-grubano-surface border border-grubano-border rounded-grubano-xl p-4 flex flex-col gap-3',
-        'shadow-grubano-sm transition-all duration-150',
-        interactive && 'cursor-pointer hover:shadow-grubano-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/30',
+        'bg-gb-surface-elevated border border-gb-stroke rounded-gb-xl p-4 flex flex-col gap-3',
+        'shadow-gb-sm transition-all duration-150',
+        interactive && 'cursor-pointer hover:shadow-gb-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent',
         className,
       )}
       {...rest}
@@ -109,14 +109,14 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-grubano-xs text-grubano-ink-faint">#{orderId.slice(-6).toUpperCase()}</span>
+            <span className="font-mono text-xs text-gb-content-muted">#{orderId.slice(-6).toUpperCase()}</span>
             <Badge tone={meta.tone} size="sm" dot>
               {meta.label}
             </Badge>
           </div>
-          <h3 className="font-display font-bold text-grubano-base text-grubano-ink truncate">{counterparty}</h3>
+          <h3 className="font-gb-display font-bold text-base text-gb-content truncate">{counterparty}</h3>
           {(formattedTime || etaMinutes !== undefined) && (
-            <div className="flex items-center gap-1 mt-0.5 text-grubano-xs text-grubano-ink-muted">
+            <div className="flex items-center gap-1 mt-0.5 text-xs text-gb-content-muted">
               <Clock size={12} />
               {etaMinutes !== undefined ? <span>~{etaMinutes} min</span> : <span>{formattedTime}</span>}
             </div>
@@ -126,11 +126,11 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
       </div>
 
       {visibleItems.length > 0 && (
-        <ul className="text-grubano-sm text-grubano-ink-muted space-y-0.5">
+        <ul className="text-sm text-gb-content-muted space-y-0.5">
           {visibleItems.map((it, i) => (
             <li key={i} className="flex justify-between gap-3">
               <span className="truncate">
-                <span className="font-semibold text-grubano-ink">{it.qty}×</span> {it.name}
+                <span className="font-semibold text-gb-content">{it.qty}×</span> {it.name}
               </span>
               {typeof it.price === 'number' && (
                 <span className="font-medium tabular-nums">
@@ -140,13 +140,13 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
             </li>
           ))}
           {remaining > 0 && (
-            <li className="text-grubano-xs text-grubano-ink-faint italic">+ {remaining} autre{remaining > 1 ? 's' : ''}</li>
+            <li className="text-xs text-gb-content-muted italic">+ {remaining} autre{remaining > 1 ? 's' : ''}</li>
           )}
         </ul>
       )}
 
       {address && (
-        <div className="flex items-start gap-1.5 text-grubano-xs text-grubano-ink-muted">
+        <div className="flex items-start gap-1.5 text-xs text-gb-content-muted">
           <MapPin size={12} className="mt-0.5 shrink-0" />
           <span className="line-clamp-1">{address}</span>
         </div>
@@ -161,13 +161,13 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
                 e.stopPropagation()
                 onAction()
               }}
-              className="inline-flex items-center gap-1 h-9 px-3 rounded-grubano-md bg-grubano-primary text-white text-grubano-sm font-semibold active:scale-[0.98]"
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-gb-md bg-gb-accent-strong text-white text-sm font-semibold active:scale-[0.98]"
             >
               {actionLabel}
             </button>
           ) : (
             interactive && (
-              <span className="inline-flex items-center gap-0.5 text-grubano-sm font-semibold text-grubano-primary">
+              <span className="inline-flex items-center gap-0.5 text-sm font-semibold text-gb-accent-strong">
                 Détails <ChevronRight size={16} />
               </span>
             )

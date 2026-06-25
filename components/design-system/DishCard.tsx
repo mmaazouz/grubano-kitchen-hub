@@ -89,7 +89,7 @@ function DishPhoto({
       )}
       {unavailable && (
         <div className="absolute inset-0 bg-white/70 grid place-items-center">
-          <span className="text-grubano-xs font-bold text-grubano-ink">{soldOutLabel}</span>
+          <span className="text-xs font-bold text-gb-content">{soldOutLabel}</span>
         </div>
       )}
     </div>
@@ -108,7 +108,7 @@ function AddButton({
     return (
       <span
         aria-label={`${qty} dans le panier`}
-        className="absolute -bottom-2 -right-2 h-9 min-w-9 px-2 inline-flex items-center justify-center rounded-grubano-pill bg-grubano-primary text-white font-bold text-grubano-sm shadow-grubano-cta"
+        className="absolute -bottom-2 -right-2 h-9 min-w-9 px-2 inline-flex items-center justify-center rounded-gb-full bg-gb-accent-strong text-white font-bold text-sm shadow-gb-md"
       >
         {qty}
       </span>
@@ -122,7 +122,7 @@ function AddButton({
         onAdd?.()
       }}
       aria-label="Ajouter au panier"
-      className="absolute -bottom-2 -right-2 h-9 w-9 inline-flex items-center justify-center rounded-grubano-pill bg-grubano-primary text-white shadow-grubano-cta active:scale-90 transition-transform focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/30"
+      className="absolute -bottom-2 -right-2 h-9 w-9 inline-flex items-center justify-center rounded-gb-full bg-gb-accent-strong text-white shadow-gb-md active:scale-90 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent"
     >
       <Plus size={18} strokeWidth={2.5} />
     </button>
@@ -156,7 +156,7 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
 ) {
   const interactive = typeof onClick === 'function'
   const interactiveClasses = interactive
-    ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-grubano-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/30'
+    ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-gb-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent'
     : ''
 
   if (layout === 'vertical') {
@@ -167,7 +167,7 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
         tabIndex={interactive ? 0 : undefined}
         onClick={onClick}
         className={cn(
-          'group relative bg-grubano-surface border border-grubano-border rounded-grubano-xl overflow-hidden shadow-grubano-sm transition-all duration-150',
+          'group relative bg-gb-surface-elevated border border-gb-stroke rounded-gb-xl overflow-hidden shadow-gb-sm transition-all duration-150',
           interactiveClasses,
           unavailable && 'opacity-70',
           className,
@@ -186,8 +186,8 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
           <AddButton onAdd={onAdd} qty={quantityInCart} />
         </div>
         <div className="p-3 flex flex-col gap-1">
-          <h4 className="font-semibold text-grubano-sm text-grubano-ink line-clamp-2">{name}</h4>
-          {description && <p className="text-grubano-xs text-grubano-ink-muted line-clamp-2">{description}</p>}
+          <h4 className="font-semibold text-sm text-gb-content line-clamp-2">{name}</h4>
+          {description && <p className="text-xs text-gb-content-muted line-clamp-2">{description}</p>}
           <div className="mt-1 flex items-center justify-between gap-2">
             <PriceTag amount={price} originalAmount={originalPrice} cents={cents} currency={currency} size="sm" />
             {labels && labels.length > 0 && (
@@ -200,7 +200,7 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
               </div>
             )}
           </div>
-          {meta && <div className="text-grubano-xs text-grubano-ink-faint mt-0.5">{meta}</div>}
+          {meta && <div className="text-xs text-gb-content-muted mt-0.5">{meta}</div>}
         </div>
       </div>
     )
@@ -214,7 +214,7 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
       tabIndex={interactive ? 0 : undefined}
       onClick={onClick}
       className={cn(
-        'group relative bg-grubano-surface border border-grubano-border rounded-grubano-lg p-3 flex gap-3 transition-all duration-150',
+        'group relative bg-gb-surface-elevated border border-gb-stroke rounded-gb-lg p-3 flex gap-3 transition-all duration-150',
         interactiveClasses,
         unavailable && 'opacity-70',
         className,
@@ -223,14 +223,14 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
     >
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start gap-2 mb-1">
-          <h4 className="flex-1 font-semibold text-grubano-base text-grubano-ink line-clamp-1">{name}</h4>
+          <h4 className="flex-1 font-semibold text-base text-gb-content line-clamp-1">{name}</h4>
           {popular && (
             <Badge tone="warning" size="sm" icon={<Flame size={10} />}>
               {topLabel}
             </Badge>
           )}
         </div>
-        {description && <p className="text-grubano-xs text-grubano-ink-muted line-clamp-2">{description}</p>}
+        {description && <p className="text-xs text-gb-content-muted line-clamp-2">{description}</p>}
         {labels && labels.length > 0 && (
           <div className="flex gap-1 mt-1.5 flex-wrap">
             {labels.map((l) => (
@@ -242,11 +242,11 @@ export const DishCard = React.forwardRef<HTMLDivElement, DishCardProps>(function
         )}
         <div className="mt-auto pt-2 flex items-center justify-between gap-2">
           <PriceTag amount={price} originalAmount={originalPrice} cents={cents} currency={currency} />
-          {meta && <span className="text-grubano-xs text-grubano-ink-faint">{meta}</span>}
+          {meta && <span className="text-xs text-gb-content-muted">{meta}</span>}
         </div>
       </div>
       <div className="relative shrink-0">
-        <DishPhoto photo={photo} name={name} className="h-24 w-24 rounded-grubano-md" unavailable={unavailable} soldOutLabel={soldOutLabel} />
+        <DishPhoto photo={photo} name={name} className="h-24 w-24 rounded-gb-md" unavailable={unavailable} soldOutLabel={soldOutLabel} />
         <AddButton onAdd={onAdd} qty={quantityInCart} />
       </div>
     </div>

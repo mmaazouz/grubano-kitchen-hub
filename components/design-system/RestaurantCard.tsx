@@ -90,7 +90,7 @@ function CoverArea({
       ) : (
         <span
           aria-hidden
-          className="absolute inset-0 grid place-items-center text-white/90 font-display font-bold text-2xl drop-shadow"
+          className="absolute inset-0 grid place-items-center text-white/90 font-gb-display font-bold text-2xl drop-shadow"
         >
           {name.trim()[0]?.toUpperCase() ?? '?'}
         </span>
@@ -106,7 +106,7 @@ function CoverArea({
 
       {unavailable && (
         <div className="absolute inset-0 z-10 bg-black/55 grid place-items-center">
-          <span className="px-3 py-1 rounded-grubano-pill bg-white/95 text-grubano-ink text-grubano-sm font-bold">
+          <span className="px-3 py-1 rounded-gb-full bg-white/95 text-gb-content text-xs font-bold">
             {closedLabel}
           </span>
         </div>
@@ -125,7 +125,7 @@ function MetaRow({
 }: Pick<RestaurantCardProps, 'rating' | 'reviewCount' | 'deliveryTime' | 'deliveryFee' | 'currency' | 'freeLabel'>) {
   const locale = useLocale()
   return (
-    <div className="flex items-center gap-3 text-grubano-xs text-grubano-ink-muted">
+    <div className="flex items-center gap-3 text-xs text-gb-content-muted">
       {typeof rating === 'number' && rating > 0 && (
         <StarRating value={rating} size="sm" reviewCount={reviewCount} />
       )}
@@ -171,12 +171,12 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
   const interactive = typeof onClick === 'function'
 
   const wrapperBase =
-    'bg-grubano-surface border border-grubano-border overflow-hidden ' +
+    'bg-gb-surface-elevated border border-gb-stroke overflow-hidden ' +
     'transition-all duration-150'
 
   const interactiveClasses = interactive
-    ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-grubano-lg active:scale-[0.99] ' +
-      'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/30'
+    ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-gb-md active:scale-[0.99] ' +
+      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent'
     : ''
 
   // ── List layout (horizontal row, used in /eat search results)
@@ -190,17 +190,17 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
         onKeyDown={(e) => interactive && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick!())}
         className={cn(
           wrapperBase,
-          'flex gap-3 p-3 rounded-grubano-lg shadow-grubano-sm',
+          'flex gap-3 p-3 rounded-gb-lg shadow-gb-sm',
           interactiveClasses,
           className,
         )}
         {...rest}
       >
-        <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-24 w-24 rounded-grubano-md shrink-0" />
+        <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-24 w-24 rounded-gb-md shrink-0" />
         <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
           <div>
-            <h3 className="font-display font-bold text-grubano-base text-grubano-ink truncate">{name}</h3>
-            {cuisine && <p className="text-grubano-xs text-grubano-ink-muted truncate">{cuisine}</p>}
+            <h3 className="font-gb-display font-bold text-base text-gb-content truncate">{name}</h3>
+            {cuisine && <p className="text-xs text-gb-content-muted truncate">{cuisine}</p>}
           </div>
           <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} />
         </div>
@@ -218,7 +218,7 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
         onClick={onClick}
         className={cn(
           wrapperBase,
-          'rounded-grubano-2xl shadow-grubano-lg',
+          'rounded-gb-xl shadow-gb-md',
           interactiveClasses,
           className,
         )}
@@ -226,13 +226,13 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
       >
         <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-56" />
         <div className="p-5 flex flex-col gap-2">
-          <h2 className="font-display font-bold text-grubano-2xl text-grubano-ink">{name}</h2>
-          {cuisine && <p className="text-grubano-sm text-grubano-ink-muted">{cuisine}</p>}
+          <h2 className="font-gb-display font-bold text-2xl text-gb-content">{name}</h2>
+          {cuisine && <p className="text-sm text-gb-content-muted">{cuisine}</p>}
           <div className="mt-1">
             <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} />
           </div>
           {typeof minOrder === 'number' && minOrder > 0 && (
-            <p className="text-grubano-xs text-grubano-ink-muted mt-1">
+            <p className="text-xs text-gb-content-muted mt-1">
               Min. {formatEuros(minOrder, locale)}
             </p>
           )}
@@ -251,7 +251,7 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
       onKeyDown={(e) => interactive && (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onClick!())}
       className={cn(
         wrapperBase,
-        'rounded-grubano-xl shadow-grubano-md',
+        'rounded-gb-xl shadow-gb-md',
         interactiveClasses,
         className,
       )}
@@ -260,9 +260,9 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
       <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-40" />
       <div className="p-4 flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-display font-bold text-grubano-lg text-grubano-ink leading-tight line-clamp-1">{name}</h3>
+          <h3 className="font-gb-display font-bold text-lg text-gb-content leading-tight line-clamp-1">{name}</h3>
         </div>
-        {cuisine && <p className="text-grubano-xs text-grubano-ink-muted line-clamp-1">{cuisine}</p>}
+        {cuisine && <p className="text-xs text-gb-content-muted line-clamp-1">{cuisine}</p>}
         <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} />
       </div>
     </div>

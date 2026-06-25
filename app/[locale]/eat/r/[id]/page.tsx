@@ -696,8 +696,9 @@ export default function RestaurantScreen() {
         </div>
       )}
 
-      {/* Bottom bar */}
-      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-grubano-border bg-white px-4 py-3.5">
+      {/* Bottom bar. On desktop (≥lg) the content is offset by the 240px rail → align
+          the bar to the content column instead of the viewport centre. */}
+      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-grubano-border bg-white px-4 py-3.5 lg:left-[240px] lg:right-0 lg:mx-auto lg:w-auto lg:max-w-[1200px] lg:translate-x-0 lg:px-6">
         {cartCount > 0 ? (
           <Button
             variant="primary"

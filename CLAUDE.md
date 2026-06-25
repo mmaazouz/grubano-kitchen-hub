@@ -115,7 +115,7 @@ Multi-brand dark kitchen management platform for Mohammed Maazouz.
 | Dark navy | `#1a1a2e` — sidebar, headers |
 | Font | Inter (system stack fallback) |
 | Component library | shadcn/ui — DO NOT add other UI libraries |
-| Mobile-first | Max-width 480px centered for `/eat/*` consumer app |
+| Responsive (Agent 150) | `/eat/*` consumer app: **mobile-first** centered 480px column + bottom-nav (≤md); **desktop (≥lg)** = widened responsive container (cap ~1200px, multi-column) + persistent left rail (bottom-nav → side rail). Breakpoints = Tailwind defaults (sm 640 / lg 1024 / xl 1280). The operator app is unaffected. |
 | Icon library | lucide-react only |
 
 ---

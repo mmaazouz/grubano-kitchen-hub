@@ -41,35 +41,78 @@ export default function BottomNav() {
     }
   }, [pathname])
 
-  if (HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null
+  const isActive = (href: string) => pathname === href || (href !== '/eat' && pathname.startsWith(href))
+  // Immersive screens hide the MOBILE bottom bar (unchanged behaviour). The desktop
+  // rail stays persistent (≥lg) — same items, routes, active state and cart count.
+  const hideBottomBar = HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))
 
   return (
-    <nav
-      className="fixed bottom-0 left-1/2 z-50 flex h-[60px] w-full max-w-[480px] -translate-x-1/2 items-stretch justify-around border-t border-[#f0f0f0] bg-white"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-    >
-      {NAV_ITEMS.map(({ href, icon: Icon, labelKey, isCart }) => {
-        const active = pathname === href || (href !== '/eat' && pathname.startsWith(href))
-        return (
-          <Link
-            key={href}
-            href={href}
-            className="flex flex-1 flex-col items-center justify-center gap-1 transition-transform duration-150 active:scale-90"
-          >
-            <span className="relative">
-              <Icon size={23} strokeWidth={2} className={active ? 'text-[#F97316]' : 'text-[#aaa]'} />
-              {isCart && count > 0 && (
-                <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#F97316] px-1 text-[9px] font-bold text-white">
-                  {count > 9 ? '9+' : count}
+    <>
+      {/* ── Desktop left rail (≥lg) — persistent. Same destinations as the mobile bar. */}
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-[240px] flex-col border-r border-gb-stroke bg-gb-surface-elevated px-4 py-6 lg:flex">
+        <Link href="/eat" className="mb-8 flex items-center gap-2.5 px-2" aria-label="Grubano">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/grubano-symbol-color.svg" alt="" className="h-9 w-9" />
+          <span className="font-gb-display text-xl font-extrabold text-gb-content">Grubano</span>
+        </Link>
+        <nav className="flex flex-1 flex-col gap-1">
+          {NAV_ITEMS.map(({ href, icon: Icon, labelKey, isCart }) => {
+            const active = isActive(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'flex items-center gap-3 rounded-gb-lg px-3 py-2.5 text-[15px] transition-colors',
+                  active ? 'bg-gb-zest-50 font-semibold text-gb-accent-strong' : 'font-medium text-gb-content-muted hover:bg-gb-oat-100 hover:text-gb-content',
+                )}
+              >
+                <Icon size={22} strokeWidth={2} />
+                <span className="flex-1">{t(labelKey)}</span>
+                {isCart && count > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-gb-full bg-gb-accent-strong px-1.5 text-[11px] font-bold text-white">
+                    {count > 9 ? '9+' : count}
+                  </span>
+                )}
+              </Link>
+            )
+          })}
+        </nav>
+        {/* The « Gold · pts » card from the desktop reference needs loyalty data the
+            layout does not load, and the ossature must never fetch — so it is DEFERRED
+            to a per-screen pass (the Profile tab already routes to the loyalty wallet). */}
+      </aside>
+
+      {/* ── Mobile bottom bar (<lg) — hidden on immersive screens (unchanged). */}
+      {!hideBottomBar && (
+        <nav
+          className="fixed bottom-0 left-1/2 z-50 flex h-[60px] w-full max-w-[480px] -translate-x-1/2 items-stretch justify-around border-t border-gb-stroke bg-gb-surface-elevated lg:hidden"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          {NAV_ITEMS.map(({ href, icon: Icon, labelKey, isCart }) => {
+            const active = isActive(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="flex flex-1 flex-col items-center justify-center gap-1 transition-transform duration-150 active:scale-90"
+              >
+                <span className="relative">
+                  <Icon size={23} strokeWidth={2} className={active ? 'text-gb-accent-strong' : 'text-gb-content-muted'} />
+                  {isCart && count > 0 && (
+                    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-gb-full bg-gb-accent-strong px-1 text-[9px] font-bold text-white">
+                      {count > 9 ? '9+' : count}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-            <span className={cn('text-[11px] font-medium', active ? 'text-[#F97316]' : 'text-[#aaa]')}>
-              {t(labelKey)}
-            </span>
-          </Link>
-        )
-      })}
-    </nav>
+                <span className={cn('text-[11px] font-medium', active ? 'text-gb-accent-strong' : 'text-gb-content-muted')}>
+                  {t(labelKey)}
+                </span>
+              </Link>
+            )
+          })}
+        </nav>
+      )}
+    </>
   )
 }

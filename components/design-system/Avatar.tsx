@@ -8,9 +8,9 @@ export type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 const SIZES: Record<AvatarSize, string> = {
   xs: 'h-6  w-6  text-[10px]',
   sm: 'h-8  w-8  text-xs',
-  md: 'h-10 w-10 text-grubano-sm',
-  lg: 'h-14 w-14 text-grubano-lg',
-  xl: 'h-20 w-20 text-grubano-2xl',
+  md: 'h-10 w-10 text-sm',
+  lg: 'h-14 w-14 text-lg',
+  xl: 'h-20 w-20 text-2xl',
 }
 
 // Deterministic palette pick — same name always renders the same color.
@@ -60,7 +60,7 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(function Ava
       ref={ref}
       className={cn(
         'relative inline-flex items-center justify-center overflow-hidden font-bold text-white shrink-0',
-        square ? 'rounded-grubano-md' : 'rounded-grubano-pill',
+        square ? 'rounded-gb-md' : 'rounded-gb-full',
         SIZES[size],
         className,
       )}
@@ -77,7 +77,7 @@ export const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(function Ava
           loading="lazy"
         />
       ) : (
-        <span aria-hidden style={{ fontFamily: "'Space Grotesk', system-ui, sans-serif" }}>
+        <span aria-hidden style={{ fontFamily: "'Gabarito', ui-sans-serif, system-ui, sans-serif" }}>
           {init}
         </span>
       )}

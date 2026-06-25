@@ -8,10 +8,10 @@ import { formatMoney, formatEuros, formatAmount } from '@/lib/format-money'
 export type PriceSize = 'sm' | 'md' | 'lg' | 'xl'
 
 const SIZES: Record<PriceSize, string> = {
-  sm: 'text-grubano-sm',
-  md: 'text-grubano-base',
-  lg: 'text-grubano-lg',
-  xl: 'text-grubano-2xl',
+  sm: 'text-sm',
+  md: 'text-base',
+  lg: 'text-lg',
+  xl: 'text-2xl',
 }
 
 export interface PriceTagProps extends React.HTMLAttributes<HTMLSpanElement> {
@@ -65,15 +65,15 @@ export const PriceTag = React.forwardRef<HTMLSpanElement, PriceTagProps>(functio
   return (
     <span
       ref={ref}
-      className={cn('inline-flex items-baseline gap-1.5 font-bold text-grubano-ink', SIZES[size], className)}
+      className={cn('inline-flex items-baseline gap-1.5 font-bold text-gb-content', SIZES[size], className)}
       {...rest}
     >
       {hasDiscount && (
-        <span className="text-grubano-ink-faint font-medium line-through text-[0.85em]">
+        <span className="text-gb-content-muted font-medium line-through text-[0.85em]">
           {fmt(originalAmount!)}
         </span>
       )}
-      <span className={cn(hasDiscount && 'text-grubano-primary')}>{fmt(amount)}</span>
+      <span className={cn(hasDiscount && 'text-gb-accent-strong')}>{fmt(amount)}</span>
     </span>
   )
 })

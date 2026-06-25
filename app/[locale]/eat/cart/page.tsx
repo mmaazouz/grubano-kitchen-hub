@@ -646,8 +646,9 @@ export default function CartScreen() {
         </p>
       )}
 
-      {/* Checkout bar (above tab bar) */}
-      <div className="fixed bottom-[60px] left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-grubano-border bg-white px-4 py-3.5">
+      {/* Checkout bar (above tab bar). On desktop (≥lg) there is no bottom-nav and the
+          content is offset by the 240px rail → align to the content column. */}
+      <div className="fixed bottom-[60px] left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-grubano-border bg-white px-4 py-3.5 lg:bottom-0 lg:left-[240px] lg:right-0 lg:mx-auto lg:w-auto lg:max-w-[1200px] lg:translate-x-0 lg:px-6">
         <Button
           variant="primary"
           size="pill"
