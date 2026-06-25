@@ -1526,7 +1526,8 @@
       "errStripeGeneric": "Impronta fallita. Controlla la carta e riprova.",
       "restaurantClosed": "Questo ristorante non accetta prenotazioni online al momento.",
       "errOutsideHours": "Questa fascia è fuori dagli orari di apertura — scegli un altro orario.",
-      "errClosedSlot": "Il locale è eccezionalmente chiuso in questa data — scegli un altro giorno."
+      "errClosedSlot": "Il locale è eccezionalmente chiuso in questa data — scegli un altro giorno.",
+      "summaryTitle": "La tua prenotazione"
     },
     "checkout": {
       "title": "Completa il mio ordine",

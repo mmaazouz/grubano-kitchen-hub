@@ -57,7 +57,7 @@ export default function ReservePage() {
 
 function ScreenFallback() {
   return (
-    <div className="mx-auto flex max-w-md items-center justify-center px-5 py-20 text-muted-foreground">
+    <div className="mx-auto flex max-w-md items-center justify-center px-5 py-20 text-gb-content-muted">
       <Loader2 size={16} className="me-2 animate-spin" />
     </div>
   )
@@ -191,236 +191,268 @@ function ReserveInner() {
   }, [date, locale])
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-background pb-24">
+    <div className="mx-auto min-h-screen max-w-md bg-gb-surface pb-24 font-gb-sans text-gb-content lg:max-w-[860px] lg:pb-10">
       {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-gb-stroke bg-gb-surface px-4 py-3 backdrop-blur">
         <button
           onClick={() => router.back()}
           aria-label={t('headerBack')}
-          className="grid h-9 w-9 place-items-center rounded-xl bg-muted"
+          className="grid h-9 w-9 place-items-center rounded-gb-lg bg-gb-oat-100 text-gb-content"
         >
           <ArrowLeft size={16} />
         </button>
-        <h1 className="text-base font-bold">{t('headerTitle')}</h1>
+        <h1 className="font-gb-display text-base font-bold text-gb-content">{t('headerTitle')}</h1>
       </header>
 
-      {/* Step 1 — Date */}
-      {(step === 'date' || step === 'slot' || step === 'details') && (
-        <section className="px-4 pt-4">
-          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            <Calendar size={12} className="text-primary" /> {t('stepDate')}
-          </p>
-          <input
-            type="date"
-            min={today}
-            value={date}
-            onChange={(e) => {
-              setDate(e.target.value)
-              setTime('')
-              if (step !== 'date') setStep('slot')
-            }}
-            className="w-full rounded-xl border border-border bg-card px-3 py-3 text-sm focus:border-primary focus:outline-none"
-          />
-          {step === 'date' && (
-            <button
-              type="button"
-              onClick={() => setStep('slot')}
-              className="mt-3 w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground"
-            >
-              {t('submitBook')} →
-            </button>
-          )}
-        </section>
-      )}
-
-      {/* Step 2 — Slot */}
-      {(step === 'slot' || step === 'details') && (
-        <section className="mt-4 px-4">
-          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            <Clock size={12} className="text-primary" /> {t('stepSlot')}
-          </p>
-          {availability && (
-            <p className="mb-2 text-[11px] text-muted-foreground">
-              {t('slotsCaption', { guests, minutes: availability.durationMin })}
-            </p>
-          )}
-          {availabilityErr ? (
-            <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              <span>{availabilityErr}</span>
-            </p>
-          ) : loadingSlots ? (
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-4 text-[12px] text-muted-foreground">
-              <Loader2 size={13} className="animate-spin" /> {t('slotsLoading')}
-            </div>
-          ) : availability && availability.slots.length > 0 ? (
-            <div className="grid grid-cols-3 gap-2">
-              {availability.slots.map((s) => {
-                const active = time === s.time
-                return (
-                  <button
-                    key={s.time}
-                    type="button"
-                    onClick={() => {
-                      if (!s.available) return
-                      setTime(s.time)
-                      setStep('details')
-                    }}
-                    disabled={!s.available}
-                    className={`flex flex-col items-center rounded-xl border px-2 py-2 text-[11px] font-bold transition ${
-                      active
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : s.available
-                          ? 'border-border bg-card text-foreground hover:border-primary'
-                          : 'border-border bg-muted text-muted-foreground/60 line-through'
-                    }`}
-                  >
-                    <span className="text-sm">{s.time}</span>
-                    {s.available && (
-                      <span className="mt-0.5 text-[9px] font-medium opacity-80">
-                        {t('slotFree', { count: s.freeTables })}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="rounded-xl border border-border bg-card px-3 py-4 text-center text-[12px] text-muted-foreground">
-              {t('slotsEmpty')}
-            </p>
-          )}
-        </section>
-      )}
-
-      {/* Step 3 — Details */}
-      {step === 'details' && (
-        <section className="mt-4 px-4">
-          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            <Users size={12} className="text-primary" /> {t('stepDetails')}
-          </p>
-          <div className="space-y-2">
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {t('guestsLabel')}
-              </label>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                value={guests}
-                onChange={(e) => setGuests(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-              />
-              <p className="mt-0.5 text-[10px] text-muted-foreground">{t('guestsHint')}</p>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {t('fieldName')}
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={t('fieldNamePh')}
-                maxLength={100}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {t('fieldEmail')}
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={t('fieldEmailPh')}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                {t('fieldPhone')}
-              </label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder={t('fieldPhonePh')}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-              />
-            </div>
+      {/* Desktop ≥lg = 2 columns: a real-data recap on the left, the step form on
+          the right. Mobile = the recap is hidden, the form is the single column
+          (behaviour byte-identical). The restaurant photo card from the desktop
+          reference is DEFERRED — this page never fetches the restaurant. */}
+      <div className="lg:flex lg:items-start lg:gap-6 lg:px-4 lg:pt-4">
+        {/* Recap sidebar (desktop only) — your real selections (no fabricated data). */}
+        <aside className="hidden lg:block lg:w-[300px] lg:shrink-0">
+          <div className="lg:sticky lg:top-20 rounded-gb-xl border border-gb-stroke bg-gb-surface-elevated p-4 shadow-gb-sm">
+            <p className="mb-3 font-gb-display text-base font-extrabold text-gb-content">{t('summaryTitle')}</p>
+            <ul className="space-y-2.5 text-sm text-gb-content">
+              <li className="flex items-center gap-2.5">
+                <Calendar size={16} className="shrink-0 text-gb-accent" />
+                <span className="capitalize">{longDate}</span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Clock size={16} className="shrink-0 text-gb-accent" />
+                <span>{time || '—'}</span>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Users size={16} className="shrink-0 text-gb-accent" />
+                <span>{guests}</span>
+              </li>
+            </ul>
           </div>
+        </aside>
 
-          {submitError && (
-            <p className="mt-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              <span>{submitError}</span>
-            </p>
-          )}
-
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting || !name.trim() || !time}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-60"
-          >
-            {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
-            {t('submitBook')}
-          </button>
-        </section>
-      )}
-
-      {/* Step 4 — Stripe Elements card hold (Agent 2's manual-capture intent) */}
-      {step === 'deposit' && reservation && (
-        <section className="mt-4 px-4">
-          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            <CreditCard size={12} className="text-primary" /> {t('stepDeposit')}
-          </p>
-          <div className="rounded-2xl border border-border bg-card p-4">
-            <p className="text-sm font-bold text-foreground">{t('depositTitle')}</p>
-            <StripeDepositForm
-              reservationId={reservation.id}
-              onAuthorized={() => setStep('done')}
-            />
-          </div>
-        </section>
-      )}
-
-      {/* Done */}
-      {step === 'done' && reservation && (
-        <section className="mt-4 px-4">
-          <div className="rounded-2xl border border-success/40 bg-success/5 p-4 text-center">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success text-white">
-              <Check size={20} />
-            </span>
-            <p className="mt-3 text-base font-bold text-foreground">{t('okTitle')}</p>
-            <p className="mt-1 text-[12px] text-muted-foreground">
-              {t('okBody', {
-                date:   longDate,
-                time:   time,
-                guests: guests,
-              })}
-            </p>
-            {/* Brique A — Your session anchor. The operator sees the same
-                code (the badge in their list/plan/addition). Saving it
-                also helps the guest verify they're on the right addition
-                when they pay later. */}
-            <div className="mt-3 flex flex-col items-center gap-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {tSession('yourSessionNo')}
+        {/* Step form (right column on desktop, single column on mobile) */}
+        <div className="lg:min-w-0 lg:flex-1">
+          {/* Step 1 — Date */}
+          {(step === 'date' || step === 'slot' || step === 'details') && (
+            <section className="px-4 pt-4 lg:px-0 lg:pt-0">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+                <Calendar size={12} className="text-gb-accent" /> {t('stepDate')}
               </p>
-              <SessionBadge reservationId={reservation.id} variant="large" />
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push(`/eat/r/${restaurantId}`)}
-              className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground"
-            >
-              {t('okBack')}
-            </button>
-          </div>
-        </section>
-      )}
+              <input
+                type="date"
+                min={today}
+                value={date}
+                onChange={(e) => {
+                  setDate(e.target.value)
+                  setTime('')
+                  if (step !== 'date') setStep('slot')
+                }}
+                className="w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-3 text-sm text-gb-content focus:border-gb-accent focus:outline-none"
+              />
+              {step === 'date' && (
+                <button
+                  type="button"
+                  onClick={() => setStep('slot')}
+                  className="mt-3 w-full rounded-gb-lg bg-gb-accent-strong py-3 text-sm font-bold text-white"
+                >
+                  {t('submitBook')} →
+                </button>
+              )}
+            </section>
+          )}
+
+          {/* Step 2 — Slot */}
+          {(step === 'slot' || step === 'details') && (
+            <section className="mt-4 px-4 lg:px-0">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+                <Clock size={12} className="text-gb-accent" /> {t('stepSlot')}
+              </p>
+              {availability && (
+                <p className="mb-2 text-[11px] text-gb-oat-600">
+                  {t('slotsCaption', { guests, minutes: availability.durationMin })}
+                </p>
+              )}
+              {availabilityErr ? (
+                <p className="flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
+                  <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
+                  <span>{availabilityErr}</span>
+                </p>
+              ) : loadingSlots ? (
+                <div className="flex items-center gap-2 rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-4 text-[12px] text-gb-content-muted">
+                  <Loader2 size={13} className="animate-spin" /> {t('slotsLoading')}
+                </div>
+              ) : availability && availability.slots.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4">
+                  {availability.slots.map((s) => {
+                    const active = time === s.time
+                    return (
+                      <button
+                        key={s.time}
+                        type="button"
+                        onClick={() => {
+                          if (!s.available) return
+                          setTime(s.time)
+                          setStep('details')
+                        }}
+                        disabled={!s.available}
+                        className={`flex flex-col items-center rounded-gb-lg border px-2 py-2 text-[11px] font-bold transition ${
+                          active
+                            ? 'border-gb-accent-strong bg-gb-accent-strong text-white'
+                            : s.available
+                              ? 'border-gb-stroke bg-gb-surface-elevated text-gb-content hover:border-gb-accent'
+                              : 'border-gb-stroke bg-gb-oat-100 text-gb-content-muted line-through'
+                        }`}
+                      >
+                        <span className="text-sm">{s.time}</span>
+                        {s.available && (
+                          <span className="mt-0.5 text-[9px] font-medium opacity-80">
+                            {t('slotFree', { count: s.freeTables })}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-4 text-center text-[12px] text-gb-content-muted">
+                  {t('slotsEmpty')}
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* Step 3 — Details */}
+          {step === 'details' && (
+            <section className="mt-4 px-4 lg:px-0">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+                <Users size={12} className="text-gb-accent" /> {t('stepDetails')}
+              </p>
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                    {t('guestsLabel')}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={guests}
+                    onChange={(e) => setGuests(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content focus:border-gb-accent focus:outline-none"
+                  />
+                  <p className="mt-0.5 text-[10px] text-gb-oat-600">{t('guestsHint')}</p>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                    {t('fieldName')}
+                  </label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={t('fieldNamePh')}
+                    maxLength={100}
+                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content placeholder:text-gb-content-muted focus:border-gb-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                    {t('fieldEmail')}
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder={t('fieldEmailPh')}
+                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content placeholder:text-gb-content-muted focus:border-gb-accent focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                    {t('fieldPhone')}
+                  </label>
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder={t('fieldPhonePh')}
+                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content placeholder:text-gb-content-muted focus:border-gb-accent focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {submitError && (
+                <p className="mt-3 flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
+                  <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
+                  <span>{submitError}</span>
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={submit}
+                disabled={submitting || !name.trim() || !time}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-gb-lg bg-gb-accent-strong py-3 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                {t('submitBook')}
+              </button>
+            </section>
+          )}
+
+          {/* Step 4 — Stripe Elements card hold (Agent 2's manual-capture intent).
+              ⚠️ <StripeDepositForm/> is money-adjacent and left BYTE-IDENTICAL — only
+              its container is re-skinned. */}
+          {step === 'deposit' && reservation && (
+            <section className="mt-4 px-4 lg:px-0">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+                <CreditCard size={12} className="text-gb-accent" /> {t('stepDeposit')}
+              </p>
+              <div className="rounded-gb-xl border border-gb-stroke bg-gb-surface-elevated p-4">
+                <p className="text-sm font-bold text-gb-content">{t('depositTitle')}</p>
+                <StripeDepositForm
+                  reservationId={reservation.id}
+                  onAuthorized={() => setStep('done')}
+                />
+              </div>
+            </section>
+          )}
+
+          {/* Done */}
+          {step === 'done' && reservation && (
+            <section className="mt-4 px-4 lg:px-0">
+              <div className="rounded-gb-xl border border-gb-stroke bg-gb-surface-elevated p-4 text-center shadow-gb-sm">
+                <span className="mx-auto grid h-12 w-12 place-items-center rounded-gb-full bg-gb-success text-white">
+                  <Check size={20} />
+                </span>
+                <p className="mt-3 font-gb-display text-base font-bold text-gb-content">{t('okTitle')}</p>
+                <p className="mt-1 text-[12px] text-gb-content-muted">
+                  {t('okBody', {
+                    date:   longDate,
+                    time:   time,
+                    guests: guests,
+                  })}
+                </p>
+                {/* Brique A — Your session anchor. The operator sees the same
+                    code (the badge in their list/plan/addition). Saving it
+                    also helps the guest verify they're on the right addition
+                    when they pay later. */}
+                <div className="mt-3 flex flex-col items-center gap-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gb-content-muted">
+                    {tSession('yourSessionNo')}
+                  </p>
+                  <SessionBadge reservationId={reservation.id} variant="large" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/eat/r/${restaurantId}`)}
+                  className="mt-4 w-full rounded-gb-lg bg-gb-accent-strong py-3 text-sm font-bold text-white"
+                >
+                  {t('okBack')}
+                </button>
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

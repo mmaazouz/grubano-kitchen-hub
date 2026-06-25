@@ -1526,7 +1526,8 @@
       "errStripeGeneric": "The hold failed. Check your card and retry.",
       "restaurantClosed": "This restaurant is not accepting online bookings at the moment.",
       "errOutsideHours": "This slot is outside the opening hours — pick another time.",
-      "errClosedSlot": "The establishment is exceptionally closed on this date — pick another day."
+      "errClosedSlot": "The establishment is exceptionally closed on this date — pick another day.",
+      "summaryTitle": "Your reservation"
     },
     "checkout": {
       "title": "Complete my order",

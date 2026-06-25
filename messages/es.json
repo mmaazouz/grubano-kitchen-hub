@@ -1526,7 +1526,8 @@
       "errStripeGeneric": "La huella ha fallado. Verifica tu tarjeta y vuelve a intentar.",
       "restaurantClosed": "Este restaurante no acepta reservas online por ahora.",
       "errOutsideHours": "Esta franja está fuera de los horarios de apertura — elige otro horario.",
-      "errClosedSlot": "El establecimiento está excepcionalmente cerrado en esta fecha — elige otro día."
+      "errClosedSlot": "El establecimiento está excepcionalmente cerrado en esta fecha — elige otro día.",
+      "summaryTitle": "Tu reserva"
     },
     "checkout": {
       "title": "Finalizar mi pedido",

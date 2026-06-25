@@ -1526,7 +1526,8 @@
       "errStripeGeneric": "Échec de l’empreinte. Vérifiez votre carte et réessayez.",
       "restaurantClosed": "Cet établissement n’accepte pas de réservations en ligne pour le moment.",
       "errOutsideHours": "Ce créneau est en dehors des horaires d’ouverture — choisissez un autre horaire.",
-      "errClosedSlot": "L’établissement est exceptionnellement fermé à cette date — choisissez un autre jour."
+      "errClosedSlot": "L’établissement est exceptionnellement fermé à cette date — choisissez un autre jour.",
+      "summaryTitle": "Votre réservation"
     },
     "checkout": {
       "title": "Finaliser ma commande",
