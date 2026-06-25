@@ -34,56 +34,43 @@ export default function SplashScreen() {
   }, [status, router])
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-white">
-      <div className="relative flex h-[140px] w-[140px] items-center justify-center">
-        {/* Drawing ring (Stripe-style progressive draw) */}
-        <svg className="splash-ring absolute inset-0" viewBox="0 0 140 140" fill="none">
-          <circle
-            cx="70"
-            cy="70"
-            r="64"
-            stroke="#F97316"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeDasharray="402"
-            strokeDashoffset="402"
-          />
-        </svg>
-        {/* Logo */}
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gb-surface">
+      <div className="relative flex h-[180px] w-[180px] items-center justify-center">
+        {/* Radial glow halo — a SEPARATE blurred layer behind the mark (it never
+            scales the logo itself). gb-logo-glow + reduced-motion are handled in
+            app/tokens.css. */}
+        <div
+          aria-hidden
+          className="gb-logo-glow pointer-events-none absolute inset-0 rounded-gb-full blur-2xl"
+          style={{ background: 'radial-gradient(circle at 50% 46%, rgba(255,138,40,.55), rgba(255,106,31,.16) 46%, transparent 70%)' }}
+        />
+        {/* Logo — the canonical "g", gently floating (translateY on the whole mark) */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/favicon.svg" alt="Grubano" className="splash-logo h-[84px] w-[84px]" />
+        <img
+          src="/brand/grubano-symbol-color.svg"
+          alt="Grubano"
+          className="gb-logo-float relative h-[116px] w-[116px]"
+        />
       </div>
-      <p className="splash-word mt-6 text-[26px] font-extrabold tracking-tight text-[#1a1a1a]">Grubano</p>
+      <p className="splash-word mt-7 font-gb-display text-[28px] font-extrabold tracking-tight text-gb-content">Grubano</p>
 
       <style jsx>{`
-        .splash-logo {
-          opacity: 0;
-          transform: scale(0.8);
-          animation: splash-pop 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-        }
-        .splash-ring circle {
-          animation: splash-draw 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-        }
         .splash-word {
           opacity: 0;
           transform: translateY(8px);
-          animation: splash-fade-up 0.6s ease-out 0.6s forwards;
-        }
-        @keyframes splash-pop {
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-        @keyframes splash-draw {
-          to {
-            stroke-dashoffset: 0;
-          }
+          animation: splash-fade-up 0.6s ease-out 0.15s forwards;
         }
         @keyframes splash-fade-up {
           to {
             opacity: 1;
             transform: translateY(0);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .splash-word {
+            animation: none;
+            opacity: 1;
+            transform: none;
           }
         }
       `}</style>

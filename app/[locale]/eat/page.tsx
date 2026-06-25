@@ -51,8 +51,8 @@ function SectionHeader({ title }: { title: string }) {
   const t = useTranslations('eat.home')
   return (
     <div className="mb-3 flex items-center justify-between px-4">
-      <h2 className="font-display text-[18px] font-extrabold text-grubano-ink">{title}</h2>
-      <Link href="/eat/search" className="text-grubano-sm font-semibold text-grubano-primary">
+      <h2 className="font-gb-display text-[18px] font-extrabold text-gb-content">{title}</h2>
+      <Link href="/eat/search" className="text-sm font-semibold text-gb-accent-strong">
         {t('seeAll')}
       </Link>
     </div>
@@ -145,31 +145,31 @@ export default function HomeScreen() {
   const popularTitle = geoActive ? t('nearYou') : t('popular')
 
   return (
-    <div className="bg-white">
+    <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
       {/* Header */}
       <div className="flex items-center justify-between px-4 pb-2.5 pt-3.5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grubano-tint text-lg">
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-gb-full bg-gb-zest-50 text-lg">
             🧑‍🍳
           </div>
           <div>
-            <p className="text-[11px] text-grubano-ink-faint">{t('location')}</p>
+            <p className="text-[11px] text-gb-content-muted">{t('location')}</p>
             <div className="flex items-center gap-1">
-              <MapPin size={13} className="text-grubano-primary" />
-              <span className="text-grubano-sm font-bold text-grubano-ink">
+              <MapPin size={13} className="text-gb-accent" />
+              <span className="text-sm font-bold text-gb-content">
                 {geoActive ? t('myPosition') : 'Paris, France'}
               </span>
-              <ChevronDown size={13} className="text-grubano-primary" />
+              <ChevronDown size={13} className="text-gb-accent" />
             </div>
           </div>
         </div>
         <Link
           href="/eat/account"
-          className="relative flex h-11 w-11 items-center justify-center rounded-full border-[1.5px] border-grubano-border"
+          className="relative flex h-11 w-11 items-center justify-center rounded-gb-full border-[1.5px] border-gb-stroke bg-gb-surface-elevated"
           aria-label={t('notifications')}
         >
-          <Bell size={22} strokeWidth={1.8} className="text-grubano-ink" />
-          <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-grubano-primary" />
+          <Bell size={22} strokeWidth={1.8} className="text-gb-content" />
+          <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-gb-full bg-gb-accent" />
         </Link>
       </div>
 
@@ -177,10 +177,10 @@ export default function HomeScreen() {
       <div className="mb-3 flex items-center gap-2.5 px-4">
         <button
           onClick={() => router.push('/eat/search')}
-          className="flex flex-1 items-center gap-2 rounded-grubano-lg bg-grubano-surface-muted px-3.5 py-3.5 text-left transition active:scale-[0.99]"
+          className="flex flex-1 items-center gap-2 rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3.5 py-3.5 text-left shadow-gb-sm transition active:scale-[0.99]"
         >
-          <Search size={17} className="text-grubano-ink-faint" />
-          <span className="text-grubano-sm text-grubano-ink-faint">{t('searchPlaceholder')}</span>
+          <Search size={17} className="text-gb-content-muted" />
+          <span className="text-sm text-gb-content-muted">{t('searchPlaceholder')}</span>
         </button>
         <Button
           variant="primary"
@@ -195,11 +195,11 @@ export default function HomeScreen() {
 
       {/* Geolocation opt-in banner */}
       {!geoActive ? (
-        <div className="mx-4 mb-5 flex items-center gap-3 rounded-grubano-lg border border-grubano-border bg-grubano-tint px-3.5 py-3">
-          <Navigation size={18} className="shrink-0 text-grubano-primary" />
+        <div className="mx-4 mb-5 flex items-center gap-3 rounded-gb-lg border border-gb-stroke bg-gb-zest-50 px-3.5 py-3">
+          <Navigation size={18} className="shrink-0 text-gb-accent" />
           <div className="min-w-0 flex-1">
-            <p className="text-grubano-sm font-semibold text-grubano-ink">{t('geoBannerTitle')}</p>
-            <p className="text-[11px] text-grubano-ink-muted">
+            <p className="text-sm font-semibold text-gb-content">{t('geoBannerTitle')}</p>
+            <p className="text-[11px] text-gb-content-muted">
               {status === 'denied'
                 ? t('geoBannerDenied')
                 : status === 'unavailable'
@@ -218,13 +218,13 @@ export default function HomeScreen() {
           </Button>
         </div>
       ) : (
-        <div className="mx-4 mb-5 flex items-center gap-2 rounded-grubano-pill bg-grubano-success-tint px-3 py-1.5 text-xs font-medium text-grubano-ink-muted">
-          <Navigation size={13} className="text-grubano-success" />
+        <div className="mx-4 mb-5 flex items-center gap-2 rounded-gb-full bg-gb-success-soft px-3 py-1.5 text-xs font-medium text-gb-content-muted">
+          <Navigation size={13} className="text-gb-success" />
           <span className="flex-1">{t('geoActive')}</span>
           <button
             onClick={clear}
             aria-label={t('geoDisable')}
-            className="rounded-full p-0.5 text-grubano-ink-faint hover:text-grubano-ink"
+            className="rounded-gb-full p-0.5 text-gb-content-muted hover:text-gb-content"
           >
             <X size={13} />
           </button>
@@ -238,9 +238,14 @@ export default function HomeScreen() {
         <>
           <SectionHeader title={t('exclusiveOffers')} />
           <div className="mb-5 px-4">
-            <div className="relative flex h-[188px] w-full overflow-hidden rounded-grubano-xl bg-grubano-primary text-white">
-              <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
-                <span className="self-start rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold">
+            <div className="relative flex h-[188px] w-full overflow-hidden rounded-gb-xl bg-gb-sunrise text-white">
+              {/* Text-zone scrim — covers the WHOLE copy column (left ~72%) so white
+                  text keeps ≥4.5:1 across its full width on the Sunrise gradient (DS
+                  reserves the bare gradient for big decorative titles; here it carries
+                  copy). The right ~28% (decorative tile) stays full-vibrancy sunrise. */}
+              <div aria-hidden className="absolute inset-y-0 left-0 right-[28%] bg-gradient-to-r from-black/60 via-black/50 to-black/40" />
+              <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-2 p-4">
+                <span className="self-start rounded-gb-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-gb-accent-strong">
                   {t('bannerRealTag')}
                 </span>
                 <p className="line-clamp-2 text-[17px] font-extrabold leading-tight">
@@ -248,25 +253,25 @@ export default function HomeScreen() {
                 </p>
                 {promoSummary.maxPercent > 0 ? (
                   <div className="flex items-end gap-1">
-                    <span className="text-xs text-white/90">{t('upTo')}</span>
+                    <span className="text-xs font-medium text-white">{t('upTo')}</span>
                     <span className="text-[36px] font-black leading-none">−{promoSummary.maxPercent}</span>
                     <span className="mb-0.5 text-base font-bold">%</span>
                   </div>
                 ) : (
                   <div className="flex items-end gap-1">
-                    <span className="text-xs text-white/90">{t('upTo')}</span>
+                    <span className="text-xs font-medium text-white">{t('upTo')}</span>
                     <span className="text-[36px] font-black leading-none">−{promoSummary.bestFixed}</span>
                     <span className="mb-0.5 text-base font-bold">€</span>
                   </div>
                 )}
                 <button
                   onClick={() => router.push('/eat/promos')}
-                  className="mt-auto self-start rounded-full bg-grubano-dark px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
+                  className="mt-auto self-start rounded-gb-full bg-gb-ink-800 px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
                 >
                   {t('getOffer')}
                 </button>
               </div>
-              <div className="w-[140px] bg-white/10" aria-hidden>
+              <div className="relative z-10 w-[34%] max-w-[150px]" aria-hidden>
                 <div className="grid h-full place-items-center text-5xl">🏷️</div>
               </div>
             </div>
@@ -286,23 +291,24 @@ export default function HomeScreen() {
                 setActiveCat(cat.name)
                 router.push(`/eat/search?cuisine=${cat.q}`)
               }}
-              className={`flex shrink-0 items-center gap-1.5 rounded-grubano-pill border-[1.5px] px-4 py-2.5 transition active:scale-95 ${
-                active ? 'border-grubano-primary bg-grubano-primary text-white' : 'border-transparent bg-grubano-surface-muted text-grubano-ink-muted'
+              className={`flex shrink-0 items-center gap-1.5 rounded-gb-full border-[1.5px] px-4 py-2.5 transition active:scale-95 ${
+                active ? 'border-transparent bg-gb-accent-strong text-white' : 'border-gb-stroke bg-gb-surface-elevated text-gb-content-muted'
               }`}
             >
               <span className="text-base">{cat.emoji}</span>
-              <span className="text-grubano-sm font-semibold">{t(cat.nameKey)}</span>
+              <span className="text-sm font-semibold">{t(cat.nameKey)}</span>
             </button>
           )
         })}
       </div>
 
-      {/* Popular / Near you */}
+      {/* Popular / Near you — horizontal carousel; card width is fluid so a slice
+          of the next card peeks on any phone size (320→480). */}
       <SectionHeader title={popularTitle} />
       {loading ? (
         <div className="no-scrollbar mb-5 flex gap-3 overflow-x-auto px-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="w-[210px] shrink-0">
+            <div key={i} className="w-[58%] min-w-[180px] max-w-[230px] shrink-0">
               <SkeletonCard />
             </div>
           ))}
@@ -310,7 +316,7 @@ export default function HomeScreen() {
       ) : popular.length === 0 ? null : (
         <div className="no-scrollbar mb-5 flex gap-3 overflow-x-auto px-4 pb-1">
           {popular.map((r) => (
-            <div key={r.id} className="w-[210px] shrink-0">
+            <div key={r.id} className="w-[58%] min-w-[180px] max-w-[230px] shrink-0">
               <RestaurantCard
                 layout="grid"
                 name={r.name}
@@ -329,20 +335,19 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* New restaurants — only in non-geo mode */}
+      {/* New restaurants — only in non-geo mode. Responsive card grid: 1 column on
+          small phones, 2 columns once the column is wide enough (reflows by width). */}
       {!geoActive && (
         <>
           <SectionHeader title={t('newRestaurants')} />
-          <div className="space-y-3 px-4">
+          <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2">
             {loading ? (
-              Array.from({ length: 2 }).map((_, i) => (
-                <div key={i} className="h-[100px] animate-pulse rounded-grubano-lg bg-grubano-surface-muted" />
-              ))
+              Array.from({ length: 2 }).map((_, i) => <SkeletonCard key={i} />)
             ) : (
               newRestaurants.map((r) => (
                 <RestaurantCard
                   key={r.id}
-                  layout="list"
+                  layout="grid"
                   name={r.name}
                   cover={r.coverPhoto || getRestaurantCover(r.id)}
                   cuisine={cuisineWithDistance(r)}
@@ -366,11 +371,11 @@ export default function HomeScreen() {
           <div className="mt-5">
             <SectionHeader title={t('topRated')} />
           </div>
-          <div className="space-y-3 px-4">
+          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2">
             {topRated.map((r) => (
               <RestaurantCard
                 key={r.id}
-                layout="list"
+                layout="grid"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
                 cuisine={cuisineWithDistance(r)}
@@ -388,15 +393,15 @@ export default function HomeScreen() {
         </>
       )}
 
-      {/* In geo mode, the full "Near you" list lives below the carousel as rows */}
+      {/* In geo mode, the full "Near you" list lives below the carousel as a grid */}
       {geoActive && restaurants.length > 8 && (
         <>
           <SectionHeader title={t('moreNearYou')} />
-          <div className="space-y-3 px-4">
+          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2">
             {restaurants.slice(8).map((r) => (
               <RestaurantCard
                 key={r.id}
-                layout="list"
+                layout="grid"
                 name={r.name}
                 cover={r.coverPhoto || getRestaurantCover(r.id)}
                 cuisine={cuisineWithDistance(r)}
