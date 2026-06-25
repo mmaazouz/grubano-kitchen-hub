@@ -55,8 +55,8 @@ interface SearchResponse {
 
 function RowSkeleton() {
   return (
-    <div className="flex gap-3 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3 shadow-grubano-sm">
-      <Skeleton className="h-24 w-24 rounded-grubano-md" />
+    <div className="flex gap-3 rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated p-3 shadow-gb-sm">
+      <Skeleton className="h-24 w-24 rounded-gb-md" />
       <div className="flex-1 space-y-2 py-1">
         <Skeleton className="h-4 w-2/3" />
         <Skeleton className="h-3 w-1/3" />
@@ -128,18 +128,18 @@ function SearchContent() {
   )
 
   return (
-    <div className="min-h-screen bg-grubano-bg">
+    <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
       {/* Sticky search header */}
-      <div className="sticky top-0 z-20 space-y-3 border-b border-grubano-border bg-white px-4 pb-3 pt-3">
+      <div className="sticky top-0 z-20 space-y-3 border-b border-gb-stroke bg-gb-surface-elevated px-4 pb-3 pt-3">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/eat')}
             aria-label={tc('back')}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-grubano-surface-muted text-grubano-ink transition active:scale-90"
+            className="flex h-10 w-10 items-center justify-center rounded-gb-full bg-gb-oat-100 text-gb-content transition active:scale-90"
           >
             <ArrowLeft size={20} />
           </button>
-          <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{t('title')}</h1>
+          <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
         </div>
 
         <form
@@ -147,19 +147,19 @@ function SearchContent() {
             e.preventDefault()
             run()
           }}
-          className="flex items-center gap-2 rounded-grubano-lg bg-grubano-surface-muted px-3.5 py-3"
+          className="flex items-center gap-2 rounded-gb-lg bg-gb-oat-100 px-3.5 py-3"
         >
-          <Search size={17} className="text-grubano-ink-faint" />
+          <Search size={17} className="text-gb-content-muted" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('searchPlaceholder')}
             autoFocus
-            className="flex-1 bg-transparent text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-gb-content placeholder:text-gb-content-muted focus:outline-none"
           />
           {query && (
             <button type="button" onClick={() => setQuery('')} aria-label={t('clear')}>
-              <X size={16} className="text-grubano-ink-faint" />
+              <X size={16} className="text-gb-content-muted" />
             </button>
           )}
         </form>
@@ -185,10 +185,10 @@ function SearchContent() {
               <button
                 key={s.value}
                 onClick={() => setSort(s.value)}
-                className={`shrink-0 rounded-grubano-pill border-[1.5px] px-3.5 py-2 text-xs font-medium transition active:scale-95 ${
+                className={`shrink-0 rounded-gb-full border-[1.5px] px-3.5 py-2 text-xs font-medium transition active:scale-95 ${
                   sort === s.value
-                    ? 'border-grubano-dark bg-grubano-dark text-white'
-                    : 'border-transparent bg-grubano-surface-muted text-grubano-ink-muted'
+                    ? 'border-transparent bg-gb-ink-800 text-white'
+                    : 'border-gb-stroke bg-gb-surface-elevated text-gb-content-muted'
                 }`}
               >
                 {t(s.labelKey)}
@@ -200,14 +200,15 @@ function SearchContent() {
 
       {/* Geo hint when location is off — friendly nudge, dismissible by tapping */}
       {!coords && status !== 'requesting' && (
-        <div className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-grubano-md bg-grubano-tint px-3 py-2 text-xs text-grubano-ink-muted">
+        <div className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-gb-md bg-gb-zest-50 px-3 py-2 text-xs text-gb-content-muted">
           <span>{t('geoOffHint')}</span>
+          {/* gb-ghost = dark Ink text (text-gb-content) — readable on the light
+              zest-50 hint banner (accent-strong #C7430A would fail AA there). */}
           <Button
-            variant="ghost"
+            variant="gb-ghost"
             size="sm"
             onClick={request}
             disabled={status === 'unavailable'}
-            className="text-grubano-primary"
           >
             {t('geoEnable')}
           </Button>
@@ -216,37 +217,41 @@ function SearchContent() {
 
       {/* Category-fallback banner — never empty; show alternatives explicitly */}
       {fallback && cuisine && !loading && results.length > 0 && (
-        <div className="mx-4 mt-3 flex items-start gap-3 rounded-grubano-lg border border-grubano-warning/30 bg-grubano-warning-tint px-3.5 py-3">
-          <Sparkles size={18} className="mt-0.5 shrink-0 text-grubano-warning" />
+        <div className="mx-4 mt-3 flex items-start gap-3 rounded-gb-lg border border-gb-stroke bg-gb-warning-soft px-3.5 py-3">
+          <Sparkles size={18} className="mt-0.5 shrink-0 text-gb-warning" />
           <div className="min-w-0 flex-1">
-            <p className="text-grubano-sm font-bold text-grubano-ink">
+            <p className="text-sm font-bold text-gb-content">
               {t('categoryFallbackTitle', { category: activeCuisineLabel })}
             </p>
-            <p className="text-[11px] text-grubano-ink-muted">{t('categoryFallbackSubtitle')}</p>
+            <p className="text-[11px] text-gb-content-muted">{t('categoryFallbackSubtitle')}</p>
           </div>
           <button
             onClick={() => setCuisine('')}
             aria-label={t('clearCategory')}
-            className="rounded-full p-1 text-grubano-ink-faint hover:text-grubano-ink"
+            className="rounded-gb-full p-1 text-gb-content-muted hover:text-gb-content"
           >
             <X size={14} />
           </button>
         </div>
       )}
 
-      {/* Results */}
-      <div className="space-y-3 p-4">
+      {/* Results — 1 column (mobile) → 2 columns (desktop ≥lg, inside the shared
+          rail+1200 ossature from Agent 150). */}
+      <div className="p-4">
         {loading ? (
-          Array.from({ length: 5 }).map((_, i) => <RowSkeleton key={i} />)
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)}
+          </div>
         ) : results.length === 0 ? (
           <EmptyState
+            skin="gb"
             emoji="🔍"
             title={t('emptyTitle')}
             description={t('emptyDescription')}
             action={
               hasFilters ? (
                 <Button
-                  variant="secondary"
+                  variant="gb-secondary"
                   size="sm"
                   onClick={() => {
                     setQuery('')
@@ -260,25 +265,27 @@ function SearchContent() {
           />
         ) : (
           <>
-            <p className="text-xs font-medium text-grubano-ink-muted">
+            <p className="mb-3 text-xs font-medium text-gb-content-muted">
               {t('resultsCount', { count: results.length })}
             </p>
-            {results.map((r) => (
-              <RestaurantCard
-                key={r.id}
-                layout="list"
-                name={r.name}
-                cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineWithDistance(r)}
-                rating={r.rating}
-                reviewCount={r.reviewCount}
-                deliveryTime={r.deliveryTime}
-                deliveryFee={r.deliveryFee}
-                freeLabel={tc('free')}
-                closedLabel={tc('closed')}
-                onClick={() => router.push(`/eat/r/${r.id}`)}
-              />
-            ))}
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {results.map((r) => (
+                <RestaurantCard
+                  key={r.id}
+                  layout="list"
+                  name={r.name}
+                  cover={r.coverPhoto || getRestaurantCover(r.id)}
+                  cuisine={cuisineWithDistance(r)}
+                  rating={r.rating}
+                  reviewCount={r.reviewCount}
+                  deliveryTime={r.deliveryTime}
+                  deliveryFee={r.deliveryFee}
+                  freeLabel={tc('free')}
+                  closedLabel={tc('closed')}
+                  onClick={() => router.push(`/eat/r/${r.id}`)}
+                />
+              ))}
+            </div>
           </>
         )}
       </div>
@@ -290,8 +297,8 @@ export default function ExploreScreen() {
   return (
     <Suspense
       fallback={
-        <div className="space-y-3 p-4 pt-24">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid grid-cols-1 gap-3 p-4 pt-24 lg:grid-cols-2">
+          {Array.from({ length: 6 }).map((_, i) => (
             <RowSkeleton key={i} />
           ))}
         </div>

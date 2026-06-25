@@ -14,12 +14,16 @@ export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   action?: React.ReactNode
   /** Compact variant — for small empty lists inside cards. */
   compact?: boolean
+  /** Opt-in Grubano DS (gb-) skin (Agent 151) — additive, /eat-only. The default
+   *  ('grubano') keeps the original operator rendering byte-identical. */
+  skin?: 'grubano' | 'gb'
 }
 
 export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(function EmptyState(
-  { emoji = '🍽️', title, description, action, compact, className, ...rest },
+  { emoji = '🍽️', title, description, action, compact, skin = 'grubano', className, ...rest },
   ref,
 ) {
+  const gb = skin === 'gb'
   return (
     <div
       ref={ref}
@@ -33,7 +37,8 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(func
       <div
         aria-hidden
         className={cn(
-          'flex items-center justify-center rounded-grubano-pill bg-grubano-tint',
+          'flex items-center justify-center',
+          gb ? 'rounded-gb-full bg-gb-zest-50' : 'rounded-grubano-pill bg-grubano-tint',
           compact ? 'h-12 w-12 text-2xl' : 'h-20 w-20 text-4xl',
         )}
       >
@@ -41,16 +46,19 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(func
       </div>
       <h3
         className={cn(
-          'font-display font-bold text-grubano-ink',
-          compact ? 'text-grubano-base' : 'text-grubano-xl',
+          gb ? 'font-gb-display' : 'font-display',
+          'font-bold',
+          gb ? 'text-gb-content' : 'text-grubano-ink',
+          compact ? (gb ? 'text-base' : 'text-grubano-base') : (gb ? 'text-xl' : 'text-grubano-xl'),
         )}
       >
         {title}
       </h3>
       {description && (
         <p className={cn(
-          'text-grubano-ink-muted max-w-sm',
-          compact ? 'text-grubano-xs' : 'text-grubano-sm',
+          gb ? 'text-gb-content-muted' : 'text-grubano-ink-muted',
+          'max-w-sm',
+          compact ? (gb ? 'text-xs' : 'text-grubano-xs') : (gb ? 'text-sm' : 'text-grubano-sm'),
         )}>
           {description}
         </p>
