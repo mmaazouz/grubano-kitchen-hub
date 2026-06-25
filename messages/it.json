@@ -1247,7 +1247,8 @@
       "explore": "Esplora",
       "favorites": "Preferiti",
       "cart": "Carrello",
-      "profile": "Profilo"
+      "profile": "Profilo",
+      "search": "Ricerca"
     },
     "cart": {
       "title": "Il Mio Carrello",

@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { Link, usePathname } from '@/navigation'
 import { useEffect, useState } from 'react'
-import { Home, Compass, Heart, ShoppingBag, User } from 'lucide-react'
+import { Home, Search, Heart, ShoppingBag, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { cartCount, CART_EVENT } from '@/lib/eat-cart'
 
@@ -16,7 +16,9 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/eat', icon: Home, labelKey: 'home' },
-  { href: '/eat/search', icon: Compass, labelKey: 'explore' },
+  // 2nd destination already routes to the EXISTING search screen — relabelled
+  // « Recherche » with the magnifier icon to match Claude Design (no new route).
+  { href: '/eat/search', icon: Search, labelKey: 'search' },
   { href: '/eat/favorites', icon: Heart, labelKey: 'favorites' },
   { href: '/eat/cart', icon: ShoppingBag, labelKey: 'cart', isCart: true },
   { href: '/eat/account', icon: User, labelKey: 'profile' },
@@ -48,8 +50,11 @@ export default function BottomNav() {
 
   return (
     <>
-      {/* ── Desktop left rail (≥lg) — persistent. Same destinations as the mobile bar. */}
-      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-[240px] flex-col border-r border-gb-stroke bg-gb-surface-elevated px-4 py-6 lg:flex">
+      {/* ── Desktop left rail (≥lg) — persistent. Same destinations as the mobile bar.
+          Surface = the warm canvas (bg-gb-surface), delineated by a hairline border —
+          part of the app, not a disconnected white panel. The ACTIVE destination is a
+          raised white pill with accent-strong text/icon (WCAG 4.96:1). */}
+      <aside className="fixed left-0 top-0 z-50 hidden h-screen w-[240px] flex-col border-r border-gb-stroke bg-gb-surface px-4 py-6 lg:flex">
         <Link href="/eat" className="mb-8 flex items-center gap-2.5 px-2" aria-label="Grubano">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/grubano-symbol-color.svg" alt="" className="h-9 w-9" />
@@ -63,8 +68,10 @@ export default function BottomNav() {
                 key={href}
                 href={href}
                 className={cn(
-                  'flex items-center gap-3 rounded-gb-lg px-3 py-2.5 text-[15px] transition-colors',
-                  active ? 'bg-gb-zest-50 font-semibold text-gb-accent-strong' : 'font-medium text-gb-content-muted hover:bg-gb-oat-100 hover:text-gb-content',
+                  'flex items-center gap-3 rounded-gb-lg px-3 py-2.5 font-gb-sans text-[15px] transition-colors',
+                  active
+                    ? 'bg-gb-surface-elevated font-semibold text-gb-accent-strong shadow-gb-sm'
+                    : 'font-medium text-gb-oat-600 hover:bg-gb-surface-elevated hover:text-gb-content',
                 )}
               >
                 <Icon size={22} strokeWidth={2} />
@@ -105,7 +112,7 @@ export default function BottomNav() {
                     </span>
                   )}
                 </span>
-                <span className={cn('text-[11px] font-medium', active ? 'text-gb-accent-strong' : 'text-gb-content-muted')}>
+                <span className={cn('font-gb-sans text-[11px] font-medium', active ? 'text-gb-accent-strong' : 'text-gb-content-muted')}>
                   {t(labelKey)}
                 </span>
               </Link>

@@ -1247,7 +1247,8 @@
       "explore": "Explore",
       "favorites": "Favorites",
       "cart": "Cart",
-      "profile": "Profile"
+      "profile": "Profile",
+      "search": "Search"
     },
     "cart": {
       "title": "My Cart",

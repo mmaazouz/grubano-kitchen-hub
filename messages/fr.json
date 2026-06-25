@@ -1247,7 +1247,8 @@
       "explore": "Explorer",
       "favorites": "Favoris",
       "cart": "Panier",
-      "profile": "Profil"
+      "profile": "Profil",
+      "search": "Recherche"
     },
     "cart": {
       "title": "Mon Panier",
