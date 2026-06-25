@@ -101,25 +101,25 @@ export default function ProfileScreen() {
   // Guest
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-[#f5f5f5]">
-        <div className="border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3"><div className="h-6 w-1/3 animate-pulse rounded bg-gray-200" /></div>
-        <div className="space-y-3 p-4"><div className="h-24 animate-pulse rounded-2xl bg-white" /><div className="h-24 animate-pulse rounded-2xl bg-white" /></div>
+      <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
+        <div className="border-b border-gb-stroke bg-gb-surface-elevated px-4 pb-4 pt-3"><div className="h-6 w-1/3 animate-pulse rounded-gb-sm bg-gb-oat-200" /></div>
+        <div className="space-y-3 p-4"><div className="h-24 animate-pulse rounded-gb-lg bg-gb-surface-elevated" /><div className="h-24 animate-pulse rounded-gb-lg bg-gb-surface-elevated" /></div>
       </div>
     )
   }
 
   if (!loggedIn) {
     return (
-      <div className="min-h-screen bg-[#f5f5f5]">
-        <div className="border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
-          <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{t('title')}</h1>
+      <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
+        <div className="border-b border-gb-stroke bg-gb-surface-elevated px-4 pb-4 pt-3">
+          <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
         </div>
         <div className="flex flex-col items-center px-10 pt-20 text-center">
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#FFF3ED]"><User size={48} className="text-[#F97316]" /></div>
-          <p className="mt-5 text-[22px] font-extrabold text-[#1a1a1a]">{t('signInPrompt')}</p>
-          <p className="mt-2 text-sm leading-relaxed text-[#888]">{t('signInSubtitle')}</p>
-          <button onClick={() => router.push('/eat/auth')} className="mt-8 w-full rounded-[30px] bg-[#F97316] py-4 text-base font-bold text-white active:scale-95">{t('signIn')}</button>
-          <button onClick={() => router.push('/eat/auth')} className="mt-3 w-full rounded-[30px] border-2 border-[#F97316] py-3.5 text-base font-bold text-[#F97316] active:scale-95">{t('createAccount')}</button>
+          <div className="flex h-24 w-24 items-center justify-center rounded-gb-full bg-gb-zest-50"><User size={48} className="text-gb-accent" /></div>
+          <p className="mt-5 font-gb-display text-[22px] font-extrabold text-gb-content">{t('signInPrompt')}</p>
+          <p className="mt-2 text-sm leading-relaxed text-gb-content-muted">{t('signInSubtitle')}</p>
+          <button onClick={() => router.push('/eat/auth')} className="mt-8 w-full rounded-gb-full bg-gb-accent-strong py-4 text-base font-bold text-white shadow-gb-md active:scale-95">{t('signIn')}</button>
+          <button onClick={() => router.push('/eat/auth')} className="mt-3 w-full rounded-gb-full border-2 border-gb-accent-strong py-3.5 text-base font-bold text-gb-accent-strong active:scale-95">{t('createAccount')}</button>
         </div>
       </div>
     )
@@ -143,32 +143,32 @@ export default function ProfileScreen() {
   const email = session?.user?.email ?? ''
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5]">
-      <div className="border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
-        <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{t('title')}</h1>
+    <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
+      <div className="border-b border-gb-stroke bg-gb-surface-elevated px-4 pb-4 pt-3">
+        <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
       </div>
 
       <div className="px-4 pb-6">
         {/* User card */}
-        <div className="mt-3 flex items-center gap-3.5 rounded-[20px] bg-white p-4 shadow-bolt-card">
+        <div className="mt-3 flex items-center gap-3.5 rounded-gb-lg bg-gb-surface-elevated p-4 shadow-gb-md">
           <div className="relative">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#F97316] bg-[#FFF3ED] text-2xl">🧑</div>
-            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2 border-white bg-[#22C55E]" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-gb-full border-2 border-gb-accent bg-gb-zest-50 text-2xl">🧑</div>
+            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-gb-full border-2 border-gb-surface-elevated bg-gb-success" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[17px] font-extrabold text-[#1a1a1a]">{name}</p>
-            <p className="truncate text-[13px] text-[#888]">{email}</p>
-            <div className="mt-0.5 flex items-center gap-1">
-              <Star size={13} className="fill-[#F97316] text-[#F97316]" />
-              <span className="text-xs text-[#888]">{t('loyalCustomer')}</span>
+            <p className="truncate text-[17px] font-extrabold text-gb-content">{name}</p>
+            <p className="truncate text-[13px] text-gb-content-muted">{email}</p>
+            <div className="mt-1 inline-flex items-center gap-1 rounded-gb-full bg-gb-zest-50 px-2 py-0.5">
+              <Star size={12} className="fill-gb-accent text-gb-accent" />
+              <span className="text-[11px] font-semibold text-gb-accent-strong">{t('loyalCustomer')}</span>
             </div>
           </div>
-          <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-[20px] bg-[#FFF3ED] px-3.5 py-[7px] text-[13px] font-bold text-[#F97316] active:scale-95">{t('edit')}</button>
+          <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-gb-full bg-gb-zest-50 px-3.5 py-[7px] text-[13px] font-bold text-gb-accent-strong active:scale-95">{t('edit')}</button>
         </div>
 
         {/* Phase 4 — multi-role space selector (renders only for a multi-role
             account, e.g. consumer + creator → switch to /creators/dashboard). */}
-        <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card empty:hidden">
+        <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md empty:hidden">
           <RoleSwitcher tone="light" />
         </div>
 
@@ -179,7 +179,7 @@ export default function ProfileScreen() {
         <LastReservationCard />
 
         {/* Loyalty card — balance in big + its euro-credit equivalent (L2). */}
-        <div className="mt-3 flex items-center gap-4 rounded-[20px] bg-[#F97316] p-5">
+        <div className="mt-3 flex items-center gap-4 rounded-gb-lg bg-gb-accent-strong p-5 shadow-gb-md">
           <div className="flex-1">
             <p className="text-xs font-semibold text-white/80">{t('loyaltyPoints')}</p>
             <p className="mt-1 text-[28px] font-extrabold leading-none text-white">{t('pts', { count: points.toLocaleString('fr-FR') })}</p>
@@ -191,8 +191,8 @@ export default function ProfileScreen() {
             </p>
           </div>
           <div className="flex flex-1 flex-col items-end gap-2">
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/30">
-              <div className="h-full rounded-full bg-white transition-all duration-700" style={{ width: `${progress}%` }} />
+            <div className="h-1.5 w-full overflow-hidden rounded-gb-full bg-white/30">
+              <div className="h-full rounded-gb-full bg-white transition-all duration-700" style={{ width: `${progress}%` }} />
             </div>
             <span className="text-[11px] font-semibold text-white/90">{tierLabel(tier.label)} → {tierLabel(nextLabel)}</span>
           </div>
@@ -201,23 +201,23 @@ export default function ProfileScreen() {
         {/* Mes points — the loyalty ledger (L2). earn green / redeem neutral /
             refund amber. Read-only from /api/loyalty/history (the L1 ledger). */}
         {history.length > 0 && (
-          <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card">
-            <p className="px-4 pb-1 pt-4 text-[15px] font-extrabold text-[#1a1a1a]">{t('pointsHistoryTitle')}</p>
+          <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
+            <p className="px-4 pb-1 pt-4 font-gb-display text-[15px] font-extrabold text-gb-content">{t('pointsHistoryTitle')}</p>
             {history.slice(0, historyShown).map((txn) => {
               const earn   = txn.type === 'earn'
               const refund = txn.type === 'refund'
               const sign   = txn.points > 0 ? '+' : ''
-              const color  = earn ? 'text-[#16A34A]' : refund ? 'text-[#B45309]' : 'text-[#6B7280]'
+              const color  = earn ? 'text-gb-success' : refund ? 'text-gb-warning' : 'text-gb-content-muted'
               const label  = earn
                 ? (txn.orderRef ? t('histEarnOrder', { ref: txn.orderRef }) : t('histEarn'))
                 : refund
                   ? (txn.orderRef ? t('histRefundOrder', { ref: txn.orderRef }) : t('histRefund'))
                   : (txn.orderRef ? t('histRedeemOrder', { ref: txn.orderRef }) : t('histRedeem'))
               return (
-                <div key={txn.id} className="flex items-center gap-3 border-b border-[#f8f8f8] px-4 py-3 last:border-0">
+                <div key={txn.id} className="flex items-center gap-3 border-b border-gb-stroke px-4 py-3 last:border-0">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-[#1a1a1a]">{label}</p>
-                    <p className="mt-0.5 text-[11px] text-[#888]">
+                    <p className="truncate text-[13px] font-semibold text-gb-content">{label}</p>
+                    <p className="mt-0.5 text-[11px] text-gb-content-muted">
                       {txn.date ? new Date(txn.date).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
                       {txn.euros > 0 ? ` · ${formatEuros(txn.euros, locale)}` : ''}
                     </p>
@@ -231,7 +231,7 @@ export default function ProfileScreen() {
             {history.length > historyShown && (
               <button
                 onClick={() => setHistoryShown((n) => n + 10)}
-                className="w-full py-3 text-center text-[13px] font-bold text-[#F97316] active:opacity-70"
+                className="w-full py-3 text-center text-[13px] font-bold text-gb-accent-strong active:opacity-70"
               >
                 {t('seeMore')}
               </button>
@@ -240,12 +240,12 @@ export default function ProfileScreen() {
         )}
 
         {/* Stats */}
-        <div className="mt-3 flex rounded-[20px] bg-white py-5 shadow-bolt-card">
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{orders.length}</span><span className="text-xs text-[#888]">{t('statOrders')}</span></div>
-          <div className="w-px bg-[#f0f0f0]" />
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{orders.filter((o) => o.status === 'delivered').length}</span><span className="text-xs text-[#888]">{t('statDelivered')}</span></div>
-          <div className="w-px bg-[#f0f0f0]" />
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-[#1a1a1a]">{points >= 50 ? tierLabel(tier.label) : '–'}</span><span className="text-xs text-[#888]">{t('statLevel')}</span></div>
+        <div className="mt-3 flex rounded-gb-lg bg-gb-surface-elevated py-5 shadow-gb-md">
+          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-gb-content">{orders.length}</span><span className="text-xs text-gb-content-muted">{t('statOrders')}</span></div>
+          <div className="w-px bg-gb-stroke" />
+          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-gb-content">{orders.filter((o) => o.status === 'delivered').length}</span><span className="text-xs text-gb-content-muted">{t('statDelivered')}</span></div>
+          <div className="w-px bg-gb-stroke" />
+          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-gb-content">{points >= 50 ? tierLabel(tier.label) : '–'}</span><span className="text-xs text-gb-content-muted">{t('statLevel')}</span></div>
         </div>
 
         {/* Order history — hygiène pré-live : NO exclusion, the client sees
@@ -254,8 +254,8 @@ export default function ProfileScreen() {
             greyed « Commande expirée » (eat.track keys reused, coherent with
             the tracking page). Other states reuse the track status labels. */}
         {orders.length > 0 && (
-          <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card">
-            <p className="px-4 pb-1 pt-4 text-[15px] font-extrabold text-[#1a1a1a]">{t('ordersTitle')}</p>
+          <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
+            <p className="px-4 pb-1 pt-4 font-gb-display text-[15px] font-extrabold text-gb-content">{t('ordersTitle')}</p>
             {orders.slice(0, 10).map((o) => {
               const badge = (() => {
                 if (o.status === 'awaiting_payment')
@@ -274,29 +274,29 @@ export default function ProfileScreen() {
               })()
               const isExpired = o.status === 'expired'
               return (
-                <div key={o.id} className={`flex items-center gap-3 border-b border-[#f8f8f8] px-4 py-3 last:border-0 ${isExpired ? 'opacity-60' : ''}`}>
+                <div key={o.id} className={`flex items-center gap-3 border-b border-gb-stroke px-4 py-3 last:border-0 ${isExpired ? 'opacity-60' : ''}`}>
                   <button
                     onClick={() => router.push(o.status === 'awaiting_payment' ? `/eat/checkout/${o.id}` : `/eat/track/${o.id}`)}
                     className="min-w-0 flex-1 text-left active:opacity-70"
                   >
-                    <p className="truncate text-[14px] font-bold text-[#1a1a1a]">{o.restaurant?.name ?? '—'}</p>
-                    <p className="mt-0.5 text-[11px] text-[#888]">
+                    <p className="truncate text-[14px] font-bold text-gb-content">{o.restaurant?.name ?? '—'}</p>
+                    <p className="mt-0.5 text-[11px] text-gb-content-muted">
                       {o.createdAt ? new Date(o.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
                       {' · '}{formatEuros(o.total, locale)}
                     </p>
-                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
+                    <span className={`mt-1 inline-block rounded-gb-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
                       {badge.label}
                     </span>
                   </button>
                   {o.status === 'awaiting_payment' ? (
                     <button
                       onClick={() => router.push(`/eat/checkout/${o.id}`)}
-                      className="shrink-0 rounded-[20px] bg-[#F97316] px-3 py-1.5 text-[12px] font-bold text-white active:scale-95"
+                      className="shrink-0 rounded-gb-full bg-gb-accent-strong px-3 py-1.5 text-[12px] font-bold text-white active:scale-95"
                     >
                       {tt('awaitingCta')}
                     </button>
                   ) : (
-                    <ChevronRight size={16} className="shrink-0 text-[#ccc]" />
+                    <ChevronRight size={16} className="shrink-0 text-gb-content-muted" />
                   )}
                 </div>
               )
@@ -305,47 +305,47 @@ export default function ProfileScreen() {
         )}
 
         {/* Notif toggle */}
-        <div className="mt-3 flex items-center gap-3 rounded-2xl bg-white p-4 shadow-bolt-soft">
-          <Bell size={20} className="text-[#F97316]" />
-          <span className="text-[15px] font-semibold text-[#1a1a1a]">{t('pushNotifications')}</span>
+        <div className="mt-3 flex items-center gap-3 rounded-gb-lg bg-gb-surface-elevated p-4 shadow-gb-sm">
+          <Bell size={20} className="text-gb-accent" />
+          <span className="text-[15px] font-semibold text-gb-content">{t('pushNotifications')}</span>
           <button
             onClick={() => setNotif((v) => !v)}
-            className={`ml-auto flex h-7 w-12 items-center rounded-full px-0.5 transition-colors ${notif ? 'justify-end bg-[#F97316]' : 'justify-start bg-[#ddd]'}`}
+            className={`ml-auto flex h-7 w-12 items-center rounded-gb-full px-0.5 transition-colors ${notif ? 'justify-end bg-gb-accent' : 'justify-start bg-gb-oat-200'}`}
           >
-            <span className="h-6 w-6 rounded-full bg-white shadow" />
+            <span className="h-6 w-6 rounded-gb-full bg-gb-surface-elevated shadow-gb-sm" />
           </button>
         </div>
 
         {/* Menu */}
-        <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card">
+        <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
           {MENU_ITEMS.map((item, idx) => {
             const Icon = item.icon
             return (
               <button
                 key={item.key}
                 onClick={() => (item.route ? router.push(item.route) : showToast(t('comingSoon')))}
-                className={`flex w-full items-center gap-3.5 px-4 py-3.5 active:bg-[#fafafa] ${idx === MENU_ITEMS.length - 1 ? '' : 'border-b border-[#f8f8f8]'}`}
+                className={`flex w-full items-center gap-3.5 px-4 py-3.5 active:bg-gb-oat-50 ${idx === MENU_ITEMS.length - 1 ? '' : 'border-b border-gb-stroke'}`}
               >
-                <span className="flex h-[38px] w-[38px] items-center justify-center rounded-xl" style={{ backgroundColor: item.color + '18' }}>
-                  <Icon size={18} style={{ color: item.color }} />
+                <span className="flex h-10 w-10 items-center justify-center rounded-gb-md" style={{ backgroundColor: item.color + '18' }}>
+                  <Icon size={20} strokeWidth={2} style={{ color: item.color }} />
                 </span>
-                <span className="text-[15px] font-semibold text-[#1a1a1a]">{item.label}</span>
-                <ChevronRight size={16} className="ml-auto text-[#ccc]" />
+                <span className="text-[15px] font-semibold text-gb-content">{item.label}</span>
+                <ChevronRight size={16} className="ml-auto text-gb-content-muted" />
               </button>
             )
           })}
         </div>
 
         {/* Language */}
-        <div className="mt-3 overflow-hidden rounded-[20px] bg-white shadow-bolt-card">
+        <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
           <div className="flex items-center gap-3.5 px-4 py-3.5">
             <span
-              className="flex h-[38px] w-[38px] items-center justify-center rounded-xl"
+              className="flex h-10 w-10 items-center justify-center rounded-gb-md"
               style={{ backgroundColor: '#3B82F618' }}
             >
-              <Globe size={18} style={{ color: '#3B82F6' }} />
+              <Globe size={20} strokeWidth={2} style={{ color: '#3B82F6' }} />
             </span>
-            <span className="text-[15px] font-semibold text-[#1a1a1a]">Langue</span>
+            <span className="text-[15px] font-semibold text-gb-content">Langue</span>
             <div className="ml-auto">
               <LanguageSwitcher variant="full" />
             </div>
@@ -355,13 +355,13 @@ export default function ProfileScreen() {
         {/* Logout */}
         <button
           onClick={() => signOut({ callbackUrl: '/eat/auth' })}
-          className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-2xl border-[1.5px] border-[#FEE2E2] bg-white py-4 active:scale-[0.99]"
+          className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-gb-lg border-[1.5px] border-gb-stroke bg-gb-surface-elevated py-4 active:scale-[0.99]"
         >
-          <LogOut size={18} className="text-[#EF4444]" />
-          <span className="text-[15px] font-bold text-[#EF4444]">{t('logout')}</span>
+          <LogOut size={18} className="text-gb-error" />
+          <span className="text-[15px] font-bold text-gb-error">{t('logout')}</span>
         </button>
 
-        <p className="mt-5 text-center text-xs text-[#ccc]">Grubano v1.0.0</p>
+        <p className="mt-5 text-center text-xs text-gb-content-muted">Grubano v1.0.0</p>
       </div>
     </div>
   )

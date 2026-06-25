@@ -1,5 +1,9 @@
 import type { Metadata } from 'next'
 import '../globals.css'
+// Grubano Design System v1 token layer (Agent 148) — ADDITIVE + namespaced. Loaded
+// app-wide here, like stellar-theme.css; only `gb-*` Tailwind utilities + brand-new CSS
+// vars are introduced, so non-migrated screens render byte-identical. See app/tokens.css.
+import '../tokens.css'
 import { notFound } from 'next/navigation'
 import { NextIntlClientProvider } from 'next-intl'
 import { getMessages, unstable_setRequestLocale } from 'next-intl/server'
