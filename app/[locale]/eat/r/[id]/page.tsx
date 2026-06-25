@@ -292,7 +292,7 @@ export default function RestaurantScreen() {
 
   if (loading) {
     return (
-      <div className="bg-white">
+      <div className="bg-gb-surface">
         <Skeleton className="h-[280px] w-full rounded-none" />
         <div className="space-y-3 p-4">
           <Skeleton className="h-6 w-2/3" />
@@ -310,10 +310,11 @@ export default function RestaurantScreen() {
   if (!restaurant) {
     return (
       <EmptyState
+        skin="gb"
         emoji="😕"
         title={t('restaurantNotFound')}
         action={
-          <Button variant="secondary" size="sm" onClick={() => router.back()}>
+          <Button variant="gb-secondary" size="sm" onClick={() => router.back()}>
             {tc('back')}
           </Button>
         }
@@ -385,16 +386,16 @@ export default function RestaurantScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-24">
-      {/* Hero */}
+    <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content pb-24 lg:pb-8">
+      {/* Hero — full width */}
       <div className="relative">
         <FoodImage name={restaurant.name} src={heroCover} className="h-[280px] w-full" glyphClassName="text-7xl" />
         <button
           onClick={() => router.back()}
           aria-label={tc('back')}
-          className="absolute left-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-grubano-md active:scale-90"
+          className="absolute left-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-gb-full bg-gb-surface-elevated shadow-gb-md active:scale-90"
         >
-          <ArrowLeft size={18} className="text-grubano-ink" />
+          <ArrowLeft size={18} className="text-gb-content" />
         </button>
         <div className="absolute right-4 top-4 flex gap-2.5">
           <button
@@ -404,15 +405,15 @@ export default function RestaurantScreen() {
               showToast(now ? t('addedToFavorites') : t('removedFromFavorites'))
             }}
             aria-label={t('favorite')}
-            className={`flex h-[38px] w-[38px] items-center justify-center rounded-full shadow-grubano-md active:scale-90 ${fav ? 'bg-grubano-danger' : 'bg-white'}`}
+            className={`flex h-[38px] w-[38px] items-center justify-center rounded-gb-full shadow-gb-md active:scale-90 ${fav ? 'bg-gb-error' : 'bg-gb-surface-elevated'}`}
           >
-            <Heart size={16} className={fav ? 'fill-white text-white' : 'fill-grubano-danger text-grubano-danger'} />
+            <Heart size={16} className={fav ? 'fill-white text-white' : 'fill-gb-error text-gb-error'} />
           </button>
           <button
             aria-label={t('share')}
-            className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-white shadow-grubano-md active:scale-90"
+            className="flex h-[38px] w-[38px] items-center justify-center rounded-gb-full bg-gb-surface-elevated shadow-gb-md active:scale-90"
           >
-            <Share2 size={16} className="text-grubano-ink" />
+            <Share2 size={16} className="text-gb-content" />
           </button>
         </div>
         {/* Thumbnail strip */}
@@ -432,281 +433,320 @@ export default function RestaurantScreen() {
         )}
       </div>
 
-      {/* Sticky tabs */}
-      <div className="sticky top-0 z-20 flex border-b border-grubano-border bg-white">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 border-b-[2.5px] py-3.5 text-grubano-sm ${
-              activeTab === tab ? 'border-grubano-primary font-extrabold text-grubano-primary' : 'border-transparent font-semibold text-grubano-ink-faint'
-            }`}
-          >
-            {tabLabel(tab)}
-          </button>
-        ))}
-      </div>
-
-      {/* Info section */}
-      <div className="px-4 pb-2 pt-4">
-        <div className="mb-1.5 flex justify-end">
-          <StarRating value={restaurant.rating} reviewCount={restaurant.reviewCount} size="sm" />
-        </div>
-        <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{restaurant.name}</h1>
-        {/* Badge horaires — rendered ONLY when the establishment configured its
-            hours (hoursConfigured=false → nothing, zero regression). */}
-        {hoursBadge && (
-          <div className="mb-1 mt-0.5">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                hoursBadge.open ? 'bg-emerald-50 text-emerald-600' : 'bg-grubano-surface-muted text-grubano-ink-muted'
-              }`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${hoursBadge.open ? 'bg-emerald-500' : 'bg-grubano-ink-faint'}`} />
-              {hoursBadge.label}
-            </span>
-            {closureLine && (
-              <p className="mt-1 text-[11px] text-grubano-ink-muted">{closureLine}</p>
-            )}
+      {/* Content (left) + desktop « Your order » panel (right, ≥lg) */}
+      <div className="lg:flex lg:items-start lg:gap-6">
+        <div className="lg:min-w-0 lg:flex-1">
+          {/* Sticky tabs */}
+          <div className="sticky top-0 z-20 flex border-b border-gb-stroke bg-gb-surface-elevated">
+            {TABS.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 border-b-[2.5px] py-3.5 text-sm ${
+                  activeTab === tab ? 'border-gb-accent-strong font-extrabold text-gb-accent-strong' : 'border-transparent font-semibold text-gb-content-muted'
+                }`}
+              >
+                {tabLabel(tab)}
+              </button>
+            ))}
           </div>
-        )}
-        {/* Chantier P2 — promo banner (sober, charte): best GLOBAL promo +
-            the others on a secondary line. Targeted promos badge their dish. */}
-        {bestGlobal && (
-          <div className="mb-2 mt-1 rounded-grubano-lg bg-grubano-tint px-3 py-2.5">
-            <p className="flex items-center gap-1.5 text-grubano-sm font-bold text-grubano-primary">
-              <Tag size={14} /> {promoLabel(bestGlobal)}
+
+          {/* Info section */}
+          <div className="px-4 pb-2 pt-4">
+            <div className="mb-1.5 flex justify-end">
+              <StarRating value={restaurant.rating} reviewCount={restaurant.reviewCount} size="sm" />
+            </div>
+            <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{restaurant.name}</h1>
+            {/* Badge horaires — rendered ONLY when the establishment configured its
+                hours (hoursConfigured=false → nothing, zero regression). */}
+            {hoursBadge && (
+              <div className="mb-1 mt-0.5">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-gb-full px-2.5 py-1 text-[11px] font-bold ${
+                    hoursBadge.open ? 'bg-gb-success-soft text-gb-success' : 'bg-gb-oat-100 text-gb-content-muted'
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${hoursBadge.open ? 'bg-gb-success' : 'bg-gb-content-muted'}`} />
+                  {hoursBadge.label}
+                </span>
+                {closureLine && (
+                  <p className="mt-1 text-[11px] text-gb-content-muted">{closureLine}</p>
+                )}
+              </div>
+            )}
+            {/* Chantier P2 — promo banner (sober, charte): best GLOBAL promo +
+                the others on a secondary line. Targeted promos badge their dish. */}
+            {bestGlobal && (
+              <div className="mb-2 mt-1 rounded-gb-lg bg-gb-zest-50 px-3 py-2.5">
+                <p className="flex items-center gap-1.5 text-sm font-bold text-gb-accent-strong">
+                  <Tag size={14} /> {promoLabel(bestGlobal)}
+                </p>
+                {flashLabel(bestGlobal) && (
+                  <p className="mt-0.5 inline-flex items-center gap-1 rounded-gb-full bg-gb-accent-strong px-2 py-0.5 text-[10px] font-bold text-white">
+                    ⏱ {flashLabel(bestGlobal)}
+                  </p>
+                )}
+                {bestGlobal.name && (
+                  <p className="mt-0.5 text-[11px] text-gb-content-muted">{bestGlobal.name}</p>
+                )}
+                {otherGlobals.length > 0 && (
+                  <p className="mt-1 border-t border-gb-stroke pt-1 text-[11px] text-gb-content-muted">
+                    {otherGlobals.map((p) => promoLabel(p)).join(' · ')}
+                  </p>
+                )}
+              </div>
+            )}
+            <p className="mb-1.5 text-sm text-gb-content-muted">
+              {formatCuisineList(restaurant.cuisine, locale, '')}
             </p>
-            {flashLabel(bestGlobal) && (
-              <p className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-grubano-primary/10 px-2 py-0.5 text-[10px] font-bold text-grubano-primary">
-                ⏱ {flashLabel(bestGlobal)}
-              </p>
-            )}
-            {bestGlobal.name && (
-              <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{bestGlobal.name}</p>
-            )}
-            {otherGlobals.length > 0 && (
-              <p className="mt-1 border-t border-grubano-primary/15 pt-1 text-[11px] text-grubano-ink-muted">
-                {otherGlobals.map((p) => promoLabel(p)).join(' · ')}
-              </p>
-            )}
-          </div>
-        )}
-        <p className="mb-1.5 text-grubano-sm text-grubano-ink-muted">
-          {formatCuisineList(restaurant.cuisine, locale, '')}
-        </p>
-        <div className="mb-2 flex items-center gap-1">
-          <MapPin size={13} className="text-grubano-ink-faint" />
-          <span className="truncate text-grubano-sm text-grubano-ink-muted">
-            {restaurant.address}, {restaurant.city}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
-            <MapPin size={12} /> {restaurant.deliveryFee === 0 ? t('freeDelivery') : formatEuros(restaurant.deliveryFee, locale)}
-          </span>
-          <span className="flex items-center gap-1 text-xs text-grubano-ink-muted">
-            <Clock size={12} /> {t('minutes', { count: restaurant.deliveryTime })}
-          </span>
-          <button onClick={() => setActiveTab('Avis')} className="text-grubano-sm font-semibold text-grubano-primary">
-            {t('tabReviews')}
-          </button>
-        </div>
-      </div>
-
-      {/* Menu tab */}
-      {activeTab === 'Menu' && (
-        <div className="px-4 pt-3">
-          <p className="mb-3 text-[17px] font-extrabold text-grubano-ink">
-            {t('tabMenu')} <span className="text-grubano-primary">{t('itemCount', { count: allItems.length })}</span>
-          </p>
-
-          <div className="mb-3">
-            <Input
-              leftIcon={<Search size={14} className="text-grubano-ink-faint" />}
-              placeholder={t('searchItems')}
-              value={menuSearch}
-              onChange={(e) => setMenuSearch(e.target.value)}
-            />
-          </div>
-
-          {categories.length > 1 && (
-            <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
-              {categories.map((f) => (
-                <CategoryPill key={f} active={menuFilter === f} onClick={() => setMenuFilter(f)}>
-                  {categoryLabel(f)}
-                </CategoryPill>
-              ))}
-            </div>
-          )}
-
-          {filtered.length === 0 ? (
-            <EmptyState compact emoji="🍽️" title={t('noItemsFound')} />
-          ) : (
-            <div className="grid grid-cols-2 gap-3 pb-2">
-              {filtered.map((dish) => {
-                // Chantier P2 — targeted promo badge: discounted unit price was
-                // computed SERVER-side by evaluatePromotion (never locally).
-                const promo = itemPromo[dish.id]
-                // second_item is a BADGE only (no per-unit bar — the discounted
-                // 2nd unit lands in the cart where quantities are known).
-                const hasUnitDiscount = !!promo && promo.discountedUnitPrice < dish.price
-                const pill = promo ? (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-grubano-tint px-1.5 py-0.5 text-[10px] font-bold text-grubano-primary">
-                    <Tag size={9} />
-                    {promo.secondItemPct != null
-                      ? t('promoPillSecond', { pct: promo.secondItemPct })
-                      : promo.type === 'percent'
-                        ? t('promoPill', { pct: promo.discount })
-                        : t('promoPillFixed', { eur: promo.discount })}
-                  </span>
-                ) : null
-                const meta = (promo || dish.creator) ? (
-                  <span className="inline-flex flex-wrap items-center gap-1">
-                    {pill}
-                    {dish.creator ? <CreatorBadge creator={dish.creator} /> : null}
-                  </span>
-                ) : undefined
-                return (
-                  <DishCard
-                    key={dish.id}
-                    layout="vertical"
-                    name={dish.name}
-                    description={dish.description}
-                    price={hasUnitDiscount ? promo!.discountedUnitPrice : dish.price}
-                    originalPrice={hasUnitDiscount
-                      ? dish.price
-                      : dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined}
-                    photo={photoFor(dish)}
-                    popular={dish.isPopular}
-                    popularLabel={tc('popular')}
-                    topLabel={tc('top')}
-                    soldOutLabel={tc('soldOut')}
-                    quantityInCart={qtyForDish(dish.id)}
-                    meta={meta}
-                    onClick={() => setModalDish(dish)}
-                    onAdd={() => setModalDish(dish)}
-                  />
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* About tab */}
-      {activeTab === 'À propos' && (
-        <div className="p-4">
-          <h2 className="mb-2.5 text-[17px] font-extrabold text-grubano-ink">{t('aboutTitle', { name: restaurant.name })}</h2>
-          <p className="mb-4 text-grubano-sm leading-relaxed text-grubano-ink-muted">
-            {restaurant.description || t('partnerRestaurant')}
-          </p>
-          <div className="space-y-3 rounded-grubano-lg bg-grubano-surface-muted p-4">
-            <div className="flex items-center gap-2.5">
-              <MapPin size={15} className="text-grubano-primary" />
-              <span className="text-grubano-sm text-grubano-ink-muted">
+            <div className="mb-2 flex items-center gap-1">
+              <MapPin size={13} className="text-gb-content-muted" />
+              <span className="truncate text-sm text-gb-content-muted">
                 {restaurant.address}, {restaurant.city}
               </span>
             </div>
-            {/* Legacy STATIC hours line ("Lun–Dim : 10h00 – 23h00") — hidden as
-                soon as the establishment configured its REAL hours (the weekly
-                block below is then the single source). Not configured →
-                unchanged (zero regression). */}
-            {!hours && (
-              <div className="flex items-center gap-2.5">
-                <Clock size={15} className="text-grubano-primary" />
-                <span className="text-grubano-sm text-grubano-ink-muted">{t('openingHours')}</span>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span className="flex items-center gap-1 text-xs text-gb-content-muted">
+                <MapPin size={12} /> {restaurant.deliveryFee === 0 ? t('freeDelivery') : formatEuros(restaurant.deliveryFee, locale)}
+              </span>
+              <span className="flex items-center gap-1 text-xs text-gb-content-muted">
+                <Clock size={12} /> {t('minutes', { count: restaurant.deliveryTime })}
+              </span>
+              <button onClick={() => setActiveTab('Avis')} className="text-sm font-semibold text-gb-accent-strong">
+                {t('tabReviews')}
+              </button>
+            </div>
           </div>
 
-          {/* Bloc « Horaires » — the real weekly hours, only when configured.
-              Days displayed Monday→Sunday; an overnight range (close < open)
-              is suffixed "(lendemain)". Not configured → block absent. */}
-          {hours && hours.weeklyHours.length > 0 && (
-            <div className="mt-3 rounded-grubano-lg bg-grubano-surface-muted p-4">
-              <p className="mb-2.5 text-grubano-sm font-extrabold text-grubano-ink">{t('hoursWeekTitle')}</p>
-              <ul className="space-y-1.5">
-                {[1, 2, 3, 4, 5, 6, 0].map((d) => {
-                  const day = hours.weeklyHours.find((w) => w.dayOfWeek === d)
-                  const ranges = day?.ranges ?? []
-                  const dayName = new Intl.DateTimeFormat(locale, { weekday: 'long' })
-                    .format(new Date(Date.UTC(2024, 0, 7 + d, 12))) // 2024-01-07 = a Sunday → +d gives each weekday
-                  const overnight = (open: string, close: string) => {
-                    const m = (s: string) => parseInt(s.slice(0, 2), 10) * 60 + parseInt(s.slice(3, 5), 10)
-                    return close !== '24:00' && m(close) < m(open)
-                  }
-                  return (
-                    <li key={d} className="flex items-baseline justify-between gap-3 text-grubano-sm">
-                      <span className="capitalize text-grubano-ink-muted">{dayName}</span>
-                      <span className="text-end font-semibold text-grubano-ink">
-                        {ranges.length === 0
-                          ? t('hoursDayClosed')
-                          : ranges.map((r, i) => (
-                              <span key={i} className="block">
-                                {r.open} – {r.close}
-                                {overnight(r.open, r.close) ? ` (${t('hoursNextDay')})` : ''}
-                              </span>
-                            ))}
+          {/* Menu tab */}
+          {activeTab === 'Menu' && (
+            <div className="px-4 pt-3">
+              <p className="mb-3 text-[17px] font-extrabold text-gb-content">
+                {t('tabMenu')} <span className="text-gb-accent-strong">{t('itemCount', { count: allItems.length })}</span>
+              </p>
+
+              <div className="mb-3">
+                <Input
+                  skin="gb"
+                  leftIcon={<Search size={14} className="text-gb-content-muted" />}
+                  placeholder={t('searchItems')}
+                  value={menuSearch}
+                  onChange={(e) => setMenuSearch(e.target.value)}
+                />
+              </div>
+
+              {categories.length > 1 && (
+                <div className="no-scrollbar -mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
+                  {categories.map((f) => (
+                    <CategoryPill key={f} active={menuFilter === f} onClick={() => setMenuFilter(f)}>
+                      {categoryLabel(f)}
+                    </CategoryPill>
+                  ))}
+                </div>
+              )}
+
+              {filtered.length === 0 ? (
+                <EmptyState skin="gb" compact emoji="🍽️" title={t('noItemsFound')} />
+              ) : (
+                <div className="grid grid-cols-2 gap-3 pb-2">
+                  {filtered.map((dish) => {
+                    // Chantier P2 — targeted promo badge: discounted unit price was
+                    // computed SERVER-side by evaluatePromotion (never locally).
+                    const promo = itemPromo[dish.id]
+                    // second_item is a BADGE only (no per-unit bar — the discounted
+                    // 2nd unit lands in the cart where quantities are known).
+                    const hasUnitDiscount = !!promo && promo.discountedUnitPrice < dish.price
+                    const pill = promo ? (
+                      <span className="inline-flex items-center gap-0.5 rounded-gb-full bg-gb-zest-50 px-1.5 py-0.5 text-[10px] font-bold text-gb-accent-strong">
+                        <Tag size={9} />
+                        {promo.secondItemPct != null
+                          ? t('promoPillSecond', { pct: promo.secondItemPct })
+                          : promo.type === 'percent'
+                            ? t('promoPill', { pct: promo.discount })
+                            : t('promoPillFixed', { eur: promo.discount })}
                       </span>
-                    </li>
-                  )
-                })}
-              </ul>
+                    ) : null
+                    const meta = (promo || dish.creator) ? (
+                      <span className="inline-flex flex-wrap items-center gap-1">
+                        {pill}
+                        {dish.creator ? <CreatorBadge creator={dish.creator} /> : null}
+                      </span>
+                    ) : undefined
+                    return (
+                      <DishCard
+                        key={dish.id}
+                        layout="vertical"
+                        name={dish.name}
+                        description={dish.description}
+                        price={hasUnitDiscount ? promo!.discountedUnitPrice : dish.price}
+                        originalPrice={hasUnitDiscount
+                          ? dish.price
+                          : dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined}
+                        photo={photoFor(dish)}
+                        popular={dish.isPopular}
+                        popularLabel={tc('popular')}
+                        topLabel={tc('top')}
+                        soldOutLabel={tc('soldOut')}
+                        quantityInCart={qtyForDish(dish.id)}
+                        meta={meta}
+                        onClick={() => setModalDish(dish)}
+                        onAdd={() => setModalDish(dish)}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* About tab */}
+          {activeTab === 'À propos' && (
+            <div className="p-4">
+              <h2 className="mb-2.5 text-[17px] font-extrabold text-gb-content">{t('aboutTitle', { name: restaurant.name })}</h2>
+              <p className="mb-4 text-sm leading-relaxed text-gb-content-muted">
+                {restaurant.description || t('partnerRestaurant')}
+              </p>
+              <div className="space-y-3 rounded-gb-lg bg-gb-oat-100 p-4">
+                <div className="flex items-center gap-2.5">
+                  <MapPin size={15} className="text-gb-accent" />
+                  <span className="text-sm text-gb-content-muted">
+                    {restaurant.address}, {restaurant.city}
+                  </span>
+                </div>
+                {/* Legacy STATIC hours line ("Lun–Dim : 10h00 – 23h00") — hidden as
+                    soon as the establishment configured its REAL hours (the weekly
+                    block below is then the single source). Not configured →
+                    unchanged (zero regression). */}
+                {!hours && (
+                  <div className="flex items-center gap-2.5">
+                    <Clock size={15} className="text-gb-accent" />
+                    <span className="text-sm text-gb-content-muted">{t('openingHours')}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Bloc « Horaires » — the real weekly hours, only when configured.
+                  Days displayed Monday→Sunday; an overnight range (close < open)
+                  is suffixed "(lendemain)". Not configured → block absent. */}
+              {hours && hours.weeklyHours.length > 0 && (
+                <div className="mt-3 rounded-gb-lg bg-gb-oat-100 p-4">
+                  <p className="mb-2.5 text-sm font-extrabold text-gb-content">{t('hoursWeekTitle')}</p>
+                  <ul className="space-y-1.5">
+                    {[1, 2, 3, 4, 5, 6, 0].map((d) => {
+                      const day = hours.weeklyHours.find((w) => w.dayOfWeek === d)
+                      const ranges = day?.ranges ?? []
+                      const dayName = new Intl.DateTimeFormat(locale, { weekday: 'long' })
+                        .format(new Date(Date.UTC(2024, 0, 7 + d, 12))) // 2024-01-07 = a Sunday → +d gives each weekday
+                      const overnight = (open: string, close: string) => {
+                        const m = (s: string) => parseInt(s.slice(0, 2), 10) * 60 + parseInt(s.slice(3, 5), 10)
+                        return close !== '24:00' && m(close) < m(open)
+                      }
+                      return (
+                        <li key={d} className="flex items-baseline justify-between gap-3 text-sm">
+                          <span className="capitalize text-gb-content-muted">{dayName}</span>
+                          <span className="text-end font-semibold text-gb-content">
+                            {ranges.length === 0
+                              ? t('hoursDayClosed')
+                              : ranges.map((r, i) => (
+                                  <span key={i} className="block">
+                                    {r.open} – {r.close}
+                                    {overnight(r.open, r.close) ? ` (${t('hoursNextDay')})` : ''}
+                                  </span>
+                                ))}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Gallery tab */}
+          {activeTab === 'Galerie' && (
+            <div className="grid grid-cols-3 gap-1 p-2">
+              {allItems.slice(0, 9).map((d) => (
+                <FoodImage key={d.id} name={d.name} src={photoFor(d)} className="aspect-square w-full rounded-gb-sm" glyphClassName="text-2xl" />
+              ))}
+              {allItems.length === 0 && <EmptyState skin="gb" compact emoji="🖼️" title={t('gallerySoon')} className="col-span-3" />}
+            </div>
+          )}
+
+          {/* Reviews tab */}
+          {activeTab === 'Avis' && (
+            <div className="p-4">
+              <div className="mb-4 flex flex-col items-center rounded-gb-xl bg-gb-oat-100 py-5">
+                <span className="font-gb-display text-[48px] font-extrabold text-gb-content">{restaurant.rating.toFixed(1)}</span>
+                <div className="my-1.5">
+                  <StarRating value={restaurant.rating} size="md" />
+                </div>
+                <span className="text-sm text-gb-content-muted">{t('reviewCount', { count: restaurant.reviewCount.toLocaleString('fr-FR') })}</span>
+              </div>
+              {SAMPLE_REVIEWS.map((r, i) => (
+                <div key={i} className="mb-2.5 rounded-gb-lg bg-gb-oat-100 p-3.5">
+                  <div className="mb-2 flex items-center gap-2.5">
+                    <div className="flex h-[38px] w-[38px] items-center justify-center rounded-gb-full bg-gb-accent-strong text-base font-bold text-white">
+                      {r.name[0]}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-gb-content">{r.name}</p>
+                      <p className="text-[11px] text-gb-content-muted">{t(`reviewDate${i}` as 'reviewDate0')}</p>
+                    </div>
+                    <StarRating value={r.rating} size="sm" />
+                  </div>
+                  <p className="text-sm leading-5 text-gb-content-muted">{t(`reviewText${i}` as 'reviewText0')}</p>
+                </div>
+              ))}
             </div>
           )}
         </div>
-      )}
 
-      {/* Gallery tab */}
-      {activeTab === 'Galerie' && (
-        <div className="grid grid-cols-3 gap-1 p-2">
-          {allItems.slice(0, 9).map((d) => (
-            <FoodImage key={d.id} name={d.name} src={photoFor(d)} className="aspect-square w-full rounded-grubano-sm" glyphClassName="text-2xl" />
-          ))}
-          {allItems.length === 0 && <EmptyState compact emoji="🖼️" title={t('gallerySoon')} className="col-span-3" />}
-        </div>
-      )}
-
-      {/* Reviews tab */}
-      {activeTab === 'Avis' && (
-        <div className="p-4">
-          <div className="mb-4 flex flex-col items-center rounded-grubano-xl bg-grubano-surface-muted py-5">
-            <span className="font-display text-[48px] font-extrabold text-grubano-ink">{restaurant.rating.toFixed(1)}</span>
-            <div className="my-1.5">
-              <StarRating value={restaurant.rating} size="md" />
-            </div>
-            <span className="text-grubano-sm text-grubano-ink-muted">{t('reviewCount', { count: restaurant.reviewCount.toLocaleString('fr-FR') })}</span>
+        {/* Desktop « Your order » panel (≥lg) — fed by the REAL cart already on the
+            page (lib/eat-cart). Hidden on mobile, where the bottom bar takes over. */}
+        <aside className="hidden lg:block lg:w-[340px] lg:shrink-0">
+          <div className="sticky top-4 rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated p-4 shadow-gb-sm">
+            <h2 className="mb-3 font-gb-display text-lg font-extrabold text-gb-content">{t('yourOrder')}</h2>
+            {cartCount > 0 ? (
+              <>
+                <ul className="mb-3 space-y-2">
+                  {(cart?.items ?? []).map((l) => (
+                    <li key={l.item.id} className="flex items-start justify-between gap-2 text-sm">
+                      <span className="min-w-0 flex-1 text-gb-content">
+                        <span className="font-semibold text-gb-accent-strong">{l.qty}×</span> {l.item.name}
+                      </span>
+                      <span className="shrink-0 font-medium text-gb-content">{formatEuros(l.item.price * l.qty, locale)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mb-3 flex items-center justify-between border-t border-gb-stroke pt-3 text-sm font-bold text-gb-content">
+                  <span>{t('total')}</span>
+                  <span>{formatEuros(cartTotal, locale)}</span>
+                </div>
+                <Button variant="gb-primary" size="md" fullWidth onClick={() => router.push('/eat/cart')}>
+                  {t('viewCart')}
+                </Button>
+              </>
+            ) : (
+              <Button variant="gb-primary" size="md" fullWidth onClick={() => router.push(`/eat/r/${id}/reserver`)}>
+                {t('reserveTable')}
+              </Button>
+            )}
           </div>
-          {SAMPLE_REVIEWS.map((r, i) => (
-            <div key={i} className="mb-2.5 rounded-grubano-lg bg-grubano-surface-muted p-3.5">
-              <div className="mb-2 flex items-center gap-2.5">
-                <div className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-grubano-primary text-base font-bold text-white">
-                  {r.name[0]}
-                </div>
-                <div className="flex-1">
-                  <p className="text-grubano-sm font-bold text-grubano-ink">{r.name}</p>
-                  <p className="text-[11px] text-grubano-ink-faint">{t(`reviewDate${i}` as 'reviewDate0')}</p>
-                </div>
-                <StarRating value={r.rating} size="sm" />
-              </div>
-              <p className="text-grubano-sm leading-5 text-grubano-ink-muted">{t(`reviewText${i}` as 'reviewText0')}</p>
-            </div>
-          ))}
-        </div>
-      )}
+        </aside>
+      </div>
 
-      {/* Bottom bar. On desktop (≥lg) the content is offset by the 240px rail → align
-          the bar to the content column instead of the viewport centre. */}
-      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-grubano-border bg-white px-4 py-3.5 lg:left-[240px] lg:right-0 lg:mx-auto lg:w-auto lg:max-w-[1200px] lg:translate-x-0 lg:px-6">
+      {/* Bottom bar — mobile only (<lg). On desktop the « Your order » panel above
+          replaces it, so there is never a double presentation. */}
+      <div className="fixed bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-gb-stroke bg-gb-surface-elevated px-4 py-3.5 lg:hidden">
         {cartCount > 0 ? (
           <Button
-            variant="primary"
+            variant="gb-primary"
             size="pill"
             fullWidth
             onClick={() => router.push('/eat/cart')}
             leftIcon={
-              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white px-1.5 text-xs font-bold text-grubano-primary">
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-gb-full bg-white px-1.5 text-xs font-bold text-gb-accent-strong">
                 {cartCount}
               </span>
             }
@@ -720,7 +760,7 @@ export default function RestaurantScreen() {
           </Button>
         ) : (
           <Button
-            variant="primary"
+            variant="gb-primary"
             size="pill"
             fullWidth
             onClick={() => router.push(`/eat/r/${id}/reserver`)}
@@ -779,15 +819,16 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
       onClose={onClose}
       size="md"
       hideClose={false}
+      skin="gb"
       title={dish.name}
       description={dish.description}
       footer={
-        <Button variant="primary" size="pill" fullWidth onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note })}>
+        <Button variant="gb-primary" size="pill" fullWidth onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note })}>
           {t('addToCartPrice', { price: formatAmount(total, locale) })}
         </Button>
       }
     >
-      <FoodImage name={dish.name} src={photo} className="mb-4 h-40 w-full rounded-grubano-lg" glyphClassName="text-5xl" />
+      <FoodImage name={dish.name} src={photo} className="mb-4 h-40 w-full rounded-gb-lg" glyphClassName="text-5xl" />
 
       <Section title={t('sectionSize')}>
         <div className="space-y-1.5">
@@ -796,8 +837,8 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
             return (
               <label
                 key={opt.label}
-                className={`flex cursor-pointer items-center justify-between rounded-grubano-md border px-3 py-3 transition ${
-                  selected ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-white'
+                className={`flex cursor-pointer items-center justify-between rounded-gb-md border px-3 py-3 transition ${
+                  selected ? 'border-gb-accent bg-gb-zest-50' : 'border-gb-stroke bg-gb-surface-elevated'
                 }`}
               >
                 <span className="flex items-center gap-3">
@@ -807,11 +848,11 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                     value={opt.label}
                     checked={selected}
                     onChange={() => setSize(opt.label)}
-                    className="h-4 w-4 accent-grubano-primary"
+                    className="h-4 w-4 accent-gb-accent-strong"
                   />
-                  <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.label}</span>
+                  <span className="text-sm font-semibold text-gb-content">{opt.label}</span>
                 </span>
-                <span className="text-grubano-sm font-bold text-grubano-ink">
+                <span className="text-sm font-bold text-gb-content">
                   {opt.premium > 0 ? t('plusPrice', { price: formatAmount(opt.premium, locale) }) : t('included')}
                 </span>
               </label>
@@ -827,8 +868,8 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
             return (
               <label
                 key={opt.name}
-                className={`flex cursor-pointer items-center justify-between rounded-grubano-md border px-3 py-3 transition ${
-                  selected ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-white'
+                className={`flex cursor-pointer items-center justify-between rounded-gb-md border px-3 py-3 transition ${
+                  selected ? 'border-gb-accent bg-gb-zest-50' : 'border-gb-stroke bg-gb-surface-elevated'
                 }`}
               >
                 <span className="flex items-center gap-3">
@@ -836,11 +877,11 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                     type="checkbox"
                     checked={selected}
                     onChange={() => toggle(supplements, setSupplements, opt.name)}
-                    className="h-4 w-4 accent-grubano-primary"
+                    className="h-4 w-4 accent-gb-accent-strong"
                   />
-                  <span className="text-grubano-sm font-semibold text-grubano-ink">{opt.name}</span>
+                  <span className="text-sm font-semibold text-gb-content">{opt.name}</span>
                 </span>
-                <span className="text-grubano-sm font-bold text-grubano-ink">{t('plusPrice', { price: formatAmount(opt.price, locale) })}</span>
+                <span className="text-sm font-bold text-gb-content">{t('plusPrice', { price: formatAmount(opt.price, locale) })}</span>
               </label>
             )
           })}
@@ -856,8 +897,8 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                 key={opt}
                 type="button"
                 onClick={() => toggle(exclusions, setExclusions, opt)}
-                className={`rounded-grubano-pill border px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
-                  selected ? 'border-grubano-primary bg-grubano-primary text-white' : 'border-grubano-border bg-white text-grubano-ink-muted'
+                className={`rounded-gb-full border px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
+                  selected ? 'border-gb-accent-strong bg-gb-accent-strong text-white' : 'border-gb-stroke bg-gb-surface-elevated text-gb-content-muted'
                 }`}
               >
                 {opt}
@@ -873,21 +914,21 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
           onChange={(e) => setNote(e.target.value)}
           rows={2}
           placeholder={t('notePlaceholder')}
-          className="w-full resize-none rounded-grubano-md border border-grubano-border bg-grubano-surface-muted p-3 text-grubano-sm text-grubano-ink placeholder:text-grubano-ink-faint focus:bg-white focus:outline-none focus:ring-2 focus:ring-grubano-primary/30"
+          className="w-full resize-none rounded-gb-md border border-gb-stroke bg-gb-oat-100 p-3 text-sm text-gb-content placeholder:text-gb-content-muted focus:bg-gb-surface-elevated focus:outline-none focus:ring-2 focus:ring-gb-accent"
         />
       </Section>
 
-      <div className="mt-2 flex items-center justify-between rounded-grubano-md bg-grubano-tint p-3">
-        <span className="text-grubano-sm font-semibold text-grubano-ink">{t('total')}</span>
-        <span className="font-display text-[22px] font-extrabold text-grubano-primary">{formatEuros(total, locale)}</span>
+      <div className="mt-2 flex items-center justify-between rounded-gb-md bg-gb-zest-50 p-3">
+        <span className="text-sm font-semibold text-gb-content">{t('total')}</span>
+        <span className="font-gb-display text-[22px] font-extrabold text-gb-accent-strong">{formatEuros(total, locale)}</span>
       </div>
       {(supplements.length > 0 || exclusions.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {supplements.map((s) => (
-            <Badge key={`s-${s}`} tone="primary" size="sm">+ {s}</Badge>
+            <Badge key={`s-${s}`} skin="gb" tone="primary" size="sm">+ {s}</Badge>
           ))}
           {exclusions.map((s) => (
-            <Badge key={`e-${s}`} tone="neutral" size="sm">{s}</Badge>
+            <Badge key={`e-${s}`} skin="gb" tone="neutral" size="sm">{s}</Badge>
           ))}
         </div>
       )}
@@ -898,7 +939,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-4">
-      <h3 className="mb-2 text-grubano-sm font-extrabold text-grubano-ink">{title}</h3>
+      <h3 className="mb-2 text-sm font-extrabold text-gb-content">{title}</h3>
       {children}
     </div>
   )

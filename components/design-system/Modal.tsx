@@ -34,6 +34,9 @@ export interface ModalProps {
   staticBackdrop?: boolean
   size?: ModalSize
   className?: string
+  /** Opt-in Grubano DS (gb-) skin — additive, /eat-only (Agent 152). Default
+   *  ('grubano') keeps the operator rendering byte-identical. */
+  skin?: 'grubano' | 'gb'
 }
 
 export function Modal({
@@ -47,6 +50,7 @@ export function Modal({
   staticBackdrop,
   size = 'md',
   className,
+  skin = 'grubano',
 }: ModalProps) {
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
@@ -68,6 +72,8 @@ export function Modal({
 
   if (!mounted || !open) return null
 
+  const gb = skin === 'gb'
+
   return createPortal(
     <div
       role="dialog"
@@ -85,30 +91,36 @@ export function Modal({
       {/* Panel */}
       <div
         className={cn(
-          'relative w-full bg-grubano-surface flex flex-col animate-slide-up',
+          gb
+            ? 'relative w-full bg-gb-surface-elevated flex flex-col animate-slide-up'
+            : 'relative w-full bg-grubano-surface flex flex-col animate-slide-up',
           // Mobile: full-width bottom-sheet
-          'rounded-t-grubano-2xl pb-[env(safe-area-inset-bottom)]',
+          gb
+            ? 'rounded-t-gb-xl pb-[env(safe-area-inset-bottom)]'
+            : 'rounded-t-grubano-2xl pb-[env(safe-area-inset-bottom)]',
           // Desktop: centred card
-          'sm:rounded-grubano-2xl sm:w-auto sm:max-h-[85vh] sm:shadow-grubano-premium',
+          gb
+            ? 'sm:rounded-gb-xl sm:w-auto sm:max-h-[85vh] sm:shadow-gb-lg'
+            : 'sm:rounded-grubano-2xl sm:w-auto sm:max-h-[85vh] sm:shadow-grubano-premium',
           SIZES[size],
           className,
         )}
       >
         {/* Mobile grabber */}
         <div className="sm:hidden flex justify-center pt-2 pb-1" aria-hidden>
-          <span className="h-1 w-10 rounded-full bg-grubano-border-strong" />
+          <span className={gb ? 'h-1 w-10 rounded-full bg-gb-stroke-strong' : 'h-1 w-10 rounded-full bg-grubano-border-strong'} />
         </div>
 
         {(title || !hideClose) && (
           <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-2">
             <div className="flex-1 min-w-0">
               {title && (
-                <h2 id="modal-title" className="font-display font-bold text-grubano-xl text-grubano-ink">
+                <h2 id="modal-title" className={gb ? 'font-gb-display font-bold text-xl text-gb-content' : 'font-display font-bold text-grubano-xl text-grubano-ink'}>
                   {title}
                 </h2>
               )}
               {description && (
-                <p className="text-grubano-sm text-grubano-ink-muted mt-1">{description}</p>
+                <p className={gb ? 'text-sm text-gb-content-muted mt-1' : 'text-grubano-sm text-grubano-ink-muted mt-1'}>{description}</p>
               )}
             </div>
             {!hideClose && (
@@ -116,7 +128,9 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label="Fermer"
-                className="shrink-0 -mr-1 -mt-1 p-2 rounded-grubano-md text-grubano-ink-muted hover:bg-grubano-surface-muted"
+                className={gb
+                  ? 'shrink-0 -mr-1 -mt-1 p-2 rounded-gb-md text-gb-content-muted hover:bg-gb-oat-100'
+                  : 'shrink-0 -mr-1 -mt-1 p-2 rounded-grubano-md text-grubano-ink-muted hover:bg-grubano-surface-muted'}
               >
                 <X size={20} />
               </button>
@@ -127,7 +141,9 @@ export function Modal({
         <div className="flex-1 overflow-y-auto px-5 py-3">{children}</div>
 
         {footer && (
-          <div className="px-5 py-4 border-t border-grubano-border flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <div className={gb
+            ? 'px-5 py-4 border-t border-gb-stroke flex flex-col-reverse sm:flex-row sm:justify-end gap-2'
+            : 'px-5 py-4 border-t border-grubano-border flex flex-col-reverse sm:flex-row sm:justify-end gap-2'}>
             {footer}
           </div>
         )}

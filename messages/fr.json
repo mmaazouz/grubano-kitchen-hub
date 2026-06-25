@@ -1464,7 +1464,8 @@
       "promoThresholdFree": "🏷️ Un article offert dès {min} €",
       "promoThresholdPct": "🏷️ −{pct}% dès {min} €",
       "promoFlashUntil": "jusqu’à {time}",
-      "promoPillSecond": "2e à −{pct}%"
+      "promoPillSecond": "2e à −{pct}%",
+      "yourOrder": "Votre commande"
     },
     "creator": {
       "title": "Profil créateur",

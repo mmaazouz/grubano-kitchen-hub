@@ -1464,7 +1464,8 @@
       "promoThresholdFree": "🏷️ A free item from €{min}",
       "promoThresholdPct": "🏷️ −{pct}% from €{min}",
       "promoFlashUntil": "until {time}",
-      "promoPillSecond": "2nd at −{pct}%"
+      "promoPillSecond": "2nd at −{pct}%",
+      "yourOrder": "Your order"
     },
     "creator": {
       "title": "Creator profile",

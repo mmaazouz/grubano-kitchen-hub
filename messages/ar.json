@@ -1464,7 +1464,8 @@
       "promoThresholdFree": "🏷️ صنف مجاني ابتداءً من {min} €",
       "promoThresholdPct": "🏷️ −{pct}% ابتداءً من {min} €",
       "promoFlashUntil": "حتى {time}",
-      "promoPillSecond": "الثاني بـ −{pct}%"
+      "promoPillSecond": "الثاني بـ −{pct}%",
+      "yourOrder": "طلبك"
     },
     "creator": {
       "title": "الملف الشخصي للمبدع",
