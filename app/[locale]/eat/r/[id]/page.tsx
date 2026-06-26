@@ -443,7 +443,7 @@ export default function RestaurantScreen() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`flex-1 border-b-[2.5px] py-3.5 text-sm ${
-                  activeTab === tab ? 'border-gb-accent-strong font-extrabold text-gb-accent-strong' : 'border-transparent font-semibold text-gb-content-muted'
+                  activeTab === tab ? 'border-gb-accent font-extrabold text-gb-accent' : 'border-transparent font-semibold text-gb-content-muted'
                 }`}
               >
                 {tabLabel(tab)}
@@ -478,11 +478,11 @@ export default function RestaurantScreen() {
                 the others on a secondary line. Targeted promos badge their dish. */}
             {bestGlobal && (
               <div className="mb-2 mt-1 rounded-gb-lg bg-gb-zest-50 px-3 py-2.5">
-                <p className="flex items-center gap-1.5 text-sm font-bold text-gb-accent-strong">
+                <p className="flex items-center gap-1.5 text-sm font-bold text-gb-accent">
                   <Tag size={14} /> {promoLabel(bestGlobal)}
                 </p>
                 {flashLabel(bestGlobal) && (
-                  <p className="mt-0.5 inline-flex items-center gap-1 rounded-gb-full bg-gb-accent-strong px-2 py-0.5 text-[10px] font-bold text-white">
+                  <p className="mt-0.5 inline-flex items-center gap-1 rounded-gb-full bg-gb-accent px-2 py-0.5 text-[10px] font-bold text-gb-content-on-accent">
                     ⏱ {flashLabel(bestGlobal)}
                   </p>
                 )}
@@ -512,7 +512,7 @@ export default function RestaurantScreen() {
               <span className="flex items-center gap-1 text-xs text-gb-content-muted">
                 <Clock size={12} /> {t('minutes', { count: restaurant.deliveryTime })}
               </span>
-              <button onClick={() => setActiveTab('Avis')} className="text-sm font-semibold text-gb-accent-strong">
+              <button onClick={() => setActiveTab('Avis')} className="text-sm font-semibold text-gb-accent">
                 {t('tabReviews')}
               </button>
             </div>
@@ -522,7 +522,7 @@ export default function RestaurantScreen() {
           {activeTab === 'Menu' && (
             <div className="px-4 pt-3">
               <p className="mb-3 text-[17px] font-extrabold text-gb-content">
-                {t('tabMenu')} <span className="text-gb-accent-strong">{t('itemCount', { count: allItems.length })}</span>
+                {t('tabMenu')} <span className="text-gb-accent">{t('itemCount', { count: allItems.length })}</span>
               </p>
 
               <div className="mb-3">
@@ -557,7 +557,7 @@ export default function RestaurantScreen() {
                     // 2nd unit lands in the cart where quantities are known).
                     const hasUnitDiscount = !!promo && promo.discountedUnitPrice < dish.price
                     const pill = promo ? (
-                      <span className="inline-flex items-center gap-0.5 rounded-gb-full bg-gb-zest-50 px-1.5 py-0.5 text-[10px] font-bold text-gb-accent-strong">
+                      <span className="inline-flex items-center gap-0.5 rounded-gb-full bg-gb-zest-50 px-1.5 py-0.5 text-[10px] font-bold text-gb-accent">
                         <Tag size={9} />
                         {promo.secondItemPct != null
                           ? t('promoPillSecond', { pct: promo.secondItemPct })
@@ -686,7 +686,7 @@ export default function RestaurantScreen() {
               {SAMPLE_REVIEWS.map((r, i) => (
                 <div key={i} className="mb-2.5 rounded-gb-lg bg-gb-oat-100 p-3.5">
                   <div className="mb-2 flex items-center gap-2.5">
-                    <div className="flex h-[38px] w-[38px] items-center justify-center rounded-gb-full bg-gb-accent-strong text-base font-bold text-white">
+                    <div className="flex h-[38px] w-[38px] items-center justify-center rounded-gb-full bg-gb-accent text-base font-bold text-gb-content-on-accent">
                       {r.name[0]}
                     </div>
                     <div className="flex-1">
@@ -713,7 +713,7 @@ export default function RestaurantScreen() {
                   {(cart?.items ?? []).map((l) => (
                     <li key={l.item.id} className="flex items-start justify-between gap-2 text-sm">
                       <span className="min-w-0 flex-1 text-gb-content">
-                        <span className="font-semibold text-gb-accent-strong">{l.qty}×</span> {l.item.name}
+                        <span className="font-semibold text-gb-accent">{l.qty}×</span> {l.item.name}
                       </span>
                       <span className="shrink-0 font-medium text-gb-content">{formatEuros(l.item.price * l.qty, locale)}</span>
                     </li>
@@ -746,7 +746,7 @@ export default function RestaurantScreen() {
             fullWidth
             onClick={() => router.push('/eat/cart')}
             leftIcon={
-              <span className="flex h-6 min-w-6 items-center justify-center rounded-gb-full bg-white px-1.5 text-xs font-bold text-gb-accent-strong">
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-gb-full bg-white px-1.5 text-xs font-bold text-gb-accent">
                 {cartCount}
               </span>
             }
@@ -848,7 +848,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                     value={opt.label}
                     checked={selected}
                     onChange={() => setSize(opt.label)}
-                    className="h-4 w-4 accent-gb-accent-strong"
+                    className="h-4 w-4 accent-gb-accent"
                   />
                   <span className="text-sm font-semibold text-gb-content">{opt.label}</span>
                 </span>
@@ -877,7 +877,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                     type="checkbox"
                     checked={selected}
                     onChange={() => toggle(supplements, setSupplements, opt.name)}
-                    className="h-4 w-4 accent-gb-accent-strong"
+                    className="h-4 w-4 accent-gb-accent"
                   />
                   <span className="text-sm font-semibold text-gb-content">{opt.name}</span>
                 </span>
@@ -898,7 +898,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
                 type="button"
                 onClick={() => toggle(exclusions, setExclusions, opt)}
                 className={`rounded-gb-full border px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
-                  selected ? 'border-gb-accent-strong bg-gb-accent-strong text-white' : 'border-gb-stroke bg-gb-surface-elevated text-gb-content-muted'
+                  selected ? 'border-gb-accent bg-gb-accent text-gb-content-on-accent' : 'border-gb-stroke bg-gb-surface-elevated text-gb-content-muted'
                 }`}
               >
                 {opt}
@@ -920,7 +920,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
 
       <div className="mt-2 flex items-center justify-between rounded-gb-md bg-gb-zest-50 p-3">
         <span className="text-sm font-semibold text-gb-content">{t('total')}</span>
-        <span className="font-gb-display text-[22px] font-extrabold text-gb-accent-strong">{formatEuros(total, locale)}</span>
+        <span className="font-gb-display text-[22px] font-extrabold text-gb-accent">{formatEuros(total, locale)}</span>
       </div>
       {(supplements.length > 0 || exclusions.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5">

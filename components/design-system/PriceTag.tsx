@@ -73,7 +73,7 @@ export const PriceTag = React.forwardRef<HTMLSpanElement, PriceTagProps>(functio
           {fmt(originalAmount!)}
         </span>
       )}
-      <span className={cn(hasDiscount && 'text-gb-accent-strong')}>{fmt(amount)}</span>
+      <span className={cn(hasDiscount && 'text-gb-accent')}>{fmt(amount)}</span>
     </span>
   )
 })

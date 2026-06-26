@@ -235,7 +235,7 @@ function ReserveInner() {
           {/* Step 1 — Date */}
           {(step === 'date' || step === 'slot' || step === 'details') && (
             <section className="px-4 pt-4 lg:px-0 lg:pt-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
                 <Calendar size={12} className="text-gb-accent" /> {t('stepDate')}
               </p>
               <input
@@ -253,7 +253,7 @@ function ReserveInner() {
                 <button
                   type="button"
                   onClick={() => setStep('slot')}
-                  className="mt-3 w-full rounded-gb-lg bg-gb-accent-strong py-3 text-sm font-bold text-white"
+                  className="mt-3 w-full rounded-gb-lg bg-gb-accent py-3 text-sm font-bold text-gb-content-on-accent"
                 >
                   {t('submitBook')} →
                 </button>
@@ -264,11 +264,11 @@ function ReserveInner() {
           {/* Step 2 — Slot */}
           {(step === 'slot' || step === 'details') && (
             <section className="mt-4 px-4 lg:px-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
                 <Clock size={12} className="text-gb-accent" /> {t('stepSlot')}
               </p>
               {availability && (
-                <p className="mb-2 text-[11px] text-gb-oat-600">
+                <p className="mb-2 text-[11px] text-gb-content-muted">
                   {t('slotsCaption', { guests, minutes: availability.durationMin })}
                 </p>
               )}
@@ -297,7 +297,7 @@ function ReserveInner() {
                         disabled={!s.available}
                         className={`flex flex-col items-center rounded-gb-lg border px-2 py-2 text-[11px] font-bold transition ${
                           active
-                            ? 'border-gb-accent-strong bg-gb-accent-strong text-white'
+                            ? 'border-gb-accent bg-gb-accent text-gb-content-on-accent'
                             : s.available
                               ? 'border-gb-stroke bg-gb-surface-elevated text-gb-content hover:border-gb-accent'
                               : 'border-gb-stroke bg-gb-oat-100 text-gb-content-muted line-through'
@@ -324,12 +324,12 @@ function ReserveInner() {
           {/* Step 3 — Details */}
           {step === 'details' && (
             <section className="mt-4 px-4 lg:px-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
                 <Users size={12} className="text-gb-accent" /> {t('stepDetails')}
               </p>
               <div className="space-y-2">
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
                     {t('guestsLabel')}
                   </label>
                   <input
@@ -340,10 +340,10 @@ function ReserveInner() {
                     onChange={(e) => setGuests(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
                     className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content focus:border-gb-accent focus:outline-none"
                   />
-                  <p className="mt-0.5 text-[10px] text-gb-oat-600">{t('guestsHint')}</p>
+                  <p className="mt-0.5 text-[10px] text-gb-content-muted">{t('guestsHint')}</p>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
                     {t('fieldName')}
                   </label>
                   <input
@@ -355,7 +355,7 @@ function ReserveInner() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
                     {t('fieldEmail')}
                   </label>
                   <input
@@ -367,7 +367,7 @@ function ReserveInner() {
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-oat-600">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
                     {t('fieldPhone')}
                   </label>
                   <input
@@ -390,7 +390,7 @@ function ReserveInner() {
                 type="button"
                 onClick={submit}
                 disabled={submitting || !name.trim() || !time}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-gb-lg bg-gb-accent-strong py-3 text-sm font-bold text-white disabled:opacity-60"
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-gb-lg bg-gb-accent py-3 text-sm font-bold text-gb-content-on-accent disabled:opacity-60"
               >
                 {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
                 {t('submitBook')}
@@ -403,7 +403,7 @@ function ReserveInner() {
               its container is re-skinned. */}
           {step === 'deposit' && reservation && (
             <section className="mt-4 px-4 lg:px-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-oat-600">
+              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
                 <CreditCard size={12} className="text-gb-accent" /> {t('stepDeposit')}
               </p>
               <div className="rounded-gb-xl border border-gb-stroke bg-gb-surface-elevated p-4">
@@ -444,7 +444,7 @@ function ReserveInner() {
                 <button
                   type="button"
                   onClick={() => router.push(`/eat/r/${restaurantId}`)}
-                  className="mt-4 w-full rounded-gb-lg bg-gb-accent-strong py-3 text-sm font-bold text-white"
+                  className="mt-4 w-full rounded-gb-lg bg-gb-accent py-3 text-sm font-bold text-gb-content-on-accent"
                 >
                   {t('okBack')}
                 </button>

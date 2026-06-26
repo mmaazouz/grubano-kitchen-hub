@@ -380,9 +380,9 @@ export default function CartScreen() {
           <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
         </div>
         <div className="flex flex-col items-center justify-center px-10 pt-24 text-center">
-          <ShoppingBag size={64} className="text-gb-accent-strong" />
+          <ShoppingBag size={64} className="text-gb-accent" />
           <p className="mt-4 text-xl font-extrabold text-gb-content">{t('emptyTitle')}</p>
-          <p className="mt-2 text-sm leading-relaxed text-gb-oat-600">
+          <p className="mt-2 text-sm leading-relaxed text-gb-content-muted">
             {t('emptyDescription')}
           </p>
           <Button variant="gb-primary" size="pill" className="mt-6" onClick={() => router.push('/eat')}>
@@ -414,7 +414,7 @@ export default function CartScreen() {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gb-stroke bg-gb-surface px-4 pb-4 pt-3">
         <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
-        <span className="text-sm font-semibold text-gb-accent-strong">
+        <span className="text-sm font-semibold text-gb-accent">
           {t('itemCount', { count: totalItems })}
         </span>
       </div>
@@ -437,7 +437,7 @@ export default function CartScreen() {
                   key={opt.value}
                   onClick={() => setFulfillment(opt.value)}
                   className={`flex flex-1 items-center justify-center gap-2 rounded-gb-lg py-2.5 text-sm font-bold transition active:scale-[0.99] ${
-                    active ? 'bg-gb-accent-strong text-white shadow-gb-md' : 'text-gb-content-muted'
+                    active ? 'bg-gb-accent text-gb-content-on-accent shadow-gb-md' : 'text-gb-content-muted'
                   }`}
                 >
                   {opt.icon}
@@ -485,17 +485,17 @@ export default function CartScreen() {
                     <button
                       onClick={() => updateQty(item.id, -1)}
                       aria-label="-"
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full border-[1.5px] border-gb-accent-strong active:scale-90"
+                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full border-[1.5px] border-gb-accent active:scale-90"
                     >
-                      <Minus size={14} className="text-gb-accent-strong" />
+                      <Minus size={14} className="text-gb-accent" />
                     </button>
                     <span className="min-w-5 text-center text-[15px] font-bold text-gb-content">{qty}</span>
                     <button
                       onClick={() => updateQty(item.id, 1)}
                       aria-label="+"
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full bg-gb-accent-strong active:scale-90"
+                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full bg-gb-accent active:scale-90"
                     >
-                      <Plus size={14} className="text-white" />
+                      <Plus size={14} className="text-gb-content-on-accent" />
                     </button>
                   </div>
                 </div>
@@ -507,7 +507,7 @@ export default function CartScreen() {
           {fulfillment === 'delivery' ? (
             <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
               <div className="flex items-start gap-3">
-                <MapPin size={20} className="mt-0.5 shrink-0 text-gb-accent-strong" />
+                <MapPin size={20} className="mt-0.5 shrink-0 text-gb-accent" />
                 <div className="flex-1">
                   <p className="text-sm font-bold text-gb-content">{t('deliveryAddress')}</p>
                   <input
@@ -522,7 +522,7 @@ export default function CartScreen() {
           ) : (
             <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-zest-50 p-4 lg:mx-0">
               <div className="flex items-start gap-3">
-                <Package size={20} className="mt-0.5 shrink-0 text-gb-accent-strong" />
+                <Package size={20} className="mt-0.5 shrink-0 text-gb-accent" />
                 <div className="flex-1">
                   <p className="text-sm font-bold text-gb-content">{t('pickupLabel')}</p>
                   <p className="mt-0.5 text-xs text-gb-oat-600">
@@ -530,7 +530,7 @@ export default function CartScreen() {
                     {cart.restaurant.address ? ` — ${cart.restaurant.address}` : ''}
                     {cart.restaurant.city ? `, ${cart.restaurant.city}` : ''}
                   </p>
-                  <p className="mt-1 text-xs font-semibold text-gb-accent-strong">
+                  <p className="mt-1 text-xs font-semibold text-gb-accent">
                     {t('readyAround', { time: readyAt, minutes: cart.restaurant.deliveryTime ?? 20 })}
                   </p>
                 </div>
@@ -541,14 +541,14 @@ export default function CartScreen() {
           {/* Payment */}
           <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
             <div className="flex items-center gap-3">
-              <CreditCard size={20} className="shrink-0 text-gb-accent-strong" />
+              <CreditCard size={20} className="shrink-0 text-gb-accent" />
               <div className="flex-1">
                 <p className="text-sm font-bold text-gb-content">{t('paymentMethod')}</p>
                 <p className="mt-0.5 text-xs text-gb-content-muted">
                   {payment === 'card' ? '**** **** **** 4521' : t('cashOnDelivery')}
                 </p>
               </div>
-              <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))} className="text-sm font-semibold text-gb-accent-strong">
+              <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))} className="text-sm font-semibold text-gb-accent">
                 {t('edit')}
               </button>
             </div>
@@ -565,7 +565,7 @@ export default function CartScreen() {
           {loyaltyVisible && (
             <div className={`mx-4 mt-2.5 rounded-gb-xl p-4 shadow-gb-sm lg:mx-0 ${promoBlocksLoyalty ? 'bg-gb-oat-100' : 'bg-gb-surface-elevated'}`}>
               <div className="flex items-center gap-3">
-                <Sparkles size={20} className={`shrink-0 ${promoBlocksLoyalty ? 'text-gb-oat-600' : 'text-gb-accent-strong'}`} />
+                <Sparkles size={20} className={`shrink-0 ${promoBlocksLoyalty ? 'text-gb-oat-600' : 'text-gb-accent'}`} />
                 <div className="min-w-0 flex-1">
                   <p className={`text-sm font-bold ${promoBlocksLoyalty ? 'text-gb-oat-600' : 'text-gb-content'}`}>{t('loyaltyToggleTitle')}</p>
                   <p className="mt-0.5 text-xs text-gb-oat-600">
@@ -581,7 +581,7 @@ export default function CartScreen() {
                   className={`flex h-7 w-12 shrink-0 items-center rounded-gb-full px-0.5 transition-colors ${
                     promoBlocksLoyalty
                       ? 'justify-start bg-gb-oat-300 opacity-50'
-                      : usePoints ? 'justify-end bg-gb-accent-strong' : 'justify-start bg-gb-oat-300'
+                      : usePoints ? 'justify-end bg-gb-accent' : 'justify-start bg-gb-oat-300'
                   }`}
                 >
                   <span className="h-6 w-6 rounded-gb-full bg-white shadow" />
@@ -592,7 +592,7 @@ export default function CartScreen() {
                   {t('loyaltyPromoBlocked')}
                 </p>
               ) : (
-                <p className="mt-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent-strong">
+                <p className="mt-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent">
                   {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: formatAmount(maxLoyaltyEur, locale) })} · ` : ''}{t('loyaltyNote')}
                 </p>
               )}
@@ -633,13 +633,13 @@ export default function CartScreen() {
             )}
             {smallFeeApplies && (
               <div className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2">
-                <p className="text-[12px] font-medium text-gb-accent-strong">
+                <p className="text-[12px] font-medium text-gb-accent">
                   {t('smallOrderNudge', { amount: formatAmount(missingToThresholdEur, locale) })}
                 </p>
                 {suggestion && (
                   <button
                     onClick={() => addSuggested(suggestion)}
-                    className="mt-1.5 inline-flex items-center gap-1 rounded-gb-full bg-gb-accent-strong px-3 py-1 text-[11px] font-bold text-white active:scale-95"
+                    className="mt-1.5 inline-flex items-center gap-1 rounded-gb-full bg-gb-accent px-3 py-1 text-[11px] font-bold text-gb-content-on-accent active:scale-95"
                   >
                     <Plus size={12} /> {t('smallOrderAddItem', { name: suggestion.name, price: formatAmount(suggestion.price, locale) })}
                   </button>
@@ -649,13 +649,13 @@ export default function CartScreen() {
             {/* Chantier P2 — soft incentive: « Encore X € pour profiter de {nom} ».
                 Display arithmetic only — the server resolves the real promo. */}
             {promoIncentive && (
-              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent-strong">
+              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent">
                 {t('promoIncentive', { amount: formatAmount(promoIncentive.missing, locale), name: promoIncentive.name })}
               </p>
             )}
             {/* Promo V2 — threshold-reward progress: « Ajoutez X € pour [récompense] ». */}
             {thresholdIncentive && (
-              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent-strong">
+              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent">
                 {t('thresholdIncentive', { amount: formatAmount(thresholdIncentive.missing, locale), reward: thresholdIncentive.reward })}
               </p>
             )}

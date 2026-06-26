@@ -52,8 +52,10 @@ export default function BottomNav() {
     <>
       {/* ── Desktop left rail (≥lg) — persistent. Same destinations as the mobile bar.
           Surface = the warm canvas (bg-gb-surface), delineated by a hairline border —
-          part of the app, not a disconnected white panel. The ACTIVE destination is a
-          raised white pill with accent-strong text/icon (WCAG 4.96:1). */}
+          part of the app, not a disconnected white panel. CD-exact: the ACTIVE destination
+          is a VIVID accent (#FF6A1F) filled pill with on-accent text/icon (matches the
+          Claude-Design mockups; the white-on-orange AA loss in light is the accepted,
+          documented tradeoff — dark stays accessible via text-on-accent). */}
       <aside className="fixed left-0 top-0 z-50 hidden h-screen w-[240px] flex-col border-r border-gb-stroke bg-gb-surface px-4 py-6 lg:flex">
         <Link href="/eat" className="mb-8 flex items-center gap-2.5 px-2" aria-label="Grubano">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -70,14 +72,14 @@ export default function BottomNav() {
                 className={cn(
                   'flex items-center gap-3 rounded-gb-lg px-3 py-2.5 font-gb-sans text-[15px] transition-colors',
                   active
-                    ? 'bg-gb-surface-elevated font-semibold text-gb-accent-strong shadow-gb-sm'
+                    ? 'bg-gb-accent font-semibold text-gb-content-on-accent shadow-gb-sm'
                     : 'font-medium text-gb-oat-600 hover:bg-gb-surface-elevated hover:text-gb-content',
                 )}
               >
                 <Icon size={22} strokeWidth={2} />
                 <span className="flex-1">{t(labelKey)}</span>
                 {isCart && count > 0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-gb-full bg-gb-accent-strong px-1.5 text-[11px] font-bold text-white">
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-gb-full bg-gb-accent px-1.5 text-[11px] font-bold text-gb-content-on-accent">
                     {count > 9 ? '9+' : count}
                   </span>
                 )}
@@ -105,14 +107,14 @@ export default function BottomNav() {
                 className="flex flex-1 flex-col items-center justify-center gap-1 transition-transform duration-150 active:scale-90"
               >
                 <span className="relative">
-                  <Icon size={23} strokeWidth={2} className={active ? 'text-gb-accent-strong' : 'text-gb-content-muted'} />
+                  <Icon size={23} strokeWidth={2} className={active ? 'text-gb-accent' : 'text-gb-content-muted'} />
                   {isCart && count > 0 && (
-                    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-gb-full bg-gb-accent-strong px-1 text-[9px] font-bold text-white">
+                    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-gb-full bg-gb-accent px-1 text-[9px] font-bold text-gb-content-on-accent">
                       {count > 9 ? '9+' : count}
                     </span>
                   )}
                 </span>
-                <span className={cn('font-gb-sans text-[11px] font-medium', active ? 'text-gb-accent-strong' : 'text-gb-content-muted')}>
+                <span className={cn('font-gb-sans text-[11px] font-medium', active ? 'text-gb-accent' : 'text-gb-content-muted')}>
                   {t(labelKey)}
                 </span>
               </Link>

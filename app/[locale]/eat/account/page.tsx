@@ -118,8 +118,8 @@ export default function ProfileScreen() {
           <div className="flex h-24 w-24 items-center justify-center rounded-gb-full bg-gb-zest-50"><User size={48} className="text-gb-accent" /></div>
           <p className="mt-5 font-gb-display text-[22px] font-extrabold text-gb-content">{t('signInPrompt')}</p>
           <p className="mt-2 text-sm leading-relaxed text-gb-content-muted">{t('signInSubtitle')}</p>
-          <button onClick={() => router.push('/eat/auth')} className="mt-8 w-full rounded-gb-full bg-gb-accent-strong py-4 text-base font-bold text-white shadow-gb-md active:scale-95">{t('signIn')}</button>
-          <button onClick={() => router.push('/eat/auth')} className="mt-3 w-full rounded-gb-full border-2 border-gb-accent-strong py-3.5 text-base font-bold text-gb-accent-strong active:scale-95">{t('createAccount')}</button>
+          <button onClick={() => router.push('/eat/auth')} className="mt-8 w-full rounded-gb-full bg-gb-accent py-4 text-base font-bold text-gb-content-on-accent shadow-gb-md active:scale-95">{t('signIn')}</button>
+          <button onClick={() => router.push('/eat/auth')} className="mt-3 w-full rounded-gb-full border-2 border-gb-accent py-3.5 text-base font-bold text-gb-accent active:scale-95">{t('createAccount')}</button>
         </div>
       </div>
     )
@@ -160,10 +160,10 @@ export default function ProfileScreen() {
             <p className="truncate text-[13px] text-gb-content-muted">{email}</p>
             <div className="mt-1 inline-flex items-center gap-1 rounded-gb-full bg-gb-zest-50 px-2 py-0.5">
               <Star size={12} className="fill-gb-accent text-gb-accent" />
-              <span className="text-[11px] font-semibold text-gb-accent-strong">{t('loyalCustomer')}</span>
+              <span className="text-[11px] font-semibold text-gb-accent">{t('loyalCustomer')}</span>
             </div>
           </div>
-          <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-gb-full bg-gb-zest-50 px-3.5 py-[7px] text-[13px] font-bold text-gb-accent-strong active:scale-95">{t('edit')}</button>
+          <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-gb-full bg-gb-zest-50 px-3.5 py-[7px] text-[13px] font-bold text-gb-accent active:scale-95">{t('edit')}</button>
         </div>
 
         {/* Phase 4 — multi-role space selector (renders only for a multi-role
@@ -179,7 +179,7 @@ export default function ProfileScreen() {
         <LastReservationCard />
 
         {/* Loyalty card — balance in big + its euro-credit equivalent (L2). */}
-        <div className="mt-3 flex items-center gap-4 rounded-gb-lg bg-gb-accent-strong p-5 shadow-gb-md">
+        <div className="mt-3 flex items-center gap-4 rounded-gb-lg bg-gb-sunrise p-5 shadow-gb-md">
           <div className="flex-1">
             <p className="text-xs font-semibold text-white/80">{t('loyaltyPoints')}</p>
             <p className="mt-1 text-[28px] font-extrabold leading-none text-white">{t('pts', { count: points.toLocaleString('fr-FR') })}</p>
@@ -231,7 +231,7 @@ export default function ProfileScreen() {
             {history.length > historyShown && (
               <button
                 onClick={() => setHistoryShown((n) => n + 10)}
-                className="w-full py-3 text-center text-[13px] font-bold text-gb-accent-strong active:opacity-70"
+                className="w-full py-3 text-center text-[13px] font-bold text-gb-accent active:opacity-70"
               >
                 {t('seeMore')}
               </button>
@@ -291,7 +291,7 @@ export default function ProfileScreen() {
                   {o.status === 'awaiting_payment' ? (
                     <button
                       onClick={() => router.push(`/eat/checkout/${o.id}`)}
-                      className="shrink-0 rounded-gb-full bg-gb-accent-strong px-3 py-1.5 text-[12px] font-bold text-white active:scale-95"
+                      className="shrink-0 rounded-gb-full bg-gb-accent px-3 py-1.5 text-[12px] font-bold text-gb-content-on-accent active:scale-95"
                     >
                       {tt('awaitingCta')}
                     </button>

@@ -102,7 +102,7 @@ function StepTimeline({
             {/* Vertical connector */}
             {!isLast && (
               <span
-                className={`absolute left-[15px] top-[34px] w-[2px] ${done ? 'bg-gb-accent-strong' : 'bg-gb-oat-200'}`}
+                className={`absolute left-[15px] top-[34px] w-[2px] ${done ? 'bg-gb-accent' : 'bg-gb-oat-200'}`}
                 style={{ height: 'calc(100% - 18px)' }}
                 aria-hidden
               />
@@ -111,9 +111,9 @@ function StepTimeline({
             <div
               className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-gb-full text-sm shadow-gb-sm transition-colors ${
                 done
-                  ? 'bg-gb-accent-strong text-white'
+                  ? 'bg-gb-accent text-gb-content-on-accent'
                   : active
-                    ? 'bg-gb-surface-elevated text-gb-accent-strong ring-2 ring-gb-accent-strong'
+                    ? 'bg-gb-surface-elevated text-gb-accent ring-2 ring-gb-accent'
                     : 'bg-gb-oat-100 text-gb-oat-400'
               }`}
             >
@@ -125,7 +125,7 @@ function StepTimeline({
                 {t(step.labelKey)}
               </p>
               {active && (
-                <p className="mt-0.5 text-xs font-semibold text-gb-accent-strong">{t('pickupCurrentStep')}</p>
+                <p className="mt-0.5 text-xs font-semibold text-gb-accent">{t('pickupCurrentStep')}</p>
               )}
             </div>
           </div>
@@ -177,10 +177,10 @@ export default function OrderTrackingScreen() {
 
   if (!order) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-gb-surface font-gb-sans text-gb-oat-600">
+      <div className="flex h-screen flex-col items-center justify-center gap-3 bg-gb-surface font-gb-sans text-gb-content-muted">
         <div className="text-5xl">😕</div>
         <p>{t('notFound')}</p>
-        <button onClick={() => router.push('/eat')} className="text-sm font-bold text-gb-accent-strong">{t('backHome')}</button>
+        <button onClick={() => router.push('/eat')} className="text-sm font-bold text-gb-accent">{t('backHome')}</button>
       </div>
     )
   }
@@ -216,7 +216,7 @@ export default function OrderTrackingScreen() {
             {awaiting && (
               <button
                 onClick={() => router.push(`/eat/checkout/${order.id}`)}
-                className="mt-4 rounded-gb-full bg-gb-accent-strong px-6 py-3 text-sm font-bold text-white active:scale-95"
+                className="mt-4 rounded-gb-full bg-gb-accent px-6 py-3 text-sm font-bold text-gb-content-on-accent active:scale-95"
               >
                 {t('awaitingCta')}
               </button>
@@ -257,14 +257,14 @@ export default function OrderTrackingScreen() {
           />
           <div className="flex-1">
             <p className="text-sm font-bold text-gb-content">{item.name}</p>
-            <p className="mt-0.5 text-xs text-gb-oat-600">x{item.qty}</p>
+            <p className="mt-0.5 text-xs text-gb-content-muted">x{item.qty}</p>
           </div>
           <span className="text-sm font-bold text-gb-content">{formatEuros(item.price * item.qty, locale)}</span>
         </div>
       ))}
       <div className="mb-4 flex justify-between border-t border-gb-stroke pt-3">
         <span className="text-base font-extrabold text-gb-content">{t('totalPaid')}</span>
-        <span className="text-base font-extrabold text-gb-accent-strong">{formatEuros(order.total, locale)}</span>
+        <span className="text-base font-extrabold text-gb-accent">{formatEuros(order.total, locale)}</span>
       </div>
       {(order.status === 'delivered' || (isPickup && order.status === 'picked_up')) && (
         <div className="mb-4 flex items-center gap-3 rounded-gb-xl bg-gb-success-soft p-4">
@@ -310,10 +310,10 @@ export default function OrderTrackingScreen() {
           <div className="lg:min-w-0">
             {/* Pickup hero — no map, no driver. Just status + headline */}
             <div className="rounded-gb-xl bg-gb-zest-50 p-5 text-center">
-              <p className="text-[13px] font-semibold text-gb-accent-strong">{t('pickupMode')}</p>
+              <p className="text-[13px] font-semibold text-gb-accent">{t('pickupMode')}</p>
               <p className="mt-1 font-gb-display text-[22px] font-extrabold text-gb-content">{pickupHeadline()}</p>
               <div className="mt-2 flex justify-center">
-                <span className="rounded-gb-full bg-gb-surface-elevated px-3 py-1 text-xs font-bold text-gb-accent-strong shadow-gb-sm">
+                <span className="rounded-gb-full bg-gb-surface-elevated px-3 py-1 text-xs font-bold text-gb-accent shadow-gb-sm">
                   {/* Pickup-aware badge: a collected pickup must read "Récupérée"
                       (matching the headline above + the timeline below), never the
                       delivery wording "En route vers vous"; "ready" reads the
@@ -331,15 +331,15 @@ export default function OrderTrackingScreen() {
 
             {/* Ready callout — bold action: where to go now */}
             {isReady && !isCancelled && (
-              <div className="mt-4 flex items-start gap-3 rounded-gb-xl border-2 border-gb-accent-strong bg-gb-zest-50 p-4">
-                <Store size={22} className="mt-0.5 shrink-0 text-gb-accent-strong" />
+              <div className="mt-4 flex items-start gap-3 rounded-gb-xl border-2 border-gb-accent bg-gb-zest-50 p-4">
+                <Store size={22} className="mt-0.5 shrink-0 text-gb-accent" />
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] font-extrabold text-gb-content">
                     {t('pickupReadyHeadline', { restaurant: order.restaurant.name })}
                   </p>
                   {restoAddress && (
                     <p className="mt-1 flex items-start gap-1 text-[13px] text-gb-content">
-                      <MapPin size={13} className="mt-0.5 shrink-0 text-gb-accent-strong" />
+                      <MapPin size={13} className="mt-0.5 shrink-0 text-gb-accent" />
                       <span className="break-words">{restoAddress}</span>
                     </p>
                   )}
@@ -410,31 +410,31 @@ export default function OrderTrackingScreen() {
         />
         <div className="absolute left-1/2 top-[20%] h-[55%] w-[3px] -translate-x-1/2 rounded-full bg-gb-oat-300" />
         <div className="absolute left-[46%] top-[12%]">
-          <div className="flex h-11 w-11 items-center justify-center rounded-gb-full border-[3px] border-white bg-gb-accent-strong text-base shadow-gb-md">🏠</div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-gb-full border-[3px] border-white bg-gb-accent text-base shadow-gb-md">🏠</div>
         </div>
         <div
           className="absolute left-[44%] transition-all duration-700"
           style={{ top: step >= 3 ? '76%' : step >= 2 ? '44%' : '24%' }}
         >
-          <div className="flex h-[34px] w-[34px] items-center justify-center rounded-gb-full border-2 border-gb-accent-strong bg-gb-surface-elevated text-base shadow-gb-sm">🛵</div>
+          <div className="flex h-[34px] w-[34px] items-center justify-center rounded-gb-full border-2 border-gb-accent bg-gb-surface-elevated text-base shadow-gb-sm">🛵</div>
         </div>
         <div className="absolute bottom-[12%] left-[44%]">
-          <div className="flex h-11 w-11 items-center justify-center rounded-gb-full border-[3px] border-white bg-gb-accent-strong text-base shadow-gb-md">📍</div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-gb-full border-[3px] border-white bg-gb-accent text-base shadow-gb-md">📍</div>
         </div>
         <button className="absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-gb-full bg-gb-surface-elevated shadow-gb-md active:scale-90">
-          <Navigation size={18} className="text-gb-accent-strong" />
+          <Navigation size={18} className="text-gb-accent" />
         </button>
       </div>
 
       {/* Bottom sheet */}
       <div className="px-5 pt-5 lg:grid lg:grid-cols-[1fr_340px] lg:items-start lg:gap-6 lg:px-6 lg:pt-6">
         <div className="lg:min-w-0">
-          <p className="text-center text-[13px] text-gb-oat-600 lg:text-start">
+          <p className="text-center text-[13px] text-gb-content-muted lg:text-start">
             {isDelivered ? t('arrived') : t('estimatedArrival')}
           </p>
           <p className="text-center font-gb-display text-xl font-extrabold text-gb-content lg:text-start">{isDelivered ? t('deliveredCelebrate') : etaWindow()}</p>
           <div className="mt-2 flex justify-center lg:justify-start">
-            <span className="rounded-gb-full bg-gb-zest-50 px-3 py-1 text-xs font-bold text-gb-accent-strong">{STATUS_LABEL_KEY[order.status] ? t(STATUS_LABEL_KEY[order.status]) : order.status}</span>
+            <span className="rounded-gb-full bg-gb-zest-50 px-3 py-1 text-xs font-bold text-gb-accent">{STATUS_LABEL_KEY[order.status] ? t(STATUS_LABEL_KEY[order.status]) : order.status}</span>
           </div>
 
           {/* Étapes — harmonized with pickup (and the resto side): the journey
@@ -461,11 +461,11 @@ export default function OrderTrackingScreen() {
             <div className="flex h-[52px] w-[52px] items-center justify-center rounded-gb-full bg-gb-zest-50 text-xl">🧑‍✈️</div>
             <div className="flex-1">
               <p className="text-[15px] font-bold text-gb-content">Charlotte Taylor</p>
-              <p className="mt-0.5 text-xs text-gb-oat-600">{t('deliveryPartner')}</p>
+              <p className="mt-0.5 text-xs text-gb-content-muted">{t('deliveryPartner')}</p>
             </div>
             <div className="flex gap-2.5">
-              <button className="flex h-10 w-10 items-center justify-center rounded-gb-full border-[1.5px] border-gb-stroke active:scale-90"><MessageCircle size={18} className="text-gb-accent-strong" /></button>
-              <button className="flex h-10 w-10 items-center justify-center rounded-gb-full border-[1.5px] border-gb-stroke active:scale-90"><Phone size={18} className="text-gb-accent-strong" /></button>
+              <button className="flex h-10 w-10 items-center justify-center rounded-gb-full border-[1.5px] border-gb-stroke active:scale-90"><MessageCircle size={18} className="text-gb-accent" /></button>
+              <button className="flex h-10 w-10 items-center justify-center rounded-gb-full border-[1.5px] border-gb-stroke active:scale-90"><Phone size={18} className="text-gb-accent" /></button>
             </div>
           </div>
 
@@ -474,7 +474,7 @@ export default function OrderTrackingScreen() {
           {/* Route */}
           <div>
             <div className="flex items-center gap-3">
-              <span className="h-3.5 w-3.5 rounded-gb-full border-[3px] border-gb-zest-50 bg-gb-accent-strong" />
+              <span className="h-3.5 w-3.5 rounded-gb-full border-[3px] border-gb-zest-50 bg-gb-accent" />
               <span className="text-sm font-medium text-gb-content">{order.restaurant.name}</span>
             </div>
             <div className="ml-[6px] h-[18px] w-0.5 bg-gb-stroke" />

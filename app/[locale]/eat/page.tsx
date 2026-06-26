@@ -52,7 +52,7 @@ function SectionHeader({ title }: { title: string }) {
   return (
     <div className="mb-3 flex items-center justify-between px-4">
       <h2 className="font-gb-display text-[18px] font-extrabold text-gb-content">{title}</h2>
-      <Link href="/eat/search" className="text-sm font-semibold text-gb-accent-strong">
+      <Link href="/eat/search" className="text-sm font-semibold text-gb-accent">
         {t('seeAll')}
       </Link>
     </div>
@@ -245,7 +245,7 @@ export default function HomeScreen() {
                   copy). The right ~28% (decorative tile) stays full-vibrancy sunrise. */}
               <div aria-hidden className="absolute inset-y-0 left-0 right-[28%] bg-gradient-to-r from-black/60 via-black/50 to-black/40" />
               <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-2 p-4">
-                <span className="self-start rounded-gb-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-gb-accent-strong">
+                <span className="self-start rounded-gb-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-gb-accent">
                   {t('bannerRealTag')}
                 </span>
                 <p className="line-clamp-2 text-[17px] font-extrabold leading-tight">
@@ -296,12 +296,12 @@ export default function HomeScreen() {
             >
               <span className={`grid aspect-square w-full max-w-[72px] place-items-center rounded-gb-xl border text-[26px] transition-colors ${
                 active
-                  ? 'border-transparent bg-gb-accent-strong text-white shadow-gb-md'
+                  ? 'border-transparent bg-gb-accent text-gb-content-on-accent shadow-gb-md'
                   : 'border-gb-stroke bg-gb-surface-elevated'
               }`}>
                 {cat.emoji}
               </span>
-              <span className={`text-[12px] font-semibold ${active ? 'text-gb-accent-strong' : 'text-gb-oat-600'}`}>
+              <span className={`text-[12px] font-semibold ${active ? 'text-gb-accent' : 'text-gb-content-muted'}`}>
                 {t(cat.nameKey)}
               </span>
             </button>

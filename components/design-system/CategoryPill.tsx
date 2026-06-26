@@ -34,7 +34,7 @@ export const CategoryPill = React.forwardRef<HTMLButtonElement, CategoryPillProp
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent',
         SIZES[size],
         active
-          ? 'bg-gb-accent-strong text-white shadow-gb-md'
+          ? 'bg-gb-accent text-gb-content-on-accent shadow-gb-md'
           : 'bg-gb-surface-elevated text-gb-content border border-gb-stroke-strong hover:bg-gb-oat-100',
         className,
       )}

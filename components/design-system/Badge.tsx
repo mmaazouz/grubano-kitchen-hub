@@ -33,7 +33,7 @@ const SIZES: Record<BadgeSize, string> = {
 // above + the non-gb render path are UNCHANGED → operator badges byte-identical.
 const GB_TONES: Record<BadgeTone, string> = {
   neutral: 'bg-gb-oat-100 text-gb-content-muted',
-  primary: 'bg-gb-zest-50 text-gb-accent-strong',
+  primary: 'bg-gb-zest-50 text-gb-accent',
   success: 'bg-gb-success-soft text-gb-success',
   danger:  'bg-gb-error-soft text-gb-error',
   warning: 'bg-gb-warning-soft text-gb-warning',

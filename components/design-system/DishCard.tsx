@@ -108,7 +108,7 @@ function AddButton({
     return (
       <span
         aria-label={`${qty} dans le panier`}
-        className="absolute -bottom-2 -right-2 h-9 min-w-9 px-2 inline-flex items-center justify-center rounded-gb-full bg-gb-accent-strong text-white font-bold text-sm shadow-gb-md"
+        className="absolute -bottom-2 -right-2 h-9 min-w-9 px-2 inline-flex items-center justify-center rounded-gb-full bg-gb-accent text-gb-content-on-accent font-bold text-sm shadow-gb-md"
       >
         {qty}
       </span>
@@ -122,7 +122,7 @@ function AddButton({
         onAdd?.()
       }}
       aria-label="Ajouter au panier"
-      className="absolute -bottom-2 -right-2 h-9 w-9 inline-flex items-center justify-center rounded-gb-full bg-gb-accent-strong text-white shadow-gb-md active:scale-90 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent"
+      className="absolute -bottom-2 -right-2 h-9 w-9 inline-flex items-center justify-center rounded-gb-full bg-gb-accent text-gb-content-on-accent shadow-gb-md active:scale-90 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent"
     >
       <Plus size={18} strokeWidth={2.5} />
     </button>

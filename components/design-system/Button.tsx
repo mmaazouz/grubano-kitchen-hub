@@ -43,8 +43,11 @@ const GB_BASE =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gb-accent'
 
 const GB_VARIANTS: Record<'gb-primary' | 'gb-secondary' | 'gb-ghost', string> = {
-  // WCAG: a filled-orange button carrying a label uses accent-strong (#C7430A).
-  'gb-primary':   'bg-gb-accent-strong text-white shadow-gb-md hover:brightness-95',
+  // CD-exact: filled buttons use the VIVID accent #FF6A1F (bg-gb-accent) to match the
+  // Claude-Design mockups. Founder decision overrides the DS a11y note: white-on-#FF6A1F
+  // ≈ 2.9:1 in LIGHT is an ACCEPTED, documented tradeoff (revisit at go-live). text-on-accent
+  // keeps DARK accessible (dark text on the lightened accent ≈ 7:1). hover = accent-hover #F2570E.
+  'gb-primary':   'bg-gb-accent text-gb-content-on-accent shadow-gb-md hover:bg-gb-accent-hover',
   'gb-secondary': 'bg-gb-surface-elevated text-gb-content border border-gb-stroke-strong hover:bg-gb-oat-100',
   'gb-ghost':     'bg-transparent text-gb-content hover:bg-gb-oat-100',
 }

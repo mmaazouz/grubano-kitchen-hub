@@ -161,13 +161,13 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
                 e.stopPropagation()
                 onAction()
               }}
-              className="inline-flex items-center gap-1 h-9 px-3 rounded-gb-md bg-gb-accent-strong text-white text-sm font-semibold active:scale-[0.98]"
+              className="inline-flex items-center gap-1 h-9 px-3 rounded-gb-md bg-gb-accent text-gb-content-on-accent text-sm font-semibold active:scale-[0.98]"
             >
               {actionLabel}
             </button>
           ) : (
             interactive && (
-              <span className="inline-flex items-center gap-0.5 text-sm font-semibold text-gb-accent-strong">
+              <span className="inline-flex items-center gap-0.5 text-sm font-semibold text-gb-accent">
                 Détails <ChevronRight size={16} />
               </span>
             )
