@@ -1404,7 +1404,13 @@
       "errorAccountCreation": "Account creation error",
       "errorNetwork": "Network error",
       "errorInvalidCredentials": "Invalid email or password",
-      "errorDemoUnavailable": "Demo account unavailable. Run the seed on the server (prisma/seed-test-user.js)."
+      "errorDemoUnavailable": "Demo account unavailable. Run the seed on the server (prisma/seed-test-user.js).",
+      "magicLinkCta": "Email me a magic link",
+      "panelTitle": "Pull up a chair",
+      "panelTagline": "Your table’s ready — sign in to order.",
+      "panelSecure": "Secure · Passwordless ready",
+      "joinTitle": "Join the table. Earn as you eat.",
+      "joinBenefit": "Earn points on every order, save your favourites, and track every delivery."
     },
     "restaurant": {
       "addedToCart": "{name} added to cart",
@@ -1575,7 +1581,8 @@
       "linkSentBody": "If an account exists for {email}, a sign-in link has just been sent.",
       "changeEmail": "Change email",
       "usePassword": "Sign in with a password",
-      "close": "Close"
+      "close": "Close",
+      "passwordNudge": "Create a password later to save your details & earn points."
     }
   },
   "menu": {

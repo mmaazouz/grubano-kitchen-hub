@@ -1404,7 +1404,13 @@
       "errorAccountCreation": "Error al crear la cuenta",
       "errorNetwork": "Error de red",
       "errorInvalidCredentials": "Email o contraseña incorrectos",
-      "errorDemoUnavailable": "Cuenta demo no disponible. Ejecuta el seed en el servidor (prisma/seed-test-user.js)."
+      "errorDemoUnavailable": "Cuenta demo no disponible. Ejecuta el seed en el servidor (prisma/seed-test-user.js).",
+      "magicLinkCta": "Enviarme un enlace mágico",
+      "panelTitle": "Ponte cómodo",
+      "panelTagline": "Tu mesa está lista. Inicia sesión para pedir.",
+      "panelSecure": "Seguro · Listo sin contraseña",
+      "joinTitle": "Únete a la mesa. Gana mientras comes.",
+      "joinBenefit": "Gana puntos en cada pedido, guarda tus favoritos y sigue cada entrega."
     },
     "restaurant": {
       "addedToCart": "{name} añadido a la cesta",
@@ -1575,7 +1581,8 @@
       "linkSentBody": "Si existe una cuenta para {email}, acabamos de enviar un enlace de acceso.",
       "changeEmail": "Cambiar de email",
       "usePassword": "Iniciar sesión con contraseña",
-      "close": "Cerrar"
+      "close": "Cerrar",
+      "passwordNudge": "Crea una contraseña más tarde para guardar tus datos y ganar puntos."
     }
   },
   "menu": {

@@ -1404,7 +1404,13 @@
       "errorAccountCreation": "خطأ في إنشاء الحساب",
       "errorNetwork": "خطأ في الشبكة",
       "errorInvalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة",
-      "errorDemoUnavailable": "الحساب التجريبي غير متاح. قم بتشغيل البذرة على الخادم (prisma/seed-test-user.js)."
+      "errorDemoUnavailable": "الحساب التجريبي غير متاح. قم بتشغيل البذرة على الخادم (prisma/seed-test-user.js).",
+      "magicLinkCta": "أرسِل لي رابط الدخول السحري",
+      "panelTitle": "تفضّل بالجلوس",
+      "panelTagline": "طاولتك جاهزة. سجّل الدخول للطلب.",
+      "panelSecure": "آمن · جاهز للدخول بدون كلمة مرور",
+      "joinTitle": "انضم إلى الطاولة. اكسب وأنت تأكل.",
+      "joinBenefit": "اكسب نقاطًا مع كل طلب، واحفظ مفضّلاتك، وتابع كل توصيل."
     },
     "restaurant": {
       "addedToCart": "تمت إضافة {name} إلى السلة",
@@ -1575,7 +1581,8 @@
       "linkSentBody": "إذا كان هناك حساب لـ {email}، فقد تم إرسال رابط تسجيل دخول للتو.",
       "changeEmail": "تغيير البريد الإلكتروني",
       "usePassword": "تسجيل الدخول بكلمة المرور",
-      "close": "إغلاق"
+      "close": "إغلاق",
+      "passwordNudge": "أنشئ كلمة مرور لاحقًا لحفظ بياناتك وكسب النقاط."
     }
   },
   "menu": {
