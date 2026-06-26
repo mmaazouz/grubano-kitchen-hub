@@ -63,6 +63,7 @@ function CoverArea({
   className,
   unavailable,
   ribbon,
+  timeBadge,
   closedLabel = 'Fermé',
 }: {
   cover?: string | null
@@ -70,6 +71,8 @@ function CoverArea({
   className?: string
   unavailable?: boolean
   ribbon?: RestaurantCardProps['ribbon']
+  /** Optional overlay pill showing the delivery time (min) on the cover (grid only). */
+  timeBadge?: number
   closedLabel?: string
 }) {
   const [from, to] = GRADIENTS[hash(name) % GRADIENTS.length]!
@@ -104,6 +107,12 @@ function CoverArea({
         </span>
       )}
 
+      {typeof timeBadge === 'number' && (
+        <span className="absolute bottom-2 left-2 z-10 inline-flex items-center gap-1 rounded-gb-full bg-white/95 px-2 py-1 text-[11px] font-bold text-gb-content shadow-gb-sm">
+          <Clock size={11} /> {timeBadge} min
+        </span>
+      )}
+
       {unavailable && (
         <div className="absolute inset-0 z-10 bg-black/55 grid place-items-center">
           <span className="px-3 py-1 rounded-gb-full bg-white/95 text-gb-content text-xs font-bold">
@@ -122,14 +131,18 @@ function MetaRow({
   deliveryFee,
   currency = '€',
   freeLabel = 'Gratuit',
-}: Pick<RestaurantCardProps, 'rating' | 'reviewCount' | 'deliveryTime' | 'deliveryFee' | 'currency' | 'freeLabel'>) {
+  hideTime,
+}: Pick<RestaurantCardProps, 'rating' | 'reviewCount' | 'deliveryTime' | 'deliveryFee' | 'currency' | 'freeLabel'> & {
+  /** Hide the inline delivery-time chip (when it is shown as a cover overlay instead). */
+  hideTime?: boolean
+}) {
   const locale = useLocale()
   return (
     <div className="flex items-center gap-3 text-xs text-gb-content-muted">
       {typeof rating === 'number' && rating > 0 && (
         <StarRating value={rating} size="sm" reviewCount={reviewCount} />
       )}
-      {typeof deliveryTime === 'number' && (
+      {!hideTime && typeof deliveryTime === 'number' && (
         <span className="inline-flex items-center gap-1 font-medium">
           <Clock size={12} />
           {deliveryTime} min
@@ -257,13 +270,13 @@ export const RestaurantCard = React.forwardRef<HTMLDivElement, RestaurantCardPro
       )}
       {...rest}
     >
-      <CoverArea cover={cover} name={name} ribbon={ribbon} unavailable={unavailable} closedLabel={closedLabel} className="h-40" />
+      <CoverArea cover={cover} name={name} ribbon={ribbon} timeBadge={deliveryTime} unavailable={unavailable} closedLabel={closedLabel} className="h-40" />
       <div className="p-4 flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-gb-display font-bold text-lg text-gb-content leading-tight line-clamp-1">{name}</h3>
         </div>
         {cuisine && <p className="text-xs text-gb-content-muted line-clamp-1">{cuisine}</p>}
-        <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} />
+        <MetaRow rating={rating} reviewCount={reviewCount} deliveryTime={deliveryTime} deliveryFee={deliveryFee} currency={currency} freeLabel={freeLabel} hideTime />
       </div>
     </div>
   )

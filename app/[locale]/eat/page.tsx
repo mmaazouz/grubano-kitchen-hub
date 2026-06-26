@@ -174,7 +174,7 @@ export default function HomeScreen() {
       </div>
 
       {/* Search row */}
-      <div className="mb-3 flex items-center gap-2.5 px-4">
+      <div className="mb-3 flex items-center gap-2.5 px-4 lg:max-w-3xl">
         <button
           onClick={() => router.push('/eat/search')}
           className="flex flex-1 items-center gap-2 rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3.5 py-3.5 text-left shadow-gb-sm transition active:scale-[0.99]"
@@ -238,7 +238,7 @@ export default function HomeScreen() {
         <>
           <SectionHeader title={t('exclusiveOffers')} />
           <div className="mb-5 px-4">
-            <div className="relative flex h-[188px] w-full overflow-hidden rounded-gb-xl bg-gb-sunrise text-white">
+            <div className="relative flex h-[188px] w-full overflow-hidden rounded-gb-xl bg-gb-sunrise text-white lg:h-[228px]">
               {/* Text-zone scrim — covers the WHOLE copy column (left ~72%) so white
                   text keeps ≥4.5:1 across its full width on the Sunrise gradient (DS
                   reserves the bare gradient for big decorative titles; here it carries
@@ -279,9 +279,10 @@ export default function HomeScreen() {
         </>
       )}
 
-      {/* Categories */}
+      {/* Categories — Claude-Design tiles: emoji in a rounded square + label below.
+          Keeps the app's REAL category list (CATS) — no fabricated CD list. */}
       <SectionHeader title={t('exploreCategories')} />
-      <div className="no-scrollbar mb-5 flex gap-2.5 overflow-x-auto px-4">
+      <div className="mb-5 grid grid-cols-3 gap-2.5 px-4 min-[400px]:grid-cols-6">
         {CATS.map((cat) => {
           const active = activeCat === cat.name
           return (
@@ -291,46 +292,47 @@ export default function HomeScreen() {
                 setActiveCat(cat.name)
                 router.push(`/eat/search?cuisine=${cat.q}`)
               }}
-              className={`flex shrink-0 items-center gap-1.5 rounded-gb-full border-[1.5px] px-4 py-2.5 transition active:scale-95 ${
-                active ? 'border-transparent bg-gb-accent-strong text-white' : 'border-gb-stroke bg-gb-surface-elevated text-gb-content-muted'
-              }`}
+              className="flex flex-col items-center gap-1.5 transition active:scale-95"
             >
-              <span className="text-base">{cat.emoji}</span>
-              <span className="text-sm font-semibold">{t(cat.nameKey)}</span>
+              <span className={`grid aspect-square w-full max-w-[72px] place-items-center rounded-gb-xl border text-[26px] transition-colors ${
+                active
+                  ? 'border-transparent bg-gb-accent-strong text-white shadow-gb-md'
+                  : 'border-gb-stroke bg-gb-surface-elevated'
+              }`}>
+                {cat.emoji}
+              </span>
+              <span className={`text-[12px] font-semibold ${active ? 'text-gb-accent-strong' : 'text-gb-oat-600'}`}>
+                {t(cat.nameKey)}
+              </span>
             </button>
           )
         })}
       </div>
 
-      {/* Popular / Near you — horizontal carousel; card width is fluid so a slice
-          of the next card peeks on any phone size (320→480). */}
+      {/* Popular / Near you — responsive GRID (1 col → 2 → 3 on desktop), aligned
+          with the Claude-Design desktop home. */}
       <SectionHeader title={popularTitle} />
       {loading ? (
-        <div className="no-scrollbar mb-5 flex gap-3 overflow-x-auto px-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="w-[58%] min-w-[180px] max-w-[230px] shrink-0">
-              <SkeletonCard />
-            </div>
-          ))}
+        <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : popular.length === 0 ? null : (
-        <div className="no-scrollbar mb-5 flex gap-3 overflow-x-auto px-4 pb-1">
+        <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
           {popular.map((r) => (
-            <div key={r.id} className="w-[58%] min-w-[180px] max-w-[230px] shrink-0">
-              <RestaurantCard
-                layout="grid"
-                name={r.name}
-                cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineWithDistance(r)}
-                rating={r.rating}
-                reviewCount={r.reviewCount}
-                deliveryTime={r.deliveryTime}
-                deliveryFee={r.deliveryFee}
-                freeLabel={tc('free')}
-                closedLabel={tc('closed')}
-                onClick={() => router.push(`/eat/r/${r.id}`)}
-              />
-            </div>
+            <RestaurantCard
+              key={r.id}
+              layout="grid"
+              name={r.name}
+              cover={r.coverPhoto || getRestaurantCover(r.id)}
+              cuisine={cuisineWithDistance(r)}
+              rating={r.rating}
+              reviewCount={r.reviewCount}
+              deliveryTime={r.deliveryTime}
+              deliveryFee={r.deliveryFee}
+              freeLabel={tc('free')}
+              closedLabel={tc('closed')}
+              onClick={() => router.push(`/eat/r/${r.id}`)}
+            />
           ))}
         </div>
       )}
@@ -340,7 +342,7 @@ export default function HomeScreen() {
       {!geoActive && (
         <>
           <SectionHeader title={t('newRestaurants')} />
-          <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2">
+          <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
             {loading ? (
               Array.from({ length: 2 }).map((_, i) => <SkeletonCard key={i} />)
             ) : (
@@ -371,7 +373,7 @@ export default function HomeScreen() {
           <div className="mt-5">
             <SectionHeader title={t('topRated')} />
           </div>
-          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
             {topRated.map((r) => (
               <RestaurantCard
                 key={r.id}
@@ -397,7 +399,7 @@ export default function HomeScreen() {
       {geoActive && restaurants.length > 8 && (
         <>
           <SectionHeader title={t('moreNearYou')} />
-          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
             {restaurants.slice(8).map((r) => (
               <RestaurantCard
                 key={r.id}
