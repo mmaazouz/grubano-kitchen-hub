@@ -366,26 +366,26 @@ export default function CartScreen() {
 
   if (!hydrated) {
     return (
-      <div className="min-h-screen bg-grubano-bg p-4">
-        <div className="mb-3 h-6 w-1/3 animate-pulse rounded bg-grubano-surface-muted" />
-        <div className="h-40 animate-pulse rounded-grubano-lg bg-grubano-surface" />
+      <div className="min-h-screen bg-gb-surface p-4">
+        <div className="mb-3 h-6 w-1/3 animate-pulse rounded-gb-md bg-gb-oat-200" />
+        <div className="h-40 animate-pulse rounded-gb-xl bg-gb-oat-100" />
       </div>
     )
   }
 
   if (!cart || cart.items.length === 0) {
     return (
-      <div className="min-h-screen bg-grubano-bg">
-        <div className="border-b border-grubano-border bg-white px-4 pb-4 pt-3">
-          <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{t('title')}</h1>
+      <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
+        <div className="border-b border-gb-stroke bg-gb-surface px-4 pb-4 pt-3">
+          <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
         </div>
         <div className="flex flex-col items-center justify-center px-10 pt-24 text-center">
-          <ShoppingBag size={64} className="text-grubano-primary" />
-          <p className="mt-4 text-xl font-extrabold text-grubano-ink">{t('emptyTitle')}</p>
-          <p className="mt-2 text-grubano-sm leading-relaxed text-grubano-ink-muted">
+          <ShoppingBag size={64} className="text-gb-accent-strong" />
+          <p className="mt-4 text-xl font-extrabold text-gb-content">{t('emptyTitle')}</p>
+          <p className="mt-2 text-sm leading-relaxed text-gb-oat-600">
             {t('emptyDescription')}
           </p>
-          <Button variant="primary" size="pill" className="mt-6" onClick={() => router.push('/eat')}>
+          <Button variant="gb-primary" size="pill" className="mt-6" onClick={() => router.push('/eat')}>
             {t('exploreDishes')}
           </Button>
         </div>
@@ -393,272 +393,295 @@ export default function CartScreen() {
     )
   }
 
+  // The Place-order CTA is rendered twice: a fixed bottom bar on mobile (<lg) and
+  // inside the sticky Summary panel on desktop (≥lg). Both call the same handler;
+  // only one is ever visible (the other is display:none) — no double-submit.
+  const placeOrderButton = (
+    <Button
+      variant="gb-primary"
+      size="pill"
+      fullWidth
+      loading={submitting}
+      onClick={handleCheckout}
+    >
+      <span className="flex-1 text-left">{submitting ? t('submitting') : t('placeOrder')}</span>
+      {!submitting && <span>{formatEuros(total, locale)}</span>}
+    </Button>
+  )
+
   return (
-    <div className="min-h-screen bg-grubano-bg pb-[160px]">
+    <div className="min-h-screen bg-gb-surface pb-[160px] font-gb-sans text-gb-content lg:pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-grubano-border bg-white px-4 pb-4 pt-3">
-        <h1 className="font-display text-[22px] font-extrabold text-grubano-ink">{t('title')}</h1>
-        <span className="text-grubano-sm font-semibold text-grubano-primary">
+      <div className="flex items-center justify-between border-b border-gb-stroke bg-gb-surface px-4 pb-4 pt-3">
+        <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
+        <span className="text-sm font-semibold text-gb-accent-strong">
           {t('itemCount', { count: totalItems })}
         </span>
       </div>
 
-      {/* Fulfilment tabs */}
-      <div className="mx-4 mt-3 flex gap-2 rounded-grubano-lg bg-grubano-surface p-1 shadow-grubano-sm">
-        {([
-          { value: 'delivery', label: t('tabDelivery'), icon: <Bike size={16} /> },
-          { value: 'pickup', label: t('tabPickup'), icon: <Package size={16} /> },
-        ] as const).map((opt) => {
-          const active = fulfillment === opt.value
-          return (
-            <button
-              key={opt.value}
-              onClick={() => setFulfillment(opt.value)}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-grubano-md py-2.5 text-grubano-sm font-bold transition active:scale-[0.99] ${
-                active ? 'bg-grubano-primary text-white shadow-grubano-cta' : 'text-grubano-ink-muted'
-              }`}
-            >
-              {opt.icon}
-              {opt.label}
-            </button>
-          )
-        })}
-      </div>
+      {/* Desktop ≥lg = 2 columns: cart details on the left, a STICKY Summary panel
+          (totals + Place order) on the right. Mobile (<lg) = the single vertical
+          flow, with the Place order CTA as a fixed bottom bar. */}
+      <div className="lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-6">
+        {/* LEFT column */}
+        <div className="lg:min-w-0">
+          {/* Fulfilment tabs */}
+          <div className="mx-4 mt-3 flex gap-2 rounded-gb-xl bg-gb-surface-elevated p-1 shadow-gb-sm lg:mx-0">
+            {([
+              { value: 'delivery', label: t('tabDelivery'), icon: <Bike size={16} /> },
+              { value: 'pickup', label: t('tabPickup'), icon: <Package size={16} /> },
+            ] as const).map((opt) => {
+              const active = fulfillment === opt.value
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => setFulfillment(opt.value)}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-gb-lg py-2.5 text-sm font-bold transition active:scale-[0.99] ${
+                    active ? 'bg-gb-accent-strong text-white shadow-gb-md' : 'text-gb-content-muted'
+                  }`}
+                >
+                  {opt.icon}
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
 
-      {/* Items */}
-      <div className="mx-4 mt-3 space-y-3 rounded-grubano-lg bg-grubano-surface p-3 shadow-grubano-sm">
-        {cart.items.map(({ item, qty, options }) => (
-          <div key={item.id} className="flex items-center gap-3 border-b border-grubano-border pb-3 last:border-0 last:pb-0">
-            <FoodImage
-              name={item.name}
-              src={item.photos?.[0]}
-              className="h-[70px] w-[70px] shrink-0 rounded-grubano-md"
-              glyphClassName="text-2xl"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-grubano-sm font-bold text-grubano-ink">{item.name}</p>
-              {options?.note && (
-                <p className="truncate text-[11px] text-grubano-ink-faint">📝 {options.note}</p>
-              )}
-              {options?.supplements && options.supplements.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {options.supplements.map((s) => (
-                    <Badge key={s.name} tone="primary" size="sm">
-                      + {s.name}
-                    </Badge>
-                  ))}
+          {/* Items */}
+          <div className="mx-4 mt-3 space-y-3 rounded-gb-xl bg-gb-surface-elevated p-3 shadow-gb-sm lg:mx-0">
+            {cart.items.map(({ item, qty, options }) => (
+              <div key={item.id} className="flex items-center gap-3 border-b border-gb-stroke pb-3 last:border-0 last:pb-0">
+                <FoodImage
+                  name={item.name}
+                  src={item.photos?.[0]}
+                  className="h-[70px] w-[70px] shrink-0 rounded-gb-lg"
+                  glyphClassName="text-2xl"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-gb-content">{item.name}</p>
+                  {options?.note && (
+                    <p className="truncate text-[11px] text-gb-content-muted">📝 {options.note}</p>
+                  )}
+                  {options?.supplements && options.supplements.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {options.supplements.map((s) => (
+                        <Badge key={s.name} tone="primary" size="sm" skin="gb">
+                          + {s.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  <PriceTag amount={item.price * qty} size="sm" className="mt-1" />
                 </div>
-              )}
-              <PriceTag amount={item.price * qty} size="sm" className="mt-1" />
-            </div>
-            <div className="flex flex-col items-center gap-2.5">
-              <button
-                onClick={() => removeItem(item.id)}
-                aria-label={t('removeAria')}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-grubano-danger-tint active:scale-90"
-              >
-                <Trash2 size={16} className="text-grubano-danger" />
-              </button>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => updateQty(item.id, -1)}
-                  aria-label="-"
-                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full border-[1.5px] border-grubano-primary active:scale-90"
-                >
-                  <Minus size={14} className="text-grubano-primary" />
-                </button>
-                <span className="min-w-5 text-center text-[15px] font-bold text-grubano-ink">{qty}</span>
-                <button
-                  onClick={() => updateQty(item.id, 1)}
-                  aria-label="+"
-                  className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-grubano-primary active:scale-90"
-                >
-                  <Plus size={14} className="text-white" />
-                </button>
+                <div className="flex flex-col items-center gap-2.5">
+                  <button
+                    onClick={() => removeItem(item.id)}
+                    aria-label={t('removeAria')}
+                    className="flex h-8 w-8 items-center justify-center rounded-gb-full bg-gb-error-soft active:scale-90"
+                  >
+                    <Trash2 size={16} className="text-gb-error" />
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => updateQty(item.id, -1)}
+                      aria-label="-"
+                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full border-[1.5px] border-gb-accent-strong active:scale-90"
+                    >
+                      <Minus size={14} className="text-gb-accent-strong" />
+                    </button>
+                    <span className="min-w-5 text-center text-[15px] font-bold text-gb-content">{qty}</span>
+                    <button
+                      onClick={() => updateQty(item.id, 1)}
+                      aria-label="+"
+                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full bg-gb-accent-strong active:scale-90"
+                    >
+                      <Plus size={14} className="text-white" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Address (delivery) OR pickup card */}
+          {fulfillment === 'delivery' ? (
+            <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
+              <div className="flex items-start gap-3">
+                <MapPin size={20} className="mt-0.5 shrink-0 text-gb-accent-strong" />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-gb-content">{t('deliveryAddress')}</p>
+                  <input
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder={t('addressPlaceholder')}
+                    className="mt-1 w-full bg-transparent text-xs text-gb-content placeholder:text-gb-content-muted focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Address (delivery) OR pickup card */}
-      {fulfillment === 'delivery' ? (
-        <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">
-          <div className="flex items-start gap-3">
-            <MapPin size={20} className="mt-0.5 shrink-0 text-grubano-primary" />
-            <div className="flex-1">
-              <p className="text-grubano-sm font-bold text-grubano-ink">{t('deliveryAddress')}</p>
-              <input
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder={t('addressPlaceholder')}
-                className="mt-1 w-full bg-transparent text-xs text-grubano-ink-muted placeholder:text-grubano-ink-faint focus:outline-none"
-              />
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-tint p-4">
-          <div className="flex items-start gap-3">
-            <Package size={20} className="mt-0.5 shrink-0 text-grubano-primary" />
-            <div className="flex-1">
-              <p className="text-grubano-sm font-bold text-grubano-ink">{t('pickupLabel')}</p>
-              <p className="mt-0.5 text-xs text-grubano-ink-muted">
-                {cart.restaurant.name}
-                {cart.restaurant.address ? ` — ${cart.restaurant.address}` : ''}
-                {cart.restaurant.city ? `, ${cart.restaurant.city}` : ''}
-              </p>
-              <p className="mt-1 text-xs font-semibold text-grubano-primary">
-                {t('readyAround', { time: readyAt, minutes: cart.restaurant.deliveryTime ?? 20 })}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Payment */}
-      <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">
-        <div className="flex items-center gap-3">
-          <CreditCard size={20} className="shrink-0 text-grubano-primary" />
-          <div className="flex-1">
-            <p className="text-grubano-sm font-bold text-grubano-ink">{t('paymentMethod')}</p>
-            <p className="mt-0.5 text-xs text-grubano-ink-muted">
-              {payment === 'card' ? '**** **** **** 4521' : t('cashOnDelivery')}
-            </p>
-          </div>
-          <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))} className="text-grubano-sm font-semibold text-grubano-primary">
-            {t('edit')}
-          </button>
-        </div>
-      </div>
-
-      {/* Loyalty redemption (chantier fidélité L1/L2) — INTENTION toggle only.
-          Shown whenever the consumer is logged in with a balance. When a promo
-          is active the card is GRAYED with a clear D3 message (the points stay
-          available for a next order) and the toggle is disabled — the server
-          stays the sole judge (effectiveUsePoints is unchanged). When usable,
-          the cap is always explained (« jusqu'à X € selon ta commande »). The
-          exact credit is resolved + shown on the checkout screen, so the total
-          below stays the honest upper amount the customer could pay. */}
-      {loyaltyVisible && (
-        <div className={`mx-4 mt-2.5 rounded-grubano-lg p-4 shadow-grubano-sm ${promoBlocksLoyalty ? 'bg-grubano-surface-muted' : 'bg-grubano-surface'}`}>
-          <div className="flex items-center gap-3">
-            <Sparkles size={20} className={`shrink-0 ${promoBlocksLoyalty ? 'text-grubano-ink-faint' : 'text-grubano-primary'}`} />
-            <div className="min-w-0 flex-1">
-              <p className={`text-grubano-sm font-bold ${promoBlocksLoyalty ? 'text-grubano-ink-muted' : 'text-grubano-ink'}`}>{t('loyaltyToggleTitle')}</p>
-              <p className="mt-0.5 text-xs text-grubano-ink-muted">
-                {t('loyaltyBalance', { count: pointsBalance.toLocaleString('fr-FR') })}
-                {balanceEuros > 0 ? ` · ${t('loyaltyBalanceEur', { amount: formatAmount(balanceEuros, locale) })}` : ''}
-              </p>
-            </div>
-            <button
-              onClick={() => { if (!promoBlocksLoyalty) setUsePoints((v) => !v) }}
-              disabled={promoBlocksLoyalty}
-              aria-pressed={usePoints && !promoBlocksLoyalty}
-              aria-label={t('loyaltyToggleTitle')}
-              className={`flex h-7 w-12 shrink-0 items-center rounded-full px-0.5 transition-colors ${
-                promoBlocksLoyalty
-                  ? 'justify-start bg-grubano-border opacity-50'
-                  : usePoints ? 'justify-end bg-grubano-primary' : 'justify-start bg-grubano-border'
-              }`}
-            >
-              <span className="h-6 w-6 rounded-full bg-white shadow" />
-            </button>
-          </div>
-          {promoBlocksLoyalty ? (
-            <p className="mt-2.5 rounded-grubano-md bg-grubano-tint/60 px-3 py-2 text-[12px] font-medium text-grubano-ink-muted">
-              {t('loyaltyPromoBlocked')}
-            </p>
           ) : (
-            <p className="mt-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
-              {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: formatAmount(maxLoyaltyEur, locale) })} · ` : ''}{t('loyaltyNote')}
-            </p>
+            <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-zest-50 p-4 lg:mx-0">
+              <div className="flex items-start gap-3">
+                <Package size={20} className="mt-0.5 shrink-0 text-gb-accent-strong" />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-gb-content">{t('pickupLabel')}</p>
+                  <p className="mt-0.5 text-xs text-gb-oat-600">
+                    {cart.restaurant.name}
+                    {cart.restaurant.address ? ` — ${cart.restaurant.address}` : ''}
+                    {cart.restaurant.city ? `, ${cart.restaurant.city}` : ''}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-gb-accent-strong">
+                    {t('readyAround', { time: readyAt, minutes: cart.restaurant.deliveryTime ?? 20 })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Payment */}
+          <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
+            <div className="flex items-center gap-3">
+              <CreditCard size={20} className="shrink-0 text-gb-accent-strong" />
+              <div className="flex-1">
+                <p className="text-sm font-bold text-gb-content">{t('paymentMethod')}</p>
+                <p className="mt-0.5 text-xs text-gb-content-muted">
+                  {payment === 'card' ? '**** **** **** 4521' : t('cashOnDelivery')}
+                </p>
+              </div>
+              <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))} className="text-sm font-semibold text-gb-accent-strong">
+                {t('edit')}
+              </button>
+            </div>
+          </div>
+
+          {/* Loyalty redemption (chantier fidélité L1/L2) — INTENTION toggle only.
+              Shown whenever the consumer is logged in with a balance. When a promo
+              is active the card is GRAYED with a clear D3 message (the points stay
+              available for a next order) and the toggle is disabled — the server
+              stays the sole judge (effectiveUsePoints is unchanged). When usable,
+              the cap is always explained (« jusqu'à X € selon ta commande »). The
+              exact credit is resolved + shown on the checkout screen, so the total
+              below stays the honest upper amount the customer could pay. */}
+          {loyaltyVisible && (
+            <div className={`mx-4 mt-2.5 rounded-gb-xl p-4 shadow-gb-sm lg:mx-0 ${promoBlocksLoyalty ? 'bg-gb-oat-100' : 'bg-gb-surface-elevated'}`}>
+              <div className="flex items-center gap-3">
+                <Sparkles size={20} className={`shrink-0 ${promoBlocksLoyalty ? 'text-gb-oat-600' : 'text-gb-accent-strong'}`} />
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm font-bold ${promoBlocksLoyalty ? 'text-gb-oat-600' : 'text-gb-content'}`}>{t('loyaltyToggleTitle')}</p>
+                  <p className="mt-0.5 text-xs text-gb-oat-600">
+                    {t('loyaltyBalance', { count: pointsBalance.toLocaleString('fr-FR') })}
+                    {balanceEuros > 0 ? ` · ${t('loyaltyBalanceEur', { amount: formatAmount(balanceEuros, locale) })}` : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => { if (!promoBlocksLoyalty) setUsePoints((v) => !v) }}
+                  disabled={promoBlocksLoyalty}
+                  aria-pressed={usePoints && !promoBlocksLoyalty}
+                  aria-label={t('loyaltyToggleTitle')}
+                  className={`flex h-7 w-12 shrink-0 items-center rounded-gb-full px-0.5 transition-colors ${
+                    promoBlocksLoyalty
+                      ? 'justify-start bg-gb-oat-300 opacity-50'
+                      : usePoints ? 'justify-end bg-gb-accent-strong' : 'justify-start bg-gb-oat-300'
+                  }`}
+                >
+                  <span className="h-6 w-6 rounded-gb-full bg-white shadow" />
+                </button>
+              </div>
+              {promoBlocksLoyalty ? (
+                <p className="mt-2.5 rounded-gb-lg bg-gb-oat-200 px-3 py-2 text-[12px] font-medium text-gb-oat-700">
+                  {t('loyaltyPromoBlocked')}
+                </p>
+              ) : (
+                <p className="mt-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent-strong">
+                  {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: formatAmount(maxLoyaltyEur, locale) })} · ` : ''}{t('loyaltyNote')}
+                </p>
+              )}
+            </div>
           )}
         </div>
-      )}
 
-      {/* Summary */}
-      <div className="mx-4 mt-2.5 rounded-grubano-lg bg-grubano-surface p-4 shadow-grubano-sm">
-        <p className="mb-3.5 text-[17px] font-extrabold text-grubano-ink">{t('summary')}</p>
-        <div className="mb-2.5 flex justify-between text-grubano-sm">
-          <span className="text-grubano-ink-muted">{t('subtotal')}</span>
-          <span className="font-semibold text-grubano-ink">{formatEuros(subtotal, locale)}</span>
-        </div>
-        {welcomeAmount > 0 && (
-          <div className="mb-2.5 flex justify-between text-grubano-sm">
-            <span className="text-grubano-success">
-              {welcome?.creatorName
-                ? t('welcomeDiscountFrom', { creator: welcome.creatorName })
-                : t('welcomeDiscount')}
-            </span>
-            <span className="font-semibold text-grubano-success">-{formatEuros(welcomeAmount, locale)}</span>
-          </div>
-        )}
-        <div className="mb-2.5 flex justify-between text-grubano-sm">
-          <span className="text-grubano-ink-muted">{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
-          <span className="font-semibold text-grubano-ink">{fulfillment === 'pickup' ? t('free') : formatEuros(deliveryFee, locale)}</span>
-        </div>
-        {/* Small-order fee (V1.5) — line + nudge with a 1-click "add an item".
-            Disappears as soon as the items subtotal reaches the threshold. */}
-        {smallFeeApplies && (
-          <div className="mb-2.5 flex justify-between text-grubano-sm">
-            <span className="text-grubano-ink-muted">{t('smallOrderFeeLine')}</span>
-            <span className="font-semibold text-grubano-ink">{formatEuros(smallFeeEur, locale)}</span>
-          </div>
-        )}
-        {smallFeeApplies && (
-          <div className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2">
-            <p className="text-[12px] font-medium text-grubano-primary">
-              {t('smallOrderNudge', { amount: formatAmount(missingToThresholdEur, locale) })}
-            </p>
-            {suggestion && (
-              <button
-                onClick={() => addSuggested(suggestion)}
-                className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-grubano-primary px-3 py-1 text-[11px] font-bold text-white active:scale-95"
-              >
-                <Plus size={12} /> {t('smallOrderAddItem', { name: suggestion.name, price: formatAmount(suggestion.price, locale) })}
-              </button>
+        {/* RIGHT column — sticky Summary panel on desktop */}
+        <aside className="lg:sticky lg:top-4 lg:self-start">
+          {/* Summary */}
+          <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
+            <p className="mb-3.5 font-gb-display text-[17px] font-extrabold text-gb-content">{t('summary')}</p>
+            <div className="mb-2.5 flex justify-between text-sm">
+              <span className="text-gb-content-muted">{t('subtotal')}</span>
+              <span className="font-semibold text-gb-content">{formatEuros(subtotal, locale)}</span>
+            </div>
+            {welcomeAmount > 0 && (
+              <div className="mb-2.5 flex justify-between text-sm">
+                <span className="text-gb-basil-700">
+                  {welcome?.creatorName
+                    ? t('welcomeDiscountFrom', { creator: welcome.creatorName })
+                    : t('welcomeDiscount')}
+                </span>
+                <span className="font-semibold text-gb-basil-700">-{formatEuros(welcomeAmount, locale)}</span>
+              </div>
             )}
+            <div className="mb-2.5 flex justify-between text-sm">
+              <span className="text-gb-content-muted">{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
+              <span className="font-semibold text-gb-content">{fulfillment === 'pickup' ? t('free') : formatEuros(deliveryFee, locale)}</span>
+            </div>
+            {/* Small-order fee (V1.5) — line + nudge with a 1-click "add an item".
+                Disappears as soon as the items subtotal reaches the threshold. */}
+            {smallFeeApplies && (
+              <div className="mb-2.5 flex justify-between text-sm">
+                <span className="text-gb-content-muted">{t('smallOrderFeeLine')}</span>
+                <span className="font-semibold text-gb-content">{formatEuros(smallFeeEur, locale)}</span>
+              </div>
+            )}
+            {smallFeeApplies && (
+              <div className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2">
+                <p className="text-[12px] font-medium text-gb-accent-strong">
+                  {t('smallOrderNudge', { amount: formatAmount(missingToThresholdEur, locale) })}
+                </p>
+                {suggestion && (
+                  <button
+                    onClick={() => addSuggested(suggestion)}
+                    className="mt-1.5 inline-flex items-center gap-1 rounded-gb-full bg-gb-accent-strong px-3 py-1 text-[11px] font-bold text-white active:scale-95"
+                  >
+                    <Plus size={12} /> {t('smallOrderAddItem', { name: suggestion.name, price: formatAmount(suggestion.price, locale) })}
+                  </button>
+                )}
+              </div>
+            )}
+            {/* Chantier P2 — soft incentive: « Encore X € pour profiter de {nom} ».
+                Display arithmetic only — the server resolves the real promo. */}
+            {promoIncentive && (
+              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent-strong">
+                {t('promoIncentive', { amount: formatAmount(promoIncentive.missing, locale), name: promoIncentive.name })}
+              </p>
+            )}
+            {/* Promo V2 — threshold-reward progress: « Ajoutez X € pour [récompense] ». */}
+            {thresholdIncentive && (
+              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent-strong">
+                {t('thresholdIncentive', { amount: formatAmount(thresholdIncentive.missing, locale), reward: thresholdIncentive.reward })}
+              </p>
+            )}
+            <div className="mt-1 flex items-center justify-between border-t border-gb-stroke pt-3">
+              <span className="text-base font-extrabold text-gb-content">{t('total')}</span>
+              <PriceTag amount={total} size="lg" />
+            </div>
           </div>
-        )}
-        {/* Chantier P2 — soft incentive: « Encore X € pour profiter de {nom} ».
-            Display arithmetic only — the server resolves the real promo. */}
-        {promoIncentive && (
-          <p className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
-            {t('promoIncentive', { amount: formatAmount(promoIncentive.missing, locale), name: promoIncentive.name })}
-          </p>
-        )}
-        {/* Promo V2 — threshold-reward progress: « Ajoutez X € pour [récompense] ». */}
-        {thresholdIncentive && (
-          <p className="mb-2.5 rounded-grubano-md bg-grubano-tint px-3 py-2 text-[12px] font-medium text-grubano-primary">
-            {t('thresholdIncentive', { amount: formatAmount(thresholdIncentive.missing, locale), reward: thresholdIncentive.reward })}
-          </p>
-        )}
-        <div className="mt-1 flex items-center justify-between border-t border-grubano-border pt-3">
-          <span className="text-base font-extrabold text-grubano-ink">{t('total')}</span>
-          <PriceTag amount={total} size="lg" />
-        </div>
+
+          {error && (
+            <p className="mx-4 mt-3 rounded-gb-lg bg-gb-error-soft p-3 text-center text-sm text-gb-content lg:mx-0">
+              {error}
+            </p>
+          )}
+
+          {/* Desktop Place-order CTA (lives in the sticky panel) */}
+          <div className="mx-4 mt-3 hidden lg:mx-0 lg:block">
+            {placeOrderButton}
+          </div>
+        </aside>
       </div>
 
-      {error && (
-        <p className="mx-4 mt-3 rounded-grubano-md bg-grubano-danger-tint p-3 text-center text-grubano-sm text-grubano-danger">
-          {error}
-        </p>
-      )}
-
-      {/* Checkout bar (above tab bar). On desktop (≥lg) there is no bottom-nav and the
-          content is offset by the 240px rail → align to the content column. */}
-      <div className="fixed bottom-[60px] left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-grubano-border bg-white px-4 py-3.5 lg:bottom-0 lg:left-[240px] lg:right-0 lg:mx-auto lg:w-auto lg:max-w-[1200px] lg:translate-x-0 lg:px-6">
-        <Button
-          variant="primary"
-          size="pill"
-          fullWidth
-          loading={submitting}
-          onClick={handleCheckout}
-        >
-          <span className="flex-1 text-left">{submitting ? t('submitting') : t('placeOrder')}</span>
-          {!submitting && <span>{formatEuros(total, locale)}</span>}
-        </Button>
+      {/* Mobile checkout bar (fixed, above the bottom-nav). Hidden on desktop where
+          the CTA lives in the sticky Summary panel. */}
+      <div className="fixed bottom-[60px] left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-gb-stroke bg-gb-surface-elevated px-4 py-3.5 lg:hidden">
+        {placeOrderButton}
       </div>
 
       {/* Passwordless account-AT-payment (Agent 138) — guests authenticate inline, then the order
