@@ -7,6 +7,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import {
   ArrowLeft, Loader2, AlertCircle, Check, ShoppingBag, Store, Bike,
 } from 'lucide-react'
+import { Button } from '@/components/design-system'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
 
@@ -171,38 +172,38 @@ export default function CheckoutPage() {
   // ── Screens ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-[#FAFAFA] pb-24">
+    <div className="mx-auto min-h-screen max-w-md bg-gb-surface pb-24 font-gb-sans text-gb-content lg:max-w-[920px] lg:pb-12">
       {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-[#eee] bg-white/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-gb-stroke bg-gb-surface px-4 py-3 backdrop-blur">
         <button
           onClick={() => router.back()}
           aria-label={t('title')}
-          className="grid h-9 w-9 place-items-center rounded-xl bg-[#f4f4f4]"
+          className="grid h-9 w-9 place-items-center rounded-gb-lg bg-gb-oat-100"
         >
-          <ArrowLeft size={16} className="text-[#1a1a1a]" />
+          <ArrowLeft size={16} className="text-gb-content" />
         </button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-base font-extrabold text-[#1a1a1a]">{t('title')}</h1>
-          {order && <p className="text-[11px] text-[#888]">{t('orderRef', { ref })}</p>}
+          <h1 className="font-gb-display text-base font-extrabold text-gb-content">{t('title')}</h1>
+          {order && <p className="text-[11px] text-gb-content-muted">{t('orderRef', { ref })}</p>}
         </div>
       </header>
 
       {stage === 'loading' && (
-        <div className="mt-16 flex items-center justify-center gap-2 text-sm text-[#888]">
+        <div className="mt-16 flex items-center justify-center gap-2 text-sm text-gb-content-muted">
           <Loader2 size={14} className="animate-spin" /> {t('loading')}
         </div>
       )}
 
       {stage === 'error' && (
-        <div className="mt-10 px-4">
-          <p className="flex items-start gap-2 rounded-[16px] border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">
-            <AlertCircle size={13} className="mt-0.5 shrink-0" />
+        <div className="mt-10 px-4 lg:mx-auto lg:max-w-md">
+          <p className="flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
+            <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
             <span>{error || t('errLoad')}</span>
           </p>
           <button
             type="button"
             onClick={loadOrder}
-            className="mt-3 w-full rounded-[20px] border-2 border-[#F97316] py-3 text-[14px] font-bold text-[#F97316] active:scale-95"
+            className="mt-3 w-full rounded-gb-full border-2 border-gb-accent py-3 text-[14px] font-bold text-gb-accent active:scale-95"
           >
             {t('retry')}
           </button>
@@ -210,182 +211,200 @@ export default function CheckoutPage() {
       )}
 
       {stage === 'already-paid' && order && (
-        <div className="mt-10 px-4">
-          <div className="rounded-[20px] bg-white p-5 text-center shadow-bolt-card">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#16a34a] text-white">
+        <div className="mt-10 px-4 lg:mx-auto lg:max-w-md">
+          <div className="rounded-gb-xl bg-gb-surface-elevated p-5 text-center shadow-gb-md">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-gb-full bg-gb-success text-white">
               <Check size={20} />
             </span>
-            <p className="mt-3 text-base font-extrabold text-[#1a1a1a]">{t('errAlreadyPaid')}</p>
-            <button
-              type="button"
-              onClick={() => router.push(`/eat/track/${order.id}`)}
-              className="mt-4 w-full rounded-[20px] bg-[#F97316] py-3 text-[14px] font-bold text-white active:scale-95"
-            >
-              {t('alreadyPaidCta')}
-            </button>
+            <p className="mt-3 font-gb-display text-base font-extrabold text-gb-content">{t('errAlreadyPaid')}</p>
+            <div className="mt-4">
+              <Button
+                type="button"
+                variant="gb-primary"
+                size="pill"
+                fullWidth
+                onClick={() => router.push(`/eat/track/${order.id}`)}
+              >
+                {t('alreadyPaidCta')}
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
       {(stage === 'review' || stage === 'pay') && order && (
-        <div className="space-y-3 px-4 pt-4">
-          {/* ── Recap card ─────────────────────────────────────────────────── */}
-          <div className="rounded-[20px] bg-white p-4 shadow-bolt-card">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#FFF3ED] text-[#F97316]">
-                {isPickup ? <Store size={16} /> : <Bike size={16} />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-extrabold text-[#1a1a1a]">
-                  {order.restaurant?.name ?? ''}
-                </p>
-                <p className="text-[11px] text-[#888]">{t('recapTitle')}</p>
-              </div>
-            </div>
-
-            <ul className="divide-y divide-[#f4f4f4]">
-              {order.items.map((it, i) => (
-                <li key={i} className="flex items-baseline gap-2.5 py-2 text-[13px]">
-                  <span className="text-[#888]">{it.qty}×</span>
-                  <span className="flex-1 truncate text-[#1a1a1a]">{it.name}</span>
-                  <span className="font-semibold text-[#1a1a1a]">{fmt.format(it.price * it.qty)}</span>
-                </li>
-              ))}
-            </ul>
-
-            <div className="mt-2 space-y-1 border-t border-[#f4f4f4] pt-2 text-[13px]">
-              <div className="flex items-baseline justify-between">
-                <span className="text-[#888]">{t('subtotal')}</span>
-                <span className="font-semibold text-[#1a1a1a]">{fmt.format(order.subtotal)}</span>
-              </div>
-              <div className="flex items-baseline justify-between">
-                <span className="text-[#888]">{isPickup ? t('pickupNoFee') : t('deliveryFee')}</span>
-                <span className="font-semibold text-[#1a1a1a]">
-                  {isPickup ? fmt.format(0) : fmt.format(order.deliveryFee)}
+        <div className="px-4 pt-4 lg:grid lg:grid-cols-[1fr_400px] lg:items-start lg:gap-6">
+          {/* LEFT — order recap (what you're paying for) */}
+          <div className="space-y-3 lg:min-w-0">
+            {/* ── Recap card ─────────────────────────────────────────────────── */}
+            <div className="rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-md">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="grid h-9 w-9 place-items-center rounded-gb-lg bg-gb-zest-50 text-gb-accent">
+                  {isPickup ? <Store size={16} /> : <Bike size={16} />}
                 </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-extrabold text-gb-content">
+                    {order.restaurant?.name ?? ''}
+                  </p>
+                  <p className="text-[11px] text-gb-content-muted">{t('recapTitle')}</p>
+                </div>
               </div>
-              {discount > 0.005 && (
-                <div className="flex items-baseline justify-between text-[#16a34a]">
-                  {/* P2 — the promo's display name when the server resolved one;
-                      generic label otherwise (welcome discount, legacy). */}
-                  <span>{order.promotion?.name ? t('promoLine', { name: order.promotion.name }) : t('discount')}</span>
-                  <span className="font-semibold">−{fmt.format(discount)}</span>
+
+              <ul className="divide-y divide-gb-stroke">
+                {order.items.map((it, i) => (
+                  <li key={i} className="flex items-baseline gap-2.5 py-2 text-[13px]">
+                    <span className="text-gb-content-muted">{it.qty}×</span>
+                    <span className="flex-1 truncate text-gb-content">{it.name}</span>
+                    <span className="font-semibold text-gb-content">{fmt.format(it.price * it.qty)}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-2 space-y-1 border-t border-gb-stroke pt-2 text-[13px]">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-gb-content-muted">{t('subtotal')}</span>
+                  <span className="font-semibold text-gb-content">{fmt.format(order.subtotal)}</span>
                 </div>
-              )}
-              {/* L2 — loyalty credit on its OWN line (Grubano-financed, distinct
-                  from any promo). Server field only, never computed here. */}
-              {loyaltyCredit > 0.005 && (
-                <div className="flex items-baseline justify-between text-[#16a34a]">
-                  <span>
-                    {order.pointsRedeemed && order.pointsRedeemed > 0
-                      ? t('loyaltyLinePoints', { points: order.pointsRedeemed })
-                      : t('loyaltyLine')}
+                <div className="flex items-baseline justify-between">
+                  <span className="text-gb-content-muted">{isPickup ? t('pickupNoFee') : t('deliveryFee')}</span>
+                  <span className="font-semibold text-gb-content">
+                    {isPickup ? fmt.format(0) : fmt.format(order.deliveryFee)}
                   </span>
-                  <span className="font-semibold">−{fmt.format(loyaltyCredit)}</span>
                 </div>
-              )}
-              <div className="flex items-baseline justify-between pt-1 text-[15px] font-extrabold">
-                <span className="text-[#1a1a1a]">{t('total')}</span>
-                <span className="text-[#F97316]">{fmt.format(order.total)}</span>
+                {discount > 0.005 && (
+                  <div className="flex items-baseline justify-between text-gb-basil-700">
+                    {/* P2 — the promo's display name when the server resolved one;
+                        generic label otherwise (welcome discount, legacy). */}
+                    <span>{order.promotion?.name ? t('promoLine', { name: order.promotion.name }) : t('discount')}</span>
+                    <span className="font-semibold">−{fmt.format(discount)}</span>
+                  </div>
+                )}
+                {/* L2 — loyalty credit on its OWN line (Grubano-financed, distinct
+                    from any promo). Server field only, never computed here. */}
+                {loyaltyCredit > 0.005 && (
+                  <div className="flex items-baseline justify-between text-gb-basil-700">
+                    <span>
+                      {order.pointsRedeemed && order.pointsRedeemed > 0
+                        ? t('loyaltyLinePoints', { points: order.pointsRedeemed })
+                        : t('loyaltyLine')}
+                    </span>
+                    <span className="font-semibold">−{fmt.format(loyaltyCredit)}</span>
+                  </div>
+                )}
+                <div className="flex items-baseline justify-between pt-1 text-[15px] font-extrabold">
+                  <span className="text-gb-content">{t('total')}</span>
+                  <span className="text-gb-accent">{fmt.format(order.total)}</span>
+                </div>
               </div>
             </div>
+
+            {/* What is charged NOW — explicit, no surprise. */}
+            <p className="rounded-gb-lg bg-gb-surface-elevated px-3 py-2.5 text-[11px] text-gb-content-muted shadow-gb-md">
+              {t('payNowNote')}
+            </p>
           </div>
 
-          {/* What is charged NOW — explicit, no surprise. */}
-          <p className="rounded-[16px] bg-white px-3 py-2.5 text-[11px] text-[#888] shadow-bolt-card">
-            {t('payNowNote')}
-          </p>
+          {/* RIGHT — the payment action (sticky on desktop). review = Pay CTA;
+              pay = the wallet + Stripe Elements card. Only one is ever shown
+              (mutually exclusive by `stage`) → no double-payment path. */}
+          <aside className="mt-3 space-y-3 lg:mt-0 lg:sticky lg:top-4 lg:self-start">
+            {stage === 'review' && (
+              <>
+                {error && (
+                  <p className="flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
+                    <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
+                    <span>{error}</span>
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="gb-primary"
+                  size="pill"
+                  fullWidth
+                  loading={starting}
+                  disabled={starting}
+                  onClick={startPayment}
+                >
+                  {t('payCta', { amount: fmt.format(order.total) })}
+                </Button>
+              </>
+            )}
 
-          {stage === 'review' && (
-            <>
-              {error && (
-                <p className="flex items-start gap-2 rounded-[16px] border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">
-                  <AlertCircle size={13} className="mt-0.5 shrink-0" />
-                  <span>{error}</span>
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={startPayment}
-                disabled={starting}
-                className="flex w-full items-center justify-center gap-2 rounded-[20px] bg-[#F97316] py-4 text-[15px] font-bold text-white active:scale-95 disabled:opacity-60"
-              >
-                {starting ? <Loader2 size={15} className="animate-spin" /> : null}
-                {t('payCta', { amount: fmt.format(order.total) })}
-              </button>
-            </>
-          )}
-
-          {stage === 'pay' && payInit && (
-            <div className="space-y-3 rounded-[20px] bg-white p-4 shadow-bolt-card">
-              {/* Wallet 1-tap (Apple/Google Pay) — CONFIRMS THE SAME PaymentIntent (payInit.clientSecret)
-                  as the card, server amount (payInit.amount). Hidden when no wallet is available on the
-                  device → card-only. Success → SAME onPaid as the card (setStage('paid') → confirm-poll
-                  + tracking). Look = current /eat. */}
-              <WalletPaymentButton
-                clientSecret={payInit.clientSecret}
-                publishableKey={payInit.publishableKey}
-                amount={payInit.amount}
-                currency={payInit.currency}
-                label={t('total')}
-                heading={t('walletHeading')}
-                errorLabel={t('walletError')}
-                onPaid={() => setStage('paid')}
-              />
-              <StripeTicketPayment
-                clientSecret={payInit.clientSecret}
-                publishableKey={payInit.publishableKey}
-                amount={payInit.amount}
-                currency={payInit.currency}
-                onPaid={() => setStage('paid')}
-              />
-            </div>
-          )}
+            {stage === 'pay' && payInit && (
+              <div className="space-y-3 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-md">
+                {/* Wallet 1-tap (Apple/Google Pay) — CONFIRMS THE SAME PaymentIntent (payInit.clientSecret)
+                    as the card, server amount (payInit.amount). Hidden when no wallet is available on the
+                    device → card-only. Success → SAME onPaid as the card (setStage('paid') → confirm-poll
+                    + tracking). The two payment components are left BYTE-IDENTICAL — only re-skinned around. */}
+                <WalletPaymentButton
+                  clientSecret={payInit.clientSecret}
+                  publishableKey={payInit.publishableKey}
+                  amount={payInit.amount}
+                  currency={payInit.currency}
+                  label={t('total')}
+                  heading={t('walletHeading')}
+                  errorLabel={t('walletError')}
+                  onPaid={() => setStage('paid')}
+                />
+                <StripeTicketPayment
+                  clientSecret={payInit.clientSecret}
+                  publishableKey={payInit.publishableKey}
+                  amount={payInit.amount}
+                  currency={payInit.currency}
+                  onPaid={() => setStage('paid')}
+                />
+              </div>
+            )}
+          </aside>
         </div>
       )}
 
       {/* ── Confirmation ─────────────────────────────────────────────────────── */}
       {stage === 'paid' && order && (
-        <div className="px-4 pt-8">
-          <div className="rounded-[20px] bg-white p-6 text-center shadow-bolt-card">
-            <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#16a34a] text-white">
+        <div className="px-4 pt-8 lg:mx-auto lg:max-w-md">
+          <div className="rounded-gb-xl bg-gb-surface-elevated p-6 text-center shadow-gb-md">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-gb-full bg-gb-success text-white">
               <Check size={24} />
             </span>
-            <p className="mt-4 text-[19px] font-extrabold text-[#1a1a1a]">{t('confirmTitle')}</p>
-            <p className="mt-1 text-[13px] font-semibold text-[#1a1a1a]">{t('orderRef', { ref })}</p>
-            <p className="mt-2 text-[13px] text-[#888]">{t('confirmBody')}</p>
-            <p className="text-[12px] text-[#888]">
+            <p className="mt-4 font-gb-display text-[19px] font-extrabold text-gb-content">{t('confirmTitle')}</p>
+            <p className="mt-1 text-[13px] font-semibold text-gb-content">{t('orderRef', { ref })}</p>
+            <p className="mt-2 text-[13px] text-gb-content-muted">{t('confirmBody')}</p>
+            <p className="text-[12px] text-gb-content-muted">
               {isPickup
                 ? t('confirmPickup',   { restaurant: order.restaurant?.name ?? '' })
                 : t('confirmDelivery', { restaurant: order.restaurant?.name ?? '' })}
             </p>
 
             {/* Short recap */}
-            <div className="mt-4 rounded-[16px] bg-[#FAFAFA] p-3 text-start">
+            <div className="mt-4 rounded-gb-lg bg-gb-oat-100 p-3 text-start">
               <ul className="space-y-1">
                 {order.items.map((it, i) => (
                   <li key={i} className="flex items-baseline gap-2 text-[12px]">
-                    <span className="text-[#888]">{it.qty}×</span>
-                    <span className="flex-1 truncate text-[#1a1a1a]">{it.name}</span>
+                    <span className="text-gb-content-muted">{it.qty}×</span>
+                    <span className="flex-1 truncate text-gb-content">{it.name}</span>
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 border-t border-[#eee] pt-2 text-[12px] font-bold text-[#1a1a1a]">
+              <p className="mt-2 border-t border-gb-stroke pt-2 text-[12px] font-bold text-gb-content">
                 {t('paidAmount', { amount: fmt.format(order.total) })}
               </p>
             </div>
 
-            <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-[#888]">
+            <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-gb-content-muted">
               <ShoppingBag size={11} /> {t('confirmEmail')}
             </p>
 
-            <button
-              type="button"
-              onClick={() => router.push(`/eat/track/${order.id}`)}
-              className="mt-5 w-full rounded-[20px] bg-[#F97316] py-4 text-[15px] font-bold text-white active:scale-95"
-            >
-              {t('trackCta')}
-            </button>
+            <div className="mt-5">
+              <Button
+                type="button"
+                variant="gb-primary"
+                size="pill"
+                fullWidth
+                onClick={() => router.push(`/eat/track/${order.id}`)}
+              >
+                {t('trackCta')}
+              </Button>
+            </div>
           </div>
         </div>
       )}
