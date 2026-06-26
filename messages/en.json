@@ -1410,7 +1410,10 @@
       "panelTagline": "Your table’s ready — sign in to order.",
       "panelSecure": "Secure · Passwordless ready",
       "joinTitle": "Join the table. Earn as you eat.",
-      "joinBenefit": "Earn points on every order, save your favourites, and track every delivery."
+      "joinBenefit": "Earn points on every order, save your favourites, and track every delivery.",
+      "welcomeBack": "Welcome back",
+      "legal": "By continuing you agree to Grubano’s Terms & Privacy Policy.",
+      "welcomeBadge": "Welcome bonus on sign-up"
     },
     "restaurant": {
       "addedToCart": "{name} added to cart",

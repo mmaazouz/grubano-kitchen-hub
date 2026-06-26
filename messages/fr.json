@@ -1410,7 +1410,10 @@
       "panelTagline": "Votre table est prête. Connectez-vous pour commander.",
       "panelSecure": "Sécurisé · Prêt pour le sans-mot-de-passe",
       "joinTitle": "Rejoignez la table. Gagnez en mangeant.",
-      "joinBenefit": "Cumulez des points à chaque commande, enregistrez vos favoris et suivez chaque livraison."
+      "joinBenefit": "Cumulez des points à chaque commande, enregistrez vos favoris et suivez chaque livraison.",
+      "welcomeBack": "Bon retour",
+      "legal": "En continuant, vous acceptez les Conditions et la Politique de confidentialité de Grubano.",
+      "welcomeBadge": "Bonus de bienvenue offert"
     },
     "restaurant": {
       "addedToCart": "{name} ajouté au panier",

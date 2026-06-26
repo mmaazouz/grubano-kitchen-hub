@@ -1410,7 +1410,10 @@
       "panelTagline": "Il tuo tavolo è pronto. Accedi per ordinare.",
       "panelSecure": "Sicuro · Pronto senza password",
       "joinTitle": "Unisciti alla tavola. Guadagna mentre mangi.",
-      "joinBenefit": "Accumula punti a ogni ordine, salva i preferiti e segui ogni consegna."
+      "joinBenefit": "Accumula punti a ogni ordine, salva i preferiti e segui ogni consegna.",
+      "welcomeBack": "Bentornato",
+      "legal": "Continuando accetti i Termini e l’Informativa sulla privacy di Grubano.",
+      "welcomeBadge": "Bonus di benvenuto all’iscrizione"
     },
     "restaurant": {
       "addedToCart": "{name} aggiunto al carrello",
