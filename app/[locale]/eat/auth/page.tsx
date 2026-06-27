@@ -100,23 +100,6 @@ export default function AuthScreen() {
     setLoading(false)
   }
 
-  async function demoLogin() {
-    setError('')
-    setLoading(true)
-    const result = await signIn('credentials', {
-      email: 'test@grubano.com',
-      password: 'Test1234!',
-      redirect: false,
-    })
-    if (result?.error) {
-      setError(t('errorDemoUnavailable'))
-      setLoading(false)
-      return
-    }
-    await routeByRole(router)
-    setLoading(false)
-  }
-
   function social(provider: 'google' | 'apple') {
     if (providers[provider]) {
       signIn(provider, { callbackUrl: '/eat' })
@@ -183,28 +166,8 @@ export default function AuthScreen() {
       {/* ── Form panel ── */}
       <section className="flex items-center justify-center p-[clamp(24px,4vw,40px)] max-[879px]:items-start max-[879px]:px-5 max-[879px]:pb-10 max-[879px]:pt-6">
         <div className="w-full max-w-[380px] max-[879px]:mx-auto max-[879px]:max-w-[440px]">
-          {/* Tabs */}
-          <div className="mb-[22px] flex gap-0.5 rounded-gb-md border border-gb-stroke bg-gb-surface p-1" role="tablist">
-            {(['login', 'register'] as Tab[]).map((ti) => {
-              const active = tab === ti
-              return (
-                <button
-                  key={ti}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => { setTab(ti); setError('') }}
-                  className={`flex-1 rounded-gb-sm py-[9px] text-[13px] font-bold transition-colors ${
-                    active ? 'bg-gradient-to-br from-gb-zest-400 to-gb-zest-600 text-white' : 'text-gb-content-muted'
-                  }`}
-                >
-                  {ti === 'login' ? t('tabLogin') : t('tabRegister')}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Title + inversion link */}
+          {/* Title + inversion link — the ONLY login/register switch (CD blueprint has no
+              segmented toggle; the sub-paragraph link below flips the mode). */}
           <h1 className="m-0 font-gb-display text-[26px] font-extrabold tracking-tight text-gb-content">
             {isSignup ? t('createAccount') : t('welcomeBack')}
           </h1>
@@ -306,11 +269,6 @@ export default function AuthScreen() {
           </form>
 
           <p className="mt-[18px] text-center text-[11.5px] leading-relaxed text-gb-content-muted">{t('legal')}</p>
-
-          {/* Demo login — real feature kept, but discreet (the CD mock has no demo). */}
-          <button onClick={demoLogin} disabled={loading} className="mt-3 block w-full text-center text-[12px] font-semibold text-gb-content-muted underline disabled:opacity-60">
-            🚀 {t('tryDemo')}
-          </button>
         </div>
       </section>
 
