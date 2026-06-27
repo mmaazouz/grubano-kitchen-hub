@@ -73,7 +73,8 @@
 .auth__brand { position:relative; overflow:hidden; color:var(--gb-on-ink); background:var(--gb-panel-ink); display:flex; flex-direction:column; justify-content:space-between; padding:clamp(28px,3.4vw,44px) }
 .auth.is-signup .auth__brand { background:var(--gb-grad-sunrise) }
 .auth__brand::before { content:""; position:absolute; right:-90px; top:-70px; width:340px; height:340px; border-radius:50%; background:radial-gradient(circle, rgba(255,138,40,.32), transparent 66%); filter:blur(10px) }
-.auth.is-signup .auth__brand::before { background:rgba(255,255,255,.16); filter:none }
+/* signup: big white circle, repositioned to the BOTTOM-RIGHT of the panel (reference image) */
+.auth.is-signup .auth__brand::before { background:rgba(255,255,255,.16); filter:none; top:auto; right:-100px; bottom:-100px; width:400px; height:400px }
 .auth__brand::after { content:""; position:absolute; left:-70px; bottom:-90px; width:300px; height:300px; border-radius:50%; background:radial-gradient(circle, rgba(43,164,92,.20), transparent 68%); filter:blur(12px) }
 .auth.is-signup .auth__brand::after { display:none }
 
@@ -148,6 +149,21 @@
 .auth .strength { display:none }
 .auth.is-signup .strength { display:flex }
 .auth.is-signup .forgot { display:none }
+
+/* FIX: the pitch heading + paragraph are BLOCK elements; the .show-* inline toggle (meant
+   for the inline title/sub/button spans) collapsed the <h2> and its <p> onto one line
+   ("…mangeant.Cumulez…"). Force block so the <p> keeps its top margin under the <h2>. */
+.auth.is-signup .auth__pitch .show-signup { display:block }
+
+/* ── DESKTOP LAYOUT MIRROR (signup) — the real design (reference image, not blueprint 812d):
+   SIGN IN        = navy brand panel LEFT / form RIGHT  (base rules, unchanged).
+   CREATE ACCOUNT = form LEFT / Sunrise brand panel RIGHT (mirror).
+   Desktop only (≥881px); the <880px mobile banner layout below is untouched. */
+@media (min-width:881px) {
+  .auth.is-signup { grid-template-columns:1fr 46% }
+  .auth.is-signup .auth__panel { grid-column:1 }
+  .auth.is-signup .auth__brand { grid-column:2 }
+}
 
 @media (max-width:880px) {
   .auth { grid-template-columns:1fr }
