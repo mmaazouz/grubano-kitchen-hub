@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from '@/navigation'
 import { signIn } from 'next-auth/react'
-import { Eye, EyeOff, Mail, Lock, User as UserIcon, AlertCircle, ShieldCheck, Gift } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, User as UserIcon, AlertCircle, ShieldCheck, Gift, Zap, Link as LinkIcon } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
 import { useTranslations } from 'next-intl'
 import ForgotPasswordModal from '@/components/auth/ForgotPasswordModal'
@@ -137,12 +137,17 @@ export default function AuthScreen() {
           isSignup ? 'bg-gb-sunrise' : 'bg-gradient-to-br from-gb-ink-800 to-gb-ink-700'
         }`}
       >
-        <div
-          aria-hidden
-          className={`pointer-events-none absolute -right-24 -top-20 h-80 w-80 rounded-full blur-3xl max-[879px]:hidden ${
-            isSignup ? 'bg-white/15' : 'bg-gb-accent/25'
-          }`}
-        />
+        {/* Decorative glows — login (navy): an orange halo (top-right) + a green halo
+            (bottom-left); register (sunrise): one crisp white circle (top-right).
+            Token-based (no raw rgba); hidden on the compact mobile banner. */}
+        {isSignup ? (
+          <div aria-hidden className="pointer-events-none absolute -right-24 -top-20 h-80 w-80 rounded-full bg-white/15 max-[879px]:hidden" />
+        ) : (
+          <>
+            <div aria-hidden className="pointer-events-none absolute -right-24 -top-20 h-80 w-80 rounded-full bg-gb-accent/30 blur-2xl max-[879px]:hidden" />
+            <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-20 h-72 w-72 rounded-full bg-gb-basil-500/25 blur-2xl max-[879px]:hidden" />
+          </>
+        )}
         {/* Logo */}
         <div className={`relative z-10 flex items-center gap-3 ${isSignup ? 'min-[880px]:justify-end' : ''}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -168,9 +173,10 @@ export default function AuthScreen() {
             <Gift size={14} /> {t('welcomeBadge')}
           </span>
         ) : (
-          <p className="relative z-10 inline-flex items-center gap-2 text-[12.5px] font-medium text-white/85 max-[879px]:hidden">
-            <ShieldCheck size={16} /> {t('panelSecure')}
-          </p>
+          <div className="relative z-10 flex gap-4 text-[12.5px] font-medium text-white/85 max-[879px]:hidden">
+            <span className="inline-flex items-center gap-1.5"><ShieldCheck size={16} className="text-gb-basil-400" /> {t('metaSecure')}</span>
+            <span className="inline-flex items-center gap-1.5"><Zap size={16} className="text-gb-zest-300" /> {t('metaPasswordless')}</span>
+          </div>
         )}
       </aside>
 
@@ -220,11 +226,10 @@ export default function AuthScreen() {
           {/* OAuth — ALWAYS at the top (CD order). Wired to the real social() handler. */}
           <div className="mb-[18px] flex gap-2.5 max-[380px]:flex-wrap">
             <button onClick={() => social('google')} className="flex flex-1 items-center justify-center gap-2 rounded-gb-md border border-gb-stroke-strong bg-gb-surface-elevated p-3 text-[13.5px] font-semibold text-gb-content active:scale-95">
-              <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden>
-                <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
-                <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
-                <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
-                <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+              {/* Google "G" — BRAND blue, mono (CD blueprint): #4285F4 light / #5B9BFF dark.
+                  A brand-logo colour (like Apple's currentColor below), not a DS token. */}
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="h-[17px] w-[17px] text-[#4285F4] dark:text-[#5B9BFF]">
+                <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z" />
               </svg>
               Google
             </button>
@@ -296,7 +301,7 @@ export default function AuthScreen() {
 
             {/* Passwordless alternative — routes to the EXISTING magic-link page. */}
             <button type="button" onClick={() => router.push('/auth/magic')} className="flex w-full items-center justify-center gap-2 rounded-gb-md border border-gb-stroke-strong bg-gb-surface-elevated p-[13px] text-sm font-semibold text-gb-content active:scale-95">
-              <Mail size={16} /> {t('magicLinkCta')}
+              <LinkIcon size={16} /> {t('magicLinkCta')}
             </button>
           </form>
 

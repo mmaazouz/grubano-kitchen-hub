@@ -1409,6 +1409,8 @@
       "panelTitle": "Mettiti comodo",
       "panelTagline": "Il tuo tavolo è pronto. Accedi per ordinare.",
       "panelSecure": "Sicuro · Pronto senza password",
+      "metaSecure": "Sicuro",
+      "metaPasswordless": "Pronto senza password",
       "joinTitle": "Unisciti alla tavola. Guadagna mentre mangi.",
       "joinBenefit": "Accumula punti a ogni ordine, salva i preferiti e segui ogni consegna.",
       "welcomeBack": "Bentornato",

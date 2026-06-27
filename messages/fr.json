@@ -1409,6 +1409,8 @@
       "panelTitle": "Installez-vous à table",
       "panelTagline": "Votre table est prête. Connectez-vous pour commander.",
       "panelSecure": "Sécurisé · Prêt pour le sans-mot-de-passe",
+      "metaSecure": "Sécurisé",
+      "metaPasswordless": "Sans mot de passe",
       "joinTitle": "Rejoignez la table. Gagnez en mangeant.",
       "joinBenefit": "Cumulez des points à chaque commande, enregistrez vos favoris et suivez chaque livraison.",
       "welcomeBack": "Bon retour",

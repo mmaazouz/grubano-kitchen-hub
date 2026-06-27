@@ -1409,6 +1409,8 @@
       "panelTitle": "Pull up a chair",
       "panelTagline": "Your table’s ready — sign in to order.",
       "panelSecure": "Secure · Passwordless ready",
+      "metaSecure": "Secure",
+      "metaPasswordless": "Passwordless ready",
       "joinTitle": "Join the table. Earn as you eat.",
       "joinBenefit": "Earn points on every order, save your favourites, and track every delivery.",
       "welcomeBack": "Welcome back",

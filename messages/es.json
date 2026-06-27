@@ -1409,6 +1409,8 @@
       "panelTitle": "Ponte cómodo",
       "panelTagline": "Tu mesa está lista. Inicia sesión para pedir.",
       "panelSecure": "Seguro · Listo sin contraseña",
+      "metaSecure": "Seguro",
+      "metaPasswordless": "Listo sin contraseña",
       "joinTitle": "Únete a la mesa. Gana mientras comes.",
       "joinBenefit": "Gana puntos en cada pedido, guarda tus favoritos y sigue cada entrega.",
       "welcomeBack": "Bienvenido de nuevo",
