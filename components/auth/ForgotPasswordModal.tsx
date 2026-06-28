@@ -2,7 +2,11 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { Mail, Loader2, AlertCircle, X, Check } from 'lucide-react'
+// Grubano gb-* design FOUNDATION (Agent 168) — the modal ADOPTS it (visual only). The CSS is
+// `.gb`-scoped, so importing it here can't leak onto the operator app. Material Symbols (the
+// `.gb .ms` font) replace lucide; the primary button now uses the shared gradient `.btn--primary`.
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
 
 // ── <ForgotPasswordModal /> — Emails v2 FIX 3, shared by BOTH spaces ───────────
 //
@@ -49,66 +53,84 @@ export default function ForgotPasswordModal({
     }
   }
 
+  // Visual only: content wrapped in a `.gb` root so it uses the foundation primitives
+  // (.btn--primary gradient identical to "Se connecter", .input, .hero-ico) + gb tokens.
+  // The dialog shell keeps its bottom-sheet shape; it adopts the gb surface + card shadow.
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 sm:rounded-2xl">
+      <div
+        className="gb w-full max-w-md rounded-t-3xl p-5 sm:rounded-2xl"
+        style={{ background: 'var(--gb-surface)', boxShadow: 'var(--gb-shadow-card)' }}
+      >
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#FFF3ED] text-[#F97316]">
-              <Mail size={15} />
+            <span
+              className="grid h-9 w-9 place-items-center rounded-xl"
+              style={{ background: '#FFF1E7', color: 'var(--gb-zest-600)' }}
+            >
+              <span className="ms" style={{ fontSize: '18px' }} aria-hidden="true">mail</span>
             </span>
-            <p className="text-base font-extrabold text-[#1a1a1a]">{t('forgotTitle')}</p>
+            <p style={{ margin: 0, fontFamily: 'var(--gb-font-display)', fontWeight: 800, fontSize: '16px', color: 'var(--gb-text)' }}>
+              {t('forgotTitle')}
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('forgotClose')}
-            className="grid h-9 w-9 place-items-center rounded-xl bg-[#f4f4f4]"
+            className="grid h-9 w-9 place-items-center rounded-xl active:scale-95"
+            style={{ background: 'var(--gb-surface-2)', color: 'var(--gb-text)' }}
           >
-            <X size={15} className="text-[#1a1a1a]" />
+            <span className="ms" style={{ fontSize: '18px' }} aria-hidden="true">close</span>
           </button>
         </div>
 
         {sent ? (
           <div className="text-center">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#16a34a] text-white">
-              <Check size={20} />
+            <span className="hero-ico" style={{ width: '56px', height: '56px', margin: '0 auto' }}>
+              <span className="ms" style={{ fontSize: '28px' }} aria-hidden="true">mark_email_read</span>
             </span>
-            <p className="mt-3 text-[13px] text-[#555]">{t('forgotSent')}</p>
+            <p className="mt-3" style={{ fontSize: '13px', color: 'var(--gb-muted)' }}>{t('forgotSent')}</p>
             <button
               type="button"
               onClick={onClose}
-              className="mt-4 w-full rounded-[30px] bg-[#F97316] py-3.5 text-[14px] font-bold text-white active:scale-95"
+              className="btn btn--primary active:scale-95"
+              style={{ marginTop: '16px' }}
             >
               {t('forgotClose')}
             </button>
           </div>
         ) : (
           <form onSubmit={submit}>
-            <p className="text-[13px] text-[#888]">{t('forgotBody')}</p>
-            <div className="mt-3 flex items-center rounded-[14px] border border-[#eee] bg-[#FAFAFA] px-3 py-3">
-              <Mail size={16} className="me-2 text-[#aaa]" />
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--gb-muted)' }}>{t('forgotBody')}</p>
+            <div className="input" style={{ marginTop: '12px' }}>
+              <span className="ms" aria-hidden="true">mail</span>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t('forgotEmailPh')}
                 autoCapitalize="none"
-                className="flex-1 bg-transparent text-[15px] text-[#1a1a1a] placeholder:text-[#bbb] focus:outline-none"
               />
             </div>
             {error && (
-              <p className="mt-2 flex items-start gap-2 rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">
-                <AlertCircle size={13} className="mt-0.5 shrink-0" />
+              <p
+                className="mt-2 flex items-start gap-2"
+                style={{ borderRadius: 'var(--gb-r-md)', border: '1px solid #F4C7C0', background: '#FCEEEC', padding: '8px 12px', fontSize: '12px', color: '#C0392B' }}
+              >
+                <span className="ms" style={{ fontSize: '15px', marginTop: '1px', flex: 'none' }} aria-hidden="true">error</span>
                 <span>{error}</span>
               </p>
             )}
             <button
               type="submit"
               disabled={sending || !email.trim()}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-[30px] bg-[#F97316] py-3.5 text-[14px] font-bold text-white active:scale-95 disabled:opacity-60"
+              className="btn btn--primary active:scale-95 disabled:opacity-60"
+              style={{ marginTop: '16px' }}
             >
-              {sending ? <Loader2 size={14} className="animate-spin" /> : null}
+              {sending ? (
+                <span className="ms" style={{ fontSize: '18px', animation: 'gb-spin .8s linear infinite' }} aria-hidden="true">progress_activity</span>
+              ) : null}
               {sending ? t('forgotSending') : t('forgotSend')}
             </button>
           </form>
