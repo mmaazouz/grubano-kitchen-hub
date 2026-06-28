@@ -1415,7 +1415,12 @@
       "joinBenefit": "Gana puntos en cada pedido, guarda tus favoritos y sigue cada entrega.",
       "welcomeBack": "Bienvenido de nuevo",
       "legal": "Al continuar, aceptas los Términos y la Política de privacidad de Grubano.",
-      "welcomeBadge": "Bono de bienvenida al registrarte"
+      "welcomeBadge": "Bono de bienvenida al registrarte",
+      "or": "o",
+      "continueWith": "Continuar con {provider}",
+      "forgotShort": "¿Olvidaste?",
+      "strengthHint": "Seguridad: añade un número o un símbolo.",
+      "back": "Atrás"
     },
     "restaurant": {
       "addedToCart": "{name} añadido a la cesta",

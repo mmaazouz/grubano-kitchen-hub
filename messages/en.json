@@ -1415,7 +1415,12 @@
       "joinBenefit": "Earn points on every order, save your favourites, and track every delivery.",
       "welcomeBack": "Welcome back",
       "legal": "By continuing you agree to Grubano’s Terms & Privacy Policy.",
-      "welcomeBadge": "Welcome bonus on sign-up"
+      "welcomeBadge": "Welcome bonus on sign-up",
+      "or": "or",
+      "continueWith": "Continue with {provider}",
+      "forgotShort": "Forgot?",
+      "strengthHint": "Strength: add a number or symbol.",
+      "back": "Back"
     },
     "restaurant": {
       "addedToCart": "{name} added to cart",
