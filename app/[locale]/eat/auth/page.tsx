@@ -4,7 +4,6 @@ import './auth.css'
 import { useState, useEffect } from 'react'
 import { useRouter } from '@/navigation'
 import { signIn } from 'next-auth/react'
-import { Eye, EyeOff, Mail, Lock, User as UserIcon, AlertCircle, ShieldCheck, Gift, Zap, Link as LinkIcon } from 'lucide-react'
 import { showToast } from '@/lib/eat-cart'
 import { useTranslations } from 'next-intl'
 import ForgotPasswordModal from '@/components/auth/ForgotPasswordModal'
@@ -112,32 +111,34 @@ export default function AuthScreen() {
   const isSignup = tab === 'register'
   const pwScore = strengthScore(password)
 
-  // CD markup ported 1:1 (class names from the blueprint; styling lives in ./auth.css).
-  // `.is-signup` on the root toggles every login/register variant via CSS (replaces the
-  // blueprint's demo setMode() JS). Handlers are wired to the real auth flow, verbatim.
+  // Markup ported 1:1 from the FROZEN reference (Notion 38dfd2c9-…-81be). `.is-signup` on the
+  // root toggles every login/register variant via CSS (replaces the reference's demo setMode()).
+  // Wired to the real auth flow; icons are CD's Material Symbols (kept, not lucide); the logo
+  // placeholder is replaced by the real Grubano symbol; the strength meter is dynamic.
+  function togglePw() { setShowPwd((v) => !v) }
+
   return (
     <main className={`auth${isSignup ? ' is-signup' : ''}`}>
-      {/* ── Brand panel ── */}
       <aside className="auth__brand">
+        {/* Real Grubano logo replaces the reference's placeholder .auth__mark box */}
         <div className="auth__logo">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/grubano-symbol-color.svg" alt="Grubano" />
+          <img className="auth__mark" src={isSignup ? '/brand/grubano-symbol-white.svg' : '/brand/grubano-symbol-color.svg'} alt="Grubano" />
           <b>Grubano</b>
         </div>
         <div className="auth__pitch">
           <h2 className="show-signin">{t('panelTitle')}</h2>
-          <h2 className="show-signup">{t('joinTitle')}</h2>
+          <h2 className="show-signup" style={{ color: '#fff' }}>{t('joinTitle')}</h2>
           <p className="show-signin">{t('panelTagline')}</p>
           <p className="show-signup">{t('joinBenefit')}</p>
         </div>
         <div className="auth__meta show-signin">
-          <span><ShieldCheck size={17} color="#41BD78" />{t('metaSecure')}</span>
-          <span><Zap size={17} color="#FF9A4D" />{t('metaPasswordless')}</span>
+          <span><span className="ms" style={{ fontSize: '17px', color: '#41BD78' }}>verified_user</span>{t('metaSecure')}</span>
+          <span><span className="ms" style={{ fontSize: '17px', color: '#FF9A4D' }}>bolt</span>{t('metaPasswordless')}</span>
         </div>
-        <div className="auth__badge show-signup"><Gift size={17} />{t('welcomeBadge')}</div>
+        <div className="auth__badge show-signup"><span className="ms" style={{ fontSize: '17px' }}>redeem</span>{t('welcomeBadge')}</div>
       </aside>
 
-      {/* ── Form panel ── */}
       <section className="auth__panel">
         <div className="auth__form">
           <h1 className="auth__title">
@@ -159,12 +160,11 @@ export default function AuthScreen() {
 
           {error && (
             <p className="auth__error" role="alert">
-              <AlertCircle aria-hidden="true" />
+              <span className="ms" aria-hidden="true">error</span>
               <span>{error}</span>
             </p>
           )}
 
-          {/* OAuth — at the top, per the blueprint */}
           <div className="oauth">
             <button className="btn-social" type="button" onClick={() => social('google')}>
               <svg viewBox="0 0 24 24" fill="var(--gb-google)" aria-hidden="true"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z" /></svg>
@@ -182,7 +182,7 @@ export default function AuthScreen() {
             <div className="field field--name">
               <div className="field__label">{t('fullNameLabel')}</div>
               <div className="input">
-                <UserIcon />
+                <span className="ms" aria-hidden="true">person</span>
                 <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder={t('fullNamePlaceholder')} />
               </div>
             </div>
@@ -190,19 +190,19 @@ export default function AuthScreen() {
             <div className="field">
               <div className="field__label">{t('emailLabel')}</div>
               <div className="input">
-                <Mail />
+                <span className="ms" aria-hidden="true">mail</span>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" autoCapitalize="none" placeholder={t('emailPlaceholder')} />
               </div>
             </div>
 
             <div className="field">
               <div className="field__label">
-                <span>{t('passwordLabel')}</span>
+                {t('passwordLabel')}{' '}
                 {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
                 <a href="#" className="forgot" onClick={(e) => { e.preventDefault(); setForgotOpen(true) }}>{t('forgotPassword')}</a>
               </div>
               <div className="input">
-                <Lock />
+                <span className="ms" aria-hidden="true">lock</span>
                 <input
                   type={showPwd ? 'text' : 'password'}
                   value={password}
@@ -211,20 +211,27 @@ export default function AuthScreen() {
                   placeholder="••••••••"
                   minLength={isSignup ? 8 : 1}
                 />
-                <button type="button" className="toggle" onClick={() => setShowPwd((v) => !v)} aria-label={t('passwordLabel')}>
-                  {showPwd ? <EyeOff /> : <Eye />}
-                </button>
+                <span
+                  className="ms toggle"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={t('passwordLabel')}
+                  onClick={togglePw}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togglePw() } }}
+                >
+                  {showPwd ? 'visibility' : 'visibility_off'}
+                </span>
               </div>
             </div>
 
-            {/* Strength meter — purely-visual hint; .on1 (green) when strong, .on2 (orange) when weak */}
+            {/* Strength meter — DYNAMIC (bars become .on1 green / .on2 orange by score); style stays */}
             <div className="strength" aria-hidden="true">
               {[0, 1, 2, 3].map((i) => (
                 <i key={i} className={i < pwScore ? (pwScore <= 2 ? 'on2' : 'on1') : ''} />
               ))}
             </div>
 
-            <button type="submit" className="btn btn--primary" disabled={loading}>
+            <button className="btn btn--primary" type="submit" disabled={loading}>
               {loading ? (
                 t('loading')
               ) : (
@@ -235,8 +242,8 @@ export default function AuthScreen() {
               )}
             </button>
 
-            <button type="button" className="btn btn--line" onClick={() => router.push('/auth/magic')}>
-              <LinkIcon /> {t('magicLinkCta')}
+            <button className="btn btn--line" type="button" onClick={() => router.push('/auth/magic')}>
+              <span className="ms" aria-hidden="true">link</span>{t('magicLinkCta')}
             </button>
           </form>
 
