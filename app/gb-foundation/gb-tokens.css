@@ -1,0 +1,62 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * GRUBANO — gb-* DESIGN FOUNDATION · shared TOKEN layer
+ *
+ * Extracted VERBATIM from Claude-Design's own code (the union of the frozen auth
+ * pages: « Auth — RÉFÉRENCE VALIDÉE & FIGÉE » 38dfd2c9-8146-81be, « Auth — états
+ * OTP/magic-link/guest » 38cfd2c9-8146-81c5, « Auth — Lien magique DESKTOP »
+ * 38dfd2c9-8146-81be-9556). Every hex is CD's exact value — nothing invented.
+ *
+ * ⭐ ADDITIVE / NON-REGRESSION
+ *  - Scoped to the `.gb` root: the --gb-* are declared on `.gb` (light) and switch
+ *    under `[data-theme="dark"] .gb` / `.gb[data-theme="dark"]` (theme-aware, the
+ *    general DS behaviour — the auth screen is a SEPARATE fixed-per-screen case in
+ *    its own auth.css and is NOT affected).
+ *  - The --gb-* names are CD's own and live ONLY here (+ the auth.css); tokens.css /
+ *    tailwind.config.ts / globals.css are left byte-identical. No Tailwind mapping.
+ *  - Gabarito / Hanken are already loaded app-wide by tokens.css; we add only the
+ *    Material-Symbols icon font (CD uses Material icons, not lucide).
+ * ───────────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block');
+
+/* ── LIGHT tokens (CD :root, verbatim) ───────────────────────────────────────── */
+.gb{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-ink-700:#16395A;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-field-bg:#FFFFFF;
+  --gb-on-ink:#FFFFFF; --gb-on-ink-muted:#AFC0D6; --gb-on-ink-faint:#7E8FA3;
+  --gb-google:#4285F4;
+  --gb-success:#1E9E57; --gb-success-bg:#EAF7EF; --gb-success-bd:#CDEBD8; --gb-success-fg:#235C3A;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-grad-sunrise:linear-gradient(150deg,#FFB020,#FF6A1F 60%,#F2570E);
+  --gb-panel-ink:linear-gradient(150deg,#0F2742,#16395A 70%,#1A2C3F);
+  --gb-font-display:'Gabarito',system-ui,sans-serif;
+  --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-focus:0 0 0 3px rgba(255,106,31,.16); --gb-focus-border:#FF6A1F;
+}
+
+/* ── DARK tokens (CD [data-theme="dark"], verbatim) — theme-aware ────────────── */
+[data-theme="dark"] .gb,
+.gb[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-field-bg:#14253A;
+  --gb-google:#5B9BFF;
+  --gb-success:#41BD78; --gb-success-bg:rgba(65,189,120,.14); --gb-success-bd:#2C5C40; --gb-success-fg:#A7E0C0;
+  --gb-zest:#FF7C39;
+  --gb-focus:0 0 0 3px rgba(255,124,57,.18); --gb-focus-border:#FF7C39;
+}
+
+/* ── base / Material icons / keyframes (CD verbatim, scoped) ──────────────────── */
+.gb{ color:var(--gb-text); font-family:var(--gb-font-ui); -webkit-font-smoothing:antialiased }
+.gb .ms{ font-family:'Material Symbols Rounded'; font-weight:normal; font-style:normal; line-height:1; display:inline-block; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga' }
+.gb input,.gb button{ font-family:inherit }
+@keyframes gb-spin{ to{ transform:rotate(360deg) } }
+@keyframes gb-pulse{ 0%,100%{ opacity:.55; transform:scale(1) } 50%{ opacity:1; transform:scale(1.05) } }
