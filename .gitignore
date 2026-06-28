@@ -53,3 +53,6 @@ deploy_key
 deploy_key.pub
 grubano/_lovable_tmp/
 _lovable_tmp/
+
+# Visual-QA robot generated artifacts (scripts/design-qa.mjs) — keep the script + refs, ignore the output
+design-qa/
