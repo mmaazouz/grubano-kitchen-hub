@@ -1,0 +1,101 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/account — « Profil » (racine) — VERBATIM reproduction of the FROZEN CD ref
+ * (Notion 38efd2c9-…-300b, file eat/profile.html). Page CONTENT only (renders inside
+ * the EatShell nav shell, like /eat/orders + /eat/rewards). The CD design tokens all
+ * live in the gb-foundation (gb-tokens.css — --gb-grad / --gb-grad-sunrise / --gb-ink /
+ * --gb-zest-600 / --gb-border-strong / --gb-danger / --gb-r-* / --gb-shadow-card …);
+ * only the COMPONENT CSS lives here, scoped under `.gb-account`.
+ *
+ * The CD's foundation-colliding class names are renamed to avoid clashing with the
+ * gb-foundation base components (`.gb .card`, `.gb .row`, `.gb .btn`, `.gb .field`):
+ *   .row   → .ac-row      .group → .ac-group    .stats → .ac-stats
+ *   .seg   → .ac-seg      .langs → .ac-langs    .signout → .ac-signout …
+ * All other class names are kept verbatim, scoped.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ===================== PAGE CONTENT (sits inside nav shell) ===================== */
+.gb-account{max-width:760px;margin:0 auto;padding:clamp(18px,3vw,30px) clamp(16px,3vw,28px) 90px}
+
+/* top bar (page-internal title + settings gear) */
+.gb-account .prof-top{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.gb-account .prof-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em;color:var(--gb-text)}
+.gb-account .prof-top .ico{width:42px;height:42px;border-radius:var(--gb-r-md);background:var(--gb-surface);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-account .prof-top .ico .ms{font-size:21px;color:var(--gb-text)}
+
+/* identity card — Sunrise gradient */
+.gb-account .idcard{position:relative;overflow:hidden;border-radius:var(--gb-r-lg);background:var(--gb-grad-sunrise);padding:22px;margin-bottom:14px;display:flex;align-items:center;gap:16px}
+.gb-account .idcard::after{content:"";position:absolute;right:-30px;bottom:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.14)}
+.gb-account .idcard .av{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:24px;color:#fff;flex-shrink:0}
+.gb-account .idcard .who{flex:1;min-width:0;position:relative;color:#fff}
+.gb-account .idcard .who b{font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gb-account .idcard .who .tier{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;background:rgba(255,255,255,.25);border-radius:7px;padding:3px 9px;margin-top:6px;white-space:nowrap}
+.gb-account .idcard .who .tier .ms{font-size:14px}
+.gb-account .idcard .edit{position:relative;align-self:flex-start;width:36px;height:36px;border-radius:var(--gb-r-md);background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;border:none}
+.gb-account .idcard .edit .ms{font-size:19px;color:#fff}
+
+/* stats */
+.gb-account .ac-stats{display:flex;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);padding:16px 0;margin-bottom:22px}
+.gb-account .ac-stats .s{flex:1;text-align:center;border-right:1px solid var(--gb-border)}
+.gb-account .ac-stats .s:last-child{border-right:none}
+.gb-account .ac-stats .s b{font-family:var(--gb-font-display);font-weight:800;font-size:19px;display:block;color:var(--gb-text)}
+.gb-account .ac-stats .s span{font-size:11.5px;color:var(--gb-muted)}
+
+/* group label */
+.gb-account .glabel{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin:0 4px 9px}
+
+/* grouped card list */
+.gb-account .ac-group{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden;margin-bottom:16px}
+.gb-account .ac-row{display:flex;align-items:center;gap:14px;padding:15px 18px;border-bottom:1px solid var(--gb-border);cursor:pointer;width:100%;text-align:left;background:none;border-left:none;border-right:none;border-top:none;font-family:inherit;color:var(--gb-text)}
+.gb-account .ac-row:last-child{border-bottom:none}
+.gb-account .ac-row.static{cursor:default}
+.gb-account .ac-row .ic{width:38px;height:38px;border-radius:var(--gb-r-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-account .ac-row .ic .ms{font-size:21px}
+.gb-account .ac-row .main{flex:1;min-width:0}
+.gb-account .ac-row .main b{font-size:14px;font-weight:700;display:block;color:var(--gb-text)}
+.gb-account .ac-row .main span{font-size:12px;color:var(--gb-muted)}
+.gb-account .ac-row .val{font-size:12.5px;color:var(--gb-muted);white-space:nowrap}
+.gb-account .ac-row .go{font-size:20px;color:var(--gb-border-strong)}
+.gb-account .ac-row .pill{font-size:10.5px;font-weight:700;color:#fff;background:var(--gb-zest-600);border-radius:6px;padding:2px 7px}
+
+/* row icon tints */
+.gb-account .ic.orange{background:#FFF1E7}.gb-account .ic.orange .ms{color:#F2570E}
+.gb-account .ic.green{background:#EAF7EF}.gb-account .ic.green .ms{color:#1E8C4B}
+.gb-account .ic.blue{background:#E7F0FE}.gb-account .ic.blue .ms{color:#2E78F0}
+.gb-account .ic.pink{background:#FCE8F0}.gb-account .ic.pink .ms{color:#E0356E}
+.gb-account .ic.gray{background:var(--gb-surface-2);border:1px solid var(--gb-border)}.gb-account .ic.gray .ms{color:var(--gb-muted)}
+[data-theme="dark"] .gb-account .ic.orange{background:rgba(255,124,57,.16)}[data-theme="dark"] .gb-account .ic.orange .ms{color:var(--gb-zest)}
+[data-theme="dark"] .gb-account .ic.green{background:rgba(65,189,120,.16)}[data-theme="dark"] .gb-account .ic.green .ms{color:#41BD78}
+[data-theme="dark"] .gb-account .ic.blue{background:rgba(46,120,240,.18)}[data-theme="dark"] .gb-account .ic.blue .ms{color:#6FB6F5}
+[data-theme="dark"] .gb-account .ic.pink{background:rgba(224,53,110,.18)}[data-theme="dark"] .gb-account .ic.pink .ms{color:var(--gb-fav,#FF6FA1)}
+
+/* appearance segmented control */
+.gb-account .ac-seg{display:flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:10px;padding:3px;gap:2px}
+.gb-account .ac-seg button{font-family:inherit;font-size:12px;font-weight:700;color:var(--gb-muted);background:none;border:none;border-radius:7px;padding:7px 13px;cursor:pointer}
+.gb-account .ac-seg button.on{color:#fff;background:var(--gb-grad)}
+
+/* language chips */
+.gb-account .ac-langs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:230px}
+.gb-account .ac-langs span{font-size:11.5px;font-weight:600;color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:7px;padding:5px 9px;cursor:pointer}
+.gb-account .ac-langs span.on{color:#fff;background:var(--gb-ink);border-color:transparent}
+[data-theme="dark"] .gb-account .ac-langs span.on{background:var(--gb-zest);color:#0C1826}
+
+/* sign out */
+.gb-account .ac-signout{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);background:var(--gb-surface);color:var(--gb-danger);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer;box-shadow:var(--gb-shadow-card)}
+.gb-account .ac-signout .ms{font-size:19px}
+
+/* version */
+.gb-account .version{text-align:center;font-size:12px;color:var(--gb-muted-2);margin-top:14px}
+
+/* signed-out prompt (no CD ref → minimal, on-brand) */
+.gb-account .signin{display:flex;flex-direction:column;align-items:center;text-align:center;padding:48px 24px}
+.gb-account .signin__ico{width:92px;height:92px;border-radius:50%;background:var(--gb-grad-sunrise);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.gb-account .signin__ico .ms{font-size:46px;color:#fff}
+.gb-account .signin h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-account .signin p{margin:9px 0 22px;font-size:14px;line-height:1.55;color:var(--gb-muted);max-width:34ch}
+.gb-account .signin .cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;max-width:320px;padding:14px;border:none;border-radius:var(--gb-r-md);background:var(--gb-grad);color:#fff;font-family:inherit;font-weight:700;font-size:15px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.gb-account .signin .cta--line{background:var(--gb-surface);color:var(--gb-zest-600);border:1px solid var(--gb-border-strong);box-shadow:none;margin-top:10px}
+
+/* loading skeleton */
+.gb-account .ac-skel{height:96px;border-radius:var(--gb-r-lg);background:var(--gb-surface-2);border:1px solid var(--gb-border);animation:gb-pulse 1.4s ease-in-out infinite;margin-bottom:14px}
+
+@media (max-width:520px){ .gb-account .ac-row .val{display:none} .gb-account .ac-langs{max-width:150px} }

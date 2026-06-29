@@ -1,368 +1,262 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from '@/navigation'
+import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
-import {
-  User, MapPin, CreditCard, Tag, Bell, Settings, LogOut, ChevronRight,
-  Star, Package, Heart, MessageCircle, Shield, CircleHelp, Globe, ChefHat, Mail,
-} from 'lucide-react'
-import { showToast } from '@/lib/eat-cart'
-import { LanguageSwitcher } from '@/components/design-system'
-import LastReservationCard from '@/components/eat/LastReservationCard'
-import RoleSwitcher from '@/components/RoleSwitcher'
-import { formatEuros, formatAmount } from '@/lib/format-money'
+import { usePathname, useRouter } from '@/navigation'
+import { locales, type Locale } from '@/i18n'
+import { readFavs, showToast } from '@/lib/eat-cart'
+import './account.css'
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
 
-// Loyalty tiers per CLAUDE.md: Bronze 50 → Silver 100 → Gold 200 → Platine 400
+// /eat/account — « Profil » (racine de l'onglet Profil). VERBATIM reproduction of the
+// FROZEN CD ref (Notion 38efd2c9-…-300b, file eat/profile.html). Renders INSIDE the
+// EatShell nav shell (top-level tab) — page CONTENT only, never duplicates the rail/
+// topbar/bottom-nav. Material Symbols (not lucide); --gb-* tokens; design CSS in
+// account.css. Bound to REAL data: name/avatar/tier/points (loyalty wallet), order
+// counts, real favorites count, real i18n locale switch, real signOut().
+
+// Loyalty tiers per CLAUDE.md: Bronze 50 → Silver 100 → Gold 200 → Platine 400.
 function tierFor(points: number) {
-  if (points >= 400) return { label: 'Platine', next: 400, floor: 400 }
-  if (points >= 200) return { label: 'Or', next: 400, floor: 200 }
-  if (points >= 100) return { label: 'Argent', next: 200, floor: 100 }
-  if (points >= 50) return { label: 'Bronze', next: 100, floor: 50 }
-  return { label: 'Membre', next: 50, floor: 0 }
+  if (points >= 400) return { key: 'platine', next: 400, floor: 400 }
+  if (points >= 200) return { key: 'gold', next: 400, floor: 200 }
+  if (points >= 100) return { key: 'silver', next: 200, floor: 100 }
+  if (points >= 50) return { key: 'bronze', next: 100, floor: 50 }
+  return { key: 'member', next: 50, floor: 0 }
 }
 
-interface Order {
-  id: string
-  status: string
-  total: number
-  createdAt?: string
-  restaurant?: { id: string; name: string } | null
-}
+interface Order { id: string; status: string }
 
-// Chantier fidélité L2 — a points-ledger movement (read from /api/loyalty/history).
-interface LoyaltyTxn {
-  id: string
-  type: string          // earn | redeem | refund
-  points: number        // signed: +earned / −spent / +re-credited
-  euros: number         // |points| × centsPerPoint / 100 (server rate)
-  orderRef: string | null
-  date: string
-}
+// CD language chips — labels are CD-verbatim glyphs; ع (Arabic) carries dir="rtl".
+const LANG_CHIPS: { loc: Locale; label: string; rtl?: boolean }[] = [
+  { loc: 'fr', label: 'FR' },
+  { loc: 'en', label: 'EN' },
+  { loc: 'es', label: 'ES' },
+  { loc: 'it', label: 'IT' },
+  { loc: 'ar', label: 'ع', rtl: true },
+]
 
 export default function ProfileScreen() {
   const t = useTranslations('eat.account')
-  const tt = useTranslations('eat.track') // status labels reused (hygiène)
-  const locale = useLocale()
+  const locale = useLocale() as Locale
   const { data: session, status } = useSession()
   const router = useRouter()
+  const pathname = usePathname()
+
   const [points, setPoints] = useState(0)
-  // L2 — the points balance converted to a euro credit (server rate, never client).
-  const [balanceEuros, setBalanceEuros] = useState(0)
-  const [history, setHistory] = useState<LoyaltyTxn[]>([])
-  const [historyShown, setHistoryShown] = useState(5)
   const [orders, setOrders] = useState<Order[]>([])
-  const [notif, setNotif] = useState(true)
+  const [favCount, setFavCount] = useState(0)
+  // « Apparence » — INERT (no real theme mechanism in the app yet; the only persisted
+  // preference is the locale). The segmented control reflects the default (Clair) and
+  // does NOT fake persistence; see the report. Tracked here as pure local UI state.
+  const [appearance, setAppearance] = useState<'light' | 'dark' | 'auto'>('light')
 
   const loggedIn = status === 'authenticated'
+
+  useEffect(() => {
+    setFavCount(readFavs().length)
+  }, [])
 
   useEffect(() => {
     if (status !== 'authenticated') return
     Promise.all([
       fetch('/api/loyalty/wallet').then((r) => r.json()).catch(() => ({ pointsBalance: 0 })),
       fetch('/api/orders?take=50').then((r) => r.json()).catch(() => ({ orders: [] })),
-      fetch('/api/loyalty/history').then((r) => r.json()).catch(() => ({ transactions: [] })),
-    ]).then(([wallet, ord, hist]) => {
+    ]).then(([wallet, ord]) => {
       setPoints(wallet.pointsBalance ?? 0)
-      // Euro equivalent comes straight from the wallet (server rate) — never a
-      // client-side conversion (no hardcoded points→€ rate on this surface).
-      setBalanceEuros(typeof wallet.balanceEuros === 'number' ? wallet.balanceEuros : 0)
-      setOrders(ord.orders ?? [])
-      setHistory(Array.isArray(hist.transactions) ? hist.transactions : [])
+      setOrders(Array.isArray(ord.orders) ? ord.orders : [])
     })
   }, [status])
 
-  const MENU_ITEMS = [
-    // Phase 3 — multi-role cumul: a logged-in consumer can ALSO become a creator/
-    // influencer. Carries their email to pre-fill /creators/apply; the creator role
-    // is ADDED to this same account on approval (primary role + password untouched).
-    { icon: ChefHat, key: 'menuBecomeCreator', label: t('menuBecomeCreator'),
-      route: session?.user?.email
-        ? `/creators/apply?email=${encodeURIComponent(session.user.email)}`
-        : '/creators/apply',
-      color: '#F97316' },
-    { icon: Package, key: 'menuOrders', label: t('menuOrders'), route: '/eat/account', color: '#F97316' },
-    { icon: Heart, key: 'menuFavorites', label: t('menuFavorites'), route: '/eat/favorites', color: '#EF4444' },
-    { icon: MapPin, key: 'menuAddresses', label: t('menuAddresses'), route: '/eat/account/addresses', color: '#3B82F6' },
-    { icon: CreditCard, key: 'menuPayment', label: t('menuPayment'), route: null, color: '#22C55E' },
-    { icon: Tag, key: 'menuPromotions', label: t('menuPromotions'), route: '/eat/promos', color: '#F59E0B' },
-    { icon: Bell, key: 'menuNotifications', label: t('menuNotifications'), route: null, color: '#8B5CF6' },
-    { icon: MessageCircle, key: 'menuSupport', label: t('menuSupport'), route: null, color: '#06B6D4' },
-    { icon: Shield, key: 'menuPrivacy', label: t('menuPrivacy'), route: null, color: '#64748B' },
-    { icon: CircleHelp, key: 'menuHelp', label: t('menuHelp'), route: null, color: '#94A3B8' },
-    { icon: Settings, key: 'menuSettings', label: t('menuSettings'), route: null, color: '#6B7280' },
-    // Agent 147 — account email change (flag-gated server-side; the screen surfaces a neutral
-    // notice when AUTH_EMAIL_CHANGE_ENABLED is OFF). Inline FR label (no i18n key) — minimal,
-    // functional; restyled + localised at the design/i18n pass.
-    { icon: Mail, key: 'menuChangeEmail', label: "Changer d'e-mail", route: '/eat/account/email', color: '#0EA5E9' },
-  ]
+  // Real i18n locale switch (mirrors LanguageSwitcher): persist the cookie so the
+  // middleware honours it on future visits, then replace the route with the new locale.
+  function selectLocale(next: Locale) {
+    if (next === locale) return
+    document.cookie = `NEXT_LOCALE=${next};path=/;max-age=31536000;samesite=lax`
+    router.replace(pathname, { locale: next })
+  }
 
-  // Guest
+  const tierLabelFor = (key: string) =>
+    ({
+      platine: t('tierPlatinum'),
+      gold: t('tierGold'),
+      silver: t('tierSilver'),
+      bronze: t('tierBronze'),
+      member: t('tierMember'),
+    } as Record<string, string>)[key] ?? key
+
+  // ── Loading skeleton ─────────────────────────────────────────────────────────
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
-        <div className="border-b border-gb-stroke bg-gb-surface-elevated px-4 pb-4 pt-3"><div className="h-6 w-1/3 animate-pulse rounded-gb-sm bg-gb-oat-200" /></div>
-        <div className="space-y-3 p-4"><div className="h-24 animate-pulse rounded-gb-lg bg-gb-surface-elevated" /><div className="h-24 animate-pulse rounded-gb-lg bg-gb-surface-elevated" /></div>
+      <div className="gb gb-account">
+        <div className="prof-top"><h1>{t('title')}</h1></div>
+        <div className="ac-skel" />
+        <div className="ac-skel" />
+        <div className="ac-skel" />
       </div>
     )
   }
 
+  // ── Signed-out prompt (no CD ref; minimal on-brand sign-in) ──────────────────
   if (!loggedIn) {
     return (
-      <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
-        <div className="border-b border-gb-stroke bg-gb-surface-elevated px-4 pb-4 pt-3">
-          <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
-        </div>
-        <div className="flex flex-col items-center px-10 pt-20 text-center">
-          <div className="flex h-24 w-24 items-center justify-center rounded-gb-full bg-gb-zest-50"><User size={48} className="text-gb-accent" /></div>
-          <p className="mt-5 font-gb-display text-[22px] font-extrabold text-gb-content">{t('signInPrompt')}</p>
-          <p className="mt-2 text-sm leading-relaxed text-gb-content-muted">{t('signInSubtitle')}</p>
-          <button onClick={() => router.push('/eat/auth')} className="mt-8 w-full rounded-gb-full bg-gb-accent py-4 text-base font-bold text-gb-content-on-accent shadow-gb-md active:scale-95">{t('signIn')}</button>
-          <button onClick={() => router.push('/eat/auth')} className="mt-3 w-full rounded-gb-full border-2 border-gb-accent py-3.5 text-base font-bold text-gb-accent active:scale-95">{t('createAccount')}</button>
+      <div className="gb gb-account">
+        <div className="prof-top"><h1>{t('title')}</h1></div>
+        <div className="signin">
+          <div className="signin__ico"><span className="ms" aria-hidden="true">person</span></div>
+          <h2>{t('signInPrompt')}</h2>
+          <p>{t('signInSubtitle')}</p>
+          <button className="cta" onClick={() => router.push('/eat/auth')}>{t('signIn')}</button>
+          <button className="cta cta--line" onClick={() => router.push('/eat/auth')}>{t('createAccount')}</button>
         </div>
       </div>
     )
   }
 
   const tier = tierFor(points)
-  const span = tier.next - tier.floor
-  const progress = tier.label === 'Platine' ? 100 : Math.min(100, ((points - tier.floor) / span) * 100)
-  const nextLabel = tierFor(tier.next).label
-  const tierLabel = (label: string) => {
-    const map: Record<string, string> = {
-      Platine: t('tierPlatinum'),
-      Or: t('tierGold'),
-      Argent: t('tierSilver'),
-      Bronze: t('tierBronze'),
-      Membre: t('tierMember'),
-    }
-    return map[label] ?? label
-  }
-  const name = session?.user?.name ?? t('defaultName')
-  const email = session?.user?.email ?? ''
+  const name = (session?.user?.name as string | undefined) ?? t('defaultName')
+  const initials =
+    name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '🙂'
+  const deliveredCount = orders.filter((o) => o.status === 'delivered').length
+  const pointsFmt = points.toLocaleString('fr-FR')
+
+  // « Devenir partenaire » — pre-fill the creator-application email (multi-role cumul).
+  const becomePartnerRoute = session?.user?.email
+    ? `/creators/apply?email=${encodeURIComponent(session.user.email)}`
+    : '/creators/apply'
 
   return (
-    <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
-      <div className="border-b border-gb-stroke bg-gb-surface-elevated px-4 pb-4 pt-3">
-        <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
-      </div>
-
-      <div className="px-4 pb-6">
-        {/* User card */}
-        <div className="mt-3 flex items-center gap-3.5 rounded-gb-lg bg-gb-surface-elevated p-4 shadow-gb-md">
-          <div className="relative">
-            <div className="flex h-16 w-16 items-center justify-center rounded-gb-full border-2 border-gb-accent bg-gb-zest-50 text-2xl">🧑</div>
-            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-gb-full border-2 border-gb-surface-elevated bg-gb-success" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[17px] font-extrabold text-gb-content">{name}</p>
-            <p className="truncate text-[13px] text-gb-content-muted">{email}</p>
-            <div className="mt-1 inline-flex items-center gap-1 rounded-gb-full bg-gb-zest-50 px-2 py-0.5">
-              <Star size={12} className="fill-gb-accent text-gb-accent" />
-              <span className="text-[11px] font-semibold text-gb-accent">{t('loyalCustomer')}</span>
-            </div>
-          </div>
-          <button onClick={() => showToast(t('editProfileSoon'))} className="rounded-gb-full bg-gb-zest-50 px-3.5 py-[7px] text-[13px] font-bold text-gb-accent active:scale-95">{t('edit')}</button>
-        </div>
-
-        {/* Phase 4 — multi-role space selector (renders only for a multi-role
-            account, e.g. consumer + creator → switch to /creators/dashboard). */}
-        <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md empty:hidden">
-          <RoleSwitcher tone="light" />
-        </div>
-
-        {/* Last reservation — Pay-my-bill shortcut (Brique 2). Hidden when
-            localStorage has no stored reservation pointer; the card hands
-            off to a modal that walks through the ticket fetch + Stripe
-            Elements via the same factored component as /t/[tableId]. */}
-        <LastReservationCard />
-
-        {/* Loyalty card — balance in big + its euro-credit equivalent (L2). */}
-        <div className="mt-3 flex items-center gap-4 rounded-gb-lg bg-gb-sunrise p-5 shadow-gb-md">
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-white/80">{t('loyaltyPoints')}</p>
-            <p className="mt-1 text-[28px] font-extrabold leading-none text-white">{t('pts', { count: points.toLocaleString('fr-FR') })}</p>
-            {balanceEuros > 0 && (
-              <p className="mt-1 text-[13px] font-bold text-white">{t('creditEquivalent', { amount: formatAmount(balanceEuros, locale) })}</p>
-            )}
-            <p className="mt-1 text-[11px] text-white/80">
-              {tier.label === 'Platine' ? t('maxLevel') : t('pointsToNextLevel', { count: tier.next - points, level: tierLabel(nextLabel) })}
-            </p>
-          </div>
-          <div className="flex flex-1 flex-col items-end gap-2">
-            <div className="h-1.5 w-full overflow-hidden rounded-gb-full bg-white/30">
-              <div className="h-full rounded-gb-full bg-white transition-all duration-700" style={{ width: `${progress}%` }} />
-            </div>
-            <span className="text-[11px] font-semibold text-white/90">{tierLabel(tier.label)} → {tierLabel(nextLabel)}</span>
-          </div>
-        </div>
-
-        {/* Mes points — the loyalty ledger (L2). earn green / redeem neutral /
-            refund amber. Read-only from /api/loyalty/history (the L1 ledger). */}
-        {history.length > 0 && (
-          <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
-            <p className="px-4 pb-1 pt-4 font-gb-display text-[15px] font-extrabold text-gb-content">{t('pointsHistoryTitle')}</p>
-            {history.slice(0, historyShown).map((txn) => {
-              const earn   = txn.type === 'earn'
-              const refund = txn.type === 'refund'
-              const sign   = txn.points > 0 ? '+' : ''
-              const color  = earn ? 'text-gb-success' : refund ? 'text-gb-warning' : 'text-gb-content-muted'
-              const label  = earn
-                ? (txn.orderRef ? t('histEarnOrder', { ref: txn.orderRef }) : t('histEarn'))
-                : refund
-                  ? (txn.orderRef ? t('histRefundOrder', { ref: txn.orderRef }) : t('histRefund'))
-                  : (txn.orderRef ? t('histRedeemOrder', { ref: txn.orderRef }) : t('histRedeem'))
-              return (
-                <div key={txn.id} className="flex items-center gap-3 border-b border-gb-stroke px-4 py-3 last:border-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-gb-content">{label}</p>
-                    <p className="mt-0.5 text-[11px] text-gb-content-muted">
-                      {txn.date ? new Date(txn.date).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
-                      {txn.euros > 0 ? ` · ${formatEuros(txn.euros, locale)}` : ''}
-                    </p>
-                  </div>
-                  <span className={`shrink-0 text-[14px] font-extrabold ${color}`}>
-                    {sign}{txn.points.toLocaleString('fr-FR')} {t('ptsShort')}
-                  </span>
-                </div>
-              )
-            })}
-            {history.length > historyShown && (
-              <button
-                onClick={() => setHistoryShown((n) => n + 10)}
-                className="w-full py-3 text-center text-[13px] font-bold text-gb-accent active:opacity-70"
-              >
-                {t('seeMore')}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Stats */}
-        <div className="mt-3 flex rounded-gb-lg bg-gb-surface-elevated py-5 shadow-gb-md">
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-gb-content">{orders.length}</span><span className="text-xs text-gb-content-muted">{t('statOrders')}</span></div>
-          <div className="w-px bg-gb-stroke" />
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-gb-content">{orders.filter((o) => o.status === 'delivered').length}</span><span className="text-xs text-gb-content-muted">{t('statDelivered')}</span></div>
-          <div className="w-px bg-gb-stroke" />
-          <div className="flex flex-1 flex-col items-center gap-1"><span className="text-[22px] font-extrabold text-gb-content">{points >= 50 ? tierLabel(tier.label) : '–'}</span><span className="text-xs text-gb-content-muted">{t('statLevel')}</span></div>
-        </div>
-
-        {/* Order history — hygiène pré-live : NO exclusion, the client sees
-            ALL their orders, just correctly labelled. awaiting_payment gets
-            « En attente de paiement » + Finaliser → checkout ; expired gets a
-            greyed « Commande expirée » (eat.track keys reused, coherent with
-            the tracking page). Other states reuse the track status labels. */}
-        {orders.length > 0 && (
-          <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
-            <p className="px-4 pb-1 pt-4 font-gb-display text-[15px] font-extrabold text-gb-content">{t('ordersTitle')}</p>
-            {orders.slice(0, 10).map((o) => {
-              const badge = (() => {
-                if (o.status === 'awaiting_payment')
-                  return { label: tt('awaitingTitle'), cls: 'bg-[#FEF3C7] text-[#B45309]' }
-                if (o.status === 'expired')
-                  return { label: tt('expiredTitle'), cls: 'bg-[#F3F4F6] text-[#6B7280]' }
-                if (o.status === 'delivered')
-                  return { label: tt('statusDelivered'), cls: 'bg-[#DCFCE7] text-[#16A34A]' }
-                if (o.status === 'cancelled')
-                  return { label: tt('statusCancelled'), cls: 'bg-[#FEE2E2] text-[#DC2626]' }
-                const key = o.status === 'preparing' ? 'statusPreparing'
-                  : o.status === 'ready' ? 'statusReady'
-                  : o.status === 'picked_up' ? 'statusPickedUp'
-                  : 'statusReceived'
-                return { label: tt(key), cls: 'bg-[#FFF3ED] text-[#F97316]' }
-              })()
-              const isExpired = o.status === 'expired'
-              return (
-                <div key={o.id} className={`flex items-center gap-3 border-b border-gb-stroke px-4 py-3 last:border-0 ${isExpired ? 'opacity-60' : ''}`}>
-                  <button
-                    onClick={() => router.push(o.status === 'awaiting_payment' ? `/eat/checkout/${o.id}` : `/eat/track/${o.id}`)}
-                    className="min-w-0 flex-1 text-left active:opacity-70"
-                  >
-                    <p className="truncate text-[14px] font-bold text-gb-content">{o.restaurant?.name ?? '—'}</p>
-                    <p className="mt-0.5 text-[11px] text-gb-content-muted">
-                      {o.createdAt ? new Date(o.createdAt).toLocaleDateString(locale, { day: 'numeric', month: 'short' }) : ''}
-                      {' · '}{formatEuros(o.total, locale)}
-                    </p>
-                    <span className={`mt-1 inline-block rounded-gb-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
-                      {badge.label}
-                    </span>
-                  </button>
-                  {o.status === 'awaiting_payment' ? (
-                    <button
-                      onClick={() => router.push(`/eat/checkout/${o.id}`)}
-                      className="shrink-0 rounded-gb-full bg-gb-accent px-3 py-1.5 text-[12px] font-bold text-gb-content-on-accent active:scale-95"
-                    >
-                      {tt('awaitingCta')}
-                    </button>
-                  ) : (
-                    <ChevronRight size={16} className="shrink-0 text-gb-content-muted" />
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Notif toggle */}
-        <div className="mt-3 flex items-center gap-3 rounded-gb-lg bg-gb-surface-elevated p-4 shadow-gb-sm">
-          <Bell size={20} className="text-gb-accent" />
-          <span className="text-[15px] font-semibold text-gb-content">{t('pushNotifications')}</span>
-          <button
-            onClick={() => setNotif((v) => !v)}
-            className={`ml-auto flex h-7 w-12 items-center rounded-gb-full px-0.5 transition-colors ${notif ? 'justify-end bg-gb-accent' : 'justify-start bg-gb-oat-200'}`}
-          >
-            <span className="h-6 w-6 rounded-gb-full bg-gb-surface-elevated shadow-gb-sm" />
-          </button>
-        </div>
-
-        {/* Menu */}
-        <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
-          {MENU_ITEMS.map((item, idx) => {
-            const Icon = item.icon
-            return (
-              <button
-                key={item.key}
-                onClick={() => (item.route ? router.push(item.route) : showToast(t('comingSoon')))}
-                className={`flex w-full items-center gap-3.5 px-4 py-3.5 active:bg-gb-oat-50 ${idx === MENU_ITEMS.length - 1 ? '' : 'border-b border-gb-stroke'}`}
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-gb-md" style={{ backgroundColor: item.color + '18' }}>
-                  <Icon size={20} strokeWidth={2} style={{ color: item.color }} />
-                </span>
-                <span className="text-[15px] font-semibold text-gb-content">{item.label}</span>
-                <ChevronRight size={16} className="ml-auto text-gb-content-muted" />
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Language */}
-        <div className="mt-3 overflow-hidden rounded-gb-lg bg-gb-surface-elevated shadow-gb-md">
-          <div className="flex items-center gap-3.5 px-4 py-3.5">
-            <span
-              className="flex h-10 w-10 items-center justify-center rounded-gb-md"
-              style={{ backgroundColor: '#3B82F618' }}
-            >
-              <Globe size={20} strokeWidth={2} style={{ color: '#3B82F6' }} />
-            </span>
-            <span className="text-[15px] font-semibold text-gb-content">Langue</span>
-            <div className="ml-auto">
-              <LanguageSwitcher variant="full" />
-            </div>
-          </div>
-        </div>
-
-        {/* Logout */}
-        <button
-          onClick={() => signOut({ callbackUrl: '/eat/auth' })}
-          className="mt-3 flex w-full items-center justify-center gap-2.5 rounded-gb-lg border-[1.5px] border-gb-stroke bg-gb-surface-elevated py-4 active:scale-[0.99]"
-        >
-          <LogOut size={18} className="text-gb-error" />
-          <span className="text-[15px] font-bold text-gb-error">{t('logout')}</span>
+    <main className="gb gb-account">
+      {/* top — page-internal title + settings gear (distinct from the shell topbar) */}
+      <div className="prof-top">
+        <h1>{t('title')}</h1>
+        <button type="button" className="ico" aria-label={t('menuSettings')} onClick={() => showToast(t('comingSoon'))}>
+          <span className="ms" aria-hidden="true">settings</span>
         </button>
-
-        <p className="mt-5 text-center text-xs text-gb-content-muted">Grubano v1.0.0</p>
       </div>
-    </div>
+
+      {/* identity card — real name / initials / tier + points (Sunrise gradient) */}
+      <div className="idcard">
+        <span className="av">{initials}</span>
+        <div className="who">
+          <b>{name}</b>
+          <span className="tier">
+            <span className="ms" aria-hidden="true">workspace_premium</span>
+            {t('tierWithPoints', { tier: tierLabelFor(tier.key), points: pointsFmt })}
+          </span>
+        </div>
+        <button type="button" className="edit" aria-label={t('edit')} onClick={() => showToast(t('editProfileSoon'))}>
+          <span className="ms" aria-hidden="true">edit</span>
+        </button>
+      </div>
+
+      {/* stats — real counters (Commandes / Points / Livrées) */}
+      <div className="ac-stats">
+        <div className="s"><b>{orders.length}</b><span>{t('statOrders')}</span></div>
+        <div className="s"><b>{pointsFmt}</b><span>{t('statPoints')}</span></div>
+        <div className="s"><b>{deliveredCount}</b><span>{t('statDelivered')}</span></div>
+      </div>
+
+      {/* ─── Compte ─── */}
+      <p className="glabel">{t('groupAccount')}</p>
+      <div className="ac-group">
+        <button type="button" className="ac-row" onClick={() => router.push('/eat/favorites')}>
+          <span className="ic pink"><span className="ms" aria-hidden="true">favorite</span></span>
+          <div className="main"><b>{t('rowFavorites')}</b><span>{t('rowFavoritesSub')}</span></div>
+          <span className="val">{favCount}</span>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="ac-row" onClick={() => router.push('/eat/account/addresses')}>
+          <span className="ic orange"><span className="ms" aria-hidden="true">location_on</span></span>
+          <div className="main"><b>{t('rowAddresses')}</b><span>{t('rowAddressesSub')}</span></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="ac-row" onClick={() => router.push('/eat/account/email')}>
+          <span className="ic blue"><span className="ms" aria-hidden="true">mail</span></span>
+          <div className="main"><b>{t('rowEmail')}</b><span>{t('rowEmailSub')}</span></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="ac-row" onClick={() => router.push('/eat/orders')}>
+          <span className="ic green"><span className="ms" aria-hidden="true">receipt_long</span></span>
+          <div className="main"><b>{t('rowOrders')}</b><span>{t('rowOrdersSub')}</span></div>
+          {orders.length > 0 && <span className="pill">{orders.length}</span>}
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+      </div>
+
+      {/* ─── Préférences ─── */}
+      <p className="glabel">{t('groupPreferences')}</p>
+      <div className="ac-group">
+        {/* Apparence — INERT (no real theme mechanism yet); reflects the default only. */}
+        <div className="ac-row static">
+          <span className="ic gray"><span className="ms" aria-hidden="true">contrast</span></span>
+          <div className="main"><b>{t('rowAppearance')}</b></div>
+          <span className="ac-seg">
+            <button type="button" className={appearance === 'light' ? 'on' : undefined} onClick={() => setAppearance('light')}>{t('themeLight')}</button>
+            <button type="button" className={appearance === 'dark' ? 'on' : undefined} onClick={() => setAppearance('dark')}>{t('themeDark')}</button>
+            <button type="button" className={appearance === 'auto' ? 'on' : undefined} onClick={() => setAppearance('auto')}>{t('themeAuto')}</button>
+          </span>
+        </div>
+        {/* Langue — REAL i18n switch, 5 locales (FR/EN/ES/IT/AR). */}
+        <div className="ac-row static">
+          <span className="ic gray"><span className="ms" aria-hidden="true">language</span></span>
+          <div className="main"><b>{t('rowLanguage')}</b></div>
+          <span className="ac-langs">
+            {LANG_CHIPS.map((c) => (
+              <span
+                key={c.loc}
+                role="button"
+                tabIndex={0}
+                aria-pressed={c.loc === locale}
+                className={c.loc === locale ? 'on' : undefined}
+                dir={c.rtl ? 'rtl' : undefined}
+                onClick={() => selectLocale(c.loc)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectLocale(c.loc) } }}
+              >
+                {c.label}
+              </span>
+            ))}
+          </span>
+        </div>
+        <button type="button" className="ac-row" onClick={() => showToast(t('comingSoon'))}>
+          <span className="ic gray"><span className="ms" aria-hidden="true">notifications</span></span>
+          <div className="main"><b>{t('rowNotifications')}</b><span>{t('rowNotificationsSub')}</span></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="ac-row" onClick={() => showToast(t('comingSoon'))}>
+          <span className="ic gray"><span className="ms" aria-hidden="true">restaurant_menu</span></span>
+          <div className="main"><b>{t('rowDietary')}</b><span>{t('rowDietarySub')}</span></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+      </div>
+
+      {/* ─── Aide & à propos ─── */}
+      <p className="glabel">{t('groupHelp')}</p>
+      <div className="ac-group">
+        <button type="button" className="ac-row" onClick={() => showToast(t('comingSoon'))}>
+          <span className="ic gray"><span className="ms" aria-hidden="true">help</span></span>
+          <div className="main"><b>{t('rowHelpCenter')}</b></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="ac-row" onClick={() => router.push('/legal/confidentialite')}>
+          <span className="ic gray"><span className="ms" aria-hidden="true">description</span></span>
+          <div className="main"><b>{t('rowTerms')}</b></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="ac-row" onClick={() => router.push(becomePartnerRoute)}>
+          <span className="ic gray"><span className="ms" aria-hidden="true">storefront</span></span>
+          <div className="main"><b>{t('rowBecomePartner')}</b></div>
+          <span className="ms go" aria-hidden="true">chevron_right</span>
+        </button>
+      </div>
+
+      {/* sign out — real NextAuth signOut() */}
+      <button type="button" className="ac-signout" onClick={() => signOut({ callbackUrl: '/eat/auth' })}>
+        <span className="ms" aria-hidden="true">logout</span>{t('logout')}
+      </button>
+
+      <p className="version">{t('version')}</p>
+    </main>
   )
 }

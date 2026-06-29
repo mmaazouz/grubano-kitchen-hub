@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
-import {
-  ArrowLeft, Loader2, AlertCircle, Check, ShoppingBag, Store, Bike,
-} from 'lucide-react'
-import { Button } from '@/components/design-system'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
+import { readAddresses, formatAddress, type EatAddress } from '@/lib/eat-addresses'
+import './checkout.css'
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
 
 // ── /eat/checkout/[orderId] — chantier checkout C2 (Agent 13) ──────────────────
 //
@@ -24,15 +24,17 @@ import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
 //                                      webhook flipped paymentStatus='paid'
 //                                      (polled a few times — webhook race).
 //
-// Screens (mobile-first, bolt design):
-//   review  — order recap: products subtotal, delivery fee (or "pickup, no
-//             fee"), derived welcome discount, TOTAL + the explicit "charged
-//             NOW by card" note → Payer.
-//   pay     — Stripe Elements (reused component).
-//   paid    — confirmation: order ref, short recap, "le restaurant prépare
-//             votre commande", track CTA.
-// Error states: already paid (409 → friendly + track CTA), cancelled/amount
-// mismatch (server message VERBATIM), load failure.
+// 🔒 MONEY / BYTE-IDENTICAL — VISUAL RE-SKIN ONLY (CD ref Notion 38efd2c9-…-810f):
+//   The order is ALREADY created (by the cart's placeOrder) with a SERVER-FROZEN
+//   total by the time this page loads. The « Payer » CTA still calls startPayment →
+//   POST /api/orders/[id]/pay and Stripe/Wallet still confirm the SERVER amount
+//   (payInit.amount). NONE of that math changed. The CD mock adds an address / slot /
+//   tip / saved-card UI: those are POST-creation and CANNOT alter what is charged, so
+//   they are bound to REAL data where a backend exists (saved addresses, real totals)
+//   and rendered as INERT placeholders where it does not (tip selector + saved cards →
+//   no tip backend, no Stripe SetupIntent backend; per the run-1 CD note « aucune
+//   carte Stripe sauvegardée n'existe encore »). The tip selector defaults to « Aucun »
+//   and never adds to order.total, so the displayed Total === the charged amount.
 
 interface OrderItem { itemId?: string; name: string; qty: number; price: number }
 interface OrderInfo {
@@ -65,6 +67,7 @@ interface PayInit {
 type Stage = 'loading' | 'review' | 'pay' | 'paid' | 'already-paid' | 'error'
 
 const orderRefOf = (id: string) => `#${id.slice(-6).toUpperCase()}`
+const ADDR_ICON: Record<EatAddress['kind'], string> = { home: 'home', work: 'work', other: 'location_on' }
 
 export default function CheckoutPage() {
   const t = useTranslations('eat.checkout')
@@ -78,6 +81,21 @@ export default function CheckoutPage() {
   const [error,   setError]   = useState('')
   const [payInit, setPayInit] = useState<PayInit | null>(null)
   const [starting, setStarting] = useState(false)
+
+  // ── Visual-only selections (no money impact — see header note) ───────────────
+  // Real saved addresses (Wave 4 localStorage store); the selected address is
+  // display-only (the order's delivery details were frozen at creation).
+  const [addresses, setAddresses] = useState<EatAddress[]>([])
+  const [addrId, setAddrId]       = useState<string>('')
+  // Delivery slot — inert CD chips («Au plus vite» default). Display-only.
+  const [slot, setSlot]           = useState<string>('asap')
+  // Tip selector — INERT placeholder (no tip backend). Default «Aucun» (0) so the
+  // displayed Total stays === order.total === the charged amount. NEVER added to
+  // any charged sum.
+  const [tipKey, setTipKey]       = useState<string>('none')
+  // Payment-method radio — INERT placeholder (no saved-card backend). The real
+  // payment happens via Stripe Elements / Wallet in the 'pay' stage.
+  const [pmKey, setPmKey]         = useState<string>('visa')
 
   // ── Load the recap ──────────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
@@ -97,6 +115,14 @@ export default function CheckoutPage() {
   }, [orderId, router, t])
 
   useEffect(() => { if (orderId) loadOrder() }, [orderId, loadOrder])
+
+  // Load the user's real saved addresses (visual delivery selector).
+  useEffect(() => {
+    const list = readAddresses()
+    setAddresses(list)
+    const def = list.find((a) => a.isDefault) ?? list[0]
+    if (def) setAddrId(def.id)
+  }, [])
 
   // ── Start the payment (C1 route — called, never modified) ───────────────────
   async function startPayment() {
@@ -168,242 +194,310 @@ export default function CheckoutPage() {
         : Math.max(0, order.subtotal + order.deliveryFee - order.total - loyaltyCredit))
     : 0
   const ref = order ? orderRefOf(order.id) : ''
+  const selAddr = addresses.find((a) => a.id === addrId) ?? null
 
-  // ── Screens ─────────────────────────────────────────────────────────────────
+  // Inert delivery-slot chips (visual only). «Au plus vite» + a few fixed times.
+  const SLOTS = useMemo(() => ([
+    { key: 'asap', label: t('slotAsap'), now: true },
+    { key: '19:30', label: '19:30', now: false },
+    { key: '20:00', label: '20:00', now: false },
+    { key: '20:30', label: '20:30', now: false },
+    { key: '21:00', label: '21:00', now: false },
+  ]), [t])
+  // Inert tip chips (visual only — NO money impact, see header note).
+  const TIPS = useMemo(() => ([
+    { key: 'none', label: t('tipNone') },
+    { key: '10',   label: '10 %' },
+    { key: '15',   label: '15 %' },
+    { key: '20',   label: '20 %' },
+    { key: 'other', label: t('tipOther') },
+  ]), [t])
+
+  // ── The pay CTA — review = start payment; pay = the wallet + Stripe Elements
+  //    card (real payment). Money handlers BYTE-IDENTICAL. ──────────────────────
+  const PayCta = ({ id }: { id: string }) => (
+    <button
+      id={id}
+      type="button"
+      className="cta"
+      disabled={starting}
+      onClick={startPayment}
+    >
+      <span className="ms" aria-hidden="true">{starting ? 'progress_activity' : 'lock'}</span>
+      <span>{order ? t('payCta', { amount: fmt.format(order.total) }) : t('payCtaBare')}</span>
+    </button>
+  )
 
   return (
-    <div className="mx-auto min-h-screen max-w-md bg-gb-surface pb-24 font-gb-sans text-gb-content lg:max-w-[920px] lg:pb-12">
-      {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-gb-stroke bg-gb-surface px-4 py-3 backdrop-blur">
-        <button
-          onClick={() => router.back()}
-          aria-label={t('title')}
-          className="grid h-9 w-9 place-items-center rounded-gb-lg bg-gb-oat-100"
-        >
-          <ArrowLeft size={16} className="text-gb-content" />
+    <div className="gb gb-checkout">
+      {/* top bar */}
+      <div className="co-top">
+        <button className="back" type="button" onClick={() => router.back()} aria-label={t('title')}>
+          <span className="ms" aria-hidden="true">arrow_back</span>
         </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="font-gb-display text-base font-extrabold text-gb-content">{t('title')}</h1>
-          {order && <p className="text-[11px] text-gb-content-muted">{t('orderRef', { ref })}</p>}
-        </div>
-      </header>
+        <h1>{t('title')}</h1>
+      </div>
 
       {stage === 'loading' && (
-        <div className="mt-16 flex items-center justify-center gap-2 text-sm text-gb-content-muted">
-          <Loader2 size={14} className="animate-spin" /> {t('loading')}
-        </div>
+        <div className="loadrow"><span className="ms" aria-hidden="true">progress_activity</span>{t('loading')}</div>
       )}
 
       {stage === 'error' && (
-        <div className="mt-10 px-4 lg:mx-auto lg:max-w-md">
-          <p className="flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
-            <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
-            <span>{error || t('errLoad')}</span>
-          </p>
-          <button
-            type="button"
-            onClick={loadOrder}
-            className="mt-3 w-full rounded-gb-full border-2 border-gb-accent py-3 text-[14px] font-bold text-gb-accent active:scale-95"
-          >
-            {t('retry')}
-          </button>
+        <div className="center">
+          <div className="panel">
+            <div className="notice notice--err"><span className="ms" aria-hidden="true">error</span><span>{error || t('errLoad')}</span></div>
+            <div className="pcta"><button type="button" className="cta" onClick={loadOrder}><span className="ms" aria-hidden="true">refresh</span><span>{t('retry')}</span></button></div>
+          </div>
         </div>
       )}
 
       {stage === 'already-paid' && order && (
-        <div className="mt-10 px-4 lg:mx-auto lg:max-w-md">
-          <div className="rounded-gb-xl bg-gb-surface-elevated p-5 text-center shadow-gb-md">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-gb-full bg-gb-success text-white">
-              <Check size={20} />
-            </span>
-            <p className="mt-3 font-gb-display text-base font-extrabold text-gb-content">{t('errAlreadyPaid')}</p>
-            <div className="mt-4">
-              <Button
-                type="button"
-                variant="gb-primary"
-                size="pill"
-                fullWidth
-                onClick={() => router.push(`/eat/track/${order.id}`)}
-              >
-                {t('alreadyPaidCta')}
-              </Button>
+        <div className="center">
+          <div className="panel">
+            <div className="seal"><span className="ms" aria-hidden="true">check</span></div>
+            <h2>{t('errAlreadyPaid')}</h2>
+            <div className="pcta">
+              <button type="button" className="cta" onClick={() => router.push(`/eat/track/${order.id}`)}>
+                <span className="ms" aria-hidden="true">local_shipping</span><span>{t('alreadyPaidCta')}</span>
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {(stage === 'review' || stage === 'pay') && order && (
-        <div className="px-4 pt-4 lg:grid lg:grid-cols-[1fr_400px] lg:items-start lg:gap-6">
-          {/* LEFT — order recap (what you're paying for) */}
-          <div className="space-y-3 lg:min-w-0">
-            {/* ── Recap card ─────────────────────────────────────────────────── */}
-            <div className="rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-md">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="grid h-9 w-9 place-items-center rounded-gb-lg bg-gb-zest-50 text-gb-accent">
-                  {isPickup ? <Store size={16} /> : <Bike size={16} />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14px] font-extrabold text-gb-content">
-                    {order.restaurant?.name ?? ''}
-                  </p>
-                  <p className="text-[11px] text-gb-content-muted">{t('recapTitle')}</p>
-                </div>
-              </div>
+        <>
+          <div className="steps">
+            <b>{t('stepCart')}</b><span className="ms" aria-hidden="true">chevron_right</span>
+            <b className="cur">{t('stepPayment')}</b><span className="ms" aria-hidden="true">chevron_right</span>
+            {t('stepConfirm')}
+          </div>
 
-              <ul className="divide-y divide-gb-stroke">
-                {order.items.map((it, i) => (
-                  <li key={i} className="flex items-baseline gap-2.5 py-2 text-[13px]">
-                    <span className="text-gb-content-muted">{it.qty}×</span>
-                    <span className="flex-1 truncate text-gb-content">{it.name}</span>
-                    <span className="font-semibold text-gb-content">{fmt.format(it.price * it.qty)}</span>
-                  </li>
-                ))}
-              </ul>
+          <div className="layout">
+            {/* LEFT column — address / slot / tip / payment method */}
+            <div>
+              {/* Address (delivery only) — REAL saved addresses (visual selector) */}
+              {!isPickup && (
+                <section className="sec">
+                  <div className="sec__h">
+                    <span className="ms" aria-hidden="true">location_on</span>
+                    <b>{t('addressTitle')}</b>
+                    <button type="button" className="edit" onClick={() => router.push('/eat/account/addresses')}>{t('change')}</button>
+                  </div>
+                  {addresses.length === 0 ? (
+                    <button type="button" className="opt" onClick={() => router.push('/eat/account/addresses')}>
+                      <span className="ico"><span className="ms" aria-hidden="true">add_location_alt</span></span>
+                      <div className="main"><b>{t('addAddress')}</b><span>{t('addAddressHint')}</span></div>
+                    </button>
+                  ) : addresses.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={`opt${a.id === addrId ? ' sel' : ''}`}
+                      onClick={() => setAddrId(a.id)}
+                      aria-pressed={a.id === addrId}
+                    >
+                      <span className="ico"><span className="ms" aria-hidden="true">{ADDR_ICON[a.kind]}</span></span>
+                      <div className="main">
+                        <b>{a.label}{a.isDefault && <span className="badge-def">{t('default')}</span>}</b>
+                        <span>{formatAddress(a)}</span>
+                      </div>
+                      <span className="radio" />
+                    </button>
+                  ))}
+                </section>
+              )}
 
-              <div className="mt-2 space-y-1 border-t border-gb-stroke pt-2 text-[13px]">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-gb-content-muted">{t('subtotal')}</span>
-                  <span className="font-semibold text-gb-content">{fmt.format(order.subtotal)}</span>
+              {/* Delivery / pickup slot — inert CD chips (visual only) */}
+              <section className="sec">
+                <div className="sec__h">
+                  <span className="ms" aria-hidden="true">schedule</span>
+                  <b>{isPickup ? t('pickupSlotTitle') : t('slotTitle')}</b>
                 </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-gb-content-muted">{isPickup ? t('pickupNoFee') : t('deliveryFee')}</span>
-                  <span className="font-semibold text-gb-content">
-                    {isPickup ? fmt.format(0) : fmt.format(order.deliveryFee)}
-                  </span>
+                <div className="chiprow">
+                  {SLOTS.map((s) => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      className={`tchip${s.now ? ' now' : ''}${s.key === slot ? ' sel' : ''}`}
+                      onClick={() => setSlot(s.key)}
+                      aria-pressed={s.key === slot}
+                    >
+                      {s.now && <span className="ms" aria-hidden="true">bolt</span>}{s.label}
+                    </button>
+                  ))}
                 </div>
-                {discount > 0.005 && (
-                  <div className="flex items-baseline justify-between text-gb-basil-700">
-                    {/* P2 — the promo's display name when the server resolved one;
-                        generic label otherwise (welcome discount, legacy). */}
-                    <span>{order.promotion?.name ? t('promoLine', { name: order.promotion.name }) : t('discount')}</span>
-                    <span className="font-semibold">−{fmt.format(discount)}</span>
+              </section>
+
+              {/* Tip — INERT placeholder (no money impact, no tip backend) */}
+              {!isPickup && (
+                <section className="sec">
+                  <div className="sec__h">
+                    <span className="ms" aria-hidden="true">volunteer_activism</span>
+                    <b>{t('tipTitle')}</b>
+                  </div>
+                  <div className="tiprow">
+                    {TIPS.map((tp) => (
+                      <button
+                        key={tp.key}
+                        type="button"
+                        className={`tipopt${tp.key === tipKey ? ' sel' : ''}`}
+                        onClick={() => setTipKey(tp.key)}
+                        aria-pressed={tp.key === tipKey}
+                      >
+                        {tp.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="tipnote"><span className="ms" aria-hidden="true">favorite</span>{t('tipNote')}</p>
+                </section>
+              )}
+
+              {/* Payment method — INERT placeholder radios (no saved-card backend) */}
+              <section className="sec">
+                <div className="sec__h">
+                  <span className="ms" aria-hidden="true">credit_card</span>
+                  <b>{t('paymentTitle')}</b>
+                </div>
+                <button type="button" className={`pm${pmKey === 'visa' ? ' sel' : ''}`} onClick={() => setPmKey('visa')} aria-pressed={pmKey === 'visa'}>
+                  <span className="brand visa">VISA</span>
+                  <div className="main"><b>{t('cardVisa')}</b><span>{t('cardExpires', { date: '08/27' })}</span></div>
+                  <span className="radio" />
+                </button>
+                <button type="button" className={`pm${pmKey === 'mc' ? ' sel' : ''}`} onClick={() => setPmKey('mc')} aria-pressed={pmKey === 'mc'}>
+                  <span className="brand mc"><span className="ms" aria-hidden="true">credit_card</span></span>
+                  <div className="main"><b>{t('cardMc')}</b><span>{t('cardExpires', { date: '02/26' })}</span></div>
+                  <span className="radio" />
+                </button>
+                <button type="button" className={`pm${pmKey === 'apple' ? ' sel' : ''}`} onClick={() => setPmKey('apple')} aria-pressed={pmKey === 'apple'}>
+                  <span className="brand apple"><span className="ms" aria-hidden="true">apple</span></span>
+                  <div className="main"><b>{t('applePay')}</b><span>{t('applePayHint')}</span></div>
+                  <span className="radio" />
+                </button>
+                <button type="button" className="addpay"><span className="ms" aria-hidden="true">add</span>{t('addCard')}</button>
+
+                {/* REAL payment lives here once the user taps « Payer » (stage 'pay').
+                    Wallet + Stripe Elements are left BYTE-IDENTICAL — only re-skinned
+                    around. They confirm the SAME PaymentIntent / server amount. */}
+                {stage === 'pay' && payInit && (
+                  <div className="pay-live">
+                    <WalletPaymentButton
+                      clientSecret={payInit.clientSecret}
+                      publishableKey={payInit.publishableKey}
+                      amount={payInit.amount}
+                      currency={payInit.currency}
+                      label={t('total')}
+                      heading={t('walletHeading')}
+                      errorLabel={t('walletError')}
+                      onPaid={() => setStage('paid')}
+                    />
+                    <StripeTicketPayment
+                      clientSecret={payInit.clientSecret}
+                      publishableKey={payInit.publishableKey}
+                      amount={payInit.amount}
+                      currency={payInit.currency}
+                      onPaid={() => setStage('paid')}
+                    />
                   </div>
                 )}
-                {/* L2 — loyalty credit on its OWN line (Grubano-financed, distinct
-                    from any promo). Server field only, never computed here. */}
+              </section>
+            </div>
+
+            {/* RIGHT — sticky order summary (REAL totals) */}
+            <aside className="summary">
+              <div className="summary__h">{t('summaryTitle')}</div>
+              <div className="miniitems">
+                {order.items.map((it, i) => (
+                  <div className="mi" key={i}>
+                    <span><b>{it.qty}×</b>{it.name}</span>
+                    <span className="v">{fmt.format(it.price * it.qty)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="summary__b">
+                <div className="srow"><span>{t('subtotal')}</span><b>{fmt.format(order.subtotal)}</b></div>
+                <div className="srow">
+                  <span>{isPickup ? t('pickupNoFee') : t('deliveryFee')}</span>
+                  <b>{isPickup ? fmt.format(0) : fmt.format(order.deliveryFee)}</b>
+                </div>
+                {discount > 0.005 && (
+                  <div className="srow disc">
+                    <span>{order.promotion?.name ? t('promoLine', { name: order.promotion.name }) : t('discount')}</span>
+                    <span>−{fmt.format(discount)}</span>
+                  </div>
+                )}
                 {loyaltyCredit > 0.005 && (
-                  <div className="flex items-baseline justify-between text-gb-basil-700">
+                  <div className="srow disc">
                     <span>
                       {order.pointsRedeemed && order.pointsRedeemed > 0
                         ? t('loyaltyLinePoints', { points: order.pointsRedeemed })
                         : t('loyaltyLine')}
                     </span>
-                    <span className="font-semibold">−{fmt.format(loyaltyCredit)}</span>
+                    <span>−{fmt.format(loyaltyCredit)}</span>
                   </div>
                 )}
-                <div className="flex items-baseline justify-between pt-1 text-[15px] font-extrabold">
-                  <span className="text-gb-content">{t('total')}</span>
-                  <span className="text-gb-accent">{fmt.format(order.total)}</span>
-                </div>
-              </div>
-            </div>
+                <div className="sdiv" />
+                <div className="stotal"><span>{t('total')}</span><b>{fmt.format(order.total)}</b></div>
 
-            {/* What is charged NOW — explicit, no surprise. */}
-            <p className="rounded-gb-lg bg-gb-surface-elevated px-3 py-2.5 text-[11px] text-gb-content-muted shadow-gb-md">
-              {t('payNowNote')}
-            </p>
-          </div>
-
-          {/* RIGHT — the payment action (sticky on desktop). review = Pay CTA;
-              pay = the wallet + Stripe Elements card. Only one is ever shown
-              (mutually exclusive by `stage`) → no double-payment path. */}
-          <aside className="mt-3 space-y-3 lg:mt-0 lg:sticky lg:top-4 lg:self-start">
-            {stage === 'review' && (
-              <>
-                {error && (
-                  <p className="flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
-                    <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
-                    <span>{error}</span>
+                {/* selected delivery address — quiet confirmation line (delivery only) */}
+                {!isPickup && selAddr && (
+                  <p className="reassure" style={{ marginTop: 0, marginBottom: 12 }}>
+                    <span className="ms" aria-hidden="true">location_on</span>{formatAddress(selAddr)}
                   </p>
                 )}
-                <Button
-                  type="button"
-                  variant="gb-primary"
-                  size="pill"
-                  fullWidth
-                  loading={starting}
-                  disabled={starting}
-                  onClick={startPayment}
-                >
-                  {t('payCta', { amount: fmt.format(order.total) })}
-                </Button>
-              </>
-            )}
 
-            {stage === 'pay' && payInit && (
-              <div className="space-y-3 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-md">
-                {/* Wallet 1-tap (Apple/Google Pay) — CONFIRMS THE SAME PaymentIntent (payInit.clientSecret)
-                    as the card, server amount (payInit.amount). Hidden when no wallet is available on the
-                    device → card-only. Success → SAME onPaid as the card (setStage('paid') → confirm-poll
-                    + tracking). The two payment components are left BYTE-IDENTICAL — only re-skinned around. */}
-                <WalletPaymentButton
-                  clientSecret={payInit.clientSecret}
-                  publishableKey={payInit.publishableKey}
-                  amount={payInit.amount}
-                  currency={payInit.currency}
-                  label={t('total')}
-                  heading={t('walletHeading')}
-                  errorLabel={t('walletError')}
-                  onPaid={() => setStage('paid')}
-                />
-                <StripeTicketPayment
-                  clientSecret={payInit.clientSecret}
-                  publishableKey={payInit.publishableKey}
-                  amount={payInit.amount}
-                  currency={payInit.currency}
-                  onPaid={() => setStage('paid')}
-                />
+                {error && stage === 'review' && (
+                  <div className="notice notice--err"><span className="ms" aria-hidden="true">error</span><span>{error}</span></div>
+                )}
+
+                {/* desktop CTA (hidden under the sticky mobile bar at ≤820px) */}
+                {stage === 'review' && <PayCta id="pay-cta-desktop" />}
+
+                <div className="reassure"><span className="ms" aria-hidden="true">verified_user</span>{t('reassure')}</div>
               </div>
-            )}
-          </aside>
-        </div>
+            </aside>
+          </div>
+
+          {/* mobile sticky pay bar */}
+          {stage === 'review' && (
+            <div className="mbar">
+              {error && <div className="notice notice--err"><span className="ms" aria-hidden="true">error</span><span>{error}</span></div>}
+              <PayCta id="pay-cta-mobile" />
+            </div>
+          )}
+        </>
       )}
 
       {/* ── Confirmation ─────────────────────────────────────────────────────── */}
       {stage === 'paid' && order && (
-        <div className="px-4 pt-8 lg:mx-auto lg:max-w-md">
-          <div className="rounded-gb-xl bg-gb-surface-elevated p-6 text-center shadow-gb-md">
-            <span className="mx-auto grid h-14 w-14 place-items-center rounded-gb-full bg-gb-success text-white">
-              <Check size={24} />
-            </span>
-            <p className="mt-4 font-gb-display text-[19px] font-extrabold text-gb-content">{t('confirmTitle')}</p>
-            <p className="mt-1 text-[13px] font-semibold text-gb-content">{t('orderRef', { ref })}</p>
-            <p className="mt-2 text-[13px] text-gb-content-muted">{t('confirmBody')}</p>
-            <p className="text-[12px] text-gb-content-muted">
+        <div className="center">
+          <div className="panel">
+            <div className="seal"><span className="ms" aria-hidden="true">check</span></div>
+            <h2>{t('confirmTitle')}</h2>
+            <p className="ref">{t('orderRef', { ref })}</p>
+            <p>{t('confirmBody')}</p>
+            <p>
               {isPickup
                 ? t('confirmPickup',   { restaurant: order.restaurant?.name ?? '' })
                 : t('confirmDelivery', { restaurant: order.restaurant?.name ?? '' })}
             </p>
 
-            {/* Short recap */}
-            <div className="mt-4 rounded-gb-lg bg-gb-oat-100 p-3 text-start">
-              <ul className="space-y-1">
-                {order.items.map((it, i) => (
-                  <li key={i} className="flex items-baseline gap-2 text-[12px]">
-                    <span className="text-gb-content-muted">{it.qty}×</span>
-                    <span className="flex-1 truncate text-gb-content">{it.name}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 border-t border-gb-stroke pt-2 text-[12px] font-bold text-gb-content">
-                {t('paidAmount', { amount: fmt.format(order.total) })}
-              </p>
+            <div className="recap">
+              {order.items.map((it, i) => (
+                <div className="ri" key={i}>
+                  <span className="q">{it.qty}×</span>
+                  <span className="n">{it.name}</span>
+                </div>
+              ))}
+              <p className="paid">{t('paidAmount', { amount: fmt.format(order.total) })}</p>
             </div>
 
-            <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-gb-content-muted">
-              <ShoppingBag size={11} /> {t('confirmEmail')}
-            </p>
+            <p className="email"><span className="ms" aria-hidden="true">mail</span>{t('confirmEmail')}</p>
 
-            <div className="mt-5">
-              <Button
-                type="button"
-                variant="gb-primary"
-                size="pill"
-                fullWidth
-                onClick={() => router.push(`/eat/track/${order.id}`)}
-              >
-                {t('trackCta')}
-              </Button>
+            <div className="pcta">
+              <button type="button" className="cta" onClick={() => router.push(`/eat/track/${order.id}`)}>
+                <span className="ms" aria-hidden="true">local_shipping</span><span>{t('trackCta')}</span>
+              </button>
             </div>
           </div>
         </div>

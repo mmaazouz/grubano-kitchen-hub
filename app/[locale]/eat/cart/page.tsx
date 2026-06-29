@@ -4,14 +4,22 @@ import { useState, useEffect, useMemo } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
-import { Minus, Plus, Trash2, MapPin, CreditCard, ShoppingBag, Bike, Package, Sparkles } from 'lucide-react'
-import { Button, Badge, PriceTag } from '@/components/design-system'
-import FoodImage from '@/components/eat/FoodImage'
 import CheckoutAuthSheet from '@/components/eat/CheckoutAuthSheet'
 import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
 import { readAddresses, getDefaultAddress, formatAddress, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros, formatAmount } from '@/lib/format-money'
+import './cart.css'
 import './cart-address.css'
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
+
+// /eat/cart — « Mon panier ». VERBATIM re-skin of the FROZEN CD ref
+// (Notion 38efd2c9-…-819d, file eat/cart.html). 🔒 MONEY page → VISUAL re-skin ONLY:
+// the cart/totals/place-order logic below is byte-identical to the prior version
+// (lib/eat-cart, placeOrder(), the saved-address selector, every total/fee/discount
+// computation). Material Symbols replace lucide; the IA upsell is INERT (« bientôt »);
+// the payment-method row is a placeholder (no Stripe saved-cards backend). Renders
+// inside EatShell (is-bare) — page content only, never the nav shell.
 
 type Fulfillment = 'delivery' | 'pickup'
 
@@ -394,354 +402,319 @@ export default function CartScreen() {
     placeOrder()
   }
 
+  // ── Rendering (CD verbatim markup, scoped under .gb / .gb-cart) ────────────────
+
   if (!hydrated) {
     return (
-      <div className="min-h-screen bg-gb-surface p-4">
-        <div className="mb-3 h-6 w-1/3 animate-pulse rounded-gb-md bg-gb-oat-200" />
-        <div className="h-40 animate-pulse rounded-gb-xl bg-gb-oat-100" />
+      <div className="gb">
+        <main className="gb-cart">
+          <div className="cart-top"><h1>{t('title')}</h1></div>
+          <div className="layout">
+            <div>
+              <div className="c-skel" />
+              <div className="c-skel" />
+            </div>
+            <div className="c-skel" style={{ height: 220 }} />
+          </div>
+        </main>
       </div>
     )
   }
 
-  if (!cart || cart.items.length === 0) {
-    return (
-      <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
-        <div className="border-b border-gb-stroke bg-gb-surface px-4 pb-4 pt-3">
-          <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
-        </div>
-        <div className="flex flex-col items-center justify-center px-10 pt-24 text-center">
-          <ShoppingBag size={64} className="text-gb-accent" />
-          <p className="mt-4 text-xl font-extrabold text-gb-content">{t('emptyTitle')}</p>
-          <p className="mt-2 text-sm leading-relaxed text-gb-content-muted">
-            {t('emptyDescription')}
-          </p>
-          <Button variant="gb-primary" size="pill" className="mt-6" onClick={() => router.push('/eat')}>
-            {t('exploreDishes')}
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  const isEmpty = !cart || cart.items.length === 0
 
-  // The Place-order CTA is rendered twice: a fixed bottom bar on mobile (<lg) and
-  // inside the sticky Summary panel on desktop (≥lg). Both call the same handler;
-  // only one is ever visible (the other is display:none) — no double-submit.
-  const placeOrderButton = (
-    <Button
-      variant="gb-primary"
-      size="pill"
-      fullWidth
-      loading={submitting}
-      onClick={handleCheckout}
-    >
-      <span className="flex-1 text-left">{submitting ? t('submitting') : t('placeOrder')}</span>
-      {!submitting && <span>{formatEuros(total, locale)}</span>}
-    </Button>
+  // The CTA is rendered twice: inside the sticky Summary panel (desktop ≥820px)
+  // and in the fixed mobile pay bar (<820px). Both call the SAME handler; the CSS
+  // shows only one at a time (.mbar is display:none on desktop) — no double-submit.
+  const cta = (
+    <button className="cta" onClick={handleCheckout} disabled={submitting} aria-busy={submitting}>
+      <span>{submitting ? t('submitting') : `${t('placeOrder')} · ${formatEuros(total, locale)}`}</span>
+      {submitting ? <span className="spin" aria-hidden="true" /> : <span className="ms" aria-hidden="true">arrow_forward</span>}
+    </button>
   )
 
   return (
-    <div className="min-h-screen bg-gb-surface pb-[160px] font-gb-sans text-gb-content lg:pb-12">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gb-stroke bg-gb-surface px-4 pb-4 pt-3">
-        <h1 className="font-gb-display text-[22px] font-extrabold text-gb-content">{t('title')}</h1>
-        <span className="text-sm font-semibold text-gb-accent">
-          {t('itemCount', { count: totalItems })}
-        </span>
-      </div>
-
-      {/* Desktop ≥lg = 2 columns: cart details on the left, a STICKY Summary panel
-          (totals + Place order) on the right. Mobile (<lg) = the single vertical
-          flow, with the Place order CTA as a fixed bottom bar. */}
-      <div className="lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-6">
-        {/* LEFT column */}
-        <div className="lg:min-w-0">
-          {/* Fulfilment tabs */}
-          <div className="mx-4 mt-3 flex gap-2 rounded-gb-xl bg-gb-surface-elevated p-1 shadow-gb-sm lg:mx-0">
-            {([
-              { value: 'delivery', label: t('tabDelivery'), icon: <Bike size={16} /> },
-              { value: 'pickup', label: t('tabPickup'), icon: <Package size={16} /> },
-            ] as const).map((opt) => {
-              const active = fulfillment === opt.value
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => setFulfillment(opt.value)}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-gb-lg py-2.5 text-sm font-bold transition active:scale-[0.99] ${
-                    active ? 'bg-gb-accent text-gb-content-on-accent shadow-gb-md' : 'text-gb-content-muted'
-                  }`}
-                >
-                  {opt.icon}
-                  {opt.label}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Items */}
-          <div className="mx-4 mt-3 space-y-3 rounded-gb-xl bg-gb-surface-elevated p-3 shadow-gb-sm lg:mx-0">
-            {cart.items.map(({ item, qty, options }) => (
-              <div key={item.id} className="flex items-center gap-3 border-b border-gb-stroke pb-3 last:border-0 last:pb-0">
-                <FoodImage
-                  name={item.name}
-                  src={item.photos?.[0]}
-                  className="h-[70px] w-[70px] shrink-0 rounded-gb-lg"
-                  glyphClassName="text-2xl"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-gb-content">{item.name}</p>
-                  {options?.note && (
-                    <p className="truncate text-[11px] text-gb-content-muted">📝 {options.note}</p>
-                  )}
-                  {options?.supplements && options.supplements.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {options.supplements.map((s) => (
-                        <Badge key={s.name} tone="primary" size="sm" skin="gb">
-                          + {s.name}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  <PriceTag amount={item.price * qty} size="sm" className="mt-1" />
-                </div>
-                <div className="flex flex-col items-center gap-2.5">
-                  <button
-                    onClick={() => removeItem(item.id)}
-                    aria-label={t('removeAria')}
-                    className="flex h-8 w-8 items-center justify-center rounded-gb-full bg-gb-error-soft active:scale-90"
-                  >
-                    <Trash2 size={16} className="text-gb-error" />
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => updateQty(item.id, -1)}
-                      aria-label="-"
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full border-[1.5px] border-gb-accent active:scale-90"
-                    >
-                      <Minus size={14} className="text-gb-accent" />
-                    </button>
-                    <span className="min-w-5 text-center text-[15px] font-bold text-gb-content">{qty}</span>
-                    <button
-                      onClick={() => updateQty(item.id, 1)}
-                      aria-label="+"
-                      className="flex h-[30px] w-[30px] items-center justify-center rounded-gb-full bg-gb-accent active:scale-90"
-                    >
-                      <Plus size={14} className="text-gb-content-on-accent" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Address (delivery) OR pickup card */}
-          {fulfillment === 'delivery' ? (
-            savedAddrs.length > 0 ? (
-              <div className="gb-addr-sel mx-4 mt-2.5 lg:mx-0" data-err="0">
-                <div className="sel-card">
-                  <div className="sel-card__head">
-                    <span className="ms" aria-hidden="true">local_shipping</span><b>{ta('selTitle')}</b>
-                    <button type="button" className="change" onClick={() => router.push('/eat/account/addresses')}>{ta('selChange')}</button>
-                  </div>
-                  <div className="sel-list">
-                    {savedAddrs.map((a) => (
-                      <button type="button" key={a.id} className={`opt${a.id === selectedAddrId ? ' sel' : ''}`} onClick={() => setSelectedAddrId(a.id)} aria-pressed={a.id === selectedAddrId}>
-                        <span className="radio" />
-                        <span className="opt__ico"><span className="ms" aria-hidden="true">{a.kind === 'home' ? 'home' : a.kind === 'work' ? 'work' : 'location_on'}</span></span>
-                        <span className="opt__main">
-                          <span className="opt__title"><b>{a.label}</b>{a.isDefault && <span className="badge-default"><span className="ms" style={{ fontSize: 11 }} aria-hidden="true">check</span>{ta('defaultBadge')}</span>}</span>
-                          <span className="opt__line">{formatAddress(a)}</span>
-                          {a.note && <span className="opt__note"><span className="ms" aria-hidden="true">info</span>{a.note}</span>}
-                        </span>
-                      </button>
-                    ))}
-                    <div className="sel-err"><span className="ms" aria-hidden="true">error</span>{ta('selErr')}</div>
-                    <button type="button" className="sel-add" onClick={() => router.push('/eat/account/addresses')}><span className="ms" aria-hidden="true">add_location_alt</span>{ta('selAdd')}</button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
-                <div className="flex items-start gap-3">
-                  <MapPin size={20} className="mt-0.5 shrink-0 text-gb-accent" />
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-gb-content">{t('deliveryAddress')}</p>
-                    <input
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder={t('addressPlaceholder')}
-                      className="mt-1 w-full bg-transparent text-xs text-gb-content placeholder:text-gb-content-muted focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-            )
-          ) : (
-            <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-zest-50 p-4 lg:mx-0">
-              <div className="flex items-start gap-3">
-                <Package size={20} className="mt-0.5 shrink-0 text-gb-accent" />
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-gb-content">{t('pickupLabel')}</p>
-                  <p className="mt-0.5 text-xs text-gb-oat-600">
-                    {cart.restaurant.name}
-                    {cart.restaurant.address ? ` — ${cart.restaurant.address}` : ''}
-                    {cart.restaurant.city ? `, ${cart.restaurant.city}` : ''}
-                  </p>
-                  <p className="mt-1 text-xs font-semibold text-gb-accent">
-                    {t('readyAround', { time: readyAt, minutes: cart.restaurant.deliveryTime ?? 20 })}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Payment */}
-          <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
-            <div className="flex items-center gap-3">
-              <CreditCard size={20} className="shrink-0 text-gb-accent" />
-              <div className="flex-1">
-                <p className="text-sm font-bold text-gb-content">{t('paymentMethod')}</p>
-                <p className="mt-0.5 text-xs text-gb-content-muted">
-                  {payment === 'card' ? '**** **** **** 4521' : t('cashOnDelivery')}
-                </p>
-              </div>
-              <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))} className="text-sm font-semibold text-gb-accent">
-                {t('edit')}
-              </button>
-            </div>
-          </div>
-
-          {/* Loyalty redemption (chantier fidélité L1/L2) — INTENTION toggle only.
-              Shown whenever the consumer is logged in with a balance. When a promo
-              is active the card is GRAYED with a clear D3 message (the points stay
-              available for a next order) and the toggle is disabled — the server
-              stays the sole judge (effectiveUsePoints is unchanged). When usable,
-              the cap is always explained (« jusqu'à X € selon ta commande »). The
-              exact credit is resolved + shown on the checkout screen, so the total
-              below stays the honest upper amount the customer could pay. */}
-          {loyaltyVisible && (
-            <div className={`mx-4 mt-2.5 rounded-gb-xl p-4 shadow-gb-sm lg:mx-0 ${promoBlocksLoyalty ? 'bg-gb-oat-100' : 'bg-gb-surface-elevated'}`}>
-              <div className="flex items-center gap-3">
-                <Sparkles size={20} className={`shrink-0 ${promoBlocksLoyalty ? 'text-gb-oat-600' : 'text-gb-accent'}`} />
-                <div className="min-w-0 flex-1">
-                  <p className={`text-sm font-bold ${promoBlocksLoyalty ? 'text-gb-oat-600' : 'text-gb-content'}`}>{t('loyaltyToggleTitle')}</p>
-                  <p className="mt-0.5 text-xs text-gb-oat-600">
-                    {t('loyaltyBalance', { count: pointsBalance.toLocaleString('fr-FR') })}
-                    {balanceEuros > 0 ? ` · ${t('loyaltyBalanceEur', { amount: formatAmount(balanceEuros, locale) })}` : ''}
-                  </p>
-                </div>
-                <button
-                  onClick={() => { if (!promoBlocksLoyalty) setUsePoints((v) => !v) }}
-                  disabled={promoBlocksLoyalty}
-                  aria-pressed={usePoints && !promoBlocksLoyalty}
-                  aria-label={t('loyaltyToggleTitle')}
-                  className={`flex h-7 w-12 shrink-0 items-center rounded-gb-full px-0.5 transition-colors ${
-                    promoBlocksLoyalty
-                      ? 'justify-start bg-gb-oat-300 opacity-50'
-                      : usePoints ? 'justify-end bg-gb-accent' : 'justify-start bg-gb-oat-300'
-                  }`}
-                >
-                  <span className="h-6 w-6 rounded-gb-full bg-white shadow" />
-                </button>
-              </div>
-              {promoBlocksLoyalty ? (
-                <p className="mt-2.5 rounded-gb-lg bg-gb-oat-200 px-3 py-2 text-[12px] font-medium text-gb-oat-700">
-                  {t('loyaltyPromoBlocked')}
-                </p>
-              ) : (
-                <p className="mt-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent">
-                  {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: formatAmount(maxLoyaltyEur, locale) })} · ` : ''}{t('loyaltyNote')}
-                </p>
-              )}
-            </div>
+    <div className="gb">
+      <main className="gb-cart">
+        {/* Header */}
+        <div className="cart-top">
+          <h1>{t('title')}</h1>
+          {!isEmpty && (
+            <span className="clear">
+              {totalItems > 0 ? t('itemCount', { count: totalItems }) : ''}
+            </span>
           )}
         </div>
 
-        {/* RIGHT column — sticky Summary panel on desktop */}
-        <aside className="lg:sticky lg:top-4 lg:self-start">
-          {/* Summary */}
-          <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
-            <p className="mb-3.5 font-gb-display text-[17px] font-extrabold text-gb-content">{t('summary')}</p>
-            <div className="mb-2.5 flex justify-between text-sm">
-              <span className="text-gb-content-muted">{t('subtotal')}</span>
-              <span className="font-semibold text-gb-content">{formatEuros(subtotal, locale)}</span>
-            </div>
-            {welcomeAmount > 0 && (
-              <div className="mb-2.5 flex justify-between text-sm">
-                <span className="text-gb-basil-700">
-                  {welcome?.creatorName
-                    ? t('welcomeDiscountFrom', { creator: welcome.creatorName })
-                    : t('welcomeDiscount')}
-                </span>
-                <span className="font-semibold text-gb-basil-700">-{formatEuros(welcomeAmount, locale)}</span>
-              </div>
-            )}
-            <div className="mb-2.5 flex justify-between text-sm">
-              <span className="text-gb-content-muted">{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
-              <span className="font-semibold text-gb-content">{fulfillment === 'pickup' ? t('free') : formatEuros(deliveryFee, locale)}</span>
-            </div>
-            {/* Small-order fee (V1.5) — line + nudge with a 1-click "add an item".
-                Disappears as soon as the items subtotal reaches the threshold. */}
-            {smallFeeApplies && (
-              <div className="mb-2.5 flex justify-between text-sm">
-                <span className="text-gb-content-muted">{t('smallOrderFeeLine')}</span>
-                <span className="font-semibold text-gb-content">{formatEuros(smallFeeEur, locale)}</span>
-              </div>
-            )}
-            {smallFeeApplies && (
-              <div className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2">
-                <p className="text-[12px] font-medium text-gb-accent">
-                  {t('smallOrderNudge', { amount: formatAmount(missingToThresholdEur, locale) })}
-                </p>
-                {suggestion && (
-                  <button
-                    onClick={() => addSuggested(suggestion)}
-                    className="mt-1.5 inline-flex items-center gap-1 rounded-gb-full bg-gb-accent px-3 py-1 text-[11px] font-bold text-gb-content-on-accent active:scale-95"
-                  >
-                    <Plus size={12} /> {t('smallOrderAddItem', { name: suggestion.name, price: formatAmount(suggestion.price, locale) })}
-                  </button>
+        {isEmpty ? (
+          /* Empty state (CD .empty, verbatim) — real empty cart */
+          <div className="empty">
+            <div className="empty__ico"><span className="ms" aria-hidden="true">shopping_bag</span></div>
+            <h2>{t('emptyTitle')}</h2>
+            <p>{t('emptyDescription')}</p>
+            <button className="ct-btn" onClick={() => router.push('/eat')}>
+              <span className="ms" aria-hidden="true">search</span>{t('exploreDishes')}
+            </button>
+          </div>
+        ) : (
+          <div className="layout">
+            {/* LEFT column */}
+            <div>
+              {/* Resto banner */}
+              <div className="resto">
+                <span className="thumb" aria-hidden="true" />
+                <div className="main">
+                  <b>{cart.restaurant.name}</b>
+                  <span>
+                    {[
+                      cart.restaurant.city,
+                      cart.restaurant.deliveryTime ? `~${cart.restaurant.deliveryTime} min` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </span>
+                </div>
+                {cart.restaurantId && (
+                  <button className="change" onClick={() => router.push(`/eat/r/${cart.restaurantId}`)}>{t('changeResto')}</button>
                 )}
               </div>
-            )}
-            {/* Chantier P2 — soft incentive: « Encore X € pour profiter de {nom} ».
-                Display arithmetic only — the server resolves the real promo. */}
-            {promoIncentive && (
-              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent">
-                {t('promoIncentive', { amount: formatAmount(promoIncentive.missing, locale), name: promoIncentive.name })}
-              </p>
-            )}
-            {/* Promo V2 — threshold-reward progress: « Ajoutez X € pour [récompense] ». */}
-            {thresholdIncentive && (
-              <p className="mb-2.5 rounded-gb-lg bg-gb-zest-50 px-3 py-2 text-[12px] font-medium text-gb-accent">
-                {t('thresholdIncentive', { amount: formatAmount(thresholdIncentive.missing, locale), reward: thresholdIncentive.reward })}
-              </p>
-            )}
-            <div className="mt-1 flex items-center justify-between border-t border-gb-stroke pt-3">
-              <span className="text-base font-extrabold text-gb-content">{t('total')}</span>
-              <PriceTag amount={total} size="lg" />
+
+              {/* Fulfilment mode toggle (real `fulfillment` state). Note: CD shows a
+                  third « Sur place » mode, omitted — no dine-in order path exists in
+                  placeOrder (Fulfillment is 'delivery' | 'pickup'). */}
+              <div className="modes" role="tablist">
+                <button role="tab" aria-selected={fulfillment === 'delivery'} onClick={() => setFulfillment('delivery')}>
+                  <span className="ms" aria-hidden="true">two_wheeler</span>{t('tabDelivery')}
+                </button>
+                <button role="tab" aria-selected={fulfillment === 'pickup'} onClick={() => setFulfillment('pickup')}>
+                  <span className="ms" aria-hidden="true">storefront</span>{t('tabPickup')}
+                </button>
+              </div>
+
+              {/* Items */}
+              <div className="items">
+                {cart.items.map(({ item, qty, options }) => {
+                  const optParts = [
+                    options?.size,
+                    ...(options?.supplements?.map((s) => `+ ${s.name}`) ?? []),
+                    ...(options?.exclusions ?? []),
+                    options?.note ? `📝 ${options.note}` : null,
+                  ].filter(Boolean)
+                  return (
+                    <div className="ct-item" key={item.id}>
+                      {item.photos?.[0]
+                        ? <span className="ct-item__img" style={{ backgroundImage: `url(${item.photos[0]})`, backgroundSize: 'cover', backgroundPosition: 'center' }} aria-hidden="true" />
+                        : <span className="ct-item__img" aria-hidden="true" />}
+                      <div className="ct-item__b">
+                        <div className="ct-item__row">
+                          <b>{item.name}</b>
+                          <span className="price">{formatEuros(item.price * qty, locale)}</span>
+                        </div>
+                        {optParts.length > 0 && <div className="ct-item__opt">{optParts.join(' · ')}</div>}
+                        <div className="ct-item__foot">
+                          <span className="stepper">
+                            <button onClick={() => updateQty(item.id, -1)} aria-label="-"><span className="ms" aria-hidden="true">remove</span></button>
+                            <b>{qty}</b>
+                            <button onClick={() => updateQty(item.id, 1)} aria-label="+"><span className="ms" aria-hidden="true">add</span></button>
+                          </span>
+                          <button className="ct-item__del" onClick={() => removeItem(item.id)} aria-label={t('removeAria')}>
+                            <span className="ms" aria-hidden="true">delete</span>{t('removeAria')}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Add more */}
+              {cart.restaurantId && (
+                <button className="addmore" onClick={() => router.push(`/eat/r/${cart.restaurantId}`)}>
+                  <span className="ms" aria-hidden="true">add</span>{t('addMore')}
+                </button>
+              )}
+
+              {/* IA upsell — INERT (« bientôt », decorative, no add-to-cart) */}
+              <div className="upsell" aria-hidden="true">
+                <div className="upsell__in">
+                  <div className="upsell__h">
+                    <span className="ic"><span className="ms">auto_awesome</span></span>
+                    <b>{t('upsellTitle')}</b>
+                    <span className="soon">{t('upsellSoon')}</span>
+                  </div>
+                  <div className="upsell__row">
+                    {[1, 2, 3].map((i) => (
+                      <div className="upcard" key={i}>
+                        <div className="uim" />
+                        <b>&nbsp;</b>
+                        <div className="ur"><span>&nbsp;</span><span className="plus"><span className="ms">add</span></span></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Address (delivery) OR pickup card */}
+              {fulfillment === 'delivery' ? (
+                savedAddrs.length > 0 ? (
+                  <div className="gb-addr-sel" data-err="0" style={{ marginTop: 14 }}>
+                    <div className="sel-card">
+                      <div className="sel-card__head">
+                        <span className="ms" aria-hidden="true">local_shipping</span><b>{ta('selTitle')}</b>
+                        <button type="button" className="change" onClick={() => router.push('/eat/account/addresses')}>{ta('selChange')}</button>
+                      </div>
+                      <div className="sel-list">
+                        {savedAddrs.map((a) => (
+                          <button type="button" key={a.id} className={`opt${a.id === selectedAddrId ? ' sel' : ''}`} onClick={() => setSelectedAddrId(a.id)} aria-pressed={a.id === selectedAddrId}>
+                            <span className="radio" />
+                            <span className="opt__ico"><span className="ms" aria-hidden="true">{a.kind === 'home' ? 'home' : a.kind === 'work' ? 'work' : 'location_on'}</span></span>
+                            <span className="opt__main">
+                              <span className="opt__title"><b>{a.label}</b>{a.isDefault && <span className="badge-default"><span className="ms" style={{ fontSize: 11 }} aria-hidden="true">check</span>{ta('defaultBadge')}</span>}</span>
+                              <span className="opt__line">{formatAddress(a)}</span>
+                              {a.note && <span className="opt__note"><span className="ms" aria-hidden="true">info</span>{a.note}</span>}
+                            </span>
+                          </button>
+                        ))}
+                        <div className="sel-err"><span className="ms" aria-hidden="true">error</span>{ta('selErr')}</div>
+                        <button type="button" className="sel-add" onClick={() => router.push('/eat/account/addresses')}><span className="ms" aria-hidden="true">add_location_alt</span>{ta('selAdd')}</button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="addr-input">
+                    <span className="ms" aria-hidden="true">location_on</span>
+                    <div className="f">
+                      <b>{t('deliveryAddress')}</b>
+                      <input
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder={t('addressPlaceholder')}
+                      />
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="pickup">
+                  <span className="ms" aria-hidden="true">storefront</span>
+                  <div className="f">
+                    <b>{t('pickupLabel')}</b>
+                    <div className="line">
+                      {cart.restaurant.name}
+                      {cart.restaurant.address ? ` — ${cart.restaurant.address}` : ''}
+                      {cart.restaurant.city ? `, ${cart.restaurant.city}` : ''}
+                    </div>
+                    <div className="ready">{t('readyAround', { time: readyAt, minutes: cart.restaurant.deliveryTime ?? 20 })}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Loyalty redemption (chantier fidélité L1/L2) — INTENTION toggle only.
+                  Shown whenever the consumer is logged in with a balance. When a promo
+                  is active the card is GRAYED with the D3 message and the toggle is
+                  disabled — the server stays the sole judge (effectiveUsePoints
+                  unchanged). The displayed total stays the honest upper amount. */}
+              {loyaltyVisible && (
+                <div className={`loyalty${promoBlocksLoyalty ? ' blocked' : ''}`}>
+                  <div className="loyalty__head">
+                    <span className="ms" aria-hidden="true">auto_awesome</span>
+                    <div className="loyalty__txt">
+                      <b>{t('loyaltyToggleTitle')}</b>
+                      <span>
+                        {t('loyaltyBalance', { count: pointsBalance.toLocaleString('fr-FR') })}
+                        {balanceEuros > 0 ? ` · ${t('loyaltyBalanceEur', { amount: formatAmount(balanceEuros, locale) })}` : ''}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => { if (!promoBlocksLoyalty) setUsePoints((v) => !v) }}
+                      disabled={promoBlocksLoyalty}
+                      aria-pressed={usePoints && !promoBlocksLoyalty}
+                      aria-label={t('loyaltyToggleTitle')}
+                      className={`toggle${promoBlocksLoyalty ? ' off-disabled' : usePoints ? ' on' : ''}`}
+                    >
+                      <span className="knob" />
+                    </button>
+                  </div>
+                  {promoBlocksLoyalty ? (
+                    <div className="loyalty__note blocked">{t('loyaltyPromoBlocked')}</div>
+                  ) : (
+                    <div className="loyalty__note">
+                      {maxLoyaltyEur > 0 ? `${t('loyaltyUpTo', { amount: formatAmount(maxLoyaltyEur, locale) })} · ` : ''}{t('loyaltyNote')}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* RIGHT column — sticky Summary panel on desktop */}
+            <aside className="summary">
+              <div className="summary__h">{t('summary')}</div>
+              <div className="summary__b">
+                {/* Payment-method row — INERT placeholder (no Stripe saved-cards
+                    backend). The « Modifier » button toggles the real card/cash
+                    paymentMethod state; the «•••• 4521» line is decorative. */}
+                <div className="pay">
+                  <span className="ms" aria-hidden="true">credit_card</span>
+                  <div className="pay__txt">
+                    <b>{t('paymentMethod')}</b>
+                    <span>{payment === 'card' ? '•••• •••• •••• 4521' : t('cashOnDelivery')}</span>
+                  </div>
+                  <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))}>{t('edit')}</button>
+                </div>
+
+                {/* Incentive nudges (real display-only arithmetic) */}
+                {smallFeeApplies && (
+                  <div className="nudge">
+                    {t('smallOrderNudge', { amount: formatAmount(missingToThresholdEur, locale) })}
+                    {suggestion && (
+                      <button className="nudge__add" onClick={() => addSuggested(suggestion)}>
+                        <span className="ms" aria-hidden="true">add</span>
+                        {t('smallOrderAddItem', { name: suggestion.name, price: formatAmount(suggestion.price, locale) })}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {promoIncentive && (
+                  <div className="nudge">{t('promoIncentive', { amount: formatAmount(promoIncentive.missing, locale), name: promoIncentive.name })}</div>
+                )}
+                {thresholdIncentive && (
+                  <div className="nudge">{t('thresholdIncentive', { amount: formatAmount(thresholdIncentive.missing, locale), reward: thresholdIncentive.reward })}</div>
+                )}
+
+                {/* Totals (CD .srow / .stotal, verbatim) — REAL computed amounts */}
+                <div className="srow"><span>{t('subtotal')}</span><b>{formatEuros(subtotal, locale)}</b></div>
+                {welcomeAmount > 0 && (
+                  <div className="srow disc">
+                    <span>{welcome?.creatorName ? t('welcomeDiscountFrom', { creator: welcome.creatorName }) : t('welcomeDiscount')}</span>
+                    <span>-{formatEuros(welcomeAmount, locale)}</span>
+                  </div>
+                )}
+                <div className="srow">
+                  <span>{fulfillment === 'pickup' ? t('feePickup') : t('feeDelivery')}</span>
+                  <b>{fulfillment === 'pickup' ? t('free') : formatEuros(deliveryFee, locale)}</b>
+                </div>
+                {smallFeeApplies && (
+                  <div className="srow"><span>{t('smallOrderFeeLine')}</span><b>{formatEuros(smallFeeEur, locale)}</b></div>
+                )}
+                <div className="sdiv" />
+                <div className="stotal"><span>{t('total')}</span><b>{formatEuros(total, locale)}</b></div>
+
+                {/* Desktop CTA (lives in the sticky panel) */}
+                {cta}
+                <div className="reassure"><span className="ms" aria-hidden="true">lock</span>{t('securePayment')}</div>
+
+                {error && (
+                  <div className="cart-err"><span className="ms" aria-hidden="true">error</span>{error}</div>
+                )}
+              </div>
+            </aside>
           </div>
+        )}
+      </main>
 
-          {error && (
-            <p className="mx-4 mt-3 rounded-gb-lg bg-gb-error-soft p-3 text-center text-sm text-gb-content lg:mx-0">
-              {error}
-            </p>
-          )}
-
-          {/* Desktop Place-order CTA (lives in the sticky panel) */}
-          <div className="mx-4 mt-3 hidden lg:mx-0 lg:block">
-            {placeOrderButton}
-          </div>
-        </aside>
-      </div>
-
-      {/* Mobile checkout bar (fixed, above the bottom-nav). Hidden on desktop where
-          the CTA lives in the sticky Summary panel. */}
-      <div className="fixed bottom-[60px] left-1/2 w-full max-w-[480px] -translate-x-1/2 border-t border-gb-stroke bg-gb-surface-elevated px-4 py-3.5 lg:hidden">
-        {placeOrderButton}
-      </div>
+      {/* Mobile sticky pay bar (CD .mbar) — hidden on desktop (the CTA lives in the
+          sticky Summary). Only shown when the cart has items. */}
+      {!isEmpty && <div className="mbar">{cta}</div>}
 
       {/* Passwordless account-AT-payment (Agent 138) — guests authenticate inline, then the order
-          continues. Look = current /eat (no Stellar). Password sign-in stays reachable inside it. */}
+          continues. Password sign-in stays reachable inside it. */}
       {authSheet && (
         <CheckoutAuthSheet
           onClose={() => setAuthSheet(false)}

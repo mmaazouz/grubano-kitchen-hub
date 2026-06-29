@@ -2,33 +2,51 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { Link, useRouter } from '@/navigation'
+import { useRouter } from '@/navigation'
 import { formatCuisineList } from '@/lib/categories'
 import { formatDistance } from '@/lib/format'
+import { formatEuros } from '@/lib/format-money'
 import { useGeolocation } from '@/lib/use-geolocation'
-import { Navigation, X } from 'lucide-react'
-import {
-  RestaurantCard,
-  SkeletonCard,
-  EmptyState,
-  Button,
-} from '@/components/design-system'
+import { readFavs, toggleFav, FAV_EVENT } from '@/lib/eat-cart'
 import { getRestaurantCover } from '@/lib/food-images'
+import './home.css'
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
 
-// Chantier P2 — the static BANNERS constant (hardcoded « jusqu'à X % » that the
-// engine never honoured) IS DEAD. The single promo banner below is built from
-// GET /api/eat/promos (real active promotions); zero active promo → the whole
-// carousel is hidden. The home never promises what doesn't exist.
+// /eat HOME — « Accueil ». VERBATIM reproduction of the FROZEN CD ref
+// (Notion 38efd2c9-…-81bf, file eat/home.html). Renders INSIDE the consumer nav
+// SHELL (components/eat/EatShell.tsx), like /orders & /rewards — the shell owns the
+// top bar (« Livrer à » + AI search + bag), so NO page header is reproduced here.
+//
+// Order (CD): hero (promo Sunrise + IA card « bientôt », INERT) → cuisines (scroll)
+// → Recommander (recent orders, reorder) → Populaires (grid 3→2→1).
+//
+// REAL DATA (never hardcoded):
+//   • promo  = GET /api/eat/promos summary — zero active promo → a generic welcome
+//     banner with NO fabricated %/€ (the home never promises what doesn't exist).
+//   • cuisines = the app's real fixed taxonomy (CUISINES), → /eat/search?cuisine=…
+//   • Recommander = the consumer's real recent orders (GET /api/eat/orders, past +
+//     current), « Recommander » → the restaurant page. No source / signed-out →
+//     the section is omitted.
+//   • Populaires = real restaurants (GET /api/restaurants), nearest-first when geo is
+//     on. Hearts = REAL favorites (lib/eat-cart toggleFav/readFavs).
+//   • IA card « Pour vous ce soir » = INERT (« bientôt » badge, decorative button).
+
 type PromoSummary = { totalPromos: number; maxPercent: number; bestFixed: number }
 
-const CATS = [
-  { name: 'Burger', nameKey: 'catBurger', emoji: '🍔', q: 'burger' },
-  { name: 'Pizza', nameKey: 'catPizza', emoji: '🍕', q: 'pizza' },
-  { name: 'Nouilles', nameKey: 'catNoodles', emoji: '🍜', q: 'asian' },
-  { name: 'Dessert', nameKey: 'catDessert', emoji: '🧁', q: 'desserts' },
-  { name: 'Salade', nameKey: 'catSalad', emoji: '🥗', q: 'healthy' },
-  { name: 'Sushi', nameKey: 'catSushi', emoji: '🍣', q: 'sushi' },
-]
+// Real fixed taxonomy → rendered in the CD cuisine-tile style (Material icon in a
+// tinted rounded square). `q` is the real /eat/search?cuisine slug.
+const CUISINES = [
+  { key: 'cuiPizza', q: 'pizza', icon: 'local_pizza', bg: '#FFF1E7', fg: '#F2570E' },
+  { key: 'cuiSushi', q: 'sushi', icon: 'set_meal', bg: '#EAEFF6', fg: '#1E3E60' },
+  { key: 'cuiBurgers', q: 'burgers', icon: 'lunch_dining', bg: '#FCF0D9', fg: '#B5760A' },
+  { key: 'cuiHealthy', q: 'healthy', icon: 'eco', bg: '#EAF7EF', fg: '#1E8C4B' },
+  { key: 'cuiPasta', q: 'asian', icon: 'ramen_dining', bg: '#FFF1E7', fg: '#F2570E' },
+  { key: 'cuiDessert', q: 'desserts', icon: 'icecream', bg: '#FBEAF1', fg: '#B83A6E' },
+] as const
+
+const TINTS = ['t1', 't2', 't3', 't4', 't5', 't6'] as const
+const ROW_TINTS = ['t1', 't2', 't5', 't4'] as const
 
 interface Restaurant {
   id: string
@@ -43,20 +61,15 @@ interface Restaurant {
   logo?: string
   city: string
   address: string
-  /** Set by /api/restaurants when lat/lng are forwarded. */
   distanceKm?: number
 }
 
-function SectionHeader({ title }: { title: string }) {
-  const t = useTranslations('eat.home')
-  return (
-    <div className="mb-3 flex items-center justify-between px-4">
-      <h2 className="font-gb-display text-[18px] font-extrabold text-gb-content">{title}</h2>
-      <Link href="/eat/search" className="text-sm font-semibold text-gb-accent">
-        {t('seeAll')}
-      </Link>
-    </div>
-  )
+interface RecentOrder {
+  id: string
+  restaurantName: string
+  itemsCount: number
+  total: number
+  restaurantId?: string
 }
 
 export default function HomeScreen() {
@@ -67,12 +80,12 @@ export default function HomeScreen() {
   const { coords, status, request, clear } = useGeolocation()
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
+  const [recent, setRecent] = useState<RecentOrder[]>([])
+  const [favs, setFavs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeCat, setActiveCat] = useState('Burger')
-  // Chantier P2 — real promo data; null until loaded (banner hidden then too).
   const [promoSummary, setPromoSummary] = useState<PromoSummary | null>(null)
 
-  // First visit of the session → play the splash once.
+  // First visit of the session → play the splash once (real wiring, kept).
   useEffect(() => {
     try {
       if (!sessionStorage.getItem('grubano_splash_seen')) {
@@ -83,14 +96,25 @@ export default function HomeScreen() {
     }
   }, [router])
 
-  // Re-fetch whenever coords change (granted / cleared).
+  // Favorites (real, localStorage) — live via FAV_EVENT.
+  useEffect(() => {
+    const sync = () => setFavs(readFavs())
+    sync()
+    window.addEventListener(FAV_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(FAV_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+
+  // Restaurants — nearest-first when geo is on, else top-rated (real wiring, kept).
   useEffect(() => {
     setLoading(true)
     const sp = new URLSearchParams({ take: '20' })
     if (coords) {
       sp.set('lat', String(coords.lat))
       sp.set('lng', String(coords.lng))
-      // Server sorts by distance when lat/lng are present.
     } else {
       sp.set('sort', 'rating')
     }
@@ -101,7 +125,34 @@ export default function HomeScreen() {
       .finally(() => setLoading(false))
   }, [coords])
 
-  // Chantier P2 — fetch the REAL active-promo summary once (display only).
+  // Recommander — the consumer's real recent orders (reorder). Signed-out / none →
+  // empty → the whole section is omitted below.
+  useEffect(() => {
+    let alive = true
+    fetch('/api/eat/orders')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d) return
+        const cards = [...(d.current ?? []), ...(d.past ?? [])] as Array<{
+          id: string; restaurantName: string; itemsCount: number; total: number; restaurantId?: string
+        }>
+        // De-dup by restaurant (most-recent first, as the API already sorts) and cap at 8.
+        const seen = new Set<string>()
+        const out: RecentOrder[] = []
+        for (const c of cards) {
+          const k = c.restaurantId ?? c.id
+          if (seen.has(k)) continue
+          seen.add(k)
+          out.push({ id: c.id, restaurantName: c.restaurantName, itemsCount: c.itemsCount, total: c.total, restaurantId: c.restaurantId })
+          if (out.length >= 8) break
+        }
+        setRecent(out)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  // Real active-promo summary (display only) — kept wiring.
   useEffect(() => {
     let alive = true
     fetch('/api/eat/promos')
@@ -110,8 +161,8 @@ export default function HomeScreen() {
         if (alive && d && typeof d.totalPromos === 'number') {
           setPromoSummary({
             totalPromos: d.totalPromos,
-            maxPercent:  typeof d.maxPercent === 'number' ? d.maxPercent : 0,
-            bestFixed:   typeof d.bestFixed  === 'number' ? d.bestFixed  : 0,
+            maxPercent: typeof d.maxPercent === 'number' ? d.maxPercent : 0,
+            bestFixed: typeof d.bestFixed === 'number' ? d.bestFixed : 0,
           })
         }
       })
@@ -119,10 +170,7 @@ export default function HomeScreen() {
     return () => { alive = false }
   }, [])
 
-  // Compose the meta line shown inside each card. When the API returned a
-  // distanceKm, append it to the cuisine slot so it surfaces on every layout
-  // (grid / list / hero) without needing a design-system extension.
-  const cuisineWithDistance = useCallback(
+  const cuisineWithMeta = useCallback(
     (r: Restaurant) => {
       const base = formatCuisineList(r.cuisine, locale, t('cuisineVaried'))
       if (typeof r.distanceKm === 'number') {
@@ -134,260 +182,202 @@ export default function HomeScreen() {
   )
 
   const geoActive = status === 'granted' && !!coords
-  // When the API has location it returns nearest-first; honour that order.
-  const popular = restaurants.slice(0, 8)
-  // Only split into top-rated/new buckets in non-geo mode (geo mode is already
-  // a meaningful "near you" ordering and we don't want to disrupt it).
-  const topRated = geoActive ? [] : restaurants.filter((r) => r.rating >= 4.7)
-  const others = geoActive ? [] : restaurants.filter((r) => r.rating < 4.7)
-  const newRestaurants = (others.length ? others : restaurants).slice(0, 4)
-
+  const popular = restaurants.slice(0, 6)
   const popularTitle = geoActive ? t('nearYou') : t('popular')
 
-  return (
-    <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
-      {/* Header + search row removed — the consumer nav SHELL (components/eat/EatShell.tsx)
-          now provides the global top bar (« Livrer à » + AI search + bell + cart). The
-          home opens directly on the geolocation banner. */}
+  // ETA window label e.g. "20–30 min" (real deliveryTime ± the CD ~10-min window).
+  const etaWindow = (mins: number) => `${Math.max(5, mins - 5)}–${mins + 5} min`
 
-      {/* Geolocation opt-in banner */}
+  const onHeart = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    const now = toggleFav(id)
+    setFavs((f) => (now ? [...f, id] : f.filter((x) => x !== id)))
+  }
+
+  return (
+    <div className="gb-home">
+      {/* ════ GEO opt-in (real) — CD has no geo block; styled in the home tone ════ */}
       {!geoActive ? (
-        <div className="mx-4 mb-5 flex items-center gap-3 rounded-gb-lg border border-gb-stroke bg-gb-zest-50 px-3.5 py-3">
-          <Navigation size={18} className="shrink-0 text-gb-accent" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gb-content">{t('geoBannerTitle')}</p>
-            <p className="text-[11px] text-gb-content-muted">
+        <div className="geo">
+          <span className="ms" aria-hidden="true">near_me</span>
+          <div className="gtxt">
+            <b>{t('geoBannerTitle')}</b>
+            <span>
               {status === 'denied'
                 ? t('geoBannerDenied')
                 : status === 'unavailable'
                   ? t('geoBannerUnavailable')
                   : t('geoBannerSubtitle')}
-            </p>
+            </span>
           </div>
-          <Button
-            variant="primary"
-            size="sm"
+          <button
+            type="button"
+            className="gbtn"
             onClick={request}
-            loading={status === 'requesting'}
-            disabled={status === 'unavailable'}
+            disabled={status === 'unavailable' || status === 'requesting'}
           >
             {t('geoEnable')}
-          </Button>
+          </button>
         </div>
       ) : (
-        <div className="mx-4 mb-5 flex items-center gap-2 rounded-gb-full bg-gb-success-soft px-3 py-1.5 text-xs font-medium text-gb-content-muted">
-          <Navigation size={13} className="text-gb-success" />
-          <span className="flex-1">{t('geoActive')}</span>
-          <button
-            onClick={clear}
-            aria-label={t('geoDisable')}
-            className="rounded-gb-full p-0.5 text-gb-content-muted hover:text-gb-content"
-          >
-            <X size={13} />
+        <div className="geo geo--on">
+          <span className="ms" aria-hidden="true">near_me</span>
+          <div className="gtxt"><b>{t('geoActive')}</b></div>
+          <button type="button" className="gclose" onClick={clear} aria-label={t('geoDisable')}>
+            <span className="ms" aria-hidden="true">close</span>
           </button>
         </div>
       )}
 
-      {/* Offres Exclusives — ONE REAL banner from active promotions (P2).
-          Zero active promo → the section is entirely hidden: the home never
-          promises what doesn't exist. */}
-      {promoSummary && promoSummary.totalPromos > 0 && (
-        <>
-          <SectionHeader title={t('exclusiveOffers')} />
-          <div className="mb-5 px-4">
-            <div className="relative flex h-[188px] w-full overflow-hidden rounded-gb-xl bg-gb-sunrise text-white lg:h-[228px]">
-              {/* Text-zone scrim — covers the WHOLE copy column (left ~72%) so white
-                  text keeps ≥4.5:1 across its full width on the Sunrise gradient (DS
-                  reserves the bare gradient for big decorative titles; here it carries
-                  copy). The right ~28% (decorative tile) stays full-vibrancy sunrise. */}
-              <div aria-hidden className="absolute inset-y-0 left-0 right-[28%] bg-gradient-to-r from-black/60 via-black/50 to-black/40" />
-              <div className="relative z-10 flex min-w-0 flex-1 flex-col gap-2 p-4">
-                <span className="self-start rounded-gb-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-gb-accent">
-                  {t('bannerRealTag')}
-                </span>
-                <p className="line-clamp-2 text-[17px] font-extrabold leading-tight">
-                  {t('bannerRealTitle', { count: promoSummary.totalPromos })}
-                </p>
-                {promoSummary.maxPercent > 0 ? (
-                  <div className="flex items-end gap-1">
-                    <span className="text-xs font-medium text-white">{t('upTo')}</span>
-                    <span className="text-[36px] font-black leading-none">−{promoSummary.maxPercent}</span>
-                    <span className="mb-0.5 text-base font-bold">%</span>
-                  </div>
-                ) : (
-                  <div className="flex items-end gap-1">
-                    <span className="text-xs font-medium text-white">{t('upTo')}</span>
-                    <span className="text-[36px] font-black leading-none">−{promoSummary.bestFixed}</span>
-                    <span className="mb-0.5 text-base font-bold">€</span>
-                  </div>
-                )}
-                <button
-                  onClick={() => router.push('/eat/promos')}
-                  className="mt-auto self-start rounded-gb-full bg-gb-ink-800 px-4 py-2 text-[13px] font-bold text-white transition active:scale-95"
-                >
-                  {t('getOffer')}
-                </button>
-              </div>
-              <div className="relative z-10 w-[34%] max-w-[150px]" aria-hidden>
-                <div className="grid h-full place-items-center text-5xl">🏷️</div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      {/* ════ HERO — promo Sunrise (real) + IA card (INERT « bientôt ») ════ */}
+      <div className="hm-hero">
+        <div className="hm-promo">
+          {promoSummary && promoSummary.totalPromos > 0 ? (
+            <>
+              <h2>
+                {promoSummary.maxPercent > 0
+                  ? t('promoTitlePercent', { percent: promoSummary.maxPercent })
+                  : t('promoTitleFixed', { amount: formatEuros(promoSummary.bestFixed, locale) })}
+              </h2>
+              <p>{t('promoSubtitle', { count: promoSummary.totalPromos })}</p>
+            </>
+          ) : (
+            <>
+              <h2>{t('promoWelcomeTitle')}</h2>
+              <p>{t('promoWelcomeSubtitle')}</p>
+            </>
+          )}
+          <button type="button" className="b" onClick={() => router.push('/eat/search')}>
+            {t('promoCta')}
+          </button>
+        </div>
 
-      {/* Categories — Claude-Design tiles: emoji in a rounded square + label below.
-          Keeps the app's REAL category list (CATS) — no fabricated CD list. */}
-      <SectionHeader title={t('exploreCategories')} />
-      <div className="mb-5 grid grid-cols-3 gap-2.5 px-4 min-[400px]:grid-cols-6">
-        {CATS.map((cat) => {
-          const active = activeCat === cat.name
-          return (
-            <button
-              key={cat.name}
-              onClick={() => {
-                setActiveCat(cat.name)
-                router.push(`/eat/search?cuisine=${cat.q}`)
-              }}
-              className="flex flex-col items-center gap-1.5 transition active:scale-95"
-            >
-              <span className={`grid aspect-square w-full max-w-[72px] place-items-center rounded-gb-xl border text-[26px] transition-colors ${
-                active
-                  ? 'border-transparent bg-gb-accent text-gb-content-on-accent shadow-gb-md'
-                  : 'border-gb-stroke bg-gb-surface-elevated'
-              }`}>
-                {cat.emoji}
-              </span>
-              <span className={`text-[12px] font-semibold ${active ? 'text-gb-accent' : 'text-gb-content-muted'}`}>
-                {t(cat.nameKey)}
-              </span>
-            </button>
-          )
-        })}
+        <div className="hm-foryou">
+          <div className="hm-foryou__in">
+            <div className="hm-foryou__h">
+              <span className="ic"><span className="ms" aria-hidden="true">auto_awesome</span></span>
+              <b>{t('iaTitle')}</b>
+              <span className="soon">{t('iaSoon')}</span>
+            </div>
+            <p>{t('iaBody')}</p>
+            <button type="button" className="b" disabled aria-disabled="true">{t('iaCta')}</button>
+          </div>
+        </div>
       </div>
 
-      {/* Popular / Near you — responsive GRID (1 col → 2 → 3 on desktop), aligned
-          with the Claude-Design desktop home. */}
-      <SectionHeader title={popularTitle} />
-      {loading ? (
-        <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-        </div>
-      ) : popular.length === 0 ? null : (
-        <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
-          {popular.map((r) => (
-            <RestaurantCard
-              key={r.id}
-              layout="grid"
-              name={r.name}
-              cover={r.coverPhoto || getRestaurantCover(r.id)}
-              cuisine={cuisineWithDistance(r)}
-              rating={r.rating}
-              reviewCount={r.reviewCount}
-              deliveryTime={r.deliveryTime}
-              deliveryFee={r.deliveryFee}
-              freeLabel={tc('free')}
-              closedLabel={tc('closed')}
-              onClick={() => router.push(`/eat/r/${r.id}`)}
-            />
-          ))}
-        </div>
+      {/* ════ CUISINES (real taxonomy) ════ */}
+      <div className="cuisines">
+        {CUISINES.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            className="cui"
+            onClick={() => router.push(`/eat/search?cuisine=${c.q}`)}
+          >
+            <span className="c" style={{ background: c.bg }}>
+              <span className="ms" style={{ color: c.fg }} aria-hidden="true">{c.icon}</span>
+            </span>
+            <span>{t(c.key)}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ════ RECOMMANDER — real recent orders. Omitted when there are none. ════ */}
+      {recent.length > 0 && (
+        <section className="sec">
+          <div className="sec__h">
+            <b>{t('recommend')}</b>
+            <button type="button" className="a-link" onClick={() => router.push('/eat/orders')}>
+              {t('seeMyOrders')}
+            </button>
+          </div>
+          <div className="hrow">
+            {recent.map((o, i) => (
+              <button
+                key={o.id}
+                type="button"
+                className="hcard"
+                onClick={() => o.restaurantId && router.push(`/eat/r/${o.restaurantId}`)}
+              >
+                <div
+                  className={`him ${ROW_TINTS[i % ROW_TINTS.length]}`}
+                  style={o.restaurantId ? { backgroundImage: `url(${getRestaurantCover(o.restaurantId)})` } : undefined}
+                >
+                  <span className="again">{t('reorder')}</span>
+                </div>
+                <b>{o.restaurantName}</b>
+                <span>{t('itemsAndTotal', { count: o.itemsCount, total: formatEuros(o.total, locale) })}</span>
+              </button>
+            ))}
+          </div>
+        </section>
       )}
 
-      {/* New restaurants — only in non-geo mode. Responsive card grid: 1 column on
-          small phones, 2 columns once the column is wide enough (reflows by width). */}
-      {!geoActive && (
-        <>
-          <SectionHeader title={t('newRestaurants')} />
-          <div className="mb-5 grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
-            {loading ? (
-              Array.from({ length: 2 }).map((_, i) => <SkeletonCard key={i} />)
-            ) : (
-              newRestaurants.map((r) => (
-                <RestaurantCard
+      {/* ════ POPULAIRES près de vous — real restaurants, grid 3→2→1 ════ */}
+      <section className="sec">
+        <div className="sec__h">
+          <b>{popularTitle}</b>
+          <button type="button" className="a-link" onClick={() => router.push('/eat/search')}>
+            {t('seeAll')}
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="grid">
+            {Array.from({ length: 6 }).map((_, i) => <div key={i} className="hm-skel" />)}
+          </div>
+        ) : popular.length === 0 ? (
+          <div className="empty">
+            <div className="empty__ico"><span className="ms" aria-hidden="true">restaurant</span></div>
+            <h2>{t('emptyTitle')}</h2>
+            <p>{t('emptyDescription')}</p>
+          </div>
+        ) : (
+          <div className="grid">
+            {popular.map((r, i) => {
+              const cover = r.coverPhoto || getRestaurantCover(r.id)
+              const on = favs.includes(r.id)
+              return (
+                <article
                   key={r.id}
-                  layout="grid"
-                  name={r.name}
-                  cover={r.coverPhoto || getRestaurantCover(r.id)}
-                  cuisine={cuisineWithDistance(r)}
-                  rating={r.rating}
-                  reviewCount={r.reviewCount}
-                  deliveryTime={r.deliveryTime}
-                  deliveryFee={r.deliveryFee}
-                  freeLabel={tc('free')}
-                  closedLabel={tc('closed')}
+                  className="hm-card"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => router.push(`/eat/r/${r.id}`)}
-                />
-              ))
-            )}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/eat/r/${r.id}`) } }}
+                >
+                  <div
+                    className={`hm-card__img ${TINTS[i % TINTS.length]}`}
+                    style={cover ? { backgroundImage: `url(${cover})` } : undefined}
+                  >
+                    <span className="hm-card__time">{etaWindow(r.deliveryTime)}</span>
+                    <button
+                      type="button"
+                      className={`hm-card__heart${on ? ' on' : ''}`}
+                      onClick={(e) => onHeart(e, r.id)}
+                      aria-pressed={on}
+                      aria-label={on ? t('unfavorite') : t('favorite')}
+                    >
+                      <span className="ms" aria-hidden="true">favorite</span>
+                    </button>
+                  </div>
+                  <div className="hm-card__b">
+                    <div className="hm-card__row">
+                      <b>{r.name}</b>
+                      <span className="hm-card__rating"><span className="ms" aria-hidden="true">star</span>{r.rating.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+                    </div>
+                    <div className="hm-card__meta">{cuisineWithMeta(r)}</div>
+                    <div className="hm-card__tags">
+                      {r.deliveryFee === 0 && <span className="hm-tag hm-tag--free">{tc('free')}</span>}
+                      {r.rating >= 4.7 && <span className="hm-tag hm-tag--pop">{t('tagPopular')}</span>}
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
           </div>
-        </>
-      )}
-
-      {/* Top rated — only in non-geo mode */}
-      {!geoActive && topRated.length > 0 && (
-        <>
-          <div className="mt-5">
-            <SectionHeader title={t('topRated')} />
-          </div>
-          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
-            {topRated.map((r) => (
-              <RestaurantCard
-                key={r.id}
-                layout="grid"
-                name={r.name}
-                cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineWithDistance(r)}
-                rating={r.rating}
-                reviewCount={r.reviewCount}
-                deliveryTime={r.deliveryTime}
-                deliveryFee={r.deliveryFee}
-                freeLabel={tc('free')}
-                closedLabel={tc('closed')}
-                ribbon={{ label: t('topBadge'), tone: 'success' }}
-                onClick={() => router.push(`/eat/r/${r.id}`)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* In geo mode, the full "Near you" list lives below the carousel as a grid */}
-      {geoActive && restaurants.length > 8 && (
-        <>
-          <SectionHeader title={t('moreNearYou')} />
-          <div className="grid grid-cols-1 gap-3 px-4 min-[420px]:grid-cols-2 lg:grid-cols-3">
-            {restaurants.slice(8).map((r) => (
-              <RestaurantCard
-                key={r.id}
-                layout="grid"
-                name={r.name}
-                cover={r.coverPhoto || getRestaurantCover(r.id)}
-                cuisine={cuisineWithDistance(r)}
-                rating={r.rating}
-                reviewCount={r.reviewCount}
-                deliveryTime={r.deliveryTime}
-                deliveryFee={r.deliveryFee}
-                freeLabel={tc('free')}
-                closedLabel={tc('closed')}
-                onClick={() => router.push(`/eat/r/${r.id}`)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {!loading && restaurants.length === 0 && (
-        <div className="px-4">
-          <EmptyState
-            emoji="🍳"
-            title={t('emptyTitle')}
-            description={t('emptyDescription')}
-          />
-        </div>
-      )}
-
-      <div className="h-6" />
+        )}
+      </section>
     </div>
   )
 }

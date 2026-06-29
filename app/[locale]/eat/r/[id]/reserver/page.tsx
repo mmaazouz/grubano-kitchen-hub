@@ -2,26 +2,35 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useRouter } from '@/navigation'
+import { Link, useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
-import {
-  ArrowLeft, Calendar, Clock, Users, Loader2, Check, AlertCircle, CreditCard,
-} from 'lucide-react'
 import StripeDepositForm from '@/components/eat/StripeDepositForm'
 import SessionBadge from '@/components/session/SessionBadge'
+import './reserver.css'
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
 
 // ── /eat/r/[id]/reserver ──────────────────────────────────────────────────────
 //
-// Payment-V1 consumer reservation flow (Agent 13). 4 steps in a single scrolly
-// page on the existing /eat shell (already public via the middleware matcher):
-//   1) date picker
-//   2) slot picker (GET /api/reservations/availability)
-//   3) guests + contact details
-//   4) optional Stripe Elements card hold (when restaurant has depositAmount>0)
+// CONSUMER reservation + Click&Collect screen. VERBATIM re-skin of the FROZEN CD
+// ref (Notion 38efd2c9-…-81b8, eat/reservation.html) onto the gb- foundation +
+// Material Symbols. Renders inside the EatShell in is-bare / immersive mode (the
+// route /eat/r/ is IMMERSIVE → desktop rail kept, no top bar; this page header
+// governs). CONTENT only — never duplicates the nav shell.
 //
-// Step 4's actual Stripe wiring lands in sub-commit 2 — this sub-commit ships
-// the orchestration scaffold + the "no deposit → done" branch so the end-to-end
-// flow already books a table successfully.
+// 🔒 MONEY page. The Stripe empreinte (<StripeDepositForm/>), the reservation POST
+// (/api/reservations/public), the availability fetch and the deposit branch are
+// BYTE-IDENTICAL — only the markup/CSS around them changed.
+//
+// Modes (CD toggle « Réserver | Click&Collect »):
+//   • Réserver  — the REAL table-reservation flow: real available slots
+//                 (GET /api/reservations/availability) + real party-size + real
+//                 contact → submit → (deposit | done). The CD's AI hint is INERT.
+//   • Click&Collect — there is NO order/pickup backend on THIS page (the real C&C
+//                 flow lives in the cart → /api/orders with fulfillmentType:'pickup').
+//                 Fabricating an order summary + a code here would invent data, which
+//                 the spec forbids → we render an explicit placeholder routing the
+//                 guest to the restaurant menu to build a real pickup order.
 
 interface AvailabilityResponse {
   restaurantId: string
@@ -45,7 +54,11 @@ interface CreatedReservation {
   depositAmount: number
 }
 
-type Step = 'date' | 'slot' | 'details' | 'deposit' | 'done'
+type Mode = 'reserve' | 'pickup'
+type Step = 'form' | 'deposit' | 'done'
+
+const DATE_STRIP_DAYS = 14
+const PARTY_OPTIONS = [1, 2, 3, 4, 5, 6] as const // 6 renders « 6+ »
 
 export default function ReservePage() {
   return (
@@ -57,8 +70,10 @@ export default function ReservePage() {
 
 function ScreenFallback() {
   return (
-    <div className="mx-auto flex max-w-md items-center justify-center px-5 py-20 text-gb-content-muted">
-      <Loader2 size={16} className="me-2 animate-spin" />
+    <div className="gb-reserver">
+      <div className="rs-state">
+        <span className="ms spin" aria-hidden="true">progress_activity</span>
+      </div>
     </div>
   )
 }
@@ -73,7 +88,8 @@ function ReserveInner() {
 
   // ── State ────────────────────────────────────────────────────────────────
   const today = useMemo(() => new Date().toISOString().split('T')[0], [])
-  const [step,     setStep]     = useState<Step>('date')
+  const [mode,     setMode]     = useState<Mode>('reserve')
+  const [step,     setStep]     = useState<Step>('form')
   const [date,     setDate]     = useState(today)
   const [guests,   setGuests]   = useState(2)
   const [time,     setTime]     = useState('')
@@ -87,9 +103,10 @@ function ReserveInner() {
   const [submitError,    setSubmitError]    = useState('')
   const [reservation,    setReservation]    = useState<CreatedReservation | null>(null)
 
-  // ── Availability fetch ───────────────────────────────────────────────────
+  // ── Availability fetch (real slots) — runs whenever the chosen date changes
+  // while in the « Réserver » mode and the form step. BYTE-IDENTICAL endpoint. ──
   useEffect(() => {
-    if (step !== 'slot') return
+    if (mode !== 'reserve' || step !== 'form') return
     let cancelled = false
     setLoadingSlots(true)
     setAvailabilityErr('')
@@ -109,9 +126,9 @@ function ReserveInner() {
       .catch(() => { if (!cancelled) setAvailabilityErr(t('errLoadAvailability')) })
       .finally(() => { if (!cancelled) setLoadingSlots(false) })
     return () => { cancelled = true }
-  }, [step, date, restaurantId, t])
+  }, [mode, step, date, restaurantId, t])
 
-  // ── Submit ───────────────────────────────────────────────────────────────
+  // ── Submit (BYTE-IDENTICAL reservation POST + deposit branch) ──────────────
   async function submit() {
     if (submitting) return
     setSubmitting(true)
@@ -165,8 +182,7 @@ function ReserveInner() {
         }
       } catch { /* non-fatal */ }
       if (resa.depositAmount > 0) {
-        // Stripe Elements wiring arrives in sub-commit 2. For now we still
-        // surface the deposit step, but its inner form will land then.
+        // Surface the deposit step — the inner Stripe form is byte-identical.
         setStep('deposit')
       } else {
         setStep('done')
@@ -178,11 +194,7 @@ function ReserveInner() {
     }
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
-  const currencyFmt = useMemo(
-    () => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }),
-    [locale],
-  )
+  // ── Derived display values (real) ──────────────────────────────────────────
   const longDate = useMemo(() => {
     try {
       return new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' })
@@ -190,269 +202,308 @@ function ReserveInner() {
     } catch { return date }
   }, [date, locale])
 
-  return (
-    <div className="mx-auto min-h-screen max-w-md bg-gb-surface pb-24 font-gb-sans text-gb-content lg:max-w-[860px] lg:pb-10">
-      {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-gb-stroke bg-gb-surface px-4 py-3 backdrop-blur">
-        <button
-          onClick={() => router.back()}
-          aria-label={t('headerBack')}
-          className="grid h-9 w-9 place-items-center rounded-gb-lg bg-gb-oat-100 text-gb-content"
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <h1 className="font-gb-display text-base font-bold text-gb-content">{t('headerTitle')}</h1>
-      </header>
+  // Real 14-day date strip from today forward (CD « Date » row). Selecting a date
+  // maps onto the real `date` state and clears the chosen time (refetch).
+  const dateStrip = useMemo(() => {
+    const base = new Date(today + 'T12:00:00')
+    return Array.from({ length: DATE_STRIP_DAYS }, (_, i) => {
+      const d = new Date(base)
+      d.setDate(base.getDate() + i)
+      const iso = d.toISOString().split('T')[0]
+      return {
+        iso,
+        isToday: i === 0,
+        month: new Intl.DateTimeFormat(locale, { month: 'short' }).format(d).replace('.', '').toUpperCase(),
+        day:   new Intl.DateTimeFormat(locale, { day: 'numeric' }).format(d),
+        wday:  new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(d).replace('.', ''),
+      }
+    })
+  }, [today, locale])
 
-      {/* Desktop ≥lg = 2 columns: a real-data recap on the left, the step form on
-          the right. Mobile = the recap is hidden, the form is the single column
-          (behaviour byte-identical). The restaurant photo card from the desktop
-          reference is DEFERRED — this page never fetches the restaurant. */}
-      <div className="lg:flex lg:items-start lg:gap-6 lg:px-4 lg:pt-4">
-        {/* Recap sidebar (desktop only) — your real selections (no fabricated data). */}
-        <aside className="hidden lg:block lg:w-[300px] lg:shrink-0">
-          <div className="lg:sticky lg:top-20 rounded-gb-xl border border-gb-stroke bg-gb-surface-elevated p-4 shadow-gb-sm">
-            <p className="mb-3 font-gb-display text-base font-extrabold text-gb-content">{t('summaryTitle')}</p>
-            <ul className="space-y-2.5 text-sm text-gb-content">
-              <li className="flex items-center gap-2.5">
-                <Calendar size={16} className="shrink-0 text-gb-accent" />
-                <span className="capitalize">{longDate}</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <Clock size={16} className="shrink-0 text-gb-accent" />
-                <span>{time || '—'}</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <Users size={16} className="shrink-0 text-gb-accent" />
-                <span>{guests}</span>
-              </li>
-            </ul>
+  const partyLabel = (n: number) => (n >= 6 ? '6+' : String(n))
+  const footSummary = `${longDate} · ${t('partyShort', { count: guests })}${time ? ` · ${time}` : ''}`
+  const canConfirm = step === 'form' && mode === 'reserve' && !!time && !!name.trim() && !submitting
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="gb-reserver">
+      {/* Header (CD .pg-top) */}
+      <div className="pg-top">
+        <button type="button" className="back" onClick={() => router.back()} aria-label={t('headerBack')}>
+          <span className="ms" aria-hidden="true">arrow_back</span>
+        </button>
+        <h1>{mode === 'reserve' ? t('headerTitle') : t('ccTitle')}</h1>
+      </div>
+
+      {/* CD 2-col grid: restaurant recap (left, sticky) || form card (right) */}
+      <div className="grid">
+        {/* ── Restaurant recap card ──────────────────────────────────────────
+            This page never fetches the restaurant profile, so the recap shows the
+            CD chrome with the guest's REAL live selections (date · party · time) in
+            « Bon à savoir ». The photo/name/rating/address are DEFERRED (no fetch
+            here) — rendered as the CD placeholder, never fabricated facts. */}
+        <aside className="rs-rcard">
+          <div className="img" />
+          <div className="b">
+            <h2>{t('summaryTitle')}</h2>
+            <div className="div" />
+            <div className="know">{t('knowTitle')}</div>
+            {mode === 'reserve' ? (
+              <>
+                <div className="know-row"><span className="ms" aria-hidden="true">event</span><span className="capitalize">{longDate}</span></div>
+                <div className="know-row"><span className="ms" aria-hidden="true">schedule</span>{time || '—'}</div>
+                <div className="know-row"><span className="ms" aria-hidden="true">group</span>{t('partyShort', { count: guests })}</div>
+                <div className="know-row"><span className="ms" aria-hidden="true">payments</span>{t('knowNoPrepay')}</div>
+              </>
+            ) : (
+              <>
+                <div className="know-row"><span className="ms" aria-hidden="true">storefront</span>{t('ccKnowCounter')}</div>
+                <div className="know-row"><span className="ms" aria-hidden="true">qr_code_2</span>{t('ccKnowCode')}</div>
+              </>
+            )}
           </div>
         </aside>
 
-        {/* Step form (right column on desktop, single column on mobile) */}
-        <div className="lg:min-w-0 lg:flex-1">
-          {/* Step 1 — Date */}
-          {(step === 'date' || step === 'slot' || step === 'details') && (
-            <section className="px-4 pt-4 lg:px-0 lg:pt-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
-                <Calendar size={12} className="text-gb-accent" /> {t('stepDate')}
-              </p>
-              <input
-                type="date"
-                min={today}
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value)
-                  setTime('')
-                  if (step !== 'date') setStep('slot')
-                }}
-                className="w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-3 text-sm text-gb-content focus:border-gb-accent focus:outline-none"
-              />
-              {step === 'date' && (
-                <button
-                  type="button"
-                  onClick={() => setStep('slot')}
-                  className="mt-3 w-full rounded-gb-lg bg-gb-accent py-3 text-sm font-bold text-gb-content-on-accent"
-                >
-                  {t('submitBook')} →
-                </button>
-              )}
-            </section>
+        {/* ── Form card ──────────────────────────────────────────────────────── */}
+        <section className="rs-fcard">
+          {/* Mode toggle (CD .modes) — real React state (not the CD data-screen script) */}
+          {step === 'form' && (
+            <div className="modes" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'reserve'}
+                onClick={() => { setMode('reserve'); setSubmitError('') }}
+              >
+                <span className="ms" aria-hidden="true">table_restaurant</span>{t('modeReserve')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'pickup'}
+                onClick={() => { setMode('pickup'); setSubmitError('') }}
+              >
+                <span className="ms" aria-hidden="true">storefront</span>{t('modePickup')}
+              </button>
+            </div>
           )}
 
-          {/* Step 2 — Slot */}
-          {(step === 'slot' || step === 'details') && (
-            <section className="mt-4 px-4 lg:px-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
-                <Clock size={12} className="text-gb-accent" /> {t('stepSlot')}
-              </p>
-              {availability && (
-                <p className="mb-2 text-[11px] text-gb-content-muted">
+          {/* ═══ RÉSERVE — form step ═══ */}
+          {step === 'form' && mode === 'reserve' && (
+            <>
+              {/* Date strip (real dates) */}
+              <p className="lab">{t('stepDate')}</p>
+              <div className="dates" role="listbox" aria-label={t('stepDate')}>
+                {dateStrip.map((d) => {
+                  const sel = date === d.iso
+                  return (
+                    <div
+                      key={d.iso}
+                      role="option"
+                      aria-selected={sel}
+                      tabIndex={0}
+                      className={`date${sel ? ' sel' : ''}`}
+                      onClick={() => { setDate(d.iso); setTime('') }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDate(d.iso); setTime('') } }}
+                    >
+                      <small>{d.isToday ? t('today') : d.month}</small>
+                      <b>{d.day}</b>
+                      <span className="d3">{d.wday}</span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Time slots (real availability) */}
+              <p className="lab">{t('stepSlot')}</p>
+              {availability && !availabilityErr && !loadingSlots && (
+                <p className="rs-caption">
                   {t('slotsCaption', { guests, minutes: availability.durationMin })}
                 </p>
               )}
               {availabilityErr ? (
-                <p className="flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
-                  <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
+                <div className="rs-state err">
+                  <span className="ms" aria-hidden="true">error</span>
                   <span>{availabilityErr}</span>
-                </p>
+                </div>
               ) : loadingSlots ? (
-                <div className="flex items-center gap-2 rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-4 text-[12px] text-gb-content-muted">
-                  <Loader2 size={13} className="animate-spin" /> {t('slotsLoading')}
+                <div className="rs-state">
+                  <span className="ms spin" aria-hidden="true">progress_activity</span>
+                  <span>{t('slotsLoading')}</span>
                 </div>
               ) : availability && availability.slots.length > 0 ? (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="times">
                   {availability.slots.map((s) => {
                     const active = time === s.time
                     return (
                       <button
                         key={s.time}
                         type="button"
-                        onClick={() => {
-                          if (!s.available) return
-                          setTime(s.time)
-                          setStep('details')
-                        }}
                         disabled={!s.available}
-                        className={`flex flex-col items-center rounded-gb-lg border px-2 py-2 text-[11px] font-bold transition ${
-                          active
-                            ? 'border-gb-accent bg-gb-accent text-gb-content-on-accent'
-                            : s.available
-                              ? 'border-gb-stroke bg-gb-surface-elevated text-gb-content hover:border-gb-accent'
-                              : 'border-gb-stroke bg-gb-oat-100 text-gb-content-muted line-through'
-                        }`}
+                        onClick={() => { if (s.available) setTime(s.time) }}
+                        className={`time${active ? ' sel' : ''}${!s.available ? ' off' : ''}`}
                       >
-                        <span className="text-sm">{s.time}</span>
+                        {s.time}
                         {s.available && (
-                          <span className="mt-0.5 text-[9px] font-medium opacity-80">
-                            {t('slotFree', { count: s.freeTables })}
-                          </span>
+                          <span className="free">{t('slotFree', { count: s.freeTables })}</span>
                         )}
                       </button>
                     )
                   })}
                 </div>
               ) : (
-                <p className="rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-4 text-center text-[12px] text-gb-content-muted">
-                  {t('slotsEmpty')}
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* Step 3 — Details */}
-          {step === 'details' && (
-            <section className="mt-4 px-4 lg:px-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
-                <Users size={12} className="text-gb-accent" /> {t('stepDetails')}
-              </p>
-              <div className="space-y-2">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
-                    {t('guestsLabel')}
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={guests}
-                    onChange={(e) => setGuests(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content focus:border-gb-accent focus:outline-none"
-                  />
-                  <p className="mt-0.5 text-[10px] text-gb-content-muted">{t('guestsHint')}</p>
+                <div className="rs-state">
+                  <span className="ms" aria-hidden="true">event_busy</span>
+                  <span>{t('slotsEmpty')}</span>
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
-                    {t('fieldName')}
-                  </label>
+              )}
+
+              {/* Party size (real guests) */}
+              <p className="lab">{t('partyLabel')}</p>
+              <div className="party" role="listbox" aria-label={t('partyLabel')}>
+                {PARTY_OPTIONS.map((n) => {
+                  const sel = guests === n
+                  return (
+                    <span
+                      key={n}
+                      role="option"
+                      aria-selected={sel}
+                      tabIndex={0}
+                      className={sel ? 'sel' : undefined}
+                      onClick={() => setGuests(n)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setGuests(n) } }}
+                    >
+                      {partyLabel(n)}
+                    </span>
+                  )
+                })}
+              </div>
+
+              {/* Contact details (real) */}
+              <div className="rs-fields">
+                <div className="rs-field">
+                  <label htmlFor="rs-name">{t('fieldName')}</label>
                   <input
+                    id="rs-name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder={t('fieldNamePh')}
                     maxLength={100}
-                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content placeholder:text-gb-content-muted focus:border-gb-accent focus:outline-none"
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
-                    {t('fieldEmail')}
-                  </label>
+                <div className="rs-field">
+                  <label htmlFor="rs-email">{t('fieldEmail')}</label>
                   <input
+                    id="rs-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={t('fieldEmailPh')}
-                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content placeholder:text-gb-content-muted focus:border-gb-accent focus:outline-none"
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gb-content-muted">
-                    {t('fieldPhone')}
-                  </label>
+                <div className="rs-field">
+                  <label htmlFor="rs-phone">{t('fieldPhone')}</label>
                   <input
+                    id="rs-phone"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder={t('fieldPhonePh')}
-                    className="mt-1 w-full rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3 py-2.5 text-sm text-gb-content placeholder:text-gb-content-muted focus:border-gb-accent focus:outline-none"
                   />
                 </div>
               </div>
 
-              {submitError && (
-                <p className="mt-3 flex items-start gap-2 rounded-gb-lg bg-gb-error-soft px-3 py-2 text-[12px] text-gb-content">
-                  <AlertCircle size={13} className="mt-0.5 shrink-0 text-gb-error" />
-                  <span>{submitError}</span>
-                </p>
-              )}
+              {/* INERT AI hint (CD .ai, « bientôt ») */}
+              <div className="rs-ai">
+                <span className="ms" aria-hidden="true">auto_awesome</span>
+                <p>{t('aiHint')}</p>
+                <span className="soon">{t('aiSoon')}</span>
+              </div>
 
+              {submitError && (
+                <div className="rs-state err" style={{ marginTop: 14, marginBottom: 0 }}>
+                  <span className="ms" aria-hidden="true">error</span>
+                  <span>{submitError}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ═══ CLICK&COLLECT — form step (no order backend on this page) ═══
+              The real pickup flow is the cart → /api/orders (fulfillmentType:'pickup').
+              We DO NOT fabricate an order summary nor a pickup code here. Explicit
+              CD-skinned placeholder routing the guest to the menu to build a real order. */}
+          {step === 'form' && mode === 'pickup' && (
+            <>
+              <div className="rs-cc-empty">
+                <span className="ms" aria-hidden="true">shopping_bag</span>
+                <h3>{t('ccEmptyTitle')}</h3>
+                <p>{t('ccEmptyBody')}</p>
+                <Link href={`/eat/r/${restaurantId}`}>
+                  <span className="ms" aria-hidden="true">restaurant_menu</span>{t('ccEmptyCta')}
+                </Link>
+              </div>
+              <div className="rs-ai">
+                <span className="ms" aria-hidden="true">eco</span>
+                <p>{t('ccInfo')}</p>
+              </div>
+            </>
+          )}
+
+          {/* ═══ DEPOSIT — Stripe empreinte (container re-skin only) ═══ */}
+          {step === 'deposit' && reservation && (
+            <div className="rs-deposit">
+              <h3><span className="ms" aria-hidden="true">credit_card</span>{t('stepDeposit')}</h3>
+              <StripeDepositForm
+                reservationId={reservation.id}
+                onAuthorized={() => setStep('done')}
+              />
+            </div>
+          )}
+
+          {/* ═══ DONE — success panel ═══ */}
+          {step === 'done' && reservation && (
+            <div className="rs-done">
+              <span className="ok"><span className="ms" aria-hidden="true">check</span></span>
+              <h2>{t('okTitle')}</h2>
+              <p>{t('okBody', { date: longDate, time, guests })}</p>
+              {/* Brique A — the session code (same code the operator sees). */}
+              <div className="session">
+                <small>{tSession('yourSessionNo')}</small>
+                <SessionBadge reservationId={reservation.id} variant="large" />
+              </div>
               <button
                 type="button"
-                onClick={submit}
-                disabled={submitting || !name.trim() || !time}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-gb-lg bg-gb-accent py-3 text-sm font-bold text-gb-content-on-accent disabled:opacity-60"
+                className="rs-cta"
+                onClick={() => router.push(`/eat/r/${restaurantId}`)}
               >
-                {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
-                {t('submitBook')}
+                <span className="ms" aria-hidden="true">arrow_back</span>{t('okBack')}
               </button>
-            </section>
+            </div>
           )}
-
-          {/* Step 4 — Stripe Elements card hold (Agent 2's manual-capture intent).
-              ⚠️ <StripeDepositForm/> is money-adjacent and left BYTE-IDENTICAL — only
-              its container is re-skinned. */}
-          {step === 'deposit' && reservation && (
-            <section className="mt-4 px-4 lg:px-0">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gb-content-muted">
-                <CreditCard size={12} className="text-gb-accent" /> {t('stepDeposit')}
-              </p>
-              <div className="rounded-gb-xl border border-gb-stroke bg-gb-surface-elevated p-4">
-                <p className="text-sm font-bold text-gb-content">{t('depositTitle')}</p>
-                <StripeDepositForm
-                  reservationId={reservation.id}
-                  onAuthorized={() => setStep('done')}
-                />
-              </div>
-            </section>
-          )}
-
-          {/* Done */}
-          {step === 'done' && reservation && (
-            <section className="mt-4 px-4 lg:px-0">
-              <div className="rounded-gb-xl border border-gb-stroke bg-gb-surface-elevated p-4 text-center shadow-gb-sm">
-                <span className="mx-auto grid h-12 w-12 place-items-center rounded-gb-full bg-gb-success text-white">
-                  <Check size={20} />
-                </span>
-                <p className="mt-3 font-gb-display text-base font-bold text-gb-content">{t('okTitle')}</p>
-                <p className="mt-1 text-[12px] text-gb-content-muted">
-                  {t('okBody', {
-                    date:   longDate,
-                    time:   time,
-                    guests: guests,
-                  })}
-                </p>
-                {/* Brique A — Your session anchor. The operator sees the same
-                    code (the badge in their list/plan/addition). Saving it
-                    also helps the guest verify they're on the right addition
-                    when they pay later. */}
-                <div className="mt-3 flex flex-col items-center gap-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gb-content-muted">
-                    {tSession('yourSessionNo')}
-                  </p>
-                  <SessionBadge reservationId={reservation.id} variant="large" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => router.push(`/eat/r/${restaurantId}`)}
-                  className="mt-4 w-full rounded-gb-lg bg-gb-accent py-3 text-sm font-bold text-gb-content-on-accent"
-                >
-                  {t('okBack')}
-                </button>
-              </div>
-            </section>
-          )}
-        </div>
+        </section>
       </div>
+
+      {/* ── Sticky CTA footer (CD .foot) — only on the « Réserver » form step ──
+          Réserve confirm calls the BYTE-IDENTICAL submit(). C&C has no order here,
+          so no « Commander » CTA (the real order is placed from the cart). */}
+      {step === 'form' && mode === 'reserve' && (
+        <div className="rs-foot">
+          <div className="rs-foot__in">
+            <div className="rs-foot__sum">{footSummary}</div>
+            <button
+              type="button"
+              className="rs-cta"
+              onClick={submit}
+              disabled={!canConfirm}
+            >
+              {submitting
+                ? <span className="ms spin" aria-hidden="true">progress_activity</span>
+                : <span className="ms" aria-hidden="true">check</span>}
+              {t('submitBook')}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

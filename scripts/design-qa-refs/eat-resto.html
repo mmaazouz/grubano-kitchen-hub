@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Restaurant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-basil-bg:#EAF7EF; --gb-basil-bd:#CDEBD8;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-basil-bg:rgba(65,189,120,.14); --gb-basil-bd:#2C5C40; --gb-zest:#FF7C39;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button{font-family:inherit}
+.r{max-width:1100px;margin:0 auto;padding:0 0 90px}
+.hero{position:relative;height:230px;background:repeating-linear-gradient(135deg,#FFD9C2 0 18px,#FFE9D6 18px 36px)}
+[data-theme="dark"] .hero{background:repeating-linear-gradient(135deg,#3A2C22 0 18px,#2C2118 18px 36px)}
+.hero__bar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:18px 22px}
+.hero__bar .c{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;cursor:pointer}
+[data-theme="dark"] .hero__bar .c{background:rgba(20,37,58,.92)}
+.hero__bar .c .ms{font-size:21px;color:var(--gb-ink)}
+[data-theme="dark"] .hero__bar .c .ms{color:#EEF3F9}
+.hero__bar .right{display:flex;gap:8px}
+.hero__bar .c.fav .ms{color:#E0356E;font-variation-settings:'FILL' 1}
+.head{max-width:1100px;margin:0 auto;padding:0 clamp(16px,3vw,28px)}
+.headcard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);padding:22px 24px;margin-top:-46px;position:relative}
+.headcard h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(24px,3.4vw,30px);letter-spacing:-.025em}
+.headmeta{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap;font-size:13px;color:var(--gb-muted)}
+.headmeta .rate{display:inline-flex;align-items:center;gap:3px;font-weight:700;color:var(--gb-text)}
+.headmeta .rate .ms{font-size:16px;color:#EA9410}
+.headmeta .open{display:inline-flex;align-items:center;gap:3px;color:var(--gb-basil-600);font-weight:600}
+.headmeta .open .ms{font-size:15px}
+.modes{display:inline-flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:3px;margin-top:16px}
+.modes button{display:inline-flex;align-items:center;gap:6px;font-family:var(--gb-font-ui);font-weight:600;font-size:13px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:9px 18px;cursor:pointer}
+.modes button .ms{font-size:17px}
+.modes button[aria-selected="true"]{color:#fff;background:var(--gb-grad);font-weight:700}
+.layout{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start;max-width:1100px;margin:22px auto 0;padding:0 clamp(16px,3vw,28px)}
+@media (max-width:880px){ .layout{grid-template-columns:1fr} }
+.catnav{position:sticky;top:0;z-index:3;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:12px 0;margin-bottom:6px;background:var(--gb-bg)}
+.catnav::-webkit-scrollbar{display:none}
+.catnav span{flex-shrink:0;font-size:13px;font-weight:600;color:var(--gb-muted);background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-pill);padding:8px 15px;cursor:pointer;white-space:nowrap}
+.catnav span.on{color:#fff;background:var(--gb-ink);border-color:transparent}
+[data-theme="dark"] .catnav span.on{background:var(--gb-zest);color:#0C1826}
+.catsec{margin-bottom:26px}
+.catsec h2{font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em;margin:0 0 14px}
+.dishes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:560px){ .dishes{grid-template-columns:1fr} }
+.dish{display:flex;gap:13px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:13px;box-shadow:var(--gb-shadow-card);cursor:pointer}
+.dish__b{flex:1;min-width:0}
+.dish__b b{font-family:var(--gb-font-display);font-weight:700;font-size:15px;line-height:1.3}
+.dish__b p{margin:5px 0 9px;font-size:12px;line-height:1.45;color:var(--gb-muted)}
+.dish__b .pr{display:flex;align-items:center;gap:8px}
+.dish__b .pr .price{font-family:var(--gb-font-display);font-weight:800;font-size:15px}
+.dish__b .pr .tag{font-size:10px;font-weight:600;color:var(--gb-basil-600);background:var(--gb-basil-bg);padding:3px 8px;border-radius:6px}
+.dish__img{position:relative;width:96px;height:96px;border-radius:var(--gb-r-md);flex-shrink:0}
+.dish__img.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 10px,#FFF1E7 10px 20px)}
+.dish__img.t2{background:repeating-linear-gradient(135deg,#FCE9C9 0 10px,#FCF0D9 10px 20px)}
+.dish__img.t3{background:repeating-linear-gradient(135deg,#FFD9C2 0 10px,#FFE9D6 10px 20px)}
+.dish__img.t4{background:repeating-linear-gradient(135deg,#E6EFD9 0 10px,#EFF5E6 10px 20px)}
+[data-theme="dark"] .dish__img.t1,[data-theme="dark"] .dish__img.t3{background:repeating-linear-gradient(135deg,#3A2C22 0 10px,#2C2118 10px 20px)}
+[data-theme="dark"] .dish__img.t2{background:repeating-linear-gradient(135deg,#33301F 0 10px,#26241A 10px 20px)}
+[data-theme="dark"] .dish__img.t4{background:repeating-linear-gradient(135deg,#1E3B2B 0 10px,#172E22 10px 20px)}
+.dish__add{position:absolute;bottom:-8px;right:-7px;width:32px;height:32px;border-radius:10px;background:var(--gb-grad);display:flex;align-items:center;justify-content:center;box-shadow:var(--gb-shadow-btn)}
+.dish__add .ms{font-size:18px;color:#fff}
+.cart{position:sticky;top:16px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden}
+.cart__h{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--gb-border)}
+.cart__h b{font-family:var(--gb-font-display);font-weight:800;font-size:16px}
+.cart__h span{font-size:12px;color:var(--gb-muted)}
+.cart__items{padding:14px 18px;display:flex;flex-direction:column;gap:13px;max-height:280px;overflow-y:auto}
+.ci{display:flex;gap:11px;align-items:center}
+.ci .im{width:46px;height:46px;border-radius:10px;flex-shrink:0}
+.ci .main{flex:1;min-width:0}.ci .main b{font-size:13px;font-weight:700;display:block}
+.ci .step{display:inline-flex;align-items:center;gap:8px;margin-top:5px;border:1px solid var(--gb-border-strong);border-radius:8px;padding:2px 8px}
+.ci .step .ms{font-size:14px;color:var(--gb-zest-600);cursor:pointer}
+[data-theme="dark"] .ci .step .ms{color:var(--gb-zest)}
+.ci .step b{font-size:12px;font-weight:700}
+.ci .price{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;white-space:nowrap}
+.cart__foot{padding:14px 18px;border-top:1px solid var(--gb-border)}
+.cart__sub{display:flex;justify-content:space-between;font-size:13px;color:var(--gb-muted);margin-bottom:12px}
+.cart__sub b{color:var(--gb-text);font-weight:700}
+.cta{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:14px 18px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.cta span{font-size:14px;font-weight:700;color:#fff}.cta b{font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:#fff}
+.im.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px)}
+.im.t2{background:repeating-linear-gradient(135deg,#FCE9C9 0 8px,#FCF0D9 8px 16px)}
+[data-theme="dark"] .im.t1{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px)}
+[data-theme="dark"] .im.t2{background:repeating-linear-gradient(135deg,#33301F 0 8px,#26241A 8px 16px)}
+.mbar{display:none}
+@media (max-width:880px){ .cart{display:none}
+  .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--gb-surface);border-top:1px solid var(--gb-border)} }
+</style>
+</head>
+<body>
+<div id="app">
+<main class="r">
+  <div class="hero">
+    <div class="hero__bar">
+      <span class="c"><span class="ms">arrow_back</span></span>
+      <span class="right"><span class="c"><span class="ms">ios_share</span></span><span class="c fav"><span class="ms">favorite</span></span></span>
+    </div>
+  </div>
+  <div class="head">
+    <div class="headcard">
+      <h1>Mama Trattoria</h1>
+      <div class="headmeta">
+        <span class="rate"><span class="ms">star</span>4,8</span><span>(248 avis)</span><span>· Italien · $$</span>
+        <span class="open"><span class="ms">schedule</span>Ouvert · ferme à 23:00</span>
+        <span>· <span style="color:var(--gb-basil-600);font-weight:600">Livraison offerte dès 25 €</span></span>
+      </div>
+      <div class="modes" role="tablist">
+        <button aria-selected="true"><span class="ms">two_wheeler</span>Livraison</button>
+        <button aria-selected="false"><span class="ms">storefront</span>À emporter</button>
+        <button aria-selected="false"><span class="ms">table_restaurant</span>Sur place</button>
+      </div>
+    </div>
+  </div>
+  <div class="layout">
+    <div>
+      <div class="catnav"><span class="on">Populaires</span><span>Pâtes</span><span>Pizzas</span><span>Antipasti</span><span>Dolci</span><span>Boissons</span></div>
+      <section class="catsec">
+        <h2>Populaires</h2>
+        <div class="dishes">
+          <div class="dish"><div class="dish__b"><b>Tagliatelles à la truffe</b><p>Pâtes fraîches aux œufs, truffe noire, crème de parmesan.</p><div class="pr"><span class="price">18 €</span><span class="tag">Sans noix</span></div></div><div class="dish__img t1"><span class="dish__add"><span class="ms">add</span></span></div></div>
+          <div class="dish"><div class="dish__b"><b>Cacio e pepe</b><p>Tonnarelli, pecorino romano, poivre concassé.</p><div class="pr"><span class="price">15 €</span></div></div><div class="dish__img t2"><span class="dish__add"><span class="ms">add</span></span></div></div>
+          <div class="dish"><div class="dish__b"><b>Margherita DOP</b><p>San Marzano, fior di latte, basilic frais.</p><div class="pr"><span class="price">14 €</span><span class="tag">Végétarien</span></div></div><div class="dish__img t3"><span class="dish__add"><span class="ms">add</span></span></div></div>
+          <div class="dish"><div class="dish__b"><b>Tiramisu maison</b><p>Mascarpone, café, cacao, biscuits savoiardi.</p><div class="pr"><span class="price">8 €</span></div></div><div class="dish__img t4"><span class="dish__add"><span class="ms">add</span></span></div></div>
+        </div>
+      </section>
+      <section class="catsec">
+        <h2>Pâtes</h2>
+        <div class="dishes">
+          <div class="dish"><div class="dish__b"><b>Lasagne della Nonna</b><p>Ragù mijoté, béchamel, parmesan 24 mois.</p><div class="pr"><span class="price">19 €</span></div></div><div class="dish__img t1"><span class="dish__add"><span class="ms">add</span></span></div></div>
+          <div class="dish"><div class="dish__b"><b>Gnocchi Sorrentina</b><p>Gnocchi de pomme de terre, tomate, basilic, mozzarella.</p><div class="pr"><span class="price">16 €</span><span class="tag">Végétarien</span></div></div><div class="dish__img t4"><span class="dish__add"><span class="ms">add</span></span></div></div>
+        </div>
+      </section>
+    </div>
+    <aside class="cart">
+      <div class="cart__h"><b>Votre commande</b><span>2 articles</span></div>
+      <div class="cart__items">
+        <div class="ci"><span class="im t1"></span><div class="main"><b>Tagliatelles à la truffe</b><span class="step"><span class="ms">remove</span><b>1</b><span class="ms">add</span></span></div><span class="price">18 €</span></div>
+        <div class="ci"><span class="im t2"></span><div class="main"><b>Cacio e pepe</b><span class="step"><span class="ms">remove</span><b>1</b><span class="ms">add</span></span></div><span class="price">15 €</span></div>
+      </div>
+      <div class="cart__foot">
+        <div class="cart__sub"><span>Sous-total</span><b>33,00 €</b></div>
+        <button class="cta"><span>Voir le panier</span><b>33,00 €</b></button>
+      </div>
+    </aside>
+  </div>
+</main>
+<div class="mbar"><button class="cta"><span>Voir le panier · 2 articles</span><b>33,00 €</b></button></div>
+</div>
+</body>
+</html>
