@@ -1,14 +1,20 @@
 import { notFound } from 'next/navigation'
 import { unstable_setRequestLocale } from 'next-intl/server'
-import { Receipt } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import TableBillClient from '@/components/eat/TableBillClient'
+import './t.css'
+// gb-* design FOUNDATION (Agent 168) — this route renders OUTSIDE EatShell, so it
+// imports the foundation tokens + Material `.ms` font itself. The `.gb` root carries
+// the tokens; `.gb-table` scopes the bill component CSS (t.css). No globals touched.
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
 
-// ── /t/[tableId] — public "table bill" landing (QR target, Sunday-style) ──────
+// ── /t/[tableId] — public "table bill" landing (QR target) — CD dine-in « addition » ──
 // The short, FIXED URL a table QR encodes. PUBLIC + consumer-side (served bare via
-// AppChrome, reachable without login via middleware). No payment yet — this is the
-// sober shell the amount + pay/share buttons will plug into later WITHOUT changing
-// the URL (so QR codes never need reprinting). Reads the DB by table id → dynamic.
+// AppChrome, reachable without login via middleware). Reads the DB by table id → dynamic.
+// 🔒 MONEY: the bill fetch + the pay action + the Stripe flow live in <TableBillClient/>
+// and are byte-identical — this server shell only owns identity (Prisma lookup) +
+// the gb- frame (table banner + « L'addition » title row).
 export const dynamic = 'force-dynamic'
 
 export default async function TableBillPage({
@@ -36,37 +42,18 @@ export default async function TableBillPage({
     table.restaurant && !table.restaurant.archivedAt ? table.restaurant.name : null
 
   return (
-    <main className="flex min-h-[100dvh] flex-col bg-background px-6 py-10 text-foreground">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
-
-        {/* Sober wordmark */}
-        <p className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-          Grubano
-        </p>
-
-        {/* Identity — establishment + table */}
-        <div className="mt-12 text-center">
-          {establishmentName && (
-            <h1 className="font-display text-3xl font-bold tracking-tight">
-              {establishmentName}
-            </h1>
-          )}
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-sm font-semibold">
-            <Receipt size={14} className="text-primary" />
-            {table.name}
-          </span>
-        </div>
-
-        {/* Bill — Agent 14 brique 2. The client island fetches the open
-            ticket, renders items + total, and walks through the real charge
-            via the factored <StripeTicketPayment /> component. Server side
-            still owns identity (Prisma lookup above), so an unknown /
-            deactivated table 404s BEFORE any JS runs. */}
-        <TableBillClient tableId={params.tableId} />
-
-        <p className="mt-auto pt-10 text-center text-[11px] text-muted-foreground">
-          Propulsé par Grubano
-        </p>
+    <main className="gb gb-table">
+      <div className="tb-wrap">
+        {/* Bill — the client island fetches the open ticket, renders the CD
+            « addition » markup (table banner + items + totals) and walks through
+            the real charge via <StripeTicketPayment />. Server side still owns
+            identity (Prisma lookup above), so an unknown / deactivated table 404s
+            BEFORE any JS runs. Banner identity is passed in as props. */}
+        <TableBillClient
+          tableId={params.tableId}
+          establishmentName={establishmentName}
+          tableName={table.name}
+        />
       </div>
     </main>
   )

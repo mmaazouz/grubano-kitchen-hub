@@ -2,18 +2,28 @@
 
 import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from '@/navigation'
-import { ArrowLeft, Tag, MapPin, ChevronRight } from 'lucide-react'
-import FoodImage from '@/components/eat/FoodImage'
-import { getRestaurantCover } from '@/lib/food-images'
+import { useRouter, Link } from '@/navigation'
+import './promos.css'
+import '@/app/gb-foundation/gb-tokens.css'
+import '@/app/gb-foundation/gb-components.css'
 
 /**
- * /eat/promos — THE REAL showcase (chantier P2).
+ * /eat/promos — « Offres & promos » — VERBATIM reproduction of the FROZEN CD ref
+ * (Notion 38efd2c9-…-831f, file eat/offers-promos.html), bound to REAL data via
+ * GET /api/eat/promos (the P1 engine: restaurants with ≥ 1 ACTIVE promotion + the
+ * real maxPercent / bestFixed across the catalogue). Renders inside the EatShell as
+ * an IMMERSIVE (is-bare) screen → carries its OWN top bar + back arrow.
  *
- * Backed by GET /api/eat/promos: the restaurants with ≥ 1 ACTIVE promotion
- * (P1 engine data — window + active + V1 types), each with its best offer.
- * ZERO active promo → a clean EmptyState. NEVER invented content (the old
- * fake-offers page died in C3-fix; this one only shows what the engine holds).
+ * REAL-DATA / NEVER-FABRICATE (🔒 promo = ARGENT):
+ *  - the « offre du moment » banner figure = the real maxPercent (else bestFixed);
+ *    no active promo at all → the banner is dropped.
+ *  - each ticket card = a real restaurant promotion (amount/name/condition from the
+ *    engine), « Utiliser » → the restaurant (the P1 engine alone applies it at
+ *    checkout). The Promotion model carries NO per-user redeemable CODE and NO
+ *    expiry on this endpoint → the CD code-chip / expiry are OMITTED (not invented),
+ *    and the code-entry box has NO validate backend → it stays a neutral affordance
+ *    that only reports « unknown code » (honest .err), never a fake .ok discount.
+ *  - zero promos → the CD empty state.
  */
 
 type PromoRestaurant = {
@@ -24,83 +34,151 @@ type PromoRestaurant = {
   promo: { id: string; name: string; type: string; discount: number; minOrderEur: number | null }
   promoCount: number
 }
+type PromosPayload = {
+  restaurants: PromoRestaurant[]
+  totalPromos: number
+  maxPercent: number
+  bestFixed: number
+}
 
 export default function PromosScreen() {
   const t = useTranslations('eat.promos')
   const router = useRouter()
-  const [restaurants, setRestaurants] = useState<PromoRestaurant[]>([])
+  const [data, setData] = useState<PromosPayload | null>(null)
   const [loading, setLoading] = useState(true)
+  const [code, setCode] = useState('')
+  const [codeErr, setCodeErr] = useState(false)
 
   useEffect(() => {
     let alive = true
     fetch('/api/eat/promos')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && Array.isArray(d?.restaurants)) setRestaurants(d.restaurants) })
+      .then((d) => { if (alive && d && Array.isArray(d.restaurants)) setData(d) })
       .catch(() => {})
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [])
 
-  const promoLabel = (p: PromoRestaurant['promo']): string =>
-    p.type === 'percent'
-      ? p.minOrderEur
-        ? t('offerPercentMin', { pct: p.discount, min: p.minOrderEur })
-        : t('offerPercent', { pct: p.discount })
-      : p.minOrderEur
-        ? t('offerFixedMin', { eur: p.discount, min: p.minOrderEur })
-        : t('offerFixed', { eur: p.discount })
+  // The big figure on a ticket: « 10€ » (fixed) or « 30% » (percent). LTR via <bdi>.
+  const amountTop = (p: PromoRestaurant['promo']) =>
+    p.type === 'percent' ? `${p.discount}%` : `${p.discount}€`
+  const amountSub = (p: PromoRestaurant['promo']) =>
+    p.type === 'percent' ? t('amtOff') : t('amtSaved')
+
+  // Card description: real restaurant + city + (optional) real min-order condition.
+  const cardDesc = (r: PromoRestaurant) =>
+    r.promo.minOrderEur
+      ? t('cardDescMin', { city: r.city, min: r.promo.minOrderEur })
+      : t('cardDesc', { city: r.city })
+
+  // « Offre du moment » headline from the REAL best active figure across the catalogue.
+  const featTitle = (): string | null => {
+    const mp = data?.maxPercent ?? 0
+    const bf = data?.bestFixed ?? 0
+    if (mp > 0) return t('featPercent', { pct: mp })
+    if (bf > 0) return t('featFixed', { eur: bf })
+    return null
+  }
+
+  // No validate endpoint → an entered code can only be reported as not (yet) valid here.
+  const applyCode = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!code.trim()) return
+    setCodeErr(true)
+  }
+
+  const restaurants = data?.restaurants ?? []
+  const feat = !loading ? featTitle() : null
+  const isEmpty = !loading && restaurants.length === 0
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5]">
-      <div className="flex items-center gap-3 border-b border-[#f0f0f0] bg-white px-4 pb-4 pt-3">
-        <button onClick={() => router.back()} className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5f5f5] active:scale-90">
-          <ArrowLeft size={20} className="text-[#1a1a1a]" />
+    <div className="gb gb-promos">
+      <div className="pr-bar">
+        <button className="back" type="button" onClick={() => router.back()} aria-label={t('back')}>
+          <span className="ms ms-flip" aria-hidden="true">arrow_back</span>
         </button>
-        <h1 className="font-sans text-[22px] font-extrabold text-[#1a1a1a]">{t('title')}</h1>
+        <h1>{t('title')}</h1>
       </div>
 
-      <div className="space-y-3 p-4">
+      <div className="pr-body">
+        {/* ── code entry (no fake success — see header note) ── */}
+        <form className="pr-codebox" onSubmit={applyCode}>
+          <div className="pr-codein">
+            <span className="ms" aria-hidden="true">confirmation_number</span>
+            <input
+              value={code}
+              onChange={(e) => { setCode(e.target.value); if (codeErr) setCodeErr(false) }}
+              placeholder={t('codePlaceholder')}
+              aria-label={t('codePlaceholder')}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+            />
+          </div>
+          <button className="pr-applybtn" type="submit" disabled={!code.trim()}>{t('apply')}</button>
+        </form>
+        {codeErr && (
+          <div className="pr-codemsg err">
+            <span className="ms" aria-hidden="true">cancel</span>{t('codeInvalid')}
+          </div>
+        )}
+
         {loading ? (
           <>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-[88px] animate-pulse rounded-[20px] bg-white shadow-bolt-card" />
-            ))}
+            <div className="sk pr-skfeat" />
+            <p className="pr-lbl">{t('availableLabel')}</p>
+            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="sk pr-skcard" />)}
           </>
-        ) : restaurants.length === 0 ? (
+        ) : isEmpty ? (
           /* ZERO active promo → the honest empty state, never invented offers. */
-          <div className="rounded-[20px] bg-white p-8 text-center shadow-bolt-card">
-            <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#FFF3ED] text-[#F97316]">
-              <Tag size={24} />
-            </span>
-            <p className="mt-4 text-[17px] font-extrabold text-[#1a1a1a]">{t('emptyTitle')}</p>
-            <p className="mx-auto mt-2 max-w-xs text-[13px] leading-relaxed text-[#888]">{t('emptyBody')}</p>
+          <div className="pr-empty">
+            <span className="ms" aria-hidden="true">local_offer</span>
+            <b>{t('emptyTitle')}</b>
+            <span>{t('emptyBody')}</span>
           </div>
         ) : (
-          restaurants.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => router.push(`/eat/r/${r.id}`)}
-              className="flex w-full items-center gap-3 rounded-[20px] bg-white p-3 text-left shadow-bolt-card active:scale-[0.99]"
-            >
-              <FoodImage
-                name={r.name}
-                src={r.photo || getRestaurantCover(r.id)}
-                className="h-[64px] w-[64px] shrink-0 rounded-[14px]"
-                glyphClassName="text-2xl"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-extrabold text-[#1a1a1a]">{r.name}</p>
-                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[#888]">
-                  <MapPin size={10} /> {r.city}
-                </p>
-                <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#FFF3ED] px-2 py-0.5 text-[11px] font-bold text-[#F97316]">
-                  <Tag size={10} /> {promoLabel(r.promo)}
-                  {r.promoCount > 1 ? ` · ${t('moreOffers', { count: r.promoCount - 1 })}` : ''}
-                </p>
+          <>
+            {feat && (
+              <div className="pr-feat">
+                <span className="ms bg" aria-hidden="true">redeem</span>
+                <small>{t('featKicker')}</small>
+                <b>{feat}</b>
+                <p>{t('featBody')}</p>
+                <Link href={`/eat/r/${restaurants[0].id}`} className="cta">
+                  <span className="ms" style={{ fontSize: 16 }} aria-hidden="true">bolt</span>{t('featCta')}
+                </Link>
               </div>
-              <ChevronRight size={16} className="shrink-0 text-[#ccc]" />
-            </button>
-          ))
+            )}
+
+            <p className="pr-lbl">{t('availableLabel')}</p>
+            {restaurants.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className="pr-card"
+                onClick={() => router.push(`/eat/r/${r.id}`)}
+              >
+                <div className="pr-amt">
+                  <b><bdi>{amountTop(r.promo)}</bdi></b>
+                  <small>{amountSub(r.promo)}</small>
+                </div>
+                <div className="pr-m">
+                  <b>{r.name}</b>
+                  <p>{cardDesc(r)}</p>
+                  <div className="meta">
+                    <span className="pr-code"><bdi>{r.promo.name}</bdi></span>
+                    {r.promoCount > 1 && (
+                      <span className="pr-exp">
+                        <span className="ms" aria-hidden="true">local_offer</span>
+                        {t('moreOffers', { count: r.promoCount - 1 })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span className="pr-use">{t('use')}</span>
+              </button>
+            ))}
+          </>
         )}
       </div>
     </div>

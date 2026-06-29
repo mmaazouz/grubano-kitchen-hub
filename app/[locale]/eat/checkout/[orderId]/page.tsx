@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { useRouter } from '@/navigation'
+import { useSession } from 'next-auth/react'
+import { Link, useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
 import { readAddresses, formatAddress, type EatAddress } from '@/lib/eat-addresses'
+import { formatTime } from '@/lib/format'
 import './checkout.css'
+import './confirmed.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
 
@@ -56,6 +59,12 @@ interface OrderInfo {
   // into the promo discount. No client computation, ever (D4).
   loyaltyCreditCents?: number
   pointsRedeemed?:     number
+  // Additive (read-only) — the SERVER fields the GET already returns. Used by the
+  // « Commande confirmée » screen (CD 38efd2c9-…-81f8) for the real ETA window +
+  // the delivery address line. No client computation of money, ever.
+  estimatedTime?:      number
+  createdAt?:          string
+  deliveryAddress?:    string | null
 }
 interface PayInit {
   clientSecret:   string
@@ -71,8 +80,11 @@ const ADDR_ICON: Record<EatAddress['kind'], string> = { home: 'home', work: 'wor
 
 export default function CheckoutPage() {
   const t = useTranslations('eat.checkout')
+  // « Commande confirmée » screen (CD 38efd2c9-…-81f8) — its own i18n namespace.
+  const tc = useTranslations('eat.confirmed')
   const locale = useLocale()
   const router = useRouter()
+  const { data: session } = useSession()
   const params = useParams<{ orderId: string }>()
   const orderId = params?.orderId ?? ''
 
@@ -196,6 +208,24 @@ export default function CheckoutPage() {
   const ref = order ? orderRefOf(order.id) : ''
   const selAddr = addresses.find((a) => a.id === addrId) ?? null
 
+  // ── « Commande confirmée » derived view-data (REAL order fields, read-only) ───
+  // The customer first name for the greeting (« Merci Sofia ! ») — from the real
+  // session; falls back to a generic greeting when anonymous.
+  const firstName = ((session?.user?.name as string | undefined) ?? '').trim().split(/\s+/)[0] || ''
+  // ETA window — from the REAL estimatedTime (minutes) anchored on the REAL
+  // createdAt. We render a tight window [eta, eta+15min] (the CD shows a 15-min
+  // band) + a « dans ~N min » relative line from now. No money, purely display;
+  // degrades to em-dash when the order has no ETA.
+  const hasEta = order ? Number.isFinite(order.estimatedTime) && (order.estimatedTime ?? 0) > 0 : false
+  const createdMs = order?.createdAt ? new Date(order.createdAt).getTime() : Date.now()
+  const etaStart = new Date(createdMs + (order?.estimatedTime ?? 0) * 60_000)
+  const etaEnd   = new Date(etaStart.getTime() + 15 * 60_000)
+  const etaWindow = hasEta ? `${formatTime(etaStart, locale)} – ${formatTime(etaEnd, locale)}` : '—'
+  const etaMinsFromNow = hasEta ? Math.max(1, Math.round((etaStart.getTime() - Date.now()) / 60_000)) : 0
+  // The address shown in the ETA sub-line: prefer the real saved default address
+  // label, fall back to the order's frozen delivery address string.
+  const confAddr = selAddr?.label || (order?.deliveryAddress ?? '')
+
   // Inert delivery-slot chips (visual only). «Au plus vite» + a few fixed times.
   const SLOTS = useMemo(() => ([
     { key: 'asap', label: t('slotAsap'), now: true },
@@ -229,14 +259,16 @@ export default function CheckoutPage() {
   )
 
   return (
-    <div className="gb gb-checkout">
-      {/* top bar */}
-      <div className="co-top">
-        <button className="back" type="button" onClick={() => router.back()} aria-label={t('title')}>
-          <span className="ms" aria-hidden="true">arrow_back</span>
-        </button>
-        <h1>{t('title')}</h1>
-      </div>
+    <div className={`gb gb-checkout${stage === 'paid' ? ' gb-checkout--confirmed' : ''}`}>
+      {/* top bar — hidden on the « Commande confirmée » success screen (full-page CD) */}
+      {stage !== 'paid' && (
+        <div className="co-top">
+          <button className="back" type="button" onClick={() => router.back()} aria-label={t('title')}>
+            <span className="ms ms-flip" aria-hidden="true">arrow_back</span>
+          </button>
+          <h1>{t('title')}</h1>
+        </div>
+      )}
 
       {stage === 'loading' && (
         <div className="loadrow"><span className="ms" aria-hidden="true">progress_activity</span>{t('loading')}</div>
@@ -468,38 +500,78 @@ export default function CheckoutPage() {
         </>
       )}
 
-      {/* ── Confirmation ─────────────────────────────────────────────────────── */}
+      {/* ── « Commande confirmée » 🎉 (post-paiement) — VERBATIM CD 38efd2c9-…-81f8.
+           Re-skins the previous 'paid' panel in place; payment/order flow untouched.
+           REAL data: order ref, ETA window (estimatedTime+createdAt), mode (fulfill-
+           mentType), items + Total payé (frozen order.total), restaurant name, address.
+           « Suivre » → /eat/track ; « Voir le reçu » INERT (no receipt route yet). ─── */}
       {stage === 'paid' && order && (
-        <div className="center">
-          <div className="panel">
-            <div className="seal"><span className="ms" aria-hidden="true">check</span></div>
-            <h2>{t('confirmTitle')}</h2>
-            <p className="ref">{t('orderRef', { ref })}</p>
-            <p>{t('confirmBody')}</p>
-            <p>
-              {isPickup
-                ? t('confirmPickup',   { restaurant: order.restaurant?.name ?? '' })
-                : t('confirmDelivery', { restaurant: order.restaurant?.name ?? '' })}
+        <div className="gb-confirmed">
+          <div className="confetti" aria-hidden="true"><i /><i /><i /><i /><i /><i /></div>
+
+          <div className="cf-body">
+            <div className="hero-ic"><span className="ms" aria-hidden="true">check</span></div>
+            <h1 className="h1">{tc('title')}</h1>
+            <p className="cf-sub">
+              {firstName ? tc('thanksNamed', { name: firstName }) : tc('thanks')}{' '}
+              <b>{order.restaurant?.name ?? ''}</b> {tc('preparing')}
             </p>
 
-            <div className="recap">
+            {/* ETA card — real estimated arrival window */}
+            <div className="eta">
+              <span className="ic"><span className="ms" aria-hidden="true">schedule</span></span>
+              <div className="m">
+                <small>{tc('etaLabel')}</small>
+                <b><bdi>{etaWindow}</bdi></b>
+                <span>
+                  {hasEta ? tc('etaIn', { mins: etaMinsFromNow }) : tc('etaSoon')}
+                  {!isPickup && confAddr ? ` · ${tc('etaAddress', { address: confAddr })}` : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* meta — order number + mode */}
+            <div className="cf-meta">
+              <div className="box">
+                <small>{tc('orderNo')}</small>
+                <b><span className="ms" aria-hidden="true">tag</span><bdi>{ref}</bdi></b>
+              </div>
+              <div className="box">
+                <small>{tc('mode')}</small>
+                <b>
+                  <span className="ms" aria-hidden="true">{isPickup ? 'storefront' : 'two_wheeler'}</span>
+                  {isPickup ? tc('modePickup') : tc('modeDelivery')}
+                </b>
+              </div>
+            </div>
+
+            {/* items + Total payé (REAL frozen total) */}
+            <div className="sum">
               {order.items.map((it, i) => (
-                <div className="ri" key={i}>
-                  <span className="q">{it.qty}×</span>
-                  <span className="n">{it.name}</span>
+                <div className="cf-r" key={i}>
+                  <span className="nm"><span className="q">{it.qty}</span>{it.name}</span>
+                  <span><bdi>{fmt.format(it.price * it.qty)}</bdi></span>
                 </div>
               ))}
-              <p className="paid">{t('paidAmount', { amount: fmt.format(order.total) })}</p>
-            </div>
-
-            <p className="email"><span className="ms" aria-hidden="true">mail</span>{t('confirmEmail')}</p>
-
-            <div className="pcta">
-              <button type="button" className="cta" onClick={() => router.push(`/eat/track/${order.id}`)}>
-                <span className="ms" aria-hidden="true">local_shipping</span><span>{t('trackCta')}</span>
-              </button>
+              <div className="cf-div" />
+              <div className="cf-tot">
+                <span>{tc('totalPaid')}</span>
+                <span><bdi>{fmt.format(order.total)}</bdi></span>
+              </div>
             </div>
           </div>
+
+          <div className="foot"><div className="inner">
+            <Link className="track-btn" href={`/eat/track/${order.id}`}>
+              <span className="ms ms-flip" aria-hidden="true">near_me</span>
+              <b>{tc('trackCta')}</b>
+            </Link>
+            {/* « Voir le reçu » — INERT (no receipt route yet, « bientôt ») */}
+            <button type="button" className="cf-ghost" disabled aria-disabled="true">
+              <span className="ms" aria-hidden="true" style={{ fontSize: 17 }}>receipt_long</span>
+              {tc('receiptCta')}<span className="soon">{tc('soon')}</span>
+            </button>
+          </div></div>
         </div>
       )}
     </div>

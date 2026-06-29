@@ -149,7 +149,7 @@ export default function ProfileScreen() {
             {t('tierWithPoints', { tier: tierLabelFor(tier.key), points: pointsFmt })}
           </span>
         </div>
-        <button type="button" className="edit" aria-label={t('edit')} onClick={() => showToast(t('editProfileSoon'))}>
+        <button type="button" className="edit" aria-label={t('edit')} onClick={() => router.push('/eat/account/edit')}>
           <span className="ms" aria-hidden="true">edit</span>
         </button>
       </div>
@@ -222,7 +222,7 @@ export default function ProfileScreen() {
             ))}
           </span>
         </div>
-        <button type="button" className="ac-row" onClick={() => showToast(t('comingSoon'))}>
+        <button type="button" className="ac-row" onClick={() => router.push('/eat/account/notifications')}>
           <span className="ic gray"><span className="ms" aria-hidden="true">notifications</span></span>
           <div className="main"><b>{t('rowNotifications')}</b><span>{t('rowNotificationsSub')}</span></div>
           <span className="ms go" aria-hidden="true">chevron_right</span>

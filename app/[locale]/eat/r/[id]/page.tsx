@@ -142,6 +142,15 @@ function lineKeyFor(dishId: string, opts?: EatCartItemOptions): string {
   return sig ? `${dishId}::${sig}` : dishId
 }
 
+/** 2-letter monogram from a chef name ("Lucia Moretti" → "LM"), for the encart
+ *  avatar. Defensive: falls back to the first letter, then a chef glyph. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '👨‍🍳'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
 /** Build a short human description like "Moyenne · Fromage, Bacon · sans oignon". */
 function summariseOptions(opts?: EatCartItemOptions): string | null {
   if (!opts) return null
@@ -768,7 +777,9 @@ interface ModalProps {
 
 function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps) {
   const t = useTranslations('eat.restaurant')
+  const tcr = useTranslations('eat.chefRecipe')
   const locale = useLocale()
+  const router = useRouter()
   const [size, setSize] = useState<string>('Petite')
   const [supplements, setSupplements] = useState<string[]>([])
   const [exclusions, setExclusions] = useState<string[]>([])
@@ -800,6 +811,56 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
             <h1 className="dish__title">{dish.name}</h1>
             <div className="dish__price">{t('fromPrice', { price: formatEuros(dish.price, locale) })}</div>
             {dish.description && <p className="dish__desc">{dish.description}</p>}
+
+            {/* « Encart Recette du chef » (CD 81c4) — INERT/decorative. Shown ONLY
+                when the dish is an ADOPTED creator recipe (real `dish.creator`):
+                real chef name + real verified pastille + real /chef/{slug} link.
+                The « Suivre » button and the IA-accords block are inert (« bientôt »);
+                no fabricated quote / city / other-dishes are rendered. */}
+            {dish.creator && (
+              <div className="cr">
+                <div className="cr__head">
+                  <span className="cr__av" aria-hidden="true">
+                    {initialsOf(dish.creator.name)}
+                    {dish.creator.verified && (
+                      <span className="cr-vrf"><span className="ms">check</span></span>
+                    )}
+                  </span>
+                  <div className="cr__id">
+                    <span className="cr-ov"><span className="ms" aria-hidden="true">restaurant_menu</span>{tcr('overline')}</span>
+                    <b><bdi>{dish.creator.name}</bdi></b>
+                    <span>{tcr('attribution')}</span>
+                  </div>
+                  <button type="button" className="cr__follow" disabled aria-disabled="true" title={tcr('soon')}>
+                    {tcr('follow')}
+                  </button>
+                </div>
+                <div className="cr__quote">
+                  <span className="cr-qm" aria-hidden="true">&ldquo;</span>
+                  <p>{tcr('quotePlaceholder')}</p>
+                </div>
+                <div className="cr__ai">
+                  <span className="ms" aria-hidden="true">auto_awesome</span>
+                  <span>{tcr('aiPairings')}</span>
+                  <span className="cr-soon">{tcr('soon')}</span>
+                </div>
+                {dish.creator.slug && (
+                  <div className="cr__more">
+                    <div className="cr-h">
+                      <b>{tcr('moreTitle')}</b>
+                      <a
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => router.push(`/chef/${dish.creator!.slug}`)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/chef/${dish.creator!.slug}`) } }}
+                      >
+                        {tcr('seeChef')}
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grp">
               <div className="grp__head"><b>{t('chooseSize')}</b><span className="grp__req required">{t('requiredTag')}</span></div>

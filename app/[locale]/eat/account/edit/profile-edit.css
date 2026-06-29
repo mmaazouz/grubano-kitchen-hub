@@ -1,0 +1,126 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * « Modifier mon profil » + « Mot de passe » + « Changer d'e-mail » (consumer) —
+ * VERBATIM reproduction of the FROZEN CD ref (Notion 38efd2c9-…-6ffe25, file
+ * eat/edit-profile.html — édit profil + écran Mot de passe). ONE scoped sheet
+ * `.gb-profile-edit` reused by the 3 related surfaces (profile edit / password /
+ * email change), like addresses.css is reused by its 2 screens.
+ *
+ * Tokens come from the gb-foundation (gb-tokens.css). The CD :root/[data-theme]
+ * token block is NOT redeclared. The CD's `--gb-basil-bg` (verified-badge fill) is
+ * not in the foundation → aliased locally to --gb-success-bg (same CD hex #EAF7EF /
+ * dark rgba). The CD generic `.field` COLLIDES with the foundation `.gb .field` →
+ * renamed `.pe-field` in BOTH css and markup. Every other CD class name is kept
+ * verbatim, scoped under the screen root.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-profile-edit{
+  /* CD --gb-basil-bg alias (foundation exposes the same value as --gb-success-bg) */
+  --pe-basil-bg:var(--gb-success-bg);
+  width:100%;max-width:560px;margin:0 auto;
+  display:flex;flex-direction:column;min-height:100%;color:var(--gb-text)
+}
+
+/* ── top bar (CD .bar) ──────────────────────────────────────────────────────── */
+.gb-profile-edit .bar{display:flex;align-items:center;gap:12px;padding:14px 18px;flex-shrink:0}
+.gb-profile-edit .bar .back{background:none;border:none;padding:0;display:inline-flex;align-items:center;color:var(--gb-text);cursor:pointer}
+.gb-profile-edit .bar .ms{font-size:23px}
+.gb-profile-edit .bar h2{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:700;font-size:18px}
+
+/* ── scrollable body (CD .body) ─────────────────────────────────────────────── */
+.gb-profile-edit .body{flex:1;padding:0 18px;width:100%;margin:0 auto;padding-bottom:18px}
+
+/* ── avatar (CD .ava) ───────────────────────────────────────────────────────── */
+.gb-profile-edit .ava{display:flex;flex-direction:column;align-items:center;margin-bottom:8px}
+.gb-profile-edit .ava .ph{position:relative;width:92px;height:92px;border-radius:50%;background:repeating-linear-gradient(135deg,#FFD9C2 0 8px,#FFE9D6 8px 16px);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:30px;color:#B5560A}
+[data-theme="dark"] .gb-profile-edit .ava .ph{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px);color:var(--gb-zest)}
+.gb-profile-edit .ava .ph .cam{position:absolute;bottom:-2px;inset-inline-end:-2px;width:30px;height:30px;border-radius:50%;background:var(--gb-grad);border:3px solid var(--gb-surface);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-profile-edit .ava .ph .cam .ms{font-size:15px;color:#fff}
+.gb-profile-edit .ava .ch{margin-top:10px;font-size:12.5px;font-weight:700;color:var(--gb-zest-600);background:none;border:none;cursor:pointer}
+[data-theme="dark"] .gb-profile-edit .ava .ch{color:var(--gb-zest)}
+
+/* ── section label (CD .lbl) ────────────────────────────────────────────────── */
+.gb-profile-edit .lbl{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--gb-muted-2);margin:18px 0 9px}
+
+/* ── field (CD .field → .pe-field to avoid foundation collision) ─────────────── */
+.gb-profile-edit .pe-field{margin-bottom:12px}
+.gb-profile-edit .pe-field>span{font-size:12.5px;font-weight:600;display:block;margin-bottom:6px}
+.gb-profile-edit .ctrl{display:flex;align-items:center;gap:10px;background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:12px 13px}
+.gb-profile-edit .ctrl .ms{font-size:18px;color:var(--gb-muted-2)}
+.gb-profile-edit .ctrl input{flex:1;border:none;outline:none;background:none;font-size:14px;color:var(--gb-text);width:100%}
+.gb-profile-edit .ctrl input::placeholder{color:var(--gb-muted);opacity:.7}
+.gb-profile-edit .ctrl:focus-within{border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.gb-profile-edit .ctrl .eye{background:none;border:none;padding:0;display:inline-flex;align-items:center;cursor:pointer;color:var(--gb-muted-2)}
+.gb-profile-edit .ctrl .verif{font-size:10px;font-weight:700;color:var(--gb-basil-600);background:var(--pe-basil-bg);border-radius:6px;padding:3px 7px;display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.gb-profile-edit .ctrl .verif .ms{font-size:12px;color:var(--gb-basil-600)}
+.gb-profile-edit .ctrl .act{font-size:11.5px;font-weight:700;color:var(--gb-zest-600);cursor:pointer;white-space:nowrap;background:none;border:none}
+[data-theme="dark"] .gb-profile-edit .ctrl .act{color:var(--gb-zest)}
+.gb-profile-edit .hlp{font-size:11px;color:var(--gb-muted);margin:6px 2px 0}
+
+/* ── password strength gauge (CD inline) ────────────────────────────────────── */
+.gb-profile-edit .gauge{display:flex;gap:5px;margin-top:9px}
+.gb-profile-edit .gauge span{flex:1;height:5px;border-radius:3px;background:var(--gb-border)}
+.gb-profile-edit .gauge span.ok{background:var(--gb-basil-600)}
+.gb-profile-edit .gauge span.mid{background:#EA9410}
+
+/* ── link row (CD .linkrow) ─────────────────────────────────────────────────── */
+.gb-profile-edit .linkrow{display:flex;align-items:center;gap:12px;width:100%;text-align:start;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:13px;cursor:pointer}
+.gb-profile-edit .linkrow .ic{width:36px;height:36px;border-radius:10px;background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-profile-edit .linkrow .ic .ms{font-size:19px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-profile-edit .linkrow .ic .ms{color:var(--gb-zest)}
+.gb-profile-edit .linkrow .m{flex:1;min-width:0}
+.gb-profile-edit .linkrow .m b{font-size:13.5px;font-weight:700;display:block}
+.gb-profile-edit .linkrow .m span{font-size:11px;color:var(--gb-muted)}
+.gb-profile-edit .linkrow>.ms{font-size:19px;color:var(--gb-muted-2)}
+
+/* ── danger action (CD .danger) ─────────────────────────────────────────────── */
+.gb-profile-edit .danger{display:flex;align-items:center;gap:7px;width:100%;margin:18px 0 8px;background:none;border:none;cursor:pointer;font-family:var(--gb-font-ui);font-weight:700;font-size:12.5px;color:var(--gb-danger);justify-content:center}
+.gb-profile-edit .danger .ms{font-size:17px}
+
+/* ── sticky footer save (CD .foot / .save) ──────────────────────────────────── */
+.gb-profile-edit .foot{flex-shrink:0;padding:12px 18px 16px;background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+.gb-profile-edit .foot .inner{max-width:560px;margin:0 auto}
+.gb-profile-edit .save{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--gb-grad);border:none;border-radius:13px;padding:14px;box-shadow:var(--gb-shadow-btn);cursor:pointer}
+.gb-profile-edit .save b{font-size:14px;font-weight:700;color:#fff}
+.gb-profile-edit .save .ms{font-size:18px;color:#fff}
+.gb-profile-edit .save:disabled{opacity:.6;cursor:default}
+
+/* ── secondary / outline button (email-change « envoyer un code ») ──────────── */
+.gb-profile-edit .save--line{background:var(--gb-surface);border:1.5px solid var(--gb-zest-600);box-shadow:none}
+.gb-profile-edit .save--line b{color:var(--gb-zest-600)}
+.gb-profile-edit .save--line .ms{color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-profile-edit .save--line{border-color:var(--gb-zest)}
+[data-theme="dark"] .gb-profile-edit .save--line b,[data-theme="dark"] .gb-profile-edit .save--line .ms{color:var(--gb-zest)}
+
+/* ── intro / notice rows (email-change) ─────────────────────────────────────── */
+.gb-profile-edit .intro{display:flex;align-items:flex-start;gap:10px;margin:6px 0 4px;font-size:12.5px;line-height:1.55;color:var(--gb-muted)}
+.gb-profile-edit .intro .ms{font-size:18px;color:var(--gb-zest-600);margin-top:1px;flex-shrink:0}
+[data-theme="dark"] .gb-profile-edit .intro .ms{color:var(--gb-zest)}
+.gb-profile-edit .notice{display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding:11px 13px;border-radius:var(--gb-r-md);background:var(--gb-zest-600);background:rgba(255,138,40,.10);border:1px solid rgba(255,138,40,.22);font-size:12.5px;line-height:1.5;color:var(--gb-muted-2)}
+.gb-profile-edit .notice .ms{font-size:16px;color:var(--gb-zest-600);margin-top:1px;flex-shrink:0}
+[data-theme="dark"] .gb-profile-edit .notice .ms{color:var(--gb-zest)}
+.gb-profile-edit .err{display:flex;align-items:flex-start;gap:7px;margin-top:14px;padding:11px 13px;border-radius:var(--gb-r-md);background:var(--gb-danger-bg);border:1px solid var(--gb-danger-bd);font-size:12.5px;font-weight:600;color:var(--gb-danger)}
+.gb-profile-edit .err .ms{font-size:16px;flex-shrink:0;margin-top:1px}
+
+/* ── centred result state (email-change done / reset done / reset invalid) ───── */
+.gb-profile-edit .result{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 12px}
+.gb-profile-edit .result__ico{width:84px;height:84px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.gb-profile-edit .result__ico.ok{background:var(--gb-success-bg)}
+.gb-profile-edit .result__ico.ok .ms{font-size:42px;color:var(--gb-basil-600)}
+.gb-profile-edit .result__ico.bad{background:var(--gb-danger-bg)}
+.gb-profile-edit .result__ico.bad .ms{font-size:42px;color:var(--gb-danger)}
+.gb-profile-edit .result__ico.info{background:#FFF1E7}
+[data-theme="dark"] .gb-profile-edit .result__ico.info{background:rgba(255,124,57,.16)}
+.gb-profile-edit .result__ico.info .ms{font-size:42px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-profile-edit .result__ico.info .ms{color:var(--gb-zest)}
+.gb-profile-edit .result h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em}
+.gb-profile-edit .result p{margin:8px 0 20px;font-size:13.5px;line-height:1.55;color:var(--gb-muted);max-width:38ch}
+.gb-profile-edit .result .save,.gb-profile-edit .result .save--line{max-width:320px}
+
+/* ── loading skeleton (foundation .sk primitive) ────────────────────────────── */
+.gb-profile-edit .sk-ava{width:92px;height:92px;margin:8px auto 24px}
+.gb-profile-edit .sk-row{height:46px;border-radius:var(--gb-r-md);margin-bottom:12px}
+
+/* ── two-up grid (desktop) ──────────────────────────────────────────────────── */
+@media (min-width:740px){
+  .gb-profile-edit .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+}

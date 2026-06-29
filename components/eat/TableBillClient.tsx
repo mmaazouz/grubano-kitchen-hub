@@ -2,26 +2,40 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { Clock, Loader2, AlertCircle, Receipt } from 'lucide-react'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import SessionBadge from '@/components/session/SessionBadge'
 import OrderAtTable from '@/components/eat/OrderAtTable'
 import { usePolling } from '@/lib/use-polling'
-import { UtensilsCrossed } from 'lucide-react'
 
 // ── <TableBillClient /> — client island for the QR landing /t/[tableId] ──────
 //
+// VERBATIM reproduction of the FROZEN CD ref « Order at table / dine-in »
+// (Notion 38efd2c9-…-81db, SCREEN 4 « L'addition »). The CD design tokens live
+// in the gb-foundation; the component CSS is scoped under `.gb-table` in the
+// route's t.css (imported by page.tsx). Material Symbols icons (no lucide).
+//
+// 🔒 MONEY page — VISUAL RE-SKIN ONLY. Every handler below (the ticket fetch,
+// the 3s poll, startPayment → POST /api/tickets/[id]/pay, the Intl currency
+// formatter, the Stripe Elements flow) is BYTE-IDENTICAL to the prior version.
+// Only the JSX/markup changed.
+//
 // The page is server-rendered for identity (table + establishment) so a 404 on
 // an unknown / deactivated table happens BEFORE any JS runs. This island then
-// fetches the OPEN bill for the table (Agent 14 GET /api/t/[tableId]/ticket),
-// renders the line items + total, and walks the consumer through the real
-// charge via the factored <StripeTicketPayment /> component.
+// fetches the OPEN bill for the table (GET /api/t/[tableId]/ticket), renders the
+// line items + total, and walks the consumer through the real charge via the
+// factored <StripeTicketPayment /> component.
 //
-// 3 visible states:
-//   - "no ticket yet"            → sober "addition arrive bientôt" (default
-//                                   shell, mirrors the previous coquille)
-//   - "ticket open"               → items + total + "Payer mon addition" button
-//   - "paying" / "paid"           → Stripe Elements / success panel
+// CD-NOTE (real-data fidelity): the CD mock shows a « Service 10 % » line + a
+// split selector + a per-person note. The REAL TicketPayload has NO service-fee
+// field and NO split data (that backend is a post-Wave-5 chantier), so we do NOT
+// fabricate them — we render the REAL subtotal as both Sous-total and Total.
+//
+// 5 visible states:
+//   - "loading"        → .sk skeleton (real layout, zero shift)
+//   - "no ticket yet"  → sober "addition arrive bientôt"
+//   - "ticket open"    → items + total + "Payer mon addition" button
+//   - "paying" / "paid"→ Stripe Elements / success panel
+//   - "error"          → inline error + retry
 
 interface TicketItem {
   id:        string
@@ -50,10 +64,15 @@ type Stage = 'loading' | 'no-ticket' | 'review' | 'pay' | 'paid' | 'error'
 
 interface Props {
   tableId: string
+  /** Establishment name for the CD table banner (null = link missing/archived). */
+  establishmentName?: string | null
+  /** Table label (e.g. "Table 12") for the banner + the title-row chip. */
+  tableName?: string
 }
 
-export default function TableBillClient({ tableId }: Props) {
+export default function TableBillClient({ tableId, establishmentName, tableName }: Props) {
   const t = useTranslations('bill')
+  const tTable = useTranslations('eat.table')
   const tOrder = useTranslations('premium.order')
   const locale = useLocale()
 
@@ -168,131 +187,186 @@ export default function TableBillClient({ tableId }: Props) {
     [locale, ticket?.currency],
   )
 
+  // ── CD table banner — reused on every state (identity is server truth) ──────
+  const tableLabel = tableName || tTable('tableFallback')
+  const Banner = () => (
+    <div className="tbanner">
+      <span className="ic"><span className="ms" aria-hidden="true">table_restaurant</span></span>
+      <div className="m">
+        <b>{establishmentName || tTable('establishmentFallback')}</b>
+        <span>{tTable('bannerMeta', { table: tableLabel })}</span>
+      </div>
+      <span className="live">{tTable('live')}</span>
+    </div>
+  )
+
+  // ── CD title row — back-less « L'addition » + table chip ────────────────────
+  const TitleRow = () => (
+    <div className="h2bar">
+      <h2>{tTable('billTitle')}</h2>
+      <span className="tnum"><bdi>{tableLabel}</bdi></span>
+    </div>
+  )
+
   // ── States ────────────────────────────────────────────────────────────────
 
   if (stage === 'loading') {
+    // Skeleton mirrors the real bill layout (zero shift): banner → title → card.
     return (
-      <div className="mt-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 size={14} className="animate-spin" /> {t('loadingTicket')}
-      </div>
+      <>
+        <Banner />
+        <TitleRow />
+        <div className="body">
+          <p className="eyebrow">{tTable('servedDuringMeal')}</p>
+          <div className="tb-skel-card" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="tb-skel-row">
+                <span className="sk sk-line" style={{ width: '58%' }} />
+                <span className="sk sk-line" style={{ width: 52 }} />
+              </div>
+            ))}
+          </div>
+          <span className="sk sk-line lg" style={{ width: '100%', height: 44, borderRadius: 13, display: 'block' }} />
+        </div>
+        <p className="wordmark">{tTable('poweredBy')}</p>
+      </>
     )
   }
 
   if (stage === 'no-ticket') {
-    // Mirrors the sober coquille shown before the API existed.
+    // Sober "addition arrive bientôt" — bill not yet opened by the restaurant.
     return (
-      <div className="mt-10 flex flex-col items-center text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-2xl bg-accent text-primary">
-          <Clock size={22} />
-        </span>
-        <p className="mt-4 text-lg font-semibold">{t('noTicketTitle')}</p>
-        <p className="mt-1 max-w-xs text-sm text-muted-foreground">{t('noTicketDesc')}</p>
-      </div>
+      <>
+        <Banner />
+        <TitleRow />
+        <div className="state">
+          <span className="state__ic"><span className="ms" aria-hidden="true">schedule</span></span>
+          <h2>{t('noTicketTitle')}</h2>
+          <p>{t('noTicketDesc')}</p>
+        </div>
+        <p className="wordmark">{tTable('poweredBy')}</p>
+      </>
     )
   }
 
   if (stage === 'error') {
     return (
-      <div className="mt-10 flex flex-col items-center text-center">
-        <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-          <AlertCircle size={13} className="mt-0.5 shrink-0" />
-          <span>{error || t('errLoad')}</span>
-        </p>
-        <button
-          type="button"
-          onClick={loadTicket}
-          className="mt-3 rounded-xl border border-border bg-card px-4 py-2 text-[12px] font-bold"
-        >
-          {t('payButton')}
-        </button>
-      </div>
+      <>
+        <Banner />
+        <TitleRow />
+        <div className="state">
+          <p className="err" role="alert">
+            <span className="ms" aria-hidden="true">error</span>
+            <span>{error || t('errLoad')}</span>
+          </p>
+          <button type="button" onClick={loadTicket} className="send-btn send-btn--line">
+            <span className="ms" aria-hidden="true">refresh</span>
+            <b>{t('payButton')}</b>
+          </button>
+        </div>
+        <p className="wordmark">{tTable('poweredBy')}</p>
+      </>
     )
   }
 
   if (stage === 'paid') {
     return (
-      <div className="mt-10 rounded-2xl border border-success/40 bg-success/5 p-4 text-center">
-        <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success text-white">
-          <Receipt size={20} />
-        </span>
-        <p className="mt-2 text-base font-bold text-foreground">{t('paidTitle')}</p>
-        <p className="mt-1 text-[12px] text-muted-foreground">{t('paidBody')}</p>
-      </div>
+      <>
+        <Banner />
+        <TitleRow />
+        <div className="state">
+          <span className="state__ic state__ic--ok"><span className="ms" aria-hidden="true">task_alt</span></span>
+          <h2>{t('paidTitle')}</h2>
+          <p>{t('paidBody')}</p>
+        </div>
+        <p className="wordmark">{tTable('poweredBy')}</p>
+      </>
     )
   }
 
-  // Both review and pay show the items + total. Only the bottom area swaps.
+  // ── review / pay — both show the CD « addition » (items + totals) ───────────
+  // The CD « Service 10 % » + split selector + per-person note are OMITTED on
+  // purpose: the real ticket exposes no service-fee field and no split data, so
+  // the real subtotal IS the total (no fabricated amount).
   return (
-    <div className="mt-8 space-y-4">
-      <div className="flex flex-col items-center gap-2">
-        <h2 className="text-base font-semibold text-foreground">
-          {t('yourBill')}
-        </h2>
-        {/* Brique A — the session anchor. Same code the operator sees on
-            their list/plan/addition tab. Guest can read it aloud to
-            confirm "you're #A3F2, right?" */}
-        <SessionBadge reservationId={ticket?.reservationId ?? null} variant="large" />
-      </div>
+    <>
+      <Banner />
+      <TitleRow />
 
-      <div className="rounded-2xl border border-border bg-card p-3">
-        <ul className="divide-y divide-border">
+      <div className="body">
+        {/* session anchor — same #A3F2 code the operator sees; read aloud to confirm */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+          <SessionBadge reservationId={ticket?.reservationId ?? null} variant="large" />
+        </div>
+
+        <p className="eyebrow">{tTable('servedDuringMeal')}</p>
+
+        {/* cumulated bill — every line sent during the meal (CD .ocard / .oline) */}
+        <div className="ocard">
           {ticket?.items.map((it) => (
-            <li key={it.id} className="flex items-baseline gap-3 py-2 text-sm">
-              <span className="text-muted-foreground">{it.quantity}×</span>
-              <span className="flex-1 truncate text-foreground">{it.name}</span>
-              <span className="font-semibold text-foreground">
-                {currencyFmt.format(it.unitPrice * it.quantity)}
-              </span>
-            </li>
+            <div key={it.id} className="oline">
+              <span><span className="qty"><bdi>{it.quantity}×</bdi></span> {it.name}</span>
+              <span><bdi>{currencyFmt.format(it.unitPrice * it.quantity)}</bdi></span>
+            </div>
           ))}
-        </ul>
-        <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-bold">
+        </div>
+
+        {/* totals — real subtotal = real total (no fabricated service fee) */}
+        <div className="totrow">
+          <span>{tTable('subtotal')}</span>
+          <span><bdi>{ticket ? currencyFmt.format(ticket.subtotal) : '—'}</bdi></span>
+        </div>
+        <div className="totrow tot">
           <span>{t('total')}</span>
-          <span className="text-primary">
-            {ticket ? currencyFmt.format(ticket.subtotal) : '—'}
-          </span>
+          <span className="amt"><bdi>{ticket ? currencyFmt.format(ticket.subtotal) : '—'}</bdi></span>
         </div>
       </div>
 
-      {stage === 'review' && (
-        <div className="space-y-3">
-          {error && (
-            <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </p>
-          )}
-          {/* Bloc B — order-at-table for the LINKED connected client only. */}
-          {canOrder && restaurantIdForMenu && (
+      <div className="foot">
+        {stage === 'review' && (
+          <>
+            {error && (
+              <p className="err" role="alert">
+                <span className="ms" aria-hidden="true">error</span>
+                <span>{error}</span>
+              </p>
+            )}
+            {/* Bloc B — order-at-table for the LINKED connected client only. */}
+            {canOrder && restaurantIdForMenu && (
+              <button
+                type="button"
+                onClick={() => setOrderOpen(true)}
+                className="send-btn send-btn--line"
+              >
+                <span className="ms" aria-hidden="true">restaurant</span>
+                <b>{tOrder('cta')}</b>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setOrderOpen(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-primary py-3 text-sm font-bold text-primary"
+              onClick={startPayment}
+              disabled={starting}
+              className="send-btn"
             >
-              <UtensilsCrossed size={14} /> {tOrder('cta')}
+              <span className="ms" aria-hidden="true">credit_card</span>
+              <b>{starting ? t('loadingPay') : t('payTitle')}</b>
             </button>
-          )}
-          <button
-            type="button"
-            onClick={startPayment}
-            disabled={starting}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-60"
-          >
-            {starting ? <Loader2 size={14} className="animate-spin" /> : null}
-            {starting ? t('loadingPay') : t('payTitle')}
-          </button>
-        </div>
-      )}
+            <small>{tTable('payLaterHint')}</small>
+          </>
+        )}
 
-      {stage === 'pay' && payInit && (
-        <StripeTicketPayment
-          clientSecret={payInit.clientSecret}
-          publishableKey={payInit.publishableKey}
-          amount={payInit.amount}
-          currency={payInit.currency}
-          onPaid={() => setStage('paid')}
-        />
-      )}
+        {stage === 'pay' && payInit && (
+          <div className="pay-sheet">
+            <StripeTicketPayment
+              clientSecret={payInit.clientSecret}
+              publishableKey={payInit.publishableKey}
+              amount={payInit.amount}
+              currency={payInit.currency}
+              onPaid={() => setStage('paid')}
+            />
+          </div>
+        )}
+      </div>
 
       {orderOpen && restaurantIdForMenu && (
         <OrderAtTable
@@ -302,6 +376,8 @@ export default function TableBillClient({ tableId }: Props) {
           onClose={() => setOrderOpen(false)}
         />
       )}
-    </div>
+
+      <p className="wordmark">{tTable('poweredBy')}</p>
+    </>
   )
 }

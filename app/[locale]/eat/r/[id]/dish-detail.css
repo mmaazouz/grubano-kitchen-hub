@@ -59,3 +59,54 @@
   .gb-dish .backdrop{align-items:stretch;padding:0}
   .gb-dish .dish{max-width:none;max-height:none;min-height:100vh;min-height:100dvh;border:none;border-radius:0;box-shadow:none}
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * « Encart Recette du chef » — VERBATIM reproduction of the FROZEN CD ref
+ * (Notion 38efd2c9-…-81c4, file eat/chef-recipe.html). Decorative/INERT insert
+ * that lives INSIDE the dish-detail body (mobile: under the description; desktop:
+ * same flow). Tokens come from the gb-foundation (every --gb-* below already
+ * exists). CD's generic class names (.chef/.vrf/.ov/.qm/.soon/.dishrow/.dchip/.img)
+ * are renamed to a scoped `.cr*` namespace under `.gb-dish` to avoid any collision.
+ * Directional values use logical properties so the encart flips correctly in RTL;
+ * the symbolic icons (restaurant_menu / check / auto_awesome) don't flip.
+ * « Suivre » + the IA accord block are INERT (data not yet wired) per CD.
+ * ───────────────────────────────────────────────────────────────────────────── */
+.gb-dish .cr{margin-top:22px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden}
+.gb-dish .cr__head{display:flex;align-items:center;gap:12px;padding:15px 16px}
+.gb-dish .cr__av{position:relative;width:50px;height:50px;border-radius:50%;flex-shrink:0;background:repeating-linear-gradient(135deg,#FFD9C2 0 7px,#FFE9D6 7px 14px);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:17px;color:#B5560A}
+[data-theme="dark"] .gb-dish .cr__av{background:repeating-linear-gradient(135deg,#3A2C22 0 7px,#2C2118 7px 14px);color:var(--gb-zest)}
+.gb-dish .cr__av .cr-vrf{position:absolute;bottom:-2px;inset-inline-end:-2px;width:20px;height:20px;border-radius:50%;background:var(--gb-info);border:2.5px solid var(--gb-surface);display:flex;align-items:center;justify-content:center}
+.gb-dish .cr__av .cr-vrf .ms{font-size:12px;color:#fff;font-variation-settings:'FILL' 1}
+.gb-dish .cr__id{flex:1;min-width:0}
+.gb-dish .cr__id .cr-ov{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-zest-600);display:flex;align-items:center;gap:5px}
+[data-theme="dark"] .gb-dish .cr__id .cr-ov{color:var(--gb-zest)}
+.gb-dish .cr__id .cr-ov .ms{font-size:13px}
+.gb-dish .cr__id b{font-family:var(--gb-font-display);font-weight:700;font-size:16px;letter-spacing:-.01em;display:flex;align-items:center;gap:6px;margin-top:2px}
+.gb-dish .cr__id span{font-size:11.5px;color:var(--gb-muted)}
+.gb-dish .cr__follow{flex-shrink:0;font-family:var(--gb-font-ui);font-weight:700;font-size:12px;color:var(--gb-zest-600);background:#FFF1E7;border:none;border-radius:var(--gb-r-pill);padding:8px 13px;cursor:pointer}
+[data-theme="dark"] .gb-dish .cr__follow{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+.gb-dish .cr__quote{margin:0 16px;padding:13px 15px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);position:relative}
+.gb-dish .cr__quote .cr-qm{font-family:var(--gb-font-display);font-weight:800;font-size:30px;color:var(--gb-zest-300);line-height:.6;position:absolute;top:12px;inset-inline-start:11px}
+.gb-dish .cr__quote p{margin:0;padding-inline-start:24px;font-size:12.5px;line-height:1.55;color:var(--gb-text);font-style:italic}
+.gb-dish .cr__ai{display:flex;align-items:center;gap:8px;margin:13px 16px 0;padding:10px 12px;border-radius:var(--gb-r-md);background:var(--gb-surface-2);border:1px dashed var(--gb-border-strong)}
+.gb-dish .cr__ai .ms{font-size:17px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-dish .cr__ai .ms{color:var(--gb-zest)}
+.gb-dish .cr__ai span{flex:1;font-size:11px;color:var(--gb-muted)}
+.gb-dish .cr__ai .cr-soon{font-size:8.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:5px;padding:2px 6px;white-space:nowrap}
+[data-theme="dark"] .gb-dish .cr__ai .cr-soon{color:var(--gb-zest)}
+.gb-dish .cr__more{padding:14px 16px 16px}
+.gb-dish .cr__more .cr-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.gb-dish .cr__more .cr-h b{font-size:12.5px;font-weight:700}
+.gb-dish .cr__more .cr-h a{font-size:11.5px;font-weight:700;color:var(--gb-zest-600);text-decoration:none;cursor:pointer}
+[data-theme="dark"] .gb-dish .cr__more .cr-h a{color:var(--gb-zest)}
+.gb-dish .cr-dishrow{display:flex;gap:10px;overflow-x:auto}
+.gb-dish .cr-dchip{flex-shrink:0;width:104px;cursor:pointer}
+.gb-dish .cr-dchip .cr-img{height:74px;border-radius:11px}
+.gb-dish .cr-dchip .cr-img.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 9px,#FFF1E7 9px 18px)}
+.gb-dish .cr-dchip .cr-img.t2{background:repeating-linear-gradient(135deg,#FCE9C9 0 9px,#FCF0D9 9px 18px)}
+.gb-dish .cr-dchip .cr-img.t3{background:repeating-linear-gradient(135deg,#E6EFD9 0 9px,#EFF5E6 9px 18px)}
+[data-theme="dark"] .gb-dish .cr-dchip .cr-img.t1{background:repeating-linear-gradient(135deg,#3A2C22 0 9px,#2C2118 9px 18px)}
+[data-theme="dark"] .gb-dish .cr-dchip .cr-img.t2{background:repeating-linear-gradient(135deg,#33301F 0 9px,#26241A 9px 18px)}
+[data-theme="dark"] .gb-dish .cr-dchip .cr-img.t3{background:repeating-linear-gradient(135deg,#1E3B2B 0 9px,#172E22 9px 18px)}
+.gb-dish .cr-dchip b{display:block;font-size:11.5px;font-weight:700;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-dish .cr-dchip span{font-size:11px;font-weight:700;color:var(--gb-muted)}
