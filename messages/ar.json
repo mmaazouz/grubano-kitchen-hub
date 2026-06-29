@@ -1437,7 +1437,10 @@
       "magicVerifyingBody": "نتحقّق من رابطك السحري. لن يستغرق سوى ثانية.",
       "magicErrorTitle": "رابط غير صالح أو منتهٍ",
       "magicErrorBody": "لم يعد هذا الرابط صالحًا. اطلب رابطًا جديدًا.",
-      "magicErrorCta": "العودة لتسجيل الدخول"
+      "magicErrorCta": "العودة لتسجيل الدخول",
+      "magicModalBody": "أدخل بريدك — سنرسل لك رابط دخول بدون كلمة مرور.",
+      "magicModalSend": "إرسال الرابط",
+      "magicModalClose": "إغلاق"
     },
     "rewards": {
       "title": "المكافآت",

@@ -1437,7 +1437,10 @@
       "magicVerifyingBody": "Verifying your magic link. This only takes a second — hang tight.",
       "magicErrorTitle": "Invalid or expired link",
       "magicErrorBody": "This link is no longer valid. Request a new one.",
-      "magicErrorCta": "Back to sign in"
+      "magicErrorCta": "Back to sign in",
+      "magicModalBody": "Enter your email — we'll send you a passwordless sign-in link.",
+      "magicModalSend": "Send the link",
+      "magicModalClose": "Close"
     },
     "rewards": {
       "title": "Rewards",

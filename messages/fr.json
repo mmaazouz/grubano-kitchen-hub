@@ -1437,7 +1437,10 @@
       "magicVerifyingBody": "Vérification de votre lien magique. Cela ne prend qu'une seconde.",
       "magicErrorTitle": "Lien invalide ou expiré",
       "magicErrorBody": "Ce lien n'est plus valide. Demandez-en un nouveau.",
-      "magicErrorCta": "Retour à la connexion"
+      "magicErrorCta": "Retour à la connexion",
+      "magicModalBody": "Entrez votre email — nous vous envoyons un lien de connexion, sans mot de passe.",
+      "magicModalSend": "Envoyer le lien",
+      "magicModalClose": "Fermer"
     },
     "rewards": {
       "title": "Récompenses",

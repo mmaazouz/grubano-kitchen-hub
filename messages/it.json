@@ -1437,7 +1437,10 @@
       "magicVerifyingBody": "Verifica del link magico. Bastano pochi secondi.",
       "magicErrorTitle": "Link non valido o scaduto",
       "magicErrorBody": "Questo link non è più valido. Richiedine uno nuovo.",
-      "magicErrorCta": "Torna all'accesso"
+      "magicErrorCta": "Torna all'accesso",
+      "magicModalBody": "Inserisci la tua email — ti invieremo un link di accesso senza password.",
+      "magicModalSend": "Invia il link",
+      "magicModalClose": "Chiudi"
     },
     "rewards": {
       "title": "Premi",

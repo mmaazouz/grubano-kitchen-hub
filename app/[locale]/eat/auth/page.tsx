@@ -7,6 +7,7 @@ import { signIn } from 'next-auth/react'
 import { showToast } from '@/lib/eat-cart'
 import { useTranslations } from 'next-intl'
 import ForgotPasswordModal from '@/components/auth/ForgotPasswordModal'
+import MagicLinkModal from '@/components/auth/MagicLinkModal'
 
 type Tab = 'login' | 'register'
 
@@ -53,6 +54,8 @@ export default function AuthScreen() {
   const [providers, setProviders] = useState<Record<string, unknown>>({})
   // Emails v2 FIX 3 — the real forgot-password flow (was a "soon" toast).
   const [forgotOpen, setForgotOpen] = useState(false)
+  // Email-only magic-link modal — the CONNEXION magic CTA must NOT require a password.
+  const [magicOpen, setMagicOpen] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/providers')
@@ -120,9 +123,10 @@ export default function AuthScreen() {
 
   // "Recevoir un lien magique" → the CONSUMER magic flow (/eat/magic): hand the email over
   // (sessionStorage — no PII in the URL), then show "Check your email". Requires an email.
-  function goMagic() {
-    if (!email.trim()) { setError(t('errorFillAllFields')); return }
-    if (typeof window !== 'undefined') sessionStorage.setItem('gb_magic_email', email.trim())
+  function goMagic(em?: string) {
+    const e = (em ?? email).trim()
+    if (!e) { setError(t('errorFillAllFields')); return }
+    if (typeof window !== 'undefined') sessionStorage.setItem('gb_magic_email', e)
     router.push('/eat/magic')
   }
 
@@ -253,7 +257,7 @@ export default function AuthScreen() {
                 )}
               </button>
 
-              <button className="btn btn--line" type="button" onClick={goMagic}>
+              <button className="btn btn--line" type="button" onClick={() => setMagicOpen(true)}>
                 <span className="ms" aria-hidden="true">link</span>{t('magicLinkCta')}
               </button>
             </form>
@@ -382,7 +386,7 @@ export default function AuthScreen() {
               )}
             </button>
 
-            <button type="button" className="magic" onClick={goMagic}>
+            <button type="button" className="magic" onClick={() => setMagicOpen(true)}>
               <span className="ms" aria-hidden="true">link</span>{t('magicLinkCta')}
             </button>
           </form>
@@ -396,6 +400,14 @@ export default function AuthScreen() {
           space="eat"
           initialEmail={email}
           onClose={() => setForgotOpen(false)}
+        />
+      )}
+
+      {magicOpen && (
+        <MagicLinkModal
+          initialEmail={email}
+          onClose={() => setMagicOpen(false)}
+          onSubmit={(em) => { setMagicOpen(false); goMagic(em) }}
         />
       )}
     </>

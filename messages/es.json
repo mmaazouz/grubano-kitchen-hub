@@ -1437,7 +1437,10 @@
       "magicVerifyingBody": "Verificando tu enlace mágico. Solo toma un segundo.",
       "magicErrorTitle": "Enlace no válido o caducado",
       "magicErrorBody": "Este enlace ya no es válido. Solicita uno nuevo.",
-      "magicErrorCta": "Volver a iniciar sesión"
+      "magicErrorCta": "Volver a iniciar sesión",
+      "magicModalBody": "Ingresa tu email — te enviaremos un enlace de acceso sin contraseña.",
+      "magicModalSend": "Enviar el enlace",
+      "magicModalClose": "Cerrar"
     },
     "rewards": {
       "title": "Recompensas",
