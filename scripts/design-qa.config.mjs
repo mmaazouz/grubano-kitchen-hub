@@ -93,4 +93,169 @@ export const screens = [
       },
     ],
   },
+
+  // ── 6 sample restaurants for the search / favorites screens. Real field names from
+  //    the /api/restaurants response shape (id,name,cuisine[],rating,reviewCount,
+  //    deliveryTime,deliveryFee,minOrder,city,address,distanceKm). DISPLAY-ONLY data —
+  //    no DB is reachable locally, so the page's real fetch is stubbed with these.
+  //    Re-declared inline in each `before` (the seed runs in page context, no imports).
+
+  {
+    name: 'eat-search-mobile',
+    url: '/fr/eat/search',
+    reference: 'scripts/design-qa-refs/eat-search-mobile.html',
+    settle: 800,
+    // MOBILE typeahead screen only (the page swaps .se-mobile/.se-desktop at 900px CSS).
+    viewports: [{ name: 'mobile', w: 390, h: 1200 }],
+    states: [
+      {
+        name: 'idle',
+        theme: 'light',
+        clip: '.gb-search',
+        refClip: '.search-screen',
+        // Stub /api/restaurants* (6 real-shaped restos) + seed 3 recents so the idle
+        // view (recents + popular chips) renders exactly like the CD repos state. With
+        // an empty query the page is in IDLE (no fetch results shown), matching the ref.
+        before:
+          `(function(){` +
+          `try{localStorage.setItem('grubano_search_recents',JSON.stringify(['Sushi','Pizza margherita','Mama Trattoria']))}catch(e){}` +
+          `var R=[` +
+          `{id:'r1',name:'Mama Trattoria',cuisine:['italian'],rating:4.8,reviewCount:248,deliveryTime:25,minOrder:15,deliveryFee:0,city:'Paris',address:'12 Rue de Rivoli',distanceKm:1.2},` +
+          `{id:'r2',name:'Casa Caldo',cuisine:['italian'],rating:4.8,reviewCount:120,deliveryTime:35,minOrder:18,deliveryFee:2.5,city:'Paris',address:'8 Bd Haussmann',distanceKm:2.4},` +
+          `{id:'r3',name:'Olive & Thyme',cuisine:['mediterranean'],rating:4.7,reviewCount:90,deliveryTime:20,minOrder:12,deliveryFee:0,city:'Paris',address:'5 Rue Cler',distanceKm:1.0},` +
+          `{id:'r4',name:'La Mamma Verde',cuisine:['healthy'],rating:4.6,reviewCount:60,deliveryTime:30,minOrder:14,deliveryFee:0,city:'Paris',address:'3 Rue Oberkampf',distanceKm:0.9},` +
+          `{id:'r5',name:'Sakura Sushi',cuisine:['japanese'],rating:4.9,reviewCount:210,deliveryTime:30,minOrder:20,deliveryFee:3,city:'Paris',address:'19 Rue Saint-Denis',distanceKm:2.0},` +
+          `{id:'r6',name:'Verde Bowl',cuisine:['healthy'],rating:4.7,reviewCount:75,deliveryTime:23,minOrder:10,deliveryFee:0,city:'Paris',address:'2 Rue Lafayette',distanceKm:0.8}` +
+          `];` +
+          `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/restaurants')>-1){return Promise.resolve(new Response(JSON.stringify({restaurants:R}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-search-desktop',
+    url: '/fr/eat/search',
+    reference: 'scripts/design-qa-refs/eat-search-desktop.html',
+    settle: 800,
+    // DESKTOP subbar + 2-col grid + INERT map panel. The page renders inside EatShell
+    // (rail + topbar) — the CD ref draws its OWN rail+header, so we CLIP the app to the
+    // page content (.gb-search) and the ref to its .main column (rail excluded on both).
+    viewports: [{ name: 'desktop', w: 1280, h: 1000 }],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-search',
+        refClip: '.main',
+        before:
+          `(function(){` +
+          `var R=[` +
+          `{id:'r1',name:'Mama Trattoria',cuisine:['italian'],rating:4.8,reviewCount:248,deliveryTime:25,minOrder:15,deliveryFee:0,city:'Paris',address:'12 Rue de Rivoli',distanceKm:1.2},` +
+          `{id:'r2',name:'Casa Caldo',cuisine:['italian'],rating:4.8,reviewCount:120,deliveryTime:35,minOrder:18,deliveryFee:2.5,city:'Paris',address:'8 Bd Haussmann',distanceKm:2.4},` +
+          `{id:'r3',name:'Olive & Thyme',cuisine:['mediterranean'],rating:4.7,reviewCount:90,deliveryTime:20,minOrder:12,deliveryFee:0,city:'Paris',address:'5 Rue Cler',distanceKm:1.0},` +
+          `{id:'r4',name:'La Mamma Verde',cuisine:['healthy'],rating:4.6,reviewCount:60,deliveryTime:30,minOrder:14,deliveryFee:0,city:'Paris',address:'3 Rue Oberkampf',distanceKm:0.9},` +
+          `{id:'r5',name:'Sakura Sushi',cuisine:['japanese'],rating:4.9,reviewCount:210,deliveryTime:30,minOrder:20,deliveryFee:3,city:'Paris',address:'19 Rue Saint-Denis',distanceKm:2.0},` +
+          `{id:'r6',name:'Verde Bowl',cuisine:['healthy'],rating:4.7,reviewCount:75,deliveryTime:23,minOrder:10,deliveryFee:0,city:'Paris',address:'2 Rue Lafayette',distanceKm:0.8}` +
+          `];` +
+          `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/restaurants')>-1){return Promise.resolve(new Response(JSON.stringify({restaurants:R}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-reviews',
+    url: '/fr/eat/r/demo/reviews',
+    reference: 'scripts/design-qa-refs/eat-reviews.html',
+    settle: 800,
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1100 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-reviews',
+        refClip: '.reviews',
+        // Stub /api/restaurants/demo → real score (4.8) + reviewCount (214). The
+        // distribution + review list have NO backend (no consumer Review model) → the
+        // page shows honest empty states; the CD list is sample data (residual diff).
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/restaurants/')>-1){return Promise.resolve(new Response(JSON.stringify({restaurant:{id:'demo',name:'Mama Trattoria',cuisine:['italian'],rating:4.8,reviewCount:214}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-favorites',
+    url: '/fr/eat/favorites',
+    reference: 'scripts/design-qa-refs/eat-favorites.html',
+    settle: 800,
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1100 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-favorites',
+        refClip: '.fav',
+        // Seed the REAL favourites key (lib/eat-cart FAV_KEY = grubano_favs) with 3 ids,
+        // then stub /api/restaurants* so those 3 resolve → the Restaurants tab shows 3
+        // saved cards (CD shows 5; residual diff). The Plats tab has no store → empty.
+        before:
+          `(function(){` +
+          `try{localStorage.setItem('grubano_favs',JSON.stringify(['r1','r3','r5']))}catch(e){}` +
+          `var R=[` +
+          `{id:'r1',name:'Mama Trattoria',cuisine:['italian'],rating:4.8,reviewCount:248,deliveryTime:25,deliveryFee:0,city:'Paris',distanceKm:1.2},` +
+          `{id:'r3',name:'Olive & Thyme',cuisine:['mediterranean'],rating:4.7,reviewCount:90,deliveryTime:20,deliveryFee:0,city:'Paris',distanceKm:1.0},` +
+          `{id:'r5',name:'Sakura Sushi',cuisine:['japanese'],rating:4.9,reviewCount:210,deliveryTime:30,deliveryFee:3,city:'Paris',distanceKm:2.0}` +
+          `];` +
+          `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/restaurants')>-1){return Promise.resolve(new Response(JSON.stringify({restaurants:R}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-geoloc',
+    url: '/fr/eat',
+    reference: 'scripts/design-qa-refs/eat-geoloc.html',
+    settle: 900,
+    // Desktop only — the overlay opens from the shell `.loc` topbar button (desktop).
+    viewports: [{ name: 'desktop', w: 1280, h: 900 }],
+    states: [
+      {
+        name: 'perm',
+        theme: 'light',
+        clip: '.geo-sheet',
+        refClip: '.sheet',
+        // Seed 2 saved addresses (lib/eat-addresses key grubano_addresses) so the
+        // search step's « Récents » have real data. The overlay opens on the PERMISSION
+        // step. Headless Chrome has NO geolocation grant → data-geo="off"; we flip the
+        // CD ref to data-geo="off" too (refAction) so the status banner aligns.
+        before:
+          `(function(){try{` +
+          // Skip the once-per-session splash (home redirects to /eat/splash on first
+          // visit when this flag is absent → would never reach the .loc button).
+          `sessionStorage.setItem('grubano_splash_seen','1');` +
+          `localStorage.setItem('grubano_addresses',JSON.stringify([` +
+          `{id:'a1',label:'Domicile',kind:'home',street:'14 Rue des Oliviers',postalCode:'75011',city:'Paris',country:'France',isDefault:true},` +
+          `{id:'a2',label:'Travail',kind:'work',street:'8 Bd Haussmann',postalCode:'75009',city:'Paris',country:'France',isDefault:false}` +
+          `]))}catch(e){}})()`,
+        // Open the « Livrer à » overlay (desktop topbar .loc button → setGeoOpen(true)).
+        action: `document.querySelector('.loc') && document.querySelector('.loc').click()`,
+        // Match the app's headless OFF geo-state on the ref.
+        refAction: `(function(){var a=document.getElementById('app');if(a)a.dataset.geo='off'})()`,
+      },
+    ],
+  },
 ]

@@ -7,6 +7,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { readCart, cartCount, CART_EVENT } from '@/lib/eat-cart'
 import { getDefaultAddress, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros } from '@/lib/format-money'
+import GeolocSheet from '@/components/eat/GeolocSheet'
 import '@/app/[locale]/eat/nav-shell.css'
 // gb-* design FOUNDATION (Agent 168) — the shell uses its tokens + Material `.ms` font.
 // `.gb` lives on the shell root; in-shell pages don't use bare foundation class names
@@ -57,6 +58,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   const [activeOrders, setActiveOrders] = useState(0)
   const [query, setQuery] = useState('')
   const [defaultAddr, setDefaultAddr] = useState<EatAddress | null>(null)
+  const [geoOpen, setGeoOpen] = useState(false)
 
   // « Livrer à » = the user's REAL default saved address (lib/eat-addresses), live.
   useEffect(() => {
@@ -187,7 +189,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
         {!bare && (
           <>
             <div className="topbar">
-              <button type="button" className="loc" onClick={() => router.push('/eat/account/addresses')}>
+              <button type="button" className="loc" onClick={() => setGeoOpen(true)}>
                 <div className="l">{t('deliverTo')}</div>
                 <div className="v">{defaultAddr ? defaultAddr.label : t('deliverToValue')}<span className="ms" aria-hidden="true">expand_more</span></div>
               </button>
@@ -231,6 +233,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
           </nav>
         </>
       )}
+      <GeolocSheet open={geoOpen} onClose={() => setGeoOpen(false)} />
     </div>
   )
 }
