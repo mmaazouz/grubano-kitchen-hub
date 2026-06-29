@@ -1249,7 +1249,17 @@
       "cart": "السلة",
       "profile": "الحساب",
       "search": "بحث",
-      "rewards": "المكافآت"
+      "rewards": "المكافآت",
+      "orders": "الطلبات",
+      "notifications": "الإشعارات",
+      "deliverTo": "التوصيل إلى",
+      "deliverToValue": "اختر العنوان",
+      "searchPlaceholder": "اسأل Grubano AI…",
+      "viewCart": "عرض السلة",
+      "itemCount": "{count, plural, one {# عنصر} other {# عناصر}}",
+      "pointsShort": "{count} نقطة",
+      "signInForPoints": "تسجيل الدخول",
+      "guest": "ضيف"
     },
     "cart": {
       "title": "سلتي",

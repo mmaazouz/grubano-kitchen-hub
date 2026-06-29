@@ -68,6 +68,9 @@
   --gb-info:#2E78F0; --gb-info-bg:#E7F0FE;
   --gb-r-2xl:24px;
   --gb-bronze:#C7A86B; --gb-silver:#9AA6B2; --gb-gold:#F2570E; --gb-platinum:#5D739B;
+  /* nav shell (CD 38cfd2c9-…-8182): rail width + the sunrise gradient alias */
+  --gb-nav-w:236px;
+  --gb-sunrise:linear-gradient(130deg,#FFB020,#FF6A1F 55%,#F2570E);
 }
 [data-theme="dark"] .gb,
 .gb[data-theme="dark"]{

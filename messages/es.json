@@ -1249,7 +1249,17 @@
       "cart": "Cesta",
       "profile": "Perfil",
       "search": "Búsqueda",
-      "rewards": "Recompensas"
+      "rewards": "Recompensas",
+      "orders": "Pedidos",
+      "notifications": "Notificaciones",
+      "deliverTo": "ENTREGAR EN",
+      "deliverToValue": "Elegir dirección",
+      "searchPlaceholder": "Pregunta a Grubano AI…",
+      "viewCart": "Ver carrito",
+      "itemCount": "{count, plural, =0 {0 artículos} one {# artículo} other {# artículos}}",
+      "pointsShort": "{count} pts",
+      "signInForPoints": "Iniciar sesión",
+      "guest": "Invitado"
     },
     "cart": {
       "title": "Mi Cesta",

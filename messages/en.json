@@ -1249,7 +1249,17 @@
       "cart": "Cart",
       "profile": "Profile",
       "search": "Search",
-      "rewards": "Rewards"
+      "rewards": "Rewards",
+      "orders": "Orders",
+      "notifications": "Notifications",
+      "deliverTo": "DELIVER TO",
+      "deliverToValue": "Choose address",
+      "searchPlaceholder": "Ask Grubano AI…",
+      "viewCart": "View cart",
+      "itemCount": "{count, plural, =0 {0 items} one {# item} other {# items}}",
+      "pointsShort": "{count} pts",
+      "signInForPoints": "Sign in",
+      "guest": "Guest"
     },
     "cart": {
       "title": "My Cart",

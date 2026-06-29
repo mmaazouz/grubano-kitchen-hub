@@ -79,7 +79,6 @@ export default function RewardsScreen() {
   const tierLabel = (k: string) => ({ bronze: ta('tierBronze'), silver: ta('tierSilver'), gold: ta('tierGold'), platine: ta('tierPlatinum'), member: ta('tierMember') } as Record<string, string>)[k] ?? k
   const curIdx = LADDER_ORDER.indexOf(tierKey)
 
-  function back() { router.push('/eat/account') }
   function useCredit() { router.push('/eat/cart') }
 
   // Not signed in → invite to sign in (the wallet needs a session).
@@ -87,7 +86,6 @@ export default function RewardsScreen() {
     return (
       <div className="gb gb-rewards">
         <div className="rw-pageh">
-          <span className="ms rw-back" role="button" tabIndex={0} aria-label={t('back')} onClick={back} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); back() } }}>arrow_back</span>
           <h1>{t('title')}</h1>
         </div>
         <div className="rw-card" style={{ textAlign: 'center', marginTop: 0 }}>
@@ -101,7 +99,6 @@ export default function RewardsScreen() {
   return (
     <div className="gb gb-rewards">
       <div className="rw-pageh">
-        <span className="ms rw-back" role="button" tabIndex={0} aria-label={t('back')} onClick={back} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); back() } }}>arrow_back</span>
         <h1>{t('title')}</h1>
       </div>
 

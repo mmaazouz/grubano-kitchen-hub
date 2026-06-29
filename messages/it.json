@@ -1249,7 +1249,17 @@
       "cart": "Carrello",
       "profile": "Profilo",
       "search": "Ricerca",
-      "rewards": "Premi"
+      "rewards": "Premi",
+      "orders": "Ordini",
+      "notifications": "Notifiche",
+      "deliverTo": "CONSEGNA A",
+      "deliverToValue": "Scegli indirizzo",
+      "searchPlaceholder": "Chiedi a Grubano AI…",
+      "viewCart": "Vedi carrello",
+      "itemCount": "{count, plural, =0 {0 articoli} one {# articolo} other {# articoli}}",
+      "pointsShort": "{count} pts",
+      "signInForPoints": "Accedi",
+      "guest": "Ospite"
     },
     "cart": {
       "title": "Il Mio Carrello",

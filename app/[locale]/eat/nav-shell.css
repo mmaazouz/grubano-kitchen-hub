@@ -1,0 +1,97 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Consumer nav SHELL — reproduction of the FROZEN CD ref (Notion 38cfd2c9-…-8182)
+ * with the gb-* foundation. The shell wraps EVERY /eat page (except the full-screen
+ * /eat/auth + /eat/magic). One responsive component: ≥900px = left rail + top bar;
+ * <900px = condensed app-bar + bottom-nav (5 tabs) + floating cart bar. Material
+ * Symbols (gb rule, not lucide). Every rule is scoped under `.eat-nav` (the root also
+ * carries `.gb` so the foundation tokens + Material `.ms` apply); the page CONTENT
+ * (`.eat-nav .content > *`) is NOT under a foundation primitive selector, so nothing
+ * leaks onto existing pages. CD verbatim CSS — only the shell rules (the example
+ * Rewards content from the mock is NOT reproduced here; the real pages render in .content).
+ * ───────────────────────────────────────────────────────────────────────────── */
+.eat-nav{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:var(--gb-nav-w) 1fr;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui)}
+
+/* ══ LEFT RAIL (desktop ≥900px) ══════════════════════════════════════════════ */
+.eat-nav .rail{position:sticky;top:0;height:100vh;height:100dvh;background:var(--gb-surface);border-right:1px solid var(--gb-border);display:flex;flex-direction:column;padding:20px 14px}
+.eat-nav .rail__logo{display:flex;align-items:center;gap:9px;padding:0 8px 22px;text-decoration:none;color:var(--gb-text)}
+.eat-nav .rail__logo img{height:30px;width:auto;display:block}
+.eat-nav .rail__logo b{font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em}
+.eat-nav .nav{display:flex;flex-direction:column;gap:4px}
+.eat-nav .nav a{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:var(--gb-r-md);color:var(--gb-muted);text-decoration:none;font-weight:600;font-size:14.5px;cursor:pointer}
+.eat-nav .nav a .ms{font-size:22px}
+.eat-nav .nav a:hover{background:var(--gb-surface-2);color:var(--gb-text)}
+.eat-nav .nav a.active{color:#fff;background:var(--gb-grad)}
+.eat-nav .nav a.active .ms{font-variation-settings:'FILL' 1}
+.eat-nav .nav a .count{margin-left:auto;font-size:11px;font-weight:700;color:#fff;background:var(--gb-zest-600);border-radius:6px;padding:1px 7px}
+.eat-nav .nav a.active .count{background:rgba(255,255,255,.25)}
+.eat-nav .nav__sep{height:1px;background:var(--gb-border);margin:10px 8px}
+.eat-nav .nav a.saved .ms{color:#B83A6E}
+[data-theme="dark"] .eat-nav .nav a.saved .ms,.eat-nav[data-theme="dark"] .nav a.saved .ms{color:#E97FB0}
+.eat-nav .rail__rewards{margin-top:auto;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:14px;text-decoration:none;color:var(--gb-text);display:block}
+.eat-nav .rail__rewards .t{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;margin-bottom:8px}
+.eat-nav .rail__rewards .t .ms{font-size:18px;color:var(--gb-zest-600)}
+[data-theme="dark"] .eat-nav .rail__rewards .t .ms,.eat-nav[data-theme="dark"] .rail__rewards .t .ms{color:var(--gb-zest)}
+.eat-nav .rail__rewards .pbar{height:6px;border-radius:999px;background:var(--gb-border)}
+.eat-nav .rail__rewards .pbar i{display:block;height:6px;border-radius:999px;background:var(--gb-grad)}
+.eat-nav .rail__user{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--gb-border)}
+.eat-nav .rail__user .av{width:34px;height:34px;border-radius:50%;background:repeating-linear-gradient(135deg,#FFE3CE 0 6px,#FFF1E7 6px 12px);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:12px;color:#B5560A;flex-shrink:0}
+[data-theme="dark"] .eat-nav .rail__user .av,.eat-nav[data-theme="dark"] .rail__user .av{background:repeating-linear-gradient(135deg,#2A3B52 0 6px,#1B2C42 6px 12px);color:#FF9A4D}
+.eat-nav .rail__user .who{flex:1;min-width:0}
+.eat-nav .rail__user .who b{font-size:12.5px;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eat-nav .rail__user .who span{font-size:11px;color:var(--gb-muted)}
+
+/* ══ MAIN COLUMN ═════════════════════════════════════════════════════════════ */
+.eat-nav .main{min-width:0;display:flex;flex-direction:column}
+.eat-nav .topbar{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:16px;padding:14px 28px;background:color-mix(in srgb,var(--gb-bg) 86%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--gb-border)}
+.eat-nav .loc{flex-shrink:0;text-align:left;background:none;border:none;cursor:pointer;padding:0}
+.eat-nav .loc .l{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--gb-muted-2)}
+.eat-nav .loc .v{display:flex;align-items:center;gap:3px;font-family:var(--gb-font-display);font-weight:700;font-size:14.5px;color:var(--gb-text)}
+.eat-nav .loc .v .ms{font-size:18px;color:var(--gb-zest-600)}
+[data-theme="dark"] .eat-nav .loc .v .ms,.eat-nav[data-theme="dark"] .loc .v .ms{color:var(--gb-zest)}
+.eat-nav .search{flex:1;max-width:520px;display:flex;align-items:center;gap:10px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-pill);padding:11px 16px}
+.eat-nav .search .ai{font-size:20px;background:linear-gradient(135deg,#FFB020,#F2570E);-webkit-background-clip:text;background-clip:text;color:transparent}
+.eat-nav .search input{flex:1;border:none;outline:none;background:none;font-size:14px;color:var(--gb-text);font-family:inherit}
+.eat-nav .search input::placeholder{color:var(--gb-muted)}
+.eat-nav .search .mic{font-size:19px;color:var(--gb-muted-2);cursor:pointer}
+.eat-nav .topbar__sp{margin-left:auto}
+.eat-nav .hbtn{position:relative;width:44px;height:44px;border-radius:var(--gb-r-md);background:var(--gb-surface);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;flex-shrink:0}
+.eat-nav .hbtn .ms{font-size:22px;color:var(--gb-text)}
+.eat-nav .hbtn .badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;border-radius:9px;background:var(--gb-zest-600);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--gb-bg)}
+.eat-nav .hbtn .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--gb-zest-600);border:2px solid var(--gb-surface)}
+/* Content is capped + centred to the SAME width the previous shell used
+ * (max-w-[1200px]) so existing pages keep their design width; the rail + the
+ * full-bleed sticky top bar span the column. No-op below 1200px (mobile fills). */
+.eat-nav .content{max-width:1200px;margin-inline:auto;padding:24px 28px 40px}
+
+/* mobile-only chrome hidden on desktop */
+.eat-nav .botnav,.eat-nav .fab-cart,.eat-nav .m-appbar{display:none}
+
+/* ══ RESPONSIVE — breakpoint 900px ═══════════════════════════════════════════ */
+@media (max-width:900px){
+  .eat-nav{grid-template-columns:1fr}
+  .eat-nav .rail{display:none}
+  .eat-nav .topbar{display:none}
+  .eat-nav .m-appbar{display:flex;align-items:center;gap:12px;padding:12px 16px;position:sticky;top:0;z-index:4;background:color-mix(in srgb,var(--gb-bg) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--gb-border)}
+  .eat-nav .m-appbar img{height:28px}
+  .eat-nav .m-appbar b{font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--gb-text)}
+  .eat-nav .m-appbar .sp{margin-left:auto}
+  .eat-nav .content{padding:18px 16px 150px}
+  /* immersive pages (no bottom-nav/fab) keep the page's own bottom space */
+  .eat-nav.is-bare .content{padding:0 0 64px}
+  .eat-nav .fab-cart{display:flex;position:fixed;left:12px;right:12px;bottom:74px;z-index:21;align-items:center;justify-content:space-between;background:var(--gb-grad);border-radius:var(--gb-r-md);padding:13px 18px;box-shadow:var(--gb-shadow-btn);text-decoration:none;border:none;cursor:pointer;width:auto;max-width:none}
+  .eat-nav .fab-cart .l{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;color:#fff}
+  .eat-nav .fab-cart .l .ms{font-size:20px}
+  .eat-nav .fab-cart b{font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:#fff}
+  .eat-nav .botnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--gb-surface);border-top:1px solid var(--gb-border);padding:8px 6px calc(8px + env(safe-area-inset-bottom));justify-content:space-around}
+  .eat-nav .botnav a{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--gb-muted);cursor:pointer}
+  .eat-nav .botnav a .ms{font-size:24px}
+  .eat-nav .botnav a span{font-size:9.5px;font-weight:600}
+  .eat-nav .botnav a.active{color:var(--gb-zest-600)}
+  [data-theme="dark"] .eat-nav .botnav a.active,.eat-nav[data-theme="dark"] .botnav a.active{color:var(--gb-zest)}
+  .eat-nav .botnav a.active .ms{font-variation-settings:'FILL' 1}
+  .eat-nav .botnav a .count{position:absolute;top:-3px;left:50%;transform:translateX(4px);font-size:9px;font-weight:800;color:#fff;background:var(--gb-zest-600);border-radius:6px;padding:0 5px}
+  /* immersive: hide the mobile chrome → the page's own header/bars govern */
+  .eat-nav.is-bare .m-appbar,.eat-nav.is-bare .botnav,.eat-nav.is-bare .fab-cart{display:none}
+}
+/* empty cart → hide the bag badge + the sticky cart bar */
+.eat-nav[data-cart="0"] .hbtn .badge,.eat-nav[data-cart="0"] .fab-cart{display:none}

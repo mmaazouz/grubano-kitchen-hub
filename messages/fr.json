@@ -1249,7 +1249,17 @@
       "cart": "Panier",
       "profile": "Profil",
       "search": "Recherche",
-      "rewards": "Récompenses"
+      "rewards": "Récompenses",
+      "orders": "Commandes",
+      "notifications": "Notifications",
+      "deliverTo": "LIVRER À",
+      "deliverToValue": "Choisir l'adresse",
+      "searchPlaceholder": "Demandez à Grubano AI…",
+      "viewCart": "Voir le panier",
+      "itemCount": "{count, plural, =0 {0 article} one {# article} other {# articles}}",
+      "pointsShort": "{count} pts",
+      "signInForPoints": "Connectez-vous",
+      "guest": "Invité"
     },
     "cart": {
       "title": "Mon Panier",

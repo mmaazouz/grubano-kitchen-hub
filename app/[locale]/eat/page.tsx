@@ -6,7 +6,7 @@ import { Link, useRouter } from '@/navigation'
 import { formatCuisineList } from '@/lib/categories'
 import { formatDistance } from '@/lib/format'
 import { useGeolocation } from '@/lib/use-geolocation'
-import { Bell, Search, MapPin, ChevronDown, SlidersHorizontal, Navigation, X } from 'lucide-react'
+import { Navigation, X } from 'lucide-react'
 import {
   RestaurantCard,
   SkeletonCard,
@@ -146,52 +146,9 @@ export default function HomeScreen() {
 
   return (
     <div className="min-h-screen bg-gb-surface font-gb-sans text-gb-content">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pb-2.5 pt-3.5">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-gb-full bg-gb-zest-50 text-lg">
-            🧑‍🍳
-          </div>
-          <div>
-            <p className="text-[11px] text-gb-content-muted">{t('location')}</p>
-            <div className="flex items-center gap-1">
-              <MapPin size={13} className="text-gb-accent" />
-              <span className="text-sm font-bold text-gb-content">
-                {geoActive ? t('myPosition') : 'Paris, France'}
-              </span>
-              <ChevronDown size={13} className="text-gb-accent" />
-            </div>
-          </div>
-        </div>
-        <Link
-          href="/eat/account"
-          className="relative flex h-11 w-11 items-center justify-center rounded-gb-full border-[1.5px] border-gb-stroke bg-gb-surface-elevated"
-          aria-label={t('notifications')}
-        >
-          <Bell size={22} strokeWidth={1.8} className="text-gb-content" />
-          <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-gb-full bg-gb-accent" />
-        </Link>
-      </div>
-
-      {/* Search row */}
-      <div className="mb-3 flex items-center gap-2.5 px-4 lg:max-w-3xl">
-        <button
-          onClick={() => router.push('/eat/search')}
-          className="flex flex-1 items-center gap-2 rounded-gb-lg border border-gb-stroke bg-gb-surface-elevated px-3.5 py-3.5 text-left shadow-gb-sm transition active:scale-[0.99]"
-        >
-          <Search size={17} className="text-gb-content-muted" />
-          <span className="text-sm text-gb-content-muted">{t('searchPlaceholder')}</span>
-        </button>
-        <Button
-          variant="primary"
-          size="md"
-          onClick={() => router.push('/eat/search')}
-          aria-label={t('filters')}
-          className="h-12 w-12 px-0"
-        >
-          <SlidersHorizontal size={18} />
-        </Button>
-      </div>
+      {/* Header + search row removed — the consumer nav SHELL (components/eat/EatShell.tsx)
+          now provides the global top bar (« Livrer à » + AI search + bell + cart). The
+          home opens directly on the geolocation banner. */}
 
       {/* Geolocation opt-in banner */}
       {!geoActive ? (
