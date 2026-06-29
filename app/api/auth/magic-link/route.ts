@@ -113,11 +113,15 @@ async function sendMagicEmail(name: string, to: string, link: string, code?: str
 
 export async function POST(req: NextRequest) {
   try {
-    const body   = (await req.json().catch(() => null)) as { email?: unknown; locale?: unknown } | null
+    const body   = (await req.json().catch(() => null)) as { email?: unknown; locale?: unknown; space?: unknown } | null
     const email  = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
     const locale = typeof body?.locale === 'string' && (locales as readonly string[]).includes(body.locale)
       ? body.locale
       : defaultLocale
+    // Consumer routing (additive): a CONSUMER request (space:'eat') gets a link back to the
+    // CONSUMER /eat/magic screen; every existing caller (no space) keeps /auth/magic. Only this
+    // destination PATH differs — the token security, the verify, and the email body are unchanged.
+    const callbackPath = body?.space === 'eat' ? 'eat/magic' : 'auth/magic'
     if (!email) return NextResponse.json(GENERIC)
 
     const operator = await prisma.operator
@@ -145,7 +149,7 @@ export async function POST(req: NextRequest) {
             console.error('[magic-link] otp issue non-fatal:', e instanceof Error ? e.message : e)
           }
         }
-        const link = `${baseUrl(req)}/${locale}/auth/magic?token=${encodeURIComponent(token)}`
+        const link = `${baseUrl(req)}/${locale}/${callbackPath}?token=${encodeURIComponent(token)}`
         if (process.env.SMTP_PASS) {
           await sendMagicEmail(operator.name, email, link, otpCode)
         } else {

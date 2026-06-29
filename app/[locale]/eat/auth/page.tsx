@@ -118,6 +118,14 @@ export default function AuthScreen() {
   // placeholders are the real Grubano symbol; the strength meter is dynamic.
   function togglePw() { setShowPwd((v) => !v) }
 
+  // "Recevoir un lien magique" → the CONSUMER magic flow (/eat/magic): hand the email over
+  // (sessionStorage — no PII in the URL), then show "Check your email". Requires an email.
+  function goMagic() {
+    if (!email.trim()) { setError(t('errorFillAllFields')); return }
+    if (typeof window !== 'undefined') sessionStorage.setItem('gb_magic_email', email.trim())
+    router.push('/eat/magic')
+  }
+
   return (
     <>
       {/* ════ DESKTOP (≥768px) — FROZEN reference 38dfd2c9-…-81be, unchanged ════ */}
@@ -245,7 +253,7 @@ export default function AuthScreen() {
                 )}
               </button>
 
-              <button className="btn btn--line" type="button" onClick={() => router.push('/auth/magic')}>
+              <button className="btn btn--line" type="button" onClick={goMagic}>
                 <span className="ms" aria-hidden="true">link</span>{t('magicLinkCta')}
               </button>
             </form>
@@ -374,7 +382,7 @@ export default function AuthScreen() {
               )}
             </button>
 
-            <button type="button" className="magic" onClick={() => router.push('/auth/magic')}>
+            <button type="button" className="magic" onClick={goMagic}>
               <span className="ms" aria-hidden="true">link</span>{t('magicLinkCta')}
             </button>
           </form>

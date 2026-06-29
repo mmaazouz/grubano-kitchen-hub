@@ -75,7 +75,11 @@ async function shoot(browser, target, vp, opts = {}) {
   const page = await browser.newPage()
   try {
     await page.setViewport({ width: vp.w, height: vp.h, deviceScaleFactor: 1 })
-    await page.goto(target, { waitUntil: 'networkidle0', timeout: 30000 })
+    if (opts.before) await page.evaluateOnNewDocument(opts.before) // seed sessionStorage / stub fetch before load
+    // a state that keeps a request pending on purpose (e.g. a hung verify spinner) never reaches
+    // networkidle — `waitUntil` can opt down to domcontentloaded, and goto errors are swallowed so
+    // we still screenshot what is on screen.
+    await page.goto(target, { waitUntil: opts.waitUntil || 'networkidle0', timeout: 30000 }).catch(() => {})
     if (opts.theme) await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), opts.theme)
     if (opts.rootClass) await page.evaluate((c) => { const el = document.querySelector('main,.auth,#root,body>div'); if (el) el.classList.add(c) }, opts.rootClass)
     if (opts.action) await page.evaluate(opts.action) // a string body run in page context
@@ -124,7 +128,7 @@ async function main() {
           fs.mkdirSync(dir, { recursive: true })
           const appUrl = BASE_URL + screen.url + (st.query || '')
           const common = { theme: st.theme, settle: screen.settle }
-          const appBuf = await shoot(browser, appUrl, vp, { ...common, action: st.action })
+          const appBuf = await shoot(browser, appUrl, vp, { ...common, action: st.action, before: st.before, waitUntil: st.waitUntil })
           const refBuf = await shoot(browser, refUrl, vp, { ...common, rootClass: st.refClass, action: st.refAction })
           fs.writeFileSync(path.join(dir, 'app.png'), appBuf)
           fs.writeFileSync(path.join(dir, 'ref.png'), refBuf)

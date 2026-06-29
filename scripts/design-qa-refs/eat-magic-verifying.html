@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<!-- Visual-QA reference for /eat/magic — "Signing you in…" (verifying). Responsive merge of the
+     FROZEN CD mocks: desktop 2-panel (Notion 38dfd2c9-…-81be-9556, screen 2) ≥768px + dedicated
+     mobile single-column (Notion 38cfd2c9-…-81c5-998b, state 4) <768px. Ref for design-qa.mjs. -->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682;
+  --gb-on-ink:#FFFFFF; --gb-on-ink-muted:#AFC0D6; --gb-on-ink-faint:#7E8FA3;
+  --gb-panel-ink:linear-gradient(150deg,#0F2742,#16395A 70%,#1A2C3F);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box} html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga';font-feature-settings:'liga'}
+@keyframes gb-spin{to{transform:rotate(360deg)}}
+@keyframes gb-pulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+.spin{border-radius:50%;border:4px solid var(--gb-border);border-top-color:var(--gb-zest-600);animation:gb-spin .8s linear infinite}
+.dots{display:flex;gap:6px;margin-top:20px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--gb-border-strong);animation:gb-pulse 1.4s ease-in-out infinite}
+.dots i:nth-child(2){animation-delay:.2s} .dots i:nth-child(3){animation-delay:.4s}
+.landing-logo{border-radius:13px;background:var(--gb-zest-600);color:#fff;font-family:var(--gb-font-display);font-weight:900;display:flex;align-items:center;justify-content:center}
+
+/* ══ DESKTOP (≥768px) ══ */
+.eat-magic{min-height:100vh;width:100%;display:grid;grid-template-columns:46% 1fr;background:var(--gb-bg)}
+.gb-brand{position:relative;overflow:hidden;color:var(--gb-on-ink);background:var(--gb-panel-ink);display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,3.4vw,44px)}
+.gb-brand::before{content:"";position:absolute;right:-90px;top:-70px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(255,138,40,.32),transparent 66%);filter:blur(10px)}
+.gb-brand::after{content:"";position:absolute;left:-70px;bottom:-90px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(43,164,92,.20),transparent 68%);filter:blur(12px)}
+.gb-brand__logo{position:relative;display:flex;align-items:center;gap:11px}
+.gb-brand__logo .mk{height:40px;width:40px;border-radius:11px;background:rgba(255,255,255,.18);display:inline-flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:900;color:#fff;font-size:22px}
+.gb-brand__logo b{font-family:var(--gb-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em}
+.gb-brand__pitch{position:relative}
+.gb-brand__pitch h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(26px,3vw,34px);letter-spacing:-.03em;line-height:1.06;color:#fff}
+.gb-brand__pitch p{margin:14px 0 0;font-size:15px;line-height:1.6;color:var(--gb-on-ink-muted);max-width:34ch}
+.gb-brand__meta{position:relative;display:flex;gap:18px;font-size:12.5px;color:var(--gb-on-ink-faint)}
+.gb-brand__meta span{display:inline-flex;align-items:center;gap:6px}
+.eat-magic__panel{position:relative;display:flex;align-items:center;justify-content:center;padding:clamp(24px,4vw,40px)}
+.eat-magic__card{width:100%;max-width:400px;text-align:center;display:flex;flex-direction:column;align-items:center}
+.eat-magic__card .landing-logo{height:54px;width:54px;margin-bottom:26px;font-size:26px}
+.eat-magic__card .spin{width:54px;height:54px;border-width:5px;margin-bottom:24px}
+.eat-magic__card .title{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:28px;letter-spacing:-.02em;color:var(--gb-text)}
+.eat-magic__card .sub{margin:11px 0 26px;font-size:15px;line-height:1.6;color:var(--gb-muted);max-width:38ch}
+@media (max-width:767.98px){ .eat-magic{display:none} }
+
+/* ══ MOBILE (<768px) ══ */
+.eat-magic-mobile{min-height:100vh;display:flex;flex-direction:column;background:var(--gb-bg)}
+.screen__bar{display:flex;align-items:center;gap:12px;padding:16px 20px;flex-shrink:0;min-height:56px}
+.screen__body{flex:1;display:flex;flex-direction:column;padding:8px 24px 24px;max-width:420px;width:100%;margin:0 auto}
+.screen__body.center{justify-content:center;text-align:center;align-items:center}
+.eat-magic-mobile .landing-logo{height:50px;width:50px;margin-bottom:22px;font-size:24px}
+.eat-magic-mobile .spin{width:46px;height:46px;margin-bottom:20px}
+.eat-magic-mobile .title{font-family:var(--gb-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em;margin:0;color:var(--gb-text)}
+.eat-magic-mobile .sub{margin:9px 0 22px;font-size:13.5px;line-height:1.55;color:var(--gb-muted)}
+@media (min-width:768px){ .eat-magic-mobile{display:none} }
+</style>
+</head>
+<body>
+<!-- DESKTOP -->
+<div class="eat-magic">
+  <aside class="gb-brand">
+    <div class="gb-brand__logo"><span class="mk">g</span><b>Grubano</b></div>
+    <div class="gb-brand__pitch"><h2>Almost there.</h2><p>Hang tight while we confirm it's you and get your table ready.</p></div>
+    <div class="gb-brand__meta"><span><span class="ms" style="font-size:17px;color:#41BD78">lock</span>Encrypted link</span></div>
+  </aside>
+  <section class="eat-magic__panel">
+    <div class="eat-magic__card">
+      <span class="landing-logo">g</span>
+      <div class="spin"></div>
+      <h1 class="title">Signing you in…</h1>
+      <p class="sub">Verifying your magic link. This only takes a second — hang tight.</p>
+      <div class="dots"><i></i><i></i><i></i></div>
+    </div>
+  </section>
+</div>
+<!-- MOBILE -->
+<div class="eat-magic-mobile">
+  <div class="screen__bar"></div>
+  <div class="screen__body center">
+    <span class="landing-logo">g</span>
+    <div class="spin"></div>
+    <h1 class="title">Signing you in…</h1>
+    <p class="sub">Verifying your magic link. This only takes a second — hang tight.</p>
+  </div>
+</div>
+</body>
+</html>

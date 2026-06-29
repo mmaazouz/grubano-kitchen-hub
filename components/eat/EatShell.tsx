@@ -6,15 +6,16 @@ import BottomNav from '@/components/eat/BottomNav'
 // ── <EatShell /> — the /eat app frame (centered 480 column on mobile + a persistent
 // 240px left rail on desktop), EXCEPT on the auth screen.
 //
-// /eat/auth is rendered FULL-SCREEN (the Claude-Design pixel blueprint: a brand panel +
-// the form filling the whole viewport, with NO app rail). Every OTHER /eat route keeps
-// the existing shell byte-for-byte (same classes as before). The decision is purely on
-// the pathname — no auth/data logic, no impact on other routes.
+// /eat/auth and /eat/magic are rendered FULL-SCREEN (the Claude-Design pixel blueprints:
+// a brand panel + the content filling the whole viewport, with NO app rail and NO BottomNav).
+// Every OTHER /eat route keeps the existing shell byte-for-byte (same classes as before). The
+// decision is purely on the pathname — no auth/data logic, no impact on other routes.
 //
 // `usePathname` from '@/navigation' (createSharedPathnamesNavigation) is locale-STRIPPED
 // — it returns '/eat/auth' (the same convention BottomNav relies on, e.g. `pathname === '/eat'`).
 // We still match with endsWith so the condition is bullet-proof either way (locale prefix or not).
-const isFullscreen = (pathname: string) => pathname.endsWith('/eat/auth')
+const isFullscreen = (pathname: string) =>
+  pathname.endsWith('/eat/auth') || pathname.endsWith('/eat/magic')
 
 export default function EatShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
