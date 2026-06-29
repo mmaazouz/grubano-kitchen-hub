@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { Link, usePathname } from '@/navigation'
 import { useEffect, useState } from 'react'
-import { Home, Search, Heart, ShoppingBag, User } from 'lucide-react'
+import { Home, Search, Heart, Award, ShoppingBag, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { cartCount, CART_EVENT } from '@/lib/eat-cart'
 
@@ -20,6 +20,9 @@ const NAV_ITEMS: NavItem[] = [
   // « Recherche » with the magnifier icon to match Claude Design (no new route).
   { href: '/eat/search', icon: Search, labelKey: 'search' },
   { href: '/eat/favorites', icon: Heart, labelKey: 'favorites' },
+  // Récompenses — minimal/interim discoverability link to /eat/rewards (the full nav
+  // redesign, cart-in-header etc., is a separate banked CD task). Reuses the item style.
+  { href: '/eat/rewards', icon: Award, labelKey: 'rewards' },
   { href: '/eat/cart', icon: ShoppingBag, labelKey: 'cart', isCart: true },
   { href: '/eat/account', icon: User, labelKey: 'profile' },
 ]
