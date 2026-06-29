@@ -9,9 +9,7 @@ import { formatCuisineList } from '@/lib/categories'
 import { ArrowLeft, Heart, Share2, Clock, MapPin, Search, ShoppingBag, Tag } from 'lucide-react'
 import {
   DishCard,
-  Modal,
   Button,
-  Badge,
   StarRating,
   CategoryPill,
   EmptyState,
@@ -31,6 +29,7 @@ import {
   type EatCartItemOptions,
 } from '@/lib/eat-cart'
 import { getFoodImage, getRestaurantCover, inferCategory, type FoodCategory } from '@/lib/food-images'
+import './dish-detail.css'
 
 interface MenuItem {
   id: string
@@ -233,7 +232,7 @@ export default function RestaurantScreen() {
       .reduce((s, l) => s + l.qty, 0)
   }
 
-  function addLine(dish: MenuItem, opts?: EatCartItemOptions) {
+  function addLine(dish: MenuItem, opts?: EatCartItemOptions, qty = 1) {
     if (!restaurant) return
     const fullOpts: EatCartItemOptions | undefined = opts && (opts.size || opts.supplements?.length || opts.exclusions?.length || opts.note)
       ? { ...opts, parentDishId: dish.id }
@@ -261,13 +260,13 @@ export default function RestaurantScreen() {
     const existingIdx = current.items.findIndex((l) => l.item.id === lineId)
     let nextItems: EatCartLineItem[]
     if (existingIdx >= 0) {
-      nextItems = current.items.map((l, i) => (i === existingIdx ? { ...l, qty: l.qty + 1 } : l))
+      nextItems = current.items.map((l, i) => (i === existingIdx ? { ...l, qty: l.qty + qty } : l))
     } else {
       nextItems = [
         ...current.items,
         {
           item: { id: lineId, name: displayName, price: unitPrice, photos: dish.photos ?? [] },
-          qty: 1,
+          qty,
           options: fullOpts,
         },
       ]
@@ -776,8 +775,8 @@ export default function RestaurantScreen() {
           dish={modalDish}
           photo={photoFor(modalDish)}
           onClose={() => setModalDish(null)}
-          onConfirm={(opts) => {
-            addLine(modalDish, opts)
+          onConfirm={(opts, qty) => {
+            addLine(modalDish, opts, qty)
             setModalDish(null)
           }}
         />
@@ -793,7 +792,7 @@ interface ModalProps {
   dish: MenuItem
   photo: string
   onClose: () => void
-  onConfirm: (opts: EatCartItemOptions) => void
+  onConfirm: (opts: EatCartItemOptions, qty: number) => void
 }
 
 function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps) {
@@ -803,144 +802,96 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
   const [supplements, setSupplements] = useState<string[]>([])
   const [exclusions, setExclusions] = useState<string[]>([])
   const [note, setNote] = useState('')
+  const [qty, setQty] = useState(1)
+  const [liked, setLiked] = useState(false)
 
   const sizePremium = SIZE_OPTIONS.find((s) => s.label === size)?.premium ?? 0
   const supplementsList = SUPPLEMENT_OPTIONS.filter((s) => supplements.includes(s.name))
   const supplementsTotal = supplementsList.reduce((s, x) => s + x.price, 0)
-  const total = dish.price + sizePremium + supplementsTotal
+  const total = (dish.price + sizePremium + supplementsTotal) * qty
 
   function toggle(list: string[], setList: (n: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
   }
+  const key = (fn: () => void) => (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn() } }
+  const iconBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0 }
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      size="md"
-      hideClose={false}
-      skin="gb"
-      title={dish.name}
-      description={dish.description}
-      footer={
-        <Button variant="gb-primary" size="pill" fullWidth onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note })}>
-          {t('addToCartPrice', { price: formatAmount(total, locale) })}
-        </Button>
-      }
-    >
-      <FoodImage name={dish.name} src={photo} className="mb-4 h-40 w-full rounded-gb-lg" glyphClassName="text-5xl" />
+    <div className="gb gb-dish" role="dialog" aria-modal="true" aria-label={dish.name}>
+      <div className="backdrop" onClick={onClose}>
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
+        <section className="dish" onClick={(e) => e.stopPropagation()}>
+          <div className="dish__hero" style={photo ? { backgroundImage: `url(${photo})` } : undefined}>
+            <button type="button" className="close" onClick={onClose} aria-label={t('close')}><span className="ms" aria-hidden="true">close</span></button>
+            <button type="button" className={`fav${liked ? ' on' : ''}`} onClick={() => setLiked((v) => !v)} aria-label={t('favorite')} aria-pressed={liked}><span className="ms" aria-hidden="true">favorite</span></button>
+          </div>
+          <div className="dish__body">
+            <h1 className="dish__title">{dish.name}</h1>
+            <div className="dish__price">{t('fromPrice', { price: formatEuros(dish.price, locale) })}</div>
+            {dish.description && <p className="dish__desc">{dish.description}</p>}
 
-      <Section title={t('sectionSize')}>
-        <div className="space-y-1.5">
-          {SIZE_OPTIONS.map((opt) => {
-            const selected = size === opt.label
-            return (
-              <label
-                key={opt.label}
-                className={`flex cursor-pointer items-center justify-between rounded-gb-md border px-3 py-3 transition ${
-                  selected ? 'border-gb-accent bg-gb-zest-50' : 'border-gb-stroke bg-gb-surface-elevated'
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="size"
-                    value={opt.label}
-                    checked={selected}
-                    onChange={() => setSize(opt.label)}
-                    className="h-4 w-4 accent-gb-accent"
-                  />
-                  <span className="text-sm font-semibold text-gb-content">{opt.label}</span>
-                </span>
-                <span className="text-sm font-bold text-gb-content">
-                  {opt.premium > 0 ? t('plusPrice', { price: formatAmount(opt.premium, locale) }) : t('included')}
-                </span>
-              </label>
-            )
-          })}
-        </div>
-      </Section>
+            <div className="grp">
+              <div className="grp__head"><b>{t('chooseSize')}</b><span className="grp__req required">{t('requiredTag')}</span></div>
+              {SIZE_OPTIONS.map((opt) => {
+                const on = size === opt.label
+                return (
+                  <div key={opt.label} className={`opt${on ? ' on' : ''}`} role="radio" aria-checked={on} tabIndex={0} onClick={() => setSize(opt.label)} onKeyDown={key(() => setSize(opt.label))}>
+                    <span className="opt__sel"><span className="ms" aria-hidden="true">check</span></span>
+                    <span className="opt__main">{opt.label}</span>
+                    <span className={`opt__price${opt.premium === 0 ? ' free' : ''}`}>{opt.premium > 0 ? t('plusPrice', { price: formatAmount(opt.premium, locale) }) : t('included')}</span>
+                  </div>
+                )
+              })}
+            </div>
 
-      <Section title={t('sectionSupplements')}>
-        <div className="space-y-1.5">
-          {SUPPLEMENT_OPTIONS.map((opt) => {
-            const selected = supplements.includes(opt.name)
-            return (
-              <label
-                key={opt.name}
-                className={`flex cursor-pointer items-center justify-between rounded-gb-md border px-3 py-3 transition ${
-                  selected ? 'border-gb-accent bg-gb-zest-50' : 'border-gb-stroke bg-gb-surface-elevated'
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={() => toggle(supplements, setSupplements, opt.name)}
-                    className="h-4 w-4 accent-gb-accent"
-                  />
-                  <span className="text-sm font-semibold text-gb-content">{opt.name}</span>
-                </span>
-                <span className="text-sm font-bold text-gb-content">{t('plusPrice', { price: formatAmount(opt.price, locale) })}</span>
-              </label>
-            )
-          })}
-        </div>
-      </Section>
+            <div className="grp">
+              <div className="grp__head"><b>{t('addExtras')}</b><span className="grp__req optional">{t('optionalTag')}</span></div>
+              {SUPPLEMENT_OPTIONS.map((opt) => {
+                const on = supplements.includes(opt.name)
+                return (
+                  <div key={opt.name} className={`opt${on ? ' on' : ''}`} role="checkbox" aria-checked={on} tabIndex={0} onClick={() => toggle(supplements, setSupplements, opt.name)} onKeyDown={key(() => toggle(supplements, setSupplements, opt.name))}>
+                    <span className="opt__sel box"><span className="ms" aria-hidden="true">check</span></span>
+                    <span className="opt__main">{opt.name}</span>
+                    <span className="opt__price">{t('plusPrice', { price: formatAmount(opt.price, locale) })}</span>
+                  </div>
+                )
+              })}
+            </div>
 
-      <Section title={t('sectionWithout')}>
-        <div className="flex flex-wrap gap-2">
-          {EXCLUSION_OPTIONS.map((opt) => {
-            const selected = exclusions.includes(opt)
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => toggle(exclusions, setExclusions, opt)}
-                className={`rounded-gb-full border px-3 py-1.5 text-xs font-semibold transition active:scale-95 ${
-                  selected ? 'border-gb-accent bg-gb-accent text-gb-content-on-accent' : 'border-gb-stroke bg-gb-surface-elevated text-gb-content-muted'
-                }`}
-              >
-                {opt}
-              </button>
-            )
-          })}
-        </div>
-      </Section>
+            <div className="grp">
+              <div className="grp__head"><b>{t('sectionWithout')}</b><span className="grp__req optional">{t('optionalTag')}</span></div>
+              {EXCLUSION_OPTIONS.map((opt) => {
+                const on = exclusions.includes(opt)
+                return (
+                  <div key={opt} className={`opt${on ? ' on' : ''}`} role="checkbox" aria-checked={on} tabIndex={0} onClick={() => toggle(exclusions, setExclusions, opt)} onKeyDown={key(() => toggle(exclusions, setExclusions, opt))}>
+                    <span className="opt__sel box"><span className="ms" aria-hidden="true">check</span></span>
+                    <span className="opt__main">{opt}</span>
+                  </div>
+                )
+              })}
+            </div>
 
-      <Section title={t('sectionNote')}>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={2}
-          placeholder={t('notePlaceholder')}
-          className="w-full resize-none rounded-gb-md border border-gb-stroke bg-gb-oat-100 p-3 text-sm text-gb-content placeholder:text-gb-content-muted focus:bg-gb-surface-elevated focus:outline-none focus:ring-2 focus:ring-gb-accent"
-        />
-      </Section>
-
-      <div className="mt-2 flex items-center justify-between rounded-gb-md bg-gb-zest-50 p-3">
-        <span className="text-sm font-semibold text-gb-content">{t('total')}</span>
-        <span className="font-gb-display text-[22px] font-extrabold text-gb-accent">{formatEuros(total, locale)}</span>
+            <div className="note-field">
+              <label htmlFor="dish-note">{t('addNote')}</label>
+              <div className="note-control"><span className="ms" aria-hidden="true">edit_note</span>
+                <textarea id="dish-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('notePlaceholder')} />
+              </div>
+              <div className="aller-line"><span className="ms" aria-hidden="true">auto_awesome</span><span>{t('checkAllergens')}</span><span className="d-ai-soon">{t('aiSoon')}</span></div>
+            </div>
+          </div>
+          <div className="dish__foot">
+            <div className="qty">
+              <button type="button" className="ms" style={iconBtn} onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label={t('decrease')}>remove</button>
+              <b>{qty}</b>
+              <button type="button" className="ms" style={iconBtn} onClick={() => setQty((q) => q + 1)} aria-label={t('increase')}>add</button>
+            </div>
+            <button type="button" className="add-btn" onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note }, qty)}>
+              <span>{t('addToCart')}</span><b>{formatEuros(total, locale)}</b>
+            </button>
+          </div>
+        </section>
       </div>
-      {(supplements.length > 0 || exclusions.length > 0) && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {supplements.map((s) => (
-            <Badge key={`s-${s}`} skin="gb" tone="primary" size="sm">+ {s}</Badge>
-          ))}
-          {exclusions.map((s) => (
-            <Badge key={`e-${s}`} skin="gb" tone="neutral" size="sm">{s}</Badge>
-          ))}
-        </div>
-      )}
-    </Modal>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-4">
-      <h3 className="mb-2 text-sm font-extrabold text-gb-content">{title}</h3>
-      {children}
     </div>
   )
 }
+

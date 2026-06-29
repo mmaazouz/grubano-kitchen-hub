@@ -79,6 +79,8 @@
   --gb-warning:#EA9410; --gb-warning-bg:#FCF0D9;
   --gb-grad-green:linear-gradient(135deg,#41BD78,#1E8C4B);
   --gb-font-mono:'JetBrains Mono',monospace;
+  /* Dish-detail modal (CD 38cfd2c9-…-81d9, verbatim): the pop-over shadow. */
+  --gb-shadow-pop:0 30px 60px -24px rgba(15,39,66,.45);
 }
 [data-theme="dark"] .gb,
 .gb[data-theme="dark"]{
@@ -88,4 +90,5 @@
   --gb-pickup:#6FB6F5;  --gb-pickup-bg:rgba(46,120,240,.18);
   --gb-dinein:#41BD78;  --gb-dinein-bg:rgba(65,189,120,.16);
   --gb-warning:#F0B249; --gb-warning-bg:rgba(234,148,16,.16);
+  --gb-shadow-pop:0 30px 60px -24px rgba(0,0,0,.6);
 }
