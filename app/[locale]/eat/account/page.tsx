@@ -6,9 +6,12 @@ import { useTranslations, useLocale } from 'next-intl'
 import { usePathname, useRouter } from '@/navigation'
 import { locales, type Locale } from '@/i18n'
 import { readFavs, showToast } from '@/lib/eat-cart'
-import './account.css'
+// gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
+// only when it is the route stylesheet's first rule — keep it before page CSS so the
+// `.ms` icon ligatures don't fall back to raw text.
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
+import './account.css'
 
 // /eat/account — « Profil » (racine de l'onglet Profil). VERBATIM reproduction of the
 // FROZEN CD ref (Notion 38efd2c9-…-300b, file eat/profile.html). Renders INSIDE the

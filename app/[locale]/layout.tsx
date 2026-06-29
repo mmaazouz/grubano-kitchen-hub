@@ -58,6 +58,19 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} dir={dir}>
+      <head>
+        {/* Material Symbols Rounded — loaded ROBUSTLY here so the consumer app's
+            `.ms` ligature icons ALWAYS render, independent of per-route CSS bundle
+            order. gb-tokens.css also `@import`s this font, but that @import is
+            invalidated on any route whose page CSS is bundled before it (per the
+            CSS spec @import must be first) — the icon ligatures then fall back to
+            raw text. This <link> is the belt; the import reorder is the suspenders.
+            Axes match the gb-tokens @import exactly. */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block"
+        />
+      </head>
       <body className="bg-background">
         <ServiceWorkerRegister />
         <NextIntlClientProvider messages={messages}>

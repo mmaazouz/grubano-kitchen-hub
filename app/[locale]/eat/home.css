@@ -55,9 +55,9 @@
 .gb-home .cuisines{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;margin-bottom:30px;padding-bottom:4px}
 .gb-home .cuisines::-webkit-scrollbar{display:none}
 .gb-home .cui{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;cursor:pointer;background:none;border:none;padding:0}
-.gb-home .cui .c{width:64px;height:64px;border-radius:20px;display:flex;align-items:center;justify-content:center}
+.gb-home .cui .c{width:64px;height:64px;border-radius:20px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .gb-home .cui .c .ms{font-size:30px}
-.gb-home .cui span{font-family:var(--gb-font-ui);font-size:12.5px;font-weight:600;color:var(--gb-text)}
+.gb-home .cui > span:last-child{font-family:var(--gb-font-ui);font-size:12.5px;font-weight:600;color:var(--gb-text)}
 
 /* ── SECTION head ────────────────────────────────────────────────────────────── */
 .gb-home .sec{margin-bottom:30px}

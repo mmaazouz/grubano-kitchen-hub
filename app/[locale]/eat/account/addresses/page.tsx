@@ -14,9 +14,12 @@ import {
   type EatAddress,
   type AddrKind,
 } from '@/lib/eat-addresses'
-import './addresses.css'
+// gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
+// only when it is the route stylesheet's first rule — keep it before page CSS so the
+// `.ms` icon ligatures don't fall back to raw text.
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
+import './addresses.css'
 
 // /eat/account/addresses — « Mes adresses » (consumer). VERBATIM reproduction of the
 // FROZEN CD ref (Notion 38cfd2c9-…-7516913, screens 1 + 2). Renders inside the EatShell

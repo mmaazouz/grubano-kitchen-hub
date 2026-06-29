@@ -17,6 +17,11 @@
  *    Material-Symbols icon font (CD uses Material icons, not lucide).
  * ───────────────────────────────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block');
+/* Arabic RTL — Cairo font for `ar` + the global RTL rule sheet (CD 38efd2c9-…-814c).
+ * @import MUST precede all rules → kept here at the very top of the foundation. The
+ * gb-rtl.css selectors are themselves `[dir="rtl"]`-gated so they are inert in LTR. */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+@import './gb-rtl.css';
 
 /* ── LIGHT tokens (CD :root, verbatim) ───────────────────────────────────────── */
 .gb{
@@ -56,7 +61,10 @@
 
 /* ── base / Material icons / keyframes (CD verbatim, scoped) ──────────────────── */
 .gb{ color:var(--gb-text); font-family:var(--gb-font-ui); -webkit-font-smoothing:antialiased }
-.gb .ms{ font-family:'Material Symbols Rounded'; font-weight:normal; font-style:normal; line-height:1; display:inline-block; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga' }
+/* font-family is !important: `.ms` is an ICON font and must never be overridden by a
+ * lower-down scope rule like `.gb-home .cui span{font-family:--gb-font-ui}` (which
+ * otherwise wins on specificity and renders the ligature as raw body text). */
+.gb .ms{ font-family:'Material Symbols Rounded' !important; font-weight:normal; font-style:normal; line-height:1; display:inline-block; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga' }
 .gb input,.gb button{ font-family:inherit }
 @keyframes gb-spin{ to{ transform:rotate(360deg) } }
 @keyframes gb-pulse{ 0%,100%{ opacity:.55; transform:scale(1) } 50%{ opacity:1; transform:scale(1.05) } }
@@ -83,6 +91,9 @@
   --gb-shadow-pop:0 30px 60px -24px rgba(15,39,66,.45);
   /* Addresses (CD 38cfd2c9-…-814d, verbatim): danger colour for delete/validation. */
   --gb-danger:#E0402E; --gb-danger-bg:#FCEAE7; --gb-danger-bd:#F4CFC9;
+  /* Skeletons (CD 38efd2c9-…-813a « Skeletons de chargement », verbatim): shimmer
+   * base + highlight. Used by the `.sk` primitive in gb-components.css. light. */
+  --sk-base:#ECE6DB; --sk-hi:#F6F2EA;
 }
 [data-theme="dark"] .gb,
 .gb[data-theme="dark"]{
@@ -94,4 +105,6 @@
   --gb-warning:#F0B249; --gb-warning-bg:rgba(234,148,16,.16);
   --gb-shadow-pop:0 30px 60px -24px rgba(0,0,0,.6);
   --gb-danger:#FF6B5C; --gb-danger-bg:rgba(224,64,46,.16); --gb-danger-bd:#5C2C28;
+  /* Skeletons — dark (CD [data-theme="dark"], verbatim). */
+  --sk-base:#1C3047; --sk-hi:#26405C;
 }

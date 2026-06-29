@@ -7,9 +7,12 @@ import { formatCuisineList } from '@/lib/categories'
 import { formatDistance } from '@/lib/format'
 import { readFavs, toggleFav, FAV_EVENT, showToast } from '@/lib/eat-cart'
 import { getRestaurantCover } from '@/lib/food-images'
-import './favorites.css'
+// gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
+// only when it is the route stylesheet's first rule — keep it before page CSS so the
+// `.ms` icon ligatures don't fall back to raw text.
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
+import './favorites.css'
 
 // /eat/favorites — « Favoris / Enregistrés ». Verbatim reproduction of the FROZEN
 // CD ref (Notion 38efd2c9-…-8156, file eat/favorites.html). Renders INSIDE the

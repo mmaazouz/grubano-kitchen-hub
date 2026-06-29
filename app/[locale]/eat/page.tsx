@@ -9,9 +9,13 @@ import { formatEuros } from '@/lib/format-money'
 import { useGeolocation } from '@/lib/use-geolocation'
 import { readFavs, toggleFav, FAV_EVENT } from '@/lib/eat-cart'
 import { getRestaurantCover } from '@/lib/food-images'
-import './home.css'
+// gb-foundation FIRST: gb-tokens.css begins with `@import …Material+Symbols…`, which
+// the CSS spec only honours when it is the first rule of the route's stylesheet. If
+// page CSS is bundled before it, the @import is dropped and `.ms` ligatures render as
+// raw text. Keep this order; a robust <link> in the root <head> is the belt for it.
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
+import './home.css'
 
 // /eat HOME — « Accueil ». VERBATIM reproduction of the FROZEN CD ref
 // (Notion 38efd2c9-…-81bf, file eat/home.html). Renders INSIDE the consumer nav
