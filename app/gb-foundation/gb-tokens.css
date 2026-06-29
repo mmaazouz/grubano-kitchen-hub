@@ -71,9 +71,21 @@
   /* nav shell (CD 38cfd2c9-…-8182): rail width + the sunrise gradient alias */
   --gb-nav-w:236px;
   --gb-sunrise:linear-gradient(130deg,#FFB020,#FF6A1F 55%,#F2570E);
+  /* Orders screen (CD 38efd2c9-…-8155, verbatim): fulfilment-type colours + dine-in green
+   * gradient + mono font for the pickup code. Reusable by order-related screens. */
+  --gb-delivery:#F2570E; --gb-delivery-bg:#FFF1E7;
+  --gb-pickup:#2E78F0;  --gb-pickup-bg:#E7F0FE;
+  --gb-dinein:#1E9E57;  --gb-dinein-bg:#EAF7EF;
+  --gb-warning:#EA9410; --gb-warning-bg:#FCF0D9;
+  --gb-grad-green:linear-gradient(135deg,#41BD78,#1E8C4B);
+  --gb-font-mono:'JetBrains Mono',monospace;
 }
 [data-theme="dark"] .gb,
 .gb[data-theme="dark"]{
   --gb-info:#6FB6F5; --gb-info-bg:rgba(46,120,240,.18);
   --gb-gold:#FF9A4D; --gb-platinum:#8FA6C8;
+  --gb-delivery:#FF7C39; --gb-delivery-bg:rgba(255,124,57,.16);
+  --gb-pickup:#6FB6F5;  --gb-pickup-bg:rgba(46,120,240,.18);
+  --gb-dinein:#41BD78;  --gb-dinein-bg:rgba(65,189,120,.16);
+  --gb-warning:#F0B249; --gb-warning-bg:rgba(234,148,16,.16);
 }

@@ -96,13 +96,12 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
 
   const bare = isImmersive(pathname)
   const active = (hrefs: string[]) => hrefs.some((h) => pathname === h || pathname.startsWith(h + '/'))
-  // Tabs (Commandes + Profil both resolve to /eat/account today — the dedicated orders
-  // page is a future zone; Profil owns the active state there).
+  // Tabs — Commandes → /eat/orders (its own screen), Profil → /eat/account.
   const onAccount = pathname === '/eat/account' || pathname.startsWith('/eat/account/')
   const tabs = [
     { key: 'home', href: '/eat', icon: 'home', on: pathname === '/eat' },
     { key: 'search', href: '/eat/search', icon: 'search', on: active(['/eat/search']) },
-    { key: 'orders', href: '/eat/account', icon: 'receipt_long', on: false, count: activeOrders },
+    { key: 'orders', href: '/eat/orders', icon: 'receipt_long', on: active(['/eat/orders']), count: activeOrders },
     { key: 'rewards', href: '/eat/rewards', icon: 'redeem', on: active(['/eat/rewards']) },
     { key: 'profile', href: '/eat/account', icon: 'person', on: onAccount },
   ]
