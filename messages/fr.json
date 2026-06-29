@@ -1438,6 +1438,27 @@
       "magicErrorBody": "Ce lien n'est plus valide. Demandez-en un nouveau.",
       "magicErrorCta": "Retour à la connexion"
     },
+    "rewards": {
+      "title": "Récompenses",
+      "back": "Retour",
+      "brand": "Grubano Rewards",
+      "pointsUnit": "points",
+      "ptsUnit": "pts",
+      "toNext": "{count} pts avant {tier}",
+      "maxLevel": "Niveau maximum",
+      "streakTitle": "Série de commandes",
+      "streakSoon": "Bientôt disponible",
+      "yourTier": "Votre palier",
+      "you": "vous",
+      "insight": "Continuez à commander pour grimper les paliers et débloquer plus de crédit fidélité.",
+      "aiSoon": "IA — bientôt",
+      "redeemTitle": "Utilisez vos points",
+      "creditName": "{amount} € de crédit",
+      "redeemCta": "Utiliser",
+      "redeemLocked": "{count} pts restants",
+      "signInTitle": "Connectez-vous pour voir vos récompenses",
+      "signInCta": "Se connecter"
+    },
     "restaurant": {
       "addedToCart": "{name} ajouté au panier",
       "restaurantNotFound": "Restaurant introuvable",

@@ -1438,6 +1438,27 @@
       "magicErrorBody": "لم يعد هذا الرابط صالحًا. اطلب رابطًا جديدًا.",
       "magicErrorCta": "العودة لتسجيل الدخول"
     },
+    "rewards": {
+      "title": "المكافآت",
+      "back": "رجوع",
+      "brand": "Grubano Rewards",
+      "pointsUnit": "نقاط",
+      "ptsUnit": "نقطة",
+      "toNext": "{count} نقطة حتى {tier}",
+      "maxLevel": "أعلى مستوى",
+      "streakTitle": "سلسلة الطلبات",
+      "streakSoon": "قريبًا",
+      "yourTier": "مستواك",
+      "you": "أنت",
+      "insight": "واصل الطلب لترتقي في المستويات وتفتح المزيد من رصيد الولاء.",
+      "aiSoon": "الذكاء الاصطناعي — قريبًا",
+      "redeemTitle": "استخدم نقاطك",
+      "creditName": "{amount} € رصيد",
+      "redeemCta": "استخدام",
+      "redeemLocked": "بقيت {count} نقطة",
+      "signInTitle": "سجّل الدخول لعرض مكافآتك",
+      "signInCta": "تسجيل الدخول"
+    },
     "restaurant": {
       "addedToCart": "تمت إضافة {name} إلى السلة",
       "restaurantNotFound": "المطعم غير موجود",

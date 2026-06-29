@@ -60,3 +60,17 @@
 .gb input,.gb button{ font-family:inherit }
 @keyframes gb-spin{ to{ transform:rotate(360deg) } }
 @keyframes gb-pulse{ 0%,100%{ opacity:.55; transform:scale(1) } 50%{ opacity:1; transform:scale(1.05) } }
+
+/* ── ADDITIVE tokens for the Rewards screen (CD /rewards 38cfd2c9-…-8198, verbatim).
+ *    --gb-grad-sunrise + --gb-r-{sm..pill} already exist above; we add only the new
+ *    --gb-info / --gb-info-bg (info pill), --gb-r-2xl, and the tier-medal colours. ──── */
+.gb{
+  --gb-info:#2E78F0; --gb-info-bg:#E7F0FE;
+  --gb-r-2xl:24px;
+  --gb-bronze:#C7A86B; --gb-silver:#9AA6B2; --gb-gold:#F2570E; --gb-platinum:#5D739B;
+}
+[data-theme="dark"] .gb,
+.gb[data-theme="dark"]{
+  --gb-info:#6FB6F5; --gb-info-bg:rgba(46,120,240,.18);
+  --gb-gold:#FF9A4D; --gb-platinum:#8FA6C8;
+}

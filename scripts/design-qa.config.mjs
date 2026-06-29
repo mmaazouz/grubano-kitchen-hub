@@ -67,4 +67,30 @@ export const screens = [
       },
     ],
   },
+  {
+    name: 'eat-rewards',
+    url: '/fr/eat/rewards',
+    reference: 'scripts/design-qa-refs/eat-rewards.html',
+    settle: 800,
+    // /eat/rewards renders INSIDE EatShell (nav rail + bottom-nav); the CD mock is content-only,
+    // so we CLIP both to the content zone (app `.gb-rewards` ↔ ref `main`) for a fair compare.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1000 },
+      { name: 'desktop', w: 1440, h: 1150 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-rewards',
+        refClip: 'main',
+        // Stub the SESSION (the wallet needs auth) + the WALLET (250 pts → Gold/Or tier; the real
+        // euro-credit scale). DISPLAY-ONLY data — the real loyalty engine is never called.
+        before: `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/loyalty/wallet')>-1){return Promise.resolve(new Response(JSON.stringify({pointsBalance:250,balanceEuros:12.5,creditScale:[{points:100,euros:5},{points:200,euros:10},{points:400,euros:20}]}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
 ]

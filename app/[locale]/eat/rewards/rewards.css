@@ -1,0 +1,27 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/rewards — page LAYOUT only (the recurring Rewards components live in the
+ * FOUNDATION: app/gb-foundation/gb-components.css, `.rw-*`). Reproduction of the
+ * FROZEN CD ref (Notion 38cfd2c9-8146-8198) — ONE responsive markup that reflows at
+ * 760px (desktop hero+streak side-by-side / 4-col grid → mobile stacked / 2-col grid
+ * + back arrow). The page renders INSIDE EatShell (the consumer nav rail + bottom-nav),
+ * so `.gb-rewards` is the content zone. Scoped to `.gb-rewards` (no leak); the root also
+ * carries `.gb` so the foundation primitives + tokens apply.
+ * ───────────────────────────────────────────────────────────────────────────── */
+.gb-rewards{max-width:1080px;margin:0 auto;padding:clamp(20px,4vw,40px) clamp(16px,4vw,28px)}
+.gb-rewards .rw-pageh{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.gb-rewards .rw-pageh .rw-back{font-size:24px;cursor:pointer;display:none;color:var(--gb-text)}   /* mobile only */
+.gb-rewards .rw-pageh h1{font-family:var(--gb-font-display);font-weight:800;font-size:clamp(24px,3.4vw,32px);letter-spacing:-.03em;margin:0;color:var(--gb-text)}
+.gb-rewards .rw-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
+.gb-rewards .rw-card{margin-top:18px}
+.gb-rewards .rw-sectionh{font-family:var(--gb-font-display);font-weight:700;font-size:18px;margin:26px 0 14px;color:var(--gb-text)}
+/* RESPONSIVE — CD breakpoint 760px */
+@media (max-width:760px){
+  .gb-rewards .rw-pageh .rw-back{display:block}
+  .gb-rewards .rw-layout{grid-template-columns:1fr}
+  .gb-rewards .rw-rgrid{grid-template-columns:1fr 1fr}
+  .gb-rewards .rw-tier__pts{display:none}
+}
+@media (max-width:420px){ .gb-rewards .rw-ladder{overflow-x:auto} }
+
+/* skeleton (loading) — CD: blocks on surface-2 */
+.gb-rewards .rw-skel{background:var(--gb-surface-2);border-radius:var(--gb-r-2xl);animation:gb-pulse 1.4s ease-in-out infinite}

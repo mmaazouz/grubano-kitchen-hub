@@ -85,6 +85,9 @@ async function shoot(browser, target, vp, opts = {}) {
     if (opts.action) await page.evaluate(opts.action) // a string body run in page context
     try { await page.evaluate(() => document.fonts && document.fonts.ready) } catch {}
     await new Promise((r) => setTimeout(r, opts.settle ?? 450)) // let fonts paint / animations settle
+    // opts.clip = a selector → screenshot just that element (e.g. the content zone of a page
+    // that renders inside a nav shell, so the diff compares content vs a content-only CD mock).
+    if (opts.clip) { const el = await page.$(opts.clip); if (el) return await el.screenshot({ type: 'png' }) }
     return await page.screenshot({ type: 'png' }) // viewport-clip (deterministic same-size)
   } finally { await page.close() }
 }
@@ -128,8 +131,8 @@ async function main() {
           fs.mkdirSync(dir, { recursive: true })
           const appUrl = BASE_URL + screen.url + (st.query || '')
           const common = { theme: st.theme, settle: screen.settle }
-          const appBuf = await shoot(browser, appUrl, vp, { ...common, action: st.action, before: st.before, waitUntil: st.waitUntil })
-          const refBuf = await shoot(browser, refUrl, vp, { ...common, rootClass: st.refClass, action: st.refAction })
+          const appBuf = await shoot(browser, appUrl, vp, { ...common, action: st.action, before: st.before, waitUntil: st.waitUntil, clip: st.clip })
+          const refBuf = await shoot(browser, refUrl, vp, { ...common, rootClass: st.refClass, action: st.refAction, clip: st.refClip })
           fs.writeFileSync(path.join(dir, 'app.png'), appBuf)
           fs.writeFileSync(path.join(dir, 'ref.png'), refBuf)
           const d = diffPng(appBuf, refBuf)
