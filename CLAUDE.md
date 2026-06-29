@@ -7,6 +7,8 @@
 
 **RÈGLE ABSOLUE :** aucun agent ne demande JAMAIS d'autorisation, de validation ou de confirmation à l'utilisateur en cours de tâche (ni avant un commit, ni avant un push, ni avant de déployer). Le déploiement est automatique au push sur `develop` (GitHub Actions). Tu exécutes tout de bout en bout : **code → commits → push origin develop → END**. Tu ne t'arrêtes QUE si techniquement bloqué (clé/info indispensable manquante). Toute pause pour attendre un accord est une faute.
 
+**PROCESSUS STANDARD CC ⇄ Agent 0 ⇄ CD (re-skin / build conso)** : le pilotage du design conso suit la page Notion **« 🤝 ORCHESTRATION CC ⇄ Agent 0 ⇄ CD »** = `38efd2c9-8146-8107-9b2c-f65db5694d3d` — protocole RUN COMPLET (parcourir la file d'attente section B zone par zone ; pour chaque zone avec **code CD verbatim banqué** → reproduire EXACTEMENT le design + fondation gb- + Material Symbols + **données réelles jamais en dur** + desktop & mobile + robot ; sinon ⛔ section C ; garde-fous money/auth/middleware/schéma/loyalty/cart/magic byte-identical + revue adversariale sur les zones argent ; **UN rapport final consolidé** à la fin). Lis cette page (+ les pages « CODE exact CD (verbatim) » qu'elle référence) au démarrage de tout run de build CD conso.
+
 ---
 
 ## SYNC PROTOCOL (mandatory)
