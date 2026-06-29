@@ -5,6 +5,7 @@ import { Link, usePathname, useRouter } from '@/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { readCart, cartCount, CART_EVENT } from '@/lib/eat-cart'
+import { getDefaultAddress, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros } from '@/lib/format-money'
 import '@/app/[locale]/eat/nav-shell.css'
 // gb-* design FOUNDATION (Agent 168) — the shell uses its tokens + Material `.ms` font.
@@ -55,6 +56,19 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   const [points, setPoints] = useState<number | null>(null)
   const [activeOrders, setActiveOrders] = useState(0)
   const [query, setQuery] = useState('')
+  const [defaultAddr, setDefaultAddr] = useState<EatAddress | null>(null)
+
+  // « Livrer à » = the user's REAL default saved address (lib/eat-addresses), live.
+  useEffect(() => {
+    const sync = () => setDefaultAddr(getDefaultAddress())
+    sync()
+    window.addEventListener(ADDRESS_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(ADDRESS_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
 
   // Cart (lib/eat-cart, byte-identical) — count + subtotal, live via CART_EVENT.
   useEffect(() => {
@@ -173,10 +187,10 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
         {!bare && (
           <>
             <div className="topbar">
-              <div className="loc">
+              <button type="button" className="loc" onClick={() => router.push('/eat/account/addresses')}>
                 <div className="l">{t('deliverTo')}</div>
-                <div className="v">{t('deliverToValue')}<span className="ms" aria-hidden="true">expand_more</span></div>
-              </div>
+                <div className="v">{defaultAddr ? defaultAddr.label : t('deliverToValue')}<span className="ms" aria-hidden="true">expand_more</span></div>
+              </button>
               <form className="search" onSubmit={submitSearch}>
                 <span className="ms ai" aria-hidden="true">auto_awesome</span>
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('searchPlaceholder')} aria-label={t('search')} />

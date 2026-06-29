@@ -81,6 +81,8 @@
   --gb-font-mono:'JetBrains Mono',monospace;
   /* Dish-detail modal (CD 38cfd2c9-…-81d9, verbatim): the pop-over shadow. */
   --gb-shadow-pop:0 30px 60px -24px rgba(15,39,66,.45);
+  /* Addresses (CD 38cfd2c9-…-814d, verbatim): danger colour for delete/validation. */
+  --gb-danger:#E0402E; --gb-danger-bg:#FCEAE7; --gb-danger-bd:#F4CFC9;
 }
 [data-theme="dark"] .gb,
 .gb[data-theme="dark"]{
@@ -91,4 +93,5 @@
   --gb-dinein:#41BD78;  --gb-dinein-bg:rgba(65,189,120,.16);
   --gb-warning:#F0B249; --gb-warning-bg:rgba(234,148,16,.16);
   --gb-shadow-pop:0 30px 60px -24px rgba(0,0,0,.6);
+  --gb-danger:#FF6B5C; --gb-danger-bg:rgba(224,64,46,.16); --gb-danger-bd:#5C2C28;
 }

@@ -84,7 +84,7 @@ export default function ProfileScreen() {
       color: '#F97316' },
     { icon: Package, key: 'menuOrders', label: t('menuOrders'), route: '/eat/account', color: '#F97316' },
     { icon: Heart, key: 'menuFavorites', label: t('menuFavorites'), route: '/eat/favorites', color: '#EF4444' },
-    { icon: MapPin, key: 'menuAddresses', label: t('menuAddresses'), route: null, color: '#3B82F6' },
+    { icon: MapPin, key: 'menuAddresses', label: t('menuAddresses'), route: '/eat/account/addresses', color: '#3B82F6' },
     { icon: CreditCard, key: 'menuPayment', label: t('menuPayment'), route: null, color: '#22C55E' },
     { icon: Tag, key: 'menuPromotions', label: t('menuPromotions'), route: '/eat/promos', color: '#F59E0B' },
     { icon: Bell, key: 'menuNotifications', label: t('menuNotifications'), route: null, color: '#8B5CF6' },

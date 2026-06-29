@@ -9,12 +9,15 @@ import { Button, Badge, PriceTag } from '@/components/design-system'
 import FoodImage from '@/components/eat/FoodImage'
 import CheckoutAuthSheet from '@/components/eat/CheckoutAuthSheet'
 import { readCart, writeCart, showToast, type EatCartData } from '@/lib/eat-cart'
+import { readAddresses, getDefaultAddress, formatAddress, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros, formatAmount } from '@/lib/format-money'
+import './cart-address.css'
 
 type Fulfillment = 'delivery' | 'pickup'
 
 export default function CartScreen() {
   const t = useTranslations('eat.cart')
+  const ta = useTranslations('eat.addresses')
   const locale = useLocale()
   const router = useRouter()
   const { status: authStatus } = useSession()
@@ -22,6 +25,11 @@ export default function CartScreen() {
   const [hydrated, setHydrated] = useState(false)
   const [fulfillment, setFulfillment] = useState<Fulfillment>('delivery')
   const [address, setAddress] = useState('')
+  // Saved delivery addresses (lib/eat-addresses, client-side) — the CD checkout selector
+  // (Wave 4 screen 3). The selected address only fills the `address` string below; the
+  // place-order / payment flow is byte-identical.
+  const [savedAddrs, setSavedAddrs] = useState<EatAddress[]>([])
+  const [selectedAddrId, setSelectedAddrId] = useState('')
   const [payment, setPayment] = useState<'card' | 'cash'>('card')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -118,6 +126,28 @@ export default function CartScreen() {
       cancelled = true
     }
   }, [])
+
+  // Load saved addresses + keep the selection valid (default-first); live via ADDRESS_EVENT.
+  useEffect(() => {
+    const sync = () => {
+      const list = readAddresses()
+      setSavedAddrs(list)
+      setSelectedAddrId((cur) => (list.find((a) => a.id === cur) ?? getDefaultAddress())?.id ?? '')
+    }
+    sync()
+    window.addEventListener(ADDRESS_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(ADDRESS_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+
+  // The selected saved address fills the delivery `address` string (the place-order input).
+  useEffect(() => {
+    const chosen = savedAddrs.find((a) => a.id === selectedAddrId)
+    if (chosen) setAddress(formatAddress(chosen))
+  }, [selectedAddrId, savedAddrs])
 
   // If the cart has no restaurant.address (older cart shape), fetch it once on pickup.
   useEffect(() => {
@@ -505,20 +535,46 @@ export default function CartScreen() {
 
           {/* Address (delivery) OR pickup card */}
           {fulfillment === 'delivery' ? (
-            <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
-              <div className="flex items-start gap-3">
-                <MapPin size={20} className="mt-0.5 shrink-0 text-gb-accent" />
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-gb-content">{t('deliveryAddress')}</p>
-                  <input
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder={t('addressPlaceholder')}
-                    className="mt-1 w-full bg-transparent text-xs text-gb-content placeholder:text-gb-content-muted focus:outline-none"
-                  />
+            savedAddrs.length > 0 ? (
+              <div className="gb-addr-sel mx-4 mt-2.5 lg:mx-0" data-err="0">
+                <div className="sel-card">
+                  <div className="sel-card__head">
+                    <span className="ms" aria-hidden="true">local_shipping</span><b>{ta('selTitle')}</b>
+                    <button type="button" className="change" onClick={() => router.push('/eat/account/addresses')}>{ta('selChange')}</button>
+                  </div>
+                  <div className="sel-list">
+                    {savedAddrs.map((a) => (
+                      <button type="button" key={a.id} className={`opt${a.id === selectedAddrId ? ' sel' : ''}`} onClick={() => setSelectedAddrId(a.id)} aria-pressed={a.id === selectedAddrId}>
+                        <span className="radio" />
+                        <span className="opt__ico"><span className="ms" aria-hidden="true">{a.kind === 'home' ? 'home' : a.kind === 'work' ? 'work' : 'location_on'}</span></span>
+                        <span className="opt__main">
+                          <span className="opt__title"><b>{a.label}</b>{a.isDefault && <span className="badge-default"><span className="ms" style={{ fontSize: 11 }} aria-hidden="true">check</span>{ta('defaultBadge')}</span>}</span>
+                          <span className="opt__line">{formatAddress(a)}</span>
+                          {a.note && <span className="opt__note"><span className="ms" aria-hidden="true">info</span>{a.note}</span>}
+                        </span>
+                      </button>
+                    ))}
+                    <div className="sel-err"><span className="ms" aria-hidden="true">error</span>{ta('selErr')}</div>
+                    <button type="button" className="sel-add" onClick={() => router.push('/eat/account/addresses')}><span className="ms" aria-hidden="true">add_location_alt</span>{ta('selAdd')}</button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-surface-elevated p-4 shadow-gb-sm lg:mx-0">
+                <div className="flex items-start gap-3">
+                  <MapPin size={20} className="mt-0.5 shrink-0 text-gb-accent" />
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-gb-content">{t('deliveryAddress')}</p>
+                    <input
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder={t('addressPlaceholder')}
+                      className="mt-1 w-full bg-transparent text-xs text-gb-content placeholder:text-gb-content-muted focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )
           ) : (
             <div className="mx-4 mt-2.5 rounded-gb-xl bg-gb-zest-50 p-4 lg:mx-0">
               <div className="flex items-start gap-3">
