@@ -811,4 +811,142 @@ export const screens = [
       },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // WAVE 3 — 5 NEW epic screens (CD refs 29/06). Each clips the app's `.gb-*` content
+  // root ↔ the CD ref's content wrapper. NEW epics = VISUAL/INERT shells (backends are
+  // a chantier après Wave 5), so data-driven screens stub minimal real identity only.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  {
+    name: 'eat-group',
+    url: '/fr/eat/group',
+    reference: 'scripts/design-qa-refs/eat-group.html',
+    settle: 850,
+    // INSIDE EatShell (content only). clip app `.gb-grouporder` ↔ ref `.go` (the card). The
+    // host row («Vous») binds to the REAL cart → seed a 2-line cart totalling 33,00 € named
+    // Tagliatelles/Tiramisu so the host row matches the CD verbatim (33,00 €·2 articles). The
+    // « votre part » becomes a REAL preview (cart total ÷ 4 = 8,25 € · aperçu) ≠ the CD
+    // placeholder 19,25 € → that figure + the demo participants stay a residual diff.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-grouporder',
+        refClip: '.go',
+        // Seed the REAL cart store (lib/eat-cart KEY 'grubano_cart' in sessionStorage). 2 lines
+        // = 18 + 15 = 33,00 € so the host total + count match the CD host row exactly.
+        before:
+          `(function(){try{` +
+          `sessionStorage.setItem('grubano_cart',JSON.stringify({restaurantId:'demo',restaurant:{name:'Mama Trattoria',deliveryFee:0,minOrder:15},items:[` +
+          `{item:{id:'d1',name:'Tagliatelles à la truffe',price:18.0,photos:[]},qty:1,options:{}},` +
+          `{item:{id:'d2',name:'Tiramisu maison',price:15.0,photos:[]},qty:1,options:{}}` +
+          `]}))}catch(e){}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-dietary',
+    url: '/fr/eat/dietary',
+    reference: 'scripts/design-qa-refs/eat-dietary.html',
+    settle: 800,
+    // STATIC (inert toggles, no fetch). The app renders the CD `.backdrop` as a centred page
+    // surface inside EatShell → clip the app's sheet `.dt-sheet` ↔ ref `.sheet` (both exclude
+    // the dimmed backdrop). The app's result block adds an `auto_awesome` icon + a « bientôt »
+    // badge (vs the CD's green `verified` result) → residual diff on that row.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1000 },
+      { name: 'desktop', w: 1280, h: 950 },
+    ],
+    states: [
+      { name: 'default', theme: 'light', clip: '.dt-sheet', refClip: '.sheet' },
+    ],
+  },
+
+  {
+    name: 'eat-waitlist',
+    url: '/fr/eat/r/demo/waitlist',
+    reference: 'scripts/design-qa-refs/eat-waitlist.html',
+    settle: 850,
+    // Immersive (is-bare) — content only. Default state = 'join' (matches CD data-state="join").
+    // clip app `.gb-waitlist` ↔ ref `.wl`. Only the restaurant IDENTITY is real → stub
+    // /api/restaurants/demo (name + cuisine). Everything else (queue/ETA/ring) = CD placeholder.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'join',
+        theme: 'light',
+        clip: '.gb-waitlist',
+        refClip: '.wl',
+        // Stub GET /api/restaurants/demo → restaurant identity. cuisine ['italian'] → « Italien »
+        // so the meta line reads « Italien · $$ · 1,2 km » like the CD ref.
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/restaurants/')>-1){return Promise.resolve(new Response(JSON.stringify({restaurant:{id:'demo',name:'Mama Trattoria',cuisine:['italian']}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-pickup',
+    url: '/fr/eat/order/demo/pickup',
+    reference: 'scripts/design-qa-refs/eat-pickup.html',
+    settle: 850,
+    // Immersive (is-bare) — content only. clip app `.gb-pickup` ↔ ref `.screen` (the CD ref
+    // ships the « Prête » state). The page gates on useSession() → stub /api/auth/session; then
+    // GET /api/orders/demo with status 'ready' + fulfillmentType 'pickup' so the « Prête » hero +
+    // active QR render. Real items/total/ready-time drive the recap (createdAt+estimatedTime →
+    // « Prête à 19:20 »). The pickup code = real ref (GR-…DEMO) ≠ the CD demo G-4827 → residual.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'ready',
+        theme: 'light',
+        clip: '.gb-pickup',
+        refClip: '.screen',
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'GR2841DEMO',status:'ready',fulfillmentType:'pickup',total:33.0,estimatedTime:20,createdAt:'2026-06-29T19:00:00.000Z',restaurant:{name:'Mama Trattoria',address:'14 Rue des Oliviers',city:'75011 Paris'},items:[{name:'Tagliatelles à la truffe',qty:1,price:18.0},{name:'Cacio e pepe',qty:1,price:15.0}]}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-dinein',
+    url: '/fr/eat/dinein',
+    reference: 'scripts/design-qa-refs/eat-dinein.html',
+    settle: 850,
+    // NEW dine-in EPIC — VISUAL/INERT demo. The CD ref is a 3-phone DEMO (.demo); in prod the
+    // app renders ONE screen per ?step= (menu|send|sent). We capture the default ?step=menu and
+    // the dark ?step=sent. clip app `.gb-dinein` ↔ the matching CD phone's `.vp` (1st = menu,
+    // 3rd = sent · dark). The CD `.vp` includes a phone status-bar (9:41/wifi) + rounded chrome
+    // the app omits, and the app adds a « preview » banner (.di-preview) — both = render-framing
+    // residuals, NOT design regressions. data-theme follows each screen (menu light / sent dark).
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      // A · Menu à table (light) — 1st CD phone. The dine-in demo holds client work that can
+      // keep networkidle0 from settling (30s goto timeout → detached frame) → opt down to
+      // domcontentloaded so goto resolves deterministically; the settle delay paints the content.
+      { name: 'menu', query: '?step=menu', theme: 'light', waitUntil: 'domcontentloaded', clip: '.gb-dinein', refClip: '.demo > div:nth-child(1) .vp' },
+      // C · Statut « envoyé » (dark) — 3rd CD phone (the kitchen-status screen).
+      { name: 'sent', query: '?step=sent', theme: 'dark', waitUntil: 'domcontentloaded', clip: '.gb-dinein', refClip: '.demo > div:nth-child(3) .vp' },
+    ],
+  },
 ]

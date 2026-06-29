@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Commander à table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-basil-bg:#EAF7EF; --gb-basil-bd:#CDEBD8;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.6);
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-basil-bg:rgba(65,189,120,.14); --gb-basil-bd:#2C5C40;
+  --gb-zest:#FF7C39;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#EFEAE0;color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+input,button{font-family:inherit}
+.nos::-webkit-scrollbar{display:none}
+.demo{display:flex;flex-wrap:wrap;gap:26px;justify-content:center;padding:30px 20px}
+.phone{width:300px;border-radius:42px;background:#0F2742;padding:10px;box-shadow:0 40px 70px -32px rgba(15,39,66,.55)}
+.phone.dk{background:#05101C}
+.vp{border-radius:33px;overflow:hidden;height:620px;display:flex;flex-direction:column;background:var(--gb-bg)}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:11px 20px 4px;flex-shrink:0;font-size:12px;font-weight:700;color:var(--gb-text)}
+.sb .ms{font-size:15px}
+.cap{display:block;text-align:center;font-size:12px;font-weight:600;color:#9AA0A6;margin-top:11px}
+.tbanner{margin:6px 12px 0;border-radius:14px;background:linear-gradient(120deg,#0F2742,#16395A);padding:12px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.tbanner .ic{width:36px;height:36px;border-radius:10px;background:rgba(255,138,40,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tbanner .ic .ms{font-size:20px;color:#FF9A4D}
+.tbanner .m{flex:1;min-width:0}
+.tbanner .m b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;color:#fff}
+.tbanner .m span{display:block;font-size:10.5px;color:#AFC0D6}
+.tbanner .live{font-size:9px;font-weight:700;color:#0F2742;background:#FF9A4D;border-radius:6px;padding:4px 7px}
+.body{flex:1;overflow-y:auto;padding:13px 13px 0}
+.foot{flex-shrink:0;padding:10px 13px 15px;background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px}
+.chip{font-size:11.5px;font-weight:700;border-radius:8px;padding:7px 11px;white-space:nowrap;flex-shrink:0}
+.chip.on{color:#fff;background:#0F2742}
+.chip.off{color:var(--gb-muted);background:var(--gb-surface);border:1px solid var(--gb-border)}
+.chip.diet{color:var(--gb-basil-600);background:var(--gb-basil-bg);border:1px solid var(--gb-basil-bd);display:inline-flex;align-items:center;gap:4px}
+.chip.diet .ms{font-size:13px}
+.ai{border-radius:13px;padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C);margin-bottom:12px}
+.ai__in{display:flex;gap:9px;align-items:flex-start;background:var(--gb-surface);border-radius:11.5px;padding:11px}
+.ai__in>.ms{font-size:18px;color:var(--gb-zest-600);flex-shrink:0}
+[data-theme="dark"] .ai__in>.ms{color:var(--gb-zest)}
+.ai__in p{margin:0;font-size:11px;line-height:1.4;color:var(--gb-muted)}
+.ai__in p b{color:var(--gb-text)}
+.ai__in .soon{font-size:8.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:5px;padding:2px 6px;white-space:nowrap;margin-left:4px}
+[data-theme="dark"] .ai__in .soon{color:var(--gb-zest)}
+.mi{display:flex;gap:11px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:14px;padding:10px;margin-bottom:10px}
+.mi .t{flex:1;min-width:0}
+.mi .t b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px}
+.mi .t p{margin:3px 0 6px;font-size:10.5px;line-height:1.35;color:var(--gb-muted)}
+.mi .t .pr{display:flex;align-items:center;gap:6px}
+.mi .t .pr .price{font-family:var(--gb-font-display);font-weight:800;font-size:13.5px}
+.mi .t .pr .nf{font-size:9px;font-weight:700;color:var(--gb-basil-600);background:var(--gb-basil-bg);padding:2px 6px;border-radius:5px}
+.mi .img{position:relative;width:72px;height:72px;border-radius:11px;flex-shrink:0}
+.mi .img.o{background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px)}
+.mi .img.y{background:repeating-linear-gradient(135deg,#FCE9C9 0 8px,#FCF0D9 8px 16px)}
+[data-theme="dark"] .mi .img.o{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px)}
+[data-theme="dark"] .mi .img.y{background:repeating-linear-gradient(135deg,#33301F 0 8px,#26241A 8px 16px)}
+.mi .add{position:absolute;bottom:-6px;right:-5px;width:30px;height:30px;border-radius:9px;background:var(--gb-grad);display:flex;align-items:center;justify-content:center;box-shadow:var(--gb-shadow-btn)}
+.mi .add .ms{font-size:17px;color:#fff}
+.cartbar{display:flex;align-items:center;justify-content:space-between;background:var(--gb-grad);border-radius:13px;padding:12px 16px;box-shadow:var(--gb-shadow-btn)}
+.cartbar span{font-size:12.5px;font-weight:700;color:#fff}
+.cartbar b{font-family:var(--gb-font-display);font-size:14px;font-weight:800;color:#fff}
+.h2bar{display:flex;align-items:center;gap:11px;padding:6px 16px 11px;flex-shrink:0}
+.h2bar .ms{font-size:22px}
+.h2bar h2{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:700;font-size:17px}
+.h2bar .tnum{font-size:10px;font-weight:700;color:var(--gb-zest-600);background:#FFF1E7;border-radius:6px;padding:4px 8px}
+[data-theme="dark"] .h2bar .tnum{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+.ocard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:13px;padding:12px;margin-bottom:11px}
+.oline{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:700}
+.oline+.oline{margin-top:10px}
+.note-g{display:flex;align-items:center;gap:8px;background:var(--gb-basil-bg);border:1px solid var(--gb-basil-bd);border-radius:12px;padding:11px;margin-bottom:11px}
+.note-g .ms{font-size:18px;color:var(--gb-basil-600)}
+.note-g p{margin:0;font-size:10.5px;line-height:1.4;color:#235C3A}
+[data-theme="dark"] .note-g p{color:#A7E0C0}
+.split-row{display:flex;align-items:center;gap:8px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:12px;padding:11px;margin-bottom:11px}
+.split-row>.ms{font-size:18px;color:var(--gb-zest-600)}
+[data-theme="dark"] .split-row>.ms{color:var(--gb-zest)}
+.split-row span{flex:1;font-size:12px;font-weight:600}
+.split-row .chev{color:var(--gb-muted-2)}
+.totrow{font-size:12.5px;color:var(--gb-muted);display:flex;justify-content:space-between;margin-bottom:5px}
+.send-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--gb-grad);border-radius:13px;padding:13px;box-shadow:var(--gb-shadow-btn);margin-bottom:7px}
+.send-btn .ms{font-size:18px;color:#fff}
+.send-btn b{font-size:13.5px;font-weight:700;color:#fff}
+.foot small{display:block;text-align:center;font-size:10.5px;color:var(--gb-muted)}
+.sent{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 24px}
+.sent__ic{width:84px;height:84px;border-radius:50%;background:rgba(65,189,120,.16);display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.sent__ic .ms{font-size:46px;color:#41BD78}
+.sent h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:22px;letter-spacing:-.02em;color:#EEF3F9}
+.sent p{margin:9px 0 20px;font-size:12.5px;line-height:1.5;color:#AFC0D6}
+.sent p b{color:#fff}
+.sent .track{width:100%;background:#14253A;border:1px solid #233247;border-radius:14px;padding:14px;margin-bottom:16px}
+.sent .track .row{display:flex;align-items:center;margin-bottom:8px}
+.sent .track .row .d{width:16px;height:16px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.sent .track .row .d.done{background:#41BD78}.sent .track .row .d.done .ms{font-size:11px;color:#06210F}
+.sent .track .row .d.cur{background:#FF7C39;box-shadow:0 0 0 4px rgba(255,124,57,.25)}
+.sent .track .row .d.off{background:#233247}
+.sent .track .row .s{flex:1;height:3px;margin:0 4px}
+.sent .track .row .s.done{background:#41BD78}.sent .track .row .s.off{background:#233247}
+.sent .track .lab{display:flex;justify-content:space-between;font-size:9px;font-weight:600;color:#7E8FA3}
+.sent .track .lab .on{color:#FF7C39;font-weight:700}
+.sent .acts{display:flex;gap:9px;width:100%}
+.sent .acts button{flex:1;font-family:var(--gb-font-ui);font-weight:700;font-size:12.5px;border-radius:12px;padding:12px;cursor:pointer;border:none}
+.sent .acts .w{color:#0F2742;background:#fff}
+.sent .acts .o{color:#fff;background:var(--gb-grad)}
+@media (max-width:680px){ .phone{width:100%;max-width:330px} }
+</style>
+</head>
+<body>
+<div class="demo">
+  <!-- A) MENU À TABLE (light) -->
+  <div>
+    <div class="phone"><div class="vp">
+      <div class="sb"><span>9:41</span><span><span class="ms">wifi</span> <span class="ms">battery_full</span></span></div>
+      <div class="tbanner"><span class="ic"><span class="ms">table_restaurant</span></span><div class="m"><b>Mama Trattoria</b><span>Sur place · Table 12 · Serveur Marco</span></div><span class="live">LIVE</span></div>
+      <div class="body nos">
+        <div class="chips">
+          <span class="chip on">Populaires</span>
+          <span class="chip off">Pâtes</span>
+          <span class="chip off">Pizza</span>
+          <span class="chip diet"><span class="ms">eco</span>Sans noix</span>
+        </div>
+        <div class="ai"><div class="ai__in"><span class="ms">auto_awesome</span><p><b>Grubano AI :</b> filtre sans noix actif. Les tagliatelles s'accordent au rouge maison.<span class="soon">bientôt</span></p></div></div>
+        <div class="mi"><div class="t"><b>Tagliatelles à la truffe</b><p>Pâtes fraîches, truffe noire, parmesan.</p><div class="pr"><span class="price">18 €</span><span class="nf">Sans noix</span></div></div><div class="img o"><span class="add"><span class="ms">add</span></span></div></div>
+        <div class="mi"><div class="t"><b>Margherita DOP</b><p>San Marzano, fior di latte, basilic.</p><div class="pr"><span class="price">14 €</span></div></div><div class="img y"><span class="add"><span class="ms">add</span></span></div></div>
+      </div>
+      <div class="foot"><div class="cartbar"><span>Voir la commande · 2</span><b>32 €</b></div></div>
+    </div></div>
+    <span class="cap">a · Menu à table (allergènes + IA)</span>
+  </div>
+  <!-- B) COMMANDE → CUISINE (light) -->
+  <div>
+    <div class="phone"><div class="vp">
+      <div class="sb"><span>9:41</span><span><span class="ms">wifi</span> <span class="ms">battery_full</span></span></div>
+      <div class="h2bar"><span class="ms">arrow_back</span><h2>Votre commande</h2><span class="tnum">Table 12</span></div>
+      <div class="body nos">
+        <div class="ocard"><div class="oline"><span>Tagliatelles à la truffe</span><span>18 €</span></div><div class="oline"><span>Margherita DOP</span><span>14 €</span></div></div>
+        <div class="note-g"><span class="ms">soup_kitchen</span><p>Les articles envoyés partent directement en cuisine. Ajoutez-en d'autres pendant le repas.</p></div>
+        <div class="split-row"><span class="ms">group</span><span>Partager l'addition avec la table</span><span class="ms chev">chevron_right</span></div>
+        <div class="totrow"><span>Sous-total</span><span>32,00 €</span></div>
+        <div class="totrow"><span>Service 10 %</span><span>3,20 €</span></div>
+      </div>
+      <div class="foot">
+        <div class="send-btn"><span class="ms">soup_kitchen</span><b>Envoyer en cuisine — 35,20 €</b></div>
+        <small>Payez maintenant ou à la fin du repas</small>
+      </div>
+    </div></div>
+    <span class="cap">b · Commande → cuisine (paiement différé / split)</span>
+  </div>
+  <!-- C) STATUT « ENVOYÉ » (dark) -->
+  <div>
+    <div class="phone dk"><div class="vp" data-theme="dark" style="--gb-bg:#0C1826">
+      <div class="sb"><span>9:41</span><span><span class="ms">wifi</span> <span class="ms">battery_full</span></span></div>
+      <div class="sent">
+        <div class="sent__ic"><span class="ms">soup_kitchen</span></div>
+        <h2>En cuisine, maintenant</h2>
+        <p>Vos 2 plats sont sur le feu. Marco sait que vous êtes en <b>Table 12</b> — on vous les apporte.</p>
+        <div class="track">
+          <div class="row">
+            <span class="d done"><span class="ms">check</span></span><span class="s done"></span>
+            <span class="d cur"></span><span class="s off"></span>
+            <span class="d off"></span>
+          </div>
+          <div class="lab"><span>Envoyé</span><span class="on">En préparation</span><span>Servi</span></div>
+        </div>
+        <div class="acts"><button class="w">Ajouter d'autres plats</button><button class="o">Payer 35,20 €</button></div>
+      </div>
+    </div></div>
+    <span class="cap">c · Statut live « envoyé » (sombre)</span>
+  </div>
+</div>
+</body>
+</html>

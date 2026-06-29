@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Commande prête (Click & Collect)</title>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+/* tokens identiques à eat/reservation.html (avec --gb-pickup) */
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-ink:#0F2742;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-pickup:#2E78F0; --gb-pickup-bg:#E7F0FE;
+  --gb-basil-600:#1E9E57; --gb-basil-bg:#EAF7EF; --gb-basil-bd:#CDEBD8;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-pickup:#6FB6F5; --gb-pickup-bg:rgba(46,120,240,.18);
+  --gb-basil-600:#41BD78; --gb-basil-bg:rgba(65,189,120,.14); --gb-basil-bd:#2C5C40;
+  --gb-zest:#FF7C39;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button{font-family:inherit}
+.nos::-webkit-scrollbar{display:none}
+@keyframes gb-pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}
+
+/* page plein écran */
+.screen{min-height:100vh;display:flex;flex-direction:column;color:var(--gb-text)}
+.h2bar{display:flex;align-items:center;gap:11px;padding:14px 16px 8px;flex-shrink:0}
+.h2bar .ms{font-size:22px;cursor:pointer}
+.h2bar h2{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:700;font-size:17px}
+.body{flex:1;overflow-y:auto;padding:4px 18px;max-width:480px;width:100%;margin:0 auto}
+.foot{flex-shrink:0;padding:10px 18px 16px;background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+.foot .inner{max-width:480px;margin:0 auto}
+
+/* status hero */
+.pk-status{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 0 2px}
+.pk-status .ic{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.pk-status.ready .ic{background:var(--gb-basil-bg)} .pk-status.ready .ic .ms{font-size:40px;color:var(--gb-basil-600);font-variation-settings:'FILL' 1}
+.pk-status.prep .ic{background:var(--gb-pickup-bg)} .pk-status.prep .ic .ms{font-size:38px;color:var(--gb-pickup);animation:gb-pulse 1.8s ease-in-out infinite}
+.pk-status h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:21px;letter-spacing:-.02em;line-height:1.18}
+.pk-status p{margin:9px 0 0;font-size:12px;line-height:1.45;color:var(--gb-muted)}
+.pk-status p b{color:var(--gb-text)}
+
+/* mini stepper (état préparation) */
+.pk-step{display:flex;align-items:center;width:100%;margin:14px 0 4px}
+.pk-step .d{width:15px;height:15px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.pk-step .d.done{background:var(--gb-basil-600)} .pk-step .d.done .ms{font-size:10px;color:#fff}
+.pk-step .d.cur{background:var(--gb-pickup);box-shadow:0 0 0 4px var(--gb-pickup-bg)}
+.pk-step .d.off{background:var(--gb-border-strong)}
+.pk-step .s{flex:1;height:3px;margin:0 4px}
+.pk-step .s.done{background:var(--gb-basil-600)} .pk-step .s.off{background:var(--gb-border-strong)}
+.pk-lab{display:flex;justify-content:space-between;width:100%;font-size:9px;font-weight:600;color:var(--gb-muted);margin-bottom:14px}
+.pk-lab .on{color:var(--gb-pickup);font-weight:700}
+
+/* GRAND code de retrait — reprend l'accent .code, agrandi */
+.code.big{display:flex;flex-direction:column;align-items:center;text-align:center;background:var(--gb-pickup-bg);border:1px solid transparent;border-radius:var(--gb-r-lg);padding:18px;margin:12px 0}
+.code.big .qr{width:152px;height:152px;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(46,120,240,.18);box-shadow:0 6px 16px -8px rgba(15,39,66,.25)}
+.code.big .qr .ms{font-size:132px;color:#0F2742;line-height:1}
+.code.big small{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--gb-pickup);margin-top:13px}
+.code.big b{font-family:var(--gb-font-display);font-weight:800;font-size:30px;letter-spacing:.16em;color:var(--gb-pickup);line-height:1.1}
+.code.big .hint{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--gb-pickup);margin-top:4px}
+.code.big .hint .ms{font-size:15px}
+.code.big.dim{opacity:.5}
+
+/* resto + adresse */
+.rrow{display:flex;align-items:center;gap:11px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:12px;margin-bottom:10px}
+.rrow .ic{width:38px;height:38px;border-radius:10px;background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.rrow .ic .ms{font-size:20px;color:var(--gb-zest-600)}
+[data-theme="dark"] .rrow .ic .ms{color:var(--gb-zest)}
+.rrow .m{flex:1;min-width:0} .rrow .m b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;display:block} .rrow .m span{font-size:11px;color:var(--gb-muted)}
+.rrow .when{text-align:right;flex-shrink:0} .rrow .when small{font-size:9px;font-weight:700;color:var(--gb-muted-2);text-transform:uppercase;display:block} .rrow .when b{font-family:var(--gb-font-display);font-weight:800;font-size:14px}
+
+/* récap (réutilise .ocard/.oline/.totrow) */
+.ocard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:13px;padding:12px;margin-bottom:10px}
+.oline{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:700}
+.oline+.oline{margin-top:9px}
+.oline>span:first-child{flex:1;min-width:0;padding-right:10px;line-height:1.3}
+.oline>span:last-child{flex-shrink:0;white-space:nowrap}
+.oline .div{height:1px;background:var(--gb-border);margin:2px 0}
+.totrow{font-size:12.5px;color:var(--gb-muted);display:flex;justify-content:space-between}
+.totrow.tot{color:var(--gb-text);font-family:var(--gb-font-display);font-weight:800;font-size:14.5px}
+
+/* actions */
+.acts{display:flex;gap:9px}
+.acts .o{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--gb-grad);border-radius:13px;padding:13px;box-shadow:var(--gb-shadow-btn);color:#fff;font-weight:700;font-size:13px;border:none;cursor:pointer}
+.acts .o .ms{font-size:18px}
+.acts .w{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:13px;padding:13px;color:var(--gb-text);font-weight:700;font-size:13px;cursor:pointer}
+.acts .w .ms{font-size:18px;color:var(--gb-zest-600)}
+[data-theme="dark"] .acts .w .ms{color:var(--gb-zest)}
+.foot small{display:block;text-align:center;font-size:10.5px;color:var(--gb-muted);margin-top:8px}
+</style>
+</head>
+<body>
+<!-- ÉTAT « PRÊTE » (enlève data-theme pour le clair) -->
+<main class="screen">
+  <div class="h2bar"><span class="ms">arrow_back</span><h2>Retrait</h2><span style="font-size:10px;font-weight:700;color:var(--gb-basil-600);background:var(--gb-basil-bg);border:1px solid var(--gb-basil-bd);border-radius:6px;padding:4px 8px">PRÊTE</span></div>
+  <div class="body">
+    <div class="pk-status ready">
+      <span class="ic"><span class="ms">shopping_bag</span></span>
+      <h1>Votre commande est prête</h1>
+      <p>Présentez-vous au comptoir de <b>Mama Trattoria</b> et montrez ce code.</p>
+    </div>
+    <!-- GRAND code + QR -->
+    <div class="code big">
+      <span class="qr"><span class="ms">qr_code_2</span></span>
+      <small>Code de retrait</small>
+      <b>G-4827</b>
+      <span class="hint"><span class="ms">storefront</span>Montrez ce code au comptoir</span>
+    </div>
+    <div class="rrow">
+      <span class="ic"><span class="ms">storefront</span></span>
+      <div class="m"><b>Mama Trattoria</b><span>14 Rue des Oliviers, 75011 Paris</span></div>
+      <div class="when"><small>Prête à</small><b>19:20</b></div>
+    </div>
+    <div class="ocard">
+      <div class="oline"><span>1× Tagliatelles à la truffe</span><span>18,00 €</span></div>
+      <div class="oline"><span>1× Cacio e pepe</span><span>15,00 €</span></div>
+      <div class="oline"><span class="div" style="width:100%"></span></div>
+      <div class="totrow tot"><span>Total payé</span><span>33,00 €</span></div>
+    </div>
+  </div>
+  <div class="foot"><div class="inner">
+    <div class="acts">
+      <button class="w"><span class="ms">directions</span>Itinéraire</button>
+      <button class="o"><span class="ms">directions_walk</span>J'arrive</button>
+    </div>
+  </div></div>
+</main>
+</body>
+</html>
