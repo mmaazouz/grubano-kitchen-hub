@@ -150,7 +150,9 @@
 .gb .rw-streak__ico .ms{font-size:24px;color:var(--gb-zest-600)}
 [data-theme="dark"] .gb .rw-streak__ico .ms,.gb[data-theme="dark"] .rw-streak__ico .ms{color:var(--gb-zest)}
 .gb .rw-streak__top b{font-family:var(--gb-font-display);font-weight:800;font-size:17px}
-.gb .rw-streak__top span{display:block;font-size:12px;color:var(--gb-muted);margin-top:1px}
+/* sub-text span ONLY — scoped to `div span` so it does NOT clobber the .rw-streak__ico span's
+ * display:flex (the CD's own `.streak__top span` over-reaches and breaks the fire centering). */
+.gb .rw-streak__top div span{display:block;font-size:12px;color:var(--gb-muted);margin-top:1px}
 .gb .rw-streak__week{display:flex;gap:6px}
 .gb .rw-streak__week i{flex:1;height:9px;border-radius:5px;background:var(--gb-border)}
 .gb .rw-streak__week i.on{background:var(--gb-grad)}
