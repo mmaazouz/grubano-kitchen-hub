@@ -25,7 +25,7 @@ import '@/app/gb-foundation/gb-components.css'
 const isFullscreen = (p: string) => p.endsWith('/eat/auth') || p.endsWith('/eat/magic')
 // IMMERSIVE (deep flows with their OWN sticky header / bottom bar) — the shell keeps the
 // desktop rail but DROPS the top bar + the whole mobile chrome, so the page header governs.
-const IMMERSIVE = ['/eat/r/', '/eat/track', '/eat/dish/', '/eat/splash', '/eat/promos', '/eat/cart', '/eat/checkout', '/eat/reset-password', '/eat/account/edit', '/eat/account/password', '/eat/account/email', '/eat/account/notifications', '/eat/order/']
+const IMMERSIVE = ['/eat/r/', '/eat/track', '/eat/dish/', '/eat/splash', '/eat/promos', '/eat/cart', '/eat/checkout', '/eat/reset-password', '/eat/account/edit', '/eat/account/password', '/eat/account/email', '/eat/account/notifications', '/eat/order/', '/eat/group', '/eat/dinein', '/eat/dietary']
 const isImmersive = (p: string) => IMMERSIVE.some((x) => p.includes(x))
 
 function tierKey(pts: number): string {

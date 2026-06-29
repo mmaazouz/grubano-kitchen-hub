@@ -513,6 +513,274 @@ export const screens = [
     ],
   },
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // WAVE 1+2 — 9 new consumer screens (CD refs 29/06). Each clips the app's `.gb-*`
+  // content root ↔ the CD ref's content wrapper. DB unreachable locally → every
+  // data-driven screen stubs its fetch via the `before` seed (runs in page context).
+  // ════════════════════════════════════════════════════════════════════════════
+
+  {
+    name: 'eat-promos',
+    url: '/fr/eat/promos',
+    reference: 'scripts/design-qa-refs/eat-promos.html',
+    settle: 850,
+    // IMMERSIVE (is-bare) — own top bar + back. clip app `.gb-promos` ↔ ref `.screen`.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-promos',
+        refClip: '.screen',
+        // Stub GET /api/eat/promos → 2 real-shaped promo restaurants + maxPercent 30 (drives
+        // the « offre du moment » banner) + bestFixed. The app OMITS the CD per-code chip /
+        // expiry (no code/expiry on this endpoint) and shows NO fake « ok » code message → the
+        // CD code-chip + expiry + green « prêt à l'emploi » line are residual diffs.
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/eat/promos')>-1){return Promise.resolve(new Response(JSON.stringify({restaurants:[` +
+          `{id:'r1',name:'Bienvenue chez Grubano',city:'Paris',photo:null,promo:{id:'p1',name:'BIENVENUE10',type:'fixed',discount:10,minOrderEur:25},promoCount:1},` +
+          `{id:'r2',name:'Récompense Gold',city:'Paris',photo:null,promo:{id:'p2',name:'GOLD5',type:'fixed',discount:5,minOrderEur:null},promoCount:1}` +
+          `],totalPromos:2,maxPercent:30,bestFixed:10}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-chef',
+    url: '/fr/eat/c/demo',
+    reference: 'scripts/design-qa-refs/eat-chef.html',
+    settle: 900,
+    // INSIDE EatShell (content only). clip app `.gb-chef` ↔ ref `.chef-page` (cover →
+    // avatar+Suivre → name+place → stats → bio → recipes grid). The CD ships only chef
+    // FRAGMENTS (no standalone page) → the ref is reconstructed from CODE-1b; the real
+    // page adds a tagline + may differ on cover radius (residual).
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-chef',
+        refClip: '.chef-page',
+        // Stub GET /api/creators/public/demo → ChefProfile (verified, 2,1k followers, 4.8
+        // stars, bio, 4 recipes served in Bologne/Paris). DISPLAY-ONLY chef data.
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/creators/public/')>-1){return Promise.resolve(new Response(JSON.stringify({` +
+          `name:'Chef Lucia Moretti',bio:"Cheffe de troisième génération, je cuisine l'Émilie-Romagne avec des produits de saison et beaucoup d'amour. La pasta fraîche, tous les matins.",` +
+          `followers:2100,verified:true,stars:4.8,instagram:null,tiktok:null,youtube:null,slug:'demo',totalSales:0,totalRestaurants:0,` +
+          `recipes:[` +
+          `{id:'c1',name:'Tagliatelles truffe',description:'',photo:null,cuisineType:'Pâtes',salesCount:0,restaurantsCount:1,servedAt:[{id:'r1',name:'Mama Trattoria',city:'Bologne',lat:null,lng:null,sellingPrice:18,menuItemId:null}]},` +
+          `{id:'c2',name:'Cacio e Pepe',description:'',photo:null,cuisineType:'Pâtes',salesCount:0,restaurantsCount:1,servedAt:[{id:'r1',name:'Mama Trattoria',city:'Paris',lat:null,lng:null,sellingPrice:15,menuItemId:null}]},` +
+          `{id:'c3',name:'Gnocchi verde',description:'',photo:null,cuisineType:'Pâtes',salesCount:0,restaurantsCount:1,servedAt:[{id:'r1',name:'Mama Trattoria',city:'Paris',lat:null,lng:null,sellingPrice:16,menuItemId:null}]},` +
+          `{id:'c4',name:'Lasagne Nonna',description:'',photo:null,cuisineType:'Pâtes',salesCount:0,restaurantsCount:1,servedAt:[{id:'r1',name:'Mama Trattoria',city:'Paris',lat:null,lng:null,sellingPrice:19,menuItemId:null}]}` +
+          `]}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-tbill',
+    url: '/fr/t/demo',
+    reference: 'scripts/design-qa-refs/eat-tbill.html',
+    settle: 900,
+    // ⚠️ RENDER-BLOCKED locally: /t/[tableId] is a SERVER component that does a Prisma
+    // restaurantTable.findUnique BEFORE any JS — with no local MySQL it throws (500) and
+    // the .gb-table content (built client-side in TableBillClient) never mounts. The `before`
+    // seed only intercepts CLIENT fetch, so it can't fix a server-side DB error. Captured for
+    // completeness; a real diff needs a reachable DB + a valid table id. clip `.gb-table`.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'bill',
+        theme: 'light',
+        waitUntil: 'domcontentloaded',
+        clip: '.gb-table',
+        refClip: '.wrap',
+        // (kept for when a DB is reachable) stub session + ticket so the bill renders.
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/eat/my-session')>-1){return Promise.resolve(new Response(JSON.stringify({session:null}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/ticket')>-1){return Promise.resolve(new Response(JSON.stringify({ticket:{id:'tk1',status:'open',currency:'eur',subtotal:92,reservationId:null,items:[` +
+          `{id:'i1',name:'Tagliatelles à la truffe',unitPrice:18,quantity:2},` +
+          `{id:'i2',name:'Burrata des Pouilles',unitPrice:12,quantity:1},` +
+          `{id:'i3',name:'Margherita DOP',unitPrice:14,quantity:1},` +
+          `{id:'i4',name:'Chianti — verre',unitPrice:8,quantity:2},` +
+          `{id:'i5',name:'Tiramisu maison',unitPrice:7,quantity:2}` +
+          `]}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-profileedit',
+    url: '/fr/eat/account/edit',
+    reference: 'scripts/design-qa-refs/eat-profileedit.html',
+    settle: 850,
+    // INSIDE EatShell (content only). clip app `.gb-profile-edit` ↔ ref `.screen`. Gates on
+    // useSession() → stub /api/auth/session (consumer Sofia). The CD phone (+ « Vérifié ») is
+    // a placeholder; the real phone has no session source → empty input (residual diff).
+    viewports: [
+      { name: 'mobile', w: 390, h: 1000 },
+      { name: 'desktop', w: 1280, h: 950 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-profile-edit',
+        refClip: '.screen',
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-password',
+    url: '/fr/eat/account/password',
+    reference: 'scripts/design-qa-refs/eat-password.html',
+    settle: 850,
+    // INSIDE EatShell — reuses the `.gb-profile-edit` sheet. clip app `.gb-profile-edit` ↔ ref
+    // `.screen`. Gates on useSession() → stub session. Eye toggles + strength gauge are visual.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1000 },
+      { name: 'desktop', w: 1280, h: 900 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-profile-edit',
+        refClip: '.screen',
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-help',
+    url: '/fr/eat/order/demo/help',
+    reference: 'scripts/design-qa-refs/eat-help.html',
+    settle: 850,
+    // INSIDE EatShell (content only). Default view = « Aide » (A). clip app `.gb-help` ↔ ref
+    // `.screen`. Gates on useSession() + fetches GET /api/orders/demo → stub both. Order banner
+    // (resto · ref · items · total) + status badge = REAL stubbed data.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'help',
+        theme: 'light',
+        clip: '.gb-help',
+        refClip: '.screen',
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'GR2841',status:'preparing',total:34.34,restaurant:{name:'Mama Trattoria'},items:[{name:'Tagliatelles à la truffe',qty:1,price:18},{name:'Margherita DOP',qty:1,price:14}]}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-postdelivery',
+    url: '/fr/eat/order/demo/rate',
+    reference: 'scripts/design-qa-refs/eat-postdelivery.html',
+    settle: 850,
+    // IMMERSIVE (is-bare) — own close/skip bar. Default view = rate + tip. clip app
+    // `.gb-postdelivery` ↔ ref `.screen`. Fetches GET /api/orders/demo (401→/eat/auth) → stub
+    // delivered order with pointsEarned>0. Hero line (resto · ref · total) = REAL. The CD
+    // named courier « Marco D. » is a placeholder; the app uses a NEUTRAL « Votre livreur »
+    // (no driver model) → residual diff.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'default',
+        theme: 'light',
+        clip: '.gb-postdelivery',
+        refClip: '.screen',
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'GR2841',status:'delivered',total:34.34,pointsEarned:20,restaurant:{name:'Mama Trattoria'}}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
+  {
+    name: 'eat-notifprefs',
+    url: '/fr/eat/account/notifications',
+    reference: 'scripts/design-qa-refs/eat-notifprefs.html',
+    settle: 800,
+    // IMMERSIVE (is-bare) — own back-bar. NO fetch (inert local state matching the CD defaults:
+    // Push/E-mail ON, SMS OFF; status/courier/offers/rewards ON, reviews/newResto OFF; quiet ON).
+    // clip app `.gb-notifprefs` ↔ ref `.screen`. The app adds a « bientôt » header pill + a
+    // preview banner (no CD equivalent) → residual diff.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      { name: 'default', theme: 'light', clip: '.gb-notifprefs', refClip: '.screen' },
+    ],
+  },
+
+  {
+    name: 'eat-confirmed',
+    url: '/fr/eat/checkout/demo',
+    reference: 'scripts/design-qa-refs/eat-confirmed.html',
+    settle: 900,
+    // ⚠️ RENDER-ONLY: the « Commande confirmée » screen (.gb-confirmed) only renders when
+    // stage==='paid', which is set by the Stripe/Wallet child's onPaid() callback — reachable
+    // ONLY by walking the real Stripe Elements flow (Stripe.js is network-blocked headless), so
+    // it cannot be driven deterministically from a fetch seed. We seed the order in REVIEW and
+    // capture what renders (the checkout review) as a render-proof; the diff vs the confirmed
+    // mock is therefore NOT meaningful (different stage). clip the whole `.gb-checkout`.
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1100 },
+    ],
+    states: [
+      {
+        name: 'review',
+        theme: 'light',
+        clip: '.gb-checkout',
+        refClip: '.screen',
+        before:
+          `(function(){try{localStorage.setItem('grubano_addresses',JSON.stringify([` +
+          `{id:'a1',label:'Domicile',kind:'home',street:'14 Rue des Oliviers',postalCode:'75011',city:'Paris',country:'France',isDefault:true}` +
+          `]))}catch(e){}` +
+          `var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{email:'sofia@email.com',name:'Sofia Marchetti',role:'consumer'},expires:'2099-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/api/orders/')>-1){return Promise.resolve(new Response(JSON.stringify({order:{id:'demo',status:'awaiting_payment',fulfillmentType:'delivery',paymentStatus:null,subtotal:32,deliveryFee:2.34,total:34.34,items:[{itemId:'d1',name:'Tagliatelles à la truffe',qty:1,price:18},{itemId:'d2',name:'Margherita DOP',qty:1,price:14}],restaurant:{id:'demo',name:'Mama Trattoria'}}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
+
   {
     name: 'eat-reserver',
     url: '/fr/eat/r/demo/reserver',

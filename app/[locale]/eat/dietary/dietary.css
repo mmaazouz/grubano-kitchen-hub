@@ -1,0 +1,96 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/dietary — « Filtre IA diététique & allergènes » (NEW — VISUEL INERTE).
+ * VERBATIM reproduction of the FROZEN CD ref (Notion 38efd2c9-…-81ad, file
+ * eat/dietary-filter.html). CD ships an overlay (modale desktop / bottom-sheet
+ * mobile <560px); here it renders as page CONTENT inside the EatShell (like
+ * /orders & /rewards) — the CD `.backdrop` becomes a centred page surface.
+ *
+ * The CD design tokens all live in the gb-foundation (gb-tokens.css): zest/basil/
+ * danger/grad/shadow-pop/radii — nothing invented. Only the COMPONENT CSS lives
+ * here, scoped under `.gb-dietary`. CD's generic class names that could collide
+ * with the foundation/other screens are renamed to `.dt-*` (.backdrop→.dt-backdrop,
+ * .sheet→.dt-sheet, .ai→.dt-ai, .btn→.dt-btn, .result→.dt-result, .switch→.dt-switch,
+ * .lbl→.dt-lbl, .pref→.dt-pref, .aller→.dt-aller, .achip→.dt-achip).
+ *
+ * INERT: the régime switches + allergen chips toggle local visual state only; the
+ * AI « Filtre intelligent » block is « bientôt »; the 38/14/6 counters are CD
+ * placeholders (no real diététique backend — search API = cuisine+sort only). No
+ * dish is ever hidden/suggested as if real. CD --gb-basil-bg/-bd map to the
+ * foundation's --gb-success-bg/-bd (identical hex; CD reused the .gb names).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* CD --gb-basil-bg / --gb-basil-bd token alias — identical hex to the foundation
+ * --gb-success-bg / --gb-success-bd (CD reused the .gb names for this screen). */
+.gb-dietary{--gb-basil-bg:var(--gb-success-bg);--gb-basil-bd:var(--gb-success-bd)}
+
+/* ── PAGE SURFACE (sits inside the nav shell; CD .backdrop centres the sheet) ──── */
+.gb-dietary.dt-backdrop{min-height:calc(100vh - 120px);display:flex;align-items:flex-start;justify-content:center;padding:clamp(16px,3vw,32px)}
+
+/* ── SHEET (CD .sheet — modale desktop / bottom-sheet mobile) ──────────────────── */
+.gb-dietary .dt-sheet{width:100%;max-width:460px;display:flex;flex-direction:column;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-pop);overflow:hidden}
+.gb-dietary .dt-sheet__head{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--gb-border)}
+.gb-dietary .dt-sheet__head h2{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:18px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-dietary .dt-sheet__head .ms{cursor:pointer;color:var(--gb-muted)}
+.gb-dietary .dt-sheet__close{display:inline-flex;align-items:center;justify-content:center;background:none;border:none;padding:0;cursor:pointer;color:var(--gb-muted)}
+.gb-dietary .dt-sheet__body{flex:1;overflow-y:auto;padding:18px 20px}
+.gb-dietary .dt-sheet__foot{padding:14px 20px;border-top:1px solid var(--gb-border);display:flex;gap:10px}
+
+/* ── AI « Filtre intelligent » (inert · bientôt) — CD .ai gradient ring ────────── */
+.gb-dietary .dt-ai{border-radius:var(--gb-r-md);padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C);margin-bottom:18px}
+.gb-dietary .dt-ai__in{display:flex;gap:11px;align-items:flex-start;background:var(--gb-surface);border-radius:calc(var(--gb-r-md) - 1px);padding:13px 14px}
+.gb-dietary .dt-ai__in .t{flex:1;min-width:0}
+.gb-dietary .dt-ai__in>.ms{font-size:20px;color:var(--gb-zest-600);flex-shrink:0}
+[data-theme="dark"] .gb-dietary .dt-ai__in>.ms{color:var(--gb-zest)}
+.gb-dietary .dt-ai__in .t .h{display:block;margin-bottom:5px;line-height:1.5}
+.gb-dietary .dt-ai__in .t .h b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;margin-inline-end:8px}
+.gb-dietary .dt-ai__in .t .h .soon{display:inline-block;vertical-align:middle;font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 7px}
+[data-theme="dark"] .gb-dietary .dt-ai__in .t .h .soon{color:var(--gb-zest)}
+.gb-dietary .dt-ai__in .t p{margin:0;font-size:12px;line-height:1.45;color:var(--gb-muted)}
+
+/* ── section label (CD .lbl) ──────────────────────────────────────────────────── */
+.gb-dietary .dt-lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin:0 0 11px}
+.gb-dietary .dt-lbl.mt{margin-top:20px}
+
+/* ── dietary preference row + toggle switch (CD .pref / .switch) ──────────────── */
+.gb-dietary .dt-pref{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--gb-border)}
+.gb-dietary .dt-pref:last-child{border-bottom:none}
+.gb-dietary .dt-pref .ic{width:34px;height:34px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-dietary .dt-pref .ic .ms{font-size:19px;color:var(--gb-basil-600)}
+.gb-dietary .dt-pref .m{flex:1}
+.gb-dietary .dt-pref .m b{font-size:13.5px;font-weight:700;color:var(--gb-text)}
+.gb-dietary .dt-pref .m span{display:block;font-size:11.5px;color:var(--gb-muted);margin-top:1px}
+.gb-dietary .dt-switch{width:44px;height:26px;border-radius:var(--gb-r-pill);background:var(--gb-border-strong);position:relative;cursor:pointer;flex-shrink:0;border:none;padding:0}
+.gb-dietary .dt-switch.on{background:var(--gb-basil-600)}
+.gb-dietary .dt-switch i{position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;transition:inset-inline-start .15s}
+.gb-dietary .dt-switch.on i{inset-inline-start:20px}
+
+/* ── allergen exclusion chips (CD .aller / .achip) ───────────────────────────── */
+.gb-dietary .dt-aller{display:flex;flex-wrap:wrap;gap:8px}
+.gb-dietary .dt-achip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--gb-text);background:var(--gb-surface-2);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-pill);padding:8px 13px;cursor:pointer}
+.gb-dietary .dt-achip .ms{font-size:15px;color:var(--gb-muted-2)}
+.gb-dietary .dt-achip.on{color:var(--gb-danger);background:var(--gb-danger-bg);border-color:transparent}
+.gb-dietary .dt-achip.on .ms{color:var(--gb-danger)}
+.gb-dietary .dt-achip.on .x{font-size:14px}
+
+/* ── result placeholder (CD .result — inert counters) ─────────────────────────── */
+.gb-dietary .dt-result{display:flex;align-items:center;gap:10px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:12px 14px;margin-top:20px}
+.gb-dietary .dt-result .ms{font-size:20px;color:var(--gb-muted-2);flex-shrink:0}
+.gb-dietary .dt-result p{margin:0;flex:1;font-size:12px;line-height:1.45;color:var(--gb-muted)}
+.gb-dietary .dt-result p b{font-weight:800;color:var(--gb-text)}
+.gb-dietary .dt-result .soon{flex-shrink:0;font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 7px}
+[data-theme="dark"] .gb-dietary .dt-result .soon{color:var(--gb-zest)}
+
+/* ── footer buttons (CD .btn / .btn--ghost / .btn--primary) ──────────────────── */
+.gb-dietary .dt-btn{flex:1;font-family:var(--gb-font-ui);font-weight:700;font-size:14.5px;cursor:pointer;border-radius:var(--gb-r-md);padding:14px;border:none}
+.gb-dietary .dt-btn--ghost{flex:0 0 auto;color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border-strong)}
+.gb-dietary .dt-btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+
+/* ── mobile bottom-sheet (CD @media max-width:560px) ─────────────────────────── */
+@media (max-width:560px){
+  .gb-dietary.dt-backdrop{align-items:flex-end;padding:0;min-height:calc(100vh - 64px)}
+  .gb-dietary .dt-sheet{max-width:none;border-radius:var(--gb-r-xl) var(--gb-r-xl) 0 0;border-bottom:none}
+}
+
+/* ── loading skeleton (foundation `.sk` primitive) ───────────────────────────── */
+.gb-dietary .dt-skel{height:520px;width:100%;max-width:460px;border-radius:var(--gb-r-xl)}
+@media (max-width:560px){ .gb-dietary .dt-skel{border-radius:var(--gb-r-xl) var(--gb-r-xl) 0 0} }
