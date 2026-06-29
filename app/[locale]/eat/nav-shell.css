@@ -60,8 +60,12 @@
 .eat-nav .hbtn .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--gb-zest-600);border:2px solid var(--gb-surface)}
 /* Content is capped + centred to the SAME width the previous shell used
  * (max-w-[1200px]) so existing pages keep their design width; the rail + the
- * full-bleed sticky top bar span the column. No-op below 1200px (mobile fills). */
-.eat-nav .content{max-width:1200px;margin-inline:auto;padding:24px 28px 40px}
+ * full-bleed sticky top bar span the column. No-op below 1200px (mobile fills).
+ * ⭐ width:100% is REQUIRED: .content is a flex item in the flex-column .main, and
+ * `margin-inline:auto` alone disables the default align-items:stretch → the item
+ * shrinks to its CONTENT width (≈622px) and centres, instead of filling up to the
+ * 1200 cap. width:100% forces it to fill .main (then max-width caps, margin centres). */
+.eat-nav .content{width:100%;max-width:1200px;margin-inline:auto;padding:24px 28px 40px}
 
 /* mobile-only chrome hidden on desktop */
 .eat-nav .botnav,.eat-nav .fab-cart,.eat-nav .m-appbar{display:none}

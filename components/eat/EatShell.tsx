@@ -61,12 +61,11 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
     const sync = () => {
       setCount(cartCount())
       const c = readCart()
-      const s = c
-        ? c.items.reduce((acc, l) => {
-            const supp = l.options?.supplements?.reduce((a, x) => a + x.price, 0) ?? 0
-            return acc + (l.item.price + supp) * l.qty
-          }, 0)
-        : 0
+      // item.price ALREADY includes the size premium + supplements (baked in by the
+      // restaurant page: unitPrice = dish.price + sizePremium + supplementsTotal). So the
+      // subtotal is price*qty — byte-identical to the canonical /eat/cart subtotal
+      // (cart/page.tsx). Re-adding supplements here would DOUBLE-count them in the bar.
+      const s = c ? c.items.reduce((acc, l) => acc + l.item.price * l.qty, 0) : 0
       setSubtotal(s)
     }
     sync()
