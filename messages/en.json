@@ -2310,6 +2310,7 @@
       "verifiedBadge": "Verified creator",
       "follow": "Follow",
       "following": "Following",
+      "loginToFollow": "Sign in to follow this chef.",
       "statRecipes": "recipes",
       "statNote": "rating",
       "statFollowers": "followers",

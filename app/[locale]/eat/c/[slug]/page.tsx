@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { getFoodImage, inferCategory } from '@/lib/food-images'
 import { formatEuros } from '@/lib/format-money'
+import { showToast } from '@/lib/eat-cart'
 import './chef.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
@@ -96,10 +98,13 @@ export default function ChefStorefrontPage({
   const locale = useLocale()
   const router = useRouter()
 
+  const { status: authStatus } = useSession()
   const [profile, setProfile] = useState<ChefProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-  const [following, setFollowing] = useState(false) // inert (no follow backend yet)
+  const [following, setFollowing] = useState(false)
+  const [followDelta, setFollowDelta] = useState(0) // optimistic ±1 on the displayed count
+  const [followBusy, setFollowBusy] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -113,6 +118,35 @@ export default function ChefStorefrontPage({
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [slug])
+
+  // Real follow state (P1-CHEF-FOLLOW) — does the session user follow this chef?
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/creators/${encodeURIComponent(slug)}/follow`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d && typeof d.following === 'boolean') setFollowing(d.following) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [slug])
+
+  // Toggle follow — optimistic, reverts on error. A guest is sent to sign in.
+  const toggleFollow = async () => {
+    if (followBusy) return
+    if (authStatus !== 'authenticated') { showToast(t('loginToFollow')); return }
+    const next = !following
+    setFollowing(next)
+    setFollowDelta((d) => d + (next ? 1 : -1))
+    setFollowBusy(true)
+    try {
+      const res = await fetch(`/api/creators/${encodeURIComponent(slug)}/follow`, { method: next ? 'POST' : 'DELETE' })
+      if (!res.ok) throw new Error('follow_failed')
+    } catch {
+      setFollowing(!next)
+      setFollowDelta((d) => d - (next ? 1 : -1))
+    } finally {
+      setFollowBusy(false)
+    }
+  }
 
   // Contribution rail — a recipe tile funnels to the restaurant serving it via
   // /api/chef-visit (grubano_chef cookie, pure stat). Plain href: a full
@@ -203,7 +237,8 @@ export default function ChefStorefrontPage({
             type="button"
             className={`chef__follow${following ? ' is-following' : ''}`}
             aria-pressed={following}
-            onClick={() => setFollowing((v) => !v)}
+            disabled={followBusy}
+            onClick={toggleFollow}
           >
             {following && <span className="ms" aria-hidden="true">check</span>}
             {following ? t('following') : t('follow')}
@@ -226,7 +261,7 @@ export default function ChefStorefrontPage({
               </div>
             )}
             <div className="ch-stat">
-              <b><bdi>{formatFollowers(profile.followers)}</bdi></b> <span>{t('statFollowers')}</span>
+              <b><bdi>{formatFollowers(Math.max(0, profile.followers + followDelta))}</bdi></b> <span>{t('statFollowers')}</span>
             </div>
           </div>
 

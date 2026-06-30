@@ -86,6 +86,8 @@ model Operator {
   serviceReviews  ServiceReview[]
   // Inverse side of Review.operator (P0-DATA-2) — consumer reviews this user wrote.
   reviews         Review[]
+  // Inverse side of CreatorFollow.operator (P1-CHEF-FOLLOW) — creators this user follows.
+  creatorFollows  CreatorFollow[]
   // P6 (Agent 79) — service-mission invoices billed to this operator (as a restaurateur).
   // Additive inverse relation; reversible. DOCUMENT only — NO money movement.
   serviceInvoices ServiceInvoice[]
@@ -664,6 +666,8 @@ model Creator {
   referralLinkSlug String?    @unique           // used in /r/{slug}
   referrals        Referral[]
   dishes        CreatorDish[]
+  // Inverse side of CreatorFollow.creator (P1-CHEF-FOLLOW) — this creator's followers.
+  followedBy    CreatorFollow[]
   // ── P4.1 — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
   // CREATOR_CONNECT_ENABLED). ADDITIVE + REVERSIBLE: all nullable, NO default / NO
   // constraint / NO backfill. Names mirror SupplierProfile. NO charge/payout here
@@ -1489,6 +1493,23 @@ model Review {
 
   @@unique([userId, restaurantId])              // one (editable) review per restaurant per user
   @@index([restaurantId])
+}
+
+// ── CreatorFollow (P1-CHEF-FOLLOW) — consumer ↔ creator follow ─ ADDITIVE · REVERSIBLE ─
+// One row per (user, creator) the consumer follows (the chef page « Suivre » button).
+// @@unique([userId,creatorId]) makes follow idempotent. Creator.followers (the displayed
+// headline count) is NOT mutated here (kept as its stored value) — this table is the real
+// follow graph; dropping it leaves every other model valid. NO money.
+model CreatorFollow {
+  id        String   @id @default(cuid())
+  userId    String
+  operator  Operator @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creatorId String
+  creator   Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, creatorId])
+  @@index([creatorId])
 }
 
 // ── Opening hours (Chantier horaires étape 1, additive) ───────────────────────
