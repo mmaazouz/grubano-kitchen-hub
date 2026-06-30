@@ -30,8 +30,11 @@ import { usePolling } from '@/lib/use-polling'
 // per-establishment configurable rate (Restaurant.dineInServiceRatePct, gated by
 // DINEIN_SERVICE_ENABLED) — the server returns serviceRatePct/serviceCents/
 // totalCents and we render « Service {pct}% » + the new total ONLY when the
-// service > 0 (never fabricated; the inert path renders subtotal === total). The
-// split selector + per-person note still have no backend, so they stay OMITTED.
+// service > 0 (never fabricated; the inert path renders subtotal === total). G2
+// adds the CD « Partager l'addition » split selector below the totals as a
+// DISPLAY aid only: « À parts égales » shows billTotal ÷ guests; « Par personne »/
+// « Par plat » need a multi-payer backend → inert « bientôt ». The « Payer » CTA is
+// UNCHANGED (full remaining) — no split value EVER reaches /pay (money byte-identical).
 //
 // 5 visible states:
 //   - "loading"        → .sk skeleton (real layout, zero shift)
@@ -98,6 +101,16 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
   // endpoint re-enforces server-side anyway).
   const [canOrder,  setCanOrder]  = useState(false)
   const [restaurantIdForMenu, setRestaurantIdForMenu] = useState('')
+
+  // ── G2 — split-the-bill (CD Écran 4 « Partager l'addition »), DISPLAY-ONLY ────
+  // The split NEVER changes the charged amount: « Payer » still pays the FULL
+  // remaining via the byte-identical startPayment → POST /api/tickets/[id]/pay
+  // (no body). « À parts égales » shows billTotal ÷ guests as a DISPLAY aid;
+  // « Par personne »/« Par plat » need a multi-payer backend the app doesn't have
+  // → inert « bientôt ». No split value is ever sent to the server.
+  const [splitOpen, setSplitOpen] = useState(false)
+  const [splitMode, setSplitMode] = useState<'equal' | 'person' | 'item'>('equal')
+  const [guests,    setGuests]    = useState(2)
 
   useEffect(() => {
     let cancelled = false
@@ -367,6 +380,76 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
           <span>{t('total')}</span>
           <span className="amt"><bdi>{ticket ? currencyFmt.format(billTotal) : '—'}</bdi></span>
         </div>
+
+        {/* ── G2 — split selector (CD Écran 4 « Partager l'addition », display-only) ──
+            VERBATIM CD reproduction (.split-row disclosure + 3-segment .split-seg +
+            .split-note). A DISPLAY aid ONLY: « À parts égales » shows each guest's
+            share (billTotal ÷ guests); « Par personne »/« Par plat » need a multi-payer
+            backend → inert « bientôt ». The « Payer » CTA (foot) is UNCHANGED and still
+            charges the FULL remaining — no split value EVER reaches /pay. */}
+        {ticket && (
+          <div className="split-block">
+            <button
+              type="button"
+              className="split-row"
+              onClick={() => setSplitOpen((o) => !o)}
+              aria-expanded={splitOpen}
+            >
+              <span className="ms" aria-hidden="true">call_split</span>
+              <span>{tTable('splitTitle')}</span>
+              <span className="ms chev" aria-hidden="true">{splitOpen ? 'expand_less' : 'expand_more'}</span>
+            </button>
+            {splitOpen && (
+              <>
+                <div className="split-seg" role="tablist" aria-label={tTable('splitTitle')}>
+                  {(['equal', 'person', 'item'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="tab"
+                      aria-selected={splitMode === m}
+                      className={splitMode === m ? 'on' : undefined}
+                      onClick={() => setSplitMode(m)}
+                    >
+                      {m === 'equal'
+                        ? tTable('split_equal')
+                        : m === 'person'
+                          ? tTable('split_person')
+                          : tTable('split_item')}
+                    </button>
+                  ))}
+                </div>
+                {splitMode === 'equal' ? (
+                  <div className="split-note">
+                    <span className="ms" aria-hidden="true">groups</span>
+                    <span className="split-cv">
+                      <button
+                        type="button"
+                        onClick={() => setGuests((g) => Math.max(1, g - 1))}
+                        aria-label={tTable('splitFewer')}
+                      >−</button>
+                      <bdi>{guests}</bdi>
+                      <button
+                        type="button"
+                        onClick={() => setGuests((g) => Math.min(20, g + 1))}
+                        aria-label={tTable('splitMore')}
+                      >+</button>
+                    </span>
+                    <span>{tTable('splitGuests', { count: guests })}</span>
+                    <span className="split-sep" aria-hidden="true">·</span>
+                    <b><bdi>{currencyFmt.format(billTotal / guests)}</bdi></b>
+                    <span>{tTable('splitPerPerson')}</span>
+                  </div>
+                ) : (
+                  <div className="split-note">
+                    <span className="ms" aria-hidden="true">schedule</span>
+                    <span>{tTable('splitSoon')}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="foot">

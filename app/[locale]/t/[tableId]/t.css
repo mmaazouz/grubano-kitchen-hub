@@ -113,3 +113,26 @@
 .gb-table .tb-skel-card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:13px;padding:12px;margin-bottom:11px;box-shadow:var(--gb-shadow-card)}
 .gb-table .tb-skel-row{display:flex;justify-content:space-between;align-items:center}
 .gb-table .tb-skel-row+.tb-skel-row{margin-top:14px}
+
+/* ── G2 — split selector (CD Écran 4 « Partager l'addition », VERBATIM, display-only) ─
+   .split-row disclosure + 3-segment .split-seg toggle + .split-note share line. The
+   convives stepper (.split-cv) is the interactive add for « À parts égales ». No money:
+   the selector never alters the charged amount (the « Payer » CTA pays the full bill). */
+.gb-table .split-block{margin:11px 0 0}
+.gb-table .split-row{display:flex;align-items:center;gap:8px;width:100%;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:12px;padding:11px;cursor:pointer}
+.gb-table .split-row .ms{font-size:18px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-table .split-row .ms{color:var(--gb-zest)}
+.gb-table .split-row>span:nth-child(2){flex:1;text-align:start;font-size:12px;font-weight:600;color:var(--gb-text)}
+.gb-table .split-row .chev{font-size:18px;color:var(--gb-muted-2)}
+.gb-table .split-seg{display:flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:12px;padding:4px;gap:2px;margin:10px 0 0}
+.gb-table .split-seg button{flex:1;text-align:center;font-size:11px;font-weight:700;color:var(--gb-muted);padding:8px 0;border-radius:8px;cursor:pointer;border:none;background:transparent}
+.gb-table .split-seg button.on{color:#fff;background:var(--gb-grad)}
+.gb-table .split-note{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:11px;color:var(--gb-muted);margin-top:10px}
+.gb-table .split-note .ms{font-size:15px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-table .split-note .ms{color:var(--gb-zest)}
+.gb-table .split-note b{color:var(--gb-text);font-weight:800}
+.gb-table .split-note .split-sep{color:var(--gb-muted-2)}
+/* convives stepper (− N +) */
+.gb-table .split-cv{display:inline-flex;align-items:center;gap:8px}
+.gb-table .split-cv button{width:22px;height:22px;border-radius:50%;border:1px solid var(--gb-border-strong);background:var(--gb-surface);color:var(--gb-text);font-size:14px;font-weight:700;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.gb-table .split-cv bdi{min-width:14px;text-align:center;font-weight:800;color:var(--gb-text)}
