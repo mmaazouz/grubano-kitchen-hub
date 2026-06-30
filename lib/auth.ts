@@ -67,17 +67,18 @@ const providers: Provider[] = [
       // are allowed through.
       if (operator.status === 'pending' || operator.status === 'suspended') return null
 
-      // Support both hashed passwords and plain text (for legacy seed data)
+      // Password auth — bcrypt ONLY (hardened, P0-SEC-1). A stored value that isn't a
+      // valid bcrypt hash (legacy plaintext) NEVER authenticates, and an account with no
+      // password set can NEVER sign in by password — those accounts use magic-link / OAuth.
+      // (Removed: the cleartext `===` fallback + the `NODE_ENV!=='production'` bypass that
+      // accepted ANY password for passwordless accounts off-prod.)
       let valid = false
       if (operator.password) {
         try {
           valid = await bcrypt.compare(credentials.password, operator.password)
         } catch {
-          valid = credentials.password === operator.password
+          valid = false
         }
-      } else {
-        // No password set — allow any password in dev (remove in prod)
-        valid = process.env.NODE_ENV !== 'production'
       }
 
       if (!valid) return null
