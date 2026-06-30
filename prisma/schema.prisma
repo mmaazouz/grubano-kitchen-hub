@@ -157,6 +157,12 @@ model Operator {
   // standalone OnboardingNudge table below (NOT here) so a re-run never double-sends.
   locale               String?  // fr | en | es | it | ar (preferred email language; null ⇒ fr)
   onboardingNudgeUnsub Boolean  @default(false)
+  // ── Consumer notification preferences (P1-NOTIFPREF) — ADDITIVE · REVERSIBLE ──
+  // The /eat/account/notifications toggles (channels push/email/sms + per-type rows +
+  // quiet hours) persisted as a JSON blob. @default("{}") → existing rows valid with no
+  // backfill; dropping it is safe. Notification DELIVERY (sending) is Wave 5 — this only
+  // stores the user's CHOICES. NO money.
+  notifPrefs Json @default("{}")
   // ── Consumer delivery addresses (P0-DATA-1) — ADDITIVE · REVERSIBLE ──────────
   // A consumer's saved delivery addresses (the « Livrer à » picker source). The
   // server copy of what used to live only in localStorage (lib/eat-addresses).

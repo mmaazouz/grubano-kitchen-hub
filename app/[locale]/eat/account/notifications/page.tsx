@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
+import { showToast } from '@/lib/eat-cart'
 // gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
 // only when it is the route stylesheet's first rule — keep it before page CSS so the
 // `.ms` icon ligatures don't fall back to raw text.
@@ -71,6 +72,48 @@ export default function NotificationsPrefsPage() {
     rewards: true,
   })
   const [quiet, setQuiet] = useState(true)
+  const [loaded, setLoaded] = useState(false)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const firstSave = useRef(true)
+
+  // Load the saved preferences (P1-NOTIFPREF). A guest (401) keeps the CD defaults.
+  useEffect(() => {
+    let alive = true
+    fetch('/api/eat/account', { headers: { accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.notifPrefs || typeof d.notifPrefs !== 'object') return
+        const p = d.notifPrefs as {
+          channels?: Partial<Record<Channel, boolean>>
+          rows?: Partial<Record<RowKey, boolean>>
+          quiet?: boolean
+        }
+        if (p.channels) setChannels((c) => ({ ...c, ...p.channels }))
+        if (p.rows) setRows((r) => ({ ...r, ...p.rows }))
+        if (typeof p.quiet === 'boolean') setQuiet(p.quiet)
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setLoaded(true) })
+    return () => { alive = false }
+  }, [])
+
+  // Auto-save (debounced) on any change after load. Skips the initial load-triggered run
+  // (never re-saves the just-loaded values or toasts on open). A guest's PATCH 401s → silent.
+  useEffect(() => {
+    if (!loaded) return
+    if (firstSave.current) { firstSave.current = false; return }
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(() => {
+      fetch('/api/eat/account', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ notifPrefs: { channels, rows, quiet } }),
+      })
+        .then((r) => { if (r.ok) showToast(t('saved')) })
+        .catch(() => {})
+    }, 600)
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current) }
+  }, [channels, rows, quiet, loaded, t])
 
   // A channel-row is « dis » (greyed, inert) only when EVERY channel is cut — there is no
   // way to receive the notif at all. Mirrors the CD `.sw.dis` "parent channel coupé" note.
