@@ -2272,6 +2272,12 @@
       "publish": "Publier mon avis",
       "publishSoonTitle": "Bientôt disponible",
       "publishSoonBody": "La publication des avis arrive très prochainement. Merci de votre patience !",
+      "publishedTitle": "Avis publié !",
+      "publishedBody": "Merci ! Ton avis est désormais visible par la communauté.",
+      "ratingRequired": "Choisis une note avant de publier.",
+      "loginToReview": "Connecte-toi pour publier un avis.",
+      "publishError": "Échec de la publication, réessaie.",
+      "anonymous": "Client",
       "done": "Terminé"
     },
     "errors": {

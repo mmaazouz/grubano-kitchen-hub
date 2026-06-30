@@ -2272,6 +2272,12 @@
       "publish": "Publish my review",
       "publishSoonTitle": "Coming soon",
       "publishSoonBody": "Review publishing is arriving very soon. Thanks for your patience!",
+      "publishedTitle": "Review published!",
+      "publishedBody": "Thanks! Your review is now visible to the community.",
+      "ratingRequired": "Pick a rating before publishing.",
+      "loginToReview": "Sign in to post a review.",
+      "publishError": "Couldn't publish, try again.",
+      "anonymous": "Customer",
       "done": "Done"
     },
     "errors": {

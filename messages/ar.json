@@ -2272,6 +2272,12 @@
       "publish": "انشر مراجعتي",
       "publishSoonTitle": "قريبًا",
       "publishSoonBody": "نشر المراجعات سيتوفر قريبًا جدًا. شكرًا لصبرك!",
+      "publishedTitle": "تم نشر التقييم!",
+      "publishedBody": "شكرًا! تقييمك الآن مرئي للمجتمع.",
+      "ratingRequired": "اختر تقييمًا قبل النشر.",
+      "loginToReview": "سجّل الدخول لنشر تقييم.",
+      "publishError": "تعذّر النشر، حاول مرة أخرى.",
+      "anonymous": "عميل",
       "done": "تم"
     },
     "errors": {

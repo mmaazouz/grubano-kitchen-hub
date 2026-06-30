@@ -2272,6 +2272,12 @@
       "publish": "Publicar mi opinión",
       "publishSoonTitle": "Próximamente",
       "publishSoonBody": "La publicación de opiniones llegará muy pronto. ¡Gracias por tu paciencia!",
+      "publishedTitle": "¡Opinión publicada!",
+      "publishedBody": "¡Gracias! Tu opinión ya es visible para la comunidad.",
+      "ratingRequired": "Elige una valoración antes de publicar.",
+      "loginToReview": "Inicia sesión para publicar una opinión.",
+      "publishError": "No se pudo publicar, inténtalo de nuevo.",
+      "anonymous": "Cliente",
       "done": "Hecho"
     },
     "errors": {

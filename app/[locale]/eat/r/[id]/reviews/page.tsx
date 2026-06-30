@@ -1,31 +1,26 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatCuisineList } from '@/lib/categories'
+import { showToast } from '@/lib/eat-cart'
 import './reviews.css'
 
 // ── /eat/r/[id]/reviews — « Avis & notes » ─────────────────────────────────────
-// VERBATIM reproduction of the FROZEN CD ref (Notion 38efd2c9-…-818c): global
-// score + distribution bars + inert AI summary + filters + review list + a
-// « Écrire un avis » slide-over (modal ≥760px / bottom-sheet <760px).
-//
-// Renders INSIDE the EatShell, which treats every /eat/r/* path as `is-bare`
-// (rail kept, top bar + mobile chrome dropped). This page therefore brings its
-// OWN back arrow + title, exactly like the CD design.
-//
-// REAL DATA — the consumer review backend does NOT exist yet (no Review model,
-// no consumer reviews GET/POST endpoint — the only `Review` is the B2B
-// ServiceReview, operator-gated). So:
-//   • SCORE + review COUNT bind to the REAL Restaurant.rating / reviewCount
-//     (GET /api/restaurants/[id]). The big number + ★ + « N avis » are real.
-//   • The DISTRIBUTION breakdown + the per-review LIST have no data source →
-//     honest empty/loading states (NO fabricated reviews — task rule).
+// VERBATIM CD design (Notion 38efd2c9-…-818c) wired to the REAL consumer review
+// backend (P0-DATA-2): model Review + GET/POST /api/restaurants/[id]/reviews.
+//   • SCORE + review COUNT (headline) bind to the REAL Restaurant.rating /
+//     reviewCount (GET /api/restaurants/[id]) — the platform-wide aggregate, kept
+//     as the headline (it is NOT recomputed from on-platform reviews — a later
+//     product decision).
+//   • The DISTRIBUTION bars + the review LIST come from the real published reviews
+//     (GET …/reviews). Empty/loading states stay honest (no fabricated reviews).
+//   • « Publier » does a REAL POST (upserts the user's one review for this resto);
+//     it requires a logged-in session and a chosen rating.
 //   • The AI summary stays INERT (« à venir »).
-//   • « Publier » has no write endpoint → a no-op « bientôt » confirmation,
-//     reported as a gap (a real review-creation mutation is a later brick).
 
 interface RestaurantInfo {
   id: string
@@ -35,22 +30,40 @@ interface RestaurantInfo {
   reviewCount: number
 }
 
+interface ReviewItem {
+  id: string
+  rating: number
+  text: string
+  tags: string[]
+  authorName: string | null
+  createdAt: string
+}
+
 // CD filter set (Tous / Avec photos / Plus récents / Mieux notés / Critiques).
 const FILTER_KEYS = ['all', 'photos', 'recent', 'top', 'critical'] as const
 type FilterKey = (typeof FILTER_KEYS)[number]
 
 // CD « Qu'avez-vous aimé ? » tags.
 const TAG_KEYS = ['taste', 'service', 'speed', 'value', 'ambiance'] as const
+const KNOWN_TAGS = new Set<string>(TAG_KEYS)
+// Rotating CD avatar palettes.
+const AV_CLASSES = ['a1', 'a2', 'a3'] as const
 
 export default function RestaurantReviewsScreen() {
   const t = useTranslations('eat.reviews')
   const locale = useLocale()
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  const { status: authStatus } = useSession()
 
   const [restaurant, setRestaurant] = useState<RestaurantInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterKey>('all')
+
+  // real reviews + per-star distribution (P0-DATA-2)
+  const [reviews, setReviews] = useState<ReviewItem[]>([])
+  const [distribution, setDistribution] = useState<Record<string, number>>({})
+  const [reviewsLoading, setReviewsLoading] = useState(true)
 
   // write-review slide-over state
   const [writeOpen, setWriteOpen] = useState(false)
@@ -58,6 +71,7 @@ export default function RestaurantReviewsScreen() {
   const [comment, setComment] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [published, setPublished] = useState(false)
+  const [publishing, setPublishing] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -80,20 +94,57 @@ export default function RestaurantReviewsScreen() {
     return () => { alive = false }
   }, [id])
 
-  // ── real score / count ──────────────────────────────────────────────────────
+  // Published reviews + distribution (real).
+  const loadReviews = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/restaurants/${id}/reviews`)
+      if (!r.ok) return
+      const d = await r.json()
+      setReviews(Array.isArray(d.reviews) ? d.reviews : [])
+      setDistribution(d.distribution && typeof d.distribution === 'object' ? d.distribution : {})
+    } catch {
+      /* keep current */
+    }
+  }, [id])
+
+  useEffect(() => {
+    let alive = true
+    setReviewsLoading(true)
+    loadReviews().finally(() => { if (alive) setReviewsLoading(false) })
+    return () => { alive = false }
+  }, [loadReviews])
+
+  // ── real score / count (headline aggregate) ──────────────────────────────────
   const rating = restaurant?.rating ?? 0
   const reviewCount = restaurant?.reviewCount ?? 0
-  // ★ row: full stars from the rounded rating (display only, CD uses solid glyphs).
   const fullStars = Math.max(0, Math.min(5, Math.round(rating)))
   const starGlyphs = '★'.repeat(fullStars) + '☆'.repeat(5 - fullStars)
   const scoreText = rating > 0 ? rating.toFixed(1).replace('.', locale === 'en' ? '.' : ',') : '—'
 
-  // ── distribution: there is no real per-star breakdown source → CD-empty state.
-  // (We never synthesise the 86/9/3/1/1 split — that would be fabricated data.)
-  const hasDistribution = false
+  // ── distribution (real, from published reviews) ──────────────────────────────
+  const distTotal = useMemo(
+    () => Object.values(distribution).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0),
+    [distribution],
+  )
+  const hasDistribution = distTotal > 0
 
-  // ── review list: no consumer review store → empty (NO fabricated reviews) ────
-  const reviews: never[] = useMemo(() => [], [])
+  // ── review list (real) + client-side filter ─────────────────────────────────
+  const filteredReviews = useMemo(() => {
+    const list = [...reviews]
+    switch (filter) {
+      case 'top':
+        return list.sort((a, b) => b.rating - a.rating)
+      case 'critical':
+        return list.filter((r) => r.rating <= 2)
+      case 'recent':
+        return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      case 'photos':
+        return [] // no photo storage yet → honestly empty for this filter
+      default:
+        return list
+    }
+  }, [reviews, filter])
+
   const subtitle = restaurant
     ? formatCuisineList(restaurant.cuisine, locale, '') || t('partner')
     : ''
@@ -103,15 +154,53 @@ export default function RestaurantReviewsScreen() {
   }
   function openWrite() {
     setPublished(false)
+    setStars(0)
+    setComment('')
+    setTags([])
     setWriteOpen(true)
   }
   function closeWrite() {
     setWriteOpen(false)
   }
-  // No write endpoint yet → no-op confirmation. Reported as a gap.
-  function publish() {
-    setPublished(true)
+
+  // Real publish → POST (upsert). Requires a session + a chosen rating.
+  async function publish() {
+    if (publishing) return
+    if (stars < 1) {
+      showToast(t('ratingRequired'))
+      return
+    }
+    if (authStatus !== 'authenticated') {
+      showToast(t('loginToReview'))
+      return
+    }
+    setPublishing(true)
+    try {
+      const res = await fetch(`/api/restaurants/${id}/reviews`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ rating: stars, text: comment.trim() || undefined, tags }),
+      })
+      if (!res.ok) throw new Error('publish_failed')
+      setPublished(true)
+      await loadReviews()
+    } catch {
+      showToast(t('publishError'))
+    } finally {
+      setPublishing(false)
+    }
   }
+
+  const fmtDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString(locale === 'ar' ? 'ar-MA' : locale, {
+        year: 'numeric', month: 'long', day: 'numeric',
+      })
+    } catch {
+      return ''
+    }
+  }
+  const reviewStars = (n: number) => '★'.repeat(Math.max(0, Math.min(5, n))) + '☆'.repeat(5 - Math.max(0, Math.min(5, n)))
 
   return (
     <div className="gb gb-reviews">
@@ -133,7 +222,17 @@ export default function RestaurantReviewsScreen() {
         </div>
         {hasDistribution ? (
           <div className="dist">
-            {/* distribution rows would render here once a real breakdown exists */}
+            {[5, 4, 3, 2, 1].map((star) => {
+              const n = distribution[String(star)] ?? 0
+              const pct = distTotal ? Math.round((n / distTotal) * 100) : 0
+              return (
+                <div className="row" key={star}>
+                  <span className="n">{star}<span className="ms" aria-hidden="true">star</span></span>
+                  <span className="bar"><i style={{ width: `${pct}%` }} /></span>
+                  <span className="p">{pct}%</span>
+                </div>
+              )
+            })}
           </div>
         ) : (
           <p className="dist--empty">{t('distributionUnavailable')}</p>
@@ -173,19 +272,47 @@ export default function RestaurantReviewsScreen() {
         ))}
       </div>
 
-      {/* ── review list (empty/loading — no consumer reviews backend yet) ── */}
-      {loading ? (
+      {/* ── review list (real) ── */}
+      {reviewsLoading ? (
         <div className="rlist">
           {[0, 1, 2].map((i) => <div key={i} className="rskel" />)}
         </div>
-      ) : reviews.length === 0 ? (
+      ) : filteredReviews.length === 0 ? (
         <div className="rempty">
           <div className="rempty__ico"><span className="ms" aria-hidden="true">reviews</span></div>
           <h2>{t('emptyTitle')}</h2>
           <p>{t('emptyBody')}</p>
         </div>
       ) : (
-        <div className="rlist">{/* real reviews would render here */}</div>
+        <div className="rlist">
+          {filteredReviews.map((r, i) => {
+            const shownTags = r.tags.filter((tg) => KNOWN_TAGS.has(tg))
+            return (
+              <div className="review" key={r.id}>
+                <div className="review__head">
+                  <div className={`review__av ${AV_CLASSES[i % AV_CLASSES.length]}`}>
+                    {(r.authorName || '?').slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="review__who">
+                    <b>{r.authorName || t('anonymous')}</b>
+                    <span>{fmtDate(r.createdAt)}</span>
+                  </div>
+                  <div className="review__stars" aria-hidden="true">{reviewStars(r.rating)}</div>
+                </div>
+                {r.text ? <p>{r.text}</p> : null}
+                {shownTags.length > 0 ? (
+                  <div className="review__foot">
+                    {shownTags.map((tg) => (
+                      <span className="review__dish" key={tg}>
+                        <span className="ms" aria-hidden="true">sell</span>{t(`tag_${tg}` as 'tag_taste')}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
       )}
 
       {/* ════ « ÉCRIRE UN AVIS » SLIDE-OVER (modal ≥760px / sheet <760px) ════ */}
@@ -211,8 +338,8 @@ export default function RestaurantReviewsScreen() {
                 <div className="sheet__body">
                   <div className="wdone">
                     <div className="wdone__ico"><span className="ms" aria-hidden="true">check_circle</span></div>
-                    <h3>{t('publishSoonTitle')}</h3>
-                    <p>{t('publishSoonBody')}</p>
+                    <h3>{t('publishedTitle')}</h3>
+                    <p>{t('publishedBody')}</p>
                   </div>
                 </div>
                 <div className="sheet__foot">
@@ -250,6 +377,7 @@ export default function RestaurantReviewsScreen() {
                       onChange={(e) => setComment(e.target.value)}
                       placeholder={t('commentPlaceholder')}
                       aria-label={t('commentLabel')}
+                      maxLength={1000}
                     />
                   </div>
 
@@ -277,7 +405,13 @@ export default function RestaurantReviewsScreen() {
                   </button>
                 </div>
                 <div className="sheet__foot">
-                  <button type="button" className="rv-btn rv-btn--primary rv-btn--full" onClick={publish}>
+                  <button
+                    type="button"
+                    className="rv-btn rv-btn--primary rv-btn--full"
+                    onClick={publish}
+                    disabled={publishing}
+                    aria-busy={publishing}
+                  >
                     {t('publish')}
                   </button>
                 </div>

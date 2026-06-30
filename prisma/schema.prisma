@@ -84,6 +84,8 @@ model Operator {
   // P5 (Agent 78) — reviews this operator (as a restaurateur) left on prestataires.
   // Additive inverse relation; reversible. NO money.
   serviceReviews  ServiceReview[]
+  // Inverse side of Review.operator (P0-DATA-2) — consumer reviews this user wrote.
+  reviews         Review[]
   // P6 (Agent 79) — service-mission invoices billed to this operator (as a restaurateur).
   // Additive inverse relation; reversible. DOCUMENT only — NO money movement.
   serviceInvoices ServiceInvoice[]
@@ -1448,10 +1450,39 @@ model Restaurant {
   // Inverse side of OpeningHour / ClosureException (Chantier horaires étape 1).
   weeklyHours  OpeningHour[]
   closures     ClosureException[]
+  // Inverse side of Review.restaurant (P0-DATA-2) — consumer reviews of this resto.
+  reviews      Review[]
 
   // Option B (step 4): operatorId is no longer unique; keep a plain index so the
   // frequent findFirst/findMany({ where: { operatorId } }) lookups stay fast.
   @@index([operatorId])
+}
+
+// ── Review (P0-DATA-2, consumer reviews) — ADDITIVE · REVERSIBLE ──────────────────
+// One consumer review per (user, restaurant) — editable (the POST upserts on that pair).
+// `rating` 1..5; `tags` = the CD « qu'avez-vous aimé » chips (JSON string[]); `status`
+// gates moderation (published | pending | hidden). ADDITIVE: the existing
+// Restaurant.rating / reviewCount headline aggregate is NOT recomputed from these rows
+// (kept as-is — merging on-platform reviews into the headline is a later, separate
+// decision), so adding / dropping this table changes no money path and no existing
+// aggregate. Distinct from the B2B ServiceReview (operator→prestataire); this is the
+// consumer→restaurant review.
+model Review {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  userId       String
+  operator     Operator   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId      String?                          // soft link to the order reviewed (optional)
+  rating       Int                              // 1..5
+  text         String?    @db.Text
+  tags         Json       @default("[]")        // liked-tags: taste|service|speed|value|ambiance
+  status       String     @default("published") // published | pending | hidden (moderation)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([userId, restaurantId])              // one (editable) review per restaurant per user
+  @@index([restaurantId])
 }
 
 // ── Opening hours (Chantier horaires étape 1, additive) ───────────────────────

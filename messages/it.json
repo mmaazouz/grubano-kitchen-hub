@@ -2272,6 +2272,12 @@
       "publish": "Pubblica la mia recensione",
       "publishSoonTitle": "In arrivo",
       "publishSoonBody": "La pubblicazione delle recensioni arriverà molto presto. Grazie per la pazienza!",
+      "publishedTitle": "Recensione pubblicata!",
+      "publishedBody": "Grazie! La tua recensione è ora visibile alla community.",
+      "ratingRequired": "Scegli una valutazione prima di pubblicare.",
+      "loginToReview": "Accedi per pubblicare una recensione.",
+      "publishError": "Pubblicazione non riuscita, riprova.",
+      "anonymous": "Cliente",
       "done": "Fatto"
     },
     "errors": {
