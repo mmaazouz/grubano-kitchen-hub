@@ -1678,7 +1678,8 @@
       "viewReceipt": "View receipt",
       "reorder": "Reorder",
       "notFoundTitle": "Order not found",
-      "notFoundBody": "This order doesn't exist or is no longer available."
+      "notFoundBody": "This order doesn't exist or is no longer available.",
+      "tipRecap": "Tip added · {amount}"
     },
     "addresses": {
       "title": "Delivery addresses",
@@ -1782,7 +1783,11 @@
       "addMore": "Add more dishes",
       "upsellTitle": "Goes well with",
       "upsellSoon": "AI — soon",
-      "securePayment": "Secure payment"
+      "securePayment": "Secure payment",
+      "tipTitle": "Courier tip",
+      "tipNote": "100% of the tip goes to your courier",
+      "tipCustomPlaceholder": "Other",
+      "tipLine": "Courier tip"
     },
     "track": {
       "title": "Live tracking",

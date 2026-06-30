@@ -23,9 +23,10 @@ import '@/app/gb-foundation/gb-components.css'
  *    /eat/r/[id]/reviews has no write endpoint — the only `Review` is the B2B ServiceReview,
  *    operator-gated). Local state only; submit shows the « Merci » view WITHOUT a network
  *    write. Reported as a gap (a real review-creation mutation is a later brick).
- *  • 💶 POURBOIRE → VISUAL/inert. There is NO post-delivery tip backend (no model, no charge
- *    path). The selector is purely visual — NEVER charges, NEVER invents an amount. The submit
- *    label echoes the *selected* tip (user choice), but no money moves. Reported as a gap.
+ *  • 💶 POURBOIRE → READ-ONLY RECAP (P2-TIP). The courier tip is now CHARGED AT CHECKOUT
+ *    (cart), so this page NO LONGER offers a tip selector (which would imply a 2nd charge).
+ *    It reads order.tipCents and, when > 0, shows « pourboire ajouté · X € » — informational
+ *    only, no money moves here. When 0 (or TIPS_ENABLED off), nothing tip-related shows.
  *  • COURIER card → NEUTRAL placeholder. The order API exposes NO real driver model (name/
  *    rating/vehicle); we do NOT fabricate a named courier (same stance as /eat/track). Generic
  *    « Votre livreur » + icon avatar; the courier-rating stars are inert too.
@@ -39,13 +40,14 @@ interface OrderLite {
   status: string
   total: number
   pointsEarned: number
+  // P2-TIP — the courier tip CHARGED AT CHECKOUT (cents). The tip is no longer
+  // collected here; this page shows it as a READ-ONLY recap. 0 = no tip.
+  tipCents: number
   restaurant: { name: string }
 }
 
 // CD quick-tags (order rating) — keys, rendered via t(`qtag_${k}`).
 const QTAG_KEYS = ['delicious', 'wellPacked', 'hot', 'generous'] as const
-// CD tip presets (€). The selector is VISUAL ONLY — no charge (see header).
-const TIP_PRESETS = [1, 2, 3, 5] as const
 
 export default function PostDeliveryScreen() {
   const t = useTranslations('eat.postDelivery')
@@ -57,11 +59,11 @@ export default function PostDeliveryScreen() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
-  // Local UI state (all INERT — no review/tip backend; see header).
+  // Local UI state (rating INERT — no review backend; see header). The tip is no
+  // longer collected here (it is charged at checkout — P2-TIP), so there is no tip
+  // input state: tipCents comes from the order as a read-only recap.
   const [stars, setStars] = useState(4)
   const [tags, setTags] = useState<string[]>(['delicious', 'hot'])
-  const [tip, setTip] = useState<number | null>(2)
-  const [customTip, setCustomTip] = useState('')
   const [done, setDone] = useState(false)
 
   const fetchOrder = useCallback(async () => {
@@ -77,6 +79,7 @@ export default function PostDeliveryScreen() {
         status: o.status,
         total: typeof o.total === 'number' ? o.total : 0,
         pointsEarned: typeof o.pointsEarned === 'number' ? o.pointsEarned : 0,
+        tipCents: typeof o.tipCents === 'number' ? o.tipCents : 0,
         restaurant: { name: o.restaurant?.name ?? '' },
       })
     } catch {
@@ -92,9 +95,9 @@ export default function PostDeliveryScreen() {
     setTags((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]))
   }
 
-  // The displayed/selected tip — VISUAL only (custom field wins when filled & numeric).
-  const customNum = customTip.trim() ? Number(customTip.replace(',', '.')) : NaN
-  const effectiveTip = Number.isFinite(customNum) && customNum > 0 ? customNum : tip
+  // P2-TIP — the tip ALREADY charged at checkout (read-only recap, euros). > 0 → a
+  // confirmation line shows; never editable here, no money moves on this page.
+  const tipEur = (order?.tipCents ?? 0) / 100
 
   // Submit = INERT. No review write, no tip charge — just reveal the « Merci » view.
   function submit() { setDone(true) }
@@ -126,8 +129,8 @@ export default function PostDeliveryScreen() {
         <div className="pd-done">
           <div className="ic"><span className="ms" aria-hidden="true">favorite</span></div>
           <h2>{t('thanksTitle')}</h2>
-          {/* tip confirmation only if the user picked a (visual) tip; no money moved */}
-          <p>{effectiveTip ? t('thanksTipBody', { amount: formatEuros(effectiveTip, locale) }) : t('thanksBody')}</p>
+          {/* tip confirmation only if the order carried a (checkout-charged) tip */}
+          <p>{tipEur > 0 ? t('thanksTipBody', { amount: formatEuros(tipEur, locale) }) : t('thanksBody')}</p>
           {/* REAL loyalty points — shown only when the order actually earned some */}
           {pts > 0 && (
             <span className="pts"><span className="ms" aria-hidden="true">redeem</span>{t('pointsEarned', { points: pts })}</span>
@@ -147,10 +150,9 @@ export default function PostDeliveryScreen() {
     ? null
     : `${order?.restaurant.name ?? ''} · ${shortRef} · ${formatEuros(order?.total ?? 0, locale)}`
 
-  // Submit label echoes the (visual) selected tip — user's own choice, no charge.
-  const submitLabel = effectiveTip
-    ? t('submitWithTip', { amount: formatEuros(effectiveTip, locale) })
-    : t('submit')
+  // Submit label — the tip is charged at checkout, so the label is the plain submit
+  // (no « +tip » charge implication). The recap line below shows the charged tip.
+  const submitLabel = t('submit')
 
   return (
     <div className="gb gb-postdelivery">
@@ -205,7 +207,10 @@ export default function PostDeliveryScreen() {
           </div>
         </div>
 
-        {/* 💶 courier rating + tip — courier is a NEUTRAL placeholder; tip is VISUAL only */}
+        {/* 💶 courier rating (NEUTRAL placeholder, inert) + tip RECAP (P2-TIP).
+            The tip is charged at CHECKOUT now — no selector here. When the order
+            carried a tip (tipEur > 0) we show a read-only « pourboire ajouté · X € »
+            line; no money moves. When there is no tip, nothing tip-related shows. */}
         <div className="pd-card">
           <div className="courier">
             <span className="av" aria-hidden="true"><span className="ms" style={{ fontSize: 22, color: '#1E3E60' }}>sports_motorsports</span></span>
@@ -219,31 +224,12 @@ export default function PostDeliveryScreen() {
               ))}
             </div>
           </div>
-          <div className="ttl" style={{ textAlign: 'start', fontSize: 13, marginBottom: 10 }}>{t('addTip')}</div>
-          <div className="pd-tips">
-            {TIP_PRESETS.map((amt) => (
-              <button
-                key={amt}
-                type="button"
-                className={`pd-tip${tip === amt && !customTip.trim() ? ' on' : ''}`}
-                aria-pressed={tip === amt && !customTip.trim()}
-                onClick={() => { setTip(amt); setCustomTip('') }}
-              >
-                <bdi>{formatEuros(amt, locale)}</bdi>
-              </button>
-            ))}
-          </div>
-          <div className="tip-custom">
-            <span className="ms" aria-hidden="true">euro</span>
-            <input
-              inputMode="decimal"
-              value={customTip}
-              onChange={(e) => { setCustomTip(e.target.value); if (e.target.value.trim()) setTip(null) }}
-              placeholder={t('tipCustomPlaceholder')}
-              aria-label={t('tipCustomPlaceholder')}
-            />
-          </div>
-          <div className="tip-note"><span className="ms" aria-hidden="true">volunteer_activism</span>{t('tipNote')}</div>
+          {tipEur > 0 && (
+            <div className="tip-recap">
+              <span className="ms" aria-hidden="true">volunteer_activism</span>
+              <span className="tip-recap__txt">{t('tipRecap', { amount: formatEuros(tipEur, locale) })}</span>
+            </div>
+          )}
         </div>
 
         {/* signaler un souci → Aide */}

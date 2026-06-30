@@ -6,6 +6,7 @@ import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { fetchActivePromotions, pickBestPromotion, resolveCodePromo } from '@/lib/promotions'
 import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } from '@/lib/loyalty'
 import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
+import { isTipsEnabled, sanitizeTipCents } from '@/lib/tips'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
@@ -51,6 +52,13 @@ const createOrderSchema = z.object({
   // takes the BEST-OF(code, auto-promo). .optional() keeps the no-code request
   // contract byte-identical.
   promoCode:       z.string().trim().max(40).optional(),
+  // P2-TIP: an optional COURIER tip in INTEGER CENTS picked at checkout. The
+  // client sends ONLY this integer (never a euro string, never a "total") — the
+  // server validates + caps it (≤ 500 €) and, ONLY when TIPS_ENABLED is ON,
+  // stores it via a tolerant post-create update (exactly like smallOrderFeeCents).
+  // .optional() keeps the no-tip request contract byte-identical; when the flag is
+  // OFF the value is ignored entirely.
+  tipCents:        z.number().int().min(0).max(50000).optional(),
 })
 
 // ── Uber Direct mock ──────────────────────────────────────────────────────────
@@ -318,6 +326,16 @@ export async function POST(req: NextRequest) {
     // deploy charges neither (and /pay has nothing to mis-split). The fee portion
     // is preserved on the /pay side via the application_fee split (resto unchanged).
 
+    // ── Courier tip (P2-TIP) — flag-gated, validated, capped ───────────────────
+    // The consumer's tip in INTEGER CENTS. ONLY honoured when TIPS_ENABLED is ON:
+    // when OFF, tipCents is 0 here so nothing is added to the charge and the order
+    // is byte-identical. Like the small-order fee, the tip is NOT food: it earns NO
+    // points, is NOT in the commission base, never reduces the resto's net. It is
+    // added to the charge total (and held in the application_fee on the /pay side)
+    // via a TOLERANT post-create update below (inert before the db push). The tip
+    // is layered on AFTER points/loyalty/promos so it can never be eaten by them.
+    const tipCents = isTipsEnabled() ? sanitizeTipCents(data.tipCents) : 0
+
     // ── Loyalty resolution (L1) + shared margin base (V1.5) — Grubano-financed
     // (D1), promo-exclusive (D3), server-computed (D4), capped so Grubano is never
     // net-negative (D-A). The credit is NOT applied to `total` here — it is written
@@ -546,6 +564,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Courier tip application (P2-TIP) — TOLERANT post-create update ──────────
+    // Raises `total` by the tip AND records Order.tipCents TOGETHER, exactly like
+    // the small-order fee. The tip is added ON TOP of the (already credit-reduced)
+    // food+fee total — it is NEVER reduced by points/promos/loyalty (it is not
+    // food). Pre-db-push (column missing) the update throws → caught → the order
+    // keeps its tip-less total and the tip is fully inert (no charge, nothing for
+    // /pay to hold → resto unchanged). When TIPS_ENABLED is OFF, tipCents is 0 here
+    // so this whole block is skipped → byte-identical. Floored at 0 like the others.
+    let appliedTipCents = 0
+    if (tipCents > 0) {
+      try {
+        const baseTotal = Math.max(0, round2(foodTotal + appliedSmallFeeCents / 100 - appliedCreditCents / 100))
+        await prisma.order.update({
+          where: { id: order.id },
+          data:  { total: round2(baseTotal + tipCents / 100), tipCents },
+        })
+        appliedTipCents = tipCents
+      } catch (tipErr) {
+        console.error('[POST /api/orders] tip column missing pre-db-push — tip NOT applied:',
+          tipErr instanceof Error ? tipErr.message : tipErr)
+      }
+    }
+
     // ── Adopted-dish sales (brique 5C) ─────────────────────────────────────────
     // For every ordered line whose MenuItem is tied to an ACTIVE DishAdoption,
     // record a real DishSale with FROZEN earnings — same freeze-at-write rule
@@ -771,13 +812,15 @@ export async function POST(req: NextRequest) {
         status:            updated.status,
         estimatedDelivery: dispatch.estimatedTime,
         trackingUrl:       dispatch.trackingUrl,
-        // Final amount the customer will pay = food + small fee − loyalty credit.
-        total:             Math.max(0, round2(foodTotal + appliedSmallFeeCents / 100 - appliedCreditCents / 100)),
+        // Final amount the customer will pay = food + small fee − loyalty credit + tip.
+        total:             Math.max(0, round2(foodTotal + appliedSmallFeeCents / 100 - appliedCreditCents / 100)) + round2(appliedTipCents / 100),
         pointsEarned,
         // Total promo/welcome discount applied (never both, D6 guard).
         discount:          round2(ref.discount + promo.discountEur),
         // Small-order fee applied to this order (0 when items subtotal ≥ threshold — V1.5).
         smallOrderFee:     round2(appliedSmallFeeCents / 100),
+        // Courier tip applied to this order (0 when none / flag OFF — P2-TIP).
+        tip:               round2(appliedTipCents / 100),
         // Loyalty redemption applied to this order (0 when none — L1).
         loyaltyCredit:     round2(appliedCreditCents / 100),
         pointsRedeemed:    appliedPointsSpent,

@@ -1782,7 +1782,11 @@
       "addMore": "أضف أطباقًا أخرى",
       "upsellTitle": "يتماشى جيدًا مع",
       "upsellSoon": "الذكاء الاصطناعي — قريبًا",
-      "securePayment": "دفع آمن"
+      "securePayment": "دفع آمن",
+      "tipTitle": "بقشيش عامل التوصيل",
+      "tipNote": "100٪ من البقشيش يذهب إلى عامل التوصيل",
+      "tipCustomPlaceholder": "آخر",
+      "tipLine": "بقشيش عامل التوصيل"
     },
     "track": {
       "title": "التتبع المباشر",
@@ -2455,7 +2459,8 @@
       "viewReceipt": "عرض الإيصال",
       "reorder": "أعد الطلب",
       "notFoundTitle": "الطلب غير موجود",
-      "notFoundBody": "هذا الطلب غير موجود أو لم يعد متاحًا."
+      "notFoundBody": "هذا الطلب غير موجود أو لم يعد متاحًا.",
+      "tipRecap": "تمت إضافة البقشيش · {amount}"
     }
   },
   "menu": {

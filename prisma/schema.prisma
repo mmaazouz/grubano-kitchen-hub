@@ -2121,6 +2121,11 @@ model Order {
   // In CENTS. Written BEST-EFFORT post-create (column-tolerant until the db push
   // → the fee is inert before the push).
   smallOrderFeeCents Int  @default(0)
+  // ── Courier tip (P2-TIP, additive) — tip in CENTS picked at checkout, paid by the
+  // CLIENT, HELD by the PLATFORM (added to the application_fee) — NEVER resto revenue,
+  // NEVER in the commission base, NEVER earns loyalty points. Written BEST-EFFORT
+  // post-create (column-tolerant → inert before the db push). Gated by TIPS_ENABLED.
+  tipCents           Int  @default(0)
   referralOrder   ReferralOrder?
   // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
   // attributed to this order. Nullable list, no impact on existing orders.

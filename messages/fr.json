@@ -1678,7 +1678,8 @@
       "viewReceipt": "Voir le reçu",
       "reorder": "Recommander",
       "notFoundTitle": "Commande introuvable",
-      "notFoundBody": "Cette commande n'existe pas ou n'est plus disponible."
+      "notFoundBody": "Cette commande n'existe pas ou n'est plus disponible.",
+      "tipRecap": "Pourboire ajouté · {amount}"
     },
     "addresses": {
       "title": "Adresses de livraison",
@@ -1782,7 +1783,11 @@
       "addMore": "Ajouter d'autres plats",
       "upsellTitle": "Ça irait bien avec",
       "upsellSoon": "IA — bientôt",
-      "securePayment": "Paiement sécurisé"
+      "securePayment": "Paiement sécurisé",
+      "tipTitle": "Pourboire livreur",
+      "tipNote": "100 % du pourboire revient à votre livreur",
+      "tipCustomPlaceholder": "Autre",
+      "tipLine": "Pourboire livreur"
     },
     "track": {
       "title": "Suivi en temps réel",

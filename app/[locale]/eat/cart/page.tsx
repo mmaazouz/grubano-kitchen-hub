@@ -23,6 +23,9 @@ import '@/app/gb-foundation/gb-components.css'
 
 type Fulfillment = 'delivery' | 'pickup'
 
+// P2-TIP courier tip presets (€). The same set as the post-delivery screen.
+const TIP_PRESETS = [1, 2, 3, 5] as const
+
 export default function CartScreen() {
   const t = useTranslations('eat.cart')
   const ta = useTranslations('eat.addresses')
@@ -78,6 +81,14 @@ export default function CartScreen() {
   // Small-order fee (V1.5) — global config echoed by GET /api/restaurants/[id].
   // DISPLAY-only: the SERVER recomputes + applies the fee at order time.
   const [smallOrderCfg, setSmallOrderCfg] = useState<{ feeCents: number; thresholdCents: number } | null>(null)
+  // P2-TIP — whether the courier tip selector shows (mirrors TIPS_ENABLED, echoed
+  // by GET /api/restaurants/[id]). Default false → the tip UI is hidden and the
+  // cart is byte-identical. The selected tip (in EUROS, UI-side) is sent as INTEGER
+  // CENTS to the server, which validates + caps + charges it (the client never
+  // sends a euro string nor a total). null = no tip picked.
+  const [tipsEnabled, setTipsEnabled] = useState(false)
+  const [tip, setTip] = useState<number | null>(null)
+  const [customTip, setCustomTip] = useState('')
   // The resto menu (flat) for the 1-click "add an item" nudge to clear the fee.
   const [menuItems, setMenuItems] = useState<Array<{ id: string; name: string; price: number; photos?: string[]; category?: string }>>([])
 
@@ -98,6 +109,7 @@ export default function CartScreen() {
         if (d.smallOrder && typeof d.smallOrder.feeCents === 'number' && typeof d.smallOrder.thresholdCents === 'number') {
           setSmallOrderCfg({ feeCents: d.smallOrder.feeCents, thresholdCents: d.smallOrder.thresholdCents })
         }
+        if (typeof d.tipsEnabled === 'boolean') setTipsEnabled(d.tipsEnabled)
         if (Array.isArray(d.menu)) {
           setMenuItems(d.menu.flatMap(
             (c: { items?: Array<{ id: string; name: string; price: number; photos?: string[]; category?: string }> }) => c.items ?? [],
@@ -235,11 +247,22 @@ export default function CartScreen() {
   // applies the BEST-OF(code, auto-promo) at checkout — this preview is never
   // trusted there. Cleared automatically when the basket changes (see effect).
   const promoDiscount = promoState === 'applied' && promoPreview ? promoPreview.discountEur : 0
+  // P2-TIP — the courier tip in EUROS (UI-side). The custom field wins when filled
+  // and numeric; else the selected preset. Only relevant when tipsEnabled (the UI
+  // is hidden otherwise → tip/customTip stay at their initial empty values, so this
+  // is 0 and the total/placeOrder are byte-identical). The server validates + caps
+  // it; we send INTEGER CENTS, never this euro number.
+  const customTipNum = customTip.trim() ? Number(customTip.replace(',', '.')) : NaN
+  const tipEur = tipsEnabled
+    ? (Number.isFinite(customTipNum) && customTipNum > 0 ? customTipNum : (tip ?? 0))
+    : 0
+  const tipCents = Math.max(0, Math.round(tipEur * 100))
   // The displayed total = full item prices + delivery − welcome discount − promo
-  // code discount + the small-order fee. The loyalty credit is resolved + shown on
-  // the checkout screen, so the cart never charges MORE than it displays (C3-fix
-  // doctrine). The promo discount is clamped so the food can't go negative.
-  const total = Math.max(0, subtotal - welcomeAmount - Math.min(promoDiscount, subtotal) + deliveryFee + smallFeeEur)
+  // code discount + the small-order fee + the courier tip. The loyalty credit is
+  // resolved + shown on the checkout screen, so the cart never charges MORE than it
+  // displays (C3-fix doctrine). The promo discount is clamped so the food can't go
+  // negative. The tip is added ON TOP (never reduced by discounts — it is not food).
+  const total = Math.max(0, subtotal - welcomeAmount - Math.min(promoDiscount, subtotal) + deliveryFee + smallFeeEur) + tipEur
   const totalItems = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
 
   // The single item the nudge proposes to clear the fee in one tap: the cheapest
@@ -431,6 +454,10 @@ export default function CartScreen() {
           // The server resolves + applies the BEST-OF(code, auto-promo). Sent only
           // when a code is currently applied → the no-code request is unchanged.
           ...(promoState === 'applied' && promoPreview ? { promoCode: promoPreview.code } : {}),
+          // P2-TIP: pass the courier tip in INTEGER CENTS, ONLY when tips are on AND
+          // a positive tip is picked → the no-tip / flag-OFF request is byte-identical.
+          // The server validates + caps + charges it (ignored entirely when OFF).
+          ...(tipsEnabled && tipCents > 0 ? { tipCents } : {}),
         }),
       })
       if (res.status === 401) {
@@ -714,6 +741,53 @@ export default function CartScreen() {
                   )}
                 </div>
               )}
+
+              {/* P2-TIP — courier tip selector. Shown ONLY when tips are enabled
+                  (tipsEnabled, mirrors TIPS_ENABLED). Hidden by default → the cart
+                  is byte-identical. Presets (€) + a custom € input; the chosen tip is
+                  added to the total above and sent as INTEGER CENTS at checkout. */}
+              {tipsEnabled && (
+                <div className="tip-card">
+                  <div className="tip-card__head">
+                    <span className="ms" aria-hidden="true">volunteer_activism</span>
+                    <div className="tip-card__txt">
+                      <b>{t('tipTitle')}</b>
+                      <span>{t('tipNote')}</span>
+                    </div>
+                  </div>
+                  <div className="tip-card__row">
+                    {TIP_PRESETS.map((amt) => {
+                      const on = tip === amt && !customTip.trim()
+                      return (
+                        <button
+                          key={amt}
+                          type="button"
+                          className={`tip-chip${on ? ' on' : ''}`}
+                          aria-pressed={on}
+                          onClick={() => {
+                            // Toggle off if re-tapping the active preset → no tip.
+                            if (on) { setTip(null) } else { setTip(amt) }
+                            setCustomTip('')
+                          }}
+                        >
+                          <bdi>{formatEuros(amt, locale)}</bdi>
+                        </button>
+                      )
+                    })}
+                    <span className="tip-custom">
+                      <span className="ms" aria-hidden="true">euro</span>
+                      <input
+                        inputMode="decimal"
+                        value={customTip}
+                        onChange={(e) => { setCustomTip(e.target.value); if (e.target.value.trim()) setTip(null) }}
+                        placeholder={t('tipCustomPlaceholder')}
+                        aria-label={t('tipCustomPlaceholder')}
+                        maxLength={6}
+                      />
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* RIGHT column — sticky Summary panel on desktop */}
@@ -815,6 +889,9 @@ export default function CartScreen() {
                 </div>
                 {smallFeeApplies && (
                   <div className="srow"><span>{t('smallOrderFeeLine')}</span><b>{formatEuros(smallFeeEur, locale)}</b></div>
+                )}
+                {tipsEnabled && tipEur > 0 && (
+                  <div className="srow"><span>{t('tipLine')}</span><b>{formatEuros(tipEur, locale)}</b></div>
                 )}
                 <div className="sdiv" />
                 <div className="stotal"><span>{t('total')}</span><b>{formatEuros(total, locale)}</b></div>

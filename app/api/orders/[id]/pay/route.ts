@@ -9,6 +9,8 @@ import {
 import { computeApplicationFee, resolveCommissionRate, type CommissionChannel } from '@/lib/commission'
 import { commissionBaseCents, commissionBaseMode } from '@/lib/promotions'
 import { computeFranchiseRoyalty, recordFranchiseRoyalty } from '@/lib/franchise-royalty'
+import { isTipsEnabled } from '@/lib/tips'
+import { recordCourierTipLedgerEntry } from '@/lib/ledger'
 
 // ── POST /api/orders/[id]/pay ─────────────────────────────────────────────────
 // Chantier checkout C1 (décision C0: pickup AND delivery are paid IMMEDIATELY at
@@ -117,14 +119,28 @@ export async function POST(
       const extra = await prisma.order.findUnique({ where: { id: order.id }, select: { smallOrderFeeCents: true } })
       smallFeeCents = extra?.smallOrderFeeCents ?? 0
     } catch { /* column missing pre-db-push → 0 */ }
+    // P2-TIP: the courier tip held on this order (cents). SEPARATE guard (its own
+    // try/catch) for the SAME reason as the small fee: the tipCents column is new
+    // (this push) so a combined select would throw as a unit on the missing column
+    // and wrongly zero the EXISTING loyalty/small-fee reads during the deploy
+    // window. ALSO gated by isTipsEnabled(): with the flag OFF tipCents stays 0
+    // here even if a column value exists → the charge/fee are byte-identical.
+    let tipCents = 0
+    if (isTipsEnabled()) {
+      try {
+        const extra = await prisma.order.findUnique({ where: { id: order.id }, select: { tipCents: true } })
+        tipCents = extra?.tipCents ?? 0
+      } catch { /* column missing pre-db-push → 0 */ }
+    }
 
-    // amountCents (= order.total) = subtotal + delivery + smallFee − promo − credit.
-    // So the discount baked into the charge = subtotal + delivery + smallFee −
-    // amount = promo + credit. The small fee MUST be added back here, else once it
-    // is in total the derived "discount" would be understated and the commission
-    // base wrong. (V1.5)
+    // amountCents (= order.total) = subtotal + delivery + smallFee + tip − promo −
+    // credit. So the discount baked into the charge = subtotal + delivery + smallFee
+    // + tip − amount = promo + credit. The small fee AND the tip MUST be added back
+    // here, else once they are in total the derived "discount" would be understated
+    // and the commission base wrong. (V1.5 / P2-TIP). With TIPS_ENABLED OFF, tipCents
+    // is 0 → this expression is byte-identical to the pre-tip one.
     const totalDiscountCents = Math.max(
-      0, subtotalCents + eurosToCents(order.deliveryFee) + smallFeeCents - amountCents,
+      0, subtotalCents + eurosToCents(order.deliveryFee) + smallFeeCents + tipCents - amountCents,
     )
     // D1: ONLY the promo discount reduces the commission BASE. The loyalty credit
     // and the small fee never shrink the base (the fee is not even part of it).
@@ -166,7 +182,16 @@ export async function POST(
     // equation holds); the franchisor's share is tracked separately (FranchiseRoyalty).
     // When the flag is OFF (or not franchised), royaltyChargedCents = 0 and feeCents
     // reduces to the exact pre-feature expression → byte-identical.
-    const baseFeeCents = routed ? Math.max(0, grossFeeCents - loyaltyCreditCents) + smallFeeCents : 0
+    // P2-TIP: the courier tip is ADDED to the application_fee — held 100 % by the
+    // PLATFORM (it is an obligation owed to the courier, NEVER routed to the resto).
+    // It is in amountCents too (order.total includes it), so the +tip in amount and
+    // the +tip in the app fee CANCEL for the resto: net = amount − fee is unchanged,
+    // the tip is NEVER the resto's take. The royalty clamp below sees the tip on both
+    // sides (room = amount − baseFee), so it is unaffected. With TIPS_ENABLED OFF
+    // tipCents is 0 → byte-identical. (Only routed charges split the fee; on the
+    // platform fallback the whole charge — tip included — already stays on Grubano's
+    // account and the 'courier_tip' accrual still records the obligation.)
+    const baseFeeCents = routed ? Math.max(0, grossFeeCents - loyaltyCreditCents) + smallFeeCents + tipCents : 0
     const royaltyChargedCents = routed
       ? Math.min(royalty.royaltyCents, Math.max(0, amountCents - baseFeeCents))
       : 0
@@ -210,6 +235,32 @@ export async function POST(
       }
     }
 
+    // P2-TIP: idempotent, BEST-EFFORT accrual of the COURIER tip held in THIS order's
+    // application_fee. Keyed on the PI id (sourceEventId) via @@unique([sourceEventId,
+    // 'courier_tip']) → a replay / reuse on the SAME PI is a silent duplicate. Records
+    // the obligation (the held tip is NOT Grubano revenue) so the courier payout rail
+    // (TIP_PAYOUT_ENABLED, inert) can settle it later. NEVER throws into the payment;
+    // a no-op when tipCents is 0 (flag OFF / no tip → byte-identical, no line written).
+    const accrueCourierTip = async (piId: string) => {
+      if (tipCents <= 0) return
+      try {
+        const res = await recordCourierTipLedgerEntry({
+          orderId:               order.id,
+          stripePaymentIntentId: piId,
+          tipCents,
+          channel,
+        })
+        if (!res.ok) {
+          console.error(`[order pay] courier tip ledger write failed for order ${order.id} (payment unaffected): ${res.error}`)
+        }
+      } catch (err) {
+        console.error(
+          `[order pay] courier tip accrual failed for order ${order.id} (payment unaffected): ` +
+          (err instanceof Error ? err.message : String(err)),
+        )
+      }
+    }
+
     // Idempotent reuse — an order's amount is FIXED at creation (not a live
     // document like the table bill), so reuse needs only the routing check:
     //   • succeeded → 409 (webhook lag);
@@ -239,6 +290,7 @@ export async function POST(
             // metadata (franchise_royalty_cents) stays the authoritative source for
             // step-B settlement, which reconciles against it.
             await accrueFranchiseRoyalty(existing.id)
+            await accrueCourierTip(existing.id)
             return NextResponse.json({
               clientSecret: existing.client_secret, publishableKey, amount: amountCents, currency,
             })
@@ -286,6 +338,10 @@ export async function POST(
               franchise_royalty_rate:  String(royalty.rate),
             }
           : {}),
+        // P2-TIP: stamp the held courier tip (cents) on the (immutable) PI when it
+        // applies, so the obligation is recoverable from Stripe even if the DB
+        // ledger write fails. Spreads NOTHING when no tip → byte-identical metadata.
+        ...(tipCents > 0 ? { courier_tip_cents: String(tipCents) } : {}),
       },
       idempotencyKey: `orderpay-${order.id}-${amountCents}-${feeCents}-${order.stripePaymentIntentId ?? 'first'}`,
     })
@@ -298,6 +354,9 @@ export async function POST(
     // P4-Franchise-A: accrue/reconcile the franchise royalty against the freshly-created
     // PI (no-op when no royalty applies → byte-identical when OFF). See the helper above.
     await accrueFranchiseRoyalty(pi.id)
+    // P2-TIP: accrue the courier-tip obligation against the freshly-created PI (no-op
+    // when no tip / flag OFF → byte-identical). See the helper above.
+    await accrueCourierTip(pi.id)
 
     return NextResponse.json(
       { clientSecret: pi.client_secret, publishableKey, amount: amountCents, currency },

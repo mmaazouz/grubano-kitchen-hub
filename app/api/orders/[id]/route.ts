@@ -52,6 +52,16 @@ export async function GET(
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
 
+    // ── ADDITIVE (P2-TIP) — the courier tip charged at checkout (cents), for the
+    // post-delivery RECAP. SEPARATE guarded read: the tipCents column is new (its
+    // db push), so a deploy before the push degrades to 0 (no recap line) rather
+    // than 500. The main order query (above) does not select it for that reason.
+    let tipCents = 0
+    try {
+      const extra = await prisma.order.findUnique({ where: { id: order.id }, select: { tipCents: true } })
+      tipCents = extra?.tipCents ?? 0
+    } catch { /* column missing pre-db-push → 0 */ }
+
     // ── ADDITIVE (chantier P2) — promo display data for the checkout recap.
     // discount + promotionId were resolved SERVER-side by P1 at order creation;
     // this only SURFACES them (+ the promo's display name). Defensive: a name
@@ -88,6 +98,9 @@ export async function GET(
         // Read-only: resolveLoyaltyCredit (L1) already wrote these at checkout.
         loyaltyCreditCents: order.loyaltyCreditCents,
         pointsRedeemed:     order.pointsRedeemed,
+        // Additive (P2-TIP) — the courier tip charged at checkout (cents). Drives
+        // the post-delivery recap line « pourboire ajouté · X € ». 0 = no tip.
+        tipCents,
         estimatedTime:   order.estimatedTime,
         trackingUrl:     order.trackingUrl,
         deliveryAddress: order.deliveryAddress,

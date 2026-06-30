@@ -1678,7 +1678,8 @@
       "viewReceipt": "Vedi la ricevuta",
       "reorder": "Ordina di nuovo",
       "notFoundTitle": "Ordine non trovato",
-      "notFoundBody": "Questo ordine non esiste o non è più disponibile."
+      "notFoundBody": "Questo ordine non esiste o non è più disponibile.",
+      "tipRecap": "Mancia aggiunta · {amount}"
     },
     "addresses": {
       "title": "Indirizzi di consegna",
@@ -1782,7 +1783,11 @@
       "addMore": "Aggiungi altri piatti",
       "upsellTitle": "Si abbina bene con",
       "upsellSoon": "IA — presto",
-      "securePayment": "Pagamento sicuro"
+      "securePayment": "Pagamento sicuro",
+      "tipTitle": "Mancia al rider",
+      "tipNote": "Il 100% della mancia va al tuo rider",
+      "tipCustomPlaceholder": "Altro",
+      "tipLine": "Mancia al rider"
     },
     "track": {
       "title": "Tracciamento in tempo reale",

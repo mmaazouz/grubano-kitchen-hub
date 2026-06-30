@@ -9,6 +9,7 @@ import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '
 import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
 import { smallOrderFeeConfigCents, smallOrderThresholdCents } from '@/lib/pricing'
+import { isTipsEnabled } from '@/lib/tips'
 
 // ── GET /api/restaurants/:id ──────────────────────────────────────────────────
 // Returns full restaurant details + menu grouped by category
@@ -282,6 +283,10 @@ export async function GET(
       // cart can show the « ajoutez X € » nudge + the fee line. DISPLAY ONLY: the
       // server recomputes + applies the fee at order time (POST /api/orders).
       smallOrder: { feeCents: smallOrderFeeConfigCents(), thresholdCents: smallOrderThresholdCents() },
+      // Additive (P2-TIP) — whether the courier-tip selector should show at checkout.
+      // Mirrors the TIPS_ENABLED server flag; when false (default) the cart hides the
+      // tip UI entirely → byte-identical. The SERVER alone validates + charges the tip.
+      tipsEnabled: isTipsEnabled(),
     })
   } catch (err) {
     console.error('[GET /api/restaurants/:id]', err)

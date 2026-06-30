@@ -10,7 +10,11 @@ export type LedgerEntryInput = {
   // no migration). Its `restaurantId` carries the BENEFICIARY partner id, NOT a
   // restaurant (see recordPartnerTransferLedgerEntry); every restaurantId-scoped
   // reader keys on a real Restaurant.id, so these lines never join one.
-  type:                  'payment' | 'deposit_capture' | 'refund' | 'adjustment' | 'partner_transfer'
+  // 'courier_tip' (P2-TIP) is the ACCRUAL obligation for a courier tip held in the
+  // charge's application_fee — additive, convention-only (free String, no migration).
+  // It is NOT Grubano revenue (applicationFeeAmount 0) and NOT a restaurant line
+  // (restaurantId carries a non-Restaurant marker — see recordCourierTipLedgerEntry).
+  type:                  'payment' | 'deposit_capture' | 'refund' | 'adjustment' | 'partner_transfer' | 'courier_tip'
   restaurantId:          string
   ticketId?:             string | null
   reservationId?:        string | null
@@ -126,6 +130,57 @@ export async function recordPartnerTransferLedgerEntry(input: {
     currency:             input.currency ?? 'eur',
     channel:              null,
     sourceEventId:        input.payoutId,
+    ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+  })
+}
+
+/** Record ONE 'courier_tip' ledger line for the COURIER tip held in an order's
+ *  charge (P2-TIP). APPEND-ONLY + IDEMPOTENT: the dedupe key is the order's
+ *  PaymentIntent id (sourceEventId), so @@unique([sourceEventId,'courier_tip'])
+ *  makes a retried /pay (PI reuse / a recreated PI carrying the same tip) a silent
+ *  duplicate — never two accrual lines for one held tip.
+ *
+ *  WHAT IT EARMARKS: the tip is added to BOTH the charge amount AND the
+ *  application_fee at /pay, so the platform HOLDS it (the resto's net = amount −
+ *  fee is unchanged — the +tip in amount and the +tip in fee cancel). This line
+ *  RECORDS that obligation. It is NOT Grubano revenue and awaits the courier
+ *  payout rail (TIP_PAYOUT_ENABLED, inert — lib/tips).
+ *
+ *  FIELD MAPPING — PROVABLY NEUTRAL to every existing ledger reader (same approach
+ *  as recordPartnerTransferLedgerEntry):
+ *    • restaurantId = the non-Restaurant marker 'courier_tip:<orderId>' → it is
+ *      NEVER a real Restaurant.id, so every restaurantId-scoped reader (finance
+ *      summary, invoice generate/detail, dac7, partner-balance) keys on a real
+ *      Restaurant.id and never fetches it → no spurious invoice / revenue.
+ *    • applicationFeeAmount = 0 → a tip earns Grubano NO commission (literally true).
+ *    • netToRestaurant = grossAmount = tipCents → forced by the golden equation
+ *      gross = fee + net (= tip = 0 + tip), so the admin ledger-check passes line by
+ *      line and in aggregate. (Never summed for a real restaurant — restaurantId is
+ *      a marker.) The Stripe-reconciliation + refund branches of the check route
+ *      filter by type ∈ {payment,deposit_capture,refund} → this line is invisible
+ *      there: the held tip is already inside the 'payment' line's gross+fee, so it
+ *      must not be double-counted on the Stripe side.
+ *  All amounts in integer CENTS. */
+export async function recordCourierTipLedgerEntry(input: {
+  orderId:                string  // the order whose charge holds the tip
+  stripePaymentIntentId:  string  // pi_… — the deterministic dedupe key (sourceEventId)
+  tipCents:               number  // POSITIVE held tip
+  channel?:               string | null
+  currency?:              string
+  createdAt?:             Date
+}): Promise<LedgerWriteResult> {
+  return recordLedgerEntry({
+    type:                  'courier_tip',
+    restaurantId:          `courier_tip:${input.orderId}`, // marker, NEVER a Restaurant.id
+    stripePaymentIntentId: input.stripePaymentIntentId,
+    grossAmount:           input.tipCents,
+    applicationFeeAmount:  0,
+    stripeFeeAmount:       null,
+    netToRestaurant:       input.tipCents, // gross − fee (fee 0) ⇒ golden equation holds
+    routed:                true,
+    channel:               input.channel ?? null,
+    currency:              input.currency ?? 'eur',
+    sourceEventId:         input.stripePaymentIntentId,
     ...(input.createdAt ? { createdAt: input.createdAt } : {}),
   })
 }

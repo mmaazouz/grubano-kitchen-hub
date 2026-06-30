@@ -1678,7 +1678,8 @@
       "viewReceipt": "Ver el recibo",
       "reorder": "Volver a pedir",
       "notFoundTitle": "Pedido no encontrado",
-      "notFoundBody": "Este pedido no existe o ya no está disponible."
+      "notFoundBody": "Este pedido no existe o ya no está disponible.",
+      "tipRecap": "Propina añadida · {amount}"
     },
     "addresses": {
       "title": "Direcciones de entrega",
@@ -1782,7 +1783,11 @@
       "addMore": "Añadir más platos",
       "upsellTitle": "Combina bien con",
       "upsellSoon": "IA — pronto",
-      "securePayment": "Pago seguro"
+      "securePayment": "Pago seguro",
+      "tipTitle": "Propina al repartidor",
+      "tipNote": "El 100 % de la propina es para tu repartidor",
+      "tipCustomPlaceholder": "Otro",
+      "tipLine": "Propina al repartidor"
     },
     "track": {
       "title": "Seguimiento en tiempo real",
