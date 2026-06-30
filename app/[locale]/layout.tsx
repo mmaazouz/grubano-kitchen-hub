@@ -57,7 +57,7 @@ export default async function LocaleLayout({
   const dir = rtlLocales.includes(locale as Locale) ? 'rtl' : 'ltr'
 
   return (
-    <html lang={locale} dir={dir}>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <head>
         {/* Material Symbols Rounded — loaded ROBUSTLY here so the consumer app's
             `.ms` ligature icons ALWAYS render, independent of per-route CSS bundle
@@ -69,6 +69,14 @@ export default async function LocaleLayout({
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block"
+        />
+        {/* Theme init (P1-THEME) — apply the saved consumer theme BEFORE first paint so a
+            dark preference never flashes. Default (no stored value) = light, unchanged. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('grubano_theme');var d=t==='dark'||(t==='auto'&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();",
+          }}
         />
       </head>
       <body className="bg-background">

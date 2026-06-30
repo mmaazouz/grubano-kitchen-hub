@@ -6,6 +6,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { usePathname, useRouter } from '@/navigation'
 import { locales, type Locale } from '@/i18n'
 import { readFavs, showToast } from '@/lib/eat-cart'
+import { getTheme, setTheme, watchSystem, type Theme } from '@/lib/eat-theme'
 // gb-foundation FIRST: gb-tokens.css opens with `@import …Material+Symbols…`, valid
 // only when it is the route stylesheet's first rule — keep it before page CSS so the
 // `.ms` icon ligatures don't fall back to raw text.
@@ -50,16 +51,26 @@ export default function ProfileScreen() {
   const [points, setPoints] = useState(0)
   const [orders, setOrders] = useState<Order[]>([])
   const [favCount, setFavCount] = useState(0)
-  // « Apparence » — INERT (no real theme mechanism in the app yet; the only persisted
-  // preference is the locale). The segmented control reflects the default (Clair) and
-  // does NOT fake persistence; see the report. Tracked here as pure local UI state.
-  const [appearance, setAppearance] = useState<'light' | 'dark' | 'auto'>('light')
+  // « Apparence » (P1-THEME) — real theme persistence (lib/eat-theme): light / dark / auto,
+  // saved in localStorage + applied as data-theme on <html>. Default = light (unchanged).
+  const [appearance, setAppearance] = useState<Theme>('light')
 
   const loggedIn = status === 'authenticated'
 
   useEffect(() => {
     setFavCount(readFavs().length)
   }, [])
+
+  // Load the saved theme + keep 'auto' in sync with the OS scheme.
+  useEffect(() => {
+    setAppearance(getTheme())
+    return watchSystem()
+  }, [])
+
+  const chooseTheme = (next: Theme) => {
+    setAppearance(next)
+    setTheme(next)
+  }
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -191,14 +202,14 @@ export default function ProfileScreen() {
       {/* ─── Préférences ─── */}
       <p className="glabel">{t('groupPreferences')}</p>
       <div className="ac-group">
-        {/* Apparence — INERT (no real theme mechanism yet); reflects the default only. */}
+        {/* Apparence (P1-THEME) — real theme: light / dark / auto, persisted + applied live. */}
         <div className="ac-row static">
           <span className="ic gray"><span className="ms" aria-hidden="true">contrast</span></span>
           <div className="main"><b>{t('rowAppearance')}</b></div>
           <span className="ac-seg">
-            <button type="button" className={appearance === 'light' ? 'on' : undefined} onClick={() => setAppearance('light')}>{t('themeLight')}</button>
-            <button type="button" className={appearance === 'dark' ? 'on' : undefined} onClick={() => setAppearance('dark')}>{t('themeDark')}</button>
-            <button type="button" className={appearance === 'auto' ? 'on' : undefined} onClick={() => setAppearance('auto')}>{t('themeAuto')}</button>
+            <button type="button" className={appearance === 'light' ? 'on' : undefined} onClick={() => chooseTheme('light')}>{t('themeLight')}</button>
+            <button type="button" className={appearance === 'dark' ? 'on' : undefined} onClick={() => chooseTheme('dark')}>{t('themeDark')}</button>
+            <button type="button" className={appearance === 'auto' ? 'on' : undefined} onClick={() => chooseTheme('auto')}>{t('themeAuto')}</button>
           </span>
         </div>
         {/* Langue — REAL i18n switch, 5 locales (FR/EN/ES/IT/AR). */}
