@@ -5,7 +5,7 @@ import { Link, usePathname, useRouter } from '@/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { readCart, cartCount, CART_EVENT } from '@/lib/eat-cart'
-import { getDefaultAddress, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
+import { getDefaultAddress, syncFromServer, ADDRESS_EVENT, type EatAddress } from '@/lib/eat-addresses'
 import { formatEuros } from '@/lib/format-money'
 import GeolocSheet from '@/components/eat/GeolocSheet'
 import '@/app/[locale]/eat/nav-shell.css'
@@ -71,6 +71,13 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
       window.removeEventListener('storage', sync)
     }
   }, [])
+
+  // P0-DATA-1 — once authenticated, pull the server address book into the local cache
+  // (cross-device persistence). Best-effort: a guest (401) / offline device keeps the
+  // localStorage store only. The ADDRESS_EVENT the sync fires refreshes « Livrer à ».
+  useEffect(() => {
+    if (authed) void syncFromServer()
+  }, [authed])
 
   // Cart (lib/eat-cart, byte-identical) — count + subtotal, live via CART_EVENT.
   useEffect(() => {

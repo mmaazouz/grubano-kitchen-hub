@@ -155,6 +155,38 @@ model Operator {
   // standalone OnboardingNudge table below (NOT here) so a re-run never double-sends.
   locale               String?  // fr | en | es | it | ar (preferred email language; null ⇒ fr)
   onboardingNudgeUnsub Boolean  @default(false)
+  // ── Consumer delivery addresses (P0-DATA-1) — ADDITIVE · REVERSIBLE ──────────
+  // A consumer's saved delivery addresses (the « Livrer à » picker source). The
+  // server copy of what used to live only in localStorage (lib/eat-addresses).
+  // Inverse list relation → NO column on Operator; dropping the Address table leaves
+  // the model intact. The Order still stores the FORMATTED address STRING
+  // (placeOrder byte-identical) — this table is only the user's reusable address book.
+  addresses  Address[]
+}
+
+// ── Address (P0-DATA-1, consumer delivery address book) — ADDITIVE · REVERSIBLE ───
+// One row per saved delivery address, owned by an Operator (consumer). Mirrors the
+// client store shape (lib/eat-addresses.EatAddress) 1:1 so the rewrite is transparent.
+// The checkout/cart/shell read the FORMATTED string (formatAddress) → Order.deliveryAddress
+// is unchanged (placeOrder byte-identical). `isDefault` keeps the client store's
+// single-default rule (enforced in the API inside a transaction). No other model
+// references this table → dropping it leaves every other model valid.
+model Address {
+  id         String   @id @default(cuid())
+  operator   Operator @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  label      String                      // free label (« Domicile », « Bureau »…)
+  kind       String   @default("other")  // home | work | other (drives the icon)
+  street     String                      // street & number
+  complement String?                     // floor / apt / intercom (optional)
+  postalCode String
+  city       String
+  country    String   @default("France")
+  note       String?                     // driver instructions (optional)
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([userId])
 }
 
 // ── OnboardingNudge (anti-abandon relance log, Agent 95) — ADDITIVE · standalone ───
