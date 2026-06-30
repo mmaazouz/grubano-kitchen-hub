@@ -88,6 +88,8 @@ model Operator {
   reviews         Review[]
   // Inverse side of CreatorFollow.operator (P1-CHEF-FOLLOW) — creators this user follows.
   creatorFollows  CreatorFollow[]
+  // Inverse side of Waitlist.operator (P2-WAITLIST) — restaurant waitlist entries.
+  waitlistEntries Waitlist[]
   // P6 (Agent 79) — service-mission invoices billed to this operator (as a restaurateur).
   // Additive inverse relation; reversible. DOCUMENT only — NO money movement.
   serviceInvoices ServiceInvoice[]
@@ -1462,6 +1464,8 @@ model Restaurant {
   closures     ClosureException[]
   // Inverse side of Review.restaurant (P0-DATA-2) — consumer reviews of this resto.
   reviews      Review[]
+  // Inverse side of Waitlist.restaurant (P2-WAITLIST) — this resto's waitlist queue.
+  waitlist     Waitlist[]
 
   // Option B (step 4): operatorId is no longer unique; keep a plain index so the
   // frequent findFirst/findMany({ where: { operatorId } }) lookups stay fast.
@@ -1510,6 +1514,28 @@ model CreatorFollow {
 
   @@unique([userId, creatorId])
   @@index([creatorId])
+}
+
+// ── Waitlist (P2-WAITLIST) — consumer restaurant waitlist ─ ADDITIVE · REVERSIBLE ──
+// One active entry per (restaurant, user) — @@unique([restaurantId,userId]); a re-join
+// after cancel refreshes createdAt (back of the FIFO queue). `position` is computed at
+// read time (count of 'waiting' rows created at-or-before mine), never stored. `notify`
+// stores the SMS-when-ready preference (delivery = Wave 5). NO money; dropping this table
+// leaves every other model valid.
+model Waitlist {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  userId       String
+  operator     Operator   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partySize    Int
+  notify       Boolean    @default(true)
+  status       String     @default("waiting") // waiting | cancelled
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([restaurantId, userId])
+  @@index([restaurantId])
 }
 
 // ── Opening hours (Chantier horaires étape 1, additive) ───────────────────────

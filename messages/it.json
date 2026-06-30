@@ -1245,6 +1245,8 @@
       "altMeta1": "Italiano · 4,8 · 0,9 km",
       "altMeta2": "Healthy · 4,7 · 0,8 km",
       "joinCta": "Unisciti alla lista d'attesa",
+      "loginToJoin": "Accedi per unirti alla lista d'attesa",
+      "joinError": "Impossibile unirsi alla lista. Riprova.",
       "viewMenuCta": "Vedi il menu nell'attesa",
       "leaveCta": "Esci dalla lista",
       "soon": "Presto disponibile"

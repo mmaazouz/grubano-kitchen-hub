@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatCuisineList } from '@/lib/categories'
+import { showToast } from '@/lib/eat-cart'
 import './waitlist.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
@@ -17,29 +19,29 @@ import '@/app/gb-foundation/gb-components.css'
 // IMMERSIVE → desktop rail kept, no top bar; this page's header governs), exactly
 // like /eat/r/[id]/reserver. CONTENT only — never duplicates the nav shell.
 //
-// ⚠️ NEW EPIC — FULLY VISUAL / INERT. There is NO waitlist backend yet (real queue,
-// position, ETA, SMS/notif = a future chantier AFTER Wave 5). So:
-//   • Only the restaurant IDENTITY is bound to REAL data (name + cuisine, fetched
-//     from GET /api/restaurants/[id]). Everything else is a deliberate PLACEHOLDER:
-//       – « COMPLET » badge, queue position (~3 / #2), wait time (~25 / ~12 min),
-//         the conic-gradient ring fill, and the 3-step progress are HARD-CODED
-//         visuals (never presented as real backend numbers).
-//       – party-size selector + SMS/notif toggle = inert (visual only).
-//       – the « AI found similar tables » alternatives are INERT (« bientôt »).
-//   • The CTAs « Rejoindre la liste » / « Quitter la liste » are INERT — they flip a
-//     local aria-live status to a « bientôt » message; no network, no mutation.
-//   • The data-state="join|queued" toggle is a LOCAL UI switch so both CD states are
-//     reachable for design review; it carries no real meaning.
-//
-// When the waitlist backend lands, this screen binds: real position/ETA from the
-// queue service, a real party-size POST, a real notify pref, and real AI re-ranked
-// nearby openings — none of which exist today.
+// P2-WAITLIST — the queue is now REAL (join/leave + live position/total).
+//   • Restaurant IDENTITY is REAL (name + cuisine, GET /api/restaurants/[id]).
+//   • The queue is REAL via /api/restaurants/[id]/waitlist (session-gated, owner-scoped,
+//     @@unique([restaurantId, userId])):
+//       – GET on mount (if authenticated) → an existing 'waiting' entry flips wlState to
+//         'queued' with my REAL #position; else 'join' showing the REAL total waiting.
+//       – party-size selector → REAL partySize (index 0..4 → 1,2,3,4,5; '5+' → 5).
+//       – SMS/notif toggle → REAL `notify` preference (PERSISTED only — the actual
+//         SMS/notification SENDING is a later chantier, Wave 5).
+//       – Join CTA → POST (guests get a login toast); Leave CTA → DELETE.
+//   • ETA is a transparent heuristic estimate (Math.max(5, position*8) min) — clearly a
+//     « ~ » estimate, not a backend SLA.
+//   • KEPT INERT (no backend): the « COMPLET » badge, the conic-gradient ring fill, the
+//     3-step progress visual, and the « AI found similar tables » alternatives (no
+//     re-ranking backend) — these still flip a local aria-live « bientôt » message.
 
 type WlState = 'join' | 'queued'
 
-// CD party-size options (« 5+ » is the 5th). INERT — index 1 (« 2 ») pre-selected
-// to mirror the CD reference markup exactly.
+// CD party-size options (« 5+ » is the 5th). Index 0..4 maps to a REAL partySize of
+// 1,2,3,4,5 (« 5+ » → 5). Index 1 (« 2 ») pre-selected to mirror the CD markup.
 const PARTY = ['1', '2', '3', '4', '5+']
+// index → real party size sent to the API.
+const partySizeFor = (i: number) => Math.min(i + 1, 5)
 
 export default function WaitlistPage() {
   const t = useTranslations('eat.waitlist')
@@ -47,16 +49,22 @@ export default function WaitlistPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
   const restaurantId = params?.id ?? ''
+  const { status: authStatus } = useSession()
+  const isAuthed = authStatus === 'authenticated'
 
   const [restoName, setRestoName] = useState<string | null>(null)
   const [cuisine, setCuisine] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Local-only UI state (no backend) — see the file header.
+  // UI state. wlState/position/total are driven by the REAL queue API; party + notify
+  // are the REAL join inputs. notice = aria-live « bientôt » feedback (inert visuals).
   const [wlState, setWlState] = useState<WlState>('join')
   const [party, setParty] = useState(1) // index — « 2 » selected (CD .sel)
   const [notify, setNotify] = useState(true) // CD switch shown ON
   const [notice, setNotice] = useState('') // aria-live « bientôt » feedback
+  const [position, setPosition] = useState(0) // my 1-based rank when queued
+  const [total, setTotal] = useState(0) // total people waiting
+  const [busy, setBusy] = useState(false) // join/leave in-flight guard
 
   // REAL data — the restaurant this waitlist is for (identity only).
   useEffect(() => {
@@ -83,6 +91,75 @@ export default function WaitlistPage() {
   )
 
   const soon = () => setNotice(t('soon'))
+
+  // REAL queue — read my entry + the live numbers. Authenticated only (401 for guests).
+  const refresh = useCallback(async () => {
+    if (!restaurantId || !isAuthed) return
+    try {
+      const r = await fetch(`/api/restaurants/${restaurantId}/waitlist`)
+      if (!r.ok) return
+      const d = await r.json()
+      setTotal(typeof d?.total === 'number' ? d.total : 0)
+      if (d?.entry) {
+        setWlState('queued')
+        setPosition(typeof d?.position === 'number' ? d.position : 0)
+        if (typeof d.entry.partySize === 'number') {
+          setParty(Math.max(0, Math.min(4, d.entry.partySize - 1)))
+        }
+        if (typeof d.entry.notify === 'boolean') setNotify(d.entry.notify)
+      } else {
+        setWlState('join')
+        setPosition(0)
+      }
+    } catch { /* keep current UI on a transient failure */ }
+  }, [restaurantId, isAuthed])
+
+  // On mount (once auth is resolved + the resto id is known), sync the real queue state.
+  useEffect(() => { void refresh() }, [refresh])
+
+  // Join CTA → real POST (guests get a login toast).
+  const join = useCallback(async () => {
+    if (!isAuthed) { showToast(t('loginToJoin')); return }
+    if (!restaurantId || busy) return
+    setBusy(true)
+    try {
+      const r = await fetch(`/api/restaurants/${restaurantId}/waitlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partySize: partySizeFor(party), notify }),
+      })
+      if (!r.ok) { showToast(t('joinError')); return }
+      const d = await r.json()
+      setWlState('queued')
+      setPosition(typeof d?.position === 'number' ? d.position : 0)
+      setTotal(typeof d?.total === 'number' ? d.total : 0)
+    } catch {
+      showToast(t('joinError'))
+    } finally {
+      setBusy(false)
+    }
+  }, [isAuthed, restaurantId, busy, party, notify, t])
+
+  // Leave CTA → real DELETE.
+  const leave = useCallback(async () => {
+    if (!restaurantId || busy) return
+    setBusy(true)
+    try {
+      await fetch(`/api/restaurants/${restaurantId}/waitlist`, { method: 'DELETE' })
+      setWlState('join')
+      setPosition(0)
+      await refresh()
+    } catch {
+      showToast(t('joinError'))
+    } finally {
+      setBusy(false)
+    }
+  }, [restaurantId, busy, refresh, t])
+
+  // Real numbers shown in the dials. join « ~N » = total waiting; queued « #N » = my
+  // position. ETA = a transparent heuristic (~ position×8 min, min 5).
+  const joinBefore = total
+  const etaMinutes = Math.max(5, (position || 1) * 8)
 
   return (
     <div className="gb gb-waitlist" data-state={wlState}>
@@ -113,13 +190,13 @@ export default function WaitlistPage() {
             <div className="dial">
               <div className="dial__ring">
                 <div className="dial__in">
-                  <span className="pos">~3</span>
+                  <span className="pos">~{joinBefore}</span>
                   <small>{t('beforeYou')}</small>
                 </div>
               </div>
               <h2>{t('fullTonight')}</h2>
               <p>{t('joinBody')}</p>
-              <span className="eta"><span className="ms" aria-hidden="true">schedule</span>{t('etaEstimate', { min: 25 })}</span>
+              <span className="eta"><span className="ms" aria-hidden="true">schedule</span>{t('etaEstimate', { min: Math.max(5, (joinBefore || 1) * 8) })}</span>
             </div>
 
             <div className="field">
@@ -157,13 +234,13 @@ export default function WaitlistPage() {
             <div className="dial">
               <div className="dial__ring queued">
                 <div className="dial__in">
-                  <span className="pos">#2</span>
+                  <span className="pos">#{position || 1}</span>
                   <small>{t('inLine')}</small>
                 </div>
               </div>
               <h2>{t('soonYours')}</h2>
-              <p>{t('queuedBody', { count: 2 })}</p>
-              <span className="eta"><span className="ms" aria-hidden="true">schedule</span>{t('etaRemaining', { min: 12 })}</span>
+              <p>{t('queuedBody', { count: Math.max(0, (position || 1) - 1) })}</p>
+              <span className="eta"><span className="ms" aria-hidden="true">schedule</span>{t('etaRemaining', { min: etaMinutes })}</span>
             </div>
 
             <div className="steps" aria-hidden="true">
@@ -198,7 +275,7 @@ export default function WaitlistPage() {
         {/* footer (INERT CTAs) */}
         <div className="wl__foot">
           <div className="s-join">
-            <button type="button" className="wl-btn wl-btn--primary" onClick={() => { setWlState('queued'); soon() }}>
+            <button type="button" className="wl-btn wl-btn--primary" onClick={join} disabled={busy}>
               <span className="ms" aria-hidden="true">hourglass_top</span>{t('joinCta')}
             </button>
           </div>
@@ -206,7 +283,7 @@ export default function WaitlistPage() {
             <button type="button" className="wl-btn wl-btn--primary" onClick={() => restaurantId && router.push(`/eat/r/${restaurantId}`)}>
               <span className="ms" aria-hidden="true">restaurant_menu</span>{t('viewMenuCta')}
             </button>
-            <button type="button" className="wl-btn wl-btn--line" onClick={() => { setWlState('join'); soon() }}>
+            <button type="button" className="wl-btn wl-btn--line" onClick={leave} disabled={busy}>
               <span className="ms" aria-hidden="true">close</span>{t('leaveCta')}
             </button>
           </div>

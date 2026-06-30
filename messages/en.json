@@ -1245,6 +1245,8 @@
       "altMeta1": "Italian · 4.8 · 0.9 km",
       "altMeta2": "Healthy · 4.7 · 0.8 km",
       "joinCta": "Join the waitlist",
+      "loginToJoin": "Sign in to join the waitlist",
+      "joinError": "Couldn't join the waitlist. Please try again.",
       "viewMenuCta": "View the menu while you wait",
       "leaveCta": "Leave the waitlist",
       "soon": "Coming soon"
