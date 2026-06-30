@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
@@ -25,14 +25,26 @@ import '@/app/gb-foundation/gb-components.css'
 // status). NO amount is fabricated — the refund estimate is the SUM of the selected
 // REAL item prices.
 //
+// REFUND SUBMIT (B) — now wired to the REAL /api/claims (P2-CLAIMS), but ONLY when the
+// feature is live. On entering the refund view (when authenticated) we GET
+// /api/claims?orderId= which returns { enabled, eligibility }:
+//  • enabled === false  → CLAIMS_ENABLED is OFF. We keep the EXACT prior inert behaviour:
+//    the `.soon` banner + a submit that only sets `submitted` and shows « bientôt ». This
+//    path is BYTE-IDENTICAL to before — no fetch result mutates the inert UI, and the
+//    GET itself only flips `claimsEnabled` to false (its default), so nothing changes.
+//  • enabled === true   → real flow. Eligibility (owner + paid + within window + no active
+//    claim) drives the submit. If not eligible we surface the reason and disable submit;
+//    if an existing claim exists we show its status. On submit we POST a real claim.
+//
 // INERT (no live backend — see report):
-//  • Refund SUBMIT is inert. A consumer claims/refund backend EXISTS (/api/claims) but
-//    is GATED OFF (CLAIMS_ENABLED, default off → 403). With it off there is no live
-//    refund path, so the action shows a « bientôt » state and writes NOTHING.
 //  • Support chat is inert (no support-chat backend); composer + send are disabled,
 //    « Réponses suggérées par l'IA — bientôt » pill is non-interactive.
 //  • « Retard » routes to the EXISTING /eat/track; « Annuler » is inert (no cancel API).
 //  • Help topics + e-mail/chat contact are inert placeholders (no help-article backend).
+//  • The refund PHOTO button stays INERT — the photo is OPTIONAL per /api/claims; we do
+//    NOT wire the moderated upload here (future nicety, noted in report).
+//  • `reason` is fixed to 'missing_item' (this entry = « article manquant / erroné »); a
+//    reason picker is a future nicety (the API accepts the full CLAIM_REASONS enum).
 
 interface OrderItem { name: string; qty: number; price: number }
 interface Order {
@@ -44,6 +56,22 @@ interface Order {
 }
 
 type View = 'help' | 'refund' | 'chat'
+
+// Mirror of lib/claims.getClaimEligibility's return shape (the only fields the UI reads).
+interface ClaimEligibility {
+  canClaim: boolean
+  reason?: 'not_owner' | 'not_paid' | 'window_expired' | 'active_claim'
+  maxRefundableCents: number
+  windowHours: number
+  existingClaim:
+    | { id: string; status: string; canContest: boolean; restaurantResponseReason: string | null; arbitrationReason: string | null }
+    | null
+}
+
+// Submit lifecycle for the REAL claim POST (flag ON). 'idle' before submit; 'sending'
+// disables the button (no double-submit); 'done' shows the « réclamation envoyée » state;
+// 'error' surfaces the API error string.
+type SubmitState = 'idle' | 'sending' | 'done' | 'error'
 
 // Short, human-friendly reference derived from the real id (matches /api/eat/orders).
 const refOf = (id: string) => 'GR-' + id.slice(-5).toUpperCase()
@@ -60,7 +88,17 @@ export default function OrderHelpScreen() {
   const [view, setView] = useState<View>('help')
   // refund view local state — which REAL items are flagged + the description.
   const [selected, setSelected] = useState<Record<number, boolean>>({})
+  const [desc, setDesc] = useState('')
+  // INERT (flag OFF) fallback flag — exactly the prior behaviour, kept byte-identical.
   const [submitted, setSubmitted] = useState(false)
+  // CLAIMS feature gate + eligibility (driven by GET /api/claims?orderId=).
+  // `claimsEnabled` defaults to false → the inert path is taken until proven otherwise,
+  // so a slow/failed GET can NEVER turn an OFF page into a live one.
+  const [claimsEnabled, setClaimsEnabled] = useState(false)
+  const [eligibility, setEligibility] = useState<ClaimEligibility | null>(null)
+  // REAL-claim submit lifecycle (only used when claimsEnabled === true).
+  const [submitState, setSubmitState] = useState<SubmitState>('idle')
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
     if (authStatus === 'loading') return
@@ -73,6 +111,32 @@ export default function OrderHelpScreen() {
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [authStatus, orderId])
+
+  // Fetch the claim feature-gate + eligibility. On ANY failure (network / non-OK / parse)
+  // we leave claimsEnabled=false → the page stays on the inert path, never exposing a
+  // half-wired live submit. { enabled:false } (flag OFF) does the same. Returns nothing.
+  const refetchEligibility = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/claims?orderId=${encodeURIComponent(orderId)}`)
+      if (!r.ok) { setClaimsEnabled(false); return }
+      const d = await r.json()
+      if (d?.enabled === true) {
+        setClaimsEnabled(true)
+        setEligibility((d.eligibility as ClaimEligibility) ?? null)
+      } else {
+        setClaimsEnabled(false)
+        setEligibility(null)
+      }
+    } catch {
+      setClaimsEnabled(false)
+    }
+  }, [orderId])
+
+  // Load the gate + eligibility once authenticated (and whenever the order changes).
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return
+    void refetchEligibility()
+  }, [authStatus, refetchEligibility])
 
   const items = useMemo<OrderItem[]>(() => (Array.isArray(order?.items) ? order!.items : []), [order])
   const itemsCount = useMemo(() => items.reduce((s, it) => s + (it.qty ?? 1), 0), [items])
@@ -95,8 +159,70 @@ export default function OrderHelpScreen() {
   const restaurantName = order?.restaurant?.name ?? '—'
 
   function goBack() {
-    if (view !== 'help') { setView('help'); setSubmitted(false); return }
+    if (view !== 'help') {
+      setView('help'); setSubmitted(false); setSubmitState('idle'); setSubmitError(null)
+      return
+    }
     router.back()
+  }
+
+  // ── REAL claim submit (flag ON + eligible) ─────────────────────────────────
+  // POST a claim for the selected items: reason fixed to 'missing_item' (this entry),
+  // requestedAmountCents = the SELECTED real-item estimate (server re-caps at order total).
+  // 201 → success + refetch eligibility (so it reflects the now-active/auto-resolved claim);
+  // 4xx → surface the API error; 403 {gated} → fall back to the inert « bientôt » state.
+  async function submitClaim() {
+    if (!claimsEnabled || !eligibility?.canClaim || !anySelected || submitState === 'sending') return
+    setSubmitState('sending'); setSubmitError(null)
+    try {
+      const res = await fetch('/api/claims', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          reason: 'missing_item',
+          description: desc.trim() || undefined,
+          requestedAmountCents: Math.round(estimate * 100),
+        }),
+      })
+      if (res.status === 201) {
+        setSubmitState('done')
+        await refetchEligibility() // reflect the filed claim (active / auto-resolved)
+        return
+      }
+      const data = await res.json().catch(() => ({} as { error?: string; gated?: boolean }))
+      // Gate flipped off between the GET and the POST → honest inert fallback.
+      if (res.status === 403 && data?.gated) {
+        setClaimsEnabled(false); setSubmitState('idle'); setSubmitError(null)
+        return
+      }
+      setSubmitState('error')
+      setSubmitError(typeof data?.error === 'string' ? data.error : t('claimError'))
+    } catch {
+      setSubmitState('error')
+      setSubmitError(t('claimError'))
+    }
+  }
+
+  // Eligibility → a human label for the disabled-submit reason (flag ON, not eligible).
+  // Mirrors getClaimEligibility's reason union + the active-claim status.
+  const eligibilityLabel = (): string => {
+    const ex = eligibility?.existingClaim
+    if (ex && (eligibility?.reason === 'active_claim' || !eligibility?.canClaim)) {
+      // an existing claim takes precedence — show its review/decision status
+      if (ex.status === 'restaurant_review') return t('claimAlreadyFiled')
+      if (ex.status === 'approved' || ex.status === 'refunding') return t('claimApproved')
+      if (ex.status === 'refunded') return t('claimRefunded')
+      if (ex.status === 'refused' || ex.status === 'refused_final') return t('claimRefused')
+      if (ex.status === 'arbitration') return t('claimInReview')
+    }
+    switch (eligibility?.reason) {
+      case 'window_expired': return t('claimWindowExpired')
+      case 'not_paid':       return t('claimNotPaid')
+      case 'not_owner':      return t('claimNotEligible')
+      case 'active_claim':   return t('claimAlreadyFiled')
+      default:               return t('claimNotEligible')
+    }
   }
 
   // ── Not signed in → invite to sign in (the order needs a session) ──────────
@@ -167,18 +293,51 @@ export default function OrderHelpScreen() {
 
           <p className="lbl">{t('refundWhat')}</p>
           <div className="field">
-            <textarea placeholder={t('refundPlaceholder')} aria-label={t('refundWhat')} />
+            {/* Bound. value='' keeps the rendered textarea identical to the prior
+                uncontrolled one; the API enforces the 1000-char cap (a 4xx is surfaced). */}
+            <textarea
+              placeholder={t('refundPlaceholder')}
+              aria-label={t('refundWhat')}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+            />
           </div>
 
+          {/* INERT — the photo is OPTIONAL per /api/claims; the moderated upload is not
+              wired here (future nicety). The button has no handler. */}
           <button type="button" className="photo">
             <span className="ms" aria-hidden="true">add_a_photo</span>{t('refundAddPhoto')}
           </button>
 
-          {/* Inert — the consumer claims/refund backend is gated OFF (CLAIMS_ENABLED). */}
-          <div className="soon">
-            <span className="ms" aria-hidden="true">schedule</span>{t('refundSoon')}
-            <span className="pill">{t('soonBadge')}</span>
-          </div>
+          {/* FLAG OFF (claimsEnabled === false, the default) → the original inert
+              « bientôt » banner, byte-identical to before. */}
+          {!claimsEnabled && (
+            <div className="soon">
+              <span className="ms" aria-hidden="true">schedule</span>{t('refundSoon')}
+              <span className="pill">{t('soonBadge')}</span>
+            </div>
+          )}
+
+          {/* FLAG ON, claim FILED → confirmation. */}
+          {claimsEnabled && submitState === 'done' && (
+            <div className="soon" role="status">
+              <span className="ms" aria-hidden="true">check_circle</span>{t('claimFiledSub')}
+            </div>
+          )}
+
+          {/* FLAG ON, NOT eligible (and no claim just filed) → the reason. */}
+          {claimsEnabled && submitState !== 'done' && eligibility && !eligibility.canClaim && (
+            <div className="soon" role="status">
+              <span className="ms" aria-hidden="true">info</span>{eligibilityLabel()}
+            </div>
+          )}
+
+          {/* FLAG ON, submit ERROR → the API error, verbatim. */}
+          {claimsEnabled && submitState === 'error' && submitError && (
+            <div className="soon" role="alert">
+              <span className="ms" aria-hidden="true">error</span>{submitError}
+            </div>
+          )}
 
           <div className="refund-note">
             <span className="ms" aria-hidden="true">verified_user</span>
@@ -192,10 +351,30 @@ export default function OrderHelpScreen() {
 
         <div className="foot">
           <div className="inner">
-            <button type="button" className="submit" disabled={!anySelected || submitted} onClick={() => setSubmitted(true)}>
-              <span className="ms" aria-hidden="true">{submitted ? 'schedule' : 'send'}</span>
-              <b>{submitted ? t('refundSubmittedSoon') : t('refundSubmit')}</b>
-            </button>
+            {!claimsEnabled ? (
+              /* FLAG OFF → the ORIGINAL inert submit (sets `submitted`, no POST). Byte-identical. */
+              <button type="button" className="submit" disabled={!anySelected || submitted} onClick={() => setSubmitted(true)}>
+                <span className="ms" aria-hidden="true">{submitted ? 'schedule' : 'send'}</span>
+                <b>{submitted ? t('refundSubmittedSoon') : t('refundSubmit')}</b>
+              </button>
+            ) : submitState === 'done' ? (
+              /* FLAG ON, claim FILED → success, button locked. */
+              <button type="button" className="submit" disabled>
+                <span className="ms" aria-hidden="true">check_circle</span>
+                <b>{t('claimFiledTitle')}</b>
+              </button>
+            ) : (
+              /* FLAG ON → REAL submit; disabled if not eligible / nothing selected / sending. */
+              <button
+                type="button"
+                className="submit"
+                disabled={!eligibility?.canClaim || !anySelected || submitState === 'sending'}
+                onClick={submitClaim}
+              >
+                <span className="ms" aria-hidden="true">{submitState === 'sending' ? 'schedule' : 'send'}</span>
+                <b>{submitState === 'sending' ? t('claimSending') : t('refundSubmit')}</b>
+              </button>
+            )}
           </div>
         </div>
       </div>
