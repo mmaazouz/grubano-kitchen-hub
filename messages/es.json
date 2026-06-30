@@ -2387,6 +2387,7 @@
     },
     "table": {
       "billTitle": "Tu cuenta",
+      "serviceLine": "Servicio {pct} %",
       "live": "EN VIVO",
       "bannerMeta": "En el local · {table}",
       "servedDuringMeal": "Servido durante la comida",

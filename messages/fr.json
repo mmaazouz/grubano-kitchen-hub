@@ -2387,6 +2387,7 @@
     },
     "table": {
       "billTitle": "L'addition",
+      "serviceLine": "Service {pct} %",
       "live": "LIVE",
       "bannerMeta": "Sur place · {table}",
       "servedDuringMeal": "Servi pendant le repas",

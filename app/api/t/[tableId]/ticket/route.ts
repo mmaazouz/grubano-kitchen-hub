@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isDineInServiceEnabled, dineInServiceCents } from '@/lib/dinein-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,7 +39,8 @@ export async function GET(
         // sober "Walk-in" pill instead of a code. No private data: the id is
         // a cuid that's already used as the URL token in /eat reservation
         // flows. Strictly additive.
-        id: true, reservationId: true, status: true, currency: true, subtotal: true,
+        // restaurantId: needed to read the dine-in service rate (G1). Not exposed.
+        id: true, restaurantId: true, reservationId: true, status: true, currency: true, subtotal: true,
         items: {
           // ACTIVE lines only — a server-cancelled line is kept in the DB for the
           // trace but is already out of the subtotal and must never appear on the
@@ -52,7 +54,46 @@ export async function GET(
     })
 
     // No open bill yet → ticket: null (the page shows "addition bientôt").
-    return NextResponse.json({ ticket: ticket ?? null })
+    if (!ticket) return NextResponse.json({ ticket: null })
+
+    // ── G1 — DINE-IN SERVICE CHARGE on the bill (resto-bound, flag + rate gated) ─
+    // Read the establishment's configurable service rate ONLY behind the flag.
+    // With DINEIN_SERVICE_ENABLED OFF (or the rate null/0) serviceCents is 0 and
+    // we expose serviceRatePct 0 → the client renders NO service line and the
+    // total equals the subtotal → BYTE-IDENTICAL to pre-G1. Guarded read so a
+    // deploy before the db push (column absent) degrades to 0. The service is
+    // DERIVED at read time from subtotal × rate (never stored as a ticket item).
+    let serviceRatePct = 0
+    if (isDineInServiceEnabled()) {
+      try {
+        // Cast intentional (see /api/tickets/[id]/pay): dineInServiceRatePct is
+        // added by the G1 schema merge, absent from the generated Prisma type until
+        // regen; the try/catch also tolerates the column being absent at RUNTIME
+        // (deploy before the db push) → degrades to 0 (inert).
+        const r = await prisma.restaurant.findUnique({
+          where:  { id: ticket.restaurantId },
+          select: { dineInServiceRatePct: true } as any,
+        }) as { dineInServiceRatePct: number | null } | null
+        serviceRatePct = r?.dineInServiceRatePct ?? 0
+      } catch { /* column missing pre-db-push → 0 (inert) */ }
+    }
+    const subtotalCents = Math.round(ticket.subtotal * 100)
+    const serviceCents  = dineInServiceCents(subtotalCents, serviceRatePct) // 0 when off / rate 0
+    const totalCents    = subtotalCents + serviceCents
+
+    // Strip the internal restaurantId; enrich with the service breakdown (integer
+    // cents — the client formats in euros). serviceRatePct/serviceCents stay 0 in
+    // the inert path so the bill is unchanged.
+    const { restaurantId: _restaurantId, ...publicTicket } = ticket
+    return NextResponse.json({
+      ticket: {
+        ...publicTicket,
+        serviceRatePct,
+        serviceCents,
+        subtotalCents,
+        totalCents,
+      },
+    })
   } catch (err) {
     console.error('[GET /api/t/[tableId]/ticket]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

@@ -1452,6 +1452,13 @@ model Restaurant {
   commissionRatePickup   Float?
   commissionRateDelivery Float?
   commissionFreeUntil    DateTime?
+  // ── G1 — Dine-in SERVICE CHARGE rate (resto-bound, mirrors the delivery fee) ──
+  // ADDITIVE + nullable, @default(0) = NO service → byte-identical to pre-G1. e.g.
+  // 0.10 = 10%. Added to the dine-in bill TOTAL (subtotal + service) and flows to the
+  // resto net (amount − fee) — NEVER in the commission base (the 5% dine-in commission
+  // stays on the food subtotal only). Gated by DINEIN_SERVICE_ENABLED; derived at
+  // read/charge time (subtotal × rate), NEVER stored as a ticket item.
+  dineInServiceRatePct   Float?    @default(0)
   pickupAddress      String?
   pickupInstructions String? @db.Text
   // ── Opening hours (Option B, additive step 1) ───────────────────────────────

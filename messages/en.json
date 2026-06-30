@@ -2387,6 +2387,7 @@
     },
     "table": {
       "billTitle": "Your bill",
+      "serviceLine": "Service {pct}%",
       "live": "LIVE",
       "bannerMeta": "Dine-in · {table}",
       "servedDuringMeal": "Served during your meal",

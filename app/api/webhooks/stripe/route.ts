@@ -241,27 +241,35 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
 
       const receivedCents = pi.amount_received ?? pi.amount ?? 0
       const subtotalCents = Math.round(ticket.subtotal * 100)
-      const totalCents    = Math.round((ticket.amountPaid ?? 0) * 100) + receivedCents
+      // G1: the bill TOTAL the customer owes = food subtotal + the dine-in service
+      // that was CHARGED. The charged service is the immutable amount /pay stamped
+      // on the PI (dinein_service_cents) — NOT a re-read of the rate (which may
+      // have changed) — so the at-cent guard compares collected against the TRUE
+      // bill total. Absent metadata (flag off / no service / pre-G1 PIs) → 0 →
+      // billTotalCents === subtotalCents → byte-identical to pre-G1.
+      const serviceCents   = Number(pi.metadata?.dinein_service_cents ?? 0) || 0
+      const billTotalCents = subtotalCents + Math.max(0, serviceCents)
+      const totalCents     = Math.round((ticket.amountPaid ?? 0) * 100) + receivedCents
 
-      if (totalCents < subtotalCents) {
+      if (totalCents < billTotalCents) {
         // PARTIAL PAYMENT — the safety net fires. Ticket stays OPEN with the
         // collected amount recorded; /pay now computes the remainder from
-        // subtotal − amountPaid, so the rest stays collectable.
+        // (subtotal + service) − amountPaid, so the rest stays collectable.
         await prisma.tableTicket.update({
           where: { id: ticket.id },
           data:  { amountPaid: totalCents / 100, stripePaymentIntentId: pi.id },
         })
-        console.error(`[stripe webhook] MONEY PARTIAL: ticket ${ticket.id} collected ${totalCents}c of ${subtotalCents}c — kept OPEN, ${subtotalCents - totalCents}c still due (PI ${pi.id})`)
+        console.error(`[stripe webhook] MONEY PARTIAL: ticket ${ticket.id} collected ${totalCents}c of ${billTotalCents}c — kept OPEN, ${billTotalCents - totalCents}c still due (PI ${pi.id})`)
         return NextResponse.json({
           received: true, ticket: 'partial',
-          collected: totalCents, due: subtotalCents - totalCents,
+          collected: totalCents, due: billTotalCents - totalCents,
         })
       }
 
-      if (totalCents > subtotalCents) {
+      if (totalCents > billTotalCents) {
         // Over-collection (e.g. a line was cancelled after the PI synced) — the
         // bill IS settled; surface the excess for a manual gesture/refund.
-        console.warn(`[stripe webhook] MONEY OVERPAID: ticket ${ticket.id} collected ${totalCents}c for ${subtotalCents}c (PI ${pi.id})`)
+        console.warn(`[stripe webhook] MONEY OVERPAID: ticket ${ticket.id} collected ${totalCents}c for ${billTotalCents}c (PI ${pi.id})`)
       }
 
       await prisma.tableTicket.update({

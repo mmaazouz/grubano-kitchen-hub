@@ -5,6 +5,7 @@ import {
   updateIntentAmount, cancelIntent, type ConnectRouting,
 } from '@/lib/stripe'
 import { computeApplicationFee, resolveCommissionRate } from '@/lib/commission'
+import { isDineInServiceEnabled, dineInServiceCents } from '@/lib/dinein-service'
 
 // Stripe SDK → Node runtime, never static.
 export const runtime = 'nodejs'
@@ -85,14 +86,47 @@ export async function POST(
 
     const currency = ticket.currency || 'eur'
 
+    // ── G1 — DINE-IN SERVICE CHARGE (resto-bound, mirrors the delivery fee) ─────
+    // Flag + per-resto rate gated. With DINEIN_SERVICE_ENABLED OFF (or the rate
+    // null/0) serviceCents is ALWAYS 0 → every line below (dueCents, the bill
+    // total, the application_fee, the ledger) is BYTE-IDENTICAL to pre-G1. The
+    // service is added to the bill TOTAL (subtotal + service) and flows to the
+    // resto net — it is NEVER part of the commission base (see the fee below).
+    // Guarded read so a deploy BEFORE the db push (column absent) degrades to 0.
+    let dineInServiceRatePct = 0
+    if (isDineInServiceEnabled()) {
+      try {
+        // dineInServiceRatePct is added by the central G1 schema merge and is
+        // absent from the generated Prisma type until the client is regenerated, so
+        // the select goes through `as any` (no-explicit-any is not enabled in this
+        // project's eslint config). The try/catch ALSO tolerates the column being
+        // absent at RUNTIME (deploy before the db push) → degrades to 0 (inert).
+        const r = await prisma.restaurant.findUnique({
+          where:  { id: ticket.restaurantId },
+          select: { dineInServiceRatePct: true } as any,
+        }) as { dineInServiceRatePct: number | null } | null
+        dineInServiceRatePct = r?.dineInServiceRatePct ?? 0
+      } catch { /* column missing pre-db-push → 0 (inert) */ }
+    }
+
     // ── Amount DUE, recomputed server-side on EVERY call (the money-bug fix) ────
     // The bill is a LIVE document: lines can land between opening the payment
     // screen and confirming the card. The charge must always be the CURRENT
-    // subtotal minus what was already collected (amountPaid covers a past partial
-    // payment recorded by the webhook safety-net). All maths in integer cents.
+    // bill total minus what was already collected (amountPaid covers a past
+    // partial payment recorded by the webhook safety-net). All maths in integer
+    // cents. G1: the bill total = food subtotal + service; the service is owed
+    // ONCE over the whole bill, so a partial payment draws down the SAME total —
+    // dueCents = (subtotal + service) − amountPaid. The food portion still owed
+    // (foodDueCents) drives the commission base only (the service is excluded).
     const subtotalCents = eurosToCents(ticket.subtotal)
     const paidCents     = eurosToCents(ticket.amountPaid ?? 0)
-    const dueCents      = subtotalCents - paidCents
+    const serviceCents  = dineInServiceCents(subtotalCents, dineInServiceRatePct) // 0 when flag off / rate 0
+    const billTotalCents = subtotalCents + serviceCents
+    const dueCents      = billTotalCents - paidCents
+    // Food still owed (for the commission base): the food is settled FIRST as the
+    // bill is drawn down — clamped to [0, dueCents]. When serviceCents is 0 this is
+    // exactly dueCents → the fee base below is byte-identical to pre-G1.
+    const foodDueCents  = Math.min(dueCents, Math.max(0, subtotalCents - paidCents))
     if (ticket.subtotal <= 0) {
       return NextResponse.json({ error: 'Addition vide ou montant trop faible.' }, { status: 400 })
     }
@@ -113,9 +147,12 @@ export async function POST(
     // ── Connect routing (rail financier A2) — table bill = 'dinein' channel ─────
     // Routed ONLY when the establishment's Express account is fully active; any
     // other state (none/pending/restricted) keeps the exact pre-A2 platform
-    // charge (full fallback, zero regression). The fee is computed from THE
-    // amount actually charged (dueCents) by lib/commission (A0: 5 % dine-in,
-    // overrides + founders offer included).
+    // charge (full fallback, zero regression). The fee is computed by lib/commission
+    // (A0: 5 % dine-in, overrides + founders offer included) on the FOOD portion of
+    // this charge ONLY (foodDueCents) — G1: the dine-in service is RESTO revenue,
+    // NEVER in the commission base, so it flows to the resto net (amount − fee)
+    // exactly like the delivery fee. With serviceCents 0, foodDueCents === dueCents
+    // → the fee is byte-identical to pre-G1.
     const restaurant = await prisma.restaurant.findUnique({
       where:  { id: ticket.restaurantId },
       select: {
@@ -125,7 +162,7 @@ export async function POST(
       },
     })
     const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
-    const feeCents = routed ? computeApplicationFee(restaurant!, 'dinein', dueCents) : 0
+    const feeCents = routed ? computeApplicationFee(restaurant!, 'dinein', foodDueCents) : 0
     const rate     = routed ? resolveCommissionRate(restaurant!, 'dinein') : 0
     const connect: ConnectRouting | undefined =
       routed ? { destination: restaurant!.stripeAccountId!, applicationFeeCents: feeCents } : undefined
@@ -202,7 +239,16 @@ export async function POST(
         ...(ticket.reservationId ? { reservationId: ticket.reservationId } : {}),
       },
       connect,
-      extraMetadata: { grubano_channel: 'dinein', commission_rate: String(rate) },
+      extraMetadata: {
+        grubano_channel: 'dinein',
+        commission_rate: String(rate),
+        // G1: stamp the resto-bound service held in THIS charge (cents) on the
+        // (immutable) PI for trace/recovery. Spreads NOTHING when no service →
+        // byte-identical metadata (flag off / rate 0). The service is part of
+        // amountCents (= dueCents) but NOT of the application_fee → it is in the
+        // resto net (amount − fee), the same as the delivery fee.
+        ...(serviceCents > 0 ? { dinein_service_cents: String(serviceCents) } : {}),
+      },
       // Same logical attempt (ticket + amount + fee + predecessor PI) → same PI:
       // a double-click race never stacks two charges; any state change (new due,
       // new fee, predecessor replaced) yields a new key.

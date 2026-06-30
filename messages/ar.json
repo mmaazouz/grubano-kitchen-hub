@@ -2386,6 +2386,7 @@
     },
     "table": {
       "billTitle": "فاتورتك",
+      "serviceLine": "خدمة {pct}٪",
       "live": "مباشر",
       "bannerMeta": "في المطعم · {table}",
       "servedDuringMeal": "قُدِّم أثناء وجبتك",

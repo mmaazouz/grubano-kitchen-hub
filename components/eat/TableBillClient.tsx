@@ -26,9 +26,12 @@ import { usePolling } from '@/lib/use-polling'
 // factored <StripeTicketPayment /> component.
 //
 // CD-NOTE (real-data fidelity): the CD mock shows a « Service 10 % » line + a
-// split selector + a per-person note. The REAL TicketPayload has NO service-fee
-// field and NO split data (that backend is a post-Wave-5 chantier), so we do NOT
-// fabricate them — we render the REAL subtotal as both Sous-total and Total.
+// split selector + a per-person note. G1 wires the SERVICE line to a REAL,
+// per-establishment configurable rate (Restaurant.dineInServiceRatePct, gated by
+// DINEIN_SERVICE_ENABLED) — the server returns serviceRatePct/serviceCents/
+// totalCents and we render « Service {pct}% » + the new total ONLY when the
+// service > 0 (never fabricated; the inert path renders subtotal === total). The
+// split selector + per-person note still have no backend, so they stay OMITTED.
 //
 // 5 visible states:
 //   - "loading"        → .sk skeleton (real layout, zero shift)
@@ -52,6 +55,13 @@ interface TicketPayload {
   /** Brique A — exposed by Agent 2's GET /api/t/[tableId]/ticket select.
    *  null = walk-in: the guest's session has no reservation code. */
   reservationId?: string | null
+  /** G1 — dine-in SERVICE CHARGE breakdown (resto-bound), exposed by GET
+   *  /api/t/[tableId]/ticket. All 0/absent in the inert path (flag off / rate 0)
+   *  → no service line, total === subtotal (byte-identical). Integer cents. */
+  serviceRatePct?: number
+  serviceCents?:   number
+  subtotalCents?:  number
+  totalCents?:     number
 }
 interface PayInit {
   clientSecret:   string
@@ -187,6 +197,22 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
     [locale, ticket?.currency],
   )
 
+  // ── G1 — dine-in service line (resto-bound, server-provided, integer cents) ──
+  // hasService is TRUE only when the server returned a positive serviceCents
+  // (flag ON + the establishment configured a rate > 0). In the inert path
+  // serviceCents is 0/absent → hasService false → the bill renders exactly as
+  // pre-G1 (subtotal === total, no service line). The percentage is formatted
+  // from the server's serviceRatePct (e.g. 0.10 → "10") — never hardcoded.
+  const serviceCents = ticket?.serviceCents ?? 0
+  const hasService   = serviceCents > 0
+  const servicePctLabel = useMemo(() => {
+    const pct = (ticket?.serviceRatePct ?? 0) * 100
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(pct)
+  }, [locale, ticket?.serviceRatePct])
+  // Bill total = the server's totalCents when a service applies, else the plain
+  // subtotal (byte-identical to pre-G1 — same value rendered, same code path).
+  const billTotal = hasService ? (ticket!.totalCents ?? 0) / 100 : (ticket?.subtotal ?? 0)
+
   // ── CD table banner — reused on every state (identity is server truth) ──────
   const tableLabel = tableName || tTable('tableFallback')
   const Banner = () => (
@@ -285,9 +311,10 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
   }
 
   // ── review / pay — both show the CD « addition » (items + totals) ───────────
-  // The CD « Service 10 % » + split selector + per-person note are OMITTED on
-  // purpose: the real ticket exposes no service-fee field and no split data, so
-  // the real subtotal IS the total (no fabricated amount).
+  // G1: the « Service {pct}% » line is wired to the REAL configured rate and
+  // shows ONLY when serviceCents > 0 (flag ON + a rate set). The split selector +
+  // per-person note stay OMITTED (no backend). In the inert path the real subtotal
+  // IS the total (no fabricated amount), byte-identical to pre-G1.
   return (
     <>
       <Banner />
@@ -311,14 +338,34 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
           ))}
         </div>
 
-        {/* totals — real subtotal = real total (no fabricated service fee) */}
-        <div className="totrow">
-          <span>{tTable('subtotal')}</span>
-          <span><bdi>{ticket ? currencyFmt.format(ticket.subtotal) : '—'}</bdi></span>
-        </div>
+        {/* totals — G1: a « Service {pct}% » line appears ONLY when the
+            establishment configured a dine-in service AND the flag is ON
+            (serviceCents > 0). The service is RESTO revenue (flows to the resto
+            net, NEVER Grubano's commission). In the inert path (flag off / rate 0)
+            serviceCents is 0/absent → no service line and total === subtotal,
+            byte-identical to pre-G1. Amounts come from the server in integer cents
+            (real data — never fabricated). */}
+        {hasService && (
+          <div className="totrow">
+            <span>{tTable('subtotal')}</span>
+            <span><bdi>{currencyFmt.format((ticket!.subtotalCents ?? 0) / 100)}</bdi></span>
+          </div>
+        )}
+        {hasService && (
+          <div className="totrow">
+            <span>{tTable('serviceLine', { pct: servicePctLabel })}</span>
+            <span><bdi>{currencyFmt.format((ticket!.serviceCents ?? 0) / 100)}</bdi></span>
+          </div>
+        )}
+        {!hasService && (
+          <div className="totrow">
+            <span>{tTable('subtotal')}</span>
+            <span><bdi>{ticket ? currencyFmt.format(ticket.subtotal) : '—'}</bdi></span>
+          </div>
+        )}
         <div className="totrow tot">
           <span>{t('total')}</span>
-          <span className="amt"><bdi>{ticket ? currencyFmt.format(ticket.subtotal) : '—'}</bdi></span>
+          <span className="amt"><bdi>{ticket ? currencyFmt.format(billTotal) : '—'}</bdi></span>
         </div>
       </div>
 

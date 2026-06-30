@@ -2387,6 +2387,7 @@
     },
     "table": {
       "billTitle": "Il tuo conto",
+      "serviceLine": "Servizio {pct}%",
       "live": "LIVE",
       "bannerMeta": "Al tavolo · {table}",
       "servedDuringMeal": "Servito durante il pasto",
