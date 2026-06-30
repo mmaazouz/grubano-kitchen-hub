@@ -2372,6 +2372,19 @@
       "notFoundBody": "Il link potrebbe essere errato o scaduto.",
       "backToBrowse": "Esplora i ristoranti"
     },
+    "tableMenu": {
+      "bannerMeta": "Al tavolo · {table}",
+      "categoriesLabel": "Categorie del menù",
+      "dietChip": "Senza frutta a guscio",
+      "soon": "a breve",
+      "aiLabel": "Grubano AI:",
+      "aiBody": "suggerimenti di piatti e abbinamenti personalizzati in arrivo.",
+      "add": "Aggiungi {name}",
+      "increase": "Aumenta la quantità",
+      "decrease": "Diminuisci la quantità",
+      "viewOrder": "Vedi l'ordine · {count}",
+      "loadError": "Impossibile caricare il menù. Riprova."
+    },
     "table": {
       "billTitle": "Il tuo conto",
       "live": "LIVE",

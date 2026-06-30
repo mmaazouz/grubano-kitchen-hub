@@ -2371,6 +2371,19 @@
       "notFoundBody": "قد يكون الرابط خاطئًا أو منتهي الصلاحية.",
       "backToBrowse": "تصفّح المطاعم"
     },
+    "tableMenu": {
+      "bannerMeta": "في المطعم · {table}",
+      "categoriesLabel": "فئات القائمة",
+      "dietChip": "خالٍ من المكسّرات",
+      "soon": "قريباً",
+      "aiLabel": "‏Grubano AI:",
+      "aiBody": "اقتراحات الأطباق والتوافقات المخصّصة قريباً.",
+      "add": "إضافة {name}",
+      "increase": "زيادة الكمية",
+      "decrease": "إنقاص الكمية",
+      "viewOrder": "عرض الطلب · {count}",
+      "loadError": "تعذّر تحميل القائمة. حاول مرّة أخرى."
+    },
     "table": {
       "billTitle": "فاتورتك",
       "live": "مباشر",

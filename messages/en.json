@@ -2372,6 +2372,19 @@
       "notFoundBody": "The link may be wrong or expired.",
       "backToBrowse": "Browse restaurants"
     },
+    "tableMenu": {
+      "bannerMeta": "Dine-in · {table}",
+      "categoriesLabel": "Menu categories",
+      "dietChip": "Nut-free",
+      "soon": "soon",
+      "aiLabel": "Grubano AI:",
+      "aiBody": "personalised dish suggestions and pairings are coming soon.",
+      "add": "Add {name}",
+      "increase": "Increase quantity",
+      "decrease": "Decrease quantity",
+      "viewOrder": "View order · {count}",
+      "loadError": "Couldn't load the menu. Try again."
+    },
     "table": {
       "billTitle": "Your bill",
       "live": "LIVE",

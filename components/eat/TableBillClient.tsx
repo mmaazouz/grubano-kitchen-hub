@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
+import { useRouter } from '@/navigation'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import SessionBadge from '@/components/session/SessionBadge'
-import OrderAtTable from '@/components/eat/OrderAtTable'
 import { usePolling } from '@/lib/use-polling'
 
 // ── <TableBillClient /> — client island for the QR landing /t/[tableId] ──────
@@ -75,6 +75,7 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
   const tTable = useTranslations('eat.table')
   const tOrder = useTranslations('premium.order')
   const locale = useLocale()
+  const router = useRouter()
 
   const [stage,   setStage]   = useState<Stage>('loading')
   const [ticket,  setTicket]  = useState<TicketPayload | null>(null)
@@ -87,7 +88,6 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
   // endpoint re-enforces server-side anyway).
   const [canOrder,  setCanOrder]  = useState(false)
   const [restaurantIdForMenu, setRestaurantIdForMenu] = useState('')
-  const [orderOpen, setOrderOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -331,11 +331,15 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
                 <span>{error}</span>
               </p>
             )}
-            {/* Bloc B — order-at-table for the LINKED connected client only. */}
+            {/* Bloc B — order-at-table for the LINKED connected client only.
+                Per the CD note « 3 écrans/routes séparés », « Commander » opens the
+                full-screen « Menu à table » ROUTE (/t/[tableId]/menu) — NOT the old
+                <OrderAtTable/> modal. The new screen submits the same byte-identical
+                POST /api/t/[tableId]/order and routes back here on success. */}
             {canOrder && restaurantIdForMenu && (
               <button
                 type="button"
-                onClick={() => setOrderOpen(true)}
+                onClick={() => router.push(`/t/${tableId}/menu`)}
                 className="send-btn send-btn--line"
               >
                 <span className="ms" aria-hidden="true">restaurant</span>
@@ -367,15 +371,6 @@ export default function TableBillClient({ tableId, establishmentName, tableName 
           </div>
         )}
       </div>
-
-      {orderOpen && restaurantIdForMenu && (
-        <OrderAtTable
-          tableId={tableId}
-          restaurantId={restaurantIdForMenu}
-          onOrdered={() => { /* the 3s poll picks the new lines up */ }}
-          onClose={() => setOrderOpen(false)}
-        />
-      )}
 
       <p className="wordmark">{tTable('poweredBy')}</p>
     </>

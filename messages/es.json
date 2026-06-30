@@ -2372,6 +2372,19 @@
       "notFoundBody": "El enlace puede ser incorrecto o haber caducado.",
       "backToBrowse": "Explorar restaurantes"
     },
+    "tableMenu": {
+      "bannerMeta": "En el local · {table}",
+      "categoriesLabel": "Categorías del menú",
+      "dietChip": "Sin frutos secos",
+      "soon": "pronto",
+      "aiLabel": "Grubano AI:",
+      "aiBody": "sugerencias de platos y maridajes personalizados muy pronto.",
+      "add": "Añadir {name}",
+      "increase": "Aumentar la cantidad",
+      "decrease": "Disminuir la cantidad",
+      "viewOrder": "Ver el pedido · {count}",
+      "loadError": "No se pudo cargar el menú. Inténtalo de nuevo."
+    },
     "table": {
       "billTitle": "Tu cuenta",
       "live": "EN VIVO",

@@ -2372,6 +2372,19 @@
       "notFoundBody": "Le lien est peut-être faux ou expiré.",
       "backToBrowse": "Explorer les restos"
     },
+    "tableMenu": {
+      "bannerMeta": "Sur place · {table}",
+      "categoriesLabel": "Catégories du menu",
+      "dietChip": "Sans noix",
+      "soon": "bientôt",
+      "aiLabel": "Grubano AI :",
+      "aiBody": "suggestions de plats et accords personnalisés arrivent bientôt.",
+      "add": "Ajouter {name}",
+      "increase": "Augmenter la quantité",
+      "decrease": "Diminuer la quantité",
+      "viewOrder": "Voir la commande · {count}",
+      "loadError": "Impossible de charger le menu. Réessayez."
+    },
     "table": {
       "billTitle": "L'addition",
       "live": "LIVE",
