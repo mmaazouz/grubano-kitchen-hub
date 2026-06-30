@@ -46,17 +46,17 @@
 .gb-geoloc .geo-status{display:flex;align-items:center;gap:11px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:12px 14px;margin-top:18px}
 .gb-geoloc .geo-status .ico{width:34px;height:34px;border-radius:var(--gb-r-sm);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .gb-geoloc .geo-status .ico .ms{font-size:20px}
-.gb-geoloc .geo-status .main{flex:1;text-align:left}
+.gb-geoloc .geo-status .main{flex:1;text-align:start}
 .gb-geoloc .geo-status .main b{font-size:13px;font-weight:700}
 .gb-geoloc .geo-status .main span{display:block;font-size:11.5px;color:var(--gb-muted);margin-top:1px}
 .gb-geoloc .geo-switch{width:44px;height:26px;border-radius:var(--gb-r-pill);background:var(--gb-border-strong);position:relative;cursor:pointer;flex-shrink:0;border:none;padding:0}
 .gb-geoloc .geo-switch.on{background:var(--gb-success)}
-.gb-geoloc .geo-switch i{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .15s}
-.gb-geoloc .geo-switch.on i{left:20px}
+.gb-geoloc .geo-switch i{position:absolute;top:2px;inset-inline-start:2px;width:22px;height:22px;border-radius:50%;background:#fff;transition:inset-inline-start .15s}
+.gb-geoloc .geo-switch.on i{inset-inline-start:20px}
 /* geo on → green icon ; geo off → muted icon (root carries data-geo) */
 .gb-geoloc[data-geo="on"]  .geo-status .ico{background:var(--gb-success-bg)} .gb-geoloc[data-geo="on"]  .geo-status .ico .ms{color:var(--gb-success)}
 .gb-geoloc[data-geo="off"] .geo-status .ico{background:var(--gb-border)}     .gb-geoloc[data-geo="off"] .geo-status .ico .ms{color:var(--gb-muted)}
-.gb-geoloc[data-geo="off"] .geo-switch{background:var(--gb-border-strong)} .gb-geoloc[data-geo="off"] .geo-switch.on{background:var(--gb-border-strong)} .gb-geoloc[data-geo="off"] .geo-switch i{left:2px}
+.gb-geoloc[data-geo="off"] .geo-switch{background:var(--gb-border-strong)} .gb-geoloc[data-geo="off"] .geo-switch.on{background:var(--gb-border-strong)} .gb-geoloc[data-geo="off"] .geo-switch i{inset-inline-start:2px}
 .gb-geoloc .geo-on-txt{display:none} .gb-geoloc[data-geo="on"] .geo-on-txt{display:inline}
 .gb-geoloc .geo-off-txt{display:none} .gb-geoloc[data-geo="off"] .geo-off-txt{display:inline}
 
@@ -70,8 +70,11 @@
 [data-theme="dark"] .gb-geoloc .geo-loc-btn .ms{color:var(--gb-zest)}
 /* typeahead list (à venir — inert placeholder) */
 .gb-geoloc .geo-ac{border:1px solid var(--gb-border);border-radius:var(--gb-r-md);overflow:hidden;margin-top:4px}
-.gb-geoloc .geo-ac-group{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gb-muted-2);padding:11px 14px 6px}
-.gb-geoloc .geo-ac-item{display:flex;align-items:center;gap:11px;padding:10px 14px;cursor:pointer;border-top:1px solid var(--gb-border);width:100%;background:none;text-align:left;font:inherit;color:inherit}
+.gb-geoloc .geo-ac-group{display:flex;align-items:center;gap:8px;padding:11px 14px 8px}
+.gb-geoloc .geo-ac-group .soon{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.12);border:1px solid rgba(255,138,40,.25);border-radius:var(--gb-r-pill);padding:4px 10px}
+.gb-geoloc .geo-ac-group .soon .ms{font-size:14px;color:inherit}
+[data-theme="dark"] .gb-geoloc .geo-ac-group .soon{color:var(--gb-zest)}
+.gb-geoloc .geo-ac-item{display:flex;align-items:center;gap:11px;padding:10px 14px;cursor:pointer;border-top:1px solid var(--gb-border);width:100%;background:none;text-align:start;font:inherit;color:inherit}
 .gb-geoloc .geo-ac-item:hover{background:var(--gb-surface-2)}
 .gb-geoloc .geo-ac-item .lead{width:32px;height:32px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .gb-geoloc .geo-ac-item .lead .ms{font-size:18px;color:var(--gb-muted-2)}
@@ -81,16 +84,24 @@
 [data-theme="dark"] .gb-geoloc .geo-ac-item .txt b mark{color:var(--gb-zest)}
 .gb-geoloc .geo-ac-item .txt span{font-size:12px;color:var(--gb-muted)}
 .gb-geoloc .geo-section-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin:18px 0 10px}
-.gb-geoloc .geo-saved{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--gb-border);border-radius:var(--gb-r-md);cursor:pointer;margin-bottom:9px;width:100%;background:none;text-align:left;font:inherit;color:inherit}
-.gb-geoloc .geo-saved:hover{background:var(--gb-surface-2)}
-.gb-geoloc .geo-saved .ico{width:38px;height:38px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.gb-geoloc .geo-saved .ico .ms{font-size:20px;color:var(--gb-zest-600)}
+.gb-geoloc .geo-saved{display:flex;align-items:flex-start;gap:12px;padding:13px;border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);cursor:pointer;margin-bottom:9px;width:100%;background:var(--gb-surface);text-align:start;font:inherit;color:inherit;transition:border-color .12s,background .12s}
+.gb-geoloc .geo-saved:hover{background:var(--gb-surface-2);border-color:var(--gb-border-strong)}
+.gb-geoloc .geo-saved.is-default{border-color:var(--gb-success-bd)}
+.gb-geoloc .geo-saved .ico{width:40px;height:40px;border-radius:var(--gb-r-md);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-geoloc .geo-saved .ico .ms{font-size:21px;color:var(--gb-zest-600)}
 [data-theme="dark"] .gb-geoloc .geo-saved .ico .ms{color:var(--gb-zest)}
 .gb-geoloc .geo-saved .main{flex:1;min-width:0}
-.gb-geoloc .geo-saved .main b{font-size:13.5px;font-weight:700;display:block}
-.gb-geoloc .geo-saved .main span{display:block;font-size:12px;color:var(--gb-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.gb-geoloc .geo-saved .ms.go{font-size:20px;color:var(--gb-muted-2)}
-.gb-geoloc .geo-empty-recents{font-size:12.5px;color:var(--gb-muted);padding:2px 2px 4px;line-height:1.5}
+.gb-geoloc .geo-saved .main .title{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.gb-geoloc .geo-saved .main b{font-family:var(--gb-font-display);font-size:14.5px;font-weight:700;white-space:nowrap}
+.gb-geoloc .geo-saved .main .badge-default{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:#fff;background:var(--gb-grad);border-radius:6px;padding:2px 7px;white-space:nowrap;flex-shrink:0}
+.gb-geoloc .geo-saved .main .badge-default .ms{font-size:11px;color:#fff}
+.gb-geoloc .geo-saved .main .line{display:block;margin-top:3px;font-size:12.5px;line-height:1.45;color:var(--gb-muted)}
+.gb-geoloc .geo-saved .main .note{display:inline-flex;align-items:flex-start;gap:5px;margin-top:6px;font-size:11.5px;color:var(--gb-muted-2)}
+.gb-geoloc .geo-saved .main .note .ms{font-size:14px;margin-top:1px;color:inherit}
+.gb-geoloc .geo-saved .ms.go{font-size:20px;color:var(--gb-muted-2);margin-top:9px}
+.gb-geoloc .geo-recents-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:18px 12px 8px;border:1px dashed var(--gb-border-strong);border-radius:var(--gb-r-lg);background:var(--gb-surface-2)}
+.gb-geoloc .geo-recents-empty .ms{font-size:30px;color:var(--gb-muted-2)}
+.gb-geoloc .geo-recents-empty p{margin:0;font-size:12.5px;color:var(--gb-muted);line-height:1.5;max-width:32ch}
 
 /* STEP: map (à venir — inert visual placeholder) */
 .gb-geoloc .geo-map{position:relative;height:280px;border-radius:var(--gb-r-md);overflow:hidden;background:repeating-linear-gradient(135deg,#E5EDE4 0 20px,#EDF1EB 20px 40px)}
@@ -98,7 +109,7 @@
 .gb-geoloc .geo-map .pin{position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center}
 .gb-geoloc .geo-map .pin .head{width:34px;height:34px;border-radius:50% 50% 50% 2px;background:var(--gb-zest-600);rotate:45deg;box-shadow:0 8px 18px -4px rgba(242,87,14,.6)}
 .gb-geoloc .geo-map .pin .shadow{width:14px;height:5px;border-radius:50%;background:rgba(15,39,66,.25);margin-top:3px}
-.gb-geoloc .geo-map .recenter{position:absolute;right:12px;bottom:12px;width:40px;height:40px;border-radius:var(--gb-r-md);background:var(--gb-surface);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-geoloc .geo-map .recenter{position:absolute;inset-inline-end:12px;bottom:12px;width:40px;height:40px;border-radius:var(--gb-r-md);background:var(--gb-surface);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:pointer}
 .gb-geoloc .geo-map .recenter .ms{font-size:20px;color:var(--gb-zest-600)}
 [data-theme="dark"] .gb-geoloc .geo-map .recenter .ms{color:var(--gb-zest)}
 .gb-geoloc .geo-addr-confirm{display:flex;align-items:flex-start;gap:11px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:13px;margin-top:12px}
@@ -106,7 +117,7 @@
 [data-theme="dark"] .gb-geoloc .geo-addr-confirm>.ms{color:var(--gb-zest)}
 .gb-geoloc .geo-addr-confirm b{font-size:13.5px;font-weight:700}
 .gb-geoloc .geo-addr-confirm span{display:block;font-size:12px;color:var(--gb-muted);margin-top:2px}
-.gb-geoloc .geo-addr-confirm .edit{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--gb-zest-600);cursor:pointer;background:none;border:none;padding:0;font-family:inherit}
+.gb-geoloc .geo-addr-confirm .edit{margin-inline-start:auto;font-size:12.5px;font-weight:700;color:var(--gb-zest-600);cursor:pointer;background:none;border:none;padding:0;font-family:inherit}
 [data-theme="dark"] .gb-geoloc .geo-addr-confirm .edit{color:var(--gb-zest)}
 
 /* step visibility — the root carries data-step */

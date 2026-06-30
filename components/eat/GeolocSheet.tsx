@@ -56,6 +56,9 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 export default function GeolocSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useTranslations('eat.geoloc')
+  // Reuse the existing « Par défaut » label from the addresses namespace (already in all
+  // 5 locales) rather than introducing a duplicate key.
+  const ta = useTranslations('eat.addresses')
   const router = useRouter()
   const { coords, status, request, clear } = useGeolocation()
 
@@ -170,7 +173,7 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
           <div className="geo-sheet__head">
             {headBack ? (
               <button type="button" className="iconbtn" onClick={headBack} aria-label={t('back')}>
-                <span className="ms lead" aria-hidden="true">arrow_back</span>
+                <span className="ms lead ms-flip" aria-hidden="true">arrow_back</span>
               </button>
             ) : null}
             <h2>
@@ -249,10 +252,16 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
 
               {/* Typeahead suggestions — CD « à venir » visual placeholder (no geocoding
                   provider wired): shown only when the user types, inert, never a real
-                  result. Honours the CD design without fabricating data. */}
+                  result. Honours the CD grouped design (header + soon badge + row) without
+                  fabricating data. */}
               {query.trim() && (
                 <div className="geo-ac" aria-hidden="true">
-                  <div className="geo-ac-group">{t('acSoon')}</div>
+                  <div className="geo-ac-group">
+                    <span className="soon">
+                      <span className="ms">schedule</span>
+                      {t('acSoon')}
+                    </span>
+                  </div>
                   <div className="geo-ac-item">
                     <span className="lead"><span className="ms">location_on</span></span>
                     <div className="txt">
@@ -266,16 +275,38 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
               {/* Récents — the user's REAL saved addresses (lib/eat-addresses). */}
               <div className="geo-section-label">{t('recents')}</div>
               {addresses.length === 0 ? (
-                <p className="geo-empty-recents">{t('recentsEmpty')}</p>
+                <div className="geo-recents-empty">
+                  <span className="ms" aria-hidden="true">location_off</span>
+                  <p>{t('recentsEmpty')}</p>
+                </div>
               ) : (
                 addresses.map((a) => (
-                  <button key={a.id} type="button" className="geo-saved" onClick={() => pickSaved(a)}>
+                  <button
+                    key={a.id}
+                    type="button"
+                    className={`geo-saved${a.isDefault ? ' is-default' : ''}`}
+                    onClick={() => pickSaved(a)}
+                  >
                     <span className="ico"><span className="ms" aria-hidden="true">{KIND_ICON[a.kind]}</span></span>
                     <div className="main">
-                      <b>{a.label}</b>
-                      <span>{formatAddress(a)}</span>
+                      <span className="title">
+                        <b>{a.label}</b>
+                        {a.isDefault && (
+                          <span className="badge-default">
+                            <span className="ms" aria-hidden="true">check</span>
+                            {ta('defaultBadge')}
+                          </span>
+                        )}
+                      </span>
+                      <span className="line">{formatAddress(a)}</span>
+                      {a.note && (
+                        <span className="note">
+                          <span className="ms" aria-hidden="true">info</span>
+                          {a.note}
+                        </span>
+                      )}
                     </div>
-                    <span className="ms go" aria-hidden="true">chevron_right</span>
+                    <span className="ms go ms-flip" aria-hidden="true">chevron_right</span>
                   </button>
                 ))
               )}
