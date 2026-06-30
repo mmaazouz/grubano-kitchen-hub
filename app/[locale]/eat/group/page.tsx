@@ -1,85 +1,158 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
-import { readCart, type EatCartData } from '@/lib/eat-cart'
+import { readCart, showToast, type EatCartData } from '@/lib/eat-cart'
 import { formatEuros } from '@/lib/format-money'
 import './group.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
 
 /**
- * /eat/group — « Commande de groupe & partage d'addition » — VERBATIM reproduction of
- * the FROZEN CD ref (Notion 38efd2c9-…-8132, file eat/group-order.html). NEW EPIC,
- * FULLY VISUAL / INERT.
+ * /eat/group — « Partage d'addition » — P2-GROUP **Model A: SPLIT CALCULATOR**.
  *
- * ⚠ NO BACKEND (future chantier après Wave 5): there is no multi-payer order model, no
- * share link, no real split calculation, no per-payer charge. This screen is a faithful
- * CD shell with INERT controls — exactly like the « bientôt » AI blocks. NOTHING here
- * moves money or creates state:
- *   - « Copier » / share / « Valider ma part » are inert (no invite, no charge).
- *   - the split toggle (« À parts égales » / « Par article ») only flips the visual
- *     selection + the share-box caption/figure (verbatim CD setSplit), NO real math.
- *   - the « Partage intelligent » AI row is a « bientôt » placeholder.
+ * Model A in one line: the HOST pays the FULL bill via the EXISTING checkout, and the
+ * shares shown here are a CLIENT-SIDE calculation the host settles with friends OUTSIDE
+ * the app (cash / virement / Lydia…). There is NO multi-payer order, NO per-friend
+ * charge, NO backend, NO schema. We split the host's OWN real cart — we do NOT fabricate
+ * participants who add their own items.
  *
- * REAL-DATA where trivially available, NEVER FABRICATED as a real split:
- *   - the HOST row (« Vous ») and the invite participant count reflect the REAL current
- *     cart (lib/eat-cart) when one exists: the host's item count + dish names + euro
- *     total come straight from the live cart. This is honest (it's the user's own cart,
- *     not an invented charge).
- *   - the « Votre part » figure is a clearly-framed PREVIEW placeholder driven only by
- *     the inert toggle — the real per-payer split is the future epic, so we do NOT
- *     compute or charge it. When a cart exists the « à parts égales » preview shows the
- *     real cart total ÷ the demo party size purely as an illustrative preview (labelled
- *     « aperçu »); with no cart it falls back to the CD placeholder figures verbatim.
- *   - the other participants (Marco / Aisha / Liam) are CD DEMO content — there is no
- *     participant backend to bind them to. The whole screen is framed as a preview.
+ * ⚠ NON-MONEY screen. It NEVER mutates the cart, never calls placeOrder, never hits
+ * /api/orders. The single money action is the footer CTA, which simply routes to the
+ * existing /eat/cart (byte-identical checkout) where the host pays everything.
+ *
+ * CENT-EXACT guarantee: every amount is computed in INTEGER CENTS off the live cart
+ * subtotal (Σ item.price × qty — item.price already includes supplements). The shares
+ * always sum EXACTLY to the cart total; the host's row (« Toi ») absorbs any rounding
+ * remainder so no cent is created or lost.
+ *
+ *   • EVENLY  — base = floor(totalCents / partySize) per person; the leftover cents
+ *               (totalCents − base × partySize) are added to the host's share.
+ *   • BY-ITEM — each cart line is assigned to a person (cycle Toi → Invité 2 … →
+ *               partySize); a person's share = Σ of their lines' cents. Unassigned lines
+ *               are « à assigner » and excluded from every share until assigned.
+ *
+ * The « Partage intelligent » AI row stays inert (« bientôt »).
  */
 
-type Split = 'evenly' | 'byitem'
+type SplitMode = 'evenly' | 'byitem'
 
-// CD demo party (placeholders — no participant backend). The host row is overridden by
-// the real cart when present; the rest stay as a clearly-framed preview.
-const DEMO = {
-  hostAmount: 33.0,
-  hostItemsCount: 2,
-  shareEvenly: 19.25, // CD placeholder « votre part » (à parts égales)
+/** Sum of a cart, expressed in integer CENTS (item.price already includes supplements). */
+function cartCents(cart: EatCartData): number {
+  return cart.items.reduce((s, l) => s + Math.round(l.item.price * l.qty * 100), 0)
 }
 
-export default function GroupOrderScreen() {
+/** Per-line cents for one cart line. */
+function lineCents(line: EatCartData['items'][number]): number {
+  return Math.round(line.item.price * line.qty * 100)
+}
+
+const AV_CLASSES = ['a1', 'a2', 'a3'] as const
+/** Avatar palette class for person index p (0 = host). Cycles the 3 CD swatches. */
+function avClass(p: number): string {
+  return AV_CLASSES[p % AV_CLASSES.length]
+}
+
+export default function GroupSplitScreen() {
   const t = useTranslations('eat.groupOrder')
   const locale = useLocale()
   const router = useRouter()
 
   const [loading, setLoading] = useState(true)
   const [cart, setCart] = useState<EatCartData | null>(null)
-  const [split, setSplit] = useState<Split>('evenly')
+  const [mode, setMode] = useState<SplitMode>('evenly')
+  const [partySize, setPartySize] = useState(2) // EVENLY party size (2..8)
+  // BY-ITEM: assignment[lineIndex] = personIndex (0 = host/Toi), or -1 = unassigned.
+  const [assign, setAssign] = useState<number[]>([])
 
   useEffect(() => {
     // Read the real current cart once (client-side only). No network — lib/eat-cart.
-    setCart(readCart())
+    const c = readCart()
+    setCart(c)
+    setAssign(c ? c.items.map(() => -1) : [])
     setLoading(false)
   }, [])
 
-  // ── HOST row (« Vous ») — bound to the REAL cart when present, else CD demo ──────
-  const hostItemsCount = cart ? cart.items.reduce((s, l) => s + l.qty, 0) : DEMO.hostItemsCount
-  const hostTotal = cart ? cart.items.reduce((s, l) => s + l.item.price * l.qty, 0) : DEMO.hostAmount
-  // First two dish names — the CD host row lists « Tagliatelles, Tiramisu ».
-  const hostDishes =
-    cart && cart.items.length
-      ? cart.items.slice(0, 2).map((l) => l.item.name).join(', ')
-      : t('hostDemoDishes')
+  // Person label for index p: 0 → « Toi », else « Invité {n} » (n = p + 1).
+  const personLabel = (p: number) => (p === 0 ? t('selfLabel') : t('guestLabel', { n: p + 1 }))
 
-  // Demo party size for the illustrative preview (CD shows 4 people).
-  const partySize = 4
-  // « Votre part » PREVIEW figure — inert. With a real cart, the « evenly » preview is
-  // the real cart total ÷ party size (illustrative only, labelled « aperçu »); the
-  // « byitem » preview shows the host's own total. With no cart → CD placeholders.
-  const shareEvenly = cart ? hostTotal / partySize : DEMO.shareEvenly
-  const shareByItem = cart ? hostTotal : DEMO.hostAmount
-  const shareValue = split === 'evenly' ? shareEvenly : shareByItem
-  const isPreview = !!cart // real-cart figures are previews (no real split charge)
+  // ── total (cents) ───────────────────────────────────────────────────────────
+  const totalCents = useMemo(() => (cart ? cartCents(cart) : 0), [cart])
+
+  // ── EVENLY shares (cents) — host absorbs the rounding remainder ──────────────
+  const evenlyShares = useMemo<number[]>(() => {
+    if (!cart) return []
+    const base = Math.floor(totalCents / partySize)
+    const remainder = totalCents - base * partySize
+    return Array.from({ length: partySize }, (_, p) => (p === 0 ? base + remainder : base))
+  }, [cart, totalCents, partySize])
+
+  // ── BY-ITEM shares (cents) — sum of each person's assigned lines ─────────────
+  const byItemShares = useMemo<number[]>(() => {
+    if (!cart) return []
+    // People present in BY-ITEM = host + every assigned guest index (≥ 1).
+    const maxPerson = assign.reduce((m, p) => (p > m ? p : m), 0)
+    const people = Array.from({ length: maxPerson + 1 }, () => 0)
+    cart.items.forEach((line, i) => {
+      const p = assign[i]
+      if (p >= 0) people[p] += lineCents(line)
+    })
+    return people
+  }, [cart, assign])
+
+  const unassignedCount = useMemo(
+    () => (mode === 'byitem' ? assign.filter((p) => p < 0).length : 0),
+    [mode, assign],
+  )
+
+  // Rows to render under « Participants » (cents per person).
+  const rows = mode === 'evenly' ? evenlyShares : byItemShares
+  // « Ta part » = the host's (index 0) own share.
+  const yourShareCents = rows.length ? rows[0] : 0
+
+  // Cycle a cart line through Toi → Invité 2 … → partySize-of-people → « à assigner ».
+  // In BY-ITEM the people count follows the EVENLY partySize control so the two
+  // modes share one notion of « combien de personnes ».
+  const cycleAssign = (lineIndex: number) => {
+    setAssign((prev) => {
+      const next = [...prev]
+      const cur = next[lineIndex]
+      // sequence: -1 (à assigner) → 0 (Toi) → 1 … → partySize-1 → back to -1
+      next[lineIndex] = cur + 1 >= partySize ? -1 : cur + 1
+      return next
+    })
+  }
+
+  // ── Footer CTA: the host pays the FULL bill via the EXISTING checkout ─────────
+  const payFullBill = () => router.push('/eat/cart')
+
+  // ── Copy a plain-text recap of the split ─────────────────────────────────────
+  const buildSummary = (): string => {
+    const lines = rows.map((c, p) => `${personLabel(p)} : ${formatEuros(c / 100, locale)}`)
+    const total = `${t('summaryTotalLabel')} : ${formatEuros(totalCents / 100, locale)}`
+    return [t('summaryHeader'), ...lines, total].join('\n')
+  }
+
+  const copySummary = async () => {
+    if (!cart) return
+    const text = buildSummary()
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        showToast(t('copied'))
+        return
+      }
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({ text })
+        return
+      }
+      showToast(t('copyUnavailable'))
+    } catch {
+      // user dismissed the share sheet, or clipboard denied → honest fallback toast
+      showToast(t('copyUnavailable'))
+    }
+  }
 
   if (loading) {
     return (
@@ -89,79 +162,134 @@ export default function GroupOrderScreen() {
     )
   }
 
+  // ── EMPTY STATE: no cart → invite the user to add items first ────────────────
+  if (!cart || cart.items.length === 0) {
+    return (
+      <div className="gb gb-grouporder">
+        <section className="go-card">
+          <div className="go-head">
+            <button className="lead" type="button" onClick={() => router.back()} aria-label={t('back')}>
+              <span className="ms ms-flip" aria-hidden="true">arrow_back</span>
+            </button>
+            <h1>{t('title')}</h1>
+            <span className="share" aria-hidden="true" style={{ visibility: 'hidden' }} />
+          </div>
+          <div className="go-body">
+            <div className="go-empty">
+              <span className="ms" aria-hidden="true">receipt_long</span>
+              <b>{t('emptyCartTitle')}</b>
+              <p>{t('emptyCartBody')}</p>
+              <button className="go-btn" type="button" onClick={() => router.push('/eat')}>
+                {t('emptyCartCta')}
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
   return (
     <div className="gb gb-grouporder">
       <section className="go-card">
-        {/* ── head: back + title + (inert) share ── */}
+        {/* ── head: back + title + share (copies the recap) ── */}
         <div className="go-head">
           <button className="lead" type="button" onClick={() => router.back()} aria-label={t('back')}>
             <span className="ms ms-flip" aria-hidden="true">arrow_back</span>
           </button>
           <h1>{t('title')}</h1>
-          <button className="share" type="button" aria-label={t('shareAria')}>
+          <button className="share" type="button" aria-label={t('shareAria')} onClick={copySummary}>
             <span className="ms" aria-hidden="true">ios_share</span>
           </button>
         </div>
 
         <div className="go-body">
-          {/* ── invite banner (inert link, framed as a preview) ── */}
+          {/* ── Model A note: the host pays everything; shares are for splitting ── */}
           <div className="go-invite">
-            <span className="ms" aria-hidden="true">group</span>
+            <span className="ms" aria-hidden="true">info</span>
             <div className="m">
-              <b>{t('inviteTitle', { count: partySize })}</b>
-              <span><bdi>{t('inviteLink')}</bdi></span>
+              <b>{t('hostPaysTitle')}</b>
+              <span>{t('hostPaysNote')}</span>
             </div>
-            <button className="copy" type="button">{t('copy')}</button>
           </div>
 
-          {/* ── participants ── */}
-          <div className="go-lbl">{t('participants')}</div>
-
-          {/* HOST (« Vous ») — real cart when present */}
-          <div className="go-person">
-            <span className="av a1">SM</span>
-            <div className="who">
-              <b>{t('you')} <span className="you">{t('host')}</span></b>
-              <span>{t('itemsAnd', { count: hostItemsCount, dishes: hostDishes })}</span>
+          {/* ── party-size control (drives the EVENLY split & the BY-ITEM people) ── */}
+          <div className="go-party">
+            <span className="lbl">{t('partySizeLabel')}</span>
+            <div className="stepper" role="group" aria-label={t('partySizeLabel')}>
+              <button
+                type="button"
+                aria-label={t('partyMinus')}
+                disabled={partySize <= 2}
+                onClick={() => setPartySize((n) => Math.max(2, n - 1))}
+              >
+                <span className="ms" aria-hidden="true">remove</span>
+              </button>
+              <b aria-live="polite">{partySize}</b>
+              <button
+                type="button"
+                aria-label={t('partyPlus')}
+                disabled={partySize >= 8}
+                onClick={() => setPartySize((n) => Math.min(8, n + 1))}
+              >
+                <span className="ms" aria-hidden="true">add</span>
+              </button>
             </div>
-            <span className="amt"><bdi>{formatEuros(hostTotal, locale)}</bdi></span>
           </div>
 
-          {/* DEMO participants (no participant backend → clearly a preview) */}
-          <div className="go-person">
-            <span className="av a2">MD</span>
-            <div className="who">
-              <b>{t('demoName1')}</b>
-              <span>{t('itemsAnd', { count: 1, dishes: t('demoDishes1') })}</span>
-            </div>
-            <span className="amt"><bdi>{formatEuros(18, locale)}</bdi></span>
-          </div>
-          <div className="go-person">
-            <span className="av a3">AR</span>
-            <div className="who">
-              <b>{t('demoName2')}</b>
-              <span>{t('itemsAnd', { count: 2, dishes: t('demoDishes2') })}</span>
-            </div>
-            <span className="amt"><bdi>{formatEuros(26, locale)}</bdi></span>
-          </div>
-          <div className="go-person">
-            <span className="av a2">LW</span>
-            <div className="who">
-              <b>{t('demoName3')}</b>
-              <span className="wait">{t('choosing')}</span>
-            </div>
-            <span className="amt pending">{t('pending')}</span>
-          </div>
-
-          {/* ── split toggle (INERT — visual selection only) ── */}
-          <div className="go-split" role="tablist">
-            <button role="tab" type="button" aria-selected={split === 'evenly'} onClick={() => setSplit('evenly')}>
+          {/* ── split toggle (REAL — switches the calculation) ── */}
+          <div className="go-split" role="tablist" aria-label={t('splitModeAria')}>
+            <button role="tab" type="button" aria-selected={mode === 'evenly'} onClick={() => setMode('evenly')}>
               <span className="ms" aria-hidden="true">balance</span>{t('splitEvenly')}
             </button>
-            <button role="tab" type="button" aria-selected={split === 'byitem'} onClick={() => setSplit('byitem')}>
+            <button role="tab" type="button" aria-selected={mode === 'byitem'} onClick={() => setMode('byitem')}>
               <span className="ms" aria-hidden="true">receipt_long</span>{t('splitByItem')}
             </button>
           </div>
+
+          {/* ── BY-ITEM: per-cart-line person picker ── */}
+          {mode === 'byitem' && (
+            <>
+              <div className="go-lbl">{t('assignLabel')}</div>
+              {unassignedCount > 0 && <p className="go-hint">{t('assignHint', { count: unassignedCount })}</p>}
+              {cart.items.map((line, i) => {
+                const p = assign[i]
+                const assigned = p >= 0
+                return (
+                  <button
+                    key={`${line.item.id}-${i}`}
+                    type="button"
+                    className={`go-assign${assigned ? '' : ' is-unassigned'}`}
+                    onClick={() => cycleAssign(i)}
+                  >
+                    <div className="who">
+                      <b>{line.item.name}</b>
+                      <span>{t('lineQty', { qty: line.qty })} · <bdi>{formatEuros(lineCents(line) / 100, locale)}</bdi></span>
+                    </div>
+                    <span className={`pick${assigned ? '' : ' is-unassigned'}`}>
+                      {assigned ? personLabel(p) : t('unassigned')}
+                    </span>
+                  </button>
+                )
+              })}
+            </>
+          )}
+
+          {/* ── per-person shares ── */}
+          <div className="go-lbl">{t('participants')}</div>
+          {rows.map((cents, p) => (
+            <div className="go-person" key={p}>
+              <span className={`av ${avClass(p)}`}>{p + 1}</span>
+              <div className="who">
+                <b>
+                  {personLabel(p)}
+                  {p === 0 && <span className="you">{t('host')}</span>}
+                </b>
+                {p === 0 && <span>{t('hostRowNote')}</span>}
+              </div>
+              <span className="amt"><bdi>{formatEuros(cents / 100, locale)}</bdi></span>
+            </div>
+          ))}
 
           {/* ── AI « bientôt » (inert) ── */}
           <div className="go-ai">
@@ -174,22 +302,27 @@ export default function GroupOrderScreen() {
             </div>
           </div>
 
-          {/* ── your-share box (PREVIEW figure — inert) ── */}
+          {/* ── « Ta part » summary (the host's own real share) ── */}
           <div className="go-sharebox">
             <span>
               {t('yourShare')}{' '}
               <span style={{ opacity: 0.7 }}>
-                ({split === 'evenly' ? t('splitEvenlyParen') : t('splitByItemParen')}{isPreview ? ` · ${t('previewTag')}` : ''})
+                ({mode === 'evenly' ? t('splitEvenlyParen') : t('splitByItemParen')})
               </span>
             </span>
-            <b><bdi>{formatEuros(shareValue, locale)}</bdi></b>
+            <b><bdi>{formatEuros(yourShareCents / 100, locale)}</bdi></b>
           </div>
+
+          {/* ── copy the recap (clipboard → share → toast fallback) ── */}
+          <button className="go-copy" type="button" onClick={copySummary}>
+            <span className="ms" aria-hidden="true">content_copy</span>{t('copySummary')}
+          </button>
         </div>
 
-        {/* ── footer: inert validate ── */}
+        {/* ── footer: the host pays the FULL bill via the existing checkout ── */}
         <div className="go-foot">
-          <button className="go-btn" type="button">
-            <span className="ms" aria-hidden="true">lock</span>{t('validate')}
+          <button className="go-btn" type="button" onClick={payFullBill}>
+            <span className="ms" aria-hidden="true">lock</span>{t('payFullBill')}
           </button>
           <small>{t('footnote')}</small>
         </div>

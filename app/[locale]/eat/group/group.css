@@ -97,6 +97,40 @@
 .gb-grouporder .go-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;color:#fff;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:14px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
 .gb-grouporder .go-foot small{display:block;text-align:center;font-size:11.5px;color:var(--gb-muted);margin-top:9px}
 
+/* empty state (no cart) */
+.gb-grouporder .go-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:34px 8px 12px}
+.gb-grouporder .go-empty>.ms{font-size:40px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-grouporder .go-empty>.ms,.gb[data-theme="dark"] .gb-grouporder .go-empty>.ms{color:var(--gb-zest)}
+.gb-grouporder .go-empty b{font-family:var(--gb-font-display);font-weight:800;font-size:16px}
+.gb-grouporder .go-empty p{margin:0 0 8px;font-size:12.5px;line-height:1.5;color:var(--gb-muted)}
+.gb-grouporder .go-empty .go-btn{margin-top:4px}
+
+/* party-size stepper (drives EVENLY split + BY-ITEM people) */
+.gb-grouporder .go-party{display:flex;align-items:center;justify-content:space-between;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:10px 14px;margin-bottom:14px}
+.gb-grouporder .go-party .lbl{font-size:13px;font-weight:700;color:var(--gb-text)}
+.gb-grouporder .go-party .stepper{display:flex;align-items:center;gap:14px}
+.gb-grouporder .go-party .stepper button{width:30px;height:30px;border-radius:50%;border:1px solid var(--gb-border);background:var(--gb-surface);color:var(--gb-text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-grouporder .go-party .stepper button .ms{font-size:17px}
+.gb-grouporder .go-party .stepper button:disabled{opacity:.4;cursor:not-allowed}
+.gb-grouporder .go-party .stepper b{font-family:var(--gb-font-display);font-weight:800;font-size:16px;min-width:18px;text-align:center}
+
+/* BY-ITEM unassigned hint (CD info tone) */
+.gb-grouporder .go-hint{margin:-4px 0 10px;font-size:11.5px;line-height:1.4;color:var(--gb-info)}
+
+/* BY-ITEM per-line person picker (reuses .go-person spacing) */
+.gb-grouporder .go-assign{display:flex;align-items:center;gap:11px;width:100%;text-align:start;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 13px;margin-bottom:9px;cursor:pointer}
+.gb-grouporder .go-assign.is-unassigned{border-style:dashed}
+.gb-grouporder .go-assign .who{flex:1;min-width:0}
+.gb-grouporder .go-assign .who b{font-size:13.5px;font-weight:700;display:block}
+.gb-grouporder .go-assign .who span{font-size:11.5px;color:var(--gb-muted)}
+.gb-grouporder .go-assign .pick{font-size:11.5px;font-weight:700;color:#fff;background:var(--gb-zest-600);border-radius:var(--gb-r-pill);padding:5px 11px;white-space:nowrap}
+.gb-grouporder .go-assign .pick.is-unassigned{color:var(--gb-muted-2);background:var(--gb-surface-2);border:1px dashed var(--gb-border)}
+
+/* copy-recap button (secondary, under the share box) */
+.gb-grouporder .go-copy{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:13px;color:var(--gb-zest-600);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px;margin-top:10px;cursor:pointer}
+.gb-grouporder .go-copy .ms{font-size:17px}
+[data-theme="dark"] .gb-grouporder .go-copy,.gb[data-theme="dark"] .gb-grouporder .go-copy{color:var(--gb-zest)}
+
 /* loading skeleton (gb-foundation `.sk`) */
 .gb-grouporder .go-skel{width:100%;max-width:440px;height:560px;border-radius:var(--gb-r-xl)}
 
