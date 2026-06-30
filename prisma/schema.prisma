@@ -90,6 +90,8 @@ model Operator {
   creatorFollows  CreatorFollow[]
   // Inverse side of Waitlist.operator (P2-WAITLIST) — restaurant waitlist entries.
   waitlistEntries Waitlist[]
+  // Inverse side of PromoRedemption.operator (P1-PROMO) — promo codes this user redeemed.
+  promoRedemptions PromoRedemption[]
   // P6 (Agent 79) — service-mission invoices billed to this operator (as a restaurateur).
   // Additive inverse relation; reversible. DOCUMENT only — NO money movement.
   serviceInvoices ServiceInvoice[]
@@ -394,6 +396,7 @@ model Promotion {
   name       String
   type       String   // percent | fixed | second_item | threshold_reward
   discount   Float
+  code       String?  @unique   // P1-PROMO — when set, a CODE promo (customer-entered, never auto-applied)
   conditions Json     @default("{}")
   startDate  DateTime
   endDate    DateTime
@@ -406,8 +409,28 @@ model Promotion {
   // existing promo stays valid and the column is column-tolerant before db push.
   campaignId String?
   campaign   CreatorCampaign? @relation(fields: [campaignId], references: [id])
+  // Inverse side of PromoRedemption.promotion (P1-PROMO) — per-user code redemptions.
+  redemptions PromoRedemption[]
 
   @@index([campaignId])
+}
+
+// ── PromoRedemption (P1-PROMO) — one consumer redemption of a CODE promo ─ ADDITIVE ─
+// @@unique([promotionId,userId]) enforces once-per-user-per-code. Written best-effort
+// post-order-create ONLY when an ENTERED code won the best-of vs the auto-promo. orderId
+// is a soft reference (the order's total already baked the discount). Dropping this table
+// leaves every other model valid. NO money flows here — it records a redemption only.
+model PromoRedemption {
+  id          String    @id @default(cuid())
+  promotionId String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  userId      String
+  operator    Operator  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId     String?
+  redeemedAt  DateTime  @default(now())
+
+  @@unique([promotionId, userId])
+  @@index([userId])
 }
 
 // ── Chef demand-driver campaign (Promo V2 Slice 2) ────────────────────────────

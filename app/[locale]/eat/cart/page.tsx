@@ -41,6 +41,13 @@ export default function CartScreen() {
   const [payment, setPayment] = useState<'card' | 'cash'>('card')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // P1-PROMO — consumer promo CODE. The input string + the server's PREVIEW
+  // result. NON-authoritative: the cart shows the previewed discount, but the
+  // SERVER recomputes + applies the BEST-OF(code, auto-promo) at checkout (the
+  // client only passes the code string, never a discount amount).
+  const [promoCode, setPromoCode] = useState('')
+  const [promoState, setPromoState] = useState<'idle' | 'checking' | 'applied' | 'invalid' | 'error'>('idle')
+  const [promoPreview, setPromoPreview] = useState<{ code: string; discountEur: number; label: string } | null>(null)
   // Account-AT-payment (Agent 138) — passwordless email+code sheet for guests at checkout.
   const [authSheet, setAuthSheet] = useState(false)
   // Chantier fidélité L1 — loyalty redemption (D4: the client sends only the
@@ -223,10 +230,16 @@ export default function CartScreen() {
   const smallFeeApplies = !!smallOrderCfg && subtotal > 0 && subtotalCentsCart < smallOrderCfg.thresholdCents
   const smallFeeEur = smallFeeApplies ? smallOrderCfg!.feeCents / 100 : 0
   const missingToThresholdEur = smallOrderCfg ? Math.max(0, smallOrderCfg.thresholdCents - subtotalCentsCart) / 100 : 0
-  // The displayed total = full item prices + delivery − welcome discount + the
-  // small-order fee. The loyalty credit is resolved + shown on the checkout
-  // screen, so the cart never charges MORE than it displays (C3-fix doctrine).
-  const total = Math.max(0, subtotal - welcomeAmount + deliveryFee + smallFeeEur)
+  // P1-PROMO — the PREVIEWED code discount (server-computed). The displayed total
+  // subtracts it so the customer sees what the code does. The SERVER recomputes +
+  // applies the BEST-OF(code, auto-promo) at checkout — this preview is never
+  // trusted there. Cleared automatically when the basket changes (see effect).
+  const promoDiscount = promoState === 'applied' && promoPreview ? promoPreview.discountEur : 0
+  // The displayed total = full item prices + delivery − welcome discount − promo
+  // code discount + the small-order fee. The loyalty credit is resolved + shown on
+  // the checkout screen, so the cart never charges MORE than it displays (C3-fix
+  // doctrine). The promo discount is clamped so the food can't go negative.
+  const total = Math.max(0, subtotal - welcomeAmount - Math.min(promoDiscount, subtotal) + deliveryFee + smallFeeEur)
   const totalItems = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
 
   // The single item the nudge proposes to clear the fee in one tap: the cheapest
@@ -250,6 +263,62 @@ export default function CartScreen() {
       : [...cart.items, { item: { id: m.id, name: m.name, price: m.price, photos: m.photos ?? [] }, qty: 1 }]
     update({ ...cart, items })
   }
+
+  // P1-PROMO — apply a typed code: POST the (non-authoritative) PREVIEW request.
+  // The server validates the code for THIS restaurant + basket and returns the
+  // discount it would yield. We only DISPLAY it; the real discount is recomputed
+  // at checkout. Guests can preview (session optional). { valid:false } → invalid.
+  async function applyPromo() {
+    if (!cart) return
+    const code = promoCode.trim()
+    if (!code) return
+    setPromoState('checking')
+    try {
+      const res = await fetch('/api/eat/promos/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          restaurantId: cart.restaurantId,
+          items: cart.items.map((l) => ({
+            itemId: l.item.id,
+            price: l.item.price,
+            qty: l.qty,
+            options: l.options ? [l.options as unknown as Record<string, unknown>] : [],
+          })),
+          fulfillmentType: fulfillment,
+        }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.valid && typeof data.discountEur === 'number' && data.discountEur > 0) {
+        setPromoPreview({ code, discountEur: data.discountEur, label: typeof data.label === 'string' ? data.label : code })
+        setPromoState('applied')
+      } else {
+        setPromoPreview(null)
+        setPromoState('invalid')
+      }
+    } catch {
+      setPromoPreview(null)
+      setPromoState('error')
+    }
+  }
+
+  function clearPromo() {
+    setPromoCode('')
+    setPromoPreview(null)
+    setPromoState('idle')
+  }
+
+  // Invalidate an applied preview whenever the basket or fulfillment changes — the
+  // discount it showed may no longer hold. The customer re-applies if still wanted
+  // (the server is the sole judge at checkout regardless).
+  useEffect(() => {
+    if (promoState === 'applied' || promoState === 'invalid' || promoState === 'error') {
+      setPromoPreview(null)
+      setPromoState('idle')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtotal, totalItems, fulfillment])
 
   // Loyalty redemption eligibility (L1, D3 promo-exclusive). Shown only for a
   // logged-in consumer WITH a balance and NO welcome discount (the server also
@@ -358,6 +427,10 @@ export default function CartScreen() {
           // Chantier fidélité L1 (D4): INTENTION only. The server computes the
           // euro credit, checks the balance and caps it; a promo voids it (D3).
           usePoints: effectiveUsePoints,
+          // P1-PROMO: pass the typed CODE string ONLY (never a discount amount).
+          // The server resolves + applies the BEST-OF(code, auto-promo). Sent only
+          // when a code is currently applied → the no-code request is unchanged.
+          ...(promoState === 'applied' && promoPreview ? { promoCode: promoPreview.code } : {}),
         }),
       })
       if (res.status === 401) {
@@ -659,6 +732,50 @@ export default function CartScreen() {
                   <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))}>{t('edit')}</button>
                 </div>
 
+                {/* P1-PROMO — promo-code input (gb-foundation styled). The preview
+                    is server-validated; the real discount is applied at checkout. */}
+                <div className="promo">
+                  <div className="promo__label">
+                    <span className="ms" aria-hidden="true">sell</span>{t('promoLabel')}
+                  </div>
+                  {promoState === 'applied' && promoPreview ? (
+                    <div className="promo__applied">
+                      <span className="ms" aria-hidden="true">check_circle</span>
+                      <div className="promo__txt">
+                        <b>{promoPreview.code}</b>
+                        <span>{t('promoApplied', { amount: formatAmount(promoPreview.discountEur, locale) })}</span>
+                      </div>
+                      <button type="button" className="promo__clear" onClick={clearPromo}>{t('promoRemove')}</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="promo__row">
+                        <input
+                          value={promoCode}
+                          onChange={(e) => { setPromoCode(e.target.value); if (promoState !== 'idle') setPromoState('idle') }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyPromo() } }}
+                          placeholder={t('promoPlaceholder')}
+                          aria-label={t('promoLabel')}
+                          autoCapitalize="characters"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          maxLength={40}
+                        />
+                        <button
+                          type="button"
+                          className="promo__apply"
+                          onClick={applyPromo}
+                          disabled={promoState === 'checking' || !promoCode.trim()}
+                        >
+                          {promoState === 'checking' ? <span className="spin" aria-hidden="true" /> : t('promoApply')}
+                        </button>
+                      </div>
+                      {promoState === 'invalid' && <div className="promo__err">{t('promoInvalid')}</div>}
+                      {promoState === 'error' && <div className="promo__err">{t('promoError')}</div>}
+                    </>
+                  )}
+                </div>
+
                 {/* Incentive nudges (real display-only arithmetic) */}
                 {smallFeeApplies && (
                   <div className="nudge">
@@ -684,6 +801,12 @@ export default function CartScreen() {
                   <div className="srow disc">
                     <span>{welcome?.creatorName ? t('welcomeDiscountFrom', { creator: welcome.creatorName }) : t('welcomeDiscount')}</span>
                     <span>-{formatEuros(welcomeAmount, locale)}</span>
+                  </div>
+                )}
+                {promoDiscount > 0 && promoPreview && (
+                  <div className="srow disc">
+                    <span>{t('promoDiscountLine', { code: promoPreview.code })}</span>
+                    <span>-{formatEuros(promoDiscount, locale)}</span>
                   </div>
                 )}
                 <div className="srow">

@@ -175,7 +175,12 @@ export function commissionBaseMode(): 'discounted' | 'list' {
 }
 
 /** Active promotions of an establishment (all its brands), window-filtered at
- *  the DB level. Thin fetch — the decision stays in the pure picker above. */
+ *  the DB level. Thin fetch — the decision stays in the pure picker above.
+ *
+ *  P1-PROMO: a CODE-promo (Promotion.code != null) must NEVER auto-apply — it
+ *  is opt-in only (the customer types the code in the cart, resolveCodePromo
+ *  validates it). The `code: null` filter removes them here. Byte-identical
+ *  today: no Promotion has a `code` yet, so the filter removes nothing. */
 export async function fetchActivePromotions(restaurantId: string, now: Date = new Date()) {
   return prisma.promotion.findMany({
     where: {
@@ -183,6 +188,7 @@ export async function fetchActivePromotions(restaurantId: string, now: Date = ne
       startDate: { lte: now },
       endDate:   { gte: now },
       type:      { in: ['percent', 'fixed', 'second_item', 'threshold_reward'] },
+      code:      null,                  // P1-PROMO — exclude code-promos from the auto-best
       brand:     { restaurantId },
     },
     // Oldest first → pickBestPromotion's « older wins on a discount tie » is now
@@ -193,4 +199,85 @@ export async function fetchActivePromotions(restaurantId: string, now: Date = ne
       startDate: true, endDate: true, active: true,
     },
   })
+}
+
+// ── P1-PROMO — consumer promo CODES ──────────────────────────────────────────
+// A code-promo is a STANDARD resto-financed Promotion (same types, same per-type
+// discount math via evaluatePromotion) that carries a `code` and NEVER
+// auto-applies (excluded from fetchActivePromotions). The customer types the code
+// in the cart; the SERVER resolves + applies it. One redemption per user per code
+// (PromoRedemption unique on (promotionId, userId)). The client never sends a
+// discount amount — this returns the server-computed EUR figure only.
+
+export type ResolvedCodePromo = {
+  promotionId: string
+  discountEur: number
+  type:        string
+  label:       string
+}
+
+/** Resolve a typed promo CODE for a restaurant's cart.
+ *
+ *  Returns the server-computed discount (reusing evaluatePromotion's per-type
+ *  math) for an ACTIVE code-promo whose `code` matches (case-insensitive) a brand
+ *  SERVED BY this restaurant. Returns null when: no such code, expired/inactive,
+ *  wrong brand, no discount applies to this basket, or — when `userId` is given —
+ *  the user has already redeemed it (PromoRedemption). Without a `userId` (guest
+ *  preview) the redeemed-check is skipped. Best-effort safe: a thrown query
+ *  bubbles to the caller's try/catch (the order proceeds at full price). */
+export async function resolveCodePromo(
+  restaurantId: string,
+  code: string,
+  userId?: string,
+  ctx?: { items: OrderLine[]; channel: 'delivery' | 'pickup'; now?: Date },
+): Promise<ResolvedCodePromo | null> {
+  const normalized = code.trim().toUpperCase()
+  if (!normalized) return null
+  const now = ctx?.now ?? new Date()
+
+  // ACTIVE code-promo for a brand served by this restaurant. Compare the stored
+  // code case-insensitively by uppercasing the input AND requiring the stored
+  // code to equal it — promo codes are created/stored uppercased by convention;
+  // we additionally tolerate a lowercase stored value via the OR below.
+  const promo = await prisma.promotion.findFirst({
+    where: {
+      active:    true,
+      startDate: { lte: now },
+      endDate:   { gte: now },
+      type:      { in: ['percent', 'fixed', 'second_item', 'threshold_reward'] },
+      brand:     { restaurantId },
+      OR: [{ code: normalized }, { code: normalized.toLowerCase() }],
+    },
+    select: {
+      id: true, type: true, discount: true, conditions: true, name: true,
+      startDate: true, endDate: true, active: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+  if (!promo) return null
+
+  // One redemption per user per code — refuse a code this user already burned.
+  if (userId) {
+    const already = await prisma.promoRedemption.findUnique({
+      where: { promotionId_userId: { promotionId: promo.id, userId } },
+      select: { id: true },
+    })
+    if (already) return null
+  }
+
+  // Reuse the SAME per-type discount math as the auto-best engine. When no cart
+  // context is provided (defensive), there is nothing to discount → null.
+  const discountEur = ctx
+    ? evaluatePromotion(
+        {
+          id: promo.id, type: promo.type, discount: promo.discount,
+          conditions: promo.conditions, startDate: promo.startDate,
+          endDate: promo.endDate, active: promo.active,
+        },
+        { items: ctx.items, channel: ctx.channel, now },
+      )
+    : 0
+  if (discountEur <= 0) return null
+
+  return { promotionId: promo.id, discountEur, type: promo.type, label: promo.name }
 }

@@ -3,7 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
 import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
-import { fetchActivePromotions, pickBestPromotion } from '@/lib/promotions'
+import { fetchActivePromotions, pickBestPromotion, resolveCodePromo } from '@/lib/promotions'
 import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } from '@/lib/loyalty'
 import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
@@ -46,6 +46,11 @@ const createOrderSchema = z.object({
   // The SERVER computes the euro credit, checks the balance, applies the caps —
   // any client-sent amount is ignored. Default false keeps the contract intact.
   usePoints:       z.boolean().default(false),
+  // P1-PROMO: an optional consumer promo CODE. The client NEVER sends a discount
+  // amount — only the code string; the server resolves + applies the discount and
+  // takes the BEST-OF(code, auto-promo). .optional() keeps the no-code request
+  // contract byte-identical.
+  promoCode:       z.string().trim().max(40).optional(),
 })
 
 // ── Uber Direct mock ──────────────────────────────────────────────────────────
@@ -244,28 +249,48 @@ export async function POST(req: NextRequest) {
     // the referral welcome discount is OFF (0); if it ever fires, the promo is
     // skipped — there is NO stacking, ever. Best-effort: a promo hiccup never
     // blocks checkout (no discount, normal order).
+    // P1-PROMO: `codePromoWon` flags that a typed CODE beat the auto-best, so a
+    // PromoRedemption is recorded after the order is created (best-effort). It is
+    // false on the no-`promoCode` path → that path stays byte-identical.
     const promo = { id: null as string | null, discountEur: 0 }
+    let codePromoWon: { promotionId: string } | null = null
     if (ref.discount === 0) {
       try {
+        // Composite cart line ids (`dishId::sig`) reduce to the RAW MenuItem id
+        // (same reduction the DishSale block applies — duplicated here because
+        // that block's helper is scoped inside it and the block is frozen).
+        const rawLines = data.items.map((item) => {
+          const parent = item.options?.[0]?.parentDishId
+          const rawId = typeof parent === 'string' && parent.length > 0
+            ? parent
+            : item.itemId.split('::')[0]
+          return { rawId, price: item.price, qty: item.qty }
+        })
+        const channel = data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery'
         const active = await fetchActivePromotions(data.restaurantId)
         if (active.length > 0) {
-          // Composite cart line ids (`dishId::sig`) reduce to the RAW MenuItem id
-          // (same reduction the DishSale block applies — duplicated here because
-          // that block's helper is scoped inside it and the block is frozen).
-          const rawLines = data.items.map((item) => {
-            const parent = item.options?.[0]?.parentDishId
-            const rawId = typeof parent === 'string' && parent.length > 0
-              ? parent
-              : item.itemId.split('::')[0]
-            return { rawId, price: item.price, qty: item.qty }
-          })
-          const best = pickBestPromotion(active, {
-            items:   rawLines,
-            channel: data.fulfillmentType === 'pickup' ? 'pickup' : 'delivery',
-          })
+          const best = pickBestPromotion(active, { items: rawLines, channel })
           if (best) {
             promo.id          = best.promotionId
             promo.discountEur = best.discountEur
+          }
+        }
+
+        // P1-PROMO — a typed CODE: resolve its discount, then take the BEST-OF.
+        // NO stacking, NEVER summed. On a tie the CODE wins so its redemption is
+        // recorded. The redeemed-check uses the buyer's id (token.sub) — a code
+        // already burned by this user returns null (resolveCodePromo).
+        if (data.promoCode) {
+          const codePromo = await resolveCodePromo(
+            data.restaurantId,
+            data.promoCode,
+            token.sub ?? undefined,
+            { items: rawLines, channel },
+          )
+          if (codePromo && codePromo.discountEur >= promo.discountEur) {
+            promo.id          = codePromo.promotionId
+            promo.discountEur = codePromo.discountEur
+            codePromoWon      = { promotionId: codePromo.promotionId }
           }
         }
       } catch (promoErr) {
@@ -455,6 +480,24 @@ export async function POST(req: NextRequest) {
       } catch (traceErr) {
         console.error('[POST /api/orders] promotion trace write failed (column missing pre-db-push? order stays valid):',
           traceErr instanceof Error ? traceErr.message : traceErr)
+      }
+    }
+
+    // ── Promo-code redemption (P1-PROMO) — BEST-EFFORT + TOLERANT ───────────────
+    // When a typed CODE won the best-of, record ONE redemption (one per user per
+    // code, enforced by the @@unique([promotionId,userId])). Wrapped like the
+    // loyalty post-create updates: a failure (table missing pre-db-push, or a
+    // concurrent duplicate hitting the unique) is logged and swallowed — the
+    // discount is ALREADY baked into the order total, so checkout never blocks.
+    // Skipped entirely on the no-code path (codePromoWon stays null).
+    if (codePromoWon) {
+      try {
+        await prisma.promoRedemption.create({
+          data: { promotionId: codePromoWon.promotionId, userId: token.sub!, orderId: order.id },
+        })
+      } catch (redErr) {
+        console.error('[POST /api/orders] promo redemption write failed (table missing pre-db-push or duplicate? order stays valid):',
+          redErr instanceof Error ? redErr.message : redErr)
       }
     }
 

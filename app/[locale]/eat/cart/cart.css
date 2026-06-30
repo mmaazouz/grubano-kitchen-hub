@@ -137,6 +137,25 @@
 .gb-cart .stotal span{font-weight:700;font-size:15px;color:var(--gb-text)}
 .gb-cart .stotal b{font-family:var(--gb-font-display);font-weight:800;font-size:22px;letter-spacing:-.01em;color:var(--gb-text)}
 
+/* P1-PROMO — promo-code input (gb-foundation tokens) */
+.gb-cart .promo{margin-bottom:16px}
+.gb-cart .promo__label{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--gb-text);margin-bottom:8px}
+.gb-cart .promo__label .ms{font-size:16px;color:var(--gb-muted-2)}
+.gb-cart .promo__row{display:flex;gap:8px}
+.gb-cart .promo__row input{flex:1;min-width:0;background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:10px 12px;font-family:var(--gb-font-ui);font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--gb-text)}
+.gb-cart .promo__row input::placeholder{text-transform:none;letter-spacing:0;font-weight:500;color:var(--gb-muted)}
+.gb-cart .promo__row input:focus{outline:none;border-color:var(--gb-zest-600)}
+.gb-cart .promo__apply{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-width:74px;font-family:var(--gb-font-ui);font-weight:700;font-size:12.5px;color:#fff;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:0 16px;cursor:pointer}
+.gb-cart .promo__apply:disabled{opacity:.6;cursor:default}
+.gb-cart .promo__apply .spin{width:15px;height:15px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;animation:gb-spin .7s linear infinite}
+.gb-cart .promo__err{margin-top:7px;font-size:12px;font-weight:600;color:var(--gb-danger)}
+.gb-cart .promo__applied{display:flex;align-items:center;gap:9px;background:var(--gb-field-bg);border:1px solid var(--gb-basil-600);border-radius:var(--gb-r-md);padding:10px 12px}
+.gb-cart .promo__applied .ms{font-size:18px;color:var(--gb-basil-600);flex-shrink:0}
+.gb-cart .promo__txt{flex:1;min-width:0}
+.gb-cart .promo__txt b{display:block;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gb-text)}
+.gb-cart .promo__txt span{display:block;font-size:11.5px;color:var(--gb-basil-600);font-weight:600;margin-top:1px}
+.gb-cart .promo__clear{flex-shrink:0;font-size:12.5px;font-weight:700;color:var(--gb-muted-2);background:none;border:none;cursor:pointer;white-space:nowrap}
+
 /* incentive nudges (real display-only arithmetic, CD pill styling) */
 .gb-cart .nudge{border-radius:var(--gb-r-md);padding:9px 11px;font-size:12px;font-weight:600;line-height:1.4;background:rgba(255,138,40,.12);color:var(--gb-zest-600);margin-bottom:12px}
 [data-theme="dark"] .gb-cart .nudge{color:var(--gb-zest)}
