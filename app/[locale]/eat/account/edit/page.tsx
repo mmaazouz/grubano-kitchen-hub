@@ -37,20 +37,62 @@ export default function EditProfileScreen() {
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/eat/auth')
   }, [status, router])
 
+  // Load the saved profile (name + phone) from the server; the session name is the
+  // instant fallback shown until the fetch resolves.
   useEffect(() => {
-    if (status === 'authenticated') setName(sessionName)
+    if (status !== 'authenticated') return
+    setName(sessionName)
+    let active = true
+    fetch('/api/eat/account', { headers: { accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!active || !d) return
+        if (typeof d.name === 'string' && d.name) setName(d.name)
+        if (typeof d.phone === 'string') setPhone(d.phone)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [status, sessionName])
 
   const initials =
     (sessionName || sessionEmail).split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '🙂'
 
-  // No update endpoint → visual save (reported gap).
-  const onSave = () => showToast(t('saveSoon'))
+  // Real save (P1-PROFILE) → PATCH /api/eat/account (name + phone). The value persists in
+  // the DB and reflects here immediately; the nav shell / account page pick up a new name
+  // after the next sign-in (refreshing the LIVE session name needs a jwt-callback change).
+  const onSave = async () => {
+    if (saving) return
+    const trimmed = name.trim()
+    if (!trimmed) {
+      showToast(t('nameRequired'))
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/eat/account', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: trimmed, phone: phone.trim() }),
+      })
+      if (!res.ok) throw new Error('save_failed')
+      const d = (await res.json().catch(() => null)) as { name?: string; phone?: string } | null
+      if (d?.name) setName(d.name)
+      if (typeof d?.phone === 'string') setPhone(d.phone)
+      showToast(t('saveOk'))
+    } catch {
+      showToast(t('saveError'))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // ── Loading skeleton (foundation .sk primitive) ────────────────────────────
   if (status === 'loading') {
@@ -138,7 +180,7 @@ export default function EditProfileScreen() {
 
       <div className="foot">
         <div className="inner">
-          <button type="button" className="save" onClick={onSave}>
+          <button type="button" className="save" onClick={onSave} disabled={saving} aria-busy={saving}>
             <span className="ms" aria-hidden="true">check</span><b>{t('save')}</b>
           </button>
         </div>
