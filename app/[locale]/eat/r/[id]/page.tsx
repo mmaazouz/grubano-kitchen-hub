@@ -471,21 +471,8 @@ export default function RestaurantScreen() {
           </div>
           {closureLine && <p className="closure">{closureLine}</p>}
 
-          {/* Chantier P2 — promo banner (best GLOBAL promo + the others). */}
-          {bestGlobal && (
-            <div className="promo">
-              <p className="promo__main"><span className="ms" aria-hidden="true">sell</span>{promoLabel(bestGlobal)}</p>
-              {flashLabel(bestGlobal) && (
-                <span className="promo__flash"><span className="ms" aria-hidden="true">bolt</span>{flashLabel(bestGlobal)}</span>
-              )}
-              {bestGlobal.name && <p className="promo__name">{bestGlobal.name}</p>}
-              {otherGlobals.length > 0 && (
-                <p className="promo__more">{otherGlobals.map((p) => promoLabel(p)).join(' · ')}</p>
-              )}
-            </div>
-          )}
-
-          {/* 3-mode toggle (CD .modes). VISUAL — see MODES note. */}
+          {/* 3-mode toggle (CD .modes) — the airy CD headcard is exactly
+              name · rating/info line · clean segmented control, nothing else. */}
           <div className="modes" role="tablist" aria-label={t('fulfilmentMode')}>
             {MODES.map((m) => (
               <button
@@ -501,6 +488,22 @@ export default function RestaurantScreen() {
           </div>
         </div>
       </div>
+
+      {/* Promo strip — KEPT feature (real active promotions). Moved OUT of the headcard
+          into a slim single-line strip so the CD headcard stays airy (the boxy promo
+          inside the card was the main « entassement »). Best GLOBAL promo + others. */}
+      {bestGlobal && (
+        <div className="promo-strip">
+          <span className="promo__main"><span className="ms" aria-hidden="true">sell</span>{promoLabel(bestGlobal)}</span>
+          {flashLabel(bestGlobal) && (
+            <span className="promo__flash"><span className="ms" aria-hidden="true">bolt</span>{flashLabel(bestGlobal)}</span>
+          )}
+          {bestGlobal.name && <span className="promo__name">{bestGlobal.name}</span>}
+          {otherGlobals.length > 0 && (
+            <span className="promo__more">{otherGlobals.map((p) => promoLabel(p)).join(' · ')}</span>
+          )}
+        </div>
+      )}
 
       {/* Tab bar (kept from the live page; « Avis » navigates to the full page) */}
       <div className="tabs">
