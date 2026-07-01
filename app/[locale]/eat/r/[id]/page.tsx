@@ -99,9 +99,6 @@ interface ItemPromo {
   secondItemPct?: number
 }
 
-const TABS = ['Menu', 'À propos', 'Galerie', 'Avis'] as const
-type Tab = (typeof TABS)[number]
-
 // 3-mode fulfilment toggle (CD restaurant ref). VISUAL ONLY on this page — the
 // cart never persists a fulfilment mode (lib/eat-cart has none); the REAL choice
 // (delivery / pickup) is made on the cart/checkout screen. Default = Livraison.
@@ -172,8 +169,6 @@ export default function RestaurantScreen() {
   const [hours, setHours] = useState<PublicHoursInfo | null>(null)
   const [menu, setMenu] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<Tab>('Menu')
-  const [menuSearch, setMenuSearch] = useState('')
   const [menuFilter, setMenuFilter] = useState('Tout')
   const [mode, setMode] = useState<Mode>('delivery')
   const [fav, setFav] = useState(false)
@@ -183,15 +178,6 @@ export default function RestaurantScreen() {
   const [promotions, setPromotions] = useState<PublicPromo[]>([])
   const [itemPromo, setItemPromo] = useState<Record<string, ItemPromo>>({})
 
-  const tabLabel = (tab: Tab) => {
-    const map: Record<Tab, string> = {
-      Menu: t('tabMenu'),
-      'À propos': t('tabAbout'),
-      Galerie: t('tabGallery'),
-      Avis: t('tabReviews'),
-    }
-    return map[tab]
-  }
   const modeLabel = (m: Mode) =>
     m === 'delivery' ? t('modeDelivery') : m === 'takeaway' ? t('modeTakeaway') : t('modeDineIn')
   const categoryLabel = (cat: string) => (cat === 'Tout' ? t('categoryAll') : cat)
@@ -302,11 +288,8 @@ export default function RestaurantScreen() {
 
   // ── filtered menu items for current Menu tab state
   const filtered = useMemo(
-    () =>
-      allItems
-        .filter((m) => menuFilter === 'Tout' || m.category === menuFilter)
-        .filter((m) => menuSearch === '' || m.name.toLowerCase().includes(menuSearch.toLowerCase())),
-    [allItems, menuFilter, menuSearch],
+    () => allItems.filter((m) => menuFilter === 'Tout' || m.category === menuFilter),
+    [allItems, menuFilter],
   )
   // Group the filtered items back into CD-style category sections.
   const filteredSections = useMemo(() => {
@@ -325,18 +308,16 @@ export default function RestaurantScreen() {
   if (loading) {
     return (
       <div className="gb gb-resto" aria-busy="true">
-        <div className="hero sk" />
-        <div className="head">
-          <div className="headcard">
-            <div className="sk" style={{ height: 26, width: '60%' }} />
-            <div className="sk" style={{ height: 14, width: '40%', marginTop: 10 }} />
-          </div>
-        </div>
-        <div className="layout">
-          <div className="dishes" style={{ marginTop: 20 }}>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="sk" style={{ height: 122 }} />
-            ))}
+        <div className="rmain">
+          <div className="topbar"><span className="sk" style={{ height: 22, width: 180, display: 'block' }} /></div>
+          <div className="content-pad">
+            <span className="sk" style={{ height: 230, borderRadius: 'var(--gb-r-xl)', display: 'block' }} />
+            <span className="sk" style={{ height: 14, width: '45%', margin: '18px 0 0', display: 'block' }} />
+            <div className="dishes" style={{ marginTop: 22 }}>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="sk" style={{ height: 122 }} />
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -346,13 +327,15 @@ export default function RestaurantScreen() {
   if (!restaurant) {
     return (
       <div className="gb gb-resto">
-        <div className="layout">
-          <div className="empty">
-            <span className="emoji" aria-hidden="true">😕</span>
-            <p>{t('restaurantNotFound')}</p>
-            <button type="button" className="cta ghost" style={{ marginTop: 14, width: 'auto', display: 'inline-flex' }} onClick={() => router.back()}>
-              <span>{tc('back')}</span>
-            </button>
+        <div className="rmain">
+          <div className="content-pad">
+            <div className="empty">
+              <span className="emoji" aria-hidden="true">😕</span>
+              <p>{t('restaurantNotFound')}</p>
+              <button type="button" className="cc-checkout ghost" style={{ marginTop: 14, width: 'auto', display: 'inline-flex' }} onClick={() => router.back()}>
+                <span>{tc('back')}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -424,20 +407,29 @@ export default function RestaurantScreen() {
 
   return (
     <div className="gb gb-resto">
-      {/* Hero — band with back · share · ♥ (CD .hero / .hero__bar) */}
-      <div className="hero">
-        <FoodImage name={restaurant.name} src={heroCover} className="hero__img h-full w-full" glyphClassName="text-7xl" />
-        <div className="hero__bar">
-          <button type="button" className="c" onClick={() => router.back()} aria-label={tc('back')}>
-            <span className="ms" aria-hidden="true">arrow_back</span>
-          </button>
-          <span className="right">
-            <button type="button" className="c" aria-label={t('share')}>
+      {/* ══ MAIN column ══ CD v2 (Notion 390fd2c9-…-6f64) — supersedes the v1
+          headcard-overlap. Resto top bar + clean hero + info line + segmented modes
+          + category chips + dish cards. NO Menu/À propos/Galerie/Avis tabs, NO menu
+          search bar (removed per CD v2). */}
+      <div className="rmain">
+        {/* top bar — back · name · ★(→ reviews route) | share · ♥ (real favorite) */}
+        <div className="topbar">
+          <div className="tb-name">
+            <button type="button" className="tb-back" onClick={() => router.back()} aria-label={tc('back')}>
+              <span className="ms" aria-hidden="true">arrow_back</span>
+            </button>
+            <span className="tb-title">{restaurant.name}</span>
+            <button type="button" className="tb-rate" onClick={goToReviews} aria-label={t('tabReviews')}>
+              <span className="ms" aria-hidden="true">star</span>{restaurant.rating.toFixed(1).replace('.', locale === 'en' ? '.' : ',')}
+            </button>
+          </div>
+          <div className="tb-actions">
+            <button type="button" className="tb-btn" aria-label={t('share')}>
               <span className="ms" aria-hidden="true">ios_share</span>
             </button>
             <button
               type="button"
-              className={`c${fav ? ' fav' : ''}`}
+              className={`tb-btn${fav ? ' fav' : ''}`}
               onClick={() => {
                 const now = toggleFav(id)
                 setFav(now)
@@ -448,309 +440,246 @@ export default function RestaurantScreen() {
             >
               <span className="ms" aria-hidden="true">favorite</span>
             </button>
-          </span>
+          </div>
         </div>
-      </div>
 
-      {/* Overlapping head card (CD .head / .headcard) */}
-      <div className="head">
-        <div className="headcard">
-          <h1>{restaurant.name}</h1>
-          <div className="headmeta">
-            <span className="rate"><span className="ms" aria-hidden="true">star</span>{restaurant.rating.toFixed(1).replace('.', locale === 'en' ? '.' : ',')}</span>
-            <button type="button" className="reviews-link" onClick={goToReviews}>
-              {t('reviewCount', { count: restaurant.reviewCount.toLocaleString(locale === 'ar' ? 'ar-MA' : locale) })}
-            </button>
-            <span>· {formatCuisineList(restaurant.cuisine, locale, '')}</span>
+        <div className="content-pad">
+          {/* clean hero — rectangular rounded banner, nothing overlaid (CD v2) */}
+          <div className="hero">
+            <FoodImage name={restaurant.name} src={heroCover} className="hero__img h-full w-full" glyphClassName="text-7xl" />
+          </div>
+
+          {/* info line — cuisine · hours · free delivery (plain text row) */}
+          <div className="il">
+            <span>{formatCuisineList(restaurant.cuisine, locale, '')}</span>
             {hoursBadge && (
-              <span className={`open${hoursBadge.open ? '' : ' closed'}`}>
+              <span className={`ok${hoursBadge.open ? '' : ' closed'}`}>
                 <span className="ms" aria-hidden="true">schedule</span>{hoursBadge.label}
               </span>
             )}
-            <span>· <span className="free-delivery">{restaurant.deliveryFee === 0 ? t('freeDelivery') : formatEuros(restaurant.deliveryFee, locale)}</span></span>
+            <span className="ok">
+              <span className="ms" aria-hidden="true">pedal_bike</span>
+              {restaurant.deliveryFee === 0 ? t('freeDelivery') : formatEuros(restaurant.deliveryFee, locale)}
+            </span>
           </div>
           {closureLine && <p className="closure">{closureLine}</p>}
 
-          {/* 3-mode toggle (CD .modes) — the airy CD headcard is exactly
-              name · rating/info line · clean segmented control, nothing else. */}
+          {/* promo strip — KEPT feature (real active promotions), slim single line */}
+          {bestGlobal && (
+            <div className="promo-strip">
+              <span className="promo__main"><span className="ms" aria-hidden="true">sell</span>{promoLabel(bestGlobal)}</span>
+              {flashLabel(bestGlobal) && (
+                <span className="promo__flash"><span className="ms" aria-hidden="true">bolt</span>{flashLabel(bestGlobal)}</span>
+              )}
+              {bestGlobal.name && <span className="promo__name">{bestGlobal.name}</span>}
+              {otherGlobals.length > 0 && (
+                <span className="promo__more">{otherGlobals.map((p) => promoLabel(p)).join(' · ')}</span>
+              )}
+            </div>
+          )}
+
+          {/* 3-mode segmented control (Livraison / À emporter / Sur place). VISUAL. */}
           <div className="modes" role="tablist" aria-label={t('fulfilmentMode')}>
             {MODES.map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="tab"
-                aria-selected={mode === m}
-                onClick={() => setMode(m)}
-              >
+              <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}>
                 <span className="ms" aria-hidden="true">{MODE_ICON[m]}</span>{modeLabel(m)}
               </button>
             ))}
           </div>
-        </div>
-      </div>
 
-      {/* Promo strip — KEPT feature (real active promotions). Moved OUT of the headcard
-          into a slim single-line strip so the CD headcard stays airy (the boxy promo
-          inside the card was the main « entassement »). Best GLOBAL promo + others. */}
-      {bestGlobal && (
-        <div className="promo-strip">
-          <span className="promo__main"><span className="ms" aria-hidden="true">sell</span>{promoLabel(bestGlobal)}</span>
-          {flashLabel(bestGlobal) && (
-            <span className="promo__flash"><span className="ms" aria-hidden="true">bolt</span>{flashLabel(bestGlobal)}</span>
-          )}
-          {bestGlobal.name && <span className="promo__name">{bestGlobal.name}</span>}
-          {otherGlobals.length > 0 && (
-            <span className="promo__more">{otherGlobals.map((p) => promoLabel(p)).join(' · ')}</span>
-          )}
-        </div>
-      )}
-
-      {/* Tab bar (kept from the live page; « Avis » navigates to the full page) */}
-      <div className="tabs">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            className={activeTab === tab ? 'on' : ''}
-            onClick={() => (tab === 'Avis' ? goToReviews() : setActiveTab(tab))}
-          >
-            {tabLabel(tab)}
-          </button>
-        ))}
-      </div>
-
-      {/* Two-column layout: menu list || sticky cart panel */}
-      <div className="layout">
-        <div>
-          {/* Menu tab */}
-          {activeTab === 'Menu' && (
-            <>
-              {/* Sticky category nav (CD .catnav) */}
-              {categories.length > 1 && (
-                <div className="catnav">
-                  {categories.map((f) => (
-                    <span
-                      key={f}
-                      className={menuFilter === f ? 'on' : ''}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setMenuFilter(f)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMenuFilter(f) } }}
-                    >
-                      {categoryLabel(f)}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Menu search */}
-              <div className="menu-search">
-                <span className="ms" aria-hidden="true">search</span>
-                <input
-                  value={menuSearch}
-                  onChange={(e) => setMenuSearch(e.target.value)}
-                  placeholder={t('searchItems')}
-                  aria-label={t('searchItems')}
-                />
-              </div>
-
-              {filteredSections.length === 0 ? (
-                <div className="empty"><span className="emoji" aria-hidden="true">🍽️</span><p>{t('noItemsFound')}</p></div>
-              ) : (
-                filteredSections.map((sec) => (
-                  <section key={sec.category} className="catsec">
-                    <h2>{categoryLabel(sec.category)}</h2>
-                    <div className="dishes">
-                      {sec.items.map((dish) => {
-                        // Chantier P2 — targeted promo badge: discounted unit price
-                        // was computed SERVER-side by evaluatePromotion (never locally).
-                        const promo = itemPromo[dish.id]
-                        const hasUnitDiscount = !!promo && promo.discountedUnitPrice < dish.price
-                        const shownPrice = hasUnitDiscount ? promo!.discountedUnitPrice : dish.price
-                        const wasPrice = hasUnitDiscount
-                          ? dish.price
-                          : dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined
-                        const qty = qtyForDish(dish.id)
-                        const promoPill = promo
-                          ? promo.secondItemPct != null
-                            ? t('promoPillSecond', { pct: promo.secondItemPct })
-                            : promo.type === 'percent'
-                              ? t('promoPill', { pct: promo.discount })
-                              : t('promoPillFixed', { eur: promo.discount })
-                          : null
-                        return (
-                          <div
-                            key={dish.id}
-                            className="dish"
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => setModalDish(dish)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalDish(dish) } }}
-                          >
-                            <div className="dish__b">
-                              <b>{dish.name}</b>
-                              {dish.description && <p>{dish.description}</p>}
-                              <div className="pr">
-                                <span className="price">{formatEuros(shownPrice, locale)}</span>
-                                {wasPrice != null && <span className="price was">{formatEuros(wasPrice, locale)}</span>}
-                                {promoPill && <span className="tag promo">{promoPill}</span>}
-                                {dish.creator && <CreatorBadge creator={dish.creator} />}
-                              </div>
-                            </div>
-                            <div className="dish__img">
-                              <div className="gb-resto-thumb">
-                                <FoodImage name={dish.name} src={photoFor(dish)} className="h-full w-full" glyphClassName="text-2xl" />
-                              </div>
-                              {qty > 0 && <span className="dish__qty">{qty}</span>}
-                              <button
-                                type="button"
-                                className="dish__add"
-                                aria-label={t('addToCart')}
-                                onClick={(e) => { e.stopPropagation(); setModalDish(dish) }}
-                              >
-                                <span className="ms" aria-hidden="true">add</span>
-                              </button>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </section>
-                ))
-              )}
-            </>
-          )}
-
-          {/* About tab */}
-          {activeTab === 'À propos' && (
-            <div style={{ paddingTop: 12 }}>
-              <div className="panel">
-                <h2>{t('aboutTitle', { name: restaurant.name })}</h2>
-                <p>{restaurant.description || t('partnerRestaurant')}</p>
-                <div className="info-row">
-                  <span className="ms" aria-hidden="true">place</span>
-                  <span>{restaurant.address}, {restaurant.city}</span>
-                </div>
-                {/* Legacy STATIC hours line — hidden once real hours are configured. */}
-                {!hours && (
-                  <div className="info-row">
-                    <span className="ms" aria-hidden="true">schedule</span>
-                    <span>{t('openingHours')}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Real weekly hours — only when configured. */}
-              {hours && hours.weeklyHours.length > 0 && (
-                <div className="panel">
-                  <h2>{t('hoursWeekTitle')}</h2>
-                  <ul className="hours-list">
-                    {[1, 2, 3, 4, 5, 6, 0].map((d) => {
-                      const day = hours.weeklyHours.find((w) => w.dayOfWeek === d)
-                      const ranges = day?.ranges ?? []
-                      const dayName = new Intl.DateTimeFormat(locale, { weekday: 'long' })
-                        .format(new Date(Date.UTC(2024, 0, 7 + d, 12)))
-                      const overnight = (open: string, close: string) => {
-                        const m = (s: string) => parseInt(s.slice(0, 2), 10) * 60 + parseInt(s.slice(3, 5), 10)
-                        return close !== '24:00' && m(close) < m(open)
-                      }
-                      return (
-                        <li key={d}>
-                          <span className="day">{dayName}</span>
-                          <span className="ranges">
-                            {ranges.length === 0
-                              ? t('hoursDayClosed')
-                              : ranges.map((r, i) => (
-                                  <span key={i}>
-                                    {r.open} – {r.close}
-                                    {overnight(r.open, r.close) ? ` (${t('hoursNextDay')})` : ''}
-                                  </span>
-                                ))}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )}
+          {/* category chips (real categories; filter the menu — replaces the old
+              catnav; the removed Menu/tabs + search are gone per CD v2) */}
+          {categories.length > 1 && (
+            <div className="chips">
+              {categories.map((f) => (
+                <span
+                  key={f}
+                  className={`chip${menuFilter === f ? ' on' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setMenuFilter(f)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMenuFilter(f) } }}
+                >
+                  {categoryLabel(f)}
+                </span>
+              ))}
             </div>
           )}
 
-          {/* Gallery tab */}
-          {activeTab === 'Galerie' && (
-            <div style={{ paddingTop: 12 }}>
-              {allItems.length === 0 ? (
-                <div className="empty"><span className="emoji" aria-hidden="true">🖼️</span><p>{t('gallerySoon')}</p></div>
-              ) : (
-                <div className="gallery">
-                  {allItems.slice(0, 9).map((d) => (
-                    <div key={d.id} className="cell">
-                      <FoodImage name={d.name} src={photoFor(d)} className="h-full w-full" glyphClassName="text-2xl" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Sticky « Votre commande » panel (CD .cart) — REAL cart (lib/eat-cart).
-            Hidden <880px where the bottom bar takes over (CD media query). */}
-        <aside className="cart">
-          <div className="cart__h">
-            <b>{t('yourOrder')}</b>
-            {cartCount > 0 && <span>{t('itemCountShort', { count: cartCount })}</span>}
-          </div>
-          {cartCount > 0 ? (
-            <>
-              <div className="cart__items">
-                {(cart?.items ?? []).map((l) => (
-                  <div key={l.item.id} className="ci">
-                    <span className="im">
-                      <FoodImage name={l.item.name} src={l.item.photos?.[0] ?? null} className="h-full w-full" glyphClassName="text-base" />
-                    </span>
-                    <div className="main">
-                      <b>{l.item.name}</b>
-                      <span className="step">
-                        <button type="button" className="ms" style={{ background: 'none', border: 'none', padding: 0 }} onClick={() => setLineQty(l.item.id, -1)} aria-label={t('decrease')}>remove</button>
-                        <b>{l.qty}</b>
-                        <button type="button" className="ms" style={{ background: 'none', border: 'none', padding: 0 }} onClick={() => setLineQty(l.item.id, 1)} aria-label={t('increase')}>add</button>
-                      </span>
-                    </div>
-                    <span className="price">{formatEuros(l.item.price * l.qty, locale)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="cart__foot">
-                <div className="cart__sub"><span>{t('subtotal')}</span><b>{formatEuros(cartTotal, locale)}</b></div>
-                <button type="button" className="cta" onClick={() => router.push('/eat/cart')}>
-                  <span>{t('viewCart')}</span><b>{formatEuros(cartTotal, locale)}</b>
-                </button>
-              </div>
-            </>
+          {/* menu sections (real dishes; « + » → Détail plat modal, unchanged) */}
+          {filteredSections.length === 0 ? (
+            <div className="empty"><span className="emoji" aria-hidden="true">🍽️</span><p>{t('noItemsFound')}</p></div>
           ) : (
-            <div className="cart__foot">
-              <p className="cart__empty">{t('cartEmpty')}</p>
-              <button type="button" className="cta ghost" onClick={() => router.push(`/eat/r/${id}/reserver`)}>
-                <span>{t('reserveTable')}</span>
+            filteredSections.map((sec) => (
+              <section key={sec.category} className="catsec">
+                <h2>{categoryLabel(sec.category)}</h2>
+                <div className="dishes">
+                  {sec.items.map((dish) => {
+                    // Chantier P2 — targeted promo badge: discounted unit price
+                    // was computed SERVER-side by evaluatePromotion (never locally).
+                    const promo = itemPromo[dish.id]
+                    const hasUnitDiscount = !!promo && promo.discountedUnitPrice < dish.price
+                    const shownPrice = hasUnitDiscount ? promo!.discountedUnitPrice : dish.price
+                    const wasPrice = hasUnitDiscount
+                      ? dish.price
+                      : dish.comparePrice && dish.comparePrice > dish.price ? dish.comparePrice : undefined
+                    const qty = qtyForDish(dish.id)
+                    const promoPill = promo
+                      ? promo.secondItemPct != null
+                        ? t('promoPillSecond', { pct: promo.secondItemPct })
+                        : promo.type === 'percent'
+                          ? t('promoPill', { pct: promo.discount })
+                          : t('promoPillFixed', { eur: promo.discount })
+                      : null
+                    return (
+                      <div
+                        key={dish.id}
+                        className="dish"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setModalDish(dish)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setModalDish(dish) } }}
+                      >
+                        <div className="dish__b">
+                          <b>{dish.name}</b>
+                          {dish.description && <p>{dish.description}</p>}
+                          <div className="pr">
+                            <span className="price">{formatEuros(shownPrice, locale)}</span>
+                            {wasPrice != null && <span className="price was">{formatEuros(wasPrice, locale)}</span>}
+                            {promoPill && <span className="tag promo">{promoPill}</span>}
+                            {dish.creator && <CreatorBadge creator={dish.creator} />}
+                          </div>
+                        </div>
+                        <div className="dish__img">
+                          <div className="gb-resto-thumb">
+                            <FoodImage name={dish.name} src={photoFor(dish)} className="h-full w-full" glyphClassName="text-2xl" />
+                          </div>
+                          {qty > 0 && <span className="dish__qty">{qty}</span>}
+                          <button
+                            type="button"
+                            className="dish__add"
+                            aria-label={t('addToCart')}
+                            onClick={(e) => { e.stopPropagation(); setModalDish(dish) }}
+                          >
+                            <span className="ms" aria-hidden="true">add</span>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            ))
+          )}
+
+          {/* « À propos » relocated as a COLLAPSED section (no tabs on this page).
+              « Avis » → the ★ in the top bar links to the existing reviews route.
+              The Gallery tab is dropped: its content was the very dish photos already
+              shown in the cards above → no orphaned content. */}
+          <details className="about">
+            <summary>{t('tabAbout')}<span className="ms" aria-hidden="true">expand_more</span></summary>
+            <div className="about__body">
+              <p>{restaurant.description || t('partnerRestaurant')}</p>
+              <div className="info-row">
+                <span className="ms" aria-hidden="true">place</span>
+                <span>{restaurant.address}, {restaurant.city}</span>
+              </div>
+              {!hours && (
+                <div className="info-row">
+                  <span className="ms" aria-hidden="true">schedule</span>
+                  <span>{t('openingHours')}</span>
+                </div>
+              )}
+              {hours && hours.weeklyHours.length > 0 && (
+                <ul className="hours-list">
+                  {[1, 2, 3, 4, 5, 6, 0].map((d) => {
+                    const day = hours.weeklyHours.find((w) => w.dayOfWeek === d)
+                    const ranges = day?.ranges ?? []
+                    const dayName = new Intl.DateTimeFormat(locale, { weekday: 'long' })
+                      .format(new Date(Date.UTC(2024, 0, 7 + d, 12)))
+                    const overnight = (open: string, close: string) => {
+                      const m = (s: string) => parseInt(s.slice(0, 2), 10) * 60 + parseInt(s.slice(3, 5), 10)
+                      return close !== '24:00' && m(close) < m(open)
+                    }
+                    return (
+                      <li key={d}>
+                        <span className="day">{dayName}</span>
+                        <span className="ranges">
+                          {ranges.length === 0
+                            ? t('hoursDayClosed')
+                            : ranges.map((r, i) => (
+                                <span key={i}>
+                                  {r.open} – {r.close}
+                                  {overnight(r.open, r.close) ? ` (${t('hoursNextDay')})` : ''}
+                                </span>
+                              ))}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </details>
+        </div>
+      </div>
+
+      {/* ══ CART column — full height, sticky, starts at top (CD v2). REAL cart
+          (lib/eat-cart, byte-identical). Hidden <1080 → « view cart » bar. ══ */}
+      <aside className="cartcol">
+        <div className="cc-head">
+          <b>{t('yourOrder')}</b>
+          {cartCount > 0 && <span>{t('itemCountShort', { count: cartCount })}</span>}
+        </div>
+        {cartCount > 0 ? (
+          <>
+            <div className="cc-items">
+              {(cart?.items ?? []).map((l) => (
+                <div key={l.item.id} className="cc-item">
+                  <span className="im">
+                    <FoodImage name={l.item.name} src={l.item.photos?.[0] ?? null} className="h-full w-full" glyphClassName="text-base" />
+                  </span>
+                  <div className="main">
+                    <b>{l.item.name}</b>
+                    <span className="step">
+                      <button type="button" className="ms" style={{ background: 'none', border: 'none', padding: 0 }} onClick={() => setLineQty(l.item.id, -1)} aria-label={t('decrease')}>remove</button>
+                      <b>{l.qty}</b>
+                      <button type="button" className="ms" style={{ background: 'none', border: 'none', padding: 0 }} onClick={() => setLineQty(l.item.id, 1)} aria-label={t('increase')}>add</button>
+                    </span>
+                  </div>
+                  <span className="price">{formatEuros(l.item.price * l.qty, locale)}</span>
+                </div>
+              ))}
+            </div>
+            {/* Footer — Subtotal + Checkout(total). The real per-order DISCOUNT (promo)
+                is computed SERVER-side and shown on /eat/cart + /eat/checkout; this
+                quick panel never fabricates one. « Checkout » → the real path (/eat/cart
+                → checkout), byte-identical. */}
+            <div className="cc-foot">
+              <div className="cc-row"><span>{t('subtotal')}</span><b>{formatEuros(cartTotal, locale)}</b></div>
+              <button type="button" className="cc-checkout" onClick={() => router.push('/eat/cart')}>
+                <span>{t('viewCart')}</span><b>{formatEuros(cartTotal, locale)}</b>
               </button>
             </div>
-          )}
-        </aside>
-      </div>
-
-      {/* Mobile bottom bar (CD .mbar) — replaces the cart panel <880px. */}
-      <div className="mbar">
-        {cartCount > 0 ? (
-          <button type="button" className="cta" onClick={() => router.push('/eat/cart')}>
-            <span>{t('viewCartCount', { count: cartCount })}</span><b>{formatEuros(cartTotal, locale)}</b>
-          </button>
+          </>
         ) : (
-          <button type="button" className="cta ghost" onClick={() => router.push(`/eat/r/${id}/reserver`)}>
-            <span>{t('reserveTable')}</span>
-          </button>
+          <div className="cc-empty">
+            <span className="emoji" aria-hidden="true">🛒</span>
+            <p>{t('cartEmpty')}</p>
+            <button type="button" className="cc-checkout ghost" onClick={() => router.push(`/eat/r/${id}/reserver`)}>
+              <span>{t('reserveTable')}</span>
+            </button>
+          </div>
         )}
-      </div>
+      </aside>
+
+      {/* ══ Mobile « view cart » sticky bar (<1080; hidden on desktop) ══ */}
+      {cartCount > 0 && (
+        <button type="button" className="mcartbar" onClick={() => router.push('/eat/cart')}>
+          <span className="l"><span className="ms" aria-hidden="true">shopping_bag</span>{t('viewCartCount', { count: cartCount })}</span>
+          <b>{formatEuros(cartTotal, locale)}</b>
+        </button>
+      )}
 
       {/* Customisation Modal — UNCHANGED (Wave 2). « + » on a dish opens it. */}
       {modalDish && (

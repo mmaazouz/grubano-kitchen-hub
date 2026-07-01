@@ -66,6 +66,12 @@
  * shrinks to its CONTENT width (≈622px) and centres, instead of filling up to the
  * 1200 cap. width:100% forces it to fill .main (then max-width caps, margin centres). */
 .eat-nav .content{width:100%;max-width:1200px;margin-inline:auto;padding:24px 28px 40px}
+/* FRAMED pages (restaurant /eat/r/): the page owns its top bar + full-height cart
+ * column, so the content spans the whole main column with NO cap/padding. Unlike
+ * `is-bare`, the mobile bottom-nav STAYS (only the shell top bar / app-bar / fab-cart
+ * are dropped — see the media query below). The resto's own `.content-pad` provides
+ * the padding incl. the mobile bottom space for the botnav + « view cart » bar. */
+.eat-nav.is-framed .content{width:100%;max-width:none;margin:0;padding:0}
 
 /* mobile-only chrome hidden on desktop */
 .eat-nav .botnav,.eat-nav .fab-cart,.eat-nav .m-appbar{display:none}
@@ -96,6 +102,9 @@
   .eat-nav .botnav a .count{position:absolute;top:-3px;left:50%;transform:translateX(4px);font-size:9px;font-weight:800;color:#fff;background:var(--gb-zest-600);border-radius:6px;padding:0 5px}
   /* immersive: hide the mobile chrome → the page's own header/bars govern */
   .eat-nav.is-bare .m-appbar,.eat-nav.is-bare .botnav,.eat-nav.is-bare .fab-cart{display:none}
+  /* framed (restaurant): drop the shell app-bar + fab-cart, but KEEP the bottom-nav
+   * (the resto page renders its own top bar + « view cart » sticky bar). */
+  .eat-nav.is-framed .m-appbar,.eat-nav.is-framed .fab-cart{display:none}
 }
 /* empty cart → hide the bag badge + the sticky cart bar */
 .eat-nav[data-cart="0"] .hbtn .badge,.eat-nav[data-cart="0"] .fab-cart{display:none}

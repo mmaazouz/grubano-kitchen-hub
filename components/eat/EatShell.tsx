@@ -25,8 +25,14 @@ import '@/app/gb-foundation/gb-components.css'
 const isFullscreen = (p: string) => p.endsWith('/eat/auth') || p.endsWith('/eat/magic')
 // IMMERSIVE (deep flows with their OWN sticky header / bottom bar) — the shell keeps the
 // desktop rail but DROPS the top bar + the whole mobile chrome, so the page header governs.
-const IMMERSIVE = ['/eat/r/', '/eat/track', '/eat/dish/', '/eat/splash', '/eat/promos', '/eat/cart', '/eat/checkout', '/eat/reset-password', '/eat/account/edit', '/eat/account/password', '/eat/account/email', '/eat/account/notifications', '/eat/order/', '/eat/group', '/eat/dinein', '/eat/dietary']
+const IMMERSIVE = ['/eat/track', '/eat/dish/', '/eat/splash', '/eat/promos', '/eat/cart', '/eat/checkout', '/eat/reset-password', '/eat/account/edit', '/eat/account/password', '/eat/account/email', '/eat/account/notifications', '/eat/order/', '/eat/group', '/eat/dinein', '/eat/dietary']
 const isImmersive = (p: string) => IMMERSIVE.some((x) => p.includes(x))
+// FRAMED — the restaurant page (/eat/r/[id]): like immersive (NO shell top bar,
+// full-width content) BUT it REUSES the shell's mobile bottom-nav — the page provides
+// its OWN top bar (back·name·★|share·♥) + full-height cart column + « view cart » bar.
+// CD v2 (Notion 390fd2c9-…-6f64). Only the desktop shell top bar + mobile app-bar +
+// fab-cart are dropped; the rail (desktop) + bottom-nav (mobile) stay.
+const isFramed = (p: string) => p.includes('/eat/r/')
 
 function tierKey(pts: number): string {
   if (pts >= 400) return 'platine'
@@ -118,6 +124,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   if (isFullscreen(pathname)) return <>{children}</>
 
   const bare = isImmersive(pathname)
+  const framed = isFramed(pathname)
   const active = (hrefs: string[]) => hrefs.some((h) => pathname === h || pathname.startsWith(h + '/'))
   // Tabs — Commandes → /eat/orders (its own screen), Profil → /eat/account.
   const onAccount = pathname === '/eat/account' || pathname.startsWith('/eat/account/')
@@ -159,7 +166,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <div className={`gb eat-nav${bare ? ' is-bare' : ''}`} data-cart={count}>
+    <div className={`gb eat-nav${bare ? ' is-bare' : ''}${framed ? ' is-framed' : ''}`} data-cart={count}>
       {/* ════ LEFT RAIL (desktop ≥900px) ════ */}
       <aside className="rail">
         <Link href="/eat" className="rail__logo" aria-label="Grubano">
@@ -193,7 +200,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
             .main, before .content, so the mobile app-bar sits at the top of the column
             (sticky); only one is visible at a time (CSS display by breakpoint). ════ */}
       <div className="main">
-        {!bare && (
+        {!bare && !framed && (
           <>
             <div className="topbar">
               <button type="button" className="loc" onClick={() => setGeoOpen(true)}>
@@ -224,7 +231,7 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
       {/* ════ MOBILE floating chrome (<900px) — position:fixed, DOM order irrelevant ════ */}
       {!bare && (
         <>
-          {count > 0 && (
+          {!framed && count > 0 && (
             <Link href="/eat/cart" className="fab-cart">
               <span className="l"><span className="ms" aria-hidden="true">shopping_bag</span>{cartLabel}</span>
               <b>{amount}</b>

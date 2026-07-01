@@ -469,9 +469,10 @@ export const screens = [
     name: 'eat-resto',
     url: '/fr/eat/r/demo',
     reference: 'scripts/design-qa-refs/eat-resto.html',
-    settle: 850,
-    // Immersive (is-bare) — content only (hero + headcard + menu + sticky cart panel).
-    // clip app `.gb-resto` ↔ ref `.r`.
+    settle: 1400,
+    // CD v2 (390fd2c9-…-6f64) — framed page: resto top bar + clean hero + info line +
+    // 3-mode segmented + chips + dishes + FULL-HEIGHT cart column. clip app `.gb-resto`
+    // (main + cartcol; the rail comes from the shell) ↔ ref `.app` (rail removed).
     viewports: [
       { name: 'mobile', w: 390, h: 1200 },
       { name: 'desktop', w: 1280, h: 1100 },
@@ -481,7 +482,7 @@ export const screens = [
         name: 'default',
         theme: 'light',
         clip: '.gb-resto',
-        refClip: '.r',
+        refClip: '.app',
         // Stub GET /api/restaurants/demo → {restaurant, hours(open), menu:categories[].items[],
         // promotions:[], itemPromo:{}}. Seed favs so the heart is filled. The desktop cart panel
         // is empty unless grubano_cart matches this resto → seed a 2-line cart for the panel.
