@@ -3449,7 +3449,8 @@
       "deleteThisDish": "Eliminar este plato",
       "cancel": "Cancelar",
       "saving": "Guardando…",
-      "save": "Guardar"
+      "save": "Guardar",
+      "promoPreviewNote": "Vista previa — próximamente. La creación y activación de promociones se hace en la pantalla Promociones."
     },
     "adopt": {
       "tab": "Adoptar",

@@ -3449,7 +3449,8 @@
       "deleteThisDish": "Delete this dish",
       "cancel": "Cancel",
       "saving": "Saving…",
-      "save": "Save"
+      "save": "Save",
+      "promoPreviewNote": "Preview — coming soon. Creating and activating promotions happens on the Promotions screen."
     },
     "adopt": {
       "tab": "Adopt",

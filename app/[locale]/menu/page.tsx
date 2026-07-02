@@ -1133,6 +1133,14 @@ function PromosTab() {
   const t = useTranslations('menu.editor')
   return (
     <>
+      {/* Honest preview: these promos are a static mock (pre-existing, "not yet in DB scope").
+          The REAL promotion management lives on /promotions — link there so nothing here reads
+          as a live, functional promo list. Presentation-only. */}
+      <Link href="/promotions" className="op-callout" style={{ marginBottom: 16, textDecoration: 'none' }}>
+        <span className="ms" aria-hidden="true">info</span>
+        <p>{t('promoPreviewNote')}</p>
+        <span className="ms flip-rtl" aria-hidden="true" style={{ marginInlineStart: 'auto' }}>arrow_forward</span>
+      </Link>
       <div className="op-card" style={{ marginBottom: 16 }}>
         <div className="op-menu__dishes-head">
           <h2><span className="ms" aria-hidden="true">percent</span>{t('promoActiveTitle')}</h2>
