@@ -2,7 +2,8 @@ import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { authOptions } from '@/lib/auth'
 import { EmptyState } from '@/components/design-system'
-import ConsolidatedHome from '@/components/home/ConsolidatedHome'
+import OperatorDashboard from '@/components/operator/OperatorDashboard'
+import './dashboard.css'
 
 // ── Route config ─────────────────────────────────────────────────────────────
 // Per-session data → never prerender, always run on demand.
@@ -47,5 +48,5 @@ export default async function DashboardHomePage(props: { params: { locale: strin
   const tSidebar = await getTranslations('dashboard.sidebar')
   const userName = session.user?.name?.trim() || tSidebar('defaultUserName')
 
-  return <ConsolidatedHome userName={userName} locale={props.params.locale} />
+  return <OperatorDashboard userName={userName} locale={props.params.locale} />
 }

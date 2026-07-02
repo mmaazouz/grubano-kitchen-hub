@@ -1,4 +1,22 @@
 {
+  "operator": {
+    "brandSuffix": "Business",
+    "collapse": "Comprimi menu",
+    "menu": "Menu",
+    "profileGuest": "Utente",
+    "soon": "Presto",
+    "nav": { "dashboard": "Dashboard", "reservations": "Prenotazioni e Sala", "orders": "Ordini", "kitchen": "Cucina", "menus": "Menu", "stock": "Magazzino", "suppliers": "Fornitori", "customers": "Clienti", "reviews": "Recensioni", "analytics": "Analytics", "finance": "Finanze", "brands": "Marchi", "staff": "Team", "settings": "Impostazioni", "copilot": "Copilota IA", "notifications": "Notifiche", "more": "Altro" },
+    "group": { "ops": "Operazioni", "crm": "Relazione clienti", "insights": "Analisi", "org": "Organizzazione" },
+    "estab": { "none": "Nessun locale", "add": "Aggiungi un locale" },
+    "status": { "open": "Aperto", "closed": "Chiuso" },
+    "dash": { "title": "Dashboard", "refresh": "Aggiorna", "agg": "Vista aggregata · {count} locali", "updatedAt": "Aggiornato alle", "errorTitle": "Impossibile caricare la dashboard", "errorBody": "Controlla la connessione internet e riprova. Se il problema persiste, contatta il supporto Grubano.", "retry": "Riprova" },
+    "onb": { "title": "Benvenuto su Grubano Business", "body": "Crea il tuo primo locale per attivare ordini, prenotazioni, magazzino e il Copilota IA.", "cta": "Crea il mio locale", "s1t": "Info del ristorante", "s1d": "Nome, indirizzo, orari", "s2t": "Il tuo menu", "s2d": "Piatti, prezzi, foto", "s3t": "Pubblica", "s3d": "Visibile ai clienti" },
+    "kpi": { "revenue": "Incasso di oggi", "revenueSub": "Incasso della giornata", "orders7d": "Ordini (7 g)", "basket": "Scontrino medio (7 g)", "rating": "Valutazione media", "ratingSub": "{count} recensioni" },
+    "live": { "title": "Operatività in diretta", "orders": "Ordini in corso", "reservations": "Prenotazioni in arrivo", "deliveries": "Consegne in corso", "tables": "Tavoli occupati", "kitchen": "Coda cucina" },
+    "queue": { "title": "Da gestire", "stockSub": "Magazzino: {qty} {unit}", "emptyTitle": "Niente da gestire", "emptyBody": "Tutto sotto controllo per ora" },
+    "ai": { "title": "Copilota IA", "tag": "Presto", "soonTitle": "Il Copilota arriva presto", "soonBody": "I primi insight proattivi appariranno qui con più dati." },
+    "quick": { "orders": "Apri la coda ordini", "reservation": "Aggiungi una prenotazione", "pause": "Metti in pausa gli ordini online", "menu": "Aggiungi un prodotto al menu", "invoices": "Vedi le fatture fornitori" }
+  },
   "common": {
     "loading": "Caricamento...",
     "error": "Si è verificato un errore",

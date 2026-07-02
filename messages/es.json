@@ -1,4 +1,22 @@
 {
+  "operator": {
+    "brandSuffix": "Business",
+    "collapse": "Contraer menú",
+    "menu": "Menú",
+    "profileGuest": "Usuario",
+    "soon": "Pronto",
+    "nav": { "dashboard": "Panel", "reservations": "Reservas y Sala", "orders": "Pedidos", "kitchen": "Cocina", "menus": "Menús", "stock": "Stock", "suppliers": "Proveedores", "customers": "Clientes", "reviews": "Reseñas", "analytics": "Analytics", "finance": "Finanzas", "brands": "Marcas", "staff": "Equipo", "settings": "Ajustes", "copilot": "Copiloto IA", "notifications": "Notificaciones", "more": "Más" },
+    "group": { "ops": "Operaciones", "crm": "Relación con clientes", "insights": "Pilotaje", "org": "Organización" },
+    "estab": { "none": "Sin establecimiento", "add": "Añadir un establecimiento" },
+    "status": { "open": "Abierto", "closed": "Cerrado" },
+    "dash": { "title": "Panel", "refresh": "Actualizar", "agg": "Vista agregada · {count} establecimientos", "updatedAt": "Actualizado a las", "errorTitle": "No se pudo cargar el panel", "errorBody": "Comprueba tu conexión a internet e inténtalo de nuevo. Si el problema persiste, contacta con el soporte de Grubano.", "retry": "Reintentar" },
+    "onb": { "title": "Bienvenido a Grubano Business", "body": "Crea tu primer establecimiento para activar pedidos, reservas, stock y el Copiloto IA.", "cta": "Crear mi establecimiento", "s1t": "Datos del restaurante", "s1d": "Nombre, dirección, horario", "s2t": "Tu menú", "s2d": "Platos, precios, fotos", "s3t": "Publicar", "s3d": "Visible para los clientes" },
+    "kpi": { "revenue": "Ventas de hoy", "revenueSub": "Ventas del día", "orders7d": "Pedidos (7 d)", "basket": "Ticket medio (7 d)", "rating": "Valoración media", "ratingSub": "{count} reseñas" },
+    "live": { "title": "Operativa en directo", "orders": "Pedidos en curso", "reservations": "Reservas próximas", "deliveries": "Entregas en curso", "tables": "Mesas ocupadas", "kitchen": "Cola de cocina" },
+    "queue": { "title": "Por gestionar", "stockSub": "Stock: {qty} {unit}", "emptyTitle": "Nada por gestionar", "emptyBody": "Todo está bajo control por ahora" },
+    "ai": { "title": "Copiloto IA", "tag": "Pronto", "soonTitle": "El Copiloto llega pronto", "soonBody": "Los primeros insights proactivos aparecerán aquí con más datos." },
+    "quick": { "orders": "Abrir la cola de pedidos", "reservation": "Añadir una reserva", "pause": "Pausar los pedidos en línea", "menu": "Añadir un producto al menú", "invoices": "Ver facturas de proveedores" }
+  },
   "common": {
     "loading": "Cargando...",
     "error": "Ha ocurrido un error",

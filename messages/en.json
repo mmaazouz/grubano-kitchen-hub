@@ -1,4 +1,22 @@
 {
+  "operator": {
+    "brandSuffix": "Business",
+    "collapse": "Collapse menu",
+    "menu": "Menu",
+    "profileGuest": "User",
+    "soon": "Soon",
+    "nav": { "dashboard": "Dashboard", "reservations": "Reservations & Floor", "orders": "Orders", "kitchen": "Kitchen", "menus": "Menus", "stock": "Stock", "suppliers": "Suppliers", "customers": "Customers", "reviews": "Reviews", "analytics": "Analytics", "finance": "Finances", "brands": "Brands", "staff": "Team", "settings": "Settings", "copilot": "AI Copilot", "notifications": "Notifications", "more": "More" },
+    "group": { "ops": "Operations", "crm": "Customer relations", "insights": "Insights", "org": "Organisation" },
+    "estab": { "none": "No establishment", "add": "Add an establishment" },
+    "status": { "open": "Open", "closed": "Closed" },
+    "dash": { "title": "Dashboard", "refresh": "Refresh", "agg": "Aggregated view · {count} establishments", "updatedAt": "Updated at", "errorTitle": "Couldn't load the dashboard", "errorBody": "Check your internet connection and try again. If the problem persists, contact Grubano support.", "retry": "Retry" },
+    "onb": { "title": "Welcome to Grubano Business", "body": "Create your first establishment to enable orders, reservations, stock and the AI Copilot.", "cta": "Create my establishment", "s1t": "Restaurant info", "s1d": "Name, address, hours", "s2t": "Your menu", "s2d": "Dishes, prices, photos", "s3t": "Go live", "s3d": "Visible to customers" },
+    "kpi": { "revenue": "Today's revenue", "revenueSub": "Revenue so far today", "orders7d": "Orders (7d)", "basket": "Average basket (7d)", "rating": "Average rating", "ratingSub": "{count} reviews" },
+    "live": { "title": "Live operations", "orders": "Orders in progress", "reservations": "Upcoming reservations", "deliveries": "Deliveries in progress", "tables": "Tables occupied", "kitchen": "Kitchen queue" },
+    "queue": { "title": "To handle", "stockSub": "Stock: {qty} {unit}", "emptyTitle": "Nothing to handle", "emptyBody": "Everything is under control for now" },
+    "ai": { "title": "AI Copilot", "tag": "Soon", "soonTitle": "The Copilot is coming soon", "soonBody": "Proactive insights will appear here as more data comes in." },
+    "quick": { "orders": "Open the order queue", "reservation": "Add a reservation", "pause": "Pause online orders", "menu": "Add a menu item", "invoices": "View supplier invoices" }
+  },
   "common": {
     "loading": "Loading...",
     "error": "An error occurred",

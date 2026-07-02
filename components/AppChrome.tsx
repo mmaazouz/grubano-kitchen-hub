@@ -3,10 +3,7 @@
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { SessionProvider } from 'next-auth/react'
-import Sidebar from '@/components/Sidebar'
-import MobileHeader from '@/components/MobileHeader'
-import { SidebarProvider } from '@/components/SidebarContext'
-import { BottomNav } from '@/components/grubano/BottomNav'
+import OperatorShell from '@/components/operator/OperatorShell'
 import { locales } from '@/i18n'
 
 // Routes that must render WITHOUT the operator dashboard chrome
@@ -57,21 +54,13 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // Public / consumer routes: render bare, no operator chrome.
   if (isBare) return <>{children}</>
 
-  // Operator app (/dashboard, /menu, /stocks, /orders, … — all flat routes):
-  // wrap in the dashboard sidebar chrome. SessionProvider is mounted here so
-  // the Sidebar (and any client child) can read the user's role/name via
-  // useSession() — the /eat consumer app has its own provider, bare auth
-  // pages don't need one.
+  // Operator app (/dashboard, /menu, /stocks, /orders, … — all flat routes): wrap in
+  // the CD v1 operator shell (OperatorShell — navy gb-foundation chrome, LOT 1).
+  // SessionProvider is mounted here so the shell can read the user's role/name via
+  // useSession() — the /eat consumer app has its own provider, bare auth pages don't.
   return (
     <SessionProvider>
-      <SidebarProvider>
-        <Sidebar />
-        <MobileHeader />
-        <main className="md:ml-64 pt-[52px] md:pt-0 min-h-screen pb-20 md:pb-0">
-          {children}
-        </main>
-        <BottomNav />
-      </SidebarProvider>
+      <OperatorShell>{children}</OperatorShell>
     </SessionProvider>
   )
 }

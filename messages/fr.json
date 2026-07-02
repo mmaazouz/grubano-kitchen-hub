@@ -1,4 +1,22 @@
 {
+  "operator": {
+    "brandSuffix": "Business",
+    "collapse": "Réduire le menu",
+    "menu": "Menu",
+    "profileGuest": "Utilisateur",
+    "soon": "Bientôt",
+    "nav": { "dashboard": "Dashboard", "reservations": "Réservations & Salle", "orders": "Commandes", "kitchen": "Cuisine", "menus": "Menus", "stock": "Stock", "suppliers": "Fournisseurs", "customers": "Clients", "reviews": "Avis", "analytics": "Analytics", "finance": "Finances", "brands": "Marques", "staff": "Équipe", "settings": "Réglages", "copilot": "Copilote IA", "notifications": "Notifications", "more": "Plus" },
+    "group": { "ops": "Opérations", "crm": "Relation client", "insights": "Pilotage", "org": "Organisation" },
+    "estab": { "none": "Aucun établissement", "add": "Ajouter un établissement" },
+    "status": { "open": "Ouvert", "closed": "Fermé" },
+    "dash": { "title": "Dashboard", "refresh": "Actualiser", "agg": "Vue agrégée · {count} établissements", "updatedAt": "Actualisé à", "errorTitle": "Impossible de charger le tableau de bord", "errorBody": "Vérifiez votre connexion internet et réessayez. Si le problème persiste, contactez le support Grubano.", "retry": "Réessayer" },
+    "onb": { "title": "Bienvenue sur Grubano Business", "body": "Créez votre premier établissement pour activer les commandes, les réservations, le stock et le Copilote IA.", "cta": "Créer mon établissement", "s1t": "Infos du restaurant", "s1d": "Nom, adresse, horaires", "s2t": "Votre menu", "s2d": "Plats, prix, photos", "s3t": "Mise en ligne", "s3d": "Visible par les clients" },
+    "kpi": { "revenue": "CA du jour", "revenueSub": "Chiffre d'affaires du jour", "orders7d": "Commandes (7 j)", "basket": "Panier moyen (7 j)", "rating": "Note moyenne", "ratingSub": "{count} avis" },
+    "live": { "title": "Opérationnel en direct", "orders": "Commandes en cours", "reservations": "Réservations à venir", "deliveries": "Livraisons en cours", "tables": "Tables occupées", "kitchen": "File cuisine" },
+    "queue": { "title": "À traiter", "stockSub": "Stock : {qty} {unit}", "emptyTitle": "Rien à traiter", "emptyBody": "Tout est sous contrôle pour l'instant" },
+    "ai": { "title": "Copilote IA", "tag": "Bientôt", "soonTitle": "Le Copilote arrive bientôt", "soonBody": "Les premiers insights proactifs apparaîtront ici avec plus de données." },
+    "quick": { "orders": "Ouvrir la file de commandes", "reservation": "Ajouter une réservation", "pause": "Mettre en pause les commandes en ligne", "menu": "Ajouter un produit au menu", "invoices": "Voir les factures fournisseurs" }
+  },
   "common": {
     "loading": "Chargement...",
     "error": "Une erreur est survenue",
