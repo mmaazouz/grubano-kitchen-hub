@@ -15,6 +15,7 @@ import OrdersClient, {
 import { buildOrderViews } from '@/lib/orders-feed'
 import { isClaimsEnabled } from '@/lib/claims'
 import RestaurantClaimsPanel from '@/components/claims/RestaurantClaimsPanel'
+import './orders.css'
 
 // Per-session, per-current-time data → never prerender, always run on demand.
 export const dynamic = 'force-dynamic'

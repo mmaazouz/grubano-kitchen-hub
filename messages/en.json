@@ -1,5 +1,193 @@
 {
   "operator": {
+    "deliveries": {
+      "title": "Deliveries",
+      "sub": "Track the delivery side of your orders",
+      "soon": "Soon",
+      "previewTag": "Preview",
+      "bannerTitle": "The Grubano courier network is rolling out gradually",
+      "bannerBodyPreview": "Automatic courier assignment, live GPS tracking and courier payouts are coming soon. The data below are illustrative examples, not real deliveries.",
+      "exampleNote": "The figures and amounts shown are illustrative examples while the courier network is not yet active.",
+      "exampleTag": "example",
+      "statInProgress": "Deliveries in progress",
+      "statAvgTime": "Average delivery time",
+      "statActiveCouriers": "Active couriers",
+      "statLate": "Delays",
+      "waitingAssign": "Awaiting assignment",
+      "view": "View",
+      "close": "Close",
+      "stageRoute": "En route to restaurant",
+      "stagePicked": "Picked up",
+      "stageDelivering": "Out for delivery",
+      "stageWaiting": "Awaiting assignment",
+      "etaIn6": "in ~6 min",
+      "etaIn14": "in ~14 min",
+      "etaIn24": "in ~24 min",
+      "etaTbd": "ETA to be determined",
+      "etaEstimated": "Estimated arrival",
+      "stepAssigned": "Assigned",
+      "stepRoute": "En route to restaurant",
+      "stepPicked": "Picked up",
+      "stepDelivering": "Out for delivery",
+      "stepDelivered": "Delivered",
+      "gpsSoonTitle": "Live GPS tracking — coming soon",
+      "gpsSoonBody": "The courier's real-time location is not yet active in this preview. The progress feed above reflects the last known status.",
+      "feeClient": "Delivery fee (customer)",
+      "courierPayout": "Courier payout",
+      "payoutSoon": "Active soon",
+      "calloutBody": "Automatic assignment, live GPS tracking and courier payouts are rolling out — this window only shows the last known status."
+    },
+    "fulfillment": {
+      "title": "Order intake",
+      "subtitle": "Choose how {name} receives its orders — channels, times and rates.",
+      "previewTitle": "Preview — soon",
+      "previewBody": "online acceptance, pausing and rush mode are illustrative and are not yet wired from this screen.",
+      "acceptTitle": "Accept orders online",
+      "acceptBody": "Enables receiving new orders on all channels opened below.",
+      "pauseFor": "Pause for",
+      "pause30": "30 min",
+      "pause1h": "1 h",
+      "pauseTomorrow": "Until tomorrow",
+      "pauseNote": "Orders paused — automatic resume scheduled at",
+      "exampleTime": "19:45",
+      "example": "example",
+      "resumeNow": "Resume now",
+      "defaultPrepLabel": "Default prep time",
+      "minUnit": "min",
+      "kmUnit": "km",
+      "rushLabel": "Rush — add time temporarily",
+      "rushNone": "None",
+      "channelDelivery": "Delivery",
+      "channelPickup": "Pickup",
+      "channelDinein": "Dine-in",
+      "prepTimeLabel": "Prep time",
+      "radiusLabel": "Delivery zone",
+      "radiusHint": "Maximum distance around the restaurant (0–50 km).",
+      "feeLabel": "Delivery fee",
+      "minOrderLabel": "Minimum order",
+      "pickupAddressLabel": "Pickup address",
+      "pickupAddressPlaceholder": "12 rue de la Paix, 75002 Paris",
+      "pickupAddressHint": "If different from the restaurant's main address.",
+      "pickupInstructionsLabel": "Pickup instructions",
+      "pickupInstructionsPlaceholder": "Ring the « Kitchen » intercom, enter through the courtyard…",
+      "pickupInstructionsHint": "Visible in the order confirmation.",
+      "pickupCodeNote": "The customer receives a pickup code (e.g. G-4821) to show at the counter.",
+      "dineinLink": "Manage reservations & table service",
+      "dineinNote": "Slots, tables and the bill are handled from Reservations & Floor.",
+      "channelsActive": "{count, plural, =0 {No active channel} one {# active channel} other {# active channels}}",
+      "unsaved": "Unsaved changes",
+      "cancel": "Cancel",
+      "save": "Save",
+      "confirmTitle": "Confirm changes",
+      "confirmBody": "The new settings will be immediately visible to your customers on the app and in the order flow.",
+      "confirmBack": "Back",
+      "confirmApply": "Apply",
+      "deniedTitle": "Restaurant accounts only",
+      "deniedBody": "This page is only available for restaurant operator accounts.",
+      "noRestoTitle": "No restaurant linked",
+      "noRestoBody": "Create your restaurant profile first to configure service modes.",
+      "noRestoCta": "Go to Brands"
+    },
+    "notif": {
+      "title": "Notifications",
+      "unread": "{count, plural, =0 {0 unread} one {# unread} other {# unread}}",
+      "markAll": "Mark all as read",
+      "banner": {
+        "title": "Real-time notifications are coming soon",
+        "body": "The items below illustrate the upcoming interface — nothing is pushed live yet.",
+        "tag": "Soon"
+      },
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "filter": {
+        "all": "All",
+        "orders": "Orders",
+        "reviews": "Reviews",
+        "stock": "Stock",
+        "reservations": "Reservations",
+        "payments": "Payments"
+      },
+      "item": {
+        "newOrder": {
+          "title": "New order #1042",
+          "desc": "Sophie Martin · Delivery · <amt></amt>"
+        },
+        "newReview": {
+          "title": "New review to reply to",
+          "desc": "Karim Belhadj left 3★ on Google."
+        },
+        "lowStock": {
+          "title": "Low stock: Burrata",
+          "desc": "2 units left — consider restocking."
+        },
+        "reservation": {
+          "title": "Reservation to confirm",
+          "desc": "Table for 6, tonight 8:30 PM — Julie Roussel."
+        },
+        "payout": {
+          "title": "Payout received",
+          "desc": "<amt></amt> paid into your account."
+        },
+        "supplierOrder": {
+          "title": "Supplier order confirmed",
+          "desc": "Metro Paris 11e — delivery expected tomorrow."
+        },
+        "cancelled": {
+          "title": "Order cancelled #1031",
+          "desc": "The customer cancelled — automatic refund triggered."
+        },
+        "review4": {
+          "title": "New review",
+          "desc": "Amine Lahlou left 4★ on Grubano."
+        }
+      },
+      "time": {
+        "min5": "5 min ago",
+        "min22": "22 min ago",
+        "hour1": "1 h ago",
+        "hour2": "2 h ago",
+        "hour3": "3 h ago",
+        "yest1820": "yesterday, 18:20",
+        "yest1410": "yesterday, 14:10",
+        "yest0940": "yesterday, 09:40"
+      },
+      "prefs": {
+        "title": "Notification preferences",
+        "event": "Event type",
+        "inApp": "In-app",
+        "email": "Email",
+        "sms": "SMS",
+        "row": {
+          "orders": "New orders",
+          "reviews": "New reviews",
+          "stock": "Low stock alerts",
+          "reservations": "Reservations to confirm",
+          "payments": "Payments & payouts"
+        }
+      }
+    },
+    "kitchen": {
+      "title": "Kitchen",
+      "aggPrefix": "Aggregated view · 3 locations · ",
+      "previewTitle": "The real-time kitchen screen is coming soon",
+      "previewBody": "The tickets below illustrate the upcoming interface — nothing is wired live yet.",
+      "statOpen": "Open tickets",
+      "statAvg": "Average kitchen time",
+      "statOldest": "Oldest ticket",
+      "filterAll": "All",
+      "filterOpen": "In progress",
+      "filterReady": "Ready",
+      "emptyTitle": "No kitchen tickets",
+      "emptyBody": "As soon as an order is accepted, its ticket will appear here for preparation.",
+      "bump": "Ready",
+      "ready": "Ready",
+      "undo": "Move back to in progress",
+      "channel": {
+        "delivery": "Delivery",
+        "pickup": "Pickup",
+        "dinein": "Dine-in"
+      }
+    },
     "reviews": {
       "title": "Reviews",
       "subtotal": "{count} reviews in total",
@@ -701,6 +889,10 @@
     }
   },
   "orders": {
+    "liveBadge": "Live",
+    "statPending": "Awaiting acceptance",
+    "statInProgress": "In progress",
+    "statDone": "Completed",
     "title": "Orders",
     "subtitle": "Grubano only · {count} active",
     "soundOn": "Sound on",
@@ -737,6 +929,7 @@
       "noRestaurantDesc": "Create your restaurant profile to receive orders."
     },
     "detail": {
+      "serverNote": "Amounts and step transitions are calculated and authorized server-side — this window only displays them.",
       "title": "Order {ref}",
       "customer": "Customer",
       "noCustomer": "Guest customer",

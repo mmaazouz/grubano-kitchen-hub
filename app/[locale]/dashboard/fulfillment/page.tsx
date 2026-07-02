@@ -3,12 +3,13 @@ import { cookies } from 'next/headers'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getTranslations } from 'next-intl/server'
 import { ESTABLISHMENT_COOKIE, pickEstablishment } from '@/lib/establishment'
-import { EmptyState } from '@/components/design-system'
 import { type EstablishmentOption } from '@/components/dashboard/EstablishmentSwitcher'
 import FulfillmentForm, {
   type FulfillmentSettings,
 } from '@/components/dashboard/FulfillmentForm'
+import './fulfillment.css'
 
 // ── /dashboard/fulfillment ────────────────────────────────────────────────────
 // Server component: resolves the current operator's restaurant from the
@@ -18,6 +19,7 @@ import FulfillmentForm, {
 export const dynamic = 'force-dynamic'
 
 export default async function FulfillmentPage() {
+  const t = await getTranslations('operator')
   const session = await getServerSession(authOptions)
   if (!session?.user?.email) {
     redirect('/auth/magic')
@@ -30,13 +32,15 @@ export default async function FulfillmentPage() {
 
   if (!operator || !['restaurant', 'admin'].includes(operator.role)) {
     return (
-      <div className="mx-auto max-w-xl px-5 pt-12">
-        <EmptyState
-          emoji="🔒"
-          title="Accès réservé aux restaurants"
-          description="Cette page est uniquement disponible pour les comptes opérateurs de restaurant."
-        />
-      </div>
+      <section className="fulfil">
+        <div className="op-center">
+          <div className="op-error__card">
+            <span className="ms" aria-hidden="true">lock</span>
+            <h2>{t('fulfillment.deniedTitle')}</h2>
+            <p>{t('fulfillment.deniedBody')}</p>
+          </div>
+        </div>
+      </section>
     )
   }
 
@@ -58,6 +62,12 @@ export default async function FulfillmentPage() {
       deliveryPrepTime:   true,
       pickupAddress:      true,
       pickupInstructions: true,
+      // Barème (read-only display) — the REAL delivery-fee / minimum-order config,
+      // in EUROS (Float). Shown via formatEuros, never hardcoded, never POSTed by
+      // this form (editing them is out of scope → « bientôt »). Kept separate from
+      // the FulfillmentSettings payload so the POST stays byte-identical.
+      deliveryFee:        true,
+      minOrder:           true,
     },
   })
 
@@ -71,21 +81,19 @@ export default async function FulfillmentPage() {
 
   if (!restaurant) {
     return (
-      <div className="mx-auto max-w-xl px-5 pt-12">
-        <EmptyState
-          emoji="🏪"
-          title="Aucun restaurant rattaché"
-          description="Créez d'abord votre fiche restaurant pour configurer les modes de service."
-          action={
-            <a
-              href="/brands"
-              className="inline-flex items-center rounded-grubano-lg bg-grubano-primary px-4 py-2 text-sm font-medium text-white shadow-grubano-cta transition-colors hover:bg-grubano-primaryHover"
-            >
-              Aller à /brands →
+      <section className="fulfil">
+        <div className="op-center">
+          <div className="op-onb__card">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/grubano-symbol-color.svg" alt="" />
+            <h1>{t('fulfillment.noRestoTitle')}</h1>
+            <p>{t('fulfillment.noRestoBody')}</p>
+            <a href="/brands" className="op-onb__cta">
+              <span className="ms" aria-hidden="true">add_business</span>{t('fulfillment.noRestoCta')}
             </a>
-          }
-        />
-      </div>
+          </div>
+        </div>
+      </section>
     )
   }
 
@@ -100,12 +108,19 @@ export default async function FulfillmentPage() {
     pickupInstructions: restaurant.pickupInstructions,
   }
 
+  // Read-only barème — REAL config in EUROS, displayed (not editable here).
+  const billing = {
+    deliveryFee: restaurant.deliveryFee,
+    minOrder:    restaurant.minOrder,
+  }
+
   return (
     <FulfillmentForm
       restaurantId={restaurant.id}
       restaurantName={restaurant.name}
       establishments={establishments}
       initial={initial}
+      billing={billing}
     />
   )
 }

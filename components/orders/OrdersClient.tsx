@@ -1,41 +1,43 @@
 'use client'
 
 /**
- * OrdersClient — full operator Orders page (client island).
+ * OrdersClient — full operator Orders page (client island). VERBATIM CD v1 re-skin
+ * (Notion 390fd2c9-8146-8184-b762-f4b44adca0f6 — LOT 5) to the --op- operator design
+ * (navy shell + Material Symbols, NO lucide). The shell (components/operator/
+ * OperatorShell, mounted by AppChrome) already provides .gb-op + .op-content — this
+ * component renders ONLY the screen content (a <section className="op-ord">) + its
+ * two modals (detail / stock-out) as fixed overlays.
  *
- * Renders the connected restaurant's REAL orders (fetched server-side in
- * app/[locale]/orders/page.tsx) with:
- *   • contextual status actions (shared with the dashboard via
- *     components/orders/order-actions → consumes PATCH /api/orders/[id]/status)
- *   • brand + status filters driven by the operator's real brands
- *   • a click-to-open detail view (items + options, customer, totals, status
- *     timeline, referral code) — actions also reachable from the detail
- *   • stock-out: toggle a dish unavailable (PATCH /api/menu/[id]/availability)
- *   • pause: stop taking orders (PATCH /api/restaurants/[id]/pause)
+ * 🔒 PRESENTATION ONLY. Every data path is byte-identical to the previous version:
+ *   • near-real-time feed: GET /api/orders/live?locale= polled every 15 s while the
+ *     tab is visible, seeded from server props.
+ *   • Web-Audio chime (zero shipped asset) on a newly-seen order + a looping re-chime
+ *     while ≥1 order is still UNACCEPTED ('received'), with the autoplay-unlock banner.
+ *   • status transitions via the SHARED order-actions hook (useOrderAdvance →
+ *     PATCH /api/orders/[id]/status) — the SERVER state machine is untouched. The op-
+ *     styled action buttons call advance(id, target) with the EXACT same targets the
+ *     shared OrderStatusActions component uses (received→preparing / →cancelled,
+ *     preparing→ready, ready+pickup→delivered, picked_up→delivered).
+ *   • pause / resume: PATCH /api/restaurants/[id]/pause.
+ *   • stock-out toggle: PATCH /api/menu/[id]/availability.
  *
- * The "Son activé" button is a local/decorative toggle. The multi-platform
- * (UberEats / Deliveroo / Just Eat) banner is a VISUAL PLACEHOLDER — no real
- * aggregation. Mounts its own ToastProvider (operator pages have no global one).
+ * Money: Order.{subtotal,deliveryFee,discount,total} = Float EUROS via
+ * formatEuros(x, locale) — NEVER recomputed. The multi-platform (UberEats / Deliveroo
+ * / Just Eat) banner stays a VISUAL PLACEHOLDER → /premium (no real aggregation).
+ * Mounts its own ToastProvider (operator pages have no global one).
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatEuros } from '@/lib/format-money'
-import {
-  Volume2, VolumeX, Pause, Power, Filter, Lock,
-  ShoppingBasket, Truck, Clock, PackageX, AlertTriangle,
-  User, Phone, Mail, Tag, Check, Ban,
-} from 'lucide-react'
 import { Link } from '@/navigation'
-import {
-  Badge, Button, Card, Modal, EmptyState, ToastProvider, useToast,
-} from '@/components/design-system'
+import { ToastProvider, useToast } from '@/components/design-system'
 import EstablishmentSwitcher, {
   type EstablishmentOption,
 } from '@/components/dashboard/EstablishmentSwitcher'
 import {
-  KNOWN_STATUS, statusTone, useOrderAdvance, OrderStatusActions,
+  KNOWN_STATUS, useOrderAdvance,
 } from '@/components/orders/order-actions'
 import {
   tabForStatus, hasUnacceptedOrder, type OrderView, type OrderItemView, type OrderTab,
@@ -314,61 +316,66 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
+  const dateSub = new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    .format(new Date())
+
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-24 pt-4 md:max-w-3xl">
-      {/* Header */}
-      <div className="mb-1 flex items-start justify-between gap-3">
+    <section className="op-ord">
+      {/* Page head — title + live badge + sound toggle */}
+      <div className="op-dash__head">
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-grubano-ink">
-            {t('title')}
-          </h1>
-          <p className="mt-0.5 text-sm text-grubano-ink-muted">
-            {t('subtitle', { count: activeCount })}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h1 className="op-dash__title">{t('title')}</h1>
+            <span className="live-badge"><i className="pulse" />{t('liveBadge')}</span>
+          </div>
+          <p className="op-dash__sub">{t('subtitle', { count: activeCount })} · {dateSub}</p>
         </div>
-        {/* Switcher renders nothing at ≤1 establishment → mono header unchanged. */}
-        <div className="flex flex-col items-end gap-2">
+        <div className="head-actions">
+          {/* Switcher renders nothing at ≤1 establishment → mono header unchanged. */}
           <EstablishmentSwitcher establishments={establishments} currentId={restaurant.id} />
-          {!isActive && (
-            <Badge tone="danger" size="md" icon={<Pause size={11} />}>{t('pausedBadge')}</Badge>
-          )}
+          <button
+            className={'sound-toggle' + (soundOn ? '' : ' is-off')}
+            onClick={() => { unlockAudio(); setSoundOn(s => !s) }}
+          >
+            <span className="ms">{soundOn ? 'volume_up' : 'volume_off'}</span>
+            <span className="lbl">{soundOn ? t('soundOn') : t('soundOff')}</span>
+          </button>
         </div>
       </div>
 
-      {/* Control buttons */}
-      <div className="mb-4 mt-3 grid grid-cols-2 gap-2">
-        <Button
-          variant={soundOn ? 'secondary' : 'ghost'}
-          size="md"
-          fullWidth
-          leftIcon={soundOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
-          onClick={() => { unlockAudio(); setSoundOn(s => !s) }}
-        >
-          {soundOn ? t('soundOn') : t('soundOff')}
-        </Button>
+      {/* Real, honest counts strip (derived from the live feed — no invented figures) */}
+      <div className="op-card stat-strip" style={{ marginBottom: 18 }}>
+        <div className="stat">
+          <span className="lbl">{t('statPending')}</span>
+          <b className={counts.todo > 0 ? 'alert' : undefined}>{counts.todo}</b>
+        </div>
+        <div className="stat">
+          <span className="lbl">{t('statInProgress')}</span>
+          <b>{counts.inProgress}</b>
+        </div>
+        <div className="stat">
+          <span className="lbl">{t('statDone')}</span>
+          <b>{counts.done}</b>
+        </div>
+      </div>
+
+      {/* Control row — pause / réactiver / awaiting-validation (real handlers) */}
+      <div className="op-ctrls">
         {!isActive && !canPublish ? (
           // SEC1 — owner cannot self-publish; show the awaiting-validation state
           // instead of a "Réactiver" button the server would refuse (403).
-          <Button
-            variant="secondary"
-            size="md"
-            fullWidth
-            disabled
-            leftIcon={<Clock size={15} />}
-          >
-            {t('awaitingApproval')}
-          </Button>
+          <button className="op-ctrl-btn" disabled>
+            <span className="ms">schedule</span>{t('awaitingApproval')}
+          </button>
         ) : (
-          <Button
-            variant={isActive ? 'danger' : 'primary'}
-            size="md"
-            fullWidth
-            loading={pausePending}
-            leftIcon={isActive ? <Pause size={15} /> : <Power size={15} />}
+          <button
+            className={'op-ctrl-btn ' + (isActive ? 'danger' : 'primary')}
+            disabled={pausePending}
             onClick={togglePause}
           >
+            <span className="ms">{isActive ? 'pause_circle' : 'power_settings_new'}</span>
             {isActive ? t('pauseAll') : t('reactivate')}
-          </Button>
+          </button>
         )}
       </div>
 
@@ -377,82 +384,66 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
           here unlocks it (a gesture) and plays a test chime; the banner then
           disappears and subsequent orders chime on their own. */}
       {soundOn && audioBlocked && (
-        <button
-          type="button"
-          onClick={() => unlockAudio(true)}
-          className="mb-4 flex w-full items-center gap-3 rounded-grubano-xl border border-grubano-primary/40 bg-grubano-tint/40 p-3 text-left transition-colors hover:bg-grubano-tint/60"
-        >
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
-            <Volume2 size={16} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-grubano-ink">{t('soundUnlockTitle')}</p>
-            <p className="mt-0.5 text-xs text-grubano-ink-muted">{t('soundUnlockDesc')}</p>
+        <button type="button" className="op-callout unlock" onClick={() => unlockAudio(true)}>
+          <span className="ms">volume_up</span>
+          <div className="op-callout__t">
+            <b>{t('soundUnlockTitle')}</b>
+            <span>{t('soundUnlockDesc')}</span>
           </div>
-          <span className="shrink-0 rounded-full bg-grubano-primary px-2.5 py-1 text-[11px] font-bold text-white">
-            {t('soundUnlockCta')}
-          </span>
+          <span className="cta">{t('soundUnlockCta')}</span>
         </button>
       )}
 
       {/* Paused / awaiting-validation banner */}
       {!isActive && (
-        <Card elevation="sm" padding="md" className="mb-3 border border-grubano-danger/30 bg-grubano-danger-tint">
-          <div className="flex items-start gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-grubano-lg bg-grubano-danger/15 text-grubano-danger">
-              {canPublish ? <Pause size={16} /> : <Clock size={16} />}
-            </span>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-grubano-ink">{canPublish ? t('pausedTitle') : t('awaitingApproval')}</p>
-              <p className="mt-0.5 text-xs text-grubano-ink-muted">{canPublish ? t('pausedDesc') : t('awaitingApprovalDesc')}</p>
-            </div>
-            {/* SEC1 — publication is admin-only: no "Réactiver" action for owners. */}
-            {canPublish && (
-              <Button variant="primary" size="sm" loading={pausePending} onClick={togglePause}>
-                {t('reactivate')}
-              </Button>
-            )}
+        <div className="op-callout warn">
+          <span className="ms">{canPublish ? 'pause_circle' : 'schedule'}</span>
+          <div className="op-callout__t">
+            <b>{canPublish ? t('pausedTitle') : t('awaitingApproval')}</b>
+            <span>{canPublish ? t('pausedDesc') : t('awaitingApprovalDesc')}</span>
           </div>
-        </Card>
+          {/* SEC1 — publication is admin-only: no "Réactiver" action for owners. */}
+          {canPublish && (
+            <button className="op-ctrl-btn primary actbtn" disabled={pausePending} onClick={togglePause}>
+              {t('reactivate')}
+            </button>
+          )}
+        </div>
       )}
 
       {/* Pro multi-platform placeholder (no real integration) */}
-      <Link
-        href="/premium"
-        className="mb-3 flex items-center gap-3 rounded-grubano-xl border border-dashed border-grubano-primary/40 bg-grubano-tint/30 p-3"
-      >
-        <Lock size={14} className="text-grubano-primary" />
-        <div className="flex-1">
-          <p className="text-[11px] font-bold text-grubano-ink">{t('proBannerTitle')}</p>
-          <p className="text-[10px] text-grubano-ink-muted">{t('proBannerDesc')}</p>
+      <Link href="/premium" className="op-callout clickable">
+        <span className="ms">lock</span>
+        <div className="op-callout__t">
+          <b>{t('proBannerTitle')}</b>
+          <span>{t('proBannerDesc')}</span>
         </div>
-        <span className="rounded-full bg-grubano-primary px-2 py-1 text-[10px] font-bold text-white">
-          {t('proBadge')}
-        </span>
+        <span className="cta">{t('proBadge')}</span>
       </Link>
 
-      {/* Filters */}
-      <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
-        <Filter size={13} className="shrink-0 text-grubano-ink-muted" />
-        <FilterChip active={brandFilter === 'all'} onClick={() => setBrandFilter('all')}>
+      {/* Brand filters + stock-out button */}
+      <div className="op-filters">
+        <span className="ms fico">filter_list</span>
+        <button className={'op-chip' + (brandFilter === 'all' ? ' is-active' : '')} onClick={() => setBrandFilter('all')}>
           {t('filterAll')}
-        </FilterChip>
+        </button>
         {brands.map(b => (
-          <FilterChip key={b.name} active={brandFilter === b.name} onClick={() => setBrandFilter(b.name)}>
-            <span className="mr-1">{b.emoji}</span>{b.name}
-          </FilterChip>
+          <button
+            key={b.name}
+            className={'op-chip' + (brandFilter === b.name ? ' is-active' : '')}
+            onClick={() => setBrandFilter(b.name)}
+          >
+            <span aria-hidden>{b.emoji}</span>{b.name}
+          </button>
         ))}
-        <span className="mx-1 h-3 w-px shrink-0 bg-grubano-border" />
-        <button
-          onClick={() => setStockOpen(true)}
-          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-grubano-border bg-grubano-surface px-2.5 py-1 text-[10px] font-semibold text-grubano-ink-muted hover:border-grubano-primary/40 hover:text-grubano-primary"
-        >
-          <PackageX size={11} /> {t('stockButton')}
+        <span className="sep" />
+        <button className="op-chip stock" onClick={() => setStockOpen(true)}>
+          <span className="ms">remove_shopping_cart</span>{t('stockButton')}
         </button>
       </div>
 
       {/* Tabs — À traiter / En cours / Terminées, with live count badges */}
-      <div className="mb-3 grid grid-cols-3 gap-1 rounded-grubano-xl bg-grubano-surface-muted p-1">
+      <div className="order-tabs" role="tablist">
         {([
           ['todo',       t('tabTodo'),       counts.todo],
           ['inProgress', t('tabInProgress'), counts.inProgress],
@@ -460,380 +451,381 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
         ] as const).map(([k, label, n]) => (
           <button
             key={k}
+            className={tab === k ? 'is-active' : undefined}
             onClick={() => setTab(k)}
-            className={
-              'flex items-center justify-center gap-1.5 rounded-grubano-lg px-2 py-2 text-[12px] font-bold transition-colors '
-              + (tab === k ? 'bg-grubano-surface text-grubano-ink shadow-sm' : 'text-grubano-ink-muted')
-            }
           >
             {label}
-            {n > 0 && (
-              <span className={
-                'inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold '
-                + (k === 'todo' ? 'bg-grubano-primary text-white' : 'bg-grubano-border text-grubano-ink')
-              }>
-                {n}
-              </span>
-            )}
+            {n > 0 && <span className="tab-count">{n}</span>}
           </button>
         ))}
       </div>
 
       {/* Orders list */}
       {liveOrders.length === 0 ? (
-        <Card elevation="sm" padding="lg">
-          <EmptyState emoji="🍽️" title={t('emptyTitle')} description={t('emptyDesc')} compact />
-        </Card>
+        <div className="op-card">
+          <div className="op-emptyline">
+            <span className="ms">receipt_long</span>
+            <b>{t('emptyTitle')}</b>
+            <span>{t('emptyDesc')}</span>
+          </div>
+        </div>
       ) : visible.length === 0 ? (
-        <Card elevation="sm" padding="lg">
-          <EmptyState emoji="🔎" title={t('emptyFilteredTitle')} description={t('emptyFilteredDesc')} compact />
-        </Card>
+        <div className="op-card">
+          <div className="op-emptyline">
+            <span className="ms">search_off</span>
+            <b>{t('emptyFilteredTitle')}</b>
+            <span>{t('emptyFilteredDesc')}</span>
+          </div>
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div className="order-list">
           {visible.map(o => {
             const isPickup = o.fulfillmentType === 'pickup'
             const isNew    = o.status === 'received'
+            const isDone   = o.status === 'delivered' || o.status === 'cancelled'
             return (
-              <Card
+              <div
                 key={o.id}
-                elevation="sm"
-                padding="md"
-                interactive
+                className={'order-card' + (isNew ? ' is-new' : '') + (isDone ? ' is-done' : '')}
                 onClick={() => setDetailId(o.id)}
-                className={isNew ? 'border border-grubano-primary/40 bg-grubano-tint/15 ring-1 ring-grubano-primary/20' : ''}
               >
-                <div className="flex items-center gap-3">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-surface-muted text-grubano-ink-muted">
-                    {isPickup ? <ShoppingBasket size={16} /> : <Truck size={16} />}
-                  </div>
+                <div className="oc-top">
+                  <span className="oc-num">#{o.id.slice(-6).toUpperCase()}</span>
+                  <span className={'channel-badge ' + (isPickup ? 'pickup' : 'delivery')}>
+                    <span className="ms">{isPickup ? 'shopping_bag' : 'moped'}</span>
+                    {isPickup ? ts('typePickup') : ts('typeDelivery')}
+                  </span>
+                  <span className={'oc-timer' + (isNew ? ' urgent' : '')}>
+                    <span className="ms">schedule</span>{o.timeLabel}
+                  </span>
+                </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {isNew && (
-                        <span className="relative flex h-2 w-2" aria-hidden>
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-grubano-primary opacity-75" />
-                          <span className="relative inline-flex h-2 w-2 rounded-full bg-grubano-primary" />
-                        </span>
-                      )}
-                      <span className="text-xs font-bold text-grubano-ink">
-                        #{o.id.slice(-6).toUpperCase()}
-                      </span>
-                      <Badge tone={statusTone(o.status)} size="sm">{statusLabel(o.status)}</Badge>
-                      <Badge tone="neutral" size="sm" icon={isPickup ? <ShoppingBasket size={10} /> : <Truck size={10} />}>
-                        {isPickup ? ts('typePickup') : ts('typeDelivery')}
-                      </Badge>
-                    </div>
-                    {o.brandNames.length > 0 && (
-                      <p className="mt-1 truncate text-xs font-semibold text-grubano-ink">
-                        {o.brandNames.join(' · ')}
-                      </p>
-                    )}
-                    <p className="mt-0.5 truncate text-[11px] text-grubano-ink-muted">{o.itemsPreview}</p>
-                  </div>
+                {o.brandNames.length > 0 && (
+                  <div className="oc-brand">{o.brandNames.join(' · ')}</div>
+                )}
+                <div className="oc-items">{o.itemsPreview}</div>
 
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-grubano-ink">{formatEuros(o.total, locale)}</p>
-                    <p className="mt-0.5 flex items-center justify-end gap-0.5 text-[10px] text-grubano-ink-faint">
-                      <Clock size={10} />
-                      {o.timeLabel}
-                    </p>
-                  </div>
+                <div className="oc-foot">
+                  <span className="oc-total mono">{formatEuros(o.total, locale)}</span>
+                  <MiniStepper status={o.status} fulfillmentType={o.fulfillmentType} />
+                  <span className={'stage-label' + (o.status === 'delivered' ? ' done' : o.status === 'cancelled' ? ' cancelled' : '')}>
+                    {statusLabel(o.status)}
+                  </span>
                 </div>
 
                 {/* Actions — stop propagation so they don't open the detail. */}
-                <div onClick={e => e.stopPropagation()}>
-                  <OrderStatusActions
-                    order={o}
-                    pendingId={pendingId}
-                    advance={advance}
-                    className="mt-3 flex flex-wrap items-center gap-2 border-t border-grubano-border pt-3"
-                  />
+                <div className="oc-actions" onClick={e => e.stopPropagation()}>
+                  <OpOrderActions order={o} pendingId={pendingId} advance={advance} ts={ts} />
                 </div>
-              </Card>
+              </div>
             )
           })}
           {doneHasMore && (
-            <div className="pt-1 text-center">
-              <Button variant="ghost" size="sm" onClick={() => setDoneLimit(n => n + DONE_PAGE)}>
-                {t('seeMore')}
-              </Button>
+            <div className="op-see-more">
+              <button onClick={() => setDoneLimit(n => n + DONE_PAGE)}>{t('seeMore')}</button>
             </div>
           )}
         </div>
       )}
 
       {/* Detail modal */}
-      <Modal
-        open={!!detailOrder}
-        onClose={() => setDetailId(null)}
-        size="lg"
-        title={detailOrder ? t('detail.title', { ref: `#${detailOrder.id.slice(-6).toUpperCase()}` }) : ''}
-        description={detailOrder ? `${detailOrder.dateLabel} · ${detailOrder.timeLabel}` : undefined}
-        footer={
-          detailOrder ? (
-            <div className="flex w-full flex-wrap items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                leftIcon={<PackageX size={14} />}
-                onClick={() => { setDetailId(null); setStockOpen(true) }}
-              >
-                {t('detail.markOutOfStock')}
-              </Button>
-              <div className="ml-auto" onClick={e => e.stopPropagation()}>
-                <OrderStatusActions order={detailOrder} pendingId={pendingId} advance={advance} />
+      {detailOrder && (
+        <div
+          className="op-modal-backdrop"
+          onClick={e => { if (e.target === e.currentTarget) setDetailId(null) }}
+        >
+          <div className="op-modal">
+            <div className="op-modal__head">
+              <div className="op-modal__headtext">
+                <h3>{t('detail.title', { ref: `#${detailOrder.id.slice(-6).toUpperCase()}` })}</h3>
+                <span className="sub">
+                  {(detailOrder.fulfillmentType === 'pickup' ? ts('typePickup') : ts('typeDelivery'))}
+                  {' · '}{detailOrder.dateLabel} · {detailOrder.timeLabel}
+                </span>
               </div>
-            </div>
-          ) : undefined
-        }
-      >
-        {detailOrder && (
-          <div className="space-y-4">
-            {/* Status + type */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={statusTone(detailOrder.status)} size="md">{statusLabel(detailOrder.status)}</Badge>
-              <Badge
-                tone="neutral"
-                size="md"
-                icon={detailOrder.fulfillmentType === 'pickup' ? <ShoppingBasket size={11} /> : <Truck size={11} />}
-              >
-                {detailOrder.fulfillmentType === 'pickup' ? ts('typePickup') : ts('typeDelivery')}
-              </Badge>
+              <button className="op-modal__close" onClick={() => setDetailId(null)}>
+                <span className="ms">close</span>
+              </button>
             </div>
 
-            {/* Timeline */}
-            <StatusTimeline status={detailOrder.status} fulfillmentType={detailOrder.fulfillmentType} statusLabel={statusLabel} cancelledLabel={t('detail.cancelled')} label={t('detail.timeline')} />
-
-            {/* Customer */}
-            <section>
-              <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-grubano-ink-faint">
-                {t('detail.customer')}
-              </h3>
-              {detailOrder.customer ? (
-                <div className="space-y-1 rounded-grubano-lg bg-grubano-surface-muted p-3">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-grubano-ink">
-                    <User size={13} className="text-grubano-ink-muted" />{detailOrder.customer.name}
-                  </p>
-                  <p className="flex items-center gap-2 text-xs text-grubano-ink-muted">
-                    <Mail size={12} />{detailOrder.customer.email}
-                  </p>
-                  {detailOrder.customer.phone && (
-                    <p className="flex items-center gap-2 text-xs text-grubano-ink-muted">
-                      <Phone size={12} />{detailOrder.customer.phone}
-                    </p>
-                  )}
+            <div className="op-modal__body">
+              {/* Timeline */}
+              {detailOrder.status === 'cancelled' ? (
+                <div className="cancelled-box">
+                  <span className="ms">block</span>{t('detail.cancelled')}
                 </div>
               ) : (
-                <p className="rounded-grubano-lg bg-grubano-surface-muted p-3 text-xs text-grubano-ink-muted">
-                  {t('detail.noCustomer')}
-                </p>
+                <FullStepper status={detailOrder.status} fulfillmentType={detailOrder.fulfillmentType} statusLabel={statusLabel} />
               )}
-              {detailOrder.referralCode && (
-                <p className="mt-2 flex items-center gap-1.5 text-xs text-grubano-ink-muted">
-                  <Tag size={12} className="text-grubano-primary" />
-                  {t('detail.referral')}: <span className="font-mono font-bold uppercase text-grubano-ink">{detailOrder.referralCode}</span>
-                </p>
-              )}
-            </section>
 
-            {/* Items */}
-            <section>
-              <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-grubano-ink-faint">
-                {t('detail.items')}
-              </h3>
-              <ul className="space-y-2">
-                {detailOrder.items.map((it, idx) => (
-                  <li key={idx} className="rounded-grubano-lg border border-grubano-border p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-grubano-ink">
-                          <span className="text-grubano-ink-muted">{it.qty}× </span>
-                          {it.emoji ? `${it.emoji} ` : ''}{it.name}
-                        </p>
-                        {it.brandName && (
-                          <p className="mt-0.5 text-[10px] uppercase tracking-wide text-grubano-ink-faint">{it.brandName}</p>
-                        )}
-                        {it.options?.size && (
-                          <p className="mt-1 text-xs text-grubano-ink-muted">
-                            {t('detail.size')}: {it.options.size}
-                          </p>
-                        )}
+              {/* Customer */}
+              <div className="od-cust-box">
+                {detailOrder.customer ? (
+                  <>
+                    <div className="row"><span className="ms">person</span><b>{detailOrder.customer.name}</b></div>
+                    <div className="row"><span className="ms">mail</span><span>{detailOrder.customer.email}</span></div>
+                    {detailOrder.customer.phone && (
+                      <div className="row"><span className="ms">call</span><span className="mono">{detailOrder.customer.phone}</span></div>
+                    )}
+                  </>
+                ) : (
+                  <div className="row"><span className="ms">person</span><span>{t('detail.noCustomer')}</span></div>
+                )}
+                {detailOrder.referralCode && (
+                  <div className="row">
+                    <span className="ms">sell</span>
+                    <span>{t('detail.referral')}: <span className="referral">{detailOrder.referralCode}</span></span>
+                  </div>
+                )}
+              </div>
+
+              {/* Items */}
+              <div>
+                <div className="od-secttl" style={{ marginBottom: 8 }}>{t('detail.items')}</div>
+                <div className="od-items">
+                  {detailOrder.items.map((it, idx) => (
+                    <div key={idx} className="od-row">
+                      <span className="qty">{it.qty}×</span>
+                      <div className="m">
+                        <b>{it.emoji ? `${it.emoji} ` : ''}{it.name}</b>
+                        {it.brandName && <span>{it.brandName}</span>}
+                        {it.options?.size && <span>{t('detail.size')}: {it.options.size}</span>}
                         {it.options?.supplements && it.options.supplements.length > 0 && (
-                          <p className="mt-0.5 text-xs text-grubano-ink-muted">
-                            {t('detail.supplements')}: {it.options.supplements.map(s => s.name).join(', ')}
-                          </p>
+                          <span>{t('detail.supplements')}: {it.options.supplements.map(s => s.name).join(', ')}</span>
                         )}
                         {it.options?.exclusions && it.options.exclusions.length > 0 && (
-                          <p className="mt-0.5 text-xs text-grubano-danger">
-                            {t('detail.exclusions')}: {it.options.exclusions.join(', ')}
-                          </p>
+                          <span className="excl">{t('detail.exclusions')}: {it.options.exclusions.join(', ')}</span>
                         )}
-                        {it.options?.note && (
-                          <p className="mt-0.5 text-xs italic text-grubano-ink-muted">
-                            {t('detail.note')}: “{it.options.note}”
-                          </p>
-                        )}
+                        {it.options?.note && <span>{t('detail.note')}: “{it.options.note}”</span>}
                       </div>
-                      <p className="shrink-0 text-sm font-bold text-grubano-ink">
-                        {formatEuros(it.price * it.qty, locale)}
-                      </p>
+                      <span className="price mono">{formatEuros(it.price * it.qty, locale)}</span>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            {/* Totals */}
-            <section className="space-y-1.5 rounded-grubano-lg bg-grubano-surface-muted p-3 text-sm">
-              <div className="flex justify-between text-grubano-ink-muted">
-                <span>{t('detail.subtotal')}</span><span>{formatEuros(detailOrder.subtotal, locale)}</span>
-              </div>
-              {detailOrder.discount > 0 && (
-                <div className="flex justify-between text-grubano-success">
-                  <span>{t('detail.discount')}</span><span>−{formatEuros(detailOrder.discount, locale)}</span>
+                  ))}
                 </div>
-              )}
-              <div className="flex justify-between text-grubano-ink-muted">
-                <span>{t('detail.deliveryFee')}</span><span>{formatEuros(detailOrder.deliveryFee, locale)}</span>
               </div>
-              <div className="flex justify-between border-t border-grubano-border pt-1.5 text-base font-bold text-grubano-ink">
-                <span>{t('detail.total')}</span><span>{formatEuros(detailOrder.total, locale)}</span>
+
+              {/* Totals */}
+              <div className="od-total">
+                <div className="row"><span>{t('detail.subtotal')}</span><span>{formatEuros(detailOrder.subtotal, locale)}</span></div>
+                {detailOrder.discount > 0 && (
+                  <div className="row discount"><span>{t('detail.discount')}</span><span>−{formatEuros(detailOrder.discount, locale)}</span></div>
+                )}
+                <div className="row"><span>{t('detail.deliveryFee')}</span><span>{formatEuros(detailOrder.deliveryFee, locale)}</span></div>
+                <div className="row grand"><span>{t('detail.total')}</span><b>{formatEuros(detailOrder.total, locale)}</b></div>
               </div>
-            </section>
+
+              {/* Server-authority callout (money + transitions are server-side) */}
+              <div className="op-callout">
+                <span className="ms">info</span>
+                <p>{t('detail.serverNote')}</p>
+              </div>
+            </div>
+
+            <div className="op-modal__foot">
+              <button
+                className="op-btn-ghost mrauto"
+                onClick={() => { setDetailId(null); setStockOpen(true) }}
+              >
+                <span className="ms">remove_shopping_cart</span>{t('detail.markOutOfStock')}
+              </button>
+              <div className="oc-actions" onClick={e => e.stopPropagation()}>
+                <OpOrderActions order={detailOrder} pendingId={pendingId} advance={advance} ts={ts} />
+              </div>
+            </div>
           </div>
-        )}
-      </Modal>
+        </div>
+      )}
 
       {/* Stock-out modal */}
-      <Modal
-        open={stockOpen}
-        onClose={() => setStockOpen(false)}
-        size="lg"
-        title={t('stock.title')}
-        description={t('stock.desc')}
-      >
-        {menuItems.length === 0 ? (
-          <EmptyState emoji="🍽️" title={t('stock.empty')} compact />
-        ) : (
-          <div className="space-y-2">
-            {menuItems.map(m => {
-              const isAvail = availability[m.id]
-              const busy = availPending === m.id
-              return (
-                <div
-                  key={m.id}
-                  className="flex items-center gap-3 rounded-grubano-lg border border-grubano-border p-3"
-                >
-                  <span className="text-lg" aria-hidden>{m.emoji}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-grubano-ink">{m.name}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-grubano-ink-faint">{m.brandName}</p>
-                  </div>
-                  <Badge tone={isAvail ? 'success' : 'danger'} size="sm">
-                    {isAvail ? t('stock.available') : t('stock.outOfStock')}
-                  </Badge>
-                  <Button
-                    variant={isAvail ? 'ghost' : 'secondary'}
-                    size="sm"
-                    loading={busy}
-                    leftIcon={isAvail ? <Ban size={13} /> : <Check size={13} />}
-                    onClick={() => toggleAvailability(m)}
-                  >
-                    {isAvail ? t('stock.markOut') : t('stock.markBack')}
-                  </Button>
+      {stockOpen && (
+        <div
+          className="op-modal-backdrop"
+          onClick={e => { if (e.target === e.currentTarget) setStockOpen(false) }}
+        >
+          <div className="op-modal wide">
+            <div className="op-modal__head">
+              <div className="op-modal__headtext">
+                <h3>{t('stock.title')}</h3>
+                <span className="sub">{t('stock.desc')}</span>
+              </div>
+              <button className="op-modal__close" onClick={() => setStockOpen(false)}>
+                <span className="ms">close</span>
+              </button>
+            </div>
+            <div className="op-modal__body">
+              {menuItems.length === 0 ? (
+                <div className="op-emptyline">
+                  <span className="ms">restaurant_menu</span>
+                  <b>{t('stock.empty')}</b>
                 </div>
-              )
-            })}
-            <p className="flex items-center gap-1.5 px-1 pt-1 text-[10px] text-grubano-ink-faint">
-              <AlertTriangle size={11} /> {t('stock.todoNote')}
-            </p>
+              ) : (
+                <>
+                  {menuItems.map(m => {
+                    const isAvail = availability[m.id]
+                    const busy = availPending === m.id
+                    return (
+                      <div key={m.id} className="stock-row">
+                        <span className="emoji" aria-hidden>{m.emoji}</span>
+                        <div className="m">
+                          <b>{m.name}</b>
+                          <span>{m.brandName}</span>
+                        </div>
+                        <span className={'op-pill ' + (isAvail ? 'available' : 'out')}>
+                          {isAvail ? t('stock.available') : t('stock.outOfStock')}
+                        </span>
+                        <button
+                          className={'oc-btn' + (isAvail ? '' : ' primary')}
+                          disabled={busy}
+                          onClick={() => toggleAvailability(m)}
+                        >
+                          <span className="ms">{isAvail ? 'block' : 'check'}</span>
+                          {isAvail ? t('stock.markOut') : t('stock.markBack')}
+                        </button>
+                      </div>
+                    )
+                  })}
+                  <p className="oc-wait" style={{ paddingTop: 4 }}>
+                    <span className="ms">warning</span>{t('stock.todoNote')}
+                  </p>
+                </>
+              )}
+            </div>
           </div>
-        )}
-      </Modal>
-    </div>
-  )
-}
-
-// ── Small presentational helpers ──────────────────────────────────────────────
-
-function FilterChip({
-  active, dark, onClick, children,
-}: {
-  active: boolean
-  dark?: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  const base = 'shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors'
-  const on   = dark ? 'bg-grubano-dark text-white' : 'bg-grubano-primary text-white'
-  const off  = 'border border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:text-grubano-ink'
-  return (
-    <button onClick={onClick} className={`${base} ${active ? on : off}`}>
-      {children}
-    </button>
-  )
-}
-
-function StatusTimeline({
-  status, fulfillmentType, statusLabel, cancelledLabel, label,
-}: {
-  status: string
-  fulfillmentType: string
-  statusLabel: (s: string) => string
-  cancelledLabel: string
-  label: string
-}) {
-  if (status === 'cancelled') {
-    return (
-      <section>
-        <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-grubano-ink-faint">{label}</h3>
-        <div className="flex items-center gap-2 rounded-grubano-lg bg-grubano-danger-tint p-3 text-sm font-semibold text-grubano-danger">
-          <Ban size={14} /> {cancelledLabel}
         </div>
-      </section>
+      )}
+    </section>
+  )
+}
+
+// ── Contextual action buttons — op-styled, EXACT same transitions as the shared
+//    OrderStatusActions (components/orders/order-actions). Each button calls
+//    advance(id, target) → PATCH /api/orders/[id]/status (server state machine).
+//    NOT reimplemented: advance/pendingId come from the shared useOrderAdvance hook.
+function OpOrderActions({
+  order, pendingId, advance, ts,
+}: {
+  order:     { id: string; status: string; fulfillmentType: string }
+  pendingId: string | null
+  advance:   (orderId: string, target: string) => void
+  ts:        (key: string) => string
+}) {
+  if (order.status === 'delivered' || order.status === 'cancelled') return null
+  const busy = pendingId === order.id
+
+  if (order.status === 'received') {
+    return (
+      <>
+        <button className="oc-btn danger" disabled={busy} onClick={() => advance(order.id, 'cancelled')}>
+          <span className="ms">close</span>{ts('refuse')}
+        </button>
+        <button className="oc-btn primary" disabled={busy} onClick={() => advance(order.id, 'preparing')}>
+          <span className="ms">check</span>{ts('accept')}
+        </button>
+      </>
     )
   }
-  // PICKUP = 4 steps (no courier leg — "En route" never applies): Reçue →
-  // Préparation → Prête → Livrée/Récupérée. DELIVERY keeps the 5-step flow.
-  // Mirrors the corrected consumer tracking; a legacy pickup order that ended
-  // 'picked_up' indexes onto the terminal step (alias of delivered).
+
+  if (order.status === 'preparing') {
+    return (
+      <button className="oc-btn primary" disabled={busy} onClick={() => advance(order.id, 'ready')}>
+        <span className="ms">task_alt</span>{ts('markReady')}
+      </button>
+    )
+  }
+
+  if (order.status === 'ready') {
+    const isPickup = order.fulfillmentType === 'pickup'
+    return (
+      <>
+        <span className="oc-wait">
+          <span className="ms">hourglass_top</span>
+          {isPickup ? ts('waitingCustomer') : ts('waitingCourier')}
+        </span>
+        {isPickup && (
+          // PICKUP has no courier leg: the hand-off COMPLETES the order
+          // (ready → delivered directly, the state machine allows it).
+          <button className="oc-btn primary" disabled={busy} onClick={() => advance(order.id, 'delivered')}>
+            <span className="ms">inventory_2</span>{ts('handToCustomer')}
+          </button>
+        )}
+      </>
+    )
+  }
+
+  if (order.status === 'picked_up') {
+    return (
+      <button className="oc-btn primary" disabled={busy} onClick={() => advance(order.id, 'delivered')}>
+        <span className="ms">check_circle</span>{ts('markDelivered')}
+      </button>
+    )
+  }
+
+  return null
+}
+
+// ── Mini-stepper on the order card (compact status progress) ──────────────────
+function MiniStepper({ status, fulfillmentType }: { status: string; fulfillmentType: string }) {
   const isPickup = fulfillmentType === 'pickup'
   const flow: readonly string[] = isPickup
     ? ['received', 'preparing', 'ready', 'delivered']
     : STATUS_FLOW
-  const currentIdx = isPickup && status === 'picked_up'
-    ? flow.length - 1
-    : flow.indexOf(status)
+  const currentIdx = isPickup && status === 'picked_up' ? flow.length - 1 : flow.indexOf(status)
+  const cancelled = status === 'cancelled'
   return (
-    <section>
-      <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-grubano-ink-faint">{label}</h3>
-      <ol className="flex items-center">
-        {flow.map((step, i) => {
-          const done    = currentIdx >= 0 && i <= currentIdx
-          const current = i === currentIdx
-          return (
-            <li key={step} className="flex flex-1 items-center last:flex-none">
-              <div className="flex flex-col items-center">
-                <span
-                  className={
-                    'grid h-6 w-6 place-items-center rounded-full text-[10px] font-bold ' +
-                    (done ? 'bg-grubano-primary text-white' : 'bg-grubano-surface-muted text-grubano-ink-faint') +
-                    (current ? ' ring-2 ring-grubano-primary/30' : '')
-                  }
-                >
-                  {done ? <Check size={12} /> : i + 1}
-                </span>
-                <span className={'mt-1 max-w-[56px] text-center text-[9px] leading-tight ' + (done ? 'font-semibold text-grubano-ink' : 'text-grubano-ink-faint')}>
-                  {statusLabel(step)}
-                </span>
-              </div>
-              {i < flow.length - 1 && (
-                <span className={'mx-1 h-0.5 flex-1 rounded ' + (i < currentIdx ? 'bg-grubano-primary' : 'bg-grubano-border')} />
-              )}
-            </li>
-          )
-        })}
-      </ol>
-    </section>
+    <div className="mini-stepper" aria-hidden>
+      {flow.map((step, i) => {
+        const done    = !cancelled && currentIdx >= 0 && i < currentIdx
+        const current = !cancelled && i === currentIdx
+        return (
+          <span key={step} style={{ display: 'contents' }}>
+            {i > 0 && <span className={'line' + (done || current ? ' done' : '')} />}
+            <span className={'node' + (current ? ' current' : done ? ' done' : '')} />
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Full stepper in the detail modal (icon steps + labels) ────────────────────
+function FullStepper({
+  status, fulfillmentType, statusLabel,
+}: {
+  status: string
+  fulfillmentType: string
+  statusLabel: (s: string) => string
+}) {
+  const isPickup = fulfillmentType === 'pickup'
+  // DELIVERY = 5 icon steps; PICKUP = 4 (no courier "En route" leg).
+  const steps: { key: string; icon: string }[] = isPickup
+    ? [
+        { key: 'received',  icon: 'check' },
+        { key: 'preparing', icon: 'skillet' },
+        { key: 'ready',     icon: 'task_alt' },
+        { key: 'delivered', icon: 'flag' },
+      ]
+    : [
+        { key: 'received',  icon: 'check' },
+        { key: 'preparing', icon: 'skillet' },
+        { key: 'ready',     icon: 'task_alt' },
+        { key: 'picked_up', icon: 'two_wheeler' },
+        { key: 'delivered', icon: 'flag' },
+      ]
+  const flow = steps.map(s => s.key)
+  const currentIdx = isPickup && status === 'picked_up' ? flow.length - 1 : flow.indexOf(status)
+  return (
+    <div className="full-stepper">
+      {steps.map((s, i) => {
+        const done    = currentIdx >= 0 && i <= currentIdx
+        const current = i === currentIdx
+        return (
+          <div key={s.key} className={'step' + (current ? ' current' : done ? ' done' : '')}>
+            <span className="ln" />
+            <span className="dot"><span className="ms">{done && !current ? 'check' : s.icon}</span></span>
+            <span>{statusLabel(s.key)}</span>
+          </div>
+        )
+      })}
+    </div>
   )
 }

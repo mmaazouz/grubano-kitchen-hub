@@ -2,14 +2,17 @@
 
 import { useEffect, useState, useCallback, type FormEvent } from 'react'
 import { useTranslations } from 'next-intl'
-import { Package, MapPin, ArrowRight } from 'lucide-react'
-import { Card, Badge, Button, EmptyState, type BadgeTone } from '@/components/design-system'
 
 // ── RequestDelivery — a business operator requests a delivery → an OFFERED mission, and
-// tracks its status (brick 3, Agent 124). Hosted on the gated /deliveries page (404 when
-// LOGISTICS_MISSIONS_ENABLED is OFF). The mission is OFFERED to eligible couriers (never
-// "assigned"); priceCents is an OPTIONAL inert proposed amount (data only — NO money is
-// charged/computed). Owner-scoped: the API only ever returns this operator's own missions.
+// tracks its status (brick 3, Agent 124). Hosted on the gated /deliveries page — this form
+// renders ONLY when LOGISTICS_MISSIONS_ENABLED is ON. The mission is OFFERED to eligible
+// couriers (never "assigned"); priceCents is an OPTIONAL inert proposed amount (data only —
+// NO money is charged/computed). Owner-scoped: the API only ever returns this operator's
+// own missions.
+//
+// 🔒 Re-skinned to the --op- operator design system (CD v1 LOT 5) — PRESENTATION ONLY.
+// Every fetch, state hook, handler and payload below is BYTE-IDENTICAL to the pre-re-skin
+// version: GET/POST /api/logistics/missions/request unchanged, priceCents stays inert.
 
 interface MissionDTO {
   id: string; type: string; pickupAddress: string; dropoffAddress: string
@@ -20,7 +23,8 @@ const MISSION_TYPES = ['repas', 'produits_fournisseurs', 'b2b', 'froid'] as cons
 const TYPE_LABEL: Record<string, string> = {
   repas: 'typeRepas', produits_fournisseurs: 'typeProduits', b2b: 'typeB2b', froid: 'typeFroid',
 }
-const STATUS_TONE: Record<string, BadgeTone> = {
+// --op- badge tone per mission status (replaces the design-system BadgeTone).
+const STATUS_TONE: Record<string, string> = {
   offered: 'warning', accepted: 'success', picked_up: 'success', delivered: 'success',
   declined: 'neutral', expired: 'neutral', cancelled: 'danger',
 }
@@ -79,83 +83,96 @@ export default function RequestDelivery() {
   const statusLabel = (s: string) => t(`status_${s}` as 'status_offered')
   const typeLabel = (m: string) => (m in TYPE_LABEL ? t(TYPE_LABEL[m]) : m)
 
-  const field = 'w-full rounded-grubano-lg border border-grubano-border bg-white px-3 py-2 text-sm text-grubano-ink focus:border-grubano-primary focus:outline-none'
-
   return (
-    <div className="space-y-5">
-      <Card elevation="sm" padding="lg">
-        <p className="mb-1 flex items-center gap-2 font-display text-lg font-bold text-grubano-ink">
-          <Package size={18} className="text-grubano-primary" /> {t('formTitle')}
-        </p>
-        <p className="mb-4 text-sm text-grubano-ink-muted">{t('formSubtitle')}</p>
+    <div className="op-del-wrap">
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('pageTitle')}</h1>
+          <p className="op-dash__sub">{t('pageSubtitle')}</p>
+        </div>
+      </div>
+
+      <div className="op-card" style={{ padding: 20, marginBottom: 18 }}>
+        <p className="op-del-form__head"><span className="ms">local_shipping</span>{t('formTitle')}</p>
+        <p className="op-del-form__sub">{t('formSubtitle')}</p>
 
         {created && (
-          <div className="mb-3 rounded-grubano-lg bg-grubano-success-tint px-3 py-2 text-sm text-grubano-ink">
-            <span className="font-semibold">{t('createdTitle')}</span> {t('createdBody')}
+          <div className="op-notice ok" style={{ marginBottom: 12 }}>
+            <span className="ms">check_circle</span>
+            <span><strong>{t('createdTitle')}</strong> {t('createdBody')}</span>
           </div>
         )}
         {error && (
-          <div className="mb-3 rounded-grubano-lg bg-grubano-danger-tint px-3 py-2 text-sm text-grubano-danger">{error}</div>
+          <div className="op-notice err" style={{ marginBottom: 12 }}>
+            <span className="ms">error</span>
+            <span>{error}</span>
+          </div>
         )}
 
-        <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('fieldType')}</label>
-            <select value={type} onChange={(e) => setType(e.target.value)} className={field}>
+        <form onSubmit={submit} className="op-del-form">
+          <div className="op-field">
+            <label>{t('fieldType')}</label>
+            <select value={type} onChange={(e) => setType(e.target.value)} className="op-select">
               {MISSION_TYPES.map((mt) => <option key={mt} value={mt}>{typeLabel(mt)}</option>)}
             </select>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('fieldPickup')}</label>
-            <input value={pickup} onChange={(e) => setPickup(e.target.value)} required minLength={3} maxLength={200} className={field} />
+          <div className="op-field">
+            <label>{t('fieldPickup')}</label>
+            <input value={pickup} onChange={(e) => setPickup(e.target.value)} required minLength={3} maxLength={200} className="op-input" />
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('fieldDropoff')}</label>
-            <input value={dropoff} onChange={(e) => setDropoff(e.target.value)} required minLength={3} maxLength={200} className={field} />
+          <div className="op-field">
+            <label>{t('fieldDropoff')}</label>
+            <input value={dropoff} onChange={(e) => setDropoff(e.target.value)} required minLength={3} maxLength={200} className="op-input" />
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('fieldZone')}</label>
-              <input value={zone} onChange={(e) => setZone(e.target.value)} maxLength={80} className={field} />
+          <div className="op-grid2">
+            <div className="op-field">
+              <label>{t('fieldZone')}</label>
+              <input value={zone} onChange={(e) => setZone(e.target.value)} maxLength={80} className="op-input" />
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('fieldPrice')}</label>
-              <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className={field} placeholder="0,00" />
-              <p className="mt-1 text-xs text-grubano-ink-faint">{t('fieldPriceHint')}</p>
+            <div className="op-field">
+              <label>{t('fieldPrice')}</label>
+              <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" className="op-input mono" placeholder="0,00" />
+              <span className="hint">{t('fieldPriceHint')}</span>
             </div>
           </div>
-          <Button type="submit" variant="primary" size="md" disabled={submitting}>
-            {submitting ? t('submitting') : t('submit')}
-          </Button>
+          <div>
+            <button type="submit" className="op-btn-primary" disabled={submitting}>
+              {submitting ? t('submitting') : t('submit')}
+            </button>
+          </div>
         </form>
-      </Card>
+      </div>
 
-      <Card elevation="sm" padding="md">
-        <p className="mb-3 font-semibold text-grubano-ink">{t('myMissionsTitle')}</p>
+      <div className="op-card" style={{ padding: 20 }}>
+        <p className="op-del-form__head" style={{ fontSize: 14, marginBottom: 12 }}>{t('myMissionsTitle')}</p>
         {missions === null ? (
-          <p className="py-4 text-center text-sm text-grubano-ink-faint">{t('loading')}</p>
+          <div className="op-emptyline"><span className="ms">hourglass_top</span><span>{t('loading')}</span></div>
         ) : missions.length === 0 ? (
-          <EmptyState emoji="📦" title={t('emptyTitle')} description={t('emptyBody')} />
+          <div className="op-emptyline">
+            <span className="ms">local_shipping</span>
+            <b>{t('emptyTitle')}</b>
+            <span>{t('emptyBody')}</span>
+          </div>
         ) : (
-          <ul className="space-y-2">
+          <div className="delivery-list">
             {missions.map((m) => (
-              <li key={m.id} className="rounded-grubano-lg border border-grubano-border p-3">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <Badge tone="neutral" size="sm">{typeLabel(m.type)}</Badge>
-                  <Badge tone={STATUS_TONE[m.status] ?? 'neutral'} size="sm">{statusLabel(m.status)}</Badge>
+              <div key={m.id} className="op-mission-li">
+                <div className="op-mission-li__top">
+                  <span className="op-badge neutral">{typeLabel(m.type)}</span>
+                  <span className={`op-badge ${STATUS_TONE[m.status] ?? 'neutral'}`}>{statusLabel(m.status)}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-grubano-ink">
-                  <MapPin size={14} className="shrink-0 text-grubano-ink-muted" />
-                  <span className="min-w-0 truncate">{m.pickupAddress}</span>
-                  <ArrowRight size={14} className="shrink-0 text-grubano-ink-faint" />
-                  <span className="min-w-0 truncate">{m.dropoffAddress}</span>
+                <div className="op-mission-li__route">
+                  <span className="ms">location_on</span>
+                  <span className="a">{m.pickupAddress}</span>
+                  <span className="ms">arrow_forward</span>
+                  <span className="a">{m.dropoffAddress}</span>
                 </div>
-                {m.priceCents > 0 && <p className="mt-1 text-xs text-grubano-ink-faint">{price$(m.priceCents)}</p>}
-              </li>
+                {m.priceCents > 0 && <p className="op-mission-li__price">{price$(m.priceCents)}</p>}
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </Card>
+      </div>
     </div>
   )
 }

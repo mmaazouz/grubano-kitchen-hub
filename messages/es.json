@@ -1,5 +1,193 @@
 {
   "operator": {
+    "deliveries": {
+      "title": "Entregas",
+      "sub": "Seguimiento de la parte de entrega de tus pedidos",
+      "soon": "Pronto",
+      "previewTag": "Vista previa",
+      "bannerTitle": "La red de repartidores Grubano se está desplegando progresivamente",
+      "bannerBodyPreview": "La asignación automática de repartidores, el seguimiento GPS en directo y el pago a repartidores llegarán pronto. Los datos siguientes son ejemplos ilustrativos, no entregas reales.",
+      "exampleNote": "Las cifras e importes mostrados son ejemplos ilustrativos mientras la red de repartidores no esté activa.",
+      "exampleTag": "ejemplo",
+      "statInProgress": "Entregas en curso",
+      "statAvgTime": "Tiempo medio de entrega",
+      "statActiveCouriers": "Repartidores activos",
+      "statLate": "Retrasos",
+      "waitingAssign": "En espera de asignación",
+      "view": "Ver",
+      "close": "Cerrar",
+      "stageRoute": "En camino al restaurante",
+      "stagePicked": "Recogida",
+      "stageDelivering": "En reparto",
+      "stageWaiting": "En espera de asignación",
+      "etaIn6": "en ~6 min",
+      "etaIn14": "en ~14 min",
+      "etaIn24": "en ~24 min",
+      "etaTbd": "ETA por definir",
+      "etaEstimated": "Llegada estimada",
+      "stepAssigned": "Asignada",
+      "stepRoute": "En camino al restaurante",
+      "stepPicked": "Recogida",
+      "stepDelivering": "En reparto",
+      "stepDelivered": "Entregada",
+      "gpsSoonTitle": "Seguimiento GPS en directo — próximamente",
+      "gpsSoonBody": "La ubicación del repartidor en tiempo real aún no está activa en esta vista previa. El hilo de progreso anterior refleja el último estado conocido.",
+      "feeClient": "Gastos de entrega (cliente)",
+      "courierPayout": "Pago al repartidor",
+      "payoutSoon": "Activo pronto",
+      "calloutBody": "La asignación automática, el seguimiento GPS en directo y el pago a repartidores se están desplegando — esta ventana solo muestra el último estado conocido."
+    },
+    "fulfillment": {
+      "title": "Recepción de pedidos",
+      "subtitle": "Elige cómo recibe sus pedidos {name} — canales, plazos y tarifas.",
+      "previewTitle": "Vista previa — pronto",
+      "previewBody": "la aceptación en línea, la pausa y el modo de saturación son ilustrativos y aún no están conectados desde esta pantalla.",
+      "acceptTitle": "Aceptar pedidos en línea",
+      "acceptBody": "Activa la recepción de nuevos pedidos en todos los canales abiertos a continuación.",
+      "pauseFor": "Pausar durante",
+      "pause30": "30 min",
+      "pause1h": "1 h",
+      "pauseTomorrow": "Hasta mañana",
+      "pauseNote": "Pedidos en pausa — reanudación automática prevista a las",
+      "exampleTime": "19:45",
+      "example": "ejemplo",
+      "resumeNow": "Reanudar ahora",
+      "defaultPrepLabel": "Tiempo de preparación predeterminado",
+      "minUnit": "min",
+      "kmUnit": "km",
+      "rushLabel": "Saturación — añadir tiempo temporalmente",
+      "rushNone": "Ninguno",
+      "channelDelivery": "Entrega",
+      "channelPickup": "Para llevar",
+      "channelDinein": "En el local",
+      "prepTimeLabel": "Tiempo de preparación",
+      "radiusLabel": "Zona de entrega",
+      "radiusHint": "Distancia máxima alrededor del restaurante (0–50 km).",
+      "feeLabel": "Gastos de entrega",
+      "minOrderLabel": "Pedido mínimo",
+      "pickupAddressLabel": "Dirección de recogida",
+      "pickupAddressPlaceholder": "12 rue de la Paix, 75002 Paris",
+      "pickupAddressHint": "Si es diferente de la dirección principal del restaurante.",
+      "pickupInstructionsLabel": "Instrucciones de recogida",
+      "pickupInstructionsPlaceholder": "Llame al portero automático « Cocina », entre por el patio…",
+      "pickupInstructionsHint": "Visibles en la confirmación del pedido.",
+      "pickupCodeNote": "El cliente recibe un código de recogida (ej. G-4821) para presentar en el mostrador.",
+      "dineinLink": "Gestionar reservas y servicio en mesa",
+      "dineinNote": "Las franjas, mesas y la cuenta se gestionan desde Reservas y Sala.",
+      "channelsActive": "{count, plural, =0 {Ningún canal activo} one {# canal activo} other {# canales activos}}",
+      "unsaved": "Cambios sin guardar",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "confirmTitle": "Confirmar cambios",
+      "confirmBody": "Los nuevos ajustes serán visibles de inmediato para tus clientes en la app y en el proceso de pedido.",
+      "confirmBack": "Volver",
+      "confirmApply": "Aplicar",
+      "deniedTitle": "Acceso reservado a restaurantes",
+      "deniedBody": "Esta página solo está disponible para cuentas de operador de restaurante.",
+      "noRestoTitle": "Ningún restaurante vinculado",
+      "noRestoBody": "Crea primero tu ficha de restaurante para configurar los modos de servicio.",
+      "noRestoCta": "Ir a Marcas"
+    },
+    "notif": {
+      "title": "Notificaciones",
+      "unread": "{count, plural, =0 {0 sin leer} one {# sin leer} other {# sin leer}}",
+      "markAll": "Marcar todo como leído",
+      "banner": {
+        "title": "Las notificaciones en tiempo real llegarán pronto",
+        "body": "Los elementos siguientes ilustran la interfaz futura — todavía no se envía nada en directo.",
+        "tag": "Pronto"
+      },
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "filter": {
+        "all": "Todas",
+        "orders": "Pedidos",
+        "reviews": "Reseñas",
+        "stock": "Stock",
+        "reservations": "Reservas",
+        "payments": "Pagos"
+      },
+      "item": {
+        "newOrder": {
+          "title": "Nuevo pedido #1042",
+          "desc": "Sophie Martin · Entrega · <amt></amt>"
+        },
+        "newReview": {
+          "title": "Nueva reseña por responder",
+          "desc": "Karim Belhadj dejó 3★ en Google."
+        },
+        "lowStock": {
+          "title": "Stock bajo: Burrata",
+          "desc": "Quedan 2 unidades — considera reponer."
+        },
+        "reservation": {
+          "title": "Reserva por confirmar",
+          "desc": "Mesa para 6, esta noche a las 20:30 — Julie Roussel."
+        },
+        "payout": {
+          "title": "Pago recibido",
+          "desc": "<amt></amt> abonados en tu cuenta."
+        },
+        "supplierOrder": {
+          "title": "Pedido a proveedor confirmado",
+          "desc": "Metro Paris 11e — entrega prevista para mañana."
+        },
+        "cancelled": {
+          "title": "Pedido cancelado #1031",
+          "desc": "El cliente canceló — reembolso automático activado."
+        },
+        "review4": {
+          "title": "Nueva reseña",
+          "desc": "Amine Lahlou dejó 4★ en Grubano."
+        }
+      },
+      "time": {
+        "min5": "hace 5 min",
+        "min22": "hace 22 min",
+        "hour1": "hace 1 h",
+        "hour2": "hace 2 h",
+        "hour3": "hace 3 h",
+        "yest1820": "ayer, 18:20",
+        "yest1410": "ayer, 14:10",
+        "yest0940": "ayer, 09:40"
+      },
+      "prefs": {
+        "title": "Preferencias de notificación",
+        "event": "Tipo de evento",
+        "inApp": "En la app",
+        "email": "Correo electrónico",
+        "sms": "SMS",
+        "row": {
+          "orders": "Nuevos pedidos",
+          "reviews": "Nuevas reseñas",
+          "stock": "Alertas de stock bajo",
+          "reservations": "Reservas por confirmar",
+          "payments": "Pagos y abonos"
+        }
+      }
+    },
+    "kitchen": {
+      "title": "Cocina",
+      "aggPrefix": "Vista agregada · 3 establecimientos · ",
+      "previewTitle": "La pantalla de cocina en tiempo real llegará pronto",
+      "previewBody": "Los tickets siguientes ilustran la interfaz futura — todavía no hay nada conectado en directo.",
+      "statOpen": "Tickets en curso",
+      "statAvg": "Tiempo medio en cocina",
+      "statOldest": "Ticket más antiguo",
+      "filterAll": "Todos",
+      "filterOpen": "En curso",
+      "filterReady": "Listos",
+      "emptyTitle": "Ningún ticket en cocina",
+      "emptyBody": "En cuanto se acepte un pedido, su ticket aparecerá aquí para la preparación.",
+      "bump": "Listo",
+      "ready": "Listo",
+      "undo": "Volver a en curso",
+      "channel": {
+        "delivery": "Entrega",
+        "pickup": "Para llevar",
+        "dinein": "En el local"
+      }
+    },
     "reviews": {
       "title": "Reseñas",
       "subtotal": "{count} reseñas en total",
@@ -701,6 +889,10 @@
     }
   },
   "orders": {
+    "liveBadge": "En directo",
+    "statPending": "En espera de aceptación",
+    "statInProgress": "En curso",
+    "statDone": "Completadas",
     "title": "Pedidos",
     "subtitle": "Solo Grubano · {count} activos",
     "soundOn": "Sonido activado",
@@ -737,6 +929,7 @@
       "noRestaurantDesc": "Crea tu ficha de restaurante para recibir pedidos."
     },
     "detail": {
+      "serverNote": "Los importes y el paso de una etapa a otra se calculan y autorizan en el servidor — esta ventana solo los muestra.",
       "title": "Pedido {ref}",
       "customer": "Cliente",
       "noCustomer": "Cliente invitado",

@@ -22,7 +22,10 @@ import { locales } from '@/i18n'
 //
 // Note: the locale prefix is stripped BEFORE matching below, so these
 // patterns work across /fr/franchise, /en/creators, /es/eat, etc.
-const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/logistics', '/deliveries', '/business', '/t', '/legal', '/login', '/register', '/add-activity', '/affiliate']
+// Note: /deliveries is INTENTIONALLY absent → it renders UNDER the navy OperatorShell
+// (founder-approved « aperçu visible sous la coquille » exception for the gated Livraisons
+// screen; every other bare route is unchanged).
+const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/legal', '/login', '/register', '/add-activity', '/affiliate']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'

@@ -1,0 +1,227 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /dashboard/fulfillment — operator RÉCEPTION DES COMMANDES content —
+ * VERBATIM CD v1 LOT 5, écran 3 (Notion 390fd2c9-…-04ee).
+ *
+ * Content-only re-skin: the navy chrome (sidebar + topbar + bottom-nav) lives in
+ * components/operator/operator-shell.css. This file styles ONLY the screen body =
+ * the <section> variants rendered inside .op-content. The CD's data-state /
+ * data-scale display-toggle CSS is dropped — React renders the correct variant
+ * (loading / error / empty / loaded) directly.
+ *
+ * 🔒 PRESENTATION ONLY. Every real setting is hydrated from the server component's
+ * `initial` snapshot and persisted byte-identical via POST /api/restaurants/[id]/
+ * fulfillment (no field renamed, no payload changed). The BARÈME (deliveryFee /
+ * minOrder = Restaurant.* Float EUROS) is READ from the real config and shown
+ * read-only via formatEuros — NEVER hardcoded, never recomputed. Money carries
+ * className="mono" (fee/prep inputs + .mono get direction:ltr;unicode-bidi:isolate
+ * for RTL safety). Non-wired CD UI (accept-online + pause, default prep + coup de
+ * feu, per-channel pickup delay / retrieval-code, dine-in prep) is an HONEST
+ * « Aperçu — bientôt » preview: inert, illustrative, never faked as real data.
+ *
+ * Self-sufficient: recopies the shared content components used here (op-dash__head,
+ * op-card, op-card__head, op-input/select, op-field, op-switch, chip, op-callout,
+ * op-btn-*, op-sk, op-emptyline, op-error, op-onb*, op-center) from the CD, exactly
+ * like tables.css / finance.css. Does NOT redefine :root / --op-* tokens /
+ * .op-side / .op-top / .op-bottomnav / .op-content (owned by the shell).
+ * Responsive aligns on the shell viewport pattern (@1080 / @880 / @460).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* RTL safety for numbers/money (shell has the generic .mono rule too — kept here
+   so the screen is self-sufficient if loaded in isolation). */
+.gb-op .fulfil .mono,
+.gb-op .fulfil .prep-input,
+.gb-op .fulfil .fee-input,
+.gb-op .fulfil .field-suffix,
+.gb-op .fulfil .rush-chip .val,
+.gb-op .fulfil .op-input.mono{direction:ltr;unicode-bidi:isolate}
+
+/* ── page head (shared with dashboard) ── */
+.gb-op .op-dash__head{margin-bottom:18px}
+.gb-op .op-dash__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em}
+.gb-op .op-dash__sub{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
+.gb-op .op-agg-label{color:var(--op-muted)}
+
+/* ── shared card shell ── */
+.gb-op .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+.gb-op .op-card__head{display:flex;align-items:center;gap:9px;padding:15px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .op-card__head h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:14.5px;flex:1;display:flex;align-items:center;gap:7px}
+.gb-op .op-card__head h2 .ms{font-size:17px;color:var(--op-muted-2)}
+.gb-op .op-card__head span.hint{font-size:11px;color:var(--op-muted);font-weight:600}
+
+/* ── inputs / fields (self-sufficient copy) ── */
+.gb-op .fulfil .op-input{width:100%;box-sizing:border-box;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:10px 12px;font-family:var(--op-font-ui);font-size:13.5px;color:var(--op-text)}
+.gb-op .fulfil .op-input:focus{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+.gb-op .fulfil .op-select{width:100%;box-sizing:border-box;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:10px 12px;font-family:var(--op-font-ui);font-size:13.5px;color:var(--op-text)}
+.gb-op .fulfil .op-select:focus{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+.gb-op .fulfil .op-textarea{width:100%;box-sizing:border-box;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:10px 12px;font-family:var(--op-font-ui);font-size:13.5px;color:var(--op-text);resize:vertical;min-height:70px}
+.gb-op .fulfil .op-textarea:focus{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+.gb-op .fulfil .op-field{display:flex;flex-direction:column;gap:6px}
+.gb-op .fulfil .op-field label{font-size:11.5px;font-weight:700;color:var(--op-muted)}
+.gb-op .fulfil .op-field .hint{font-size:11px;font-weight:600;color:var(--op-muted-2)}
+.gb-op .fulfil .op-field-row{display:flex;gap:12px}
+.gb-op .fulfil .op-field-row .op-field{flex:1;min-width:0}
+.gb-op .fulfil .field-suffixed{position:relative}
+.gb-op .fulfil .field-suffixed .op-input{padding-inline-end:42px}
+.gb-op .fulfil .field-suffix{position:absolute;inset-inline-end:12px;top:50%;transform:translateY(-50%);font-size:12.5px;font-weight:700;color:var(--op-muted);pointer-events:none}
+
+/* read-only barème value (deliveryFee / minOrder come from the real config) */
+.gb-op .fulfil .fee-readonly{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--op-surface-2);border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:10px 12px}
+.gb-op .fulfil .fee-readonly b{font-family:var(--op-font-mono);font-weight:800;font-size:15px;color:var(--op-text)}
+.gb-op .fulfil .fee-readonly .ms{font-size:16px;color:var(--op-muted-2);flex-shrink:0}
+
+/* ── switch (self-sufficient copy) ── */
+.gb-op .fulfil .op-switch{position:relative;display:inline-flex;align-items:center;flex-shrink:0}
+.gb-op .fulfil .op-switch input{position:absolute;opacity:0;width:0;height:0}
+.gb-op .fulfil .op-switch .track{width:38px;height:22px;border-radius:999px;background:var(--op-border-strong);transition:background .15s;cursor:pointer;position:relative;flex-shrink:0}
+.gb-op .fulfil .op-switch .track::after{content:'';position:absolute;top:2px;inset-inline-start:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .15s}
+.gb-op .fulfil .op-switch input:checked + .track{background:var(--op-success)}
+.gb-op .fulfil .op-switch input:checked + .track::after{transform:translateX(16px)}
+[dir="rtl"] .gb-op .fulfil .op-switch input:checked + .track::after{transform:translateX(-16px)}
+.gb-op .fulfil .op-switch input:disabled + .track{cursor:not-allowed;opacity:.7}
+.gb-op .fulfil .op-switch.lg .track{width:48px;height:28px}
+.gb-op .fulfil .op-switch.lg .track::after{width:24px;height:24px}
+.gb-op .fulfil .op-switch.lg input:checked + .track::after{transform:translateX(20px)}
+[dir="rtl"] .gb-op .fulfil .op-switch.lg input:checked + .track::after{transform:translateX(-20px)}
+
+/* ── chips (self-sufficient copy) ── */
+.gb-op .fulfil .chip{border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit}
+.gb-op .fulfil .chip.is-active{background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border-color:transparent}
+.gb-op .fulfil .chip:disabled{cursor:not-allowed}
+.gb-op .fulfil .chip.is-active:disabled{opacity:.85}
+
+/* ── callout (self-sufficient copy) ── */
+.gb-op .fulfil .op-callout{display:flex;gap:10px;background:var(--op-info-bg);border:1px solid var(--op-info-bd);border-radius:var(--op-r-md);padding:12px}
+.gb-op .fulfil .op-callout .ms{font-size:18px;color:var(--op-info);flex-shrink:0}
+.gb-op .fulfil .op-callout p{margin:0;font-size:12px;line-height:1.5;color:var(--op-text)}
+
+/* ── « Aperçu — bientôt » banner + tag (honest preview) ── */
+.gb-op .fulfil .op-soon-banner{display:flex;align-items:center;gap:10px;background:var(--op-surface-2);border:1px dashed var(--op-border-strong);border-radius:var(--op-r-md);padding:11px 14px;margin-bottom:18px}
+.gb-op .fulfil .op-soon-banner .ms{font-size:18px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .fulfil .op-soon-banner p{margin:0;font-size:12px;line-height:1.5;color:var(--op-muted)}
+.gb-op .fulfil .op-soon-banner p b{color:var(--op-text)}
+.gb-op .fulfil .tag-soon{font-size:9px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2);background:var(--op-surface-2);border:1px dashed var(--op-border-strong);border-radius:6px;padding:2px 6px;white-space:nowrap}
+.gb-op .fulfil .tag-eg{font-size:9.5px;font-weight:800;letter-spacing:.02em;color:var(--op-muted-2);background:var(--op-surface-2);border:1px solid var(--op-border-strong);border-radius:6px;padding:2px 6px;white-space:nowrap}
+
+/* ── buttons (self-sufficient copy) ── */
+.gb-op .fulfil .op-btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.gb-op .fulfil .op-btn-primary:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+.gb-op .fulfil .op-btn-primary .ms{font-size:18px}
+.gb-op .fulfil .op-btn-ghost{background:none;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit}
+.gb-op .fulfil .op-btn-ghost:disabled{opacity:.5;cursor:not-allowed}
+.gb-op .fulfil .op-btn-ghost .ms{font-size:16px}
+
+/* ═══════════ full stack layout ═══════════ */
+.gb-op .fulfil .op-ful-stack{display:flex;flex-direction:column;gap:18px}
+
+/* ── (A) Accept-online hero + pause panel — HONEST preview (inert) ── */
+.gb-op .fulfil .accept-hero{padding:20px}
+.gb-op .fulfil .accept-hero__row{display:flex;align-items:center;gap:16px}
+.gb-op .fulfil .accept-hero__ic{width:46px;height:46px;border-radius:var(--op-r-md);background:var(--op-success-bg);display:flex;align-items:center;justify-content:center;color:var(--op-success);flex-shrink:0}
+.gb-op .fulfil .accept-hero__ic .ms{font-size:24px}
+.gb-op .fulfil .accept-hero[data-accepting="off"] .accept-hero__ic{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .fulfil .accept-hero__m{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.gb-op .fulfil .accept-hero__m .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gb-op .fulfil .accept-hero__m b{font-family:var(--op-font-display);font-weight:800;font-size:16px}
+.gb-op .fulfil .accept-hero__m span{font-size:12px;color:var(--op-muted)}
+.gb-op .fulfil .pause-panel{margin-top:16px;padding-top:16px;border-top:1px solid var(--op-border);display:flex;flex-direction:column;gap:12px}
+.gb-op .fulfil .pause-panel .lbl{font-size:11.5px;font-weight:700;color:var(--op-muted)}
+.gb-op .fulfil .pause-opts{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.gb-op .fulfil .pause-note{display:flex;align-items:center;gap:9px;background:var(--op-warning-bg);border:1px solid var(--op-warning-bd);border-radius:var(--op-r-md);padding:10px 12px}
+.gb-op .fulfil .pause-note .ms{font-size:17px;color:var(--op-warning);flex-shrink:0}
+.gb-op .fulfil .pause-note span{font-size:12px;color:var(--op-text)}
+.gb-op .fulfil .pause-note b.mono{color:var(--op-warning)}
+.gb-op .fulfil .pause-resume{align-self:flex-start}
+
+/* ── (B) Default prep + coup de feu — HONEST preview (inert) ── */
+.gb-op .fulfil .prep-row{padding:18px;display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap}
+.gb-op .fulfil .prep-field{display:flex;flex-direction:column;gap:6px}
+.gb-op .fulfil .prep-field label{font-size:11.5px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .fulfil .prep-input-wrap{display:flex;align-items:center;gap:8px;background:var(--op-surface-2);border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:9px 12px;width:fit-content}
+.gb-op .fulfil .prep-input-wrap .prep-input{border:none;background:none;outline:none;font-family:var(--op-font-mono);font-weight:800;font-size:19px;width:52px;text-align:center;color:var(--op-text)}
+.gb-op .fulfil .prep-input-wrap .prep-input:disabled{color:var(--op-muted-2)}
+.gb-op .fulfil .prep-input-wrap span{font-size:12.5px;font-weight:700;color:var(--op-muted)}
+.gb-op .fulfil .rush-block{flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px}
+.gb-op .fulfil .rush-block label{font-size:11.5px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .fulfil .rush-block label .ms{font-size:16px;color:var(--op-zest-600)}
+[data-theme="dark"] .gb-op .fulfil .rush-block label .ms{color:var(--op-zest)}
+.gb-op .fulfil .rush-chips{display:flex;gap:8px;flex-wrap:wrap}
+.gb-op .fulfil .rush-chip .val{font-family:var(--op-font-mono)}
+
+/* ── (C) channel cards ── */
+.gb-op .fulfil .channels-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.gb-op .fulfil .channel-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);display:flex;flex-direction:column;overflow:hidden}
+.gb-op .fulfil .channel-card[data-on="false"]{opacity:.55}
+.gb-op .fulfil .channel-card__head{display:flex;align-items:center;gap:11px;padding:16px;border-bottom:1px solid var(--op-border)}
+.gb-op .fulfil .channel-card__ic{width:36px;height:36px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .fulfil .channel-card__ic .ms{font-size:19px}
+.gb-op .fulfil .channel-card.delivery .channel-card__ic{background:var(--op-info-bg);color:var(--op-info)}
+.gb-op .fulfil .channel-card.pickup .channel-card__ic{background:var(--op-zest-bg);color:var(--op-zest-600)}
+[data-theme="dark"] .gb-op .fulfil .channel-card.pickup .channel-card__ic{color:var(--op-zest)}
+.gb-op .fulfil .channel-card.dinein .channel-card__ic{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .fulfil .channel-card__head b{flex:1;font-family:var(--op-font-display);font-weight:800;font-size:14.5px}
+.gb-op .fulfil .channel-card__body{padding:16px;display:flex;flex-direction:column;gap:14px;flex:1}
+.gb-op .fulfil .channel-card__body .op-field{gap:6px}
+.gb-op .fulfil .channel-dinein-link{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md);padding:12px 14px;cursor:pointer;color:inherit}
+.gb-op .fulfil .channel-dinein-link:hover{border-color:var(--op-zest-600)}
+.gb-op .fulfil .channel-dinein-link span.t{font-size:12.5px;font-weight:700}
+.gb-op .fulfil .channel-dinein-link .ms{font-size:18px;color:var(--op-muted-2)}
+
+/* ── (D) save bar (mirrors CD) ── */
+.gb-op .fulfil .save-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:4px 2px 2px}
+.gb-op .fulfil .save-bar .save-note{margin-inline-end:auto;font-size:11.5px;color:var(--op-muted);display:inline-flex;align-items:center;gap:6px}
+.gb-op .fulfil .save-bar .save-note .dot{width:6px;height:6px;border-radius:50%;background:var(--op-success);flex-shrink:0}
+.gb-op .fulfil .save-bar .save-note.warn .dot{background:var(--op-danger)}
+
+/* ═══════════ confirm modal (re-skin of the real confirm flow) ═══════════ */
+.gb-op .fulfil .op-modal-backdrop{position:fixed;inset:0;background:rgba(10,18,32,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+.gb-op .fulfil .op-modal{width:100%;max-width:440px;background:var(--op-surface);border-radius:var(--op-r-xl);box-shadow:var(--op-shadow-pop);max-height:90vh;overflow-y:auto}
+.gb-op .fulfil .op-modal__head{display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--op-border)}
+.gb-op .fulfil .op-modal__head h3{margin:0;flex:1;font-family:var(--op-font-display);font-weight:800;font-size:16px}
+.gb-op .fulfil .op-modal__close{width:30px;height:30px;border-radius:var(--op-r-md);border:none;background:var(--op-surface-2);color:var(--op-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.gb-op .fulfil .op-modal__close:disabled{opacity:.5;cursor:not-allowed}
+.gb-op .fulfil .op-modal__close .ms{font-size:18px}
+.gb-op .fulfil .op-modal__body{padding:18px 20px}
+.gb-op .fulfil .op-modal__body p{margin:0;font-size:13px;line-height:1.55;color:var(--op-muted)}
+.gb-op .fulfil .op-modal__foot{display:flex;gap:10px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--op-border)}
+
+/* ═══════════ shared states: error / empty / skeleton (self-sufficient) ═══════════ */
+.gb-op .fulfil .op-center{display:flex;align-items:center;justify-content:center;min-height:600px}
+.gb-op .fulfil .op-error__card{max-width:400px;text-align:center}
+.gb-op .fulfil .op-error__card .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:16px}
+.gb-op .fulfil .op-error__card h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:18px}
+.gb-op .fulfil .op-error__card p{margin:9px 0 22px;font-size:13px;line-height:1.55;color:var(--op-muted)}
+
+@keyframes op-sk-ful{100%{background-position:-200% 0}}
+.gb-op .fulfil .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk-ful 1.4s ease-in-out infinite;border-radius:6px;display:block}
+
+.gb-op .fulfil .op-emptyline{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px}
+.gb-op .fulfil .op-emptyline .ms{font-size:34px;color:var(--op-muted-2);margin-bottom:10px}
+.gb-op .fulfil .op-emptyline b{font-size:15px;font-weight:700}
+.gb-op .fulfil .op-emptyline span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:380px}
+.gb-op .fulfil .op-emptyline .op-btn-primary{margin-top:18px}
+
+/* onboarding (N=0) — self-sufficient copy */
+.gb-op .fulfil .op-onb__card{max-width:520px;text-align:center;background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-xl);padding:44px 40px;box-shadow:var(--op-shadow-card)}
+.gb-op .fulfil .op-onb__card img{height:52px;margin-bottom:20px}
+.gb-op .fulfil .op-onb__card h1{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em}
+.gb-op .fulfil .op-onb__card p{margin:11px 0 24px;font-size:13.5px;line-height:1.6;color:var(--op-muted)}
+.gb-op .fulfil .op-onb__cta{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:13px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 10px 22px -10px rgba(242,87,14,.5);text-decoration:none}
+.gb-op .fulfil .op-onb__cta .ms{font-size:19px}
+
+/* ═══════════ responsive (viewport media; CD used container queries) ═══════════ */
+@media (max-width:1080px){
+  .gb-op .fulfil .channels-grid{grid-template-columns:1fr}
+}
+@media (max-width:880px){
+  .gb-op .fulfil .channels-grid{grid-template-columns:1fr}
+  .gb-op .fulfil .prep-row{flex-direction:column;align-items:stretch}
+  .gb-op .fulfil .accept-hero__row{flex-wrap:wrap}
+  .gb-op .fulfil .save-bar{flex-wrap:wrap}
+  .gb-op .fulfil .save-bar .save-note{margin-inline-end:0;width:100%}
+  .gb-op .fulfil .save-bar .op-btn-primary,
+  .gb-op .fulfil .save-bar .op-btn-ghost{flex:1;justify-content:center}
+  .gb-op .fulfil .op-onb__card{padding:32px 22px}
+}
+@media (max-width:460px){
+  .gb-op .fulfil .op-field-row{flex-direction:column}
+}
