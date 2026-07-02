@@ -32,6 +32,15 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
+// The PATCH route now resolves establishment ownership (hardening). Mock the
+// helper so the caller owns 'rest1' (the order's restaurant) → the ownership
+// pre-condition passes and these state-machine tests exercise the same paths.
+vi.mock('@/lib/establishment-scope', () => ({
+  resolveEstablishmentScope: vi.fn().mockResolvedValue({
+    ok: true, operatorId: 'op1', role: 'restaurant', ownedIds: ['rest1'], restaurantId: 'rest1',
+  }),
+}))
+
 import { POST as createOrder } from '@/app/api/orders/route'
 import { PATCH as patchStatus } from '@/app/api/orders/[id]/status/route'
 
@@ -94,21 +103,21 @@ describe('PATCH /api/orders/[id]/status — pickup hand-off skips the courier st
     })
 
   it('ready → delivered is now a valid transition (pickup remise au client)', async () => {
-    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'ready', pointsEarned: 0, consumerId: 'cust1' })
+    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'ready', restaurantId: 'rest1', pointsEarned: 0, consumerId: 'cust1' })
     db.order.update.mockResolvedValue({ id: 'order1', status: 'delivered', updatedAt: new Date() })
     const res = await patchStatus(statusReq('delivered'), { params: { id: 'order1' } })
     expect(res.status).toBe(200)
   })
 
   it('ready → picked_up stays valid (delivery courier flow untouched)', async () => {
-    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'ready', pointsEarned: 0, consumerId: 'cust1' })
+    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'ready', restaurantId: 'rest1', pointsEarned: 0, consumerId: 'cust1' })
     db.order.update.mockResolvedValue({ id: 'order1', status: 'picked_up', updatedAt: new Date() })
     const res = await patchStatus(statusReq('picked_up'), { params: { id: 'order1' } })
     expect(res.status).toBe(200)
   })
 
   it('received → delivered remains REFUSED (the machine is not loosened elsewhere)', async () => {
-    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'received', pointsEarned: 0, consumerId: 'cust1' })
+    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'received', restaurantId: 'rest1', pointsEarned: 0, consumerId: 'cust1' })
     const res = await patchStatus(statusReq('delivered'), { params: { id: 'order1' } })
     expect(res.status).toBe(422)
   })

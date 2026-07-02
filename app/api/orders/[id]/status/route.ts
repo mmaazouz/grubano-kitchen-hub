@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
 import { z } from 'zod'
 
@@ -46,6 +47,23 @@ export async function PATCH(
 
     const order = await prisma.order.findUnique({ where: { id: params.id } })
     if (!order) {
+      return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
+    }
+
+    // ── Establishment ownership (hardening) ──────────────────────────────────
+    // Beyond session + role, a 'restaurant' operator may only mutate orders that
+    // belong to an establishment they OWN — closes a pre-existing IDOR where any
+    // operator could PATCH another restaurant's order by id. 'admin' stays a
+    // superuser (unchanged). Reuses resolveEstablishmentScope = the exact same
+    // owner-scoping as GET /api/orders/live & /api/orders/kitchen. A foreign order
+    // returns 404 (not 403) so its existence is not even confirmed. This is a pure
+    // PRE-CONDITION: the state machine, the 'delivered' loyalty credit and the
+    // status email below are byte-identical.
+    const scope = await resolveEstablishmentScope(null)
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
+    if (scope.role !== 'admin' && !scope.ownedIds.includes(order.restaurantId)) {
       return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
     }
 

@@ -21,6 +21,15 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
+// The PATCH route now resolves establishment ownership (hardening). Mock the
+// helper so the caller owns 'rest1' (the order's restaurant) → the ownership
+// pre-condition passes and the loyalty earn-path assertions run unchanged.
+vi.mock('@/lib/establishment-scope', () => ({
+  resolveEstablishmentScope: vi.fn().mockResolvedValue({
+    ok: true, operatorId: 'op1', role: 'restaurant', ownedIds: ['rest1'], restaurantId: 'rest1',
+  }),
+}))
+
 import { PATCH as patchStatus } from '@/app/api/orders/[id]/status/route'
 
 const statusReq = (status: string) =>
@@ -36,7 +45,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   getTokenMock.mockResolvedValue({ sub: 'op1', role: 'restaurant' })
   // picked_up → delivered is a valid transition; the order earns 12 pts.
-  db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'picked_up', pointsEarned: 12, consumerId: 'op1' })
+  db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'picked_up', restaurantId: 'rest1', pointsEarned: 12, consumerId: 'op1' })
   db.order.update.mockResolvedValue({ id: 'order1', status: 'delivered', updatedAt: new Date(0) })
   db.operator.findUnique.mockResolvedValue({ email: 'buyer@example.com', name: 'Buyer' })
   db.loyaltyCustomer.upsert.mockResolvedValue({ id: 'lc1' })
@@ -91,7 +100,7 @@ describe('PATCH delivered — earn credits even WITHOUT a pre-existing account',
   })
 
   it('no points earned → no loyalty work at all', async () => {
-    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'picked_up', pointsEarned: 0, consumerId: 'op1' })
+    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'picked_up', restaurantId: 'rest1', pointsEarned: 0, consumerId: 'op1' })
 
     const res = await deliver()
     expect(res.status).toBe(200)
