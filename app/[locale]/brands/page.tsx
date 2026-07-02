@@ -3,43 +3,48 @@
 import { Link } from '@/navigation'
 import { Suspense, useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useTranslations } from 'next-intl'
-import {
-  Plus, Sparkles, Copy, Check, ArrowLeft, AlertTriangle,
-} from 'lucide-react'
-import { Button, Input } from '@/components/design-system'
+import { useTranslations, useLocale } from 'next-intl'
+import { formatEuros } from '@/lib/format-money'
+import './brands.css'
 
 /**
- * /brands — focused CREATE-only page (Agent 13 redundancy strip).
+ * /brands — operator MARQUES screen (LOT 7, écran 1) — CD v1 re-skin.
  *
- * Why this page is no longer a manager:
- *   Listing brands, editing, deleting, filters and the "Performance globale"
- *   block all lived here AND on the establishment hub / the consolidated home —
- *   double surface, double navigation, "Mohammed s'y perd". We removed every
- *   redundant block:
- *     - LIST            → already in the hub ("Vos marques" cards).
- *     - FILTERS         → not needed at one establishment's scope.
- *     - PERF GLOBALE    → already in the consolidated home (overview endpoint).
- *     - EDIT / DELETE   → migrated as discrete affordances ON each hub card.
- *     - PRO BANNER      → unrelated to brand creation, removed.
+ * PRESENTATION-ONLY re-skin to the navy operator shell (--op-* tokens). The page
+ * renders ONLY the content section — the shell (sidebar / topbar / bottom-nav) is
+ * mounted by AppChrome → OperatorShell and is NOT touched here.
  *
- * What's left: the ONLY thing /brands does now is CREATE a brand — either from
- * scratch, or by copying an existing brand into a target establishment. The
- * post-copy re-adoption follow-up (for creator dishes excluded by city
- * exclusivity, levier 3B) remains here because it's the natural continuation
- * of the copy flow.
+ * The CD Marques mock is a LIST of the operator's brands (monogram, name, cuisine,
+ * status pill, attached-establishment counter, "Gérer") + a stat strip + a
+ * "Créer une marque" CTA + empty / skeleton / error / onboarding states. This file
+ * reproduces that design on the operator's REAL brands (GET /api/brands/summary),
+ * and keeps the full brand-creation flow (from scratch OR by copying an existing
+ * brand into an establishment, with the post-copy re-adoption pass for city-exclusive
+ * creator dishes) BYTE-IDENTICAL — it is simply surfaced in an op-modal opened by the
+ * "Créer une marque" button instead of the previous full-page form.
  *
- * Sidebar fallback + the hub's "Add brand" / 0-brand empty CTA + the menu
- * page's "Configure my brand" CTA all continue pointing here — no broken
- * links, no dead page, single source of truth for creation.
+ * 🔒 DATA LOGIC PRESERVED byte-for-byte:
+ *   - GET  /api/brands/summary   (list + operator-level 30-day performance)
+ *   - GET  /api/establishments   (switcher / copy targets)
+ *   - POST /api/brands           (create from scratch)
+ *   - POST /api/brands/copy      (copy into a target establishment)
+ *   - POST /api/dishes/adopt     (re-adopt excluded creator dishes)
+ * No payload renamed, no handler modified. Money (caBrut) is read verbatim from the
+ * endpoint (EUROS → formatEuros) and NEVER recomputed; all figures carry .mono.
  */
 
 type BrandSummary = {
-  id:       string
-  name:     string
-  emoji:    string
-  status:   string
+  id:               string
+  name:             string
+  emoji:            string
+  platform:         string
+  status:           string
+  restaurantId:     string | null
+  menuCount:        number
+  adoptedDishCount: number
 }
+
+type Performance = { windowDays: number; caBrut: number; ordersTotal: number }
 
 type EstablishmentLite = { id: string; name: string; city: string; isActive: boolean }
 
@@ -57,6 +62,26 @@ const CUISINE_TYPES = [
 ] as const
 const BRAND_EMOJIS = ['🍕', '🍜', '🍔', '🥗', '🍣', '🍰', '🥙', '🍝', '🌮', '🍱', '🥘', '🥟', '🍴', '🥐']
 
+// Deterministic monogram gradient (matches the CD's coloured monograms) derived
+// from the brand name — presentation only, never persisted.
+const MONO_GRADIENTS = [
+  'linear-gradient(135deg,#FF8A3D,#F2570E)',
+  'linear-gradient(135deg,#D5372A,#A8281D)',
+  'linear-gradient(135deg,#E8A63D,#B9740A)',
+  'linear-gradient(135deg,#3E5A7D,#1B3A5E)',
+  'linear-gradient(135deg,#1E9E57,#127A42)',
+  'linear-gradient(135deg,#6E56CF,#4B3894)',
+  'linear-gradient(135deg,#2E78F0,#1E5AC0)',
+]
+function monoGradient(seed: string): string {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0
+  return MONO_GRADIENTS[Math.abs(h) % MONO_GRADIENTS.length]
+}
+function monogram(name: string): string {
+  return name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '·'
+}
+
 interface BrandForm {
   name:        string
   emoji:       string
@@ -68,8 +93,12 @@ type ReadoptStatus = 'idle' | 'loading' | 'done' | 'taken' | 'error'
 interface ReadoptItem { creatorDishId: string; name: string; sellingPrice: number; status: ReadoptStatus }
 interface ReadoptState { brandId: string; items: ReadoptItem[] }
 
-function BrandsCreateInner() {
-  const t = useTranslations('brands')
+type LoadState = 'loading' | 'error' | 'loaded'
+
+function BrandsInner() {
+  const t      = useTranslations('brands')
+  const tOp    = useTranslations('operator')
+  const locale = useLocale()
 
   // The establishment the operator clicked "Ajouter une marque" from, passed by
   // the hub as ?restaurantId=… so the new brand attaches to THAT establishment
@@ -78,13 +107,15 @@ function BrandsCreateInner() {
   const searchParams          = useSearchParams()
   const requestedRestaurantId = searchParams.get('restaurantId')
 
-  // Existing brands (used as the source list for the copy mode + as a guard
-  // ("you can't copy if you have none yet")).
-  const [brands, setBrands] = useState<BrandSummary[]>([])
-  const [establishments, setEstablishments] = useState<EstablishmentLite[]>([])
+  // Existing brands (list surface + source list for the copy mode + guard).
+  const [brands, setBrands]                                 = useState<BrandSummary[]>([])
+  const [performance, setPerformance]                       = useState<Performance>({ windowDays: 30, caBrut: 0, ordersTotal: 0 })
+  const [establishments, setEstablishments]                 = useState<EstablishmentLite[]>([])
   const [currentEstablishmentId, setCurrentEstablishmentId] = useState<string | null>(null)
+  const [loadState, setLoadState]                           = useState<LoadState>('loading')
 
-  // Mode toggle.
+  // Create modal open + mode toggle.
+  const [modalOpen, setModalOpen]   = useState(false)
   const [createMode, setCreateMode] = useState<'scratch' | 'copy'>('scratch')
 
   // Scratch form.
@@ -106,9 +137,14 @@ function BrandsCreateInner() {
   const loadBrands = useCallback(async () => {
     try {
       const res  = await fetch('/api/brands/summary', { cache: 'no-store' })
+      if (!res.ok) throw new Error('load')
       const data = await res.json()
       if (Array.isArray(data?.brands)) setBrands(data.brands)
-    } catch { /* degrade silently */ }
+      if (data?.performance) setPerformance(data.performance)
+      return true
+    } catch {
+      return false
+    }
   }, [])
 
   const loadEstablishments = useCallback(async () => {
@@ -120,13 +156,17 @@ function BrandsCreateInner() {
     } catch { /* non-fatal */ }
   }, [])
 
+  const loadAll = useCallback(async () => {
+    setLoadState('loading')
+    const [brandsOk] = await Promise.all([loadBrands(), loadEstablishments()])
+    setLoadState(brandsOk ? 'loaded' : 'error')
+  }, [loadBrands, loadEstablishments])
+
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      if (!cancelled) await Promise.all([loadBrands(), loadEstablishments()])
-    })()
+    ;(async () => { if (!cancelled) await loadAll() })()
     return () => { cancelled = true }
-  }, [loadBrands, loadEstablishments])
+  }, [loadAll])
 
   // Default copy-target = the active establishment (or the first one), so the
   // operator just picks a source and clicks once.
@@ -144,6 +184,15 @@ function BrandsCreateInner() {
       setCopySource(brands[0].id)
     }
   }, [brands, establishments, currentEstablishmentId, requestedRestaurantId, copySource, copyTarget])
+
+  // Open the create modal from the ?restaurantId= deep-link (kept: the hub links
+  // here to create a brand for a specific establishment).
+  useEffect(() => {
+    if (requestedRestaurantId) setModalOpen(true)
+  }, [requestedRestaurantId])
+
+  function openCreate() { setError(''); setDone(false); setCreateMode('scratch'); setModalOpen(true) }
+  function closeCreate() { if (saving || copying) return; setModalOpen(false); setError('') }
 
   // ── Scratch submit ─────────────────────────────────────────────────────────
   async function submitScratch(e: React.FormEvent) {
@@ -269,247 +318,447 @@ function BrandsCreateInner() {
     if (copyTarget) window.location.href = `/dashboard/establishments/${copyTarget}`
   }
 
+  // Status pill: active brands are "Active", everything else is honestly labelled
+  // "Brouillon" (draft) — mirrors the CD's Active / Brouillon pills.
+  const isActive = (s: string) => s === 'active'
+
+  // ── SKELETON ────────────────────────────────────────────────────────────────
+  if (loadState === 'loading') {
+    return (
+      <section className="op-brands-skel" aria-busy="true">
+        <div className="op-brands-skel__head">
+          <span className="op-sk" style={{ width: 110, height: 22 }} />
+          <span className="op-sk" style={{ width: 160, height: 38, borderRadius: 8 }} />
+        </div>
+        <div className="op-card op-brands-skel__strip">
+          <span className="op-sk" style={{ width: 110, height: 34 }} />
+          <span className="op-sk" style={{ width: 110, height: 34 }} />
+          <span className="op-sk" style={{ width: 110, height: 34 }} />
+        </div>
+        <div className="op-brands-skel__grid">
+          <span className="op-sk" style={{ width: '100%', height: 210, borderRadius: 12 }} />
+          <span className="op-sk" style={{ width: '100%', height: 210, borderRadius: 12 }} />
+          <span className="op-sk" style={{ width: '100%', height: 210, borderRadius: 12 }} />
+        </div>
+      </section>
+    )
+  }
+
+  // ── ERROR ─────────────────────────────────────────────────────────────────
+  if (loadState === 'error') {
+    return (
+      <section className="op-error-wrap">
+        <div className="op-center">
+          <div className="op-error__card">
+            <span className="ms" aria-hidden="true">cloud_off</span>
+            <h2>{t('brandsErrorTitle')}</h2>
+            <p>{tOp('dash.errorBody')}</p>
+            <button type="button" className="op-btn-primary" onClick={loadAll}>
+              <span className="ms" aria-hidden="true">refresh</span>{tOp('dash.retry')}
+            </button>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  const establishmentTotal = new Set(
+    brands.map((b) => b.restaurantId).filter((id): id is string => Boolean(id)),
+  ).size
+
   return (
-    <div className="mx-auto max-w-lg px-5 pb-24 pt-4 md:max-w-2xl">
-      {/* Back link — single anchor to the source of truth (the hub list). */}
-      <Link
-        href="/dashboard/establishments"
-        className="mb-3 inline-flex items-center gap-1 text-xs font-semibold text-grubano-ink-muted transition-colors hover:text-grubano-primary"
-      >
-        <ArrowLeft size={13} className="rtl:rotate-180" />
-        {t('backToHub')}
-      </Link>
-
-      <header className="mb-5">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-grubano-ink">
-          {t('pageTitleCreate')}
-        </h1>
-        <p className="mt-1 text-sm text-grubano-ink-muted">
-          {t('pageDescCreate')}
-        </p>
-      </header>
-
-      {/* Mode toggle ─────────────────────────────────────────────────────── */}
-      <div className="mb-4 grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => { setError(''); setCreateMode('scratch') }}
-          className={`flex items-center justify-center gap-1.5 rounded-grubano-md border px-3 py-2.5 text-grubano-sm font-semibold transition ${
-            createMode === 'scratch'
-              ? 'border-grubano-primary bg-grubano-tint text-grubano-primary'
-              : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted'
-          }`}
-        >
-          <Plus size={14} /> {t('copyModeScratch')}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setError(''); setCreateMode('copy') }}
-          disabled={brands.length === 0}
-          className={`flex items-center justify-center gap-1.5 rounded-grubano-md border px-3 py-2.5 text-grubano-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-            createMode === 'copy'
-              ? 'border-grubano-primary bg-grubano-tint text-grubano-primary'
-              : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted'
-          }`}
-        >
-          <Copy size={14} /> {t('copyModeCopy')}
-        </button>
-      </div>
-
-      <div className="rounded-grubano-lg border border-grubano-border bg-grubano-surface p-5">
-        {error && (
-          <div className="mb-4 rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
-            {error}
+    <>
+      <section className="op-brands">
+        {/* head */}
+        <div className="op-dash__head">
+          <div>
+            <h1 className="op-dash__title">{t('title')}</h1>
+            <p className="op-dash__sub">{t('marquesSubtitle')}</p>
           </div>
-        )}
-        {done && (
-          <div className="mb-4 flex items-center gap-2 rounded-grubano-md border border-grubano-success/30 bg-grubano-success-tint px-3 py-2.5 text-grubano-sm text-grubano-success">
-            <Check size={15} /> {t('create')} ✓
+          <button type="button" className="op-btn-add" onClick={openCreate}>
+            <span className="ms" aria-hidden="true">add</span>{t('createBrandCta')}
+          </button>
+        </div>
+
+        {brands.length === 0 ? (
+          // ── EMPTY ──────────────────────────────────────────────────────────
+          <div className="op-card">
+            <div className="op-emptyline">
+              <span className="ms" aria-hidden="true">branding_watermark</span>
+              <b>{t('marquesEmptyTitle')}</b>
+              <span>{t('marquesEmptyDesc')}</span>
+              <button type="button" className="op-btn-primary" onClick={openCreate}>
+                <span className="ms" aria-hidden="true">add</span>{t('createBrandCta')}
+              </button>
+            </div>
           </div>
-        )}
-
-        {createMode === 'scratch' ? (
-          <form onSubmit={submitScratch} className="space-y-4">
-            <Input
-              label={t('fieldName')}
-              value={form.name}
-              maxLength={80}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder={t('fieldNamePlaceholder')}
-            />
-
-            <div>
-              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('fieldCuisine')}</label>
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {CUISINE_TYPES.map((c) => {
-                  const active = form.cuisineType === c.value
-                  return (
-                    <button
-                      key={c.value}
-                      type="button"
-                      onClick={() => setForm({ ...form, cuisineType: c.value })}
-                      className={`flex flex-col items-center gap-1 rounded-grubano-md border px-2 py-2 text-xs font-semibold transition active:scale-95 ${
-                        active ? 'border-grubano-primary bg-grubano-tint text-grubano-primary' : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted'
-                      }`}
-                    >
-                      <span className="text-lg">{c.emoji}</span>
-                      <span>{t(`cuisine_${c.value}` as 'cuisine_italien')}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('fieldEmoji')}</label>
-              <div className="flex flex-wrap gap-2">
-                {BRAND_EMOJIS.map((e2) => (
-                  <button
-                    key={e2}
-                    type="button"
-                    onClick={() => setForm({ ...form, emoji: e2 })}
-                    aria-label={e2}
-                    className={`flex h-10 w-10 items-center justify-center rounded-grubano-md border text-lg transition active:scale-95 ${
-                      form.emoji === e2 ? 'border-grubano-primary bg-grubano-tint' : 'border-grubano-border bg-grubano-surface'
-                    }`}
-                  >
-                    {e2}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <Input
-              label={t('fieldTagline')}
-              value={form.tagline}
-              maxLength={140}
-              onChange={(e) => setForm({ ...form, tagline: e.target.value })}
-              placeholder={t('fieldTaglinePlaceholder')}
-            />
-
-            <div className="pt-1">
-              <Button type="submit" variant="primary" size="md" loading={saving} fullWidth>
-                {t('create')}
-              </Button>
-            </div>
-          </form>
         ) : (
-          // ── COPY MODE ─────────────────────────────────────────────────────
-          brands.length === 0 ? (
-            <p className="rounded-grubano-md border border-grubano-border bg-grubano-surface px-3 py-4 text-center text-grubano-sm text-grubano-ink-muted">
-              {t('copyNoBrands')}
-            </p>
-          ) : (
-            <form onSubmit={submitCopy} className="space-y-4">
-              <div>
-                <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('copySourceLabel')}</label>
-                <select
-                  value={copySource}
-                  onChange={(e) => setCopySource(e.target.value)}
-                  className="w-full rounded-grubano-md border border-grubano-border bg-grubano-surface px-3 py-2 text-grubano-sm text-grubano-ink outline-none transition focus:border-grubano-primary"
-                >
-                  {brands.map((b) => (
-                    <option key={b.id} value={b.id}>{b.emoji} {b.name}</option>
-                  ))}
-                </select>
+          <>
+            {/* stat strip (mono) — REAL brand + establishment counts + 30-day CA/orders */}
+            <div className="op-card stat-strip">
+              <div className="stat">
+                <span className="lbl">{t('title')}</span>
+                <b className="mono">{brands.length}</b>
               </div>
+              <div className="stat">
+                <span className="lbl">{t('marquesStatEstab')}</span>
+                <b className="mono">{establishmentTotal}</b>
+              </div>
+              <div className="stat">
+                <span className="lbl">{t('perfRevenue')}</span>
+                <b className="mono">{formatEuros(performance.caBrut, locale, { noDecimals: true })}</b>
+              </div>
+              <div className="stat">
+                <span className="lbl">{t('perfOrders')}</span>
+                <b className="mono">{performance.ordersTotal}</b>
+              </div>
+            </div>
 
-              <div>
-                <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('copyTargetLabel')}</label>
-                <select
-                  value={copyTarget}
-                  onChange={(e) => setCopyTarget(e.target.value)}
-                  className="w-full rounded-grubano-md border border-grubano-border bg-grubano-surface px-3 py-2 text-grubano-sm text-grubano-ink outline-none transition focus:border-grubano-primary"
-                >
-                  {establishments.length === 0 && <option value="">—</option>}
-                  {establishments.map((es) => (
-                    <option key={es.id} value={es.id}>
-                      {es.name}{es.city ? ` · ${es.city}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* brands grid */}
+            <div className="brands-grid">
+              {brands.map((b) => {
+                const active = isActive(b.status)
+                const est    = b.restaurantId
+                  ? establishments.find((e) => e.id === b.restaurantId) ?? null
+                  : null
+                return (
+                  <div key={b.id} className="brand-card">
+                    <div className="brand-card__top">
+                      <span className="brand-mono" style={{ background: monoGradient(b.name) }}>
+                        {monogram(b.name)}
+                      </span>
+                      <div className="brand-card__m">
+                        <b>{b.emoji ? `${b.emoji} ` : ''}{b.name}</b>
+                        <span>{b.platform || t('filterGrubano')}</span>
+                      </div>
+                      <span className={`brand-status ${active ? 'active' : 'draft'}`}>
+                        <i className="dot" />{active ? t('statusActivePill') : t('statusDraftPill')}
+                      </span>
+                    </div>
 
-              <div className="flex items-start gap-2 rounded-grubano-md border border-grubano-info/30 bg-grubano-info-tint px-3 py-2.5 text-grubano-sm text-grubano-ink-muted">
-                <Copy size={15} className="mt-0.5 shrink-0 text-grubano-info" />
-                <span>{t('copyHint')}</span>
-              </div>
+                    <div className="brand-est-row">
+                      <span className="ms" aria-hidden="true">storefront</span>
+                      <span className="m">{t('marquesEstRow')}</span>
+                      <span className="brand-est-count">{b.restaurantId ? 1 : 0}</span>
+                    </div>
 
-              <div className="pt-1">
-                <Button type="submit" variant="primary" size="md" loading={copying} disabled={!copyTarget} fullWidth>
-                  {t('copyButton')}
-                </Button>
-              </div>
-            </form>
-          )
+                    {est && (
+                      <div className="brand-avatars">
+                        <span className="op-estab__mini" style={{ width: 28, height: 28 }}>
+                          {monogram(est.name)}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* honest counters (menu + adopted creator dishes) */}
+                    <div className="brand-metrics">
+                      <div className="brand-metric">
+                        <span className="ms" aria-hidden="true">menu_book</span>
+                        <span className="brand-metric__v mono">{b.menuCount}</span>
+                        <span className="brand-metric__l">{t('statMenu')}</span>
+                      </div>
+                      <div className="brand-metric">
+                        <span className="ms" aria-hidden="true">auto_awesome</span>
+                        <span className="brand-metric__v mono">{b.adoptedDishCount}</span>
+                        <span className="brand-metric__l">{t('statAdopted')}</span>
+                      </div>
+                    </div>
+
+                    {/* "Gérer" → the brand's establishment hub when attached; the
+                        detail route /brands/[id] doesn't exist yet → honest inert
+                        for detached (draft) brands. */}
+                    {b.restaurantId ? (
+                      <Link
+                        href={`/dashboard/establishments/${b.restaurantId}`}
+                        className="brand-manage-btn"
+                      >
+                        <span className="ms" aria-hidden="true">settings</span>{t('marquesManage')}
+                      </Link>
+                    ) : (
+                      <span className="brand-manage-btn is-inert" aria-disabled="true">
+                        <span className="ms" aria-hidden="true">settings</span>
+                        {t('marquesManage')} · {tOp('soon')}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </>
         )}
-      </div>
+      </section>
 
-      {/* ── Re-adoption follow-up (city-exclusive creator dishes) ──────────── */}
-      {readopt && (
-        <div className="mt-6 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-5">
-          <h2 className="mb-2 font-display text-base font-semibold text-grubano-ink">{t('readoptTitle')}</h2>
-          <p className="mb-3 text-grubano-sm leading-relaxed text-grubano-ink-muted">
-            {t('readoptIntro')}
-          </p>
-          <ul className="space-y-2">
-            {readopt.items.map((it, idx) => (
-              <li
-                key={it.creatorDishId}
-                className="flex items-center gap-3 rounded-grubano-md border border-grubano-border bg-grubano-surface p-3"
-              >
-                <Sparkles size={15} className="shrink-0 text-grubano-primary" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-grubano-sm font-semibold text-grubano-ink">{it.name}</p>
-                  <p className="text-[11px] text-grubano-ink-muted">€{it.sellingPrice.toFixed(2)}</p>
+      {/* ══ CREATE MODAL (scratch / copy — logic byte-identical) ══════════════ */}
+      {modalOpen && (
+        <div className="op-modal-backdrop" onClick={closeCreate}>
+          <div
+            className="op-modal wide"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('createTitle')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="op-modal__head">
+              <h3>{t('createTitle')}</h3>
+              <button type="button" className="op-modal__close" onClick={closeCreate} aria-label={t('cancel')}>
+                <span className="ms" aria-hidden="true">close</span>
+              </button>
+            </div>
+
+            <div className="op-modal__body">
+              <p className="op-modal__lead">{t('pageDescCreate')}</p>
+
+              {/* Mode toggle */}
+              <div className="op-mode-toggle">
+                <button
+                  type="button"
+                  className={`op-mode-btn${createMode === 'scratch' ? ' is-active' : ''}`}
+                  onClick={() => { setError(''); setCreateMode('scratch') }}
+                >
+                  <span className="ms" aria-hidden="true">add</span>{t('copyModeScratch')}
+                </button>
+                <button
+                  type="button"
+                  className={`op-mode-btn${createMode === 'copy' ? ' is-active' : ''}`}
+                  onClick={() => { setError(''); setCreateMode('copy') }}
+                  disabled={brands.length === 0}
+                >
+                  <span className="ms" aria-hidden="true">content_copy</span>{t('copyModeCopy')}
+                </button>
+              </div>
+
+              {error && (
+                <div className="op-callout op-callout--danger">
+                  <span className="ms" aria-hidden="true">error</span>
+                  <span>{error}</span>
                 </div>
-                {it.status === 'done' ? (
-                  <span className="inline-flex items-center gap-1 text-grubano-sm font-semibold text-grubano-success">
-                    <Check size={14} /> {t('readoptDone')}
-                  </span>
-                ) : it.status === 'taken' ? (
-                  <span className="inline-flex items-center gap-1 text-right text-[11px] font-semibold text-grubano-warning">
-                    <AlertTriangle size={13} /> {t('readoptCityTaken')}
-                  </span>
-                ) : it.status === 'error' ? (
-                  <button
-                    type="button"
-                    onClick={() => readoptOne(idx)}
-                    className="text-[11px] font-semibold text-grubano-danger underline"
-                  >
-                    {t('readoptError')}
-                  </button>
+              )}
+              {done && (
+                <div className="op-callout op-callout--success">
+                  <span className="ms" aria-hidden="true">check_circle</span>
+                  <span>{t('create')} ✓</span>
+                </div>
+              )}
+
+              {createMode === 'scratch' ? (
+                <form id="brand-scratch-form" onSubmit={submitScratch} className="op-form">
+                  <div className="op-field">
+                    <label htmlFor="brand-name">{t('fieldName')}</label>
+                    <input
+                      id="brand-name"
+                      className="op-input"
+                      value={form.name}
+                      maxLength={80}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder={t('fieldNamePlaceholder')}
+                    />
+                  </div>
+
+                  <div className="op-field">
+                    <label>{t('fieldCuisine')}</label>
+                    <div className="op-cuisine-grid">
+                      {CUISINE_TYPES.map((c) => {
+                        const activeC = form.cuisineType === c.value
+                        return (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => setForm({ ...form, cuisineType: c.value })}
+                            className={`op-cuisine-chip${activeC ? ' is-active' : ''}`}
+                          >
+                            <span className="e">{c.emoji}</span>
+                            <span>{t(`cuisine_${c.value}` as 'cuisine_italien')}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="op-field">
+                    <label>{t('fieldEmoji')}</label>
+                    <div className="op-emoji-grid">
+                      {BRAND_EMOJIS.map((e2) => (
+                        <button
+                          key={e2}
+                          type="button"
+                          onClick={() => setForm({ ...form, emoji: e2 })}
+                          aria-label={e2}
+                          className={`op-emoji-chip${form.emoji === e2 ? ' is-active' : ''}`}
+                        >
+                          {e2}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="op-field">
+                    <label htmlFor="brand-tagline">{t('fieldTagline')}</label>
+                    <input
+                      id="brand-tagline"
+                      className="op-input"
+                      value={form.tagline}
+                      maxLength={140}
+                      onChange={(e) => setForm({ ...form, tagline: e.target.value })}
+                      placeholder={t('fieldTaglinePlaceholder')}
+                    />
+                  </div>
+                </form>
+              ) : (
+                // ── COPY MODE ─────────────────────────────────────────────────
+                brands.length === 0 ? (
+                  <div className="op-callout op-callout--info">
+                    <span className="ms" aria-hidden="true">info</span>
+                    <span>{t('copyNoBrands')}</span>
+                  </div>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    loading={it.status === 'loading'}
-                    onClick={() => readoptOne(idx)}
-                  >
-                    {t('readoptBtn')}
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-4 flex justify-end">
-            <Button type="button" variant="primary" size="md" onClick={closeReadopt}>
-              {t('readoptClose')}
-            </Button>
+                  <form id="brand-copy-form" onSubmit={submitCopy} className="op-form">
+                    <div className="op-field">
+                      <label htmlFor="copy-source">{t('copySourceLabel')}</label>
+                      <select
+                        id="copy-source"
+                        className="op-select"
+                        value={copySource}
+                        onChange={(e) => setCopySource(e.target.value)}
+                      >
+                        {brands.map((b) => (
+                          <option key={b.id} value={b.id}>{b.emoji} {b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="op-field">
+                      <label htmlFor="copy-target">{t('copyTargetLabel')}</label>
+                      <select
+                        id="copy-target"
+                        className="op-select"
+                        value={copyTarget}
+                        onChange={(e) => setCopyTarget(e.target.value)}
+                      >
+                        {establishments.length === 0 && <option value="">—</option>}
+                        {establishments.map((es) => (
+                          <option key={es.id} value={es.id}>
+                            {es.name}{es.city ? ` · ${es.city}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="op-callout op-callout--info">
+                      <span className="ms" aria-hidden="true">content_copy</span>
+                      <span>{t('copyHint')}</span>
+                    </div>
+                  </form>
+                )
+              )}
+            </div>
+
+            <div className="op-modal__foot">
+              <button type="button" className="op-btn-ghost" onClick={closeCreate}>
+                {t('cancel')}
+              </button>
+              {createMode === 'scratch' ? (
+                <button
+                  type="submit"
+                  form="brand-scratch-form"
+                  className="op-btn-primary"
+                  disabled={saving}
+                >
+                  {saving ? <span className="op-spin" aria-hidden="true" /> : <span className="ms" aria-hidden="true">add</span>}
+                  {t('create')}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  form="brand-copy-form"
+                  className="op-btn-primary"
+                  disabled={copying || !copyTarget || brands.length === 0}
+                >
+                  {copying ? <span className="op-spin" aria-hidden="true" /> : <span className="ms" aria-hidden="true">content_copy</span>}
+                  {t('copyButton')}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
-    </div>
+
+      {/* ══ RE-ADOPTION follow-up (city-exclusive creator dishes) ═════════════ */}
+      {readopt && (
+        <div className="op-modal-backdrop" onClick={closeReadopt}>
+          <div
+            className="op-modal wide"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('readoptTitle')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="op-modal__head">
+              <h3>{t('readoptTitle')}</h3>
+              <button type="button" className="op-modal__close" onClick={closeReadopt} aria-label={t('readoptClose')}>
+                <span className="ms" aria-hidden="true">close</span>
+              </button>
+            </div>
+            <div className="op-modal__body">
+              <p className="op-modal__lead">{t('readoptIntro')}</p>
+              <ul className="op-readopt-list">
+                {readopt.items.map((it, idx) => (
+                  <li key={it.creatorDishId} className="op-readopt-row">
+                    <span className="ms op-readopt-row__ic" aria-hidden="true">auto_awesome</span>
+                    <div className="op-readopt-row__m">
+                      <p className="op-readopt-row__name">{it.name}</p>
+                      <p className="op-readopt-row__price mono">
+                        {formatEuros(it.sellingPrice, locale)}
+                      </p>
+                    </div>
+                    {it.status === 'done' ? (
+                      <span className="op-readopt-row__done">
+                        <span className="ms" aria-hidden="true">check</span>{t('readoptDone')}
+                      </span>
+                    ) : it.status === 'taken' ? (
+                      <span className="op-readopt-row__taken">
+                        <span className="ms" aria-hidden="true">warning</span>{t('readoptCityTaken')}
+                      </span>
+                    ) : it.status === 'error' ? (
+                      <button
+                        type="button"
+                        onClick={() => readoptOne(idx)}
+                        className="op-readopt-row__retry"
+                      >
+                        {t('readoptError')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="op-btn-ghost op-readopt-row__btn"
+                        disabled={it.status === 'loading'}
+                        onClick={() => readoptOne(idx)}
+                      >
+                        {it.status === 'loading' && <span className="op-spin" aria-hidden="true" />}
+                        {t('readoptBtn')}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="op-modal__foot">
+              <button type="button" className="op-btn-primary" onClick={closeReadopt}>
+                {t('readoptClose')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
-export default function BrandsCreatePage() {
-  // useSearchParams() (read in BrandsCreateInner) requires a Suspense boundary in
-  // the Next.js 14 App Router, or the build fails with a CSR-bailout error.
+export default function BrandsPage() {
+  // useSearchParams() (read in BrandsInner) requires a Suspense boundary in the
+  // Next.js 14 App Router, or the build fails with a CSR-bailout error.
   return (
     <Suspense fallback={null}>
-      <BrandsCreateInner />
+      <BrandsInner />
     </Suspense>
   )
 }

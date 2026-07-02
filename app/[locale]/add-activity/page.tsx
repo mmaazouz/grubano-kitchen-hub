@@ -1,7 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Truck, ChefHat, Bike, Building2, Megaphone, Wrench, ArrowRight } from 'lucide-react'
 import { Link } from '@/navigation'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -10,8 +9,8 @@ import { getOperatorCompanyIdentity } from '@/lib/operator-identity'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { addableActivities, activityHref, activityMode, type AddableActivity } from '@/lib/add-activity'
-import { Card, EmptyState } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
+import './add-activity.css'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,25 +23,28 @@ export const dynamic = 'force-dynamic'
 // best-effort so the page works even before that migration lands). Rendered in the
 // neutral PartnerChrome (this route is in AppChrome BARE_PREFIXES → no operator
 // sidebar), so it is coherent for a partner of any role.
+//
+// 🔒 RE-SKIN (LOT 7, CD 391fd2c9-…-c820ba) — PRESENTATION ONLY. The content is
+// restyled to the operator CD design language (--op-* aa-type cards, self-declared
+// in add-activity.css since PartnerChrome does not carry those tokens). Material
+// Symbols replace lucide. The ROUTING LOGIC is byte-identical: activityHref (email
+// prefill+lock + editable siren/company on company-backed journeys), addableActivities
+// (filters out roles already held), activityMode (apply vs register). No fetch /
+// mutation / create happens here — the hub only ROUTES to the existing journeys.
 
-// Per-activity presentation (literal Tailwind classes so the role tokens are kept
-// by the purge). Supplier uses the brand primary (as on /business/start); the rest
-// use their P7 role tokens.
-const CARDS: Record<AddableActivity, {
-  Icon:     typeof Truck
-  accent:   string
-  bg:       string
+// Per-activity presentation: the Material Symbol icon + the i18n title/description
+// keys. The role token (accent tint) is applied in CSS via data-role.
+const ACTIVITY_META: Record<AddableActivity, {
+  icon:     string
   titleKey: 'supplierTitle' | 'creatorTitle' | 'logisticsTitle' | 'franchiseTitle' | 'affiliateTitle' | 'prestataireTitle'
   descKey:  'supplierDesc'  | 'creatorDesc'  | 'logisticsDesc'  | 'franchiseDesc'  | 'affiliateDesc'  | 'prestataireDesc'
 }> = {
-  supplier:  { Icon: Truck,     accent: 'text-grubano-primary',        bg: 'bg-grubano-tint',              titleKey: 'supplierTitle',  descKey: 'supplierDesc' },
-  creator:   { Icon: ChefHat,   accent: 'text-grubano-role-creator',   bg: 'bg-grubano-role-creator/12',   titleKey: 'creatorTitle',   descKey: 'creatorDesc' },
-  logistics: { Icon: Bike,      accent: 'text-grubano-role-logistics', bg: 'bg-grubano-role-logistics/12', titleKey: 'logisticsTitle', descKey: 'logisticsDesc' },
-  franchise: { Icon: Building2, accent: 'text-grubano-role-franchise', bg: 'bg-grubano-role-franchise/12', titleKey: 'franchiseTitle', descKey: 'franchiseDesc' },
-  // Phase 6 Brique A — only ever reached when AFFILIATE_ENABLED is ON (gated below).
-  affiliate: { Icon: Megaphone, accent: 'text-grubano-primary',        bg: 'bg-grubano-tint',              titleKey: 'affiliateTitle', descKey: 'affiliateDesc' },
-  // Phase 6 P1 — only ever reached when PRESTATAIRE_ENABLED is ON (gated below).
-  prestataire: { Icon: Wrench,  accent: 'text-grubano-primary',        bg: 'bg-grubano-tint',              titleKey: 'prestataireTitle', descKey: 'prestataireDesc' },
+  supplier:    { icon: 'local_shipping',     titleKey: 'supplierTitle',    descKey: 'supplierDesc' },
+  creator:     { icon: 'skillet',            titleKey: 'creatorTitle',     descKey: 'creatorDesc' },
+  logistics:   { icon: 'delivery_dining',    titleKey: 'logisticsTitle',   descKey: 'logisticsDesc' },
+  franchise:   { icon: 'branding_watermark', titleKey: 'franchiseTitle',   descKey: 'franchiseDesc' },
+  affiliate:   { icon: 'campaign',           titleKey: 'affiliateTitle',   descKey: 'affiliateDesc' },
+  prestataire: { icon: 'handyman',           titleKey: 'prestataireTitle', descKey: 'prestataireDesc' },
 }
 
 export default async function AddActivityPage({ params }: { params: { locale: string } }) {
@@ -71,55 +73,58 @@ export default async function AddActivityPage({ params }: { params: { locale: st
 
   return (
     <PartnerChrome>
-      <div className="w-full max-w-2xl">
-        <div className="mb-1 text-center sm:text-left">
-          <h1 className="font-display text-[26px] font-extrabold leading-tight text-grubano-ink">{t('title')}</h1>
-          <p className="mt-1.5 text-grubano-sm text-grubano-ink-muted">{t('subtitle')}</p>
-        </div>
+      <section className="gb-op-aa">
+        <Link href="/dashboard" className="back-link">
+          <span className="ms flip-rtl">arrow_back</span>
+          {t('back')}
+        </Link>
+
+        <h1 className="aa-title">{t('title')}</h1>
+        <p className="aa-sub">{t('subtitle')}</p>
 
         {addable.length === 0 ? (
-          <div className="mt-6">
-            <EmptyState emoji="✅" title={t('empty')} />
+          <div className="aa-empty">
+            <span className="ms">task_alt</span>
+            <b>{t('empty')}</b>
+            <span>{t('emailLocked')}</span>
           </div>
         ) : (
           <>
-            <p className="mt-3 mb-3 text-[13px] text-grubano-ink-faint">{t('emailLocked')}</p>
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <p className="aa-section-label">{t('sectionLabel')}</p>
+            <ul className="aa-types">
               {addable.map((activity) => {
-                const c = CARDS[activity]
+                const meta = ACTIVITY_META[activity]
                 const apply = activityMode(activity) === 'apply'
                 return (
                   <li key={activity}>
                     <Link
                       href={activityHref(activity, email, anchor)}
-                      className="group block h-full focus-visible:outline-none"
+                      data-role={activity}
+                      className="aa-type"
                     >
-                      <Card elevation="sm" padding="md" interactive className="flex h-full flex-col gap-2.5">
-                        <span className={`grid h-11 w-11 place-items-center rounded-grubano-md ${c.bg} ${c.accent}`}>
-                          <c.Icon size={20} />
-                        </span>
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-display text-base font-extrabold text-grubano-ink">{t(c.titleKey)}</span>
-                          {apply && (
-                            <span className="rounded-grubano-pill bg-grubano-surface-muted px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-grubano-ink-faint">
-                              {t('candidatureBadge')}
-                            </span>
-                          )}
-                        </span>
-                        <span className="text-grubano-sm leading-snug text-grubano-ink-muted">{t(c.descKey)}</span>
-                        <span className="mt-auto inline-flex items-center gap-1 pt-1 text-grubano-sm font-bold text-grubano-primary">
-                          {apply ? t('apply') : t('start')}
-                          <ArrowRight size={15} className="shrink-0 transition-transform duration-150 group-hover:translate-x-0.5" />
-                        </span>
-                      </Card>
+                      <span className="aa-type__ic"><span className="ms">{meta.icon}</span></span>
+                      <span className="aa-type__head">
+                        <b>{t(meta.titleKey)}</b>
+                        {apply && <span className="aa-type__badge">{t('candidatureBadge')}</span>}
+                      </span>
+                      <span className="aa-type__desc">{t(meta.descKey)}</span>
+                      <span className="aa-type__cta">
+                        {apply ? t('apply') : t('start')}
+                        <span className="ms flip-rtl">arrow_forward</span>
+                      </span>
                     </Link>
                   </li>
                 )
               })}
             </ul>
+
+            <div className="aa-note">
+              <span className="ms">info</span>
+              <p>{t('emailLocked')}</p>
+            </div>
           </>
         )}
-      </div>
+      </section>
     </PartnerChrome>
   )
 }

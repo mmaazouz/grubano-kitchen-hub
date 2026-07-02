@@ -4,17 +4,11 @@ import { useState, useTransition } from 'react'
 import { useRouter, Link } from '@/navigation'
 import { useTranslations } from 'next-intl'
 import {
-  Plus, Store, MapPin, Loader2, Image as ImageIcon, Building2, LayoutDashboard,
-  ChevronRight,
-} from 'lucide-react'
-import {
-  Modal, Button, Input, ToastProvider, useToast,
-} from '@/components/design-system'
-import {
   ESTABLISHMENT_COOKIE,
   ESTABLISHMENT_COOKIE_MAX_AGE,
 } from '@/lib/establishment'
 import { isPlausibleAddress } from '@/lib/geocode'
+import '../../app/[locale]/dashboard/establishments/establishments.css'
 
 // Canonical cuisine values shared with the onboarding flow. Labels come from the
 // existing `business.onboarding` namespace so we don't duplicate translations.
@@ -34,6 +28,29 @@ const CUISINE_TYPES = [
 // rejected client-side — the server enforces the same. Built from the cuisine
 // values above so the two never drift.
 const CUISINE_VALUES = new Set<string>(CUISINE_TYPES.map((c) => c.value))
+
+// CD list-row logo gradient pairs (verbatim from establishments.html). Cycled by a
+// stable hash of the establishment id so each card keeps a consistent colour —
+// pure presentation, no data meaning.
+const ROW_GRADS = [
+  '#FF8A3D,#F2570E',
+  '#D5372A,#A8281D',
+  '#E8A63D,#B9740A',
+  '#3E5A7D,#1B3A5E',
+  '#6E56CF,#4B3894',
+  '#1E9E57,#136B3B',
+] as const
+function gradFor(id: string): string {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return ROW_GRADS[h % ROW_GRADS.length]
+}
+function initials(name: string): string {
+  return (
+    name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() ||
+    '?'
+  )
+}
 
 /** Loose http(s) URL check — mirrors the server zod `.url()` intent without
  *  blocking on an empty field (empty values are sent as undefined). */
@@ -58,24 +75,12 @@ export default function EstablishmentsManager(props: {
   establishments: EstablishmentRow[]
   currentId:      string
 }) {
-  return (
-    <ToastProvider>
-      <EstablishmentsManagerInner {...props} />
-    </ToastProvider>
-  )
-}
-
-function EstablishmentsManagerInner({
-  establishments,
-  currentId,
-}: {
-  establishments: EstablishmentRow[]
-  currentId:      string
-}) {
   const t  = useTranslations('establishment')
   const tc = useTranslations('business.onboarding') // cuisine labels
+  const to = useTranslations('operator')             // shared op- labels (soon, status…)
   const router = useRouter()
-  const toast  = useToast()
+
+  const { establishments, currentId } = props
 
   // Loading state is bound to the navigation transition (not a manual flag that
   // can leak): startTransition stays pending until router.push completes, then
@@ -95,6 +100,14 @@ function EstablishmentsManagerInner({
   const [cover, setCover]     = useState('')
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState('')
+
+  // Lightweight inline toast (replaces the DS ToastProvider — the CD shell owns
+  // its own visual language). Auto-dismisses; purely cosmetic feedback.
+  const [toast, setToast] = useState<{ kind: 'ok' | 'warn'; msg: string } | null>(null)
+  function showToast(kind: 'ok' | 'warn', msg: string) {
+    setToast({ kind, msg })
+    window.setTimeout(() => setToast(null), 4000)
+  }
 
   // Select this establishment (durable cookie) and open ITS dashboard. Navigating
   // is clearer for a non-tech operator than a silent in-place switch — and it
@@ -174,8 +187,8 @@ function EstablishmentsManagerInner({
       // Created either way. Warn ONLY when BAN positively didn't find the address
       // (likely a typo); stay silent + show success when BAN was unavailable, so
       // a third-party outage never produces a false "check your address" alarm.
-      if (data.geocodeStatus === 'not_found') toast.warning(t('cityNotVerified'))
-      else                                    toast.success(t('createdNote'))
+      if (data.geocodeStatus === 'not_found') showToast('warn', t('cityNotVerified'))
+      else                                    showToast('ok', t('createdNote'))
       router.refresh()
     } catch {
       setError(t('errNetwork'))
@@ -184,234 +197,255 @@ function EstablishmentsManagerInner({
     }
   }
 
+  const openCount = establishments.filter((e) => e.isActive).length
+
   return (
-    <div className="mx-auto max-w-2xl px-5 pb-24 pt-4 md:max-w-3xl">
-      <header className="mb-5">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-grubano-ink">
-          {t('manageTitle')}
-        </h1>
-        <p className="mt-0.5 text-sm text-grubano-ink-muted">
-          {t('manageSubtitle', { count: establishments.length })}
-        </p>
-      </header>
+    <section className="op-est-list">
+      {/* head */}
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('label')}s</h1>
+          <p className="op-dash__sub">{t('manageSubtitle', { count: establishments.length })}</p>
+        </div>
+        <button type="button" className="op-btn-add" onClick={() => { resetForm(); setOpen(true) }}>
+          <span className="ms" aria-hidden="true">add</span>{t('add')}
+        </button>
+      </div>
 
-      <div className="space-y-3">
-        {establishments.map((e) => {
-          const current = e.id === currentId
-          const dashboardLabel = t('openDashboard')
-          return (
-            <article
-              key={e.id}
-              className={`group relative rounded-grubano-lg border bg-grubano-surface p-4 transition-colors hover:border-grubano-primary ${
-                current ? 'border-grubano-primary' : 'border-grubano-border'
-              }`}
-            >
-              {/* 5B — discoverability: the WHOLE card opens this establishment's
-                  HUB (its brands & menus). A stretched overlay link covers the
-                  card and sits BENEATH the dashboard button (raised to z-10), so
-                  the operational "tableau de bord" action stays a distinct click.
-                  Affordance: pointer cursor (the <a>), hover border + the chevron
-                  hint row below tell the operator the card is openable.
+      {/* stat strip — real counts only */}
+      <div className="op-card stat-strip">
+        <div className="stat">
+          <span className="lbl">{t('label')}s</span>
+          <b>{establishments.length}</b>
+        </div>
+        <div className="stat">
+          <span className="lbl">{t('statOpenNow')}</span>
+          <b>{openCount}</b>
+        </div>
+      </div>
 
-                  RESPONSIVE (iPhone testing — Mohammed):
-                    Mobile  → name has FULL ROW priority (no truncation to "Res…")
-                              the dashboard CTA collapses to a compact icon button
-                              right of the icon column; the badges stack just below
-                              the name. The address line wraps without clipping.
-                    ≥ md    → the dashboard CTA stretches back to a labelled button. */}
-              <Link
-                href={`/dashboard/establishments/${e.id}`}
-                aria-label={t('openHubAria', { name: e.name })}
-                className="absolute inset-0 z-0 rounded-grubano-lg"
-              />
-
-              <div className="flex items-start gap-3">
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-grubano-md bg-grubano-tint text-grubano-primary">
-                  <Store size={18} />
+      {establishments.length === 0 ? (
+        /* empty — no establishment yet */
+        <div className="op-card">
+          <div className="op-emptyline">
+            <span className="ms" aria-hidden="true">storefront</span>
+            <b>{t('emptyTitle')}</b>
+            <span>{t('emptyDesc')}</span>
+            <button type="button" className="op-btn-primary" onClick={() => { resetForm(); setOpen(true) }}>
+              <span className="ms" aria-hidden="true">add</span>{t('add')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* loaded — clickable rows */
+        <div className="op-card">
+          {establishments.map((e) => {
+            const current = e.id === currentId
+            const dashboardLabel = t('openDashboard')
+            const location = [e.city, e.address].filter(Boolean).join(' · ')
+            return (
+              <div key={e.id} className="est-list-row">
+                {/* the whole row opens this establishment's HUB (brands & menus).
+                    A stretched overlay link covers the row and sits BENEATH the
+                    "Gérer" button, so the operational action stays distinct. */}
+                <Link
+                  href={`/dashboard/establishments/${e.id}`}
+                  aria-label={t('openHubAria', { name: e.name })}
+                  className="est-list-row__link"
+                />
+                <span
+                  className="est-list-row__logo"
+                  style={{ background: `linear-gradient(135deg,${gradFor(e.id)})` }}
+                  aria-hidden="true"
+                >
+                  {initials(e.name)}
+                </span>
+                <div className="est-list-row__m">
+                  <b>{e.name}</b>
+                  <span>{location}</span>
                 </div>
-
-                <div className="min-w-0 flex-1">
-                  {/* Name FIRST, on its own line — never truncated by sibling
-                      controls. break-words handles unusually long names. */}
-                  <h3 className="break-words text-base font-bold leading-tight text-grubano-ink transition-colors group-hover:text-grubano-primary">
-                    {e.name}
-                  </h3>
-                  {/* Badges UNDER the name so they never compete for width. */}
-                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {current && (
-                      <span className="rounded-full bg-grubano-tint px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-grubano-primary">
-                        {t('selectedChip')}
-                      </span>
-                    )}
-                    {/* Sober online/offline — a discreet dot + label, not a loud
-                        tinted pill (atténue le bruit). */}
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-grubano-ink-muted">
-                      <span className={`h-1.5 w-1.5 rounded-full ${e.isActive ? 'bg-grubano-success' : 'bg-grubano-ink-muted/40'}`} />
-                      {e.isActive ? t('liveChip') : t('offlineChip')}
+                <div className="est-list-row__badges">
+                  {current && (
+                    <span className="est-brand-badge">
+                      <span className="ms" aria-hidden="true">check_circle</span>
+                      {t('selectedChip')}
                     </span>
-                  </div>
-                  <p className="mt-1 flex items-start gap-1 text-[11px] text-grubano-ink-muted">
-                    <MapPin size={11} className="mt-0.5 shrink-0" />
-                    <span className="break-words">{[e.city, e.address].filter(Boolean).join(' · ')}</span>
-                  </p>
-                  {/* Hub affordance — names the card's destination (brands & menus),
-                      distinct from the dashboard button (operational stats). */}
-                  <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-grubano-ink-muted transition-colors group-hover:text-grubano-primary">
-                    {t('openHub')}
-                    <ChevronRight size={12} className="rtl:rotate-180" />
+                  )}
+                  <span className={`estab-openclosed ${e.isActive ? 'open' : 'closed'}`}>
+                    <i className="dot" />
+                    {e.isActive ? to('status.open') : to('status.closed')}
                   </span>
                 </div>
-
-                {/* Mobile: compact icon-only button (saves all horizontal space
-                    for the name). aria-label preserves accessibility. */}
+                {/* "Gérer" — opens the hub too (settings icon, distinct click). */}
+                <Link
+                  href={`/dashboard/establishments/${e.id}`}
+                  className="est-manage-btn"
+                >
+                  <span className="ms" aria-hidden="true">settings</span>{t('manageBtn')}
+                </Link>
+                {/* Compact "open dashboard" action — sets the active establishment
+                    then navigates to /dashboard. Raised above the row link. */}
                 <button
                   type="button"
                   onClick={() => openDashboardFor(e.id)}
                   disabled={pending && pendingId === e.id}
                   aria-label={dashboardLabel}
                   title={dashboardLabel}
-                  className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-grubano-md border transition-colors disabled:opacity-50 md:hidden ${
-                    current
-                      ? 'border-grubano-primary bg-grubano-primary text-white hover:bg-grubano-primaryHover'
-                      : 'border-grubano-border bg-grubano-surface text-grubano-ink hover:border-grubano-primary hover:text-grubano-primary'
-                  }`}
+                  className="est-manage-btn"
                 >
                   {pending && pendingId === e.id ? (
-                    <Loader2 size={15} className="animate-spin" />
+                    <span className="op-spin" aria-hidden="true" />
                   ) : (
-                    <LayoutDashboard size={15} />
+                    <span className="ms" aria-hidden="true">open_in_new</span>
                   )}
+                  {dashboardLabel}
                 </button>
               </div>
-
-              {/* Desktop CTA — full labelled button, in its own row so we never
-                  squeeze the name. Hidden on mobile (the icon button above
-                  replaces it). */}
-              <div className="mt-3 hidden justify-end md:flex">
-                <Button
-                  variant={current ? 'primary' : 'secondary'}
-                  size="sm"
-                  className="relative z-10"
-                  loading={pending && pendingId === e.id}
-                  leftIcon={<LayoutDashboard size={14} />}
-                  onClick={() => openDashboardFor(e.id)}
-                >
-                  {dashboardLabel}
-                </Button>
-              </div>
-            </article>
-          )
-        })}
-      </div>
-
-      <button
-        onClick={() => { resetForm(); setOpen(true) }}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-grubano-lg border-2 border-dashed border-grubano-border bg-grubano-surface py-4 text-sm font-semibold text-grubano-ink-muted transition hover:border-grubano-primary hover:text-grubano-primary"
-      >
-        <Plus size={16} /> {t('add')}
-      </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* ── Add-establishment modal ─────────────────────────────────────── */}
-      <Modal open={open} onClose={() => setOpen(false)} size="md" title={t('addTitle')}>
-        <form onSubmit={submit} className="space-y-4">
-          {error && (
-            <div className="rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
-              {error}
+      {open && (
+        <div className="op-modal__scrim" role="dialog" aria-modal="true" onClick={() => setOpen(false)}>
+          <div className="op-modal" onClick={(ev) => ev.stopPropagation()}>
+            <div className="op-modal__head">
+              <h2>{t('addTitle')}</h2>
+              <button type="button" className="op-modal__x" onClick={() => setOpen(false)} aria-label={t('cancel')}>
+                <span className="ms" aria-hidden="true">close</span>
+              </button>
             </div>
-          )}
+            <form onSubmit={submit} style={{ display: 'contents' }}>
+              <div className="op-modal__body">
+                {error && (
+                  <div className="op-note op-note--danger">
+                    <span className="ms" aria-hidden="true">error</span>
+                    <span>{error}</span>
+                  </div>
+                )}
 
-          <Input
-            label={t('fName')}
-            value={name}
-            maxLength={120}
-            onChange={(ev) => setName(ev.target.value)}
-            placeholder={t('fNamePlaceholder')}
-          />
+                <div className="op-field">
+                  <label htmlFor="est-name">{t('fName')}</label>
+                  <input
+                    id="est-name"
+                    className="op-input"
+                    type="text"
+                    value={name}
+                    maxLength={120}
+                    onChange={(ev) => setName(ev.target.value)}
+                    placeholder={t('fNamePlaceholder')}
+                  />
+                </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label={t('fCity')}
-              value={city}
-              maxLength={100}
-              onChange={(ev) => setCity(ev.target.value)}
-              placeholder={t('fCityPlaceholder')}
-            />
-            <Input
-              label={t('fAddress')}
-              value={address}
-              maxLength={300}
-              onChange={(ev) => setAddress(ev.target.value)}
-              placeholder={t('fAddressPlaceholder')}
-            />
+                <div className="op-field-row">
+                  <div className="op-field">
+                    <label htmlFor="est-city">{t('fCity')}</label>
+                    <input
+                      id="est-city"
+                      className="op-input"
+                      type="text"
+                      value={city}
+                      maxLength={100}
+                      onChange={(ev) => setCity(ev.target.value)}
+                      placeholder={t('fCityPlaceholder')}
+                    />
+                  </div>
+                  <div className="op-field">
+                    <label htmlFor="est-addr">{t('fAddress')}</label>
+                    <input
+                      id="est-addr"
+                      className="op-input"
+                      type="text"
+                      value={address}
+                      maxLength={300}
+                      onChange={(ev) => setAddress(ev.target.value)}
+                      placeholder={t('fAddressPlaceholder')}
+                    />
+                  </div>
+                </div>
+
+                <div className="op-field">
+                  <label>{t('fCuisine')}</label>
+                  <div className="op-chip-grid">
+                    {CUISINE_TYPES.map((c) => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => setCuisineType(c.value)}
+                        className={`op-chip${cuisineType === c.value ? ' on' : ''}`}
+                      >
+                        <span className="emo" aria-hidden="true">{c.emoji}</span>
+                        <span>{tc(c.labelKey)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="op-field">
+                  <label htmlFor="est-desc">{t('fDescription')}</label>
+                  <textarea
+                    id="est-desc"
+                    className="op-textarea"
+                    value={description}
+                    maxLength={2000}
+                    onChange={(ev) => setDescription(ev.target.value)}
+                    placeholder={t('fDescriptionPlaceholder')}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="op-field">
+                  <label htmlFor="est-logo">{t('fLogo')}</label>
+                  <input
+                    id="est-logo"
+                    className="op-input"
+                    type="url"
+                    value={logo}
+                    onChange={(ev) => setLogo(ev.target.value)}
+                    placeholder={t('fLogoPlaceholder')}
+                  />
+                </div>
+                <div className="op-field">
+                  <label htmlFor="est-cover">{t('fCover')}</label>
+                  <input
+                    id="est-cover"
+                    className="op-input"
+                    type="url"
+                    value={cover}
+                    onChange={(ev) => setCover(ev.target.value)}
+                    placeholder={t('fCoverPlaceholder')}
+                  />
+                  <span className="op-field__hint">{t('imageHint')}</span>
+                </div>
+
+                <div className="op-note op-note--info">
+                  <span className="ms" aria-hidden="true">apartment</span>
+                  <span>{t('createdHint')}</span>
+                </div>
+              </div>
+              <div className="op-modal__foot">
+                <button type="button" className="op-btn-ghost" onClick={() => setOpen(false)}>
+                  {t('cancel')}
+                </button>
+                <button type="submit" className="op-btn-primary" disabled={saving}>
+                  {saving
+                    ? <><span className="op-spin" aria-hidden="true" />{t('create')}</>
+                    : t('create')}
+                </button>
+              </div>
+            </form>
           </div>
+        </div>
+      )}
 
-          <div>
-            <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('fCuisine')}</label>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-              {CUISINE_TYPES.map((c) => {
-                const active = cuisineType === c.value
-                return (
-                  <button
-                    key={c.value}
-                    type="button"
-                    onClick={() => setCuisineType(c.value)}
-                    className={`flex flex-col items-center gap-1 rounded-grubano-md border px-2 py-2 text-xs font-semibold transition active:scale-95 ${
-                      active ? 'border-grubano-primary bg-grubano-tint text-grubano-primary' : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted'
-                    }`}
-                  >
-                    <span className="text-lg">{c.emoji}</span>
-                    <span>{tc(c.labelKey)}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-grubano-sm font-semibold text-grubano-ink">{t('fDescription')}</label>
-            <textarea
-              value={description}
-              maxLength={2000}
-              onChange={(ev) => setDescription(ev.target.value)}
-              placeholder={t('fDescriptionPlaceholder')}
-              rows={3}
-              className="w-full rounded-grubano-md border border-grubano-border bg-grubano-surface px-3 py-2 text-grubano-sm text-grubano-ink outline-none transition focus:border-grubano-primary"
-            />
-          </div>
-
-          <Input
-            type="url"
-            label={t('fLogo')}
-            value={logo}
-            leftIcon={<ImageIcon size={15} />}
-            onChange={(ev) => setLogo(ev.target.value)}
-            placeholder={t('fLogoPlaceholder')}
-          />
-          <Input
-            type="url"
-            label={t('fCover')}
-            value={cover}
-            leftIcon={<ImageIcon size={15} />}
-            onChange={(ev) => setCover(ev.target.value)}
-            placeholder={t('fCoverPlaceholder')}
-            hint={t('imageHint')}
-          />
-
-          <div className="flex items-start gap-2 rounded-grubano-md border border-grubano-info/30 bg-grubano-info-tint px-3 py-2.5 text-grubano-sm text-grubano-ink-muted">
-            <Building2 size={15} className="mt-0.5 shrink-0 text-grubano-info" />
-            <span>{t('createdHint')}</span>
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <Button type="button" variant="secondary" size="md" onClick={() => setOpen(false)}>
-              {t('cancel')}
-            </Button>
-            <Button type="submit" variant="primary" size="md" loading={saving} className="flex-1">
-              {saving ? <Loader2 size={15} className="animate-spin" /> : t('create')}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-    </div>
+      {/* inline toast */}
+      {toast && (
+        <div className={`op-note ${toast.kind === 'warn' ? 'op-note--warn' : 'op-note--info'}`} style={{ marginTop: 16 }} role="status">
+          <span className="ms" aria-hidden="true">{toast.kind === 'warn' ? 'warning' : 'check_circle'}</span>
+          <span>{toast.msg}</span>
+        </div>
+      )}
+    </section>
   )
 }

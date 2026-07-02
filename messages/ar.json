@@ -562,17 +562,102 @@
     "menu": "القائمة",
     "profileGuest": "مستخدم",
     "soon": "قريبًا",
-    "nav": { "dashboard": "لوحة التحكم", "reservations": "الحجوزات والصالة", "orders": "الطلبات", "kitchen": "المطبخ", "menus": "القوائم", "stock": "المخزون", "suppliers": "الموردون", "customers": "العملاء", "reviews": "التقييمات", "analytics": "التحليلات", "finance": "المالية", "brands": "العلامات", "staff": "الفريق", "settings": "الإعدادات", "copilot": "المساعد الذكي", "notifications": "الإشعارات", "more": "المزيد" },
-    "group": { "ops": "العمليات", "crm": "علاقات العملاء", "insights": "القيادة", "org": "التنظيم" },
-    "estab": { "none": "لا توجد منشأة", "add": "إضافة منشأة" },
-    "status": { "open": "مفتوح", "closed": "مغلق" },
-    "dash": { "title": "لوحة التحكم", "refresh": "تحديث", "agg": "عرض مُجمَّع · {count} منشآت", "updatedAt": "آخر تحديث", "errorTitle": "تعذّر تحميل لوحة التحكم", "errorBody": "تحقق من اتصالك بالإنترنت وحاول مرة أخرى. إذا استمرت المشكلة، تواصل مع دعم Grubano.", "retry": "إعادة المحاولة" },
-    "onb": { "title": "مرحبًا بك في Grubano Business", "body": "أنشئ منشأتك الأولى لتفعيل الطلبات والحجوزات والمخزون والمساعد الذكي.", "cta": "إنشاء منشأتي", "s1t": "معلومات المطعم", "s1d": "الاسم والعنوان والمواعيد", "s2t": "قائمتك", "s2d": "الأطباق والأسعار والصور", "s3t": "النشر", "s3d": "مرئي للعملاء" },
-    "kpi": { "revenue": "مبيعات اليوم", "revenueSub": "إيرادات اليوم", "orders7d": "الطلبات (7 أيام)", "basket": "متوسط السلة (7 أيام)", "rating": "متوسط التقييم", "ratingSub": "{count} تقييم" },
-    "live": { "title": "العمليات المباشرة", "orders": "طلبات جارية", "reservations": "حجوزات قادمة", "deliveries": "توصيلات جارية", "tables": "طاولات مشغولة", "kitchen": "طابور المطبخ" },
-    "queue": { "title": "بحاجة إلى معالجة", "stockSub": "المخزون: {qty} {unit}", "emptyTitle": "لا شيء للمعالجة", "emptyBody": "كل شيء تحت السيطرة الآن" },
-    "ai": { "title": "المساعد الذكي", "tag": "قريبًا", "soonTitle": "المساعد الذكي قادم قريبًا", "soonBody": "ستظهر أول الرؤى الاستباقية هنا مع المزيد من البيانات." },
-    "quick": { "orders": "فتح طابور الطلبات", "reservation": "إضافة حجز", "pause": "إيقاف الطلبات عبر الإنترنت مؤقتًا", "menu": "إضافة منتج إلى القائمة", "invoices": "عرض فواتير الموردين" },
+    "nav": {
+      "dashboard": "لوحة التحكم",
+      "reservations": "الحجوزات والصالة",
+      "orders": "الطلبات",
+      "kitchen": "المطبخ",
+      "menus": "القوائم",
+      "stock": "المخزون",
+      "suppliers": "الموردون",
+      "customers": "العملاء",
+      "reviews": "التقييمات",
+      "analytics": "التحليلات",
+      "finance": "المالية",
+      "brands": "العلامات",
+      "staff": "الفريق",
+      "settings": "الإعدادات",
+      "copilot": "المساعد الذكي",
+      "notifications": "الإشعارات",
+      "more": "المزيد"
+    },
+    "group": {
+      "ops": "العمليات",
+      "crm": "علاقات العملاء",
+      "insights": "القيادة",
+      "org": "التنظيم"
+    },
+    "estab": {
+      "none": "لا توجد منشأة",
+      "add": "إضافة منشأة",
+      "viewDashboard": "عرض لوحة التحكم",
+      "dangerZone": "منطقة حسّاسة",
+      "pauseTitle": "إغلاق مؤقّت",
+      "pauseDesc": "يوقف استقبال الطلبات عبر الإنترنت لهذه المنشأة",
+      "resumeTitle": "إعادة فتح المنشأة",
+      "resumeDesc": "يعيد تفعيل استقبال الطلبات عبر الإنترنت لهذه المنشأة",
+      "pauseWorking": "جارٍ التحديث…",
+      "deleteBtn": "حذف"
+    },
+    "status": {
+      "open": "مفتوح",
+      "closed": "مغلق"
+    },
+    "dash": {
+      "title": "لوحة التحكم",
+      "refresh": "تحديث",
+      "agg": "عرض مُجمَّع · {count} منشآت",
+      "updatedAt": "آخر تحديث",
+      "errorTitle": "تعذّر تحميل لوحة التحكم",
+      "errorBody": "تحقق من اتصالك بالإنترنت وحاول مرة أخرى. إذا استمرت المشكلة، تواصل مع دعم Grubano.",
+      "retry": "إعادة المحاولة"
+    },
+    "onb": {
+      "title": "مرحبًا بك في Grubano Business",
+      "body": "أنشئ منشأتك الأولى لتفعيل الطلبات والحجوزات والمخزون والمساعد الذكي.",
+      "cta": "إنشاء منشأتي",
+      "s1t": "معلومات المطعم",
+      "s1d": "الاسم والعنوان والمواعيد",
+      "s2t": "قائمتك",
+      "s2d": "الأطباق والأسعار والصور",
+      "s3t": "النشر",
+      "s3d": "مرئي للعملاء"
+    },
+    "kpi": {
+      "revenue": "مبيعات اليوم",
+      "revenueSub": "إيرادات اليوم",
+      "orders7d": "الطلبات (7 أيام)",
+      "basket": "متوسط السلة (7 أيام)",
+      "rating": "متوسط التقييم",
+      "ratingSub": "{count} تقييم"
+    },
+    "live": {
+      "title": "العمليات المباشرة",
+      "orders": "طلبات جارية",
+      "reservations": "حجوزات قادمة",
+      "deliveries": "توصيلات جارية",
+      "tables": "طاولات مشغولة",
+      "kitchen": "طابور المطبخ"
+    },
+    "queue": {
+      "title": "بحاجة إلى معالجة",
+      "stockSub": "المخزون: {qty} {unit}",
+      "emptyTitle": "لا شيء للمعالجة",
+      "emptyBody": "كل شيء تحت السيطرة الآن"
+    },
+    "ai": {
+      "title": "المساعد الذكي",
+      "tag": "قريبًا",
+      "soonTitle": "المساعد الذكي قادم قريبًا",
+      "soonBody": "ستظهر أول الرؤى الاستباقية هنا مع المزيد من البيانات."
+    },
+    "quick": {
+      "orders": "فتح طابور الطلبات",
+      "reservation": "إضافة حجز",
+      "pause": "إيقاف الطلبات عبر الإنترنت مؤقتًا",
+      "menu": "إضافة منتج إلى القائمة",
+      "invoices": "عرض فواتير الموردين"
+    },
     "analytics": {
       "title": "التحليلات",
       "updatedAt": "آخر تحديث",
@@ -741,6 +826,75 @@
       "outflowCap": "الأعباء والموردون",
       "outflowRow": "عبء / مورّد",
       "flowFoot": "ستظهر تفاصيل التدفّقات الداخلة والخارجة المتوقّعة هنا بمجرد تفعيل التوقّع."
+    },
+    "onboarding": {
+      "stepLabel": "الخطوة {current} من {total}",
+      "quit": "خروج",
+      "stepResto": "مطعمك",
+      "stepHours": "ساعات العمل",
+      "stepMenu": "قائمتك",
+      "stepPublish": "النشر",
+      "restoTitle": "مطعمك",
+      "restoSub": "لنبدأ بالمعلومات الأساسية عن منشأتك.",
+      "nameLabel": "اسم المنشأة",
+      "namePlaceholder": "مثال: Mama Trattoria",
+      "cityPlaceholder": "باريس",
+      "addressPlaceholder2": "الرقم، الشارع، الرمز البريدي، المدينة",
+      "cuisineLabel": "نوع المطبخ",
+      "cuisinePlaceholder": "اختر…",
+      "cuisineFrancais": "فرنسي",
+      "cuisineJaponais": "ياباني",
+      "cuisineMediterraneen": "متوسطي",
+      "cuisineBurgers": "برغر",
+      "phoneLabel": "الهاتف",
+      "hoursTitle": "ساعات العمل",
+      "hoursSub": "حدّد متى تستقبل منشأتك العملاء. يمكنك تعديل ذلك لاحقًا.",
+      "closed": "مغلق",
+      "day": {
+        "mon": "الاثنين",
+        "tue": "الثلاثاء",
+        "wed": "الأربعاء",
+        "thu": "الخميس",
+        "fri": "الجمعة",
+        "sat": "السبت",
+        "sun": "الأحد"
+      },
+      "menuTitle": "قائمتك",
+      "menuSub": "أضف بعض الأطباق للبدء. يمكنك إكمال قائمتك في أي وقت.",
+      "menuEmpty": "لا توجد أطباق بعد — أضف واحدًا أدناه.",
+      "dishTag": "طبق",
+      "dishNameLabel": "اسم الطبق",
+      "dishNamePlaceholder": "مثال: Margherita",
+      "dishPriceLabel": "السعر",
+      "add": "إضافة",
+      "remove": "إزالة",
+      "menuLater": "سأفعل ذلك لاحقًا",
+      "publishTitle": "أوشكت على الانتهاء!",
+      "publishSub": "راجع معلوماتك، ثم انشر مطعمك.",
+      "recapResto": "المطعم",
+      "recapRestoEmpty": "غير محدّد",
+      "recapHours": "الساعات",
+      "recapHoursValue": "{count, plural, =0 {مغلق كل الأيام} one {مفتوح يومًا واحدًا في الأسبوع} other {مفتوح # أيام في الأسبوع}}",
+      "recapMenu": "القائمة",
+      "recapMenuValue": "{count, plural, =0 {لم يُضَف أي طبق} one {تمت إضافة طبق واحد #} other {تمت إضافة # أطباق}}",
+      "edit": "تعديل",
+      "publishReviewNotice": "سيُنشأ مطعمك في الوضع المخفي. يراجع فريقنا ملفك قبل نشره على تطبيق Grubano.",
+      "publishCta": "انشر مطعمي",
+      "publishing": "جارٍ الحفظ…",
+      "donePending": "مطعمك قيد المراجعة من فريقنا قبل النشر. يمكنك بالفعل تحضير قائمتك من لوحة التحكم — وستصبح مرئية بمجرد الموافقة عليها.",
+      "defaultCategory": "الأطباق",
+      "errRequiredResto": "الاسم والعنوان والمدينة مطلوبة.",
+      "addressLabel": "العنوان",
+      "cityLabel": "المدينة",
+      "cuisineItalien": "إيطالي",
+      "cuisineAutre": "أخرى",
+      "back": "رجوع",
+      "continue": "متابعة",
+      "doneTitle": "تم إنشاء مساحتك ✅",
+      "doneCta": "الانتقال إلى لوحة التحكم",
+      "errRestaurantFailed": "تعذّر إنشاء المطعم. تحقّق من معلوماتك.",
+      "errNetwork": "خطأ في الشبكة، أعد المحاولة.",
+      "addressPlaceholder": "12 شارع باريس"
     }
   },
   "common": {
@@ -1007,7 +1161,9 @@
         "errorTitle": "تعذر الحذف",
         "errorForbidden": "لا يحق لك حذف هذه المنشأة.",
         "errorNotFound": "لم تعد هذه المنشأة موجودة.",
-        "errorGeneric": "فشل الحذف — حاول مرة أخرى."
+        "errorGeneric": "فشل الحذف — حاول مرة أخرى.",
+        "pauseErrorForbidden": "يجب أن يعتمد أحد المسؤولين أول نشر لهذه المنشأة.",
+        "pauseErrorGeneric": "تعذّر تغيير حالة المنشأة — أعد المحاولة بعد لحظة."
       }
     }
   },
@@ -2423,33 +2579,34 @@
     },
     "postDelivery": {
       "close": "إغلاق",
-      "skip": "تخطٍّ",
+      "skip": "تخطّي",
       "heroTitle": "تم التوصيل — بالهناء والشفاء!",
       "rateOrderTitle": "كيف كان طلبك؟",
       "rateOrderHint": "رأيك يساعد المطعم على التحسّن",
-      "starLabel": "{n, plural, one {نجمة واحدة} other {# نجوم}}",
+      "starLabel": "{n, plural, zero {لا نجوم} one {نجمة واحدة} two {نجمتان} few {{n} نجوم} many {{n} نجمة} other {{n} نجمة}}",
       "qtag_delicious": "لذيذ",
-      "qtag_wellPacked": "تغليف جيد",
+      "qtag_wellPacked": "مغلَّف جيدًا",
       "qtag_hot": "ساخن",
       "qtag_generous": "وفير",
       "courierName": "عامل التوصيل",
       "courierRole": "قام بتوصيل طلبك",
       "rateCourier": "قيّم عامل التوصيل",
-      "courierStarLabel": "{n, plural, one {قيّم عامل التوصيل بنجمة واحدة} other {قيّم عامل التوصيل بـ # نجوم}}",
-      "addTip": "إضافة إكرامية",
+      "courierStarLabel": "قيّم عامل التوصيل {n, plural, zero {لا نجوم} one {نجمة واحدة} two {نجمتان} few {{n} نجوم} many {{n} نجمة} other {{n} نجمة}}",
+      "addTip": "أضف بقشيشًا",
       "tipCustomPlaceholder": "مبلغ آخر",
-      "tipNote": "تذهب 100% من الإكرامية إلى عامل التوصيل",
+      "tipNote": "100٪ من البقشيش يذهب إلى عامل التوصيل",
       "reportIssue": "الإبلاغ عن مشكلة في هذا الطلب",
       "submit": "إرسال تقييمي",
-      "submitWithTip": "إرسال تقييمي · إكرامية {amount}",
+      "submitWithTip": "إرسال تقييمي · بقشيش {amount}",
       "thanksTitle": "شكرًا على تقييمك!",
-      "thanksBody": "إلى اللقاء قريبًا في Grubano.",
-      "thanksTipBody": "تم تسجيل إكراميتك البالغة {amount}. إلى اللقاء قريبًا في Grubano.",
+      "thanksBody": "نراك قريبًا على Grubano.",
+      "thanksTipBody": "تم تسجيل بقشيشك البالغ {amount}. نراك قريبًا على Grubano.",
       "pointsEarned": "+{points} نقطة مكتسبة",
       "viewReceipt": "عرض الإيصال",
-      "reorder": "إعادة الطلب",
+      "reorder": "أعد الطلب",
       "notFoundTitle": "الطلب غير موجود",
-      "notFoundBody": "هذا الطلب غير موجود أو لم يعد متاحًا."
+      "notFoundBody": "هذا الطلب غير موجود أو لم يعد متاحًا.",
+      "tipRecap": "تمت إضافة البقشيش · {amount}"
     },
     "addresses": {
       "title": "عناوين التوصيل",
@@ -3224,37 +3381,6 @@
       "confirmTakenBody": "تم للتو ربط هذا العنوان بحساب آخر. لم يتم تغيير بريدك الإلكتروني.",
       "confirmToAuth": "تسجيل الدخول",
       "confirmToAccount": "الذهاب إلى حسابي"
-    },
-    "postDelivery": {
-      "close": "إغلاق",
-      "skip": "تخطّي",
-      "heroTitle": "تم التوصيل — بالهناء والشفاء!",
-      "rateOrderTitle": "كيف كان طلبك؟",
-      "rateOrderHint": "رأيك يساعد المطعم على التحسّن",
-      "starLabel": "{n, plural, zero {لا نجوم} one {نجمة واحدة} two {نجمتان} few {{n} نجوم} many {{n} نجمة} other {{n} نجمة}}",
-      "qtag_delicious": "لذيذ",
-      "qtag_wellPacked": "مغلَّف جيدًا",
-      "qtag_hot": "ساخن",
-      "qtag_generous": "وفير",
-      "courierName": "عامل التوصيل",
-      "courierRole": "قام بتوصيل طلبك",
-      "rateCourier": "قيّم عامل التوصيل",
-      "courierStarLabel": "قيّم عامل التوصيل {n, plural, zero {لا نجوم} one {نجمة واحدة} two {نجمتان} few {{n} نجوم} many {{n} نجمة} other {{n} نجمة}}",
-      "addTip": "أضف بقشيشًا",
-      "tipCustomPlaceholder": "مبلغ آخر",
-      "tipNote": "100٪ من البقشيش يذهب إلى عامل التوصيل",
-      "reportIssue": "الإبلاغ عن مشكلة في هذا الطلب",
-      "submit": "إرسال تقييمي",
-      "submitWithTip": "إرسال تقييمي · بقشيش {amount}",
-      "thanksTitle": "شكرًا على تقييمك!",
-      "thanksBody": "نراك قريبًا على Grubano.",
-      "thanksTipBody": "تم تسجيل بقشيشك البالغ {amount}. نراك قريبًا على Grubano.",
-      "pointsEarned": "+{points} نقطة مكتسبة",
-      "viewReceipt": "عرض الإيصال",
-      "reorder": "أعد الطلب",
-      "notFoundTitle": "الطلب غير موجود",
-      "notFoundBody": "هذا الطلب غير موجود أو لم يعد متاحًا.",
-      "tipRecap": "تمت إضافة البقشيش · {amount}"
     }
   },
   "menu": {
@@ -3601,8 +3727,36 @@
       "saving": "جارٍ الحفظ…",
       "savedTitle": "تم حفظ الشروط",
       "savedBody": "تم تحديث شروط امتياز علامتك.",
-      "errorGeneric": "حدث خطأ. يرجى المحاولة مرة أخرى."
-    }
+      "errorGeneric": "حدث خطأ. يرجى المحاولة مرة أخرى.",
+      "brandsBack": "العلامات التجارية",
+      "loadErrorTitle": "تعذّر تحميل هذه العلامة التجارية",
+      "statusActive": "نشطة",
+      "statusDraft": "مسودة",
+      "cuisineUnset": "المطبخ غير محدّد",
+      "statOpenLabel": "متاحة للامتياز",
+      "statOpenYes": "نعم",
+      "statOpenNo": "لا",
+      "statZonesLabel": "المناطق المصرّح بها",
+      "tabFranchise": "شروط الامتياز",
+      "sectionAvailability": "التوفّر",
+      "sectionTerms": "الشروط المالية",
+      "sectionZones": "المناطق / المدن المصرّح بها",
+      "zonesEmpty": "لم تُحدَّد أي منطقة — تُعرَض العلامة التجارية دون قيود جغرافية.",
+      "sectionReview": "الملخّص",
+      "reviewSub": "القيم الحالية",
+      "royaltyDefault": "6 % (افتراضي)",
+      "setupFeeNone": "لا يوجد"
+    },
+    "marquesSubtitle": "اجمع منشآتك تحت هوية واحدة",
+    "createBrandCta": "إنشاء علامة تجارية",
+    "marquesEmptyTitle": "لا توجد علامات تجارية بعد",
+    "marquesEmptyDesc": "اجمع منشآتك تحت علامة تجارية مشتركة — مفيد للامتيازات والمجموعات متعددة المواقع.",
+    "marquesStatEstab": "إجمالي المنشآت",
+    "marquesEstRow": "المنشآت المرتبطة",
+    "statusActivePill": "نشطة",
+    "statusDraftPill": "مسودة",
+    "marquesManage": "إدارة",
+    "brandsErrorTitle": "تعذّر تحميل علاماتك التجارية"
   },
   "business": {
     "auth": {
@@ -3994,7 +4148,11 @@
     "selectedChip": "محدد",
     "errAddressInvalid": "عنوان غير صالح — أدخل عنواناً كاملاً (رقم واسم الشارع).",
     "openHub": "عرض العلامات والقوائم",
-    "openHubAria": "فتح {name} — عرض علاماته التجارية وقوائمه"
+    "openHubAria": "فتح {name} — عرض علاماته التجارية وقوائمه",
+    "statOpenNow": "مفتوحة الآن",
+    "emptyTitle": "لا توجد منشآت بعد",
+    "emptyDesc": "أضف منشأتك الأولى لتفعيل الطلبات والحجوزات والمخزون.",
+    "manageBtn": "إدارة"
   },
   "tables": {
     "pageTitle": "الحجوزات والقاعة",
@@ -5089,7 +5247,9 @@
     "affiliateTitle": "كن مُحيلاً",
     "affiliateDesc": "شارك رابط الإحالة الخاص بك واكسب عمولة على الطلبات التي تجلبها. رابط فوري بدون تحقق.",
     "prestataireTitle": "مقدّم خدمات",
-    "prestataireDesc": "قدّم خدماتك لمطاعم الشبكة."
+    "prestataireDesc": "قدّم خدماتك لمطاعم الشبكة.",
+    "back": "المنشآت",
+    "sectionLabel": "الأنشطة المتاحة"
   },
   "admin": {
     "approvals": {
@@ -6011,6 +6171,56 @@
       "courierStatus": "في الطريق إلى المطعم · دراجة",
       "call": "اتصال",
       "backHome": "العودة إلى الرئيسية"
+    }
+  },
+  "more": {
+    "title": "الإعدادات",
+    "subtitle": "أدر حسابك وفوترتك ومعلوماتك القانونية",
+    "soon": "قريبًا",
+    "logout": "تسجيل الخروج",
+    "loggingOut": "جارٍ تسجيل الخروج…",
+    "version": "Grubano Business · v2.4.0",
+    "account": {
+      "title": "الحساب",
+      "profile": "الملف الشخصي",
+      "security": "الأمان وكلمة المرور",
+      "securitySub": "كلمة المرور، المصادقة الثنائية",
+      "language": "اللغة",
+      "notifications": "الإشعارات",
+      "notificationsSub": "رسائل البريد الإلكتروني، تنبيهات الطلبات"
+    },
+    "billing": {
+      "title": "الفوترة والاشتراك",
+      "plan": "الخطة الحالية",
+      "premium": "Premium",
+      "methods": "طرق الدفع",
+      "methodsSub": "البطاقات والخصم المباشر",
+      "history": "سجلّ الفوترة",
+      "historySub": "فواتير Grubano الخاصة بك"
+    },
+    "legal": {
+      "title": "المعلومات القانونية والضريبية",
+      "company": "الاسم القانوني للشركة",
+      "unset": "غير محدّد — قريبًا",
+      "siren": "SIREN",
+      "kyb": "التحقق من الشركة (KYB)",
+      "kybSub": "حالة التحقق من شركتك",
+      "kybVerifiedAt": "تم التحقق في {date}",
+      "vatSection": "رقم TVA داخل الاتحاد الأوروبي",
+      "dac7Section": "إقرار DAC7"
+    },
+    "kyb": {
+      "verified": "محدّث",
+      "pending": "قيد المعالجة",
+      "rejected": "إجراء مطلوب",
+      "none": "غير محدّد"
+    },
+    "help": {
+      "title": "المساعدة والدعم",
+      "center": "مركز المساعدة",
+      "contact": "التواصل مع الدعم",
+      "terms": "الشروط العامة",
+      "privacy": "سياسة الخصوصية"
     }
   }
 }

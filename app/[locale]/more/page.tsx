@@ -1,69 +1,51 @@
-import Link from 'next/link'
-import {
-  BarChart3, Building2, ShoppingBag, Receipt, Globe, Bell,
-  HelpCircle, LogOut, ChevronRight, User,
-} from 'lucide-react'
-import VatNumberForm from '@/components/fiscal/VatNumberForm'
-import Dac7FiscalForm from '@/components/fiscal/Dac7FiscalForm'
+// ── /more — operator RÉGLAGES / PLUS screen. VERBATIM CD v1 (Notion
+// 390fd2c9-8146-81d6-9b4e-c344f3f9f4aa — LOT 7, écran 4 : Réglages/Plus). ──────────
+//
+// The page is already wrapped by AppChrome → OperatorShell (navy --op-* chrome,
+// « Réglages » active in the rail). This file renders ONLY the screen content.
+//
+// 🔒 DATA INTEGRITY. This stays a SERVER COMPONENT that reads Prisma directly to load
+// the REAL account-level KYB identity (siren / officialName / legalForm / kybStatus /
+// kybVerifiedAt / country) for the session operator — OWNER-SCOPED via the session
+// email, never a client id. These fields are passed to <MoreClient/> and DISPLAYED
+// exactly as stored — NO declaration/verification logic is invented here.
+//
+// The interactive parts (real signOut auth, the embedded byte-identical VAT + DAC7 POST
+// forms, honest « bientôt » rows) live in <MoreClient/>. ⚠️ ZERO money on this screen —
+// « Facturation » rows are simple links to the real pages.
 
-const sections = [
-  {
-    title: 'Business',
-    items: [
-      { icon: BarChart3,   label: 'Finance & trésorerie', href: '/finance'    },
-      { icon: Building2,   label: 'Franchise multi-sites', href: '/franchise'  },
-      { icon: ShoppingBag, label: 'Marketplace',           href: '/marketplace'},
-      { icon: Receipt,     label: 'Tarification IA',       href: '/pricing'    },
-    ],
-  },
-  {
-    title: 'Compte',
-    items: [
-      { icon: User,        label: 'Profil opérateur',  href: '#'             },
-      { icon: Bell,        label: 'Notifications',     href: '/notifications' },
-      { icon: Globe,       label: 'Langue & région',   href: '#'             },
-    ],
-  },
-  {
-    title: 'Aide',
-    items: [
-      { icon: HelpCircle,  label: 'Centre d\'aide',   href: '#' },
-      { icon: LogOut,      label: 'Se déconnecter',   href: '#' },
-    ],
-  },
-]
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import MoreClient, { type KybIdentity } from './MoreClient'
 
-export default function MorePage() {
-  return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Plus</h1>
-      <p className="mb-5 text-sm text-muted-foreground">Mohammed · Opérateur Grubano</p>
+export const dynamic = 'force-dynamic'
 
-      {sections.map((section) => (
-        <div key={section.title} className="mb-5">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            {section.title}
-          </p>
-          <div className="overflow-hidden rounded-2xl border border-border bg-card divide-y divide-border">
-            {section.items.map((item) => (
-              <Link key={item.label} href={item.href}
-                className="flex items-center gap-3 px-4 py-3 transition hover:bg-muted/30">
-                <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted">
-                  <item.icon size={14} className="text-foreground" />
-                </div>
-                <span className="flex-1 text-sm font-medium">{item.label}</span>
-                <ChevronRight size={14} className="text-muted-foreground" />
-              </Link>
-            ))}
-          </div>
-        </div>
-      ))}
+async function getKyb(): Promise<KybIdentity> {
+  const empty: KybIdentity = { siren: null, officialName: null, legalForm: null, kybStatus: null, kybVerifiedAt: null, country: null }
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.email) return empty
+    const op = await prisma.operator.findUnique({
+      where: { email: session.user.email },
+      // read ONLY the account-level KYB identity fields we display (no mutation)
+      select: { siren: true, officialName: true, legalForm: true, kybStatus: true, kybVerifiedAt: true, country: true },
+    })
+    if (!op) return empty
+    return {
+      siren: op.siren ?? null,
+      officialName: op.officialName ?? null,
+      legalForm: op.legalForm ?? null,
+      kybStatus: op.kybStatus ?? null,
+      kybVerifiedAt: op.kybVerifiedAt ? op.kybVerifiedAt.toISOString() : null,
+      country: op.country ?? null,
+    }
+  } catch {
+    return empty
+  }
+}
 
-      {/* P4.4-A — partner VAT number for Grubano commission invoices (owner-scoped). */}
-      <VatNumberForm />
-
-      {/* P4.4-C — partner DAC7 self-declaration (owner-scoped, money-neutral). */}
-      <Dac7FiscalForm />
-    </div>
-  )
+export default async function MorePage() {
+  const kyb = await getKyb()
+  return <MoreClient kyb={kyb} />
 }

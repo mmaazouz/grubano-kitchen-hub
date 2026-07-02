@@ -562,17 +562,102 @@
     "menu": "Menu",
     "profileGuest": "Utente",
     "soon": "Presto",
-    "nav": { "dashboard": "Dashboard", "reservations": "Prenotazioni e Sala", "orders": "Ordini", "kitchen": "Cucina", "menus": "Menu", "stock": "Magazzino", "suppliers": "Fornitori", "customers": "Clienti", "reviews": "Recensioni", "analytics": "Analytics", "finance": "Finanze", "brands": "Marchi", "staff": "Team", "settings": "Impostazioni", "copilot": "Copilota IA", "notifications": "Notifiche", "more": "Altro" },
-    "group": { "ops": "Operazioni", "crm": "Relazione clienti", "insights": "Analisi", "org": "Organizzazione" },
-    "estab": { "none": "Nessun locale", "add": "Aggiungi un locale" },
-    "status": { "open": "Aperto", "closed": "Chiuso" },
-    "dash": { "title": "Dashboard", "refresh": "Aggiorna", "agg": "Vista aggregata · {count} locali", "updatedAt": "Aggiornato alle", "errorTitle": "Impossibile caricare la dashboard", "errorBody": "Controlla la connessione internet e riprova. Se il problema persiste, contatta il supporto Grubano.", "retry": "Riprova" },
-    "onb": { "title": "Benvenuto su Grubano Business", "body": "Crea il tuo primo locale per attivare ordini, prenotazioni, magazzino e il Copilota IA.", "cta": "Crea il mio locale", "s1t": "Info del ristorante", "s1d": "Nome, indirizzo, orari", "s2t": "Il tuo menu", "s2d": "Piatti, prezzi, foto", "s3t": "Pubblica", "s3d": "Visibile ai clienti" },
-    "kpi": { "revenue": "Incasso di oggi", "revenueSub": "Incasso della giornata", "orders7d": "Ordini (7 g)", "basket": "Scontrino medio (7 g)", "rating": "Valutazione media", "ratingSub": "{count} recensioni" },
-    "live": { "title": "Operatività in diretta", "orders": "Ordini in corso", "reservations": "Prenotazioni in arrivo", "deliveries": "Consegne in corso", "tables": "Tavoli occupati", "kitchen": "Coda cucina" },
-    "queue": { "title": "Da gestire", "stockSub": "Magazzino: {qty} {unit}", "emptyTitle": "Niente da gestire", "emptyBody": "Tutto sotto controllo per ora" },
-    "ai": { "title": "Copilota IA", "tag": "Presto", "soonTitle": "Il Copilota arriva presto", "soonBody": "I primi insight proattivi appariranno qui con più dati." },
-    "quick": { "orders": "Apri la coda ordini", "reservation": "Aggiungi una prenotazione", "pause": "Metti in pausa gli ordini online", "menu": "Aggiungi un prodotto al menu", "invoices": "Vedi le fatture fornitori" },
+    "nav": {
+      "dashboard": "Dashboard",
+      "reservations": "Prenotazioni e Sala",
+      "orders": "Ordini",
+      "kitchen": "Cucina",
+      "menus": "Menu",
+      "stock": "Magazzino",
+      "suppliers": "Fornitori",
+      "customers": "Clienti",
+      "reviews": "Recensioni",
+      "analytics": "Analytics",
+      "finance": "Finanze",
+      "brands": "Marchi",
+      "staff": "Team",
+      "settings": "Impostazioni",
+      "copilot": "Copilota IA",
+      "notifications": "Notifiche",
+      "more": "Altro"
+    },
+    "group": {
+      "ops": "Operazioni",
+      "crm": "Relazione clienti",
+      "insights": "Analisi",
+      "org": "Organizzazione"
+    },
+    "estab": {
+      "none": "Nessun locale",
+      "add": "Aggiungi un locale",
+      "viewDashboard": "Vai alla dashboard",
+      "dangerZone": "Zona sensibile",
+      "pauseTitle": "Chiudi temporaneamente",
+      "pauseDesc": "Sospende la ricezione degli ordini online per questo locale",
+      "resumeTitle": "Riapri il locale",
+      "resumeDesc": "Riattiva la ricezione degli ordini online per questo locale",
+      "pauseWorking": "Aggiornamento…",
+      "deleteBtn": "Elimina"
+    },
+    "status": {
+      "open": "Aperto",
+      "closed": "Chiuso"
+    },
+    "dash": {
+      "title": "Dashboard",
+      "refresh": "Aggiorna",
+      "agg": "Vista aggregata · {count} locali",
+      "updatedAt": "Aggiornato alle",
+      "errorTitle": "Impossibile caricare la dashboard",
+      "errorBody": "Controlla la connessione internet e riprova. Se il problema persiste, contatta il supporto Grubano.",
+      "retry": "Riprova"
+    },
+    "onb": {
+      "title": "Benvenuto su Grubano Business",
+      "body": "Crea il tuo primo locale per attivare ordini, prenotazioni, magazzino e il Copilota IA.",
+      "cta": "Crea il mio locale",
+      "s1t": "Info del ristorante",
+      "s1d": "Nome, indirizzo, orari",
+      "s2t": "Il tuo menu",
+      "s2d": "Piatti, prezzi, foto",
+      "s3t": "Pubblica",
+      "s3d": "Visibile ai clienti"
+    },
+    "kpi": {
+      "revenue": "Incasso di oggi",
+      "revenueSub": "Incasso della giornata",
+      "orders7d": "Ordini (7 g)",
+      "basket": "Scontrino medio (7 g)",
+      "rating": "Valutazione media",
+      "ratingSub": "{count} recensioni"
+    },
+    "live": {
+      "title": "Operatività in diretta",
+      "orders": "Ordini in corso",
+      "reservations": "Prenotazioni in arrivo",
+      "deliveries": "Consegne in corso",
+      "tables": "Tavoli occupati",
+      "kitchen": "Coda cucina"
+    },
+    "queue": {
+      "title": "Da gestire",
+      "stockSub": "Magazzino: {qty} {unit}",
+      "emptyTitle": "Niente da gestire",
+      "emptyBody": "Tutto sotto controllo per ora"
+    },
+    "ai": {
+      "title": "Copilota IA",
+      "tag": "Presto",
+      "soonTitle": "Il Copilota arriva presto",
+      "soonBody": "I primi insight proattivi appariranno qui con più dati."
+    },
+    "quick": {
+      "orders": "Apri la coda ordini",
+      "reservation": "Aggiungi una prenotazione",
+      "pause": "Metti in pausa gli ordini online",
+      "menu": "Aggiungi un prodotto al menu",
+      "invoices": "Vedi le fatture fornitori"
+    },
     "analytics": {
       "title": "Analytics",
       "updatedAt": "Ultimo aggiornamento",
@@ -741,6 +826,75 @@
       "outflowCap": "Oneri e fornitori",
       "outflowRow": "Onere / fornitore",
       "flowFoot": "Il dettaglio delle entrate e uscite previste apparirà qui una volta attivata la previsione."
+    },
+    "onboarding": {
+      "stepLabel": "Passaggio {current} di {total}",
+      "quit": "Esci",
+      "stepResto": "Il tuo ristorante",
+      "stepHours": "Orari di apertura",
+      "stepMenu": "Il tuo menù",
+      "stepPublish": "Pubblicazione",
+      "restoTitle": "Il tuo ristorante",
+      "restoSub": "Iniziamo dalle informazioni di base del tuo locale.",
+      "nameLabel": "Nome del locale",
+      "namePlaceholder": "Es. Mama Trattoria",
+      "cityPlaceholder": "Parigi",
+      "addressPlaceholder2": "Numero, via, codice postale, città",
+      "cuisineLabel": "Tipo di cucina",
+      "cuisinePlaceholder": "Scegli…",
+      "cuisineFrancais": "Francese",
+      "cuisineJaponais": "Giapponese",
+      "cuisineMediterraneen": "Mediterranea",
+      "cuisineBurgers": "Burger",
+      "phoneLabel": "Telefono",
+      "hoursTitle": "Orari di apertura",
+      "hoursSub": "Indica quando il tuo locale accoglie i clienti. Potrai modificarlo in seguito.",
+      "closed": "Chiuso",
+      "day": {
+        "mon": "Lunedì",
+        "tue": "Martedì",
+        "wed": "Mercoledì",
+        "thu": "Giovedì",
+        "fri": "Venerdì",
+        "sat": "Sabato",
+        "sun": "Domenica"
+      },
+      "menuTitle": "Il tuo menù",
+      "menuSub": "Aggiungi qualche piatto per iniziare. Potrai completare il tuo menù in qualsiasi momento.",
+      "menuEmpty": "Nessun piatto per ora — aggiungine uno qui sotto.",
+      "dishTag": "Piatto",
+      "dishNameLabel": "Nome del piatto",
+      "dishNamePlaceholder": "Es. Margherita",
+      "dishPriceLabel": "Prezzo",
+      "add": "Aggiungi",
+      "remove": "Rimuovi",
+      "menuLater": "Lo farò più tardi",
+      "publishTitle": "Quasi fatto!",
+      "publishSub": "Controlla le tue informazioni, poi pubblica il tuo ristorante.",
+      "recapResto": "Ristorante",
+      "recapRestoEmpty": "Non specificato",
+      "recapHours": "Orari",
+      "recapHoursValue": "{count, plural, =0 {Chiuso tutti i giorni} one {Aperto 1 giorno su 7} other {Aperto # giorni su 7}}",
+      "recapMenu": "Menù",
+      "recapMenuValue": "{count, plural, =0 {Nessun piatto aggiunto} one {# piatto aggiunto} other {# piatti aggiunti}}",
+      "edit": "Modifica",
+      "publishReviewNotice": "Il tuo ristorante verrà creato in modalità invisibile. Il nostro team verifica la tua richiesta prima della pubblicazione sull'app Grubano.",
+      "publishCta": "Pubblica il mio ristorante",
+      "publishing": "Salvataggio…",
+      "donePending": "Il tuo ristorante è in fase di verifica da parte del nostro team prima della pubblicazione. Puoi già preparare il tuo menù dalla dashboard — diventerà visibile non appena approvato.",
+      "defaultCategory": "Piatti",
+      "errRequiredResto": "Nome, indirizzo e città sono obbligatori.",
+      "addressLabel": "Indirizzo",
+      "cityLabel": "Città",
+      "cuisineItalien": "Italiana",
+      "cuisineAutre": "Altra",
+      "back": "Indietro",
+      "continue": "Continua",
+      "doneTitle": "Il tuo spazio è stato creato ✅",
+      "doneCta": "Vai alla dashboard",
+      "errRestaurantFailed": "Impossibile creare il ristorante. Controlla le tue informazioni.",
+      "errNetwork": "Errore di rete, riprova.",
+      "addressPlaceholder": "12 Rue de la Paix"
     }
   },
   "common": {
@@ -1007,7 +1161,9 @@
         "errorTitle": "Impossibile eliminare",
         "errorForbidden": "Non hai il permesso di eliminare questa struttura.",
         "errorNotFound": "Questa struttura non esiste più.",
-        "errorGeneric": "Eliminazione non riuscita — riprova."
+        "errorGeneric": "Eliminazione non riuscita — riprova.",
+        "pauseErrorForbidden": "La prima pubblicazione di questo locale deve essere approvata da un amministratore.",
+        "pauseErrorGeneric": "Impossibile modificare lo stato del locale — riprova tra un istante."
       }
     }
   },
@@ -3571,8 +3727,36 @@
       "saving": "Salvataggio…",
       "savedTitle": "Condizioni salvate",
       "savedBody": "Le condizioni di franchising del tuo marchio sono state aggiornate.",
-      "errorGeneric": "Si è verificato un errore. Riprova."
-    }
+      "errorGeneric": "Si è verificato un errore. Riprova.",
+      "brandsBack": "Marchi",
+      "loadErrorTitle": "Impossibile caricare questo marchio",
+      "statusActive": "Attivo",
+      "statusDraft": "Bozza",
+      "cuisineUnset": "Cucina non specificata",
+      "statOpenLabel": "Aperta al franchising",
+      "statOpenYes": "Sì",
+      "statOpenNo": "No",
+      "statZonesLabel": "Zone autorizzate",
+      "tabFranchise": "Condizioni di franchising",
+      "sectionAvailability": "Disponibilità",
+      "sectionTerms": "Condizioni finanziarie",
+      "sectionZones": "Zone / città autorizzate",
+      "zonesEmpty": "Nessuna zona specificata — il marchio è offerto senza restrizioni geografiche.",
+      "sectionReview": "Riepilogo",
+      "reviewSub": "Valori attuali",
+      "royaltyDefault": "6 % (predefinito)",
+      "setupFeeNone": "Nessuna"
+    },
+    "marquesSubtitle": "Raggruppa i tuoi locali sotto un'unica identità",
+    "createBrandCta": "Crea un marchio",
+    "marquesEmptyTitle": "Nessun marchio per ora",
+    "marquesEmptyDesc": "Raggruppa i tuoi locali sotto un marchio comune — utile per franchising e gruppi multi-sede.",
+    "marquesStatEstab": "Locali in totale",
+    "marquesEstRow": "Locali collegati",
+    "statusActivePill": "Attivo",
+    "statusDraftPill": "Bozza",
+    "marquesManage": "Gestisci",
+    "brandsErrorTitle": "Impossibile caricare i tuoi marchi"
   },
   "business": {
     "auth": {
@@ -3964,7 +4148,11 @@
     "selectedChip": "Selezionato",
     "errAddressInvalid": "Indirizzo non valido — inserisci un indirizzo completo (numero civico e via).",
     "openHub": "Vedi marchi e menù",
-    "openHubAria": "Apri {name} — vedi i suoi marchi e menù"
+    "openHubAria": "Apri {name} — vedi i suoi marchi e menù",
+    "statOpenNow": "Aperti ora",
+    "emptyTitle": "Nessun locale per ora",
+    "emptyDesc": "Aggiungi il tuo primo locale per attivare ordini, prenotazioni e magazzino.",
+    "manageBtn": "Gestisci"
   },
   "tables": {
     "pageTitle": "Prenotazioni e sala",
@@ -5059,7 +5247,9 @@
     "affiliateTitle": "Diventa affiliato",
     "affiliateDesc": "Condividi il tuo link di referral e guadagna una commissione sugli ordini portati. Link immediato, senza verifica.",
     "prestataireTitle": "Fornitore di servizi",
-    "prestataireDesc": "Offri i tuoi servizi ai ristoranti della rete."
+    "prestataireDesc": "Offri i tuoi servizi ai ristoranti della rete.",
+    "back": "Locali",
+    "sectionLabel": "Attività disponibili"
   },
   "admin": {
     "approvals": {
@@ -5981,6 +6171,56 @@
       "courierStatus": "In arrivo al ristorante · bici",
       "call": "Chiama",
       "backHome": "Torna alla home"
+    }
+  },
+  "more": {
+    "title": "Impostazioni",
+    "subtitle": "Gestisci il tuo account, la fatturazione e le informazioni legali",
+    "soon": "Presto",
+    "logout": "Esci",
+    "loggingOut": "Disconnessione…",
+    "version": "Grubano Business · v2.4.0",
+    "account": {
+      "title": "Account",
+      "profile": "Profilo",
+      "security": "Sicurezza e password",
+      "securitySub": "Password, autenticazione a due fattori",
+      "language": "Lingua",
+      "notifications": "Notifiche",
+      "notificationsSub": "Email, avvisi ordini"
+    },
+    "billing": {
+      "title": "Fatturazione e abbonamento",
+      "plan": "Piano attuale",
+      "premium": "Premium",
+      "methods": "Metodi di pagamento",
+      "methodsSub": "Carte e addebiti diretti",
+      "history": "Cronologia di fatturazione",
+      "historySub": "Le tue fatture Grubano"
+    },
+    "legal": {
+      "title": "Informazioni legali e fiscali",
+      "company": "Ragione sociale",
+      "unset": "Non specificata — presto",
+      "siren": "SIREN",
+      "kyb": "Verifica aziendale (KYB)",
+      "kybSub": "Stato di verifica della tua azienda",
+      "kybVerifiedAt": "Verificata il {date}",
+      "vatSection": "N. di partita IVA intracomunitaria",
+      "dac7Section": "Dichiarazione DAC7"
+    },
+    "kyb": {
+      "verified": "Aggiornato",
+      "pending": "In corso",
+      "rejected": "Azione richiesta",
+      "none": "Non specificato"
+    },
+    "help": {
+      "title": "Aiuto e assistenza",
+      "center": "Centro assistenza",
+      "contact": "Contatta l'assistenza",
+      "terms": "Termini e condizioni",
+      "privacy": "Informativa sulla privacy"
     }
   }
 }

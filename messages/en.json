@@ -562,17 +562,102 @@
     "menu": "Menu",
     "profileGuest": "User",
     "soon": "Soon",
-    "nav": { "dashboard": "Dashboard", "reservations": "Reservations & Floor", "orders": "Orders", "kitchen": "Kitchen", "menus": "Menus", "stock": "Stock", "suppliers": "Suppliers", "customers": "Customers", "reviews": "Reviews", "analytics": "Analytics", "finance": "Finances", "brands": "Brands", "staff": "Team", "settings": "Settings", "copilot": "AI Copilot", "notifications": "Notifications", "more": "More" },
-    "group": { "ops": "Operations", "crm": "Customer relations", "insights": "Insights", "org": "Organisation" },
-    "estab": { "none": "No establishment", "add": "Add an establishment" },
-    "status": { "open": "Open", "closed": "Closed" },
-    "dash": { "title": "Dashboard", "refresh": "Refresh", "agg": "Aggregated view · {count} establishments", "updatedAt": "Updated at", "errorTitle": "Couldn't load the dashboard", "errorBody": "Check your internet connection and try again. If the problem persists, contact Grubano support.", "retry": "Retry" },
-    "onb": { "title": "Welcome to Grubano Business", "body": "Create your first establishment to enable orders, reservations, stock and the AI Copilot.", "cta": "Create my establishment", "s1t": "Restaurant info", "s1d": "Name, address, hours", "s2t": "Your menu", "s2d": "Dishes, prices, photos", "s3t": "Go live", "s3d": "Visible to customers" },
-    "kpi": { "revenue": "Today's revenue", "revenueSub": "Revenue so far today", "orders7d": "Orders (7d)", "basket": "Average basket (7d)", "rating": "Average rating", "ratingSub": "{count} reviews" },
-    "live": { "title": "Live operations", "orders": "Orders in progress", "reservations": "Upcoming reservations", "deliveries": "Deliveries in progress", "tables": "Tables occupied", "kitchen": "Kitchen queue" },
-    "queue": { "title": "To handle", "stockSub": "Stock: {qty} {unit}", "emptyTitle": "Nothing to handle", "emptyBody": "Everything is under control for now" },
-    "ai": { "title": "AI Copilot", "tag": "Soon", "soonTitle": "The Copilot is coming soon", "soonBody": "Proactive insights will appear here as more data comes in." },
-    "quick": { "orders": "Open the order queue", "reservation": "Add a reservation", "pause": "Pause online orders", "menu": "Add a menu item", "invoices": "View supplier invoices" },
+    "nav": {
+      "dashboard": "Dashboard",
+      "reservations": "Reservations & Floor",
+      "orders": "Orders",
+      "kitchen": "Kitchen",
+      "menus": "Menus",
+      "stock": "Stock",
+      "suppliers": "Suppliers",
+      "customers": "Customers",
+      "reviews": "Reviews",
+      "analytics": "Analytics",
+      "finance": "Finances",
+      "brands": "Brands",
+      "staff": "Team",
+      "settings": "Settings",
+      "copilot": "AI Copilot",
+      "notifications": "Notifications",
+      "more": "More"
+    },
+    "group": {
+      "ops": "Operations",
+      "crm": "Customer relations",
+      "insights": "Insights",
+      "org": "Organisation"
+    },
+    "estab": {
+      "none": "No establishment",
+      "add": "Add an establishment",
+      "viewDashboard": "View dashboard",
+      "dangerZone": "Danger zone",
+      "pauseTitle": "Temporarily close",
+      "pauseDesc": "Pauses online order intake for this establishment",
+      "resumeTitle": "Reopen the establishment",
+      "resumeDesc": "Reactivates online order intake for this establishment",
+      "pauseWorking": "Updating…",
+      "deleteBtn": "Delete"
+    },
+    "status": {
+      "open": "Open",
+      "closed": "Closed"
+    },
+    "dash": {
+      "title": "Dashboard",
+      "refresh": "Refresh",
+      "agg": "Aggregated view · {count} establishments",
+      "updatedAt": "Updated at",
+      "errorTitle": "Couldn't load the dashboard",
+      "errorBody": "Check your internet connection and try again. If the problem persists, contact Grubano support.",
+      "retry": "Retry"
+    },
+    "onb": {
+      "title": "Welcome to Grubano Business",
+      "body": "Create your first establishment to enable orders, reservations, stock and the AI Copilot.",
+      "cta": "Create my establishment",
+      "s1t": "Restaurant info",
+      "s1d": "Name, address, hours",
+      "s2t": "Your menu",
+      "s2d": "Dishes, prices, photos",
+      "s3t": "Go live",
+      "s3d": "Visible to customers"
+    },
+    "kpi": {
+      "revenue": "Today's revenue",
+      "revenueSub": "Revenue so far today",
+      "orders7d": "Orders (7d)",
+      "basket": "Average basket (7d)",
+      "rating": "Average rating",
+      "ratingSub": "{count} reviews"
+    },
+    "live": {
+      "title": "Live operations",
+      "orders": "Orders in progress",
+      "reservations": "Upcoming reservations",
+      "deliveries": "Deliveries in progress",
+      "tables": "Tables occupied",
+      "kitchen": "Kitchen queue"
+    },
+    "queue": {
+      "title": "To handle",
+      "stockSub": "Stock: {qty} {unit}",
+      "emptyTitle": "Nothing to handle",
+      "emptyBody": "Everything is under control for now"
+    },
+    "ai": {
+      "title": "AI Copilot",
+      "tag": "Soon",
+      "soonTitle": "The Copilot is coming soon",
+      "soonBody": "Proactive insights will appear here as more data comes in."
+    },
+    "quick": {
+      "orders": "Open the order queue",
+      "reservation": "Add a reservation",
+      "pause": "Pause online orders",
+      "menu": "Add a menu item",
+      "invoices": "View supplier invoices"
+    },
     "analytics": {
       "title": "Analytics",
       "updatedAt": "Last updated",
@@ -741,6 +826,75 @@
       "outflowCap": "Expenses & suppliers",
       "outflowRow": "Expense / supplier",
       "flowFoot": "The detail of expected inflows and outflows will appear here once the forecast is enabled."
+    },
+    "onboarding": {
+      "stepLabel": "Step {current} of {total}",
+      "quit": "Quit",
+      "stepResto": "Your restaurant",
+      "stepHours": "Opening hours",
+      "stepMenu": "Your menu",
+      "stepPublish": "Go live",
+      "restoTitle": "Your restaurant",
+      "restoSub": "Let's start with the basic information about your establishment.",
+      "nameLabel": "Establishment name",
+      "namePlaceholder": "e.g. Mama Trattoria",
+      "cityPlaceholder": "Paris",
+      "addressPlaceholder2": "Number, street, postal code, city",
+      "cuisineLabel": "Cuisine type",
+      "cuisinePlaceholder": "Choose…",
+      "cuisineFrancais": "French",
+      "cuisineJaponais": "Japanese",
+      "cuisineMediterraneen": "Mediterranean",
+      "cuisineBurgers": "Burgers",
+      "phoneLabel": "Phone",
+      "hoursTitle": "Opening hours",
+      "hoursSub": "Tell us when your establishment welcomes customers. You can change this later.",
+      "closed": "Closed",
+      "day": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      },
+      "menuTitle": "Your menu",
+      "menuSub": "Add a few dishes to get started. You can complete your menu at any time.",
+      "menuEmpty": "No dishes yet — add one below.",
+      "dishTag": "Dish",
+      "dishNameLabel": "Dish name",
+      "dishNamePlaceholder": "e.g. Margherita",
+      "dishPriceLabel": "Price",
+      "add": "Add",
+      "remove": "Remove",
+      "menuLater": "I'll do it later",
+      "publishTitle": "Almost done!",
+      "publishSub": "Check your information, then take your restaurant live.",
+      "recapResto": "Restaurant",
+      "recapRestoEmpty": "Not specified",
+      "recapHours": "Hours",
+      "recapHoursValue": "{count, plural, =0 {Closed every day} one {Open 1 day a week} other {Open # days a week}}",
+      "recapMenu": "Menu",
+      "recapMenuValue": "{count, plural, =0 {No dish added} one {# dish added} other {# dishes added}}",
+      "edit": "Edit",
+      "publishReviewNotice": "Your restaurant will be created in hidden mode. Our team reviews your file before it goes live on the Grubano app.",
+      "publishCta": "Take my restaurant live",
+      "publishing": "Saving…",
+      "donePending": "Your restaurant is being reviewed by our team before going live. You can already prepare your menu from the dashboard — it will become visible as soon as it's approved.",
+      "defaultCategory": "Dishes",
+      "errRequiredResto": "Name, address and city are required.",
+      "addressLabel": "Address",
+      "cityLabel": "City",
+      "cuisineItalien": "Italian",
+      "cuisineAutre": "Other",
+      "back": "Back",
+      "continue": "Continue",
+      "doneTitle": "Your workspace is created ✅",
+      "doneCta": "Go to the dashboard",
+      "errRestaurantFailed": "Unable to create the restaurant. Check your information.",
+      "errNetwork": "Network error, please try again.",
+      "addressPlaceholder": "12 Rue de la Paix"
     }
   },
   "common": {
@@ -1007,7 +1161,9 @@
         "errorTitle": "Could not delete",
         "errorForbidden": "You are not allowed to delete this establishment.",
         "errorNotFound": "This establishment no longer exists.",
-        "errorGeneric": "Delete failed — please try again."
+        "errorGeneric": "Delete failed — please try again.",
+        "pauseErrorForbidden": "The first go-live of this establishment must be approved by an administrator.",
+        "pauseErrorGeneric": "Unable to change the establishment's status — try again in a moment."
       }
     }
   },
@@ -3571,8 +3727,36 @@
       "saving": "Saving…",
       "savedTitle": "Terms saved",
       "savedBody": "Your brand’s franchise terms have been updated.",
-      "errorGeneric": "Something went wrong. Please try again."
-    }
+      "errorGeneric": "Something went wrong. Please try again.",
+      "brandsBack": "Brands",
+      "loadErrorTitle": "Unable to load this brand",
+      "statusActive": "Active",
+      "statusDraft": "Draft",
+      "cuisineUnset": "Cuisine not specified",
+      "statOpenLabel": "Open to franchising",
+      "statOpenYes": "Yes",
+      "statOpenNo": "No",
+      "statZonesLabel": "Authorized zones",
+      "tabFranchise": "Franchise terms",
+      "sectionAvailability": "Availability",
+      "sectionTerms": "Financial terms",
+      "sectionZones": "Authorized zones / cities",
+      "zonesEmpty": "No zone specified — the brand is offered without geographic restriction.",
+      "sectionReview": "Summary",
+      "reviewSub": "Current values",
+      "royaltyDefault": "6 % (default)",
+      "setupFeeNone": "None"
+    },
+    "marquesSubtitle": "Group your establishments under a single identity",
+    "createBrandCta": "Create a brand",
+    "marquesEmptyTitle": "No brands yet",
+    "marquesEmptyDesc": "Group your establishments under a common brand — useful for franchises and multi-site groups.",
+    "marquesStatEstab": "Establishments in total",
+    "marquesEstRow": "Linked establishments",
+    "statusActivePill": "Active",
+    "statusDraftPill": "Draft",
+    "marquesManage": "Manage",
+    "brandsErrorTitle": "Unable to load your brands"
   },
   "business": {
     "auth": {
@@ -3964,7 +4148,11 @@
     "selectedChip": "Selected",
     "errAddressInvalid": "Invalid address — enter a complete address (street number and name).",
     "openHub": "View brands & menus",
-    "openHubAria": "Open {name} — view its brands and menus"
+    "openHubAria": "Open {name} — view its brands and menus",
+    "statOpenNow": "Open now",
+    "emptyTitle": "No establishments yet",
+    "emptyDesc": "Add your first establishment to enable orders, reservations and stock.",
+    "manageBtn": "Manage"
   },
   "tables": {
     "pageTitle": "Reservations & Floor",
@@ -5059,7 +5247,9 @@
     "affiliateTitle": "Become an affiliate",
     "affiliateDesc": "Share your referral link and earn a commission on the orders you bring. Instant link, no verification.",
     "prestataireTitle": "Provider",
-    "prestataireDesc": "Offer your services to restaurants in the network."
+    "prestataireDesc": "Offer your services to restaurants in the network.",
+    "back": "Establishments",
+    "sectionLabel": "Available activities"
   },
   "admin": {
     "approvals": {
@@ -5981,6 +6171,56 @@
       "courierStatus": "On the way to the restaurant · bike",
       "call": "Call",
       "backHome": "Back to home"
+    }
+  },
+  "more": {
+    "title": "Settings",
+    "subtitle": "Manage your account, billing and legal information",
+    "soon": "Soon",
+    "logout": "Log out",
+    "loggingOut": "Logging out…",
+    "version": "Grubano Business · v2.4.0",
+    "account": {
+      "title": "Account",
+      "profile": "Profile",
+      "security": "Security & password",
+      "securitySub": "Password, two-factor authentication",
+      "language": "Language",
+      "notifications": "Notifications",
+      "notificationsSub": "Emails, order alerts"
+    },
+    "billing": {
+      "title": "Billing & subscription",
+      "plan": "Current plan",
+      "premium": "Premium",
+      "methods": "Payment methods",
+      "methodsSub": "Cards and direct debits",
+      "history": "Billing history",
+      "historySub": "Your Grubano invoices"
+    },
+    "legal": {
+      "title": "Legal & tax information",
+      "company": "Company name",
+      "unset": "Not specified — soon",
+      "siren": "SIREN",
+      "kyb": "Business verification (KYB)",
+      "kybSub": "Verification status of your business",
+      "kybVerifiedAt": "Verified on {date}",
+      "vatSection": "Intra-EU VAT number",
+      "dac7Section": "DAC7 declaration"
+    },
+    "kyb": {
+      "verified": "Up to date",
+      "pending": "In progress",
+      "rejected": "Action required",
+      "none": "Not specified"
+    },
+    "help": {
+      "title": "Help & support",
+      "center": "Help center",
+      "contact": "Contact support",
+      "terms": "Terms and conditions",
+      "privacy": "Privacy policy"
     }
   }
 }

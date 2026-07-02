@@ -18,6 +18,10 @@ import { locales } from '@/i18n'
 //   /t/*            → public "table bill" QR landing (consumer, sober, no chrome)
 //   /legal/*        → public legal pages (mentions légales…) — own sober shell
 //   /login, /register → public auth pages
+//   /onboarding     → operator FIRST-establishment wizard (CD LOT 7) — a
+//                     FULL-SCREEN assistant by design (« assistant plein écran,
+//                     PAS la coquille », founder-approved). It renders its OWN
+//                     layout, NOT wrapped by OperatorShell.
 //   /               → redirects to /dashboard, never renders content
 //
 // Note: the locale prefix is stripped BEFORE matching below, so these
@@ -25,7 +29,7 @@ import { locales } from '@/i18n'
 // Note: /deliveries is INTENTIONALLY absent → it renders UNDER the navy OperatorShell
 // (founder-approved « aperçu visible sous la coquille » exception for the gated Livraisons
 // screen; every other bare route is unchanged).
-const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/legal', '/login', '/register', '/add-activity', '/affiliate']
+const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/legal', '/login', '/register', '/add-activity', '/affiliate', '/onboarding']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'
