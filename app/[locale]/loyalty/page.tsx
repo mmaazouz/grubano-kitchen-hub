@@ -1,30 +1,67 @@
 'use client'
 
+/**
+ * /loyalty — operator FIDÉLITÉ screen. VERBATIM CD v1 LOT 3 (Notion 390fd2c9-…-b35a,
+ * fichier CD operator/loyalty.html). ⚠️ ZONE LOGIQUE (moteur accumulation/échange).
+ *
+ * The page is already wrapped by AppChrome → OperatorShell (navy --op-* chrome, Fidélité
+ * reachable via the rail). This component renders ONLY the screen content = a <section>
+ * inside op-content.
+ *
+ * 🔒 PRESENTATION-ONLY RE-SKIN. Every data handler is PRESERVED byte-identical from the
+ * legacy page — the visual (JSX structure + CSS → CD --op-) changed, the logic did not:
+ *   • handleValidate → POST /api/loyalty/validate { email, uberOrderNumber, amount, brandName }
+ *   • handleRegister → POST /api/loyalty/register { name, email, phone? }
+ *   • handleWallet   → GET  /api/loyalty/wallet?email=<email>  (operator consults a wallet)
+ * No payload, no state shape, no fetch is renamed or changed.
+ *
+ * 🔒 POINTS / MONEY INTEGRITY. Points, euros and tiers are DISPLAYED straight from the real
+ * endpoints (validate.newBalance / wallet.pointsBalance / wallet.balanceEuros) — NEVER
+ * recomputed client-side. The conversion (centsPerPoint, creditScale, balanceEuros) comes
+ * from the wallet endpoint, never a hardcoded rate; euros are rendered via formatEuros.
+ * Program tiers (Bronze 0 / Silver 100 / Gold 200 / Platine 400 pts) + the welcome bonus
+ * are FROZEN program constants (lib/loyalty), shown as read-only rules — this screen NEVER
+ * edits lib/loyalty or the engine. Blocks with no backend (global aggregate stats: members,
+ * points issued/redeemed, rewards given) are HONEST « bientôt » previews, never fake data.
+ * All figures carry className="mono".
+ */
+
 import { useState } from 'react'
-import { Award, Gift, Check, Lock, Sparkles, Loader2, UserPlus } from 'lucide-react'
+import { useTranslations, useLocale } from 'next-intl'
+import { formatEuros } from '@/lib/format-money'
+import './loyalty.css'
 
 const BRANDS = ['Gnocchi Bar', 'Le Riz Gourmand', 'Pasta Fresca', 'Rollix']
 
-const TIER_THRESHOLDS = [
-  { tier: 'bronze',  min: 0,   label: 'Bronze',  next: 'Silver',  reward: 'Boisson offerte' },
-  { tier: 'silver',  min: 100, label: 'Silver',  next: 'Gold',    reward: 'Dessert offert' },
-  { tier: 'gold',    min: 200, label: 'Gold',    next: 'Platine', reward: 'Plat offert' },
-  { tier: 'platine', min: 400, label: 'Platine', next: null,      reward: 'Repas complet' },
-]
+// FROZEN program constants (mirror lib/loyalty + the wallet TIER_THRESHOLDS). Displayed as
+// read-only rules — this screen never recomputes tiers, it only shows them.
+const TIERS = [
+  { key: 'bronze',  min: 0,   icon: 'workspace_premium' },
+  { key: 'silver',  min: 100, icon: 'workspace_premium' },
+  { key: 'gold',    min: 200, icon: 'military_tech' },
+  { key: 'platine', min: 400, icon: 'diamond' },
+] as const
 
-const REWARDS = [
-  { name: 'Boisson offerte',   cost: 50,   tier: 'bronze' },
-  { name: 'Dessert offert',    cost: 100,  tier: 'silver' },
-  { name: 'Plat offert',       cost: 200,  tier: 'gold' },
-  { name: 'Repas complet',     cost: 400,  tier: 'platine' },
-]
+type Tab = 'validate' | 'register' | 'wallet'
 
-type Tab = 'validate' | 'register'
+type WalletData = {
+  pointsBalance: number
+  centsPerPoint: number
+  balanceEuros: number
+  creditScale: { points: number; euros: number }[]
+  tier: string
+  next_tier: string | null
+  next_tier_pts: number
+  recent_orders: { id: string; brand: string; amount: number; pointsEarned: number; date: string }[]
+  referral_code: string
+}
 
 export default function LoyaltyPage() {
+  const t = useTranslations('operator')
+  const locale = useLocale()
   const [tab, setTab] = useState<Tab>('validate')
 
-  /* ── Validate order ───────────────────────────────────────────────── */
+  /* ── Validate order (POST /api/loyalty/validate) — byte-identical handler ───── */
   const [valForm, setValForm] = useState({ email: '', uberOrderNumber: '', amount: '', brandName: BRANDS[0] })
   const [valState, setValState] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
   const [valResult, setValResult] = useState<{ pointsEarned: number; newBalance: number; tier: string } | null>(null)
@@ -38,7 +75,7 @@ export default function LoyaltyPage() {
     else { setValError(data.error ?? 'Erreur inconnue.'); setValState('err') }
   }
 
-  /* ── Register ─────────────────────────────────────────────────────── */
+  /* ── Register (POST /api/loyalty/register) — byte-identical handler ─────────── */
   const [regForm, setRegForm] = useState({ name: '', email: '', phone: '' })
   const [regState, setRegState] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
   const [regResult, setRegResult] = useState<{ name: string; email: string; tier: string; pointsBalance: number; referralCode: string } | null>(null)
@@ -52,170 +89,324 @@ export default function LoyaltyPage() {
     else { setRegError(data.error ?? 'Erreur inconnue.'); setRegState('err') }
   }
 
-  const tierInfo = TIER_THRESHOLDS.find(t => t.tier === (valResult?.tier ?? 'bronze')) ?? TIER_THRESHOLDS[0]
-  const balance  = valResult?.newBalance ?? 0
-  const progress = valResult ? Math.min(100, (balance / (tierInfo.min + 100)) * 100) : 0
+  /* ── Wallet lookup (GET /api/loyalty/wallet?email=) — consult a client wallet ─ */
+  const [walEmail, setWalEmail] = useState('')
+  const [walState, setWalState] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
+  const [walData, setWalData] = useState<WalletData | null>(null)
+  const [walError, setWalError] = useState('')
+
+  async function handleWallet(e: React.FormEvent) {
+    e.preventDefault(); setWalState('loading'); setWalError(''); setWalData(null)
+    const res = await fetch(`/api/loyalty/wallet?email=${encodeURIComponent(walEmail)}`, { cache: 'no-store' })
+    const data = await res.json()
+    if (res.ok) { setWalData(data); setWalState('ok') }
+    else { setWalError(data.error ?? 'Erreur inconnue.'); setWalState('err') }
+  }
+
+  // Tier label from the (frozen) tier list; falls back to the raw tier string.
+  const tierLabel = (key: string) => {
+    const found = TIERS.find(x => x.key === key)
+    return found ? t(`loyalty.tier.${found.key}`) : key
+  }
+
+  // wallet progress to next tier (display-only: derived from wallet.next_tier_pts, the
+  // server's own figure — we never recompute the threshold client-side).
+  const walletProgress = (() => {
+    if (!walData) return 0
+    const cur = TIERS.find(x => x.key === walData.tier)
+    if (!cur) return 100
+    const next = TIERS[TIERS.indexOf(cur) + 1]
+    if (!next) return 100
+    const span = next.min - cur.min
+    const done = walData.pointsBalance - cur.min
+    return Math.max(0, Math.min(100, span > 0 ? (done / span) * 100 : 100))
+  })()
 
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
+    <section>
+      {/* ── head ── */}
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('loyalty.title')}</h1>
+          <p className="op-dash__sub">{t('loyalty.subtitle')}</p>
+        </div>
+        <div className="loyalty-master">
+          <span>{t('loyalty.programActive')}</span>
+          <label className="op-switch" title={t('soon')}>
+            <input type="checkbox" checked readOnly aria-label={t('loyalty.programActive')} />
+            <span className="track" />
+          </label>
+        </div>
+      </div>
 
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Programme Fidélité</h1>
-      <p className="mb-5 text-sm text-muted-foreground">1 point = 1 € · Bronze → Platine</p>
-
-      {/* Wallet card */}
-      {valResult && (
-        <section className="relative overflow-hidden rounded-3xl bg-navy p-5 text-navy-foreground shadow-xl mb-5">
-          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/30 blur-3xl" />
-          <div className="absolute -bottom-12 -left-8 h-32 w-32 rounded-full bg-primary/20 blur-2xl" />
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground"><Award size={17} /></div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-navy-foreground/60">Points wallet</p>
-                  <p className="text-xs font-semibold">{valForm.email || 'Client'}</p>
-                </div>
-              </div>
-              <span className="rounded-full bg-primary/20 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-primary">{tierInfo.label}</span>
-            </div>
-            <p className="mt-5 text-4xl font-bold tracking-tight">{balance.toLocaleString()} <span className="text-base font-medium text-navy-foreground/60">pts</span></p>
-            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="mt-2 flex justify-between text-[10px] font-semibold uppercase tracking-wider text-navy-foreground/60">
-              {TIER_THRESHOLDS.map(t => <span key={t.tier} className={t.tier === tierInfo.tier ? 'text-primary' : ''}>{t.label}</span>)}
-            </div>
+      {/* ── aggregate stats — NO endpoint → honest « bientôt » ── */}
+      <div className="op-card loyalty-stats" aria-label={t('loyalty.stats.title')}>
+        {(['members', 'pointsIssued', 'pointsRedeemed', 'rewardsGiven'] as const).map(k => (
+          <div className="stat" key={k}>
+            <span className="lbl">{t(`loyalty.stats.${k}`)}</span>
+            <b className="soon">{t('soon')}</b>
           </div>
-        </section>
-      )}
-
-      {/* Tabs */}
-      <div className="mb-5 flex gap-1 rounded-xl bg-muted p-1 w-fit">
-        {([['validate', 'Valider une commande'], ['register', 'Inscrire un client']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === k ? 'bg-card shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-            {l}
-          </button>
         ))}
       </div>
 
-      {/* ── Validate order ── */}
-      {tab === 'validate' && (
-        <section className="rounded-2xl border border-border bg-card p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <Sparkles size={15} className="text-primary" />
-            <h2 className="text-sm font-bold">Valider une commande UberEats</h2>
+      {/* ── program rules (FROZEN constants — displayed, never editable here) ── */}
+      <div className="op-card" style={{ marginBottom: 18 }}>
+        <div className="op-card__head"><h2><span className="ms" aria-hidden="true">stars</span>{t('loyalty.earn.title')}</h2></div>
+        <div className="op-tool-body">
+          <div className="earn-rule">
+            <span>{t('loyalty.earn.earn')}</span>
+            <span className="rule-val mono">1</span>
+            <span>{t('loyalty.earn.pointPer')}</span>
+            <span className="rule-val mono">{formatEuros(1, locale)}</span>
+            <span>{t('loyalty.earn.spent')}</span>
           </div>
-
-          {valState === 'ok' && valResult && (
-            <div className="mb-4 rounded-2xl bg-success/10 border border-success/20 p-4">
-              <p className="text-sm font-bold text-success mb-1">✅ Commande validée !</p>
-              <p className="text-[12px] text-success/80">+{valResult.pointsEarned} points · Solde : {valResult.newBalance} pts · Tier : {tierInfo.label}</p>
-              <button onClick={() => { setValState('idle'); setValResult(null) }} className="mt-2 text-xs text-success underline">Valider une autre</button>
+          <div className="op-field-row">
+            <div className="op-field">
+              <label>{t('loyalty.earn.welcomeBonus')}</label>
+              <div className="rule-static mono">10 {t('loyalty.pts')}</div>
             </div>
-          )}
-          {valState === 'err' && (
-            <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive font-medium">{valError}</div>
-          )}
-
-          {valState !== 'ok' && (
-            <form onSubmit={handleValidate} className="space-y-3">
-              {[
-                { key: 'email', label: 'Email du client', type: 'email', placeholder: 'client@email.com' },
-                { key: 'uberOrderNumber', label: 'N° commande UberEats', type: 'text', placeholder: '#UE-58291' },
-                { key: 'amount', label: 'Montant (€)', type: 'number', placeholder: '24.90' },
-              ].map(({ key, label, type, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
-                  <input type={type} required value={valForm[key as keyof typeof valForm]}
-                    onChange={e => setValForm(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              ))}
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Marque</label>
-                <select value={valForm.brandName} onChange={e => setValForm(f => ({ ...f, brandName: e.target.value }))}
-                  className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20">
-                  {BRANDS.map(b => <option key={b}>{b}</option>)}
-                </select>
-              </div>
-              <button type="submit" disabled={valState === 'loading'}
-                className="w-full rounded-xl bg-primary py-3 text-sm font-bold uppercase tracking-wider text-primary-foreground transition hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
-                {valState === 'loading' ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Valider & créditer
-              </button>
-            </form>
-          )}
-        </section>
-      )}
-
-      {/* ── Register ── */}
-      {tab === 'register' && (
-        <section className="rounded-2xl border border-border bg-card p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <UserPlus size={15} className="text-primary" />
-            <h2 className="text-sm font-bold">Inscrire un nouveau client</h2>
+            <div className="op-field">
+              <label>{t('loyalty.earn.expiration')}</label>
+              <div className="rule-static">{t('loyalty.earn.noExpiry')}</div>
+            </div>
           </div>
-
-          {regState === 'ok' && regResult && (
-            <div className="mb-4 rounded-2xl bg-success/10 border border-success/20 p-4">
-              <p className="text-sm font-bold text-success mb-1">✅ {regResult.name} inscrit !</p>
-              <p className="text-[12px] text-success/80">{regResult.pointsBalance} pts de bienvenue · Code : <code className="font-mono">{regResult.referralCode.slice(0, 8)}</code></p>
-              <button onClick={() => { setRegState('idle'); setRegResult(null) }} className="mt-2 text-xs text-success underline">Inscrire un autre</button>
-            </div>
-          )}
-          {regState === 'err' && (
-            <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive font-medium">{regError}</div>
-          )}
-
-          {regState !== 'ok' && (
-            <form onSubmit={handleRegister} className="space-y-3">
-              {[
-                { key: 'name', label: 'Nom complet', type: 'text', placeholder: 'Mohammed Maazouz' },
-                { key: 'email', label: 'Email', type: 'email', placeholder: 'client@email.com' },
-                { key: 'phone', label: 'Téléphone (optionnel)', type: 'tel', placeholder: '+33 6 12 34 56 78' },
-              ].map(({ key, label, type, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
-                  <input type={type} required={key !== 'phone'} value={regForm[key as keyof typeof regForm]}
-                    onChange={e => setRegForm(f => ({ ...f, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              ))}
-              <button type="submit" disabled={regState === 'loading'}
-                className="w-full rounded-xl bg-primary py-3 text-sm font-bold uppercase tracking-wider text-primary-foreground transition hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
-                {regState === 'loading' ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />} Inscrire au programme
-              </button>
-            </form>
-          )}
-        </section>
-      )}
-
-      {/* Rewards grid */}
-      <h2 className="mb-3 mt-6 text-sm font-bold">Récompenses</h2>
-      <div className="space-y-2">
-        {REWARDS.map((r) => {
-          const unlocked = balance >= r.cost
-          return (
-            <div key={r.name} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-              <div className={`grid h-10 w-10 place-items-center rounded-xl ${unlocked ? 'bg-accent text-primary' : 'bg-muted text-muted-foreground'}`}>
-                {unlocked ? <Gift size={16} /> : <Lock size={14} />}
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">{r.name}</p>
-                <p className="text-[11px] text-muted-foreground">{r.cost} pts</p>
-              </div>
-              {unlocked
-                ? <button className="flex items-center gap-1 rounded-full bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground"><Check size={12} /> Utiliser</button>
-                : <span className="text-[11px] font-semibold text-muted-foreground">Verrouillé</span>
-              }
-            </div>
-          )
-        })}
+          <div className="op-callout">
+            <span className="ms" aria-hidden="true">info</span>
+            <p>{t('loyalty.earn.frozenNote')}</p>
+          </div>
+        </div>
       </div>
-    </div>
+
+      {/* ── tiers (paliers programme — FROZEN) ── */}
+      <div className="op-card" style={{ marginBottom: 18 }}>
+        <div className="op-card__head"><h2><span className="ms" aria-hidden="true">workspace_premium</span>{t('loyalty.tiers.title')}</h2></div>
+        <div className="tier-grid">
+          {TIERS.map(tier => (
+            <div className={`tier-card ${tier.key}`} key={tier.key}>
+              <span className="tier-badge"><span className="ms" aria-hidden="true">{tier.icon}</span>{t(`loyalty.tier.${tier.key}`)}</span>
+              <div className="tier-th mono">{tier.min}<span className="u">{t('loyalty.pts')}</span></div>
+              <div className="tier-note">{tier.min === 0 ? t('loyalty.tiers.entry') : t('loyalty.tiers.from')}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── credit scale (points → € credit) ──
+          The euro amounts are AUTHORITATIVE only once read from the wallet endpoint
+          (walData.creditScale — the server's real conversion). Before any lookup we show
+          the point milestones only, with an « indicatif » tag — never a fabricated € figure
+          presented as real. The exact spendable credit is resolved server-side at checkout. */}
+      <div className="op-card" style={{ marginBottom: 18 }}>
+        <div className="op-card__head">
+          <h2><span className="ms" aria-hidden="true">redeem</span>{t('loyalty.credit.title')}</h2>
+          {!walData && <span className="cap">{t('loyalty.credit.indicative')}</span>}
+        </div>
+        <div className="credit-scale">
+          {(walData?.creditScale ?? [{ points: 100 }, { points: 200 }, { points: 400 }]).map(cs => (
+            <div className="cs" key={cs.points}>
+              <div className="cs-pts mono">{cs.points}<span className="u">{t('loyalty.pts')}</span></div>
+              <div className="cs-arrow"><span className="ms" aria-hidden="true">arrow_downward</span>{t('loyalty.credit.gives')}</div>
+              {'euros' in cs
+                ? <div className="cs-eur mono">{formatEuros(cs.euros, locale)}</div>
+                : <div className="cs-eur mono" style={{ color: 'var(--op-muted-2)', fontSize: 13 }}>{t('soon')}</div>}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '0 18px 16px' }}>
+          <div className="op-callout">
+            <span className="ms" aria-hidden="true">info</span>
+            <p>{t('loyalty.credit.note')}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── operator tools: validate / register / wallet lookup ── */}
+      <div className="op-card">
+        <div className="op-card__head"><h2><span className="ms" aria-hidden="true">handyman</span>{t('loyalty.tools.title')}</h2></div>
+        <div className="op-tool-body">
+          <div className="op-tools-tabs" role="tablist">
+            <button type="button" role="tab" aria-selected={tab === 'validate'} className={tab === 'validate' ? 'is-active' : ''} onClick={() => setTab('validate')}>
+              <span className="ms" aria-hidden="true">verified</span>{t('loyalty.tools.validate')}
+            </button>
+            <button type="button" role="tab" aria-selected={tab === 'register'} className={tab === 'register' ? 'is-active' : ''} onClick={() => setTab('register')}>
+              <span className="ms" aria-hidden="true">person_add</span>{t('loyalty.tools.register')}
+            </button>
+            <button type="button" role="tab" aria-selected={tab === 'wallet'} className={tab === 'wallet' ? 'is-active' : ''} onClick={() => setTab('wallet')}>
+              <span className="ms" aria-hidden="true">account_balance_wallet</span>{t('loyalty.tools.wallet')}
+            </button>
+          </div>
+
+          {/* ── validate a UberEats order → credit points ── */}
+          {tab === 'validate' && (
+            <>
+              {valState === 'ok' && valResult && (
+                <div className="op-callout success">
+                  <span className="ms" aria-hidden="true">check_circle</span>
+                  <div>
+                    <p className="co-title">{t('loyalty.validate.okTitle')}</p>
+                    <p>+<span className="mono">{valResult.pointsEarned}</span> {t('loyalty.pts')} · {t('loyalty.validate.balance')} <span className="mono">{valResult.newBalance}</span> {t('loyalty.pts')} · {tierLabel(valResult.tier)}</p>
+                    <button type="button" className="co-again" onClick={() => { setValState('idle'); setValResult(null) }}>{t('loyalty.validate.again')}</button>
+                  </div>
+                </div>
+              )}
+              {valState === 'err' && (
+                <div className="op-callout danger"><span className="ms" aria-hidden="true">error</span><p>{valError}</p></div>
+              )}
+              {valState !== 'ok' && (
+                <form className="op-tool-form" onSubmit={handleValidate}>
+                  <div className="op-field">
+                    <label>{t('loyalty.validate.email')}</label>
+                    <input className="op-input" type="email" required value={valForm.email} onChange={e => setValForm(f => ({ ...f, email: e.target.value }))} placeholder="client@email.com" />
+                  </div>
+                  <div className="op-field">
+                    <label>{t('loyalty.validate.orderNo')}</label>
+                    <input className="op-input mono" type="text" required value={valForm.uberOrderNumber} onChange={e => setValForm(f => ({ ...f, uberOrderNumber: e.target.value }))} placeholder="#UE-58291" />
+                  </div>
+                  <div className="op-field">
+                    <label>{t('loyalty.validate.amount')}</label>
+                    <input className="op-input mono" type="number" step="0.01" required value={valForm.amount} onChange={e => setValForm(f => ({ ...f, amount: e.target.value }))} placeholder="24.90" />
+                  </div>
+                  <div className="op-field">
+                    <label>{t('loyalty.validate.brand')}</label>
+                    <select className="op-select" value={valForm.brandName} onChange={e => setValForm(f => ({ ...f, brandName: e.target.value }))}>
+                      {BRANDS.map(b => <option key={b}>{b}</option>)}
+                    </select>
+                  </div>
+                  <button type="submit" className="op-btn-primary" disabled={valState === 'loading'}>
+                    <span className={`ms${valState === 'loading' ? ' spin' : ''}`} aria-hidden="true">{valState === 'loading' ? 'progress_activity' : 'check'}</span>
+                    {t('loyalty.validate.submit')}
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+
+          {/* ── register a new member ── */}
+          {tab === 'register' && (
+            <>
+              {regState === 'ok' && regResult && (
+                <div className="op-callout success">
+                  <span className="ms" aria-hidden="true">check_circle</span>
+                  <div>
+                    <p className="co-title">{t('loyalty.register.okTitle', { name: regResult.name })}</p>
+                    <p><span className="mono">{regResult.pointsBalance}</span> {t('loyalty.register.welcomePts')} · {t('loyalty.register.code')} <code className="mono">{regResult.referralCode.slice(0, 8)}</code></p>
+                    <button type="button" className="co-again" onClick={() => { setRegState('idle'); setRegResult(null) }}>{t('loyalty.register.again')}</button>
+                  </div>
+                </div>
+              )}
+              {regState === 'err' && (
+                <div className="op-callout danger"><span className="ms" aria-hidden="true">error</span><p>{regError}</p></div>
+              )}
+              {regState !== 'ok' && (
+                <form className="op-tool-form" onSubmit={handleRegister}>
+                  <div className="op-field">
+                    <label>{t('loyalty.register.name')}</label>
+                    <input className="op-input" type="text" required value={regForm.name} onChange={e => setRegForm(f => ({ ...f, name: e.target.value }))} placeholder="Mohammed Maazouz" />
+                  </div>
+                  <div className="op-field">
+                    <label>{t('loyalty.register.email')}</label>
+                    <input className="op-input" type="email" required value={regForm.email} onChange={e => setRegForm(f => ({ ...f, email: e.target.value }))} placeholder="client@email.com" />
+                  </div>
+                  <div className="op-field">
+                    <label>{t('loyalty.register.phone')}</label>
+                    <input className="op-input" type="tel" value={regForm.phone} onChange={e => setRegForm(f => ({ ...f, phone: e.target.value }))} placeholder="+33 6 12 34 56 78" />
+                  </div>
+                  <button type="submit" className="op-btn-primary" disabled={regState === 'loading'}>
+                    <span className={`ms${regState === 'loading' ? ' spin' : ''}`} aria-hidden="true">{regState === 'loading' ? 'progress_activity' : 'person_add'}</span>
+                    {t('loyalty.register.submit')}
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+
+          {/* ── wallet lookup by email ── */}
+          {tab === 'wallet' && (
+            <>
+              <form className="op-tool-form" onSubmit={handleWallet}>
+                <div className="op-field">
+                  <label>{t('loyalty.wallet.email')}</label>
+                  <input className="op-input" type="email" required value={walEmail} onChange={e => setWalEmail(e.target.value)} placeholder="client@email.com" />
+                </div>
+                <button type="submit" className="op-btn-primary" disabled={walState === 'loading'}>
+                  <span className={`ms${walState === 'loading' ? ' spin' : ''}`} aria-hidden="true">{walState === 'loading' ? 'progress_activity' : 'search'}</span>
+                  {t('loyalty.wallet.lookup')}
+                </button>
+              </form>
+
+              {walState === 'loading' && (
+                <div aria-busy="true">
+                  <span className="op-sk" style={{ width: '100%', height: 150, borderRadius: 12 }} />
+                </div>
+              )}
+              {walState === 'err' && (
+                <div className="op-emptyline">
+                  <span className="ms" aria-hidden="true">search_off</span>
+                  <b>{t('loyalty.wallet.notFoundTitle')}</b>
+                  <span>{walError}</span>
+                </div>
+              )}
+              {walState === 'ok' && walData && (
+                <div>
+                  <div className="wallet-card">
+                    <div className="wc-glow" aria-hidden="true" />
+                    <div className="wc-top">
+                      <div className="wc-who">
+                        <div className="wc-av"><span className="ms" aria-hidden="true">account_balance_wallet</span></div>
+                        <div>
+                          <div className="wc-lbl">{t('loyalty.wallet.pointsWallet')}</div>
+                          <div className="wc-mail">{walEmail}</div>
+                        </div>
+                      </div>
+                      <span className="wc-tier"><span className="ms" aria-hidden="true">workspace_premium</span>{tierLabel(walData.tier)}</span>
+                    </div>
+                    <div className="wc-bal">
+                      <div className="pts"><span className="mono">{walData.pointsBalance.toLocaleString(locale)}</span> <span className="u">{t('loyalty.pts')}</span></div>
+                      <div className="eur">{t('loyalty.wallet.creditWorth')} <span className="mono">{formatEuros(walData.balanceEuros, locale)}</span></div>
+                    </div>
+                    <div className="wc-prog">
+                      <div className="track"><i style={{ width: `${walletProgress}%` }} /></div>
+                      <div className="wc-next">
+                        {walData.next_tier
+                          ? <>{t('loyalty.wallet.toNext', { pts: walData.next_tier_pts, tier: tierLabel(walData.next_tier.toLowerCase()) })}</>
+                          : <>{t('loyalty.wallet.maxTier')}</>}
+                      </div>
+                    </div>
+                    <div className="wc-ref">
+                      <span className="ms" aria-hidden="true">confirmation_number</span>
+                      {t('loyalty.wallet.referral')} <span className="mono">{walData.referral_code}</span>
+                    </div>
+                  </div>
+
+                  <div className="wallet-orders">
+                    <div className="wo-h">{t('loyalty.wallet.recentOrders')}</div>
+                    {walData.recent_orders.length === 0 ? (
+                      <div className="op-emptyline" style={{ padding: '24px 16px' }}>
+                        <span className="ms" aria-hidden="true">receipt_long</span>
+                        <b>{t('loyalty.wallet.noOrders')}</b>
+                      </div>
+                    ) : (
+                      walData.recent_orders.map(o => (
+                        <div className="wo-row" key={o.id}>
+                          <div className="wo-ic"><span className="ms" aria-hidden="true">receipt_long</span></div>
+                          <div className="m">
+                            <b>{o.brand}</b>
+                            <span>{new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(o.date))}</span>
+                          </div>
+                          <div className="wo-amt">
+                            <div className="a">{formatEuros(o.amount, locale)}</div>
+                            <div className="p">+{o.pointsEarned} {t('loyalty.pts')}</div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   )
 }

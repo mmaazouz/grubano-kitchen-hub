@@ -1,17 +1,11 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
-import {
-  Sparkles, Plus, Clock, Eye, EyeOff, Percent, Flame, Leaf, WheatOff, Star,
-  Tag, X, Check, ChevronLeft, ChevronRight, Upload, GripVertical, RefreshCw, Trash2,
-  Wand2, ImageIcon, RotateCcw, BadgeCheck, AlertCircle, Users, TrendingUp, Pencil,
-} from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { SessionProvider, useSession } from 'next-auth/react'
 import { useSearchParams } from 'next/navigation'
 import { Link } from '@/navigation'
-import { Card } from '@/components/grubano/Card'
-import { SectionTitle } from '@/components/grubano/SectionTitle'
+import { formatEuros } from '@/lib/format-money'
 import {
   Badge,
   Button as DSButton,
@@ -24,6 +18,17 @@ import {
 import { StarBadge } from '@/components/creators/StarBadge'
 import DishSheetModal from '@/components/menu/DishSheetModal'
 import MenuPrefillImport from '@/components/menu/MenuPrefillImport'
+import './menu.css'
+
+// ── /menu — operator MENU EDITOR — VERBATIM CD v1 (Notion 390fd2c9-…-cd192).
+// 🔒 Presentation-only re-skin to the --op- operator design (navy shell + Material
+// Symbols, no lucide). EVERY CRUD handler is byte-identical: fetch items, create
+// (POST), update (PUT), delete (DELETE), toggle available (PUT), category CRUD
+// (POST/PATCH/DELETE), photo upload, scan-dish. Dish price is a Float in EUROS,
+// displayed straight from formatEuros(item.price, locale) — NEVER recomputed here.
+// The brand selector + category grouping stay wired to the real data. The shell
+// (components/operator/OperatorShell) already provides .gb-op + .op-content — this
+// page renders the BARE screen content (<section>…) exactly like dashboard/finance.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,11 +112,12 @@ type ScanResult = {
 }
 
 const ALL_EU = ['Gluten','Lactose','Œuf','Soja','Arachide','Fruits à coque','Poisson','Crustacés','Mollusques','Céleri','Moutarde','Sésame','Sulfites','Lupin']
+// CD uses Material Symbols (no lucide). Each built-in label carries its icon name.
 const ALL_LABELS = [
-  { name: 'Veggie',      icon: Leaf      },
-  { name: 'Halal',       icon: BadgeCheck },
-  { name: 'Sans gluten', icon: WheatOff  },
-  { name: 'Épicé',       icon: Flame     },
+  { name: 'Veggie',      icon: 'eco'          },
+  { name: 'Halal',       icon: 'verified'     },
+  { name: 'Sans gluten', icon: 'grain'        },
+  { name: 'Épicé',       icon: 'local_fire_department' },
 ]
 
 const EMOJI_FOR_CAT: Record<string, string> = {
@@ -178,13 +184,28 @@ export default function MenuPage() {
 }
 
 function MenuBuilderFallback() {
-  const tMenu = useTranslations('menu')
   return (
-    <div className="mx-auto max-w-lg px-5 pt-12 md:max-w-3xl">
-      <div className="flex items-center justify-center gap-2 text-muted-foreground">
-        <RefreshCw size={16} className="animate-spin" /> {tMenu('loading')}
+    <section className="op-skel" aria-busy="true">
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
+        <span className="op-sk" style={{ width: 120, height: 22 }} />
       </div>
-    </div>
+      <div className="op-menu__workspace">
+        <div className="op-card">
+          <div style={{ padding: '15px 16px', borderBottom: '1px solid var(--op-border)' }}><span className="op-sk" style={{ width: 100, height: 14 }} /></div>
+          <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[0, 1, 2, 3, 4].map((i) => <span key={i} className="op-sk" style={{ width: '100%', height: 38, borderRadius: 8 }} />)}
+          </div>
+        </div>
+        <div className="op-card">
+          <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--op-border)', display: 'flex', justifyContent: 'space-between' }}>
+            <span className="op-sk" style={{ width: 120, height: 18 }} /><span className="op-sk" style={{ width: 130, height: 34, borderRadius: 8 }} />
+          </div>
+          <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[0, 1, 2, 3].map((i) => <span key={i} className="op-sk" style={{ width: '100%', height: 64, borderRadius: 8 }} />)}
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -194,6 +215,8 @@ type EstablishmentLite = { id: string; name: string }
 function MenuBuilder() {
   const tAdopt = useTranslations('menu.adopt')
   const tMenu  = useTranslations('menu')
+  const tOp    = useTranslations('operator')
+  const locale = useLocale()
   const { status, data: session } = useSession()
   const operatorId = (session?.user as { id?: string } | undefined)?.id
 
@@ -216,6 +239,10 @@ function MenuBuilder() {
   const [brandsLoading,  setBrandsLoading]  = useState(true)
   const [scanner,        setScanner]        = useState(false)
   const [editing,        setEditing]        = useState<MenuItem | null>(null)
+  // Category selected in the left column of the 2-col workspace (CD). Presentation
+  // state only — filters which dishes the right column shows; the underlying items
+  // array + all fetches are untouched.
+  const [activeCat,      setActiveCat]      = useState<string>(DEFAULT_NEW_DISH_CATEGORY)
   /** Soft, non-blocking photo warnings (blur, low-light, framing) returned by
    *  Agent 2's moderation. Surfaced as a top banner above the list and
    *  auto-dismissed after a few seconds. Empty array = no banner. */
@@ -477,165 +504,91 @@ function MenuBuilder() {
   // dish was — "Boissons" if there was only a drink, etc.).
   const newItem = (): MenuItem => ({
     id: 'new', brandId, name: '', description: '', price: 0,
-    category: DEFAULT_NEW_DISH_CATEGORY, calories: null,
+    category: activeCat || DEFAULT_NEW_DISH_CATEGORY, calories: null,
     allergens: [], labels: [], available: true, isPopular: false,
   })
 
+  // ── loading / brand states (React-conditional, replacing CD data-state) ──
+  if (status === 'loading' || brandsLoading) {
+    return <MenuBuilderFallback />
+  }
+
+  // N=0 brands → onboarding (CD op-onboarding). We never fall back to other
+  // operators' brands, so the brandId sent to /api/dishes/adopt always belongs
+  // to the connected account.
+  if (brands.length === 0) {
+    return (
+      <section className="op-onboarding">
+        <div className="op-center">
+          <div className="op-onb__card">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/grubano-symbol-color.svg" alt="Grubano" />
+            <h1>{tMenu('empty.title')}</h1>
+            <p>{tMenu('empty.desc')}</p>
+            <Link href="/brands" className="op-onb__cta">
+              <span className="ms" aria-hidden="true">add_business</span>{tMenu('empty.cta')}
+            </Link>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  const totalCount = items.length
+
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-
-      {/* ── Breadcrumb ─ « Mes établissements ▸ {Étab} ▸ {Marque} » ─────────
-          Cohérent avec EstablishmentHub.tsx Breadcrumb. C'est le moyen de
-          REMONTER vers l'établissement (et donc de CHANGER d'établissement
-          sans onglet 60-marques). Le suffix "Menu" rappelle où l'on est. */}
-      <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1 text-[11px] text-muted-foreground">
-        <Link href="/dashboard/establishments" className="hover:text-primary transition-colors">
-          {tMenu('bc.root')}
-        </Link>
-        {currentEstablishment && (
-          <>
-            <ChevronRight size={11} className="text-muted-foreground/50 rtl:rotate-180" />
-            <Link
-              href={`/dashboard/establishments/${currentEstablishment.id}`}
-              className="hover:text-primary transition-colors truncate max-w-[10rem]"
-            >
-              {currentEstablishment.name}
-            </Link>
-          </>
-        )}
-        {currentBrand && (
-          <>
-            <ChevronRight size={11} className="text-muted-foreground/50 rtl:rotate-180" />
-            <span className="font-semibold text-foreground truncate max-w-[10rem]" aria-current="page">
-              {currentBrand.emoji} {currentBrand.name}
-            </span>
-          </>
-        )}
-        <ChevronRight size={11} className="text-muted-foreground/50 rtl:rotate-180" />
-        <span className="text-muted-foreground">{tMenu('bc.menuLabel')}</span>
-      </nav>
-
-      {/* Header */}
-      <div className="mb-5 flex items-center justify-between">
+    <section className="op-menu">
+      {/* ── page head ── */}
+      <div className="op-dash__head">
         <div>
-          <h1 className="text-2xl font-display font-bold tracking-tight">Menu</h1>
-          <p className="text-sm text-muted-foreground">Carte, options &amp; promotions</p>
-        </div>
-        <span className="rounded-full bg-primary px-3 py-1 text-sm font-bold text-primary-foreground">
-          {items.length} plats
-        </span>
-      </div>
-
-      {(status === 'loading' || brandsLoading) ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-          <RefreshCw size={16} className="animate-spin" /> {tMenu('loading')}
-        </div>
-      ) : brands.length === 0 ? (
-        /* No brand belongs to this operator → invite them to set one up. We
-           never fall back to other operators' brands, so the brandId sent to
-           /api/dishes/adopt always belongs to the connected account. */
-        <EmptyState
-          emoji="🏪"
-          title={tMenu('empty.title')}
-          description={tMenu('empty.desc')}
-          action={
-            <Link
-              href="/brands"
-              className="inline-flex items-center rounded-grubano-lg bg-grubano-primary px-4 py-2 text-sm font-medium text-white shadow-grubano-cta transition-colors hover:bg-grubano-primaryHover"
-            >
-              {tMenu('empty.cta')}
-            </Link>
-          }
-        />
-      ) : (
-        <>
-
-      {/* ── Soft photo-moderation warnings (non blocking) ──────────────────
-          Agent 2's moderation may return warnings[] (blur / low light /
-          subject-not-clear) while ALLOWING the dish — i.e. the photo is
-          published, here are just tips to improve it. Sober banner at the top
-          of the list, auto-dismiss after ~6 s, manual close cross. */}
-      {photoWarnings.length > 0 && (
-        <PhotoWarningsBanner
-          warnings={photoWarnings}
-          onDismiss={() => setPhotoWarnings([])}
-        />
-      )}
-
-      {/* Brand selector — SCOPED to the current establishment.
-          Hidden when there's only one brand in scope: the breadcrumb already
-          communicates which brand we're on, no need for a one-button selector.
-          When the operator has multiple brands in this establishment, a sober
-          hint above the chips names what the row represents. */}
-      {scopedBrands.length > 1 && (
-        <div className="mb-4">
-          <p className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-            {tMenu('brandsHint')}
+          <h1 className="op-dash__title">{tOp('nav.menus')}</h1>
+          <p className="op-dash__sub">
+            {tMenu('editor.subtitle', { cats: allCategoryNames.length, dishes: totalCount })}
           </p>
-          <div
-            role="group"
-            aria-label={tMenu('brandsAria')}
-            className="flex gap-2 overflow-x-auto pb-1"
-          >
-            {scopedBrands.map(b => {
-              const onSelect = () => {
-                setBrandId(b.id)
-                setItems([])      // avoid flashing the previous brand's items
-                loadItems(b.id)
-              }
-              return (
-                <button
-                  key={b.id}
-                  onClick={onSelect}
-                  aria-pressed={brandId === b.id}
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                    brandId === b.id
-                      ? 'bg-primary text-primary-foreground'
-                      : 'border border-border bg-card text-muted-foreground'
-                  }`}
-                >
-                  {b.emoji} {b.name}
-                </button>
-              )
-            })}
-          </div>
+        </div>
+      </div>
+
+      {/* ── multi-establishment scope note (CD) ── */}
+      {currentEstablishment && (
+        <div className="op-menu__scope-note">
+          <span className="ms" aria-hidden="true">storefront</span>
+          <span>{tMenu('editor.scopeNote', { name: currentEstablishment.name })}</span>
         </div>
       )}
 
-      {/* Quick actions */}
-      <div className="mb-4 grid grid-cols-2 gap-2">
-        <button onClick={() => setScanner(true)}
-          className="flex items-center gap-2.5 rounded-2xl bg-navy p-3 text-left text-navy-foreground transition active:scale-[0.99]">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <Sparkles size={16} />
-          </div>
-          <div>
-            <p className="text-[12px] font-bold">Scan IA</p>
-            <p className="text-[10px] text-navy-foreground/60">Ajouter par photo</p>
-          </div>
-        </button>
-        <button onClick={() => setEditing(newItem())}
-          className="flex items-center gap-2.5 rounded-2xl border border-border bg-card p-3 text-left transition active:scale-[0.99]">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent text-primary">
-            <Plus size={16} />
-          </div>
-          <div>
-            <p className="text-[12px] font-bold">Manuel</p>
-            <p className="text-[10px] text-muted-foreground">Créer un plat</p>
-          </div>
-        </button>
-      </div>
+      {/* ── Soft photo-moderation warnings (non blocking) ── */}
+      {photoWarnings.length > 0 && (
+        <PhotoWarningsBanner warnings={photoWarnings} onDismiss={() => setPhotoWarnings([])} />
+      )}
 
-      {/* Tabs */}
-      <div className="mb-4 flex gap-1 rounded-xl bg-muted p-1">
+      {/* Brand selector — SCOPED to the current establishment. Hidden when only
+          one brand is in scope. */}
+      {scopedBrands.length > 1 && (
+        <div className="op-menu__brands" role="group" aria-label={tMenu('brandsAria')}>
+          <span className="lbl">{tMenu('brandsHint')}</span>
+          {scopedBrands.map(b => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => { setBrandId(b.id); setItems([]); loadItems(b.id) }}
+              aria-pressed={brandId === b.id}
+              className={`op-brand-chip${brandId === b.id ? ' is-active' : ''}`}
+            >
+              {b.emoji} {b.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Tabs ── */}
+      <div className="op-menu__tabs" role="tablist">
         {(['items', 'categories', 'promos', 'adopt'] as const).map(k => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`flex-1 rounded-lg py-1.5 text-[11px] font-bold transition ${
-              tab === k ? 'bg-card shadow text-foreground' : 'text-muted-foreground'
-            }`}>
-            {k === 'items' ? 'Plats'
-              : k === 'categories' ? 'Catégories'
-              : k === 'promos' ? 'Promos'
+          <button key={k} type="button" role="tab" aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className={tab === k ? 'is-active' : undefined}>
+            {k === 'items' ? tMenu('editor.tabDishes')
+              : k === 'categories' ? tMenu('editor.tabCategories')
+              : k === 'promos' ? tMenu('editor.tabPromos')
               : tAdopt('tab')}
           </button>
         ))}
@@ -643,13 +596,36 @@ function MenuBuilder() {
 
       {tab === 'items' && (
         <>
+          {/* Quick add — Scan IA + Manuel */}
+          <div className="op-menu__quick">
+            <button type="button" onClick={() => setScanner(true)}>
+              <span className="ic ai"><span className="ms" aria-hidden="true">auto_awesome</span></span>
+              <span><b>{tMenu('editor.scanTitle')}</b><span>{tMenu('editor.scanSub')}</span></span>
+            </button>
+            <button type="button" onClick={() => setEditing(newItem())}>
+              <span className="ic manual"><span className="ms" aria-hidden="true">add</span></span>
+              <span><b>{tMenu('editor.manualTitle')}</b><span>{tMenu('editor.manualSub')}</span></span>
+            </button>
+          </div>
+
           {/* AI menu prefill (Agent 89) — self-gating: renders null when the flag is OFF. */}
           <MenuPrefillImport brandId={brandId} onConfirmed={() => loadItems(brandId)} />
-          {loading
-            ? <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-                <RefreshCw size={16} className="animate-spin" /> Chargement…
-              </div>
-            : <ItemsTab items={items} categories={categories} onToggle={toggleAvail} onEdit={setEditing} />}
+
+          {loading ? (
+            <MenuBuilderFallback />
+          ) : (
+            <DishesWorkspace
+              items={items}
+              categories={allCategoryNames}
+              customCategories={customCategories}
+              activeCat={activeCat}
+              onSelectCat={setActiveCat}
+              onAddCategory={() => setTab('categories')}
+              onToggle={toggleAvail}
+              onEdit={setEditing}
+              onAdd={() => setEditing(newItem())}
+            />
+          )}
         </>
       )}
       {tab === 'categories' && (
@@ -663,8 +639,6 @@ function MenuBuilder() {
       )}
       {tab === 'promos'     && <PromosTab />}
       {tab === 'adopt'      && <AdoptTab brandId={brandId} onAdopted={() => loadItems(brandId)} />}
-        </>
-      )}
 
       {scanner && (
         <AIScannerOverlay
@@ -685,12 +659,13 @@ function MenuBuilder() {
         <DishEditor
           item={editing}
           categories={allCategoryNames}
+          locale={locale}
           onClose={() => setEditing(null)}
           onSave={saveItem}
           onDelete={deleteItem}
         />
       )}
-    </div>
+    </section>
   )
 }
 
@@ -704,132 +679,152 @@ function PhotoWarningsBanner({
 }) {
   const t = useTranslations('menu.photo')
   return (
-    <div
-      role="status"
-      className="mb-4 rounded-2xl border border-warning/40 bg-warning/10 p-3"
-    >
-      <div className="flex items-start gap-2">
-        <AlertCircle size={14} className="mt-0.5 shrink-0 text-warning" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-semibold text-foreground">
-            {t('warningsTitle')}
-          </p>
-          <ul className="mt-1 space-y-0.5 text-[11px] text-muted-foreground">
-            {warnings.map((w, i) => (
-              <li key={i} className="flex items-start gap-1.5">
-                <span aria-hidden className="mt-1 inline-block h-1 w-1 shrink-0 rounded-full bg-warning/70" />
-                <span>{w || t('warningsItemAlt')}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label={t('warningsDismiss')}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-warning/10 hover:text-foreground"
-        >
-          <X size={14} />
-        </button>
+    <div role="status" className="op-menu__warn">
+      <span className="ms" aria-hidden="true">tips_and_updates</span>
+      <div className="m">
+        <b>{t('warningsTitle')}</b>
+        <ul>
+          {warnings.map((w, i) => (
+            <li key={i}><i aria-hidden /><span>{w || t('warningsItemAlt')}</span></li>
+          ))}
+        </ul>
       </div>
+      <button type="button" onClick={onDismiss} aria-label={t('warningsDismiss')} className="close">
+        <span className="ms" aria-hidden="true">close</span>
+      </button>
     </div>
   )
 }
 
-// ── Items tab ─────────────────────────────────────────────────────────────────
+// ── Dishes workspace (CD 2-column : categories | dishes) ──────────────────────
 
-function ItemsTab({
-  items, categories, onToggle, onEdit,
+function DishesWorkspace({
+  items, categories, customCategories, activeCat, onSelectCat, onAddCategory,
+  onToggle, onEdit, onAdd,
 }: {
-  items:      MenuItem[]
-  categories: string[]
-  onToggle:   (item: MenuItem) => void
-  onEdit:     (item: MenuItem) => void
+  items:            MenuItem[]
+  categories:       string[]
+  customCategories: Array<{ id: string; name: string; position: number }>
+  activeCat:        string
+  onSelectCat:      (c: string) => void
+  onAddCategory:    () => void
+  onToggle:         (item: MenuItem) => void
+  onEdit:           (item: MenuItem) => void
+  onAdd:            () => void
 }) {
+  const t      = useTranslations('menu.editor')
   const tPhoto = useTranslations('menu.photo')
+  const locale = useLocale()
 
-  if (items.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
-        <p className="text-sm text-muted-foreground">Aucun plat dans cette marque</p>
-        <p className="mt-1 text-[11px] text-muted-foreground">Utilisez « Scan IA » ou « Manuel » pour ajouter</p>
-      </div>
-    )
-  }
-
-  const cats = categories.length > 0 ? categories : Array.from(new Set(items.map(i => i.category))).sort()
+  // A dish belongs to a category by exact name match. Unknown/legacy categories
+  // (e.g. "Non classé") are collated under the CD's default set. The active
+  // category always exists in `categories` (defaults + custom), so we clamp.
+  const customLower = new Set(customCategories.map((c) => c.name.trim().toLowerCase()))
+  const cats = categories.length > 0 ? categories : DEFAULT_CATEGORIES.slice()
+  const selected = cats.includes(activeCat) ? activeCat : cats[0]
+  const dishesForCat = items.filter((i) => i.category === selected)
+  const countFor = (name: string) => items.filter((i) => i.category === name).length
 
   return (
-    <div className="space-y-4">
-      {cats.map(cat => {
-        const list = items.filter(i => i.category === cat)
-        if (!list.length) return null
-        return (
-          <div key={cat}>
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                {emojiFor(cat)} {cat}
-              </p>
-              <span className="text-[10px] text-muted-foreground">{list.length} plat{list.length > 1 ? 's' : ''}</span>
-            </div>
-            <div className="space-y-2">
-              {list.map(item => (
-                <button key={item.id} onClick={() => onEdit(item)}
-                  className="w-full rounded-2xl border border-border bg-card p-3 text-left transition active:scale-[0.99]">
-                  <div className="flex items-start gap-3">
-                    {/* Real photo (Cloudinary, already square via Agent 2's
-                        c_fill,g_auto,ar_1:1 transform). Falls back to the
-                        category emoji tile when there's no photo yet — same
-                        size + radius so nothing reflows. */}
-                    {item.photos && item.photos[0] ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.photos[0]}
-                        alt={tPhoto('alt', { name: item.name })}
-                        loading="lazy"
-                        className="h-14 w-14 shrink-0 rounded-xl object-cover"
-                      />
-                    ) : (
-                      <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-accent to-primary/10 text-2xl">
-                        {emojiFor(cat)}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-bold leading-tight">{item.name}</p>
-                        <p className="shrink-0 text-sm font-bold text-primary">€{item.price.toFixed(2)}</p>
-                      </div>
-                      <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">
-                        {item.description ?? '—'}
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                        {item.isPopular && (
-                          <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold text-warning">★ Best</span>
-                        )}
-                        {item.labels.map(l => (
-                          <span key={l} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{l}</span>
-                        ))}
-                        {item.calories && (
-                          <span className="text-[10px] text-muted-foreground">· {item.calories} kcal</span>
-                        )}
-                      </div>
-                    </div>
-                    <div
-                      onClick={(e) => { e.stopPropagation(); onToggle(item) }}
-                      className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition ${
-                        item.available ? 'bg-success' : 'bg-muted'
-                      }`}>
-                      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${
-                        item.available ? 'left-5' : 'left-0.5'
-                      }`} />
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+    <div className="op-menu__workspace">
+      {/* ── categories column ── */}
+      <div className="op-card op-menu__cats">
+        <div className="op-menu__cats-head">
+          <h2>{t('catsTitle')}</h2>
+          <span>{t('dishCount', { count: items.length })}</span>
+        </div>
+        <div className="op-menu__cats-list">
+          {cats.map((name) => {
+            const isCustom = customLower.has(name.trim().toLowerCase())
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onSelectCat(name)}
+                className={`cat-row${selected === name ? ' is-active' : ''}`}
+                aria-pressed={selected === name}
+              >
+                <span className="ms grip" aria-hidden="true">drag_indicator</span>
+                <span className="name">{name}</span>
+                {!isCustom && <span className="cat-badge">{t('defaultTag')}</span>}
+                <span className="count">{countFor(name)}</span>
+              </button>
+            )
+          })}
+          <button type="button" className="cat-add-row" onClick={onAddCategory}>
+            <span className="ms" aria-hidden="true">add</span>{t('addCategory')}
+          </button>
+        </div>
+      </div>
+
+      {/* ── dishes column ── */}
+      <div className="op-card op-menu__dishes">
+        <div className="op-menu__dishes-head">
+          <h2><span className="ms" aria-hidden="true">restaurant_menu</span>{selected}</h2>
+          <span className="count-badge mono">{t('dishCount', { count: dishesForCat.length })}</span>
+          <div className="spacer" />
+          <button type="button" className="op-btn-add" onClick={onAdd}>
+            <span className="ms" aria-hidden="true">add</span>{t('addDish')}
+          </button>
+        </div>
+
+        {dishesForCat.length === 0 ? (
+          <div className="op-emptyline">
+            <span className="ms" aria-hidden="true">restaurant_menu</span>
+            <b>{t('emptyCatTitle')}</b>
+            <span>{t('emptyCatBody')}</span>
+            <button type="button" className="op-btn-primary" onClick={onAdd} style={{ marginTop: 18 }}>
+              <span className="ms" aria-hidden="true">add</span>{t('addDish')}
+            </button>
           </div>
-        )
-      })}
+        ) : (
+          <div className="op-menu__dishes-list">
+            {dishesForCat.map((item) => (
+              <div key={item.id} className={`dish-row${item.available ? '' : ' is-unavailable'}`}>
+                <span className="ms grip" aria-hidden="true">drag_indicator</span>
+                <span className="thumb">
+                  {item.photos && item.photos[0] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.photos[0]} alt={tPhoto('alt', { name: item.name })} loading="lazy" />
+                  ) : (
+                    <span aria-hidden="true">{emojiFor(item.category)}</span>
+                  )}
+                </span>
+                <div className="m">
+                  <b>
+                    {item.name}
+                    {!item.available && <span className="tag-86">{t('soldOut')}</span>}
+                  </b>
+                  <span className="desc">{item.description ?? '—'}</span>
+                  {(item.isPopular || item.labels.length > 0 || item.calories) && (
+                    <div className="chips">
+                      {item.isPopular && <span className="chip best">★ {t('best')}</span>}
+                      {item.labels.map((l) => <span key={l} className="chip">{l}</span>)}
+                      {item.calories ? <span className="chip mono">{item.calories} kcal</span> : null}
+                    </div>
+                  )}
+                </div>
+                <span className="price mono">{formatEuros(item.price, locale)}</span>
+                <label className="op-switch" title={item.available ? t('availableOn') : t('availableOff')}>
+                  <input
+                    type="checkbox"
+                    checked={item.available}
+                    onChange={() => onToggle(item)}
+                    aria-label={item.available ? t('availableOn') : t('availableOff')}
+                  />
+                  <span className="track" />
+                </label>
+                <div className="actions">
+                  <button type="button" className="icon-btn-sm" onClick={() => onEdit(item)}
+                    title={t('editDish')} aria-label={t('editDish')}>
+                    <span className="ms" aria-hidden="true">edit</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -971,146 +966,121 @@ function CategoriesTab({
   })
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-foreground">{t('tabTitle')}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{t('tabSubtitle')}</p>
-        </div>
+    <div className="op-card">
+      <div className="op-menu__dishes-head">
+        <h2><span className="ms" aria-hidden="true">category</span>{t('tabTitle')}</h2>
+        <div className="spacer" />
         <button
           type="button"
           onClick={openCreate}
           title={CATEGORIES_FR_LABELS.newButton}
           aria-label={CATEGORIES_FR_LABELS.newButton}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[11px] font-bold text-primary-foreground transition hover:brightness-105"
+          className="op-btn-add"
         >
-          <Plus size={13} /> {t('newButton')}
+          <span className="ms" aria-hidden="true">add</span> {t('newButton')}
         </button>
       </div>
 
-      <div className="space-y-2">
+      <div style={{ padding: '10px 18px' }}>
+        <p className="op-dash__sub" style={{ margin: '0 0 6px' }}>{t('tabSubtitle')}</p>
+      </div>
+
+      <div className="op-menu__dishes-list">
         {rendered.map(({ name, count, avail, custom }) => {
           const isDefault = !custom
           return (
-            <Card key={name} className="!p-3">
-              <div className="flex items-center gap-3">
-                <span className="text-xl shrink-0">{emojiFor(name)}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <p className="text-sm font-bold text-foreground">{name}</p>
-                    {isDefault ? (
-                      <span
-                        title={`${CATEGORIES_FR_LABELS.defaultBadge} — ${t('defaultsNotEditable')}`}
-                        aria-label={CATEGORIES_FR_LABELS.defaultBadge}
-                        className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground"
-                      >
-                        {t('defaultBadge')}
-                      </span>
-                    ) : (
-                      <span
-                        title={CATEGORIES_FR_LABELS.customBadge}
-                        aria-label={CATEGORIES_FR_LABELS.customBadge}
-                        className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary"
-                      >
-                        {t('customBadge')}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">
-                    {t('countItems', { count })}
-                    {count > 0 && ` · ${avail}/${count}`}
-                  </p>
-                </div>
-                <span
-                  aria-hidden
-                  className={`h-2 w-2 shrink-0 rounded-full ${avail > 0 ? 'bg-success' : 'bg-muted-foreground/40'}`}
-                />
-                {custom && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => openRename(custom)}
-                      aria-label={t('editButton')}
-                      title={t('editButton')}
-                      className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition hover:border-primary hover:text-primary"
+            <div key={name} className="dish-row">
+              <span className="thumb" style={{ background: 'var(--op-surface-2)' }} aria-hidden="true">
+                <span style={{ fontSize: 22 }}>{emojiFor(name)}</span>
+              </span>
+              <div className="m">
+                <b>
+                  {name}
+                  {isDefault ? (
+                    <span
+                      className="tag-86"
+                      style={{ color: 'var(--op-muted-2)', background: 'var(--op-surface-2)' }}
+                      title={`${CATEGORIES_FR_LABELS.defaultBadge} — ${t('defaultsNotEditable')}`}
+                      aria-label={CATEGORIES_FR_LABELS.defaultBadge}
                     >
-                      <Pencil size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setDeleteError(''); setToDelete(custom) }}
-                      aria-label={t('deleteButton')}
-                      title={t('deleteButton')}
-                      className="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition hover:border-destructive hover:text-destructive"
+                      {t('defaultBadge')}
+                    </span>
+                  ) : (
+                    <span
+                      className="tag-86"
+                      style={{ color: 'var(--op-zest-600)', background: 'var(--op-zest-bg)' }}
+                      title={CATEGORIES_FR_LABELS.customBadge}
+                      aria-label={CATEGORIES_FR_LABELS.customBadge}
                     >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                )}
+                      {t('customBadge')}
+                    </span>
+                  )}
+                </b>
+                <span className="desc">
+                  {t('countItems', { count })}{count > 0 && ` · ${avail}/${count}`}
+                </span>
               </div>
-            </Card>
+              <span aria-hidden="true" className="op-pill" style={{ padding: 0, background: 'none' }}>
+                <i style={{ width: 8, height: 8, borderRadius: '50%', background: avail > 0 ? 'var(--op-success)' : 'var(--op-muted-2)', display: 'inline-block' }} />
+              </span>
+              {custom && (
+                <div className="actions">
+                  <button type="button" className="icon-btn-sm" onClick={() => openRename(custom)}
+                    aria-label={t('editButton')} title={t('editButton')}>
+                    <span className="ms" aria-hidden="true">edit</span>
+                  </button>
+                  <button type="button" className="icon-btn-sm danger"
+                    onClick={() => { setDeleteError(''); setToDelete(custom) }}
+                    aria-label={t('deleteButton')} title={t('deleteButton')}>
+                    <span className="ms" aria-hidden="true">delete</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )
         })}
       </div>
 
       {/* ── Create / Rename modal ──────────────────────────────────────────── */}
       {editMode && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-          <form
-            onSubmit={submitEdit}
-            className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <p
-                className="text-base font-bold"
-                title={editMode.kind === 'create' ? CATEGORIES_FR_LABELS.newButton : undefined}
-              >
+        <div className="op-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) closeEdit() }}>
+          <form onSubmit={submitEdit} className="op-modal narrow">
+            <div className="op-modal__head">
+              <h3 title={editMode.kind === 'create' ? CATEGORIES_FR_LABELS.newButton : undefined}>
                 {editMode.kind === 'create' ? t('newTitle') : t('editTitle')}
-              </p>
-              <button
-                type="button"
-                onClick={closeEdit}
-                aria-label={t('cancel')}
-                className="grid h-9 w-9 place-items-center rounded-xl bg-muted"
-              >
-                <X size={16} />
+              </h3>
+              <button type="button" onClick={closeEdit} aria-label={t('cancel')} className="op-modal__close">
+                <span className="ms" aria-hidden="true">close</span>
               </button>
             </div>
-
-            <input
-              autoFocus
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              placeholder={t('newPlaceholder')}
-              maxLength={50}
-              disabled={editSaving}
-              className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none disabled:opacity-60"
-            />
-
-            {editError && (
-              <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-                <AlertCircle size={12} className="shrink-0" />
-                <span>{editError}</span>
-              </p>
-            )}
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={closeEdit}
-                disabled={editSaving}
-                className="flex-1 rounded-xl border border-border py-2.5 text-sm disabled:opacity-60"
-              >
+            <div className="op-modal__body">
+              <div className="op-field">
+                <label>{t('newTitle')}</label>
+                <input
+                  autoFocus
+                  className="op-input"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  placeholder={t('newPlaceholder')}
+                  maxLength={50}
+                  disabled={editSaving}
+                />
+              </div>
+              {editError && (
+                <div className="op-callout danger">
+                  <span className="ms" aria-hidden="true">error</span>
+                  <p>{editError}</p>
+                </div>
+              )}
+            </div>
+            <div className="op-modal__foot">
+              <button type="button" onClick={closeEdit} disabled={editSaving} className="op-btn-ghost">
                 {t('cancel')}
               </button>
-              <button
-                type="submit"
-                disabled={editSaving || !editValue.trim()}
-                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-60"
-              >
+              <button type="submit" disabled={editSaving || !editValue.trim()} className="op-btn-primary">
                 {editSaving
-                  ? <RefreshCw size={14} className="mx-auto animate-spin" />
-                  : (editMode.kind === 'create' ? t('confirmCreate') : t('confirmRename'))}
+                  ? <span className="ms" aria-hidden="true" style={{ animation: 'op-scan-spin 1s linear infinite' }}>progress_activity</span>
+                  : <><span className="ms" aria-hidden="true">check</span>{editMode.kind === 'create' ? t('confirmCreate') : t('confirmRename')}</>}
               </button>
             </div>
           </form>
@@ -1119,44 +1089,35 @@ function CategoriesTab({
 
       {/* ── Delete confirm modal ──────────────────────────────────────────── */}
       {toDelete && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-destructive/15 text-destructive">
-                <Trash2 size={15} />
-              </span>
-              <p className="text-base font-bold">{t('deleteTitle')}</p>
+        <div className="op-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget && !deleting) setToDelete(null) }}>
+          <div className="op-modal narrow">
+            <div className="op-modal__head">
+              <h3>{t('deleteTitle')}</h3>
+              <button type="button" onClick={() => { if (!deleting) setToDelete(null) }} aria-label={t('cancel')} className="op-modal__close">
+                <span className="ms" aria-hidden="true">close</span>
+              </button>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {t('deleteBody', { name: toDelete.name })}
-            </p>
-            <p className="mt-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-foreground">
-              {t('deleteNote')}
-            </p>
-            {deleteError && (
-              <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-                <AlertCircle size={12} className="shrink-0" />
-                <span>{deleteError}</span>
-              </p>
-            )}
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => { if (!deleting) setToDelete(null) }}
-                disabled={deleting}
-                className="flex-1 rounded-xl border border-border py-2.5 text-sm disabled:opacity-60"
-              >
+            <div className="op-modal__body">
+              <p className="op-dash__sub" style={{ margin: 0 }}>{t('deleteBody', { name: toDelete.name })}</p>
+              <div className="op-callout warn">
+                <span className="ms" aria-hidden="true">info</span>
+                <p>{t('deleteNote')}</p>
+              </div>
+              {deleteError && (
+                <div className="op-callout danger">
+                  <span className="ms" aria-hidden="true">error</span>
+                  <p>{deleteError}</p>
+                </div>
+              )}
+            </div>
+            <div className="op-modal__foot">
+              <button type="button" onClick={() => { if (!deleting) setToDelete(null) }} disabled={deleting} className="op-btn-ghost">
                 {t('cancel')}
               </button>
-              <button
-                type="button"
-                onClick={confirmDelete}
-                disabled={deleting}
-                className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground disabled:opacity-60"
-              >
+              <button type="button" onClick={confirmDelete} disabled={deleting} className="op-btn-danger">
                 {deleting
-                  ? <RefreshCw size={14} className="mx-auto animate-spin" />
-                  : t('confirmDelete')}
+                  ? <span className="ms" aria-hidden="true" style={{ animation: 'op-scan-spin 1s linear infinite' }}>progress_activity</span>
+                  : <><span className="ms" aria-hidden="true">delete</span>{t('confirmDelete')}</>}
               </button>
             </div>
           </div>
@@ -1166,49 +1127,49 @@ function CategoriesTab({
   )
 }
 
-// ── Promos tab ────────────────────────────────────────────────────────────────
+// ── Promos tab (visual/inert — no promo engine wired here) ────────────────────
 
 function PromosTab() {
+  const t = useTranslations('menu.editor')
   return (
-    <div>
-      <SectionTitle hint="Actives & planifiées">Promotions</SectionTitle>
-      <div className="space-y-2">
-        {PROMOS.map(p => (
-          <Card key={p.name} className="!p-3">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-                <Percent size={16} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold">{p.name}</p>
-                <p className="text-[11px] text-muted-foreground">{p.desc}</p>
-              </div>
-              <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
-                p.active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'
-              }`}>
-                {p.active ? 'Actif' : 'Inactif'}
+    <>
+      <div className="op-card" style={{ marginBottom: 16 }}>
+        <div className="op-menu__dishes-head">
+          <h2><span className="ms" aria-hidden="true">percent</span>{t('promoActiveTitle')}</h2>
+          <span className="count-badge">{t('promoSoon')}</span>
+        </div>
+        <div>
+          {PROMOS.map(p => (
+            <div key={p.name} className="op-promo__row">
+              <span className="ic"><span className="ms" aria-hidden="true">local_offer</span></span>
+              <div className="m"><b>{p.name}</b><span>{p.desc}</span></div>
+              <span className={`op-pill ${p.active ? 'success' : 'muted'}`}>
+                {p.active ? t('promoActive') : t('promoInactive')}
               </span>
             </div>
-          </Card>
-        ))}
+          ))}
+        </div>
       </div>
 
-      <SectionTitle>Créer une promo</SectionTitle>
-      <div className="grid grid-cols-2 gap-2">
-        {([
-          [Percent,  'Remise %'],
-          [Tag,      'Montant fixe'],
-          [Flame,    'Flash deal'],
-          [Star,     'Plat du chef'],
-        ] as const).map(([Icon, l]) => (
-          <button key={l}
-            className="flex flex-col items-center gap-1.5 rounded-2xl border border-border bg-card p-3 transition active:scale-[0.99]">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-primary"><Icon size={14} /></div>
-            <span className="text-[11px] font-bold">{l}</span>
-          </button>
-        ))}
+      <div className="op-card">
+        <div className="op-menu__dishes-head">
+          <h2><span className="ms" aria-hidden="true">add_circle</span>{t('promoCreateTitle')}</h2>
+        </div>
+        <div className="op-promo__grid">
+          {([
+            ['percent',      t('promoPct')],
+            ['sell',         t('promoFixed')],
+            ['bolt',         t('promoFlash')],
+            ['restaurant',   t('promoChef')],
+          ] as const).map(([icon, l]) => (
+            <button key={l} type="button" className="op-promo__tile">
+              <span className="ic"><span className="ms" aria-hidden="true">{icon}</span></span>
+              <b>{l}</b>
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -1440,7 +1401,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                 </span>
                 {isAdopted && (
                   <span className="absolute right-2 top-2">
-                    <Badge tone="success" size="sm" icon={<Check size={12} />}>{t('adopted')}</Badge>
+                    <Badge tone="success" size="sm">{t('adopted')}</Badge>
                   </span>
                 )}
               </div>
@@ -1459,7 +1420,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                     {t('byCreator', { name: dish.creatorName || '—' })}
                   </span>
                   <span className="inline-flex items-center gap-1">
-                    <Users size={12} /> {t('followers', { count: dish.creatorFollowers })}
+                    <span className="ms" aria-hidden="true" style={{ fontSize: 12 }}>group</span> {t('followers', { count: dish.creatorFollowers })}
                   </span>
                   <StarBadge stars={dish.creatorStars ?? 0} size={12} />
                 </div>
@@ -1467,7 +1428,7 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                 {/* Benefit pitch */}
                 <div className="rounded-xl bg-grubano-tint/60 px-3 py-2">
                   <p className="flex items-center gap-1.5 text-[11px] font-semibold text-grubano-primary">
-                    <TrendingUp size={12} /> {t('benefit', { pct: Math.round((conditions?.commissionPct ?? 0.02) * 100) })}
+                    <span className="ms" aria-hidden="true" style={{ fontSize: 12 }}>trending_up</span> {t('benefit', { pct: Math.round((conditions?.commissionPct ?? 0.02) * 100) })}
                   </p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     {t('promotedBy', { count: dish.creatorFollowers })}
@@ -1479,12 +1440,12 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                   <div className="space-y-1.5 rounded-xl border border-border bg-card px-3 py-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {(dish.sheetCompleteness ?? 0) >= 80 && (
-                        <Badge tone="success" size="sm" icon={<Check size={10} />}>{t('sheetComplete')}</Badge>
+                        <Badge tone="success" size="sm">{t('sheetComplete')}</Badge>
                       )}
                       {dish.difficulty && <Badge size="sm">{td(dish.difficulty)}</Badge>}
                       {((dish.prepMinutes ?? 0) + (dish.cookMinutes ?? 0)) > 0 && (
                         <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Clock size={10} /> {t('totalTime', { min: (dish.prepMinutes ?? 0) + (dish.cookMinutes ?? 0) })}
+                          <span className="ms" aria-hidden="true" style={{ fontSize: 10 }}>schedule</span> {t('totalTime', { min: (dish.prepMinutes ?? 0) + (dish.cookMinutes ?? 0) })}
                         </span>
                       )}
                     </div>
@@ -1517,12 +1478,12 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                 {isAdopted ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 rounded-xl bg-grubano-success-tint px-3 py-2 text-[11px] font-semibold text-grubano-success">
-                      <Clock size={12} /> {t('commitmentDays', { days: commitmentDays })}
+                      <span className="ms" aria-hidden="true" style={{ fontSize: 12 }}>schedule</span> {t('commitmentDays', { days: commitmentDays })}
                     </div>
                     {/* Incumbent visibility: how many restos wait for this recipe here */}
                     {waitlistCount > 0 && (
                       <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <Users size={12} /> {t('waitingCount', { count: waitlistCount })}
+                        <span className="ms" aria-hidden="true" style={{ fontSize: 12 }}>group</span> {t('waitingCount', { count: waitlistCount })}
                       </p>
                     )}
                   </div>
@@ -1547,26 +1508,25 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                 {/* CTA — adopted / OFFER / on waitlist / city-taken / adoptable */}
                 {isAdopted ? (
                   <div className="space-y-2">
-                    <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
+                    <DSButton variant="secondary" size="sm" fullWidth disabled>
                       {adoptedServer && !adoptedNow ? t('alreadyOnMenu') : t('adopted')}
                     </DSButton>
                     {/* Mission 6 — the licensed asset, server-locked to adopters (D1). */}
                     <DSButton variant="primary" size="sm" fullWidth
-                      onClick={() => setSheetDishId(dish.id)} leftIcon={<Eye size={14} />}>
+                      onClick={() => setSheetDishId(dish.id)}>
                       {t('viewSheet')}
                     </DSButton>
                   </div>
                 ) : hasOffer ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 rounded-xl border border-grubano-primary/40 bg-grubano-primary/10 px-3 py-2 text-[11px] font-semibold text-grubano-primary">
-                      <Sparkles size={12} /> {t('offerAvailable', { hours: dish.offerHoursLeft ?? 72 })}
+                      <span className="ms" aria-hidden="true" style={{ fontSize: 12 }}>auto_awesome</span> {t('offerAvailable', { hours: dish.offerHoursLeft ?? 72 })}
                     </div>
                     <div className="flex gap-2">
                       <DSButton
                         variant="primary" size="sm" fullWidth
                         loading={adoptingId === dish.id}
                         onClick={() => acceptOffer(dish)}
-                        leftIcon={adoptingId === dish.id ? undefined : <Check size={14} />}
                       >
                         {adoptingId === dish.id ? t('adopting') : t('offerAccept')}
                       </DSButton>
@@ -1574,30 +1534,28 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                         variant="secondary" size="sm" fullWidth
                         loading={decliningId === dish.id}
                         onClick={() => declineOffer(dish)}
-                        leftIcon={decliningId === dish.id ? undefined : <X size={14} />}
                       >
                         {t('offerDecline')}
                       </DSButton>
                     </div>
                   </div>
                 ) : declinedNow ? (
-                  <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<X size={14} />}>
+                  <DSButton variant="secondary" size="sm" fullWidth disabled>
                     {t('offerDeclined')}
                   </DSButton>
                 ) : onWaitlist ? (
-                  <DSButton variant="secondary" size="sm" fullWidth disabled leftIcon={<Check size={14} />}>
+                  <DSButton variant="secondary" size="sm" fullWidth disabled>
                     {t('joinedWaitlist')}
                   </DSButton>
                 ) : cityTaken ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-[11px] font-semibold text-muted-foreground">
-                      <AlertCircle size={12} /> {t('cityTaken')}
+                      <span className="ms" aria-hidden="true" style={{ fontSize: 12 }}>info</span> {t('cityTaken')}
                     </div>
                     <DSButton
                       variant="secondary" size="sm" fullWidth
                       loading={joiningId === dish.id}
                       onClick={() => joinWaitlist(dish)}
-                      leftIcon={joiningId === dish.id ? undefined : <Clock size={14} />}
                     >
                       {joiningId === dish.id ? t('joiningWaitlist') : t('joinWaitlist')}
                     </DSButton>
@@ -1607,7 +1565,6 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
                     variant="primary" size="sm" fullWidth
                     loading={adoptingId === dish.id}
                     onClick={() => adopt(dish)}
-                    leftIcon={adoptingId === dish.id ? undefined : <Sparkles size={14} />}
                   >
                     {adoptingId === dish.id ? t('adopting') : t('adopt')}
                   </DSButton>
@@ -1628,13 +1585,12 @@ function AdoptTabInner({ brandId, onAdopted }: { brandId: string; onAdopted: () 
 
 function AdoptHeader({ t, commitmentDays }: { t: ReturnType<typeof useTranslations>; commitmentDays?: number }) {
   return (
-    <div className="mb-4">
-      <SectionTitle hint={t('subtitle')}>{t('title')}</SectionTitle>
-      <div className="mt-1 flex items-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
-        <Clock size={14} className="mt-0.5 shrink-0 text-primary" />
-        <p className="text-[11px] leading-snug text-muted-foreground">
-          {t('commitmentNoteDays', { days: commitmentDays ?? 60 })}
-        </p>
+    <div className="op-adopt__head">
+      <h2 style={{ margin: 0, fontFamily: 'var(--op-font-display)', fontWeight: 800, fontSize: 16 }}>{t('title')}</h2>
+      <p className="op-dash__sub" style={{ margin: '4px 0 0' }}>{t('subtitle')}</p>
+      <div className="op-adopt__note">
+        <span className="ms" aria-hidden="true">schedule</span>
+        <p>{t('commitmentNoteDays', { days: commitmentDays ?? 60 })}</p>
       </div>
     </div>
   )
@@ -1652,6 +1608,7 @@ function AIScannerOverlay({
    *  (if any), so the page can surface them in the top banner. */
   onAdd:      (item: MenuItem, warnings?: string[]) => void
 }) {
+  const t = useTranslations('menu.editor')
   const [step,       setStep]       = useState<'upload' | 'analyzing' | 'result'>('upload')
   const [imageB64,   setImageB64]   = useState<string>('')
   const [mediaType,  setMediaType]  = useState<'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'>('image/jpeg')
@@ -1693,60 +1650,50 @@ function AIScannerOverlay({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-navy">
-      <div className="mx-auto h-full max-w-md flex flex-col">
-
+    <div className="op-scan">
+      <div className="op-scan__inner">
         {/* Top bar */}
-        <div className="flex items-center justify-between p-4">
-          <button onClick={onClose}
-            className="grid h-10 w-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur">
-            <X size={18} />
+        <div className="op-scan__top">
+          <button type="button" onClick={onClose} aria-label={t('close')}>
+            <span className="ms" aria-hidden="true">close</span>
           </button>
-          <div className="rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
-            Scan IA
-          </div>
-          <div className="h-10 w-10" />
+          <div className="op-scan__badge"><span className="ms" aria-hidden="true">auto_awesome</span> {t('scanTitle')}</div>
+          <div style={{ width: 40 }} />
         </div>
 
         {step === 'upload' && (
-          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          <div className="op-scan__stage">
             <input
-              ref={fileRef} type="file" accept="image/*" className="hidden"
+              ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
             />
             {preview ? (
-              <div className="w-full space-y-4">
-                <img src={preview} alt="Photo plat" className="w-full rounded-2xl object-cover max-h-60" />
+              <div style={{ width: '100%' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={preview} alt={t('scanPhotoAlt')} />
                 {error && (
-                  <div className="flex items-center gap-2 rounded-xl bg-destructive/20 px-3 py-2 text-[11px] text-destructive">
-                    <AlertCircle size={12} /> {error}
+                  <div className="op-scan__err">
+                    <span className="ms" aria-hidden="true">error</span> {error}
                   </div>
                 )}
-                <div className="flex gap-3">
-                  <button onClick={() => fileRef.current?.click()}
-                    className="flex-1 rounded-xl border border-white/20 py-3 text-sm font-semibold text-white">
-                    Changer
+                <div className="op-scan__row">
+                  <button type="button" className="op-scan__cta ghost" onClick={() => fileRef.current?.click()}>
+                    {t('scanChange')}
                   </button>
-                  <button onClick={analyze}
-                    className="flex-1 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground">
-                    Analyser avec l&apos;IA
+                  <button type="button" className="op-scan__cta" onClick={analyze}>
+                    {t('scanAnalyze')}
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="w-full space-y-4">
-                <div className="grid h-32 w-32 place-items-center rounded-2xl bg-white/10 mx-auto">
-                  <ImageIcon size={40} className="text-white/50" />
-                </div>
-                <p className="text-white font-semibold">Choisissez une photo du plat</p>
-                <p className="text-[11px] text-white/60">
-                  L&apos;IA détecte automatiquement le nom, les ingrédients, les allergènes et les calories
-                </p>
-                <button onClick={() => fileRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground">
-                  <Upload size={16} /> Choisir une photo
+              <>
+                <div className="op-scan__drop"><span className="ms" aria-hidden="true">add_a_photo</span></div>
+                <h2>{t('scanPick')}</h2>
+                <p>{t('scanHint')}</p>
+                <button type="button" className="op-scan__cta" onClick={() => fileRef.current?.click()}>
+                  <span className="ms" aria-hidden="true">upload</span> {t('scanChoose')}
                 </button>
-              </div>
+              </>
             )}
           </div>
         )}
@@ -1772,32 +1719,30 @@ function AIScannerOverlay({
 }
 
 function AnalyzingStep() {
+  const t = useTranslations('menu.editor')
   const stages = [
-    'Détection du plat…',
-    'Identification des ingrédients…',
-    'Calcul nutritionnel…',
-    'Recherche allergènes…',
-    'Génération de la fiche…',
+    t('scanStage1'),
+    t('scanStage2'),
+    t('scanStage3'),
+    t('scanStage4'),
+    t('scanStage5'),
   ]
   const [idx, setIdx] = useState(0)
 
   useEffect(() => {
     const id = setInterval(() => setIdx(i => Math.min(i + 1, stages.length - 1)), 900)
     return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-      <div className="relative">
-        <div className="grid h-28 w-28 place-items-center rounded-full bg-primary/20">
-          <div className="grid h-20 w-20 place-items-center rounded-full bg-primary text-primary-foreground animate-pulse">
-            <Sparkles size={32} />
-          </div>
-        </div>
-        <div className="absolute -inset-2 animate-spin rounded-full border-2 border-primary/40 border-t-primary" />
+    <div className="op-scan__stage">
+      <div className="op-scan__spinner">
+        <div className="ring" />
+        <div className="core"><span className="ms" aria-hidden="true">auto_awesome</span></div>
       </div>
-      <h2 className="mt-8 text-2xl font-bold text-white">L&apos;IA analyse…</h2>
-      <p className="mt-2 text-sm text-navy-foreground/70">{stages[idx]}</p>
+      <h2>{t('scanAnalyzing')}</h2>
+      <p>{stages[idx]}</p>
     </div>
   )
 }
@@ -1815,6 +1760,7 @@ function ResultStep({
   onRetake:    () => void
   onAdd:       (item: MenuItem, warnings?: string[]) => void
 }) {
+  const t = useTranslations('menu.editor')
   const [name,      setName]      = useState(scanResult.name)
   const [desc,      setDesc]      = useState(scanResult.description)
   // FIX "catégorie collée": keep the IA suggestion when it matches one of the
@@ -1870,85 +1816,76 @@ function ResultStep({
       // Never swallow the failure (e.g. a rejected image) — surface it; the dish
       // is intentionally NOT created without its photo.
       const d = await r.json().catch(() => null)
-      setError((d && (d.error as string)) || "Échec de l'ajout, réessayez.")
+      setError((d && (d.error as string)) || t('scanAddError'))
       setSaving(false)
     }
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-background">
-      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
-        <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl bg-muted">
-          <X size={16} />
+    <div className="op-scan__result">
+      <div className="op-scan__result-head">
+        <button type="button" onClick={onClose} aria-label={t('close')}>
+          <span className="ms" aria-hidden="true">close</span>
         </button>
-        <div className="text-center">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Généré par IA</p>
-          <p className="text-sm font-bold">Vérifier la fiche</p>
+        <div className="mid">
+          <div className="kicker">{t('scanAiGen')}</div>
+          <b>{t('scanVerify')}</b>
         </div>
-        <button onClick={onRetake} className="grid h-9 w-9 place-items-center rounded-xl bg-muted">
-          <RotateCcw size={14} />
+        <button type="button" onClick={onRetake} aria-label={t('scanRetake')}>
+          <span className="ms" aria-hidden="true">restart_alt</span>
         </button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div className="op-scan__result-body">
         {preview && (
-          <img src={preview} alt={name} className="w-full rounded-2xl object-cover max-h-48" />
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={preview} alt={name} />
         )}
 
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Nom</label>
-          <input value={name} onChange={e => setName(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold focus:border-primary focus:outline-none" />
+        <div className="op-field">
+          <label>{t('fName')}</label>
+          <input className="op-input" value={name} onChange={e => setName(e.target.value)} />
         </div>
 
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</label>
-          <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3}
-            className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+        <div className="op-field">
+          <label>{t('fDesc')}</label>
+          <textarea className="op-textarea" value={desc} onChange={e => setDesc(e.target.value)} rows={3} />
         </div>
 
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Catégorie</label>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <div className="op-field">
+          <label>{t('fCategory')}</label>
+          <div className="op-chips">
             {allCats.map(c => (
-              <button key={c} onClick={() => setCategory(c)}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                  category === c ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                }`}>
-                {emojiFor(c)} {c}
+              <button key={c} type="button" onClick={() => setCategory(c)}
+                className={`op-chip${category === c ? ' is-on' : ''}`}>
+                {c}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Prix €</label>
-            <input type="number" step="0.1" min="0" value={price}
-              onChange={e => setPrice(Number(e.target.value))}
-              className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold focus:border-primary focus:outline-none" />
+        <div className="op-field-row">
+          <div className="op-field">
+            <label>{t('fPrice')}</label>
+            <input className="op-input mono" type="number" step="0.1" min="0" value={price}
+              onChange={e => setPrice(Number(e.target.value))} />
           </div>
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Calories</label>
-            <input type="number" min="0" value={calories ?? ''}
-              onChange={e => setCalories(Number(e.target.value))}
-              className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+          <div className="op-field">
+            <label>{t('fCalories')}</label>
+            <input className="op-input" type="number" min="0" value={calories ?? ''}
+              onChange={e => setCalories(Number(e.target.value))} />
           </div>
         </div>
 
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Allergènes (UE 14)</label>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <div className="op-field">
+          <label>{t('fAllergens')}</label>
+          <div className="op-chips">
             {ALL_EU.map(a => {
               const on = allergens.includes(a)
               return (
-                <button key={a}
+                <button key={a} type="button"
                   onClick={() => setAllergens(on ? allergens.filter(x => x !== a) : [...allergens, a])}
-                  className={`rounded-full border px-2.5 py-1 text-[10px] font-bold transition ${
-                    on
-                      ? 'border-destructive/30 bg-destructive/15 text-destructive'
-                      : 'border-transparent bg-muted text-muted-foreground'
-                  }`}>
+                  className={`op-chip allergen${on ? ' is-on' : ''}`}>
                   {on && '✓ '}{a}
                 </button>
               )
@@ -1956,19 +1893,17 @@ function ResultStep({
           </div>
         </div>
 
-        <div>
-          <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Labels</label>
-          <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+        <div className="op-field">
+          <label>{t('fLabels')}</label>
+          <div className="op-labels">
             {ALL_LABELS.map(l => {
               const on = labels.includes(l.name)
               return (
-                <button key={l.name}
+                <button key={l.name} type="button"
                   onClick={() => setLabels(on ? labels.filter(x => x !== l.name) : [...labels, l.name])}
-                  className={`flex flex-col items-center gap-1 rounded-xl border p-2 transition ${
-                    on ? 'border-primary bg-accent text-primary' : 'border-border bg-card text-muted-foreground'
-                  }`}>
-                  <l.icon size={14} />
-                  <span className="text-[9px] font-bold">{l.name}</span>
+                  className={`op-label-tile${on ? ' is-on' : ''}`}>
+                  <span className="ms" aria-hidden="true">{l.icon}</span>
+                  <span>{l.name}</span>
                 </button>
               )
             })}
@@ -1976,23 +1911,18 @@ function ResultStep({
         </div>
       </div>
 
-      {/* Bottom action bar — previously `absolute bottom-0 left-0 right-0`,
-          which took its containing block from the fixed grand-parent
-          (AIScannerOverlay's `fixed inset-0`) and stretched across the full
-          viewport instead of the inner max-w-md column. Returning the bar to
-          the natural flow of the parent flex column keeps it pinned at the
-          bottom (the scrollable section above is `flex-1`) AND caps its
-          width to the column on every screen size. */}
-      <div className="shrink-0 border-t border-border bg-card p-4">
+      <div className="op-scan__result-foot">
         {error && (
-          <p className="mb-2 flex items-center gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-            <AlertCircle size={12} className="shrink-0" /> {error}
-          </p>
+          <div className="op-callout danger" style={{ marginBottom: 12 }}>
+            <span className="ms" aria-hidden="true">error</span>
+            <p>{error}</p>
+          </div>
         )}
-        <button onClick={confirm} disabled={saving || !name}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground disabled:opacity-60">
-          {saving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={16} />}
-          {saving ? 'Enregistrement…' : 'Ajouter au menu'}
+        <button type="button" className="op-btn-primary" onClick={confirm} disabled={saving || !name}>
+          {saving
+            ? <span className="ms" aria-hidden="true" style={{ animation: 'op-scan-spin 1s linear infinite' }}>progress_activity</span>
+            : <span className="ms" aria-hidden="true">check</span>}
+          {saving ? t('scanSaving') : t('scanAdd')}
         </button>
       </div>
     </div>
@@ -2002,16 +1932,18 @@ function ResultStep({
 // ── Dish editor ───────────────────────────────────────────────────────────────
 
 function DishEditor({
-  item, categories, onClose, onSave, onDelete,
+  item, categories, locale, onClose, onSave, onDelete,
 }: {
   item:       MenuItem
   categories: string[]
+  locale:     string
   onClose:    () => void
   /** `extras.warnings` forwards soft moderation tips when the operator
    *  uploaded a fresh photo through the Manuel flow (sub-commit 3). */
   onSave:     (item: MenuItem, extras?: { warnings?: string[] }) => void
   onDelete:   (id: string) => void
 }) {
+  const t = useTranslations('menu.editor')
   const tPhoto = useTranslations('menu.photo')
   const [d, setD] = useState<MenuItem>(item)
   const [saving, setSaving] = useState(false)
@@ -2157,31 +2089,25 @@ function DishEditor({
     }
   }
 
+  const photoSrc = photoPayload?.preview ?? d.photos?.[0]
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl bg-background p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl bg-muted">
-            <ChevronLeft size={16} />
-          </button>
-          <p className="text-base font-bold">{isNew ? 'Nouveau plat' : 'Modifier'}</p>
-          <button onClick={handleSave} disabled={saving || !d.name}
-            className="rounded-xl bg-primary px-4 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60">
-            {saving ? '…' : 'Enregistrer'}
+    <div className="op-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="op-modal wide">
+        <div className="op-modal__head">
+          <h3>{isNew ? t('modalNewTitle') : t('modalEditTitle')}</h3>
+          <button type="button" onClick={onClose} aria-label={t('close')} className="op-modal__close">
+            <span className="ms" aria-hidden="true">close</span>
           </button>
         </div>
 
-        <div className="space-y-3">
-          {/* ── Photo (Manuel upload) ─────────────────────────────────────
-              File picker bound to a hidden input. Acceptés : JPG / PNG /
-              WebP, 8 Mo max (validated client-side AND server-side). The
-              tile shows: the pending preview if one was picked, otherwise
-              the already-persisted photo, otherwise an empty add-tile. */}
+        <div className="op-modal__body">
+          {/* ── Photo (Manuel upload) ── */}
           <input
             ref={photoFileRef}
             type="file"
             accept="image/jpeg,image/png,image/webp"
-            className="hidden"
+            style={{ display: 'none' }}
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (f) handlePhotoPick(f)
@@ -2189,93 +2115,70 @@ function DishEditor({
               e.target.value = ''
             }}
           />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => photoFileRef.current?.click()}
-              className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-            >
-              {photoPayload?.preview || (d.photos && d.photos[0]) ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={photoPayload?.preview ?? d.photos?.[0]}
-                  alt={tPhoto('alt', { name: d.name || '—' })}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <ImageIcon size={20} />
-              )}
-            </button>
-            <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => photoFileRef.current?.click()}
-                disabled={saving}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60"
-              >
-                <Upload size={13} />
-                {d.photos?.[0] || photoPayload ? tPhoto('change') : tPhoto('pick')}
-              </button>
-              <p className="mt-1.5 text-[10px] text-muted-foreground">
-                {tPhoto('replaceHint')}
-              </p>
+          <div className="photo-upload" onClick={() => photoFileRef.current?.click()}>
+            {photoSrc && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photoSrc} alt={tPhoto('alt', { name: d.name || '—' })} />
+            )}
+            <div className="overlay">
+              <span className="ms" aria-hidden="true">add_a_photo</span>
+              <span>{d.photos?.[0] || photoPayload ? tPhoto('change') : tPhoto('pick')}</span>
             </div>
           </div>
           {photoError && (
-            <p className="flex items-start gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-              <AlertCircle size={12} className="mt-0.5 shrink-0" />
-              <span>{photoError}</span>
-            </p>
+            <div className="op-callout danger">
+              <span className="ms" aria-hidden="true">error</span>
+              <p>{photoError}</p>
+            </div>
           )}
 
-          <input value={d.name} onChange={e => setD({ ...d, name: e.target.value })}
-            placeholder="Nom du plat"
-            className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-semibold focus:border-primary focus:outline-none" />
+          <div className="op-field">
+            <label>{t('fName')}</label>
+            <input className="op-input" value={d.name} onChange={e => setD({ ...d, name: e.target.value })}
+              placeholder={t('fNamePlaceholder')} />
+          </div>
 
-          <textarea value={d.description ?? ''} onChange={e => setD({ ...d, description: e.target.value })}
-            placeholder="Description" rows={3}
-            className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+          <div className="op-field">
+            <label>{t('fDesc')}</label>
+            <textarea className="op-textarea" value={d.description ?? ''}
+              onChange={e => setD({ ...d, description: e.target.value })}
+              placeholder={t('fDesc')} rows={3} />
+          </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Prix €</label>
-              <input type="number" step="0.1" min="0" value={d.price}
-                onChange={e => setD({ ...d, price: Number(e.target.value) })}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm font-bold focus:border-primary focus:outline-none" />
+          <div className="op-field-row">
+            <div className="op-field">
+              <label>{t('fPrice')}</label>
+              <input className="op-input mono" type="number" step="0.1" min="0" value={d.price}
+                onChange={e => setD({ ...d, price: Number(e.target.value) })} />
             </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Calories</label>
-              <input type="number" min="0" value={d.calories ?? ''}
-                onChange={e => setD({ ...d, calories: e.target.value ? Number(e.target.value) : null })}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+            <div className="op-field">
+              <label>{t('fCalories')}</label>
+              <input className="op-input" type="number" min="0" value={d.calories ?? ''}
+                onChange={e => setD({ ...d, calories: e.target.value ? Number(e.target.value) : null })} />
             </div>
           </div>
 
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Catégorie</label>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <div className="op-field">
+            <label>{t('fCategory')}</label>
+            <div className="op-chips">
               {allCats.map(c => (
-                <button key={c} onClick={() => setD({ ...d, category: c })}
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                    d.category === c ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                  }`}>
-                  {emojiFor(c)} {c}
+                <button key={c} type="button" onClick={() => setD({ ...d, category: c })}
+                  className={`op-chip${d.category === c ? ' is-on' : ''}`}>
+                  {c}
                 </button>
               ))}
             </div>
           </div>
 
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Allergènes</label>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
+          <div className="op-field">
+            <label>{t('fAllergens')}</label>
+            <div className="op-chips">
               {ALL_EU.map(a => {
                 const on = d.allergens.includes(a)
                 return (
-                  <button key={a}
+                  <button key={a} type="button"
                     onClick={() => setD({ ...d, allergens: on ? d.allergens.filter(x => x !== a) : [...d.allergens, a] })}
-                    className={`rounded-full border px-2.5 py-1 text-[10px] font-bold transition ${
-                      on ? 'border-destructive/30 bg-destructive/15 text-destructive' : 'border-transparent bg-muted text-muted-foreground'
-                    }`}>
+                    className={`op-chip allergen${on ? ' is-on' : ''}`}>
                     {on && '✓ '}{a}
                   </button>
                 )
@@ -2283,40 +2186,47 @@ function DishEditor({
             </div>
           </div>
 
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Labels</label>
-            <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+          <div className="op-field">
+            <label>{t('fLabels')}</label>
+            <div className="op-labels">
               {ALL_LABELS.map(l => {
                 const on = d.labels.includes(l.name)
                 return (
-                  <button key={l.name}
+                  <button key={l.name} type="button"
                     onClick={() => setD({ ...d, labels: on ? d.labels.filter(x => x !== l.name) : [...d.labels, l.name] })}
-                    className={`flex flex-col items-center gap-1 rounded-xl border p-2 transition ${
-                      on ? 'border-primary bg-accent text-primary' : 'border-border bg-card text-muted-foreground'
-                    }`}>
-                    <l.icon size={14} />
-                    <span className="text-[9px] font-bold">{l.name}</span>
+                    className={`op-label-tile${on ? ' is-on' : ''}`}>
+                    <span className="ms" aria-hidden="true">{l.icon}</span>
+                    <span>{l.name}</span>
                   </button>
                 )
               })}
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5">
-            <span className="text-sm font-semibold">Best-seller</span>
-            <div
-              onClick={() => setD({ ...d, isPopular: !d.isPopular })}
-              className={`relative h-6 w-11 cursor-pointer rounded-full transition ${d.isPopular ? 'bg-warning' : 'bg-muted'}`}>
-              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${d.isPopular ? 'left-5' : 'left-0.5'}`} />
-            </div>
+          <div className="avail-row">
+            <div className="m"><b>{t('fBest')}</b><span>{t('fBestSub')}</span></div>
+            <label className="op-switch" title={t('fBest')}>
+              <input type="checkbox" checked={d.isPopular} onChange={() => setD({ ...d, isPopular: !d.isPopular })} />
+              <span className="track" />
+            </label>
           </div>
 
           {!isNew && (
-            <button onClick={() => onDelete(item.id)}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 py-2.5 text-[12px] font-bold text-destructive">
-              <Trash2 size={13} /> Supprimer ce plat
+            <button type="button" onClick={() => onDelete(item.id)} className="op-btn-ghost"
+              style={{ color: 'var(--op-danger)', borderColor: 'var(--op-danger-bd)', display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+              <span className="ms" aria-hidden="true">delete</span>{t('deleteThisDish')}
             </button>
           )}
+        </div>
+
+        <div className="op-modal__foot">
+          <button type="button" onClick={onClose} className="op-btn-ghost">{t('cancel')}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !d.name} className="op-btn-primary">
+            {saving
+              ? <span className="ms" aria-hidden="true" style={{ animation: 'op-scan-spin 1s linear infinite' }}>progress_activity</span>
+              : <span className="ms" aria-hidden="true">check</span>}
+            {saving ? t('saving') : t('save')}
+          </button>
         </div>
       </div>
     </div>

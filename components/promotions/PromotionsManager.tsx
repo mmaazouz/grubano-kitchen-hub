@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatEuros } from '@/lib/format-money'
-import { BadgePercent, Plus, Loader2, AlertCircle, Clock3, Sparkles } from 'lucide-react'
-import { Modal, Button, Input } from '@/components/design-system'
 
 type PromoType = 'percent' | 'fixed' | 'second_item' | 'threshold_reward'
 
@@ -14,6 +12,14 @@ type PromoType = 'percent' | 'fixed' | 'second_item' | 'threshold_reward'
 // items / channels) and soft-toggles them. Consumes /api/restaurant/promotions
 // (strict brand ownership server-side). The ENGINE applies them automatically
 // at checkout — best one for the customer, never stacked (D5).
+//
+// 🔒 CD v1 re-skin (Notion 390fd2c9-…-d5056c19ac9a) — PRESENTATION ONLY. Every fetch /
+// React state / mutation handler below is byte-identical to the pre-skin manager: only
+// the JSX markup + classes moved to the navy --op-* operator shell (Material Symbols, not
+// lucide). The « best-of / pas de cumul » preview is an HONEST note about the SERVER engine
+// (lib/promotions.pickBestPromotion) — nothing is recomputed here. Tabs (Actives /
+// Programmées / Terminées) are a pure client GROUPING of the already-fetched real promotions
+// via statusOf(); toggle stays the existing PATCH soft-toggle (jamais de suppression).
 
 type Promotion = {
   id: string; brandId: string; name: string; type: string; discount: number
@@ -28,6 +34,7 @@ type MenuItemRow = { id: string; name: string; brandId: string }
 
 export default function PromotionsManager() {
   const t      = useTranslations('promotions')
+  const op     = useTranslations('operator')
   const locale = useLocale()
 
   const [promotions, setPromotions] = useState<Promotion[]>([])
@@ -45,6 +52,9 @@ export default function PromotionsManager() {
   const [optInPct,    setOptInPct]    = useState('')
   const [optInSaving, setOptInSaving] = useState(false)
   const [optInError,  setOptInError]  = useState('')
+
+  // Tab grouping (client-side view of the real fetched promotions — no recompute).
+  const [tab, setTab] = useState<'active' | 'scheduled' | 'ended'>('active')
 
   // Create form state
   const [open,      setOpen]      = useState(false)
@@ -121,12 +131,21 @@ export default function PromotionsManager() {
 
   useEffect(() => { load() }, [load])
 
-  function statusOf(p: Promotion): { key: string; tone: string } {
+  // status: 'active' (running now) | 'paused' (inactive but window valid) |
+  // 'scheduled' (starts later) | 'ended' (expired). Pure read of real dates/active flag.
+  function statusOf(p: Promotion): 'active' | 'paused' | 'scheduled' | 'ended' {
     const now = Date.now()
-    if (!p.active) return { key: 'badgeInactive', tone: 'bg-muted text-muted-foreground' }
-    if (now < new Date(p.startDate).getTime()) return { key: 'badgeUpcoming', tone: 'bg-warning/10 text-warning' }
-    if (now > new Date(p.endDate).getTime())   return { key: 'badgeExpired',  tone: 'bg-muted text-muted-foreground' }
-    return { key: 'badgeActive', tone: 'bg-success/10 text-success' }
+    if (now > new Date(p.endDate).getTime()) return 'ended'
+    if (now < new Date(p.startDate).getTime()) return 'scheduled'
+    if (!p.active) return 'paused'
+    return 'active'
+  }
+  // Tab bucket: active + paused → « Actives » ; scheduled → « Programmées » ; ended → « Terminées ».
+  function bucketOf(p: Promotion): 'active' | 'scheduled' | 'ended' {
+    const s = statusOf(p)
+    if (s === 'scheduled') return 'scheduled'
+    if (s === 'ended') return 'ended'
+    return 'active'
   }
 
   async function toggle(p: Promotion) {
@@ -248,322 +267,451 @@ export default function PromotionsManager() {
   }
 
   const brandItems = menuItems.filter(m => m.brandId === brandId)
+  const brandName  = (id: string) => brands.find(b => b.id === id)?.name ?? ''
+
+  // Derived groupings + display helpers (pure reads — no money recompute).
+  const counts = useMemo(() => {
+    const c = { active: 0, scheduled: 0, ended: 0 }
+    for (const p of promotions) c[bucketOf(p)]++
+    return c
+  }, [promotions])
+  const visible = promotions.filter(p => bucketOf(p) === tab)
+  const activeNowCount = promotions.filter(p => statusOf(p) === 'active').length
+
+  // CD promo-type badge (auto / offer) derived from the real `type`. NOTE: the list
+  // endpoint intentionally does NOT return `code` (column-tolerant select) → we never
+  // render a « Code promo » badge/row we couldn't honestly fill.
+  function typeBadge(p: Promotion): { cls: string; label: string } {
+    if (p.type === 'second_item' || p.type === 'threshold_reward') return { cls: 'offer', label: op('promotions.typeOffer') }
+    return { cls: 'auto', label: op('promotions.typeAuto') }
+  }
+  function statusBadge(p: Promotion): { cls: string; label: string } {
+    const s = statusOf(p)
+    if (s === 'active')    return { cls: 'active',    label: t('badgeActive') }
+    if (s === 'paused')    return { cls: 'paused',    label: t('badgeInactive') }
+    if (s === 'scheduled') return { cls: 'scheduled', label: t('badgeUpcoming') }
+    return { cls: 'ended', label: t('badgeExpired') }
+  }
+  function valueText(p: Promotion): string {
+    return p.type === 'percent'          ? t('valuePercent', { value: p.discount })
+      : p.type === 'fixed'               ? t('valueFixed', { value: eur(p.discount) })
+      : p.type === 'second_item'         ? t('valueSecondItem', { value: p.discount })
+      : p.type === 'threshold_reward'    ? t('valueThreshold', { amount: eur(p.conditions?.thresholdEur ?? 0) })
+      : t('valuePercent', { value: p.discount })
+  }
 
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="flex items-center gap-2 text-2xl font-display font-bold tracking-tight">
-          <BadgePercent size={20} className="text-primary" /> {t('title')}
-        </h1>
-        <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => { setAgError(''); setAgItemIds([]); setAgExpiry(''); setAgPct('30'); if (brands.length && !brandId) setBrandId(brands[0].id); setAgOpen(true) }} leftIcon={<Clock3 size={14} />}>{t('agBtn')}</Button>
-          <Button size="sm" onClick={openCreate} leftIcon={<Plus size={14} />}>{t('btnNew')}</Button>
+    <section className="op-promotions">
+      {loading ? (
+        // ── skeleton ──
+        <>
+          <div className="op-dash__head">
+            <div>
+              <span className="op-sk" style={{ width: 150, height: 24, display: 'block' }} />
+              <span className="op-sk" style={{ width: 210, height: 14, display: 'block', marginTop: 8, borderRadius: 4 }} />
+            </div>
+            <span className="op-sk" style={{ width: 170, height: 40, borderRadius: 8 }} />
+          </div>
+          <span className="op-sk" style={{ width: 280, height: 40, borderRadius: 999, marginBottom: 18, display: 'block' }} />
+          <div className="promo-grid">
+            {[0, 1, 2, 3].map(i => (
+              <span key={i} className="op-sk" style={{ width: '100%', height: 200, borderRadius: 12 }} />
+            ))}
+          </div>
+        </>
+      ) : loadError ? (
+        // ── error ──
+        <div className="op-center">
+          <div className="op-error__card">
+            <span className="ms">cloud_off</span>
+            <h2>{t('errLoad')}</h2>
+            <p>{op('dash.errorBody')}</p>
+            <button type="button" className="op-btn-primary" onClick={() => void load()}>
+              <span className="ms">refresh</span>{op('dash.retry')}
+            </button>
+          </div>
         </div>
-      </div>
-      <p className="mb-2 text-sm text-muted-foreground">{t('subtitle')}</p>
-      <p className="mb-5 rounded-xl bg-accent px-3 py-2 text-[12px] text-muted-foreground">{t('docFinance')}</p>
+      ) : (
+        <>
+          {/* ── head ── */}
+          <div className="op-dash__head">
+            <div>
+              <h1 className="op-dash__title">{t('title')}</h1>
+              <p className="op-dash__sub">{op('promotions.activeCount', { count: activeNowCount })}</p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="op-btn-add ghost"
+                onClick={() => { setAgError(''); setAgItemIds([]); setAgExpiry(''); setAgPct('30'); if (brands.length && !brandId) setBrandId(brands[0].id); setAgOpen(true) }}
+              >
+                <span className="ms">schedule</span>{t('agBtn')}
+              </button>
+              <button type="button" className="op-btn-add" onClick={openCreate}>
+                <span className="ms">add</span>{t('btnNew')}
+              </button>
+            </div>
+          </div>
 
-      {toast && (
-        <p className="mb-3 rounded-xl bg-navy px-3 py-2 text-[12px] font-semibold text-navy-foreground">{toast}</p>
-      )}
+          {/* ── honest « pas de cumul » note (server-side engine) ── */}
+          <div className="op-promo-note">
+            <span className="ms">info</span>
+            <p>{op('promotions.bestOfNote')}</p>
+          </div>
+          <p className="op-hint" style={{ marginTop: -8, marginBottom: 18 }}>{t('docFinance')}</p>
 
-      {/* ── Promo V2 Slice 2 — campaign invitations (adopted recipes) ── */}
-      {invites.length > 0 && (
-        <div className="mb-4 space-y-2">
-          <p className="text-[13px] font-bold text-primary">{t('campaignInvitesTitle', { count: invites.length })}</p>
-          {invites.map(inv => (
-            <div key={inv.campaignId} className="rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <BadgePercent size={15} className="shrink-0 text-primary" />
-                <span className="text-[13px] font-bold">{t('campaignInviteHead', { creator: inv.creatorName, dish: inv.dishName })}</span>
-                <span className="ms-auto text-[14px] font-bold tabular-nums text-primary">−{inv.suggestedDiscountPct}%</span>
-              </div>
-              {inv.message && <p className="mt-1 text-[12px] italic text-muted-foreground">« {inv.message} »</p>}
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">{t('campaignInviteFinance')}</span>
-                <Button size="sm" className="ms-auto" onClick={() => openOptIn(inv)}>{t('campaignJoinCta')}</Button>
+          {toast && (
+            <p className="op-promo-toast"><span className="ms">check_circle</span>{toast}</p>
+          )}
+
+          {/* ── campaign invitations (adopted chef recipes) ── */}
+          {invites.length > 0 && (
+            <div className="op-camp">
+              <div className="op-camp__title"><span className="ms">restaurant_menu</span>{t('campaignInvitesTitle', { count: invites.length })}</div>
+              {invites.map(inv => (
+                <div key={inv.campaignId} className="op-camp__card">
+                  <div className="op-camp__row">
+                    <span className="ms">local_offer</span>
+                    <span className="op-camp__head">{t('campaignInviteHead', { creator: inv.creatorName, dish: inv.dishName })}</span>
+                    <span className="op-camp__pct mono">−{inv.suggestedDiscountPct}%</span>
+                  </div>
+                  {inv.message && <p className="op-camp__msg">« {inv.message} »</p>}
+                  <div className="op-camp__foot">
+                    <span className="op-camp__note">{t('campaignInviteFinance')}</span>
+                    <button type="button" className="op-camp__cta" onClick={() => openOptIn(inv)}>{t('campaignJoinCta')}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {promotions.length === 0 ? (
+            // ── empty (aucune promo) ──
+            <div className="op-card">
+              <div className="op-emptyline">
+                <span className="ms">sell</span>
+                <b>{op('promotions.emptyTitle')}</b>
+                <span>{t('empty')}</span>
+                <button type="button" className="op-btn-primary" onClick={openCreate}>
+                  <span className="ms">add</span>{op('promotions.emptyCta')}
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="h-32 animate-pulse rounded-2xl bg-navy/10" />
-      ) : loadError ? (
-        <p className="flex items-center gap-2 rounded-2xl border border-border bg-card p-4 text-[13px] text-muted-foreground">
-          <AlertCircle size={14} /> {t('errLoad')}
-        </p>
-      ) : promotions.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-border bg-card p-6 text-center text-[13px] text-muted-foreground">
-          {t('empty')}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {promotions.map(p => {
-            const st = statusOf(p)
-            return (
-              <div key={p.id} className="rounded-2xl border border-border bg-card px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-[14px] font-bold">{p.name}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${st.tone}`}>{t(st.key)}</span>
-                  <span className="ms-auto text-[15px] font-bold tabular-nums text-primary">
-                    {p.type === 'percent'      ? t('valuePercent', { value: p.discount })
-                     : p.type === 'fixed'       ? t('valueFixed', { value: eur(p.discount) })
-                     : p.type === 'second_item' ? t('valueSecondItem', { value: p.discount })
-                     : p.type === 'threshold_reward'
-                       ? t('valueThreshold', { amount: eur(p.conditions?.thresholdEur ?? 0) })
-                       : t('valuePercent', { value: p.discount })}
-                  </span>
-                </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                  <span>{t('windowLabel', { start: dateFmt(p.startDate), end: dateFmt(p.endDate) })}</span>
-                  {p.conditions?.minOrderEur ? (
-                    <span className="rounded-full bg-muted px-1.5 py-0.5">{t('minOrderPill', { amount: eur(p.conditions.minOrderEur) })}</span>
-                  ) : null}
-                  {p.conditions?.itemIds?.length ? (
-                    <span className="rounded-full bg-muted px-1.5 py-0.5">{t('itemsPill', { count: p.conditions.itemIds.length })}</span>
-                  ) : null}
-                  {p.conditions?.channels?.map(c => (
-                    <span key={c} className="rounded-full bg-muted px-1.5 py-0.5">
-                      {c === 'pickup' ? t('channelPickup') : t('channelDelivery')}
-                    </span>
-                  ))}
-                  <span>· {t('usage', { count: p.usageCount })}</span>
+          ) : (
+            <>
+              {/* ── tabs (Actives / Programmées / Terminées) ── */}
+              <div className="promo-tabs" role="tablist">
+                {([
+                  ['active',    op('promotions.tabActive'),    counts.active],
+                  ['scheduled', op('promotions.tabScheduled'), counts.scheduled],
+                  ['ended',     op('promotions.tabEnded'),     counts.ended],
+                ] as const).map(([k, label, n]) => (
                   <button
+                    key={k}
                     type="button"
-                    onClick={() => toggle(p)}
-                    className="ms-auto rounded-lg border border-border px-2 py-1 text-[10px] font-bold"
+                    role="tab"
+                    className={tab === k ? 'is-active' : undefined}
+                    onClick={() => setTab(k)}
                   >
-                    {p.active ? t('btnDeactivate') : t('btnReactivate')}
+                    {label} <span className="tab-count mono">{n}</span>
                   </button>
-                </div>
+                ))}
               </div>
-            )
-          })}
-        </div>
+
+              {/* ── grid ── */}
+              {visible.length === 0 ? (
+                <div className="op-card">
+                  <div className="op-emptyline">
+                    <span className="ms">sell</span>
+                    <b>{op('promotions.tabEmpty')}</b>
+                  </div>
+                </div>
+              ) : (
+                <div className="promo-grid">
+                  {visible.map(p => {
+                    const tb = typeBadge(p)
+                    const sb = statusBadge(p)
+                    const st = statusOf(p)
+                    const isText = p.type === 'threshold_reward'
+                    return (
+                      <div key={p.id} className={`promo-card${st === 'ended' ? ' is-ended' : ''}`}>
+                        <div className="promo-card__top">
+                          <span className={`promo-type ${tb.cls}`}>{tb.label}</span>
+                          <span className={`promo-status ${sb.cls}`}><i className="dot" />{sb.label}</span>
+                        </div>
+                        <h3 className="promo-name">{p.name}</h3>
+                        <div className={`promo-value${isText ? ' text' : ''}`}>{valueText(p)}</div>
+                        {p.conditions?.minOrderEur ? (
+                          <div className="promo-cond">{t('minOrderPill', { amount: eur(p.conditions.minOrderEur) })}</div>
+                        ) : p.type === 'second_item' ? (
+                          <div className="promo-cond">{t('typeSecondItem')}</div>
+                        ) : null}
+                        <div className="promo-period">
+                          <span className="ms">event</span>{t('windowLabel', { start: dateFmt(p.startDate), end: dateFmt(p.endDate) })}
+                        </div>
+                        <div className="promo-scope">
+                          <span className="ms">storefront</span>{brandName(p.brandId)}
+                          {p.conditions?.itemIds?.length ? ` · ${t('itemsPill', { count: p.conditions.itemIds.length })}` : ''}
+                          {p.conditions?.channels?.map(c => ` · ${c === 'pickup' ? t('channelPickup') : t('channelDelivery')}`).join('')}
+                        </div>
+                        <div className="promo-usage"><span className="mono">{t('usage', { count: p.usageCount })}</span></div>
+                        <div className="promo-card__actions">
+                          {st === 'ended' ? (
+                            <span className="op-hint">{t('badgeExpired')}</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="icon-btn-sm"
+                              onClick={() => toggle(p)}
+                              title={p.active ? t('btnDeactivate') : t('btnReactivate')}
+                            >
+                              <span className="ms">{p.active ? 'pause_circle' : 'play_circle'}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
 
       {/* ── Create modal ── */}
-      <Modal
-        open={open}
-        onClose={() => !saving && setOpen(false)}
-        title={t('formTitle')}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>{t('btnCancel')}</Button>
-            <Button onClick={create} disabled={saving || !formValid}>
-              {saving ? <Loader2 size={13} className="me-1 animate-spin" /> : null}
-              {t('btnCreate')}
-            </Button>
+      <div className={`op-modal-backdrop${open ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget && !saving) setOpen(false) }}>
+        <div className="op-modal" role="dialog" aria-modal="true">
+          <div className="op-modal__head">
+            <h3>{t('formTitle')}</h3>
+            <button type="button" className="op-modal__close" onClick={() => !saving && setOpen(false)}><span className="ms">close</span></button>
           </div>
-        }
-      >
-        <div className="space-y-3">
-          {brands.length > 1 && (
-            <label className="block text-[13px]">
-              <span className="mb-1 block font-semibold">{t('fieldBrand')}</span>
-              <select
-                value={brandId}
-                onChange={e => { setBrandId(e.target.value); setItemIds([]) }}
-                className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[13px]"
-              >
-                {brands.map(b => <option key={b.id} value={b.id}>{b.emoji} {b.name}</option>)}
-              </select>
-            </label>
-          )}
-
-          <Input label={t('fieldName')} placeholder={t('fieldNamePh')} value={name} onChange={e => setName(e.target.value)} />
-
-          <div className="grid grid-cols-2 gap-2">
-            {([
-              ['percent', t('typePercent')],
-              ['fixed', t('typeFixed')],
-              ['second_item', t('typeSecondItem')],
-              ['threshold_reward', t('typeThreshold')],
-            ] as const).map(([k, label]) => (
-              <label key={k} className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-[13px] ${type === k ? 'border-primary bg-primary/5' : 'border-border'}`}>
-                <input type="radio" checked={type === k} onChange={() => setType(k)} /> {label}
-              </label>
-            ))}
-          </div>
-
-          {/* Headline value — hidden for threshold_reward (its value lives below). */}
-          {type !== 'threshold_reward' && (
-            <Input
-              label={type === 'fixed' ? t('fieldValueFixed') : type === 'second_item' ? t('fieldValueSecondItem') : t('fieldValuePercent')}
-              inputMode="decimal"
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              error={value && !valueValid ? t('errGeneric') : undefined}
-            />
-          )}
-
-          {/* Promo V2 — threshold_reward: seuil + récompense (remise % ou article offert). */}
-          {type === 'threshold_reward' && (
-            <div className="space-y-2 rounded-xl border border-border bg-muted/30 p-3">
-              <Input label={t('fieldThreshold')} inputMode="decimal" value={threshold} onChange={e => setThreshold(e.target.value)}
-                error={threshold && !thresholdValid ? t('errGeneric') : undefined} />
-              <div className="flex gap-3">
-                <label className="flex items-center gap-2 text-[13px]">
-                  <input type="radio" checked={rewardKind === 'percent'} onChange={() => setRewardKind('percent')} /> {t('rewardPercent')}
-                </label>
-                <label className="flex items-center gap-2 text-[13px]">
-                  <input type="radio" checked={rewardKind === 'free_item'} onChange={() => setRewardKind('free_item')} /> {t('rewardFreeItem')}
-                </label>
+          <div className="op-modal__body">
+            {brands.length > 1 && (
+              <div className="op-field">
+                <span className="lbl">{t('fieldBrand')}</span>
+                <select className="op-select" value={brandId} onChange={e => { setBrandId(e.target.value); setItemIds([]) }}>
+                  {brands.map(b => <option key={b.id} value={b.id}>{b.emoji} {b.name}</option>)}
+                </select>
               </div>
-              {rewardKind === 'percent' ? (
-                <Input label={t('fieldRewardPct')} inputMode="decimal" value={rewardPct} onChange={e => setRewardPct(e.target.value)}
-                  error={rewardPct && !rewardValid ? t('errGeneric') : undefined} />
-              ) : (
-                <div>
-                  <p className="mb-1 text-[13px] font-semibold">{t('fieldFreeItems')}</p>
-                  <p className="mb-1.5 text-[11px] text-muted-foreground">{t('fieldFreeItemsHint')}</p>
-                  <div className="max-h-32 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-                    {brandItems.map(m => (
-                      <label key={m.id} className="flex items-center gap-2 text-[12px]">
-                        <input type="checkbox" checked={freeItemIds.includes(m.id)}
-                          onChange={e => setFreeItemIds(prev => e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id))} />
-                        {m.name}
-                      </label>
-                    ))}
-                    {brandItems.length === 0 && <p className="text-[11px] text-muted-foreground">—</p>}
-                  </div>
+            )}
+
+            <div className="op-field">
+              <label htmlFor="promoName">{t('fieldName')}</label>
+              <input id="promoName" className="op-input" type="text" placeholder={t('fieldNamePh')} value={name} onChange={e => setName(e.target.value)} />
+            </div>
+
+            <div className="op-field">
+              <span className="lbl">{t('fieldType')}</span>
+              <div className="op-seg cols4">
+                {([
+                  ['percent', t('typePercent')],
+                  ['fixed', t('typeFixed')],
+                  ['second_item', t('typeSecondItem')],
+                  ['threshold_reward', t('typeThreshold')],
+                ] as const).map(([k, label]) => (
+                  <label key={k} className={`op-seg__opt${type === k ? ' is-active' : ''}`}>
+                    <input type="radio" name="promoType" checked={type === k} onChange={() => setType(k)} /> {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Headline value — hidden for threshold_reward (its value lives below). */}
+            {type !== 'threshold_reward' && (
+              <div className="op-field">
+                <label htmlFor="promoValue">{type === 'fixed' ? t('fieldValueFixed') : type === 'second_item' ? t('fieldValueSecondItem') : t('fieldValuePercent')}</label>
+                <input id="promoValue" className={`op-input mono${value && !valueValid ? ' err' : ''}`} inputMode="decimal" value={value} onChange={e => setValue(e.target.value)} />
+                {value && !valueValid && <span className="op-field-err">{t('errGeneric')}</span>}
+              </div>
+            )}
+
+            {/* threshold_reward: seuil + récompense (remise % ou article offert). */}
+            {type === 'threshold_reward' && (
+              <div className="op-field" style={{ gap: 12 }}>
+                <div className="op-field">
+                  <label htmlFor="promoThreshold">{t('fieldThreshold')}</label>
+                  <input id="promoThreshold" className={`op-input mono${threshold && !thresholdValid ? ' err' : ''}`} inputMode="decimal" value={threshold} onChange={e => setThreshold(e.target.value)} />
+                  {threshold && !thresholdValid && <span className="op-field-err">{t('errGeneric')}</span>}
                 </div>
-              )}
+                <div className="op-chip-inline">
+                  <label className="op-checkrow"><input type="radio" name="rewardKind" checked={rewardKind === 'percent'} onChange={() => setRewardKind('percent')} /> {t('rewardPercent')}</label>
+                  <label className="op-checkrow"><input type="radio" name="rewardKind" checked={rewardKind === 'free_item'} onChange={() => setRewardKind('free_item')} /> {t('rewardFreeItem')}</label>
+                </div>
+                {rewardKind === 'percent' ? (
+                  <div className="op-field">
+                    <label htmlFor="promoRewardPct">{t('fieldRewardPct')}</label>
+                    <input id="promoRewardPct" className={`op-input mono${rewardPct && !rewardValid ? ' err' : ''}`} inputMode="decimal" value={rewardPct} onChange={e => setRewardPct(e.target.value)} />
+                    {rewardPct && !rewardValid && <span className="op-field-err">{t('errGeneric')}</span>}
+                  </div>
+                ) : (
+                  <div className="op-field">
+                    <span className="lbl">{t('fieldFreeItems')}</span>
+                    <span className="op-hint">{t('fieldFreeItemsHint')}</span>
+                    <div className="op-checklist">
+                      {brandItems.map(m => (
+                        <label key={m.id} className="op-checkrow">
+                          <input type="checkbox" checked={freeItemIds.includes(m.id)}
+                            onChange={e => setFreeItemIds(prev => e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id))} />
+                          {m.name}
+                        </label>
+                      ))}
+                      {brandItems.length === 0 && <span className="op-hint">—</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="op-field-row">
+              <div className="op-field">
+                <label htmlFor="promoStart">{t('fieldStart')}</label>
+                <input id="promoStart" className="op-input" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} />
+              </div>
+              <div className="op-field">
+                <label htmlFor="promoEnd">{t('fieldEnd')}</label>
+                <input id="promoEnd" className="op-input" type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} />
+              </div>
             </div>
-          )}
 
-          <div className="grid grid-cols-2 gap-2">
-            <Input label={t('fieldStart')} type="datetime-local" value={start} onChange={e => setStart(e.target.value)} />
-            <Input label={t('fieldEnd')}   type="datetime-local" value={end}   onChange={e => setEnd(e.target.value)} />
-          </div>
-
-          <Input label={t('fieldMinOrder')} inputMode="decimal" value={minOrder} onChange={e => setMinOrder(e.target.value)} />
-
-          <div>
-            <p className="mb-1 text-[13px] font-semibold">{t('fieldItems')}</p>
-            <p className="mb-1.5 text-[11px] text-muted-foreground">{t('fieldItemsHint')}</p>
-            <div className="max-h-36 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-              {brandItems.map(m => (
-                <label key={m.id} className="flex items-center gap-2 text-[12px]">
-                  <input
-                    type="checkbox"
-                    checked={itemIds.includes(m.id)}
-                    onChange={e => setItemIds(prev => e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id))}
-                  />
-                  {m.name}
-                </label>
-              ))}
-              {brandItems.length === 0 && <p className="text-[11px] text-muted-foreground">—</p>}
+            <div className="op-field">
+              <label htmlFor="promoMinOrder">{t('fieldMinOrder')}</label>
+              <input id="promoMinOrder" className="op-input mono" inputMode="decimal" value={minOrder} onChange={e => setMinOrder(e.target.value)} />
             </div>
-          </div>
 
-          <div>
-            <p className="mb-1 text-[13px] font-semibold">{t('fieldChannels')}</p>
-            <div className="flex gap-3">
-              {(['delivery', 'pickup'] as const).map(c => (
-                <label key={c} className="flex items-center gap-2 text-[12px]">
-                  <input
-                    type="checkbox"
-                    checked={channels.includes(c)}
-                    onChange={e => setChannels(prev => e.target.checked ? [...prev, c] : prev.filter(x => x !== c))}
-                  />
-                  {c === 'pickup' ? t('channelPickup') : t('channelDelivery')}
-                </label>
-              ))}
+            <div className="op-field">
+              <span className="lbl">{t('fieldItems')}</span>
+              <span className="op-hint">{t('fieldItemsHint')}</span>
+              <div className="op-checklist">
+                {brandItems.map(m => (
+                  <label key={m.id} className="op-checkrow">
+                    <input type="checkbox" checked={itemIds.includes(m.id)}
+                      onChange={e => setItemIds(prev => e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id))} />
+                    {m.name}
+                  </label>
+                ))}
+                {brandItems.length === 0 && <span className="op-hint">—</span>}
+              </div>
             </div>
-          </div>
 
-          {formError && (
-            <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" /> {formError}
-            </p>
-          )}
-        </div>
-      </Modal>
-
-      {/* ── Anti-gaspi modal — « stock à écouler » → flash percent en 1 clic ── */}
-      <Modal
-        open={agOpen}
-        onClose={() => !agSaving && setAgOpen(false)}
-        title={t('agTitle')}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setAgOpen(false)} disabled={agSaving}>{t('btnCancel')}</Button>
-            <Button onClick={launchAntiGaspi} disabled={agSaving || !agValid} leftIcon={agSaving ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={14} />}>
-              {t('agLaunch')}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-3">
-          <p className="rounded-xl bg-accent px-3 py-2 text-[12px] text-muted-foreground">{t('agIntro')}</p>
-          {brands.length > 1 && (
-            <label className="block text-[13px]">
-              <span className="mb-1 block font-semibold">{t('fieldBrand')}</span>
-              <select value={brandId} onChange={e => { setBrandId(e.target.value); setAgItemIds([]) }}
-                className="w-full rounded-xl border border-border bg-card px-3 py-2 text-[13px]">
-                {brands.map(b => <option key={b.id} value={b.id}>{b.emoji} {b.name}</option>)}
-              </select>
-            </label>
-          )}
-          <div>
-            <p className="mb-1 text-[13px] font-semibold">{t('agItems')}</p>
-            <div className="max-h-36 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-              {brandItems.map(m => (
-                <label key={m.id} className="flex items-center gap-2 text-[12px]">
-                  <input type="checkbox" checked={agItemIds.includes(m.id)}
-                    onChange={e => setAgItemIds(prev => e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id))} />
-                  {m.name}
-                </label>
-              ))}
-              {brandItems.length === 0 && <p className="text-[11px] text-muted-foreground">—</p>}
+            <div className="op-field">
+              <span className="lbl">{t('fieldChannels')}</span>
+              <div className="op-chip-inline">
+                {(['delivery', 'pickup'] as const).map(c => (
+                  <label key={c} className="op-checkrow">
+                    <input type="checkbox" checked={channels.includes(c)}
+                      onChange={e => setChannels(prev => e.target.checked ? [...prev, c] : prev.filter(x => x !== c))} />
+                    {c === 'pickup' ? t('channelPickup') : t('channelDelivery')}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
-          <Input label={t('agExpiry')} type="datetime-local" value={agExpiry} onChange={e => setAgExpiry(e.target.value)} />
-          {/* Suggestion pré-remplie (heuristique −30%), réglable. */}
-          <Input label={t('agPctLabel')} inputMode="decimal" value={agPct} onChange={e => setAgPct(e.target.value)} />
-          <p className="text-[11px] text-muted-foreground">{t('agSuggestHint', { pct: Number.isFinite(agPctNum) ? Math.round(agPctNum) : 30 })}</p>
-          {agError && (
-            <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" /> {agError}
-            </p>
-          )}
-        </div>
-      </Modal>
 
-      {/* ── Campaign opt-in modal (Promo V2 Slice 2) ── */}
-      <Modal
-        open={!!optInTarget}
-        onClose={() => !optInSaving && setOptInTarget(null)}
-        title={t('campaignOptInTitle')}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setOptInTarget(null)} disabled={optInSaving}>{t('btnCancel')}</Button>
-            <Button onClick={confirmOptIn} disabled={optInSaving || !optInValid}>
-              {optInSaving ? <Loader2 size={13} className="me-1 animate-spin" /> : null}
-              {t('campaignConfirmJoin')}
-            </Button>
-          </div>
-        }
-      >
-        {optInTarget && (
-          <div className="space-y-3">
-            <p className="rounded-xl bg-accent px-3 py-2 text-[12px] text-muted-foreground">
-              {t('campaignOptInIntro', { creator: optInTarget.creatorName, dish: optInTarget.dishName, pct: optInTarget.suggestedDiscountPct })}
-            </p>
-            <Input label={t('campaignYourPct')} inputMode="decimal" value={optInPct} onChange={e => setOptInPct(e.target.value)}
-              error={optInPct && !optInValid ? t('errGeneric') : undefined} />
-            <p className="text-[11px] text-muted-foreground">{t('campaignOptInFinanceNote')}</p>
-            {optInError && (
-              <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-                <AlertCircle size={13} className="mt-0.5 shrink-0" /> {optInError}
-              </p>
+            {/* honest « pas de cumul » reminder inside the modal (server engine) */}
+            <div className="op-callout">
+              <span className="ms">info</span>
+              <p>{op('promotions.bestOfNote')}</p>
+            </div>
+
+            {formError && (
+              <div className="op-callout err"><span className="ms">error</span><p>{formError}</p></div>
             )}
           </div>
-        )}
-      </Modal>
-    </div>
+          <div className="op-modal__foot">
+            <button type="button" className="op-btn-ghost" onClick={() => setOpen(false)} disabled={saving}>{t('btnCancel')}</button>
+            <button type="button" className="op-btn-primary" onClick={create} disabled={saving || !formValid}>
+              <span className={`ms${saving ? ' spin' : ''}`}>{saving ? 'progress_activity' : 'check'}</span>{t('btnCreate')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Anti-gaspi modal — « stock à écouler » → flash percent en 1 clic ── */}
+      <div className={`op-modal-backdrop${agOpen ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget && !agSaving) setAgOpen(false) }}>
+        <div className="op-modal narrow" role="dialog" aria-modal="true">
+          <div className="op-modal__head">
+            <h3>{t('agTitle')}</h3>
+            <button type="button" className="op-modal__close" onClick={() => !agSaving && setAgOpen(false)}><span className="ms">close</span></button>
+          </div>
+          <div className="op-modal__body">
+            <div className="op-callout"><span className="ms">recycling</span><p>{t('agIntro')}</p></div>
+            {brands.length > 1 && (
+              <div className="op-field">
+                <span className="lbl">{t('fieldBrand')}</span>
+                <select className="op-select" value={brandId} onChange={e => { setBrandId(e.target.value); setAgItemIds([]) }}>
+                  {brands.map(b => <option key={b.id} value={b.id}>{b.emoji} {b.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="op-field">
+              <span className="lbl">{t('agItems')}</span>
+              <div className="op-checklist">
+                {brandItems.map(m => (
+                  <label key={m.id} className="op-checkrow">
+                    <input type="checkbox" checked={agItemIds.includes(m.id)}
+                      onChange={e => setAgItemIds(prev => e.target.checked ? [...prev, m.id] : prev.filter(x => x !== m.id))} />
+                    {m.name}
+                  </label>
+                ))}
+                {brandItems.length === 0 && <span className="op-hint">—</span>}
+              </div>
+            </div>
+            <div className="op-field">
+              <label htmlFor="agExpiry">{t('agExpiry')}</label>
+              <input id="agExpiry" className="op-input" type="datetime-local" value={agExpiry} onChange={e => setAgExpiry(e.target.value)} />
+            </div>
+            <div className="op-field">
+              <label htmlFor="agPct">{t('agPctLabel')}</label>
+              <input id="agPct" className="op-input mono" inputMode="decimal" value={agPct} onChange={e => setAgPct(e.target.value)} />
+              <span className="op-hint">{t('agSuggestHint', { pct: Number.isFinite(agPctNum) ? Math.round(agPctNum) : 30 })}</span>
+            </div>
+            {agError && (
+              <div className="op-callout err"><span className="ms">error</span><p>{agError}</p></div>
+            )}
+          </div>
+          <div className="op-modal__foot">
+            <button type="button" className="op-btn-ghost" onClick={() => setAgOpen(false)} disabled={agSaving}>{t('btnCancel')}</button>
+            <button type="button" className="op-btn-primary" onClick={launchAntiGaspi} disabled={agSaving || !agValid}>
+              <span className={`ms${agSaving ? ' spin' : ''}`}>{agSaving ? 'progress_activity' : 'bolt'}</span>{t('agLaunch')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Campaign opt-in modal (Promo V2 Slice 2) ── */}
+      <div className={`op-modal-backdrop${optInTarget ? ' open' : ''}`} onClick={e => { if (e.target === e.currentTarget && !optInSaving) setOptInTarget(null) }}>
+        <div className="op-modal narrow" role="dialog" aria-modal="true">
+          <div className="op-modal__head">
+            <h3>{t('campaignOptInTitle')}</h3>
+            <button type="button" className="op-modal__close" onClick={() => !optInSaving && setOptInTarget(null)}><span className="ms">close</span></button>
+          </div>
+          {optInTarget && (
+            <>
+              <div className="op-modal__body">
+                <div className="op-callout">
+                  <span className="ms">restaurant_menu</span>
+                  <p>{t('campaignOptInIntro', { creator: optInTarget.creatorName, dish: optInTarget.dishName, pct: optInTarget.suggestedDiscountPct })}</p>
+                </div>
+                <div className="op-field">
+                  <label htmlFor="optInPct">{t('campaignYourPct')}</label>
+                  <input id="optInPct" className={`op-input mono${optInPct && !optInValid ? ' err' : ''}`} inputMode="decimal" value={optInPct} onChange={e => setOptInPct(e.target.value)} />
+                  {optInPct && !optInValid && <span className="op-field-err">{t('errGeneric')}</span>}
+                </div>
+                <span className="op-hint">{t('campaignOptInFinanceNote')}</span>
+                {optInError && (
+                  <div className="op-callout err"><span className="ms">error</span><p>{optInError}</p></div>
+                )}
+              </div>
+              <div className="op-modal__foot">
+                <button type="button" className="op-btn-ghost" onClick={() => setOptInTarget(null)} disabled={optInSaving}>{t('btnCancel')}</button>
+                <button type="button" className="op-btn-primary" onClick={confirmOptIn} disabled={optInSaving || !optInValid}>
+                  <span className={`ms${optInSaving ? ' spin' : ''}`}>{optInSaving ? 'progress_activity' : 'check'}</span>{t('campaignConfirmJoin')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   )
 }
