@@ -309,7 +309,17 @@
         "delivery": "توصيل",
         "pickup": "استلام",
         "dinein": "في المطعم"
-      }
+      },
+      "colNew": "جديدة",
+      "colPreparing": "قيد التحضير",
+      "colReady": "جاهزة",
+      "colEmpty": "لا توجد تذاكر",
+      "start": "ابدأ",
+      "elapsed": "{minutes} د",
+      "loading": "جارٍ تحميل المطبخ…",
+      "bumpError": "تعذّر تحديث التذكرة. حاول مرة أخرى.",
+      "liveBadge": "مباشر",
+      "without": "بدون {items}"
     },
     "reviews": {
       "title": "التقييمات",

@@ -141,3 +141,26 @@
   .gb-op .preview-banner .tag{align-self:flex-start}
   .gb-op .op-onb__steps{grid-template-columns:1fr}
 }
+
+/* ── Phase 3 — REAL KDS: 3 status columns (New / In prep / Ready), live badge, toast ── */
+.gb-op .kt-live{display:inline-flex;align-items:center;gap:6px;margin-inline-start:12px;vertical-align:middle;font-family:var(--op-font-ui);font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-success);background:var(--op-success-bg);border:1px solid var(--op-success-bd);border-radius:999px;padding:3px 10px 3px 8px}
+.gb-op .kt-live .dot{width:7px;height:7px;border-radius:50%;background:var(--op-success);box-shadow:0 0 0 3px rgba(30,158,87,.18);animation:kt-live-pulse 1.6s ease-in-out infinite}
+@keyframes kt-live-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.gb-op .kt-toast{margin-bottom:16px}
+.gb-op .op-callout{display:flex;align-items:flex-start;gap:10px;border-radius:var(--op-r-md);padding:12px 14px}
+.gb-op .op-callout.warn{background:var(--op-warning-bg);border:1px solid var(--op-warning-bd)}
+.gb-op .op-callout.warn .ms{font-size:18px;color:var(--op-warning);flex-shrink:0;margin-top:1px}
+.gb-op .op-callout p{margin:0;font-size:12.5px;line-height:1.5;color:var(--op-text)}
+
+.gb-op .kt-board{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}
+.gb-op .kt-col{display:flex;flex-direction:column;min-width:0}
+.gb-op .kt-col__head{display:flex;align-items:center;gap:8px;padding:2px 4px 12px}
+.gb-op .kt-col__head b{font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .kt-col__head .cnt{margin-inline-start:auto;font-family:var(--op-font-mono);font-weight:700;font-size:12.5px;color:var(--op-muted);background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:999px;min-width:24px;text-align:center;padding:2px 8px}
+.gb-op .kt-col__cards{display:flex;flex-direction:column;gap:14px}
+.gb-op .kt-col__empty{border:1.5px dashed var(--op-border);border-radius:var(--op-r-lg);padding:26px 14px;text-align:center;font-size:12.5px;color:var(--op-muted-2)}
+.gb-op .kt-bump:disabled{opacity:.55;cursor:default;box-shadow:none}
+.gb-op .kt-item .note.add{color:var(--op-muted);background:var(--op-surface-2);border:1px solid var(--op-border)}
+
+@media (max-width:880px){ .gb-op .kt-board{grid-template-columns:1fr} }

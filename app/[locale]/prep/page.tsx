@@ -1,254 +1,237 @@
 'use client'
 
 /**
- * /prep — operator CUISINE (KDS) screen. VERBATIM CD v1 LOT 5 (Notion 390fd2c9-…-c0a6).
- * ⚠️ APERÇU HONNÊTE (phase 3) — NO BACKEND, NO STATE MACHINE.
+ * /prep — operator CUISINE (KDS) — real-time kitchen display (Phase 3, wired).
  *
- * The page is already wrapped by AppChrome → OperatorShell (navy --op-* chrome, « Cuisine »
- * active in the rail + mobile bottom-nav). This component renders ONLY the screen content =
- * a <section> inside op-content.
+ * The page is wrapped by AppChrome → OperatorShell (navy --op-* chrome, « Cuisine »
+ * active). This component renders ONLY the screen content = a <section> in op-content.
  *
- * 🔒 HONEST PREVIEW. The real-time kitchen display (live feed of accepted-order tickets,
- * per-item bump, station routing, wiring back into the Orders state machine) is a phase-3
- * build — NOT connected. There is NO fetch and NO real transition here. A « bientôt »
- * preview banner is KEPT visible in the empty AND loaded states, and every figure/timer is
- * an ILLUSTRATIVE example (labelled « exemple »), never presented as live data.
+ * REAL, not a mock:
+ *  • Reads the CURRENT establishment's kitchen-active orders (received | preparing | ready)
+ *    from GET /api/orders/kitchen (session/cookie-scoped, owner-scoped — never client-scoped),
+ *    polled every 8 s while the tab is visible.
+ *  • Cards carry a REAL elapsed timer derived from the server Order.createdAt (not a DOM
+ *    counter) — see lib/kds.elapsedMin / ageOf.
+ *  • The « bump » button advances the order through the REAL state machine via
+ *    PATCH /api/orders/[id]/status (received → preparing → ready) — the SAME endpoint the
+ *    Orders screen uses; not duplicated. Optimistic + resync; no backward transition (the
+ *    server forbids it), so there is no undo.
+ *  • No money on this screen (kitchen): the read + the ready-bump touch no ledger/Stripe.
+ *    Loyalty credit only fires server-side on 'delivered', which the KDS never sets.
  *
- * The « Prêt » bump and « Remettre en cours » undo mutate LOCAL React state only (DOM demo,
- * same behaviour as the CD's bumpTicket/undoTicket) — they do NOT call any API and do NOT
- * touch the Orders state machine. No money on this screen (it's the kitchen). All figures
- * carry className="mono" (RTL-safe: direction:ltr;unicode-bidi:isolate applied in prep.css).
- *
- * Legacy screen was already a local-state mock (checkbox prep list). Re-skinned to the CD KDS
- * board; no data logic to preserve (there was never any backend for this route).
+ * The CD KDS design (board + .kt-card) is reused verbatim from the LOT 5 preview — only the
+ * data + the bump are now real, and the « aperçu / bientôt » banner is removed.
  */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
+import type { OrderView } from '@/lib/orders-feed'
+import { KITCHEN_COLUMNS, bumpTarget, elapsedMin, ageOf, type KitchenStatus } from '@/lib/kds'
 import './prep.css'
 
-type Channel = 'delivery' | 'pickup' | 'dinein'
-type Status = 'open' | 'ready'
-type Age = 'fresh' | 'warn' | 'late'
-
-interface KitItem {
-  qty: number
-  name: string
-  note?: { icon: string; text: string }
-}
-interface KitTicket {
-  id: string
-  num: string
-  channel: Channel
-  channelLabelRaw?: string // dine-in shows « Table 6 » (raw); others use the i18n channel label
-  timer: string // ILLUSTRATIVE example string (mono)
-  age: Age
-  status: Status
-  items: KitItem[]
-}
-
-// ILLUSTRATIVE demo tickets — « exemple » (mirrors the CD board 1:1). NOT live data:
-// no fetch, no state machine. Purely to preview the phase-3 kitchen display.
-const DEMO_TICKETS: KitTicket[] = [
-  {
-    id: 't1', num: '#1042', channel: 'delivery', timer: '4 min', age: 'fresh', status: 'open',
-    items: [
-      { qty: 1, name: 'Truffle Tagliatelle', note: { icon: 'warning', text: 'sans noix' } },
-      { qty: 1, name: 'Tiramisu' },
-    ],
-  },
-  {
-    id: 't2', num: '#1043', channel: 'dinein', channelLabelRaw: 'Table 6', timer: '12 min', age: 'warn', status: 'open',
-    items: [
-      { qty: 2, name: 'Margherita DOP', note: { icon: 'local_fire_department', text: 'bien cuite' } },
-      { qty: 1, name: 'Panna Cotta' },
-    ],
-  },
-  {
-    id: 't3', num: '#1039', channel: 'pickup', timer: '18 min', age: 'warn', status: 'open',
-    items: [
-      { qty: 1, name: 'Diavola', note: { icon: 'warning', text: 'sans piment' } },
-      { qty: 1, name: 'Quattro Formaggi' },
-      { qty: 1, name: 'Tiramisu' },
-    ],
-  },
-  {
-    id: 't4', num: '#1036', channel: 'delivery', timer: '26 min', age: 'late', status: 'open',
-    items: [
-      { qty: 1, name: 'Osso Buco' },
-      { qty: 1, name: 'Risotto ai Funghi', note: { icon: 'warning', text: 'allergie fruits de mer — vérifier' } },
-    ],
-  },
-  {
-    id: 't5', num: '#1040', channel: 'delivery', timer: '2 min', age: 'fresh', status: 'ready',
-    items: [
-      { qty: 1, name: 'Lasagne della Nonna' },
-      { qty: 2, name: 'Cacio e Pepe' },
-    ],
-  },
-  {
-    id: 't6', num: '#1028', channel: 'pickup', timer: '8 min', age: 'fresh', status: 'ready',
-    items: [
-      { qty: 2, name: 'Gnocchi Sorrentina' },
-    ],
-  },
-]
-
-const CHANNEL_ICON: Record<Channel, string> = { delivery: 'moped', pickup: 'shopping_bag', dinein: 'table_restaurant' }
+const POLL_MS = 8_000
+const CHANNEL_ICON: Record<string, string> = { delivery: 'moped', pickup: 'shopping_bag', dinein: 'table_restaurant' }
+const COL_KEY: Record<KitchenStatus, string> = { received: 'colNew', preparing: 'colPreparing', ready: 'colReady' }
 
 export default function PrepPage() {
   const t = useTranslations('operator')
   const locale = useLocale()
 
-  // Local demo state ONLY — no backend, no state machine, no fetch.
-  const [tickets, setTickets] = useState<KitTicket[]>(DEMO_TICKETS)
-  const [filter, setFilter] = useState<'all' | 'open' | 'ready'>('all')
+  const [orders, setOrders] = useState<OrderView[] | null>(null) // null = first load
+  const [error, setError] = useState(false)
+  const [now, setNow] = useState<number | null>(null)             // set after mount → no SSR mismatch
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [bumpError, setBumpError] = useState(false)
+  const busy = useRef(false)
+
+  const fetchKitchen = useCallback(async () => {
+    if (busy.current) return
+    busy.current = true
+    try {
+      const res = await fetch(`/api/orders/kitchen?locale=${locale}`, { cache: 'no-store' })
+      if (!res.ok) throw new Error(String(res.status))
+      const data = (await res.json()) as { orders?: OrderView[] }
+      setOrders(Array.isArray(data.orders) ? data.orders : [])
+      setError(false)
+    } catch {
+      setError(true)
+    } finally {
+      busy.current = false
+      setNow(Date.now())
+    }
+  }, [locale])
+
+  // Poll while the tab is visible; refetch immediately on regaining focus.
+  useEffect(() => {
+    fetchKitchen()
+    const id = setInterval(() => { if (document.visibilityState === 'visible') fetchKitchen() }, POLL_MS)
+    const onVis = () => { if (document.visibilityState === 'visible') fetchKitchen() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis) }
+  }, [fetchKitchen])
+
+  // Independent clock so the timer keeps ticking between polls (minute resolution).
+  useEffect(() => {
+    setNow(Date.now())
+    const id = setInterval(() => setNow(Date.now()), 10_000)
+    return () => clearInterval(id)
+  }, [])
+
+  async function bump(order: OrderView, target: KitchenStatus) {
+    setPendingId(order.id)
+    setBumpError(false)
+    // Optimistic: move the card to the next column immediately.
+    setOrders(prev => (prev ? prev.map(o => (o.id === order.id ? { ...o, status: target } : o)) : prev))
+    try {
+      const res = await fetch(`/api/orders/${order.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: target }),
+      })
+      if (!res.ok) throw new Error(String(res.status))
+    } catch {
+      setBumpError(true)
+    } finally {
+      setPendingId(null)
+      fetchKitchen() // resync with the server (corrects the optimistic guess either way)
+    }
+  }
 
   const dateLabel = useMemo(
-    () => new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date()),
+    () => new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()),
     [locale],
   )
 
-  const openCount = tickets.filter(t => t.status === 'open').length
-  const readyCount = tickets.filter(t => t.status === 'ready').length
+  const byStatus = useMemo(() => {
+    const g: Record<KitchenStatus, OrderView[]> = { received: [], preparing: [], ready: [] }
+    for (const o of orders ?? []) if (o.status in g) g[o.status as KitchenStatus].push(o)
+    return g
+  }, [orders])
 
-  const shown = tickets.filter(t => filter === 'all' || t.status === filter)
+  // Real stats from the active (received + preparing) tickets' age.
+  const stats = useMemo(() => {
+    const active = [...byStatus.received, ...byStatus.preparing]
+    if (now == null || active.length === 0) return { open: active.length, avg: 0, oldest: 0 }
+    const ages = active.map(o => elapsedMin(o.createdAt, now))
+    return { open: active.length, avg: Math.round(ages.reduce((s, a) => s + a, 0) / ages.length), oldest: Math.max(...ages) }
+  }, [byStatus, now])
 
-  // DOM demo — local state only, NO fetch, NO Orders state-machine transition (phase 3).
-  const bump = (id: string) =>
-    setTickets(ts => ts.map(t => (t.id === id ? { ...t, status: 'ready', age: 'fresh', timer: t.timer } : t)))
-  const undo = (id: string) =>
-    setTickets(ts => ts.map(t => (t.id === id ? { ...t, status: 'open', age: 'warn' } : t)))
-
-  const channelLabel = (tk: KitTicket) =>
-    tk.channelLabelRaw ?? t(`kitchen.channel.${tk.channel}`)
+  const total = (orders ?? []).length
 
   return (
     <section className="op-kit">
       <div className="op-dash__head">
-        <h1 className="op-dash__title">{t('kitchen.title')}</h1>
-        <p className="op-dash__sub">
-          <span className="op-agg-label">{t('kitchen.aggPrefix')}</span>{dateLabel}
-        </p>
+        <h1 className="op-dash__title">
+          {t('kitchen.title')}
+          <span className="kt-live"><i className="dot" aria-hidden="true" />{t('kitchen.liveBadge')}</span>
+        </h1>
+        <p className="op-dash__sub">{dateLabel}</p>
       </div>
 
-      {/* Honest « bientôt » preview banner — KEPT while the real-time KDS does not exist */}
-      <div className="preview-banner">
-        <span className="ms" aria-hidden="true">skillet</span>
-        <div className="m">
-          <b>{t('kitchen.previewTitle')}</b>
-          <p>{t('kitchen.previewBody')}</p>
+      {bumpError && (
+        <div className="op-callout warn kt-toast" role="alert">
+          <span className="ms" aria-hidden="true">error</span>
+          <p>{t('kitchen.bumpError')}</p>
         </div>
-        <span className="tag">{t('soon')}</span>
-      </div>
+      )}
 
-      {/* Stats strip — ILLUSTRATIVE examples (mono), not live data */}
-      <div className="op-card stat-strip">
-        <div className="stat">
-          <span className="lbl">{t('kitchen.statOpen')}</span>
-          <b className="mono">{String(openCount)}</b>
-        </div>
-        <div className="stat">
-          <span className="lbl">{t('kitchen.statAvg')}</span>
-          <b className="mono">14 min</b>
-        </div>
-        <div className="stat">
-          <span className="lbl">{t('kitchen.statOldest')}</span>
-          <b className="mono alert">26 min</b>
-        </div>
-      </div>
-
-      {/* Filters — Tous / En cours / Prêts (+ mono counts) */}
-      <div className="kit-filters">
-        <button
-          type="button"
-          className={filter === 'all' ? 'is-active' : undefined}
-          onClick={() => setFilter('all')}
-          aria-pressed={filter === 'all'}
-        >
-          {t('kitchen.filterAll')} <span className="cnt">{String(tickets.length)}</span>
-        </button>
-        <button
-          type="button"
-          className={filter === 'open' ? 'is-active' : undefined}
-          onClick={() => setFilter('open')}
-          aria-pressed={filter === 'open'}
-        >
-          {t('kitchen.filterOpen')} <span className="cnt">{String(openCount)}</span>
-        </button>
-        <button
-          type="button"
-          className={filter === 'ready' ? 'is-active' : undefined}
-          onClick={() => setFilter('ready')}
-          aria-pressed={filter === 'ready'}
-        >
-          {t('kitchen.filterReady')} <span className="cnt">{String(readyCount)}</span>
-        </button>
-      </div>
-
-      {shown.length === 0 ? (
-        <div className="op-card">
-          <div className="op-emptyline">
-            <span className="ms" aria-hidden="true">soup_kitchen</span>
-            <b>{t('kitchen.emptyTitle')}</b>
-            <span>{t('kitchen.emptyBody')}</span>
-          </div>
-        </div>
+      {error && orders === null ? (
+        <div className="op-card"><div className="op-error__card">
+          <span className="ms" aria-hidden="true">cloud_off</span>
+          <h2>{t('dash.errorTitle')}</h2>
+          <p>{t('dash.errorBody')}</p>
+          <button type="button" className="op-btn-primary" onClick={() => fetchKitchen()}>
+            <span className="ms" aria-hidden="true">refresh</span>{t('dash.retry')}
+          </button>
+        </div></div>
+      ) : orders === null ? (
+        <div className="op-card"><div className="op-emptyline">
+          <span className="ms" aria-hidden="true">skillet</span>
+          <b>{t('kitchen.loading')}</b>
+        </div></div>
+      ) : total === 0 ? (
+        <div className="op-card"><div className="op-emptyline">
+          <span className="ms" aria-hidden="true">soup_kitchen</span>
+          <b>{t('kitchen.emptyTitle')}</b>
+          <span>{t('kitchen.emptyBody')}</span>
+        </div></div>
       ) : (
-        <div className="tickets-grid">
-          {shown.map(tk => {
-            const stateCls = tk.status === 'ready' ? 'ready' : tk.age
-            return (
-              <div key={tk.id} className={`kt-card ${stateCls}`} data-status={tk.status}>
-                <div className="kt-top">
-                  <span className="kt-num">{tk.num}</span>
-                  <span className={`kt-channel ${tk.channel}`}>
-                    <span className="ms" aria-hidden="true">{CHANNEL_ICON[tk.channel]}</span>
-                    {channelLabel(tk)}
-                  </span>
-                  <span className="kt-timer mono">
-                    <span className="ms" aria-hidden="true">{tk.status === 'ready' ? 'check' : 'schedule'}</span>
-                    {tk.timer}
-                  </span>
+        <>
+          <div className="op-card stat-strip">
+            <div className="stat"><span className="lbl">{t('kitchen.statOpen')}</span><b className="mono">{String(stats.open)}</b></div>
+            <div className="stat"><span className="lbl">{t('kitchen.statAvg')}</span><b className="mono">{t('kitchen.elapsed', { minutes: stats.avg })}</b></div>
+            <div className="stat"><span className="lbl">{t('kitchen.statOldest')}</span><b className={`mono${stats.oldest >= 20 ? ' alert' : ''}`}>{t('kitchen.elapsed', { minutes: stats.oldest })}</b></div>
+          </div>
+
+          <div className="kt-board">
+            {KITCHEN_COLUMNS.map(col => (
+              <div className="kt-col" key={col}>
+                <div className="kt-col__head">
+                  <b>{t(`kitchen.${COL_KEY[col]}`)}</b>
+                  <span className="cnt mono">{String(byStatus[col].length)}</span>
                 </div>
-                <div className="kt-items">
-                  {tk.items.map((it, i) => (
-                    <div className="kt-item" key={i}>
-                      <span className="qty mono">{it.qty}×</span>
-                      <div className="m">
-                        <b>{it.name}</b>
-                        {it.note && (
-                          <span className="note">
-                            <span className="ms" aria-hidden="true">{it.note.icon}</span>
-                            {it.note.text}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="kt-foot">
-                  {tk.status === 'ready' ? (
-                    <>
-                      <div className="kt-ready-tag">
-                        <span className="ms" aria-hidden="true">check_circle</span>
-                        {t('kitchen.ready')}
-                      </div>
-                      <button type="button" className="kt-undo" onClick={() => undo(tk.id)}>
-                        {t('kitchen.undo')}
-                      </button>
-                    </>
+                <div className="kt-col__cards">
+                  {byStatus[col].length === 0 ? (
+                    <div className="kt-col__empty">{t('kitchen.colEmpty')}</div>
                   ) : (
-                    <button type="button" className="kt-bump" onClick={() => bump(tk.id)}>
-                      <span className="ms" aria-hidden="true">check_circle</span>
-                      {t('kitchen.bump')}
-                    </button>
+                    byStatus[col].map(o => {
+                      const min = now != null ? elapsedMin(o.createdAt, now) : 0
+                      const stateCls = o.status === 'ready' ? 'ready' : ageOf(min)
+                      const target = bumpTarget(o.status)
+                      const ch = o.fulfillmentType in CHANNEL_ICON ? o.fulfillmentType : 'pickup'
+                      return (
+                        <div key={o.id} className={`kt-card ${stateCls}`} data-status={o.status}>
+                          <div className="kt-top">
+                            <span className="kt-num">#{o.id.slice(-5).toUpperCase()}</span>
+                            <span className={`kt-channel ${ch}`}>
+                              <span className="ms" aria-hidden="true">{CHANNEL_ICON[ch]}</span>
+                              {t(`kitchen.channel.${ch}`)}
+                            </span>
+                            <span className="kt-timer mono">
+                              <span className="ms" aria-hidden="true">{o.status === 'ready' ? 'check' : 'schedule'}</span>
+                              {t('kitchen.elapsed', { minutes: min })}
+                            </span>
+                          </div>
+                          <div className="kt-items">
+                            {o.items.map((it, i) => (
+                              <div className="kt-item" key={i}>
+                                <span className="qty mono">{it.qty}×</span>
+                                <div className="m">
+                                  <b>{it.name}{it.options?.size ? ` · ${it.options.size}` : ''}</b>
+                                  {it.options?.supplements?.map((s, j) => (
+                                    <span className="note add" key={`s${j}`}><span className="ms" aria-hidden="true">add</span>{s.name}</span>
+                                  ))}
+                                  {it.options?.exclusions?.length ? (
+                                    <span className="note"><span className="ms" aria-hidden="true">warning</span>{t('kitchen.without', { items: it.options.exclusions.join(', ') })}</span>
+                                  ) : null}
+                                  {it.options?.note ? (
+                                    <span className="note"><span className="ms" aria-hidden="true">sticky_note_2</span>{it.options.note}</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="kt-foot">
+                            {target ? (
+                              <button type="button" className="kt-bump" disabled={pendingId === o.id} onClick={() => bump(o, target)}>
+                                <span className="ms" aria-hidden="true">{target === 'preparing' ? 'skillet' : 'check_circle'}</span>
+                                {target === 'preparing' ? t('kitchen.start') : t('kitchen.bump')}
+                              </button>
+                            ) : (
+                              <div className="kt-ready-tag">
+                                <span className="ms" aria-hidden="true">check_circle</span>{t('kitchen.ready')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
                   )}
                 </div>
               </div>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </section>
   )

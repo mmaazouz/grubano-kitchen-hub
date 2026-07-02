@@ -309,7 +309,17 @@
         "delivery": "Consegna",
         "pickup": "Da asporto",
         "dinein": "Al tavolo"
-      }
+      },
+      "colNew": "Nuove",
+      "colPreparing": "In preparazione",
+      "colReady": "Pronte",
+      "colEmpty": "Nessun ticket",
+      "start": "Inizia",
+      "elapsed": "{minutes} min",
+      "loading": "Caricamento della cucina…",
+      "bumpError": "Impossibile aggiornare il ticket. Riprova.",
+      "liveBadge": "In diretta",
+      "without": "senza {items}"
     },
     "reviews": {
       "title": "Recensioni",

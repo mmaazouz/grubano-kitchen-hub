@@ -309,7 +309,17 @@
         "delivery": "Entrega",
         "pickup": "Para llevar",
         "dinein": "En el local"
-      }
+      },
+      "colNew": "Nuevas",
+      "colPreparing": "En preparación",
+      "colReady": "Listas",
+      "colEmpty": "Sin tickets",
+      "start": "Empezar",
+      "elapsed": "{minutes} min",
+      "loading": "Cargando la cocina…",
+      "bumpError": "No se pudo actualizar el ticket. Inténtalo de nuevo.",
+      "liveBadge": "En directo",
+      "without": "sin {items}"
     },
     "reviews": {
       "title": "Reseñas",

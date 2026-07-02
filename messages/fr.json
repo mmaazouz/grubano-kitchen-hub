@@ -309,7 +309,17 @@
         "delivery": "Livraison",
         "pickup": "À emporter",
         "dinein": "Sur place"
-      }
+      },
+      "colNew": "Nouvelles",
+      "colPreparing": "En préparation",
+      "colReady": "Prêtes",
+      "colEmpty": "Aucun ticket",
+      "start": "Commencer",
+      "elapsed": "{minutes} min",
+      "loading": "Chargement de la cuisine…",
+      "bumpError": "Impossible de mettre à jour le ticket. Réessayez.",
+      "liveBadge": "En direct",
+      "without": "sans {items}"
     },
     "reviews": {
       "title": "Avis",

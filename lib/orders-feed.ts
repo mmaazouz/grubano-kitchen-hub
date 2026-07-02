@@ -34,6 +34,7 @@ export interface OrderView {
   discount:        number
   total:           number
   referralCode:    string | null
+  createdAt:       string          // ISO — the raw order time, for a real elapsed timer (KDS)
   timeLabel:       string
   dateLabel:       string
   items:           OrderItemView[]
@@ -184,6 +185,7 @@ export async function buildOrderViews(opts: {
       discount,
       total:           o.total,
       referralCode:    o.referralCode ?? null,
+      createdAt:       o.createdAt.toISOString(),
       timeLabel:       timeFmt.format(o.createdAt),
       dateLabel:       dateFmt.format(o.createdAt),
       items,

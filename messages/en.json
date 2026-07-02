@@ -309,7 +309,17 @@
         "delivery": "Delivery",
         "pickup": "Pickup",
         "dinein": "Dine-in"
-      }
+      },
+      "colNew": "New",
+      "colPreparing": "In preparation",
+      "colReady": "Ready",
+      "colEmpty": "No tickets",
+      "start": "Start",
+      "elapsed": "{minutes} min",
+      "loading": "Loading the kitchen…",
+      "bumpError": "Couldn’t update the ticket. Try again.",
+      "liveBadge": "Live",
+      "without": "without {items}"
     },
     "reviews": {
       "title": "Reviews",
