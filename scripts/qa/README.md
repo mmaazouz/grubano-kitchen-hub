@@ -32,16 +32,21 @@ then at the end prints the ids the robot needs:
 QA_EMAIL         = qa+op@grubano.test
 QA_RESTAURANT_ID = <cuid>
 QA_BRAND_ID      = <cuid>
+QA_SUPPLIER_ID   = <cuid>
 ```
 
-Note those two ids — the robot uses them for the dynamic `[id]` routes
-(`/marketplace/suppliers/<brand>`, `/brands/<brand>/franchise`,
+Note those three ids — the robot uses them for the dynamic `[id]` routes
+(`/marketplace/suppliers/<supplier>`, `/brands/<brand>/franchise`,
 `/dashboard/establishments/<restaurant>`).
 
 It seeds: 1 Operator (role `restaurant`, status `active`, KYB display fields so `/more`
 shows data), 1 Restaurant (`QA Bistro`), 1 Brand (`QA Trattoria`), 3 MenuItems, 2
-StockItems, 1 LoyaltyCustomer. It is **idempotent** — re-running upserts / find-or-creates,
-never duplicates.
+StockItems, 1 LoyaltyCustomer, **and the marketplace fixture**: 1 `SupplierProfile`
+(`active`, **no Stripe KYB** → the `/pay` flow stays honestly gated), a 4-item catalogue
+(CENTS), and 2 `SupplyOrder`s — one `confirmed`/`unpaid` (shows the **Payer** CTA →
+gated 403) and one `delivered`/`paid` (shows in the **Livrées** tab with real 1 % economics).
+So **Boutique fournisseur + Commandes fournisseurs** render **non-empty**. It is
+**idempotent** — re-running upserts / find-or-creates, never duplicates.
 
 ### Prod-guard (why the seed refuses to run)
 
@@ -69,6 +74,7 @@ QA_EMAIL='qa+op@grubano.test' \
 QA_PASSWORD='<same-password>' \
 QA_RESTAURANT_ID='<from step 1>' \
 QA_BRAND_ID='<from step 1>' \
+QA_SUPPLIER_ID='<from step 1>' \
 node scripts/qa/operator-visual-qa.mjs
 ```
 
@@ -80,8 +86,8 @@ node scripts/qa/operator-visual-qa.mjs
 - If a screen's final URL is still `/eat/auth` after login, the robot **warns** that the
   account may lack the operator role (expected `restaurant` / `admin`).
 
-Dynamic `[id]` screens are **skipped with a warning** if `QA_RESTAURANT_ID` /
-`QA_BRAND_ID` are missing.
+Dynamic `[id]` screens are **skipped with a warning** if their id env var
+(`QA_RESTAURANT_ID` / `QA_BRAND_ID` / `QA_SUPPLIER_ID`) is missing.
 
 ---
 

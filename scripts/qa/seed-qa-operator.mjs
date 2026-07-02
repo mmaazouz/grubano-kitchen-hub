@@ -202,14 +202,91 @@ async function main() {
     })
     console.log(`  → loyaltyCustomer ${loyalCustomer.id}`)
 
+    // 7) Marketplace (B2B supply) — SupplierProfile + catalogue + 2 SupplyOrders ────
+    //    Populates the ⚠️🔒 money screens (Boutique fournisseur + Commandes fournisseurs)
+    //    with REAL rows so the baseline captures them NON-empty. The supplier is left
+    //    WITHOUT Stripe Connect KYB (payoutStatus 'none', no stripeAccountId) → the /pay
+    //    flow stays HONESTLY gated (403 "Paiement indisponible"), never a fake charge.
+    console.log('· upsert SupplierProfile (marketplace) …')
+    const supplierData = {
+      companyName: 'QA Metro Fournisseur', contactName: 'QA Supplier', city: 'Paris',
+      categories: ['fresh', 'grocery'], deliveryZones: ['Paris', '75011'],
+      minimumOrderCents: 15000, leadTimeDays: 1,
+      status: 'active', marketplaceCoherencePending: false, payoutStatus: 'none',
+    }
+    const supplier = await prisma.supplierProfile.upsert({
+      where: { email: 'qa-supplier@grubano.test' },
+      update: supplierData,
+      create: { email: 'qa-supplier@grubano.test', ...supplierData },
+    })
+    console.log(`  → supplierProfile ${supplier.id} (active, no KYB → /pay honestly gated)`)
+
+    // Catalogue (prices in CENTS) — find-or-create by (supplierProfileId, name).
+    console.log('· find-or-create 4 SupplierCatalogItems …')
+    const catalog = [
+      { name: 'Mozzarella di Bufala',        priceCents: 1800, unit: 'piece', packSize: 'Carton de 6×250g',  category: 'fresh' },
+      { name: 'Burrata',                     priceCents: 4200, unit: 'piece', packSize: 'Carton de 12×200g', category: 'fresh' },
+      { name: 'Farine 00',                   priceCents: 3200, unit: 'kg',    packSize: 'Sac 25 kg',         category: 'grocery' },
+      { name: "Huile d'olive extra vierge",  priceCents: 3800, unit: 'L',     packSize: 'Bidon 5 L',         category: 'grocery' },
+    ]
+    const catId = {}
+    for (const c of catalog) {
+      const { row, created } = await findOrCreate(
+        prisma.supplierCatalogItem,
+        { supplierProfileId: supplier.id, name: c.name },
+        { supplierProfileId: supplier.id, name: c.name, priceCents: c.priceCents, unit: c.unit, packSize: c.packSize, category: c.category, available: true },
+      )
+      catId[c.name] = row.id
+      console.log(`  → catalogue "${c.name}" ${c.priceCents}c (${created ? 'created' : 'existing'})`)
+    }
+
+    // Two SupplyOrders — find-or-create by a stable `notes` marker (SupplyOrder has no unique key).
+    //   A: confirmed + unpaid  → shows the "Payer" CTA (→ gated 403, honest, no KYB).
+    //   B: delivered + paid    → shows in the "Livrées" tab with real economics (margin 1%).
+    console.log('· find-or-create 2 SupplyOrders …')
+    const orders = [
+      { marker: 'QA-SEED-ORDER-A', status: 'confirmed', paymentStatus: 'unpaid',
+        lines: [
+          { name: 'Mozzarella di Bufala', unit: 'piece', qty: 4, unitPriceCents: 1800 },
+          { name: 'Farine 00',            unit: 'kg',    qty: 3, unitPriceCents: 3200 },
+        ] },
+      { marker: 'QA-SEED-ORDER-B', status: 'delivered', paymentStatus: 'paid',
+        lines: [ { name: 'Burrata', unit: 'piece', qty: 3, unitPriceCents: 4200 } ] },
+    ]
+    for (const o of orders) {
+      const exists = await prisma.supplyOrder.findFirst({ where: { operatorId: operator.id, supplierProfileId: supplier.id, notes: o.marker } })
+      if (exists) { console.log(`  → order ${o.marker} (existing)`); continue }
+      const lineData = o.lines.map((l) => ({
+        catalogItemId: catId[l.name] || null,
+        nameSnapshot: l.name, unitSnapshot: l.unit,
+        quantity: l.qty, unitPriceCents: l.unitPriceCents, lineTotalCents: l.qty * l.unitPriceCents,
+      }))
+      const totalCents = lineData.reduce((s, l) => s + l.lineTotalCents, 0)
+      const paid = o.paymentStatus === 'paid'
+      const margin = paid ? Math.round(totalCents * 0.01) : 0 // mirrors the 1% default supply economics
+      await prisma.supplyOrder.create({
+        data: {
+          operatorId: operator.id, supplierProfileId: supplier.id,
+          status: o.status, paymentStatus: o.paymentStatus, notes: o.marker, totalCents,
+          chargedCents: paid ? totalCents : 0,
+          grubanoMarginCents: margin,
+          supplierPayoutCents: paid ? totalCents - margin : 0,
+          paidAt: paid ? new Date() : null,
+          lines: { create: lineData },
+        },
+      })
+      console.log(`  → order ${o.marker} ${o.status}/${o.paymentStatus} total ${totalCents}c (created)`)
+    }
+
     // ── Print the ids the robot needs for the dynamic [id] routes ────────────────
     console.log('\n✓ QA operator seed complete.')
     console.log('──────────────────────────────────────────────────────────────')
     console.log(`  QA_EMAIL         = ${operator.email}`)
     console.log(`  QA_RESTAURANT_ID = ${restaurant.id}`)
     console.log(`  QA_BRAND_ID      = ${brand.id}`)
+    console.log(`  QA_SUPPLIER_ID   = ${supplier.id}`)
     console.log('──────────────────────────────────────────────────────────────')
-    console.log('  → pass QA_RESTAURANT_ID / QA_BRAND_ID to operator-visual-qa.mjs')
+    console.log('  → pass QA_RESTAURANT_ID / QA_BRAND_ID / QA_SUPPLIER_ID to operator-visual-qa.mjs')
   } finally {
     await prisma.$disconnect()
   }
