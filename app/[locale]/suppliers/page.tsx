@@ -1,13 +1,21 @@
 'use client'
 
-import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import {
-  Truck, Check, Clock, ShoppingBasket, FileDown, Star, ChevronRight,
-  Minus, Plus, Share2, X, Sparkles, AlertCircle, RefreshCw, Package,
-} from 'lucide-react'
-import { Card } from '@/components/grubano/Card'
-import { SectionTitle } from '@/components/grubano/SectionTitle'
+import { useTranslations, useLocale } from 'next-intl'
+import { Link } from '@/navigation'
+import { formatEuros } from '@/lib/format-money'
+import './suppliers.css'
+
+// ── /suppliers — operator FOURNISSEURS annuaire — re-skin CD v1 LOT 6 (Notion
+// 390fd2c9-…-8df00, operator/suppliers.html). Renders inside the operator navy shell
+// (AppChrome → OperatorShell); this file only renders the <section> content.
+//
+// 🔒 PRESENTATION-ONLY re-skin. Every data handler is kept BYTE-IDENTICAL: the mode
+// state machine, fetch('/api/suppliers'), and the POST /api/suppliers/orders payloads
+// (PartnerOrderForm.sendOrder + CatalogView.sendOrders) are unchanged. Only the markup
+// + CSS moved to the --op- design system + Material Symbols. LEGACY /suppliers money =
+// EUROS (Float) → displayed straight from formatEuros(euros, locale), NEVER recomputed;
+// every amount carries className="mono" (.sup-amt / .sup-min → RTL-safe via CSS).
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,22 +43,45 @@ type Supplier = {
 
 type CartItem = { product: SupplierProduct; supplierId: string; qty: number }
 
+// Deterministic avatar gradient from the supplier name (CD-style vivid pairs).
+const AVATAR_GRADS = [
+  'linear-gradient(135deg,#3E5A7D,#1B3A5E)',
+  'linear-gradient(135deg,#2E78F0,#1E56B8)',
+  'linear-gradient(135deg,#41BD78,#1E9E57)',
+  'linear-gradient(135deg,#FF8A3D,#F2570E)',
+  'linear-gradient(135deg,#D5372A,#A8281D)',
+  'linear-gradient(135deg,#6E56CF,#4B3894)',
+  'linear-gradient(135deg,#E8A63D,#B9740A)',
+]
+function gradFor(name: string) {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return AVATAR_GRADS[h % AVATAR_GRADS.length]
+}
+function initials(name: string) {
+  return name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || name[0]?.toUpperCase() || '?'
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 type Mode = 'choice' | 'list' | 'order' | 'self'
 
 export default function SuppliersPage() {
+  const t = useTranslations('operator')
   const [mode,      setMode]      = useState<Mode>('choice')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState(false)
   const [selected,  setSelected]  = useState<Supplier | null>(null)
 
   useEffect(() => {
     if (mode === 'list' || mode === 'order') {
       setLoading(true)
+      setError(false)
       fetch('/api/suppliers')
-        .then(r => r.json())
+        .then(r => (r.ok ? r.json() : Promise.reject()))
         .then(d => setSuppliers(d.suppliers ?? []))
+        .catch(() => setError(true))
         .finally(() => setLoading(false))
     }
   }, [mode])
@@ -60,8 +91,10 @@ export default function SuppliersPage() {
       <SupplierList
         suppliers={suppliers}
         loading={loading}
+        error={error}
         onBack={() => setMode('choice')}
         onSelect={s => setSelected(s)}
+        onCatalog={() => setMode('list')}
       />
     )
   }
@@ -80,6 +113,7 @@ export default function SuppliersPage() {
       <CatalogView
         suppliers={suppliers}
         loading={loading}
+        error={error}
         onBack={() => setMode('choice')}
       />
     )
@@ -89,126 +123,352 @@ export default function SuppliersPage() {
     return <SelfShoppingList onBack={() => setMode('choice')} />
   }
 
+  // ── Mode selector (Comment restocker ?) ──
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Commander</h1>
-      <p className="mb-5 text-sm text-muted-foreground">Comment souhaitez-vous restocker ?</p>
+    <section className="op-sup">
+      <div className="op-dash__head">
+        <h1 className="op-dash__title">{t('suppliers.title')}</h1>
+        <p className="op-dash__sub">{t('suppliers.chooseMethod')}</p>
+      </div>
+      <div className="sup-choices">
+        <button type="button" className="sup-choice" onClick={() => setMode('list')}>
+          <span className="ic smart"><span className="ms" aria-hidden="true">auto_awesome</span></span>
+          <span className="m"><b>{t('suppliers.methodCatalogTitle')}</b><span>{t('suppliers.methodCatalogSub')}</span></span>
+          <span className="ms" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="sup-choice" onClick={() => setMode('order')}>
+          <span className="ic single"><span className="ms" aria-hidden="true">local_shipping</span></span>
+          <span className="m"><b>{t('suppliers.methodSingleTitle')}</b><span>{t('suppliers.methodSingleSub')}</span></span>
+          <span className="ms" aria-hidden="true">chevron_right</span>
+        </button>
+        <button type="button" className="sup-choice" onClick={() => setMode('self')}>
+          <span className="ic self"><span className="ms" aria-hidden="true">shopping_basket</span></span>
+          <span className="m"><b>{t('suppliers.methodSelfTitle')}</b><span>{t('suppliers.methodSelfSub')}</span></span>
+          <span className="ms" aria-hidden="true">chevron_right</span>
+        </button>
+      </div>
+    </section>
+  )
+}
 
-      <button onClick={() => setMode('list')}
-        className="mb-3 w-full overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-accent to-card p-4 text-left transition active:scale-[0.99]">
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground"><Sparkles size={20} /></div>
-          <div className="flex-1">
-            <p className="text-base font-bold">Catalogue intelligent</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Comparez prix &amp; dispo entre fournisseurs</p>
-          </div>
-          <ChevronRight size={16} className="text-muted-foreground" />
-        </div>
-      </button>
+// ── Shared states (loading skeleton / error) ──────────────────────────────────
 
-      <button onClick={() => setMode('order')}
-        className="mb-3 w-full overflow-hidden rounded-2xl border border-border bg-card p-4 text-left transition active:scale-[0.99]">
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-xl bg-navy text-navy-foreground"><Truck size={20} /></div>
-          <div className="flex-1">
-            <p className="text-base font-bold">Un seul fournisseur</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Choisissez parmi vos partenaires vérifiés</p>
-          </div>
-          <ChevronRight size={16} className="text-muted-foreground" />
-        </div>
-      </button>
-
-      <button onClick={() => setMode('self')}
-        className="w-full overflow-hidden rounded-2xl border border-border bg-card p-4 text-left transition active:scale-[0.99]">
-        <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-xl bg-muted text-foreground"><ShoppingBasket size={20} /></div>
-          <div className="flex-1">
-            <p className="text-base font-bold">Je m&apos;en occupe</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Liste de courses imprimable / WhatsApp</p>
-          </div>
-          <ChevronRight size={16} className="text-muted-foreground" />
-        </div>
-      </button>
+function SupSkeleton() {
+  return (
+    <div>
+      <div style={{ marginBottom: 18 }}><span className="op-sk" style={{ width: 130, height: 22 }} /></div>
+      <span className="op-sk" style={{ width: 240, height: 42, borderRadius: 999, marginBottom: 18, display: 'block' }} />
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+        <span className="op-sk" style={{ flex: 1, height: 42, borderRadius: 8 }} />
+        <span className="op-sk" style={{ width: 300, height: 42, borderRadius: 999 }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+        {[0, 1, 2].map(i => <span key={i} className="op-sk" style={{ width: '100%', height: 210, borderRadius: 12 }} />)}
+      </div>
     </div>
   )
 }
 
-// ── Supplier list (choose one) ────────────────────────────────────────────────
+function SupError({ onRetry }: { onRetry: () => void }) {
+  const t = useTranslations('operator')
+  return (
+    <div className="op-center">
+      <div className="op-error__card">
+        <span className="ms" aria-hidden="true">cloud_off</span>
+        <h2>{t('suppliers.errorTitle')}</h2>
+        <p>{t('dash.errorBody')}</p>
+        <button type="button" className="op-btn-primary" onClick={onRetry}>
+          <span className="ms" aria-hidden="true">refresh</span>{t('dash.retry')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Supplier list (annuaire — Mes fournisseurs / Découvrir) ───────────────────
 
 function SupplierList({
-  suppliers, loading, onBack, onSelect,
+  suppliers, loading, error, onBack, onSelect, onCatalog,
 }: {
   suppliers: Supplier[]
   loading:   boolean
+  error:     boolean
   onBack:    () => void
   onSelect:  (s: Supplier) => void
+  onCatalog: () => void
 }) {
+  const t = useTranslations('operator')
+  const locale = useLocale()
+  const [tab, setTab] = useState<'mine' | 'discover'>('mine')
+  const [cat, setCat] = useState('all')
+  const [query, setQuery] = useState('')
+
+  const CATS: { c: string; label: string }[] = [
+    { c: 'all',        label: t('suppliers.catAll') },
+    { c: 'frais',      label: t('suppliers.catFresh') },
+    { c: 'sec',        label: t('suppliers.catDry') },
+    { c: 'boissons',   label: t('suppliers.catDrinks') },
+    { c: 'emballages', label: t('suppliers.catPackaging') },
+  ]
+
+  // Filter mirrors the CD filterSuppliers(): category token + name substring.
+  const filtered = suppliers.filter((s) => {
+    const hay = [s.name, s.specialty, s.zone].filter(Boolean).join(' ').toLowerCase()
+    const matchesCat = cat === 'all' || hay.includes(cat)
+    const matchesQ   = !query.trim() || hay.includes(query.trim().toLowerCase())
+    return matchesCat && matchesQ
+  })
+
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Fournisseurs</h1>
-      <p className="mb-4 text-sm text-muted-foreground">Sélectionnez un partenaire</p>
-      <button onClick={onBack} className="mb-3 text-[11px] font-semibold text-muted-foreground">
-        ← Changer de méthode
+    <section className="op-sup">
+      <div className="op-dash__head">
+        <h1 className="op-dash__title">{t('suppliers.listTitle')}</h1>
+        <p className="op-dash__sub">{t('suppliers.listSub')}</p>
+      </div>
+
+      <button type="button" className="sup-back" onClick={onBack}>
+        <span className="ms flip-rtl" aria-hidden="true">arrow_back</span>{t('suppliers.changeMethod')}
       </button>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-          <RefreshCw size={16} className="animate-spin" /> Chargement…
-        </div>
-      ) : suppliers.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
-          <Package size={28} className="mx-auto text-muted-foreground/30 mb-2" />
-          <p className="text-sm text-muted-foreground">Aucun fournisseur configuré</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {suppliers.map(s => (
-            <button key={s.id} onClick={() => onSelect(s)}
-              className="w-full rounded-2xl border border-border bg-card p-3.5 text-left transition active:scale-[0.99]">
-              <div className="flex items-start gap-3">
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent font-bold text-primary text-lg">
-                  {s.name[0]}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold">{s.name}</p>
-                    {s.apiEnabled && (
-                      <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] font-bold text-success">API</span>
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {[s.specialty, s.zone].filter(Boolean).join(' · ')}
-                  </p>
-                  <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1"><Clock size={10} /> {s.leadTime}</span>
-                    {s.minOrder > 0 && <span>Min €{s.minOrder}</span>}
-                    <span className="inline-flex items-center gap-1"><Star size={10} className="text-warning" /> {s.rating.toFixed(1)}</span>
-                    <span>{s.products.length} produits</span>
-                  </div>
-                </div>
-                <ChevronRight size={14} className="text-muted-foreground" />
+      <div className="sup-tabs" role="tablist">
+        <button type="button" className={tab === 'mine' ? 'is-active' : undefined} onClick={() => setTab('mine')} role="tab" aria-selected={tab === 'mine'}>
+          {t('suppliers.tabMine')} <span className="cnt mono">{suppliers.length}</span>
+        </button>
+        <button type="button" className={tab === 'discover' ? 'is-active' : undefined} onClick={() => setTab('discover')} role="tab" aria-selected={tab === 'discover'}>
+          {t('suppliers.tabDiscover')}
+        </button>
+      </div>
+
+      {tab === 'mine' && (
+        <>
+          <div className="sup-toolbar">
+            <div className="sup-search">
+              <span className="ms" aria-hidden="true">search</span>
+              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('suppliers.searchPlaceholder')} />
+            </div>
+            <div className="sup-cats">
+              {CATS.map(({ c, label }) => (
+                <button key={c} type="button" className={cat === c ? 'is-active' : undefined} onClick={() => setCat(c)}>{label}</button>
+              ))}
+            </div>
+          </div>
+
+          {loading ? (
+            <SupSkeleton />
+          ) : error ? (
+            <SupError onRetry={onCatalog} />
+          ) : suppliers.length === 0 ? (
+            <div className="op-card">
+              <div className="op-emptyline">
+                <span className="ms" aria-hidden="true">local_shipping</span>
+                <b>{t('suppliers.emptyTitle')}</b>
+                <span>{t('suppliers.emptyBody')}</span>
+                <button type="button" className="op-btn-primary" onClick={() => setTab('discover')}>
+                  <span className="ms" aria-hidden="true">explore</span>{t('suppliers.browseMarketplace')}
+                </button>
               </div>
-            </button>
-          ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="op-card">
+              <div className="op-emptyline">
+                <span className="ms" aria-hidden="true">search_off</span>
+                <b>{t('suppliers.noMatch')}</b>
+              </div>
+            </div>
+          ) : (
+            <div className="sup-grid">
+              {filtered.map((s) => (
+                <div key={s.id} className="sup-card">
+                  <div className="sup-card__top">
+                    <span className="sup-avatar" style={{ background: gradFor(s.name) }}>{initials(s.name)}</span>
+                    <div className="sup-name">
+                      <b>{s.name}</b>
+                      {(s.specialty || s.zone) && (
+                        <div className="sup-cats-line">
+                          {s.specialty && <span className="sup-cat-chip">{s.specialty}</span>}
+                          {s.zone && <span className="sup-cat-chip">{s.zone}</span>}
+                        </div>
+                      )}
+                    </div>
+                    {s.apiEnabled && <span className="sup-badge api"><span className="ms" style={{ fontSize: 12 }} aria-hidden="true">bolt</span>API</span>}
+                  </div>
+                  <div className="sup-rating">
+                    <span className="ms" aria-hidden="true">star</span>{s.rating.toFixed(1)}
+                  </div>
+                  <div className="sup-meta">
+                    <div className="row"><span>{t('suppliers.leadTime')}</span><span>{s.leadTime}</span></div>
+                    {s.minOrder > 0 && (
+                      <div className="row"><span>{t('suppliers.minOrder')}</span><span className="sup-min mono">{formatEuros(s.minOrder, locale)}</span></div>
+                    )}
+                    <div className="row"><span>{t('suppliers.products')}</span><span className="mono">{s.products.length}</span></div>
+                  </div>
+                  <div className="sup-actions">
+                    <button type="button" className="op-btn-primary" onClick={() => onSelect(s)}>
+                      <span className="ms" aria-hidden="true">add_shopping_cart</span>{t('suppliers.order')}
+                    </button>
+                    <button type="button" className="op-btn-ghost" onClick={onCatalog}>{t('suppliers.viewShop')}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {tab === 'discover' && (
+        // Honest preview: the legacy /api/suppliers endpoint returns the operator's
+        // OWN suppliers only — there is no marketplace-discovery list here. Rather
+        // than fabricate suppliers, point to the real discovery route.
+        <div className="op-card">
+          <div className="sup-discover-note">
+            <span className="ms" aria-hidden="true">explore</span>
+            <b>{t('suppliers.discoverTitle')}</b>
+            <span>{t('suppliers.discoverBody')}</span>
+            <Link href="/marketplace/suppliers" className="op-btn-primary">
+              <span className="ms" aria-hidden="true">storefront</span>{t('suppliers.browseMarketplace')}
+            </Link>
+          </div>
         </div>
       )}
-    </div>
+    </section>
   )
 }
 
-// ── Catalog view (compare across suppliers) ───────────────────────────────────
+// ── Partner order form (single supplier — legacy sendOrder preserved) ─────────
+
+function PartnerOrderForm({ supplier, onBack }: { supplier: Supplier; onBack: () => void }) {
+  const t = useTranslations('operator')
+  const locale = useLocale()
+  const [qtys,    setQtys]    = useState<Record<string, number>>(
+    Object.fromEntries(supplier.products.filter(p => p.stock !== 'out').map(p => [p.id, 1])),
+  )
+  const [sent,    setSent]    = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error,   setError]   = useState('')
+
+  const activeProducts = supplier.products.filter(p => p.stock !== 'out')
+  const total          = activeProducts.reduce((s, p) => s + p.price * (qtys[p.id] ?? 0), 0)
+
+  async function sendOrder() {
+    setSending(true); setError('')
+    const items = activeProducts
+      .filter(p => (qtys[p.id] ?? 0) > 0)
+      .map(p => ({ name: p.name, quantity: qtys[p.id] ?? 0, unit: p.unit, price: p.price }))
+
+    if (!items.length) { setError(t('suppliers.noneSelected')); setSending(false); return }
+
+    try {
+      const r = await fetch('/api/suppliers/orders', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ supplierId: supplier.id, items, total }),
+      })
+      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? 'Erreur') }
+      setSent(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('suppliers.sendError'))
+    }
+    setSending(false)
+  }
+
+  if (sent) {
+    return (
+      <section className="op-sup">
+        <div className="op-card sup-confirm">
+          <div className="ico"><span className="ms" aria-hidden="true">check_circle</span></div>
+          <h2>{t('suppliers.orderConfirmed')}</h2>
+          <p>
+            {supplier.email ? t('suppliers.emailSent') : t('suppliers.orderSaved')}
+            {' · '}{t('suppliers.deliveryUnder', { lead: supplier.leadTime })}
+          </p>
+          <p className="amt mono">{formatEuros(total, locale)}</p>
+          <Link href="/stocks" className="op-btn-primary">
+            <span className="ms" aria-hidden="true">inventory_2</span>{t('suppliers.backToStocks')}
+          </Link>
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="op-sup sup-order">
+      <div className="op-dash__head">
+        <h1 className="op-dash__title">{supplier.name}</h1>
+        <p className="op-dash__sub">
+          {[supplier.specialty, t('suppliers.deliveryUnder', { lead: supplier.leadTime })].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+
+      <button type="button" className="sup-back" onClick={onBack}>
+        <span className="ms flip-rtl" aria-hidden="true">arrow_back</span>{t('suppliers.otherSupplier')}
+      </button>
+
+      {activeProducts.length === 0 ? (
+        <div className="op-card">
+          <div className="op-emptyline">
+            <span className="ms" aria-hidden="true">production_quantity_limits</span>
+            <b>{t('suppliers.noProducts')}</b>
+          </div>
+        </div>
+      ) : (
+        <div className="op-card sup-order__card">
+          <div className="sup-order__head">{t('suppliers.purchaseOrder')}</div>
+          <div className="sup-order__list">
+            {activeProducts.map(p => (
+              <div key={p.id} className="row">
+                <div className="m">
+                  <b>{p.name}</b>
+                  <span>{formatEuros(p.price, locale)}/{p.unit}</span>
+                </div>
+                <div className="sup-stepper">
+                  <button type="button" aria-label="−" onClick={() => setQtys(s => ({ ...s, [p.id]: Math.max(0, (s[p.id] ?? 0) - 1) }))}>
+                    <span className="ms" aria-hidden="true">remove</span>
+                  </button>
+                  <span className="qty mono">{qtys[p.id] ?? 0} <span>{p.unit}</span></span>
+                  <button type="button" aria-label="+" onClick={() => setQtys(s => ({ ...s, [p.id]: (s[p.id] ?? 0) + 1 }))}>
+                    <span className="ms" aria-hidden="true">add</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="sup-order__foot">
+            {error && (
+              <div className="op-callout danger"><span className="ms" aria-hidden="true">error</span><p>{error}</p></div>
+            )}
+            <div className="sup-order__total">
+              <span className="lbl">{t('suppliers.estTotal')}</span>
+              <span className="amt mono">{formatEuros(total, locale)}</span>
+            </div>
+            <button type="button" className="op-btn-primary" onClick={sendOrder} disabled={sending || total === 0}>
+              {sending
+                ? <><span className="ms" aria-hidden="true">progress_activity</span>{t('suppliers.sending')}</>
+                : <><span className="ms" aria-hidden="true">send</span>{t('suppliers.sendVia', { channel: supplier.apiEnabled ? 'API' : supplier.email ? 'Email' : 'WhatsApp' })}</>
+              }
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ── Catalog view (compare across suppliers — legacy sendOrders preserved) ──────
 
 function CatalogView({
-  suppliers, loading, onBack,
+  suppliers, loading, error, onBack,
 }: {
   suppliers: Supplier[]
   loading:   boolean
+  error:     boolean
   onBack:    () => void
 }) {
-  const [cart, setCart]   = useState<CartItem[]>([])
-  const [sent, setSent]   = useState(false)
+  const t = useTranslations('operator')
+  const locale = useLocale()
+  const [cart, setCart]       = useState<CartItem[]>([])
+  const [sent, setSent]       = useState(false)
   const [sending, setSending] = useState(false)
-  const [error, setError] = useState('')
+  const [err, setErr]         = useState('')
 
   // Group products by name across suppliers
   const productMap: Record<string, Array<{ supplier: Supplier; product: SupplierProduct }>> = {}
@@ -244,7 +504,7 @@ function CatalogView({
   const supplierCount = new Set(cart.map(c => c.supplierId)).size
 
   async function sendOrders() {
-    setSending(true); setError('')
+    setSending(true); setErr('')
     try {
       const bySupplier: Record<string, CartItem[]> = {}
       for (const c of cart) {
@@ -265,273 +525,133 @@ function CatalogView({
       }
       setSent(true)
     } catch {
-      setError('Erreur lors de l\'envoi. Réessayez.')
+      setErr(t('suppliers.sendError'))
     }
     setSending(false)
   }
 
   if (sent) {
     return (
-      <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-        <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Commandes envoyées</h1>
-        <p className="mb-5 text-sm text-muted-foreground">{supplierCount} fournisseur{supplierCount > 1 ? 's' : ''}</p>
-        <Card className="text-center !p-6">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-success/15 text-success">
-            <Check size={28} />
-          </div>
-          <h3 className="mt-3 text-base font-bold">Confirmé</h3>
-          <p className="mt-1 text-[12px] text-muted-foreground">Bons de commande envoyés par email</p>
-          <p className="mt-3 text-2xl font-bold">€{total.toFixed(2)}</p>
-          <Link href="/stocks" className="mt-4 inline-block w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground text-center">
-            Retour aux stocks
+      <section className="op-sup">
+        <div className="op-card sup-confirm">
+          <div className="ico"><span className="ms" aria-hidden="true">check_circle</span></div>
+          <h2>{t('suppliers.ordersSent')}</h2>
+          <p>{t('suppliers.ordersSentBody', { count: supplierCount })}</p>
+          <p className="amt mono">{formatEuros(total, locale)}</p>
+          <Link href="/stocks" className="op-btn-primary">
+            <span className="ms" aria-hidden="true">inventory_2</span>{t('suppliers.backToStocks')}
           </Link>
-        </Card>
-      </div>
+        </div>
+      </section>
     )
   }
 
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold tracking-tight">Catalogue</h1>
-          <p className="text-sm text-muted-foreground">Meilleur prix par produit</p>
-        </div>
-        {cart.length > 0 && (
-          <span className="rounded-full bg-primary px-3 py-1 text-sm font-bold text-primary-foreground">
-            €{total.toFixed(0)}
-          </span>
-        )}
+    <section className="op-sup">
+      <div className="op-dash__head">
+        <h1 className="op-dash__title">{t('suppliers.catalogTitle')}</h1>
+        <p className="op-dash__sub">{t('suppliers.catalogSub')}</p>
       </div>
-      <button onClick={onBack} className="mb-3 text-[11px] font-semibold text-muted-foreground">
-        ← Changer de méthode
+
+      <button type="button" className="sup-back" onClick={onBack}>
+        <span className="ms flip-rtl" aria-hidden="true">arrow_back</span>{t('suppliers.changeMethod')}
       </button>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
-          <RefreshCw size={16} className="animate-spin" /> Chargement…
-        </div>
+        <SupSkeleton />
+      ) : error ? (
+        <SupError onRetry={onBack} />
       ) : productNames.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
-          <p className="text-sm text-muted-foreground">Aucun produit fournisseur configuré</p>
+        <div className="op-card">
+          <div className="op-emptyline">
+            <span className="ms" aria-hidden="true">inventory_2</span>
+            <b>{t('suppliers.catalogEmpty')}</b>
+          </div>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div>
           {productNames.map(name => {
-            const offers  = productMap[name]
-            const sel     = getSelection(name)
+            const offers   = productMap[name]
+            const sel      = getSelection(name)
             const inOffers = offers.filter(o => o.product.stock !== 'out')
             return (
-              <Card key={name} className="!p-0 overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3.5 py-2.5">
-                  <p className="text-sm font-bold">{name}</p>
-                  <span className="text-[10px] font-bold text-muted-foreground">
-                    {inOffers.length}/{offers.length} dispo
-                  </span>
+              <div key={name} className="op-card sup-cat-group">
+                <div className="sup-cat-group__head">
+                  <b>{name}</b>
+                  <span className="avail">{inOffers.length}/{offers.length} {t('suppliers.available')}</span>
                 </div>
-                <div className="divide-y divide-border">
+                <div>
                   {offers.map(({ supplier, product: p }) => {
                     const isSelected = sel?.supplierId === supplier.id && sel.product.id === p.id
                     const isOut      = p.stock === 'out'
                     return (
-                      <button key={p.id}
+                      <button
+                        key={p.id}
+                        type="button"
                         onClick={() => !isOut && selectOffer(supplier, p)}
                         disabled={isOut}
-                        className={`flex w-full items-center justify-between px-3.5 py-2.5 text-left transition ${
-                          isSelected ? 'bg-accent' : ''
-                        } ${isOut ? 'cursor-not-allowed opacity-40' : 'active:bg-muted/40'}`}>
-                        <div className="flex items-center gap-2.5">
-                          <div className={`grid h-5 w-5 place-items-center rounded-full border-2 ${
-                            isSelected ? 'border-primary bg-primary' : 'border-border'
-                          }`}>
-                            {isSelected && <Check size={10} className="text-primary-foreground" />}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-[12px] font-bold">{supplier.name}</p>
-                            </div>
-                            <p className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                              {p.stock === 'in'  && <><span className="h-1.5 w-1.5 rounded-full bg-success" /> En stock · {supplier.leadTime}</>}
-                              {p.stock === 'low' && <><span className="h-1.5 w-1.5 rounded-full bg-warning" /> Stock faible · {supplier.leadTime}</>}
-                              {p.stock === 'out' && <><X size={9} className="text-destructive" /> Rupture</>}
-                            </p>
-                          </div>
-                        </div>
-                        <p className="text-sm font-bold">
-                          €{p.price.toFixed(2)}<span className="text-[9px] font-normal text-muted-foreground">/{p.unit}</span>
-                        </p>
+                        className={`sup-offer${isSelected ? ' is-selected' : ''}`}
+                      >
+                        <span className="left">
+                          <span className="radio">{isSelected && <span className="ms" aria-hidden="true">check</span>}</span>
+                          <span className="who">
+                            <b>{supplier.name}</b>
+                            <span className="stk">
+                              {p.stock === 'in'  && <><i className="in" />{t('suppliers.inStock')} · {supplier.leadTime}</>}
+                              {p.stock === 'low' && <><i className="low" />{t('suppliers.lowStock')} · {supplier.leadTime}</>}
+                              {p.stock === 'out' && <><span className="ms" aria-hidden="true">close</span>{t('suppliers.outStock')}</>}
+                            </span>
+                          </span>
+                        </span>
+                        <span className="price mono">{formatEuros(p.price, locale)}<small>/{p.unit}</small></span>
                       </button>
                     )
                   })}
                 </div>
                 {sel && sel.product.name === name && (
-                  <div className="flex items-center gap-3 border-t border-border bg-accent/50 px-3.5 py-2">
-                    <p className="flex-1 text-[11px] font-semibold">Quantité</p>
-                    <button onClick={() => updateQty(name, -1)} className="grid h-7 w-7 place-items-center rounded-lg border border-border bg-card"><Minus size={12} /></button>
-                    <span className="w-10 text-center text-sm font-bold">{sel.qty} <span className="text-[9px] text-muted-foreground">{sel.product.unit}</span></span>
-                    <button onClick={() => updateQty(name, 1)}  className="grid h-7 w-7 place-items-center rounded-lg border border-border bg-card"><Plus size={12} /></button>
+                  <div className="sup-cat-group__qty">
+                    <span className="lbl">{t('suppliers.quantity')}</span>
+                    <div className="sup-stepper">
+                      <button type="button" aria-label="−" onClick={() => updateQty(name, -1)}><span className="ms" aria-hidden="true">remove</span></button>
+                      <span className="qty mono">{sel.qty} <span>{sel.product.unit}</span></span>
+                      <button type="button" aria-label="+" onClick={() => updateQty(name, 1)}><span className="ms" aria-hidden="true">add</span></button>
+                    </div>
                   </div>
                 )}
-              </Card>
+              </div>
             )
           })}
         </div>
       )}
 
       {cart.length > 0 && (
-        <div className="sticky bottom-24 mt-5 rounded-2xl border border-border bg-card p-4 shadow-lg">
-          {error && (
-            <p className="mb-2 flex items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-              <AlertCircle size={12} /> {error}
-            </p>
+        <div className="sup-cart">
+          {err && (
+            <div className="op-callout danger"><span className="ms" aria-hidden="true">error</span><p>{err}</p></div>
           )}
-          <div className="mb-3 flex items-center justify-between">
+          <div className="sup-cart__row">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Total · {supplierCount} fournisseur{supplierCount > 1 ? 's' : ''}
-              </p>
-              <p className="text-xl font-bold">€{total.toFixed(2)}</p>
+              <div className="lbl">{t('suppliers.totalSuppliers', { count: supplierCount })}</div>
+              <div className="amt mono">{formatEuros(total, locale)}</div>
             </div>
-            <span className="text-[10px] text-muted-foreground">{cart.length} produit{cart.length > 1 ? 's' : ''}</span>
+            <span className="cnt">{t('suppliers.productCount', { count: cart.length })}</span>
           </div>
-          <button onClick={sendOrders} disabled={sending}
-            className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-60">
-            {sending ? <span className="flex items-center justify-center gap-2"><RefreshCw size={14} className="animate-spin" /> Envoi…</span> : 'Envoyer les commandes'}
+          <button type="button" className="op-btn-primary" onClick={sendOrders} disabled={sending}>
+            {sending
+              ? <><span className="ms" aria-hidden="true">progress_activity</span>{t('suppliers.sending')}</>
+              : <><span className="ms" aria-hidden="true">send</span>{t('suppliers.sendOrders')}</>
+            }
           </button>
         </div>
       )}
-    </div>
-  )
-}
-
-// ── Partner order form ────────────────────────────────────────────────────────
-
-function PartnerOrderForm({ supplier, onBack }: { supplier: Supplier; onBack: () => void }) {
-  const [qtys,    setQtys]    = useState<Record<string, number>>(
-    Object.fromEntries(supplier.products.filter(p => p.stock !== 'out').map(p => [p.id, 1])),
-  )
-  const [sent,    setSent]    = useState(false)
-  const [sending, setSending] = useState(false)
-  const [error,   setError]   = useState('')
-
-  const activeProducts = supplier.products.filter(p => p.stock !== 'out')
-  const total          = activeProducts.reduce((s, p) => s + p.price * (qtys[p.id] ?? 0), 0)
-
-  async function sendOrder() {
-    setSending(true); setError('')
-    const items = activeProducts
-      .filter(p => (qtys[p.id] ?? 0) > 0)
-      .map(p => ({ name: p.name, quantity: qtys[p.id] ?? 0, unit: p.unit, price: p.price }))
-
-    if (!items.length) { setError('Aucun produit sélectionné'); setSending(false); return }
-
-    try {
-      const r = await fetch('/api/suppliers/orders', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ supplierId: supplier.id, items, total }),
-      })
-      if (!r.ok) { const d = await r.json(); throw new Error(d.error ?? 'Erreur') }
-      setSent(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erreur envoi')
-    }
-    setSending(false)
-  }
-
-  if (sent) {
-    return (
-      <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-        <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Commande envoyée</h1>
-        <p className="mb-5 text-sm text-muted-foreground">{supplier.name}</p>
-        <Card className="text-center !p-6">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-success/15 text-success">
-            <Check size={28} />
-          </div>
-          <h3 className="mt-3 text-base font-bold">Commande confirmée</h3>
-          <p className="mt-1 text-[12px] text-muted-foreground">
-            {supplier.email ? 'Email envoyé au fournisseur' : 'Commande enregistrée'}
-            {' · '}Livraison sous {supplier.leadTime}
-          </p>
-          <p className="mt-3 text-2xl font-bold">€{total.toFixed(2)}</p>
-          <Link href="/stocks" className="mt-4 inline-block w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground text-center">
-            Retour aux stocks
-          </Link>
-        </Card>
-      </div>
-    )
-  }
-
-  return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">{supplier.name}</h1>
-      <p className="mb-4 text-sm text-muted-foreground">
-        {supplier.specialty} · livraison {supplier.leadTime}
-        {supplier.email && <span className="ml-2 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-bold text-success">Email</span>}
-      </p>
-      <button onClick={onBack} className="mb-3 text-[11px] font-semibold text-muted-foreground">
-        ← Autre fournisseur
-      </button>
-
-      {activeProducts.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-card py-10 text-center">
-          <p className="text-sm text-muted-foreground">Aucun produit disponible chez ce fournisseur</p>
-        </div>
-      ) : (
-        <Card className="!p-0 overflow-hidden">
-          <div className="border-b border-border bg-muted/30 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            Bon de commande
-          </div>
-          <div className="divide-y divide-border">
-            {activeProducts.map(p => (
-              <div key={p.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">{p.name}</p>
-                  <p className="text-[11px] text-muted-foreground">€{p.price.toFixed(2)}/{p.unit}</p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setQtys(s => ({ ...s, [p.id]: Math.max(0, (s[p.id] ?? 0) - 1) }))}
-                    className="grid h-7 w-7 place-items-center rounded-lg border border-border">
-                    <Minus size={12} />
-                  </button>
-                  <span className="w-12 text-center text-sm font-bold">
-                    {qtys[p.id] ?? 0} <span className="text-[9px] text-muted-foreground">{p.unit}</span>
-                  </span>
-                  <button
-                    onClick={() => setQtys(s => ({ ...s, [p.id]: (s[p.id] ?? 0) + 1 }))}
-                    className="grid h-7 w-7 place-items-center rounded-lg border border-border">
-                    <Plus size={12} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="border-t border-border bg-muted/20 p-4">
-            {error && (
-              <p className="mb-2 text-[11px] text-destructive">{error}</p>
-            )}
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Total estimé</span>
-              <span className="text-lg font-bold">€{total.toFixed(2)}</span>
-            </div>
-            <button onClick={sendOrder} disabled={sending || total === 0}
-              className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-60">
-              {sending
-                ? <span className="flex items-center justify-center gap-2"><RefreshCw size={14} className="animate-spin" /> Envoi…</span>
-                : `Envoyer via ${supplier.apiEnabled ? 'API' : supplier.email ? 'Email' : 'WhatsApp'}`
-              }
-            </button>
-          </div>
-        </Card>
-      )}
-    </div>
+    </section>
   )
 }
 
 // ── Self shopping list ────────────────────────────────────────────────────────
 
 function SelfShoppingList({ onBack }: { onBack: () => void }) {
+  const t = useTranslations('operator')
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const categories: Record<string, string[]> = {
     'Frais':     ['Poulet mariné · 4 kg', 'Champignons · 2 kg'],
@@ -541,46 +661,48 @@ function SelfShoppingList({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">Liste de courses</h1>
-      <p className="mb-5 text-sm text-muted-foreground">Triée par catégorie</p>
-      <button onClick={onBack} className="mb-3 text-[11px] font-semibold text-muted-foreground">
-        ← Changer de méthode
+    <section className="op-sup">
+      <div className="op-dash__head">
+        <h1 className="op-dash__title">{t('suppliers.shoppingListTitle')}</h1>
+        <p className="op-dash__sub">{t('suppliers.shoppingListSub')}</p>
+      </div>
+
+      <button type="button" className="sup-back" onClick={onBack}>
+        <span className="ms flip-rtl" aria-hidden="true">arrow_back</span>{t('suppliers.changeMethod')}
       </button>
-      <div className="space-y-3">
+
+      <div>
         {Object.entries(categories).map(([cat, items]) => (
-          <Card key={cat} className="!p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-primary">{cat}</p>
-            <ul className="mt-2 space-y-1.5 text-[13px]">
-              {items.map(item => (
-                <li key={item} className="flex items-center gap-2 cursor-pointer" onClick={() => {
-                  setChecked(prev => {
-                    const next = new Set(prev)
-                    next.has(item) ? next.delete(item) : next.add(item)
-                    return next
-                  })
-                }}>
-                  <div className={`h-4 w-4 rounded border transition ${checked.has(item) ? 'border-success bg-success' : 'border-border'}`}>
-                    {checked.has(item) && <Check size={12} className="text-success-foreground" />}
-                  </div>
-                  <span className={checked.has(item) ? 'line-through text-muted-foreground' : ''}>{item}</span>
-                </li>
-              ))}
+          <div key={cat} className="op-card sup-self-cat">
+            <p className="cat">{cat}</p>
+            <ul>
+              {items.map(item => {
+                const done = checked.has(item)
+                return (
+                  <li key={item} className={done ? 'done' : undefined} onClick={() => {
+                    setChecked(prev => {
+                      const next = new Set(prev)
+                      if (next.has(item)) next.delete(item); else next.add(item)
+                      return next
+                    })
+                  }}>
+                    <span className="box">{done && <span className="ms" aria-hidden="true">check</span>}</span>
+                    <span className="txt">{item}</span>
+                  </li>
+                )
+              })}
             </ul>
-          </Card>
+          </div>
         ))}
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <button className="flex items-center justify-center gap-2 rounded-xl bg-success py-3 text-sm font-bold text-success-foreground">
-          <Share2 size={14} /> WhatsApp
-        </button>
-        <button className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-bold">
-          <FileDown size={14} /> Imprimer
-        </button>
+
+      <div className="sup-self-actions">
+        <button type="button" className="wa"><span className="ms" aria-hidden="true">share</span>{t('suppliers.whatsapp')}</button>
+        <button type="button"><span className="ms" aria-hidden="true">print</span>{t('suppliers.print')}</button>
       </div>
-      <Link href="/stocks" className="mt-3 block w-full rounded-xl bg-navy py-3 text-center text-sm font-bold text-navy-foreground">
-        Après les courses : mettre à jour
+      <Link href="/stocks" className="sup-self-after">
+        <span className="ms" aria-hidden="true">inventory_2</span>{t('suppliers.afterShopping')}
       </Link>
-    </div>
+    </section>
   )
 }
