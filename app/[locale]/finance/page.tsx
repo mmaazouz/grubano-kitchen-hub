@@ -1,22 +1,31 @@
 'use client'
 
 /**
- * Finance — restaurateur P&L over a rolling 30-day window.
+ * /finance — operator FINANCES screen. VERBATIM CD v1 LOT 2 (Notion 390fd2c9-…-9483).
+ * ⚠️ ZONE ARGENT / ISO-FLUX — presentation only.
  *
- * Wired to GET /api/finance/summary (read-only). The navy hero shows real gross
- * revenue with a clear breakdown (− Grubano commission, − creator cost,
- * − funded welcome discounts, = net). A dedicated block frames the creator
- * spend as an investment: cost AND the measured CA those creators brought in.
- * No hardcoded figures, no PDF generation (reports stay decorative / "soon").
+ * The page is already wrapped by AppChrome → OperatorShell (navy --op-* chrome, Finances
+ * active in the rail). This component renders ONLY the screen content = a <section> inside
+ * op-content.
+ *
+ * 🔒 MONEY INTEGRITY. Every figure comes from GET /api/finance/summary (rolling 30-day P&L,
+ * EUR floats) and is DISPLAYED via formatEuros — NEVER recomputed here. The golden equation
+ * is rendered exactly as the API supplies each term:
+ *     caBrut − commissionGrubano − verseAuxCreateurs − remisesFinancees = netResto
+ * The commission RATE shown is DERIVED from the real API amounts (commissionGrubano ÷ caBrut),
+ * never hardcoded. Bar widths are a pure visual proportion of those same displayed amounts.
+ *
+ * HONEST « bientôt » (no backend for this page): next SEPA payout (amount/date/account),
+ * payout schedule, per-transaction ledger journal, monthly PDF statements. These are drawn
+ * as CD-faithful previews with a « bientôt » state — NEVER fake data. The refund modal is
+ * drawn « prête » but INERT (gate-2: no real Stripe wiring until REFUNDS_ENABLED + review).
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { PieChart, Receipt, TrendingUp, Download, Lock, Sparkles, ArrowRight } from 'lucide-react'
 import { Link } from '@/navigation'
-import { Card } from '@/components/grubano/Card'
-import { SectionTitle } from '@/components/grubano/SectionTitle'
-import FinanceRail from '@/components/finance/FinanceRail'
+import { formatEuros } from '@/lib/format-money'
+import './finance.css'
 
 type FinanceSummary = {
   windowDays:          number
@@ -31,166 +40,238 @@ type FinanceSummary = {
 }
 
 export default function FinancePage() {
-  const t      = useTranslations('finance')
+  const t      = useTranslations('operator')
   const locale = useLocale()
 
-  const [data,    setData]    = useState<FinanceSummary | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [data,  setData]  = useState<FinanceSummary | null>(null)
+  const [stage, setStage] = useState<'loading' | 'error' | 'ready'>('loading')
+
+  // Refund modal — VISUAL / INERT (gate-2). Local UI state only, no network.
+  const [refund, setRefund] = useState(false)
 
   useEffect(() => {
-    fetch('/api/finance/summary')
-      .then(r => r.json())
-      .then((d: FinanceSummary) => setData(d))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    fetch('/api/finance/summary', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then((d: FinanceSummary) => { setData(d); setStage('ready') })
+      .catch(() => setStage('error'))
   }, [])
 
-  // Locale-aware EUR formatting, always 2 decimals (finance precision).
-  const eur = (n: number) =>
-    new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: 'EUR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n ?? 0)
+  // DISPLAY-only EUR formatting (locale-aware, 2 dp). Never mutates a value.
+  const eur = useMemo(() => (n: number) => formatEuros(n ?? 0, locale), [locale])
 
-  const caBrut              = data?.caBrut              ?? 0
-  const commissionGrubano   = data?.commissionGrubano   ?? 0
-  const verseAuxCreateurs   = data?.verseAuxCreateurs   ?? 0
-  const remisesFinancees    = data?.remisesFinancees    ?? 0
-  const netResto            = data?.netResto            ?? 0
-  const caAmeneParCreateurs = data?.caAmeneParCreateurs ?? 0
-  const ordersFromCreators  = data?.ordersFromCreators  ?? 0
-  const ordersTotal         = data?.ordersTotal         ?? 0
+  const updatedAt = useMemo(
+    () => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(new Date()),
+    [locale],
+  )
+  const dateLabel = useMemo(
+    () => new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()),
+    [locale],
+  )
 
-  const hasCreatorCost = verseAuxCreateurs > 0
-
-  return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      <h1 className="mb-1 text-2xl font-display font-bold tracking-tight">{t('title')}</h1>
-      <p className="mb-5 text-sm text-muted-foreground">{t('subtitle')}</p>
-
-      {/* ── Rail financier A7 — real money (LedgerEntry-driven): Connect status,
-          collected/commission/net, operations + refunds, invoices, rates. The
-          legacy 30-day P&L below (Order-based estimates) stays untouched. */}
-      <FinanceRail />
-
-      {loading ? (
-        <div className="mb-5 h-44 animate-pulse rounded-3xl bg-navy/10" />
-      ) : ordersTotal === 0 ? (
-        /* Empty state — no orders in the window (no crash, everything reads 0). */
-        <div className="mb-5 rounded-3xl border border-dashed border-border bg-card p-6 text-center">
-          <p className="text-sm font-bold">{t('emptyTitle')}</p>
-          <p className="mt-1 text-[12px] text-muted-foreground">{t('emptyDesc')}</p>
+  // ── loading skeleton (mirrors CD .op-skel) ──
+  if (stage === 'loading') {
+    return (
+      <section aria-busy="true">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+          <div><span className="op-sk" style={{ width: 160, height: 22, marginBottom: 8 }} /><span className="op-sk" style={{ width: 240, height: 12 }} /></div>
+          <span className="op-sk" style={{ width: 110, height: 34, borderRadius: 8 }} />
         </div>
-      ) : (
-        <>
-          {/* Rolling 30-day summary — real gross revenue + breakdown to net */}
-          <div className="overflow-hidden rounded-3xl bg-navy p-5 text-navy-foreground mb-5">
-            <p className="text-[11px] uppercase tracking-wider text-navy-foreground/60">
-              {t('windowLabel')}
-            </p>
-            <p className="mt-2 text-3xl font-bold tabular-nums">{eur(caBrut)}</p>
-            <p className="mt-1 text-[12px] text-navy-foreground/70">{t('caBrutLabel')}</p>
-
-            <div className="mt-4 space-y-1.5 border-t border-navy-foreground/10 pt-4">
-              <Row label={t('commissionLabel')}    value={`−${eur(commissionGrubano)}`} tone="minus" />
-              <Row label={t('creatorsCostLabel')}  value={`−${eur(verseAuxCreateurs)}`} tone="minus" />
-              <Row label={t('discountsLabel')}      value={`−${eur(remisesFinancees)}`}  tone="minus" />
-              <div className="mt-1 flex items-center justify-between border-t border-navy-foreground/10 pt-2">
-                <span className="text-[13px] font-semibold">{t('netLabel')}</span>
-                <span className="text-base font-bold tabular-nums text-success">{eur(netResto)}</span>
-              </div>
+        <div className="op-row2">
+          <div className="op-card"><div className="op-card__head"><span className="op-sk" style={{ width: 220, height: 14 }} /></div>
+            <div style={{ padding: 18, display: 'flex', gap: 24 }}>
+              <span className="op-sk" style={{ width: 90, height: 34 }} /><span className="op-sk" style={{ width: 90, height: 34 }} /><span className="op-sk" style={{ width: 90, height: 34 }} />
             </div>
           </div>
-
-          {/* Creator COST + VALUE — spend framed as a measured investment */}
-          {hasCreatorCost ? (
-            <Card className="mb-5 border-primary/20 bg-accent">
-              <div className="flex items-start gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                  <Sparkles size={16} />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold">{t('valueTitle')}</p>
-                  <p className="mt-1 text-[13px] text-muted-foreground">
-                    {t('valueBody', { ca: eur(caAmeneParCreateurs), cost: eur(verseAuxCreateurs) })}
-                  </p>
-                  <p className="mt-1 text-[11px] font-semibold text-primary">
-                    {t('valueOrders', { count: ordersFromCreators })}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          ) : (
-            /* Restaurant with no adopted dish → discreet CTA to open the channel */
-            <Link
-              href="/menu"
-              className="mb-5 flex items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-accent p-4"
-            >
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-                <Sparkles size={16} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold">{t('ctaTitle')}</p>
-                <p className="mt-0.5 text-[12px] text-muted-foreground">{t('ctaBody')}</p>
-              </div>
-              <ArrowRight size={16} className="shrink-0 text-primary" />
-            </Link>
-          )}
-        </>
-      )}
-
-      <SectionTitle>{t('reportsTitle')}</SectionTitle>
-      <div className="space-y-2">
-        {[
-          { icon: Receipt,    title: t('report1Title'), desc: t('report1Desc') },
-          { icon: PieChart,   title: t('report2Title'), desc: t('report2Desc') },
-          { icon: TrendingUp, title: t('report3Title'), desc: t('report3Desc') },
-        ].map((r) => (
-          <div key={r.title} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-primary">
-              <r.icon size={16} />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold">{r.title}</p>
-              <p className="text-[11px] text-muted-foreground">{r.desc}</p>
-            </div>
-            {/* Decorative until real export ships (out of scope) → disabled + "soon" */}
-            <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
-              {t('reportsSoon')}
-            </span>
-            <button
-              disabled
-              aria-disabled="true"
-              className="grid h-8 w-8 cursor-not-allowed place-items-center rounded-lg border border-border opacity-40"
-            >
-              <Download size={13} />
-            </button>
+          <div className="op-card"><div className="op-card__head"><span className="op-sk" style={{ width: 140, height: 14 }} /></div>
+            <div style={{ padding: 18 }}><span className="op-sk" style={{ width: '70%', height: 30, marginBottom: 10 }} /><span className="op-sk" style={{ width: '100%', height: 14 }} /></div>
           </div>
-        ))}
+        </div>
+        <div className="op-card" style={{ marginBottom: 16 }}>
+          <div className="op-card__head"><span className="op-sk" style={{ width: 180, height: 14 }} /></div>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span className="op-sk" style={{ width: '100%', height: 24 }} /><span className="op-sk" style={{ width: '100%', height: 24 }} /><span className="op-sk" style={{ width: '100%', height: 24 }} />
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  // ── error ──
+  if (stage === 'error' || !data) {
+    return (
+      <section><div className="op-center">
+        <div className="op-error__card">
+          <span className="ms" aria-hidden="true">cloud_off</span>
+          <h2>{t('fin.errorTitle')}</h2>
+          <p>{t('dash.errorBody')}</p>
+          <button type="button" className="op-btn-primary" onClick={() => location.reload()}><span className="ms" aria-hidden="true">refresh</span>{t('dash.retry')}</button>
+        </div>
+      </div></section>
+    )
+  }
+
+  const {
+    caBrut, commissionGrubano, verseAuxCreateurs, remisesFinancees, netResto,
+    ordersTotal,
+  } = data
+
+  // ── empty (no transaction in the window) ──
+  if (ordersTotal === 0) {
+    return (
+      <section>
+        <div className="op-dash__head">
+          <div><h1 className="op-dash__title">{t('fin.title')}</h1><p className="op-dash__sub">{dateLabel}</p></div>
+        </div>
+        <div className="op-card"><div className="op-emptyline" style={{ padding: '60px 20px' }}>
+          <span className="ms" aria-hidden="true">payments</span>
+          <b>{t('fin.emptyTitle')}</b>
+          <span>{t('fin.emptyBody')}</span>
+          <Link href="/orders"><span className="ms" aria-hidden="true" style={{ fontSize: 15 }}>receipt_long</span>{t('fin.emptyCta')}</Link>
+        </div></div>
+      </section>
+    )
+  }
+
+  // ── DERIVED FOR DISPLAY ONLY (never mutates a shown amount) ──
+  // Bar / legend proportion straight from the API figures. commissionShare covers
+  // EVERY fee the API deducted (commission + creator cost + funded discounts), so the
+  // green «net» segment matches the API's netResto proportion exactly.
+  const totalFees   = commissionGrubano + verseAuxCreateurs + remisesFinancees
+  const netPct      = caBrut > 0 ? Math.max(0, Math.min(100, (netResto / caBrut) * 100)) : 0
+  const feesPct     = 100 - netPct
+  // Real commission rate from the API amounts — NOT hardcoded. Shown only when meaningful.
+  const commissionRatePct =
+    caBrut > 0 ? (commissionGrubano / caBrut) * 100 : null
+  const rateLabel =
+    commissionRatePct == null
+      ? ''
+      : ` (${commissionRatePct.toLocaleString(locale, { maximumFractionDigits: 1 })}%)`
+
+  const windowLabel = t('fin.windowLabel', { days: data.windowDays })
+
+  // ── loaded ──
+  return (
+    <section>
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('fin.title')}</h1>
+          <p className="op-dash__sub">{windowLabel} · {t('dash.updatedAt')} <span className="mono">{updatedAt}</span></p>
+        </div>
+        <button type="button" className="op-refresh" onClick={() => location.reload()}><span className="ms" aria-hidden="true">refresh</span>{t('dash.refresh')}</button>
       </div>
 
-      <Link href="/premium" className="mt-5 flex items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-accent p-3">
-        <Lock size={14} className="text-primary" />
-        <div className="flex-1">
-          <p className="text-xs font-bold">{t('proTitle')}</p>
-          <p className="text-[11px] text-muted-foreground">{t('proDesc')}</p>
+      {/* ══ CA breakdown (BRUT − frais = NET) — REAL, displayed straight from the API ══ */}
+      <div className="op-row2">
+        <div className="op-card">
+          <div className="op-card__head"><h2><span className="ms" aria-hidden="true">account_balance_wallet</span>{t('fin.breakdownTitle')}</h2><span className="cap">{windowLabel}</span></div>
+          <div className="op-fin__formula">
+            <div className="term gross"><span className="lbl">{t('fin.brutLabel')}</span><b>{eur(caBrut)}</b></div>
+            <span className="op-fin__eq">−</span>
+            <div className="term comm"><span className="lbl">{t('fin.feesLabel')}</span><b>{eur(totalFees)}</b></div>
+            <span className="op-fin__eq">=</span>
+            <div className="term net"><span className="lbl">{t('fin.netLabel')}</span><b>{eur(netResto)}</b></div>
+          </div>
+          <div className="op-fin__bar"><i className="net" style={{ width: `${netPct}%` }} /><i className="comm" style={{ width: `${feesPct}%` }} /></div>
+          <div className="op-fin__legend">
+            <span><i className="sw net" />{t('fin.legendNet', { pct: netPct.toLocaleString(locale, { maximumFractionDigits: 0 }) })}</span>
+            <span><i className="sw comm" />{t('fin.legendFees', { pct: feesPct.toLocaleString(locale, { maximumFractionDigits: 0 }) })}</span>
+          </div>
+          {/* full decomposition — every deducted term, byte-identical from the API */}
+          <div className="op-fin__lines">
+            <div className="op-fin__line minus"><span>{t('fin.commissionLine') + rateLabel}</span><b>−{eur(commissionGrubano)}</b></div>
+            {verseAuxCreateurs > 0 && <div className="op-fin__line minus"><span>{t('fin.creatorsLine')}</span><b>−{eur(verseAuxCreateurs)}</b></div>}
+            {remisesFinancees > 0 && <div className="op-fin__line minus"><span>{t('fin.discountsLine')}</span><b>−{eur(remisesFinancees)}</b></div>}
+          </div>
         </div>
-        <span className="rounded-full bg-primary px-2 py-1 text-[10px] font-bold text-primary-foreground">{t('proBadge')}</span>
-      </Link>
-    </div>
-  )
-}
 
-/* One breakdown line inside the navy hero. */
-function Row({ label, value, tone }: { label: string; value: string; tone?: 'minus' }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-[12px] text-navy-foreground/70">{label}</span>
-      <span className={`text-[13px] font-semibold tabular-nums ${tone === 'minus' ? 'text-destructive' : ''}`}>
-        {value}
-      </span>
-    </div>
+        {/* Prochain versement — NO SEPA/Stripe backend for this page → honest « bientôt » */}
+        <div className="op-card op-fin__next">
+          <div className="op-card__head"><h2><span className="ms" aria-hidden="true">payments</span>{t('fin.nextPayoutTitle')}</h2></div>
+          <div className="body">
+            <div className="amt soon mono">—</div>
+            <div className="when"><span className="ms" aria-hidden="true">schedule</span>{t('fin.nextPayoutSoon')}</div>
+            <div className="acct"><span className="ms" aria-hidden="true">account_balance</span>{t('fin.nextPayoutAcct')}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Échéancier des versements — no payout backend for this page → honest « bientôt » */}
+      <div className="op-card" style={{ marginBottom: 18 }}>
+        <div className="op-card__head"><h2><span className="ms" aria-hidden="true">sync_alt</span>{t('fin.scheduleTitle')}</h2><span className="op-pill soon"><i className="dot" />{t('soon')}</span></div>
+        <div className="op-emptyline">
+          <span className="ms" aria-hidden="true">sync_alt</span>
+          <b>{t('fin.scheduleSoonTitle')}</b>
+          <span>{t('fin.scheduleSoonBody')}</span>
+        </div>
+      </div>
+
+      <div className="op-row2">
+        {/* Journal des transactions — the summary endpoint gives aggregates only (no per-line
+            ledger for this page) → honest « bientôt ». Refund action is drawn INERT (gate-2). */}
+        <div className="op-card">
+          <div className="op-card__head"><h2><span className="ms" aria-hidden="true">receipt_long</span>{t('fin.journalTitle')}</h2><span className="op-pill soon"><i className="dot" />{t('soon')}</span></div>
+          <div className="op-emptyline" style={{ padding: '40px 16px' }}>
+            <span className="ms" aria-hidden="true">receipt_long</span>
+            <b>{t('fin.journalSoonTitle')}</b>
+            <span>{t('fin.journalSoonBody')}</span>
+          </div>
+        </div>
+
+        {/* Factures & relevés — no PDF generation → inert « bientôt » download buttons */}
+        <div className="op-card">
+          <div className="op-card__head"><h2><span className="ms" aria-hidden="true">description</span>{t('fin.invoicesTitle')}</h2><span className="op-pill soon"><i className="dot" />{t('soon')}</span></div>
+          <div className="op-emptyline" style={{ padding: '40px 16px' }}>
+            <span className="ms" aria-hidden="true">description</span>
+            <b>{t('fin.invoicesSoonTitle')}</b>
+            <span>{t('fin.invoicesSoonBody')}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ Refund modal — VISUAL / INERT (gate-2). No Stripe wiring. Confirm just closes. ══ */}
+      <div className={`op-modal-backdrop${refund ? ' open' : ''}`} onClick={(e) => { if (e.target === e.currentTarget) setRefund(false) }}>
+        <div className="op-modal" role="dialog" aria-modal="true">
+          <div className="op-modal__head">
+            <h3>{t('fin.refundTitle')}</h3>
+            <button type="button" className="op-modal__close" onClick={() => setRefund(false)} aria-label={t('fin.refundCancel')}><span className="ms" aria-hidden="true">close</span></button>
+          </div>
+          <div className="op-modal__body">
+            <div className="op-field">
+              <label>{t('fin.refundAmountLabel')}</label>
+              <div className="op-seg">
+                <button type="button" className="is-active">{t('fin.refundTotal')}</button>
+                <button type="button">{t('fin.refundPartial')}</button>
+              </div>
+            </div>
+            <div className="op-field">
+              <label>{t('fin.refundReason')}</label>
+              <select className="op-select" defaultValue="">
+                <option value="" disabled>{t('fin.refundReasonPlaceholder')}</option>
+                <option>{t('fin.refundReason1')}</option>
+                <option>{t('fin.refundReason2')}</option>
+                <option>{t('fin.refundReason3')}</option>
+                <option>{t('fin.refundReason4')}</option>
+              </select>
+            </div>
+            <div className="op-field">
+              <label>{t('fin.refundNote')}</label>
+              <textarea className="op-textarea" placeholder={t('fin.refundNotePlaceholder')} />
+            </div>
+            {/* HONEST: this modal is a preview — no real refund is issued (gate-2). */}
+            <div className="op-callout warn">
+              <span className="ms" aria-hidden="true">info</span>
+              <p>{t('fin.refundSoonNote')}</p>
+            </div>
+          </div>
+          <div className="op-modal__foot">
+            <button type="button" className="op-btn-ghost" onClick={() => setRefund(false)}>{t('fin.refundCancel')}</button>
+            {/* INERT: disabled — no Stripe call until gate-2 (REFUNDS_ENABLED + money review). */}
+            <button type="button" className="op-btn-danger" disabled aria-disabled="true">
+              <span className="ms" aria-hidden="true" style={{ fontSize: 15 }}>undo</span>{t('fin.refundConfirm')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }

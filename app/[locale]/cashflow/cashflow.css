@@ -1,0 +1,132 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /cashflow — operator TREASURY FORECAST content — CD v1 LOT 2 (Notion 390fd2c9-…-fba).
+ * Content-only (the shell lives in components/operator/operator-shell.css). Tokens --op-*
+ * are already defined by the shell → NOT redefined here. The CD data-state / data-horizon
+ * CSS display-toggles are dropped — React renders the correct variant directly.
+ *
+ * 🔒 Presentation only. CÂBLAGE REPORTÉ : il n'existe AUCUN backend de projection réel.
+ * L'écran est rendu en APERÇU HONNÊTE COMPLET — structure dessinée, montants = tiret,
+ * bandeau « Prévision de trésorerie — bientôt visible », TOUT étiqueté estimation. AUCUN
+ * chiffre fabriqué n'est présenté comme réel. Figures → .mono (RTL-safe via la coquille).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* head (shared with dashboard, recopied auto-suffisant) */
+.gb-op .op-cash__topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.gb-op .op-cash__topbar h1{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em}
+.gb-op .op-cash__topbar p{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
+.gb-op .op-refresh{display:flex;align-items:center;gap:7px;background:var(--op-surface);border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:9px 14px;font-size:12.5px;font-weight:700;color:var(--op-text);cursor:pointer;flex-shrink:0}
+.gb-op .op-refresh .ms{font-size:16px;color:var(--op-muted)}
+
+/* shared card (recopied) */
+.gb-op .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+.gb-op .op-card__head{display:flex;align-items:center;gap:9px;padding:15px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .op-card__head h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:14.5px;flex:1;display:flex;align-items:center;gap:7px}
+.gb-op .op-card__head h2 .ms{font-size:17px;color:var(--op-muted-2)}
+.gb-op .op-card__head .cap{font-size:11.5px;color:var(--op-muted);flex-shrink:0}
+.gb-op .op-row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;align-items:start}
+.gb-op .op-row2>.op-card{min-width:0}
+
+/* estimation tag (dashed neutral pill — CD verbatim) */
+.gb-op .tag-estimate{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--op-muted-2);background:var(--op-surface-2);border:1px dashed var(--op-border-strong);border-radius:6px;padding:3px 8px;flex-shrink:0;white-space:nowrap}
+
+/* ═══ preview banner (câblage reporté — honest) ═══ */
+.gb-op .op-cash__preview{display:flex;align-items:flex-start;gap:13px;padding:15px 18px;background:linear-gradient(135deg,var(--op-info-bg),var(--op-surface) 70%);border:1px solid var(--op-info-bd);border-radius:var(--op-r-lg);margin-bottom:18px}
+.gb-op .op-cash__preview .ms{font-size:22px;color:var(--op-info);flex-shrink:0;margin-top:1px}
+.gb-op .op-cash__preview .m{flex:1;min-width:0}
+.gb-op .op-cash__preview b{display:block;font-size:13.5px;font-weight:800;margin-bottom:4px;color:var(--op-text)}
+.gb-op .op-cash__preview p{margin:0;font-size:12.5px;line-height:1.55;color:var(--op-muted)}
+
+/* ═══ hero (solde) — value withheld ═══ */
+.gb-op .op-cash__hero{padding:22px 24px;margin-bottom:18px}
+.gb-op .op-cash__hero .hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.gb-op .op-cash__hero .lbl{font-size:11.5px;font-weight:700;color:var(--op-muted);display:block;margin-bottom:6px}
+.gb-op .op-cash__hero .bal{font-family:var(--op-font-mono);font-weight:800;font-size:34px;letter-spacing:-.02em;direction:ltr;unicode-bidi:isolate;color:var(--op-muted-2)}
+.gb-op .op-cash__hero .asof{display:block;font-size:12px;color:var(--op-muted);margin-top:5px}
+.gb-op .op-cash__hero .hero-top__right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gb-op .op-cash__hero .synthesis{margin-top:18px;display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.55;color:var(--op-text);background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md);padding:14px 16px}
+.gb-op .op-cash__hero .synthesis .ms{font-size:19px;color:var(--op-muted-2);flex-shrink:0;margin-top:1px}
+.gb-op .op-cash__hero .synthesis b{font-weight:700}
+
+/* horizon period switcher (CD verbatim) */
+.gb-op .op-period{display:inline-flex;background:var(--op-surface);border:1px solid var(--op-border-strong);border-radius:var(--op-r-pill);padding:3px;gap:2px}
+.gb-op .op-period button{border:none;background:none;cursor:pointer;font-family:var(--op-font-ui);font-weight:700;font-size:12.5px;color:var(--op-muted);padding:8px 16px;border-radius:var(--op-r-pill)}
+.gb-op .op-period button.is-active{background:linear-gradient(135deg,#3E5A7D,#1B3A5E);color:#fff}
+
+/* ═══ chart (structure drawn, projection = preview illustration) ═══ */
+.gb-op .op-chart__stats{display:flex;gap:28px;padding:14px 18px 0;flex-wrap:wrap}
+.gb-op .op-chart__stats .stat span{display:block;font-size:11px;color:var(--op-muted);margin-bottom:3px}
+.gb-op .op-chart__stats .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:17px;direction:ltr;unicode-bidi:isolate;color:var(--op-muted-2)}
+.gb-op .op-chart__stats .stat .range{display:block;font-size:10.5px;font-weight:600;color:var(--op-muted-2);margin-top:3px;font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-op .op-chart__legend{display:flex;gap:18px;padding:12px 18px 0;flex-wrap:wrap}
+.gb-op .op-chart__legend span{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--op-muted);font-weight:600}
+.gb-op .op-chart__legend .sw{width:14px;height:3px;border-radius:2px;background:linear-gradient(90deg,#3E5A7D,#1B3A5E);flex-shrink:0}
+.gb-op .op-chart__legend .sw.band{background:rgba(46,120,240,.18);border:1px solid rgba(46,120,240,.35);width:16px;height:10px;border-radius:3px}
+.gb-op .op-chart__legend .sw.thr{background:none;border-top:2px dashed var(--op-warning);width:14px;height:0}
+.gb-op .op-chart-wrap{overflow-x:auto;padding:12px 18px 6px}
+.gb-op .op-chart-inner{min-width:560px;position:relative}
+.gb-op .op-chart-inner svg{width:100%;height:auto;display:block}
+.gb-op .op-chart__xaxis{display:flex;justify-content:space-between;padding:4px 20px 16px 46px;font-family:var(--op-font-mono);font-size:10.5px;color:var(--op-muted-2)}
+/* watermark badge over the preview curve */
+.gb-op .op-chart__wm{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:7px;background:var(--op-surface);border:1px dashed var(--op-border-strong);border-radius:var(--op-r-pill);padding:7px 14px;font-size:11.5px;font-weight:800;color:var(--op-muted);box-shadow:var(--op-shadow-card);white-space:nowrap}
+.gb-op .op-chart__wm .ms{font-size:16px;color:var(--op-info)}
+
+/* ═══ runway alert (structure, no fabricated amount) ═══ */
+.gb-op .op-cash__alert{display:flex;align-items:flex-start;gap:14px;padding:16px 18px;background:var(--op-warning-bg);border:1px solid var(--op-warning-bd);border-radius:var(--op-r-lg);margin-bottom:18px}
+.gb-op .op-cash__alert .alert-ic{font-size:24px;color:var(--op-warning);flex-shrink:0;margin-top:1px}
+.gb-op .op-cash__alert .m{flex:1;min-width:0}
+.gb-op .op-cash__alert .m b{display:block;font-size:14px;font-weight:800;margin-bottom:5px;color:var(--op-text)}
+.gb-op .op-cash__alert .m p{margin:0;font-size:12.5px;line-height:1.55;color:var(--op-text)}
+
+/* ═══ entrées / sorties flow rows (structure, amounts withheld) ═══ */
+.gb-op .op-cash__flow{padding:6px}
+.gb-op .op-cash__flow .row{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:var(--op-r-md)}
+.gb-op .op-cash__flow .row .date{width:66px;flex-shrink:0;font-size:11.5px;color:var(--op-muted);line-height:1.3;direction:ltr;unicode-bidi:isolate}
+.gb-op .op-cash__flow .row .m{flex:1;min-width:0}
+.gb-op .op-cash__flow .row .m b{display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-op .op-cash__flow .row .tag-confirmed{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;letter-spacing:.02em;color:var(--op-success);background:var(--op-success-bg);border-radius:6px;padding:2px 7px;margin-top:4px}
+.gb-op .op-cash__flow .row .tag-estimated{display:inline-flex;align-items:center;font-size:9.5px;font-weight:800;letter-spacing:.02em;color:var(--op-muted-2);background:var(--op-surface-2);border:1px dashed var(--op-border-strong);border-radius:6px;padding:2px 7px;margin-top:4px}
+.gb-op .op-cash__flow .row .amt{flex-shrink:0;font-family:var(--op-font-mono);font-weight:700;font-size:13.5px;text-align:end;direction:ltr;unicode-bidi:isolate;color:var(--op-muted-2)}
+.gb-op .op-cash__flow__foot{display:flex;align-items:center;gap:8px;padding:11px 18px;font-size:11.5px;color:var(--op-muted);border-top:1px solid var(--op-border)}
+.gb-op .op-cash__flow__foot .ms{font-size:15px;color:var(--op-muted-2)}
+.gb-op .op-cash__flow__empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:20px 16px 24px}
+.gb-op .op-cash__flow__empty .ms{font-size:26px;color:var(--op-muted-2);margin-bottom:6px}
+.gb-op .op-cash__flow__empty span{font-size:11.5px;color:var(--op-muted);line-height:1.4}
+
+/* error (recopied) */
+.gb-op .op-center{display:flex;align-items:center;justify-content:center;min-height:600px}
+.gb-op .op-error__card{max-width:400px;text-align:center;background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-xl);padding:44px 40px;box-shadow:var(--op-shadow-card)}
+.gb-op .op-error__card .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:16px}
+.gb-op .op-error__card h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:18px}
+.gb-op .op-error__card p{margin:9px 0 22px;font-size:13px;line-height:1.55;color:var(--op-muted)}
+.gb-op .op-btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer}
+
+/* skeleton (recopied) */
+@keyframes op-sk{100%{background-position:-200% 0}}
+.gb-op .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk 1.4s ease-in-out infinite;border-radius:6px;display:block}
+
+/* onboarding (recopied) */
+.gb-op .op-onb__card{max-width:520px;text-align:center;background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-xl);padding:44px 40px;box-shadow:var(--op-shadow-card)}
+.gb-op .op-onb__card img{height:52px;margin-bottom:20px}
+.gb-op .op-onb__card h1{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em}
+.gb-op .op-onb__card p{margin:11px 0 24px;font-size:13.5px;line-height:1.6;color:var(--op-muted)}
+.gb-op .op-onb__cta{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:13px 22px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 10px 22px -10px rgba(242,87,14,.5);margin-bottom:28px}
+.gb-op .op-onb__cta .ms{font-size:19px}
+.gb-op .op-onb__steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;text-align:start}
+.gb-op .op-onb__steps .step{background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md);padding:13px}
+.gb-op .op-onb__steps .n{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--op-text);color:var(--op-surface);font-size:11px;font-weight:800;margin-bottom:8px}
+.gb-op .op-onb__steps b{display:block;font-size:12px;font-weight:700;margin-bottom:2px}
+.gb-op .op-onb__steps span{font-size:10.5px;color:var(--op-muted)}
+
+/* responsive content grids */
+@media (max-width:880px){
+  .gb-op .op-row2{grid-template-columns:1fr}
+  .gb-op .op-onb__steps{grid-template-columns:1fr}
+  .gb-op .op-cash__topbar{flex-direction:column;align-items:flex-start}
+  .gb-op .op-cash__hero{padding:18px}
+  .gb-op .op-cash__hero .bal{font-size:27px}
+  .gb-op .op-cash__hero .hero-top__right{width:100%;justify-content:space-between}
+  .gb-op .op-period{flex:1}
+  .gb-op .op-period button{flex:1;text-align:center}
+  .gb-op .op-chart__stats{gap:18px}
+  .gb-op .op-cash__flow .row .date{width:56px}
+}
