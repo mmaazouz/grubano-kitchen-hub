@@ -2,24 +2,19 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import {
-  Sparkles, Users, Clock, AlertTriangle,
-  ChevronRight, Plus, CalendarDays, Euro, Filter, ShieldCheck,
-  RefreshCw, QrCode, X, ChevronLeft, ChevronRight as ChevRight,
-  Store, Check, Timer, Download, Printer, Loader2, Receipt, Bell, History,
-} from 'lucide-react'
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react'
+import { formatEuros } from '@/lib/format-money'
 import EstablishmentSwitcher, {
   type EstablishmentOption,
 } from '@/components/dashboard/EstablishmentSwitcher'
-import { EmptyState } from '@/components/design-system'
 import TicketPanel from '@/components/tables/TicketPanel'
 import ReservationHistory from '@/components/tables/ReservationHistory'
 import SessionBadge from '@/components/session/SessionBadge'
 import { reservationCode } from '@/lib/reservation-code'
 import { usePolling } from '@/lib/use-polling'
+import '../../app/[locale]/tables/tables.css'
 
-// ── /tables — Agent 13 ─────────────────────────────────────────────────────────
+// ── /tables — Agent 13 / re-skin CD LOT 4 ──────────────────────────────────────
 // The page used to be a single client component (~700 l.) that fetched
 // /api/tables + /api/reservations on the implicit cookie-selected establishment.
 // We turn it into a server-resolved island so:
@@ -29,8 +24,14 @@ import { usePolling } from '@/lib/use-polling'
 //   • the default reservation duration (Agent 2, commit 3d20718) seeds the
 //     modal AND the Config card without any extra round trip.
 //
-// ZÉRO COMPLEXITÉ À N=1 : EstablishmentSwitcher renders NOTHING at ≤1
-// establishment, so the chrome stays unchanged for mono operators.
+// 🔒 RE-SKIN PRESENTATION-ONLY (⚠️ ZONE ARGENT / STRIPE RÉEL). Navy shell owned by
+// OperatorShell; this component renders ONLY the screen content inside op-content.
+// Every fetch / React state / mutation handler (tables CRUD, reservations
+// CRUD+status PATCH, fulfillment config, the manual-capture empreinte via
+// POST/GET /api/reservations/[id]/deposit + Stripe Elements, tickets pay/close)
+// is kept BYTE-IDENTICAL — only the markup is restyled to --op-* + Material
+// Symbols. Acompte/pénalité = Float EUROS via formatEuros; Stripe amounts (cents)
+// stay server-side. Stripe is NEVER simulated. Material Symbols, NOT lucide.
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -370,65 +371,73 @@ export default function TablesShell({
   // ── 0-establishment guard ────────────────────────────────────────────────
   if (!restaurantId) {
     return (
-      <div className="mx-auto max-w-xl px-5 pt-12">
-        <EmptyState
-          emoji="🏪"
-          title={t('noEstabTitle')}
-          description={t('noEstabDesc')}
-        />
-      </div>
+      <section className="op-error"><div className="op-center">
+        <div className="op-error__card">
+          <span className="ms" aria-hidden="true">storefront</span>
+          <h2>{t('noEstabTitle')}</h2>
+          <p>{t('noEstabDesc')}</p>
+        </div>
+      </div></section>
     )
   }
 
-  return (
-    <div className="px-5 pb-8 pt-4 max-w-lg mx-auto md:max-w-3xl">
-      {/* ── Switcher + header ────────────────────────────────────────────── */}
-      <div className="mb-4 flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-display font-bold tracking-tight">Tables</h1>
-          <p className="text-sm text-muted-foreground">Créneaux intelligents &amp; acomptes</p>
-        </div>
-        {/* The switcher renders NOTHING at ≤1 establishment (mono-invisibility),
-            so this slot is empty for the common case. */}
-        <EstablishmentSwitcher establishments={establishments} currentId={currentId} />
-      </div>
+  const dateSub = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    .format(new Date(selectedDate + 'T12:00:00'))
 
-      <div className="mb-4 flex items-center justify-end">
-        <button
-          onClick={() => setAddingRes(true)}
-          disabled={tables.length === 0}
-          className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[11px] font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">
-          <Plus size={13} /> Réservation
-        </button>
+  return (
+    <section className="op-rv">
+      {/* ── Page head : title + switcher + « Nouvelle réservation » ───────── */}
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('pageTitle')}</h1>
+          <p className="op-dash__sub">{dateSub}</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* The switcher renders NOTHING at ≤1 establishment (mono-invisibility). */}
+          <EstablishmentSwitcher establishments={establishments} currentId={currentId} />
+          <button
+            type="button"
+            className="op-btn-add"
+            onClick={() => setAddingRes(true)}
+            disabled={tables.length === 0}
+          >
+            <span className="ms" aria-hidden="true">add</span>{t('newReservation')}
+          </button>
+        </div>
       </div>
 
       {/* Avertissement horaires non bloquant (owner) — la résa est créée. */}
       {hoursWarning && (
-        <div className="mb-4 flex items-start gap-2 rounded-2xl border border-warning/40 bg-warning/10 p-3">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-bold text-foreground">{t('hoursWarningTitle')}</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">{hoursWarning}</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">{t('hoursWarningBody')}</p>
+        <div className="op-warnbanner">
+          <span className="ms" aria-hidden="true">warning</span>
+          <div className="m">
+            <b>{t('hoursWarningTitle')}</b>
+            <p>{hoursWarning}</p>
+            <p>{t('hoursWarningBody')}</p>
           </div>
           <button
             type="button"
+            className="close"
             onClick={() => setHoursWarning(null)}
             aria-label={t('hoursWarningClose')}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-warning/20 hover:text-foreground"
           >
-            <X size={13} />
+            <span className="ms" aria-hidden="true">close</span>
           </button>
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-5 gap-1 rounded-2xl bg-muted p-1">
+      {/* ── tabs ── */}
+      <div className="op-tabs" role="tablist">
         {(['list', 'calendar', 'plan', 'addition', 'setup'] as const).map(k => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`rounded-xl py-2 text-[11px] font-semibold transition ${
-              tab === k ? 'bg-card text-foreground shadow' : 'text-muted-foreground'
-            }`}>
-            {k === 'list' ? 'Liste' : k === 'calendar' ? 'Agenda' : k === 'plan' ? 'Plan' : k === 'addition' ? 'Addition' : 'Config'}
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className={tab === k ? 'is-active' : undefined}
+          >
+            {t(`tab.${k}`)}
           </button>
         ))}
       </div>
@@ -437,19 +446,14 @@ export default function TablesShell({
             you'd add one). Keeps the page honest instead of presenting empty
             agendas / floor plans for a dark-kitchen-only establishment. ── */}
       {tables.length === 0 && tab !== 'setup' ? (
-        <EmptyState
-          emoji="🪑"
-          title={t('noTablesTitle')}
-          description={t('noTablesDesc')}
-          action={
-            <button
-              onClick={() => setTab('setup')}
-              className="inline-flex items-center rounded-grubano-lg bg-grubano-primary px-4 py-2 text-sm font-medium text-white shadow-grubano-cta transition-colors hover:bg-grubano-primaryHover"
-            >
-              {t('noTablesGoSetup')} →
-            </button>
-          }
-        />
+        <div className="op-card"><div className="op-emptyline">
+          <span className="ms" aria-hidden="true">chair_alt</span>
+          <b>{t('noTablesTitle')}</b>
+          <span>{t('noTablesDesc')}</span>
+          <button className="op-btn-primary" onClick={() => setTab('setup')}>
+            {t('noTablesGoSetup')}
+          </button>
+        </div></div>
       ) : (
         <>
           {tab === 'list' && (
@@ -528,7 +532,7 @@ export default function TablesShell({
           onClose={() => setHistoryResId(null)}
         />
       )}
-    </div>
+    </section>
   )
 }
 
@@ -560,6 +564,7 @@ function ListView({
   const td = useTranslations('tables.deposit')
   const tnotif = useTranslations('premium.notif')
   const thist  = useTranslations('premium.history')
+  const locale = useLocale()
   // Confirmation modal state for the no-show capture (real charge).
   const [confirmCapture, setConfirmCapture] = useState<Reservation | null>(null)
   // Per-reservation pending state for action buttons.
@@ -608,186 +613,173 @@ function ListView({
                                .reduce((s, r) => s + r.guests, 0)
   const deposits = reservations.filter(r => r.depositPaid).reduce((s, r) => s + r.depositAmount, 0)
 
+  const dayLabel = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+    .format(new Date(selectedDate + 'T12:00:00'))
+
   return (
     <>
       {/* Date nav */}
-      <div className="mb-4 flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-2.5">
-        <button onClick={prevDay} className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground hover:bg-muted/80">
-          <ChevronLeft size={14} />
+      <div className="day-select">
+        <button type="button" className="nav" onClick={prevDay} aria-label={t('prevDay')}>
+          <span className="ms flip-rtl" aria-hidden="true">chevron_left</span>
         </button>
-        <p className="text-sm font-semibold">
-          {new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(selectedDate + 'T12:00:00'))}
-        </p>
-        <button onClick={nextDay} className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground hover:bg-muted/80">
-          <ChevRight size={14} />
+        <span className="dlabel">{dayLabel}</span>
+        <button type="button" className="nav" onClick={nextDay} aria-label={t('nextDay')}>
+          <span className="ms flip-rtl" aria-hidden="true">chevron_right</span>
         </button>
       </div>
 
       {/* KPIs */}
-      <div className="mb-4 grid grid-cols-3 gap-2">
-        {[
-          { l: 'Réservations', v: String(filtered.length), icon: CalendarDays },
-          { l: 'Couverts',     v: String(guests),          icon: Users        },
-          { l: 'Acomptes',     v: `€${deposits}`,          icon: Euro         },
-        ].map(s => (
-          <div key={s.l} className="rounded-2xl border border-border bg-card p-3 text-center">
-            <s.icon size={14} className="mx-auto text-primary" />
-            <p className="mt-1 text-base font-bold">{s.v}</p>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{s.l}</p>
-          </div>
-        ))}
+      <div className="op-card stat-strip" style={{ marginBottom: 18 }}>
+        <div className="stat"><span className="lbl">{t('kpiReservations')}</span><b className="mono">{filtered.length}</b></div>
+        <div className="stat"><span className="lbl">{t('kpiCovers')}</span><b className="mono">{guests}</b></div>
+        <div className="stat"><span className="lbl">{t('kpiDeposits')}</span><b className="mono">{formatEuros(deposits, locale, { noDecimals: true })}</b></div>
       </div>
 
       {/* Filters */}
-      <div className="mb-3 flex items-center gap-2 overflow-x-auto pb-1">
-        <Filter size={13} className="shrink-0 text-muted-foreground" />
+      <div className="op-filters">
+        <span className="ms lbl-ic" aria-hidden="true">filter_list</span>
         {(['all', 'arrived', 'allergy', 'deposit'] as const).map(k => (
-          <button key={k} onClick={() => setFilter(k)}
-            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition ${
-              filter === k ? 'bg-primary text-primary-foreground' : 'border border-border bg-card text-muted-foreground'
-            }`}>
-            {k === 'all' ? 'Toutes' : k === 'arrived' ? 'Arrivés' : k === 'allergy' ? 'Allergies' : 'Acompte'}
+          <button
+            key={k}
+            type="button"
+            onClick={() => setFilter(k)}
+            className={`op-filter-chip${filter === k ? ' is-active' : ''}`}
+          >
+            {t(`filter.${k}`)}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
-          <RefreshCw size={16} className="animate-spin" /> Chargement…
-        </div>
+        <div className="op-card"><div className="op-emptyline">
+          <span className="ms spin" aria-hidden="true">progress_activity</span>
+          <span>{t('loading')}</span>
+        </div></div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card py-12 text-center">
-          <p className="text-sm text-muted-foreground">Aucune réservation ce jour</p>
-        </div>
+        <div className="op-card"><div className="op-emptyline">
+          <span className="ms" aria-hidden="true">event_busy</span>
+          <b>{t('emptyDayTitle')}</b>
+          <span>{t('emptyDayDesc')}</span>
+        </div></div>
       ) : (
-        <div className="space-y-2">
+        <div className="op-card rv-list">
           {filtered.map(r => {
             const time    = new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
             const endTime = new Date(r.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+            const hasHold = r.status === 'confirmed' && r.depositStatus === 'authorized'
             return (
-              <div key={r.id} className="rounded-2xl border border-border bg-card p-3">
-                <div className="flex items-start gap-3">
-                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-navy text-navy-foreground">
-                    <p className="text-xs font-bold">{time}</p>
-                    <p className="text-[8px] opacity-60">{endTime}</p>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-semibold">{r.customerName}</p>
-                      {/* Brique A — session anchor. Always rendered; for
-                          an 'arrived' service it becomes the clickable
-                          entry into the Addition tab. The badge itself
-                          stays a static visual element when status !==
-                          arrived (no ticket open yet, no link to make). */}
-                      {r.status === 'arrived' ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddition(r.tableId)}
-                          title={tSession('openTableTitle')}
-                          className="cursor-pointer"
-                        >
-                          <SessionBadge reservationId={r.id} />
-                        </button>
-                      ) : (
-                        <SessionBadge reservationId={r.id} />
-                      )}
-                      {r.status === 'arrived' && (
-                        <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-success">Arrivé</span>
-                      )}
-                      {r.status === 'overrun' && (
-                        <span className="rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-warning">Dépassement</span>
-                      )}
-                      {/* Badge « Terminée » (vigilance Agent 14) — session
-                          settled (paid/closed). Discreet, distinct from the
-                          green 'arrived' = session en cours. */}
-                      {r.status === 'completed' && (
-                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
-                          {t('statusCompleted')}
-                        </span>
-                      )}
-                      {/* Bloc D — a connected guest just added a line to this
-                          table; tap to jump into the Addition (acknowledges). */}
-                      {newOrderTables.has(r.tableId) && (r.status === 'arrived' || r.status === 'overrun') && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenAddition(r.tableId)}
-                          className="inline-flex items-center gap-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-bold uppercase text-primary-foreground animate-pulse"
-                        >
-                          <Bell size={9} /> {tnotif('newClientOrder')}
-                        </button>
-                      )}
-                      {r.depositAmount > 0 && (
-                        <DepositBadge reservation={r} />
-                      )}
-                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                        r.type === 'quick'    ? 'bg-muted text-muted-foreground'
-                        : r.type === 'standard' ? 'bg-warning/20 text-warning'
-                        :                         'bg-primary/15 text-primary'
-                      }`}>
-                        {r.type === 'quick' ? 'Rapide' : r.type === 'standard' ? 'Standard' : 'Complet'}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {r.table.name} · {r.guests} couvert{r.guests > 1 ? 's' : ''} · libère {endTime}
-                    </p>
-                    {r.allergies.length > 0 && (
-                      <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-destructive/10 px-2 py-1 text-[10px] font-semibold text-destructive">
-                        <AlertTriangle size={11} /> {r.allergies.join(', ')}
-                      </div>
-                    )}
-                  </div>
-                  {/* Action column: when the reservation has an ACTIVE
-                      Stripe hold (authorized), show release / capture pair
-                      that the Agent-2 endpoints expose. Otherwise fall back
-                      to the legacy arrival / overrun status updates. Plus a
-                      Bloc G history shortcut on any non-future reservation. */}
-                  <div className="flex flex-col items-end gap-1.5">
-                    {r.status === 'confirmed' && r.depositStatus === 'authorized' ? (
-                      <div className="flex flex-col gap-1">
-                        <button
-                          onClick={() => doRelease(r)}
-                          disabled={pendingId === r.id}
-                          className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground disabled:opacity-60"
-                          title={td('actionArrived')}
-                        >
-                          {pendingId === r.id ? <Loader2 size={11} className="animate-spin" /> : td('actionArrived')}
-                        </button>
-                        <button
-                          onClick={() => setConfirmCapture(r)}
-                          disabled={pendingId === r.id}
-                          className="rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-1.5 text-[10px] font-semibold text-destructive disabled:opacity-60"
-                          title={td('actionNoshow')}
-                        >
-                          {td('actionNoshow')}
-                        </button>
-                      </div>
-                    ) : r.status === 'confirmed' ? (
-                      <button
-                        onClick={() => onUpdateStatus(r.id, 'arrived')}
-                        className="rounded-lg bg-primary px-2.5 py-1.5 text-[10px] font-semibold text-primary-foreground">
-                        {td('actionMarkArrived')}
-                      </button>
-                    ) : r.status === 'arrived' ? (
-                      <button
-                        onClick={() => onUpdateStatus(r.id, 'overrun')}
-                        className="rounded-lg bg-warning/20 px-2.5 py-1.5 text-[10px] font-semibold text-warning">
-                        Dépassement
-                      </button>
-                    ) : null}
-                    {/* Bloc G — archived consumption. Hidden for a still-future
-                        'confirmed' booking (nothing consumed yet). */}
-                    {r.status !== 'confirmed' && (
+              <div key={r.id} className="resv-row">
+                <span className="time mono">{time}<small>{endTime}</small></span>
+                <span className="covers"><span className="ms" aria-hidden="true">person</span>{r.guests}</span>
+                <div className="m">
+                  <b>{r.customerName}</b>
+                  <span>{t('rowMeta', { table: r.table.name, guests: r.guests, release: endTime })}</span>
+                  <div className="badges">
+                    {/* Brique A — session anchor. Always rendered; for an
+                        'arrived' service it becomes the clickable entry into
+                        the Addition tab. */}
+                    {r.status === 'arrived' ? (
                       <button
                         type="button"
-                        onClick={() => onShowHistory(r.id)}
-                        aria-label={thist('title')}
-                        title={thist('title')}
-                        className="grid h-7 w-7 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
+                        onClick={() => onOpenAddition(r.tableId)}
+                        title={tSession('openTableTitle')}
+                        style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
                       >
-                        <History size={13} />
+                        <SessionBadge reservationId={r.id} />
+                      </button>
+                    ) : (
+                      <SessionBadge reservationId={r.id} />
+                    )}
+                    {r.status === 'arrived' && (
+                      <span className="op-pill arrived"><i className="dot" />{t('status.arrived')}</span>
+                    )}
+                    {r.status === 'overrun' && (
+                      <span className="op-pill overrun"><i className="dot" />{t('status.overrun')}</span>
+                    )}
+                    {r.status === 'completed' && (
+                      <span className="op-pill completed"><i className="dot" />{t('statusCompleted')}</span>
+                    )}
+                    {/* Bloc D — a connected guest just added a line to this
+                        table; tap to jump into the Addition (acknowledges). */}
+                    {newOrderTables.has(r.tableId) && (r.status === 'arrived' || r.status === 'overrun') && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddition(r.tableId)}
+                        className="op-pill neworder"
+                      >
+                        <span className="ms" aria-hidden="true">notifications_active</span>{tnotif('newClientOrder')}
                       </button>
                     )}
+                    {r.depositAmount > 0 && (
+                      <DepositBadge reservation={r} />
+                    )}
+                    <span className={`op-pill type-${r.type}`}>{t(`type.${r.type}`)}</span>
                   </div>
+                  {r.allergies.length > 0 && (
+                    <div className="allergy">
+                      <span className="ms" aria-hidden="true">warning</span>{r.allergies.join(', ')}
+                    </div>
+                  )}
+                </div>
+                {/* Action column: when the reservation has an ACTIVE Stripe
+                    hold (authorized), show release / capture pair. Otherwise
+                    fall back to the legacy arrival / overrun status updates.
+                    Plus a Bloc G history shortcut on any non-future res. */}
+                <div className="status-col">
+                  {hasHold ? (
+                    <div className="dep-actions">
+                      <button
+                        type="button"
+                        onClick={() => doRelease(r)}
+                        disabled={pendingId === r.id}
+                        className="op-btn-mini primary"
+                        title={td('actionArrived')}
+                      >
+                        {pendingId === r.id
+                          ? <span className="ms spin" aria-hidden="true">progress_activity</span>
+                          : <><span className="ms" aria-hidden="true">check</span>{td('actionArrived')}</>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmCapture(r)}
+                        disabled={pendingId === r.id}
+                        className="op-btn-mini danger"
+                        title={td('actionNoshow')}
+                      >
+                        {td('actionNoshow')}
+                      </button>
+                    </div>
+                  ) : r.status === 'confirmed' ? (
+                    <button
+                      type="button"
+                      onClick={() => onUpdateStatus(r.id, 'arrived')}
+                      className="op-btn-mini primary"
+                    >
+                      <span className="ms" aria-hidden="true">check</span>{td('actionMarkArrived')}
+                    </button>
+                  ) : r.status === 'arrived' ? (
+                    <button
+                      type="button"
+                      onClick={() => onUpdateStatus(r.id, 'overrun')}
+                      className="op-btn-mini ghost"
+                    >
+                      {t('status.overrun')}
+                    </button>
+                  ) : null}
+                  {/* Bloc G — archived consumption. Hidden for a still-future
+                      'confirmed' booking (nothing consumed yet). */}
+                  {r.status !== 'confirmed' && (
+                    <button
+                      type="button"
+                      onClick={() => onShowHistory(r.id)}
+                      aria-label={thist('title')}
+                      title={thist('title')}
+                      className="icon-btn-sm"
+                    >
+                      <span className="ms" aria-hidden="true">history</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )
@@ -797,8 +789,8 @@ function ListView({
 
       {/* Error pill — used for both release and capture failures. */}
       {actionError && (
-        <p className="mt-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <p className="op-actionerr">
+          <span className="ms" aria-hidden="true">error</span>
           <span>{actionError}</span>
         </p>
       )}
@@ -832,28 +824,22 @@ function DepositBadge({ reservation }: { reservation: Reservation }) {
   switch (reservation.depositStatus) {
     case 'authorized':
       return (
-        <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] font-bold text-warning">
-          {td('depositBadgeAuth', { amount })}
-        </span>
+        <span className="op-pill dep-auth"><span className="mono">{td('depositBadgeAuth', { amount })}</span></span>
       )
     case 'released':
       return (
-        <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] font-bold text-success">
-          {td('depositBadgeRel')}
-        </span>
+        <span className="op-pill dep-rel">{td('depositBadgeRel')}</span>
       )
     case 'captured':
       return (
-        <span className="rounded-full bg-destructive/15 px-1.5 py-0.5 text-[9px] font-bold text-destructive">
-          {td('depositBadgeCap', { amount })}
-        </span>
+        <span className="op-pill dep-cap"><span className="mono">{td('depositBadgeCap', { amount })}</span></span>
       )
     default:
       // Legacy reservations (depositStatus undefined or 'none') — show the
       // historical "acompte" pill so nothing visibly regresses.
       return (
-        <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-primary">
-          {amount}
+        <span className="op-pill dep-legacy">
+          <span className="mono">{amount}</span>
           {reservation.depositPaid ? ' ✓' : ''}
         </span>
       )
@@ -880,33 +866,25 @@ function CaptureConfirmModal({
   )
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-      <div className="w-full max-w-md rounded-t-3xl bg-background p-5 sm:rounded-2xl">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-destructive/15 text-destructive">
-            <AlertTriangle size={15} />
-          </span>
-          <p className="text-base font-bold">{td('actionConfirmNoshowTitle')}</p>
+    <div className="op-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onCancel() }}>
+      <div className="op-modal narrow" role="dialog" aria-modal="true">
+        <div className="op-modal__head">
+          <span className="op-modal__ic danger"><span className="ms" aria-hidden="true">warning</span></span>
+          <h3>{td('actionConfirmNoshowTitle')}</h3>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {td('actionConfirmNoshowBody', { amount })}
-        </p>
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={pending}
-            className="flex-1 rounded-xl border border-border py-2.5 text-sm disabled:opacity-60"
-          >
+        <div className="op-modal__body">
+          <p className="op-modal__text">
+            {td('actionConfirmNoshowBody', { amount })}
+          </p>
+        </div>
+        <div className="op-modal__foot">
+          <button type="button" className="op-btn-ghost" onClick={onCancel} disabled={pending}>
             {td('actionCancel')}
           </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={pending}
-            className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-bold text-destructive-foreground disabled:opacity-60"
-          >
-            {pending ? <Loader2 size={14} className="mx-auto animate-spin" /> : td('actionConfirm')}
+          <button type="button" className="op-btn-danger" onClick={onConfirm} disabled={pending}>
+            {pending
+              ? <span className="ms spin" aria-hidden="true">progress_activity</span>
+              : td('actionConfirm')}
           </button>
         </div>
       </div>
@@ -924,6 +902,7 @@ function CalendarView({
   selectedDate: string
   onDateChange: (d: string) => void
 }) {
+  const t = useTranslations('tables')
   const hours      = ['17h', '18h', '19h', '20h', '21h', '22h']
   const tableNames = tables.length > 0 ? tables.map(t => t.name) : ['T1', 'T2', 'Terrasse', 'Bar', 'Salon']
 
@@ -945,56 +924,64 @@ function CalendarView({
     onDateChange(d.toISOString().split('T')[0])
   }
 
+  const dayLabel = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' })
+    .format(new Date(selectedDate + 'T12:00:00'))
+
+  const activeCount = reservations.filter(r => r.status !== 'cancelled').length
+  const covers = reservations.filter(r => r.status !== 'cancelled').reduce((s, r) => s + r.guests, 0)
+
   return (
     <>
-      <div className="mb-3 flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-2.5">
-        <button onClick={prevDay} className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><ChevronLeft size={14} /></button>
-        <p className="text-sm font-semibold">
-          {new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' }).format(new Date(selectedDate + 'T12:00:00'))}
-        </p>
-        <button onClick={nextDay} className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-muted-foreground"><ChevRight size={14} /></button>
+      <div className="day-select">
+        <button type="button" className="nav" onClick={prevDay} aria-label={t('prevDay')}>
+          <span className="ms flip-rtl" aria-hidden="true">chevron_left</span>
+        </button>
+        <span className="dlabel">{dayLabel}</span>
+        <button type="button" className="nav" onClick={nextDay} aria-label={t('nextDay')}>
+          <span className="ms flip-rtl" aria-hidden="true">chevron_right</span>
+        </button>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card p-3">
-        <table className="w-full text-[11px]">
-          <thead>
-            <tr className="text-muted-foreground">
-              <th className="px-1 py-1 text-left">Table</th>
-              {hours.map(h => <th key={h} className="px-1 py-1 text-center font-semibold">{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {tableNames.map(t => (
-              <tr key={t} className="border-t border-border">
-                <td className="py-2 pr-2 font-semibold">{t}</td>
-                {hours.map(h => {
-                  const isOcc = occupied[t]?.some(o => o === h || o.startsWith(h.replace('h', '')))
-                  return (
-                    <td key={h} className="px-1 py-1">
-                      <div className={`h-7 rounded-md ${isOcc ? 'bg-primary/80' : 'bg-success/20'}`} />
-                    </td>
-                  )
-                })}
+      <div className="op-card">
+        <div className="op-card__head"><h2><span className="ms" aria-hidden="true">calendar_view_week</span>{t('agendaTitle')}</h2></div>
+        <div className="agenda-wrap">
+          <table className="agenda">
+            <thead>
+              <tr>
+                <th className="col-table">{t('agendaTableCol')}</th>
+                {hours.map(h => <th key={h} className="mono">{h}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mt-3 flex items-center gap-4 text-[10px] text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-success/20" /> Libre</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-primary/80" /> Réservé</span>
+            </thead>
+            <tbody>
+              {tableNames.map(tn => (
+                <tr key={tn}>
+                  <td className="cell-table">{tn}</td>
+                  {hours.map(h => {
+                    const isOcc = occupied[tn]?.some(o => o === h || o.startsWith(h.replace('h', '')))
+                    return (
+                      <td key={h}>
+                        <div className={`slot${isOcc ? ' busy' : ''}`} />
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="agenda-legend">
+          <span><i className="free" />{t('legendFree')}</span>
+          <span><i className="busy" />{t('legendBooked')}</span>
+        </div>
       </div>
 
       {reservations.length > 0 && (
-        <div className="mt-4 rounded-2xl border border-primary/30 bg-accent p-3.5">
-          <div className="flex items-center gap-2">
-            <Sparkles size={13} className="text-primary" />
-            <p className="text-[11px] font-bold text-foreground">Résumé du service</p>
+        <div className="agenda-summary">
+          <span className="ms" aria-hidden="true">auto_awesome</span>
+          <div className="m">
+            <b>{t('serviceSummary')}</b>
+            <span>{t('serviceSummaryBody', { count: activeCount, covers })}</span>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {reservations.filter(r => r.status !== 'cancelled').length} réservation{reservations.length > 1 ? 's' : ''} ·{' '}
-            {reservations.filter(r => r.status !== 'cancelled').reduce((s, r) => s + r.guests, 0)} couverts prévus
-          </p>
         </div>
       )}
     </>
@@ -1016,6 +1003,7 @@ function FloorPlanView({
   /** Bloc G — open the archived-consumption view for a reservation. */
   onShowHistory:  (reservationId: string) => void
 }) {
+  const t = useTranslations('tables')
   const tSession = useTranslations('session')
   const tnotif   = useTranslations('premium.notif')
   const thist    = useTranslations('premium.history')
@@ -1053,68 +1041,50 @@ function FloorPlanView({
   ]
 
   return (
-    <>
-      <div className="mb-3 flex items-center gap-3 text-[11px]">
-        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success" /> Libre</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /> Réservée</span>
-      </div>
-
-      <div className="relative h-64 overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted/30">
-        <div className="absolute left-2 top-2 rounded-lg bg-card/80 px-2 py-1 text-[9px] font-semibold uppercase text-muted-foreground">
-          Salle principale
-        </div>
-        {displayTables.map(t => {
-          const booked  = bookedIds.has(t.id)
-          const arrived = arrivedByTable.get(t.id)
+    <div className="op-card">
+      <div className="op-card__head"><h2><span className="ms" aria-hidden="true">table_restaurant</span>{t('floorTitle')}</h2></div>
+      <div className="floor-grid">
+        {displayTables.map(tb => {
+          const booked  = bookedIds.has(tb.id)
+          const arrived = arrivedByTable.get(tb.id)
+          const cls = arrived ? 'occupied' : booked ? 'reserved' : 'free'
           return (
             <button
-              key={t.id}
-              onClick={() => setSelected(t.id)}
-              style={{ left: `${t.x}%`, top: `${t.y}%` }}
-              className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-xl border-2 px-2 py-1.5 text-[10px] font-bold shadow-sm transition ${
-                booked
-                  ? 'border-primary/60 bg-primary/15 text-primary'
-                  : 'border-success bg-success/15 text-success'
-              } ${selected === t.id ? 'ring-2 ring-primary' : ''}`}>
+              key={tb.id}
+              type="button"
+              onClick={() => setSelected(tb.id)}
+              className={`table-cell ${cls}${selected === tb.id ? ' is-selected' : ''}`}
+            >
               {/* Bloc D — pulsing dot when a guest just ordered on this table. */}
-              {newOrderTables.has(t.id) && (
-                <span
-                  title={tnotif('newClientOrder')}
-                  className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground shadow animate-pulse"
-                >
-                  <Bell size={9} />
+              {newOrderTables.has(tb.id) && (
+                <span className="neworder-dot" title={tnotif('newClientOrder')}>
+                  <span className="ms" aria-hidden="true">notifications_active</span>
                 </span>
               )}
-              {t.name}
-              <span className="block text-[8px] font-normal opacity-70">{t.seats} pl.</span>
-              {/* Session anchor: the arrived service's short code.
-                  Shown directly on the tile so the operator can spot the
-                  active session at a glance. Tapping the tile selects it
-                  (legacy); the panel below offers the "Voir l'addition"
-                  click-through. */}
+              <b>{tb.name}</b>
+              <span className="cap mono">{t('seatsShort', { n: tb.seats })}</span>
+              {/* Session anchor: the arrived service's short code. */}
               {arrived && (
-                <span className="mt-1 inline-block rounded-full bg-white/80 px-1.5 py-0.5 font-mono text-[8px] tracking-wider text-primary">
-                  {reservationCode(arrived.id)}
-                </span>
+                <span className="code">{reservationCode(arrived.id)}</span>
               )}
             </button>
           )
         })}
       </div>
+      <div className="floor-legend">
+        <span><i style={{ background: 'var(--op-success)' }} />{t('legendFreeTable')}</span>
+        <span><i style={{ background: 'var(--op-danger)' }} />{t('legendOccupied')}</span>
+        <span><i style={{ background: 'var(--op-warning)' }} />{t('legendReserved')}</span>
+      </div>
 
       {sel && (
-        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold">{sel.name}</p>
-              <p className="text-[11px] text-muted-foreground">
-                {sel.seats} places · {selBooked ? 'Réservée' : 'Disponible'}
-              </p>
-              {/* Brique A: when the selected table has an arrived service,
-                  surface its session code as the panel's anchor + offer the
-                  "Voir l'addition" jump. */}
+        <div className="floor-detail">
+          <div className="floor-detail__head">
+            <div className="m">
+              <b>{sel.name}</b>
+              <span>{t('floorDetailMeta', { seats: sel.seats, state: selBooked ? t('stateReserved') : t('stateAvailable') })}</span>
               {selArrived && (
-                <div className="mt-2 flex items-center gap-2">
+                <div className="sess">
                   <SessionBadge reservationId={selArrived.id} variant="large" />
                 </div>
               )}
@@ -1124,33 +1094,32 @@ function FloorPlanView({
                 type="button"
                 onClick={() => onOpenAddition(sel.id)}
                 title={tSession('openTableTitle')}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground"
+                className="op-btn-mini primary"
               >
-                <Receipt size={13} /> {tSession('openTableTitle')}
+                <span className="ms" aria-hidden="true">receipt_long</span>{tSession('openTableTitle')}
               </button>
             ) : (
-              <button className="grid h-10 w-10 place-items-center rounded-xl bg-navy text-navy-foreground">
-                <QrCode size={16} />
-              </button>
+              <span className="icon-btn-sm"><span className="ms" aria-hidden="true">qr_code_2</span></span>
             )}
           </div>
           {selRes.length > 0 && (
-            <div className="mt-3 space-y-1">
+            <div className="floor-detail__resv">
               {selRes.map(r => (
-                <div key={r.id} className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] text-muted-foreground">
-                    {new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} – {r.customerName} · {r.guests} pers.
-                  </p>
-                  {/* Bloc G — archived consumption for this reservation. */}
+                <div key={r.id} className="r">
+                  <span>{t('floorResvLine', {
+                    time: new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                    name: r.customerName,
+                    guests: r.guests,
+                  })}</span>
                   {r.status !== 'confirmed' && (
                     <button
                       type="button"
                       onClick={() => onShowHistory(r.id)}
                       aria-label={thist('title')}
                       title={thist('title')}
-                      className="grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
+                      className="icon-btn-sm"
                     >
-                      <History size={11} />
+                      <span className="ms" aria-hidden="true">history</span>
                     </button>
                   )}
                 </div>
@@ -1159,7 +1128,7 @@ function FloorPlanView({
           )}
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -1242,11 +1211,6 @@ function SetupView({
     }
   }
 
-  const currencyFmt = useMemo(
-    () => new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
-    [locale],
-  )
-
   // ── Default reservation duration (Agent 2 endpoint, commit 3d20718) ────────
   // Lit + écrit GET/POST /api/restaurants/[id]/fulfillment
   // .defaultReservationDurationMin (Zod 15..600). Initialement seeded server-
@@ -1317,98 +1281,75 @@ function SetupView({
   }
 
   return (
-    <div className="space-y-4">
-      {/* ── Default reservation duration ─────────────────────────────────────
-          C'est le défaut auto-rempli dans la modale « Nouvelle réservation ».
-          3 presets sobres (1 h / 1 h 30 / 2 h) + un input numérique pour un
-          réglage fin (step 15). Save immédiat (no submit button) — le pill
-          « Enregistré » confirme, l'erreur s'affiche sobrement. */}
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <div className="flex items-center gap-2">
-          <Timer size={14} className="text-primary" />
-          <h3 className="text-sm font-bold">{t('durationTitle')}</h3>
-          {durSaving && <RefreshCw size={11} className="ms-auto animate-spin text-muted-foreground" />}
-          {!durSaving && durSavedAt && (
-            <span className="ms-auto inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-success">
-              <Check size={9} /> {t('durationSavedShort')}
-            </span>
-          )}
-        </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">{t('durationDesc')}</p>
-
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          {presets.map((p) => {
-            const active = dur === p.min
-            return (
-              <button
-                key={p.min}
-                type="button"
-                onClick={() => saveDuration(p.min)}
-                disabled={durSaving}
-                aria-pressed={active}
-                className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-60 ${
-                  active
-                    ? 'bg-primary text-primary-foreground'
-                    : 'border border-border bg-card text-muted-foreground hover:border-primary hover:text-primary'
-                }`}
-              >
-                {p.label}
-              </button>
-            )
-          })}
-          <div className="ms-1 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1">
-            <input
-              type="number"
-              min={15}
-              max={600}
-              step={15}
-              value={dur}
-              onChange={(e) => setDur(Number(e.target.value))}
-              onBlur={(e) => saveDuration(Number(e.target.value))}
-              disabled={durSaving}
-              aria-label={t('durationLabel')}
-              className="w-12 bg-transparent text-center text-[11px] font-bold text-foreground focus:outline-none disabled:opacity-60"
-            />
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              {t('durationUnit')}
-            </span>
+    <div className="op-setup">
+      {/* ── Default reservation duration ── */}
+      <div className="op-card">
+        <div className="op-setup__body">
+          <div className="op-setup__title">
+            <span className="ms" aria-hidden="true">timer</span>{t('durationTitle')}
+            {durSaving && <span className="ms savingic" aria-hidden="true">progress_activity</span>}
+            {!durSaving && durSavedAt && (
+              <span className="saved"><span className="ms" aria-hidden="true">check</span>{t('durationSavedShort')}</span>
+            )}
           </div>
+          <p className="op-setup__desc">{t('durationDesc')}</p>
+
+          <div className="op-presets">
+            {presets.map((p) => {
+              const active = dur === p.min
+              return (
+                <button
+                  key={p.min}
+                  type="button"
+                  onClick={() => saveDuration(p.min)}
+                  disabled={durSaving}
+                  aria-pressed={active}
+                  className={`op-preset${active ? ' is-active' : ''}`}
+                >
+                  {p.label}
+                </button>
+              )
+            })}
+            <div className="op-num">
+              <input
+                type="number"
+                min={15}
+                max={600}
+                step={15}
+                value={dur}
+                onChange={(e) => setDur(Number(e.target.value))}
+                onBlur={(e) => saveDuration(Number(e.target.value))}
+                disabled={durSaving}
+                aria-label={t('durationLabel')}
+              />
+              <span>{t('durationUnit')}</span>
+            </div>
+          </div>
+
+          <p className="op-setup__hint">{t('durationHint')}</p>
+
+          {durError && <p className="op-setup__err">{durError}</p>}
         </div>
-
-        <p className="mt-3 text-[10px] text-muted-foreground">{t('durationHint')}</p>
-
-        {durError && (
-          <p className="mt-2 rounded-lg bg-destructive/10 px-2 py-1 text-[10px] text-destructive">
-            {durError}
-          </p>
-        )}
       </div>
 
       {/* ── No-show protection — single field wired to
-            Restaurant.defaultDepositAmount (Agent 14 bc99eaf). The previous
-            two-slider card was UI-only with no persistence; Mohammed's
-            decision is ONE amount, penalty = 100% of the hold. ─────────── */}
-      <div className="rounded-2xl border border-border bg-card p-4">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={14} className="text-primary" />
-          <h3 className="text-sm font-bold">{tn('sectionTitle')}</h3>
-          {depositSaving && <RefreshCw size={11} className="ms-auto animate-spin text-muted-foreground" />}
-          {!depositSaving && depositSavedAt && (
-            <span className="ms-auto inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-success">
-              <Check size={9} /> {tn('savedShort')}
-            </span>
-          )}
-          {!depositSaving && !depositSavedAt && deposit === 0 && (
-            <span className="ms-auto inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-              {tn('disabledLabel')}
-            </span>
-          )}
-        </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">{tn('intro')}</p>
+            Restaurant.defaultDepositAmount (Agent 14 bc99eaf). ── */}
+      <div className="op-card">
+        <div className="op-setup__body">
+          <div className="op-setup__title">
+            <span className="ms" aria-hidden="true">verified_user</span>{tn('sectionTitle')}
+            {depositSaving && <span className="ms savingic" aria-hidden="true">progress_activity</span>}
+            {!depositSaving && depositSavedAt && (
+              <span className="saved"><span className="ms" aria-hidden="true">check</span>{tn('savedShort')}</span>
+            )}
+            {!depositSaving && !depositSavedAt && deposit === 0 && (
+              <span className="disabled-tag">{tn('disabledLabel')}</span>
+            )}
+          </div>
+          <p className="op-setup__desc">{tn('intro')}</p>
 
-        <div className="mt-4">
-          <label className="text-[11px] font-semibold">{tn('depositLabel')}</label>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <label className="op-setup__label">{tn('depositLabel')}</label>
+          <div className="op-presets">
             {[0, 10, 15, 20].map((preset) => {
               const active = deposit === preset
               return (
@@ -1418,11 +1359,7 @@ function SetupView({
                   onClick={() => saveDeposit(preset)}
                   disabled={depositSaving || !depositLoaded}
                   aria-pressed={active}
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-60 ${
-                    active
-                      ? 'bg-primary text-primary-foreground'
-                      : 'border border-border bg-card text-muted-foreground hover:border-primary hover:text-primary'
-                  }`}
+                  className={`op-preset${active ? ' is-active' : ''}`}
                 >
                   {preset === 0 ? '0' : `${preset}€`}
                 </button>
@@ -1430,7 +1367,7 @@ function SetupView({
             })}
             {/* Numeric input — save on blur so the operator can type freely
                 without firing a POST on every keystroke. */}
-            <div className="ms-1 inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1">
+            <div className="op-num">
               <input
                 type="number"
                 min={0}
@@ -1441,52 +1378,42 @@ function SetupView({
                 onBlur={(e) => saveDeposit(Number(e.target.value))}
                 disabled={depositSaving || !depositLoaded}
                 aria-label={tn('depositLabel')}
-                className="w-14 bg-transparent text-center text-[11px] font-bold text-foreground focus:outline-none disabled:opacity-60"
               />
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">€</span>
+              <span>€</span>
             </div>
           </div>
-          <p className="mt-2 text-[10px] text-muted-foreground">{tn('depositHint')}</p>
-        </div>
+          <p className="op-setup__hint">{tn('depositHint')}</p>
 
-        <p className="mt-3 text-[10px] font-semibold text-destructive">
-          {tn('penaltyNote')}
-        </p>
+          <p className="op-setup__penalty">{tn('penaltyNote')}</p>
 
-        <p className="mt-3 rounded-lg bg-muted p-2 text-[10px] text-muted-foreground">
-          {deposit === 0
-            ? tn('customerSeesNone')
-            : tn('customerSeesPrefix', { amount: deposit })}
-        </p>
-
-        {depositError && (
-          <p className="mt-2 rounded-lg bg-destructive/10 px-2 py-1 text-[10px] text-destructive">
-            {depositError}
+          <p className="op-setup__mininote">
+            {deposit === 0
+              ? tn('customerSeesNone')
+              : tn('customerSeesPrefix', { amount: deposit })}
           </p>
-        )}
+
+          {depositError && <p className="op-setup__err">{depositError}</p>}
+        </div>
       </div>
 
       {/* Table list */}
       {tables.length > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            {tables.length} table{tables.length > 1 ? 's' : ''} configurée{tables.length > 1 ? 's' : ''}
-          </p>
-          <div className="space-y-1.5">
-            {tables.map(t => (
-              <div key={t.id} className="flex items-center gap-2 text-[12px]">
-                <span className="font-semibold">{t.name}</span>
-                <span className="text-muted-foreground">· {t.seats} places</span>
-              </div>
-            ))}
+        <div className="op-card">
+          <div className="op-setup__body">
+            <p className="op-setup__count">{t('tablesConfigured', { n: tables.length })}</p>
+            <div className="op-tablelist">
+              {tables.map(tb => (
+                <div key={tb.id} className="row">
+                  <b>{tb.name}</b>
+                  <span>{t('seatsDot', { n: tb.seats })}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── QR codes per table — Agent 2's /t/[tableId] page lives at the same
-            host as the dashboard (app.grubano.com staging, grubano.com prod),
-            so we encode `${window.location.origin}/t/<cuid>` directly. The
-            cuid table id is already non-guessable, no extra token needed. */}
+      {/* ── QR codes per table ── */}
       <QrCodesSection
         tables={tables}
         establishmentName={establishmentName}
@@ -1494,36 +1421,45 @@ function SetupView({
 
       {/* Add table */}
       {!adding ? (
-        <button onClick={() => setAdding(true)}
-          className="flex w-full items-center justify-between rounded-2xl border border-border bg-card p-3 text-sm">
-          <span className="flex items-center gap-2 font-semibold">
-            <Plus size={14} className="text-primary" /> Ajouter une table
-          </span>
-          <ChevronRight size={14} className="text-muted-foreground" />
+        <button type="button" onClick={() => setAdding(true)} className="op-add-row">
+          <span className="lft"><span className="ms" aria-hidden="true">add</span>{t('addTable')}</span>
+          <span className="ms flip-rtl" aria-hidden="true">chevron_right</span>
         </button>
       ) : (
-        <form onSubmit={createTable} className="rounded-2xl border border-border bg-card p-4 space-y-3">
-          <p className="text-sm font-bold">Nouvelle table</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] text-muted-foreground">Nom</label>
-              <input value={newTable.name} onChange={e => setNewTable(n => ({ ...n, name: e.target.value }))}
-                placeholder="Table 7" required
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+        <div className="op-card">
+          <form onSubmit={createTable} className="op-setup__body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="op-setup__title"><span className="ms" aria-hidden="true">add_circle</span>{t('newTable')}</div>
+            <div className="op-field-row">
+              <div className="op-field">
+                <label>{t('tableName')}</label>
+                <input
+                  className="op-input"
+                  value={newTable.name}
+                  onChange={e => setNewTable(n => ({ ...n, name: e.target.value }))}
+                  placeholder={t('tableNamePlaceholder')}
+                  required
+                />
+              </div>
+              <div className="op-field">
+                <label>{t('tableSeats')}</label>
+                <input
+                  className="op-input mono"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={newTable.seats}
+                  onChange={e => setNewTable(n => ({ ...n, seats: Number(e.target.value) }))}
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-[10px] text-muted-foreground">Places</label>
-              <input type="number" min={1} max={30} value={newTable.seats} onChange={e => setNewTable(n => ({ ...n, seats: Number(e.target.value) }))}
-                className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+            <div className="op-modal__foot" style={{ position: 'static', padding: 0, borderTop: 'none' }}>
+              <button type="button" className="op-btn-ghost" onClick={() => setAdding(false)}>{t('cancel')}</button>
+              <button type="submit" className="op-btn-primary" disabled={saving}>
+                {saving ? <span className="ms spin" aria-hidden="true">progress_activity</span> : t('create')}
+              </button>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setAdding(false)} className="flex-1 rounded-xl border border-border py-2.5 text-sm">Annuler</button>
-            <button type="submit" disabled={saving} className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-60">
-              {saving ? '…' : 'Créer'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       )}
     </div>
   )
@@ -1558,86 +1494,69 @@ function QrCodesSection({
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      {/* Section header with the print button on the right */}
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <QrCode size={14} className="text-primary" />
-        <h3 className="text-sm font-bold">{t('title')}</h3>
-        {tables.length > 0 && origin && (
-          <button
-            type="button"
-            onClick={handlePrint}
-            aria-label={t('printAria')}
-            title={t('printAria')}
-            className="ms-auto inline-flex items-center gap-1.5 rounded-xl bg-navy px-3 py-1.5 text-[11px] font-bold text-navy-foreground transition hover:brightness-110"
-          >
-            <Printer size={12} /> {t('printButton')}
-          </button>
-        )}
-      </div>
-      <p className="mb-3 text-[11px] text-muted-foreground">{t('subtitle')}</p>
-
-      {tables.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border bg-background px-3 py-6 text-center text-[11px] text-muted-foreground">
-          {t('noTables')}
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {tables.map((table) => (
-            <QrCard
-              key={table.id}
-              table={table}
-              establishmentName={establishmentName}
-              origin={origin}
-            />
-          ))}
+    <div className="op-card">
+      <div className="op-setup__body">
+        <div className="op-setup__title">
+          <span className="ms" aria-hidden="true">qr_code_2</span>{t('title')}
+          {tables.length > 0 && origin && (
+            <button
+              type="button"
+              onClick={handlePrint}
+              aria-label={t('printAria')}
+              title={t('printAria')}
+              className="op-btn-navy"
+              style={{ marginInlineStart: 'auto' }}
+            >
+              <span className="ms" aria-hidden="true">print</span>{t('printButton')}
+            </button>
+          )}
         </div>
-      )}
+        <p className="op-setup__desc">{t('subtitle')}</p>
 
-      {/* ── Printable A4 sheet ──────────────────────────────────────────────
-          Hidden on screen (`hidden`), revealed only by the @media print rule
-          via `visibility: visible`. The host page chrome (Sidebar, header,
-          rest of the dashboard) is hidden in print via `body * { visibility:
-          hidden }` + an override on the sheet sub-tree. Browser-native
-          window.print() drives it — no PDF library, no external service.
+        {tables.length === 0 ? (
+          <p className="op-qr__empty">{t('noTables')}</p>
+        ) : (
+          <div className="op-qr__grid">
+            {tables.map((table) => (
+              <QrCard
+                key={table.id}
+                table={table}
+                establishmentName={establishmentName}
+                origin={origin}
+              />
+            ))}
+          </div>
+        )}
 
-          Grid: 2 columns × 3 rows ≈ 6 cards per A4 page with comfortable
-          margins; the browser handles page breaks naturally between rows. */}
-      <PrintableQrSheet
-        tables={tables}
-        establishmentName={establishmentName}
-        origin={origin}
-      />
-      {/* Global print rules — small and idempotent (we use unique class
-          names so multiple instances won't fight). */}
-      <style jsx global>{`
-        @media print {
-          @page { size: A4; margin: 12mm; }
-          /* Hide everything by default ... */
-          body * { visibility: hidden !important; }
-          /* ... then reveal only the printable sheet tree. */
-          .grubano-print-sheet, .grubano-print-sheet * { visibility: visible !important; }
-          .grubano-print-sheet {
-            position: absolute !important;
-            inset: 0 !important;
-            width: 100% !important;
-            background: #fff !important;
-            color: #000 !important;
+        {/* ── Printable A4 sheet ── */}
+        <PrintableQrSheet
+          tables={tables}
+          establishmentName={establishmentName}
+          origin={origin}
+        />
+        {/* Global print rules — small and idempotent (we use unique class
+            names so multiple instances won't fight). */}
+        <style jsx global>{`
+          @media print {
+            @page { size: A4; margin: 12mm; }
+            body * { visibility: hidden !important; }
+            .grubano-print-sheet, .grubano-print-sheet * { visibility: visible !important; }
+            .grubano-print-sheet {
+              position: absolute !important;
+              inset: 0 !important;
+              width: 100% !important;
+              background: #fff !important;
+              color: #000 !important;
+            }
+            .grubano-print-card { break-inside: avoid; page-break-inside: avoid; }
           }
-          /* Avoid page break inside a single card. */
-          .grubano-print-card { break-inside: avoid; page-break-inside: avoid; }
-        }
-      `}</style>
+        `}</style>
+      </div>
     </div>
   )
 }
 
 // ── Printable sheet ───────────────────────────────────────────────────────────
-//
-// Renders ONE card per table, sized for A4 (2 cols × 3 rows ≈ 6/page). Each
-// card shows: a large vector-SVG QR (sharp at any zoom), the table name, the
-// establishment name, a small caption ("Scannez avec votre téléphone") and a
-// sober Grubano wordmark. Trim hint via a thin dashed border around each card.
 
 function PrintableQrSheet({
   tables, establishmentName, origin,
@@ -1674,9 +1593,6 @@ function PrintableQrSheet({
                 {establishmentName || '—'}
               </p>
               <p className="text-xl font-bold text-black">{table.name}</p>
-              {/* Square white panel under the QR so the contrast is guaranteed
-                  even on tinted paper. Size large enough for a phone scanner
-                  at arm's length (≈ 45mm = ~170 px at 96 DPI). */}
               <div className="my-1 bg-white p-2">
                 <QRCodeSVG value={url} size={180} level="M" marginSize={0} />
               </div>
@@ -1720,24 +1636,15 @@ function QrCard({
   }
 
   return (
-    <div
-      className={`flex items-center gap-3 rounded-xl border border-border bg-background p-3 ${
-        table.active ? '' : 'opacity-60'
-      }`}
-    >
+    <div className={`op-qr__card${table.active ? '' : ' dim'}`}>
       {/* Crisp SVG QR — vector, the displayed size + the printed size are both
           sharp. The dashboard render uses a smaller box than the printable
           card. */}
-      <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg bg-white p-1">
+      <div className="op-qr__thumb">
         {origin && url ? (
-          <QRCodeSVG
-            value={url}
-            size={72}
-            level="M"
-            marginSize={0}
-          />
+          <QRCodeSVG value={url} size={72} level="M" marginSize={0} />
         ) : (
-          <span className="text-[9px] text-muted-foreground">…</span>
+          <span className="ms" aria-hidden="true">qr_code_2</span>
         )}
       </div>
 
@@ -1745,30 +1652,22 @@ function QrCard({
           the visible SVG so the downloaded image matches what's on screen. */}
       <div aria-hidden className="hidden">
         {origin && url && (
-          <QRCodeCanvas
-            ref={canvasRef}
-            value={url}
-            size={512}
-            level="M"
-            marginSize={2}
-          />
+          <QRCodeCanvas ref={canvasRef} value={url} size={512} level="M" marginSize={2} />
         )}
       </div>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground">{table.name}</p>
-        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
-          {url || '—'}
-        </p>
+      <div className="op-qr__m">
+        <b>{table.name}</b>
+        <span className="url">{url || '—'}</span>
         <button
           type="button"
           onClick={handleDownload}
           disabled={!origin || !url}
           aria-label={t('downloadAria', { name: table.name })}
           title={t('downloadAria', { name: table.name })}
-          className="mt-2 inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-[10px] font-semibold text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+          className="op-qr__dl"
         >
-          <Download size={11} /> {t('downloadPng')}
+          <span className="ms" aria-hidden="true">download</span>{t('downloadPng')}
         </button>
       </div>
     </div>
@@ -1829,10 +1728,7 @@ function NewReservationForm({
   }
 
   // Today's HH:MM — used as the input[type=time]'s `min` when the date is
-  // today. Re-computed every render is cheap. We don't render this on the
-  // server (the form is client-only) so toLocaleTimeString without a fixed
-  // locale is safe — though we pick fr-FR for consistency with the rest of
-  // the page.
+  // today. Re-computed every render is cheap.
   const isToday = form.date === today
   const minTimeForToday = isToday
     ? new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -1847,7 +1743,7 @@ function NewReservationForm({
     // the form has no table to pre-select; block here with a clear message rather
     // than POSTing an empty tableId (which used to come back as "Erreur serveur").
     if (!form.tableId) {
-      setError('Créez ou sélectionnez une table avant de réserver.')
+      setError(t('errorNoTable'))
       return
     }
     // Block past slots BEFORE the round-trip. The server is still the
@@ -1880,7 +1776,7 @@ function NewReservationForm({
     })
     if (!r.ok) {
       const d = await r.json()
-      setError(d.error ?? 'Erreur')
+      setError(d.error ?? t('errorGeneric'))
       setSaving(false)
       return
     }
@@ -1891,97 +1787,132 @@ function NewReservationForm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl bg-background p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-xl bg-muted"><X size={16} /></button>
-          <p className="text-base font-bold">Nouvelle réservation</p>
-          <div className="h-9 w-9" />
+    <div className="op-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="op-modal" role="dialog" aria-modal="true">
+        <div className="op-modal__head">
+          <h3>{t('newReservationTitle')}</h3>
+          <button type="button" className="op-modal__close" onClick={onClose} aria-label={t('cancel')}>
+            <span className="ms" aria-hidden="true">close</span>
+          </button>
         </div>
 
-        <form onSubmit={submit} className="space-y-3">
-          {error && <p className="rounded-xl bg-destructive/10 px-3 py-2 text-[11px] text-destructive">{error}</p>}
+        <form onSubmit={submit}>
+          <div className="op-modal__body">
+            {error && <p className="op-modalerr">{error}</p>}
 
-          <input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))}
-            placeholder="Nom du client" required
-            className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
-
-          <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-            placeholder="Téléphone (optionnel)"
-            className="w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-muted-foreground">Date</label>
-              {/* `min={today}` blocks the date picker from selecting yesterday
-                  or before — the server still re-checks. */}
-              <input type="date" min={today} value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] text-muted-foreground">Heure</label>
-              {/* When the date is today, the time picker's `min` is HH:MM now
-                  so the operator can't pick an already-past time. Browsers
-                  honour `min` on input[type=time] by clamping spinner +
-                  flagging invalid keyboard input. Empty `min` on other dates
-                  lets the operator freely pick any time. */}
-              <input type="time" min={minTimeForToday || undefined} value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-              {slotIsPast && (
-                <p className="mt-1 text-[10px] font-semibold text-destructive">
-                  {t('pastSlotError')}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-muted-foreground">Couverts</label>
-              <input type="number" min={1} max={30} value={form.guests} onChange={e => setForm(f => ({ ...f, guests: Number(e.target.value) }))}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-            </div>
-            <div>
-              <label className="text-[10px] text-muted-foreground">{t('durationLabel')}</label>
-              <input type="number" min={15} max={300} step={15} value={form.duration} onChange={e => setForm(f => ({ ...f, duration: Number(e.target.value) }))}
-                className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-              {/* Sober "libère à HH:MM" preview based on the chosen duration
-                  — coherent with the list/calendar "libère X" labels. */}
-              {releaseTime && (
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  libère à {releaseTime}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {tables.length > 0 && (
-            <div>
-              <label className="text-[10px] text-muted-foreground">Table</label>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {tables.map(t => (
-                  <button key={t.id} type="button" onClick={() => setForm(f => ({ ...f, tableId: t.id }))}
-                    className={`rounded-full px-3 py-1.5 text-[11px] font-bold transition ${
-                      form.tableId === t.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                    }`}>
-                    {t.name} ({t.seats})
-                  </button>
-                ))}
+            <div className="op-field-row">
+              <div className="op-field">
+                <label>{t('customerName')}</label>
+                <input
+                  className="op-input"
+                  value={form.customerName}
+                  onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))}
+                  placeholder={t('customerNamePlaceholder')}
+                  required
+                />
+              </div>
+              <div className="op-field">
+                <label>{t('phone')}</label>
+                <input
+                  className="op-input mono"
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder={t('phonePlaceholder')}
+                />
               </div>
             </div>
-          )}
 
-          {tables.length === 0 && (
-            <p className="rounded-xl bg-muted px-3 py-2 text-[11px] text-muted-foreground">
-              Aucune table pour le moment. Ajoutez une table dans l&apos;onglet Config avant de réserver.
-            </p>
-          )}
+            <div className="op-field-row">
+              <div className="op-field">
+                <label>{t('dateLabel')}</label>
+                {/* `min={today}` blocks the date picker from selecting yesterday
+                    or before — the server still re-checks. */}
+                <input
+                  className="op-input"
+                  type="date"
+                  min={today}
+                  value={form.date}
+                  onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                />
+              </div>
+              <div className="op-field">
+                <label>{t('timeLabel')}</label>
+                {/* When the date is today, the time picker's `min` is HH:MM now. */}
+                <input
+                  className="op-input mono"
+                  type="time"
+                  min={minTimeForToday || undefined}
+                  value={form.time}
+                  onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
+                />
+                {slotIsPast && (
+                  <p className="op-fieldhint danger">{t('pastSlotError')}</p>
+                )}
+              </div>
+            </div>
 
-          <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="flex-1 rounded-xl border border-border py-2.5 text-sm">Annuler</button>
-            <button type="submit" disabled={saving || !form.tableId || slotIsPast}
-              className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60">
-              {saving ? <RefreshCw size={14} className="animate-spin mx-auto" /> : 'Réserver'}
+            <div className="op-field-row">
+              <div className="op-field">
+                <label>{t('coversLabel')}</label>
+                <input
+                  className="op-input mono"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={form.guests}
+                  onChange={e => setForm(f => ({ ...f, guests: Number(e.target.value) }))}
+                />
+              </div>
+              <div className="op-field">
+                <label>{t('durationLabel')}</label>
+                <input
+                  className="op-input mono"
+                  type="number"
+                  min={15}
+                  max={300}
+                  step={15}
+                  value={form.duration}
+                  onChange={e => setForm(f => ({ ...f, duration: Number(e.target.value) }))}
+                />
+                {releaseTime && (
+                  <p className="op-fieldhint">{t('releaseAt', { time: releaseTime })}</p>
+                )}
+              </div>
+            </div>
+
+            {tables.length > 0 && (
+              <div className="op-field">
+                <label>{t('tableLabel')}</label>
+                <div className="op-tablechips">
+                  {tables.map(tb => (
+                    <button
+                      key={tb.id}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, tableId: tb.id }))}
+                      className={`op-tablechip${form.tableId === tb.id ? ' is-on' : ''}`}
+                    >
+                      {t('tableChip', { name: tb.name, seats: tb.seats })}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {tables.length === 0 && (
+              <p className="op-setup__mininote">{t('noTablesModalHint')}</p>
+            )}
+          </div>
+
+          <div className="op-modal__foot">
+            <button type="button" className="op-btn-ghost" onClick={onClose}>{t('cancel')}</button>
+            <button
+              type="submit"
+              className="op-btn-primary"
+              disabled={saving || !form.tableId || slotIsPast}
+            >
+              {saving
+                ? <span className="ms spin" aria-hidden="true">progress_activity</span>
+                : <><span className="ms" aria-hidden="true">check</span>{t('save')}</>}
             </button>
           </div>
         </form>

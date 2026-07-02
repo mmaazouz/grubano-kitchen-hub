@@ -1,19 +1,27 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useTranslations } from 'next-intl'
-import { Plus, Minus, Trash2, Search, Loader2, Receipt, CreditCard, Bell } from 'lucide-react'
+import { useTranslations, useLocale } from 'next-intl'
+import { formatEuros } from '@/lib/format-money'
 import SessionBadge from '@/components/session/SessionBadge'
 import UnpaidAlert from '@/components/tables/UnpaidAlert'
 import InlinePayPanel from '@/components/tables/InlinePayPanel'
 import CloseTableModal from '@/components/tables/CloseTableModal'
 import { usePolling } from '@/lib/use-polling'
 
-// ── TicketPanel (Addition brique 1, Agent 2) ──────────────────────────────────
+// ── TicketPanel (Addition brique 1, Agent 2) — re-skin CD LOT 4 ───────────────
 // Minimal operator UI to manage a table's addition: open a ticket, add dishes
 // from the menu (searchable) or a free line, adjust quantities, remove lines, see
-// the live total. NO payment (brique 2). Talks only to Agent 2's owner-scoped
-// /api/tickets endpoints. Mounted as the "Addition" tab in TablesShell.
+// the live total. Talks only to Agent 2's owner-scoped /api/tickets endpoints.
+// Mounted as the "Addition" tab in TablesShell.
+//
+// 🔒 RE-SKIN PRESENTATION-ONLY (⚠️ ZONE ARGENT). Every fetch / React state /
+// handler is kept BYTE-IDENTICAL: openTicket / addMenuItem / addFreeLine / setQty
+// / voidTicket / cancelLine / closeEmpty and the real payment via <InlinePayPanel />
+// (Stripe Elements — POST /api/tickets/[id]/pay auto-capture) + the traced closure
+// via <CloseTableModal /> (empreinte capture/release). Only the markup is restyled
+// to --op-* + Material Symbols. Amounts = Float EUROS via formatEuros — NEVER
+// recomputed. Stripe amounts stay server-side and are NEVER simulated.
 
 type TItem   = {
   id: string; menuItemId: string | null; name: string; unitPrice: number; quantity: number
@@ -31,8 +39,6 @@ type Ticket  = {
 }
 type MenuRow = { id: string; name: string; price: number; category: string }
 type Table   = { id: string; name: string; seats: number; active: boolean }
-
-const eur = (n: number) => `${n.toFixed(2).replace('.', ',')} €`
 
 export default function TicketPanel({
   tables, selectedTableId, alert, onAlertResolved,
@@ -57,6 +63,8 @@ export default function TicketPanel({
   const tc = useTranslations('tickets.cloture')
   const tcl = useTranslations('premium.closure')
   const tnotif = useTranslations('premium.notif')
+  const locale = useLocale()
+  const eur = (n: number) => formatEuros(n, locale)
   const activeTables = tables.filter(tb => tb.active)
 
   // Resolve the initial pick: the parent-lifted selection wins; otherwise
@@ -306,20 +314,26 @@ export default function TicketPanel({
     : menu
 
   if (activeTables.length === 0) {
-    return <p className="rounded-2xl border border-dashed border-border bg-card py-10 text-center text-sm text-muted-foreground">{t('noTable')}</p>
+    return (
+      <div className="op-tk__empty">
+        <span className="ic"><span className="ms" aria-hidden="true">table_bar</span></span>
+        <p>{t('noTable')}</p>
+      </div>
+    )
   }
 
   const isOpen = ticket?.status === 'open'
 
   return (
-    <div className="space-y-4">
+    <div className="op-tk">
       {/* Table picker */}
-      <div className="flex items-center gap-2">
-        <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{t('selectTable')}</label>
+      <div className="op-tk__picker">
+        <label>{t('selectTable')}</label>
         <select
+          className="op-select"
           value={tableId}
           onChange={e => setTableId(e.target.value)}
-          className="flex-1 rounded-xl border border-border bg-card px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          style={{ flex: 1 }}
         >
           {activeTables.map(tb => (
             <option key={tb.id} value={tb.id}>{tb.name} ({tb.seats})</option>
@@ -327,9 +341,7 @@ export default function TicketPanel({
         </select>
       </div>
 
-      {error && (
-        <p className="rounded-xl bg-destructive/10 px-3 py-2 text-[12px] text-destructive">{error}</p>
-      )}
+      {error && <p className="op-modalerr">{error}</p>}
 
       {/* Brique unpaid-previous — alert + 2 actions. Stays on top of the
           empty state until the previous-service bill is settled or voided. */}
@@ -343,27 +355,31 @@ export default function TicketPanel({
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-12 text-sm text-muted-foreground">
-          <Loader2 size={16} className="animate-spin" /> …
+        <div className="op-tk__empty">
+          <span className="ms spin" aria-hidden="true">progress_activity</span>
         </div>
       ) : !ticket || ticket.status === 'void' ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-card py-10 text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent text-primary"><Receipt size={22} /></span>
+        <div className="op-tk__empty">
+          <span className="ic"><span className="ms" aria-hidden="true">receipt_long</span></span>
           {ticket?.status === 'void' && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{t('statusVoid')}</span>
+            <span className="op-pill void">{t('statusVoid')}</span>
           )}
-          <p className="max-w-xs text-[12px] text-muted-foreground">{t('openHint')}</p>
+          <p>{t('openHint')}</p>
           <button
+            type="button"
             onClick={() => openTicket(false)}
             disabled={pending}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+            className="op-btn-primary"
           >
-            {pending ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} {t('open')}
+            {pending
+              ? <span className="ms spin" aria-hidden="true">progress_activity</span>
+              : <span className="ms" aria-hidden="true">add</span>} {t('open')}
           </button>
           <button
+            type="button"
             onClick={() => openTicket(true)}
             disabled={pending}
-            className="text-[12px] font-semibold text-muted-foreground underline-offset-2 hover:text-primary hover:underline disabled:opacity-60"
+            className="walkin"
           >
             {t('openWalkin')}
           </button>
@@ -371,62 +387,48 @@ export default function TicketPanel({
       ) : (
         <>
           {/* Status + session badge + total */}
-          <div className="flex items-center justify-between gap-2 rounded-2xl border border-border bg-card px-4 py-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${ticket.status === 'paid' ? 'bg-success/15 text-success' : 'bg-primary/15 text-primary'}`}>
+          <div className="op-tk__head">
+            <div className="lft">
+              <span className={`op-pill ${ticket.status === 'paid' ? 'paid' : 'open'}`}>
                 {ticket.status === 'paid' ? t('statusPaid') : t('statusOpen')}
               </span>
-              {/* Session anchor — short code (#A3F2) or walk-in pill. The
-                  operator and the guest cross-check this verbally. */}
+              {/* Session anchor — short code (#A3F2) or walk-in pill. */}
               <SessionBadge reservationId={ticket.reservationId} />
             </div>
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('total')}</p>
-              <p className="text-xl font-bold text-foreground">{eur(ticket.subtotal)}</p>
+            <div className="total">
+              <span className="lbl">{t('total')}</span>
+              <b className="mono">{eur(ticket.subtotal)}</b>
             </div>
           </div>
 
-          {/* ── Bloc D — new client-order banner ─────────────────────────── */}
+          {/* ── Bloc D — new client-order banner ── */}
           {isOpen && newClientLineIds.size > 0 && (
             <button
               type="button"
               onClick={acknowledgeClientOrders}
-              className="flex w-full items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-3 py-2.5 text-left"
+              className="op-tk__banner"
             >
-              <Bell size={14} className="shrink-0 text-primary" />
-              <span className="flex-1 text-[12px] font-bold text-foreground">
-                {tnotif('newClientOrder')}
-              </span>
-              <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
-                {newClientLineIds.size}
-              </span>
+              <span className="ms" aria-hidden="true">notifications_active</span>
+              <b>{tnotif('newClientOrder')}</b>
+              <span className="n">{newClientLineIds.size}</span>
             </button>
           )}
 
-          {/* ── Closure result toast (empreinte settlement) ───────────────── */}
+          {/* ── Closure result toast (empreinte settlement) ── */}
           {closeToast && (
-            <p className="rounded-2xl border border-border bg-card px-3 py-2 text-[12px] text-muted-foreground">
-              {closeToast}
-            </p>
+            <p className="op-tk__toast">{closeToast}</p>
           )}
 
-          {/* ── Brique CLÔTURER LA TABLE ──────────────────────────────────
-              Always-visible CTA so the operator never gets stuck with a
-              ticket that can't be released. items > 0 → "Encaisser & clôturer"
-              (inline Stripe) as the primary path + a secondary "Clôturer sans
-              encaisser" (traced close, deposit choice). items == 0 → "Libérer
-              la table" closes empty directly. Hidden once paid. */}
+          {/* ── Brique CLÔTURER LA TABLE ── */}
           {isOpen && (
-            <div className="rounded-2xl border border-primary/30 bg-primary/5 p-3">
-              <div className="flex items-start gap-2">
-                <CreditCard size={14} className="mt-0.5 shrink-0 text-primary" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-foreground">{tc('closeTitle')}</p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {ticket.items.length > 0 ? tc('closeWithItems') : tc('closeEmpty')}
-                  </p>
+            <div className="op-tk__close">
+              <div className="top">
+                <span className="ms" aria-hidden="true">credit_card</span>
+                <div className="m" style={{ minWidth: 0, flex: 1 }}>
+                  <b>{tc('closeTitle')}</b>
+                  <p>{ticket.items.length > 0 ? tc('closeWithItems') : tc('closeEmpty')}</p>
                   {payingCurrent ? (
-                    <div className="mt-3">
+                    <div style={{ marginTop: 12 }}>
                       <InlinePayPanel
                         ticketId={ticket.id}
                         onPaid={() => {
@@ -437,39 +439,42 @@ export default function TicketPanel({
                       <button
                         type="button"
                         onClick={() => setPayingCurrent(false)}
-                        className="mt-2 text-[11px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        className="walkin"
+                        style={{ marginTop: 8 }}
                       >
                         {tc('cancel')}
                       </button>
                     </div>
                   ) : ticket.items.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
+                    <div className="row">
                       <button
                         type="button"
                         onClick={() => setPayingCurrent(true)}
                         disabled={pending}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[12px] font-bold text-primary-foreground disabled:opacity-60"
+                        className="op-btn-mini primary"
                       >
-                        <CreditCard size={13} /> {tc('closeCta')}
+                        <span className="ms" aria-hidden="true">credit_card</span>{tc('closeCta')}
                       </button>
                       <button
                         type="button"
                         onClick={() => setCloseOpen(true)}
                         disabled={pending}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-[12px] font-bold text-destructive disabled:opacity-60"
+                        className="op-btn-mini danger"
                       >
-                        <Trash2 size={13} /> {tcl('reasonUnpaid')}
+                        <span className="ms" aria-hidden="true">delete</span>{tcl('reasonUnpaid')}
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={closeEmpty}
-                      disabled={pending}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-destructive/40 bg-destructive/5 px-3 py-2 text-[12px] font-bold text-destructive disabled:opacity-60"
-                    >
-                      <Trash2 size={13} /> {tc('releaseTable')}
-                    </button>
+                    <div className="row">
+                      <button
+                        type="button"
+                        onClick={closeEmpty}
+                        disabled={pending}
+                        className="op-btn-mini danger"
+                      >
+                        <span className="ms" aria-hidden="true">delete</span>{tc('releaseTable')}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -478,54 +483,47 @@ export default function TicketPanel({
 
           {/* Lines */}
           {ticket.items.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-border bg-card py-8 text-center text-sm text-muted-foreground">{t('emptyLines')}</p>
+            <p className="op-tk__paidnote" style={{ padding: '18px 0' }}>{t('emptyLines')}</p>
           ) : (
-            <div className="space-y-1.5">
+            <div className="op-tk__lines">
               {ticket.items.map(item => {
                 const isClient = item.addedBy === 'client'
                 const isNew    = newClientLineIds.has(item.id)
                 return (
-                <div
-                  key={item.id}
-                  className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${
-                    isNew ? 'border-primary bg-primary/5' : 'border-border bg-card'
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="truncate text-sm font-semibold text-foreground">{item.name}</p>
-                      {/* Bloc D — client-order tag so the operator distinguishes
-                          what the guest ordered from the app. */}
-                      {isClient && (
-                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-primary">
-                          {tnotif('clientLine')}
-                        </span>
-                      )}
+                  <div key={item.id} className={`op-tk__line${isNew ? ' is-new' : ''}`}>
+                    <div className="m">
+                      <div className="top">
+                        <b>{item.name}</b>
+                        {/* Bloc D — client-order tag. */}
+                        {isClient && <span className="tag">{tnotif('clientLine')}</span>}
+                      </div>
+                      <p className="qtyline mono">{eur(item.unitPrice)} × {item.quantity} = {eur(item.unitPrice * item.quantity)}</p>
+                      {item.notes && <p className="note">“{item.notes}”</p>}
+                      {item.allergies && <p className="allerg">⚠ {item.allergies}</p>}
                     </div>
-                    <p className="text-[11px] text-muted-foreground">{eur(item.unitPrice)} × {item.quantity} = {eur(item.unitPrice * item.quantity)}</p>
-                    {item.notes && <p className="mt-0.5 text-[10px] italic text-muted-foreground">“{item.notes}”</p>}
-                    {item.allergies && <p className="text-[10px] font-semibold text-destructive">⚠ {item.allergies}</p>}
+                    {isOpen && (
+                      <div className="qtyctl">
+                        <button type="button" onClick={() => setQty(item, item.quantity - 1)} disabled={pending} className="stepper" aria-label="−">
+                          <span className="ms" aria-hidden="true">remove</span>
+                        </button>
+                        <span className="q mono">{item.quantity}</span>
+                        <button type="button" onClick={() => setQty(item, item.quantity + 1)} disabled={pending} className="stepper" aria-label="+">
+                          <span className="ms" aria-hidden="true">add</span>
+                        </button>
+                        {/* Bloc D — soft-cancel this line (owner only). */}
+                        <button
+                          type="button"
+                          onClick={() => cancelLine(item)}
+                          disabled={pending}
+                          title={tnotif('cancelLine')}
+                          aria-label={tnotif('cancelLine')}
+                          className="stepper del"
+                        >
+                          <span className="ms" aria-hidden="true">delete</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {isOpen && (
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setQty(item, item.quantity - 1)} disabled={pending}
-                        className="grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50">
-                        <Minus size={13} />
-                      </button>
-                      <span className="w-6 text-center text-sm font-bold">{item.quantity}</span>
-                      <button onClick={() => setQty(item, item.quantity + 1)} disabled={pending}
-                        className="grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50">
-                        <Plus size={13} />
-                      </button>
-                      {/* Bloc D — soft-cancel this line (owner only). */}
-                      <button onClick={() => cancelLine(item)} disabled={pending}
-                        title={tnotif('cancelLine')} aria-label={tnotif('cancelLine')}
-                        className="ms-1 grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground hover:border-destructive hover:text-destructive disabled:opacity-50">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  )}
-                </div>
                 )
               })}
             </div>
@@ -534,58 +532,63 @@ export default function TicketPanel({
           {isOpen && (
             <>
               {/* Add from menu */}
-              <div className="rounded-2xl border border-border bg-card p-3">
-                <div className="mb-2 flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2">
-                  <Search size={14} className="shrink-0 text-muted-foreground" />
+              <div className="op-tk__add">
+                <div className="op-tk__search">
+                  <span className="ms" aria-hidden="true">search</span>
                   <input
                     value={search}
                     onChange={e => setSearch(e.target.value)}
                     placeholder={t('searchPlaceholder')}
-                    className="w-full bg-transparent text-sm focus:outline-none"
                   />
                 </div>
-                <div className="max-h-56 space-y-1 overflow-y-auto">
+                <div className="op-tk__menu">
                   {filteredMenu.length === 0 ? (
-                    <p className="py-3 text-center text-[12px] text-muted-foreground">{t('menuEmpty')}</p>
+                    <p className="empty">{t('menuEmpty')}</p>
                   ) : filteredMenu.map(mi => (
-                    <button key={mi.id} onClick={() => addMenuItem(mi)} disabled={pending}
-                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent disabled:opacity-50">
-                      <span className="truncate">{mi.name}</span>
-                      <span className="ms-2 shrink-0 font-semibold text-primary">{eur(mi.price)}</span>
+                    <button key={mi.id} type="button" onClick={() => addMenuItem(mi)} disabled={pending} className="item">
+                      <span className="nm">{mi.name}</span>
+                      <span className="pr mono">{eur(mi.price)}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* Free line */}
-              <form onSubmit={addFreeLine} className="flex items-end gap-2 rounded-2xl border border-border bg-card p-3">
-                <div className="flex-1">
-                  <label className="text-[10px] uppercase tracking-wider text-muted-foreground">{t('freeTitle')}</label>
-                  <input value={freeName} onChange={e => setFreeName(e.target.value)} placeholder={t('freeNamePh')}
-                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+              <form onSubmit={addFreeLine} className="op-tk__free">
+                <div className="grow">
+                  <label>{t('freeTitle')}</label>
+                  <input
+                    className="op-input"
+                    value={freeName}
+                    onChange={e => setFreeName(e.target.value)}
+                    placeholder={t('freeNamePh')}
+                  />
                 </div>
-                <div className="w-24">
-                  <input value={freePrice} onChange={e => setFreePrice(e.target.value)} inputMode="decimal" placeholder={t('freePricePh')}
-                    className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+                <div className="pw">
+                  <input
+                    className="op-input mono"
+                    value={freePrice}
+                    onChange={e => setFreePrice(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={t('freePricePh')}
+                  />
                 </div>
-                <button type="submit" disabled={pending || !freeName.trim()}
-                  className="rounded-xl bg-navy px-3 py-2 text-sm font-semibold text-navy-foreground disabled:opacity-50">
+                <button type="submit" disabled={pending || !freeName.trim()} className="op-btn-navy" style={{ padding: '10px 14px' }}>
                   {t('addBtn')}
                 </button>
               </form>
 
-              <p className="text-center text-[11px] text-muted-foreground">{t('paidNote')}</p>
+              <p className="op-tk__paidnote">{t('paidNote')}</p>
 
               {/* Void */}
               {confirmVoid ? (
-                <div className="flex items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px]">
-                  <span className="text-destructive">{t('voidConfirm')}</span>
-                  <button onClick={voidTicket} disabled={pending} className="rounded-lg bg-destructive px-2.5 py-1 font-semibold text-white disabled:opacity-50">{t('voidYes')}</button>
-                  <button onClick={() => setConfirmVoid(false)} className="rounded-lg border border-border px-2.5 py-1 font-semibold text-muted-foreground">{t('voidNo')}</button>
+                <div className="op-tk__voidconfirm">
+                  <span className="txt">{t('voidConfirm')}</span>
+                  <button type="button" onClick={voidTicket} disabled={pending} className="yes">{t('voidYes')}</button>
+                  <button type="button" onClick={() => setConfirmVoid(false)} className="no">{t('voidNo')}</button>
                 </div>
               ) : (
-                <button onClick={() => setConfirmVoid(true)}
-                  className="w-full rounded-xl border border-destructive/30 py-2 text-[12px] font-semibold text-destructive">
+                <button type="button" onClick={() => setConfirmVoid(true)} className="op-tk__void">
                   {t('voidBtn')}
                 </button>
               )}
