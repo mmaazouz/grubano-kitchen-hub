@@ -35,6 +35,11 @@ concurrency:
 
 jobs:
   guard:
+    # Only ACT on a real schedule tick or a manual dispatch. GitHub can attribute a
+    # run to a push of this file (before it is on the default branch main, where the
+    # `schedule` actually activates) — this gate makes such push-runs a clean no-op
+    # (all jobs skipped) instead of a spurious guard failure.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       base: ${{ steps.check.outputs.base }}
@@ -44,7 +49,7 @@ jobs:
           BASE: ${{ vars.CRON_TARGET_BASE_URL }}
         run: |
           if [ -z "$BASE" ]; then
-            echo "::error::vars.CRON_TARGET_BASE_URL is not set — refusing to run (no target; will NOT default to prod)."
+            echo "::error::Repo variable CRON_TARGET_BASE_URL is not set. Set it in GitHub → Settings → Secrets and variables → Actions → Variables (e.g. https://app.grubano.com). Refusing to run — this workflow never defaults to prod."
             exit 1
           fi
           echo "Target host: $(printf '%s' "$BASE" | sed -E 's#(https?://[^/]+).*#\1#')"
