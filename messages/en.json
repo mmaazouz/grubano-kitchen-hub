@@ -2703,6 +2703,7 @@
       "errorNetwork": "Network error. Please try again.",
       "errClosedWithOpening": "The restaurant is currently closed — it opens {label}. You can order then.",
       "errClosedNoOpening": "The restaurant is currently closed. Try again during its opening hours.",
+      "errOutOfZone": "This address is outside the restaurant's delivery area. Try another address or pick-up in store.",
       "promoIncentive": "€{amount} away from “{name}”",
       "loyaltyToggleTitle": "Pay with my points",
       "loyaltyBalance": "Balance: {count} pts",

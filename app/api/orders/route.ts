@@ -9,6 +9,7 @@ import { resolveLoyaltyCredit, estimateStripeFeeCents, committedRoyaltyCents } f
 import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { isTipsEnabled, sanitizeTipCents } from '@/lib/tips'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
+import { isDeliveryZoneEnforcementEnabled, checkDeliveryZone } from '@/lib/delivery-zone'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
 import { z } from 'zod'
@@ -115,6 +116,25 @@ export async function POST(req: NextRequest) {
         },
         { status: 409 },
       )
+    }
+
+    // ── Delivery zone (WP-DZONE-01) — flag-gated, default OFF → byte-identical ──
+    // Only DELIVERY orders, only when DELIVERY_ZONE_ENFORCEMENT is ON. Rejects
+    // ONLY when the address geocodes cleanly AND is provably beyond the resto's
+    // deliveryRadius; every uncertainty (resto ungeocoded, no radius, BAN down,
+    // address unresolved) → allowed (checkDeliveryZone is fail-open). When the
+    // flag is OFF this whole block is skipped → NO geocode call, NO new query
+    // (the restaurant row is already loaded), byte-identical to today. `restaurant`
+    // is the full Restaurant row (findFirst, no select) so lat/lng/city/radius are
+    // present. Placed BEFORE order creation so a rejected order writes nothing.
+    if (isDeliveryZoneEnforcementEnabled() && data.fulfillmentType !== 'pickup') {
+      const zone = await checkDeliveryZone(restaurant, data.deliveryAddress)
+      if (!zone.ok) {
+        return NextResponse.json(
+          { error: 'Adresse hors de la zone de livraison de ce restaurant.', code: 'out_of_zone' },
+          { status: 400 },
+        )
+      }
     }
 
     // Calculate totals. minOrder is enforced on the PRE-discount subtotal: the

@@ -2703,6 +2703,7 @@
       "errorNetwork": "Erreur réseau. Veuillez réessayer.",
       "errClosedWithOpening": "Le restaurant est actuellement fermé — il ouvre {label}. Vous pourrez commander à ce moment-là.",
       "errClosedNoOpening": "Le restaurant est actuellement fermé. Réessayez pendant ses horaires d’ouverture.",
+      "errOutOfZone": "Cette adresse est en dehors de la zone de livraison du restaurant. Essayez une autre adresse ou le retrait sur place.",
       "promoIncentive": "Encore {amount} € pour profiter de « {name} »",
       "loyaltyToggleTitle": "Payer avec mes points",
       "loyaltyBalance": "Solde : {count} pts",

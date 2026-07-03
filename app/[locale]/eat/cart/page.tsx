@@ -474,6 +474,12 @@ export default function CartScreen() {
           setError(label ? t('errClosedWithOpening', { label }) : t('errClosedNoOpening'))
           return
         }
+        // WP-DZONE-01 — the address is outside this restaurant's delivery zone
+        // (only ever returned when DELIVERY_ZONE_ENFORCEMENT is ON server-side).
+        if (res.status === 400 && data?.code === 'out_of_zone') {
+          setError(t('errOutOfZone'))
+          return
+        }
         setError(data.error ?? t('errorOrderFailed'))
         return
       }
