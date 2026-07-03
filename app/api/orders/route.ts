@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { rateLimit } from '@/lib/rate-limit'
 import { loadHoursContext, isOpenAtCtx, nextOpeningCtx, nextOpeningLabelFr } from '@/lib/opening-hours'
 import { computeApplicationFee, type CommissionChannel } from '@/lib/commission'
 import { fetchActivePromotions, pickBestPromotion, resolveCodePromo } from '@/lib/promotions'
@@ -77,6 +78,9 @@ async function mockUberDirectDispatch(orderId: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    const limited = rateLimit(req, 'orders', { limitDefault: 30, windowDefault: 60 })
+    if (limited) return limited
+
     const token = await getToken({ req })
     if (!token) {
       return NextResponse.json({ error: 'Authentification requise' }, { status: 401 })

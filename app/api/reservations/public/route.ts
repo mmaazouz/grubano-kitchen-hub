@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { rateLimit } from '@/lib/rate-limit'
 import { authOptions } from '@/lib/auth'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import { reservationCode } from '@/lib/reservation-code'
@@ -51,6 +52,9 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const limited = rateLimit(req, 'reservation_public', { limitDefault: 20, windowDefault: 60 })
+    if (limited) return limited
+
     const body = await req.json().catch(() => null)
     if (!body) {
       return NextResponse.json({ error: 'Corps invalide' }, { status: 400 })

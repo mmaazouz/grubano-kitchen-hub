@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { rateLimit } from '@/lib/rate-limit'
 import { centsPerPoint, pointsToCents } from '@/lib/loyalty'
 
 const TIER_THRESHOLDS = [
@@ -40,6 +41,13 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const explicitEmail = searchParams.get('email')
+
+    // WP-SEC-03 — throttle the ?email= enumeration path (per-IP, before any auth/DB).
+    if (explicitEmail) {
+      const limited = rateLimit(req, 'wallet_email', { limitDefault: 20, windowDefault: 60 })
+      if (limited) return limited
+    }
+
     const token = await getToken({ req })
 
     let email: string | null

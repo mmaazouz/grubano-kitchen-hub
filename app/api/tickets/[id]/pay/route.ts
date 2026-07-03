@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { rateLimit } from '@/lib/rate-limit'
 import {
   createTicketPayment, retrieveIntent, eurosToCents, getPublishableKey,
   updateIntentAmount, cancelIntent, type ConnectRouting,
@@ -44,10 +45,13 @@ function stripeError(err: unknown) {
 // marked that reservation 'arrived'; a walk-in ticket (no reservation) is payable as
 // soon as it is open. The QR walk-in channel is unchanged.
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
   try {
+    const limited = rateLimit(req, 'ticket_pay', { limitDefault: 30, windowDefault: 60 })
+    if (limited) return limited
+
     const ticket = await prisma.tableTicket.findUnique({
       where:  { id: params.id },
       select: {
