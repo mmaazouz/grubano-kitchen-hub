@@ -1,3 +1,15 @@
+// ⚠️ TWO REFUND LIBS EXIST — DO NOT MERGE THEM (see the C-2 gate report, 2026-07-03).
+// THIS FILE, lib/refunds.ts (PLURAL) = the SIMPLE owner-initiated refund path:
+// UNGATED, LIVE today, keyed by paymentIntentId, owner-scoped at the route, ledger
+// written by the charge.refunded webhook. Used by /api/orders/[id]/refund,
+// /api/tickets/[id]/refund and the reservation deposit routes (tickets have NO Order
+// row). The OTHER file, lib/refund.ts (SINGULAR), is the royalty-aware ENGINE, GATED
+// by REFUNDS_ENABLED and keyed by orderId (admin/claims/dispute/webhook rails).
+// Routing these routes through the engine was audited and REJECTED (10 divergences +
+// a data-model wall for tickets + it would take the live owner-refund path dark).
+// Consolidation, if ever wanted, is a post-go-live DESIGN project (P3) — never an
+// in-place refactor. Keep them separate.
+//
 // Refunds (rail financier A5). A0 decision: refunding a payment TAKES BACK
 // Grubano's commission PRO-RATA (refund_application_fee) and, on a routed
 // destination charge, PULLS the funds back from the resto's connected account

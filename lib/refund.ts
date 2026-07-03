@@ -1,5 +1,16 @@
 // ── P4.5-A — Refund money mechanics (the sensitive part) — Agent 49 ──────────────
 //
+// ⚠️ TWO REFUND LIBS EXIST — DO NOT MERGE THEM (see the C-2 gate report, 2026-07-03).
+// THIS FILE, lib/refund.ts (SINGULAR) = the royalty-aware refund ENGINE: GATED by
+// REFUNDS_ENABLED (default OFF), keyed by orderId, does the prorata split + franchise
+// royalty clawback + eager ledger + Refund DB row. Callers: /api/admin/refunds/run,
+// the ghost-order webhook branch, lib/claims, lib/dispute (all gated OFF today).
+// The OTHER file, lib/refunds.ts (PLURAL), is the SIMPLE owner-initiated path: UNGATED,
+// LIVE, keyed by paymentIntentId (orders/tickets/deposits). Do NOT route the owner
+// refund routes through executeRefund — audited & REJECTED (tickets have no Order row;
+// it would take the live path dark; 10 behavioural divergences). Unification = a
+// post-go-live DESIGN project (P3), never an in-place refactor. Keep them separate.
+//
 // Executes a TOTAL or PARTIAL refund of a paid order AT PRORATA: each party gives
 // back the SAME fraction f = refundAmount / chargeTotal of ITS share —
 //   • the restaurant returns f of its net          (Stripe reverse_transfer);
