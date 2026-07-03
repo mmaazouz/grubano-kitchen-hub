@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 
 // ── Mock driver location (replace with real Uber Direct polling) ──────────────
 
@@ -44,12 +45,21 @@ export async function GET(
       return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
     }
 
-    // Consumers can only see their own orders; restaurant/admin can see any
-    const role = token.role as string
+    // A consumer may read ONLY their own order (byte-identical). A staff caller
+    // previously could read ANY order by id (IDOR — leaking deliveryAddress /
+    // paymentMethod / tipCents / loyaltyCredit). Now an operator must OWN the
+    // order's establishment; admin stays superuser. Cross-tenant → 404 (existence
+    // not confirmed). A non-owner consumer still gets 403 here: resolveEstablishmentScope
+    // returns {ok:false,403} for a non-operator role — preserving the old behaviour.
     const isOwner = order.consumerId === token.sub
-    const isStaff = ['restaurant', 'admin'].includes(role)
-    if (!isOwner && !isStaff) {
-      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    if (!isOwner) {
+      const scope = await resolveEstablishmentScope(null)
+      if (!scope.ok) {
+        return NextResponse.json({ error: scope.error }, { status: scope.status })
+      }
+      if (scope.role !== 'admin' && !scope.ownedIds.includes(order.restaurantId)) {
+        return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
+      }
     }
 
     // ── ADDITIVE (P2-TIP) — the courier tip charged at checkout (cents), for the

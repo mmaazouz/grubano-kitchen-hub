@@ -43,8 +43,11 @@ export async function POST(
       },
     })
     if (!order) return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
+    // Consumer-owned route: a foreign order → 404 (not 403), so its existence is
+    // not confirmed (WP-SEC-02). Ownership stays consumerId===token.sub; the paid
+    // branch, sendOnce idempotence and *Cents amounts below are byte-identical.
     if (order.consumerId !== token.sub) {
-      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+      return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
     }
 
     if (order.paymentStatus !== 'paid') {
