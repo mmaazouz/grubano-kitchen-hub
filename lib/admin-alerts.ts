@@ -46,3 +46,30 @@ export async function sendAdminGhostOrderAlert(p: {
     return { status: 'failed' } // never throws — the reconciliation proceeds regardless
   }
 }
+
+/**
+ * WP-OPS-01 — daily digest of orders awaiting ghost-order reconciliation (expired +
+ * captured/flagged). Best-effort, one digest per day (dedupeKey `reconcile:<YYYY-MM-DD>`).
+ * READ-ONLY signal — no money action. Never throws.
+ */
+export async function sendAdminReconcileDigest(p: {
+  count:          number
+  sampleOrderIds: string[]
+  dayKey:         string // YYYY-MM-DD
+}): Promise<{ status: SendStatus }> {
+  try {
+    const to = (process.env.ALERT_EMAIL || '').trim()
+    if (!to) return { status: 'skipped' }
+    const sample = p.sampleOrderIds.map(escHtml).join(', ')
+    const subject = `[Grubano] ${p.count} commande(s) à réconcilier`
+    const html =
+      `<div style="font-family:system-ui,Arial,sans-serif;color:#111827;max-width:520px">`
+      + `<h2 style="font-size:17px">File de réconciliation</h2>`
+      + `<p><b>${p.count}</b> commande(s) expirée(s) encaissée(s) attendent une décision (status « expired », paymentStatus « paid »/« reconcile_manual »). Aucune action automatique n'a été prise.</p>`
+      + `<p style="font-size:13px;color:#6b7280">Échantillon : ${sample || '—'}</p>`
+      + `</div>`
+    return await sendOnce('admin_reconcile_digest', `reconcile:${p.dayKey}`, { to, subject, html })
+  } catch {
+    return { status: 'failed' }
+  }
+}
