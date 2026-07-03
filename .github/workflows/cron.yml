@@ -66,7 +66,8 @@ jobs:
         env:
           BASE: ${{ needs.guard.outputs.base }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: curl -sS -X POST "$BASE/api/email-agent" -H "Authorization: Bearer $CRON_SECRET" -o /dev/null -w "email-agent → HTTP %{http_code}\n"
+        run: |
+          curl -sS -X POST "$BASE/api/email-agent" -H "Authorization: Bearer $CRON_SECRET" -o /dev/null -w "email-agent → HTTP %{http_code}\n"
 
   daily:
     needs: guard
@@ -94,13 +95,17 @@ jobs:
           node scripts/cron/ledger-check-probe.js || echo "ledger probe reported issues (see log)"
           node scripts/cron/creator-earnings-mature.js || echo "earnings maturation non-zero exit (see log)"
       - name: Claims auto-approve (no-op if CLAIMS_ENABLED off)
-        run: curl -sS -X POST "$BASE/api/admin/claims/auto-approve" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-auto-approve → HTTP %{http_code}\n"
+        run: |
+          curl -sS -X POST "$BASE/api/admin/claims/auto-approve" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-auto-approve → HTTP %{http_code}\n"
       - name: Creator payouts (no-op if CREATOR_PAYOUT_ENABLED off)
-        run: curl -sS -X POST "$BASE/api/admin/creator-payouts/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "creator-payouts → HTTP %{http_code}\n"
+        run: |
+          curl -sS -X POST "$BASE/api/admin/creator-payouts/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "creator-payouts → HTTP %{http_code}\n"
       - name: Onboarding nudges (no-op if ONBOARDING_NUDGE_ENABLED off)
-        run: curl -sS -X POST "$BASE/api/admin/onboarding-nudges/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "onboarding-nudges → HTTP %{http_code}\n"
+        run: |
+          curl -sS -X POST "$BASE/api/admin/onboarding-nudges/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "onboarding-nudges → HTTP %{http_code}\n"
       - name: Ghost-order reconciliation sweep (READ-ONLY — list + admin digest, no money action)
-        run: curl -sS "$BASE/api/admin/reconcile-ghost-orders" -H "X-Internal-Token: $TOK" -o /dev/null -w "reconcile-ghost-orders → HTTP %{http_code}\n"
+        run: |
+          curl -sS "$BASE/api/admin/reconcile-ghost-orders" -H "X-Internal-Token: $TOK" -o /dev/null -w "reconcile-ghost-orders → HTTP %{http_code}\n"
 
   monthly:
     needs: guard
@@ -126,4 +131,5 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: node scripts/cron/monthly-invoices.js || echo "monthly invoices non-zero exit (see log)"
       - name: Franchise settlement (no-op if FRANCHISE_SETTLEMENT_ENABLED off)
-        run: curl -sS -X POST "$BASE/api/admin/franchise-settlements/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "franchise-settlement → HTTP %{http_code}\n"
+        run: |
+          curl -sS -X POST "$BASE/api/admin/franchise-settlements/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "franchise-settlement → HTTP %{http_code}\n"
