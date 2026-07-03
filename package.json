@@ -12,6 +12,7 @@
     "test:ci": "vitest run --reporter=dot",
     "test:finance": "vitest run tests/finance-commission.test.ts tests/finance-invoice.test.ts tests/finance-ledger-equation.test.ts --reporter=dot",
     "check:i18n": "node scripts/check-translations.js",
+    "check:flags": "node scripts/check-flags.mjs",
     "translate:i18n": "node scripts/translate-messages.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
