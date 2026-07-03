@@ -142,8 +142,29 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    // Owner-scope the update: only the authenticated restaurant/admin that OWNS the
+    // dish's brand may edit it — previously this route had NO auth, so any caller
+    // could mutate any menu item by id (IDOR). Menu ownership is via Brand.operatorId
+    // (mirrors POST above; NOT establishment-scope — a MenuItem has no restaurantId).
+    const operator = await callerOperator()
+    if (!operator) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+    }
+    if (!['restaurant', 'admin'].includes(operator.role)) {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    }
+
     const body = await req.json()
     const { id, ...data } = updateSchema.parse(body)
+
+    // 404 (not 403) cross-tenant: a foreign dish's existence is not confirmed.
+    const existing = await prisma.menuItem.findUnique({
+      where:  { id },
+      select: { id: true, brand: { select: { operatorId: true } } },
+    })
+    if (!existing || (operator.role !== 'admin' && existing.brand.operatorId !== operator.id)) {
+      return NextResponse.json({ error: 'Plat introuvable' }, { status: 404 })
+    }
 
     const item = await prisma.menuItem.update({
       where: { id },
@@ -163,10 +184,28 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    // Owner-scope the delete (same IDOR fix as PUT: this route had NO auth).
+    const operator = await callerOperator()
+    if (!operator) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+    }
+    if (!['restaurant', 'admin'].includes(operator.role)) {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    }
+
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
 
     if (!id) return NextResponse.json({ error: 'id requis' }, { status: 400 })
+
+    // 404 (not 403) cross-tenant: a foreign dish's existence is not confirmed.
+    const existing = await prisma.menuItem.findUnique({
+      where:  { id },
+      select: { id: true, brand: { select: { operatorId: true } } },
+    })
+    if (!existing || (operator.role !== 'admin' && existing.brand.operatorId !== operator.id)) {
+      return NextResponse.json({ error: 'Plat introuvable' }, { status: 404 })
+    }
 
     await prisma.menuItem.delete({ where: { id } })
 

@@ -47,8 +47,9 @@ async function authorize(menuItemId: string) {
 
   const isOwner = menuItem.brand.operatorId === operator.id
   const isAdmin = operator.role === 'admin'
+  // 404 (not 403) cross-tenant: don't confirm a foreign dish's existence (WP-SEC-02).
   if (!isOwner && !isAdmin) {
-    return { error: NextResponse.json({ error: 'Accès refusé' }, { status: 403 }) }
+    return { error: NextResponse.json({ error: 'Plat introuvable' }, { status: 404 }) }
   }
 
   return { operatorId: operator.id }
