@@ -5254,6 +5254,76 @@
     "viewOrders": "عرض طلباتي",
     "errOrder": "تعذّر إرسال الطلب. حاول مجددًا."
   },
+  "adminShell": {
+    "badge": "ADMIN",
+    "consoleTitle": "لوحة الإدارة",
+    "consoleSub": "Grubano — الإشراف",
+    "notifications": "الإشعارات",
+    "menu": "القائمة",
+    "collapse": "طيّ",
+    "soon": "قريبًا",
+    "group": {
+      "ops": "العمليات",
+      "fin": "المالية",
+      "partners": "الشركاء"
+    },
+    "nav": {
+      "overview": "نظرة عامة",
+      "establishments": "المنشآت",
+      "users": "المستخدمون",
+      "approvals": "الموافقات",
+      "claims": "الشكاوى",
+      "payments": "المدفوعات",
+      "reconciliation": "التسوية",
+      "dac7": "DAC7",
+      "suppliers": "المورّدون",
+      "influencer": "المؤثّرون",
+      "prestataire": "مقدّمو الخدمات",
+      "logistics": "اللوجستيك"
+    },
+    "mnav": {
+      "overview": "نظرة",
+      "approvals": "موافقات",
+      "claims": "شكاوى",
+      "suppliers": "مورّدون",
+      "dac7": "DAC7"
+    }
+  },
+  "adminOverview": {
+    "title": "نظرة عامة",
+    "subtitle": "صحّة منظومة Grubano — آخر 24 ساعة",
+    "readOnly": "للقراءة فقط",
+    "emptyTitle": "لا توجد بيانات بعد",
+    "emptyBody": "ستظهر المؤشّرات بمجرّد أن تسجّل المنصّة نشاطًا.",
+    "kpiRestaurants": "المنشآت النشطة",
+    "kpiOrders": "الطلبات (24 س)",
+    "kpiGmv": "إجمالي المبيعات (24 س)",
+    "kpiUsers": "مستخدمون جدد (7 أيام)",
+    "gmvTitle": "تفصيل إجمالي المبيعات (24 س)",
+    "gmvHint": "الإجمالي المحصّل، موزّعًا بين عمولة Grubano والصافي المحوّل إلى المنشآت.",
+    "gmvGross": "الإجمالي المحصّل",
+    "gmvCommission": "عمولة Grubano",
+    "gmvCommissionPct": "عمولة Grubano ({pct} %)",
+    "gmvNet": "الصافي المحوّل إلى المنشآت",
+    "gmvNone": "لا مداخيل خلال آخر 24 ساعة.",
+    "channelsTitle": "الحجم حسب القناة (24 س)",
+    "channelsHint": "توزيع الطلبات المدفوعة حسب نمط الخدمة.",
+    "channelsNone": "لا طلبات مدفوعة خلال الفترة.",
+    "channel": {
+      "delivery": "توصيل",
+      "pickup": "استلام",
+      "dinein": "في المكان",
+      "reservation": "حجز"
+    },
+    "superviseTitle": "تحت الإشراف",
+    "superviseHint": "قوائم مفتوحة تتطلّب تدخّل فريق المنصّة.",
+    "supApprovals": "منشآت بانتظار الموافقة",
+    "supApprovalsSub": "تسجيلات جديدة للتحقّق منها",
+    "supClaims": "شكاوى مفتوحة",
+    "supClaimsSub": "نزاعات العملاء / المنشآت",
+    "supReconcile": "مدفوعات للتسوية",
+    "supReconcileSub": "تحصيلات متأخّرة (webhook)"
+  },
   "marketplaceCatalog": {
     "back": "السوق",
     "notFoundTitle": "المورّد غير موجود",

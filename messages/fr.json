@@ -5254,6 +5254,76 @@
     "viewOrders": "Voir mes commandes",
     "errOrder": "Impossible d'envoyer la commande. Réessayez."
   },
+  "adminShell": {
+    "badge": "ADMIN",
+    "consoleTitle": "Console Admin",
+    "consoleSub": "Grubano — Supervision",
+    "notifications": "Notifications",
+    "menu": "Menu",
+    "collapse": "Réduire",
+    "soon": "Bientôt",
+    "group": {
+      "ops": "Opérations",
+      "fin": "Finances",
+      "partners": "Partenaires"
+    },
+    "nav": {
+      "overview": "Vue d'ensemble",
+      "establishments": "Établissements",
+      "users": "Utilisateurs",
+      "approvals": "Approbations",
+      "claims": "Réclamations",
+      "payments": "Paiements",
+      "reconciliation": "Réconciliation",
+      "dac7": "DAC7",
+      "suppliers": "Fournisseurs",
+      "influencer": "Influenceurs",
+      "prestataire": "Prestataires",
+      "logistics": "Logistique"
+    },
+    "mnav": {
+      "overview": "Vue",
+      "approvals": "Approb.",
+      "claims": "Litiges",
+      "suppliers": "Fourniss.",
+      "dac7": "DAC7"
+    }
+  },
+  "adminOverview": {
+    "title": "Vue d'ensemble",
+    "subtitle": "Santé de l'écosystème Grubano — dernières 24 heures",
+    "readOnly": "Lecture seule",
+    "emptyTitle": "Pas encore de données",
+    "emptyBody": "Les indicateurs apparaîtront dès que la plateforme enregistrera de l'activité.",
+    "kpiRestaurants": "Établissements actifs",
+    "kpiOrders": "Commandes (24 h)",
+    "kpiGmv": "GMV brut (24 h)",
+    "kpiUsers": "Nouveaux utilisateurs (7 j)",
+    "gmvTitle": "Décomposition du GMV (24 h)",
+    "gmvHint": "Brut encaissé, réparti entre la commission Grubano et le net reversé aux établissements.",
+    "gmvGross": "Brut encaissé",
+    "gmvCommission": "Commission Grubano",
+    "gmvCommissionPct": "Commission Grubano ({pct} %)",
+    "gmvNet": "Net reversé aux établissements",
+    "gmvNone": "Aucun encaissement sur les dernières 24 heures.",
+    "channelsTitle": "Volume par canal (24 h)",
+    "channelsHint": "Répartition des commandes payées selon le mode de service.",
+    "channelsNone": "Aucune commande payée sur la période.",
+    "channel": {
+      "delivery": "Livraison",
+      "pickup": "À emporter",
+      "dinein": "Sur place",
+      "reservation": "Réservation"
+    },
+    "superviseTitle": "À superviser",
+    "superviseHint": "Files ouvertes nécessitant une intervention de l'équipe plateforme.",
+    "supApprovals": "Établissements en attente d'approbation",
+    "supApprovalsSub": "Nouvelles inscriptions à valider",
+    "supClaims": "Réclamations ouvertes",
+    "supClaimsSub": "Litiges clients / établissements",
+    "supReconcile": "Paiements à réconcilier",
+    "supReconcileSub": "Encaissements tardifs (webhook)"
+  },
   "marketplaceCatalog": {
     "back": "Marketplace",
     "notFoundTitle": "Fournisseur introuvable",

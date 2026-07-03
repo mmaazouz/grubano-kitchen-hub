@@ -5254,6 +5254,76 @@
     "viewOrders": "View my orders",
     "errOrder": "Couldn't send the order. Please try again."
   },
+  "adminShell": {
+    "badge": "ADMIN",
+    "consoleTitle": "Admin Console",
+    "consoleSub": "Grubano — Oversight",
+    "notifications": "Notifications",
+    "menu": "Menu",
+    "collapse": "Collapse",
+    "soon": "Soon",
+    "group": {
+      "ops": "Operations",
+      "fin": "Finance",
+      "partners": "Partners"
+    },
+    "nav": {
+      "overview": "Overview",
+      "establishments": "Establishments",
+      "users": "Users",
+      "approvals": "Approvals",
+      "claims": "Claims",
+      "payments": "Payments",
+      "reconciliation": "Reconciliation",
+      "dac7": "DAC7",
+      "suppliers": "Suppliers",
+      "influencer": "Influencers",
+      "prestataire": "Providers",
+      "logistics": "Logistics"
+    },
+    "mnav": {
+      "overview": "Overview",
+      "approvals": "Approv.",
+      "claims": "Claims",
+      "suppliers": "Suppl.",
+      "dac7": "DAC7"
+    }
+  },
+  "adminOverview": {
+    "title": "Overview",
+    "subtitle": "Grubano ecosystem health — last 24 hours",
+    "readOnly": "Read-only",
+    "emptyTitle": "No data yet",
+    "emptyBody": "Indicators will appear as soon as the platform records activity.",
+    "kpiRestaurants": "Active establishments",
+    "kpiOrders": "Orders (24h)",
+    "kpiGmv": "Gross GMV (24h)",
+    "kpiUsers": "New users (7d)",
+    "gmvTitle": "GMV breakdown (24h)",
+    "gmvHint": "Gross collected, split between the Grubano commission and the net paid to establishments.",
+    "gmvGross": "Gross collected",
+    "gmvCommission": "Grubano commission",
+    "gmvCommissionPct": "Grubano commission ({pct}%)",
+    "gmvNet": "Net paid to establishments",
+    "gmvNone": "No revenue over the last 24 hours.",
+    "channelsTitle": "Volume by channel (24h)",
+    "channelsHint": "Breakdown of paid orders by service mode.",
+    "channelsNone": "No paid orders over the period.",
+    "channel": {
+      "delivery": "Delivery",
+      "pickup": "Takeaway",
+      "dinein": "Dine-in",
+      "reservation": "Reservation"
+    },
+    "superviseTitle": "To supervise",
+    "superviseHint": "Open queues needing platform-team action.",
+    "supApprovals": "Establishments awaiting approval",
+    "supApprovalsSub": "New sign-ups to validate",
+    "supClaims": "Open claims",
+    "supClaimsSub": "Customer / establishment disputes",
+    "supReconcile": "Payments to reconcile",
+    "supReconcileSub": "Late captures (webhook)"
+  },
   "marketplaceCatalog": {
     "back": "Marketplace",
     "notFoundTitle": "Supplier not found",

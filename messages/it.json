@@ -5254,6 +5254,76 @@
     "viewOrders": "Vedi i miei ordini",
     "errOrder": "Impossibile inviare l'ordine. Riprova."
   },
+  "adminShell": {
+    "badge": "ADMIN",
+    "consoleTitle": "Console Admin",
+    "consoleSub": "Grubano — Supervisione",
+    "notifications": "Notifiche",
+    "menu": "Menu",
+    "collapse": "Comprimi",
+    "soon": "Presto",
+    "group": {
+      "ops": "Operazioni",
+      "fin": "Finanze",
+      "partners": "Partner"
+    },
+    "nav": {
+      "overview": "Panoramica",
+      "establishments": "Stabilimenti",
+      "users": "Utenti",
+      "approvals": "Approvazioni",
+      "claims": "Reclami",
+      "payments": "Pagamenti",
+      "reconciliation": "Riconciliazione",
+      "dac7": "DAC7",
+      "suppliers": "Fornitori",
+      "influencer": "Influencer",
+      "prestataire": "Prestatori",
+      "logistics": "Logistica"
+    },
+    "mnav": {
+      "overview": "Panor.",
+      "approvals": "Approv.",
+      "claims": "Reclami",
+      "suppliers": "Forn.",
+      "dac7": "DAC7"
+    }
+  },
+  "adminOverview": {
+    "title": "Panoramica",
+    "subtitle": "Salute dell'ecosistema Grubano — ultime 24 ore",
+    "readOnly": "Sola lettura",
+    "emptyTitle": "Ancora nessun dato",
+    "emptyBody": "Gli indicatori appariranno non appena la piattaforma registrerà attività.",
+    "kpiRestaurants": "Stabilimenti attivi",
+    "kpiOrders": "Ordini (24 h)",
+    "kpiGmv": "GMV lordo (24 h)",
+    "kpiUsers": "Nuovi utenti (7 g)",
+    "gmvTitle": "Composizione del GMV (24 h)",
+    "gmvHint": "Lordo incassato, ripartito tra la commissione Grubano e il netto versato agli stabilimenti.",
+    "gmvGross": "Lordo incassato",
+    "gmvCommission": "Commissione Grubano",
+    "gmvCommissionPct": "Commissione Grubano ({pct} %)",
+    "gmvNet": "Netto versato agli stabilimenti",
+    "gmvNone": "Nessun incasso nelle ultime 24 ore.",
+    "channelsTitle": "Volume per canale (24 h)",
+    "channelsHint": "Ripartizione degli ordini pagati per modalità di servizio.",
+    "channelsNone": "Nessun ordine pagato nel periodo.",
+    "channel": {
+      "delivery": "Consegna",
+      "pickup": "Asporto",
+      "dinein": "Al tavolo",
+      "reservation": "Prenotazione"
+    },
+    "superviseTitle": "Da supervisionare",
+    "superviseHint": "Code aperte che richiedono l'intervento del team di piattaforma.",
+    "supApprovals": "Stabilimenti in attesa di approvazione",
+    "supApprovalsSub": "Nuove iscrizioni da validare",
+    "supClaims": "Reclami aperti",
+    "supClaimsSub": "Controversie clienti / stabilimenti",
+    "supReconcile": "Pagamenti da riconciliare",
+    "supReconcileSub": "Incassi tardivi (webhook)"
+  },
   "marketplaceCatalog": {
     "back": "Marketplace",
     "notFoundTitle": "Fornitore non trovato",

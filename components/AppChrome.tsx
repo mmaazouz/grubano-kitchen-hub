@@ -13,6 +13,9 @@ import { locales } from '@/i18n'
 //   /franchise/*    → franchise portal (Agent 4 mounts its own sidebar here)
 //   /creators/*     → creator portal  (Agent 4 mounts its own sidebar here)
 //   /supplier/*     → B2B supplier space (Slice 0 — its own sober shell)
+//   /admin/*        → admin console (ADM1 — its own navy AdminShell, mounted per page,
+//                     like /supplier; sheds the mismatched operator sidebar. Screens not
+//                     yet wrapped in AdminShell render bare until their ADM lot.)
 //   /logistics/*    → courier/logistics space (P1 — its own sober shell, like /supplier)
 //   /business/*     → partner space served on business.grubano.com (Agent 3 / 2C)
 //   /t/*            → public "table bill" QR landing (consumer, sober, no chrome)
@@ -29,7 +32,7 @@ import { locales } from '@/i18n'
 // Note: /deliveries is INTENTIONALLY absent → it renders UNDER the navy OperatorShell
 // (founder-approved « aperçu visible sous la coquille » exception for the gated Livraisons
 // screen; every other bare route is unchanged).
-const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/logistics', '/business', '/t', '/legal', '/login', '/register', '/add-activity', '/affiliate', '/onboarding']
+const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/admin', '/logistics', '/business', '/t', '/legal', '/login', '/register', '/add-activity', '/affiliate', '/onboarding']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'

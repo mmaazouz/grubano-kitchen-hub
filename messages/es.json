@@ -5254,6 +5254,76 @@
     "viewOrders": "Ver mis pedidos",
     "errOrder": "No se pudo enviar el pedido. Inténtalo de nuevo."
   },
+  "adminShell": {
+    "badge": "ADMIN",
+    "consoleTitle": "Consola de administración",
+    "consoleSub": "Grubano — Supervisión",
+    "notifications": "Notificaciones",
+    "menu": "Menú",
+    "collapse": "Contraer",
+    "soon": "Pronto",
+    "group": {
+      "ops": "Operaciones",
+      "fin": "Finanzas",
+      "partners": "Socios"
+    },
+    "nav": {
+      "overview": "Vista general",
+      "establishments": "Establecimientos",
+      "users": "Usuarios",
+      "approvals": "Aprobaciones",
+      "claims": "Reclamaciones",
+      "payments": "Pagos",
+      "reconciliation": "Conciliación",
+      "dac7": "DAC7",
+      "suppliers": "Proveedores",
+      "influencer": "Influencers",
+      "prestataire": "Prestadores",
+      "logistics": "Logística"
+    },
+    "mnav": {
+      "overview": "Vista",
+      "approvals": "Aprob.",
+      "claims": "Recl.",
+      "suppliers": "Prov.",
+      "dac7": "DAC7"
+    }
+  },
+  "adminOverview": {
+    "title": "Vista general",
+    "subtitle": "Salud del ecosistema Grubano — últimas 24 horas",
+    "readOnly": "Solo lectura",
+    "emptyTitle": "Aún no hay datos",
+    "emptyBody": "Los indicadores aparecerán en cuanto la plataforma registre actividad.",
+    "kpiRestaurants": "Establecimientos activos",
+    "kpiOrders": "Pedidos (24 h)",
+    "kpiGmv": "GMV bruto (24 h)",
+    "kpiUsers": "Nuevos usuarios (7 d)",
+    "gmvTitle": "Desglose del GMV (24 h)",
+    "gmvHint": "Bruto cobrado, repartido entre la comisión de Grubano y el neto abonado a los establecimientos.",
+    "gmvGross": "Bruto cobrado",
+    "gmvCommission": "Comisión Grubano",
+    "gmvCommissionPct": "Comisión Grubano ({pct} %)",
+    "gmvNet": "Neto abonado a los establecimientos",
+    "gmvNone": "Sin ingresos en las últimas 24 horas.",
+    "channelsTitle": "Volumen por canal (24 h)",
+    "channelsHint": "Distribución de los pedidos pagados según el modo de servicio.",
+    "channelsNone": "Ningún pedido pagado en el periodo.",
+    "channel": {
+      "delivery": "Entrega",
+      "pickup": "Para llevar",
+      "dinein": "En local",
+      "reservation": "Reserva"
+    },
+    "superviseTitle": "Por supervisar",
+    "superviseHint": "Colas abiertas que requieren la intervención del equipo de plataforma.",
+    "supApprovals": "Establecimientos en espera de aprobación",
+    "supApprovalsSub": "Nuevas altas por validar",
+    "supClaims": "Reclamaciones abiertas",
+    "supClaimsSub": "Disputas de clientes / establecimientos",
+    "supReconcile": "Pagos por conciliar",
+    "supReconcileSub": "Cobros tardíos (webhook)"
+  },
   "marketplaceCatalog": {
     "back": "Marketplace",
     "notFoundTitle": "Proveedor no encontrado",
