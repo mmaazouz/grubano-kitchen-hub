@@ -23,7 +23,7 @@
  *
  * Money: Order.{subtotal,deliveryFee,discount,total} = Float EUROS via
  * formatEuros(x, locale) — NEVER recomputed. The multi-platform (UberEats / Deliveroo
- * / Just Eat) banner stays a VISUAL PLACEHOLDER → /premium (no real aggregation).
+ * / Just Eat) banner stays a VISUAL PLACEHOLDER → /pricing (no real aggregation).
  * Mounts its own ToastProvider (operator pages have no global one).
  */
 
@@ -411,8 +411,8 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
         </div>
       )}
 
-      {/* Pro multi-platform placeholder (no real integration) */}
-      <Link href="/premium" className="op-callout clickable">
+      {/* Pro multi-platform placeholder (no real integration) — upsell lives on /pricing */}
+      <Link href="/pricing" className="op-callout clickable">
         <span className="ms">lock</span>
         <div className="op-callout__t">
           <b>{t('proBannerTitle')}</b>

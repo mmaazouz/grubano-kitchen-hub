@@ -16,7 +16,7 @@
 // HONEST DE-MOCK:
 //   • Rows with no real destination yet (Profil, Sécurité & mot de passe, Langue, Centre
 //     d'aide) render inert with a « bientôt » pill — never a fake flow.
-//   • Rows with a real page (Notifications, Facturation → /finance, Formule → /premium,
+//   • Rows with a real page (Notifications, Facturation → /finance, Formule → /pricing,
 //     CGU / Confidentialité → /legal/*) link to it. ⚠️ ZERO money/amount on this screen.
 
 import { useState } from 'react'
@@ -132,7 +132,7 @@ export default function MoreClient({ kyb }: { kyb: KybIdentity }) {
       <div className="set-block">
         <div className="set-block__head">{t('billing.title')}</div>
         <div className="op-card">
-          <LinkRow icon="workspace_premium" label={t('billing.plan')} href="/premium"
+          <LinkRow icon="workspace_premium" label={t('billing.plan')} href="/pricing"
             badge={{ tone: 'premium', label: t('billing.premium'), icon: 'star' }} />
           <LinkRow icon="credit_card" label={t('billing.methods')} sub={t('billing.methodsSub')} href="/finance" />
           <LinkRow icon="receipt" label={t('billing.history')} sub={t('billing.historySub')} href="/finance" />
