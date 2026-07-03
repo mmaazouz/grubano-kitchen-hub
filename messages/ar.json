@@ -4760,6 +4760,57 @@
     "spaceAffiliate": "الإحالة",
     "spacePrestataire": "مساحة مقدّم الخدمات"
   },
+  "supplierShell": {
+    "brandSuffix": "الموردون",
+    "accountLabel": "حساب المورّد",
+    "open": "مفتوح للطلبات",
+    "closed": "مغلق للطلبات",
+    "notifications": "الإشعارات",
+    "menu": "القائمة",
+    "collapse": "طيّ",
+    "nav": {
+      "dashboard": "لوحة التحكم",
+      "catalog": "الكتالوج",
+      "orders": "الطلبات الواردة",
+      "clients": "العملاء",
+      "deliveries": "التسليمات",
+      "billing": "الفوترة",
+      "settings": "الإعدادات",
+      "copilot": "المساعد الذكي"
+    },
+    "mnav": {
+      "dashboard": "لوحة التحكم",
+      "orders": "الطلبات",
+      "catalog": "الكتالوج",
+      "deliveries": "التسليمات",
+      "more": "المزيد"
+    }
+  },
+  "supplierDash": {
+    "title": "لوحة التحكم",
+    "kpiReceivedToday": "الطلبات الواردة اليوم",
+    "kpiToProcess": "للتحضير / للشحن",
+    "kpiRevenue": "إيرادات اليوم",
+    "kpiDeliveries": "التسليمات المقررة",
+    "aiTitle": "المساعد الذكي",
+    "aiPrompt": "قريبًا: اطرح أسئلتك بلغة طبيعية حول مبيعاتك ومخزونك.",
+    "aiAsk": "اكتشف",
+    "ordersToProcess": "طلبات قيد المعالجة",
+    "topProducts": "أفضل المنتجات",
+    "topClients": "أفضل العملاء",
+    "process": "معالجة",
+    "view": "عرض",
+    "itemsCount": "{count} عنصر",
+    "unitsSold": "{count} وحدة مباعة",
+    "since": "منذ {date}",
+    "osPlaced": "بانتظار التأكيد",
+    "osConfirmed": "مؤكد",
+    "osPreparing": "قيد التحضير",
+    "osDelivered": "تم التسليم",
+    "emptyOrdersTitle": "لا توجد طلبات بعد",
+    "emptyOrdersBody": "بمجرد أن يطلب مطعم من كتالوجك، سيظهر هنا.",
+    "emptyTopTitle": "لا توجد بيانات بعد"
+  },
   "supplier": {
     "landingTitle": "كن مورّدًا لدى غروبانو",
     "landingSubtitle": "زوّد مطابخ غروبانو. سجّل شركتك وأدِر ملف المورّد الخاص بك.",

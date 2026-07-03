@@ -4760,6 +4760,57 @@
     "spaceAffiliate": "Affiliate",
     "spacePrestataire": "Provider space"
   },
+  "supplierShell": {
+    "brandSuffix": "Suppliers",
+    "accountLabel": "Supplier account",
+    "open": "Open for orders",
+    "closed": "Closed for orders",
+    "notifications": "Notifications",
+    "menu": "Menu",
+    "collapse": "Collapse",
+    "nav": {
+      "dashboard": "Dashboard",
+      "catalog": "Catalogue",
+      "orders": "Received orders",
+      "clients": "Clients",
+      "deliveries": "Deliveries",
+      "billing": "Billing",
+      "settings": "Settings",
+      "copilot": "AI Copilot"
+    },
+    "mnav": {
+      "dashboard": "Dashboard",
+      "orders": "Orders",
+      "catalog": "Catalogue",
+      "deliveries": "Deliveries",
+      "more": "More"
+    }
+  },
+  "supplierDash": {
+    "title": "Dashboard",
+    "kpiReceivedToday": "Orders received today",
+    "kpiToProcess": "To prepare / to ship",
+    "kpiRevenue": "Today's revenue",
+    "kpiDeliveries": "Planned deliveries",
+    "aiTitle": "AI Copilot",
+    "aiPrompt": "Coming soon: ask questions in plain language about your sales and stock.",
+    "aiAsk": "Discover",
+    "ordersToProcess": "Orders to process",
+    "topProducts": "Top products",
+    "topClients": "Top clients",
+    "process": "Process",
+    "view": "View",
+    "itemsCount": "{count} items",
+    "unitsSold": "{count} units sold",
+    "since": "Since {date}",
+    "osPlaced": "To confirm",
+    "osConfirmed": "Confirmed",
+    "osPreparing": "Preparing",
+    "osDelivered": "Delivered",
+    "emptyOrdersTitle": "No orders yet",
+    "emptyOrdersBody": "As soon as a restaurant orders from your catalogue, it will appear here.",
+    "emptyTopTitle": "No data yet"
+  },
   "supplier": {
     "landingTitle": "Become a Grubano supplier",
     "landingSubtitle": "Supply Grubano kitchens. Register your business and manage your supplier profile.",

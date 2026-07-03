@@ -4760,6 +4760,57 @@
     "spaceAffiliate": "Afiliación",
     "spacePrestataire": "Espacio de proveedor"
   },
+  "supplierShell": {
+    "brandSuffix": "Proveedores",
+    "accountLabel": "Cuenta de proveedor",
+    "open": "Abierto a pedidos",
+    "closed": "Cerrado a pedidos",
+    "notifications": "Notificaciones",
+    "menu": "Menú",
+    "collapse": "Contraer",
+    "nav": {
+      "dashboard": "Panel",
+      "catalog": "Catálogo",
+      "orders": "Pedidos recibidos",
+      "clients": "Clientes",
+      "deliveries": "Entregas",
+      "billing": "Facturación",
+      "settings": "Ajustes",
+      "copilot": "Copiloto IA"
+    },
+    "mnav": {
+      "dashboard": "Panel",
+      "orders": "Pedidos",
+      "catalog": "Catálogo",
+      "deliveries": "Entregas",
+      "more": "Más"
+    }
+  },
+  "supplierDash": {
+    "title": "Panel",
+    "kpiReceivedToday": "Pedidos recibidos hoy",
+    "kpiToProcess": "Por preparar / enviar",
+    "kpiRevenue": "Ingresos del día",
+    "kpiDeliveries": "Entregas previstas",
+    "aiTitle": "Copiloto IA",
+    "aiPrompt": "Próximamente: haz preguntas en lenguaje natural sobre tus ventas y tu stock.",
+    "aiAsk": "Descubrir",
+    "ordersToProcess": "Pedidos por gestionar",
+    "topProducts": "Top productos",
+    "topClients": "Top clientes",
+    "process": "Gestionar",
+    "view": "Ver",
+    "itemsCount": "{count} artículos",
+    "unitsSold": "{count} unidades vendidas",
+    "since": "Desde {date}",
+    "osPlaced": "Por confirmar",
+    "osConfirmed": "Confirmado",
+    "osPreparing": "En preparación",
+    "osDelivered": "Entregado",
+    "emptyOrdersTitle": "Aún no hay pedidos",
+    "emptyOrdersBody": "En cuanto un restaurante haga un pedido de tu catálogo, aparecerá aquí.",
+    "emptyTopTitle": "Aún no hay datos"
+  },
   "supplier": {
     "landingTitle": "Conviértete en proveedor Grubano",
     "landingSubtitle": "Abastece las cocinas Grubano. Registra tu empresa y gestiona tu perfil de proveedor.",

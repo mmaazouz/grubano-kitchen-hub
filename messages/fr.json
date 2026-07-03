@@ -4760,6 +4760,57 @@
     "spaceAffiliate": "Affiliation",
     "spacePrestataire": "Espace prestataire"
   },
+  "supplierShell": {
+    "brandSuffix": "Fournisseurs",
+    "accountLabel": "Compte fournisseur",
+    "open": "Ouvert aux commandes",
+    "closed": "Fermé aux commandes",
+    "notifications": "Notifications",
+    "menu": "Menu",
+    "collapse": "Réduire",
+    "nav": {
+      "dashboard": "Tableau de bord",
+      "catalog": "Catalogue",
+      "orders": "Commandes reçues",
+      "clients": "Clients",
+      "deliveries": "Livraisons",
+      "billing": "Facturation",
+      "settings": "Réglages",
+      "copilot": "Copilote IA"
+    },
+    "mnav": {
+      "dashboard": "Tableau de bord",
+      "orders": "Commandes",
+      "catalog": "Catalogue",
+      "deliveries": "Livraisons",
+      "more": "Plus"
+    }
+  },
+  "supplierDash": {
+    "title": "Tableau de bord",
+    "kpiReceivedToday": "Commandes reçues aujourd'hui",
+    "kpiToProcess": "À préparer / à expédier",
+    "kpiRevenue": "Chiffre d'affaires du jour",
+    "kpiDeliveries": "Livraisons prévues",
+    "aiTitle": "Copilote IA",
+    "aiPrompt": "Bientôt : posez vos questions en langage naturel sur vos ventes et vos stocks.",
+    "aiAsk": "Découvrir",
+    "ordersToProcess": "Commandes à traiter",
+    "topProducts": "Top produits",
+    "topClients": "Top clients",
+    "process": "Traiter",
+    "view": "Voir",
+    "itemsCount": "{count} articles",
+    "unitsSold": "{count} unités vendues",
+    "since": "Depuis {date}",
+    "osPlaced": "À confirmer",
+    "osConfirmed": "Confirmée",
+    "osPreparing": "En préparation",
+    "osDelivered": "Livrée",
+    "emptyOrdersTitle": "Aucune commande pour l'instant",
+    "emptyOrdersBody": "Dès qu'un restaurant passera commande sur votre catalogue, elle apparaîtra ici.",
+    "emptyTopTitle": "Pas encore de données"
+  },
   "supplier": {
     "landingTitle": "Devenez fournisseur Grubano",
     "landingSubtitle": "Approvisionnez les cuisines Grubano. Inscrivez votre entreprise et gérez votre profil fournisseur.",
