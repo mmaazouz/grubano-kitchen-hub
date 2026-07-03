@@ -1,0 +1,68 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /supplier/copilote — CD v1 Lot 6, HONEST INERT PREVIEW (violet --op-ai). The AI does
+ * not exist yet: a permanent "Aperçu — bientôt" banner, example exchanges + insights
+ * badged « Exemple », a DISABLED input ("Bientôt disponible…") + disabled send. Nothing
+ * is a real LLM/forecast — presentation only until the real Copilote backend is built.
+ * Chrome + tokens live in supplier-shell.css; scoped under `.sup-cop`.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-op .sup-cop .cop-banner{display:flex;align-items:center;gap:12px;background:linear-gradient(120deg,var(--op-ai-bg),var(--op-surface));border:1px solid var(--op-ai-bd);border-radius:var(--op-r-lg);padding:14px 18px;margin-bottom:18px}
+.gb-op .sup-cop .cop-banner .ms{font-size:22px;color:var(--op-ai);flex-shrink:0}
+[data-theme="dark"] .gb-op .sup-cop .cop-banner .ms{color:var(--op-ai-2)}
+.gb-op .sup-cop .cop-banner .m{flex:1;min-width:0}
+.gb-op .sup-cop .cop-banner .m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:14.5px;color:var(--op-ai-text)}
+[data-theme="dark"] .gb-op .sup-cop .cop-banner .m b{color:var(--op-ai-2)}
+.gb-op .sup-cop .cop-banner .m span{font-size:12px;color:var(--op-muted)}
+.gb-op .sup-cop .cop-soon-chip{font-size:9.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;background:var(--op-ai);color:#fff;border-radius:999px;padding:4px 10px;flex-shrink:0}
+
+.gb-op .sup-cop .cop-grid{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}
+
+.gb-op .sup-cop .cop-head{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .sup-cop .cop-head__ic{width:40px;height:40px;border-radius:var(--op-r-md);background:linear-gradient(135deg,var(--op-ai),var(--op-ai-2));display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .sup-cop .cop-head__ic .ms{font-size:22px;color:#fff}
+.gb-op .sup-cop .cop-head .m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .sup-cop .cop-head .m span{font-size:11.5px;color:var(--op-muted)}
+
+.gb-op .sup-cop .cop-thread{padding:20px 18px;display:flex;flex-direction:column;gap:16px;min-height:320px}
+.gb-op .sup-cop .msg{display:flex;gap:11px;max-width:82%}
+.gb-op .sup-cop .msg.user{margin-inline-start:auto;flex-direction:row-reverse}
+.gb-op .sup-cop .msg__av{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:11px;color:#fff}
+.gb-op .sup-cop .msg.user .msg__av{background:linear-gradient(135deg,#3E5A7D,#1B3A5E)}
+.gb-op .sup-cop .msg.ai .msg__av{background:linear-gradient(135deg,var(--op-ai),var(--op-ai-2))}
+.gb-op .sup-cop .msg.ai .msg__av .ms{font-size:16px}
+.gb-op .sup-cop .msg__bubble{border-radius:var(--op-r-lg);padding:12px 14px;font-size:13px;line-height:1.55}
+.gb-op .sup-cop .msg.user .msg__bubble{background:var(--op-surface-2);border:1px solid var(--op-border)}
+.gb-op .sup-cop .msg.ai .msg__bubble{background:var(--op-ai-bg);border:1px solid var(--op-ai-bd)}
+.gb-op .sup-cop .msg__ex{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--op-ai-text);background:rgba(139,116,224,.16);border-radius:999px;padding:2px 7px;margin-bottom:6px}
+[data-theme="dark"] .gb-op .sup-cop .msg__ex{color:var(--op-ai-2)}
+.gb-op .sup-cop .msg__ex .ms{font-size:11px}
+
+.gb-op .sup-cop .cop-suggestions{display:flex;gap:8px;flex-wrap:wrap;padding:0 18px 14px}
+.gb-op .sup-cop .sugg-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--op-ai-bd);background:var(--op-ai-bg);border-radius:999px;padding:8px 13px;font-size:12px;font-weight:700;color:var(--op-ai-text);cursor:default;font-family:inherit}
+[data-theme="dark"] .gb-op .sup-cop .sugg-chip{color:var(--op-ai-2)}
+.gb-op .sup-cop .sugg-chip .ms{font-size:15px;color:var(--op-ai)}
+[data-theme="dark"] .gb-op .sup-cop .sugg-chip .ms{color:var(--op-ai-2)}
+
+.gb-op .sup-cop .cop-inputbar{display:flex;align-items:center;gap:10px;padding:14px 18px;border-top:1px solid var(--op-border)}
+.gb-op .sup-cop .cop-input{flex:1;border:1px solid var(--op-border-strong);background:var(--op-surface-2);border-radius:var(--op-r-pill);padding:12px 16px;font-size:13px;color:var(--op-muted-2)}
+.gb-op .sup-cop .cop-send{width:42px;height:42px;border-radius:50%;background:var(--op-ai);opacity:.5;border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:not-allowed;flex-shrink:0}
+.gb-op .sup-cop .cop-send .ms{font-size:20px}
+
+.gb-op .sup-cop .insight-col{display:flex;flex-direction:column;gap:14px}
+.gb-op .sup-cop .insight-title{font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--op-muted-2);padding:0 2px}
+.gb-op .sup-cop .insight-card{background:var(--op-surface);border:1px solid var(--op-ai-bd);border-radius:var(--op-r-lg);padding:15px;box-shadow:var(--op-shadow-card)}
+.gb-op .sup-cop .insight-card__top{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.gb-op .sup-cop .insight-card__ic{width:32px;height:32px;border-radius:var(--op-r-md);background:var(--op-ai-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .sup-cop .insight-card__ic .ms{font-size:18px;color:var(--op-ai)}
+[data-theme="dark"] .gb-op .sup-cop .insight-card__ic .ms{color:var(--op-ai-2)}
+.gb-op .sup-cop .insight-card__top .ex{margin-inline-start:auto;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--op-ai-text);background:rgba(139,116,224,.16);border-radius:999px;padding:2px 7px}
+[data-theme="dark"] .gb-op .sup-cop .insight-card__top .ex{color:var(--op-ai-2)}
+.gb-op .sup-cop .insight-card b{display:block;font-size:13.5px;font-weight:700;margin-bottom:3px}
+.gb-op .sup-cop .insight-card p{margin:0;font-size:11.5px;line-height:1.5;color:var(--op-muted)}
+
+@container gbop (max-width: 1000px){ .gb-op .sup-cop .cop-grid{grid-template-columns:1fr} }
+@container gbop (max-width: 880px){
+  .gb-op .sup-cop .msg{max-width:92%}
+  .gb-op .sup-cop .cop-suggestions{flex-wrap:nowrap;overflow-x:auto}
+  .gb-op .sup-cop .sugg-chip{flex-shrink:0}
+}
