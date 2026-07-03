@@ -4914,6 +4914,16 @@
     "coherencePendingBody": "Il suo account è attivo: può accedere e creare il suo catalogo. Completi la sua offerta (categorie, zone) e aggiunga almeno un prodotto; verificheremo la coerenza prima di rendere il suo catalogo visibile ai ristoranti."
   },
   "marketplace": {
+    "hubTitle": "Marketplace",
+    "hubSubtitle": "Integrazioni e partner",
+    "hubSuppliersTitle": "Approvvigionamento fornitori",
+    "hubSuppliersDesc": "Ordina dai fornitori della piattaforma",
+    "hubIntegrationsTitle": "Integrazioni",
+    "hubIntegrationsNote": "Le connessioni con le piattaforme di consegna e pagamento arriveranno presto.",
+    "hubSoon": "Presto",
+    "hubCatDelivery": "Consegna",
+    "hubCatPayment": "Pagamento",
+    "hubCatMarketing": "Marketing",
     "minOrderLabel": "Ordine minimo",
     "catalogEmptyTitle": "Questo fornitore non ha ancora messo online il suo catalogo",
     "catalogEmptyBody": "Torna presto, oppure contattalo direttamente per effettuare un ordine.",

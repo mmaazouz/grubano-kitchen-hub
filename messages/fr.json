@@ -4914,6 +4914,16 @@
     "coherencePendingBody": "Votre compte est actif : vous pouvez vous connecter et constituer votre catalogue. Renseignez votre offre (catégories, zones) et ajoutez au moins un produit ; nous vérifierons la cohérence avant de rendre votre catalogue visible des restaurants."
   },
   "marketplace": {
+    "hubTitle": "Marketplace",
+    "hubSubtitle": "Intégrations & partenaires",
+    "hubSuppliersTitle": "Approvisionnement fournisseurs",
+    "hubSuppliersDesc": "Commander auprès des fournisseurs de la plateforme",
+    "hubIntegrationsTitle": "Intégrations",
+    "hubIntegrationsNote": "Les connexions aux plateformes de livraison et de paiement arrivent bientôt.",
+    "hubSoon": "Bientôt",
+    "hubCatDelivery": "Livraison",
+    "hubCatPayment": "Paiement",
+    "hubCatMarketing": "Marketing",
     "minOrderLabel": "Commande minimum",
     "catalogEmptyTitle": "Ce fournisseur n'a pas encore mis son catalogue en ligne",
     "catalogEmptyBody": "Revenez bientôt, ou contactez-le directement pour passer commande.",

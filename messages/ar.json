@@ -4914,6 +4914,16 @@
     "coherencePendingBody": "حسابك مُفعَّل: يمكنك تسجيل الدخول وإنشاء كتالوجك. أكمِل عرضك (الفئات والمناطق) وأضِف منتجًا واحدًا على الأقل؛ سنتحقق من الاتساق قبل إظهار كتالوجك للمطاعم."
   },
   "marketplace": {
+    "hubTitle": "المتجر",
+    "hubSubtitle": "التكاملات والشركاء",
+    "hubSuppliersTitle": "التوريد من المورّدين",
+    "hubSuppliersDesc": "اطلب من موردي المنصة",
+    "hubIntegrationsTitle": "التكاملات",
+    "hubIntegrationsNote": "اتصالات منصات التوصيل والدفع قادمة قريبًا.",
+    "hubSoon": "قريبًا",
+    "hubCatDelivery": "التوصيل",
+    "hubCatPayment": "الدفع",
+    "hubCatMarketing": "التسويق",
     "minOrderLabel": "الحد الأدنى للطلب",
     "catalogEmptyTitle": "لم يقم هذا المورّد بنشر كتالوجه عبر الإنترنت بعد",
     "catalogEmptyBody": "عُد قريبًا، أو تواصل معه مباشرةً لإجراء طلب.",

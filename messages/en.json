@@ -4914,6 +4914,16 @@
     "coherencePendingBody": "Your account is active: you can sign in and build your catalogue. Fill in your offer (categories, zones) and add at least one product; we'll check coherence before making your catalogue visible to restaurants."
   },
   "marketplace": {
+    "hubTitle": "Marketplace",
+    "hubSubtitle": "Integrations & partners",
+    "hubSuppliersTitle": "Supplier sourcing",
+    "hubSuppliersDesc": "Order from the platform's suppliers",
+    "hubIntegrationsTitle": "Integrations",
+    "hubIntegrationsNote": "Delivery and payment platform connections are coming soon.",
+    "hubSoon": "Soon",
+    "hubCatDelivery": "Delivery",
+    "hubCatPayment": "Payment",
+    "hubCatMarketing": "Marketing",
     "minOrderLabel": "Minimum order",
     "catalogEmptyTitle": "This supplier hasn't put their catalog online yet",
     "catalogEmptyBody": "Check back soon, or contact them directly to place an order.",
