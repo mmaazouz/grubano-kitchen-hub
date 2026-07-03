@@ -100,11 +100,14 @@ jobs:
           mkdir -p deploy-temp/prisma
           cp prisma/schema.prisma deploy-temp/prisma/schema.prisma
 
-          # Server-side post-deploy script (run via SSH after FTP — prunes
-          # stale .next/static artifacts so old chunk dirs don't accumulate
-          # and cause 404/blank-page on the freshly deployed HTML).
+          # Server-run OPS scripts (JS only). scripts/server/ is the DESIGNATED
+          # server bucket: prune-next.js (post-deploy static prune) + admin/ops
+          # scripts like legacy-password-reset-notify.js (C-1). The WHOLE bucket
+          # ships (*.js) so a new server ops script deploys automatically. The .sh
+          # deploy scripts and the local dev tooling at scripts/ root (notion-sync,
+          # seed-demo-data, backfill-*) deliberately do NOT ship to the public server.
           mkdir -p deploy-temp/scripts/server
-          cp scripts/server/prune-next.js deploy-temp/scripts/server/prune-next.js
+          cp scripts/server/*.js deploy-temp/scripts/server/
 
           # Cron probes (rail A6 gardiens — ledger check + monthly invoices,
           # called by cPanel cron). ONLY scripts/cron/ ships — never the whole

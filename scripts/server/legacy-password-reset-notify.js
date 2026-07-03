@@ -49,8 +49,8 @@
 //
 // Usage (cPanel Terminal on STAGING, from the app root — app must be reachable):
 //   ./node_modules/.bin/prisma generate                     # pinned 5.22.0 client
-//   node scripts/legacy-password-reset-notify.js            # 1) AUDIT (no writes/sends)
-//   NOTIFY_CONFIRM=yes node scripts/legacy-password-reset-notify.js   # 2) SEND resets
+//   node scripts/server/legacy-password-reset-notify.js            # 1) AUDIT (no writes/sends)
+//   NOTIFY_CONFIRM=yes node scripts/server/legacy-password-reset-notify.js   # 2) SEND resets
 //   ⚠️  Run the AUDIT first and confirm the count looks right before NOTIFY.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -60,8 +60,10 @@ const fs   = require('fs')
 const path = require('path')
 
 // ── 1. Load DATABASE_URL / NEXTAUTH_URL from .env.local if not in env ──────────
+// (this script lives in scripts/server/, so the app root — where .env.local sits —
+//  is TWO levels up.)
 {
-  const envFile = path.join(__dirname, '..', '.env.local')
+  const envFile = path.join(__dirname, '..', '..', '.env.local')
   if (fs.existsSync(envFile)) {
     for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
       const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
