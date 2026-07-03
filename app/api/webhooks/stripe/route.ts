@@ -6,6 +6,8 @@ import { getStripe, mapAccountStatus, retrieveChargeFacts, type DepositStatus } 
 import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
+import { isRefundsEnabled, executeRefund } from '@/lib/refund'
+import { sendAdminGhostOrderAlert } from '@/lib/admin-alerts'
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
 // Stripe pushes PaymentIntent lifecycle events here so payment state is synced
@@ -351,7 +353,7 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
   try {
     const order = await prisma.order.findUnique({
       where:  { id: orderId },
-      select: { id: true, total: true, paymentStatus: true, stripePaymentIntentId: true },
+      select: { id: true, status: true, total: true, paymentStatus: true, stripePaymentIntentId: true },
     })
     if (!order) {
       console.warn(`[stripe webhook] order paid for ${pi.id} — order ${orderId} not found`)
@@ -365,6 +367,58 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
     if (order.stripePaymentIntentId && order.stripePaymentIntentId !== pi.id) {
       console.error(`[stripe webhook] MONEY REVIEW: succeeded PI ${pi.id} is not order ${order.id}'s current PI (${order.stripePaymentIntentId}) — NOT confirmed`)
       return NextResponse.json({ received: true, accounted: false, reason: 'stale_pi' })
+    }
+
+    // ── WP-MONEY-01 — ghost-order expiry race ──────────────────────────────────
+    // A card order lazily expired (>24h) BEFORE its payment_intent.succeeded landed.
+    // The money WAS captured; the immutable 'payment' ledger line is already written
+    // (ledger-first, above). We must NOT silently mark it paid-and-dead. Mark the
+    // order EXPLICITLY via a paymentStatus SENTINEL — NO migration (paymentStatus is a
+    // free String; a future admin reconciliation queue [WP-ADMIN-RECON] filters on it):
+    //   'reconcile_manual' = captured, awaiting a manual admin decision;
+    //   'refunded'         = auto-refunded via the royalty-aware engine.
+    // The kitchen status STAYS 'expired' (never revealed to the resto). Auto-refund
+    // happens ONLY via lib/refund.executeRefund AND ONLY when REFUNDS_ENABLED — else
+    // the money stays captured but flagged for manual reconciliation (NEVER a silent
+    // money-out).
+    if (order.status === 'expired') {
+      // (1) Idempotence — a replayed webhook after we already reconciled is a no-op.
+      if (order.paymentStatus === 'refunded' || order.paymentStatus === 'reconcile_manual') {
+        return NextResponse.json({ received: true, noop: true, order: order.paymentStatus })
+      }
+      const capturedCents = pi.amount_received ?? pi.amount ?? 0
+      const refundsOn = isRefundsEnabled()
+      // Admin alert (both cases) — best-effort, idempotent (never blocks).
+      try {
+        await sendAdminGhostOrderAlert({ orderId: order.id, paymentIntentId: pi.id, amountCents: capturedCents, refundsOn })
+      } catch (e) {
+        console.error('[stripe webhook] ghost-order admin alert failed (non-fatal):', order.id, e instanceof Error ? e.message : e)
+      }
+
+      if (refundsOn) {
+        // executeRefund requires paymentStatus 'paid' (the money truth — the charge
+        // succeeded). Set it, then auto-refund via the royalty-aware engine.
+        await prisma.order.update({ where: { id: order.id }, data: { paymentStatus: 'paid', stripePaymentIntentId: pi.id } })
+        // (2) Any throw / non-ok outcome → mark 'reconcile_manual' (manual queue).
+        // NEVER leave an expired order at a final 'paid'.
+        let refunded = false
+        try {
+          const res = await executeRefund({ orderId: order.id, reason: 'ghost_order_expired' })
+          refunded = res.ok
+          if (!res.ok) {
+            console.error(`[stripe webhook] MONEY REVIEW: ghost-order auto-refund not ok for ${order.id}: ${res.error}`)
+          }
+        } catch (e) {
+          console.error('[stripe webhook] MONEY REVIEW: ghost-order auto-refund threw for', order.id, e instanceof Error ? e.message : e)
+        }
+        await prisma.order.update({ where: { id: order.id }, data: { paymentStatus: refunded ? 'refunded' : 'reconcile_manual' } })
+        return NextResponse.json({ received: true, order: 'expired_reconciled', refunded })
+      }
+
+      // REFUNDS OFF → manual admin queue. Explicit marking (NOT 'paid'); the money
+      // stays captured but flagged — NEVER a silent money-out.
+      await prisma.order.update({ where: { id: order.id }, data: { paymentStatus: 'reconcile_manual', stripePaymentIntentId: pi.id } })
+      return NextResponse.json({ received: true, order: 'expired_needs_reconciliation' })
     }
 
     const receivedCents = pi.amount_received ?? pi.amount ?? 0
