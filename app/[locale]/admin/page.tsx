@@ -144,8 +144,7 @@ export default async function AdminOverviewPage(props: { params: { locale: strin
               <div className="sup-list">
                 <SupItem tone="warn" icon="verified_user" title={t('supApprovals')} sub={t('supApprovalsSub')} n={ov.pendingApprovals} href="/admin/approvals" />
                 <SupItem tone="dang" icon="flag" title={t('supClaims')} sub={t('supClaimsSub')} n={ov.openClaims} href="/admin/claims" />
-                {/* reconciliation screen lands in ADM6 → count is real but not yet a link */}
-                <SupItem tone="info" icon="account_balance" title={t('supReconcile')} sub={t('supReconcileSub')} n={ov.toReconcile} />
+                <SupItem tone="info" icon="account_balance" title={t('supReconcile')} sub={t('supReconcileSub')} n={ov.toReconcile} href="/admin/reconciliation" />
               </div>
             </div>
           </>
