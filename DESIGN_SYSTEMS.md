@@ -34,6 +34,13 @@ same element.
   (imports and showcases the full DS, incl. the catalog-only pieces), plus a handful
   of shared consumer widgets. `Button`/`Card`/`Input`/`Badge`/`EmptyState` still have
   many importers; the catalog-only pieces are referenced **only** by `/design`.
+- **`/design` ships on purpose.** It is an intentional living catalogue, not dead code.
+  It carries `robots: noindex` (`app/[locale]/design/layout.tsx`) so it is not search-
+  indexed. Consequently the four catalog-only components (`CategoryPill`, `DishCard`,
+  `OrderCard`, `DocsLink`) and the `@deprecated currency` prop shims on `PriceTag` /
+  `RestaurantCard` are **kept deliberately** — they are exercised by the catalogue and
+  keep call sites compiling. Do not "clean them up" as unused (WONTFIX — see the A6
+  CLEAN-02/04 decision).
 - **Money/format rule:** the app is **EUR-only**; all amounts format via
   `lib/format-money` using the *active locale* (separator + symbol position). Any
   `currency` prop on `PriceTag` / `RestaurantCard` is `@deprecated` and **ignored**
