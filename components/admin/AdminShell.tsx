@@ -38,7 +38,7 @@ const NAV: NavEntry[] = [
   { key: 'users',          href: '/admin/users',                  icon: 'group',           group: 'ops',      ready: true },
   { key: 'approvals',      href: '/admin/approvals',              icon: 'verified_user',   group: 'ops',      ready: true },
   { key: 'claims',         href: '/admin/claims',                 icon: 'flag',            group: 'ops',      ready: true },
-  { key: 'payments',       href: '/admin/payments',               icon: 'payments',        group: 'fin',      ready: false },
+  { key: 'payments',       href: '/admin/payments',               icon: 'payments',        group: 'fin',      ready: true },
   { key: 'reconciliation', href: '/admin/reconciliation',         icon: 'account_balance', group: 'fin',      ready: true },
   { key: 'dac7',           href: '/admin/dac7',                   icon: 'description',     group: 'fin',      ready: true },
   { key: 'suppliers',      href: '/admin/suppliers',              icon: 'local_shipping',  group: 'partners', ready: true },
