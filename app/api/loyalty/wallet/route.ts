@@ -39,11 +39,26 @@ function creditScale() {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    let email = searchParams.get('email')
+    const explicitEmail = searchParams.get('email')
+    const token = await getToken({ req })
 
-    // No explicit email → fall back to the authenticated consumer's session.
-    if (!email) {
-      const token = await getToken({ req })
+    let email: string | null
+    if (explicitEmail) {
+      // WP-SEC-01 — an explicit ?email= lookup is an OPERATOR/ADMIN action (the
+      // /loyalty screen consulting a client wallet). A consumer may ONLY read their
+      // OWN wallet, via the session fallback below. Gating this closes a PII
+      // enumeration leak where any unauthenticated caller could read any consumer's
+      // points balance, tier, referral code and last-10 orders by guessing an email.
+      if (!token) {
+        return NextResponse.json({ error: 'Authentification requise' }, { status: 401 })
+      }
+      const role = typeof token.role === 'string' ? token.role : null
+      if (role !== 'restaurant' && role !== 'admin') {
+        return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+      }
+      email = explicitEmail
+    } else {
+      // No explicit email → the authenticated consumer's own wallet (session email).
       email = typeof token?.email === 'string' ? token.email : null
     }
 
