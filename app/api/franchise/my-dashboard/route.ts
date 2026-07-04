@@ -12,11 +12,18 @@ import { getFranchiseEarnings } from '@/lib/franchise-earnings'
 //
 // B6 (Agent 47): the dashboard now ALSO returns the AUTHORITATIVE royalty totals read
 // from the FranchiseRoyalty table (accrued / settled / pending) — the real held-back —
-// alongside the live `revenue × rate` ESTIMATE (royaltiesDue). The estimate is a
-// projection of the rolling 30-day window; `royaltyEnabled` lets the client label it
-// honestly (when the held-back rail is OFF, no money is actually retained → the
-// authoritative totals stay 0 and the estimate is a mere projection). READ-ONLY: no
-// write, no settlement trigger. Existing fields are unchanged (backward-compatible).
+// alongside the live `revenue × rate` ESTIMATE (royaltiesDue). READ-ONLY: no write, no
+// settlement trigger. Existing fields are unchanged (backward-compatible).
+//
+// FR2 (Vague 1 CD): the SAME owner-scoped read is extended (ADDITIVE) with the network
+// aggregates the CD dashboard renders — all REAL or omitted, never fabricated:
+//   • posOpenCount / posClosedCount / posTotalCount / cityCount  (real POS counts)
+//   • pendingApplications                                        (real pending candidacies)
+//   • monthRoyaltiesCents (30-day FranchiseRoyalty, CENTS)       (authoritative, 0 when gated OFF)
+//   • royaltyRatePct  (single real Brand.royaltyPct as %, or NULL when it varies — NEVER hardcoded)
+//   • topPos          (the franchisor's POS ranked by 30-day CA)
+//   • recentActivity  (POS-opening events dated by PointOfSale.createdAt — real events only)
+// The franchisor sees ONLY its own network (every query is scoped by the SESSION operator).
 
 // Network average revenue benchmark (per franchise, 30-day window). Kept as the
 // pre-existing constant the front already displays.
@@ -35,9 +42,6 @@ export async function GET() {
     const operatorId = (session.user as { id?: string }).id!
 
     // ── Rolling 30-day window (NOT the calendar month) ──────────────────────────
-    // On the 1st of the month a calendar-month filter would show 0 because the
-    // seeded/real orders mostly land in the previous month. A 30-day rolling
-    // window is both more meaningful for an operator and avoids that edge.
     const now              = new Date()
     const windowStart      = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     const prevWindowStart  = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000) // j-60 → j-30
@@ -58,16 +62,28 @@ export async function GET() {
 
     // Previous-period revenue (j-60 → j-30) for the delta, across the same POS set.
     const posIds = pointsOfSale.map(p => p.id)
-    const prevOrders = posIds.length
-      ? await prisma.order.findMany({
-          where: {
-            pointOfSaleId: { in: posIds },
-            status:        'delivered',
-            createdAt:     { gte: prevWindowStart, lt: windowStart },
-          },
-          select: { subtotal: true },
-        })
-      : []
+    const [prevOrders, closedPosCount, monthRoyaltyAgg, myBrands] = await Promise.all([
+      posIds.length
+        ? prisma.order.findMany({
+            where: {
+              pointOfSaleId: { in: posIds },
+              status:        'delivered',
+              createdAt:     { gte: prevWindowStart, lt: windowStart },
+            },
+            select: { subtotal: true },
+          })
+        : Promise.resolve([]),
+      // Temporarily-closed (paused) POS of this franchisor — for the network distribution.
+      prisma.pointOfSale.count({ where: { franchiseId: operatorId, isActive: false } }),
+      // Authoritative royalties accrued over the SAME 30-day window (CENTS). 0 when the
+      // held-back rail is gated OFF (no rows) → honest, never a projection here.
+      prisma.franchiseRoyalty.aggregate({
+        where: { franchisorOperatorId: operatorId, createdAt: { gte: windowStart } },
+        _sum:  { royaltyCents: true },
+      }),
+      // This franchisor's OWN brands — for the single displayed rate + the candidacy scope.
+      prisma.brand.findMany({ where: { operatorId: operatorId }, select: { id: true, royaltyPct: true, openToFranchise: true } }),
+    ])
 
     // Per-POS performance, mapped into the `brands` shape the front already reads.
     const brandsPerf = pointsOfSale.map(p => {
@@ -79,39 +95,78 @@ export async function GET() {
         emoji:     POS_EMOJI,
         revenue,
         orders:    p.orders.length,
-        // B4: each POS at the rate of its brand (default 6%). When every POS resolves
-        // to 6% this equals the pre-B4 `revenue * 0.06`.
+        // B4: each POS at the rate of its brand (default 6%).
         royalties: revenue * resolveFranchiseRate(p.brand_ref),
-        topDishes: [] as string[], // a POS has no menu items of its own (yet)
+        topDishes: [] as string[],
       }
     })
 
     const revenueThisMonth = brandsPerf.reduce((s, b) => s + b.revenue, 0)
     const revenueLastMonth = prevOrders.reduce((s, o) => s + o.subtotal, 0)
-    // Sum of per-POS (per-brand-rate) royalties → consistent with the accrual. With a
-    // uniform 6% this equals the old revenueThisMonth * 0.06. This is the live ESTIMATE
-    // (projection of the 30-day window), NOT the real held-back.
     const royaltiesDue     = brandsPerf.reduce((s, b) => s + b.royalties, 0)
 
-    // B6 — AUTHORITATIVE totals from the FranchiseRoyalty table (the real held-back),
-    // owner-scoped to THIS franchisor (operatorId from the session). All-time, in cents →
-    // converted to euros to match the rest of this euro-denominated response. When the
-    // held-back rail is OFF (royaltyEnabled=false) no rows are accrued → these stay 0 and
-    // royaltiesDue is purely a projection.
-    const earnings     = await getFranchiseEarnings(operatorId)
+    // B6 — AUTHORITATIVE all-time totals from the FranchiseRoyalty table (the real
+    // held-back), owner-scoped, cents → euros. 0 when the rail is OFF.
+    const earnings       = await getFranchiseEarnings(operatorId)
     const royaltyEnabled = isFranchiseRoyaltyEnabled()
 
+    // ── FR2 additive network aggregates (all owner-scoped, real-or-omitted) ─────────
+    const brandIds = myBrands.map(b => b.id)
+    const pendingApplications = brandIds.length
+      ? await prisma.franchiseeApplication.count({ where: { brandId: { in: brandIds }, status: 'pending' } })
+      : 0
+
+    const posOpenCount  = pointsOfSale.length
+    const posTotalCount = posOpenCount + closedPosCount
+    const cityCount     = new Set(
+      pointsOfSale.map(p => (p.city ?? '').trim().toLowerCase()).filter(Boolean),
+    ).size
+
+    // Single royalty rate ONLY when it is unambiguous across the franchisor's FRANCHISED
+    // brands — otherwise null (the front shows « — »). NEVER a hardcoded percentage.
+    const franchisedRates = myBrands.filter(b => b.openToFranchise).map(b => resolveFranchiseRate(b))
+    const distinctRates   = Array.from(new Set(franchisedRates))
+    const royaltyRatePct  = distinctRates.length === 1 ? Math.round(distinctRates[0] * 100) : null
+
+    // Authoritative royalties held back over the 30-day window (cents → euros); 0 when OFF.
+    const monthRoyalties = (monthRoyaltyAgg._sum.royaltyCents ?? 0) / 100
+
+    // Top establishments by 30-day CA (from the same active-POS perf; already owner-scoped).
+    const topPos = brandsPerf
+      .slice()
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5)
+      .map(b => ({ id: b.id, name: b.name, city: b.city, revenue: b.revenue }))
+
+    // Recent activity — REAL POS-opening events only, dated by PointOfSale.createdAt.
+    // Defensive: a POS with no timestamp is skipped rather than crashing the dashboard.
+    const recentActivity = pointsOfSale
+      .filter(p => p.createdAt)
+      .map(p => ({ type: 'pos_open' as const, name: p.name, city: p.city ?? '', at: new Date(p.createdAt).toISOString() }))
+      .sort((a, b) => (a.at < b.at ? 1 : -1))
+      .slice(0, 6)
+
     return NextResponse.json({
+      // ── existing (unchanged) ──
       revenueThisMonth,
       revenueLastMonth,
       royaltiesDue,
       networkAvg: NETWORK_AVG,
       brands: brandsPerf,
-      // B6 — real held-back (authoritative), euros. royaltiesDue above is the estimate.
       royaltyEnabled,
       royaltiesAccrued: earnings.accruedCents / 100,
       royaltiesSettled: earnings.settledCents / 100,
       royaltiesPending: earnings.pendingCents / 100,
+      // ── FR2 additive ──
+      posOpenCount,
+      posClosedCount: closedPosCount,
+      posTotalCount,
+      cityCount,
+      pendingApplications,
+      monthRoyalties,
+      royaltyRatePct,
+      topPos,
+      recentActivity,
     })
   } catch (err) {
     console.error('[GET /api/franchise/my-dashboard]', err)

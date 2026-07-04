@@ -1364,7 +1364,50 @@
       "realSettled": "Settled",
       "realPending": "Pending",
       "realInactiveNote": "Real royalty collection is not enabled yet — these amounts stay at 0.",
-      "financesLink": "View settlements"
+      "financesLink": "View settlements",
+      "netSub": "Your network at a glance",
+      "netBadge": "{count, plural, one {# location} other {# locations}} · {cities, plural, one {# city} other {# cities}}",
+      "kpiOpen": "Open locations",
+      "kpiPending": "Pending applications",
+      "kpiNetworkCA": "Network revenue (30 d)",
+      "kpiMonthRoyalties": "Royalties this month",
+      "roConsolidated": "Consolidated — read-only",
+      "royaltyLockRate": "{pct}% of revenue · paid by Grubano",
+      "royaltyLockNoRate": "Paid by Grubano",
+      "royaltyInactiveShort": "Held-back not active",
+      "distTitle": "Network breakdown",
+      "distHint": "Opening status of your network's locations.",
+      "distOpen": "Open",
+      "distClosed": "Temporarily closed",
+      "distEmpty": "No locations attached yet.",
+      "topTitle": "Top locations",
+      "topHint": "By 30-day revenue (consolidated, read-only).",
+      "topEmpty": "No revenue data for the period.",
+      "val30j": "30 d",
+      "royCA": "Network revenue (30 d)",
+      "royCASub": "Sum of all locations",
+      "royRate": "Royalty rate",
+      "royRateSub": "Set by the brand agreement",
+      "royEst": "Estimated royalties",
+      "royEstSub": "Automated payout by Grubano",
+      "todoTitle": "To handle",
+      "todoHint": "What needs your attention on the network.",
+      "todoApplications": "Franchisee applications",
+      "todoApplicationsSub": "Files to review and approve",
+      "todoClosed": "Closed locations",
+      "todoClosedSub": "Temporarily closed — to reactivate",
+      "todoEmpty": "Nothing to handle right now.",
+      "actTitle": "Recent activity",
+      "actHint": "Latest network events.",
+      "actOpenedLabel": "{name} opened",
+      "actEmpty": "No recent activity.",
+      "relDays": "{days, plural, =0 {today} one {# day ago} other {# days ago}}",
+      "emptyNetTitle": "Your network starts here",
+      "emptyNetDesc": "No franchised location yet. Network metrics will appear as soon as the first one opens.",
+      "emptyNetCta": "View applications",
+      "errorTitle": "Couldn't load the dashboard",
+      "errorBody": "Check your connection and try again. If it persists, contact Grubano support.",
+      "retry": "Retry"
     },
     "nav": {
       "overview": "Overview",
@@ -6836,6 +6879,33 @@
       "contact": "Contact support",
       "terms": "Terms and conditions",
       "privacy": "Privacy policy"
+    }
+  },
+  "franchiseShell": {
+    "badge": "FRANCHISE",
+    "networkLabel": "Franchise network",
+    "notifications": "Notifications",
+    "menu": "Menu",
+    "collapse": "Collapse",
+    "group": {
+      "reseau": "Network",
+      "finances": "Finances",
+      "systeme": "System"
+    },
+    "nav": {
+      "overview": "Dashboard",
+      "locations": "Locations",
+      "applications": "Applications",
+      "brand": "Brand",
+      "royalties": "Royalties",
+      "settings": "Settings"
+    },
+    "mnav": {
+      "overview": "Home",
+      "locations": "Sites",
+      "applications": "Apps",
+      "royalties": "Royalt.",
+      "settings": "More"
     }
   }
 }

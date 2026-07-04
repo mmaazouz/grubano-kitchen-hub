@@ -11,9 +11,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const { db, getSession } = vi.hoisted(() => ({
   db: {
-    pointOfSale:      { findMany: vi.fn() },
-    order:            { findMany: vi.fn() },
-    franchiseRoyalty: { groupBy: vi.fn() }, // B6 — authoritative totals
+    pointOfSale:           { findMany: vi.fn(), count: vi.fn() },
+    order:                 { findMany: vi.fn() },
+    franchiseRoyalty:      { groupBy: vi.fn(), aggregate: vi.fn() }, // B6 totals + FR2 30-day sum
+    brand:                 { findMany: vi.fn() },                    // FR2 — rate source + candidacy scope
+    franchiseeApplication: { count: vi.fn() },                      // FR2 — pending candidacies
   },
   getSession: vi.fn(),
 }))
@@ -29,6 +31,11 @@ beforeEach(() => {
   getSession.mockResolvedValue({ user: { id: 'op1' } })
   db.order.findMany.mockResolvedValue([])           // prev-window
   db.franchiseRoyalty.groupBy.mockResolvedValue([]) // B6 — default no accrual
+  // FR2 additive network aggregates — defaults (no closed POS, no royalty, no brand, no candidacy).
+  db.pointOfSale.count.mockResolvedValue(0)
+  db.franchiseRoyalty.aggregate.mockResolvedValue({ _sum: { royaltyCents: 0 } })
+  db.brand.findMany.mockResolvedValue([])
+  db.franchiseeApplication.count.mockResolvedValue(0)
 })
 
 describe('GET /api/franchise/my-dashboard — per-brand royalty rate', () => {

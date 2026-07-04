@@ -1364,7 +1364,50 @@
       "realSettled": "Réglées",
       "realPending": "En attente",
       "realInactiveNote": "Le prélèvement réel des royalties n’est pas encore activé — ces montants restent à 0.",
-      "financesLink": "Voir les règlements"
+      "financesLink": "Voir les règlements",
+      "netSub": "Vue d'ensemble de votre réseau",
+      "netBadge": "{count, plural, one {# établissement} other {# établissements}} · {cities, plural, one {# ville} other {# villes}}",
+      "kpiOpen": "Établissements ouverts",
+      "kpiPending": "Candidatures en attente",
+      "kpiNetworkCA": "CA réseau (30 j)",
+      "kpiMonthRoyalties": "Redevances du mois",
+      "roConsolidated": "Consolidé — lecture seule",
+      "royaltyLockRate": "{pct} % du CA · versé par Grubano",
+      "royaltyLockNoRate": "Versé par Grubano",
+      "royaltyInactiveShort": "Prélèvement non activé",
+      "distTitle": "Répartition du réseau",
+      "distHint": "Statut d'ouverture des établissements de votre réseau.",
+      "distOpen": "Ouverts",
+      "distClosed": "Temporairement fermés",
+      "distEmpty": "Aucun établissement rattaché pour l'instant.",
+      "topTitle": "Top établissements",
+      "topHint": "Par chiffre d’affaires sur 30 jours (consolidé, lecture seule).",
+      "topEmpty": "Aucune donnée de chiffre d'affaires sur la période.",
+      "val30j": "30 j",
+      "royCA": "CA réseau (30 j)",
+      "royCASub": "Somme des établissements",
+      "royRate": "Taux de redevance",
+      "royRateSub": "Défini au contrat de marque",
+      "royEst": "Redevances estimées",
+      "royEstSub": "Versement automatisé par Grubano",
+      "todoTitle": "À traiter",
+      "todoHint": "Ce qui requiert votre attention sur le réseau.",
+      "todoApplications": "Candidatures de franchisés",
+      "todoApplicationsSub": "Dossiers à examiner et approuver",
+      "todoClosed": "Établissements fermés",
+      "todoClosedSub": "Temporairement fermés — à réactiver",
+      "todoEmpty": "Rien à traiter pour le moment.",
+      "actTitle": "Activité récente",
+      "actHint": "Derniers événements du réseau.",
+      "actOpenedLabel": "{name} a ouvert",
+      "actEmpty": "Aucune activité récente.",
+      "relDays": "{days, plural, =0 {aujourd'hui} one {il y a # jour} other {il y a # jours}}",
+      "emptyNetTitle": "Votre réseau démarre ici",
+      "emptyNetDesc": "Aucun établissement franchisé pour l'instant. Les indicateurs du réseau apparaîtront dès la première ouverture.",
+      "emptyNetCta": "Voir les candidatures",
+      "errorTitle": "Impossible de charger le tableau de bord",
+      "errorBody": "Vérifiez votre connexion et réessayez. Si le problème persiste, contactez le support Grubano.",
+      "retry": "Réessayer"
     },
     "nav": {
       "overview": "Vue d'ensemble",
@@ -6836,6 +6879,33 @@
       "contact": "Contacter le support",
       "terms": "Conditions générales",
       "privacy": "Politique de confidentialité"
+    }
+  },
+  "franchiseShell": {
+    "badge": "FRANCHISE",
+    "networkLabel": "Réseau de franchise",
+    "notifications": "Notifications",
+    "menu": "Menu",
+    "collapse": "Réduire",
+    "group": {
+      "reseau": "Réseau",
+      "finances": "Finances",
+      "systeme": "Système"
+    },
+    "nav": {
+      "overview": "Tableau de bord",
+      "locations": "Établissements",
+      "applications": "Candidatures",
+      "brand": "Marque",
+      "royalties": "Redevances",
+      "settings": "Paramètres"
+    },
+    "mnav": {
+      "overview": "Bord",
+      "locations": "Établ.",
+      "applications": "Candid.",
+      "royalties": "Redev.",
+      "settings": "Plus"
     }
   }
 }

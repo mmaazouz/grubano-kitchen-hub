@@ -1364,7 +1364,50 @@
       "realSettled": "مُسوّاة",
       "realPending": "قيد الانتظار",
       "realInactiveNote": "استقطاع الإتاوات الفعلي غير مُفعّل بعد — تبقى هذه المبالغ على 0.",
-      "financesLink": "عرض التسويات"
+      "financesLink": "عرض التسويات",
+      "netSub": "نظرة عامة على شبكتك",
+      "netBadge": "{count, plural, one {منشأة واحدة} two {منشأتان} few {# منشآت} many {# منشأة} other {# منشأة}} · {cities, plural, one {مدينة واحدة} two {مدينتان} few {# مدن} many {# مدينة} other {# مدينة}}",
+      "kpiOpen": "المنشآت المفتوحة",
+      "kpiPending": "الطلبات المعلقة",
+      "kpiNetworkCA": "إيرادات الشبكة (30 يومًا)",
+      "kpiMonthRoyalties": "إتاوات الشهر",
+      "roConsolidated": "موحّد — للقراءة فقط",
+      "royaltyLockRate": "{pct}٪ من الإيرادات · تُدفع عبر Grubano",
+      "royaltyLockNoRate": "تُدفع عبر Grubano",
+      "royaltyInactiveShort": "الاقتطاع غير مفعّل",
+      "distTitle": "توزيع الشبكة",
+      "distHint": "حالة افتتاح منشآت شبكتك.",
+      "distOpen": "مفتوحة",
+      "distClosed": "مغلقة مؤقتًا",
+      "distEmpty": "لا توجد منشآت مرتبطة بعد.",
+      "topTitle": "أفضل المنشآت",
+      "topHint": "حسب إيرادات 30 يومًا (موحّد، للقراءة فقط).",
+      "topEmpty": "لا توجد بيانات إيرادات للفترة.",
+      "val30j": "30 يومًا",
+      "royCA": "إيرادات الشبكة (30 يومًا)",
+      "royCASub": "مجموع المنشآت",
+      "royRate": "معدل الإتاوة",
+      "royRateSub": "محدّد في عقد العلامة",
+      "royEst": "الإتاوات المقدّرة",
+      "royEstSub": "تحويل آلي عبر Grubano",
+      "todoTitle": "قيد المعالجة",
+      "todoHint": "ما يتطلب انتباهك في الشبكة.",
+      "todoApplications": "طلبات المرشحين",
+      "todoApplicationsSub": "ملفات للمراجعة والموافقة",
+      "todoClosed": "منشآت مغلقة",
+      "todoClosedSub": "مغلقة مؤقتًا — لإعادة التفعيل",
+      "todoEmpty": "لا شيء للمعالجة الآن.",
+      "actTitle": "النشاط الأخير",
+      "actHint": "أحدث أحداث الشبكة.",
+      "actOpenedLabel": "افتُتح {name}",
+      "actEmpty": "لا يوجد نشاط حديث.",
+      "relDays": "{days, plural, =0 {اليوم} one {منذ يوم} two {منذ يومين} few {منذ # أيام} many {منذ # يومًا} other {منذ # يوم}}",
+      "emptyNetTitle": "تبدأ شبكتك هنا",
+      "emptyNetDesc": "لا توجد منشأة امتياز بعد. ستظهر مؤشرات الشبكة بمجرد افتتاح أول منشأة.",
+      "emptyNetCta": "عرض الطلبات",
+      "errorTitle": "تعذّر تحميل لوحة التحكم",
+      "errorBody": "تحقق من اتصالك وحاول مجددًا. إذا استمرت المشكلة، تواصل مع دعم Grubano.",
+      "retry": "إعادة المحاولة"
     },
     "nav": {
       "overview": "نظرة عامة",
@@ -6836,6 +6879,33 @@
       "contact": "التواصل مع الدعم",
       "terms": "الشروط العامة",
       "privacy": "سياسة الخصوصية"
+    }
+  },
+  "franchiseShell": {
+    "badge": "فرنشايز",
+    "networkLabel": "شبكة الامتياز",
+    "notifications": "الإشعارات",
+    "menu": "القائمة",
+    "collapse": "طيّ",
+    "group": {
+      "reseau": "الشبكة",
+      "finances": "المالية",
+      "systeme": "النظام"
+    },
+    "nav": {
+      "overview": "لوحة التحكم",
+      "locations": "المنشآت",
+      "applications": "الطلبات",
+      "brand": "العلامة",
+      "royalties": "الإتاوات",
+      "settings": "الإعدادات"
+    },
+    "mnav": {
+      "overview": "الرئيسية",
+      "locations": "المنشآت",
+      "applications": "الطلبات",
+      "royalties": "الإتاوات",
+      "settings": "المزيد"
     }
   }
 }

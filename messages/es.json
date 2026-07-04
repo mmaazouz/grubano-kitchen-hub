@@ -1364,7 +1364,50 @@
       "realSettled": "Liquidadas",
       "realPending": "Pendientes",
       "realInactiveNote": "El cobro real de royalties aún no está activado — estos importes permanecen en 0.",
-      "financesLink": "Ver liquidaciones"
+      "financesLink": "Ver liquidaciones",
+      "netSub": "Tu red de un vistazo",
+      "netBadge": "{count, plural, one {# establecimiento} other {# establecimientos}} · {cities, plural, one {# ciudad} other {# ciudades}}",
+      "kpiOpen": "Establecimientos abiertos",
+      "kpiPending": "Solicitudes pendientes",
+      "kpiNetworkCA": "Ingresos de red (30 d)",
+      "kpiMonthRoyalties": "Regalías del mes",
+      "roConsolidated": "Consolidado — solo lectura",
+      "royaltyLockRate": "{pct} % de los ingresos · pagado por Grubano",
+      "royaltyLockNoRate": "Pagado por Grubano",
+      "royaltyInactiveShort": "Retención no activada",
+      "distTitle": "Distribución de la red",
+      "distHint": "Estado de apertura de los establecimientos de tu red.",
+      "distOpen": "Abiertos",
+      "distClosed": "Cerrados temporalmente",
+      "distEmpty": "Aún no hay establecimientos vinculados.",
+      "topTitle": "Mejores establecimientos",
+      "topHint": "Por ingresos de 30 días (consolidado, solo lectura).",
+      "topEmpty": "Sin datos de ingresos en el período.",
+      "val30j": "30 d",
+      "royCA": "Ingresos de red (30 d)",
+      "royCASub": "Suma de los establecimientos",
+      "royRate": "Tasa de regalías",
+      "royRateSub": "Definido en el contrato de marca",
+      "royEst": "Regalías estimadas",
+      "royEstSub": "Pago automatizado por Grubano",
+      "todoTitle": "Por gestionar",
+      "todoHint": "Lo que requiere tu atención en la red.",
+      "todoApplications": "Solicitudes de franquiciados",
+      "todoApplicationsSub": "Expedientes por revisar y aprobar",
+      "todoClosed": "Establecimientos cerrados",
+      "todoClosedSub": "Cerrados temporalmente — reactivar",
+      "todoEmpty": "Nada por gestionar ahora.",
+      "actTitle": "Actividad reciente",
+      "actHint": "Últimos eventos de la red.",
+      "actOpenedLabel": "{name} abrió",
+      "actEmpty": "Sin actividad reciente.",
+      "relDays": "{days, plural, =0 {hoy} one {hace # día} other {hace # días}}",
+      "emptyNetTitle": "Tu red empieza aquí",
+      "emptyNetDesc": "Aún no hay establecimientos franquiciados. Los indicadores de la red aparecerán en cuanto abra el primero.",
+      "emptyNetCta": "Ver solicitudes",
+      "errorTitle": "No se pudo cargar el panel",
+      "errorBody": "Comprueba tu conexión e inténtalo de nuevo. Si persiste, contacta con el soporte de Grubano.",
+      "retry": "Reintentar"
     },
     "nav": {
       "overview": "Visión general",
@@ -6836,6 +6879,33 @@
       "contact": "Contactar con soporte",
       "terms": "Condiciones generales",
       "privacy": "Política de privacidad"
+    }
+  },
+  "franchiseShell": {
+    "badge": "FRANQUICIA",
+    "networkLabel": "Red de franquicia",
+    "notifications": "Notificaciones",
+    "menu": "Menú",
+    "collapse": "Contraer",
+    "group": {
+      "reseau": "Red",
+      "finances": "Finanzas",
+      "systeme": "Sistema"
+    },
+    "nav": {
+      "overview": "Panel",
+      "locations": "Establecimientos",
+      "applications": "Solicitudes",
+      "brand": "Marca",
+      "royalties": "Regalías",
+      "settings": "Ajustes"
+    },
+    "mnav": {
+      "overview": "Panel",
+      "locations": "Local.",
+      "applications": "Solic.",
+      "royalties": "Regal.",
+      "settings": "Más"
     }
   }
 }

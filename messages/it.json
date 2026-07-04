@@ -1364,7 +1364,50 @@
       "realSettled": "Liquidate",
       "realPending": "In attesa",
       "realInactiveNote": "Il prelievo reale delle royalty non è ancora attivo — questi importi restano a 0.",
-      "financesLink": "Vedi liquidazioni"
+      "financesLink": "Vedi liquidazioni",
+      "netSub": "La tua rete in sintesi",
+      "netBadge": "{count, plural, one {# punto vendita} other {# punti vendita}} · {cities, plural, one {# città} other {# città}}",
+      "kpiOpen": "Punti vendita aperti",
+      "kpiPending": "Candidature in attesa",
+      "kpiNetworkCA": "Ricavi rete (30 gg)",
+      "kpiMonthRoyalties": "Royalty del mese",
+      "roConsolidated": "Consolidato — sola lettura",
+      "royaltyLockRate": "{pct}% dei ricavi · versato da Grubano",
+      "royaltyLockNoRate": "Versato da Grubano",
+      "royaltyInactiveShort": "Trattenuta non attiva",
+      "distTitle": "Ripartizione della rete",
+      "distHint": "Stato di apertura dei punti vendita della rete.",
+      "distOpen": "Aperti",
+      "distClosed": "Temporaneamente chiusi",
+      "distEmpty": "Nessun punto vendita collegato per ora.",
+      "topTitle": "Migliori punti vendita",
+      "topHint": "Per ricavi a 30 giorni (consolidato, sola lettura).",
+      "topEmpty": "Nessun dato di ricavi nel periodo.",
+      "val30j": "30 gg",
+      "royCA": "Ricavi rete (30 gg)",
+      "royCASub": "Somma dei punti vendita",
+      "royRate": "Aliquota royalty",
+      "royRateSub": "Definito dal contratto di marca",
+      "royEst": "Royalty stimate",
+      "royEstSub": "Versamento automatizzato da Grubano",
+      "todoTitle": "Da gestire",
+      "todoHint": "Ciò che richiede la tua attenzione sulla rete.",
+      "todoApplications": "Candidature di affiliati",
+      "todoApplicationsSub": "Pratiche da esaminare e approvare",
+      "todoClosed": "Punti vendita chiusi",
+      "todoClosedSub": "Temporaneamente chiusi — da riattivare",
+      "todoEmpty": "Niente da gestire al momento.",
+      "actTitle": "Attività recente",
+      "actHint": "Ultimi eventi della rete.",
+      "actOpenedLabel": "{name} ha aperto",
+      "actEmpty": "Nessuna attività recente.",
+      "relDays": "{days, plural, =0 {oggi} one {# giorno fa} other {# giorni fa}}",
+      "emptyNetTitle": "La tua rete inizia qui",
+      "emptyNetDesc": "Nessun punto vendita in affiliazione per ora. Gli indicatori della rete appariranno alla prima apertura.",
+      "emptyNetCta": "Vedi candidature",
+      "errorTitle": "Impossibile caricare il cruscotto",
+      "errorBody": "Controlla la connessione e riprova. Se persiste, contatta il supporto Grubano.",
+      "retry": "Riprova"
     },
     "nav": {
       "overview": "Panoramica",
@@ -6836,6 +6879,33 @@
       "contact": "Contatta l'assistenza",
       "terms": "Termini e condizioni",
       "privacy": "Informativa sulla privacy"
+    }
+  },
+  "franchiseShell": {
+    "badge": "FRANCHISING",
+    "networkLabel": "Rete di franchising",
+    "notifications": "Notifiche",
+    "menu": "Menu",
+    "collapse": "Riduci",
+    "group": {
+      "reseau": "Rete",
+      "finances": "Finanze",
+      "systeme": "Sistema"
+    },
+    "nav": {
+      "overview": "Cruscotto",
+      "locations": "Punti vendita",
+      "applications": "Candidature",
+      "brand": "Marca",
+      "royalties": "Royalty",
+      "settings": "Impostazioni"
+    },
+    "mnav": {
+      "overview": "Home",
+      "locations": "Sedi",
+      "applications": "Cand.",
+      "royalties": "Royalty",
+      "settings": "Altro"
     }
   }
 }
