@@ -5,6 +5,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureFranchiseOperator } from '@/lib/franchise-account'
 import { setVerifiedCompanyIdentity } from '@/lib/operator-identity'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,8 +32,11 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({ applicationId: z.string().min(1) })
 
 export async function POST(req: Request) {
+  const limited = rateLimit(req, 'admin_franchise_approve', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   const session = await getServerSession(authOptions)
-  const user = session?.user as { role?: string; roles?: string[] } | undefined
+  const user = session?.user as { id?: string; email?: string; role?: string; roles?: string[] } | undefined
   if (!user) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
@@ -85,6 +90,16 @@ export async function POST(req: Request) {
     if (application.status !== 'approved') {
       await prisma.franchiseApplication.update({ where: { id: application.id }, data: { status: 'approved' } })
     }
+
+    await recordAdminAudit({
+      actorId: user.id ?? '',
+      actorEmail: user.email ?? null,
+      action: 'franchise.approve',
+      targetType: 'franchise',
+      targetId: parsed.data.applicationId,
+      metadata: {},
+      req,
+    })
 
     return NextResponse.json({ ok: true, status: 'approved', bridge })
   } catch (err) {

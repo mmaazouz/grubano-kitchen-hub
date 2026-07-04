@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isCourierActivationEnabled, ensureLogisticsOperator } from '@/lib/logistics-account'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -26,8 +28,11 @@ function isAdmin(user: { role?: string; roles?: string[] } | undefined): boolean
 const bodySchema = z.object({ email: z.string().email() })
 
 export async function POST(req: Request) {
+  const limited = rateLimit(req, 'admin_logistics_activation', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
+
   const session = await getServerSession(authOptions)
-  const user = session?.user as { role?: string; roles?: string[] } | undefined
+  const user = session?.user as { id?: string; email?: string; role?: string; roles?: string[] } | undefined
   if (!user)          return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   if (!isAdmin(user)) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
@@ -71,6 +76,16 @@ export async function POST(req: Request) {
     // Flip the passwordless login to active + graft the 'logistics' role — via the SINGLE
     // chokepoint, which re-checks the flag (belt-and-suspenders; impossible if OFF).
     await ensureLogisticsOperator(email, profile.contactName, { activate: true })
+
+    await recordAdminAudit({
+      actorId:    user.id ?? '',
+      actorEmail: user.email ?? null,
+      action:     'courier.activate',
+      targetType: 'courier',
+      targetId:   email,
+      metadata:   {},
+      req,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (err) {

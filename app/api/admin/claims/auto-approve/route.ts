@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isClaimsEnabled, runClaimAutoApproval } from '@/lib/claims'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
+import { safeEqual } from '@/lib/safe-compare'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,6 +21,10 @@ export const dynamic = 'force-dynamic'
 //   2. AUTH (mirror of creator-payouts/run): INTERNAL_CRON_TOKEN via X-Internal-Token,
 //      OR an ADMIN session. 401 without either; 403 for a non-admin session.
 export async function POST(req: Request) {
+  // Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_claims_auto_approve', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   if (!isClaimsEnabled()) {
     return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
   }
@@ -27,8 +34,10 @@ export async function POST(req: Request) {
   const isInternal =
     internalExpected.length > 0 &&
     typeof internalToken === 'string' &&
-    internalToken === internalExpected
+    safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
+  let actorId = CRON_ACTOR_ID
+  let actorEmail: string | null = null
   if (!isInternal) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
@@ -36,15 +45,18 @@ export async function POST(req: Request) {
     }
     const operator = await prisma.operator.findUnique({
       where:  { email: session.user.email },
-      select: { role: true },
+      select: { id: true, role: true },
     })
     if (!operator || operator.role !== 'admin') {
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
+    actorId = operator.id
+    actorEmail = session.user.email
   }
 
   try {
     const summary = await runClaimAutoApproval()
+    await recordAdminAudit({ actorId, actorEmail, action: 'claim.auto_approve', targetType: 'claim', targetId: null, metadata: {}, req })
     return NextResponse.json({ ok: true, ...summary })
   } catch (err) {
     console.error('[claims auto-approve]', err instanceof Error ? err.message : err)

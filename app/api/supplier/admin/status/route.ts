@@ -6,6 +6,8 @@ import { prisma } from '@/lib/prisma'
 import { ensureSupplierOperator } from '@/lib/supplier-account'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +33,9 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  const limited = rateLimit(req, 'admin_supplier_status', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
+
   const session = await getServerSession(authOptions)
   const user = session?.user as { role?: string; roles?: string[] } | undefined
   const isAdmin = user?.role === 'admin' || (Array.isArray(user?.roles) && user!.roles!.includes('admin'))
@@ -102,6 +107,16 @@ export async function POST(req: Request) {
           profile.id, e instanceof Error ? e.message : e)
       }
     }
+
+    await recordAdminAudit({
+      actorId:    (user as { id?: string } | undefined)?.id ?? 'unknown',
+      actorEmail: session?.user?.email ?? null,
+      action:     'supplier.status',
+      targetType: 'supplier',
+      targetId:   profile.email,
+      metadata:   { status },
+      req,
+    })
 
     return NextResponse.json({ ok: true, status, bridge })
   } catch (err) {

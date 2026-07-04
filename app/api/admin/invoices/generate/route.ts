@@ -4,6 +4,9 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { monthBounds, issueInvoice } from '@/lib/invoice'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
+import { safeEqual } from '@/lib/safe-compare'
 
 // ── POST /api/admin/invoices/generate { month: "2026-06" } ────────────────────
 // Rail A4. Issues the month's commission invoice for EVERY establishment whose
@@ -18,6 +21,10 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) })
 
 export async function POST(req: Request) {
+  // Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_invoices_generate', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   try {
     // ── Auth (A6, ADDITIVE machine access — same shape as /ledger/check) ──────
     // The monthly invoice cron (scripts/cron/monthly-invoices.js) calls this
@@ -30,8 +37,10 @@ export async function POST(req: Request) {
     const isInternal =
       internalExpected.length > 0 &&
       typeof internalToken === 'string' &&
-      internalToken === internalExpected
+      safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
+    let actorId = CRON_ACTOR_ID
+    let actorEmail: string | null = null
     if (!isInternal) {
       const session = await getServerSession(authOptions)
       if (!session?.user?.email) {
@@ -39,11 +48,13 @@ export async function POST(req: Request) {
       }
       const operator = await prisma.operator.findUnique({
         where:  { email: session.user.email },
-        select: { role: true },
+        select: { id: true, role: true },
       })
       if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
         return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       }
+      actorId = operator.id
+      actorEmail = session.user.email
     }
 
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
@@ -97,6 +108,15 @@ export async function POST(req: Request) {
         alreadyExisted: inv.alreadyExisted,
       })
     }
+
+    await recordAdminAudit({
+      actorId, actorEmail,
+      action:     'invoice.generate',
+      targetType: 'invoice',
+      targetId:   null,
+      metadata:   { month: parsed.data.month, generated: invoices.filter(i => !i.alreadyExisted).length },
+      req,
+    })
 
     return NextResponse.json({
       month: parsed.data.month,

@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { matureCreatorEarnings } from '@/lib/creator-earnings'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
+import { safeEqual } from '@/lib/safe-compare'
 
 // ── POST /api/admin/creator-earnings/mature ───────────────────────────────────
 // B2a — runs the daily maturation pass over every PENDING creator gain
@@ -19,14 +22,20 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
+  // Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_creator_earnings_mature', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   try {
     const internalToken    = req.headers.get('x-internal-token')
     const internalExpected = (process.env.INTERNAL_CRON_TOKEN ?? '').trim()
     const isInternal =
       internalExpected.length > 0 &&
       typeof internalToken === 'string' &&
-      internalToken === internalExpected
+      safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
+    let actorId = CRON_ACTOR_ID
+    let actorEmail: string | null = null
     if (!isInternal) {
       const session = await getServerSession(authOptions)
       if (!session?.user?.email) {
@@ -34,14 +43,17 @@ export async function POST(req: Request) {
       }
       const operator = await prisma.operator.findUnique({
         where:  { email: session.user.email },
-        select: { role: true },
+        select: { id: true, role: true },
       })
       if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
         return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       }
+      actorId = operator.id
+      actorEmail = session.user.email
     }
 
     const summary = await matureCreatorEarnings()
+    await recordAdminAudit({ actorId, actorEmail, action: 'creator_earnings.mature', targetType: null, targetId: null, metadata: {}, req })
     return NextResponse.json({ ok: true, ...summary })
   } catch (err) {
     console.error('[creator-earnings mature]', err instanceof Error ? err.message : err)

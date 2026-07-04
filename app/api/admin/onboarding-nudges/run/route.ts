@@ -11,6 +11,9 @@ import {
   mintUnsubscribeToken, NUDGE_AGE_MS,
 } from '@/lib/onboarding-nudge'
 import { sendTransactional } from '@/lib/transactional-emails'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
+import { safeEqual } from '@/lib/safe-compare'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -121,6 +124,10 @@ async function processCandidate(c: NudgeCandidate, role: NudgeRole, progress: On
 }
 
 export async function POST(req: Request) {
+  // 0. Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_onboarding_nudges_run', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   // 1. Kill-switch — default OFF → the whole cron is a no-op (no candidates read, no send).
   if (!isOnboardingNudgeEnabled()) {
     return NextResponse.json({ ok: true, gated: true, considered: 0, sent: 0 })
@@ -130,12 +137,16 @@ export async function POST(req: Request) {
   const internalToken    = req.headers.get('x-internal-token')
   const internalExpected = (process.env.INTERNAL_CRON_TOKEN ?? '').trim()
   const isInternal =
-    internalExpected.length > 0 && typeof internalToken === 'string' && internalToken === internalExpected
+    internalExpected.length > 0 && typeof internalToken === 'string' && safeEqual(internalToken, internalExpected) // ADM7: constant-time
+  let actorId = CRON_ACTOR_ID
+  let actorEmail: string | null = null
   if (!isInternal) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-    const admin = await prisma.operator.findUnique({ where: { email: session.user.email }, select: { role: true } })
+    const admin = await prisma.operator.findUnique({ where: { email: session.user.email }, select: { id: true, role: true } })
     if (!admin || admin.role !== 'admin') return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+    actorId = admin.id
+    actorEmail = session.user.email
   }
 
   try {
@@ -386,6 +397,7 @@ export async function POST(req: Request) {
       }
     }
 
+    await recordAdminAudit({ actorId, actorEmail, action: 'onboarding_nudge.run', targetType: null, targetId: null, metadata: { considered, sent, skipped }, req })
     return NextResponse.json({ ok: true, considered, sent, skipped })
   } catch (err) {
     console.error('[onboarding-nudges run]', err instanceof Error ? err.message : err)

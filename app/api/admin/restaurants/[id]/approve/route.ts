@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,11 +27,14 @@ export const dynamic = 'force-dynamic'
 // isActive through the admin path, it does not touch the listing filter.
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } },
 ) {
+  const limited = rateLimit(req, 'admin_restaurant_approve', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   const session = await getServerSession(authOptions)
-  const user = session?.user as { role?: string; roles?: string[] } | undefined
+  const user = session?.user as { id?: string; email?: string | null; role?: string; roles?: string[] } | undefined
   if (!user) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   }
@@ -81,6 +86,15 @@ export async function POST(
       console.error('[EMAIL MISS] [admin/restaurants/approve] partner email failed (non-fatal):',
         params.id, e instanceof Error ? e.message : e)
     }
+
+    await recordAdminAudit({
+      actorId:    user.id ?? 'unknown',
+      actorEmail: user.email ?? null,
+      action:     'restaurant.approve',
+      targetType: 'restaurant',
+      targetId:   params.id,
+      req,
+    })
 
     return NextResponse.json({ ok: true, restaurant: updated })
   } catch (err) {

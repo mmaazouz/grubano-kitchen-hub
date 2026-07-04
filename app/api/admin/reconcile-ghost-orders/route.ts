@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendAdminReconcileDigest } from '@/lib/admin-alerts'
+import { rateLimit } from '@/lib/rate-limit'
+import { safeEqual } from '@/lib/safe-compare'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -15,12 +17,16 @@ export const dynamic = 'force-dynamic'
 // a findMany + a best-effort admin digest. Auth mirrors the cron routes:
 // X-Internal-Token === INTERNAL_CRON_TOKEN, OR an admin session. Idempotent.
 export async function GET(req: Request) {
+  // Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_reconcile_ghost', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
+
   const internalToken    = req.headers.get('x-internal-token')
   const internalExpected = (process.env.INTERNAL_CRON_TOKEN ?? '').trim()
   const isInternal =
     internalExpected.length > 0 &&
     typeof internalToken === 'string' &&
-    internalToken === internalExpected
+    safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
   if (!isInternal) {
     const session = await getServerSession(authOptions)

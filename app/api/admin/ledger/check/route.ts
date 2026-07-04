@@ -4,6 +4,8 @@ import type Stripe from 'stripe'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
+import { rateLimit } from '@/lib/rate-limit'
+import { safeEqual } from '@/lib/safe-compare'
 
 // ── GET /api/admin/ledger/check?from=&to= ─────────────────────────────────────
 // THE incoherence detector n°1 (rail A3). Two verifications over a period
@@ -23,6 +25,10 @@ const DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 const STRIPE_PAGE_CAP   = 1000 // hard cap on PIs fetched per check (test volumes)
 
 export async function GET(req: Request) {
+  // Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_ledger_check', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
+
   try {
     // ── Auth (A6, ADDITIVE machine access) ────────────────────────────────────
     // Two ways in, in order:
@@ -37,7 +43,7 @@ export async function GET(req: Request) {
     const isInternal =
       internalExpected.length > 0 &&
       typeof internalToken === 'string' &&
-      internalToken === internalExpected
+      safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
     if (!isInternal) {
       const session = await getServerSession(authOptions)

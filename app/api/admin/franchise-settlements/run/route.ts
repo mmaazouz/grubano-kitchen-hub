@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isFranchiseSettlementEnabled, settleFranchisor, runFranchiseSettlements } from '@/lib/franchise-settlement'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
+import { safeEqual } from '@/lib/safe-compare'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -21,6 +24,10 @@ export const dynamic = 'force-dynamic'
 // Idempotent at the run level (re-running settles nothing already settled).
 
 export async function POST(req: Request) {
+  // 0. Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_franchise_settlements_run', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   // 1. Kill-switch — default OFF, checked before anything else.
   if (!isFranchiseSettlementEnabled()) {
     return NextResponse.json({ error: 'Règlement franchise indisponible', gated: true }, { status: 403 })
@@ -32,8 +39,10 @@ export async function POST(req: Request) {
   const isInternal =
     internalExpected.length > 0 &&
     typeof internalToken === 'string' &&
-    internalToken === internalExpected
+    safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
+  let actorId = CRON_ACTOR_ID
+  let actorEmail: string | null = null
   if (!isInternal) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
@@ -41,11 +50,13 @@ export async function POST(req: Request) {
     }
     const operator = await prisma.operator.findUnique({
       where:  { email: session.user.email },
-      select: { role: true },
+      select: { id: true, role: true },
     })
     if (!operator || operator.role !== 'admin') {
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
+    actorId = operator.id
+    actorEmail = session.user.email
   }
 
   try {
@@ -56,10 +67,12 @@ export async function POST(req: Request) {
 
     if (operatorId) {
       const result = await settleFranchisor(operatorId)
+      await recordAdminAudit({ actorId, actorEmail, action: 'franchise_settlement.run', targetType: 'franchise', targetId: operatorId, metadata: { mode: 'single' }, req })
       return NextResponse.json({ ok: true, mode: 'single', result })
     }
 
     const summary = await runFranchiseSettlements()
+    await recordAdminAudit({ actorId, actorEmail, action: 'franchise_settlement.run', targetType: 'franchise', targetId: null, metadata: { mode: 'batch' }, req })
     return NextResponse.json({ ok: true, mode: 'batch', ...summary })
   } catch (err) {
     console.error('[franchise-settlements run]', err instanceof Error ? err.message : err)

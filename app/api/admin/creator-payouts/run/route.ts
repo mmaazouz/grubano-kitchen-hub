@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isCreatorPayoutEnabled, payCreator, runCreatorPayouts } from '@/lib/creator-payout'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
+import { safeEqual } from '@/lib/safe-compare'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +22,10 @@ export const dynamic = 'force-dynamic'
 // Idempotent at the run level (re-running pays nothing already paid).
 
 export async function POST(req: Request) {
+  // 0. Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_creator_payouts_run', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   // 1. Kill-switch — default OFF, checked before anything else.
   if (!isCreatorPayoutEnabled()) {
     return NextResponse.json({ error: 'Versements créateur indisponibles', gated: true }, { status: 403 })
@@ -30,8 +37,10 @@ export async function POST(req: Request) {
   const isInternal =
     internalExpected.length > 0 &&
     typeof internalToken === 'string' &&
-    internalToken === internalExpected
+    safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
+  let actorId = CRON_ACTOR_ID
+  let actorEmail: string | null = null
   if (!isInternal) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
@@ -39,11 +48,13 @@ export async function POST(req: Request) {
     }
     const operator = await prisma.operator.findUnique({
       where:  { email: session.user.email },
-      select: { role: true },
+      select: { id: true, role: true },
     })
     if (!operator || operator.role !== 'admin') {
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
+    actorId = operator.id
+    actorEmail = session.user.email
   }
 
   try {
@@ -54,10 +65,12 @@ export async function POST(req: Request) {
 
     if (creatorId) {
       const result = await payCreator(creatorId)
+      await recordAdminAudit({ actorId, actorEmail, action: 'creator_payout.run', targetType: 'creator', targetId: creatorId, metadata: { mode: 'single' }, req })
       return NextResponse.json({ ok: true, mode: 'single', result })
     }
 
     const summary = await runCreatorPayouts()
+    await recordAdminAudit({ actorId, actorEmail, action: 'creator_payout.run', targetType: 'creator', targetId: null, metadata: { mode: 'batch' }, req })
     return NextResponse.json({ ok: true, mode: 'batch', ...summary })
   } catch (err) {
     console.error('[creator-payouts run]', err instanceof Error ? err.message : err)

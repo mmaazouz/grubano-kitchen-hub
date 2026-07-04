@@ -4,6 +4,9 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
+import { safeEqual } from '@/lib/safe-compare'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,6 +34,10 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // 0. Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_refunds_run', { limitDefault: 20, windowDefault: 60 })
+  if (limited) return limited
+
   // 1. Kill-switch — default OFF, checked before anything else.
   if (!isRefundsEnabled()) {
     return NextResponse.json({ error: 'Remboursements indisponibles', gated: true }, { status: 403 })
@@ -42,8 +49,10 @@ export async function POST(req: Request) {
   const isInternal =
     internalExpected.length > 0 &&
     typeof internalToken === 'string' &&
-    internalToken === internalExpected
+    safeEqual(internalToken, internalExpected) // ADM7: constant-time
 
+  let actorId = CRON_ACTOR_ID
+  let actorEmail: string | null = null
   if (!isInternal) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
@@ -51,11 +60,13 @@ export async function POST(req: Request) {
     }
     const operator = await prisma.operator.findUnique({
       where:  { email: session.user.email },
-      select: { role: true },
+      select: { id: true, role: true },
     })
     if (!operator || operator.role !== 'admin') {
       return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
     }
+    actorId = operator.id
+    actorEmail = session.user.email
   }
 
   try {
@@ -72,6 +83,16 @@ export async function POST(req: Request) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status })
     }
+
+    // Best-effort audit AFTER the refund fully succeeded (flag-gated, never throws).
+    await recordAdminAudit({
+      actorId, actorEmail,
+      action:     'refund.run',
+      targetType: 'order',
+      targetId:   parsed.data.orderId,
+      metadata:   { amountCents: result.amountCents, resumed: result.resumed, refundId: result.refundId },
+      req,
+    })
 
     return NextResponse.json({
       ok:                        true,

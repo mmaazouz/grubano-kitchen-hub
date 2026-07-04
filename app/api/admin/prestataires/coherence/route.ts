@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,10 +26,13 @@ function isAdmin(user: { role?: string; roles?: string[] } | undefined): boolean
 const bodySchema = z.object({ email: z.string().email() })
 
 export async function POST(req: Request) {
+  const limited = rateLimit(req, 'admin_prestataire_coherence', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
+
   if (!isPrestataireEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const session = await getServerSession(authOptions)
-  const user = session?.user as { role?: string; roles?: string[] } | undefined
+  const user = session?.user as { id?: string; email?: string; role?: string; roles?: string[] } | undefined
   if (!user)          return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
   if (!isAdmin(user)) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
@@ -51,6 +56,16 @@ export async function POST(req: Request) {
         data:  { marketplaceCoherencePending: false },
       })
     }
+
+    await recordAdminAudit({
+      actorId:    user.id ?? '',
+      actorEmail: user.email ?? null,
+      action:     'prestataire.coherence',
+      targetType: 'prestataire',
+      targetId:   email,
+      metadata:   {},
+      req,
+    })
 
     return NextResponse.json({ ok: true })
   } catch (err) {

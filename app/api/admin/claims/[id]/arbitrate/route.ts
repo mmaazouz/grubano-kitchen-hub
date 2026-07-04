@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { isClaimsEnabled, arbitrateClaim } from '@/lib/claims'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,6 +20,10 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  // Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
+  const limited = rateLimit(req, 'admin_claims_arbitrate', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
+
   if (!isClaimsEnabled()) {
     return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
   }
@@ -37,5 +43,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     reason:   parsed.data.reason,
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  await recordAdminAudit({
+    actorId:    user.id,
+    actorEmail: session?.user?.email ?? null,
+    action:     'claim.arbitrate',
+    targetType: 'claim',
+    targetId:   params.id,
+    metadata:   { decision: parsed.data.decision, refunded: result.refund != null },
+    req,
+  })
   return NextResponse.json({ claim: result.claim, refund: result.refund ?? null })
 }

@@ -5,6 +5,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
 import { isInfluencerEnabled, listVerificationRequests, decideVerification } from '@/lib/influencer-verification'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -42,6 +44,8 @@ const decideSchema = z.object({
 })
 
 export async function POST(req: Request) {
+  const limited = rateLimit(req, 'admin_influencer_verify', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
   if (!isInfluencerEnabled()) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
   const session = await getServerSession(authOptions)
   const user = session?.user as { id?: string; email?: string; role?: string; roles?: string[] } | undefined
@@ -81,6 +85,15 @@ export async function POST(req: Request) {
       console.error('[EMAIL MISS] [admin/influencer-verifications] partner email failed (non-fatal):',
         parsed.data.id, e instanceof Error ? e.message : e)
     }
+    await recordAdminAudit({
+      actorId:    admin.id ?? 'admin',
+      actorEmail: user.email ?? null,
+      action:     'influencer.verify',
+      targetType: 'affiliate',
+      targetId:   parsed.data.id,
+      metadata:   { action: parsed.data.action },
+      req,
+    })
     return NextResponse.json({ ok: true, status: out.status })
   }
   switch (out.reason) {

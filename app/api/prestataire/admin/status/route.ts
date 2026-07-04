@@ -5,6 +5,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensurePrestataireOperator, isPrestataireEnabled } from '@/lib/prestataire-account'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
+import { rateLimit } from '@/lib/rate-limit'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,11 +22,13 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  const limited = rateLimit(req, 'admin_prestataire_status', { limitDefault: 30, windowDefault: 60 })
+  if (limited) return limited
   if (!isPrestataireEnabled()) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
   const session = await getServerSession(authOptions)
-  const user = session?.user as { role?: string; roles?: string[] } | undefined
+  const user = session?.user as { id?: string; email?: string | null; role?: string; roles?: string[] } | undefined
   const isAdmin = user?.role === 'admin' || (Array.isArray(user?.roles) && user!.roles!.includes('admin'))
   if (!isAdmin) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
@@ -63,6 +67,16 @@ export async function POST(req: Request) {
         verificationStatus: profile.verificationStatus,
       })
     }
+
+    await recordAdminAudit({
+      actorId:    user?.id ?? '',
+      actorEmail: user?.email ?? null,
+      action:     'prestataire.status',
+      targetType: 'prestataire',
+      targetId:   email,
+      metadata:   { status },
+      req,
+    })
 
     return NextResponse.json({ ok: true, status, bridge })
   } catch (err) {

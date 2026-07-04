@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { llmComplete } from '@/lib/llm'
+import { safeEqual } from '@/lib/safe-compare'
 import nodemailer from 'nodemailer'
 
 // ── Clients ───────────────────────────────────────────────────────────────────
@@ -43,9 +44,11 @@ async function sendAndLog(
 // ── POST /api/email-agent ─────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // Verify CRON_SECRET to prevent unauthorized calls
-  const auth = req.headers.get('authorization')
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Verify CRON_SECRET to prevent unauthorized calls (ADM7: constant-time compare +
+  // fail-closed when the secret is unset — an empty secret must never authorise).
+  const secret = process.env.CRON_SECRET ?? ''
+  const auth   = req.headers.get('authorization') ?? ''
+  if (secret.length === 0 || !safeEqual(auth, `Bearer ${secret}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

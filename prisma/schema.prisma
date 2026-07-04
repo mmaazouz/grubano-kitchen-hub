@@ -2497,3 +2497,29 @@ model LlmUsage {
   @@index([task])
   @@index([createdAt])
 }
+
+// ── Admin audit trail (append-only) ─────────────────────────────────────────────
+// ADDITIVE + REVERSIBLE (ADM7): an immutable log of privileged admin actions (who did
+// what, to which target, when). Dropping this table leaves every other model and all
+// business logic intact — NOTHING reads it at runtime; writes are flag-gated
+// (ADMIN_AUDIT_ENABLED, default OFF) and best-effort (a failed audit never blocks the
+// action). actorId is a BARE string (Operator.id, or 'system:cron' for a cron-token
+// caller) with NO FK — like LedgerEntry.restaurantId — so an audit row never owns or
+// blocks an Operator. action/targetType are plain Strings (MySQL has no enums); metadata
+// is a Json blob (MySQL has no arrays). Migration is WRITTEN here but APPLIED on staging
+// by Mohammed via `./node_modules/.bin/prisma db push`.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  actorId    String                    // Operator.id of the admin, or 'system:cron'
+  actorEmail String?                   // denormalised for readability if the admin is later removed
+  action     String                    // refund.run | creator_payout.run | supplier.status | restaurant.approve | …
+  targetType String?                   // order | supplier | prestataire | restaurant | claim | franchise | courier | affiliate | invoice
+  targetId   String?
+  metadata   Json     @default("{}")   // action-specific context (status, amountCents, batch size, …)
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}
