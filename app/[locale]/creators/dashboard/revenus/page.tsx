@@ -1,38 +1,43 @@
 'use client'
 
 /**
- * Mes gains — PHASE B / B1 (Agent 13). The space where the creator LIVES
- * their earnings, over Agent 14's B2a contract:
+ * CR6 — Mes gains (creator studio, MONEY 🔒). Visual re-skin to the CD design
+ * (CreatorShell --op-/--op-cr + Material Symbols); ZERO change to the money
+ * plumbing. Over Agent 14's B2a contract:
  *
  *   GET /api/creator/earnings?page=N
- *   → { code, link, totals { pendingCents, maturedCents, paidCents,
+ *   → { roles, code, link, totals { pendingCents, maturedCents, paidCents,
  *       cancelledCents, thresholdCents, progressPct }, orders[…20/page],
  *       ordersTotal, ordersHasMore, adoptions[…20] }
  *
- * RULES: amounts are CENTS everywhere; the statuses come from the SERVER
- * lifecycle (pending|matured|cancelled|paid) — ZERO client-side status
- * computation. The transparency rate (30%) comes from the CONFIG via
- * /api/creators/home → referralRates.commissionPct — never hardcoded.
+ * RULES: amounts are CENTS everywhere → euros for DISPLAY only (÷100 via
+ * formatMoney), NEVER recomputed client-side. Statuses come from the SERVER
+ * lifecycle (pending|matured|cancelled|paid) — ZERO client-side status math.
+ * The transparency rate (%) comes from the CONFIG via /api/creators/home →
+ * referralRates.commissionPct — never hardcoded.
  *
- * Sections: vue d'ensemble (big numbers + 20 € progress bar + code/link/QR +
- * attributed-orders counter + transparency line) → Mes commandes (paginated,
- * server badges) → Mes recettes adoptées (the 2% pipe) → Versements
- * placeholder (B2b) → polished empty state for a brand-new creator.
+ * HONESTY (payout rail CREATOR_PAYOUT/CONNECT is gated OFF):
+ *  · balance hero = maturedCents (« Solde à verser ») + real 30d earned + real
+ *    cumulé; NO fictive « Prochain versement »/date; « Retrait manuel » CTA is
+ *    INERT; note is future-tense (« versements automatiques une fois activés »).
+ *  · « Versements reçus » is wired to the REAL GET /api/partner/payouts and
+ *    shows rows ONLY when enabled && payouts.length — otherwise an honest empty.
+ *  · history statuses = the true server ledger states (a refund → cancelled).
+ *  · read-only banner + « Lecture seule » badge + cancelled + transparency kept.
+ *
+ * The share-kit (code/link/QR for influencer + /chef link for chef) is REAL and
+ * serves both roles — kept even though the CD CR6 mock omits it (the affiliation
+ * screen is influencer-only, so the chef link lives here).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import {
-  TrendingUp, Hourglass, CheckCircle2, Wallet, Copy, Check, QrCode,
-  Loader2, AlertCircle, ShoppingBag, ChefHat, Share2,
-} from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Card } from '@/components/design-system'
 import { buildReferralLink } from '@/lib/referral-link'
 import { buildChefPageLink } from '@/lib/chef-link'
 import { formatMoney } from '@/lib/format-money'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
-import CreatorPaymentsSection from '@/components/creator/CreatorPaymentsSection'
+import '../creator-earnings.css'
 
 // ── B2a contract (mirrored locally — the route is the source of truth) ────────
 interface EarningsTotals {
@@ -80,6 +85,12 @@ interface EarningsPayload {
   adoptions:      EarningAdoption[]
 }
 
+// ── Real payout source (same shape CreatorPaymentsSection consumes) ───────────
+interface PayoutRow {
+  id: string; amountCents: number; currency: string
+  status: string; paidAt: string | null; stripeTransferId: string | null; createdAt: string
+}
+
 export default function CreatorEarningsPage() {
   const t = useTranslations('creators.earnings')
   const locale = useLocale()
@@ -90,16 +101,23 @@ export default function CreatorEarningsPage() {
   // Config rate for the transparency line (fraction, e.g. 0.30) — from the
   // referral config via /api/creators/home → referralRates, NEVER hardcoded.
   const [ratePct, setRatePct] = useState<number | null>(null)
-  // Paginated orders, appended page by page (mobile-first "Voir plus").
+  // Real 30-day earned window (« Gagné ce mois ») — home.earningsThisMonth is a
+  // server euros figure (referral + recipe gross, 30-day rolling); null until read.
+  const [earnedThisMonthEur, setEarnedThisMonthEur] = useState<number | null>(null)
+  // Paginated orders, appended page by page ("Voir plus").
   const [orders,      setOrders]      = useState<EarningOrder[]>([])
   const [page,        setPage]        = useState(1)
   const [hasMore,     setHasMore]     = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  // Real payouts (P4-UI) — the honest « Versements reçus » source. Rows show
+  // ONLY when the rail is enabled AND rows exist; otherwise an honest empty.
+  const [payoutsEnabled, setPayoutsEnabled] = useState(false)
+  const [payouts,        setPayouts]        = useState<PayoutRow[]>([])
   // Copy / QR affordances.
   const [copied, setCopied] = useState<'code' | 'link' | 'cheflink' | null>(null)
   const [qrOpen, setQrOpen] = useState<'ref' | 'chef' | null>(null)
-  // B1-bis FIX 3 — adoptions folded: 5 visible, "Voir plus" unfolds by packs
-  // of 5 (client-side slice — the contract already capped the list at 20).
+  // Adoptions folded: 5 visible, "Voir plus" unfolds by packs of 5 (client-side
+  // slice — the contract already capped the list at 20).
   const [adoptionsShown, setAdoptionsShown] = useState(5)
 
   const load = useCallback(async () => {
@@ -122,6 +140,9 @@ export default function CreatorEarningsPage() {
         const home = homeRes.ok ? (await homeRes.json()) as CreatorHomeData : null
         const pct = home?.referralRates?.commissionPct
         if (typeof pct === 'number' && pct > 0) setRatePct(Math.round(pct * 100))
+        // Real 30-day earned (server euros) for the « Gagné ce mois » meta.
+        const em = home?.earningsThisMonth
+        if (typeof em === 'number' && em >= 0) setEarnedThisMonthEur(em)
       } catch { /* line hidden */ }
     } catch {
       setError(t('errLoad'))
@@ -131,6 +152,23 @@ export default function CreatorEarningsPage() {
   }, [t])
 
   useEffect(() => { load() }, [load])
+
+  // Real payout history (read-only, best-effort — never blocks the page).
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const r = await fetch('/api/partner/payouts', { cache: 'no-store' })
+        const po = r.ok ? await r.json().catch(() => null) : null
+        if (!alive || !po) return
+        if (po.enabled) {
+          setPayoutsEnabled(true)
+          setPayouts(Array.isArray(po.payouts) ? po.payouts : [])
+        }
+      } catch { /* payouts section stays in its honest empty state */ }
+    })()
+    return () => { alive = false }
+  }, [])
 
   async function loadMore() {
     if (loadingMore || !hasMore) return
@@ -158,385 +196,388 @@ export default function CreatorEarningsPage() {
   // ── Formatting (cents → localized euros) — central source of truth ──────────
   const fmtCents = useMemo(() => (cents: number) => formatMoney(cents, locale), [locale])
   const dateFmt = useMemo(
-    () => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }),
+    () => new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }),
     [locale],
   )
 
   // ── The public tracked link ────────────────────────────────────────────────
-  // The contract's link is "/ref/<slug>" (fixed server-side, C3-fix §3 — the
-  // old "/r/" workaround is gone). We extract the slug and hand it to the
-  // shared lib/referral-link builder, the single source for the origin
-  // (business.* browsing host neutralized) and the /ref path.
+  // The contract's link is "/ref/<slug>"; we extract the slug and hand it to the
+  // shared lib/referral-link builder (single source for origin + /ref path).
   const fullLink = useMemo(() => {
     if (!data?.link) return null
     const slug = data.link.split('/').filter(Boolean).pop()
     return buildReferralLink(slug)
   }, [data?.link])
 
-  // Mission 2 - the CHEF kit link: the public /chef page (M1), built by the
-  // dedicated lib/chef-link (imports consumerOrigin, never touches the
-  // influencer builder).
+  // The CHEF kit link: the public /chef page (M1), built by lib/chef-link.
   const chefLink = useMemo(() => {
     if (!data?.link) return null
     const slug = data.link.split('/').filter(Boolean).pop()
     return buildChefPageLink(slug)
   }, [data?.link])
 
+  // ── Server-status → CD badge (class + icon + label). Server statuses only. ──
   const statusBadge = (status: string) => {
     switch (status) {
-      case 'pending':   return { label: `⏳ ${t('statusPending')}`, cls: 'bg-grubano-warning-tint text-grubano-warning' }
-      case 'matured':   return { label: `✓ ${t('statusMatured')}`,  cls: 'bg-grubano-success-tint text-grubano-success' }
-      case 'paid':      return { label: t('statusPaid'),            cls: 'bg-grubano-tint text-grubano-primary' }
-      case 'cancelled': return { label: t('statusCancelled'),       cls: 'bg-grubano-surface-muted text-grubano-ink-faint' }
-      default:          return { label: status,                     cls: 'bg-grubano-surface-muted text-grubano-ink-faint' }
+      case 'pending':   return { cls: 'pending',   icon: 'schedule',      label: t('statusPending') }
+      case 'matured':   return { cls: 'matured',   icon: 'task_alt',      label: t('statusMatured') }
+      case 'paid':      return { cls: 'paid',       icon: 'check',         label: t('statusPaid') }
+      case 'cancelled': return { cls: 'cancelled', icon: 'cancel',        label: t('statusCancelled') }
+      default:          return { cls: 'cancelled', icon: 'help',          label: status }
     }
   }
 
-  // ── Loading / error shells ──────────────────────────────────────────────────
+  const payoutIcon = (status: string) =>
+    status === 'paid' ? 'check_circle' : status === 'failed' ? 'error' : 'schedule'
+
+  // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="mx-auto flex max-w-2xl items-center justify-center gap-2 px-4 py-24 text-grubano-ink-muted">
-        <Loader2 size={16} className="animate-spin" />
-        <span className="text-sm">{t('loading')}</span>
-      </div>
+      <section aria-busy="true" aria-label={t('loading')}>
+        <span className="op-sk" style={{ width: 240, height: 26, marginBottom: 18 }} />
+        <span className="op-sk" style={{ width: '100%', height: 60, borderRadius: 12, marginBottom: 16, display: 'block' }} />
+        <span className="op-sk" style={{ width: '100%', height: 170, borderRadius: 12, marginBottom: 16, display: 'block' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
+          <span className="op-sk" style={{ width: '100%', height: 280, borderRadius: 12 }} />
+          <span className="op-sk" style={{ width: '100%', height: 280, borderRadius: 12 }} />
+        </div>
+      </section>
     )
   }
+
+  // ── Error ─────────────────────────────────────────────────────────────────
   if (error || !data) {
     return (
-      <div className="mx-auto max-w-2xl px-4 pt-10">
-        <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">
-          <AlertCircle size={14} className="mt-0.5 shrink-0" />
-          <span>{error || t('errLoad')}</span>
-        </p>
-        <button
-          type="button"
-          onClick={load}
-          className="mt-3 w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface py-2.5 text-sm font-semibold text-grubano-ink"
-        >
-          {t('retry')}
-        </button>
-      </div>
+      <section>
+        <div className="earn-error">
+          <div className="op-error__card">
+            <span className="ms">cloud_off</span>
+            <h2>{t('errTitle')}</h2>
+            <p>{error || t('errLoad')}</p>
+            <button type="button" className="op-btn-primary" onClick={load}>
+              <span className="ms">refresh</span>{t('retry')}
+            </button>
+          </div>
+        </div>
+      </section>
     )
   }
 
   const roles = data.roles ?? { isChef: true, isInfluencer: true }
   const { totals } = data
   const brandNew = data.ordersTotal === 0 && data.adoptions.length === 0
-  const progressReached = totals.maturedCents >= totals.thresholdCents
+  // Real cumulative (server cents) — matured + pending + paid (excludes cancelled).
+  const cumulativeCents = totals.pendingCents + totals.maturedCents + totals.paidCents
 
-  return (
-    <div className="mx-auto max-w-2xl space-y-5 px-4 pb-10 pt-5">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div>
-        <div className="mb-1 flex items-center gap-2">
-          <TrendingUp size={18} className="text-grubano-primary" />
-          <h1 className="font-display text-xl font-bold">{t('title')}</h1>
+  // ── Empty (brand-new creator, no order & no adoption) ───────────────────────
+  if (brandNew) {
+    return (
+      <section>
+        <div className="op-dash__head">
+          <div>
+            <h1 className="op-dash__title">{t('title')}</h1>
+            <p className="op-dash__sub">{t('subtitle')}</p>
+          </div>
+          <span className="ro-badge"><span className="ms">lock</span>{t('readOnly')}</span>
         </div>
-        <p className="text-sm text-grubano-ink-muted">{t('subtitle')}</p>
+        <div className="op-card op-empty">
+          <span className="ms">savings</span>
+          <b>{t('emptyTitle')}</b>
+          <span>{t('emptyBody')}</span>
+        </div>
+      </section>
+    )
+  }
+
+  // ── Loaded ──────────────────────────────────────────────────────────────────
+  return (
+    <section>
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('title')}</h1>
+          <p className="op-dash__sub">{t('subtitle')}</p>
+        </div>
+        <span className="ro-badge"><span className="ms">lock</span>{t('readOnly')}</span>
       </div>
 
-      {/* ── Vue d'ensemble — the money, BIG ────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card elevation="sm" padding="md">
-          <div className="flex items-center gap-1.5 text-grubano-warning">
-            <Hourglass size={13} />
-            <p className="text-[11px] font-bold uppercase tracking-wider">{t('pending')}</p>
-          </div>
-          <p className="mt-1 font-display text-2xl font-extrabold tabular-nums text-grubano-ink">
-            {fmtCents(totals.pendingCents)}
-          </p>
-          <p className="mt-0.5 text-[10px] text-grubano-ink-faint">{t('pendingHint')}</p>
-        </Card>
-
-        <Card elevation="sm" padding="md">
-          <div className="flex items-center gap-1.5 text-grubano-success">
-            <CheckCircle2 size={13} />
-            <p className="text-[11px] font-bold uppercase tracking-wider">{t('matured')}</p>
-          </div>
-          <p className="mt-1 font-display text-2xl font-extrabold tabular-nums text-grubano-ink">
-            {fmtCents(totals.maturedCents)}
-          </p>
-          {/* Progress to the payout threshold — straight from the contract. */}
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-grubano-surface-muted">
-            <div
-              className={`h-full rounded-full transition-all ${progressReached ? 'bg-grubano-success' : 'bg-grubano-primary'}`}
-              style={{ width: `${totals.progressPct}%` }}
-            />
-          </div>
-          <p className="mt-1 text-[10px] text-grubano-ink-faint">
-            {progressReached
-              ? t('progressReached')
-              : t('progressLabel', { amount: fmtCents(totals.maturedCents), threshold: fmtCents(totals.thresholdCents) })}
-          </p>
-        </Card>
+      {/* ── Read-only banner (honest posture — KEEP) ─────────────────────────── */}
+      <div className="ro-banner">
+        <span className="ms">verified_user</span>
+        <div className="m">
+          <b>{t('bannerTitle')}</b>
+          <p>{t('bannerBody')}</p>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3.5 py-2.5">
-        <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-grubano-ink">
-          <Wallet size={13} className="text-grubano-primary" /> {t('paid')}
-        </span>
-        <span className="font-display text-base font-extrabold tabular-nums text-grubano-ink">
-          {fmtCents(totals.paidCents)}
-        </span>
+      {/* ── Balance hero — big number = maturedCents (« Solde à verser »).
+          NO fictive « Prochain versement »/date; the CTA is INERT; the note is
+          future-tense (« versements automatiques une fois activés »). ───────── */}
+      <div className="op-card bal">
+        <div className="bal__main">
+          <div className="bal__label"><span className="ms">account_balance_wallet</span>{t('balanceLabel')}</div>
+          <div className="bal__v">{fmtCents(totals.maturedCents)}</div>
+          <div className="bal__meta">
+            {t('earnedThisMonth')}{' '}
+            <b>{fmtCents(earnedThisMonthEur !== null ? Math.round(earnedThisMonthEur * 100) : 0)}</b>
+          </div>
+        </div>
+        <div className="bal__side">
+          <div className="bal__row">
+            <span className="k">{t('waiting')}</span>
+            <span className="v">{fmtCents(totals.pendingCents)}</span>
+          </div>
+          <div className="bal__row">
+            <span className="k">{t('alreadyPaid')}</span>
+            <span className="v">{fmtCents(totals.paidCents)}</span>
+          </div>
+          <div className="bal__cta">
+            <div className="payout-soon" aria-disabled="true">
+              <span className="ms">lock</span>{t('manualWithdraw')} <span className="soon">{t('soon')}</span>
+            </div>
+          </div>
+          <div className="bal__auto"><span className="ms">schedule</span>{t('autoFuture')}</div>
+        </div>
       </div>
+
+      {/* ── Total cumulé + cancelled + transparency (honest lines, KEEP) ─────── */}
+      <p className="earn-line">
+        {t('cumulative', { amount: fmtCents(cumulativeCents) })}
+      </p>
       {totals.cancelledCents > 0 && (
-        <p className="px-1 text-[11px] text-grubano-ink-faint">
-          {t('cancelledLine', { amount: fmtCents(totals.cancelledCents) })}
-        </p>
+        <p className="earn-line">{t('cancelledLine', { amount: fmtCents(totals.cancelledCents) })}</p>
       )}
-
-      {/* Transparency — the rate comes from the CONFIG, never hardcoded. */}
       {ratePct !== null && (
-        <p className="px-1 text-[11px] text-grubano-ink-muted">
-          {t('transparency', { pct: ratePct })}
-        </p>
+        <p className="earn-line">{t('transparency', { pct: ratePct })}</p>
       )}
 
-      {/* ── LE KIT DE PARTAGE (Mission 2) — one block per ACTIVE role,
-          clearly labelled: this is where the creator understands their two
-          tools. Influencer -> the /ref affiliation link (existing rail);
-          Chef -> the public /chef page (M1 contribution rail). Both roles ->
-          both blocks side by side. */}
+      {/* ── LE KIT DE PARTAGE (real — serves both roles; CD CR6 mock omits it).
+          Influencer → the /ref affiliation link; Chef → the public /chef page. */}
       {(roles.isInfluencer || roles.isChef) && (
-        <div className={`grid gap-3 ${roles.isInfluencer && roles.isChef ? 'md:grid-cols-2' : ''}`}>
+        <div className={`kit-grid${roles.isInfluencer && roles.isChef ? ' two' : ''}`}>
           {roles.isInfluencer && (
-            <Card elevation="sm" padding="md">
-              <div className="mb-2 flex items-center gap-2">
-                <Share2 size={14} className="text-grubano-primary" />
-                <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('kitAffiliationTitle')}</h2>
-                <span className="ms-auto text-[11px] text-grubano-ink-muted">
-                  {t('ordersCount', { count: data.ordersTotal })}
-                </span>
+            <div className="op-card kit-card">
+              <div className="kit-card__hd">
+                <span className="ms">ios_share</span>
+                <h3>{t('kitAffiliationTitle')}</h3>
+                <span className="count">{t('ordersCount', { count: data.ordersTotal })}</span>
               </div>
               {data.code ? (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => copy('code', data.code as string)}
-                    className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
-                  >
-                    <span className="font-mono text-base font-extrabold tracking-widest text-grubano-ink">{data.code}</span>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                      {copied === 'code' ? <Check size={13} /> : <Copy size={13} />}
+                <>
+                  <button type="button" className="kit-copy" onClick={() => copy('code', data.code as string)}>
+                    <span className="code">{data.code}</span>
+                    <span className="act">
+                      <span className="ms">{copied === 'code' ? 'check' : 'content_copy'}</span>
                       {copied === 'code' ? t('copied') : t('copyCode')}
                     </span>
                   </button>
                   {fullLink && (
-                    <button
-                      type="button"
-                      onClick={() => copy('link', fullLink)}
-                      className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{fullLink}</span>
-                      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                        {copied === 'link' ? <Check size={13} /> : <Copy size={13} />}
-                        {copied === 'link' ? t('copied') : t('copyLink')}
-                      </span>
-                    </button>
-                  )}
-                  {fullLink && (
-                    <div>
+                    <>
+                      <button type="button" className="kit-copy" onClick={() => copy('link', fullLink)}>
+                        <span className="lnk">{fullLink}</span>
+                        <span className="act">
+                          <span className="ms">{copied === 'link' ? 'check' : 'content_copy'}</span>
+                          {copied === 'link' ? t('copied') : t('copyLink')}
+                        </span>
+                      </button>
                       <button
                         type="button"
+                        className="kit-qrbtn"
                         onClick={() => setQrOpen((v) => (v === 'ref' ? null : 'ref'))}
-                        className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary"
                       >
-                        <QrCode size={13} /> {qrOpen === 'ref' ? t('hideQr') : t('showQr')}
+                        <span className="ms">qr_code_2</span>{qrOpen === 'ref' ? t('hideQr') : t('showQr')}
                       </button>
                       {qrOpen === 'ref' && (
-                        <div className="mt-2 flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
+                        <div className="kit-qr">
                           <QRCodeSVG value={fullLink} size={168} includeMargin />
-                          <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('qrHint')}</p>
+                          <p>{t('qrHint')}</p>
                         </div>
                       )}
-                    </div>
+                    </>
                   )}
-                </div>
+                </>
               ) : (
-                <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-[12px] text-grubano-ink-muted">
-                  {t('noCode')}
-                </p>
+                <p className="kit-nocode">{t('noCode')}</p>
               )}
-            </Card>
+            </div>
           )}
 
           {roles.isChef && (
-            <Card elevation="sm" padding="md">
-              <div className="mb-2 flex items-center gap-2">
-                <ChefHat size={14} className="text-grubano-primary" />
-                <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('kitChefTitle')}</h2>
+            <div className="op-card kit-card">
+              <div className="kit-card__hd">
+                <span className="ms">restaurant_menu</span>
+                <h3>{t('kitChefTitle')}</h3>
               </div>
               {chefLink ? (
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => copy('cheflink', chefLink)}
-                    className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{chefLink}</span>
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                      {copied === 'cheflink' ? <Check size={13} /> : <Copy size={13} />}
+                <>
+                  <button type="button" className="kit-copy" onClick={() => copy('cheflink', chefLink)}>
+                    <span className="lnk">{chefLink}</span>
+                    <span className="act">
+                      <span className="ms">{copied === 'cheflink' ? 'check' : 'content_copy'}</span>
                       {copied === 'cheflink' ? t('copied') : t('copyLink')}
                     </span>
                   </button>
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setQrOpen((v) => (v === 'chef' ? null : 'chef'))}
-                      className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary"
-                    >
-                      <QrCode size={13} /> {qrOpen === 'chef' ? t('hideQr') : t('showQr')}
-                    </button>
-                    {qrOpen === 'chef' && (
-                      <div className="mt-2 flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
-                        <QRCodeSVG value={chefLink} size={168} includeMargin />
-                        <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('kitChefQrHint')}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                  <button
+                    type="button"
+                    className="kit-qrbtn"
+                    onClick={() => setQrOpen((v) => (v === 'chef' ? null : 'chef'))}
+                  >
+                    <span className="ms">qr_code_2</span>{qrOpen === 'chef' ? t('hideQr') : t('showQr')}
+                  </button>
+                  {qrOpen === 'chef' && (
+                    <div className="kit-qr">
+                      <QRCodeSVG value={chefLink} size={168} includeMargin />
+                      <p>{t('kitChefQrHint')}</p>
+                    </div>
+                  )}
+                </>
               ) : (
-                <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-[12px] text-grubano-ink-muted">
-                  {t('noCode')}
-                </p>
+                <p className="kit-nocode">{t('noCode')}</p>
               )}
-            </Card>
+            </div>
           )}
         </div>
       )}
 
-      {/* ── Brand-new creator — guide, never an empty screen ──────────────── */}
-      {brandNew && (
-        <Card elevation="sm" padding="lg">
-          <div className="flex flex-col items-center gap-2 py-4 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-xl bg-grubano-tint text-grubano-primary">
-              <Share2 size={20} />
-            </span>
-            <p className="font-display text-base font-semibold text-grubano-ink">{t('emptyTitle')}</p>
-            <p className="max-w-sm text-xs text-grubano-ink-muted">{t('emptyBody')}</p>
-          </div>
-        </Card>
-      )}
+      {/* ── Two-column: earnings history (real server statuses) + payouts ────── */}
+      <div className="earn-two">
+        {/* Earnings history — orders (influencer) then adoptions (chef). */}
+        <div className="op-card card-pad">
+          <div className="card-pad__hd"><h3>{t('historyTitle')}</h3></div>
+          <div className="hint">{t('historyHint')}</div>
 
-      {/* ── Mes commandes (paginated, SERVER statuses — zero client math) ──── */}
-      {roles.isInfluencer && data.ordersTotal > 0 && (
-        <section>
-          <div className="mb-2 flex items-center gap-2">
-            <ShoppingBag size={14} className="text-grubano-primary" />
-            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('ordersTitle')}</h2>
-          </div>
-          <div className="space-y-2">
-            {orders.map((o) => {
-              const badge = statusBadge(o.status)
-              const gain = o.creatorEarningCents + o.bonusCents
-              return (
-                <Card key={o.id} elevation="sm" padding="md">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold text-grubano-ink">
-                        {o.restaurant ?? '—'}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-grubano-ink-faint">
-                        {dateFmt.format(new Date(o.date))}
-                        {o.orderTotalCents !== null && ` · ${t('orderTotal')} ${fmtCents(o.orderTotalCents)}`}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-end">
-                      <p className="text-[13px] font-extrabold tabular-nums text-grubano-ink">
-                        <span className="font-medium text-grubano-ink-muted">{t('orderGain')}</span>{' '}
-                        <span className="text-grubano-primary">{fmtCents(gain)}</span>
-                      </p>
-                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
-          {hasMore && (
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface py-2.5 text-sm font-semibold text-grubano-ink disabled:opacity-60"
-            >
-              {loadingMore ? <Loader2 size={13} className="animate-spin" /> : null}
-              {loadingMore ? t('loadingMore') : t('loadMore')}
-            </button>
-          )}
-        </section>
-      )}
-
-      {/* ── Mes recettes adoptées (the 2% pipe — present in the contract) ──── */}
-      {roles.isChef && (
-      <section>
-        <div className="mb-2 flex items-center gap-2">
-          <ChefHat size={14} className="text-grubano-primary" />
-          <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('adoptionsTitle')}</h2>
-        </div>
-        <p className="mb-2 text-[11px] text-grubano-ink-muted">{t('adoptionsHint')}</p>
-        {data.adoptions.length === 0 ? (
-          <p className="rounded-grubano-lg border border-dashed border-grubano-border bg-grubano-surface px-3 py-5 text-center text-[12px] text-grubano-ink-muted">
-            {t('adoptionsEmpty')}
-          </p>
-        ) : (
-          <>
-            <div className="space-y-2">
-              {data.adoptions.slice(0, adoptionsShown).map((a) => {
-                const badge = statusBadge(a.status)
+          {/* Mes commandes (paginated, SERVER statuses — zero client math). */}
+          {roles.isInfluencer && data.ordersTotal > 0 && (
+            <>
+              <div className="eh-thead">
+                <span>{t('colDate')}</span>
+                <span>{t('colSource')}</span>
+                <span>{t('colStatus')}</span>
+                <span>{t('colAmount')}</span>
+              </div>
+              {orders.map((o) => {
+                const badge = statusBadge(o.status)
+                const gain = o.creatorEarningCents + o.bonusCents
+                const isCancelled = o.status === 'cancelled'
                 return (
-                  <Card key={a.id} elevation="sm" padding="md">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-bold text-grubano-ink">
-                          {a.dishName ?? '—'}
-                        </p>
-                        <p className="mt-0.5 truncate text-[11px] text-grubano-ink-faint">
-                          {/* B1-bis FIX 2 — legacy rows carry rateApplied null/0
-                              with a real gain: no percentage shown at all then;
-                              non-zero rates display as-is (data truth). */}
-                          {[
-                            a.brandName,
-                            dateFmt.format(new Date(a.date)),
-                            ...((a.rateApplied ?? 0) > 0
-                              ? [t('adoptionRate', { pct: Math.round((a.rateApplied ?? 0) * 100) })]
-                              : []),
-                          ].filter(Boolean).join(' · ')}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-end">
-                        <p className="text-[13px] font-extrabold tabular-nums text-grubano-primary">
-                          {fmtCents(a.creatorEarningCents)}
-                        </p>
-                        <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
-                          {badge.label}
+                  <div className="eh-row" key={o.id}>
+                    <span className="eh-date eh-date-cell">{dateFmt.format(new Date(o.date))}</span>
+                    <div className="eh-src">
+                      <span className="eh-src__ic"><span className="ms">receipt_long</span></span>
+                      <div>
+                        <b>{o.restaurant ?? '—'}</b>
+                        <span>
+                          {o.orderTotalCents !== null
+                            ? `${t('orderTotal')} ${fmtCents(o.orderTotalCents)}`
+                            : t('orderAffiliated')}
                         </span>
                       </div>
                     </div>
-                  </Card>
+                    <span className="eh-status-cell">
+                      <span className={`eh-status ${badge.cls}`}>
+                        <span className="ms">{badge.icon}</span>{badge.label}
+                      </span>
+                    </span>
+                    <span className={`eh-amt${isCancelled ? ' is-cancelled' : ''}`}>{fmtCents(gain)}</span>
+                    <span className="eh-mini">{dateFmt.format(new Date(o.date))} · {badge.label}</span>
+                  </div>
                 )
               })}
-            </div>
-            {data.adoptions.length > adoptionsShown && (
-              <button
-                type="button"
-                onClick={() => setAdoptionsShown((n) => n + 5)}
-                className="mt-3 w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface py-2.5 text-sm font-semibold text-grubano-ink"
-              >
-                {t('loadMore')}
-              </button>
-            )}
-          </>
-        )}
-      </section>
-      )}
+              {hasMore && (
+                <button
+                  type="button"
+                  className="op-btn-ghost eh-loadmore"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? t('loadingMore') : t('loadMore')}
+                </button>
+              )}
+            </>
+          )}
 
-      {/* ── Paiements — real payouts section (P4-UI). Renders itself ONLY when
-          the creator payout rail is enabled (CREATOR_CONNECT_ENABLED); otherwise
-          nothing. Replaces the former B2b placeholder. */}
-      <CreatorPaymentsSection />
-    </div>
+          {/* Mes recettes adoptées (the 2% pipe — chef). */}
+          {roles.isChef && (
+            <div style={{ marginTop: roles.isInfluencer && data.ordersTotal > 0 ? 20 : 0 }}>
+              <div className="card-pad__hd" style={{ marginBottom: 4 }}><h3 style={{ fontSize: 13.5 }}>{t('adoptionsTitle')}</h3></div>
+              <div className="hint">{t('adoptionsHint')}</div>
+              {data.adoptions.length === 0 ? (
+                <p className="eh-empty">{t('adoptionsEmpty')}</p>
+              ) : (
+                <>
+                  {data.adoptions.slice(0, adoptionsShown).map((a) => {
+                    const badge = statusBadge(a.status)
+                    const isCancelled = a.status === 'cancelled'
+                    // Legacy rows carry rateApplied null/0 with a real gain: no % shown then.
+                    const meta = [
+                      a.brandName,
+                      ...((a.rateApplied ?? 0) > 0
+                        ? [t('adoptionRate', { pct: Math.round((a.rateApplied ?? 0) * 100) })]
+                        : []),
+                    ].filter(Boolean).join(' · ')
+                    return (
+                      <div className="eh-row" key={a.id}>
+                        <span className="eh-date eh-date-cell">{dateFmt.format(new Date(a.date))}</span>
+                        <div className="eh-src">
+                          <span className="eh-src__ic"><span className="ms">lunch_dining</span></span>
+                          <div>
+                            <b>{a.dishName ?? '—'}</b>
+                            <span>{meta || t('orderAffiliated')}</span>
+                          </div>
+                        </div>
+                        <span className="eh-status-cell">
+                          <span className={`eh-status ${badge.cls}`}>
+                            <span className="ms">{badge.icon}</span>{badge.label}
+                          </span>
+                        </span>
+                        <span className={`eh-amt${isCancelled ? ' is-cancelled' : ''}`}>{fmtCents(a.creatorEarningCents)}</span>
+                        <span className="eh-mini">{dateFmt.format(new Date(a.date))} · {badge.label}</span>
+                      </div>
+                    )
+                  })}
+                  {data.adoptions.length > adoptionsShown && (
+                    <button
+                      type="button"
+                      className="op-btn-ghost eh-loadmore"
+                      onClick={() => setAdoptionsShown((n) => n + 5)}
+                    >
+                      {t('loadMore')}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="info-note">
+            <span className="ms">info</span>
+            <span>{t('waitingNote')}</span>
+          </div>
+        </div>
+
+        {/* Versements reçus — REAL payout rows only; honest empty otherwise.
+            (1) NO fictive CRP-2026 refs. (4) PDF-statement note omitted. */}
+        <div className="op-card card-pad">
+          <div className="card-pad__hd"><h3>{t('payoutsTitle')}</h3></div>
+          <div className="hint">{t('payoutsHint')}</div>
+          {payoutsEnabled && payouts.length > 0 ? (
+            payouts.map((p) => (
+              <div className="po-row" key={p.id}>
+                <span className={`po-ic ${p.status}`}><span className="ms">{payoutIcon(p.status)}</span></span>
+                <div className="po-m">
+                  <b>{t('payoutRow')}</b>
+                  <span>{dateFmt.format(new Date(p.paidAt ?? p.createdAt))}</span>
+                </div>
+                <span className="po-amt">{fmtCents(p.amountCents)}</span>
+              </div>
+            ))
+          ) : (
+            <div className="po-empty">
+              <span className="ms">account_balance</span>
+              <p>{t('payoutsEmpty')}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   )
 }

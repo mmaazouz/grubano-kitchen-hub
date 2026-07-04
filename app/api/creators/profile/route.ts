@@ -51,7 +51,7 @@ export async function GET() {
     // login e-mail are never even loaded, so they can never accidentally leak.
     const c = await prisma.creator.findUnique({
       where:  { email },
-      select: { name: true, bio: true, instagram: true, tiktok: true, youtube: true, verified: true, isChef: true, isInfluencer: true },
+      select: { name: true, bio: true, instagram: true, tiktok: true, youtube: true, verified: true, isChef: true, isInfluencer: true, email: true },
     })
     if (!c) return NextResponse.json({ ok: false, error: 'Profil créateur introuvable' }, { status: 403 })
 
@@ -68,6 +68,9 @@ export async function GET() {
         verified:     c.verified,
         isChef:       c.isChef,
         isInfluencer: c.isInfluencer,
+        // OWN e-mail, READ-ONLY (display of the account login identity — no leak,
+        // no money; the PATCH whitelist never includes email → still immutable).
+        email:        c.email,
       },
     })
   } catch (err) {
