@@ -12,6 +12,8 @@ const { db, getSession } = vi.hoisted(() => ({
     operatorRole:     { findMany: vi.fn() },
     franchiseRoyalty: { groupBy: vi.fn() },
     payout:           { findMany: vi.fn() },
+    pointOfSale:      { findMany: vi.fn() }, // FR5 — breakdown POS names
+    brand:            { findMany: vi.fn() }, // FR5 — real rate source
   },
   getSession: vi.fn(),
 }))
@@ -34,6 +36,8 @@ beforeEach(() => {
   db.payout.findMany.mockResolvedValue([
     { id: 'po1', amountCents: 500, currency: 'eur', status: 'paid', paidAt: new Date(0), stripeTransferId: 'tr_1', createdAt: new Date(0) },
   ])
+  db.pointOfSale.findMany.mockResolvedValue([]) // FR5 breakdown names
+  db.brand.findMany.mockResolvedValue([])       // FR5 rate source
 })
 afterEach(() => { delete process.env.FRANCHISE_ROYALTY_ENABLED })
 

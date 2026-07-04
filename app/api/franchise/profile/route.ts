@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { readOperatorRoles } from '@/lib/operator-roles'
+import { resolveFranchiseRate } from '@/lib/franchise-royalty'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +37,7 @@ const patchSchema = z.object({
 
 type Gate =
   | { ok: false; status: 401 | 403 }
-  | { ok: true; id: string; name: string; phone: string | null; city: string | null; email: string; status: string }
+  | { ok: true; id: string; name: string; phone: string | null; city: string | null; email: string; status: string; officialName: string | null; siren: string | null }
 
 /** Resolve the signed-in operator from the SESSION (session.user.id — never a
  *  client value) and require the 'franchise' role. Discriminated union so callers
@@ -47,12 +48,12 @@ async function gate(): Promise<Gate> {
   if (!id) return { ok: false, status: 401 }
   const op = await prisma.operator.findUnique({
     where:  { id },
-    select: { id: true, role: true, name: true, phone: true, city: true, email: true, status: true },
+    select: { id: true, role: true, name: true, phone: true, city: true, email: true, status: true, officialName: true, siren: true },
   })
   if (!op) return { ok: false, status: 403 }
   const roles = await readOperatorRoles(op.id, op.role)
   if (!roles.includes('franchise')) return { ok: false, status: 403 }
-  return { ok: true, id: op.id, name: op.name, phone: op.phone, city: op.city, email: op.email, status: op.status }
+  return { ok: true, id: op.id, name: op.name, phone: op.phone, city: op.city, email: op.email, status: op.status, officialName: op.officialName, siren: op.siren }
 }
 
 function deny(status: 401 | 403) {
@@ -66,16 +67,30 @@ export async function GET() {
   try {
     const g = await gate()
     if (!g.ok) return deny(g.status)
+
+    // FR6 additive READ-ONLY context: the real royalty rate (single Brand.royaltyPct or null,
+    // NEVER hardcoded — the franchisor does not set its own rate) + the KYB legal identity
+    // (admin-set, display-only here). Owner-scoped by the session operator.
+    const brands = await prisma.brand.findMany({
+      where: { operatorId: g.id, openToFranchise: true }, select: { royaltyPct: true },
+    })
+    const rates = Array.from(new Set(brands.map((b) => resolveFranchiseRate(b))))
+    const ratePct = rates.length === 1 ? Math.round(rates[0] * 100) : null
+
     return NextResponse.json({
       ok: true,
       profile: {
-        // editable
+        // editable (whitelist — name/phone/city only)
         name:  g.name,
         phone: g.phone ?? '',
         city:  g.city ?? '',
         // locked (display only — never editable here)
         email:  g.email,
         status: g.status,
+        // FR6 read-only context
+        ratePct,
+        officialName: g.officialName,
+        siren:        g.siren,
       },
     })
   } catch (err) {

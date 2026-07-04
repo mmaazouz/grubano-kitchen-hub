@@ -1,147 +1,229 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { CheckCircle2, Lock, Loader2 } from 'lucide-react'
-import { Card, Button, Input, Badge } from '@/components/design-system'
+import { signOut } from 'next-auth/react'
+import './franchise-parametres.css'
 
-// ── /franchise/dashboard/parametres — editable franchise account profile (P5c) ─
-// The franchise has no dedicated profile model → this edits the Operator ACCOUNT's
-// contact/display fields (name, phone, city). The login e-mail + account status are
-// shown READ-ONLY (never sent). NO finances / NO establishments here (those are
-// their own tabs). Renders INSIDE the franchise dashboard layout (FranchiseSidebar
-// + PortalMobileHeader provide the chrome), so it only outputs the form content.
+// ── FR6 · Paramètres franchiseur (CD Vague 3) ────────────────────────────────────
+// Rendered inside FranchiseShell. Only the REAL editable surface is a form: the Operator
+// account's name/phone/city (whitelist PATCH /api/franchise/profile). The royalty rate +
+// legal identity (officialName/SIREN) are REAL but READ-ONLY. Everything the maquette adds
+// with no backing — multi-member team, notif toggles, entry-fee/term, "close network" — is
+// BUILD-NEW → titulaire-only / omitted / disabled "bientôt" (never an input that saves
+// nowhere). Real sign-out. Owner-scoped server-side.
 
-type ProfileData = { name: string; phone: string; city: string; email: string; status: string }
+type Profile = {
+  name: string; phone: string; city: string; email: string; status: string
+  ratePct: number | null; officialName: string | null; siren: string | null
+}
 
-export default function FranchiseSettingsPage() {
+const INITIALS = (s: string) =>
+  (s.trim().split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2) || '–').toUpperCase()
+const maskEmail = (e: string) => {
+  const [u, d] = e.split('@')
+  return d ? `${(u ?? '').slice(0, 1)}***@${d}` : e
+}
+
+export default function FranchiseParametresPage() {
   const t = useTranslations('franchise.settings')
-
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState('')
-
+  const [p, setP] = useState<Profile | null>(null)
+  const [error, setError] = useState(false)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [city, setCity] = useState('')
-  const [locked, setLocked] = useState<Pick<ProfileData, 'email' | 'status'> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [saveErr, setSaveErr] = useState('')
 
   useEffect(() => {
-    let cancelled = false
+    let alive = true
     fetch('/api/franchise/profile', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((res) => {
-        if (cancelled) return
-        const p = res?.profile as ProfileData | undefined
-        if (!p) { setLoadError(true); return }
-        setName(p.name ?? '')
-        setPhone(p.phone ?? '')
-        setCity(p.city ?? '')
-        setLocked({ email: p.email, status: p.status })
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(res => {
+        if (!alive) return
+        const pr = res?.profile as Profile | undefined
+        if (!pr) { setError(true); return }
+        setP(pr); setName(pr.name ?? ''); setPhone(pr.phone ?? ''); setCity(pr.city ?? '')
       })
-      .catch(() => { if (!cancelled) setLoadError(true) })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .catch(() => { if (alive) setError(true) })
+    return () => { alive = false }
   }, [])
-
-  // Clear the success banner once the user edits again (no-op during prefill).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (saved) setSaved(false) }, [name, phone, city])
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
     if (saving) return
-    setError(''); setSaved(false); setSaving(true)
+    setSaving(true); setSaved(false); setSaveErr('')
     try {
       const res = await fetch('/api/franchise/profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, phone: phone || undefined, city: city || undefined }),
       })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) { setError(data?.error || t('errorGeneric')); return }
+      const d = await res.json().catch(() => null)
+      if (!res.ok) { setSaveErr(d?.error || t('errorGeneric')); return }
       setSaved(true)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    } catch {
-      setError(t('errorGeneric'))
-    } finally {
-      setSaving(false)
-    }
+    } catch { setSaveErr(t('errorGeneric')) }
+    finally { setSaving(false) }
   }
 
-  const statusLabel = (st: string) =>
-    st === 'active' ? t('statusActive')
-    : st === 'suspended' ? t('statusSuspended')
-    : t('statusPending')
+  const statusLabel = (s: string) => (s === 'active' ? t('statusActive') : s === 'suspended' ? t('statusSuspended') : t('statusPending'))
+
+  if (!p && !error) {
+    return (
+      <section aria-busy="true">
+        <span className="op-sk" style={{ width: 200, height: 26, marginBottom: 18 }} />
+        <span className="op-sk" style={{ width: '100%', height: 180, borderRadius: 12, marginBottom: 16, display: 'block' }} />
+        <span className="op-sk" style={{ width: '100%', height: 150, borderRadius: 12, display: 'block' }} />
+      </section>
+    )
+  }
+
+  if (error || !p) {
+    return (
+      <section><div className="op-center">
+        <div className="op-error__card">
+          <span className="ms" aria-hidden="true">cloud_off</span>
+          <h2>{t('errorTitle')}</h2>
+          <p>{t('errorBody')}</p>
+          <button className="op-btn-primary" onClick={() => location.reload()}><span className="ms" aria-hidden="true">refresh</span>{t('retry')}</button>
+        </div>
+      </div></section>
+    )
+  }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
-      <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{t('title')}</h1>
-      <p className="mt-1 text-sm text-grubano-ink-muted">{t('subtitle')}</p>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-12 text-grubano-ink-muted"><Loader2 className="animate-spin" size={22} /></div>
-      ) : loadError ? (
-        <Card elevation="sm" padding="lg" className="mt-5 text-center text-sm text-grubano-ink-muted">{t('loadError')}</Card>
-      ) : (
-        <div className="mt-5 space-y-5">
-          {saved && (
-            <Card elevation="sm" padding="md" className="border-grubano-success/40 bg-grubano-success-tint">
-              <div className="flex items-start gap-2.5">
-                <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-grubano-success" />
-                <div>
-                  <p className="font-semibold text-grubano-ink">{t('savedTitle')}</p>
-                  <p className="text-sm text-grubano-ink-muted">{t('savedBody')}</p>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          <form onSubmit={save} className="space-y-5">
-            <Card elevation="sm" padding="lg" className="space-y-4">
-              {error && (
-                <p className="rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">{error}</p>
-              )}
-
-              <Input label={t('fieldName')} required value={name} onChange={(e) => setName(e.target.value)} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={t('fieldPhone')} value={phone} onChange={(e) => setPhone(e.target.value)} />
-                <Input label={t('fieldCity')} value={city} onChange={(e) => setCity(e.target.value)} />
-              </div>
-
-              <Button type="submit" variant="primary" size="md" fullWidth loading={saving}>
-                {saving ? t('saving') : t('save')}
-              </Button>
-            </Card>
-
-            {/* Locked account info — read-only, never editable */}
-            {locked && (
-              <Card elevation="sm" padding="lg" className="bg-grubano-surface-muted">
-                <div className="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-grubano-ink-faint">
-                  <Lock size={13} /> {t('lockedTitle')}
-                </div>
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-grubano-ink-faint">{t('lockedEmail')}</dt>
-                    <dd className="text-sm text-grubano-ink-muted break-all">{locked.email}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-grubano-ink-faint">{t('lockedStatus')}</dt>
-                    <dd className="mt-0.5">
-                      <Badge tone={locked.status === 'active' ? 'success' : locked.status === 'suspended' ? 'danger' : 'warning'} size="sm">
-                        {statusLabel(locked.status)}
-                      </Badge>
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-3 text-grubano-xs text-grubano-ink-faint">{t('lockedNote')}</p>
-              </Card>
-            )}
-          </form>
+    <section>
+      <div className="fr-narrow">
+        <div className="op-dash__head" style={{ display: 'block' }}>
+          <h1 className="op-dash__title">{t('title')}</h1>
+          <p className="op-dash__sub">{t('subtitle')}</p>
         </div>
-      )}
-    </div>
+
+        {/* Identité — the ONLY editable form (real whitelist PATCH) */}
+        <form className="op-card set-card" onSubmit={save}>
+          <div className="set-hd">
+            <span className="ic"><span className="ms" aria-hidden="true">badge</span></span>
+            <div className="set-hd__t"><b>{t('identityTitle')}</b><span>{t('identitySub')}</span></div>
+          </div>
+          <div className="set-body">
+            <div className="field">
+              <label className="field__label" htmlFor="fr-name">{t('fieldName')}</label>
+              <input id="fr-name" className="inp" type="text" value={name} onChange={e => setName(e.target.value)} required />
+            </div>
+            <div className="row2">
+              <div className="field">
+                <label className="field__label" htmlFor="fr-phone">{t('fieldPhone')}</label>
+                <input id="fr-phone" className="inp" type="text" value={phone} onChange={e => setPhone(e.target.value)} />
+              </div>
+              <div className="field">
+                <label className="field__label" htmlFor="fr-city">{t('fieldCity')}</label>
+                <input id="fr-city" className="inp" type="text" value={city} onChange={e => setCity(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          {saveErr && <div className="set-err" role="alert">{saveErr}</div>}
+          <div className="set-foot">
+            {saved && <span className="saved"><span className="ms" aria-hidden="true">check_circle</span>{t('savedTitle')}</span>}
+            <button className="op-btn-primary" type="submit" disabled={saving}>
+              <span className="ms" aria-hidden="true">save</span>{saving ? t('saving') : t('save')}
+            </button>
+          </div>
+        </form>
+
+        {/* Conditions de franchise — READ-ONLY (real rate; entry-fee/term are BUILD-NEW → omitted) */}
+        <div className="op-card set-card">
+          <div className="set-hd">
+            <span className="ic"><span className="ms" aria-hidden="true">gavel</span></span>
+            <div className="set-hd__t"><b>{t('conditionsTitle')}</b><span>{t('conditionsSub')}</span></div>
+          </div>
+          <div className="set-body">
+            <div className="field">
+              <div className="field__label">{t('rateLabel')} <span className="ro"><span className="ms" aria-hidden="true">lock</span>{t('readOnly')}</span></div>
+              <input className="inp" type="text" value={p.ratePct != null ? t('rateValue', { pct: p.ratePct }) : '—'} readOnly />
+              <div className="field__hint"><span className="ms" aria-hidden="true">info</span><span>{t('rateHint')}</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Informations légales — READ-ONLY (KYB, admin-set). Omitted entirely if none. */}
+        {(p.officialName || p.siren) && (
+          <div className="op-card set-card">
+            <div className="set-hd">
+              <span className="ic"><span className="ms" aria-hidden="true">description</span></span>
+              <div className="set-hd__t"><b>{t('legalTitle')}</b><span>{t('legalSub')}</span></div>
+            </div>
+            <div className="set-body">
+              {p.officialName && (
+                <div className="field">
+                  <div className="field__label">{t('legalCompany')} <span className="ro"><span className="ms" aria-hidden="true">lock</span>{t('readOnly')}</span></div>
+                  <input className="inp" type="text" value={p.officialName} readOnly />
+                </div>
+              )}
+              {p.siren && (
+                <div className="field">
+                  <div className="field__label">{t('legalSiren')} <span className="ro"><span className="ms" aria-hidden="true">lock</span>{t('readOnly')}</span></div>
+                  <input className="inp mono" type="text" value={p.siren} readOnly />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Équipe réseau — the REAL titulaire only. Multi-member + invite = BUILD-NEW → "bientôt". */}
+        <div className="op-card set-card">
+          <div className="set-hd">
+            <span className="ic"><span className="ms" aria-hidden="true">groups</span></span>
+            <div className="set-hd__t"><b>{t('teamTitle')}</b><span>{t('teamSub')}</span></div>
+          </div>
+          <div className="set-body">
+            <div className="mem">
+              <span className="mem__av">{INITIALS(p.name || p.email)}</span>
+              <div className="mem__m"><b>{p.name || '—'}</b><span>{maskEmail(p.email)}</span></div>
+              <span className="mem__role">{t('roleOwner')}</span>
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <span className="op-soon"><span className="ms" aria-hidden="true">person_add</span>{t('inviteMember')}<span className="tag">{t('soon')}</span></span>
+            </div>
+          </div>
+        </div>
+
+        {/* Compte — locked (login e-mail + status, read-only) */}
+        <div className="op-card set-card">
+          <div className="set-hd">
+            <span className="ic"><span className="ms" aria-hidden="true">manage_accounts</span></span>
+            <div className="set-hd__t"><b>{t('accountTitle')}</b><span>{t('accountSub')}</span></div>
+          </div>
+          <div className="set-body">
+            <div className="field">
+              <div className="field__label">{t('lockedEmail')} <span className="ro"><span className="ms" aria-hidden="true">lock</span>{t('readOnly')}</span></div>
+              <input className="inp" type="text" value={p.email} readOnly />
+            </div>
+            <div className="field">
+              <div className="field__label">{t('lockedStatus')}</div>
+              <input className="inp" type="text" value={statusLabel(p.status)} readOnly />
+            </div>
+          </div>
+          <div className="set-foot">
+            <button className="op-btn-ghost" type="button" onClick={() => signOut({ callbackUrl: '/franchise' })}>
+              <span className="ms" aria-hidden="true">logout</span>{t('signOut')}
+            </button>
+          </div>
+        </div>
+
+        {/* Zone sensible — "close network" is BUILD-NEW → disabled "bientôt" (no fake destructive action) */}
+        <div className="op-card set-card danger-card">
+          <div className="set-hd">
+            <span className="ic"><span className="ms" aria-hidden="true">warning</span></span>
+            <div className="set-hd__t"><b>{t('dangerTitle')}</b><span>{t('dangerSub')}</span></div>
+          </div>
+          <div className="set-body">
+            <div className="danger-row">
+              <div className="m"><b>{t('closeNetwork')}</b><span>{t('closeNetworkDesc')}</span></div>
+              <span className="op-soon"><span className="ms" aria-hidden="true">delete</span>{t('closeNetwork')}<span className="tag">{t('soon')}</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }

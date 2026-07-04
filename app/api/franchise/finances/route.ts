@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { gateFranchise } from '@/lib/franchise-pos'
-import { isFranchiseRoyaltyEnabled } from '@/lib/franchise-royalty'
+import { isFranchiseRoyaltyEnabled, resolveFranchiseRate } from '@/lib/franchise-royalty'
 import { getFranchiseEarnings, getFranchisePayouts } from '@/lib/franchise-earnings'
 
 export const dynamic = 'force-dynamic'
@@ -27,10 +28,33 @@ export async function GET() {
     )
   }
 
-  const [earnings, payouts] = await Promise.all([
+  const [earnings, payouts, royaltyGroups, brands] = await Promise.all([
     getFranchiseEarnings(gate.operatorId),
     getFranchisePayouts(gate.operatorId),
+    // FR5 — per-POS breakdown from the REAL FranchiseRoyalty (owner-scoped). Empty when the
+    // held-back rail is gated OFF (no rows) → honest empty breakdown, never a CA×rate recompute.
+    prisma.franchiseRoyalty.groupBy({
+      by:    ['pointOfSaleId'],
+      where: { franchisorOperatorId: gate.operatorId },
+      _sum:  { royaltyCents: true },
+    }),
+    // FR5 — the single displayed rate ONLY when unambiguous across franchised brands, else null.
+    prisma.brand.findMany({ where: { operatorId: gate.operatorId, openToFranchise: true }, select: { royaltyPct: true } }),
   ])
+
+  // Name the breakdown rows (POS ids come from the owner-scoped royalty rows → this franchisor's).
+  const posIds = royaltyGroups.map((g) => g.pointOfSaleId)
+  const pos = posIds.length
+    ? await prisma.pointOfSale.findMany({ where: { id: { in: posIds } }, select: { id: true, name: true } })
+    : []
+  const nameById = new Map(pos.map((p) => [p.id, p.name]))
+  const breakdown = royaltyGroups
+    .map((g) => ({ posName: nameById.get(g.pointOfSaleId) ?? '—', royaltyCents: g._sum.royaltyCents ?? 0 }))
+    .filter((b) => b.royaltyCents > 0)
+    .sort((a, b) => b.royaltyCents - a.royaltyCents)
+
+  const rates = Array.from(new Set(brands.map((b) => resolveFranchiseRate(b))))
+  const ratePct = rates.length === 1 ? Math.round(rates[0] * 100) : null
 
   return NextResponse.json({
     royaltyEnabled: isFranchiseRoyaltyEnabled(),
@@ -38,5 +62,8 @@ export async function GET() {
     settledCents:   earnings.settledCents,
     pendingCents:   earnings.pendingCents,
     payouts,
+    // ── FR5 additive ──
+    breakdown,
+    ratePct,
   })
 }

@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // / status / finance / establishment data stripped & never written), validated.
 
 const { db, getSession } = vi.hoisted(() => ({
-  db: { operator: { findUnique: vi.fn(), update: vi.fn() }, operatorRole: { findMany: vi.fn() } },
+  db: { operator: { findUnique: vi.fn(), update: vi.fn() }, operatorRole: { findMany: vi.fn() }, brand: { findMany: vi.fn() } },
   getSession: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -29,6 +29,7 @@ beforeEach(() => {
   db.operator.findUnique.mockResolvedValue({ id: 'op1', role: 'franchise', name: 'Réseau', phone: '06', city: 'Lyon', email: 'fr@x.fr', status: 'active' })
   db.operatorRole.findMany.mockResolvedValue([]) // role set = [primary] = ['franchise']
   db.operator.update.mockResolvedValue({})
+  db.brand.findMany.mockResolvedValue([]) // FR6 — real rate source (read-only)
 })
 
 describe('PATCH /api/franchise/profile', () => {
