@@ -1,170 +1,257 @@
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { ChefHat, ChevronRight, Store, Coins, BarChart2 } from 'lucide-react'
 import { Link } from '@/navigation'
-import { Card, Button } from '@/components/design-system'
 import { prisma } from '@/lib/prisma'
+import './creator-landing.css'
 
-const FALLBACK_LEADERBOARD = [
-  { rank: 1, name: 'Amina K.',  dishes: 8, totalSales: 1240, earnings: 2480 },
-  { rank: 2, name: 'Karim B.',  dishes: 5, totalSales: 980,  earnings: 1960 },
-  { rank: 3, name: 'Sofia L.',  dishes: 4, totalSales: 640,  earnings: 1280 },
-  { rank: 4, name: 'Yann D.',   dishes: 3, totalSales: 420,  earnings: 840  },
-  { rank: 5, name: 'Leila M.',  dishes: 2, totalSales: 280,  earnings: 560  },
-]
+// ── CR1 · Landing publique « Devenez créateur » (CD marketing --gb-*) ────────────────
+// PUBLIC route /creators (∈ AppChrome BARE_PREFIXES) → full-bleed marketing page in the
+// consumer gb-foundation language (crème + ROSE-MAGENTA creator accent --gb-cr / --gb-bloom),
+// NOT the navy console shell. Re-skin of the banked CD maquette CR1 with the mandated
+// HONESTY edits (integration note D6):
+//   • the fabricated hero chip « 48k vues moyennes* » → replaced by a REAL public stat
+//     (published-recipe count from getCreatorStats) or dropped when zero ;
+//   • the named fictional testimonial « Léa Moreau » → REMOVED entirely (no tm-sec) ;
+//   • the current screen's FALLBACK_LEADERBOARD + EUR-per-creator leaderboard → PURGED
+//     (the maquette has none → drops the public individual-€ leak) ;
+//   • the commission rate is NEVER shown hardcoded — the honest « présenté à l'activation »
+//     posture is kept, revenus « non garantis », footer disclaimed.
+// A subtle real « Déjà créateur ? → Mon studio » entry (nav + band) is preserved so
+// existing creators keep a way in (calque of the Franchise landing).
 
-async function getCreatorStats() {
+type CreatorStats = {
+  activeCount:  number
+  publishedRecipes: number
+}
+
+async function getCreatorStats(): Promise<CreatorStats> {
   try {
-    const [activeCount, approvedDishCount, adoptionCfg] = await Promise.all([
+    const [activeCount, publishedRecipes] = await Promise.all([
       prisma.creator.count(),
       prisma.creatorDish.count({ where: { status: { in: ['approved', 'live'] } } }),
-      // Real adoption rate (Mission 2, point dur E) — the landing's commission
-      // stat reads AdoptionConfig instead of a hardcoded « 4% ».
-      prisma.adoptionConfig.findFirst({
-        where:  { active: true },
-        select: { creatorCommissionPctReferred: true },
-      }).catch(() => null),
     ])
-    const pct = adoptionCfg?.creatorCommissionPctReferred ?? 0.02
-    return { activeCount, approvedDishCount, commissionLabel: `${Math.round(pct * 100)}%`, pctValue: Math.round(pct * 100) }
+    return { activeCount, publishedRecipes }
   } catch {
-    return { activeCount: 0, approvedDishCount: 0, commissionLabel: '2%', pctValue: 2 }
+    return { activeCount: 0, publishedRecipes: 0 }
   }
 }
 
-async function getLeaderboard() {
-  try {
-    const creators = await prisma.creator.findMany({
-      include: {
-        dishes: {
-          where:  { status: { in: ['approved', 'live'] } },
-          select: { totalSales: true },
-        },
-      },
-      orderBy: { totalEarnings: 'desc' },
-      take: 5,
-    })
-    if (creators.length === 0) return FALLBACK_LEADERBOARD
-    return creators.map((c, i) => ({
-      rank:       i + 1,
-      name:       c.name,
-      dishes:     c.dishes.length,
-      totalSales: c.dishes.reduce((s, d) => s + d.totalSales, 0),
-      earnings:   c.totalEarnings,
-    }))
-  } catch {
-    return FALLBACK_LEADERBOARD
-  }
-}
+const SYMBOL_COLOR = '/brand/grubano-symbol-color.svg'
+const SYMBOL_WHITE = '/brand/grubano-symbol-white.svg'
 
 export default async function CreatorsPage({ params: { locale } }: { params: { locale: string } }) {
   setRequestLocale(locale)
-  const [t, leaderboard, stats] = await Promise.all([
+
+  const [t, tm, stats] = await Promise.all([
     getTranslations('creators'),
-    getLeaderboard(),
+    getTranslations('creators.mkt'),
     getCreatorStats(),
   ])
 
+  // honest hero chip — REAL published-recipe count (replaces the fabricated « 48k vues »).
+  // dropped entirely when there is nothing measured yet (never fabricate a number).
+  const showRecipesChip = stats.publishedRecipes > 0
+
+  const feats = [
+    { ic: 'restaurant_menu', key: 'f1', basil: false },
+    { ic: 'link',           key: 'f2', basil: true  },
+    { ic: 'trending_up',    key: 'f3', basil: false },
+    { ic: 'verified',       key: 'f4', basil: true  },
+    { ic: 'groups',         key: 'f5', basil: false },
+    { ic: 'savings',        key: 'f6', basil: true  },
+  ] as const
+
+  const steps = [
+    { n: '1', ic: 'schedule',        key: 's1' },
+    { n: '2', ic: 'verified',        key: 's2' },
+    { n: '3', ic: 'restaurant_menu', key: 's3' },
+    { n: '4', ic: 'payments',        key: 's4' },
+  ] as const
+
   return (
-    <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
+    <div className="cr-mkt">
 
-      {/* Hero */}
-      <div className="rounded-grubano-xl bg-gradient-to-br from-grubano-primary to-grubano-primary/70 p-6 mb-5 text-white">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-12 w-12 rounded-grubano-xl bg-white/20 flex items-center justify-center">
-            <ChefHat size={26} />
+      {/* ── nav ─────────────────────────────────────────────────────────── */}
+      <nav className="nav">
+        <div className="nav__in">
+          <Link className="nav__brand" href="/creators">
+            <img src={SYMBOL_COLOR} alt="Grubano" /><b>Grubano</b><span>{tm('badge')}</span>
+          </Link>
+          <div className="nav__links">
+            <a href="#pourquoi">{tm('navWhy')}</a>
+            <a href="#etapes">{tm('navHow')}</a>
+            <a href="#revenus">{tm('navRevenue')}</a>
+            <a href="#faq">{tm('navFaq')}</a>
+            <Link className="nav__studio" href="/creators/dashboard"><span className="ms">login</span>{tm('navStudio')}</Link>
+            <Link className="nav__cta" href="/creators/apply">{tm('navApply')}<span className="ms">arrow_forward</span></Link>
           </div>
+        </div>
+      </nav>
+
+      {/* ── hero ────────────────────────────────────────────────────────── */}
+      <header className="hero" id="top">
+        <div className="hero__in">
           <div>
-            <h1 className="text-xl font-display font-bold leading-tight">{t('heroLine1')}</h1>
-            <p className="text-xl font-display font-bold leading-tight">{t('heroLine2')}</p>
+            <span className="hero__eyebrow"><span className="ms">palette</span>{tm('heroEyebrow')}</span>
+            <h1>{tm('heroTitleA')}<br />{tm('heroTitleB')} <span className="hl">{tm('heroTitleHl')}</span></h1>
+            <p className="hero__sub">{tm('heroSub')}</p>
+            <div className="hero__cta">
+              <Link className="btn-cr" href="/creators/apply"><span className="ms">rocket_launch</span>{tm('heroCtaApply')}</Link>
+              <a className="btn-ghost" href="#pourquoi"><span className="ms">play_circle</span>{tm('heroCtaDiscover')}</a>
+            </div>
+            <div className="hero__note"><span className="ms">check_circle</span>{tm('heroNote')}</div>
+          </div>
+          <div className="hero__art">
+            <img src={SYMBOL_WHITE} alt="Grubano" />
+            {/* honest chip 1 — REAL published-recipe count (replaces fabricated « 48k vues ») */}
+            {showRecipesChip && (
+              <div className="hero__chip c1">
+                <span className="ic" style={{ background: 'var(--gb-cr)' }}><span className="ms">restaurant_menu</span></span>
+                <div><b>{stats.publishedRecipes}</b><span>{tm('heroChipRecipes')}</span></div>
+              </div>
+            )}
+            {/* honest chip 2 — qualitative, no fabricated number (kept from maquette) */}
+            <div className="hero__chip c2">
+              <span className="ic" style={{ background: 'var(--gb-basil)' }}><span className="ms">payments</span></span>
+              <div><b>{tm('heroChipCommissions')}</b><span>{tm('heroChipCommissionsSub')}</span></div>
+            </div>
           </div>
         </div>
-        <p className="text-sm opacity-90 mb-5">{t('heroSubtitle', { pct: stats.pctValue })}</p>
+      </header>
 
-        <div className="grid grid-cols-3 gap-2 mb-5">
-          {([
-            { label: t('statActive'),     value: String(stats.activeCount)        },
-            { label: t('statCommission'), value: stats.commissionLabel             },
-            { label: t('statDishes'),     value: String(stats.approvedDishCount)  },
-          ] as const).map(({ label, value }) => (
-            <div key={label} className="rounded-grubano-lg bg-white/20 p-2.5 text-center">
-              <p className="text-base font-bold">{value}</p>
-              <p className="text-[10px] opacity-80">{label}</p>
-            </div>
-          ))}
+      {/* ── trust strip (qualitative — no fabricated numbers) ────────────── */}
+      <div className="trust">
+        <div className="trust__in">
+          <div className="trust__it"><b>{tm('trustStudio')}</b><span>{tm('trustStudioSub')}</span></div>
+          <div className="trust__it"><b>{tm('trustRecipes')}</b><span>{tm('trustRecipesSub')}</span></div>
+          <div className="trust__it"><b>{tm('trustAffiliation')}</b><span>{tm('trustAffiliationSub')}</span></div>
+          <div className="trust__it"><b>{tm('trustFree')}</b><span>{tm('trustFreeSub')}</span></div>
         </div>
-
-        <Link
-          href="/creators/apply"
-          className="flex items-center justify-center gap-2 w-full rounded-grubano-lg bg-white text-grubano-primary py-3 text-sm font-bold hover:bg-white/90 transition"
-        >
-          {t('becomeCreator')} <ChevronRight size={16} />
-        </Link>
       </div>
 
-      {/* Already creator banner */}
-      <div className="mb-5 rounded-grubano-xl border border-grubano-primary/30 bg-grubano-tint p-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-bold">{t('alreadyCreator')}</p>
-          <p className="text-xs text-grubano-ink-muted">{t('alreadyCreatorDesc')}</p>
+      {/* ── pourquoi (6 feats) ──────────────────────────────────────────── */}
+      <section className="sec" id="pourquoi">
+        <div className="wrap">
+          <div className="sec__head">
+            <span className="sec__eyebrow">{tm('whyEyebrow')}</span>
+            <h2>{tm('whyTitle')}</h2>
+            <p>{tm('whySub')}</p>
+          </div>
+          <div className="feats">
+            {feats.map(f => (
+              <div key={f.key} className={`feat${f.basil ? ' basil' : ''}`}>
+                <div className="feat__ic"><span className="ms">{f.ic}</span></div>
+                <h3>{tm(`${f.key}Title`)}</h3>
+                <p>{tm(`${f.key}Desc`)}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <Link href="/creators/dashboard">
-          <Button variant="primary" size="sm">
-            {t('mySpace')}
-          </Button>
-        </Link>
-      </div>
+      </section>
 
-      {/* Leaderboard */}
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-base font-display font-bold">{t('leaderboardTitle')}</h2>
-        <span className="text-xs text-grubano-ink-muted">{t('leaderboardHint')}</span>
-      </div>
-      <div className="space-y-2 mb-8">
-        {leaderboard.map(({ rank, name, dishes, totalSales, earnings }) => (
-          <Card key={rank} elevation="sm" padding="sm">
-            <div className="flex items-center gap-3">
-              <div className={`h-8 w-8 rounded-grubano-pill flex items-center justify-center text-sm font-bold shrink-0 ${
-                rank === 1 ? 'bg-yellow-400 text-yellow-900'
-                : rank === 2 ? 'bg-zinc-300 text-zinc-800'
-                : rank === 3 ? 'bg-amber-700 text-amber-100'
-                : 'bg-grubano-bg text-grubano-ink-muted'
-              }`}>
-                {rank}
+      {/* ── étapes (4 steps) ────────────────────────────────────────────── */}
+      <section className="sec steps-sec" id="etapes">
+        <div className="wrap">
+          <div className="sec__head">
+            <span className="sec__eyebrow">{tm('stepsEyebrow')}</span>
+            <h2>{tm('stepsTitle')}</h2>
+            <p>{tm('stepsSub')}</p>
+          </div>
+          <div className="steps">
+            {steps.map(s => (
+              <div key={s.key} className="step">
+                <div className="step__n">{s.n}</div>
+                <h3>{tm(`${s.key}Title`)}</h3>
+                <p>{tm(`${s.key}Desc`)}</p>
+                <div className="step__t"><span className="ms">{s.ic}</span>{tm(`${s.key}Time`)}</div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate">{name}</p>
-                <p className="text-[11px] text-grubano-ink-muted">
-                  {t('leaderboardRow', { dishes, sales: totalSales })}
-                </p>
-              </div>
-              <p className="text-sm font-bold text-grubano-success shrink-0">
-                €{earnings.toLocaleString('fr-FR', { maximumFractionDigits: 0 })}
-              </p>
-            </div>
-          </Card>
-        ))}
-      </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-      {/* How it works */}
-      <h2 className="text-base font-display font-bold mb-3">{t('howTitle')}</h2>
-      <div className="space-y-3">
-        {([
-          { icon: ChefHat,   title: t('how1Title'), desc: t('how1Desc') },
-          { icon: Store,     title: t('how2Title'), desc: t('how2Desc') },
-          { icon: Coins,     title: t('how3Title', { pct: stats.pctValue }), desc: t('how3Desc', { pct: stats.pctValue }) },
-          { icon: BarChart2, title: t('how4Title'), desc: t('how4Desc') },
-        ] as const).map(({ icon: Icon, title, desc }, i) => (
-          <div key={i} className="flex gap-3 items-start">
-            <div className="h-9 w-9 rounded-grubano-lg bg-grubano-tint flex items-center justify-center shrink-0">
-              <Icon size={18} className="text-grubano-primary" />
+      {/* ── revenus (honest — NO hardcoded rate, non garantis) ──────────── */}
+      <section className="sec" id="revenus">
+        <div className="wrap">
+          <div className="sec__head">
+            <span className="sec__eyebrow">{tm('revEyebrow')}</span>
+            <h2>{tm('revTitle')}</h2>
+          </div>
+          <div className="rev">
+            <div className="rev__list">
+              {['rev1', 'rev2', 'rev3', 'rev4'].map(k => (
+                <div key={k} className="rev__row">
+                  <span className="ms">check</span>
+                  <div><b>{tm(`${k}Title`)}</b><p>{tm(`${k}Desc`)}</p></div>
+                </div>
+              ))}
             </div>
-            <div>
-              <p className="text-sm font-semibold">{title}</p>
-              <p className="text-xs text-grubano-ink-muted">{desc}</p>
+            <div className="rev__card">
+              <h3>{tm('revCardTitle')}</h3>
+              <div className="rev__terms">
+                <div className="rev__term"><span className="k">{tm('termFeesLabel')}</span><span className="v">{tm('termFeesVal')}</span></div>
+                <div className="rev__term"><span className="k">{tm('termRecipesLabel')}</span><span className="v">{tm('termRecipesVal')}</span></div>
+                <div className="rev__term"><span className="k">{tm('termPayLabel')}</span><span className="v">{tm('termPayVal')}</span></div>
+                <div className="rev__term"><span className="k">{tm('termPayoutLabel')}</span><span className="v">{tm('termPayoutVal')}</span></div>
+              </div>
+              <div className="rev__note"><span className="ms">info</span><span>{tm('revNote')}</span></div>
+              <Link className="btn-cr" href="/creators/apply" style={{ width: '100%', marginTop: 20 }}><span className="ms">rocket_launch</span>{tm('revCta')}</Link>
             </div>
           </div>
-        ))}
+        </div>
+      </section>
+
+      {/* ── already-creator band (real entry — replaces fictional testimonial) ── */}
+      <section className="sec" id="deja">
+        <div className="wrap">
+          <div className="cr-banner">
+            <div className="cr-banner__t">
+              <b>{t('alreadyCreator')}</b>
+              <span>{t('alreadyCreatorDesc')}</span>
+            </div>
+            <Link href="/creators/dashboard"><span className="ms">space_dashboard</span>{t('mySpace')}</Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── faq ─────────────────────────────────────────────────────────── */}
+      <section className="sec" id="faq">
+        <div className="wrap">
+          <div className="sec__head">
+            <span className="sec__eyebrow">{tm('faqEyebrow')}</span>
+            <h2>{tm('faqTitle')}</h2>
+          </div>
+          <div className="faq">
+            <details className="qa" open><summary>{tm('q1')}<span className="ms">expand_more</span></summary><div className="qa__a">{tm('a1')}</div></details>
+            <details className="qa"><summary>{tm('q2')}<span className="ms">expand_more</span></summary><div className="qa__a">{tm('a2')}</div></details>
+            <details className="qa"><summary>{tm('q3')}<span className="ms">expand_more</span></summary><div className="qa__a">{tm('a3')}</div></details>
+            <details className="qa"><summary>{tm('q4')}<span className="ms">expand_more</span></summary><div className="qa__a">{tm('a4')}</div></details>
+            <details className="qa"><summary>{tm('q5')}<span className="ms">expand_more</span></summary><div className="qa__a">{tm('a5')}</div></details>
+          </div>
+        </div>
+      </section>
+
+      {/* ── final cta ───────────────────────────────────────────────────── */}
+      <div className="cta-band">
+        <div className="cta-band__in">
+          <h2>{tm('ctaTitle')}</h2>
+          <p>{tm('ctaSub')}</p>
+          <Link className="btn-cr" href="/creators/apply"><span className="ms">rocket_launch</span>{tm('ctaBtn')}</Link>
+        </div>
       </div>
+
+      {/* ── footer (disclaimed) ─────────────────────────────────────────── */}
+      <footer className="foot">
+        <div className="foot__in">
+          <div className="foot__brand"><img src={SYMBOL_COLOR} alt="Grubano" /><b>Grubano</b></div>
+          <div className="foot__links">
+            <a href="#pourquoi">{tm('navWhy')}</a>
+            <a href="#revenus">{tm('navRevenue')}</a>
+            <a href="#faq">{tm('navFaq')}</a>
+            <Link href="/creators/apply">{tm('navApply')}</Link>
+          </div>
+          <div className="foot__copy">{tm('footCopy')}</div>
+        </div>
+      </footer>
     </div>
   )
 }

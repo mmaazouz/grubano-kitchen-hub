@@ -1,15 +1,19 @@
 'use client'
 
+// ── CR2 · Candidature publique créateur (CD marketing --gb-*, scoped .cr-mkt) ────
+// PUBLIC route /creators/apply (∈ AppChrome BARE_PREFIXES) → full-bleed marketing
+// gb-foundation clair, accent ROSE-MAGENTA créateur. This is a RE-SKIN of the real
+// multi-step vetting wizard — the CD mock is a simple form→success, but the genuine
+// flow (profile · portfolio · confirm → verifyCode + YouTube ownership-proof → verify
+// → verdicts) is preserved byte-identical. Every fetch URL/body and every step is
+// unchanged; only the visual language (Material Symbols, --gb-cr, plain elements)
+// replaces the old design-system + lucide-react.
+
 import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
-import {
-  CheckCircle2, ChevronRight, ChevronLeft, Plus, Trash2,
-  Copy, Check, ExternalLink, XCircle, Clock,
-} from 'lucide-react'
-import { useRouter } from '@/navigation'
-import { Link } from '@/navigation'
-import { Card, Button, Input } from '@/components/design-system'
+import { useRouter, Link } from '@/navigation'
 import { type CategorySlug } from '@/lib/categories'
+import './creator-apply.css'
 
 // ── Cuisine slugs (stable values stored on CreatorDish) ────────────────────────
 const CUISINE_SLUGS: CategorySlug[] = [
@@ -82,6 +86,7 @@ export default function CreatorsApplyPage() {
   const [submitting, setSubmitting] = useState(false)
   const [done,       setDone]       = useState(false)
   const [error,      setError]      = useState('')
+  const [consent,    setConsent]    = useState(false)
   const [form,       setForm]       = useState<FormData>({
     name: '', email: '', bio: '',
     instagram: '', tiktok: '', youtube: '', followers: '',
@@ -147,7 +152,7 @@ export default function CreatorsApplyPage() {
   function canProceed(): boolean {
     if (currentKey === 'profile')   return !!form.name && !!form.email && form.bio.length >= 10
     if (currentKey === 'portfolio') return form.dishConcepts.some(c => c.name && c.description && c.cuisineType)
-    return true // confirm
+    return consent // confirm — RGPD consent required before submit
   }
 
   // ── Submit form ─────────────────────────────────────────────────────────────
@@ -215,77 +220,98 @@ export default function CreatorsApplyPage() {
     })
   }
 
-  // ── Code chip (reusable inside done screens) ────────────────────────────────
+  // ── Shared marketing chrome (nav + brand) ───────────────────────────────────
+  function Nav() {
+    return (
+      <nav className="nav">
+        <div className="nav__in">
+          <Link href="/creators" className="nav__brand">
+            <img src="/brand/grubano-symbol-color.svg" alt="Grubano" />
+            <b>Grubano</b>
+            <span>Creators</span>
+          </Link>
+          <button type="button" className="nav__back" onClick={() => router.push('/creators')}>
+            <span className="ms">arrow_back</span>{t('navBack')}
+          </button>
+        </div>
+      </nav>
+    )
+  }
+
+  // ── Verification code chip (reused across proof / retry states) ──────────────
   function CodeChip() {
     return (
-      <div className="flex items-center gap-2">
-        <code className="flex-1 rounded-grubano-lg bg-grubano-bg px-3 py-2.5 text-base font-mono font-bold tracking-widest text-grubano-primary truncate">
-          {verifyCode}
-        </code>
-        <button
-          type="button"
-          onClick={copyCode}
-          className="flex items-center gap-1.5 rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-xs font-semibold hover:bg-grubano-bg transition shrink-0"
-        >
-          {copied
-            ? <><Check size={12} className="text-grubano-success" />{t('verifyCopied')}</>
-            : <><Copy size={12} />{t('verifyCopy')}</>
-          }
+      <div className="code-row">
+        <code>{verifyCode}</code>
+        <button type="button" className={`code-copy${copied ? ' copied' : ''}`} onClick={copyCode}>
+          <span className="ms">{copied ? 'check' : 'content_copy'}</span>
+          {copied ? t('verifyCopied') : t('verifyCopy')}
         </button>
       </div>
     )
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // DONE screens
+  // DONE screens — the real vetting outcomes (unchanged logic, re-skinned)
   // ══════════════════════════════════════════════════════════════════════════════
   if (done) {
     const hasYoutube = !!form.youtube.trim()
 
-    // ── A) No YouTube → simple success ─────────────────────────────────────────
+    // ── A) No YouTube → simple success (no ownership-proof step to run) ─────────
     if (!hasYoutube) {
       return (
-        <div className="px-4 pt-12 max-w-lg mx-auto text-center">
-          <div className="h-20 w-20 rounded-grubano-pill bg-grubano-success-tint flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 size={40} className="text-grubano-success" />
+        <div className="cr-mkt">
+          <Nav />
+          <div className="page">
+            <div className="verify-wrap">
+              <div className="vcard">
+                <div className="vic vic--cr"><span className="ms">celebration</span></div>
+                <h2>{t('successTitle')}</h2>
+                <p>{t('successDesc')}</p>
+                {applicationId && (
+                  <div className="success__ref"><span className="ms">tag</span>{applicationId}</div>
+                )}
+                <div className="success__steps">
+                  <div className="s"><span className="ms">query_stats</span>{t('successStepReview')}</div>
+                  <div className="s"><span className="ms">verified</span>{t('successStepStudio')}</div>
+                  <div className="s"><span className="ms">restaurant_menu</span>{t('successStepPublish')}</div>
+                </div>
+                <div className="actions">
+                  <button type="button" className="btn-cr" onClick={() => router.push('/creators')}>
+                    <span className="ms">home</span>{t('backToPortal')}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <h1 className="text-xl font-display font-bold mb-2">{t('successTitle')}</h1>
-          <p className="text-sm text-grubano-ink-muted mb-6">{t('successDesc')}</p>
-          <Button variant="primary" size="md" fullWidth onClick={() => router.push('/creators')}>
-            {t('backToPortal')}
-          </Button>
         </div>
       )
     }
 
-    // ── B) YouTube — awaiting first verification ────────────────────────────────
+    // ── B) YouTube — awaiting first verification (ownership-proof instructions) ──
     if (verifyResult === null) {
       return (
-        <div className="px-4 pt-8 max-w-lg mx-auto space-y-5">
-          <div className="text-center">
-            <div className="h-16 w-16 rounded-grubano-pill bg-grubano-success-tint flex items-center justify-center mx-auto mb-3">
-              <CheckCircle2 size={32} className="text-grubano-success" />
+        <div className="cr-mkt">
+          <Nav />
+          <div className="page">
+            <div className="verify-wrap">
+              <div className="vcard">
+                <div className="vic vic--cr"><span className="ms">how_to_reg</span></div>
+                <h2>{t('verifyTitle')}</h2>
+                <p>{t('verifyDesc')}</p>
+                <div className="code-box">
+                  <p className="code-box__lbl">{t('verifyCodeLabel')}</p>
+                  <CodeChip />
+                </div>
+                <div className="actions">
+                  <button type="button" className="btn-cr" onClick={handleVerify} disabled={verifying}>
+                    <span className="ms">{verifying ? 'progress_activity' : 'verified_user'}</span>
+                    {verifying ? t('verifying') : t('verifyButton')}
+                  </button>
+                </div>
+              </div>
             </div>
-            <h1 className="text-xl font-display font-bold mb-2">{t('verifyTitle')}</h1>
-            <p className="text-sm text-grubano-ink-muted leading-relaxed">{t('verifyDesc')}</p>
           </div>
-
-          <Card elevation="sm" padding="md">
-            <p className="text-[10px] text-grubano-ink-muted uppercase tracking-wide font-semibold mb-2">
-              {t('verifyCodeLabel')}
-            </p>
-            <CodeChip />
-          </Card>
-
-          <Button
-            variant="primary"
-            size="md"
-            fullWidth
-            onClick={handleVerify}
-            loading={verifying}
-          >
-            {verifying ? t('verifying') : t('verifyButton')}
-          </Button>
         </div>
       )
     }
@@ -295,26 +321,27 @@ export default function CreatorsApplyPage() {
       const isApproved = verifyResult.status === 'approved'
       const profileUrl = `/chef/${verifyResult.referralLinkSlug}`
       return (
-        <div className="px-4 pt-12 max-w-lg mx-auto text-center">
-          <div className={`h-20 w-20 rounded-grubano-pill flex items-center justify-center mx-auto mb-4 ${
-            isApproved ? 'bg-grubano-success-tint' : 'bg-grubano-primary/10'
-          }`}>
-            <CheckCircle2 size={40} className={isApproved ? 'text-grubano-success' : 'text-grubano-primary'} />
+        <div className="cr-mkt">
+          <Nav />
+          <div className="page">
+            <div className="verify-wrap">
+              <div className="vcard">
+                <div className={`vic ${isApproved ? 'vic--ok' : 'vic--cr'}`}>
+                  <span className="ms">{isApproved ? 'verified' : 'hourglass_top'}</span>
+                </div>
+                <h2>{isApproved ? t('verifyApprovedTitle') : t('verifyFlaggedTitle')}</h2>
+                <p>{isApproved ? t('verifyApprovedDesc') : t('verifyFlaggedDesc')}</p>
+                {!isApproved && verifyResult.reason && (
+                  <p className="subtle">{verifyResult.reason}</p>
+                )}
+                <div className="actions">
+                  <Link href={profileUrl} className="btn-cr">
+                    <span className="ms">open_in_new</span>{t('verifyViewProfile')}
+                  </Link>
+                </div>
+              </div>
+            </div>
           </div>
-          <h1 className="text-xl font-display font-bold mb-2">
-            {isApproved ? t('verifyApprovedTitle') : t('verifyFlaggedTitle')}
-          </h1>
-          <p className={`text-sm text-grubano-ink-muted ${!isApproved && verifyResult.reason ? 'mb-2' : 'mb-6'}`}>
-            {isApproved ? t('verifyApprovedDesc') : t('verifyFlaggedDesc')}
-          </p>
-          {!isApproved && verifyResult.reason && (
-            <p className="text-xs text-grubano-ink-faint mb-6">{verifyResult.reason}</p>
-          )}
-          <Link href={profileUrl} className="block w-full">
-            <Button variant="primary" size="md" fullWidth rightIcon={<ExternalLink size={14} />}>
-              {t('verifyViewProfile')}
-            </Button>
-          </Link>
         </div>
       )
     }
@@ -322,27 +349,27 @@ export default function CreatorsApplyPage() {
     // ── D) Code not yet found → show code again + retry ────────────────────────
     if (verifyResult.reason === 'code_not_found') {
       return (
-        <div className="px-4 pt-8 max-w-lg mx-auto space-y-5">
-          <div className="text-center">
-            <div className="h-16 w-16 rounded-grubano-pill bg-amber-50 flex items-center justify-center mx-auto mb-3">
-              <Clock size={32} className="text-amber-500" />
+        <div className="cr-mkt">
+          <Nav />
+          <div className="page">
+            <div className="verify-wrap">
+              <div className="vcard">
+                <div className="vic vic--warn"><span className="ms">schedule</span></div>
+                <h2>{t('verifyCodeNotFoundTitle')}</h2>
+                <p>{t('verifyCodeNotFound')}</p>
+                <div className="code-box">
+                  <p className="code-box__lbl">{t('verifyCodeLabel')}</p>
+                  <CodeChip />
+                </div>
+                <div className="actions">
+                  <button type="button" className="btn-cr" onClick={handleVerify} disabled={verifying}>
+                    <span className="ms">{verifying ? 'progress_activity' : 'refresh'}</span>
+                    {verifying ? t('verifying') : t('verifyRetry')}
+                  </button>
+                </div>
+              </div>
             </div>
-            <p className="text-sm text-grubano-ink-muted leading-relaxed">{t('verifyCodeNotFound')}</p>
           </div>
-
-          <Card elevation="sm" padding="md">
-            <CodeChip />
-          </Card>
-
-          <Button
-            variant="primary"
-            size="md"
-            fullWidth
-            onClick={handleVerify}
-            loading={verifying}
-          >
-            {verifying ? t('verifying') : t('verifyRetry')}
-          </Button>
         </div>
       )
     }
@@ -350,18 +377,23 @@ export default function CreatorsApplyPage() {
     // ── E) Rejected ────────────────────────────────────────────────────────────
     if (verifyResult.status === 'rejected') {
       return (
-        <div className="px-4 pt-12 max-w-lg mx-auto text-center">
-          <div className="h-20 w-20 rounded-grubano-pill bg-grubano-danger/10 flex items-center justify-center mx-auto mb-4">
-            <XCircle size={40} className="text-grubano-danger" />
+        <div className="cr-mkt">
+          <Nav />
+          <div className="page">
+            <div className="verify-wrap">
+              <div className="vcard">
+                <div className="vic vic--err"><span className="ms">cancel</span></div>
+                <h2>{t('verifyRejectedTitle')}</h2>
+                <p>{t('verifyRejectedDesc')}</p>
+                {verifyResult.reason && <p className="subtle">{verifyResult.reason}</p>}
+                <div className="actions">
+                  <button type="button" className="btn-ghost" onClick={() => router.push('/creators')}>
+                    <span className="ms">arrow_back</span>{t('backToPortal')}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <h1 className="text-xl font-display font-bold mb-2">{t('verifyRejectedTitle')}</h1>
-          <p className="text-sm text-grubano-ink-muted mb-2">{t('verifyRejectedDesc')}</p>
-          {verifyResult.reason && (
-            <p className="text-xs text-grubano-ink-faint mb-6">{verifyResult.reason}</p>
-          )}
-          <Button variant="secondary" size="md" fullWidth onClick={() => router.push('/creators')}>
-            {t('backToPortal')}
-          </Button>
         </div>
       )
     }
@@ -378,25 +410,34 @@ export default function CreatorsApplyPage() {
     const canRetry =
       verifyResult.reason === 'youtube_unavailable' || verifyResult.reason === 'youtube_config'
     return (
-      <div className="px-4 pt-12 max-w-lg mx-auto text-center">
-        <div className="h-20 w-20 rounded-grubano-pill bg-grubano-danger/10 flex items-center justify-center mx-auto mb-4">
-          <XCircle size={40} className="text-grubano-danger" />
+      <div className="cr-mkt">
+        <Nav />
+        <div className="page">
+          <div className="verify-wrap">
+            <div className="vcard">
+              <div className="vic vic--err"><span className="ms">error</span></div>
+              <h2>{t('verifyChannelTitle')}</h2>
+              <p>{channelMessage}</p>
+              <div className="actions">
+                {canRetry && (
+                  <button type="button" className="btn-cr" onClick={handleVerify} disabled={verifying}>
+                    <span className="ms">{verifying ? 'progress_activity' : 'refresh'}</span>
+                    {verifying ? t('verifying') : t('verifyRetry')}
+                  </button>
+                )}
+                <button type="button" className="btn-ghost" onClick={() => router.push('/creators')}>
+                  <span className="ms">arrow_back</span>{t('backToPortal')}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-        <p className="text-sm text-grubano-ink-muted mb-6">{channelMessage}</p>
-        {canRetry && (
-          <Button variant="primary" size="md" fullWidth onClick={handleVerify} loading={verifying} className="mb-3">
-            {verifying ? t('verifying') : t('verifyRetry')}
-          </Button>
-        )}
-        <Button variant="secondary" size="md" fullWidth onClick={() => router.push('/creators')}>
-          {t('backToPortal')}
-        </Button>
       </div>
     )
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // FORM (steps 0–2)
+  // FORM (steps 0–2) — CD marketing layout, real 3-step wizard
   // ══════════════════════════════════════════════════════════════════════════════
 
   const LABEL_BY_KEY: Record<'profile' | 'portfolio' | 'confirm', string> = {
@@ -407,227 +448,241 @@ export default function CreatorsApplyPage() {
   const STEP_LABELS = STEP_KEYS.map(k => LABEL_BY_KEY[k])
 
   return (
-    <div className="px-4 pb-10 pt-5 max-w-lg mx-auto">
-      <h1 className="text-xl font-display font-bold mb-1">{t('title')}</h1>
-      <p className="text-xs text-grubano-ink-muted mb-5">
-        {t('stepOf', { current: step + 1, total: STEP_LABELS.length })}
-      </p>
+    <div className="cr-mkt">
+      <Nav />
+      <div className="page">
+        <div className="head">
+          <span className="eyebrow"><span className="ms">palette</span>{t('eyebrow')}</span>
+          <h1>{t('headTitle')}</h1>
+          <p>{t('headSubtitle')}</p>
+        </div>
 
-      {/* Stepper */}
-      <div className="flex items-center mb-6">
-        {STEP_LABELS.map((label, i) => (
-          <div key={i} className="flex items-center flex-1">
-            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-grubano-pill text-xs font-bold transition ${
-              i < step    ? 'bg-grubano-primary text-white'
-              : i === step ? 'bg-grubano-primary text-white ring-2 ring-grubano-primary/40'
-              : 'bg-grubano-bg text-grubano-ink-muted'
-            }`}>
-              {i < step ? <CheckCircle2 size={14} /> : i + 1}
+        {/* Stepper — reflects the REAL current step (done / active / upcoming) */}
+        <div className="stepper">
+          {STEP_LABELS.map((label, i) => (
+            <div key={i} style={{ display: 'contents' }}>
+              <div className={`sp ${i < step ? 'done' : i === step ? 'active' : ''}`}>
+                <span className="sp__d">{i < step ? <span className="ms">check</span> : i + 1}</span>
+                <span className="sp__l">{label}</span>
+              </div>
+              {i < STEP_LABELS.length - 1 && <div className="sp__line" />}
             </div>
-            {i < STEP_LABELS.length - 1 && (
-              <div className={`h-0.5 flex-1 mx-1 transition ${i < step ? 'bg-grubano-primary' : 'bg-grubano-border'}`} />
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      <Card elevation="sm" padding="md" className="mb-4">
-        <h2 className="font-bold mb-4 text-sm">{STEP_LABELS[step]}</h2>
+        <div className="grid">
+          <div className="form-card">
 
-        {/* Profile */}
-        {currentKey === 'profile' && (
-          <div className="space-y-3">
-            <Input
-              label={t('labelName')}
-              type="text"
-              placeholder="Amina K."
-              value={form.name}
-              onChange={e => setField('name', e.target.value)}
-            />
-            <Input
-              label={t('labelEmail')}
-              type="email"
-              placeholder="amina@exemple.fr"
-              value={form.email}
-              onChange={e => setField('email', e.target.value)}
-              disabled={emailLocked}
-            />
-            {emailLocked && (
-              <p className="rounded-grubano-lg border border-grubano-primary/20 bg-grubano-tint/50 px-3 py-2 text-[13px] text-grubano-ink-muted">
-                {tA('emailLocked')}
-              </p>
-            )}
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 text-grubano-ink-muted uppercase tracking-wide">
-                {t('labelBio')}
-              </label>
-              <textarea
-                rows={3}
-                placeholder={t('bioPlaceholder')}
-                value={form.bio}
-                onChange={e => setField('bio', e.target.value)}
-                className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary resize-none"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label={t('labelInstagram')}
-                type="text"
-                placeholder="@amina.cuisine"
-                value={form.instagram}
-                onChange={e => setField('instagram', e.target.value)}
-              />
-              <Input
-                label={t('labelTiktok')}
-                type="text"
-                placeholder="@amina.tiktok"
-                value={form.tiktok}
-                onChange={e => setField('tiktok', e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                label={t('labelYoutube')}
-                type="text"
-                placeholder={t('youtubePlaceholder')}
-                value={form.youtube}
-                onChange={e => setField('youtube', e.target.value)}
-              />
-              <Input
-                label={t('labelFollowers')}
-                type="number"
-                placeholder="12000"
-                min="0"
-                value={form.followers}
-                onChange={e => setField('followers', e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Portfolio — CHEF-only (skipped for a pure influencer) */}
-        {currentKey === 'portfolio' && (
-          <div className="space-y-4">
-            <p className="text-xs text-grubano-ink-muted">{t('portfolioHint')}</p>
-            {form.dishConcepts.map((concept, i) => (
-              <div key={i} className="rounded-grubano-lg border border-grubano-border p-3 space-y-2">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs font-bold text-grubano-ink-muted uppercase">
-                    {t('conceptLabel', { n: i + 1 })}
-                  </p>
-                  {form.dishConcepts.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeConcept(i)}
-                      className="text-grubano-danger hover:text-grubano-danger/80 transition"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+            {/* Profile */}
+            {currentKey === 'profile' && (
+              <div className="fsec">
+                <div className="fsec__h">
+                  <span className="fsec__n">1</span>
+                  <div><b>{t('secProfileTitle')}</b><span>{t('secProfileSub')}</span></div>
+                </div>
+                <div className="fld">
+                  <label>{t('labelName')}</label>
+                  <input
+                    className="inp" type="text" placeholder="Amina K."
+                    value={form.name} onChange={e => setField('name', e.target.value)}
+                  />
+                </div>
+                <div className="fld">
+                  <label>{t('labelEmail')}</label>
+                  <input
+                    className="inp" type="email" placeholder="amina@exemple.fr"
+                    value={form.email} onChange={e => setField('email', e.target.value)}
+                    disabled={emailLocked}
+                  />
+                  {emailLocked && (
+                    <div className="locked"><span className="ms">lock</span>{tA('emailLocked')}</div>
                   )}
                 </div>
-                <input
-                  type="text"
-                  placeholder={t('conceptNamePlaceholder')}
-                  value={concept.name}
-                  onChange={e => setDishField(i, 'name', e.target.value)}
-                  className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary"
-                />
-                <select
-                  value={concept.cuisineType}
-                  onChange={e => setDishField(i, 'cuisineType', e.target.value)}
-                  className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary"
-                >
-                  <option value="">{t('conceptCuisinePlaceholder')}</option>
-                  {CUISINE_SLUGS.map(slug => (
-                    <option key={slug} value={slug}>{CUISINE_LABELS[slug]}</option>
-                  ))}
-                </select>
-                <textarea
-                  rows={2}
-                  placeholder={t('conceptDescPlaceholder')}
-                  value={concept.description}
-                  onChange={e => setDishField(i, 'description', e.target.value)}
-                  className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary resize-none"
-                />
+                <div className="fld">
+                  <label>{t('labelBio')}</label>
+                  <textarea
+                    className="inp" rows={3} placeholder={t('bioPlaceholder')}
+                    value={form.bio} onChange={e => setField('bio', e.target.value)}
+                  />
+                </div>
+                <div className="row2">
+                  <div className="fld">
+                    <label>{t('labelInstagram')} <span className="opt">{t('optional')}</span></label>
+                    <input
+                      className="inp" type="text" placeholder="@amina.cuisine"
+                      value={form.instagram} onChange={e => setField('instagram', e.target.value)}
+                    />
+                  </div>
+                  <div className="fld">
+                    <label>{t('labelTiktok')} <span className="opt">{t('optional')}</span></label>
+                    <input
+                      className="inp" type="text" placeholder="@amina.tiktok"
+                      value={form.tiktok} onChange={e => setField('tiktok', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="row2">
+                  <div className="fld">
+                    <label>{t('labelYoutube')} <span className="opt">{t('optional')}</span></label>
+                    <input
+                      className="inp" type="text" placeholder={t('youtubePlaceholder')}
+                      value={form.youtube} onChange={e => setField('youtube', e.target.value)}
+                    />
+                    <p className="hint"><span className="ms">verified_user</span>{t('youtubeHint')}</p>
+                  </div>
+                  <div className="fld">
+                    <label>{t('labelFollowers')} <span className="opt">{t('optional')}</span></label>
+                    <input
+                      className="inp" type="number" placeholder="12000" min="0"
+                      value={form.followers} onChange={e => setField('followers', e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
-            ))}
-            {form.dishConcepts.length < 3 && (
-              <button
-                type="button"
-                onClick={addConcept}
-                className="w-full rounded-grubano-lg border border-dashed border-grubano-border py-2.5 text-xs font-semibold text-grubano-ink-muted flex items-center justify-center gap-1.5 hover:bg-grubano-bg transition"
-              >
-                <Plus size={13} /> {t('addConcept')}
-              </button>
             )}
-          </div>
-        )}
 
-        {/* Confirmation */}
-        {currentKey === 'confirm' && (
-          <div className="space-y-1">
-            {([
-              { label: t('summaryName'),      value: form.name },
-              { label: t('summaryEmail'),     value: form.email },
-              {
-                label: t('summaryFollowers'),
-                value: form.followers ? parseInt(form.followers).toLocaleString('fr-FR') : t('none'),
-              },
-              {
-                label: t('summaryNetworks'),
-                value: [form.instagram, form.tiktok, form.youtube].filter(Boolean).join(', ') || t('none'),
-              },
-              {
-                label: t('stepPortfolio'),
-                value: t('summaryConcepts', { count: form.dishConcepts.filter(c => c.name).length }),
-              },
-            ]).map(({ label, value }) => (
-              <div key={label} className="flex justify-between py-2 border-b border-grubano-border last:border-0">
-                <span className="text-xs text-grubano-ink-muted">{label}</span>
-                <span className="text-xs font-semibold text-right max-w-[60%] truncate">{value}</span>
+            {/* Portfolio — CHEF-only mandatory dish concepts (server superRefine rejects empty) */}
+            {currentKey === 'portfolio' && (
+              <div className="fsec">
+                <div className="fsec__h">
+                  <span className="fsec__n">2</span>
+                  <div><b>{t('secPortfolioTitle')}</b><span>{t('secPortfolioSub')}</span></div>
+                </div>
+                <p className="hint" style={{ marginBottom: 14 }}>
+                  <span className="ms">info</span>{t('portfolioHint')}
+                </p>
+                {form.dishConcepts.map((concept, i) => (
+                  <div key={i} className="concept">
+                    <div className="concept__top">
+                      <span className="concept__n">{t('conceptLabel', { n: i + 1 })}</span>
+                      {form.dishConcepts.length > 1 && (
+                        <button type="button" className="concept__rm" onClick={() => removeConcept(i)}>
+                          <span className="ms">delete</span>
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      className="inp" type="text" placeholder={t('conceptNamePlaceholder')}
+                      value={concept.name} onChange={e => setDishField(i, 'name', e.target.value)}
+                    />
+                    <select
+                      className="inp" value={concept.cuisineType}
+                      onChange={e => setDishField(i, 'cuisineType', e.target.value)}
+                    >
+                      <option value="">{t('conceptCuisinePlaceholder')}</option>
+                      {CUISINE_SLUGS.map(slug => (
+                        <option key={slug} value={slug}>{CUISINE_LABELS[slug]}</option>
+                      ))}
+                    </select>
+                    <textarea
+                      className="inp" rows={2} placeholder={t('conceptDescPlaceholder')}
+                      value={concept.description}
+                      onChange={e => setDishField(i, 'description', e.target.value)}
+                    />
+                  </div>
+                ))}
+                {form.dishConcepts.length < 3 && (
+                  <button type="button" className="add-concept" onClick={addConcept}>
+                    <span className="ms">add</span>{t('addConcept')}
+                  </button>
+                )}
               </div>
-            ))}
-            {error && <p className="text-xs text-grubano-danger pt-2">{error}</p>}
-          </div>
-        )}
-      </Card>
+            )}
 
-      {/* Navigation */}
-      <div className="flex gap-3">
-        {step > 0 && (
-          <Button
-            variant="secondary"
-            size="md"
-            className="flex-1"
-            onClick={() => setStep(s => s - 1)}
-            leftIcon={<ChevronLeft size={16} />}
-          >
-            {t('back')}
-          </Button>
-        )}
-        {step < totalSteps - 1 ? (
-          <Button
-            variant="primary"
-            size="md"
-            className="flex-1"
-            onClick={() => setStep(s => s + 1)}
-            disabled={!canProceed()}
-            rightIcon={<ChevronRight size={16} />}
-          >
-            {t('continue')}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            size="md"
-            className="flex-1"
-            onClick={handleSubmit}
-            loading={submitting}
-            leftIcon={submitting ? undefined : <CheckCircle2 size={16} />}
-          >
-            {submitting ? t('submitting') : t('submit')}
-          </Button>
-        )}
+            {/* Confirmation */}
+            {currentKey === 'confirm' && (
+              <>
+                <div className="fsec">
+                  <div className="fsec__h">
+                    <span className="fsec__n">3</span>
+                    <div><b>{t('secConfirmTitle')}</b><span>{t('secConfirmSub')}</span></div>
+                  </div>
+                  <div className="summary">
+                    {([
+                      { label: t('summaryName'),  value: form.name },
+                      { label: t('summaryEmail'), value: form.email },
+                      {
+                        label: t('summaryFollowers'),
+                        value: form.followers ? parseInt(form.followers).toLocaleString('fr-FR') : t('none'),
+                      },
+                      {
+                        label: t('summaryNetworks'),
+                        value: [form.instagram, form.tiktok, form.youtube].filter(Boolean).join(', ') || t('none'),
+                      },
+                      {
+                        label: t('stepPortfolio'),
+                        value: t('summaryConcepts', { count: form.dishConcepts.filter(c => c.name).length }),
+                      },
+                    ]).map(({ label, value }) => (
+                      <div key={label} className="summary__row">
+                        <span className="summary__k">{label}</span>
+                        <span className="summary__v">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <label className="consent" style={{ marginTop: 16 }}>
+                    <input
+                      type="checkbox" checked={consent}
+                      onChange={e => setConsent(e.target.checked)}
+                    />
+                    <span>
+                      {t('consentPre')}{' '}
+                      <Link href="/legal/confidentialite" target="_blank" rel="noopener noreferrer">
+                        {t('consentLink')}
+                      </Link>
+                      {t('consentPost')}
+                    </span>
+                  </label>
+                </div>
+                {error && <div className="form-err">{error}</div>}
+              </>
+            )}
+
+            {/* Footer navigation — back / continue / submit */}
+            <div className="form-foot">
+              {step > 0 && (
+                <button type="button" className="btn-ghost" onClick={() => setStep(s => s - 1)}>
+                  <span className="ms">arrow_back</span>{t('back')}
+                </button>
+              )}
+              {step < totalSteps - 1 ? (
+                <button
+                  type="button" className="btn-cr"
+                  onClick={() => setStep(s => s + 1)} disabled={!canProceed()}
+                >
+                  {t('continue')}<span className="ms">arrow_forward</span>
+                </button>
+              ) : (
+                <button
+                  type="button" className="btn-cr"
+                  onClick={handleSubmit} disabled={submitting || !canProceed()}
+                >
+                  <span className="ms">{submitting ? 'progress_activity' : 'send'}</span>
+                  {submitting ? t('submitting') : t('submit')}
+                </button>
+              )}
+              <span className="note"><span className="ms">check_circle</span>{t('footNote')}</span>
+            </div>
+          </div>
+
+          {/* aside — honest "100% free" programme + what awaits */}
+          <aside className="aside">
+            <div className="aside__promo">
+              <span className="ms">workspace_premium</span>
+              <b>{t('asidePromoTitle')}</b>
+              <span>{t('asidePromoBody')}</span>
+            </div>
+            <div className="aside__card">
+              <h3><span className="ms">auto_awesome</span>{t('asideAwaitsTitle')}</h3>
+              <ul className="aside__list">
+                <li><span className="ms">check_circle</span>{t('asideAwaits1')}</li>
+                <li><span className="ms">check_circle</span>{t('asideAwaits2')}</li>
+                <li><span className="ms">check_circle</span>{t('asideAwaits3')}</li>
+                <li><span className="ms">check_circle</span>{t('asideAwaits4')}</li>
+              </ul>
+            </div>
+          </aside>
+        </div>
       </div>
     </div>
   )
