@@ -1,136 +1,232 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { Inbox, Check, X, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
-import { Card, Button, Badge, EmptyState, SkeletonList } from '@/components/design-system'
-import type { BadgeTone } from '@/components/design-system'
+import './franchise-candidatures.css'
 
-// ── Franchisor candidatures — review join requests to MY brands (B7, Agent 48) ───────
-// READS /api/franchise/applications (owner-scoped server-side). Approve → a point of sale
-// is created and the applicant's restaurant is linked (1:1, server-side, atomic). Reject →
-// status only. No money moves here.
+// ── FR4 · Candidatures — franchisor reviews join requests (CD Vague 2) ────────────
+// Rendered inside FranchiseShell. READS /api/franchise/applications (owner-scoped server
+// side — a franchisor only sees candidacies to its OWN brands). Approve → the server
+// atomically creates the PointOfSale + links the applicant's restaurant (1:1); reject →
+// status only. The two REAL actions are preserved verbatim; the mock's 4-stage pipeline,
+// financing plan and "schedule interview" are BUILD-NEW (no model backing) → dropped. No
+// money moves here. All fields (candidate, city, brand, date, motivation) are real.
 
 type App = {
-  id:             string
-  status:         string
-  message:        string | null
-  createdAt:      string
-  brandName:      string
-  brandEmoji:     string
-  restaurantName: string
-  restaurantCity: string
+  id: string; status: string; message: string | null
+  createdAt: string; decidedAt: string | null
+  brandName: string; brandEmoji: string
+  restaurantName: string; restaurantCity: string
 }
+type Tab = 'all' | 'pending' | 'approved' | 'rejected'
 
-const TONE: Record<string, BadgeTone> = { pending: 'warning', approved: 'success', rejected: 'danger' }
+const INITIALS = (s: string) =>
+  (s.trim().split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2) || '–').toUpperCase()
 
 export default function FranchiseCandidaturesPage() {
   const t = useTranslations('franchise.applications')
-
-  const [apps, setApps]       = useState<App[] | null>(null)
-  const [error, setError]     = useState('')
-  const [busy, setBusy]       = useState<string | null>(null)
+  const locale = useLocale()
+  const [apps, setApps] = useState<App[] | null>(null)
+  const [error, setError] = useState(false)
+  const [sel, setSel] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('all')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [actErr, setActErr] = useState('')
 
   function load() {
     fetch('/api/franchise/applications')
       .then(r => (r.ok ? r.json() : Promise.reject()))
       .then(d => setApps(d.applications ?? []))
-      .catch(() => setError(t('loadError')))
+      .catch(() => setError(true))
   }
-  useEffect(load, [t])
+  useEffect(load, [])
+
+  const dateFmt = useMemo(() => new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Paris' }), [locale])
+  const day = (iso: string | null) => (iso ? dateFmt.format(new Date(iso)) : '—')
+  const rel = (iso: string) => t('relDays', { days: Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) })
+  const statusLabel = (s: string) => (s === 'approved' ? t('statusApproved') : s === 'rejected' ? t('statusRejected') : t('statusPending'))
 
   async function decide(id: string, action: 'approve' | 'reject') {
-    setBusy(id + action); setError('')
+    setBusy(id + action); setActErr('')
     try {
       const res = await fetch('/api/franchise/applications', {
-        method:  'POST',
-        headers: { 'content-type': 'application/json' },
-        body:    JSON.stringify({ id, action }),
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, action }),
       })
       const d = await res.json().catch(() => ({}))
-      if (!res.ok) { setError(d.error ?? t('errorNetwork')); return }
-      // Reflect the decision locally.
-      setApps(prev => (prev ?? []).map(a => (a.id === id ? { ...a, status: action === 'approve' ? 'approved' : 'rejected' } : a)))
+      if (!res.ok) { setActErr(d.error ?? t('errorNetwork')); return }
+      setApps(prev => (prev ?? []).map(a => (a.id === id ? { ...a, status: action === 'approve' ? 'approved' : 'rejected', decidedAt: new Date().toISOString() } : a)))
     } catch {
-      setError(t('errorNetwork'))
+      setActErr(t('errorNetwork'))
     } finally {
       setBusy(null)
     }
   }
 
-  const statusLabel = (s: string) =>
-    s === 'approved' ? t('statusApproved') : s === 'rejected' ? t('statusRejected') : t('statusPending')
+  const counts = useMemo(() => {
+    const all = apps ?? []
+    return {
+      all: all.length,
+      pending: all.filter(a => a.status === 'pending').length,
+      approved: all.filter(a => a.status === 'approved').length,
+      rejected: all.filter(a => a.status === 'rejected').length,
+    }
+  }, [apps])
+  const filtered = (apps ?? []).filter(a => tab === 'all' ? true : a.status === tab)
+  const detail = (apps ?? []).find(a => a.id === sel) ?? null
 
-  if (apps === null && !error) {
-    return <div className="px-4 pt-5 max-w-2xl mx-auto"><SkeletonList count={4} /></div>
+  if (!apps && !error) {
+    return (
+      <section aria-busy="true">
+        <span className="op-sk" style={{ width: 240, height: 26, marginBottom: 18 }} />
+        <span className="op-sk" style={{ width: 300, height: 40, borderRadius: 999, marginBottom: 18, display: 'block' }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <span className="op-sk" style={{ width: '100%', height: 130, borderRadius: 12 }} />
+          <span className="op-sk" style={{ width: '100%', height: 130, borderRadius: 12 }} />
+        </div>
+      </section>
+    )
   }
 
+  if (error) {
+    return (
+      <section><div className="op-center">
+        <div className="op-error__card">
+          <span className="ms" aria-hidden="true">cloud_off</span>
+          <h2>{t('errorTitle')}</h2>
+          <p>{t('errorBody')}</p>
+          <button className="op-btn-primary" onClick={() => location.reload()}><span className="ms" aria-hidden="true">refresh</span>{t('retry')}</button>
+        </div>
+      </div></section>
+    )
+  }
+
+  if ((apps ?? []).length === 0) {
+    return (
+      <section>
+        <div className="op-dash__head"><div><h1 className="op-dash__title">{t('title')}</h1></div></div>
+        <div className="op-card op-empty">
+          <span className="ic"><span className="ms" aria-hidden="true">how_to_reg</span></span>
+          <b>{t('empty')}</b>
+          <span>{t('emptyDesc')}</span>
+        </div>
+      </section>
+    )
+  }
+
+  // ── DETAIL / DOSSIER ──
+  if (detail) {
+    const a = detail
+    const pending = a.status === 'pending'
+    return (
+      <section>
+        <button className="op-back" onClick={() => { setSel(null); setActErr('') }}><span className="ms flip-rtl" aria-hidden="true">arrow_back</span>{t('title')}</button>
+
+        <div className="op-card ap-dt-top">
+          <span className="ap-dt-av">{INITIALS(a.restaurantName || '–')}</span>
+          <div className="ap-dt-m">
+            <h2>{a.restaurantName || '—'}</h2>
+            <div className="sub">
+              {a.restaurantCity && <span><span className="ms" aria-hidden="true">place</span>{a.restaurantCity}</span>}
+              <span><span className="ms" aria-hidden="true">sell</span>{a.brandEmoji} {a.brandName}</span>
+              <span><span className="ms" aria-hidden="true">schedule</span>{t('submittedOn', { date: day(a.createdAt) })}</span>
+              <span className={`ap-stage ${a.status}`}><i className="dot" />{statusLabel(a.status)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="ap-cols">
+          <div>
+            {a.message ? (
+              <div className="op-card ap-sec">
+                <h3><span className="ms" aria-hidden="true">format_quote</span>{t('motivationTitle')}</h3>
+                <p>« {a.message} »</p>
+              </div>
+            ) : (
+              <div className="op-card ap-sec">
+                <h3><span className="ms" aria-hidden="true">format_quote</span>{t('motivationTitle')}</h3>
+                <p>{t('noMessage')}</p>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="op-card ap-sec ap-decide">
+              <h3>{t('progressTitle')}</h3>
+              <div className="hint">{t('progressHint')}</div>
+              <div className="ap-stage-track">
+                <div className="ap-st done"><span className="d"><span className="ms" aria-hidden="true">check</span></span><div className="m"><b>{t('stepReceived')}</b><span>{day(a.createdAt)}</span></div></div>
+                <div className={`ap-st ${a.status === 'approved' ? 'done' : a.status === 'rejected' ? 'rej' : 'current'}`}>
+                  <span className="d"><span className="ms" aria-hidden="true">{a.status === 'approved' ? 'handshake' : a.status === 'rejected' ? 'close' : 'visibility'}</span></span>
+                  <div className="m"><b>{t('stepDecision')}</b><span>{a.status === 'pending' ? t('decisionPending') : day(a.decidedAt)}</span></div>
+                </div>
+              </div>
+
+              {pending && (
+                <div className="acts">
+                  <button className="op-btn-primary" disabled={busy !== null} onClick={() => decide(a.id, 'approve')}>
+                    <span className="ms" aria-hidden="true">check</span>{busy === a.id + 'approve' ? t('processing') : t('approveCta')}
+                  </button>
+                  <button className="op-btn-danger" disabled={busy !== null} onClick={() => decide(a.id, 'reject')}>
+                    <span className="ms" aria-hidden="true">close</span>{busy === a.id + 'reject' ? t('processing') : t('rejectCta')}
+                  </button>
+                </div>
+              )}
+              {actErr && <p className="ap-err" role="alert">{actErr}</p>}
+            </div>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  // ── LIST ──
   return (
-    <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto">
-      <div className="mb-5">
-        <h1 className="text-2xl font-display font-bold tracking-tight">{t('title')}</h1>
-        <p className="text-sm text-grubano-ink-muted mt-1">{t('subtitle')}</p>
+    <section>
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('title')}</h1>
+          <p className="op-dash__sub">{t('listSub')}</p>
+        </div>
       </div>
 
-      {error && (
-        <p className="mb-4 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">{error}</p>
-      )}
+      <div className="ap-toolbar">
+        <div className="ap-tabs">
+          {(['all', 'pending', 'approved', 'rejected'] as Tab[]).map(k => (
+            <button key={k} type="button" className={tab === k ? 'is-active' : undefined} onClick={() => setTab(k)}>
+              {k === 'all' ? t('tabAll') : k === 'pending' ? t('statusPending') : k === 'approved' ? t('statusApproved') : t('statusRejected')}
+              <span className="cnt">{counts[k]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {(apps ?? []).length === 0 ? (
-        <EmptyState
-          emoji={<Inbox size={28} className="text-grubano-primary" />}
-          title={t('empty')}
-          action={
-            <Link href="/franchise/dashboard">
-              <Button variant="ghost" size="sm">{t('backToDashboard')}</Button>
-            </Link>
-          }
-        />
+      {filtered.length === 0 ? (
+        <div className="op-card"><div className="op-empty" style={{ padding: '48px 20px' }}><span className="ms" aria-hidden="true">filter_list_off</span><b>{t('noneInTab')}</b></div></div>
       ) : (
-        <div className="space-y-3">
-          {(apps ?? []).map(a => {
-            const pending = a.status === 'pending'
-            return (
-              <Card key={a.id} elevation="sm" padding="md">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{a.brandEmoji}</span>
-                      <p className="font-bold text-sm truncate">{a.restaurantName || '—'}</p>
-                    </div>
-                    <p className="text-[11px] text-grubano-ink-muted mt-0.5">
-                      {t('joinBrand', { brand: a.brandName })}{a.restaurantCity ? ` · ${a.restaurantCity}` : ''}
-                    </p>
+        <div className="ap-list">
+          {filtered.map(a => (
+            <button className="ap-card" key={a.id} onClick={() => { setSel(a.id); setActErr('') }}>
+              <div className="ap-card__top">
+                <span className="ap-av">{INITIALS(a.restaurantName || '–')}</span>
+                <div className="ap-card__m">
+                  <h3>{a.restaurantName || '—'}</h3>
+                  <div className="ap-card__meta">
+                    {a.restaurantCity && <span><span className="ms" aria-hidden="true">place</span>{a.restaurantCity}</span>}
+                    <span><span className="ms" aria-hidden="true">sell</span>{a.brandEmoji} {a.brandName}</span>
+                    <span><span className="ms" aria-hidden="true">schedule</span>{t('submittedAgo', { ago: rel(a.createdAt) })}</span>
                   </div>
-                  <Badge tone={TONE[a.status] ?? 'neutral'} size="sm">{statusLabel(a.status)}</Badge>
                 </div>
-
-                {a.message && (
-                  <p className="mt-2 rounded-grubano-md bg-grubano-bg px-2.5 py-2 text-xs text-grubano-ink-muted">“{a.message}”</p>
-                )}
-
-                {pending && (
-                  <div className="mt-3 flex gap-2">
-                    <Button
-                      variant="primary" size="sm" leftIcon={busy === a.id + 'approve' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                      onClick={() => decide(a.id, 'approve')} disabled={busy !== null}
-                    >
-                      {t('approve')}
-                    </Button>
-                    <Button
-                      variant="ghost" size="sm" leftIcon={busy === a.id + 'reject' ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
-                      onClick={() => decide(a.id, 'reject')} disabled={busy !== null}
-                    >
-                      {t('reject')}
-                    </Button>
-                  </div>
-                )}
-              </Card>
-            )
-          })}
+                <span className={`ap-stage ${a.status}`}><i className="dot" />{statusLabel(a.status)}</span>
+              </div>
+              <div className="ap-foot">
+                <span className="ap-foot__msg">{a.message ? `« ${a.message} »` : t('noMessage')}</span>
+                <span className="ap-foot__go">{t('examineFile')}<span className="ms flip-rtl" aria-hidden="true">arrow_forward</span></span>
+              </div>
+            </button>
+          ))}
         </div>
       )}
-    </div>
+    </section>
   )
 }

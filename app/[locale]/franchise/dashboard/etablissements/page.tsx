@@ -1,234 +1,220 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useTranslations } from 'next-intl'
-import { MapPin, Plus, Pencil, Trash2, Store, Loader2, Tag } from 'lucide-react'
-import { Card, Button, Input, Badge, EmptyState, Modal } from '@/components/design-system'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslations, useLocale } from 'next-intl'
+import { Link } from '@/navigation'
+import './franchise-etablissements.css'
 
-// ── /franchise/dashboard/etablissements — franchisor points-of-sale management (B3) ─
-// Lists the franchisor's OWN points of sale and lets them create / edit / delete one,
-// each linked to ONE of the operator's OWN restaurants (1:1) + optionally a brand.
-// Reads/writes /api/franchise/pos (owner-scoped, no IDOR). Renders inside the franchise
-// dashboard layout (sidebar + mobile header). STRUCTURE-only — changes nothing about
-// orders, payment, royalties or the dashboard (those stay inert until B5 tags orders).
+// ── FR3 · Établissements — read-only network console (CD Vague 2) ─────────────────
+// Rendered inside FranchiseShell. Consultation only: list (search + status filter) ↔
+// POS fiche. POS lifecycle is driven by candidature approval (FR4), not manual CRUD.
+// Every figure is REAL, owner-scoped (the API scopes by the session operator) and read
+// only. CENTS/euros come from the server and are never recomputed client-side; the rate
+// is the real Brand.royaltyPct. Fabricated mock content (contract dates, avg-rating star,
+// "franchisé depuis") is DROPPED — no source. A temporarily-closed POS shows « — » (CD).
 
 type POS = {
-  id: string; name: string; address: string | null; city: string | null
-  isActive: boolean; brandId: string | null
+  id: string; name: string; city: string | null; isActive: boolean
   restaurant: { id: string; name: string; city: string } | null
-  brand_ref:  { id: string; name: string; emoji: string } | null
+  brand_ref: { id: string; name: string; emoji: string } | null
+  openedAt: string | null
+  holder: string | null
+  company: string | null
+  restaurantAddress: string | null
+  channels: { delivery: boolean; pickup: boolean } | null
+  caEuros: number; orders30: number; ratePct: number; royaltyEuros: number
 }
-type Resto = { id: string; name: string; city: string; pointOfSaleId: string | null }
-type BrandLite = { id: string; name: string; emoji: string }
 
-const selectClass =
-  'w-full rounded-grubano-lg border border-grubano-line bg-white px-3 py-2.5 text-sm text-grubano-ink focus:border-grubano-primary focus:outline-none disabled:bg-grubano-surface-muted disabled:text-grubano-ink-faint'
+type Filter = 'all' | 'open' | 'closed'
+
+const INITIALS = (s: string) =>
+  (s.trim().split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2) || '–').toUpperCase()
 
 export default function FranchiseEtablissementsPage() {
   const t = useTranslations('franchise.locations')
+  const locale = useLocale()
+  const [list, setList] = useState<POS[] | null>(null)
+  const [error, setError] = useState(false)
+  const [sel, setSel] = useState<string | null>(null)
+  const [q, setQ] = useState('')
+  const [filter, setFilter] = useState<Filter>('all')
 
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
-  const [list, setList] = useState<POS[]>([])
-  const [restaurants, setRestaurants] = useState<Resto[]>([])
-  const [brands, setBrands] = useState<BrandLite[]>([])
-
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<POS | null>(null)
-  const [name, setName] = useState('')
-  const [address, setAddress] = useState('')
-  const [city, setCity] = useState('')
-  const [restaurantId, setRestaurantId] = useState('')
-  const [brandId, setBrandId] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [formError, setFormError] = useState('')
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/franchise/pos', { cache: 'no-store' })
-      if (!res.ok) { setLoadError(true); return }
-      const j = await res.json()
-      setList(j.pointsOfSale ?? [])
-      setRestaurants(j.restaurants ?? [])
-      setBrands(j.brands ?? [])
-    } catch { setLoadError(true) }
-    finally { setLoading(false) }
+  useEffect(() => {
+    let alive = true
+    fetch('/api/franchise/pos', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(d => { if (alive) setList(d.pointsOfSale ?? []) })
+      .catch(() => { if (alive) setError(true) })
+    return () => { alive = false }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  const nf  = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }), [locale])
+  const eur = (v: number) => `${nf.format(Math.round(v))} €`
+  const dateFmt = useMemo(() => new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Paris' }), [locale])
+  const day = (iso: string | null) => (iso ? dateFmt.format(new Date(iso)) : '—')
 
-  // Restaurants selectable for the link: those not yet linked + (when editing) the one
-  // already linked to THIS POS (so it stays visible/selectable).
-  const linkable = restaurants.filter((r) => !r.pointOfSaleId || r.id === editing?.restaurant?.id)
+  const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '')
+  const filtered = useMemo(() => {
+    const all = list ?? []
+    const byStatus = all.filter(p => filter === 'all' ? true : filter === 'open' ? p.isActive : !p.isActive)
+    if (!q.trim()) return byStatus
+    const nq = norm(q)
+    return byStatus.filter(p => norm(`${p.name} ${p.city ?? ''} ${p.holder ?? ''}`).includes(nq))
+  }, [list, filter, q])
 
-  function openCreate() {
-    setEditing(null); setName(''); setAddress(''); setCity(''); setRestaurantId(''); setBrandId(''); setFormError('')
-    setModalOpen(true)
-  }
-  function openEdit(p: POS) {
-    setEditing(p)
-    setName(p.name); setAddress(p.address ?? ''); setCity(p.city ?? '')
-    setRestaurantId(p.restaurant?.id ?? ''); setBrandId(p.brandId ?? ''); setFormError('')
-    setModalOpen(true)
-  }
+  const openCount   = (list ?? []).filter(p => p.isActive).length
+  const closedCount = (list ?? []).filter(p => !p.isActive).length
+  const detail      = (list ?? []).find(p => p.id === sel) ?? null
 
-  async function save(e: React.FormEvent) {
-    e.preventDefault()
-    if (saving) return
-    setSaving(true); setFormError('')
-    try {
-      const isEdit = !!editing
-      // CREATE: omit empty optional links (POST schema rejects null). EDIT: send null to
-      // explicitly unset/unlink (PATCH schema is nullable).
-      const body = isEdit
-        ? { name, address: address || null, city: city || null, restaurantId: restaurantId || null, brandId: brandId || null }
-        : {
-            name,
-            ...(address ? { address } : {}),
-            ...(city ? { city } : {}),
-            ...(restaurantId ? { restaurantId } : {}),
-            ...(brandId ? { brandId } : {}),
-          }
-      const res = await fetch(isEdit ? `/api/franchise/pos/${editing!.id}` : '/api/franchise/pos', {
-        method: isEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) { setFormError(data?.error || t('errorGeneric')); return }
-      setModalOpen(false)
-      setLoading(true)
-      await load()
-    } catch { setFormError(t('errorGeneric')) }
-    finally { setSaving(false) }
-  }
-
-  async function remove(p: POS) {
-    if (!window.confirm(t('deleteConfirm'))) return
-    try {
-      const res = await fetch(`/api/franchise/pos/${p.id}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        window.alert(data?.error || t('errorGeneric'))
-        return
-      }
-      setLoading(true)
-      await load()
-    } catch { window.alert(t('errorGeneric')) }
-  }
-
-  return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{t('title')}</h1>
-          <p className="mt-1 text-sm text-grubano-ink-muted">{t('subtitle')}</p>
+  if (!list && !error) {
+    return (
+      <section aria-busy="true">
+        <span className="op-sk" style={{ width: 240, height: 26, marginBottom: 18 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 18 }}>
+          {[0, 1, 2].map(i => <span key={i} className="op-sk" style={{ width: '100%', height: 78, borderRadius: 12 }} />)}
         </div>
-        {!loading && !loadError && (
-          <Button variant="primary" size="sm" onClick={openCreate}>
-            <Plus size={16} className="mr-1.5" /> {t('addCta')}
-          </Button>
-        )}
+        <span className="op-sk" style={{ width: '100%', height: 260, borderRadius: 12 }} />
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section><div className="op-center">
+        <div className="op-error__card">
+          <span className="ms" aria-hidden="true">cloud_off</span>
+          <h2>{t('errorTitle')}</h2>
+          <p>{t('errorBody')}</p>
+          <button className="op-btn-primary" onClick={() => location.reload()}><span className="ms" aria-hidden="true">refresh</span>{t('retry')}</button>
+        </div>
+      </div></section>
+    )
+  }
+
+  if ((list ?? []).length === 0) {
+    return (
+      <section>
+        <div className="op-dash__head"><div><h1 className="op-dash__title">{t('title')}</h1></div></div>
+        <div className="op-card op-empty">
+          <span className="ms" aria-hidden="true">storefront</span>
+          <b>{t('emptyTitle')}</b>
+          <span>{t('emptyNetworkDesc')}</span>
+          <div style={{ marginTop: 18 }}>
+            <Link href="/franchise/dashboard/candidatures" className="op-btn-primary"><span className="ms" aria-hidden="true">how_to_reg</span>{t('seeApplications')}</Link>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  // ── DETAIL / FICHE ──
+  if (detail) {
+    const d = detail
+    const caShown = d.isActive && d.caEuros > 0
+    return (
+      <section>
+        <button className="op-back" onClick={() => setSel(null)}><span className="ms flip-rtl" aria-hidden="true">arrow_back</span>{t('title')}</button>
+
+        <div className="op-card es-dt-top">
+          <span className="es-dt-logo">{INITIALS(d.name)}</span>
+          <div className="es-dt-m">
+            <h2>{d.name}</h2>
+            <div className="sub">
+              {(d.restaurantAddress || d.city) && <span><span className="ms" aria-hidden="true">place</span>{d.restaurantAddress || d.city}</span>}
+              {d.holder && <span><span className="ms" aria-hidden="true">person</span>{d.holder}</span>}
+              <span className={`pill ${d.isActive ? 'open' : 'closed'}`}><i className="dot" />{d.isActive ? t('statusOpen') : t('statusClosed')}</span>
+            </div>
+          </div>
+          <div className="es-dt-actions">
+            {/* No franchisor-accessible link to the resto's own operator console yet. */}
+            <span className="op-soon"><span className="ms" aria-hidden="true">open_in_new</span>{t('estDashboard')}<span className="tag">{t('soon')}</span></span>
+          </div>
+        </div>
+
+        <div className="es-cols">
+          <div>
+            <div className="op-card es-sec">
+              <h3><span className="ms" aria-hidden="true">badge</span>{t('holderTitle')}</h3>
+              <div className="info-row"><span className="k">{t('holderName')}</span><span className="v">{d.holder || '—'}</span></div>
+              {d.company && <div className="info-row"><span className="k">{t('company')}</span><span className="v">{d.company}</span></div>}
+            </div>
+
+            <div className="op-card es-sec">
+              <h3><span className="ms" aria-hidden="true">info</span>{t('estTitle')}</h3>
+              <div className="info-row"><span className="k">{t('address')}</span><span className="v">{d.restaurantAddress || d.city || '—'}</span></div>
+              <div className="info-row"><span className="k">{t('openedOn')}</span><span className="v mono">{day(d.openedAt)}</span></div>
+              <div className="info-row"><span className="k">{t('channels')}</span><span className="v">{
+                d.channels
+                  ? [d.channels.delivery ? t('chanDelivery') : null, d.channels.pickup ? t('chanPickup') : null].filter(Boolean).join(' · ') || '—'
+                  : '—'
+              }</span></div>
+            </div>
+          </div>
+
+          <div>
+            <div className="es-kpis">
+              <div className="op-card es-kpi"><div className="l"><span className="ms" aria-hidden="true">lock</span>{t('kpiCa')}</div><div className="v">{caShown ? eur(d.caEuros) : '—'}</div></div>
+              <div className="op-card es-kpi"><div className="l"><span className="ms" aria-hidden="true">lock</span>{t('kpiOrders')}</div><div className="v">{caShown ? nf.format(d.orders30) : '—'}</div></div>
+              <div className="op-card es-kpi"><div className="l"><span className="ms" aria-hidden="true">lock</span>{t('kpiRoyalty', { pct: d.ratePct })}</div><div className="v">{caShown ? eur(d.royaltyEuros) : '—'}</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  // ── LIST ──
+  return (
+    <section>
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('title')}</h1>
+          <p className="op-dash__sub">{t('networkSub')}</p>
+        </div>
+        <span className="ro-badge"><span className="ms" aria-hidden="true">lock</span>{t('consolidatedRo')}</span>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16 text-grubano-ink-muted"><Loader2 className="animate-spin" size={22} /></div>
-      ) : loadError ? (
-        <Card elevation="sm" padding="lg" className="mt-6 text-center text-sm text-grubano-ink-muted">{t('loadError')}</Card>
-      ) : list.length === 0 ? (
-        <div className="mt-6">
-          <EmptyState
-            emoji={<MapPin size={32} className="text-grubano-primary" />}
-            title={t('empty')}
-            description={t('emptyDesc')}
-            action={<Button variant="primary" size="sm" onClick={openCreate}><Plus size={16} className="mr-1.5" />{t('addCta')}</Button>}
-          />
+      <div className="stat-strip">
+        <div className="op-card stat"><div className="l"><span className="ms" aria-hidden="true">storefront</span>{t('statTotal')}</div><div className="v">{nf.format((list ?? []).length)}</div></div>
+        <div className="op-card stat"><div className="l"><span className="ms" aria-hidden="true">check_circle</span>{t('statOpen')}</div><div className="v">{nf.format(openCount)}</div></div>
+        <div className="op-card stat"><div className="l"><span className="ms" aria-hidden="true">pause_circle</span>{t('statClosed')}</div><div className="v">{nf.format(closedCount)}</div></div>
+      </div>
+
+      <div className="es-toolbar">
+        <div className="es-search"><span className="ms" aria-hidden="true">search</span>
+          <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder={t('searchPlaceholder')} aria-label={t('searchPlaceholder')} />
         </div>
-      ) : (
-        <div className="mt-6 space-y-3">
-          {list.map((p) => (
-            <Card key={p.id} elevation="sm" padding="md">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-grubano-ink">{p.name}</h2>
-                    <Badge tone={p.isActive ? 'success' : 'neutral'} size="sm">
-                      {p.isActive ? t('statusActive') : t('statusInactive')}
-                    </Badge>
-                  </div>
-                  <dl className="mt-2 space-y-1 text-sm text-grubano-ink-muted">
-                    {p.city && <dd className="flex items-center gap-1.5"><MapPin size={14} className="shrink-0 text-grubano-ink-faint" />{p.city}</dd>}
-                    <dd className="flex items-center gap-1.5">
-                      <Store size={14} className="shrink-0 text-grubano-ink-faint" />
-                      <span className="font-medium text-grubano-ink">{t('colRestaurant')}:</span>{' '}
-                      {p.restaurant ? p.restaurant.name : <span className="text-grubano-ink-faint">{t('linkNone')}</span>}
-                    </dd>
-                    <dd className="flex items-center gap-1.5">
-                      <Tag size={14} className="shrink-0 text-grubano-ink-faint" />
-                      <span className="font-medium text-grubano-ink">{t('colBrand')}:</span>{' '}
-                      {p.brand_ref ? `${p.brand_ref.emoji} ${p.brand_ref.name}` : <span className="text-grubano-ink-faint">{t('brandNone')}</span>}
-                    </dd>
-                  </dl>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => openEdit(p)} aria-label={t('edit')}><Pencil size={15} /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => remove(p)} aria-label={t('delete')}><Trash2 size={15} className="text-grubano-danger" /></Button>
-                </div>
+      </div>
+      <div className="es-chips">
+        {(['all', 'open', 'closed'] as Filter[]).map(f => (
+          <button key={f} type="button" className={`es-chip${filter === f ? ' is-active' : ''}`} onClick={() => setFilter(f)}>
+            {f === 'all' ? t('filterAll') : f === 'open' ? t('statusOpen') : t('statusClosed')}
+          </button>
+        ))}
+      </div>
+
+      <div className="op-card" style={{ marginTop: 16 }}>
+        <div className="es-thead">
+          <span>{t('colEstablishment')}</span><span>{t('colFranchisee')}</span><span>{t('colStatus')}</span><span style={{ textAlign: 'end' }}>{t('colCa')}</span>
+        </div>
+        {filtered.length === 0 ? (
+          <div className="op-empty" style={{ padding: '48px 20px' }}><span className="ms" aria-hidden="true">search_off</span><b>{t('noMatch')}</b></div>
+        ) : filtered.map(p => {
+          const caShown = p.isActive && p.caEuros > 0
+          return (
+            <button className="es-row" key={p.id} onClick={() => setSel(p.id)}>
+              <div className="es-est">
+                <span className="es-logo">{INITIALS(p.name)}</span>
+                <div className="es-est__t"><b>{p.name}</b><span><span className="ms" aria-hidden="true">place</span>{p.city || '—'}</span></div>
               </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <Modal open={modalOpen} onClose={() => !saving && setModalOpen(false)} title={editing ? t('editTitle') : t('createTitle')} size="md">
-        <form onSubmit={save} className="space-y-4 pb-2">
-          {formError && (
-            <p className="rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">{formError}</p>
-          )}
-
-          <Input label={t('fieldName')} required value={name} onChange={(e) => setName(e.target.value)} />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Input label={t('fieldAddress')} value={address} onChange={(e) => setAddress(e.target.value)} />
-            <Input label={t('fieldCity')} value={city} onChange={(e) => setCity(e.target.value)} />
-          </div>
-
-          <div>
-            <label htmlFor="pos-restaurant" className="mb-1.5 block text-sm font-medium text-grubano-ink">{t('fieldRestaurant')}</label>
-            {linkable.length === 0 && !restaurantId ? (
-              <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-xs text-grubano-ink-muted">{t('noLinkable')}</p>
-            ) : (
-              <>
-                <select id="pos-restaurant" className={selectClass} value={restaurantId} onChange={(e) => setRestaurantId(e.target.value)}>
-                  <option value="">{t('optionNoRestaurant')}</option>
-                  {linkable.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}{r.city ? ` — ${r.city}` : ''}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-grubano-xs text-grubano-ink-faint">{t('restaurantHint')}</p>
-              </>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="pos-brand" className="mb-1.5 block text-sm font-medium text-grubano-ink">{t('fieldBrand')}</label>
-            <select id="pos-brand" className={selectClass} value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-              <option value="">{t('optionNoBrand')}</option>
-              {brands.map((b) => (
-                <option key={b.id} value={b.id}>{b.emoji} {b.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <Button type="button" variant="ghost" size="md" fullWidth onClick={() => setModalOpen(false)} disabled={saving}>
-              {t('cancel')}
-            </Button>
-            <Button type="submit" variant="primary" size="md" fullWidth loading={saving}>
-              {saving ? (editing ? t('saving') : t('creating')) : (editing ? t('save') : t('create'))}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-    </div>
+              <div className="es-fr">{p.holder || '—'}</div>
+              <div className="es-status-cell"><span className={`pill ${p.isActive ? 'open' : 'closed'}`}><i className="dot" />{p.isActive ? t('statusOpen') : t('statusClosed')}</span></div>
+              <div className="es-ca">{caShown ? eur(p.caEuros) : '—'}<small>{caShown ? <><span className="ms" aria-hidden="true">lock</span>{t('readOnly')}</> : <><span className="ms" aria-hidden="true">pause_circle</span>{t('closedShort')}</>}</small></div>
+              <div className="es-mini">{p.holder || '—'}{caShown ? <> · <span className="mono">{eur(p.caEuros)}</span></> : <> · {t('closedShort')}</>}</div>
+            </button>
+          )
+        })}
+      </div>
+    </section>
   )
 }

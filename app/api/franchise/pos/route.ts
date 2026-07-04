@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { gateFranchise } from '@/lib/franchise-pos'
+import { resolveFranchiseRate } from '@/lib/franchise-royalty'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,14 +34,22 @@ export async function GET() {
     const g = await gateFranchise()
     if (!g.ok) return deny(g.status)
 
+    // FR3 (read-only console): the list/fiche also show per-POS consolidated figures.
+    const windowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+
     const [pointsOfSale, restaurants, brands] = await Promise.all([
       prisma.pointOfSale.findMany({
         where:   { franchiseId: g.operatorId },
         orderBy: { createdAt: 'desc' },
         select: {
-          id: true, name: true, address: true, city: true, isActive: true, brandId: true,
-          restaurant: { select: { id: true, name: true, city: true } },
-          brand_ref:  { select: { id: true, name: true, emoji: true } },
+          id: true, name: true, address: true, city: true, isActive: true, brandId: true, createdAt: true,
+          restaurant: {
+            select: {
+              id: true, name: true, city: true, address: true, deliveryEnabled: true, pickupEnabled: true,
+              operator: { select: { name: true, officialName: true } }, // holder / company (FR3 fiche)
+            },
+          },
+          brand_ref:  { select: { id: true, name: true, emoji: true, royaltyPct: true } }, // + real per-brand rate
         },
       }),
       // The operator's OWN restaurants (for the link picker); pointOfSaleId reveals which
@@ -58,7 +67,45 @@ export async function GET() {
       }),
     ])
 
-    return NextResponse.json({ ok: true, pointsOfSale, restaurants, brands })
+    // Per-POS 30-day delivered-order aggregate — CA (Order.subtotal is a Float in EUROS) +
+    // order count. Owner-scoped (only THIS franchisor's POS ids). Read-only.
+    const posIds = pointsOfSale.map((p) => p.id)
+    const agg = posIds.length
+      ? await prisma.order.groupBy({
+          by:    ['pointOfSaleId'],
+          where: { pointOfSaleId: { in: posIds }, status: 'delivered', createdAt: { gte: windowStart } },
+          _sum:  { subtotal: true },
+          _count: { _all: true },
+        })
+      : []
+    const aggByPos = new Map(agg.map((a) => [a.pointOfSaleId, a]))
+
+    // Enrich each POS (existing fields kept; consolidated figures + holder ADDED). The
+    // royalty ESTIMATE uses the SAME resolveFranchiseRate as the accrual → cannot diverge;
+    // the rate is the REAL Brand.royaltyPct (default 6%), never hardcoded.
+    const enriched = pointsOfSale.map((p) => {
+      const a       = aggByPos.get(p.id)
+      const caEuros = a?._sum.subtotal ?? 0
+      const rate    = resolveFranchiseRate(p.brand_ref)
+      const chan    = p.restaurant
+      return {
+        id: p.id, name: p.name, address: p.address, city: p.city, isActive: p.isActive, brandId: p.brandId,
+        restaurant: p.restaurant ? { id: p.restaurant.id, name: p.restaurant.name, city: p.restaurant.city } : null,
+        brand_ref:  p.brand_ref ? { id: p.brand_ref.id, name: p.brand_ref.name, emoji: p.brand_ref.emoji } : null,
+        // ── FR3 additive (read-only fiche) ──
+        openedAt:          p.createdAt ? new Date(p.createdAt).toISOString() : null,
+        holder:            p.restaurant?.operator?.name ?? null,
+        company:           p.restaurant?.operator?.officialName ?? null,
+        restaurantAddress: p.restaurant?.address ?? p.address ?? null,
+        channels:          chan ? { delivery: chan.deliveryEnabled, pickup: chan.pickupEnabled } : null,
+        caEuros,
+        orders30:          a?._count._all ?? 0,
+        ratePct:           Math.round(rate * 100),
+        royaltyEuros:      caEuros * rate,
+      }
+    })
+
+    return NextResponse.json({ ok: true, pointsOfSale: enriched, restaurants, brands })
   } catch (err) {
     console.error('[GET /api/franchise/pos]', err)
     return NextResponse.json({ ok: false, error: 'Erreur serveur' }, { status: 500 })

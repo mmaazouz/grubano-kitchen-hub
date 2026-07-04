@@ -110,6 +110,18 @@
 .gb-op .ro-badge .ms{font-size:15px}
 .gb-op .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
 .gb-op .op-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#12B981,#0E9F6E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer}
+.gb-op .op-btn-ghost{background:none;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.gb-op .op-btn-ghost:disabled{opacity:.55;cursor:not-allowed}
+.gb-op .op-btn-danger{background:none;border:1px solid var(--op-danger-bd);border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;color:var(--op-danger);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.gb-op .op-btn-danger:hover{background:var(--op-danger-bg)}
+.gb-op .op-btn-danger:disabled{opacity:.55;cursor:not-allowed}
+.gb-op .op-btn-primary:disabled{opacity:.55;cursor:not-allowed}
+.gb-op .op-back{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--op-muted);margin-bottom:14px;cursor:pointer;background:none;border:none;padding:0}
+.gb-op .op-back .ms{font-size:18px}
+.gb-op .op-back:hover{color:var(--op-fr)}
+[data-theme="dark"] .gb-op .op-back:hover{color:var(--op-fr-2)}
+.gb-op .op-soon{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--op-border);background:var(--op-surface-2);border-radius:var(--op-r-md);padding:10px 15px;font-size:12.5px;font-weight:700;color:var(--op-muted-2);cursor:not-allowed}
+.gb-op .op-soon .tag{font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:1px 6px}
 .gb-op .op-empty{padding:70px 20px;text-align:center}
 .gb-op .op-empty .ms{font-size:44px;color:var(--op-muted-2)}
 .gb-op .op-empty b{display:block;font-size:16px;font-weight:700;margin-top:12px}
