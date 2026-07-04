@@ -1,24 +1,23 @@
 import { notFound, redirect } from 'next/navigation'
-import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
-import { Wrench, Building2, BadgeCheck, ShieldCheck, Clock3 } from 'lucide-react'
-import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
-import { readOperatorRoles } from '@/lib/operator-roles'
+import { resolveAdmin } from '@/lib/admin-guard'
+import { buildAdminIdentity } from '@/lib/admin-identity'
+import { isInfluencerEnabled } from '@/lib/influencer-verification'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
-import { Card, Badge, EmptyState } from '@/components/design-system'
-import type { BadgeTone } from '@/components/design-system'
+import { isCourierActivationEnabled } from '@/lib/logistics-account'
+import { prisma } from '@/lib/prisma'
+import AdminShell from '@/components/admin/AdminShell'
 import PrestataireStatusActions from '@/components/admin/PrestataireStatusActions'
 import PrestataireCoherenceAction from '@/components/admin/PrestataireCoherenceAction'
 
 // ── /admin/prestataires — ADMIN prestataire moderation console (Agent 112) ──────────
-// Calque of /admin/suppliers. ADMIN-only (middleware /admin, this server role re-check, and the
-// status/coherence endpoints re-check admin too) + page-level PRESTATAIRE_ENABLED gate (404 when
-// OFF → the role does not exist). READ-ONLY listing of prestataires + their stored vetting /
-// registry-verification VERDICT (displayed, NEVER recomputed) + activate/suspend (POST
-// /api/prestataire/admin/status) + a COHERENCE review queue: an active-but-pending prestataire
-// shows a "coherence to validate" badge + an "approve (go live)" action (POST
-// /api/admin/prestataires/coherence). NON-MONEY: status/visibility only — no payout is even wired.
+// ADM6 harmonisation: AdminShell navy console + the --op- moderation card gabarit.
+// PRESENTATION ONLY — calque of /admin/suppliers. The page-level PRESTATAIRE_ENABLED gate
+// (404 when OFF → the role does not exist) is UNCHANGED and stays the FIRST check; the
+// query, the stored vetting/verification VERDICT (displayed, NEVER recomputed) and both
+// wired action components (PrestataireStatusActions → POST /api/prestataire/admin/status;
+// PrestataireCoherenceAction → POST /api/admin/prestataires/coherence) are UNCHANGED.
+// NON-MONEY: status/visibility only — no payout is even wired.
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPrestatairesPage(props: { params: { locale: string } }) {
@@ -29,12 +28,15 @@ export default async function AdminPrestatairesPage(props: { params: { locale: s
   const t = await getTranslations('admin.prestataires')
   const locale = props.params.locale
 
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.email) redirect('/auth/magic')
-  const operator = await prisma.operator.findUnique({ where: { email: session.user.email }, select: { id: true, role: true } })
-  if (!operator) redirect('/eat')
-  const roles = await readOperatorRoles(operator.id, operator.role)
-  if (!roles.includes('admin')) redirect('/eat')
+  const admin = await resolveAdmin()
+  if (!admin) redirect('/eat')
+
+  const identity = buildAdminIdentity(admin)
+  const flags = {
+    influencer: isInfluencerEnabled(),
+    prestataire: isPrestataireEnabled(),
+    logistics: isCourierActivationEnabled(),
+  }
 
   const prestataires = await prisma.prestataireProfile.findMany({
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
@@ -46,88 +48,82 @@ export default async function AdminPrestatairesPage(props: { params: { locale: s
   })
 
   const fmtDate = (d: Date) => new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(d)
-  const statusTone = (s: string): BadgeTone =>
+  const pill = (tone: string) => (tone === 'neutral' ? 'op-pill' : `op-pill is-${tone}`)
+  const statusTone = (s: string) =>
     s === 'active' ? 'success' : s === 'pending' ? 'warning' : s === 'suspended' ? 'danger' : 'neutral'
-  const verdictTone = (v: string | null): BadgeTone =>
+  const verdictTone = (v: string | null) =>
     v === 'legit' ? 'success' : v === 'doubt' ? 'warning' : v === 'bad' ? 'danger' : 'neutral'
-  const verifTone = (v: string | null): BadgeTone =>
+  const verifTone = (v: string | null) =>
     v === 'verified' ? 'success' : v === 'review' ? 'warning' : v === 'rejected' ? 'danger' : 'neutral'
   const statusLabel = (s: string) => t(`status_${s}` as 'status_pending')
   const verdictLabel = (v: string | null) => t(`verdict_${v ?? 'unknown'}` as 'verdict_unknown')
   const verifLabel = (v: string | null) => t(`verif_${v ?? 'unknown'}` as 'verif_unknown')
 
   return (
-    <div className="mx-auto max-w-3xl px-5 py-6 space-y-6">
-      <header className="flex items-start gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-grubano-lg bg-grubano-primary/15 text-grubano-primary">
-          <Wrench size={20} />
-        </span>
-        <div className="min-w-0">
-          <h1 className="font-display text-2xl font-bold text-grubano-ink">{t('title')}</h1>
-          <p className="text-sm text-grubano-ink-muted">{t('subtitle')}</p>
+    <AdminShell identity={identity} flags={flags}>
+      <section>
+        <div className="op-dash__head">
+          <h1 className="op-dash__title">{t('title')}</h1>
+          <p className="op-dash__sub">{t('subtitle')}</p>
         </div>
-      </header>
 
-      {prestataires.length === 0 ? (
-        <EmptyState emoji="🛠️" title={t('emptyTitle')} description={t('emptyBody')} />
-      ) : (
-        <ul className="space-y-3">
-          {prestataires.map((p) => (
-            <li key={p.id}>
-              <Card elevation="sm" padding="md">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-2 font-semibold text-grubano-ink">
-                      <span className="truncate">{p.companyName}</span>
-                      <Badge tone={statusTone(p.status)} size="sm">{statusLabel(p.status)}</Badge>
+        {prestataires.length === 0 ? (
+          <div className="op-card"><div className="op-empty">
+            <span className="ic"><span className="ms" aria-hidden="true">handyman</span></span>
+            <b>{t('emptyTitle')}</b><span>{t('emptyBody')}</span>
+          </div></div>
+        ) : (
+          <div className="mod-list">
+            {prestataires.map((p) => (
+              <div className="op-card mod-card" key={p.id}>
+                <div className="mod-card__top">
+                  <span className="mod-ic is-info"><span className="ms" aria-hidden="true">handyman</span></span>
+                  <div className="mod-card__m">
+                    <h3>
+                      <span className="nm">{p.companyName}</span>
+                      <span className={pill(statusTone(p.status))}>{statusLabel(p.status)}</span>
                       {/* Coherence review queue (Agent 112): an ACTIVE prestataire still hidden from
                           the directory until the publication coherence check clears it. */}
                       {p.status === 'active' && p.marketplaceCoherencePending && (
-                        <Badge tone="warning" size="sm" icon={<Clock3 size={12} />}>{t('coherencePending')}</Badge>
+                        <span className="op-pill is-warning"><span className="ms" aria-hidden="true">schedule</span>{t('coherencePending')}</span>
                       )}
-                    </p>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-grubano-ink-muted">
-                      <span className="inline-flex items-center gap-1"><Building2 size={13} className="shrink-0" />{p.contactName}{p.city ? ` · ${p.city}` : ''}</span>
-                      <span className="break-all">{p.email}</span>
-                      <span className="inline-flex items-center gap-1">
-                        {t('siren')}: {p.siren ? <span className="font-medium text-grubano-ink">{p.siren}</span> : t('sirenNone')}
-                      </span>
-                      <span className="inline-flex items-center gap-1"><Clock3 size={13} className="shrink-0" />{fmtDate(p.createdAt)}</span>
-                    </p>
-                    {p.officialName && (
-                      <p className="mt-0.5 text-xs text-grubano-ink-muted truncate">{p.officialName}</p>
-                    )}
-                    <p className="mt-2 flex flex-wrap items-center gap-2">
-                      <Badge tone={verdictTone(p.vettingVerdict)} size="sm" icon={<BadgeCheck size={12} />}>{verdictLabel(p.vettingVerdict)}</Badge>
-                      <Badge tone={verifTone(p.verificationStatus)} size="sm" icon={<ShieldCheck size={12} />}>{verifLabel(p.verificationStatus)}</Badge>
-                    </p>
-                    {p.vettingReason && (
-                      <p className="mt-1 text-xs text-grubano-ink-muted italic">{p.vettingReason}</p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    <PrestataireStatusActions
-                      email={p.email}
-                      status={p.status}
-                      activateLabel={t('activate')}
-                      suspendLabel={t('suspend')}
-                      errorLabel={t('actionError')}
-                    />
-                    {/* Approve coherence → make visible (Agent 112). Only when active-but-pending. */}
-                    {p.status === 'active' && p.marketplaceCoherencePending && (
-                      <PrestataireCoherenceAction
-                        email={p.email}
-                        label={t('coherenceApprove')}
-                        errorLabel={t('actionError')}
-                      />
-                    )}
+                    </h3>
+                    <div className="mod-card__meta">
+                      <span><span className="ms" aria-hidden="true">person</span>{p.contactName}{p.city ? ` · ${p.city}` : ''}</span>
+                      <span className="brk">{p.email}</span>
+                      <span>{t('siren')}: {p.siren ? <span className="strong">{p.siren}</span> : t('sirenNone')}</span>
+                      <span><span className="ms" aria-hidden="true">schedule</span>{fmtDate(p.createdAt)}</span>
+                      {p.officialName && <span><span className="ms" aria-hidden="true">badge</span>{p.officialName}</span>}
+                    </div>
+                    <div className="mod-pillrow">
+                      <span className={pill(verdictTone(p.vettingVerdict))}><span className="ms" aria-hidden="true">verified</span>{verdictLabel(p.vettingVerdict)}</span>
+                      <span className={pill(verifTone(p.verificationStatus))}><span className="ms" aria-hidden="true">shield</span>{verifLabel(p.verificationStatus)}</span>
+                    </div>
+                    {p.vettingReason && <p className="mod-note">{p.vettingReason}</p>}
                   </div>
                 </div>
-              </Card>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+                <div className="mod-actions">
+                  <PrestataireStatusActions
+                    email={p.email}
+                    status={p.status}
+                    activateLabel={t('activate')}
+                    suspendLabel={t('suspend')}
+                    errorLabel={t('actionError')}
+                  />
+                  {/* Approve coherence → make visible (Agent 112). Only when active-but-pending. */}
+                  {p.status === 'active' && p.marketplaceCoherencePending && (
+                    <PrestataireCoherenceAction
+                      email={p.email}
+                      label={t('coherenceApprove')}
+                      errorLabel={t('actionError')}
+                    />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </AdminShell>
   )
 }

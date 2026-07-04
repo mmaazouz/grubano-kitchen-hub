@@ -34,7 +34,7 @@ interface NavEntry {
 
 const NAV: NavEntry[] = [
   { key: 'overview',       href: '/admin',                        icon: 'monitoring',      group: null,       ready: true },
-  { key: 'establishments', href: '/admin/establishments',         icon: 'storefront',      group: 'ops',      ready: false },
+  { key: 'establishments', href: '/admin/establishments',         icon: 'storefront',      group: 'ops',      ready: true },
   { key: 'users',          href: '/admin/users',                  icon: 'group',           group: 'ops',      ready: true },
   { key: 'approvals',      href: '/admin/approvals',              icon: 'verified_user',   group: 'ops',      ready: true },
   { key: 'claims',         href: '/admin/claims',                 icon: 'flag',            group: 'ops',      ready: true },

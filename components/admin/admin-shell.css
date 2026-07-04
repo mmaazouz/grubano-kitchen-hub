@@ -124,6 +124,58 @@
 @keyframes op-sk{100%{background-position:-200% 0}}
 .gb-op .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk 1.4s ease-in-out infinite;border-radius:6px;display:block}
 
+/* ── moderation / list gabarit (CD ADM6 — shared vocabulary for the 7 admin screens)
+ *    Card/list/pill/empty/notice primitives lifted from admin/moderation.html so the
+ *    approvals, suppliers, prestataires, logistics & influencer lists share ONE visual
+ *    grammar. Presentation only — the wired action components are dropped in verbatim. ── */
+.gb-op .mod-subhead{display:flex;align-items:center;gap:9px;margin:0 0 12px}
+.gb-op .mod-subhead h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:16px;letter-spacing:-.01em}
+.gb-op .mod-subhead .ms{font-size:18px;color:var(--op-muted-2)}
+.gb-op .mod-list{display:flex;flex-direction:column;gap:14px}
+.gb-op .mod-card{padding:18px}
+.gb-op .mod-card__top{display:flex;align-items:flex-start;gap:14px}
+.gb-op .mod-ic{width:44px;height:44px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--op-admin-bg);color:var(--op-admin)}
+.gb-op .mod-ic .ms{font-size:22px}
+.gb-op .mod-ic.is-admin{background:var(--op-admin-bg);color:var(--op-admin)}
+.gb-op .mod-ic.is-danger{background:var(--op-danger-bg);color:var(--op-danger)}
+.gb-op .mod-ic.is-info{background:var(--op-info-bg);color:var(--op-info)}
+.gb-op .mod-ic.is-success{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .mod-ic.is-warning{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .mod-card__m{flex:1;min-width:0}
+.gb-op .mod-card__m h3{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15.5px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.gb-op .mod-card__m h3 .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.gb-op .mod-card__meta{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:6px}
+.gb-op .mod-card__meta span,.gb-op .mod-card__meta a{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--op-muted);min-width:0}
+.gb-op .mod-card__meta span .ms,.gb-op .mod-card__meta a .ms{font-size:14px;color:var(--op-muted-2);flex-shrink:0}
+.gb-op .mod-card__meta a{color:var(--op-admin-text)}
+.gb-op .mod-card__meta a:hover{text-decoration:underline}
+.gb-op .mod-card__meta .brk{word-break:break-all}
+.gb-op .mod-card__meta .strong{color:var(--op-text);font-weight:600}
+.gb-op .mod-pillrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.gb-op .mod-note{margin:8px 0 0;font-size:11.5px;color:var(--op-muted);font-style:italic}
+.gb-op .mod-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--op-border);justify-content:flex-end}
+/* pill — the console's stored-status chip (replaces the gb Badge) */
+.gb-op .op-pill{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;border-radius:var(--op-r-pill);padding:4px 10px;white-space:nowrap;background:var(--op-surface-2);color:var(--op-muted);border:1px solid var(--op-border)}
+.gb-op .op-pill .ms{font-size:13px}
+.gb-op .op-pill.is-success{background:var(--op-success-bg);color:var(--op-success);border-color:var(--op-success-bd)}
+.gb-op .op-pill.is-warning{background:var(--op-warning-bg);color:var(--op-warning);border-color:var(--op-warning-bd)}
+.gb-op .op-pill.is-danger{background:var(--op-danger-bg);color:var(--op-danger);border-color:var(--op-danger-bd)}
+.gb-op .op-pill.is-info{background:var(--op-info-bg);color:var(--op-info);border-color:var(--op-info-bd)}
+.gb-op .op-pill.is-admin{background:var(--op-admin-bg);color:var(--op-admin-text);border-color:var(--op-admin-bd)}
+/* empty — circle-icon variant (CD gabarit) */
+.gb-op .op-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:70px 20px}
+.gb-op .op-empty .ic{width:60px;height:60px;border-radius:50%;background:var(--op-success-bg);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.gb-op .op-empty .ic .ms{font-size:32px;color:var(--op-success)}
+.gb-op .op-empty b{font-size:16px;font-weight:700}
+.gb-op .op-empty span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:360px}
+/* notice — inline banner (e.g. courier activation OFF) */
+.gb-op .op-notice{display:flex;align-items:flex-start;gap:11px;padding:14px 16px;border-radius:var(--op-r-lg);background:var(--op-surface-2);border:1px solid var(--op-border);margin-bottom:16px}
+.gb-op .op-notice .ms{font-size:20px;flex-shrink:0;margin-top:1px}
+.gb-op .op-notice b{display:block;font-size:13.5px;font-weight:700;color:var(--op-text)}
+.gb-op .op-notice p{margin:2px 0 0;font-size:12.5px;color:var(--op-muted);line-height:1.5}
+.gb-op .op-notice.is-warning{background:var(--op-warning-bg);border-color:var(--op-warning-bd)}
+.gb-op .op-notice.is-warning .ms{color:var(--op-warning)}
+
 /* ── mobile bottom-nav ── */
 .gb-op .op-bottomnav{display:none;flex-shrink:0;background:var(--op-chrome-1);border-top:1px solid var(--op-chrome-border);padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
 .gb-op .op-bottomnav .row{display:flex}
