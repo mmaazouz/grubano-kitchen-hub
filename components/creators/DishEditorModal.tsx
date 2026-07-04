@@ -3,13 +3,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
-  X, Loader2, AlertCircle, Camera, Lock, Save, Send, ChevronDown, ChevronUp,
-  Plus, Trash2, ArrowUp, ArrowDown, Sparkles,
-} from 'lucide-react'
-import { Button } from '@/components/design-system'
-import FoodImage from '@/components/eat/FoodImage'
-import { getFoodImage, inferCategory } from '@/lib/food-images'
-import {
   INCO_ALLERGENS, DIFFICULTIES, sheetCompleteness, estimatedMarginPct,
   hasAllergenDeclaration,
   type DishSheet, type SheetIngredient, type AllergenChoice, type Difficulty,
@@ -17,20 +10,19 @@ import {
 import { suggestAllergens } from '@/lib/allergen-suggest'
 
 // ── <DishEditorModal /> — create & edit a recipe (Mission 3 + Mission 6) ──────
+// CR4 RE-SKIN (visual only): CreatorShell --op-/--op-cr language + Material
+// Symbols; the ed-* section cards + sticky publish aside from the CD maquette.
+// EVERY handler, fetch, payload, validation and section is byte-identical to the
+// previous version — including the mandatory 14-INCO allergen declaration (D2,
+// re-enforced server-side on submit), the full technical sheet, the completeness
+// gauge (D3), and the content-lock-on-active-adoption (R3/D4, photo stays free).
 //
 // ONE component for both modes:
 //   create → POST /api/creators/dishes { ..., sheet?, saveAsDraft }
 //   edit   → PATCH /api/creators/dishes/[id] (content + sheet; photo travels)
-// Mission 6: the editor is organised in 4 COLLAPSIBLE sections so the chef is
-// never frightened by the full technical sheet at once:
-//   ① base info (M3 fields + photo) · ② technical sheet (servings, quantified
-//   ingredients, ordered steps, timings, difficulty, equipment, plating) with
-//   the 14-INCO allergen chips + auto-suggestions (suggestAllergens — the chef
-//   confirms) · ③ story & diets · ④ business (cost + live margin preview).
-// A completeness gauge heads the modal (D3 — a score, never a blocker).
-// D2: submission without an allergen declaration → clear error on section ②.
-// CONTENT LOCK (R3/D4): an active adoption disables content AND sheet — photo
-// stays free.
+//   submit → POST /api/creators/dishes/[id]/submit (edit) OR direct in the create POST.
+// The editor keeps its 4 COLLAPSIBLE sections so the chef is never frightened by
+// the full technical sheet at once. Classes are scoped .gb-op (creator-recipes.css).
 
 export interface EditableDish {
   id?:             string
@@ -59,24 +51,29 @@ const num = (s: string): number | undefined => {
 // renders — an inline definition would remount the subtree and drop the input
 // focus at every keystroke.
 function Section({
-  isOpen, onToggle, title, children,
+  isOpen, onToggle, title, icon, children,
 }: {
   isOpen:   boolean
   onToggle: () => void
   title:    string
+  icon:     string
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-grubano-lg border border-grubano-border">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-2.5 text-[13px] font-bold text-grubano-ink"
-      >
-        {title}
-        {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
-      {isOpen && <div className="space-y-3 border-t border-grubano-border p-3">{children}</div>}
+    <div className="op-card ed-sec">
+      <h3>
+        <span className="ms" aria-hidden="true">{icon}</span>
+        <span style={{ flex: 1 }}>{title}</span>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={isOpen}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--op-muted)', display: 'inline-flex', margin: '-16px 0' }}
+        >
+          <span className="ms" aria-hidden="true">{isOpen ? 'expand_less' : 'expand_more'}</span>
+        </button>
+      </h3>
+      {isOpen && children}
     </div>
   )
 }
@@ -133,9 +130,6 @@ export default function DishEditorModal({
   const [error,     setError]     = useState('')
   const [warnings,  setWarnings]  = useState<string[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
-
-  const previewPhoto = photo
-    || (name ? getFoodImage(inferCategory(cuisineType || name), dish?.id ?? name) : null)
 
   // ── Live sheet build + completeness + suggestions ──────────────────────────
   function buildSheet(): DishSheet | undefined {
@@ -312,330 +306,324 @@ export default function DishEditorModal({
     }
   }
 
-  const inputCls = 'w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary disabled:opacity-50'
-  const smallCls = 'rounded-grubano-lg border border-grubano-border bg-grubano-surface px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary disabled:opacity-50'
-  const labelCls = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-grubano-ink-muted'
-
   const toggle = (id: 'base' | 'tech' | 'story' | 'biz') =>
     setOpen((o) => ({ ...o, [id]: !o[id] }))
 
+  const previewPhoto = photo || null
+  const isSaving = saving !== null
+
+  // Publish-status descriptor (real 5-state lifecycle). New recipe (no id) → draft.
+  const st = dish?.status
+  const pubDesc =
+    st === 'approved' || st === 'live' ? { cls: 'pub',      ic: 'check_circle', title: t('statusPublished'), sub: t('pubSubPublished') }
+    : st === 'pending'                 ? { cls: 'pending',  ic: 'schedule',     title: t('statusInReview'),  sub: t('pubSubPending') }
+    : st === 'rejected'                ? { cls: 'rejected', ic: 'error',        title: t('statusRejected'),  sub: t('pubSubRejected') }
+    : st === 'archived'                ? { cls: 'draft',    ic: 'archive',      title: t('statusArchived'),  sub: t('pubSubArchived') }
+    :                                    { cls: 'draft',    ic: 'edit_note',    title: t('statusDraft'),     sub: t('pubSubDraft') }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-      <div className="flex max-h-[94vh] w-full max-w-lg flex-col rounded-t-3xl bg-white sm:rounded-2xl">
+    <div className="ed-scrim" role="dialog" aria-modal="true" aria-label={dish?.id ? t('editTitle') : t('createTitle')}>
+      <div className="ed-modal" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="border-b border-grubano-border p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-base font-bold text-grubano-ink">
-              {dish?.id ? t('editTitle') : t('createTitle')}
-            </p>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={t('close')}
-              className="grid h-9 w-9 place-items-center rounded-xl bg-grubano-surface-muted"
-            >
-              <X size={16} />
-            </button>
+        <div className="ed-head">
+          <div className="ed-head__m">
+            <h2>{dish?.id ? t('editTitle') : t('createTitle')}</h2>
+            {name.trim() && <p>{name.trim()}</p>}
           </div>
-          {/* Completeness gauge (D3 — informative, never blocking) */}
-          <div className="mt-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="font-semibold text-grubano-ink-muted">{t('completeness', { pct: completeness })}</span>
-              {missing.length > 0 && completeness < 100 && (
-                <span className="text-grubano-ink-faint">{t('missingLabel', { items: missing.slice(0, 3).join(' · ') })}</span>
-              )}
-            </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-grubano-surface-muted">
-              <div
-                className={`h-full rounded-full transition-all ${completeness >= 80 ? 'bg-grubano-success' : 'bg-grubano-primary'}`}
-                style={{ width: `${completeness}%` }}
-              />
-            </div>
+          <button type="button" className="ed-close" onClick={onClose} aria-label={t('close')}>
+            <span className="ms" aria-hidden="true">close</span>
+          </button>
+        </div>
+
+        {/* Completeness gauge (D3 — informative, never blocking) */}
+        <div className="ed-gauge">
+          <div className="ed-gauge__top">
+            <span className="lbl"><span className="ms" aria-hidden="true">insights</span>{t('completenessLabel')}<span className="pct">{completeness}%</span></span>
+            {missing.length > 0 && completeness < 100 && (
+              <span className="miss">{t('missingLabel', { items: missing.slice(0, 3).join(' · ') })}</span>
+            )}
+          </div>
+          <div className="ed-gauge__bar">
+            <div className={`ed-gauge__fill${completeness >= 80 ? ' hi' : ''}`} style={{ width: `${completeness}%` }} />
           </div>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        <div className="ed-body">
           {/* R3 — explanatory lock banner */}
           {locked && (
-            <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-warning/40 bg-grubano-warning-tint px-3 py-2.5 text-[12px] text-grubano-ink">
-              <Lock size={13} className="mt-0.5 shrink-0 text-grubano-warning" />
+            <div className="ed-lock">
+              <span className="ms" aria-hidden="true">lock</span>
               <span>{t('lockedBanner', { count: dish?.adoptionsCount ?? 1 })}</span>
-            </p>
+            </div>
           )}
 
-          {/* Photo — ALWAYS editable */}
-          <div>
-            <label className={labelCls}>{t('photoLabel')}</label>
-            <div className="flex items-center gap-3">
-              {previewPhoto ? (
-                <FoodImage name={name || 'dish'} src={previewPhoto} className="h-20 w-20 shrink-0 rounded-grubano-lg" glyphClassName="text-2xl" />
-              ) : (
-                <div className="grid h-20 w-20 shrink-0 place-items-center rounded-grubano-lg bg-grubano-surface-muted text-grubano-ink-faint">
-                  <Camera size={20} />
+          <div className="ed-cols">
+            {/* ── MAIN column (sections) ─────────────────────────────────────── */}
+            <div>
+              {/* ① BASE INFO (photo + M3 fields, lock-aware) */}
+              <Section isOpen={open.base} onToggle={() => toggle('base')} title={t('sectionBase')} icon="image">
+                {/* Photo — ALWAYS editable */}
+                <div className="fld">
+                  <label>{t('photoLabel')}</label>
+                  <button
+                    type="button"
+                    className={`cover-drop${previewPhoto ? ' has-img' : ''}`}
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                    aria-label={photo ? t('photoReplace') : t('photoAdd')}
+                  >
+                    {previewPhoto ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={previewPhoto} alt="" />
+                        <div className="cover-drop__over">
+                          <span className="ms" aria-hidden="true">{uploading ? 'progress_activity' : 'photo_camera'}</span>
+                          <b style={{ color: '#fff' }}>{photo ? t('photoReplace') : t('photoAdd')}</b>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span className="ms" aria-hidden="true">{uploading ? 'progress_activity' : 'add_photo_alternate'}</span>
+                        <b>{photo ? t('photoReplace') : t('photoAdd')}</b>
+                        <span>{t('photoHint')}</span>
+                      </>
+                    )}
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    style={{ display: 'none' }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = '' }}
+                  />
+                  {warnings.length > 0 && <p className="cover-warn">{warnings.join(' · ')}</p>}
                 </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = '' }}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={uploading}
-                  onClick={() => fileRef.current?.click()}
-                  leftIcon={<Camera size={13} />}
-                >
-                  {photo ? t('photoReplace') : t('photoAdd')}
-                </Button>
-                <p className="mt-1 text-[10px] text-grubano-ink-faint">{t('photoHint')}</p>
-                {warnings.length > 0 && (
-                  <p className="mt-1 text-[10px] text-grubano-warning">{warnings.join(' · ')}</p>
+
+                <div className="fld">
+                  <label>{tf('formDishName')}</label>
+                  <input className="inp" value={name} onChange={(e) => setName(e.target.value)} disabled={locked} maxLength={80}
+                    placeholder={tf('dishPlaceholder')} />
+                </div>
+                <div className="fld">
+                  <label>{tf('formDescription')}</label>
+                  <textarea className="inp" value={description} onChange={(e) => setDescription(e.target.value)} disabled={locked} rows={3} maxLength={600} />
+                </div>
+                <div className="fld">
+                  <label>{tf('formIngredients')}</label>
+                  <input className="inp" value={ingredientsRaw} onChange={(e) => setIngredientsRaw(e.target.value)} disabled={locked}
+                    placeholder={tf('ingredientsPlaceholder')} />
+                </div>
+                <div className="row2">
+                  <div className="fld">
+                    <label>{tf('formCuisine')}</label>
+                    <input className="inp" value={cuisineType} onChange={(e) => setCuisineType(e.target.value)} disabled={locked} maxLength={40} />
+                  </div>
+                  <div className="fld">
+                    <label>{tf('formPrice')}</label>
+                    <input className="inp" type="number" step="0.01" min="0.01" value={price} onChange={(e) => setPrice(e.target.value)} disabled={locked}
+                      placeholder="12.90" />
+                  </div>
+                </div>
+              </Section>
+
+              {/* ② TECHNICAL SHEET (the licensed asset — never public, D1) */}
+              <Section isOpen={open.tech} onToggle={() => toggle('tech')} title={t('sectionTech')} icon="tune">
+                <div className="row3">
+                  <div className="fld">
+                    <label>{t('baseServingsLabel')}</label>
+                    <input className="inp" type="number" min="1" step="1" value={baseServings} onChange={(e) => setBaseServings(e.target.value)}
+                      disabled={locked} placeholder="4" />
+                  </div>
+                  <div className="fld">
+                    <label>{t('prepLabel')}</label>
+                    <input className="inp" type="number" min="0" step="1" value={prepMinutes} onChange={(e) => setPrepMinutes(e.target.value)}
+                      disabled={locked} placeholder="20" />
+                  </div>
+                  <div className="fld">
+                    <label>{t('cookLabel')}</label>
+                    <input className="inp" type="number" min="0" step="1" value={cookMinutes} onChange={(e) => setCookMinutes(e.target.value)}
+                      disabled={locked} placeholder="15" />
+                  </div>
+                </div>
+
+                <div className="fld">
+                  <label>{t('difficultyLabel')}</label>
+                  <div className="chips">
+                    {DIFFICULTIES.map((d) => (
+                      <button key={d} type="button" disabled={locked}
+                        onClick={() => setDifficulty(difficulty === d ? '' : d)}
+                        className={`chip${difficulty === d ? ' on' : ''}`}>
+                        {td(d)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Quantified ingredients */}
+                <div className="fld">
+                  <label>{t('sheetIngredientsLabel')}</label>
+                  {rows.map((r, i) => (
+                    <div key={i} className="dyn-row">
+                      <input className="inp qty" value={r.qty} disabled={locked} placeholder={t('ingQty')} type="number" min="0" step="any"
+                        onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, qty: e.target.value } : x))} />
+                      <input className="inp unit" value={r.unit} disabled={locked} placeholder={t('ingUnit')} maxLength={12}
+                        onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} />
+                      <input className="inp" value={r.name} disabled={locked} placeholder={t('ingName')}
+                        onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                      <button type="button" className="del" disabled={locked} aria-label={t('removeLine')}
+                        onClick={() => setRows((p) => p.filter((_, j) => j !== i))}>
+                        <span className="ms" aria-hidden="true">close</span>
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" className="dyn-add" disabled={locked}
+                    onClick={() => setRows((p) => [...p, { name: '', qty: '', unit: '' }])}>
+                    <span className="ms" aria-hidden="true">add</span>{t('addIngredient')}
+                  </button>
+                </div>
+
+                {/* ALLERGENS — the 14 INCO chips + 'none' + auto-suggestions (D2) */}
+                <div className="fld">
+                  <label>{t('allergensLabel')}</label>
+                  <div className="chips">
+                    {INCO_ALLERGENS.map((a) => {
+                      const checked     = allergens.includes(a)
+                      const isSuggested = !checked && suggested.includes(a) && !allergens.includes('none')
+                      return (
+                        <button key={a} type="button" disabled={locked} onClick={() => toggleAllergen(a)}
+                          className={`chip${checked ? ' on' : isSuggested ? ' suggested' : ''}`}>
+                          {ta(a)}{isSuggested ? ` · ${t('suggestedTag')}` : ''}
+                        </button>
+                      )
+                    })}
+                    <button type="button" disabled={locked} onClick={() => toggleAllergen('none')}
+                      className={`chip${allergens.includes('none') ? ' none-on' : ''}`}>
+                      {ta('none')}
+                    </button>
+                  </div>
+                  <p className="fldhint">{t('allergensHint')}</p>
+                </div>
+
+                {/* Ordered steps */}
+                <div className="fld">
+                  <label>{t('stepsLabel')}</label>
+                  {steps.map((step, i) => (
+                    <div key={i} className="dyn-row">
+                      <span className="num">{i + 1}</span>
+                      <textarea className="inp" value={step} disabled={locked} rows={2} placeholder={t('stepPlaceholder')}
+                        style={{ minHeight: 56 }}
+                        onChange={(e) => setSteps((p) => p.map((x, j) => j === i ? e.target.value : x))} />
+                      <div className="moves">
+                        <button type="button" disabled={locked || i === 0} aria-label={t('moveUp')}
+                          onClick={() => setSteps((p) => { const c = [...p]; [c[i - 1], c[i]] = [c[i], c[i - 1]]; return c })}>
+                          <span className="ms" aria-hidden="true">keyboard_arrow_up</span>
+                        </button>
+                        <button type="button" disabled={locked || i === steps.length - 1} aria-label={t('moveDown')}
+                          onClick={() => setSteps((p) => { const c = [...p]; [c[i], c[i + 1]] = [c[i + 1], c[i]]; return c })}>
+                          <span className="ms" aria-hidden="true">keyboard_arrow_down</span>
+                        </button>
+                      </div>
+                      <button type="button" className="del" disabled={locked} aria-label={t('removeLine')}
+                        onClick={() => setSteps((p) => p.filter((_, j) => j !== i))}>
+                        <span className="ms" aria-hidden="true">close</span>
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" className="dyn-add" disabled={locked}
+                    onClick={() => setSteps((p) => [...p, ''])}>
+                    <span className="ms" aria-hidden="true">add</span>{t('addStep')}
+                  </button>
+                </div>
+
+                <div className="fld">
+                  <label>{t('equipmentLabel')}</label>
+                  <input className="inp" value={equipmentRaw} onChange={(e) => setEquipmentRaw(e.target.value)} disabled={locked}
+                    placeholder={t('equipmentPlaceholder')} />
+                </div>
+                <div className="fld">
+                  <label>{t('platingLabel')}</label>
+                  <textarea className="inp" value={platingNotes} onChange={(e) => setPlatingNotes(e.target.value)} disabled={locked} rows={2} maxLength={600} />
+                </div>
+              </Section>
+
+              {/* ③ STORY & DIETS (the public face) */}
+              <Section isOpen={open.story} onToggle={() => toggle('story')} title={t('sectionStory')} icon="menu_book">
+                <div className="fld">
+                  <label>{t('storyLabel')}</label>
+                  <textarea className="inp" value={story} onChange={(e) => setStory(e.target.value)} disabled={locked} rows={3} maxLength={1000}
+                    placeholder={t('storyPlaceholder')} />
+                </div>
+                <div className="fld">
+                  <label>{t('dietTagsLabel')}</label>
+                  <input className="inp" value={dietTagsRaw} onChange={(e) => setDietTagsRaw(e.target.value)} disabled={locked}
+                    placeholder={t('dietTagsPlaceholder')} />
+                </div>
+              </Section>
+
+              {/* ④ BUSINESS (cost + live margin preview) */}
+              <Section isOpen={open.biz} onToggle={() => toggle('biz')} title={t('sectionBusiness')} icon="payments">
+                <div className="fld">
+                  <label>{t('costLabel')}</label>
+                  <input className="inp" type="number" step="0.01" min="0" value={cost} onChange={(e) => setCost(e.target.value)}
+                    disabled={locked} placeholder="3.50" />
+                  <p className="fldhint">{t('costHint')}</p>
+                </div>
+                {marginPct !== null && (
+                  <div className="ed-margin">
+                    <span className="ms" aria-hidden="true">trending_up</span>{t('marginPreview', { pct: marginPct })}
+                  </div>
                 )}
+              </Section>
+            </div>
+
+            {/* ── ASIDE : publish card (sticky) ──────────────────────────────── */}
+            <div>
+              <div className="op-card ed-sec pub-card">
+                <h3><span className="ms" aria-hidden="true">publish</span>{t('pubTitle')}</h3>
+
+                <div className={`pub-status ${pubDesc.cls}`}>
+                  <span className="ms" aria-hidden="true">{pubDesc.ic}</span>
+                  <div><b>{pubDesc.title}</b><span>{pubDesc.sub}</span></div>
+                </div>
+
+                {/* AI hint — INERT (bientôt) */}
+                <div className="ai-hint">
+                  <span className="ms" aria-hidden="true">auto_awesome</span>
+                  <span><span className="soon">{t('aiHintSoon')}</span> {t('aiHintBody')}</span>
+                </div>
+
+                {error && (
+                  <div className="ed-error" style={{ marginTop: 12 }}>
+                    <span className="ms" aria-hidden="true">error</span><span>{error}</span>
+                  </div>
+                )}
+
+                {/* Footer actions (state-driven, byte-identical logic) */}
+                <div className="pub-actions">
+                  {locked ? (
+                    <button type="button" className="op-btn-primary" disabled={isSaving} onClick={() => save('save')}>
+                      <span className={`ms${isSaving ? ' rc-spin' : ''}`} aria-hidden="true">{isSaving ? 'progress_activity' : 'save'}</span>{t('savePhoto')}
+                    </button>
+                  ) : dish?.id && dish.status === 'approved' ? (
+                    // R2 — editing an approved recipe: ONE save path, the server re-vets.
+                    <button type="button" className="op-btn-primary" disabled={isSaving} onClick={() => save('save')}>
+                      <span className={`ms${isSaving ? ' rc-spin' : ''}`} aria-hidden="true">{isSaving ? 'progress_activity' : 'save'}</span>{t('saveRevet')}
+                    </button>
+                  ) : (
+                    <>
+                      <button type="button" className="op-btn-primary" disabled={isSaving} onClick={() => save('submit')}>
+                        <span className={`ms${saving === 'submit' ? ' rc-spin' : ''}`} aria-hidden="true">{saving === 'submit' ? 'progress_activity' : 'publish'}</span>{t('submitCta')}
+                      </button>
+                      <button type="button" className="op-btn-ghost" disabled={isSaving} onClick={() => save('draft')}>
+                        <span className={`ms${saving === 'draft' ? ' rc-spin' : ''}`} aria-hidden="true">{saving === 'draft' ? 'progress_activity' : 'save'}</span>{t('saveDraft')}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-
-          {/* ① BASE INFO (M3 fields, lock-aware) */}
-          <Section isOpen={open.base} onToggle={() => toggle('base')} title={t('sectionBase')}>
-            <div>
-              <label className={labelCls}>{tf('formDishName')}</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} disabled={locked} maxLength={80}
-                placeholder={tf('dishPlaceholder')} className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>{tf('formDescription')}</label>
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} disabled={locked} rows={3} maxLength={600}
-                className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>{tf('formIngredients')}</label>
-              <input value={ingredientsRaw} onChange={(e) => setIngredientsRaw(e.target.value)} disabled={locked}
-                placeholder={tf('ingredientsPlaceholder')} className={inputCls} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls}>{tf('formCuisine')}</label>
-                <input value={cuisineType} onChange={(e) => setCuisineType(e.target.value)} disabled={locked} maxLength={40}
-                  className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>{tf('formPrice')}</label>
-                <input type="number" step="0.01" min="0.01" value={price} onChange={(e) => setPrice(e.target.value)} disabled={locked}
-                  placeholder="12.90" className={inputCls} />
-              </div>
-            </div>
-          </Section>
-
-          {/* ② TECHNICAL SHEET (the licensed asset — never public, D1) */}
-          <Section isOpen={open.tech} onToggle={() => toggle('tech')} title={t('sectionTech')}>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className={labelCls}>{t('baseServingsLabel')}</label>
-                <input type="number" min="1" step="1" value={baseServings} onChange={(e) => setBaseServings(e.target.value)}
-                  disabled={locked} placeholder="4" className={`${smallCls} w-full`} />
-              </div>
-              <div>
-                <label className={labelCls}>{t('prepLabel')}</label>
-                <input type="number" min="0" step="1" value={prepMinutes} onChange={(e) => setPrepMinutes(e.target.value)}
-                  disabled={locked} placeholder="20" className={`${smallCls} w-full`} />
-              </div>
-              <div>
-                <label className={labelCls}>{t('cookLabel')}</label>
-                <input type="number" min="0" step="1" value={cookMinutes} onChange={(e) => setCookMinutes(e.target.value)}
-                  disabled={locked} placeholder="15" className={`${smallCls} w-full`} />
-              </div>
-            </div>
-
-            <div>
-              <label className={labelCls}>{t('difficultyLabel')}</label>
-              <div className="flex gap-1.5">
-                {DIFFICULTIES.map((d) => (
-                  <button key={d} type="button" disabled={locked}
-                    onClick={() => setDifficulty(difficulty === d ? '' : d)}
-                    className={`rounded-grubano-pill px-3 py-1.5 text-[11px] font-semibold disabled:opacity-50 ${
-                      difficulty === d ? 'bg-grubano-primary text-white' : 'bg-grubano-surface-muted text-grubano-ink-muted'
-                    }`}>
-                    {td(d)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Quantified ingredients */}
-            <div>
-              <label className={labelCls}>{t('sheetIngredientsLabel')}</label>
-              <div className="space-y-1.5">
-                {rows.map((r, i) => (
-                  <div key={i} className="flex items-center gap-1.5">
-                    <input value={r.name} disabled={locked} placeholder={t('ingName')}
-                      onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                      className={`${smallCls} min-w-0 flex-1`} />
-                    <input value={r.qty} disabled={locked} placeholder={t('ingQty')} type="number" min="0" step="any"
-                      onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, qty: e.target.value } : x))}
-                      className={`${smallCls} w-16`} />
-                    <input value={r.unit} disabled={locked} placeholder={t('ingUnit')} maxLength={12}
-                      onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))}
-                      className={`${smallCls} w-16`} />
-                    <button type="button" disabled={locked} aria-label={t('removeLine')}
-                      onClick={() => setRows((p) => p.filter((_, j) => j !== i))}
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-grubano-ink-faint disabled:opacity-50">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <Button type="button" variant="ghost" size="sm" disabled={locked} leftIcon={<Plus size={12} />}
-                className="mt-1.5" onClick={() => setRows((p) => [...p, { name: '', qty: '', unit: '' }])}>
-                {t('addIngredient')}
-              </Button>
-            </div>
-
-            {/* ALLERGENS — the 14 INCO chips + 'none' + auto-suggestions (D2) */}
-            <div>
-              <label className={labelCls}>{t('allergensLabel')}</label>
-              <div className="flex flex-wrap gap-1.5">
-                {INCO_ALLERGENS.map((a) => {
-                  const checked    = allergens.includes(a)
-                  const isSuggested = !checked && suggested.includes(a) && !allergens.includes('none')
-                  return (
-                    <button key={a} type="button" disabled={locked} onClick={() => toggleAllergen(a)}
-                      className={`rounded-grubano-pill px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
-                        checked
-                          ? 'bg-grubano-primary text-white'
-                          : isSuggested
-                            ? 'border border-dashed border-grubano-primary bg-grubano-tint text-grubano-primary'
-                            : 'bg-grubano-surface-muted text-grubano-ink-muted'
-                      }`}>
-                      {ta(a)}{isSuggested ? ` · ${t('suggestedTag')}` : ''}
-                    </button>
-                  )
-                })}
-                <button type="button" disabled={locked} onClick={() => toggleAllergen('none')}
-                  className={`rounded-grubano-pill px-2.5 py-1 text-[11px] font-semibold disabled:opacity-50 ${
-                    allergens.includes('none') ? 'bg-grubano-ink text-white' : 'border border-grubano-border bg-white text-grubano-ink-muted'
-                  }`}>
-                  {ta('none')}
-                </button>
-              </div>
-              <p className="mt-1 text-[10px] text-grubano-ink-faint">{t('allergensHint')}</p>
-            </div>
-
-            {/* Ordered steps */}
-            <div>
-              <label className={labelCls}>{t('stepsLabel')}</label>
-              <div className="space-y-1.5">
-                {steps.map((st, i) => (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <span className="mt-2 w-5 shrink-0 text-center text-[11px] font-bold text-grubano-primary">{i + 1}.</span>
-                    <textarea value={st} disabled={locked} rows={2} placeholder={t('stepPlaceholder')}
-                      onChange={(e) => setSteps((p) => p.map((x, j) => j === i ? e.target.value : x))}
-                      className={`${smallCls} min-w-0 flex-1`} />
-                    <div className="flex shrink-0 flex-col gap-0.5">
-                      <button type="button" disabled={locked || i === 0} aria-label={t('moveUp')}
-                        onClick={() => setSteps((p) => { const c = [...p]; [c[i - 1], c[i]] = [c[i], c[i - 1]]; return c })}
-                        className="grid h-6 w-6 place-items-center rounded text-grubano-ink-faint disabled:opacity-30">
-                        <ArrowUp size={12} />
-                      </button>
-                      <button type="button" disabled={locked || i === steps.length - 1} aria-label={t('moveDown')}
-                        onClick={() => setSteps((p) => { const c = [...p]; [c[i], c[i + 1]] = [c[i + 1], c[i]]; return c })}
-                        className="grid h-6 w-6 place-items-center rounded text-grubano-ink-faint disabled:opacity-30">
-                        <ArrowDown size={12} />
-                      </button>
-                      <button type="button" disabled={locked} aria-label={t('removeLine')}
-                        onClick={() => setSteps((p) => p.filter((_, j) => j !== i))}
-                        className="grid h-6 w-6 place-items-center rounded text-grubano-ink-faint disabled:opacity-50">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Button type="button" variant="ghost" size="sm" disabled={locked} leftIcon={<Plus size={12} />}
-                className="mt-1.5" onClick={() => setSteps((p) => [...p, ''])}>
-                {t('addStep')}
-              </Button>
-            </div>
-
-            <div>
-              <label className={labelCls}>{t('equipmentLabel')}</label>
-              <input value={equipmentRaw} onChange={(e) => setEquipmentRaw(e.target.value)} disabled={locked}
-                placeholder={t('equipmentPlaceholder')} className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>{t('platingLabel')}</label>
-              <textarea value={platingNotes} onChange={(e) => setPlatingNotes(e.target.value)} disabled={locked} rows={2} maxLength={600}
-                className={inputCls} />
-            </div>
-          </Section>
-
-          {/* ③ STORY & DIETS (the public face) */}
-          <Section isOpen={open.story} onToggle={() => toggle('story')} title={t('sectionStory')}>
-            <div>
-              <label className={labelCls}>{t('storyLabel')}</label>
-              <textarea value={story} onChange={(e) => setStory(e.target.value)} disabled={locked} rows={3} maxLength={1000}
-                placeholder={t('storyPlaceholder')} className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>{t('dietTagsLabel')}</label>
-              <input value={dietTagsRaw} onChange={(e) => setDietTagsRaw(e.target.value)} disabled={locked}
-                placeholder={t('dietTagsPlaceholder')} className={inputCls} />
-            </div>
-          </Section>
-
-          {/* ④ BUSINESS (cost + live margin preview) */}
-          <Section isOpen={open.biz} onToggle={() => toggle('biz')} title={t('sectionBusiness')}>
-            <div>
-              <label className={labelCls}>{t('costLabel')}</label>
-              <input type="number" step="0.01" min="0" value={cost} onChange={(e) => setCost(e.target.value)}
-                disabled={locked} placeholder="3.50" className={inputCls} />
-              <p className="mt-1 text-[10px] text-grubano-ink-faint">{t('costHint')}</p>
-            </div>
-            {marginPct !== null && (
-              <p className="flex items-center gap-1.5 rounded-grubano-lg bg-grubano-success-tint px-3 py-2 text-[12px] font-semibold text-grubano-success">
-                <Sparkles size={13} /> {t('marginPreview', { pct: marginPct })}
-              </p>
-            )}
-          </Section>
-
-          {error && (
-            <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2 text-[12px] text-grubano-danger">
-              <AlertCircle size={13} className="mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </p>
-          )}
-        </div>
-
-        {/* Footer actions */}
-        <div className="flex gap-2 border-t border-grubano-border p-4">
-          {locked ? (
-            <Button type="button" variant="primary" size="md" className="flex-1"
-              loading={saving !== null} onClick={() => save('save')} leftIcon={<Save size={14} />}>
-              {t('savePhoto')}
-            </Button>
-          ) : dish?.id && dish.status === 'approved' ? (
-            // R2 — editing an approved recipe: ONE save path, the server
-            // re-vets the changed content automatically.
-            <Button type="button" variant="primary" size="md" className="flex-1"
-              loading={saving !== null} onClick={() => save('save')} leftIcon={<Save size={14} />}>
-              {t('saveRevet')}
-            </Button>
-          ) : (
-            <>
-              <Button type="button" variant="secondary" size="md" className="flex-1"
-                loading={saving === 'draft'} onClick={() => save('draft')} leftIcon={<Save size={14} />}>
-                {t('saveDraft')}
-              </Button>
-              <Button type="button" variant="primary" size="md" className="flex-1"
-                loading={saving === 'submit'} onClick={() => save('submit')} leftIcon={<Send size={14} />}>
-                {t('submitCta')}
-              </Button>
-            </>
-          )}
         </div>
       </div>
     </div>

@@ -1,37 +1,31 @@
 'use client'
 
 /**
- * Mon affiliation — Dashboard Affiliés Slice 2a (Agent 14). The INFLUENCER's
- * home for their /ref rail, built future-proof over:
+ * CR5 · Affiliation (CreatorShell --op-/--op-cr, CD verbatim). VOLUMES ONLY — this
+ * screen NEVER shows € (the gains live on CR6 / « Mes gains »). Built future-proof
+ * over the owner-scoped, session-resolved:
  *
  *   GET /api/creator/affiliate-stats
- *   → { isInfluencer, links{base,code,slug}, earnings{maturedCents,pendingCents,
- *       byMonth[]}, referrals{newCustomers, orders[]}, payout{claimableCents,
- *       status:'activation_pending'}, tier:null, commissionPct }
+ *   → { isInfluencer, links{base,code,slug}, earnings{…}, referrals{newCustomers,
+ *       orders[]}, payout{…}, tier, streak, badges, leaderboard{top[]…}, commissionPct }
  *
- * READ-ONLY: amounts are CENTS; statuses are the SERVER lifecycle (pending |
- * matured) — zero client-side status math. Links are built by the shared pure
- * helper (lib/affiliate-link) over the EXISTING /ref attribution — including
- * deep links (?to=) to a precise restaurant.
- *
- * Sections: PULSE → MES LIENS & CODES (+ QR + deep-link generator) → GAINS
- * (transparent, on the NET) → ACTIVITÉ (feed) → VERSEMENT (honest 'activation
- * pending') → placeholders « bientôt » (Studio / Paliers / Performance). Non-
- * influencer / brand-new states are clean, never an empty screen.
+ * RE-SKIN = 0 migration, money engine untouched, EVERY fetch/handler byte-identical.
+ * Honest surface (founder Option 1): SHOW REAL (no €) → the real referral link (Copier /
+ * Partager / vrai QR), « Nouveaux clients » (data.referrals.newCustomers), a recent-
+ * activity feed (dates/restaurants only, NO € amounts) and the leaderboard (rank + name +
+ * tier from data.leaderboard) OR an honest empty state. « BIENTÔT » inert (no fabricated
+ * number): Clics 30 j, Taux de conversion, Commandes générées, dedicated / deep links &
+ * « Nouveau lien », and the share-kit visuals / captions. The real QR of the real link is
+ * allowed. The screen + its shell tab stay conditional on isInfluencer (clean locked state).
+ * 4 states: loading skeleton / error / (non-influencer) locked / empty / loaded.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import {
-  Megaphone, TrendingUp, TrendingDown, Users, ShoppingBag, Copy, Check, QrCode,
-  Loader2, AlertCircle, Landmark, Activity, Sparkles, BarChart3, Award, Link2, Store,
-  Trophy, Flame, Medal, Lightbulb, Wand2,
-} from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { Card } from '@/components/design-system'
 import { buildAffiliateLink, buildAffiliateRestaurantLink } from '@/lib/affiliate-link'
 import AffiliateStudio from '@/components/creators/AffiliateStudio'
-import { formatMoney } from '@/lib/format-money'
+import './creator-affiliate.css'
 
 // ── Contract (mirrored locally — the route is the source of truth) ────────────
 interface ByMonth { month: string; gainCents: number }
@@ -129,7 +123,6 @@ export default function AffiliateDashboardPage() {
     } catch { /* clipboard unavailable — no crash */ }
   }
 
-  const fmtCents = useMemo(() => (c: number) => formatMoney(c, locale), [locale])
   const dateFmt = useMemo(
     () => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }),
     [locale],
@@ -154,401 +147,313 @@ export default function AffiliateDashboardPage() {
     [slug, restoId, locale],
   )
 
-  // PULSE: current month vs previous (UTC month keys from the server).
-  const pulse = useMemo(() => {
-    const bm = data?.earnings.byMonth ?? []
-    const now = new Date()
-    const key = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
-    const idx = bm.findIndex((m) => m.month === key)
-    const thisMonth = idx >= 0 ? bm[idx].gainCents : 0
-    const prevMonth = bm.length >= 2 && idx >= 1 ? bm[idx - 1].gainCents : (bm.length && idx < 0 ? bm[bm.length - 1].gainCents : 0)
-    return { thisMonth, prevMonth, up: thisMonth >= prevMonth }
-  }, [data])
-
-  // Tier / badge i18n labels (dynamic key → the seed defines every one).
+  // Tier i18n label (dynamic key → the seed defines every one).
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-  const tierLabel  = (k: string) => t(`tier${cap(k)}`)
-  const badgeLabel = (k: string) => t(`badge${cap(k)}`)
+  const tierLabel = (k: string) => t(`tier${cap(k)}`)
+  // Initials for the leaderboard avatar (name-based, no fabricated data).
+  const initials = (name: string) =>
+    name.trim().split(/\s+/).slice(0, 2).map((p) => p[0] ?? '').join('').toUpperCase() || '·'
 
-  const statusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':   return { label: `⏳ ${t('statusPending')}`, cls: 'bg-grubano-warning-tint text-grubano-warning' }
-      case 'matured':   return { label: `✓ ${t('statusMatured')}`,  cls: 'bg-grubano-success-tint text-grubano-success' }
-      case 'paid':      return { label: t('statusPaid'),            cls: 'bg-grubano-tint text-grubano-primary' }
-      case 'cancelled': return { label: t('statusCancelled'),       cls: 'bg-grubano-surface-muted text-grubano-ink-faint' }
-      default:          return { label: status,                     cls: 'bg-grubano-surface-muted text-grubano-ink-faint' }
-    }
+  // Web-Share for the real link (Copier stays the guaranteed fallback).
+  async function share(link: string) {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title: t('title'), url: link })
+      } else {
+        await copy('base', link)
+      }
+    } catch { /* user cancelled / unavailable — no crash */ }
   }
 
-  // ── Loading / error shells ──────────────────────────────────────────────────
+  // ── Loading skeleton ────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="mx-auto flex max-w-2xl items-center justify-center gap-2 px-4 py-24 text-grubano-ink-muted">
-        <Loader2 size={16} className="animate-spin" />
-        <span className="text-sm">{t('loading')}</span>
-      </div>
+      <section aria-busy="true">
+        <span className="op-sk" style={{ width: 240, height: 26, marginBottom: 18, display: 'block' }} />
+        <span className="op-sk" style={{ width: '100%', height: 120, borderRadius: 12, marginBottom: 16, display: 'block' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 16 }}>
+          {[0, 1, 2, 3].map((i) => <span key={i} className="op-sk" style={{ width: '100%', height: 110, borderRadius: 12 }} />)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
+          <span className="op-sk" style={{ width: '100%', height: 300, borderRadius: 12 }} />
+          <span className="op-sk" style={{ width: '100%', height: 300, borderRadius: 12 }} />
+        </div>
+      </section>
     )
   }
+
+  // ── Error ────────────────────────────────────────────────────────────────────
   if (error || !data) {
     return (
-      <div className="mx-auto max-w-2xl px-4 pt-10">
-        <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">
-          <AlertCircle size={14} className="mt-0.5 shrink-0" />
-          <span>{error || t('errLoad')}</span>
-        </p>
-        <button type="button" onClick={load} className="mt-3 w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface py-2.5 text-sm font-semibold text-grubano-ink">
-          {t('retry')}
-        </button>
-      </div>
+      <section><div className="op-center">
+        <div className="op-error__card">
+          <span className="ms" aria-hidden="true">cloud_off</span>
+          <h2>{t('errorTitle')}</h2>
+          <p>{error || t('errLoad')}</p>
+          <button className="op-btn-primary" onClick={load}><span className="ms" aria-hidden="true">refresh</span>{t('retry')}</button>
+        </div>
+      </div></section>
     )
   }
 
   // ── Non-influencer → clean locked state ───────────────────────────────────────
   if (!data.isInfluencer) {
     return (
-      <div className="mx-auto max-w-2xl px-4 pt-10">
-        <Card elevation="sm" padding="lg">
-          <div className="flex flex-col items-center gap-2 py-6 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-xl bg-grubano-surface-muted text-grubano-ink-faint">
-              <Megaphone size={20} />
-            </span>
-            <p className="font-display text-base font-semibold text-grubano-ink">{t('lockedTitle')}</p>
-            <p className="max-w-sm text-xs text-grubano-ink-muted">{t('lockedBody')}</p>
-          </div>
-        </Card>
-      </div>
+      <section>
+        <div className="op-card op-empty">
+          <span className="ms" aria-hidden="true">link</span>
+          <b>{t('lockedTitle')}</b>
+          <span>{t('lockedBody')}</span>
+        </div>
+      </section>
     )
   }
 
-  const { earnings, referrals, payout } = data
-  const brandNew = referrals.orders.length === 0 && earnings.maturedCents === 0 && earnings.pendingCents === 0
+  const { referrals } = data
+
+  // ── Empty influencer — no link yet AND no referrals (honest, guided) ──────────
+  const isEmpty = !baseLink && !data.links.code && referrals.newCustomers === 0 && referrals.orders.length === 0
+  if (isEmpty) {
+    return (
+      <section>
+        <div className="op-dash__head"><div><h1 className="op-dash__title">{t('title')}</h1></div></div>
+        <div className="op-card op-empty">
+          <span className="ms" aria-hidden="true">link</span>
+          <b>{t('emptyTitle')}</b>
+          <span>{t('emptyBody')}</span>
+        </div>
+      </section>
+    )
+  }
+
+  const displayLink = baseLink ?? data.links.code ?? ''
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 px-4 pb-10 pt-5">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div>
-        <div className="mb-1 flex items-center gap-2">
-          <Megaphone size={18} className="text-grubano-primary" />
-          <h1 className="font-display text-xl font-bold">{t('title')}</h1>
+    <section>
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{t('title')}</h1>
+          <p className="op-dash__sub">{t('subtitle')}</p>
         </div>
-        <p className="text-sm text-grubano-ink-muted">{t('subtitle')}</p>
       </div>
 
-      {/* ── PULSE ──────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card elevation="sm" padding="md" className="col-span-3 sm:col-span-1">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-grubano-ink-muted">{t('pulseMonth')}</p>
-          <p className="mt-1 font-display text-2xl font-extrabold tabular-nums text-grubano-ink">{fmtCents(pulse.thisMonth)}</p>
-          <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-grubano-ink-faint">
-            {pulse.up ? <TrendingUp size={12} className="text-grubano-success" /> : <TrendingDown size={12} className="text-grubano-danger" />}
-            {t('pulseVsPrev', { amount: fmtCents(pulse.prevMonth) })}
-          </p>
-        </Card>
-        <Card elevation="sm" padding="md">
-          <div className="flex items-center gap-1.5 text-grubano-primary"><Users size={13} /><p className="text-[11px] font-bold uppercase tracking-wider">{t('pulseCustomers')}</p></div>
-          <p className="mt-1 font-display text-2xl font-extrabold tabular-nums text-grubano-ink">{referrals.newCustomers}</p>
-        </Card>
-        <Card elevation="sm" padding="md">
-          <div className="flex items-center gap-1.5 text-grubano-primary"><ShoppingBag size={13} /><p className="text-[11px] font-bold uppercase tracking-wider">{t('pulseOrders')}</p></div>
-          <p className="mt-1 font-display text-2xl font-extrabold tabular-nums text-grubano-ink">{referrals.orders.length}</p>
-        </Card>
-      </div>
-
-      {/* ── MES LIENS & CODES ──────────────────────────────────────────────── */}
-      <Card elevation="sm" padding="md">
-        <div className="mb-2 flex items-center gap-2">
-          <Link2 size={14} className="text-grubano-primary" />
-          <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('linksTitle')}</h2>
-        </div>
-        {data.links.code || baseLink ? (
-          <div className="space-y-2">
-            {data.links.code && (
-              <button type="button" onClick={() => copy('code', data.links.code as string)}
-                className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]">
-                <span className="font-mono text-base font-extrabold tracking-widest text-grubano-ink">{data.links.code}</span>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                  {copied === 'code' ? <Check size={13} /> : <Copy size={13} />}{copied === 'code' ? t('copied') : t('copyCode')}
-                </span>
-              </button>
-            )}
-            {baseLink && (
-              <>
-                <button type="button" onClick={() => copy('base', baseLink)}
-                  className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-3 active:scale-[0.99]">
-                  <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{baseLink}</span>
-                  <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                    {copied === 'base' ? <Check size={13} /> : <Copy size={13} />}{copied === 'base' ? t('copied') : t('copyLink')}
-                  </span>
+      {/* ── Hero — real referral link (Copier / Partager / vrai QR) ─────────────── */}
+      <div className="op-card aff-hero">
+        <h3>{t('heroTitle')}</h3>
+        <p>{t('heroDesc')}</p>
+        {displayLink ? (
+          <>
+            <div className="aff-linkbox">
+              <span className="url">{displayLink}</span>
+              <div className="acts">
+                <button type="button" className="aff-copy" onClick={() => copy('base', displayLink)}>
+                  <span className="ms" aria-hidden="true">{copied === 'base' ? 'check' : 'content_copy'}</span>
+                  {copied === 'base' ? t('copied') : t('heroCopy')}
                 </button>
-                <button type="button" onClick={() => setQrOpen((v) => (v === 'base' ? null : 'base'))}
-                  className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary">
-                  <QrCode size={13} /> {qrOpen === 'base' ? t('hideQr') : t('showQr')}
+                <button type="button" className="aff-share" title={t('heroShare')} aria-label={t('heroShare')} onClick={() => share(displayLink)}>
+                  <span className="ms" aria-hidden="true">share</span>
                 </button>
-                {qrOpen === 'base' && (
-                  <div className="flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
-                    <QRCodeSVG value={baseLink} size={168} includeMargin />
-                    <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('qrHint')}</p>
-                  </div>
+                {baseLink && (
+                  <button type="button" className={`aff-share${qrOpen === 'base' ? ' on' : ''}`} title={t('heroQr')} aria-label={t('heroQr')}
+                    aria-pressed={qrOpen === 'base'} onClick={() => setQrOpen((v) => (v === 'base' ? null : 'base'))}>
+                    <span className="ms" aria-hidden="true">qr_code_2</span>
+                  </button>
                 )}
-              </>
+              </div>
+            </div>
+            {qrOpen === 'base' && baseLink && (
+              <div className="aff-qr">
+                <QRCodeSVG value={baseLink} size={168} includeMargin />
+                <p>{t('qrHint')}</p>
+              </div>
             )}
+          </>
+        ) : (
+          <div className="lk-soon">
+            <span className="ms" aria-hidden="true">hourglass_empty</span>
+            <span>{t('noCode')}</span>
+          </div>
+        )}
+      </div>
 
-            {/* Deep-link generator — pick a restaurant, get an attributed link. */}
-            <div className="mt-1 rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3.5 py-3">
-              <p className="mb-1.5 inline-flex items-center gap-1.5 text-[12px] font-semibold text-grubano-ink">
-                <Store size={13} className="text-grubano-primary" /> {t('deepLinkTitle')}
-              </p>
+      {/* ── Stats — VOLUMES ONLY, no €. Only « Nouveaux clients » is real; the volume
+          aggregates (clics, commandes générées, taux) are honest « bientôt ». ── */}
+      <div className="vol-grid">
+        <div className="op-card vol soon">
+          <div className="vol__top"><span className="vol__ic"><span className="ms" aria-hidden="true">ads_click</span></span><span className="vol__label">{t('volClicks')}</span></div>
+          <div className="vol__val">—</div>
+          <span className="vol__soon">{t('soonBadge')}</span>
+        </div>
+        <div className="op-card vol soon">
+          <div className="vol__top"><span className="vol__ic"><span className="ms" aria-hidden="true">shopping_bag</span></span><span className="vol__label">{t('volOrders')}</span></div>
+          <div className="vol__val">—</div>
+          <span className="vol__soon">{t('soonBadge')}</span>
+        </div>
+        <div className="op-card vol soon">
+          <div className="vol__top"><span className="vol__ic"><span className="ms" aria-hidden="true">percent</span></span><span className="vol__label">{t('volConversion')}</span></div>
+          <div className="vol__val">—</div>
+          <span className="vol__soon">{t('soonBadge')}</span>
+        </div>
+        <div className="op-card vol">
+          <div className="vol__top"><span className="vol__ic"><span className="ms" aria-hidden="true">group_add</span></span><span className="vol__label">{t('volNewCustomers')}</span></div>
+          <div className="vol__val">{referrals.newCustomers}</div>
+          <div className="vol__sub">{t('volNewCustomersSub')}</div>
+        </div>
+      </div>
+
+      <div className="aff-two">
+        {/* ── Vos liens — only the real main link is live; dedicated links = « bientôt ». ── */}
+        <div className="op-card card-pad">
+          <div className="card-pad__hd">
+            <h3>{t('linksTitle')}</h3>
+            <span className="op-soon"><span className="ms" aria-hidden="true">add</span>{t('linksNew')}<span className="tag">{t('soonBadge')}</span></span>
+          </div>
+          <div className="hint">{t('linksHint')}</div>
+          <div className="lk-thead"><span>{t('linksColLink')}</span><span>{t('linksColClicks')}</span><span>{t('linksColConv')}</span><span>{t('linksColRate')}</span></div>
+          {displayLink && (
+            <div className="lk-row">
+              <div className="lk-name">
+                <span className="lk-ic"><span className="ms" aria-hidden="true">link</span></span>
+                <div className="lk-name__t"><b>{t('linksMain')}</b><span>{displayLink}</span></div>
+              </div>
+              <span className="lk-num lk-clicks">—</span>
+              <span className="lk-num lk-conv">—</span>
+              <span className="lk-num lk-rate">—</span>
+              <span className="lk-mini">{t('linksMiniSoon')}</span>
+            </div>
+          )}
+          {/* Deep-link generator — a real, attributed link to a precise restaurant. */}
+          {baseLink && (
+            <div className="lk-soon" style={{ borderStyle: 'solid', flexWrap: 'wrap', gap: 10 }}>
+              <span className="ms" aria-hidden="true">storefront</span>
+              <span style={{ fontWeight: 700, color: 'var(--op-text)' }}>{t('deepLinkTitle')}</span>
               <select value={restoId} onChange={(e) => { setRestoId(e.target.value); setQrOpen(null) }}
-                className="w-full rounded-grubano-md border border-grubano-border bg-grubano-surface-muted px-2.5 py-2 text-[12px] text-grubano-ink">
+                aria-label={t('deepLinkTitle')}
+                style={{ flex: 1, minWidth: 180, marginInlineStart: 'auto', border: '1px solid var(--op-border)', background: 'var(--op-surface-2)', borderRadius: 'var(--op-r-sm)', padding: '8px 10px', fontSize: 12.5, color: 'var(--op-text)' }}>
                 <option value="">{t('deepLinkPick')}</option>
                 {restos.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
               {deepLink && (
-                <div className="mt-2 space-y-2">
-                  <button type="button" onClick={() => copy('deep', deepLink)}
-                    className="flex w-full items-center justify-between gap-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted px-3.5 py-2.5 active:scale-[0.99]">
-                    <span className="min-w-0 flex-1 truncate text-start text-[12px] text-grubano-ink-muted">{deepLink}</span>
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-grubano-primary">
-                      {copied === 'deep' ? <Check size={13} /> : <Copy size={13} />}{copied === 'deep' ? t('copied') : t('copyLink')}
-                    </span>
+                <div style={{ flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                  <span className="url" style={{ flex: 1, minWidth: 180, fontFamily: 'var(--op-font-mono)', fontSize: 12, color: 'var(--op-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'ltr', unicodeBidi: 'isolate' }}>{deepLink}</span>
+                  <button type="button" className="aff-copy" onClick={() => copy('deep', deepLink)}>
+                    <span className="ms" aria-hidden="true">{copied === 'deep' ? 'check' : 'content_copy'}</span>
+                    {copied === 'deep' ? t('copied') : t('heroCopy')}
                   </button>
-                  <button type="button" onClick={() => setQrOpen((v) => (v === 'deep' ? null : 'deep'))}
-                    className="inline-flex items-center gap-1.5 text-[12px] font-bold text-grubano-primary">
-                    <QrCode size={13} /> {qrOpen === 'deep' ? t('hideQr') : t('showQr')}
+                  <button type="button" className={`aff-share${qrOpen === 'deep' ? ' on' : ''}`} title={t('heroQr')} aria-label={t('heroQr')}
+                    aria-pressed={qrOpen === 'deep'} onClick={() => setQrOpen((v) => (v === 'deep' ? null : 'deep'))}>
+                    <span className="ms" aria-hidden="true">qr_code_2</span>
                   </button>
-                  {qrOpen === 'deep' && (
-                    <div className="flex flex-col items-center gap-2 rounded-grubano-lg border border-grubano-border bg-white p-4">
-                      <QRCodeSVG value={deepLink} size={168} includeMargin />
-                      <p className="max-w-xs text-center text-[11px] text-grubano-ink-muted">{t('qrHint')}</p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
-          </div>
-        ) : (
-          <p className="rounded-grubano-lg bg-grubano-surface-muted px-3 py-2.5 text-[12px] text-grubano-ink-muted">{t('noCode')}</p>
-        )}
-      </Card>
-
-      {/* ── GAINS (transparent, on the NET) ────────────────────────────────── */}
-      <section>
-        <div className="grid grid-cols-2 gap-3">
-          <Card elevation="sm" padding="md">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-grubano-warning">{t('pending')}</p>
-            <p className="mt-1 font-display text-xl font-extrabold tabular-nums text-grubano-ink">{fmtCents(earnings.pendingCents)}</p>
-            <p className="mt-0.5 text-[10px] text-grubano-ink-faint">{t('pendingHint')}</p>
-          </Card>
-          <Card elevation="sm" padding="md">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-grubano-success">{t('matured')}</p>
-            <p className="mt-1 font-display text-xl font-extrabold tabular-nums text-grubano-ink">{fmtCents(earnings.maturedCents)}</p>
-            <p className="mt-0.5 text-[10px] text-grubano-ink-faint">{t('maturedHint')}</p>
-          </Card>
-        </div>
-        {/* THE differentiator: no black box — explain the calculation. */}
-        {data.commissionPct !== null && (
-          <p className="mt-2 px-1 text-[11px] text-grubano-ink-muted">{t('transparency', { pct: data.commissionPct })}</p>
-        )}
-
-        {referrals.orders.length > 0 && (
-          <div className="mt-3 space-y-2">
-            <div className="flex items-center gap-2"><ShoppingBag size={14} className="text-grubano-primary" /><h2 className="font-display text-sm font-semibold text-grubano-ink">{t('gainsTitle')}</h2></div>
-            {referrals.orders.map((o) => {
-              const badge = statusBadge(o.status)
-              const gain = o.creatorEarningCents + o.bonusCents
-              return (
-                <Card key={o.id} elevation="sm" padding="md">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-bold text-grubano-ink">{o.restaurant ?? '—'}</p>
-                      <p className="mt-0.5 text-[11px] text-grubano-ink-faint">
-                        {dateFmt.format(new Date(o.date))}
-                        {o.orderTotalCents !== null && ` · ${t('orderTotal')} ${fmtCents(o.orderTotalCents)}`}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-end">
-                      <p className="text-[13px] font-extrabold tabular-nums"><span className="font-medium text-grubano-ink-muted">{t('orderGain')}</span> <span className="text-grubano-primary">{fmtCents(gain)}</span></p>
-                      <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>
-                    </div>
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* ── ACTIVITÉ (feed — precursor of live pings) ──────────────────────── */}
-      {referrals.orders.length > 0 && (
-        <section>
-          <div className="mb-2 flex items-center gap-2"><Activity size={14} className="text-grubano-primary" /><h2 className="font-display text-sm font-semibold text-grubano-ink">{t('activityTitle')}</h2></div>
-          <Card elevation="sm" padding="md">
-            <ul className="space-y-2.5">
-              {referrals.orders.slice(0, 6).map((o) => (
-                <li key={o.id} className="flex items-center justify-between gap-3 text-[12px]">
-                  <span className="min-w-0 flex-1 truncate text-grubano-ink">
-                    {t('activityLine', { amount: fmtCents(o.creatorEarningCents + o.bonusCents), restaurant: o.restaurant ?? '—' })}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-grubano-ink-faint">{rel(o.date)}</span>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </section>
-      )}
-
-      {/* ── Brand-new influencer — guide, never an empty screen ────────────── */}
-      {brandNew && (
-        <Card elevation="sm" padding="lg">
-          <div className="flex flex-col items-center gap-2 py-4 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-xl bg-grubano-tint text-grubano-primary"><Sparkles size={20} /></span>
-            <p className="font-display text-base font-semibold text-grubano-ink">{t('emptyTitle')}</p>
-            <p className="max-w-sm text-xs text-grubano-ink-muted">{t('emptyBody')}</p>
-          </div>
-        </Card>
-      )}
-
-      {/* ── VERSEMENT (honest: gated on activation) ────────────────────────── */}
-      <Card elevation="sm" padding="md" className="border-dashed">
-        <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-grubano-surface-muted text-grubano-ink-faint"><Landmark size={17} /></span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('payoutTitle')}</h2>
-              <span className="font-display text-sm font-extrabold tabular-nums text-grubano-ink">{fmtCents(payout.claimableCents)}</span>
-            </div>
-            <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{t('payoutActivationPending')}</p>
-          </div>
-        </div>
-      </Card>
-
-      {/* ── STATUT & CLASSEMENT (Slice 2c) — STATUS/recognition only, computed,
-          ZERO effect on the commission rate (30 % for everyone). ──────────── */}
-      {data.tier && (
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Trophy size={16} className="text-grubano-primary" />
-            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('statusTitle')}</h2>
-          </div>
-
-          {/* Tier + progress to the next */}
-          <Card elevation="sm" padding="md">
-            <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-2">
-                <Medal size={16} className="text-grubano-primary" />
-                <span className="font-display text-base font-extrabold text-grubano-ink">{tierLabel(data.tier.key)}</span>
-              </span>
-              <span className="text-[11px] uppercase tracking-wide text-grubano-ink-faint">{t('tierLabel')}</span>
-            </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-grubano-surface-muted">
-              <div className="h-full rounded-full bg-grubano-primary transition-all" style={{ width: `${data.tier.progressPct}%` }} />
-            </div>
-            <p className="mt-1 text-[11px] text-grubano-ink-faint">
-              {data.tier.nextKey && data.tier.nextFloorCents !== null
-                ? t('tierProgress', { amount: fmtCents(Math.max(0, data.tier.nextFloorCents - earnings.maturedCents)), tier: tierLabel(data.tier.nextKey) })
-                : t('tierMax')}
-            </p>
-          </Card>
-
-          {/* Streak + badges */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Card elevation="sm" padding="md">
-              <div className="flex items-center gap-1.5 text-grubano-primary"><Flame size={14} /><p className="text-[11px] font-bold uppercase tracking-wider">{t('streakTitle')}</p></div>
-              <p className="mt-1 text-sm font-semibold text-grubano-ink">
-                {data.streak.weeks > 0 ? t('streakWeeks', { count: data.streak.weeks }) : t('streakNone')}
-              </p>
-            </Card>
-            <Card elevation="sm" padding="md">
-              <div className="mb-1.5 flex items-center gap-1.5 text-grubano-primary"><Award size={14} /><p className="text-[11px] font-bold uppercase tracking-wider">{t('badgesTitle')}</p></div>
-              <div className="flex flex-wrap gap-1.5">
-                {data.badges.map((b) => (
-                  <span key={b.key} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${b.achieved ? 'bg-grubano-success-tint text-grubano-success' : 'bg-grubano-surface-muted text-grubano-ink-faint opacity-60'}`}>
-                    {b.achieved ? '✓ ' : ''}{badgeLabel(b.key)}
-                  </span>
-                ))}
-              </div>
-            </Card>
-          </div>
-
-          {/* Mini-leaderboard — NAME + RANK + TIER only, never others' € (privacy). */}
-          <Card elevation="sm" padding="md">
-            <div className="mb-2 flex items-center gap-2"><BarChart3 size={14} className="text-grubano-primary" /><h3 className="font-display text-sm font-semibold text-grubano-ink">{t('leaderboardTitle')}</h3></div>
-            {data.leaderboard && data.leaderboard.top.length > 0 ? (
-              <ul className="space-y-1.5">
-                {data.leaderboard.top.map((e) => (
-                  <li key={e.rank} className={`flex items-center justify-between gap-2 rounded-grubano-md px-2.5 py-1.5 text-[12px] ${e.isMe ? 'bg-grubano-tint font-bold text-grubano-primary' : 'text-grubano-ink'}`}>
-                    <span className="inline-flex min-w-0 items-center gap-2">
-                      <span className="tabular-nums text-grubano-ink-faint">#{e.rank}</span>
-                      <span className="truncate">{e.isMe ? t('leaderboardMe') : e.name}</span>
-                    </span>
-                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-grubano-ink-faint">{tierLabel(e.tierKey)}</span>
-                  </li>
-                ))}
-                {data.leaderboard.myRank && data.leaderboard.myRank > data.leaderboard.top.length && (
-                  <li className="flex items-center justify-between gap-2 rounded-grubano-md bg-grubano-tint px-2.5 py-1.5 text-[12px] font-bold text-grubano-primary">
-                    <span className="inline-flex items-center gap-2"><span className="tabular-nums">#{data.leaderboard.myRank}</span><span>{t('leaderboardMe')}</span></span>
-                  </li>
-                )}
-              </ul>
-            ) : (
-              <p className="rounded-grubano-md border border-dashed border-grubano-border px-3 py-3 text-center text-[12px] text-grubano-ink-muted">{t('leaderboardEmpty')}</p>
-            )}
-          </Card>
-        </section>
-      )}
-
-      {/* ── OPPORTUNITÉS / BRIEF DU JOUR (Slice 2d) — heuristic, READ-ONLY: what's
-          worth promoting today. « Générer le contenu » pre-fills the studio. ── */}
-      {opps !== null && (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Lightbulb size={16} className="text-grubano-primary" />
-            <h2 className="font-display text-sm font-semibold text-grubano-ink">{t('oppTitle')}</h2>
-          </div>
-          <p className="text-[12px] text-grubano-ink-muted">{t('oppDesc')}</p>
-          {opps.length === 0 ? (
-            <p className="rounded-grubano-md border border-dashed border-grubano-border px-3 py-3 text-center text-[12px] text-grubano-ink-muted">{t('oppEmpty')}</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {opps.map((o) => (
-                <Card key={`${o.kind}-${o.restaurantId}`} elevation="sm" padding="md" className="flex flex-col">
-                  <p className="truncate text-[13px] font-bold text-grubano-ink">{o.dishName ?? o.restaurantName}</p>
-                  {o.dishName && <p className="truncate text-[11px] text-grubano-ink-faint">{o.restaurantName}</p>}
-                  <p className="mt-1 text-[11px] font-medium text-grubano-primary">{t(o.reasonKey, o.reasonParams ?? {})}</p>
-                  <p className="mt-0.5 text-[11px] text-grubano-ink-muted">{t('oppEstGain', { amount: fmtCents(o.estimatedGainCents) })}</p>
-                  <button type="button" onClick={() => setStudioPreset({ restaurantId: o.restaurantId, dishId: o.dishId ?? undefined })}
-                    className="mt-2 inline-flex items-center justify-center gap-1.5 rounded-grubano-lg bg-grubano-primary px-3 py-1.5 text-[11px] font-bold text-white active:scale-[0.99]">
-                    <Wand2 size={12} /> {t('oppGenerate')}
-                  </button>
-                </Card>
-              ))}
+          )}
+          {qrOpen === 'deep' && deepLink && (
+            <div className="aff-qr">
+              <QRCodeSVG value={deepLink} size={168} includeMargin />
+              <p>{t('qrHint')}</p>
             </div>
           )}
-        </section>
+        </div>
+
+        {/* ── Classement créateurs — VOLUMES ONLY, no €. Real rank + name + tier, or empty. ── */}
+        <div className="op-card card-pad">
+          <div className="card-pad__hd"><h3>{t('leaderboardCardTitle')}</h3></div>
+          <div className="lb-note"><span className="ms" aria-hidden="true">info</span><span>{t('leaderboardNote')}</span></div>
+          {data.leaderboard && data.leaderboard.top.length > 0 ? (
+            <>
+              {data.leaderboard.top.map((e) => (
+                <div key={e.rank} className={`lb-row${e.isMe ? ' me' : ''}`}>
+                  <span className="lb-rank">{e.rank}</span>
+                  <span className="lb-av">{initials(e.name)}</span>
+                  <div className="lb-m"><b>{e.isMe ? t('leaderboardYou', { name: e.name }) : e.name}</b></div>
+                  <span className="lb-tier">{tierLabel(e.tierKey)}</span>
+                </div>
+              ))}
+              {data.leaderboard.myRank && data.leaderboard.myRank > data.leaderboard.top.length && (
+                <div className="lb-row me">
+                  <span className="lb-rank">{data.leaderboard.myRank}</span>
+                  <span className="lb-av">{initials(t('leaderboardYou'))}</span>
+                  <div className="lb-m"><b>{t('leaderboardYou')}</b></div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="lb-empty">
+              <span className="ms" aria-hidden="true">leaderboard</span>
+              {t('leaderboardEmpty')}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Activité récente — dates + restaurants only, NO € (feed of referred orders). ── */}
+      {referrals.orders.length > 0 && (
+        <div className="op-card card-pad">
+          <div className="card-pad__hd"><h3>{t('activityTitle')}</h3></div>
+          <div className="hint">{t('activityHint')}</div>
+          {referrals.orders.slice(0, 6).map((o) => (
+            <div key={o.id} className="asset-row">
+              <span className="asset-ic"><span className="ms" aria-hidden="true">receipt_long</span></span>
+              <div className="asset-m">
+                <b>{o.restaurant ?? '—'}</b>
+                <span>{dateFmt.format(new Date(o.date))}</span>
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--op-muted-2)', fontWeight: 600, flexShrink: 0 }}>{rel(o.date)}</span>
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* ── STUDIO DE CONTENU IA (Slice 2b) — pre-fillable from an opportunity. ─ */}
-      <AffiliateStudio restos={restos} preset={studioPreset} onPresetApplied={() => setStudioPreset(null)} />
-
-      {/* ── Placeholder « bientôt » (Performance/clicks — needs click tracking,
-          a future infra slice). Tiers & Studio are now REAL above. ─────────── */}
-      <div className="grid grid-cols-1 gap-3">
-        {([
-          { icon: BarChart3,title: t('soonPerfTitle'),   body: t('soonPerfBody') },
-        ]).map((p) => {
-          const Icon = p.icon
-          return (
-            <Card key={p.title} elevation="sm" padding="md" className="border-dashed opacity-80">
-              <div className="flex items-center gap-2 text-grubano-ink-faint">
-                <Icon size={14} />
-                <p className="text-[12px] font-semibold text-grubano-ink">{p.title}</p>
-              </div>
-              <p className="mt-1 text-[11px] text-grubano-ink-faint">{p.body}</p>
-              <span className="mt-2 inline-block rounded-full bg-grubano-surface-muted px-2 py-0.5 text-[10px] font-bold text-grubano-ink-faint">{t('soonBadge')}</span>
-            </Card>
-          )
-        })}
+      {/* ── Kit de partage — le vrai QR est OK (générable) ; visuels / textes = « bientôt ». ── */}
+      <div className="op-card card-pad">
+        <div className="card-pad__hd"><h3>{t('kitTitle')}</h3></div>
+        <div className="hint">{t('kitHint')}</div>
+        {baseLink && (
+          <div className="asset-row">
+            <span className="asset-ic"><span className="ms" aria-hidden="true">qr_code_2</span></span>
+            <div className="asset-m"><b>{t('kitQrTitle')}</b><span>{t('kitQrDesc')}</span></div>
+            <button type="button" className="asset-dl" onClick={() => setQrOpen((v) => (v === 'base' ? null : 'base'))}>
+              <span className="ms" aria-hidden="true">qr_code_2</span>{qrOpen === 'base' ? t('hideQr') : t('showQr')}
+            </button>
+          </div>
+        )}
+        <div className="asset-row">
+          <span className="asset-ic"><span className="ms" aria-hidden="true">image</span></span>
+          <div className="asset-m"><b>{t('kitVisualsTitle')}</b><span>{t('kitVisualsDesc')}</span></div>
+          <span className="asset-soon">{t('soonBadge')}</span>
+        </div>
+        <div className="asset-row">
+          <span className="asset-ic"><span className="ms" aria-hidden="true">description</span></span>
+          <div className="asset-m"><b>{t('kitCaptionsTitle')}</b><span>{t('kitCaptionsDesc')}</span></div>
+          <span className="asset-soon">{t('soonBadge')}</span>
+        </div>
       </div>
-    </div>
+
+      {/* ── OPPORTUNITÉS / BRIEF DU JOUR (Slice 2d) — heuristic, READ-ONLY: what's worth
+          promoting today. « Générer le contenu » pre-fills the studio (VOLUMES / labels,
+          no € shown here). ─────────────────────────────────────────────────────────── */}
+      {opps !== null && opps.length > 0 && (
+        <div className="op-card card-pad">
+          <div className="card-pad__hd"><h3>{t('oppTitle')}</h3></div>
+          <div className="hint">{t('oppDesc')}</div>
+          {opps.map((o) => (
+            <div key={`${o.kind}-${o.restaurantId}`} className="asset-row">
+              <span className="asset-ic"><span className="ms" aria-hidden="true">lightbulb</span></span>
+              <div className="asset-m">
+                <b>{o.dishName ?? o.restaurantName}</b>
+                <span>{o.dishName ? `${o.restaurantName} · ` : ''}{t(o.reasonKey, o.reasonParams ?? {})}</span>
+              </div>
+              <button type="button" className="asset-dl" onClick={() => setStudioPreset({ restaurantId: o.restaurantId, dishId: o.dishId ?? undefined })}>
+                <span className="ms" aria-hidden="true">auto_fix_high</span>{t('oppGenerate')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── STUDIO DE CONTENU IA (Slice 2b) — real feature, pre-fillable from an opportunity. ── */}
+      <AffiliateStudio restos={restos} preset={studioPreset} onPresetApplied={() => setStudioPreset(null)} />
+    </section>
   )
 }

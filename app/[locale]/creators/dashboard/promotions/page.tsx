@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Mes recettes — THE RECIPE EDITOR (Mission 3 Creator Studio).
+ * Mes recettes — THE RECIPE EDITOR (Mission 3 Creator Studio), CR4 re-skin.
  *
  * Full lifecycle in one place: draft → (submit) → pending → auto-vetting →
  * approved | rejected ; archived = retrait réversible. Data source:
@@ -15,25 +15,28 @@
  *   adoption is active (R3, photo always editable) · Soumettre (draft/
  *   rejected/legacy-pending) · Archiver (history) / Supprimer (pristine,
  *   confirm) · Restaurer (archived).
+ *
+ * CR4 RE-SKIN (visual only): CreatorShell --op-/--op-cr language + Material
+ * Symbols; CD grid of recipe cards + search toolbar + status tabs (Toutes /
+ * Publiées / Brouillons — counts from REAL data). Every fetch/payload/mutation
+ * is byte-identical to the previous version; the campaign modal, adopters
+ * accordion and verdict toasts are preserved.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import {
-  ChefHat, Plus, CheckCircle2, Clock, Store, Pencil, Send, Archive,
-  Trash2, RotateCcw, Loader2, Lock, FileEdit, ChevronDown, ChevronUp,
-  MapPin, ShoppingBag, Megaphone,
-} from 'lucide-react'
-import { Card, Button, Badge, EmptyState, SkeletonList, Modal, Input } from '@/components/design-system'
-import FoodImage from '@/components/eat/FoodImage'
 import { getFoodImage, inferCategory } from '@/lib/food-images'
 import DishEditorModal, { type EditableDish } from '@/components/creators/DishEditorModal'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
 import type { MyDish } from '@/app/api/creators/my-dishes/route'
+import './creator-recipes.css'
 
 function fmt(n: number) {
   return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
+
+const isPublished = (s: string) => s === 'approved' || s === 'live'
+type StatusTab = 'all' | 'published' | 'draft'
 
 export default function CreatorRecipesPage() {
   const t   = useTranslations('creators.home')
@@ -52,6 +55,9 @@ export default function CreatorRecipesPage() {
   const [toast,     setToast]     = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null)
   // Mission 4 (1.2) — per-dish adopters analytics accordion (private studio).
   const [openAdopters, setOpenAdopters] = useState<string | null>(null)
+  // CR4 — client-side search + status tabs (presentation only; no fetch change).
+  const [query, setQuery] = useState('')
+  const [tab,   setTab]   = useState<StatusTab>('all')
   // Promo V2 Slice 2 — chef campaign launch on an adopted recipe.
   const [campaignDish, setCampaignDish] = useState<MyDish | null>(null)
   const [campPct,   setCampPct]   = useState('20')
@@ -160,17 +166,13 @@ export default function CreatorRecipesPage() {
     } catch { setToast({ kind: 'err', text: te('errGeneric') }) } finally { setActingId(null) }
   }
 
-  // ── Status badge (5 states) ─────────────────────────────────────────────────
-  function StatusBadge({ status }: { status: string }) {
-    if (status === 'approved' || status === 'live')
-      return <Badge tone="success" size="sm" icon={<CheckCircle2 size={9} />}>{t('dishStatusActive')}</Badge>
-    if (status === 'pending')
-      return <Badge tone="warning" size="sm" icon={<Clock size={9} />}>{te('statusInReview')}</Badge>
-    if (status === 'draft')
-      return <Badge size="sm" icon={<FileEdit size={9} />}>{te('statusDraft')}</Badge>
-    if (status === 'archived')
-      return <Badge size="sm" icon={<Archive size={9} />}>{te('statusArchived')}</Badge>
-    return <Badge tone="danger" size="sm">{t('dishStatusRejected')}</Badge>
+  // ── Status → cover badge (5 real states) ────────────────────────────────────
+  function statusBadge(status: string): { cls: string; label: string } {
+    if (isPublished(status)) return { cls: 'pub',      label: t('dishStatusActive') }
+    if (status === 'pending')  return { cls: 'pending',  label: te('statusInReview') }
+    if (status === 'draft')    return { cls: 'draft',    label: te('statusDraft') }
+    if (status === 'archived') return { cls: 'archived', label: te('statusArchived') }
+    return { cls: 'rejected', label: t('dishStatusRejected') }
   }
 
   function dishPhoto(d: MyDish): string {
@@ -194,275 +196,308 @@ export default function CreatorRecipesPage() {
     }
   }
 
+  // ── Tab counts (REAL data) + filter ─────────────────────────────────────────
+  const counts = useMemo(() => ({
+    all:       dishes.length,
+    published: dishes.filter(d => isPublished(d.status)).length,
+    // « Brouillons » regroupe les états non-publiés & non-archivés en travail :
+    // brouillon, soumise/en-vérification, rejetée.
+    draft:     dishes.filter(d => d.status === 'draft' || d.status === 'pending' || d.status === 'rejected').length,
+  }), [dishes])
+
+  const visibleDishes = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return dishes.filter(d => {
+      if (tab === 'published' && !isPublished(d.status)) return false
+      if (tab === 'draft' && !(d.status === 'draft' || d.status === 'pending' || d.status === 'rejected')) return false
+      if (q && !(d.name.toLowerCase().includes(q) || (d.cuisineType || '').toLowerCase().includes(q))) return false
+      return true
+    })
+  }, [dishes, tab, query])
+
+  // ── Loading ──────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="px-4 pt-6 max-w-2xl mx-auto space-y-4">
-        <SkeletonList count={4} />
-      </div>
+      <section aria-busy="true">
+        <span className="op-sk" style={{ width: 240, height: 26, marginBottom: 18, display: 'block' }} />
+        <span className="op-sk" style={{ width: '100%', height: 44, borderRadius: 8, marginBottom: 16, display: 'block' }} />
+        <div className="rc-grid">
+          {[0, 1, 2, 3, 4, 5].map(i => <span key={i} className="op-sk" style={{ width: '100%', height: 250, borderRadius: 12 }} />)}
+        </div>
+      </section>
     )
   }
 
-  // Mission 2 - chef role disabled -> clean gate + one-tap re-enable.
+  // Mission 2 — chef role disabled → clean gate + one-tap re-enable.
   if (home?.roles && home.roles.isChef === false) {
     return (
-      <div className="px-4 pt-12 max-w-2xl mx-auto">
-        <EmptyState
-          emoji="🍳"
-          title={tn('chefOffTitle')}
-          description={tn('chefOffBody')}
-          action={
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const r = await fetch('/api/creators/me/roles', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isChef: true }),
-                  })
-                  if (r.ok) window.location.reload()
-                } catch { /* retryable */ }
-              }}
-              className="inline-flex items-center rounded-grubano-lg bg-grubano-primary px-4 py-2 text-sm font-medium text-white"
-            >
-              {tn('enableCta')}
-            </button>
-          }
-        />
-      </div>
+      <section>
+        <div className="op-card rc-gate">
+          <span className="ms" aria-hidden="true">skillet</span>
+          <b>{tn('chefOffTitle')}</b>
+          <span>{tn('chefOffBody')}</span>
+          <button
+            type="button"
+            className="op-btn-primary"
+            onClick={async () => {
+              try {
+                const r = await fetch('/api/creators/me/roles', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ isChef: true }),
+                })
+                if (r.ok) window.location.reload()
+              } catch { /* retryable */ }
+            }}
+          >
+            <span className="ms" aria-hidden="true">restaurant_menu</span>{tn('enableCta')}
+          </button>
+        </div>
+      </section>
     )
   }
 
   return (
-    <div className="px-4 pb-10 pt-5 max-w-2xl mx-auto space-y-5">
+    <section>
+      {/* ── Header ───────────────────────────────────────────────────────────── */}
+      <div className="op-dash__head">
+        <div>
+          <h1 className="op-dash__title">{tr('title')}</h1>
+          <p className="op-dash__sub">{tr('subtitle', { pct: Math.round((home?.adoptionCommissionPct ?? 0.02) * 100) })}</p>
+        </div>
+        <button type="button" className="op-btn-primary" onClick={() => setEditing('new')}>
+          <span className="ms" aria-hidden="true">add</span>{te('newRecipe')}
+        </button>
+      </div>
 
       {/* Verdict / action toast */}
       {toast && (
-        <p className={`rounded-grubano-lg px-3 py-2.5 text-[12px] font-semibold ${
-          toast.kind === 'ok' ? 'bg-grubano-success-tint text-grubano-success'
-          : toast.kind === 'warn' ? 'bg-grubano-warning-tint text-grubano-warning'
-          : 'bg-grubano-danger-tint text-grubano-danger'
-        }`}>
-          {toast.text}
-        </p>
-      )}
-
-      {/* ── Hero header ──────────────────────────────────────────────────── */}
-      <div className="rounded-grubano-xl bg-gradient-to-br from-grubano-primary to-grubano-primary/70 p-5 text-white">
-        <div className="flex items-center gap-2 mb-2">
-          <ChefHat size={20} />
-          <h1 className="text-lg font-display font-bold leading-tight">{tr('title')}</h1>
-          <span className="ml-auto rounded-grubano-pill bg-white/20 px-2.5 py-0.5 text-xs font-bold shrink-0">
-            {tr('badge', { pct: Math.round((home?.adoptionCommissionPct ?? 0.02) * 100) })}
+        <div className={`rc-toast ${toast.kind}`} role="status">
+          <span className="ms" aria-hidden="true">
+            {toast.kind === 'ok' ? 'check_circle' : toast.kind === 'warn' ? 'schedule' : 'error'}
           </span>
-        </div>
-        <p className="text-sm opacity-90 leading-relaxed">{tr('subtitle', { pct: Math.round((home?.adoptionCommissionPct ?? 0.02) * 100) })}</p>
-      </div>
-
-      {/* ── KPI strip (kept) ─────────────────────────────────────────────── */}
-      {home && (
-        <div className="grid grid-cols-3 gap-2">
-          {([
-            { label: tr('kpiEarnings'),  value: `€${(home.dishEarningsTotal  ?? 0).toFixed(2)}` },
-            { label: tr('kpiAdoptions'), value: String(home.dishAdoptionsTotal ?? 0) },
-            { label: tr('kpiSales'),     value: String(home.dishSalesTotal     ?? 0) },
-          ] as const).map(({ label, value }) => (
-            <Card key={label} elevation="sm" padding="sm">
-              <p className="text-sm font-bold text-grubano-primary">{value}</p>
-              <p className="text-[10px] text-grubano-ink-muted mt-0.5 leading-tight">{label}</p>
-            </Card>
-          ))}
+          <span>{toast.text}</span>
         </div>
       )}
-
-      {/* ── The editor list ──────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold flex items-center gap-1.5">
-          <ChefHat size={14} className="text-grubano-primary" />
-          {t('dishesTitle')}
-        </h2>
-        <Button variant="primary" size="sm" leftIcon={<Plus size={12} />} onClick={() => setEditing('new')}>
-          {te('newRecipe')}
-        </Button>
-      </div>
 
       {dishes.length === 0 ? (
-        <Card elevation="sm" padding="lg">
-          <EmptyState
-            compact
-            emoji={<ChefHat size={24} />}
-            title={t('dishesEmpty')}
-            description={t('dishesEmptyDesc')}
-            action={
-              <Button variant="primary" size="sm" leftIcon={<Plus size={12} />} onClick={() => setEditing('new')}>
-                {te('newRecipe')}
-              </Button>
-            }
-          />
-        </Card>
+        /* ── Empty studio ──────────────────────────────────────────────────── */
+        <div className="op-card op-empty">
+          <span className="ms" aria-hidden="true">restaurant_menu</span>
+          <b>{t('dishesEmpty')}</b>
+          <span>{t('dishesEmptyDesc')}</span>
+          <div style={{ marginTop: 18 }}>
+            <button type="button" className="op-btn-primary" onClick={() => setEditing('new')}>
+              <span className="ms" aria-hidden="true">add</span>{te('newRecipe')}
+            </button>
+          </div>
+        </div>
       ) : (
-        <div className="space-y-3">
-          {dishes.map((d) => {
-            const acting = actingId === d.id
-            return (
-              <Card key={d.id} elevation="sm" padding="md">
-                <div className="flex items-start gap-3">
-                  <FoodImage name={d.name} src={dishPhoto(d)} className="h-16 w-16 shrink-0 rounded-grubano-lg" glyphClassName="text-xl" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="text-sm font-bold text-grubano-ink">{d.name}</p>
-                      <StatusBadge status={d.status} />
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-grubano-ink-muted">
-                      €{fmt(d.suggestedPrice)} · {te('counters', { restos: d.adoptionsCount, sales: d.salesCount })}
-                    </p>
-                    {/* Mission 6 — completeness score (D3, informative only). */}
-                    <p className={`mt-0.5 text-[10px] font-semibold ${d.sheetCompleteness >= 80 ? 'text-grubano-success' : 'text-grubano-ink-faint'}`}>
-                      {te('completeness', { pct: d.sheetCompleteness })}
-                    </p>
-                    {/* R3 — explanatory line when the content is locked. */}
-                    {d.hasActiveAdoption && (
-                      <p className="mt-1 flex items-start gap-1 text-[10px] text-grubano-warning">
-                        <Lock size={10} className="mt-0.5 shrink-0" />
-                        {te('lockedLine', { count: d.adoptions })}
-                      </p>
-                    )}
-                    {d.earningsNet > 0 && (
-                      <p className="mt-0.5 text-[11px] font-bold text-grubano-success">
-                        {t('dishNetLabel')} €{fmt(d.earningsNet)}
-                      </p>
-                    )}
-                  </div>
-                </div>
+        <>
+          {/* ── Toolbar : search + status tabs (REAL counts) ─────────────────── */}
+          <div className="rc-toolbar">
+            <div className="rc-search">
+              <span className="ms" aria-hidden="true">search</span>
+              <input
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder={tr('searchPlaceholder')}
+                aria-label={tr('searchPlaceholder')}
+              />
+            </div>
+            <div className="rc-tabs" role="tablist">
+              {([
+                { id: 'all' as const,       label: tr('tabAll'),       cnt: counts.all },
+                { id: 'published' as const, label: tr('tabPublished'), cnt: counts.published },
+                { id: 'draft' as const,     label: tr('tabDrafts'),    cnt: counts.draft },
+              ]).map(x => (
+                <button
+                  key={x.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === x.id}
+                  className={tab === x.id ? 'is-active' : ''}
+                  onClick={() => setTab(x.id)}
+                >
+                  {x.label} <span className="cnt">{x.cnt}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
-                {/* ── Adopters analytics accordion (Mission 4 — private €) ─ */}
-                {d.adoptersRich.length > 0 && (
-                  <div className="mt-3 border-t border-grubano-border pt-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setOpenAdopters(openAdopters === d.id ? null : d.id)}
-                      className="flex w-full items-center gap-1.5 text-[11px] font-bold text-grubano-ink-muted"
-                    >
-                      <Store size={12} className="text-grubano-primary" />
-                      {te('adoptersToggle', { count: d.adoptersRich.length })}
-                      {openAdopters === d.id ? <ChevronUp size={13} className="ml-auto" /> : <ChevronDown size={13} className="ml-auto" />}
-                    </button>
-                    {openAdopters === d.id && (
-                      <div className="mt-2 space-y-2">
-                        {d.adoptersRich.map((a) => (
-                          <div key={a.adoptionId} className="rounded-grubano-lg bg-grubano-surface px-3 py-2">
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
-                              <span className="font-bold text-grubano-ink">{a.brandEmoji} {a.brandName}</span>
-                              {a.city && (
-                                <span className="inline-flex items-center gap-0.5 text-grubano-ink-muted">
-                                  <MapPin size={10} /> {a.city}
-                                </span>
-                              )}
-                              <span className="ml-auto text-grubano-ink-faint">
-                                {te('adopterSince', { date: new Date(a.adoptedAt).toLocaleDateString('fr-FR') })}
-                              </span>
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
-                              <span className="inline-flex items-center gap-1 text-grubano-ink-muted">
-                                <ShoppingBag size={10} /> {te('adopterSales', { count: a.salesCount })}
-                              </span>
-                              <span className="text-grubano-ink-muted">{te('adopterRevenue')} <b className="text-grubano-ink">€{fmt(a.revenue)}</b></span>
-                              <span className="text-grubano-success">{te('adopterEarnings')} <b>€{fmt(a.earnings)}</b></span>
-                            </div>
+          {/* ── Grid ──────────────────────────────────────────────────────────── */}
+          {visibleDishes.length === 0 ? (
+            <div className="op-card op-empty">
+              <span className="ms" aria-hidden="true">search_off</span>
+              <b>{tr('noMatchTitle')}</b>
+              <span>{tr('noMatchDesc')}</span>
+            </div>
+          ) : (
+            <div className="rc-grid">
+              {visibleDishes.map((d) => {
+                const acting = actingId === d.id
+                const b = statusBadge(d.status)
+                return (
+                  <article key={d.id} className="op-card rc-card">
+                    {/* Cover */}
+                    <div className="rc-cover">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={dishPhoto(d)} alt="" loading="lazy" />
+                      <span className={`rc-cover__badge ${b.cls}`}>{b.label}</span>
+                      {d.hasActiveAdoption && (
+                        <span className="rc-cover__lock" title={te('lockedLine', { count: d.adoptions })}>
+                          <span className="ms" aria-hidden="true">lock</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Body */}
+                    <div className="rc-cbody">
+                      <h3>{d.name}</h3>
+                      {d.description && <p className="desc">{d.description}</p>}
+                      <div className="rc-cstats">
+                        <span className="st"><span className="ms" aria-hidden="true">storefront</span><b>{d.adoptionsCount}</b></span>
+                        <span className="st"><span className="ms" aria-hidden="true">sell</span><b>{d.salesCount}</b></span>
+                        {d.earningsNet > 0 && (
+                          <span className="st"><span className="ms" aria-hidden="true">payments</span><b className="net">€{fmt(d.earningsNet)}</b></span>
+                        )}
+                        <button type="button" className="edit" onClick={() => setEditing(toEditable(d))}>
+                          {te('completeness', { pct: d.sheetCompleteness })}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Adopters analytics accordion (Mission 4 — private €) */}
+                    {d.adoptersRich.length > 0 && (
+                      <div className="rc-adopt">
+                        <button
+                          type="button"
+                          className="rc-adopt__toggle"
+                          onClick={() => setOpenAdopters(openAdopters === d.id ? null : d.id)}
+                        >
+                          <span className="ms lead" aria-hidden="true">storefront</span>
+                          {te('adoptersToggle', { count: d.adoptersRich.length })}
+                          <span className="ms chev" aria-hidden="true">{openAdopters === d.id ? 'expand_less' : 'expand_more'}</span>
+                        </button>
+                        {openAdopters === d.id && (
+                          <div className="rc-adopt__list">
+                            {d.adoptersRich.map((a) => (
+                              <div key={a.adoptionId} className="rc-adopt__row">
+                                <div className="rc-adopt__hd">
+                                  <span className="brand">{a.brandEmoji} {a.brandName}</span>
+                                  {a.city && (
+                                    <span className="city"><span className="ms" aria-hidden="true">place</span>{a.city}</span>
+                                  )}
+                                  <span className="since">{te('adopterSince', { date: new Date(a.adoptedAt).toLocaleDateString('fr-FR') })}</span>
+                                </div>
+                                <div className="rc-adopt__fig">
+                                  <span className="k"><span className="ms" aria-hidden="true">shopping_bag</span>{te('adopterSales', { count: a.salesCount })}</span>
+                                  <span className="k">{te('adopterRevenue')} <b className="v">€{fmt(a.revenue)}</b></span>
+                                  <span className="k">{te('adopterEarnings')} <b className="v net">€{fmt(a.earnings)}</b></span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
-                  </div>
-                )}
 
-                {/* ── Actions by state ─────────────────────────────────── */}
-                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-grubano-border pt-2.5">
-                  {d.status !== 'archived' && (
-                    <Button variant="secondary" size="sm" leftIcon={<Pencil size={11} />}
-                      onClick={() => setEditing(toEditable(d))}>
-                      {te('actionEdit')}
-                    </Button>
-                  )}
-                  {/* Promo V2 Slice 2 — launch a demand-driver campaign (only on
-                      an approved recipe with ≥ 1 active adoption to drive). */}
-                  {d.status === 'approved' && d.hasActiveAdoption && (
-                    <Button variant="secondary" size="sm" leftIcon={<Megaphone size={11} />}
-                      onClick={() => openCampaign(d)}>
-                      {tcam('launchCta')}
-                    </Button>
-                  )}
-                  {(d.status === 'draft' || d.status === 'rejected' || d.status === 'pending') && (
-                    <Button variant="primary" size="sm" leftIcon={acting ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                      disabled={acting} onClick={() => submitDish(d)}>
-                      {te('actionSubmit')}
-                    </Button>
-                  )}
-                  {d.status === 'archived' ? (
-                    <Button variant="secondary" size="sm" leftIcon={acting ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
-                      disabled={acting} onClick={() => restoreDish(d)}>
-                      {te('actionRestore')}
-                    </Button>
-                  ) : d.hasAnyHistory ? (
-                    <Button variant="ghost" size="sm" leftIcon={acting ? <Loader2 size={11} className="animate-spin" /> : <Archive size={11} />}
-                      disabled={acting} onClick={() => deleteDish(d)}>
-                      {te('actionArchive')}
-                    </Button>
-                  ) : (
-                    <Button variant="ghost" size="sm" leftIcon={<Trash2 size={11} />}
-                      disabled={acting} onClick={() => setConfirmDel(d)}>
-                      {te('actionDelete')}
-                    </Button>
-                  )}
+                    {/* Actions by state */}
+                    <div className="rc-cactions">
+                      {d.status !== 'archived' && (
+                        <button type="button" className="rc-abtn" onClick={() => setEditing(toEditable(d))}>
+                          <span className="ms" aria-hidden="true">edit</span>{te('actionEdit')}
+                        </button>
+                      )}
+                      {/* Promo V2 Slice 2 — launch a demand-driver campaign (only on
+                          an approved recipe with ≥ 1 active adoption to drive). */}
+                      {d.status === 'approved' && d.hasActiveAdoption && (
+                        <button type="button" className="rc-abtn" onClick={() => openCampaign(d)}>
+                          <span className="ms" aria-hidden="true">campaign</span>{tcam('launchCta')}
+                        </button>
+                      )}
+                      {(d.status === 'draft' || d.status === 'rejected' || d.status === 'pending') && (
+                        <button type="button" className="rc-abtn primary" disabled={acting} onClick={() => submitDish(d)}>
+                          <span className={`ms${acting ? ' rc-spin' : ''}`} aria-hidden="true">{acting ? 'progress_activity' : 'send'}</span>
+                          {te('actionSubmit')}
+                        </button>
+                      )}
+                      {d.status === 'archived' ? (
+                        <button type="button" className="rc-abtn" disabled={acting} onClick={() => restoreDish(d)}>
+                          <span className={`ms${acting ? ' rc-spin' : ''}`} aria-hidden="true">{acting ? 'progress_activity' : 'restore'}</span>
+                          {te('actionRestore')}
+                        </button>
+                      ) : d.hasAnyHistory ? (
+                        <button type="button" className="rc-abtn" disabled={acting} onClick={() => deleteDish(d)}>
+                          <span className={`ms${acting ? ' rc-spin' : ''}`} aria-hidden="true">{acting ? 'progress_activity' : 'archive'}</span>
+                          {te('actionArchive')}
+                        </button>
+                      ) : (
+                        <button type="button" className="rc-abtn danger" disabled={acting} onClick={() => setConfirmDel(d)}>
+                          <span className="ms" aria-hidden="true">delete</span>{te('actionDelete')}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Campaign launch modal (Promo V2 Slice 2) ────────────────────────── */}
+      {campaignDish && (
+        <div className="ed-scrim" role="dialog" aria-modal="true" onClick={() => !campSaving && setCampaignDish(null)}>
+          <div className="cm-modal" onClick={e => e.stopPropagation()}>
+            <div className="cm-modal__hd">
+              <span className="ms" aria-hidden="true">campaign</span>
+              <h2>{tcam('launchTitle')}</h2>
+              <button type="button" className="ed-close" aria-label={te('close')} onClick={() => !campSaving && setCampaignDish(null)}>
+                <span className="ms" aria-hidden="true">close</span>
+              </button>
+            </div>
+            <div className="cm-modal__bd">
+              <p className="cm-intro">{tcam('launchIntro', { dish: campaignDish.name })}</p>
+              <div className="fld">
+                <label>{tcam('fieldPct')}</label>
+                <input className="inp" inputMode="decimal" value={campPct} onChange={e => setCampPct(e.target.value)} />
+              </div>
+              <div className="fld">
+                <label>{tcam('fieldMessage')}</label>
+                <textarea className="inp" value={campMsg} onChange={e => setCampMsg(e.target.value)} rows={3} maxLength={280}
+                  placeholder={tcam('fieldMessagePh')} />
+              </div>
+              <div className="row2">
+                <div className="fld">
+                  <label>{tcam('fieldStart')}</label>
+                  <input className="inp" type="datetime-local" value={campStart} onChange={e => setCampStart(e.target.value)} />
                 </div>
-              </Card>
-            )
-          })}
+                <div className="fld">
+                  <label>{tcam('fieldEnd')}</label>
+                  <input className="inp" type="datetime-local" value={campEnd} onChange={e => setCampEnd(e.target.value)} />
+                </div>
+              </div>
+              <p className="cm-note">{tcam('financeNote')}</p>
+              {campError && (
+                <div className="ed-error" style={{ marginTop: 12 }}>
+                  <span className="ms" aria-hidden="true">error</span><span>{campError}</span>
+                </div>
+              )}
+            </div>
+            <div className="cm-modal__ft">
+              <button type="button" className="op-btn-ghost" onClick={() => setCampaignDish(null)} disabled={campSaving}>{tcam('cancel')}</button>
+              <button type="button" className="op-btn-primary" onClick={launchCampaign} disabled={campSaving || !campValid}>
+                <span className={`ms${campSaving ? ' rc-spin' : ''}`} aria-hidden="true">{campSaving ? 'progress_activity' : 'campaign'}</span>
+                {tcam('launch')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── Campaign launch modal (Promo V2 Slice 2) ────────────────────── */}
-      {campaignDish && (
-        <Modal
-          open
-          onClose={() => !campSaving && setCampaignDish(null)}
-          title={tcam('launchTitle')}
-          footer={
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setCampaignDish(null)} disabled={campSaving}>{tcam('cancel')}</Button>
-              <Button onClick={launchCampaign} disabled={campSaving || !campValid}
-                leftIcon={campSaving ? <Loader2 size={13} className="animate-spin" /> : <Megaphone size={14} />}>
-                {tcam('launch')}
-              </Button>
-            </div>
-          }
-        >
-          <div className="space-y-3">
-            <p className="rounded-grubano-lg bg-grubano-tint px-3 py-2 text-[12px] text-grubano-ink-muted">
-              {tcam('launchIntro', { dish: campaignDish.name })}
-            </p>
-            <Input label={tcam('fieldPct')} inputMode="decimal" value={campPct} onChange={e => setCampPct(e.target.value)} />
-            <label className="block text-[13px]">
-              <span className="mb-1 block font-semibold">{tcam('fieldMessage')}</span>
-              <textarea value={campMsg} onChange={e => setCampMsg(e.target.value)} rows={3} maxLength={280}
-                placeholder={tcam('fieldMessagePh')}
-                className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-grubano-primary" />
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <Input label={tcam('fieldStart')} type="datetime-local" value={campStart} onChange={e => setCampStart(e.target.value)} />
-              <Input label={tcam('fieldEnd')}   type="datetime-local" value={campEnd}   onChange={e => setCampEnd(e.target.value)} />
-            </div>
-            <p className="text-[11px] text-grubano-ink-faint">{tcam('financeNote')}</p>
-            {campError && (
-              <p className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2 text-[12px] text-grubano-danger">
-                {campError}
-              </p>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      {/* ── Editor modal (create + edit) ─────────────────────────────────── */}
+      {/* ── Editor modal (create + edit) ─────────────────────────────────────── */}
       {editing !== null && (
         <DishEditorModal
           dish={editing === 'new' ? null : editing}
@@ -475,31 +510,27 @@ export default function CreatorRecipesPage() {
         />
       )}
 
-      {/* ── Delete confirm (pristine recipes only — real deletion) ───────── */}
+      {/* ── Delete confirm (pristine recipes only — real deletion) ───────────── */}
       {confirmDel && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-md rounded-t-3xl bg-white p-5 sm:rounded-2xl">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-grubano-danger-tint text-grubano-danger">
-                <Trash2 size={15} />
-              </span>
-              <p className="text-base font-bold text-grubano-ink">{te('deleteTitle')}</p>
+        <div className="ed-scrim" role="dialog" aria-modal="true" onClick={() => actingId !== confirmDel.id && setConfirmDel(null)}>
+          <div className="cf-modal" onClick={e => e.stopPropagation()}>
+            <div className="cf-modal__ic">
+              <span className="box"><span className="ms" aria-hidden="true">delete</span></span>
+              <b>{te('deleteTitle')}</b>
             </div>
-            <p className="text-sm text-grubano-ink-muted">
-              {te('deleteBody', { name: confirmDel.name })}
-            </p>
-            <div className="mt-4 flex gap-2">
-              <Button variant="secondary" size="md" onClick={() => setConfirmDel(null)}>
+            <p>{te('deleteBody', { name: confirmDel.name })}</p>
+            <div className="cf-modal__ft">
+              <button type="button" className="op-btn-ghost" onClick={() => setConfirmDel(null)} disabled={actingId === confirmDel.id}>
                 {te('deleteCancel')}
-              </Button>
-              <Button variant="danger" size="md" className="flex-1"
-                loading={actingId === confirmDel.id} onClick={() => deleteDish(confirmDel)}>
+              </button>
+              <button type="button" className="cf-danger" disabled={actingId === confirmDel.id} onClick={() => deleteDish(confirmDel)}>
+                <span className={`ms${actingId === confirmDel.id ? ' rc-spin' : ''}`} aria-hidden="true">{actingId === confirmDel.id ? 'progress_activity' : 'delete'}</span>
                 {te('deleteConfirm')}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </section>
   )
 }
