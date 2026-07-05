@@ -2,18 +2,27 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
-import { Megaphone, Loader2, CheckCircle2, Mail } from 'lucide-react'
-import { Card, Button, Input } from '@/components/design-system'
+import { Link } from '@/navigation'
 
-// ── AffiliateApplyClient — PRE-LOGIN affiliate signup form (Agent 118, incr. 1/3) ──
-// Calqued on the supplier/creator register UX: minimal fields (name + email + consent),
-// passwordless. On submit it POSTs /api/affiliate/apply (provisions the Operator + Affiliate),
-// then chains the EXISTING POST /api/auth/magic-link so the user receives a sign-in link — both
-// endpoints are anti-enumeration, so the success screen is shown for any accepted submission.
-// Honeypot (`website`) + a form-open timestamp deter bots (mirrors /api/supplier/register).
+// ── AF8 · AffiliateApplyClient — PUBLIC pre-login affiliate signup (RE-SKIN) ─────
+// CD marketing language (gb-foundation clair, accent TEAL --gb-af, Material
+// Symbols, scoped .af-mkt) replaces the old design-system + lucide-react. The
+// REAL flow (Agent 118) is preserved byte-identical:
+//   POST /api/affiliate/apply { name, email, consent, website (honeypot),
+//   formStartedAt } → ALWAYS a neutral { ok: true } (anti-enumeration — the
+//   minted code/link is NEVER returned; it is revealed in the affiliate space
+//   after sign-in), then a chained best-effort POST /api/auth/magic-link
+//   { email, locale } which really sends a sign-in e-mail.
+// Honesty (CD note + fondateur): no wished-slug field (the server mints the code
+// via mintUniqueAffiliateCode — only name/email/consent are accepted), no
+// fabricated success ref/link, generic anti-enumeration e-mail line, real RGPD
+// link to /legal/confidentialite, and NO auto-login CTA — the success button is
+// a plain Link to the real /auth/magic passwordless sign-in page.
+// The CSS (affiliate-apply-form.css) is imported by the PAGE, never here.
 
 export default function AffiliateApplyClient() {
   const t      = useTranslations('affiliate')
+  const tC     = useTranslations('affiliate.candidature')
   const locale = useLocale()
 
   const [name, setName]         = useState('')
@@ -66,94 +75,169 @@ export default function AffiliateApplyClient() {
     }
   }
 
+  // ── Marketing chrome — brand badge + back link to the AF7 landing ─────────────
+  function Nav() {
+    return (
+      <nav className="nav">
+        <div className="nav__in">
+          <Link href="/affiliate/apply" className="nav__brand">
+            <img src="/brand/grubano-symbol-color.svg" alt="Grubano" />
+            <b>Grubano</b>
+            <span>{tC('navBadge')}</span>
+          </Link>
+          <Link href="/affiliate/apply" className="nav__back">
+            <span className="ms">arrow_back</span>{tC('navBack')}
+          </Link>
+        </div>
+      </nav>
+    )
+  }
+
+  // ── SUCCESS — honest: neutral wording (anti-enumeration), a generic "if your
+  // address is valid" e-mail line (a magic-link e-mail IS really sent by the
+  // chained call), no fabricated ref/link, and a plain Link to the real
+  // /auth/magic sign-in page (no auto-login).
   if (done) {
     return (
-      <div className="w-full max-w-lg space-y-4 text-center">
-        <span className="mx-auto grid h-14 w-14 place-items-center rounded-grubano-lg bg-grubano-success-tint text-grubano-success">
-          <Mail size={26} />
-        </span>
-        <h1 className="font-display text-xl font-extrabold text-grubano-ink">{t('applySuccessTitle')}</h1>
-        <p className="text-sm text-grubano-ink-muted">{t('applySuccessBody')}</p>
+      <div className="af-mkt">
+        <Nav />
+        <div className="page">
+          <div className="success">
+            <div className="success__ic"><span className="ms">mark_email_read</span></div>
+            <h2>{tC('successTitle')}</h2>
+            <p>{tC('successBody')}</p>
+            <div className="success__steps">
+              <div className="s"><span className="ms">mail</span>{tC('successStepEmail')}</div>
+              <div className="s"><span className="ms">login</span>{tC('successStepLogin')}</div>
+              <div className="s"><span className="ms">link</span>{tC('successStepShare')}</div>
+            </div>
+            <div className="success__cta">
+              <Link href="/auth/magic" className="btn-af">
+                <span className="ms">login</span>{tC('successCta')}
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
 
+  // ── FORM — only the fields the API persists (name / email / consent) ──────────
   return (
-    <div className="w-full max-w-lg">
-      <Card elevation="sm" padding="lg">
-        <div className="mb-4 text-center">
-          <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-grubano-lg bg-grubano-tint text-grubano-primary">
-            <Megaphone size={26} />
-          </span>
-          <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{t('applyTitle')}</h1>
-          <p className="mt-2 text-sm text-grubano-ink-muted">{t('applySubtitle')}</p>
+    <div className="af-mkt">
+      <Nav />
+      <div className="page">
+        <div className="head">
+          <span className="eyebrow"><span className="ms">link</span>{tC('eyebrow')}</span>
+          <h1>{tC('headTitle')}</h1>
+          <p>{tC('headSubtitle')}</p>
         </div>
 
-        <ul className="mx-auto mb-5 max-w-sm space-y-1.5 text-left text-sm text-grubano-ink-muted">
-          <li>• {t('joinPoint1')}</li>
-          <li>• {t('joinPoint2')}</li>
-          <li>• {t('joinPoint3')}</li>
-        </ul>
+        <div className="grid">
+          <form className="form-card" onSubmit={submit}>
 
-        <form onSubmit={submit} className="space-y-3">
-          <Input
-            label={t('applyNameLabel')}
-            type="text"
-            placeholder={t('applyNamePlaceholder')}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoComplete="name"
-          />
-          <Input
-            label={t('applyEmailLabel')}
-            type="email"
-            placeholder={t('applyEmailPlaceholder')}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-          />
+            <div className="fsec">
+              <div className="fsec__h">
+                <span className="fsec__n">1</span>
+                <div><b>{tC('secYouTitle')}</b><span>{tC('secYouSub')}</span></div>
+              </div>
+              <div className="row2">
+                <div className="fld">
+                  <label htmlFor="af-apply-name">{t('applyNameLabel')}</label>
+                  <input
+                    id="af-apply-name"
+                    className="inp"
+                    type="text"
+                    placeholder={t('applyNamePlaceholder')}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    autoComplete="name"
+                  />
+                </div>
+                <div className="fld">
+                  <label htmlFor="af-apply-email">{t('applyEmailLabel')}</label>
+                  <input
+                    id="af-apply-email"
+                    className="inp"
+                    type="email"
+                    placeholder={t('applyEmailPlaceholder')}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
+              </div>
+              {/* Honest hint — the unique link is minted SERVER-SIDE (no wished-slug
+                  field: the API only accepts name/email/consent) and revealed in the
+                  affiliate space after sign-in. */}
+              <p className="hint"><span className="ms">auto_awesome</span>{tC('linkHint')}</p>
+            </div>
 
-          {/* Honeypot — visually hidden, off-screen, not focusable. A bot fills it → silent OK. */}
-          <div aria-hidden="true" className="absolute left-[-9999px] top-[-9999px] h-0 w-0 overflow-hidden">
-            <label>
-              Website
-              <input
-                type="text"
-                tabIndex={-1}
-                autoComplete="off"
-                value={website}
-                onChange={(e) => setWebsite(e.target.value)}
-              />
-            </label>
-          </div>
+            {/* Honeypot — visually hidden, off-screen, not focusable. A bot fills it → silent OK. */}
+            <div aria-hidden="true" className="hp">
+              <label>
+                Website
+                <input
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                />
+              </label>
+            </div>
 
-          <label className="flex cursor-pointer items-start gap-2.5 rounded-grubano-lg bg-grubano-bg p-3">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-grubano-primary"
-            />
-            <span className="text-[13px] leading-snug text-grubano-ink-muted">{t('applyConsent')}</span>
-          </label>
+            <div className="fsec">
+              <div className="fsec__h">
+                <span className="fsec__n">2</span>
+                <div><b>{tC('secFinishTitle')}</b><span>{tC('secFinishSub')}</span></div>
+              </div>
+              <label className="consent">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                />
+                <span>
+                  {tC('consentPre')}{' '}
+                  <Link href="/legal/confidentialite" target="_blank" rel="noopener noreferrer">
+                    {tC('consentLink')}
+                  </Link>
+                  {tC('consentPost')}
+                </span>
+              </label>
+            </div>
 
-          {error && (
-            <p className="rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2 text-sm text-grubano-danger">{error}</p>
-          )}
+            {error && <p className="form-err">{error}</p>}
 
-          <Button
-            type="submit"
-            variant="primary"
-            size="md"
-            fullWidth
-            disabled={!canSubmit}
-            leftIcon={submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-          >
-            {submitting ? t('applySubmitting') : t('applySubmit')}
-          </Button>
-          <p className="text-center text-[11px] text-grubano-ink-faint">{t('joinNoVerif')}</p>
-        </form>
-      </Card>
+            <div className="form-foot">
+              <button type="submit" className="btn-af" disabled={!canSubmit}>
+                <span className="ms">{submitting ? 'progress_activity' : 'send'}</span>
+                {submitting ? t('applySubmitting') : t('applySubmit')}
+              </button>
+              <span className="note"><span className="ms">check_circle</span>{tC('footNote')}</span>
+            </div>
+          </form>
+
+          {/* aside — qualitative only (no €, no rates, no fabricated volumes) */}
+          <aside className="aside">
+            <div className="aside__promo">
+              <span className="ms">bolt</span>
+              <b>{tC('asidePromoTitle')}</b>
+              <span>{tC('asidePromoBody')}</span>
+            </div>
+            <div className="aside__card">
+              <h3><span className="ms">auto_awesome</span>{tC('asideAwaitsTitle')}</h3>
+              <ul className="aside__list">
+                <li><span className="ms">check_circle</span>{tC('asideAwaits1')}</li>
+                <li><span className="ms">check_circle</span>{tC('asideAwaits2')}</li>
+                <li><span className="ms">check_circle</span>{tC('asideAwaits3')}</li>
+                <li><span className="ms">check_circle</span>{tC('asideAwaits4')}</li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </div>
     </div>
   )
 }
