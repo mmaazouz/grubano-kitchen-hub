@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { Loader2, Banknote, ShieldCheck, FileText, KeyRound } from 'lucide-react'
 import { Card, Button, Input } from '@/components/design-system'
 import Dac7FiscalForm from '@/components/fiscal/Dac7FiscalForm'
@@ -36,10 +36,11 @@ type PostResult =
   | { status: 'stepup_required' }
   | { status: 'stepup_invalid' }
 
-const eur = (cents: number) => (cents / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-
 export default function AffiliateWithdrawCard() {
   const t = useTranslations('affiliate')
+  // Locale-aware money/date (migrated from hardcoded 'fr-FR' — value unchanged, AF4).
+  const locale = useLocale()
+  const eur = (cents: number) => (cents / 100).toLocaleString(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
   const [status, setStatus]   = useState<Status | null>(null)
   const [hidden, setHidden]   = useState(false)   // rail OFF / not an affiliate → render nothing
   const [loading, setLoading] = useState(true)
@@ -182,7 +183,7 @@ export default function AffiliateWithdrawCard() {
           <ul className="space-y-1">
             {status.payouts.map(p => (
               <li key={p.id} className="flex items-center justify-between text-[12px]">
-                <span className="text-grubano-ink-muted">{new Date(p.createdAt).toLocaleDateString('fr-FR')}</span>
+                <span className="text-grubano-ink-muted">{new Date(p.createdAt).toLocaleDateString(locale)}</span>
                 <span className="font-semibold">{eur(p.amountCents)} €</span>
                 <span className="text-[11px] text-grubano-ink-faint">{t(`payout_${p.status}` as 'payout_paid')}</span>
               </li>
