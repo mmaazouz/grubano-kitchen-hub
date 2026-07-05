@@ -6,7 +6,6 @@ import { authOptions } from '@/lib/auth'
 import { isAffiliateEnabled, getAffiliateByOperator } from '@/lib/affiliate-account'
 import { buildAffiliateLink } from '@/lib/affiliate-link'
 import { Card, Button } from '@/components/design-system'
-import PartnerChrome from '@/components/business/PartnerChrome'
 import AffiliateLinkCard from '@/components/affiliate/AffiliateLinkCard'
 import AffiliateDashboardClient from '@/components/affiliate/AffiliateDashboardClient'
 import AffiliateWithdrawCard from '@/components/affiliate/AffiliateWithdrawCard'
@@ -38,8 +37,7 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
   const affiliate = await getAffiliateByOperator(operatorId)
 
   return (
-    <PartnerChrome>
-      <div className="w-full max-w-lg space-y-4">
+    <div className="mx-auto w-full max-w-lg space-y-4">
         <div>
           <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{t('dashTitle')}</h1>
           <p className="mt-1 text-sm text-grubano-ink-muted">{t('dashSubtitle')}</p>
@@ -88,7 +86,6 @@ export default async function AffiliateDashboardPage({ params: { locale } }: { p
             </Link>
           </Card>
         )}
-      </div>
-    </PartnerChrome>
+    </div>
   )
 }

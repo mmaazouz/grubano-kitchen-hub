@@ -7475,5 +7475,33 @@
       "revenue": "أرباح",
       "settings": "المزيد"
     }
+  },
+  "affiliateShell": {
+    "badge": "منتسِب",
+    "collapse": "طيّ",
+    "menu": "القائمة",
+    "notifications": "الإشعارات",
+    "spaceTitle": "مساحة المنتسِب",
+    "signOut": "تسجيل الخروج",
+    "group": {
+      "promotion": "الترويج",
+      "revenus": "الإيرادات",
+      "systeme": "النظام"
+    },
+    "nav": {
+      "overview": "الرئيسية",
+      "links": "روابطي",
+      "influencer": "كن مؤثِّرًا",
+      "earnings": "أرباحي",
+      "withdrawals": "السحوبات",
+      "settings": "الإعدادات"
+    },
+    "mnav": {
+      "overview": "الرئيسية",
+      "links": "روابط",
+      "earnings": "أرباح",
+      "withdrawals": "سحوبات",
+      "more": "المزيد"
+    }
   }
 }

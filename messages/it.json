@@ -7475,5 +7475,33 @@
       "revenue": "Guadagni",
       "settings": "Altro"
     }
+  },
+  "affiliateShell": {
+    "badge": "AFFILIATO",
+    "collapse": "Comprimi",
+    "menu": "Menu",
+    "notifications": "Notifiche",
+    "spaceTitle": "Spazio affiliato",
+    "signOut": "Esci",
+    "group": {
+      "promotion": "Promozione",
+      "revenus": "Ricavi",
+      "systeme": "Sistema"
+    },
+    "nav": {
+      "overview": "Home",
+      "links": "I miei link",
+      "influencer": "Diventa influencer",
+      "earnings": "I miei guadagni",
+      "withdrawals": "Prelievi",
+      "settings": "Impostazioni"
+    },
+    "mnav": {
+      "overview": "Home",
+      "links": "Link",
+      "earnings": "Guadagni",
+      "withdrawals": "Prelievi",
+      "more": "Altro"
+    }
   }
 }
