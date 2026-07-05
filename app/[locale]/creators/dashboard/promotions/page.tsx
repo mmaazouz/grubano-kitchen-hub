@@ -29,7 +29,7 @@ import { getFoodImage, inferCategory } from '@/lib/food-images'
 import DishEditorModal, { type EditableDish } from '@/components/creators/DishEditorModal'
 import type { CreatorHomeData } from '@/app/api/creators/home/route'
 import type { MyDish } from '@/app/api/creators/my-dishes/route'
-import './creator-recipes.css'
+import '../creator-recipes.css'
 
 function fmt(n: number) {
   return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

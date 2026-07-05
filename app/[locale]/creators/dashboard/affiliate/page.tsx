@@ -25,7 +25,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { QRCodeSVG } from 'qrcode.react'
 import { buildAffiliateLink, buildAffiliateRestaurantLink } from '@/lib/affiliate-link'
 import AffiliateStudio from '@/components/creators/AffiliateStudio'
-import './creator-affiliate.css'
+import '../creator-affiliate.css'
 
 // ── Contract (mirrored locally — the route is the source of truth) ────────────
 interface ByMonth { month: string; gainCents: number }

@@ -5,7 +5,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { signOut } from 'next-auth/react'
 import { usePathname, useRouter } from '@/navigation'
 import type { Locale } from '@/i18n'
-import './creator-settings.css'
+import '../creator-settings.css'
 
 // ── CR7 · Paramètres (CreatorShell --op-/--op-cr, CD verbatim) ────────────────────
 // RE-SKIN of the editable creator profile. Renders INSIDE the CreatorShell .op-content
