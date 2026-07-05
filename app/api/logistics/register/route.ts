@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { ensureLogisticsOperator, decideLogisticsOutcome, applyCourierActivationGate, isCourierActivationEnabled } from '@/lib/logistics-account'
 import { verifyBusiness } from '@/lib/business-verification'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
+import { rateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,6 +66,13 @@ function ok(outcome: Outcome, officialName?: string | null, waitlist = false) {
 }
 
 export async function POST(req: Request) {
+  // S2 (abuse/cost) — this PUBLIC endpoint triggers a paid verifyBusiness call (LLM + official
+  // registry) on a fresh SIREN, so throttle it per-IP (in addition to the honeypot + 2 s delay
+  // below, which are preserved). Flag-gated by RATE_LIMIT_ENABLED (default OFF) → NO-OP / byte-
+  // identical today; generous 10/min never hit by a real human (who registers once). Runs BEFORE
+  // body parse (headers only) — the honeypot / too-fast short-circuits stay intact.
+  const limited = rateLimit(req, 'logistics_register', { limitDefault: 10, windowDefault: 60 })
+  if (limited) return limited
   try {
     const body = await req.json().catch(() => null)
     const parsed = registerSchema.safeParse(body)

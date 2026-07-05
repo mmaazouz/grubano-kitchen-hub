@@ -92,7 +92,9 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
       take: 50,
     })
-    return NextResponse.json({ ok: true, missions: missions.map(serializeMission) })
+    // NB: arrow (not a bare .map(serializeMission)) so the requester's OWN missions keep the FULL
+    // drop-off — no maskDropoff here (S1 masking is only for the anonymous OFFER pool).
+    return NextResponse.json({ ok: true, missions: missions.map((m) => serializeMission(m)) })
   } catch (err) {
     console.error('[GET /api/logistics/missions/request]', err)
     return NextResponse.json({ ok: false, error: 'Erreur serveur' }, { status: 500 })

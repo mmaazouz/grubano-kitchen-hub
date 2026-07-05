@@ -14,6 +14,9 @@ export const dynamic = 'force-dynamic'
 // session e-mail → their LogisticsProfile (no client id → no IDOR). The eligibility +
 // already-declined filtering is done by lib/mission-attribution (brick 2), reused as-is.
 // NO money is computed (priceCents is passed through as inert data).
+// S1 (privacy): this OFFER list is broadcast to the whole eligible pool, so the exact client
+// drop-off is MASKED to a zone/quartier (maskDropoff) — the full address is revealed only once a
+// courier has claimed the mission (they are no longer part of an anonymous pool).
 export async function GET() {
   if (!isMissionsEnabled()) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 })
@@ -28,7 +31,7 @@ export async function GET() {
 
     // Reuses brick 2 — returns [] for a non-active courier / flag OFF, excludes declined.
     const missions = await offeredMissionsForCourier(profile.id)
-    return NextResponse.json({ ok: true, missions: missions.map(serializeMission) })
+    return NextResponse.json({ ok: true, missions: missions.map((m) => serializeMission(m, { maskDropoff: true })) })
   } catch (err) {
     console.error('[GET /api/logistics/missions]', err)
     return NextResponse.json({ ok: false, error: 'Erreur serveur' }, { status: 500 })

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import type { Mission } from '@prisma/client'
-import { isMissionsEnabled, canTransition } from '@/lib/missions'
+import type { Mission, Prisma } from '@prisma/client'
+import { isMissionsEnabled, canTransition, buildTransitionData, type MissionStatus } from '@/lib/missions'
 
 // ── Logistics mission ATTRIBUTION — Brick 2/4 (Agent 123) ──────────────────────
 //
@@ -199,4 +199,66 @@ export async function offeredMissionsForCourier(courierId: string): Promise<Miss
     },
   })
   return candidates.filter((m) => isCourierEligibleForMission(courier, { type: m.type, zone: m.zone }))
+}
+
+// ── Lifecycle steps the ASSIGNED courier drives (brick 3 wiring, Agent 126) ────
+// After a courier freely accepts (offered→accepted, above), THEY carry the mission forward:
+// accepted→picked_up→delivered, or drop out via accepted|picked_up→cancelled. These steps are
+// what makes the fleet operable. Same non-negotiables as acceptance: OWNER-SCOPED (only the
+// mission's own courier may act — no IDOR), ATOMIC (a guarded conditional updateMany), and ZERO
+// money (priceCents is never read; NO gain/payout/ledger/commission is written — pure state-
+// machine bookkeeping). Legality is the brick-1 pure state machine (canTransition/buildTransitionData),
+// reused, NOT forked. Gated by LOGISTICS_MISSIONS_ENABLED (default OFF) → no-op when OFF.
+
+/** The forward steps a courier drives on a mission they already own (post-acceptance). */
+export type CourierMissionStep = Extract<MissionStatus, 'picked_up' | 'delivered' | 'cancelled'>
+
+export type AdvanceResult =
+  | { ok: true; missionId: string; status: CourierMissionStep }
+  | { ok: false; reason: 'disabled' | 'not_found' | 'forbidden' | 'invalid_transition' | 'conflict' }
+
+/**
+ * The connected courier advances a mission THEY OWN along the lifecycle. Steps:
+ *   accepted→picked_up  (picked up)   ·  picked_up→delivered  (delivered)
+ *   accepted→cancelled / picked_up→cancelled  (courier drops out — NEUTRAL, no penalty stored)
+ *
+ * OWNER-SCOPE: only the courier the mission is assigned to may act. An unclaimed ('offered',
+ * courierId null) or someone-else's mission → 'forbidden' (never acts on it) — no IDOR.
+ * ATOMIC: the write is a conditional updateMany pinning BOTH the expected current status AND the
+ * owning courierId, so the DB serialises concurrent calls — a status that moved underneath yields
+ * count===0 → 'conflict' (never a wrong write). Transition legality is the brick-1 PURE state
+ * machine: an illegal step → 'invalid_transition' (the route maps it to HTTP 422). buildTransitionData
+ * is the single source of the {status + its lifecycle timestamp} patch. ZERO money is touched.
+ */
+export async function advanceMissionByCourier(
+  missionId: string,
+  courierId: string,
+  to: CourierMissionStep,
+  now: Date = new Date(),
+): Promise<AdvanceResult> {
+  if (!isMissionsEnabled()) return { ok: false, reason: 'disabled' }
+
+  const mission = await prisma.mission.findUnique({
+    where:  { id: missionId },
+    select: { id: true, status: true, courierId: true },
+  })
+  if (!mission) return { ok: false, reason: 'not_found' }
+  // OWNER-SCOPE — only the assigned courier may drive their mission (no IDOR).
+  if (!mission.courierId || mission.courierId !== courierId) return { ok: false, reason: 'forbidden' }
+
+  const from = mission.status as MissionStatus
+  if (!canTransition(from, to)) return { ok: false, reason: 'invalid_transition' }
+
+  // ── ATOMIC guarded transition — WHERE pins the expected status AND the owning courier, so a
+  // concurrent change (already advanced / requester-cancelled) makes count===0 → 'conflict'. The
+  // patch is the brick-1 pure {status + timestamp}; TS can't prove the dynamic timestamp key maps
+  // onto Prisma's mutation input, hence the single documented cast (the value is a valid patch).
+  const patch = buildTransitionData(from, to, now) as unknown as Prisma.MissionUpdateManyMutationInput
+  const res = await prisma.mission.updateMany({
+    where: { id: missionId, status: from, courierId },
+    data:  patch,
+  })
+  if (res.count === 0) return { ok: false, reason: 'conflict' } // status moved underneath — no wrong write
+
+  return { ok: true, missionId, status: to }
 }
