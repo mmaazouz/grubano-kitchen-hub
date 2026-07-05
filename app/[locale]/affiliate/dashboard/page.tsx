@@ -3,89 +3,74 @@ import { getServerSession } from 'next-auth'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { Link } from '@/navigation'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { isAffiliateEnabled, getAffiliateByOperator } from '@/lib/affiliate-account'
 import { buildAffiliateLink } from '@/lib/affiliate-link'
-import { Card, Button } from '@/components/design-system'
-import AffiliateLinkCard from '@/components/affiliate/AffiliateLinkCard'
-import AffiliateDashboardClient from '@/components/affiliate/AffiliateDashboardClient'
-import AffiliateWithdrawCard from '@/components/affiliate/AffiliateWithdrawCard'
-import AffiliateVerifyCard from '@/components/affiliate/AffiliateVerifyCard'
-import AffiliateStudioCard from '@/components/affiliate/AffiliateStudioCard'
-import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
-import OnboardingInfluencerUpgrade from '@/components/affiliate/OnboardingInfluencerUpgrade'
+import { buildAffiliateIdentity } from '@/lib/affiliate-identity'
+import AffiliateHomeClient from '@/components/affiliate/AffiliateHomeClient'
 import OnboardingChat from '@/components/onboarding/OnboardingChat'
+import './affiliate-home.css'
 
 export const dynamic = 'force-dynamic'
 
-// ── /affiliate/dashboard — the affiliate home SHELL (Brique A, Agent 58) ──────────
-// Role-gated (middleware: affiliate/admin). 404 when AFFILIATE_ENABLED is OFF. Brique A
-// ships the minimal shell: the affiliate sees THEIR referral link/code. The rich
-// dashboard (gains, gamification, clicks) = Brique C; the live commission = Brique B;
-// the withdrawal = Brique D. Owner-scoped: the affiliate is resolved from the SESSION
-// operator id (never a client value). A defensive "not yet an affiliate" path links to
-// the instant-join flow (the middleware normally redirects non-affiliates there already).
-
+// ── /affiliate/dashboard — the affiliate home (CD AF1). ───────────────────────────
+// Mounted inside the AffiliateShell (AF0 layout). Owner-scoped: the affiliate is resolved
+// from the SESSION operator id (never a client value → no IDOR). 404 when AFFILIATE_ENABLED
+// is OFF (the layout also gates → surface invisible). DISPLAY-ONLY re-skin: the money view
+// (earnings 🔒) is rendered by AffiliateHomeClient from /api/affiliate/stats — server cents/
+// 100, never recomputed, no fabricated payout date. The withdrawal (AF4) and the influencer
+// verification/studio (AF5) moved OFF this screen to their own routes. Kept: the self-gating
+// OnboardingChat help island (renders null when its flag is OFF → byte-identical). RE-SKIN —
+// 0 migration, flags OFF byte-identical, moteur d'argent NON touché.
 export default async function AffiliateDashboardPage({ params: { locale } }: { params: { locale: string } }) {
   setRequestLocale(locale)
   if (!isAffiliateEnabled()) notFound()
 
   const session = await getServerSession(authOptions)
   const operatorId = (session?.user as { id?: string } | undefined)?.id
-  if (!operatorId) redirect('/auth/magic')
+  if (!operatorId) redirect('/affiliate/join')
+
+  const [operator, affiliate] = await Promise.all([
+    prisma.operator.findUnique({ where: { id: operatorId }, select: { name: true, email: true } }),
+    getAffiliateByOperator(operatorId),
+  ])
 
   const t = await getTranslations('affiliate')
-  const affiliate = await getAffiliateByOperator(operatorId)
+
+  // Defensive "not yet an affiliate" path (the middleware normally routes non-affiliates to
+  // the instant-join flow already). Re-skinned to the shell primitives.
+  if (!affiliate) {
+    return (
+      <section>
+        <div className="op-card op-empty">
+          <span className="ms">link</span>
+          <b>{t('notYetAffiliate')}</b>
+          <Link href="/affiliate/join" className="op-btn-primary" style={{ marginTop: 18 }}>
+            <span className="ms">bolt</span>{t('joinCta')}
+          </Link>
+        </div>
+      </section>
+    )
+  }
+
+  const identity = buildAffiliateIdentity({
+    name:  operator?.name ?? null,
+    email: operator?.email ?? session?.user?.email ?? '',
+    slug:  affiliate.referralLinkSlug,
+  })
+  const link = buildAffiliateLink(affiliate.referralLinkSlug) ?? ''
 
   return (
-    <div className="mx-auto w-full max-w-lg space-y-4">
-        <div>
-          <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{t('dashTitle')}</h1>
-          <p className="mt-1 text-sm text-grubano-ink-muted">{t('dashSubtitle')}</p>
-        </div>
-
-        {affiliate ? (
-          <>
-            {/* Onboarding copilot — role-aware guide (Agent 98). SELF-GATING: renders null when
-                ONBOARDING_GUIDE_ENABLED is OFF → dashboard byte-identical. role="affiliate" →
-                reads the owner-scoped affiliate checklist; shows progress + a "resume" CTA toward
-                the next step (e.g. "préparez vos retraits"). Reads state only — moves no money. */}
-            <OnboardingGuide role="affiliate" />
-            {/* INF onboarding (Agent 99) — OPTIONAL "become an influencer" upgrade, OUTSIDE the
-                affiliate checklist (so a normal affiliate is never marked incomplete). Reuses the
-                EXISTING verification state + request action (AffiliateVerifyCard below, anchored at
-                #influencer-verify). Self-gating: hides when INFLUENCER_ENABLED is OFF → byte-identical. */}
-            <OnboardingInfluencerUpgrade />
-            {/* Onboarding help chat (Agent 101) — role-aware anchoring on the affiliate journey.
-                SELF-GATING: renders null when ONBOARDING_AI_CHAT_ENABLED is OFF → byte-identical.
-                Constrained server-side (refuses legal/fiscal/financial, never quotes a rate). */}
-            <OnboardingChat role="affiliate" />
-            <AffiliateLinkCard
-              link={buildAffiliateLink(affiliate.referralLinkSlug) ?? ''}
-              code={affiliate.referralCode}
-            />
-            {/* Brique C — real earnings + gamification + click funnel (fetches /api/affiliate/stats). */}
-            <AffiliateDashboardClient />
-            {/* Brique D2 — self-service withdrawal (KYC + fiscal + payout). Hides itself
-                when AFFILIATE_CONNECT_ENABLED is OFF → dashboard byte-identical. */}
-            <AffiliateWithdrawCard />
-            {/* INF-1 — audience verification (become an influencer). Hides itself when
-                INFLUENCER_ENABLED is OFF → dashboard byte-identical. No money effect. The
-                #influencer-verify anchor is the target of the Agent 99 onboarding upgrade CTA. */}
-            <div id="influencer-verify" className="scroll-mt-4">
-              <AffiliateVerifyCard />
-            </div>
-            {/* INF-2 — content studio (verified-influencer advantage). Hides itself when
-                the flag is OFF; shows a "reserved to verified" hint otherwise. No money. */}
-            <AffiliateStudioCard />
-          </>
-        ) : (
-          <Card elevation="sm" padding="lg" className="text-center">
-            <p className="text-sm text-grubano-ink-muted">{t('notYetAffiliate')}</p>
-            <Link href="/affiliate/join" className="mt-4 inline-block">
-              <Button variant="primary" size="sm">{t('joinCta')}</Button>
-            </Link>
-          </Card>
-        )}
-    </div>
+    <>
+      {/* Onboarding help chat (Agent 101) — role-aware, SELF-GATING: renders null when
+          ONBOARDING_AI_CHAT_ENABLED is OFF → accueil byte-identical. Never quotes a rate. */}
+      <OnboardingChat role="affiliate" />
+      <AffiliateHomeClient
+        name={identity.name}
+        initials={identity.initials}
+        statusActive={affiliate.status === 'active'}
+        link={link}
+      />
+    </>
   )
 }
