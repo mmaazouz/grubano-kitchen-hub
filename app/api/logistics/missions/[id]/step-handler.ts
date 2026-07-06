@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled } from '@/lib/missions'
 import { advanceMissionByCourier, type CourierMissionStep, type AdvanceResult } from '@/lib/mission-attribution'
+import { accrueCourierCourseEarning } from '@/lib/courier-accrual'
 
 // ── Shared handler for the courier lifecycle steps — pickup / deliver / cancel (brick 3
 // wiring, Agent 126). One handler, three thin route.ts files (a courier drives a mission they
@@ -11,7 +12,9 @@ import { advanceMissionByCourier, type CourierMissionStep, type AdvanceResult } 
 // LOGISTICS_MISSIONS_ENABLED → 404 when OFF (the feature does not exist yet). Owner-scoped: the
 // courier is resolved from the session e-mail → their LogisticsProfile (no client id → no IDOR);
 // brick-2 advanceMissionByCourier enforces that ONLY the assigned courier may act, via an ATOMIC
-// guarded transition. NO money is ever touched (priceCents inert; no gain/payout/ledger/commission).
+// guarded transition. The transition itself stays money-free; the ONLY money side-effect is the
+// P4.3 ÉTAPE 3 course accrual on 'delivered' (below) — best-effort, idempotent, and INERT unless
+// LOGISTICS_COURIER_ACCRUAL_ENABLED is ON + the order is case B ('grubano_courier').
 
 // Non-ok brick-2 reason → HTTP. 'invalid_transition' → 422 (a step the state machine forbids);
 // 'forbidden' → 403 (not this courier's mission); 'not_found'/'disabled' → 404; 'conflict' → 409
@@ -40,6 +43,26 @@ export async function handleCourierMissionStep(
     if (!profile) return NextResponse.json({ ok: false, error: 'Profil livreur introuvable' }, { status: 403 })
 
     const result = await advanceMissionByCourier(missionId, profile.id, to)
+
+    // ── P4.3 ÉTAPE 3 — accrue the courier's COURSE earning once the mission is DELIVERED ──
+    // BEST-EFFORT + idempotent (self-guards on mission state + owner + case B, DB @@unique):
+    // it runs on a successful delivered transition AND on a 'conflict' retry (the mission is
+    // already delivered → HEALS a failed first accrual). It NEVER affects the HTTP response
+    // (a failure is logged only) and is INERT unless LOGISTICS_COURIER_ACCRUAL_ENABLED is ON
+    // and the order is 'grubano_courier' (case B) → for case A / flag OFF this is a no-op and
+    // the step routes are byte-identical. advanceMissionByCourier stays money-free (its own
+    // invariant); the money side-effect lives here at the route layer (cf. orders/pay accruals).
+    if (to === 'delivered' && (result.ok || result.reason === 'conflict')) {
+      try {
+        await accrueCourierCourseEarning(missionId, profile.id)
+      } catch (err) {
+        console.error(
+          `[logistics deliver] courier course accrual failed for mission ${missionId} (delivery unaffected): ` +
+          (err instanceof Error ? err.message : String(err)),
+        )
+      }
+    }
+
     if (result.ok) return NextResponse.json(result)
     return NextResponse.json(result, { status: REASON_STATUS[result.reason] ?? 400 })
   } catch (err) {

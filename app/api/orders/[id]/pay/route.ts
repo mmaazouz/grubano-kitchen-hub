@@ -11,6 +11,7 @@ import { commissionBaseCents, commissionBaseMode } from '@/lib/promotions'
 import { computeFranchiseRoyalty, recordFranchiseRoyalty } from '@/lib/franchise-royalty'
 import { isTipsEnabled } from '@/lib/tips'
 import { recordCourierTipLedgerEntry } from '@/lib/ledger'
+import { isLogisticsCourierAccrualEnabled } from '@/lib/courier-accrual'
 
 // ── POST /api/orders/[id]/pay ─────────────────────────────────────────────────
 // Chantier checkout C1 (décision C0: pickup AND delivery are paid IMMEDIATELY at
@@ -20,7 +21,11 @@ import { recordCourierTipLedgerEntry } from '@/lib/ledger'
 //   • charge amount = order.total (products + delivery fee − welcome discount),
 //     read SERVER-side (anti-fraud, the client never sends an amount);
 //   • commission = lib/commission on the PRODUCT SUBTOTAL ONLY (C0: the delivery
-//     fee goes 100 % to the resto — Grubano never commissions the courier cost),
+//     fee goes 100 % to the resto — Grubano never commissions the courier cost).
+//     EXCEPTION P4.3 ÉTAPE 3 (case B): when Order.deliveryMode='grubano_courier' AND
+//     LOGISTICS_COURIER_ACCRUAL_ENABLED is ON, the deliveryFee is instead withheld in
+//     the application_fee (the courier is paid from it later); case A ('restaurant',
+//     the default/only prod value) / flag OFF → byte-identical to the C0 behaviour.
 //     channel 'pickup' or 'delivery' from the order's fulfillmentType,
 //     MINUS the welcome discount (B0: the discount is financed BY GRUBANO — it
 //     comes out of OUR commission, floored at 0, never out of the resto's net);
@@ -132,6 +137,18 @@ export async function POST(
         tipCents = extra?.tipCents ?? 0
       } catch { /* column missing pre-db-push → 0 */ }
     }
+    // P4.3 ÉTAPE 3 — case-B courier delivery mode. Read ONLY behind the accrual flag (and in
+    // its own guard, same reason as tip: a combined select would throw as a unit on a missing
+    // column and wrongly zero the existing reads during a deploy window). With the flag OFF —
+    // or the column absent — deliveryMode stays 'restaurant' (case A) → the withholding below
+    // is 0 → the charge/fee are BYTE-IDENTICAL. Only 'grubano_courier' (case B) withholds.
+    let deliveryMode = 'restaurant'
+    if (isLogisticsCourierAccrualEnabled()) {
+      try {
+        const extra = await prisma.order.findUnique({ where: { id: order.id }, select: { deliveryMode: true } })
+        deliveryMode = extra?.deliveryMode ?? 'restaurant'
+      } catch { /* column missing pre-db-push → 'restaurant' (case A) */ }
+    }
 
     // amountCents (= order.total) = subtotal + delivery + smallFee + tip − promo −
     // credit. So the discount baked into the charge = subtotal + delivery + smallFee
@@ -191,7 +208,18 @@ export async function POST(
     // tipCents is 0 → byte-identical. (Only routed charges split the fee; on the
     // platform fallback the whole charge — tip included — already stays on Grubano's
     // account and the 'courier_tip' accrual still records the obligation.)
-    const baseFeeCents = routed ? Math.max(0, grossFeeCents - loyaltyCreditCents) + smallFeeCents + tipCents : 0
+    // P4.3 ÉTAPE 3 — case-B courier withholding. When Order.deliveryMode === 'grubano_courier'
+    // (and the accrual flag is ON), the FULL deliveryFee is retained in the platform's
+    // application_fee instead of going to the resto — EXACTLY the tip pattern: the deliveryFee
+    // is already in amountCents (order.total includes it) AND is added to the fee here, so the
+    // +fee in amount and the +fee in the app fee CANCEL for the resto (net = amount − fee drops
+    // by the deliveryFee, i.e. the resto no longer keeps it). The platform then owes the courier
+    // net = 80 % of it (accrued at delivery, lib/courier-accrual) and keeps 20 % commission. Only
+    // routed (destination) charges split the fee; on the platform fallback the whole charge stays
+    // on Grubano anyway. Case A ('restaurant') / flag OFF → 0 → BYTE-IDENTICAL. The royalty clamp
+    // below sees this in baseFeeCents (room = amount − baseFee), so feeCents ≤ amount stays true.
+    const courierWithheldCents = (routed && deliveryMode === 'grubano_courier') ? eurosToCents(order.deliveryFee) : 0
+    const baseFeeCents = routed ? Math.max(0, grossFeeCents - loyaltyCreditCents) + smallFeeCents + tipCents + courierWithheldCents : 0
     const royaltyChargedCents = routed
       ? Math.min(royalty.royaltyCents, Math.max(0, amountCents - baseFeeCents))
       : 0
@@ -342,6 +370,10 @@ export async function POST(
         // applies, so the obligation is recoverable from Stripe even if the DB
         // ledger write fails. Spreads NOTHING when no tip → byte-identical metadata.
         ...(tipCents > 0 ? { courier_tip_cents: String(tipCents) } : {}),
+        // P4.3 ÉTAPE 3: stamp the withheld case-B deliveryFee (cents) on the (immutable) PI
+        // so the courier obligation is recoverable from Stripe. Spreads NOTHING for case A /
+        // flag OFF (courierWithheldCents 0) → byte-identical metadata.
+        ...(courierWithheldCents > 0 ? { courier_withheld_cents: String(courierWithheldCents) } : {}),
       },
       idempotencyKey: `orderpay-${order.id}-${amountCents}-${feeCents}-${order.stripePaymentIntentId ?? 'first'}`,
     })

@@ -1827,6 +1827,12 @@ model CourierEarning {
   paidAt       DateTime?        // when a Payout settled this earning (reporting only)
   createdAt    DateTime         @default(now())
 
+  // ── Idempotency (P4.3 ÉTAPE 3) — one earning per (mission, type). The delivery accrual
+  // does create-catch-P2002, so a re-delivered / retried mission never double-accrues its
+  // COURSE. missionId is nullable → MySQL treats NULLs as distinct, so this constrains only
+  // rows that carry a missionId (course accruals always do); a future orderId-only earning is
+  // unaffected. Course = 1 per mission, tip (ÉTAPE 6) = 1 per mission → never wrongly blocks.
+  @@unique([missionId, type])
   @@index([courierId, status])
   @@index([missionId])
   @@index([orderId])
