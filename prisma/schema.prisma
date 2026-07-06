@@ -2161,6 +2161,16 @@ model Order {
   status          String     @default("received") // received|preparing|ready|picked_up|delivered|cancelled
   fulfillmentType String     @default("delivery") // delivery|pickup
   deliveryAddress String
+  // ── Geocoded delivery position (P4.3 ÉTAPE 4 — distance-based fee, additive) ─────
+  // PERSONAL DATA (the customer's delivery/home position). DATA MINIMISATION: only the
+  // two coordinates — the INPUTS to the haversine distance — are stored; nothing else
+  // from the BAN geocoding (the delivery ADDRESS string is already `deliveryAddress`).
+  // Nullable + written BEST-EFFORT only when LOGISTICS_DISTANCE_FEE_ENABLED is ON and the
+  // address geocodes → in prod (flag OFF) these stay NULL and the Order is byte-identical.
+  // Used solely to compute the distance delivery fee (and a later courier ETA). ADDITIVE +
+  // REVERSIBLE: dropping the columns leaves every existing order untouched.
+  deliveryLat     Float?
+  deliveryLng     Float?
   paymentMethod   String     @default("card")
   // ── Checkout payment (chantier C1, additive — TEST mode) ────────────────────
   // ADDITIVE + REVERSIBLE: pickup/delivery orders are now REALLY charged (C0:

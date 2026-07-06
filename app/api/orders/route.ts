@@ -10,6 +10,7 @@ import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { isTipsEnabled, sanitizeTipCents } from '@/lib/tips'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
 import { isDeliveryZoneEnforcementEnabled, checkDeliveryZone } from '@/lib/delivery-zone'
+import { isLogisticsDistanceFeeEnabled, resolveDistanceDeliveryFee } from '@/lib/logistics-fee'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
 import { z } from 'zod'
@@ -146,7 +147,26 @@ export async function POST(req: NextRequest) {
     // restaurant's normal fee. Used everywhere the fee applies to THIS order
     // (total calc + the deliveryFee stored on the Order) so the billing matches
     // exactly what the cart already shows the customer.
-    const effectiveDeliveryFee = data.fulfillmentType === 'pickup' ? 0 : restaurant.deliveryFee
+    //
+    // ── Distance-based fee (P4.3 ÉTAPE 4 — flag-gated) ──────────────────────────
+    // OFF (default) → the FLAT Restaurant.deliveryFee, BYTE-IDENTICAL to today (no
+    // geocode, no coords). ON → base + per-km barème (lib/logistics-fee) on the
+    // haversine distance between the resto and the geocoded client address. FAIL-OPEN:
+    // if the address can't be geocoded (or the resto isn't geocoded / BAN is down) we
+    // KEEP the flat fee and log — a geocoding hiccup NEVER blocks or reprices the order
+    // punitively. Only the AMOUNT changes; the case-A/case-B routing (ÉTAPE 3) reads the
+    // stored Order.deliveryFee unchanged. Pickup is always 0 (unchanged).
+    let effectiveDeliveryFee = data.fulfillmentType === 'pickup' ? 0 : restaurant.deliveryFee
+    let deliveryCoords: { latitude: number; longitude: number } | null = null
+    if (data.fulfillmentType !== 'pickup' && isLogisticsDistanceFeeEnabled()) {
+      const distFee = await resolveDistanceDeliveryFee(restaurant, data.deliveryAddress)
+      if (distFee) {
+        effectiveDeliveryFee = distFee.feeCents / 100 // integer cents → EUR (exact for cents)
+        deliveryCoords = distFee.coords
+      } else {
+        console.warn(`[POST /api/orders] distance fee: geocoding unavailable for restaurant ${restaurant.id} → flat fee fallback`)
+      }
+    }
 
     if (subtotal < restaurant.minOrder) {
       return NextResponse.json(
@@ -507,6 +527,24 @@ export async function POST(req: NextRequest) {
         estimatedTime: dispatch.estimatedTime,
       },
     })
+
+    // ── Delivery coords (P4.3 ÉTAPE 4) — BEST-EFFORT + COLUMN-TOLERANT ─────────
+    // Persist the geocoded client position (MINIMISATION: only lat/lng, the inputs to
+    // the distance calc; the delivery ADDRESS string is already stored). Runs ONLY when
+    // the distance-fee flag is ON and the address geocoded (deliveryCoords set) → in prod
+    // (flag OFF) deliveryCoords is null and this whole block is skipped, byte-identical.
+    // A missing column pre-db-push logs and moves on — the fee is already applied.
+    if (deliveryCoords) {
+      try {
+        await prisma.order.update({
+          where: { id: order.id },
+          data:  { deliveryLat: deliveryCoords.latitude, deliveryLng: deliveryCoords.longitude },
+        })
+      } catch (coordErr) {
+        console.error('[POST /api/orders] delivery coords write failed (column missing pre-db-push? order stays valid):',
+          coordErr instanceof Error ? coordErr.message : coordErr)
+      }
+    }
 
     // ── Promotion trace (P1) — BEST-EFFORT + COLUMN-TOLERANT ───────────────────
     // The applied promo (id + EUR amount) is written in a SEPARATE update so a
