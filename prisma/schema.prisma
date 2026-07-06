@@ -957,8 +957,24 @@ model Mission {
   // forced assignment. FK → LogisticsProfile (the courier's business profile).
   courierId      String?
   courier        LogisticsProfile? @relation(fields: [courierId], references: [id])
-  // Mission kind — mirrors the LogisticsProfile.missionTypes taxonomy.
+  // Mission kind — mirrors the LogisticsProfile.missionTypes taxonomy. This is the
+  // WHAT-is-carried axis; the WHO-PAYS axis is the separate payerType below.
   type           String   @default("repas")  // repas | produits_fournisseurs | b2b | froid
+  // ── Payer discriminant (P4.3 ÉTAPE 1 — fondations, additive + INERT) ────────────
+  // WHO finances THIS mission — the supply/procurement (approvisionnement) axis, reserved
+  // now so the future rail can key off it. RESERVED STRUCTURE ONLY: no reader anywhere, no
+  // money logic (the payment rail is HELD, priceCents stays inert). String (codebase
+  // convention, no native MySQL enum):
+  //   restaurant          = DEFAULT = statu quo. For a fournisseur→resto supply mission the
+  //                         restaurateur pays (product model); for a B2C repas mission this
+  //                         mirrors Order.deliveryMode=restaurant. No behaviour keys off it yet.
+  //   grubano             = RESERVED (case B): the independent Grubano-courier economics.
+  //   platform_subsidized = RESERVED: Grubano-financed delivery (subscription 0 €).
+  //   supplier            = RESERVED: fournisseur→resto supply mission where the supplier is
+  //                         the payer context — SupplyOrder→Mission is NOT wired here (later).
+  // DEFAULT = "restaurant" → every existing + new mission is statu quo. ADDITIVE + REVERSIBLE:
+  // drop the column and Mission is byte-identical.
+  payerType      String   @default("restaurant")
   pickupAddress  String
   dropoffAddress String
   zone           String?
@@ -2133,6 +2149,22 @@ model Order {
   // NEVER in the commission base, NEVER earns loyalty points. Written BEST-EFFORT
   // post-create (column-tolerant → inert before the db push). Gated by TIPS_ENABLED.
   tipCents           Int  @default(0)
+  // ── Delivery-mode discriminant (P4.3 ÉTAPE 1 — fondations, additive + INERT) ────
+  // WHO fulfils/finances the delivery of THIS consumer order. RESERVED STRUCTURE ONLY:
+  // no reader anywhere (no money routing, no distance calc, no payout keys off it yet —
+  // those are LATER P4.3 steps). String (codebase convention, no native MySQL enum):
+  //   restaurant          = DEFAULT = current behaviour. The delivery is the resto's own
+  //                         (case A, courier belonging to the restaurateur) OR the resto's
+  //                         forfait fee — deliveryFee stays 100 % resto, exactly as today.
+  //   grubano_courier     = case B, RESERVED: an independent Grubano courier delivers; the
+  //                         client's deliveryFee will later be split (courier paid, −20 %
+  //                         Grubano commission). NOT ROUTED in this step.
+  //   platform_subsidized = RESERVED: a "livraison 0 €" subscription (client or resto) where
+  //                         Grubano finances the delivery. NOT ROUTED in this step.
+  // DEFAULT = "restaurant" → every existing row + every new order is statu quo (order.create
+  // omits this field, Prisma applies the default). ADDITIVE + REVERSIBLE: drop the column and
+  // the Order flow is byte-identical.
+  deliveryMode       String @default("restaurant")
   referralOrder   ReferralOrder?
   // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
   // attributed to this order. Nullable list, no impact on existing orders.

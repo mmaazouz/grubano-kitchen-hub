@@ -225,7 +225,10 @@ export default function CartScreen() {
   const deliveryFee = useMemo(() => {
     if (!cart) return 0
     if (fulfillment === 'pickup') return 0
-    return cart.restaurant.deliveryFee || 2.99
+    // A legit 0 € fee (e.g. free-delivery restaurant / "livraison 0 €") must display
+    // as 0, not fall back to the 2.99 placeholder — nullish (??) only backfills a
+    // genuinely absent value (older cart blob missing the field), never a real 0.
+    return cart.restaurant.deliveryFee ?? 2.99
   }, [cart, fulfillment])
   // Indicative welcome discount = min(subtotal × pct, cap), matching 5B's server
   // formula. Source of truth stays server-side at checkout.
