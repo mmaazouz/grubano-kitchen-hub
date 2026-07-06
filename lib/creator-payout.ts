@@ -19,7 +19,10 @@ import { recordPartnerTransferLedgerEntry } from '@/lib/ledger'
 // shape, so every existing caller AND the existing creator tests are unchanged
 // (= the proof that 'creator' is byte-identical). 'affiliate' (gated by
 // AFFILIATE_CONNECT_ENABLED, OFF) pays the affiliate's OPERATOR via its own
-// Operator Connect fields + Payout{role:'affiliate', operatorId}.
+// Operator Connect fields + Payout{role:'affiliate', operatorId}. 'logistics'
+// (P4.3 ÉTAPE 2, gated by LOGISTICS_PAYOUT_ENABLED, OFF) pays the courier's
+// LogisticsProfile Connect account + Payout{role:'logistics', logisticsProfileId};
+// its balance source (CourierEarning) is empty until ÉTAPE 3, so the rail is inert.
 //
 // ANTI-DOUBLE-PAYMENT (three layers, all on a DETERMINISTIC cursor key
 // `<role>:<refId>:paid:<paidCents>` — the ALREADY-DISBURSED cursor, monotonic). Why
@@ -56,6 +59,16 @@ export function isAffiliateConnectEnabled(): boolean {
   return process.env.AFFILIATE_CONNECT_ENABLED === 'true'
 }
 
+/** Logistics (courier) payout rail kill-switch (P4.3 ÉTAPE 2) — default OFF. The
+ *  logistics adapter's internal gate: with it OFF, payPartner('logistics') is inert (no
+ *  entity/DB/Stripe touch → 'rail_disabled'), exactly like the affiliate rail. The creator
+ *  + affiliate rails are UNAFFECTED by this flag (each adapter reads only its own gate).
+ *  check-flags coupling (LOGISTICS_PAYOUT_ENABLED ⇒ LOGISTICS_CONNECT_ENABLED) is wired in
+ *  a later step; the source that feeds CourierEarning is ÉTAPE 3. */
+export function isLogisticsPayoutEnabled(): boolean {
+  return process.env.LOGISTICS_PAYOUT_ENABLED === 'true'
+}
+
 /** Minimum payout (cents) — delegates to the SINGLE source (lib/payout-threshold,
  *  env CREATOR_PAYOUT_MIN_CENTS, default 25 € since Brique D2). Re-exported as the
  *  rail's threshold; payPartner logic below is otherwise unchanged. */
@@ -64,7 +77,7 @@ export function minPayoutCents(): number {
 }
 
 // Roles the generalised rail can pay (extensible — franchise keeps its own settlement).
-export type PayoutPartnerRole = 'creator' | 'affiliate'
+export type PayoutPartnerRole = 'creator' | 'affiliate' | 'logistics'
 
 // ── Legacy creator-shaped outcome — UNCHANGED. Existing callers + tests depend on
 // the `creatorId` field, so payCreator keeps returning EXACTLY this shape. ───────
@@ -82,7 +95,7 @@ export type PartnerPayoutOutcome =
 type PendingPayout = { id: string; amountCents: number; currency: string; idempotencyKey: string | null }
 type PartnerRef    = { id: string; stripeAccountId: string }
 // The beneficiary reference column for this role (exactly one set per Payout row).
-type RefData = { creatorId: string } | { operatorId: string }
+type RefData = { creatorId: string } | { operatorId: string } | { logisticsProfileId: string }
 
 // ── Per-role adapter — the ONLY thing that differs between rails. The transfer
 // core + the triple idempotence (settlePending / payPartner below) are SHARED, a
@@ -123,6 +136,21 @@ const ADAPTERS: Record<PayoutPartnerRole, RoleAdapter> = {
       return { stripeAccountId: op.affiliateStripeAccountId, payoutStatus: op.affiliatePayoutStatus }
     },
     refData:        (refId) => ({ operatorId: refId }),
+  },
+  // ── Logistics (courier) rail — P4.3 ÉTAPE 2. A faithful calque of creator/affiliate:
+  // balance role 'logistics' (Σ matured CourierEarning), beneficiary = the courier's
+  // LogisticsProfile Connect account, Payout{role:'logistics', logisticsProfileId}. Gated
+  // by LOGISTICS_PAYOUT_ENABLED (OFF) → inert. The shared transfer core + triple idempotence
+  // below are UNCHANGED, so creator/affiliate stay byte-identical.
+  logistics: {
+    balanceRole:    'logistics',
+    notFoundReason: 'logistics_not_found',
+    enabled:        () => isLogisticsPayoutEnabled(),
+    loadAccount:    (refId) => prisma.logisticsProfile.findUnique({
+      where:  { id: refId },
+      select: { stripeAccountId: true, payoutStatus: true },
+    }),
+    refData:        (refId) => ({ logisticsProfileId: refId }),
   },
 }
 

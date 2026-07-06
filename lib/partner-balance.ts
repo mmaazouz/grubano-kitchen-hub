@@ -24,14 +24,21 @@ import { prisma } from '@/lib/prisma'
 //                  platform split that determines what Grubano still OWES is a
 //                  P4.3 concern.
 //
-// FRANCHISE + LOGISTICS are intentionally NOT supported here (flagged): the
-// franchise royalty is computed inline inside GET /api/franchise/my-dashboard
-// (not a reusable source — and it must stay byte-identical, so it cannot be
-// extracted or duplicated), and it represents a royalty owed BY the franchise
-// (revenue × rate), not an amount paid TO it; logistics has no earnings source
-// yet. Their payable balance is defined in P4.3.
+//   • logistics  — Σ CourierEarning.netCents of rows that have MATURED (status ∈
+//                  {matured, paid}); pending gains are excluded until the maturation
+//                  pass promotes them (lib/courier-earnings). Native integer cents (NO
+//                  Float). Anti-double-pay is the SAME as creator/affiliate: available
+//                  nets the Σ Payout(role='logistics') sum via the shared payoutPaidCents
+//                  path — the row's 'paid' status is a later reporting nicety, never the
+//                  balance's guard. Empty table (P4.3 ÉTAPE 2) → 0.
+//
+// FRANCHISE is intentionally NOT supported here (flagged): the franchise royalty is
+// computed inline inside GET /api/franchise/my-dashboard (not a reusable source — and it
+// must stay byte-identical, so it cannot be extracted or duplicated), and it represents a
+// royalty owed BY the franchise (revenue × rate), not an amount paid TO it. Its payable
+// balance is defined by lib/franchise-settlement (a separate engine).
 
-export type PartnerBalanceRole = 'creator' | 'supplier' | 'restaurant' | 'affiliate'
+export type PartnerBalanceRole = 'creator' | 'supplier' | 'restaurant' | 'affiliate' | 'logistics'
 
 export interface PartnerBalance {
   role:           PartnerBalanceRole
@@ -97,15 +104,30 @@ async function affiliateEarnedCents(operatorId: string): Promise<number> {
   return rows.reduce((sum, r) => sum + eurosToCents(r.creatorEarning), 0)
 }
 
+// ── Logistics (P4.3 ÉTAPE 2) — Σ matured CourierEarning.netCents for this courier ──────
+// The courier's owed amount = the NET (gross − Grubano commission) of the MATURED earnings
+// (status ∈ {matured, paid}, matching the creator's set). `refId` is the courier's
+// LogisticsProfile id (owner scope). Already integer cents → NO rounding, NO Float. Empty
+// table returns 0. READ-ONLY, exactly like every other earned-fn here.
+async function logisticsEarnedCents(logisticsProfileId: string): Promise<number> {
+  const rows = await prisma.courierEarning.findMany({
+    where:  { courierId: logisticsProfileId, status: { in: ['matured', 'paid'] } },
+    select: { netCents: true },
+  })
+  return rows.reduce((sum, r) => sum + r.netCents, 0)
+}
+
 async function payoutPaidCents(role: PartnerBalanceRole, refId: string): Promise<number> {
   // Build the where field-by-field (TS-safe) — exactly one ref column per role.
   const where: {
     role: string; status: string
     creatorId?: string; supplierProfileId?: string; restaurantId?: string; operatorId?: string
+    logisticsProfileId?: string
   } = { role, status: 'paid' }
   if (role === 'creator')          where.creatorId = refId
   else if (role === 'supplier')    where.supplierProfileId = refId
   else if (role === 'affiliate')   where.operatorId = refId   // Brique B — Payout.operatorId, role='affiliate' (Brique D writes these)
+  else if (role === 'logistics')   where.logisticsProfileId = refId // P4.3 ÉTAPE 2 — Payout.logisticsProfileId, role='logistics'
   else                             where.restaurantId = refId
 
   const payouts = await prisma.payout.findMany({ where, select: { amountCents: true } })
@@ -125,6 +147,7 @@ export async function computePartnerBalance(
   if (role === 'creator')        earnedCents = await creatorEarnedCents(refId)
   else if (role === 'supplier')  earnedCents = await supplierEarnedCents(refId)
   else if (role === 'affiliate') earnedCents = await affiliateEarnedCents(refId)
+  else if (role === 'logistics') earnedCents = await logisticsEarnedCents(refId)
   else                           earnedCents = await restaurantEarnedCents(refId)
 
   const paidCents      = await payoutPaidCents(role, refId)

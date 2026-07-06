@@ -929,6 +929,10 @@ model LogisticsProfile {
   // side of MissionDecline.courier. ONLY used to stop re-offering — NEVER a penalty/score on
   // the courier (refusal without penalty, doc §8). Virtual list → no column on the profile.
   declines           MissionDecline[]
+  // ── Rail de paie P4.3 ÉTAPE 2 (ADDITIVE) — this courier's earnings source. Inverse side of
+  // CourierEarning.courier; virtual list → NO column on the profile (byte-identical). Empty
+  // until ÉTAPE 3 feeds it; the rail is gated OFF (LOGISTICS_PAYOUT_ENABLED).
+  courierEarnings    CourierEarning[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -1774,6 +1778,58 @@ model Payout {
   @@index([logisticsProfileId])
   @@index([operatorId])
   @@index([restaurantId])
+}
+
+// ── CourierEarning (rail de paie livreur P4.3 ÉTAPE 2 — plomberie, additive + INERTE) ─
+// The COURIER's earnings source in integer CENTS — the logistics analogue of the
+// creator's ReferralOrder/DishSale accrual, but native-cents (NO euro Float). It is the
+// missing brick the P4.3 audit identified: computePartnerBalance('logistics') sums the
+// MATURED rows here, payPartner('logistics') disburses the available balance. A SEPARATE
+// row per obligation (`type`) keeps the COURSE (delivery fee share, case B) distinct from
+// the TIP (held courier_tip to be reversed) — different economics, different maturation.
+//
+// ⚠️ ÉTAPE 2 = STRUCTURE ONLY. NOTHING writes this table yet: the accrual (routing the
+// case-B deliveryFee minus the 20 % Grubano commission, and reversing the held tip) is
+// ÉTAPE 3, and the whole rail is gated OFF (LOGISTICS_PAYOUT_ENABLED). Empty table →
+// computePartnerBalance('logistics') returns 0 → payPartner('logistics') is a no-op. So
+// the creator / affiliate / supplier / restaurant balances + payouts are byte-identical.
+//
+// ADDITIVE + REVERSIBLE: dropping this table leaves every existing model intact (the only
+// link is the inverse list on LogisticsProfile, a virtual relation with no column). No
+// backfill. The Payout side needs NO migration — Payout.logisticsProfileId + role
+// 'logistics' were already provisioned.
+model CourierEarning {
+  id           String           @id @default(cuid())
+  // The courier who earned this — FK → LogisticsProfile.id (owner scope for the balance).
+  courierId    String
+  courier      LogisticsProfile @relation(fields: [courierId], references: [id])
+  // Source references. A 'course' earning links the delivery Mission (and usually its
+  // consumer Order); a 'tip' earning links the Order (and its Mission when known). Both
+  // nullable so a row is robust to either source; the ÉTAPE 3 writer sets what it has.
+  missionId    String?
+  orderId      String?
+  // What this obligation is. 'course' = the courier's share of a case-B delivery fee;
+  // 'tip' = the held courier_tip reversed to the courier. String (codebase convention).
+  type         String           // 'course' | 'tip'
+  // Money in integer CENTS (never Float). gross = the amount the source yields the courier
+  // BEFORE Grubano's commission; fee = the Grubano commission on the course (a tip carries
+  // fee 0 by policy — settled at ÉTAPE 3); net = gross − fee = what the courier is OWED and
+  // what the balance sums. The ÉTAPE 3 writer guarantees net = gross − fee.
+  grossCents   Int
+  feeCents     Int              @default(0)
+  netCents     Int
+  // Lifecycle (String state machine, calque creator earnings): pending → matured (after a
+  // configurable window, lib/courier-earnings) → paid (set at payout time in a later step —
+  // the B-2 reporting fix; the balance's anti-double-pay does NOT depend on it, it nets the
+  // Payout sum exactly like creator/affiliate).
+  status       String           @default("pending") // pending | matured | paid
+  maturesAt    DateTime?        // when a 'pending' row becomes eligible (stamped at creation, ÉTAPE 3)
+  paidAt       DateTime?        // when a Payout settled this earning (reporting only)
+  createdAt    DateTime         @default(now())
+
+  @@index([courierId, status])
+  @@index([missionId])
+  @@index([orderId])
 }
 
 // ── EmailOtp (Phase 3 auth hardening — Agent 88) — email one-time codes ───────────
