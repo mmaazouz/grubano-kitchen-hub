@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback, type FormEvent } from 'react'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
+import { formatMoney } from '@/lib/format-money'
 
 // ── RequestDelivery — a business operator requests a delivery → an OFFERED mission, and
 // tracks its status (brick 3, Agent 124). Hosted on the gated /deliveries page — this form
@@ -31,6 +32,7 @@ const STATUS_TONE: Record<string, string> = {
 
 export default function RequestDelivery() {
   const t = useTranslations('business.logistics.request')
+  const locale = useLocale()
   const [missions, setMissions] = useState<MissionDTO[] | null>(null)
   const [type, setType] = useState<string>('repas')
   const [pickup, setPickup] = useState('')
@@ -79,7 +81,7 @@ export default function RequestDelivery() {
     }
   }
 
-  const price$ = (cents: number) => `${(cents / 100).toFixed(2)} €`
+  const price$ = (cents: number) => formatMoney(cents, locale) // inert proposed amount, locale-aware
   const statusLabel = (s: string) => t(`status_${s}` as 'status_offered')
   const typeLabel = (m: string) => (m in TYPE_LABEL ? t(TYPE_LABEL[m]) : m)
 

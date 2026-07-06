@@ -57,3 +57,27 @@ export function serializeMission(m: Mission, opts?: { maskDropoff?: boolean }): 
     createdAt: m.createdAt.toISOString(),
   }
 }
+
+// ── The courier's OWN missions (post-claim) — LO2 "En cours"/"Terminées". ─────
+// Serialised ONLY for the assigned courier (the /mine route is owner-scoped by session
+// email → courierId), so the FULL drop-off is revealed (dropoffApprox:false) — this is the
+// honest S1 counterpart: the exact address appears only once THIS courier has claimed the
+// mission. Also carries the lifecycle timestamps the cycle stepper needs. NO money is computed
+// (priceCents stays the inert proposed amount). NO client PII beyond the addresses is exposed
+// (courier missions carry no customer name/phone — nothing is fabricated).
+export interface OwnMissionDTO extends MissionDTO {
+  acceptedAt: string | null
+  pickedUpAt: string | null
+  deliveredAt: string | null
+  cancelledAt: string | null
+}
+
+export function serializeOwnMission(m: Mission): OwnMissionDTO {
+  return {
+    ...serializeMission(m), // full drop-off (no mask) — the owning courier is post-claim
+    acceptedAt: m.acceptedAt ? m.acceptedAt.toISOString() : null,
+    pickedUpAt: m.pickedUpAt ? m.pickedUpAt.toISOString() : null,
+    deliveredAt: m.deliveredAt ? m.deliveredAt.toISOString() : null,
+    cancelledAt: m.cancelledAt ? m.cancelledAt.toISOString() : null,
+  }
+}
