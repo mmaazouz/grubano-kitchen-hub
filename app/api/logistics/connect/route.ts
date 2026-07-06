@@ -25,7 +25,7 @@ async function callerLogistics() {
   if (!email) return null
   return prisma.logisticsProfile.findUnique({
     where:  { email },
-    select: { id: true, status: true, stripeAccountId: true, payoutStatus: true },
+    select: { id: true, status: true, stripeAccountId: true, payoutStatus: true, partnerType: true },
   })
 }
 
@@ -42,9 +42,13 @@ export async function POST(req: Request) {
     }
 
     const origin = baseUrl(req)
+    // P4.3 ÉTAPE 5 — pin Stripe business_type from the courier's declared partnerType
+    // (company → company, else individual). Applied only when the Express account is first
+    // created; a re-run reuses the stored account (idempotent).
+    const businessType = profile.partnerType === 'company' ? 'company' : 'individual'
     const { url, accountId } = await startConnectOnboarding(
       'logistics',
-      { id: profile.id, accountId: profile.stripeAccountId },
+      { id: profile.id, accountId: profile.stripeAccountId, businessType },
       {
         returnUrl:  `${origin}/logistics/dashboard?connect=return`,
         refreshUrl: `${origin}/logistics/dashboard?connect=refresh`,

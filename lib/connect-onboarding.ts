@@ -51,7 +51,9 @@ const META_KEY: Record<ConnectBeneficiaryType, string> = {
 /** Create the beneficiary's Express account (FR, TEST), tagged with its id. Same
  *  shape as createExpressAccount / createSupplierExpressAccount (daily payouts set
  *  at creation), only the metadata marker differs. */
-async function createConnectExpressAccount(type: ConnectBeneficiaryType, id: string): Promise<Stripe.Account> {
+async function createConnectExpressAccount(
+  type: ConnectBeneficiaryType, id: string, businessType?: 'individual' | 'company',
+): Promise<Stripe.Account> {
   const params: Stripe.AccountCreateParams = {
     type:    'express',
     country: 'FR',
@@ -62,10 +64,12 @@ async function createConnectExpressAccount(type: ConnectBeneficiaryType, id: str
     settings: { payouts: { schedule: { interval: 'daily' } } },
     metadata: { [META_KEY[type]]: id },
   }
-  // Brique D1 — an affiliate is a PARTICULIER: pin business_type=individual (lighter
-  // KYC, no company). ADDITIVE: only the affiliate type carries it; creator /
-  // logistics / franchise keep the exact previous params (Stripe's default).
+  // Brique D1 — an affiliate is a PARTICULIER: pin business_type=individual (lighter KYC,
+  // no company). ADDITIVE: only affiliate hardcodes it. P4.3 ÉTAPE 5 — logistics passes its
+  // OWN business_type from LogisticsProfile.partnerType (individual/company). creator /
+  // franchise pass nothing → Stripe's default (byte-identical to before).
   if (type === 'affiliate') params.business_type = 'individual'
+  else if (businessType)    params.business_type = businessType
   return getStripe().accounts.create(params)
 }
 
@@ -120,12 +124,14 @@ async function persistStatus(type: ConnectBeneficiaryType, id: string, status: C
  */
 export async function startConnectOnboarding(
   type: ConnectBeneficiaryType,
-  entity: { id: string; accountId: string | null },
+  entity: { id: string; accountId: string | null; businessType?: 'individual' | 'company' },
   urls: { returnUrl: string; refreshUrl: string },
 ): Promise<{ url: string; accountId: string }> {
   let accountId = entity.accountId
   if (!accountId) {
-    const acct = await createConnectExpressAccount(type, entity.id)
+    // businessType is applied ONLY on FIRST account creation (logistics passes it from
+    // partnerType; other roles omit it → unchanged). Idempotent: never a 2nd account.
+    const acct = await createConnectExpressAccount(type, entity.id, entity.businessType)
     accountId = acct.id
     await persistNewAccount(type, entity.id, accountId)
   }

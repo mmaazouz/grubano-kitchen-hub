@@ -1,0 +1,72 @@
+/* LO7 · Retrait — screen-specific styles (P4.3 ÉTAPE 5, CD verbatim). The op-* chrome +
+   card/dash/skeleton/error/empty/ro-badge/ro-banner/btn/card-pad live in logistics-shell.css
+   (+ the earnings screen); this adds only the withdraw-screen classes. */
+
+.op-content .ro-banner{display:flex;align-items:flex-start;gap:12px;background:var(--op-lo-bg);border:1px solid var(--op-lo-bd);border-radius:var(--op-r-lg);padding:12px 16px;margin-bottom:16px}
+.op-content .ro-banner .ms{font-size:20px;color:var(--op-lo);flex-shrink:0}
+[data-theme="dark"] .op-content .ro-banner .ms{color:var(--op-lo-2)}
+.op-content .ro-banner .m p{margin:0;font-size:12.5px;line-height:1.5;color:var(--op-muted)}
+
+/* withdraw hero */
+.wd{padding:24px;margin-bottom:16px;background:linear-gradient(135deg,var(--op-lo-bg),transparent)}
+.wd__label{font-size:12px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.wd__label .ms{font-size:15px}
+.wd__v{font-family:var(--op-font-mono);font-weight:800;font-size:46px;letter-spacing:-.02em;margin:8px 0 2px;direction:ltr;unicode-bidi:isolate}
+.wd__v.muted{color:var(--op-muted-2)}
+.wd__meta{font-size:12.5px;color:var(--op-muted)}
+.wd__amt{margin-top:18px}
+.wd__amtbox{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.wd__amtbox .op-btn-primary{flex-shrink:0}
+.wd__hint{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--op-muted-2);margin-top:10px}
+.wd__hint .ms{font-size:14px}
+.wd__hint.warn{color:var(--op-warning)}
+
+/* card-pad head (shared visual with the shell's card-pad) */
+.card-pad__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.card-pad__hd h3{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+
+/* linked payment account */
+.pm-linked{display:flex;align-items:center;gap:13px;padding:14px 16px;background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-md)}
+.pm-linked__ic{width:42px;height:42px;border-radius:var(--op-r-md);background:var(--op-surface);border:1px solid var(--op-border);display:flex;align-items:center;justify-content:center;color:var(--op-lo);flex-shrink:0}
+[data-theme="dark"] .pm-linked__ic{color:var(--op-lo-2)}
+.pm-linked__ic .ms{font-size:22px}
+.pm-linked__m{flex:1;min-width:0}
+.pm-linked__m b{font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px}
+.pm-linked__m .iban{font-size:12px;color:var(--op-muted);margin-top:2px}
+.pm-linked__ok{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;background:var(--op-success-bg);color:var(--op-success);border-radius:999px;padding:3px 8px}
+.pm-linked__ok .ms{font-size:11px}
+
+/* onboarding CTA */
+.pm-cta{display:flex;align-items:flex-start;gap:13px;padding:16px;background:var(--op-lo-bg);border:1px solid var(--op-lo-bd);border-radius:var(--op-r-md)}
+.pm-cta .ms{font-size:22px;color:var(--op-lo);flex-shrink:0}
+[data-theme="dark"] .pm-cta .ms{color:var(--op-lo-2)}
+.pm-cta__m{flex:1;min-width:0}
+.pm-cta__m b{display:block;font-size:13px;font-weight:800;color:var(--op-lo-text)}
+[data-theme="dark"] .pm-cta__m b{color:var(--op-lo-2)}
+.pm-cta__m span{display:block;font-size:11.5px;color:var(--op-muted);margin:3px 0 12px;line-height:1.5}
+
+/* withdrawal history */
+.wh-thead{display:grid;grid-template-columns:140px 1fr 130px;gap:12px;padding:11px 0;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2);border-bottom:1px solid var(--op-border)}
+.wh-thead span:last-child{text-align:end}
+.wh-row{display:grid;grid-template-columns:140px 1fr 130px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--op-border)}
+.wh-row:last-child{border-bottom:none}
+.wh-date{font-family:var(--op-font-mono);font-size:11.5px;color:var(--op-muted);direction:ltr;unicode-bidi:isolate}
+.wh-mid{min-width:0}
+.wh-mid b{font-size:12.5px;font-weight:700}
+.wh-mid .ref{font-size:10.5px;color:var(--op-muted);font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.wh-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.wh-amt{font-family:var(--op-font-mono);font-weight:800;font-size:13.5px;direction:ltr;unicode-bidi:isolate}
+.wh-status{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;border-radius:999px;padding:3px 8px;white-space:nowrap;text-transform:uppercase;letter-spacing:.03em}
+.wh-status.progress{background:var(--op-info-bg);color:var(--op-info)}
+.wh-status.paid{background:var(--op-success-bg);color:var(--op-success)}
+.wh-status .ms{font-size:11px}
+
+.info-note{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--op-muted-2);margin-top:14px;line-height:1.5}
+.info-note .ms{font-size:14px;flex-shrink:0}
+
+@container gbop (max-width: 620px){
+  .wh-thead{display:none}
+  .wh-row{grid-template-columns:1fr auto;gap:5px 12px}
+  .wh-mid{grid-column:1;grid-row:1}
+  .wh-r{grid-column:2;grid-row:1}
+}

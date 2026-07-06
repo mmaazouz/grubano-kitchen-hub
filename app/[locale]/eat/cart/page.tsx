@@ -81,6 +81,8 @@ export default function CartScreen() {
   // Small-order fee (V1.5) — global config echoed by GET /api/restaurants/[id].
   // DISPLAY-only: the SERVER recomputes + applies the fee at order time.
   const [smallOrderCfg, setSmallOrderCfg] = useState<{ feeCents: number; thresholdCents: number } | null>(null)
+  // P4.3 ÉTAPE 5 — the distance-based delivery fee PREVIEW (null = use the flat forfait).
+  const [distanceFee, setDistanceFee] = useState<number | null>(null)
   // P2-TIP — whether the courier tip selector shows (mirrors TIPS_ENABLED, echoed
   // by GET /api/restaurants/[id]). Default false → the tip UI is hidden and the
   // cart is byte-identical. The selected tip (in EUROS, UI-side) is sent as INTEGER
@@ -202,6 +204,31 @@ export default function CartScreen() {
     }
   }, [fulfillment, cart])
 
+  // P4.3 ÉTAPE 5 — distance-based delivery-fee PREVIEW. When LOGISTICS_DISTANCE_FEE_ENABLED is
+  // ON, show the fee the server will actually charge (lifts the ÉTAPE 4 go-live mismatch). The
+  // endpoint returns { enabled:false } (no geocode) when the flag is OFF (default) → distanceFee
+  // stays null → the FLAT Restaurant.deliveryFee is displayed → byte-identical. FAIL-OPEN: any
+  // error / non-distance response → null → flat fee. The cart is only a preview; the server stays
+  // authoritative at order time (POST /api/orders recomputes + charges the real fee).
+  const previewRestaurantId = cart?.restaurantId
+  useEffect(() => {
+    if (fulfillment === 'pickup' || !previewRestaurantId || !address) { setDistanceFee(null); return }
+    let cancelled = false
+    fetch('/api/logistics/fee-preview', {
+      method:  'POST',
+      headers: { 'content-type': 'application/json' },
+      body:    JSON.stringify({ restaurantId: previewRestaurantId, address }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled) return
+        if (d?.enabled && d.mode === 'distance' && typeof d.feeCents === 'number') setDistanceFee(d.feeCents / 100)
+        else setDistanceFee(null)
+      })
+      .catch(() => { if (!cancelled) setDistanceFee(null) })
+    return () => { cancelled = true }
+  }, [fulfillment, previewRestaurantId, address])
+
   function update(next: EatCartData | null) {
     setCart(next)
     writeCart(next)
@@ -225,11 +252,15 @@ export default function CartScreen() {
   const deliveryFee = useMemo(() => {
     if (!cart) return 0
     if (fulfillment === 'pickup') return 0
+    // P4.3 ÉTAPE 5 — when the distance-fee preview resolved (flag ON), show it so the cart
+    // matches what the server charges. Null (flag OFF / no address / preview failed) → the FLAT
+    // fee below (byte-identical to before). distanceFee can legitimately be 0.
+    if (distanceFee != null) return distanceFee
     // A legit 0 € fee (e.g. free-delivery restaurant / "livraison 0 €") must display
     // as 0, not fall back to the 2.99 placeholder — nullish (??) only backfills a
     // genuinely absent value (older cart blob missing the field), never a real 0.
     return cart.restaurant.deliveryFee ?? 2.99
-  }, [cart, fulfillment])
+  }, [cart, fulfillment, distanceFee])
   // Indicative welcome discount = min(subtotal × pct, cap), matching 5B's server
   // formula. Source of truth stays server-side at checkout.
   const welcomeAmount = useMemo(() => {

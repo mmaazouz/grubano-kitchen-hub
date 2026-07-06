@@ -77,13 +77,23 @@ describe('POST /api/logistics/connect', () => {
     expect(startMock).not.toHaveBeenCalled()
   })
 
-  it('flag ON + ACTIVE session profile → 200, scoped to the session logistics profile', async () => {
+  it('flag ON + ACTIVE session profile → 200, scoped + business_type from partnerType (P4.3 ÉTAPE 5)', async () => {
     flagMock.mockReturnValue(true)
     sessionMock.mockResolvedValue({ user: { email: 'l@x' } })
-    db.logisticsProfile.findUnique.mockResolvedValue({ id: 'l1', status: 'active', stripeAccountId: 'acct_l', payoutStatus: 'pending' })
+    db.logisticsProfile.findUnique.mockResolvedValue({ id: 'l1', status: 'active', stripeAccountId: 'acct_l', payoutStatus: 'pending', partnerType: 'independent' })
     const res = await post(logisticsPOST, '/api/logistics/connect')
     expect(res.status).toBe(200)
-    expect(startMock).toHaveBeenCalledWith('logistics', { id: 'l1', accountId: 'acct_l' }, expect.any(Object))
+    // independent → individual business_type
+    expect(startMock).toHaveBeenCalledWith('logistics', { id: 'l1', accountId: 'acct_l', businessType: 'individual' }, expect.any(Object))
+  })
+
+  it('flag ON + company partnerType → business_type=company', async () => {
+    flagMock.mockReturnValue(true)
+    sessionMock.mockResolvedValue({ user: { email: 'l@x' } })
+    db.logisticsProfile.findUnique.mockResolvedValue({ id: 'l1', status: 'active', stripeAccountId: 'acct_l', payoutStatus: 'pending', partnerType: 'company' })
+    const res = await post(logisticsPOST, '/api/logistics/connect')
+    expect(res.status).toBe(200)
+    expect(startMock).toHaveBeenCalledWith('logistics', { id: 'l1', accountId: 'acct_l', businessType: 'company' }, expect.any(Object))
   })
 
   it('flag ON + NON-active profile → 403, no onboarding (mirror of the supplier status gate)', async () => {

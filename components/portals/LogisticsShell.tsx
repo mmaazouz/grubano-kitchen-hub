@@ -21,7 +21,7 @@ import './logistics-shell.css'
 // the LO1→LO3 sub-routes. No Gains/Retraits tab (decision 1). RE-SKIN — 0 migration, moteur
 // d'argent non touché.
 
-type NavGroup = 'principal' | 'livraison' | 'compte'
+type NavGroup = 'principal' | 'livraison' | 'remuneration' | 'compte'
 interface NavEntry {
   key: string
   href: string
@@ -30,19 +30,25 @@ interface NavEntry {
   exact?: boolean
 }
 
+// P4.3 ÉTAPE 5 — the « Rémunération » group (Mes gains + Retrait) joins the rail; both mount
+// REAL P4.3 money surfaces (LO6/LO7). Group order: principal · livraison · rémunération · compte.
 const NAV: NavEntry[] = [
-  { key: 'overview', href: '/logistics/dashboard',         icon: 'dashboard',  group: 'principal', exact: true },
-  { key: 'missions', href: '/logistics/dashboard/missions', icon: 'assignment', group: 'livraison' },
-  { key: 'profile',  href: '/logistics/dashboard/profil',   icon: 'badge',      group: 'compte' },
+  { key: 'overview', href: '/logistics/dashboard',          icon: 'dashboard',        group: 'principal', exact: true },
+  { key: 'missions', href: '/logistics/dashboard/missions', icon: 'assignment',       group: 'livraison' },
+  { key: 'gains',    href: '/logistics/dashboard/gains',    icon: 'payments',         group: 'remuneration' },
+  { key: 'retrait',  href: '/logistics/dashboard/retrait',  icon: 'account_balance',  group: 'remuneration' },
+  { key: 'profile',  href: '/logistics/dashboard/profil',   icon: 'badge',            group: 'compte' },
 ]
 
-// Mobile bottom-nav = the 3 REAL destinations (Bord · Missions · Profil). The CD mockup's
-// decorative 4th "Plus" tab is intentionally dropped — it led nowhere real (no-fabrication).
+// Mobile bottom-nav = 5 REAL destinations (Bord · Missions · Gains · Retrait · Plus). « Plus »
+// leads to the account/profile page (a real destination — no-fabrication).
 type MobileEntry = { key: string; href: string; icon: string; exact?: boolean }
 const MOBILE_NAV: MobileEntry[] = [
-  { key: 'overview', href: '/logistics/dashboard',         icon: 'dashboard',  exact: true },
+  { key: 'overview', href: '/logistics/dashboard',          icon: 'dashboard',       exact: true },
   { key: 'missions', href: '/logistics/dashboard/missions', icon: 'assignment' },
-  { key: 'profile',  href: '/logistics/dashboard/profil',   icon: 'badge' },
+  { key: 'gains',    href: '/logistics/dashboard/gains',    icon: 'payments' },
+  { key: 'retrait',  href: '/logistics/dashboard/retrait',  icon: 'account_balance' },
+  { key: 'more',     href: '/logistics/dashboard/profil',   icon: 'more_horiz' },
 ]
 
 // Real courier status → status-pill class + i18n label key. null → no pill.
