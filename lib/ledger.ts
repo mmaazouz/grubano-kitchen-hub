@@ -143,8 +143,9 @@ export async function recordPartnerTransferLedgerEntry(input: {
  *  WHAT IT EARMARKS: the tip is added to BOTH the charge amount AND the
  *  application_fee at /pay, so the platform HOLDS it (the resto's net = amount −
  *  fee is unchanged — the +tip in amount and the +tip in fee cancel). This line
- *  RECORDS that obligation. It is NOT Grubano revenue and awaits the courier
- *  payout rail (TIP_PAYOUT_ENABLED, inert — lib/tips).
+ *  RECORDS that obligation. It is NOT Grubano revenue; the held tip is REVERSED to the
+ *  courier by the P4.3 rail (lib/courier-accrual → payPartner('logistics'), gated
+ *  LOGISTICS_PAYOUT_ENABLED) and clawed back on a total refund.
  *
  *  FIELD MAPPING — PROVABLY NEUTRAL to every existing ledger reader (same approach
  *  as recordPartnerTransferLedgerEntry):

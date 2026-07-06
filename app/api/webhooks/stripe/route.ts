@@ -7,6 +7,7 @@ import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
+import { clawbackCourierTip } from '@/lib/courier-accrual'
 import { sendAdminGhostOrderAlert } from '@/lib/admin-alerts'
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
@@ -699,6 +700,25 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       }
     } catch (e) {
       console.error('[LOYALTY MISS] refund re-credit failed:', e instanceof Error ? e.message : e)
+    }
+
+    // ── Courier TIP clawback on a TOTAL refund (P4.3 ÉTAPE 6) ──────────────────
+    // When the WHOLE order is refunded, claw back the courier's TIP earning if it is
+    // not yet paid (the COURSE stays acquired — decided). Only on a TOTAL refund
+    // (charge.refunded / amount_refunded ≥ amount); a partial refund leaves the tip.
+    // Best-effort + tolerant + idempotent (no-op when nothing accrued / flags OFF) —
+    // NEVER fails the webhook. Mirrors the loyalty re-credit block above.
+    try {
+      const orderId = charge.metadata?.orderId || null
+      const isTotalRefund = charge.refunded === true || (charge.amount_refunded ?? 0) >= charge.amount
+      if (orderId && isTotalRefund) {
+        const claw = await clawbackCourierTip(orderId)
+        if (claw.status === 'clawed') {
+          console.warn(`[courier tip clawback] order ${orderId}: ${claw.count} tip earning(s) cancelled on total refund`)
+        }
+      }
+    } catch (e) {
+      console.error('[TIP CLAWBACK MISS] failed (refund unaffected):', e instanceof Error ? e.message : e)
     }
 
     return NextResponse.json({ received: true, refunds: refunds.length, recorded })

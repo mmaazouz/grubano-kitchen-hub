@@ -8314,6 +8314,21 @@
     "flashKyc": "Configura primero tu cuenta de pago.",
     "flashBelow": "Saldo por debajo del umbral de retiro.",
     "flashComing": "Los retiros estarán disponibles pronto.",
-    "flashError": "Algo salió mal, reinténtalo."
+    "flashError": "Algo salió mal, reinténtalo.",
+    "flashFiscal": "Completa tus datos fiscales (DAC7) para retirar.",
+    "flashFiscalSaved": "Datos fiscales guardados. Puedes reintentar el retiro.",
+    "fiscalTitle": "Datos fiscales (DAC7)",
+    "fiscalHint": "La normativa DAC7 nos obliga a recopilar esta información antes de tu primer pago.",
+    "fSellerType": "Tipo",
+    "fChoose": "Elegir…",
+    "fIndividual": "Particular",
+    "fEntity": "Empresa",
+    "fAddress": "Dirección declarada",
+    "fTaxId": "Número fiscal (TIN)",
+    "fTaxCountry": "País del número fiscal",
+    "fDob": "Fecha de nacimiento",
+    "fCancel": "Cancelar",
+    "fSave": "Guardar",
+    "fiscalNote": "Esta información se transmite de forma segura y se usa solo para la declaración fiscal obligatoria (DAC7)."
   }
 }

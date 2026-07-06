@@ -19,8 +19,23 @@ describe('checkFlagCoupling', () => {
     expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
   })
 
-  it('TIPS without TIP_PAYOUT → incoherent', () => {
-    expect(checkFlagCoupling({ TIPS_ENABLED: 'true' }).ok).toBe(false)
+  // P4.3 ÉTAPE 6 — the REAL courier-rail couplings (replaces the phantom TIPS⇒TIP_PAYOUT).
+  it('TIPS without LOGISTICS_PAYOUT → incoherent (D-1: tip charged, no reversal rail)', () => {
+    const r = checkFlagCoupling({ TIPS_ENABLED: 'true' })
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((e: string) => e.includes('TIPS_ENABLED') && e.includes('LOGISTICS_PAYOUT_ENABLED'))).toBe(true)
+  })
+  it('LOGISTICS_COURIER_ACCRUAL without LOGISTICS_PAYOUT → incoherent (case-B fee withheld, no reversal)', () => {
+    expect(checkFlagCoupling({ LOGISTICS_COURIER_ACCRUAL_ENABLED: 'true' }).ok).toBe(false)
+  })
+  it('LOGISTICS_PAYOUT without LOGISTICS_CONNECT → incoherent (payout without a Connect account)', () => {
+    expect(checkFlagCoupling({ LOGISTICS_PAYOUT_ENABLED: 'true' }).ok).toBe(false)
+  })
+  it('the full courier chain TIPS+ACCRUAL+PAYOUT+CONNECT → coherent', () => {
+    expect(checkFlagCoupling({
+      TIPS_ENABLED: 'true', LOGISTICS_COURIER_ACCRUAL_ENABLED: 'true',
+      LOGISTICS_PAYOUT_ENABLED: 'true', LOGISTICS_CONNECT_ENABLED: 'true',
+    }).ok).toBe(true)
   })
   it('FRANCHISE_ROYALTY without SETTLEMENT → incoherent', () => {
     expect(checkFlagCoupling({ FRANCHISE_ROYALTY_ENABLED: 'true' }).ok).toBe(false)
@@ -35,7 +50,8 @@ describe('checkFlagCoupling', () => {
   it('a fully-coherent enabled set → coherent', () => {
     expect(checkFlagCoupling({
       CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true',
-      TIPS_ENABLED: 'true', TIP_PAYOUT_ENABLED: 'true',
+      TIPS_ENABLED: 'true', LOGISTICS_COURIER_ACCRUAL_ENABLED: 'true',
+      LOGISTICS_PAYOUT_ENABLED: 'true', LOGISTICS_CONNECT_ENABLED: 'true',
       FRANCHISE_ROYALTY_ENABLED: 'true', FRANCHISE_SETTLEMENT_ENABLED: 'true', FRANCHISE_CONNECT_ENABLED: 'true',
       CREATOR_PAYOUT_ENABLED: 'true', CREATOR_CONNECT_ENABLED: 'true',
     })).toEqual({ ok: true, errors: [] })
@@ -51,7 +67,7 @@ describe('checkFlagCoupling', () => {
     expect(r.errors).toHaveLength(2)
   })
 
-  it('COUPLING_RULES documents the 5 known couplings', () => {
-    expect(COUPLING_RULES).toHaveLength(5)
+  it('COUPLING_RULES documents the 7 known couplings (incl. the real courier rail, ÉTAPE 6)', () => {
+    expect(COUPLING_RULES).toHaveLength(7)
   })
 })

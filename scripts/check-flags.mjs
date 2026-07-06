@@ -14,7 +14,14 @@ const on = (env, k) => env[k] === 'true'
 /** The couplings. Flag names verified against the Phase-1 flag audit. */
 export const COUPLING_RULES = [
   { flag: 'CLAIMS_ENABLED',              requires: 'REFUNDS_ENABLED',             why: 'un claim approuvé sans REFUNDS = approuvé-mais-non-remboursé (risque chargeback)' },
-  { flag: 'TIPS_ENABLED',                requires: 'TIP_PAYOUT_ENABLED',          why: 'pourboire encaissé sans rail de payout = fonds tiers retenus indéfiniment' },
+  // ── Rail livreur P4.3 (ÉTAPE 6) — remplace l'ANCIEN couplage fantôme TIPS⇒TIP_PAYOUT_ENABLED
+  // (flag no-op supprimé). Le pourboire encaissé (TIPS) ET la course cas B retenue
+  // (LOGISTICS_COURIER_ACCRUAL) sont des fonds tiers : sans rail de reversement (LOGISTICS_PAYOUT)
+  // ils sont retenus indéfiniment (le bug D-1 de l'audit). Et un reversement exige un compte
+  // Connect livreur onboardé (LOGISTICS_CONNECT). Ces dépendances sont RÉELLES (lues au runtime).
+  { flag: 'TIPS_ENABLED',                    requires: 'LOGISTICS_PAYOUT_ENABLED',  why: 'pourboire encaissé sans rail de reversement livreur = fonds tiers retenus indéfiniment (D-1)' },
+  { flag: 'LOGISTICS_COURIER_ACCRUAL_ENABLED', requires: 'LOGISTICS_PAYOUT_ENABLED', why: 'course cas B retenue (deliveryFee dans l\'application_fee) sans reversement = fonds livreur retenus (D-1 symétrique)' },
+  { flag: 'LOGISTICS_PAYOUT_ENABLED',        requires: 'LOGISTICS_CONNECT_ENABLED',  why: 'reversement livreur sans compte Stripe Connect onboardé' },
   { flag: 'FRANCHISE_ROYALTY_ENABLED',   requires: 'FRANCHISE_SETTLEMENT_ENABLED', why: 'royalties accumulées sans reversement au franchiseur' },
   { flag: 'FRANCHISE_SETTLEMENT_ENABLED', requires: 'FRANCHISE_CONNECT_ENABLED',  why: 'settlement franchiseur sans compte Stripe Connect onboardé' },
   { flag: 'CREATOR_PAYOUT_ENABLED',      requires: 'CREATOR_CONNECT_ENABLED',     why: 'payout créateur sans compte Stripe Connect onboardé' },

@@ -26,6 +26,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { eurosToCents } from '@/lib/stripe'
 import { courierMaturesAt } from '@/lib/courier-earnings'
+import { isLogisticsPayoutEnabled } from '@/lib/creator-payout'
 
 /** Grubano's commission on a courier's delivery course, in BASIS POINTS (integer, 0..10000).
  *  Default 2000 = 20 % (decided). Env LOGISTICS_COMMISSION_BPS overrides; an out-of-range /
@@ -119,4 +120,107 @@ export async function accrueCourierCourseEarning(
     }
     throw err
   }
+}
+
+// ── Courier TIP reversal (P4.3 ÉTAPE 6 — corrige le bug D-1 « tip retenu jamais reversé ») ─
+//
+// The consumer's courier tip is CHARGED + HELD by the platform at /pay (TIPS_ENABLED, in the
+// application_fee — ÉTAPE 3 recorded it as a 'courier_tip' ledger obligation). ÉTAPE 6 finally
+// REVERSES it to the courier: when a mission is DELIVERED, a 100 % CourierEarning of type 'tip'
+// is accrued (gross = tip, fee = 0, net = tip — NO commission on a tip, decided). It then matures
+// + pays out through the SAME rail as the course (payPartner logistics).
+//
+// GATING: the CHARGING stays governed by TIPS_ENABLED (unchanged); the REVERSAL (this accrual +
+// its payout) is governed by LOGISTICS_PAYOUT_ENABLED. check-flags enforces TIPS ⇒ LOGISTICS_
+// PAYOUT ⇒ LOGISTICS_CONNECT, so a tip can never be charged without a live reversal rail (D-1).
+// OFF ⇒ inert (no DB touch). A tip needs a Grubano courier (the Mission's courierId) + a linked
+// Order carrying a tip; it is INDEPENDENT of the case-A/B deliveryFee routing (a tip is the
+// customer's gratuity to whoever delivered, not part of the fee split).
+export async function accrueCourierTipEarning(
+  missionId: string,
+  requesterCourierId: string,
+  now: Date = new Date(),
+): Promise<CourierAccrualResult> {
+  // GATE — the reversal rail. OFF ⇒ inert (no DB touch), the tip stays HELD until go-live.
+  if (!isLogisticsPayoutEnabled()) return { status: 'skipped', reason: 'rail_disabled' }
+
+  const mission = await prisma.mission.findUnique({
+    where:  { id: missionId },
+    select: { id: true, status: true, courierId: true, orderId: true },
+  })
+  if (!mission) return { status: 'skipped', reason: 'mission_not_found' }
+  if (mission.status !== 'delivered') return { status: 'skipped', reason: 'not_delivered' }
+  // OWNER-SCOPE — the tip belongs to the mission's courier; the requester must be that courier.
+  if (!mission.courierId || mission.courierId !== requesterCourierId) return { status: 'skipped', reason: 'not_owner' }
+  if (!mission.orderId) return { status: 'skipped', reason: 'no_order' }
+
+  // The HELD tip on the linked order (integer cents; > 0 only if TIPS_ENABLED was on at /pay).
+  const order = await prisma.order.findUnique({
+    where:  { id: mission.orderId },
+    select: { tipCents: true },
+  })
+  if (!order) return { status: 'skipped', reason: 'order_not_found' }
+  const tipCents = order.tipCents ?? 0
+  if (tipCents <= 0) return { status: 'skipped', reason: 'no_tip' }
+
+  // 100 % to the courier — NO commission on a tip (decided). gross = net = tip, fee = 0.
+  const grossCents = tipCents
+  const feeCents   = 0
+  const netCents   = tipCents
+  if (grossCents < 0 || netCents !== grossCents - feeCents) {
+    throw new Error(`courier tip accrual invariant violated: gross=${grossCents} fee=${feeCents} net=${netCents} (mission ${missionId})`)
+  }
+
+  // Idempotent — DB @@unique([missionId, type]); 'tip' is a DISTINCT type from 'course', so a
+  // mission can carry ONE course + ONE tip. A replay hits P2002 → no-op.
+  try {
+    const row = await prisma.courierEarning.create({
+      data: {
+        courierId: mission.courierId, missionId, orderId: mission.orderId, type: 'tip',
+        grossCents, feeCents, netCents,
+        status: 'pending', maturesAt: courierMaturesAt(now),
+      },
+      select: { id: true },
+    })
+    return { status: 'created', earningId: row.id, grossCents, feeCents, netCents }
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return { status: 'skipped', reason: 'already_accrued' }
+    }
+    throw err
+  }
+}
+
+export type CourierTipClawbackResult =
+  | { status: 'clawed'; count: number }
+  | { status: 'noop';   reason: string }
+
+/**
+ * Claw back a courier's TIP earning when the linked order is TOTALLY refunded / cancelled
+ * (P4.3 ÉTAPE 6). DECIDED: the COURSE stays acquired (the delivery was performed) — this ONLY
+ * touches the 'tip' rows and NEVER the 'course'. A pending|matured tip → 'cancelled' (leaves the
+ * balance, since computePartnerBalance sums only matured|paid). A tip ALREADY 'paid' is NOT
+ * auto-reversed (the money already reached the courier's account); it is LOGGED for manual
+ * reconciliation — a courier keeps a tip they were already paid on a later refund (documented,
+ * customer-friendly, and rare given the maturation delay). Idempotent (a re-run flips 0 rows).
+ * Best-effort — the caller (webhook) must never fail a refund over the tip clawback.
+ */
+export async function clawbackCourierTip(orderId: string): Promise<CourierTipClawbackResult> {
+  const tips = await prisma.courierEarning.findMany({
+    where:  { orderId, type: 'tip' },
+    select: { id: true, status: true },
+  })
+  if (tips.length === 0) return { status: 'noop', reason: 'no_tip' }
+
+  const alreadyPaid = tips.filter(t => t.status === 'paid')
+  if (alreadyPaid.length > 0) {
+    console.warn(`[courier tip clawback] order ${orderId}: ${alreadyPaid.length} tip earning(s) already PAID — kept (manual reconciliation): ${alreadyPaid.map(t => t.id).join(',')}`)
+  }
+
+  // Cancel only the not-yet-paid tips; NEVER the course. Guarded status → idempotent.
+  const res = await prisma.courierEarning.updateMany({
+    where: { orderId, type: 'tip', status: { in: ['pending', 'matured'] } },
+    data:  { status: 'cancelled' },
+  })
+  return res.count > 0 ? { status: 'clawed', count: res.count } : { status: 'noop', reason: 'nothing_to_claw' }
 }

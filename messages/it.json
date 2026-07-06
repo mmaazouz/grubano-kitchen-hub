@@ -8314,6 +8314,21 @@
     "flashKyc": "Configura prima il tuo conto di versamento.",
     "flashBelow": "Saldo inferiore alla soglia di prelievo.",
     "flashComing": "I prelievi saranno presto disponibili.",
-    "flashError": "Qualcosa è andato storto, riprova."
+    "flashError": "Qualcosa è andato storto, riprova.",
+    "flashFiscal": "Completa i tuoi dati fiscali (DAC7) per prelevare.",
+    "flashFiscalSaved": "Dati fiscali salvati. Puoi riprovare il prelievo.",
+    "fiscalTitle": "Dati fiscali (DAC7)",
+    "fiscalHint": "La normativa DAC7 ci obbliga a raccogliere queste informazioni prima del tuo primo versamento.",
+    "fSellerType": "Tipo",
+    "fChoose": "Scegli…",
+    "fIndividual": "Privato",
+    "fEntity": "Azienda",
+    "fAddress": "Indirizzo dichiarato",
+    "fTaxId": "Numero fiscale (TIN)",
+    "fTaxCountry": "Paese del numero fiscale",
+    "fDob": "Data di nascita",
+    "fCancel": "Annulla",
+    "fSave": "Salva",
+    "fiscalNote": "Queste informazioni sono trasmesse in modo sicuro e usate solo per la dichiarazione fiscale obbligatoria (DAC7)."
   }
 }

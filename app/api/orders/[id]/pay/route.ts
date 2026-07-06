@@ -266,8 +266,9 @@ export async function POST(
     // P2-TIP: idempotent, BEST-EFFORT accrual of the COURIER tip held in THIS order's
     // application_fee. Keyed on the PI id (sourceEventId) via @@unique([sourceEventId,
     // 'courier_tip']) → a replay / reuse on the SAME PI is a silent duplicate. Records
-    // the obligation (the held tip is NOT Grubano revenue) so the courier payout rail
-    // (TIP_PAYOUT_ENABLED, inert) can settle it later. NEVER throws into the payment;
+    // the obligation (the held tip is NOT Grubano revenue) so the courier reversal rail
+    // (P4.3 ÉTAPE 6: lib/courier-accrual → payPartner('logistics'), gated
+    // LOGISTICS_PAYOUT_ENABLED) reverses it later. NEVER throws into the payment;
     // a no-op when tipCents is 0 (flag OFF / no tip → byte-identical, no line written).
     const accrueCourierTip = async (piId: string) => {
       if (tipCents <= 0) return

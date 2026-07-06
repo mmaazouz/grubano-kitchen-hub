@@ -1,14 +1,16 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { isTipsEnabled, isTipPayoutEnabled, sanitizeTipCents, MAX_TIP_CENTS } from '@/lib/tips'
+import { isTipsEnabled, sanitizeTipCents, MAX_TIP_CENTS } from '@/lib/tips'
 
 // ── WP-MONEY-04 · pure money math — lib/tips.ts ───────────────────────────────
 // Courier tip: charged with the order, HELD on the application_fee side (like the
 // small-order fee), NEVER resto revenue / commission base / loyalty. Flag OFF by
 // default → the whole rail is a no-op (byte-identical). All amounts integer cents.
+// P4.3 ÉTAPE 6: the phantom isTipPayoutEnabled is REMOVED — the tip reversal now runs
+// through lib/courier-accrual + payPartner('logistics'), gated LOGISTICS_PAYOUT_ENABLED.
 
-afterEach(() => { delete process.env.TIPS_ENABLED; delete process.env.TIP_PAYOUT_ENABLED })
+afterEach(() => { delete process.env.TIPS_ENABLED })
 
-describe('isTipsEnabled / isTipPayoutEnabled — only exact "true"', () => {
+describe('isTipsEnabled — only exact "true"', () => {
   it('false by default and for any non-"true" value', () => {
     expect(isTipsEnabled()).toBe(false)
     for (const v of ['1', 'TRUE', 'True', 'yes', 'on', '', 'false']) {
@@ -19,13 +21,6 @@ describe('isTipsEnabled / isTipPayoutEnabled — only exact "true"', () => {
   it('true ONLY for exact "true"', () => {
     process.env.TIPS_ENABLED = 'true'
     expect(isTipsEnabled()).toBe(true)
-  })
-  it('isTipPayoutEnabled gated identically (documents the inert payout rail)', () => {
-    expect(isTipPayoutEnabled()).toBe(false)
-    process.env.TIP_PAYOUT_ENABLED = 'true'
-    expect(isTipPayoutEnabled()).toBe(true)
-    process.env.TIP_PAYOUT_ENABLED = 'yes'
-    expect(isTipPayoutEnabled()).toBe(false)
   })
 })
 

@@ -8314,6 +8314,21 @@
     "flashKyc": "Configurez d’abord votre compte de versement.",
     "flashBelow": "Solde inférieur au seuil de retrait.",
     "flashComing": "Les retraits seront bientôt disponibles.",
-    "flashError": "Une erreur est survenue, réessayez."
+    "flashError": "Une erreur est survenue, réessayez.",
+    "flashFiscal": "Complétez vos informations fiscales (DAC7) pour retirer.",
+    "flashFiscalSaved": "Informations fiscales enregistrées. Vous pouvez relancer le retrait.",
+    "fiscalTitle": "Informations fiscales (DAC7)",
+    "fiscalHint": "La réglementation DAC7 nous oblige à collecter ces informations avant votre premier versement.",
+    "fSellerType": "Type",
+    "fChoose": "Choisir…",
+    "fIndividual": "Particulier",
+    "fEntity": "Société",
+    "fAddress": "Adresse déclarée",
+    "fTaxId": "Numéro fiscal (TIN)",
+    "fTaxCountry": "Pays du numéro fiscal",
+    "fDob": "Date de naissance",
+    "fCancel": "Annuler",
+    "fSave": "Enregistrer",
+    "fiscalNote": "Ces informations sont transmises de façon sécurisée et utilisées uniquement pour la déclaration fiscale obligatoire (DAC7)."
   }
 }

@@ -33,14 +33,38 @@ export const dynamic = 'force-dynamic'
 //    yields ONE Payout (already_in_progress → in_progress here). No 2nd transfer.
 //  - payPartner + connect-onboarding are REUSED unchanged. Mode TEST. NEVER stores an IBAN.
 
+type OperatorFiscal = {
+  registeredAddress: string | null; taxId: string | null; taxIdCountry: string | null
+  dateOfBirth: Date | null; sellerType: string | null
+}
+
 async function callerLogistics() {
   const session = await getServerSession(authOptions)
   const email = session?.user?.email
   if (!email) return null
-  return prisma.logisticsProfile.findUnique({
-    where:  { email },
-    select: { id: true, status: true, partnerType: true, stripeAccountId: true, payoutStatus: true },
-  })
+  // The courier profile (Connect/status) + the Operator's DAC7 fiscal fields (same email;
+  // LogisticsProfile is 1:1 with the Operator). Both owner-scoped by the SESSION email.
+  const [profile, operator] = await Promise.all([
+    prisma.logisticsProfile.findUnique({
+      where:  { email },
+      select: { id: true, status: true, partnerType: true, stripeAccountId: true, payoutStatus: true },
+    }),
+    prisma.operator.findUnique({
+      where:  { email },
+      select: { registeredAddress: true, taxId: true, taxIdCountry: true, dateOfBirth: true, sellerType: true },
+    }),
+  ])
+  if (!profile) return null
+  return { profile, operator: (operator ?? null) as OperatorFiscal | null }
+}
+
+/** DAC7 self-declaration complete enough to pay out (captured at the 1st withdrawal —
+ *  calque of the affiliate withdraw's isFiscalComplete). */
+function isFiscalComplete(op: OperatorFiscal | null): boolean {
+  if (!op) return false
+  if (!op.registeredAddress || !op.taxId || !op.taxIdCountry || !op.sellerType) return false
+  if (op.sellerType === 'individual' && !op.dateOfBirth) return false
+  return true
 }
 
 async function recentPayouts(logisticsProfileId: string) {
@@ -58,8 +82,9 @@ async function recentPayouts(logisticsProfileId: string) {
 }
 
 export async function GET() {
-  const profile = await callerLogistics()
-  if (!profile) return NextResponse.json({ error: 'Profil livreur introuvable' }, { status: 401 })
+  const caller = await callerLogistics()
+  if (!caller) return NextResponse.json({ error: 'Profil livreur introuvable' }, { status: 401 })
+  const { profile, operator } = caller
 
   // Freshen the Connect status from Stripe (tolerant) — the SAME lib the creator/affiliate
   // rails use; degrades to the last-known status, never throws.
@@ -78,6 +103,7 @@ export async function GET() {
     hasAccount:     !!profile.stripeAccountId,
     accountActive:  profile.status === 'active',
     partnerType:    profile.partnerType, // independent | company (onboarding business_type hint)
+    fiscalComplete: isFiscalComplete(operator), // DAC7 — the client prompts if false at withdrawal
     payouts:        await recentPayouts(profile.id),
   })
 }
@@ -88,8 +114,9 @@ export async function POST() {
     if (!isLogisticsPayoutEnabled()) {
       return NextResponse.json({ status: 'rail_disabled', gated: true })
     }
-    const profile = await callerLogistics()
-    if (!profile) return NextResponse.json({ error: 'Profil livreur introuvable' }, { status: 401 })
+    const caller = await callerLogistics()
+    if (!caller) return NextResponse.json({ error: 'Profil livreur introuvable' }, { status: 401 })
+    const { profile, operator } = caller
 
     // 1. Amount = the SERVER matured balance (NEVER a client value; the body is ignored).
     const balance        = await computePartnerBalance('logistics', profile.id)
@@ -108,7 +135,14 @@ export async function POST() {
       return NextResponse.json({ status: 'kyc_required' })
     }
 
-    // 3. Pay — DEFER to payPartner TEL QUEL (server amount, KYC re-checked, triple idempotence).
+    // 3. DAC7 fiscal capture at the 1st withdrawal — the courier's self-declaration must be
+    //    complete before a payout (calque of the affiliate withdraw). NO transfer here; the
+    //    client collects it via POST /api/operator/dac7 (the shared route) then retries.
+    if (!isFiscalComplete(operator)) {
+      return NextResponse.json({ status: 'fiscal_required', fiscalComplete: false })
+    }
+
+    // 4. Pay — DEFER to payPartner TEL QUEL (server amount, KYC re-checked, triple idempotence).
     const out = await payPartner('logistics', profile.id)
     switch (out.status) {
       case 'paid':

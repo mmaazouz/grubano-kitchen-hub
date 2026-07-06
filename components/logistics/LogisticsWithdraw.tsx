@@ -53,6 +53,10 @@ export default function LogisticsWithdraw() {
   const [error, setError]     = useState('')
   const [busy, setBusy]       = useState(false)
   const [flash, setFlash]     = useState('')
+  // DAC7 fiscal capture (P4.3 ÉTAPE 6) — opened when the withdrawal returns fiscal_required.
+  const [fiscalOpen, setFiscalOpen] = useState(false)
+  const [fiscalBusy, setFiscalBusy] = useState(false)
+  const [fiscal, setFiscal] = useState({ registeredAddress: '', taxId: '', taxIdCountry: '', sellerType: '', dateOfBirth: '' })
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -94,6 +98,14 @@ export default function LogisticsWithdraw() {
         case 'paid':          setFlash(t('flashPaid', { amount: fmt(json.amountCents ?? 0) })); break
         case 'in_progress':   setFlash(t('flashInProgress')); break
         case 'kyc_required':  setFlash(t('flashKyc')); break
+        case 'fiscal_required': // DAC7 incomplete → prefill + open the fiscal capture form
+          setFlash(t('flashFiscal'))
+          try {
+            const cur = await fetch('/api/operator/dac7', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null))
+            if (cur) setFiscal({ registeredAddress: cur.registeredAddress ?? '', taxId: cur.taxId ?? '', taxIdCountry: cur.taxIdCountry ?? '', sellerType: cur.sellerType ?? '', dateOfBirth: cur.dateOfBirth ?? '' })
+          } catch { /* form opens blank */ }
+          setFiscalOpen(true)
+          break
         case 'below_threshold': setFlash(t('flashBelow')); break
         case 'rail_disabled': setFlash(t('flashComing')); break
         default:              setFlash(t('flashError'))
@@ -101,6 +113,19 @@ export default function LogisticsWithdraw() {
       await load() // refresh balance + history from the server
     } catch { setFlash(t('flashError')) } finally { setBusy(false) }
   }, [t, fmt, load])
+
+  // Save the DAC7 self-declaration (shared /api/operator/dac7), then retry the withdrawal.
+  const submitFiscal = useCallback(async () => {
+    setFiscalBusy(true); setFlash('')
+    try {
+      const res = await fetch('/api/operator/dac7', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fiscal),
+      })
+      if (!res.ok) { setFlash(t('flashError')); return }
+      setFiscalOpen(false)
+      setFlash(t('flashFiscalSaved'))
+    } catch { setFlash(t('flashError')) } finally { setFiscalBusy(false) }
+  }, [fiscal, t])
 
   if (loading) {
     return (
@@ -198,6 +223,43 @@ export default function LogisticsWithdraw() {
       </div>
 
       {flash && <div className="ro-banner"><span className="ms">info</span><div className="m"><p>{flash}</p></div></div>}
+
+      {/* DAC7 fiscal capture (P4.3 ÉTAPE 6) — shown when the withdrawal needs the courier's
+          self-declaration. Saves via the SHARED /api/operator/dac7 route, then the courier retries. */}
+      {fiscalOpen && (
+        <div className="op-card card-pad wd-fiscal">
+          <div className="card-pad__hd"><h3>{t('fiscalTitle')}</h3></div>
+          <p className="wd-fiscal__hint">{t('fiscalHint')}</p>
+          <div className="wd-fiscal__grid">
+            <label>{t('fSellerType')}
+              <select value={fiscal.sellerType} onChange={e => setFiscal(f => ({ ...f, sellerType: e.target.value }))}>
+                <option value="">{t('fChoose')}</option>
+                <option value="individual">{t('fIndividual')}</option>
+                <option value="entity">{t('fEntity')}</option>
+              </select>
+            </label>
+            <label>{t('fAddress')}
+              <input type="text" value={fiscal.registeredAddress} maxLength={300} onChange={e => setFiscal(f => ({ ...f, registeredAddress: e.target.value }))} />
+            </label>
+            <label>{t('fTaxId')}
+              <input type="text" value={fiscal.taxId} maxLength={40} onChange={e => setFiscal(f => ({ ...f, taxId: e.target.value }))} />
+            </label>
+            <label>{t('fTaxCountry')}
+              <input type="text" value={fiscal.taxIdCountry} maxLength={2} placeholder="FR" onChange={e => setFiscal(f => ({ ...f, taxIdCountry: e.target.value.toUpperCase() }))} />
+            </label>
+            {fiscal.sellerType === 'individual' && (
+              <label>{t('fDob')}
+                <input type="date" value={fiscal.dateOfBirth} onChange={e => setFiscal(f => ({ ...f, dateOfBirth: e.target.value }))} />
+              </label>
+            )}
+          </div>
+          <div className="wd-fiscal__actions">
+            <button type="button" className="op-btn-ghost" onClick={() => setFiscalOpen(false)} disabled={fiscalBusy}>{t('fCancel')}</button>
+            <button type="button" className="op-btn-primary" onClick={submitFiscal} disabled={fiscalBusy}><span className="ms">save</span>{t('fSave')}</button>
+          </div>
+          <div className="info-note"><span className="ms">info</span><span>{t('fiscalNote')}</span></div>
+        </div>
+      )}
 
       {/* balance / action card — state-derived */}
       <div className="op-card wd">

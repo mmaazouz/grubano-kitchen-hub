@@ -8314,6 +8314,21 @@
     "flashKyc": "Set up your payout account first.",
     "flashBelow": "Balance below the withdrawal threshold.",
     "flashComing": "Withdrawals will be available soon.",
-    "flashError": "Something went wrong, please retry."
+    "flashError": "Something went wrong, please retry.",
+    "flashFiscal": "Complete your tax details (DAC7) to withdraw.",
+    "flashFiscalSaved": "Tax details saved. You can retry the withdrawal.",
+    "fiscalTitle": "Tax details (DAC7)",
+    "fiscalHint": "DAC7 regulation requires us to collect this information before your first payout.",
+    "fSellerType": "Type",
+    "fChoose": "Choose…",
+    "fIndividual": "Individual",
+    "fEntity": "Company",
+    "fAddress": "Registered address",
+    "fTaxId": "Tax ID (TIN)",
+    "fTaxCountry": "Tax ID country",
+    "fDob": "Date of birth",
+    "fCancel": "Cancel",
+    "fSave": "Save",
+    "fiscalNote": "This information is transmitted securely and used only for the mandatory tax declaration (DAC7)."
   }
 }

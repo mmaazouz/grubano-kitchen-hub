@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled } from '@/lib/missions'
 import { advanceMissionByCourier, type CourierMissionStep, type AdvanceResult } from '@/lib/mission-attribution'
-import { accrueCourierCourseEarning } from '@/lib/courier-accrual'
+import { accrueCourierCourseEarning, accrueCourierTipEarning } from '@/lib/courier-accrual'
 
 // ── Shared handler for the courier lifecycle steps — pickup / deliver / cancel (brick 3
 // wiring, Agent 126). One handler, three thin route.ts files (a courier drives a mission they
@@ -53,11 +53,23 @@ export async function handleCourierMissionStep(
     // the step routes are byte-identical. advanceMissionByCourier stays money-free (its own
     // invariant); the money side-effect lives here at the route layer (cf. orders/pay accruals).
     if (to === 'delivered' && (result.ok || result.reason === 'conflict')) {
+      // Course accrual (ÉTAPE 3, gated LOGISTICS_COURIER_ACCRUAL_ENABLED) + tip reversal (ÉTAPE 6,
+      // gated LOGISTICS_PAYOUT_ENABLED). BOTH best-effort, idempotent, self-guarded, INERT when
+      // their flag is OFF — a failure NEVER affects the HTTP response. Independent try/catch so a
+      // hiccup in one never blocks the other.
       try {
         await accrueCourierCourseEarning(missionId, profile.id)
       } catch (err) {
         console.error(
           `[logistics deliver] courier course accrual failed for mission ${missionId} (delivery unaffected): ` +
+          (err instanceof Error ? err.message : String(err)),
+        )
+      }
+      try {
+        await accrueCourierTipEarning(missionId, profile.id)
+      } catch (err) {
+        console.error(
+          `[logistics deliver] courier tip accrual failed for mission ${missionId} (delivery unaffected): ` +
           (err instanceof Error ? err.message : String(err)),
         )
       }

@@ -18,16 +18,12 @@ export function isTipsEnabled(): boolean {
   return process.env.TIPS_ENABLED === 'true'
 }
 
-/** Kill-switch for the courier PAYOUT of accrued tips. Default OFF. INERT by
- *  design: there is NO courier payout rail yet (the logistics fleet's
- *  disbursement engine does not exist — see lib/logistics-role audit). When this
- *  flag is eventually turned on, the reversal/transfer of the held 'courier_tip'
- *  obligation to the courier's Connect account MUST be built then. Today this
- *  helper is a documented no-op: nothing reads it on a money path — the tip is
- *  HELD (accrued) at /pay regardless, and the payout awaits the logistics rail. */
-export function isTipPayoutEnabled(): boolean {
-  return process.env.TIP_PAYOUT_ENABLED === 'true'
-}
+// ── (P4.3 ÉTAPE 6) The phantom TIP_PAYOUT_ENABLED flag is REMOVED. The tip reversal rail
+// now EXISTS: the held 'courier_tip' is reversed to the courier as a 100 % CourierEarning
+// ('tip') at delivery (lib/courier-accrual.accrueCourierTipEarning) and paid out through
+// payPartner('logistics'), all governed by LOGISTICS_PAYOUT_ENABLED. check-flags enforces
+// TIPS_ENABLED ⇒ LOGISTICS_PAYOUT_ENABLED ⇒ LOGISTICS_CONNECT_ENABLED, so a tip can never be
+// charged without a live reversal rail (fixes the D-1 held-funds hazard the old no-op masked).
 
 // ── Caps ────────────────────────────────────────────────────────────────────────
 

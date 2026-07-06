@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server'
 const { db, feeLib, rl } = vi.hoisted(() => ({
   db:     { restaurant: { findFirst: vi.fn() } },
   feeLib: { isLogisticsDistanceFeeEnabled: vi.fn(), resolveDistanceDeliveryFee: vi.fn() },
-  rl:     { rateLimit: vi.fn(() => null) },
+  rl:     { rateLimit: vi.fn((): Response | null => null) },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/logistics-fee', () => ({

@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const { auth, db, pay, connect, bal, thr } = vi.hoisted(() => ({
   auth:    { getServerSession: vi.fn() },
-  db:      { logisticsProfile: { findUnique: vi.fn() }, payout: { findMany: vi.fn() } },
+  db:      { logisticsProfile: { findUnique: vi.fn() }, operator: { findUnique: vi.fn() }, payout: { findMany: vi.fn() } },
   pay:     { isLogisticsPayoutEnabled: vi.fn(), payPartner: vi.fn() },
   connect: { isConnectOnboardingEnabled: vi.fn(), syncConnectStatus: vi.fn() },
   bal:     { computePartnerBalance: vi.fn() },
@@ -26,6 +26,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   auth.getServerSession.mockResolvedValue({ user: { email: 'c@x.fr' } })
   db.logisticsProfile.findUnique.mockResolvedValue({ id: 'lp1', status: 'active', partnerType: 'independent', stripeAccountId: 'acct_l1', payoutStatus: 'active' })
+  // DAC7 fiscal COMPLETE by default (so the happy-path payout tests reach payPartner).
+  db.operator.findUnique.mockResolvedValue({ registeredAddress: '1 rue X', taxId: 'FR12345', taxIdCountry: 'FR', dateOfBirth: new Date('1990-01-01'), sellerType: 'individual' })
   db.payout.findMany.mockResolvedValue([])
   pay.isLogisticsPayoutEnabled.mockReturnValue(true)
   pay.payPartner.mockResolvedValue({ status: 'paid', role: 'logistics', refId: 'lp1', amountCents: 6480, stripeTransferId: 'tr_l1', resumed: false })
@@ -68,6 +70,12 @@ describe('POST — payout, gated + KYC-before-money', () => {
     connect.syncConnectStatus.mockResolvedValue('pending')
     const json = await (await POST()).json()
     expect(json).toEqual({ status: 'kyc_required' })
+    expect(pay.payPartner).not.toHaveBeenCalled()
+  })
+  it('DAC7 incomplete → fiscal_required, no payPartner (ÉTAPE 6, fiscal capture at 1st withdrawal)', async () => {
+    db.operator.findUnique.mockResolvedValue({ registeredAddress: null, taxId: null, taxIdCountry: null, dateOfBirth: null, sellerType: null })
+    const json = await (await POST()).json()
+    expect(json).toEqual({ status: 'fiscal_required', fiscalComplete: false })
     expect(pay.payPartner).not.toHaveBeenCalled()
   })
   it('ready → payPartner(logistics, profileId) TEL QUEL, amount server-derived (body ignored)', async () => {
