@@ -10,17 +10,15 @@ import { isCourierActivationEnabled } from '@/lib/logistics-account'
 import { isMissionsEnabled } from '@/lib/missions'
 import { Link } from '@/navigation'
 import { Card, Badge, Button, EmptyState, type BadgeTone } from '@/components/design-system'
-import RoleSwitcher from '@/components/RoleSwitcher'
 import CourierMissions from '@/components/logistics/CourierMissions'
 import CourierJustificatifs from '@/components/logistics/CourierJustificatifs'
 
-// ── /logistics/dashboard — courier / logistics space shell (P1, Agent 17) ─────
-// Gated by middleware (logistics/admin), calqued 1:1 on /supplier/dashboard. A
-// minimal landing: a status banner + the courier's business-profile summary (READ
-// ONLY — editing is a later phase) + a "missions coming soon" placeholder. NO
-// payment / Stripe (logistics has no payout layer in this slice). Renders bare
-// (AppChrome BARE_PREFIXES) with its own sober header + the multi-role RoleSwitcher
-// (shown only for a user who also holds another space).
+// ── /logistics/dashboard — courier / logistics space landing (P1, Agent 17) ────
+// Gated by middleware (logistics/admin). A status banner + the courier's business-profile
+// summary + a "missions coming soon" placeholder. NO payment / Stripe. Since LO0 the CHROME
+// (navy sidebar/top bar/bottom-nav + status pill + RoleSwitcher + real sign-out) is provided
+// by the AMBER LogisticsShell mounted by the dashboard layout — this page renders CONTENT only
+// (no inline header). The content re-skin to --op- is LO1 (a later wave). RE-SKIN 0 migration.
 export const dynamic = 'force-dynamic'
 
 const STATUS_TONE: Record<string, BadgeTone> = {
@@ -94,24 +92,7 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
   const displayName = profile?.officialName || profile?.contactName || ''
 
   return (
-    <div className="min-h-screen bg-grubano-bg">
-      {/* Sober logistics header (no operator sidebar — this space is BARE chrome). */}
-      <header className="bg-grubano-ink text-white">
-        <div className="mx-auto max-w-3xl px-5 py-5 flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-grubano-lg bg-grubano-primary/20">
-            <Bike size={18} className="text-grubano-primary" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-widest text-white/40">Grubano</p>
-            <h1 className="font-display text-lg font-bold leading-tight truncate">{d('welcome')}</h1>
-            <p className="text-xs text-white/50 truncate">{d('subtitle')}</p>
-          </div>
-        </div>
-      </header>
-
-      <RoleSwitcher tone="light" />
-
-      <main className="mx-auto max-w-3xl px-5 py-6 space-y-5">
+    <div className="mx-auto max-w-3xl space-y-5">
         {!profile ? (
           <EmptyState
             emoji="🛵"
@@ -295,7 +276,6 @@ export default async function LogisticsDashboardPage(props: { params: { locale: 
             </Card>
           </>
         )}
-      </main>
     </div>
   )
 }

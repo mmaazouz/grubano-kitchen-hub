@@ -7926,5 +7926,34 @@
       "withdrawals": "Prelievi",
       "more": "Altro"
     }
+  },
+  "logisticsShell": {
+    "badge": "FATTORINO",
+    "collapse": "Comprimi",
+    "menu": "Menu",
+    "notifications": "Notifiche",
+    "spaceTitle": "Spazio fattorino",
+    "signOut": "Esci",
+    "group": {
+      "livraison": "Consegna",
+      "compte": "Account"
+    },
+    "nav": {
+      "overview": "Dashboard",
+      "missions": "Le mie missioni",
+      "profile": "Profilo"
+    },
+    "mnav": {
+      "overview": "Home",
+      "missions": "Missioni",
+      "profile": "Profilo"
+    },
+    "status": {
+      "waitlist": "Lista d'attesa",
+      "active": "Attivo",
+      "pending": "In revisione",
+      "rejected": "Rifiutato",
+      "suspended": "Sospeso"
+    }
   }
 }

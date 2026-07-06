@@ -7926,5 +7926,34 @@
       "withdrawals": "سحوبات",
       "more": "المزيد"
     }
+  },
+  "logisticsShell": {
+    "badge": "موصّل",
+    "collapse": "طيّ",
+    "menu": "القائمة",
+    "notifications": "الإشعارات",
+    "spaceTitle": "مساحة الموصّل",
+    "signOut": "تسجيل الخروج",
+    "group": {
+      "livraison": "التوصيل",
+      "compte": "الحساب"
+    },
+    "nav": {
+      "overview": "لوحة التحكم",
+      "missions": "مهامي",
+      "profile": "الملف الشخصي"
+    },
+    "mnav": {
+      "overview": "الرئيسية",
+      "missions": "المهام",
+      "profile": "الملف"
+    },
+    "status": {
+      "waitlist": "قائمة الانتظار",
+      "active": "نشط",
+      "pending": "قيد المراجعة",
+      "rejected": "مرفوض",
+      "suspended": "موقوف"
+    }
   }
 }

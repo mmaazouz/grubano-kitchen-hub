@@ -7926,5 +7926,34 @@
       "withdrawals": "Retraits",
       "more": "Plus"
     }
+  },
+  "logisticsShell": {
+    "badge": "LIVREUR",
+    "collapse": "Réduire",
+    "menu": "Menu",
+    "notifications": "Notifications",
+    "spaceTitle": "Espace livreur",
+    "signOut": "Se déconnecter",
+    "group": {
+      "livraison": "Livraison",
+      "compte": "Compte"
+    },
+    "nav": {
+      "overview": "Tableau de bord",
+      "missions": "Mes missions",
+      "profile": "Profil"
+    },
+    "mnav": {
+      "overview": "Bord",
+      "missions": "Missions",
+      "profile": "Profil"
+    },
+    "status": {
+      "waitlist": "Liste d'attente",
+      "active": "Actif",
+      "pending": "En validation",
+      "rejected": "Refusé",
+      "suspended": "Suspendu"
+    }
   }
 }

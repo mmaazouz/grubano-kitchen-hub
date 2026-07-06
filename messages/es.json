@@ -7926,5 +7926,34 @@
       "withdrawals": "Retiros",
       "more": "Más"
     }
+  },
+  "logisticsShell": {
+    "badge": "REPARTIDOR",
+    "collapse": "Contraer",
+    "menu": "Menú",
+    "notifications": "Notificaciones",
+    "spaceTitle": "Espacio repartidor",
+    "signOut": "Cerrar sesión",
+    "group": {
+      "livraison": "Entrega",
+      "compte": "Cuenta"
+    },
+    "nav": {
+      "overview": "Panel",
+      "missions": "Mis misiones",
+      "profile": "Perfil"
+    },
+    "mnav": {
+      "overview": "Inicio",
+      "missions": "Misiones",
+      "profile": "Perfil"
+    },
+    "status": {
+      "waitlist": "Lista de espera",
+      "active": "Activo",
+      "pending": "En revisión",
+      "rejected": "Rechazado",
+      "suspended": "Suspendido"
+    }
   }
 }

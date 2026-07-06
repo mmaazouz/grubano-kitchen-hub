@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
-import { Bike, ArrowLeft, CheckCircle2, Lock, Loader2 } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Lock, Loader2 } from 'lucide-react'
 import { Link } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 
 // ── /logistics/dashboard/profil — editable courier Profile & settings (P5a) ───
-// Calqued on /supplier/dashboard/profil. GET /api/logistics/profile to pre-fill,
-// PATCH to save OPERATIONAL fields only. Identity (SIREN / official name /
-// verification / account status) shown READ-ONLY, never sent. Same sober chrome
-// as /logistics/dashboard (bare: no operator sidebar).
+// GET /api/logistics/profile to pre-fill, PATCH to save OPERATIONAL fields only. Identity
+// (SIREN / official name / verification / account status) shown READ-ONLY, never sent. Since
+// LO0 the CHROME is provided by the AMBER LogisticsShell (dashboard layout) — this page renders
+// CONTENT only (no inline header). The content re-skin to --op- is LO3 (a later wave).
 
 const MISSION_TYPES = ['repas', 'produits_fournisseurs', 'b2b', 'froid'] as const
 const VEHICLE_TYPES = ['velo', 'scooter', 'voiture', 'camionnette', 'frigorifique'] as const
@@ -117,20 +117,7 @@ export default function LogisticsProfilePage() {
     : d('statusPending')
 
   return (
-    <div className="min-h-screen bg-grubano-bg">
-      <header className="bg-grubano-ink text-white">
-        <div className="mx-auto flex max-w-3xl items-center gap-2.5 px-5 py-5">
-          <span className="grid h-9 w-9 place-items-center rounded-grubano-lg bg-grubano-primary/20">
-            <Bike size={18} className="text-grubano-primary" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-widest text-white/40">Grubano</p>
-            <h1 className="truncate font-display text-lg font-bold leading-tight">{d('editTitle')}</h1>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-3xl space-y-5 px-5 py-6">
+    <div className="mx-auto max-w-3xl space-y-5">
         <Link href="/logistics/dashboard" className="inline-flex items-center gap-1.5 text-grubano-sm font-semibold text-grubano-ink-muted hover:text-grubano-primary">
           <ArrowLeft size={15} /> {d('back')}
         </Link>
@@ -264,7 +251,6 @@ export default function LogisticsProfilePage() {
             </form>
           </>
         )}
-      </main>
     </div>
   )
 }

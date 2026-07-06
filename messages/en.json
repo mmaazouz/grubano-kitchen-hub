@@ -7926,5 +7926,34 @@
       "withdrawals": "Payouts",
       "more": "More"
     }
+  },
+  "logisticsShell": {
+    "badge": "COURIER",
+    "collapse": "Collapse",
+    "menu": "Menu",
+    "notifications": "Notifications",
+    "spaceTitle": "Courier space",
+    "signOut": "Sign out",
+    "group": {
+      "livraison": "Delivery",
+      "compte": "Account"
+    },
+    "nav": {
+      "overview": "Dashboard",
+      "missions": "My missions",
+      "profile": "Profile"
+    },
+    "mnav": {
+      "overview": "Home",
+      "missions": "Missions",
+      "profile": "Profile"
+    },
+    "status": {
+      "waitlist": "Waitlist",
+      "active": "Active",
+      "pending": "In review",
+      "rejected": "Rejected",
+      "suspended": "Suspended"
+    }
   }
 }
