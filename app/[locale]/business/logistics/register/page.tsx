@@ -2,17 +2,28 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslations } from 'next-intl'
-import { Bike, ArrowLeft, CheckCircle2, Info, MailCheck, LogIn, ShieldCheck } from 'lucide-react'
 import { Link } from '@/navigation'
-import { Card, Button, Input } from '@/components/design-system'
-import PartnerChrome from '@/components/business/PartnerChrome'
+import './logistics-apply-form.css'
 
-// ── /business/logistics/register — self-serve courier / delivery onboarding ───
-// (Slice 1, Agent 15). The delivery-partner analogue of /supplier/register, in the
-// premium PartnerChrome. Passwordless: submits to POST /api/logistics/register,
-// which verifies the SIREN against the official registry (NAME-TOLERANT) and, on
-// success, provisions a passwordless Operator with the 'logistics' role. Anti-bot:
-// hidden honeypot + a form-open timestamp. NO payment in this slice.
+// ── LO5 · /business/logistics/register — self-serve courier onboarding (RE-SKIN) ──
+// CD marketing language (gb-foundation clair, accent AMBRE --gb-lo / gradient
+// --gb-ride, Material Symbols, scoped .lo-mkt) replaces the old PartnerChrome +
+// design-system (Card/Button/Input) + lucide-react. Exact calque of the AF8 form
+// pattern (.af-mkt → .lo-mkt). The REAL flow (Slice 1, Agent 15) is preserved
+// BYTE-IDENTICAL: same state, same ?email/?siren prefill, same honeypot `website`
+// + formStartedAt anti-bot, same POST /api/logistics/register body, same
+// outcome/officialName/waitlist handling. NO fetch, NO payload, NO network change.
+//
+// Honesty (CD note + fondateur), like AF8: the CD's fabricated success reference
+// (« LIV-2026-00318 ») is removed (the endpoint returns a neutral outcome, no ref);
+// the register sends NO e-mail / magic-link, so the CD's "a confirmation e-mail was
+// just sent" line is removed; the success is the honest waitlist wording + the
+// « no active account, you cannot sign in yet » note (no auto-login); the success
+// CTA and the nav back both link to the /business/logistics landing (LO4). The RGPD
+// consent links to /legal/confidentialite and the waitlist-terms line to
+// /legal/mentions-legales (no invented /legal/cgu page).
+// The CSS (logistics-apply-form.css) is imported by this page (the file itself is
+// the page — no separate client child), matching the chantier build lesson.
 
 const PARTNER_TYPES = ['independent', 'company'] as const
 const MISSION_TYPES = ['repas', 'produits_fournisseurs', 'b2b', 'froid'] as const
@@ -32,9 +43,27 @@ const VEHICLE_LABEL: Record<(typeof VEHICLE_TYPES)[number], string> = {
   camionnette: 'vehicleCamionnette',
   frigorifique: 'vehicleFrigorifique',
 }
+// Material Symbols icon per vehicle (marketing choice tiles).
+const VEHICLE_ICON: Record<(typeof VEHICLE_TYPES)[number], string> = {
+  velo: 'pedal_bike',
+  scooter: 'two_wheeler',
+  voiture: 'directions_car',
+  camionnette: 'local_shipping',
+  frigorifique: 'ac_unit',
+}
+// Material Symbols icon per mission type (marketing choice tiles).
+const MISSION_ICON: Record<(typeof MISSION_TYPES)[number], string> = {
+  repas: 'restaurant',
+  produits_fournisseurs: 'inventory_2',
+  b2b: 'store',
+  froid: 'ac_unit',
+}
+
+const SYMBOL_COLOR = '/brand/grubano-symbol-color.svg'
 
 export default function LogisticsRegisterPage() {
   const t  = useTranslations('business.logistics')
+  const tU = useTranslations('business.logistics.applyUi')
   const tA = useTranslations('addActivity')
 
   const [partnerType, setPartnerType]   = useState<(typeof PARTNER_TYPES)[number]>('independent')
@@ -127,111 +156,195 @@ export default function LogisticsRegisterPage() {
     }
   }
 
-  return (
-    <PartnerChrome>
-      <div className="w-full max-w-lg">
-        <div className="mb-5 flex items-center gap-2.5">
-          <span className="grid h-11 w-11 place-items-center rounded-grubano-lg bg-grubano-role-logistics/12 text-grubano-role-logistics">
-            <Bike size={22} />
-          </span>
-          <div>
-            <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{t('registerTitle')}</h1>
-            <p className="text-grubano-sm text-grubano-ink-muted">{t('registerSubtitle')}</p>
-          </div>
+  // ── Marketing chrome — brand badge + back link to the /business/logistics landing ──
+  function Nav() {
+    return (
+      <nav className="nav">
+        <div className="nav__in">
+          <Link href="/business/logistics" className="nav__brand">
+            <img src={SYMBOL_COLOR} alt="Grubano" />
+            <b>Grubano</b>
+            <span>{tU('navBadge')}</span>
+          </Link>
+          <Link href="/business/logistics" className="nav__back">
+            <span className="ms">arrow_back</span>{tU('navBack')}
+          </Link>
         </div>
+      </nav>
+    )
+  }
 
-        <Card elevation="premium" padding="lg">
-          {done ? (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <span className={[
-                'grid h-14 w-14 place-items-center rounded-grubano-pill',
-                outcome === 'rejected' ? 'bg-grubano-surface-muted' : 'bg-grubano-success-tint',
-              ].join(' ')}>
-                {outcome === 'active'
-                  ? <CheckCircle2 size={28} className="text-grubano-success" />
-                  : outcome === 'rejected'
-                    ? <Info size={28} className="text-grubano-ink-muted" />
-                    : <MailCheck size={28} className="text-grubano-success" />}
-              </span>
-              <p className="font-display text-base font-bold text-grubano-ink">
-                {t((outcome === 'active' ? 'successTitleActive' : outcome === 'rejected' ? 'successTitleRejected' : waitlist ? 'successTitleWaitlist' : 'successTitle') as 'successTitle')}
-              </p>
-              {outcome === 'active' && officialName && (
-                <span className="inline-flex items-center gap-1.5 rounded-grubano-pill bg-grubano-tint px-3 py-1 text-grubano-sm font-semibold text-grubano-primary">
-                  <ShieldCheck size={14} /> {officialName}
-                </span>
-              )}
-              <p className="max-w-xs text-grubano-sm text-grubano-ink-muted">
-                {t((outcome === 'active' ? 'successBodyActive' : outcome === 'rejected' ? 'successBodyRejected' : waitlist ? 'successBodyWaitlist' : 'successBody') as 'successBody')}
-              </p>
-              {outcome === 'active' && (
-                <Link
-                  href="/auth/magic"
-                  className="mt-2 inline-flex items-center justify-center gap-2 rounded-grubano-lg bg-grubano-primary px-5 py-3 font-semibold text-white shadow-grubano-sm transition-transform active:scale-[0.99] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/30"
-                >
-                  <LogIn size={16} /> {t('successCtaActive')}
+  // ── SUCCESS — honest outcome (waitlist / pending / active / rejected). No fabricated
+  // reference, no "confirmation e-mail sent" line (this endpoint sends none), no
+  // auto-login. Titles/bodies reuse the existing outcome-aware keys; the CTA and the
+  // nav back both point to the real /business/logistics landing (no session posed).
+  if (done) {
+    const title =
+      outcome === 'active'   ? t('successTitleActive')   :
+      outcome === 'rejected' ? t('successTitleRejected') :
+      waitlist               ? t('successTitleWaitlist') : t('successTitle')
+    const body =
+      outcome === 'active'   ? t('successBodyActive')   :
+      outcome === 'rejected' ? t('successBodyRejected') :
+      waitlist               ? t('successBodyWaitlist') : t('successBody')
+    const icClass =
+      outcome === 'active'   ? 'success__ic is-active'   :
+      outcome === 'rejected' ? 'success__ic is-rejected' : 'success__ic'
+    const icon =
+      outcome === 'active'   ? 'verified'  :
+      outcome === 'rejected' ? 'info'      : 'mark_email_read'
+
+    return (
+      <div className="lo-mkt">
+        <Nav />
+        <div className="page">
+          <div className="success">
+            <div className={icClass}><span className="ms">{icon}</span></div>
+            <h2>{title}</h2>
+            {outcome === 'active' && officialName && (
+              <div className="success__badge"><span className="ms">verified</span>{officialName}</div>
+            )}
+            <p>{body}</p>
+            {/* Honest next-steps — no e-mail claim; the waitlist path shows the real path forward. */}
+            {outcome !== 'rejected' && (
+              <>
+                <div className="success__steps">
+                  <div className="s"><span className="ms">schedule</span>{tU('successStepReview')}</div>
+                  <div className="s"><span className="ms">description</span>{tU('successStepDocs')}</div>
+                  <div className="s"><span className="ms">lock_open</span>{tU('successStepShare')}</div>
+                </div>
+                <p className="success__note">{tU('successNote')}</p>
+              </>
+            )}
+            <div className="success__cta">
+              {outcome === 'active' ? (
+                <Link href="/auth/magic" className="btn-lo">
+                  <span className="ms">login</span>{t('successCtaActive')}
                 </Link>
-              )}
-              {outcome === 'pending' && (
-                <Link href="/auth/magic" className="mt-1 inline-flex items-center gap-1 text-grubano-sm font-semibold text-grubano-primary">
-                  <ArrowLeft size={14} /> {t('backToLogin')}
-                </Link>
-              )}
-              {outcome === 'rejected' && (
-                <Link href="/business/start" className="mt-1 inline-flex items-center gap-1 text-grubano-sm font-semibold text-grubano-primary">
-                  <ArrowLeft size={14} /> {t('back')}
+              ) : (
+                <Link href="/business/logistics" className="btn-lo">
+                  <span className="ms">home</span>{tU('successCta')}
                 </Link>
               )}
             </div>
-          ) : (
-            <form onSubmit={submit} className="space-y-4">
-              {error && (
-                <p className="rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
-                  {error}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── FORM — fields aligned on the real POST /api/logistics/register payload ─────
+  return (
+    <div className="lo-mkt">
+      <Nav />
+      <div className="page">
+        <div className="head">
+          <span className="eyebrow"><span className="ms">two_wheeler</span>{tU('eyebrow')}</span>
+          <h1>{t('registerTitle')}</h1>
+          <p>{tU('headSubtitle')}</p>
+        </div>
+
+        <div className="wait-note"><span className="ms">schedule</span>{tU('waitNote')}</div>
+
+        <div className="grid">
+          {/* Real endpoint: POST /api/logistics/register (unchanged) */}
+          <form className="form-card" onSubmit={submit}>
+
+            {/* Honeypot — visually hidden, off-screen, not focusable. A bot fills it → silent OK. */}
+            <div aria-hidden="true" className="hp">
+              <label>
+                Website
+                <input
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                />
+              </label>
+            </div>
+
+            {/* 1 — Vous : contact + partner type */}
+            <div className="fsec">
+              <div className="fsec__h">
+                <span className="fsec__n">1</span>
+                <div><b>{tU('secYouTitle')}</b><span>{tU('secYouSub')}</span></div>
+              </div>
+
+              {emailLocked && (
+                <p className="locked-note">
+                  <span className="ms">lock</span>
+                  <span>{tA('emailLocked')}{prefilled ? ' ' + tA('prefillNote') : ''}</span>
                 </p>
               )}
 
-              {/* Partner type — radio segmented */}
-              <fieldset>
-                <legend className="mb-1.5 text-grubano-sm font-medium text-grubano-ink">{t('fieldPartnerType')}</legend>
-                <div className="grid grid-cols-2 gap-2">
-                  {PARTNER_TYPES.map((pt) => {
-                    const active = partnerType === pt
-                    return (
-                      <button
-                        key={pt}
-                        type="button"
-                        onClick={() => setPartnerType(pt)}
-                        aria-pressed={active}
-                        className={[
-                          'rounded-grubano-lg border px-3 py-2.5 text-grubano-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/20',
-                          active
-                            ? 'border-grubano-primary bg-grubano-primary text-white'
-                            : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:border-grubano-primary/40',
-                        ].join(' ')}
-                      >
-                        {t(pt === 'independent' ? 'partnerTypeIndependent' : 'partnerTypeCompany')}
-                      </button>
-                    )
-                  })}
+              <div className="fld">
+                <label htmlFor="lo-name">{t('fieldContactName')}</label>
+                <input
+                  id="lo-name"
+                  className="inp"
+                  type="text"
+                  required
+                  autoComplete="name"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                />
+              </div>
+              <div className="row2">
+                <div className="fld">
+                  <label htmlFor="lo-email">{t('fieldContactEmail')}</label>
+                  <input
+                    id="lo-email"
+                    className="inp"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    disabled={emailLocked}
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                  />
                 </div>
-              </fieldset>
+                <div className="fld">
+                  <label htmlFor="lo-phone">{t('fieldContactPhone')} <span className="opt">(facultatif)</span></label>
+                  <input
+                    id="lo-phone"
+                    className="inp mono"
+                    type="tel"
+                    autoComplete="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                  />
+                </div>
+              </div>
 
-              <Input
-                label={t('fieldSiren')}
-                required
-                inputMode="numeric"
-                value={siren}
-                onChange={(e) => setSiren(e.target.value)}
-                placeholder="123 456 789"
-                hint={t('fieldSirenHint')}
-                error={showSirenError ? t('fieldSirenError') : undefined}
-              />
+              <div className="fld">
+                <label>{t('fieldPartnerType')}</label>
+                <div className="seg">
+                  {PARTNER_TYPES.map((pt) => (
+                    <button
+                      key={pt}
+                      type="button"
+                      onClick={() => setPartnerType(pt)}
+                      aria-pressed={partnerType === pt}
+                      className={`seg__btn${partnerType === pt ? ' on' : ''}`}
+                    >
+                      {t(pt === 'independent' ? 'partnerTypeIndependent' : 'partnerTypeCompany')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
 
-              {/* Mission types — multi-select */}
-              <div>
-                <p className="mb-1.5 text-grubano-sm font-medium text-grubano-ink">{t('fieldMissionTypes')}</p>
-                <div className="flex flex-wrap gap-2">
+            {/* 2 — Votre livraison : missions + vehicles + zones */}
+            <div className="fsec">
+              <div className="fsec__h">
+                <span className="fsec__n">2</span>
+                <div><b>{tU('secDeliveryTitle')}</b><span>{tU('secDeliverySub')}</span></div>
+              </div>
+
+              <div className="fld">
+                <label>{t('fieldMissionTypes')}</label>
+                <div className="choices">
                   {MISSION_TYPES.map((m) => {
                     const active = missionTypes.includes(m)
                     return (
@@ -240,24 +353,19 @@ export default function LogisticsRegisterPage() {
                         type="button"
                         onClick={() => toggle(missionTypes, setMissionTypes, m)}
                         aria-pressed={active}
-                        className={[
-                          'rounded-grubano-pill border px-3 py-1.5 text-grubano-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/20',
-                          active
-                            ? 'border-grubano-primary bg-grubano-primary text-white'
-                            : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:border-grubano-primary/40',
-                        ].join(' ')}
+                        className={`choice${active ? ' on' : ''}`}
                       >
-                        {t(MISSION_LABEL[m] as 'missionRepas')}
+                        <span className="ms">{MISSION_ICON[m]}</span>
+                        <b>{t(MISSION_LABEL[m] as 'missionRepas')}</b>
                       </button>
                     )
                   })}
                 </div>
               </div>
 
-              {/* Vehicle types — multi-select */}
-              <div>
-                <p className="mb-1.5 text-grubano-sm font-medium text-grubano-ink">{t('fieldVehicleTypes')}</p>
-                <div className="flex flex-wrap gap-2">
+              <div className="fld">
+                <label>{t('fieldVehicleTypes')}</label>
+                <div className="choices">
                   {VEHICLE_TYPES.map((v) => {
                     const active = vehicleTypes.includes(v)
                     return (
@@ -266,66 +374,119 @@ export default function LogisticsRegisterPage() {
                         type="button"
                         onClick={() => toggle(vehicleTypes, setVehicleTypes, v)}
                         aria-pressed={active}
-                        className={[
-                          'rounded-grubano-pill border px-3 py-1.5 text-grubano-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-grubano-primary/20',
-                          active
-                            ? 'border-grubano-primary bg-grubano-primary text-white'
-                            : 'border-grubano-border bg-grubano-surface text-grubano-ink-muted hover:border-grubano-primary/40',
-                        ].join(' ')}
+                        className={`choice${active ? ' on' : ''}`}
                       >
-                        {t(VEHICLE_LABEL[v] as 'vehicleVelo')}
+                        <span className="ms">{VEHICLE_ICON[v]}</span>
+                        <b>{t(VEHICLE_LABEL[v] as 'vehicleVelo')}</b>
                       </button>
                     )
                   })}
                 </div>
               </div>
 
-              <div>
-                <Input label={t('fieldZones')} value={zones} onChange={(e) => setZones(e.target.value)} placeholder="Lyon, Villeurbanne, 69003" />
-                <p className="mt-1 text-grubano-xs text-grubano-ink-faint">{t('fieldZonesHint')}</p>
+              <div className="fld">
+                <label htmlFor="lo-zones">{t('fieldZones')} <span className="opt">(facultatif)</span></label>
+                <input
+                  id="lo-zones"
+                  className="inp"
+                  type="text"
+                  placeholder="Lyon, Villeurbanne, 69003"
+                  value={zones}
+                  onChange={(e) => setZones(e.target.value)}
+                />
+                <div className="hint"><span className="ms">info</span><span>{t('fieldZonesHint')}</span></div>
+              </div>
+            </div>
+
+            {/* 3 — Votre statut : SIREN/SIRET (real payload requires it) */}
+            <div className="fsec">
+              <div className="fsec__h">
+                <span className="fsec__n">3</span>
+                <div><b>{tU('secStatusTitle')}</b><span>{tU('secStatusSub')}</span></div>
               </div>
 
-              {emailLocked && (
-                <p className="rounded-grubano-lg border border-grubano-primary/20 bg-grubano-tint/50 px-3 py-2 text-grubano-sm text-grubano-ink-muted">
-                  {tA('emailLocked')}{prefilled ? ' ' + tA('prefillNote') : ''}
-                </p>
-              )}
-              <Input label={t('fieldContactName')} required value={contactName} onChange={(e) => setContactName(e.target.value)} />
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={t('fieldContactEmail')} type="email" required value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} disabled={emailLocked} />
-                <Input label={t('fieldContactPhone')} value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+              <div className="fld">
+                <label htmlFor="lo-siren">{t('fieldSiren')}</label>
+                <input
+                  id="lo-siren"
+                  className="inp mono"
+                  type="text"
+                  required
+                  inputMode="numeric"
+                  placeholder="123 456 789"
+                  value={siren}
+                  onChange={(e) => setSiren(e.target.value)}
+                />
+                <div className={`hint${showSirenError ? ' fld-err' : ''}`}>
+                  <span className="ms">{showSirenError ? 'error' : 'info'}</span>
+                  <span>{showSirenError ? t('fieldSirenError') : t('fieldSirenHint')}</span>
+                </div>
+                <div className="hint"><span className="ms">verified_user</span><span>{tU('justificatifsHint')}</span></div>
+              </div>
+            </div>
+
+            {/* 4 — Consentements */}
+            <div className="fsec">
+              <div className="fsec__h">
+                <span className="fsec__n">4</span>
+                <div><b>{tU('secConsentTitle')}</b><span>{tU('secConsentSub')}</span></div>
               </div>
 
-              {/* Honeypot — visually hidden, must stay empty (anti-bot). */}
-              <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
-                <label>
-                  Website
-                  <input type="text" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
-                </label>
-              </div>
-
-              <label className="flex items-start gap-2 text-grubano-sm text-grubano-ink-muted">
+              <label className="consent">
                 <input
                   type="checkbox"
+                  required
                   checked={consent}
                   onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-grubano-primary"
-                  required
                 />
-                <span>{t('consentLabel')}</span>
+                <span>
+                  {t('consentLabel')}{' '}
+                  <Link href="/legal/confidentialite" target="_blank" rel="noopener noreferrer">
+                    /legal/confidentialite
+                  </Link>
+                </span>
               </label>
+              <label className="consent" style={{ marginTop: 12 }}>
+                <input type="checkbox" required />
+                <span>
+                  {tU('consentTermsLabel')}{' '}
+                  <Link href="/legal/mentions-legales" target="_blank" rel="noopener noreferrer">
+                    {tU('consentTermsLink')}
+                  </Link>.
+                </span>
+              </label>
+            </div>
 
-              <Button type="submit" variant="primary" size="md" fullWidth loading={submitting}>
+            {error && <p className="form-err">{error}</p>}
+
+            <div className="form-foot">
+              <button type="submit" className="btn-lo" disabled={submitting}>
+                <span className="ms">{submitting ? 'progress_activity' : 'send'}</span>
                 {submitting ? t('submitting') : t('submit')}
-              </Button>
+              </button>
+              <span className="note"><span className="ms">lock</span>{tU('footNote')}</span>
+            </div>
+          </form>
 
-              <Link href="/business/start" className="block text-center text-grubano-sm font-semibold text-grubano-ink-muted hover:text-grubano-primary">
-                {t('back')}
-              </Link>
-            </form>
-          )}
-        </Card>
+          {/* aside — qualitative only (no €, no rates, no fabricated volumes) */}
+          <aside className="aside">
+            <div className="aside__promo">
+              <span className="ms">groups</span>
+              <b>{tU('asidePromoTitle')}</b>
+              <span>{tU('asidePromoBody')}</span>
+            </div>
+            <div className="aside__card">
+              <h3><span className="ms">checklist</span>{tU('asideAwaitsTitle')}</h3>
+              <ul className="aside__list">
+                <li><span className="ms">check_circle</span>{tU('asideAwaits1')}</li>
+                <li><span className="ms">check_circle</span>{tU('asideAwaits2')}</li>
+                <li><span className="ms">check_circle</span>{tU('asideAwaits3')}</li>
+                <li><span className="ms">check_circle</span>{tU('asideAwaits4')}</li>
+              </ul>
+            </div>
+          </aside>
+        </div>
       </div>
-    </PartnerChrome>
+    </div>
   )
 }
