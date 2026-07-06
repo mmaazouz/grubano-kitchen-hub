@@ -2,22 +2,19 @@
 
 import { useEffect, useState, useCallback, type FormEvent } from 'react'
 import { useTranslations } from 'next-intl'
-import { ShieldCheck, FileCheck2, Clock3, FileText } from 'lucide-react'
-import { Card, Badge, Button, type BadgeTone } from '@/components/design-system'
 
-// ── CourierJustificatifs — the courier's compliance declaration (Agent 125) ────
-// Mounted on the logistics dashboard. A STRUCTURED DECLARATION (insurance + RC Pro; SIRET was
-// collected at signup) — no file upload in this brick. Submitting marks the declaration
-// 'submitted'; it does NOT activate the account — an admin verifies + activates, and ONLY when
-// the activation flag is ON (waitlist guardrail). NO money. Owner-scoped via the session.
+// ── CourierJustificatifs — the courier's compliance declaration (Agent 125 · LO1 re-skin) ──
+// Rendered INSIDE the LO1 dashboard "Mes justificatifs" card (so it renders the declaration form
+// ONLY — no outer card/title). A STRUCTURED DECLARATION (insurance + RC Pro; SIRET was collected at
+// signup) — no file upload. Submitting marks the declaration 'submitted'; it does NOT activate the
+// account — an admin verifies + activates, and ONLY when the activation flag is ON (waitlist
+// guardrail). NO money. Owner-scoped via the session. Styled with --op- .decl-* classes.
 
 interface State {
   status: string; accountStatus: string
   insuranceInsurer: string; insurancePolicyNumber: string; insuranceExpiry: string
   rcProInsurer: string; rcProPolicyNumber: string
 }
-
-const STATUS_TONE: Record<string, BadgeTone> = { none: 'neutral', submitted: 'warning', verified: 'success' }
 
 export default function CourierJustificatifs() {
   const t = useTranslations('business.logistics.justificatifs')
@@ -60,69 +57,55 @@ export default function CourierJustificatifs() {
 
   if (!s) return null
 
-  const statusLabel = t(`status_${s.status}` as 'status_none')
-  const field = 'w-full rounded-grubano-lg border border-grubano-border bg-white px-3 py-2 text-sm text-grubano-ink focus:border-grubano-primary focus:outline-none'
   const verified = s.status === 'verified'
 
   return (
-    <Card elevation="sm" padding="lg">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-semibold text-grubano-ink">
-            <ShieldCheck size={18} className="text-grubano-primary" /> {t('title')}
-          </p>
-          <p className="text-sm text-grubano-ink-muted">{t('subtitle')}</p>
-        </div>
-        <Badge tone={STATUS_TONE[s.status] ?? 'neutral'} size="md"
-          icon={s.status === 'verified' ? <FileCheck2 size={13} /> : s.status === 'submitted' ? <Clock3 size={13} /> : <FileText size={13} />}>
-          {statusLabel}
-        </Badge>
-      </div>
+    <>
+      {saved && <div className="decl__msg ok">{t('savedTitle')} — {t('savedBody')}</div>}
+      {error && <div className="decl__msg err">{error}</div>}
 
-      {saved && <div className="mb-3 rounded-grubano-lg bg-grubano-success-tint px-3 py-2 text-sm text-grubano-ink"><span className="font-semibold">{t('savedTitle')}</span> {t('savedBody')}</div>}
-      {error && <div className="mb-3 rounded-grubano-lg bg-grubano-danger-tint px-3 py-2 text-sm text-grubano-danger">{error}</div>}
-
-      <form onSubmit={submit} className="space-y-4">
-        <fieldset className="space-y-3" disabled={verified}>
-          <legend className="text-[11px] font-semibold uppercase tracking-wide text-grubano-ink-faint">{t('insuranceLegend')}</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('insurerLabel')}</label>
-              <input value={s.insuranceInsurer} onChange={set('insuranceInsurer')} required minLength={2} maxLength={120} className={field} />
+      <form onSubmit={submit}>
+        <fieldset className="decl__fs" disabled={verified}>
+          <div className="decl__lg">{t('insuranceLegend')}</div>
+          <div className="decl__grid">
+            <div className="decl__f">
+              <label>{t('insurerLabel')}</label>
+              <input value={s.insuranceInsurer} onChange={set('insuranceInsurer')} required minLength={2} maxLength={120} />
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('policyLabel')}</label>
-              <input value={s.insurancePolicyNumber} onChange={set('insurancePolicyNumber')} required minLength={2} maxLength={80} className={field} />
+            <div className="decl__f">
+              <label>{t('policyLabel')}</label>
+              <input value={s.insurancePolicyNumber} onChange={set('insurancePolicyNumber')} required minLength={2} maxLength={80} />
             </div>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('expiryLabel')}</label>
-            <input type="date" value={s.insuranceExpiry} onChange={set('insuranceExpiry')} required className={field} />
+          <div className="decl__f" style={{ marginTop: 12 }}>
+            <label>{t('expiryLabel')}</label>
+            <input type="date" value={s.insuranceExpiry} onChange={set('insuranceExpiry')} required />
           </div>
         </fieldset>
 
-        <fieldset className="space-y-3" disabled={verified}>
-          <legend className="text-[11px] font-semibold uppercase tracking-wide text-grubano-ink-faint">{t('rcProLegend')}</legend>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('rcProInsurerLabel')}</label>
-              <input value={s.rcProInsurer} onChange={set('rcProInsurer')} required minLength={2} maxLength={120} className={field} />
+        <fieldset className="decl__fs" disabled={verified}>
+          <div className="decl__lg">{t('rcProLegend')}</div>
+          <div className="decl__grid">
+            <div className="decl__f">
+              <label>{t('rcProInsurerLabel')}</label>
+              <input value={s.rcProInsurer} onChange={set('rcProInsurer')} required minLength={2} maxLength={120} />
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-semibold text-grubano-ink">{t('rcProNumberLabel')}</label>
-              <input value={s.rcProPolicyNumber} onChange={set('rcProPolicyNumber')} required minLength={2} maxLength={80} className={field} />
+            <div className="decl__f">
+              <label>{t('rcProNumberLabel')}</label>
+              <input value={s.rcProPolicyNumber} onChange={set('rcProPolicyNumber')} required minLength={2} maxLength={80} />
             </div>
           </div>
         </fieldset>
 
-        <p className="text-xs text-grubano-ink-faint">{t('note')}</p>
+        <p className="decl__note">{t('note')}</p>
 
         {!verified && (
-          <Button type="submit" variant="primary" size="md" disabled={saving}>
+          <button type="submit" className="op-btn-primary" disabled={saving}>
+            <span className="ms">{saving ? 'progress_activity' : 'shield'}</span>
             {saving ? t('submitting') : t('submit')}
-          </Button>
+          </button>
         )}
       </form>
-    </Card>
+    </>
   )
 }
