@@ -68,6 +68,16 @@ export async function PATCH(req: NextRequest) {
       data: { trackingConsent: parsed.data.consent, trackingConsentAt: new Date() },
       select: { trackingConsent: true },
     })
+    // RGPD (Géoloc ÉTAPE 5): withdrawing consent must ALSO erase any live position — a courier who
+    // revokes leaves NO residual point (not just no new capture). Best-effort — never breaks the
+    // consent write. Owner-scoped by the resolved profile id.
+    if (!parsed.data.consent) {
+      try {
+        await prisma.courierPosition.deleteMany({ where: { courierId: existing.id } })
+      } catch (e) {
+        console.error('[tracking-consent revoke] position purge failed:', e instanceof Error ? e.message : e)
+      }
+    }
     return NextResponse.json({ ok: true, consent: updated.trackingConsent })
   } catch (err) {
     console.error('[PATCH /api/logistics/tracking-consent]', err)

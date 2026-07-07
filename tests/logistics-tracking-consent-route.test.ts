@@ -8,7 +8,7 @@ import { NextRequest } from 'next/server'
 
 const { auth, db, flag, rl } = vi.hoisted(() => ({
   auth: { getServerSession: vi.fn() },
-  db:   { logisticsProfile: { findUnique: vi.fn(), update: vi.fn() } },
+  db:   { logisticsProfile: { findUnique: vi.fn(), update: vi.fn() }, courierPosition: { deleteMany: vi.fn() } },
   flag: { isLogisticsTrackingEnabled: vi.fn() },
   rl:   { rateLimit: vi.fn((): Response | null => null) },
 }))
@@ -29,8 +29,21 @@ beforeEach(() => {
   auth.getServerSession.mockResolvedValue({ user: { email: 'c@x.fr' } })
   db.logisticsProfile.findUnique.mockResolvedValue({ id: 'lp1', trackingConsent: false })
   db.logisticsProfile.update.mockResolvedValue({ trackingConsent: true })
+  db.courierPosition.deleteMany.mockResolvedValue({ count: 1 })
   flag.isLogisticsTrackingEnabled.mockReturnValue(true)
   rl.rateLimit.mockReturnValue(null)
+})
+
+describe('PATCH revoke → purges the current position (RGPD Étape 5)', () => {
+  it('consent:false ALSO erases the courier own CourierPosition (owner-scoped)', async () => {
+    db.logisticsProfile.update.mockResolvedValue({ trackingConsent: false })
+    await patch({ consent: false })
+    expect(db.courierPosition.deleteMany).toHaveBeenCalledWith({ where: { courierId: 'lp1' } })
+  })
+  it('consent:true does NOT purge (a live opt-in keeps capturing)', async () => {
+    await patch({ consent: true })
+    expect(db.courierPosition.deleteMany).not.toHaveBeenCalled()
+  })
 })
 
 describe('GET', () => {

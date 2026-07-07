@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { rateLimit } from '@/lib/rate-limit'
 import { isLogisticsTrackingEnabled } from '@/lib/logistics-tracking'
+import { sweepStaleCourierPositions } from '@/lib/courier-position-sweep'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -89,6 +90,15 @@ export async function POST(req: NextRequest) {
       create: { courierId: profile.id, missionId, lat, lng, accuracy: accuracy ?? null },
       update: { lat, lng, accuracy: accuracy ?? null },
     })
+    // RGPD (Géoloc ÉTAPE 5) — opportunistic staleness sweep: any activity erases orphaned/stale
+    // points past their TTL (belt-and-braces for the F1 residual, in addition to the cron). Cheap
+    // (tiny table) + best-effort — never affects this write's response. This courier's just-written
+    // point is fresh, so it is never swept.
+    try {
+      await sweepStaleCourierPositions()
+    } catch (e) {
+      console.error('[logistics position] stale sweep failed (write unaffected):', e instanceof Error ? e.message : e)
+    }
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('[POST /api/logistics/position]', err)

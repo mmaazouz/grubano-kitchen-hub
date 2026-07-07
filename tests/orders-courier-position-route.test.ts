@@ -5,19 +5,19 @@ import { NextRequest } from 'next/server'
 // Owner (consumer) → COARSENED (never exact). Admin → EXACT. Restaurant operator / anyone else →
 // 403. Flag OFF → 404 before any read. coarsen + ETA are REAL (integration).
 
-const { jwt, db, scope, flag } = vi.hoisted(() => ({
+const { jwt, db, admin, flag } = vi.hoisted(() => ({
   jwt: { getToken: vi.fn() },
   db: {
     order:           { findUnique: vi.fn() },
     mission:         { findFirst: vi.fn() },
     courierPosition: { findUnique: vi.fn() },
   },
-  scope: { resolveEstablishmentScope: vi.fn() },
+  admin: { resolveAdmin: vi.fn() },
   flag:  { isLogisticsTrackingEnabled: vi.fn() },
 }))
 vi.mock('next-auth/jwt', () => ({ getToken: jwt.getToken }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: scope.resolveEstablishmentScope }))
+vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: admin.resolveAdmin }))
 vi.mock('@/lib/logistics-tracking', () => ({ isLogisticsTrackingEnabled: flag.isLogisticsTrackingEnabled }))
 // REAL: @/lib/courier-position-view (+ @/lib/geocode) — coarsening + ETA are exercised for real.
 
@@ -38,7 +38,7 @@ beforeEach(() => {
   })
   db.mission.findFirst.mockResolvedValue({ id: 'm1', courierId: 'cP', status: 'picked_up' })
   db.courierPosition.findUnique.mockResolvedValue({ lat: EXACT.lat, lng: EXACT.lng, updatedAt: new Date('2026-07-07T10:00:00Z') })
-  scope.resolveEstablishmentScope.mockResolvedValue({ ok: true, role: 'admin' })
+  admin.resolveAdmin.mockResolvedValue({ id: 'admin1', role: 'admin', name: 'A', email: 'a@x.fr' })
 })
 
 describe('gating', () => {
@@ -66,26 +66,26 @@ describe('owner-scope + coarsening (no IDOR, never exact to the client)', () => 
     expect(json.approx).toBe(true)
     expect(json.courier).toEqual({ lat: 48.857, lng: 2.352 }) // coarsened (3 decimals)
     expect(json.courier).not.toEqual(EXACT)
-    expect(scope.resolveEstablishmentScope).not.toHaveBeenCalled() // owner path doesn't consult scope
+    expect(admin.resolveAdmin).not.toHaveBeenCalled() // owner path doesn't consult the admin resolver
   })
   it('a NON-owner NON-admin (restaurant operator owning the establishment) → 403, courier never read', async () => {
     jwt.getToken.mockResolvedValue({ sub: 'someone_else' })
-    scope.resolveEstablishmentScope.mockResolvedValue({ ok: true, role: 'operator', ownedIds: ['r1'] })
+    admin.resolveAdmin.mockResolvedValue(null) // not an admin → refused (a restaurant operator is null here)
     const res = await call()
     expect(res.status).toBe(403)
     expect(db.courierPosition.findUnique).not.toHaveBeenCalled() // the restaurant NEVER sees the courier
   })
-  it('a non-operator non-owner (scope not ok) → 403', async () => {
+  it('a non-admin non-owner → 403', async () => {
     jwt.getToken.mockResolvedValue({ sub: 'someone_else' })
-    scope.resolveEstablishmentScope.mockResolvedValue({ ok: false, error: 'x', status: 403 })
+    admin.resolveAdmin.mockResolvedValue(null)
     expect((await call()).status).toBe(403)
   })
 })
 
-describe('admin whitelist (exact)', () => {
+describe('admin whitelist (exact — via resolveAdmin, incl. a SECONDARY admin role)', () => {
   it('ADMIN (non-owner) gets the EXACT position, approx:false', async () => {
     jwt.getToken.mockResolvedValue({ sub: 'admin1' })
-    scope.resolveEstablishmentScope.mockResolvedValue({ ok: true, role: 'admin' })
+    admin.resolveAdmin.mockResolvedValue({ id: 'adm', role: 'restaurant', name: 'A', email: 'a@x.fr' }) // secondary admin role
     const json = await (await call()).json()
     expect(json.available).toBe(true)
     expect(json.approx).toBe(false)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
-import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+import { resolveAdmin } from '@/lib/admin-guard'
 import { isLogisticsTrackingEnabled } from '@/lib/logistics-tracking'
 import { coarsenLatLng, etaMinutes } from '@/lib/courier-position-view'
 
@@ -52,11 +52,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     if (isOwner) {
       exact = false
     } else {
-      const scope = await resolveEstablishmentScope(null)
-      if (scope.ok && scope.role === 'admin') {
+      // Admin/support whitelist — via resolveAdmin (the role SET, incl. a SECONDARY admin role), so
+      // it MATCHES the /admin/tracking page gate (fixes the Ét.4 resolver asymmetry). Fail-closed:
+      // any non-owner non-admin — incl. a restaurant operator owning the establishment — is refused;
+      // the courier position is NEVER theirs to see.
+      const admin = await resolveAdmin()
+      if (admin) {
         exact = true
       } else {
-        // A restaurant operator (or any non-owner non-admin) is refused — never expose the courier.
         return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       }
     }

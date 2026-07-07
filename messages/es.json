@@ -4993,7 +4993,9 @@
         "pwaReminder": "Mantén la app abierta para que el seguimiento funcione.",
         "idleNoMission": "El seguimiento comenzará automáticamente en tu próxima entrega.",
         "permDenied": "Ubicación denegada. Actívala en los ajustes del navegador para compartir tu ubicación durante la entrega.",
-        "unavailable": "Geolocalización no disponible en este dispositivo."
+        "unavailable": "Geolocalización no disponible en este dispositivo.",
+        "eraseData": "Borrar mis datos de ubicación",
+        "erased": "Datos borrados"
       }
     }
   },

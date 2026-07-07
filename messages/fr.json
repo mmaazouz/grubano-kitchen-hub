@@ -4993,7 +4993,9 @@
         "pwaReminder": "Gardez l'application ouverte pour que le suivi fonctionne.",
         "idleNoMission": "Le suivi démarrera automatiquement à votre prochaine course.",
         "permDenied": "Localisation refusée. Activez-la dans les réglages de votre navigateur pour partager votre position pendant la course.",
-        "unavailable": "Géolocalisation indisponible sur cet appareil."
+        "unavailable": "Géolocalisation indisponible sur cet appareil.",
+        "eraseData": "Effacer mes données de position",
+        "erased": "Données effacées"
       }
     }
   },

@@ -20,6 +20,7 @@ export default function CourierTracking({ activeMission }: { activeMission: OwnM
   const [consent, setConsent] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [erased, setErased] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -45,6 +46,20 @@ export default function CourierTracking({ activeMission }: { activeMission: OwnM
       if (res.ok) setConsent(next)
     } catch {
       /* best-effort — a reload reflects the real state */
+    } finally {
+      setBusy(false)
+    }
+  }, [busy])
+
+  // RGPD art. 17 — erase my position data on demand (owner-scoped DELETE). Best-effort.
+  const eraseData = useCallback(async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/logistics/my-position-data', { method: 'DELETE' })
+      if (res.ok) setErased(true)
+    } catch {
+      /* best-effort */
     } finally {
       setBusy(false)
     }
@@ -111,6 +126,10 @@ export default function CourierTracking({ activeMission }: { activeMission: OwnM
           )}
           <button type="button" className="op-btn-ghost track__revoke" disabled={busy} onClick={() => setTracking(false)}>
             <span className="ms">block</span>{t('revoke')}
+          </button>
+          {/* RGPD art. 17 — the courier can erase their position data on demand (owner-scoped). */}
+          <button type="button" className="op-btn-ghost track__erase" disabled={busy || erased} onClick={eraseData}>
+            <span className="ms">delete</span>{erased ? t('erased') : t('eraseData')}
           </button>
         </>
       )}

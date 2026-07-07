@@ -4993,7 +4993,9 @@
         "pwaReminder": "Keep the app open for tracking to work.",
         "idleNoMission": "Tracking will start automatically on your next delivery.",
         "permDenied": "Location denied. Enable it in your browser settings to share your location during the delivery.",
-        "unavailable": "Geolocation is unavailable on this device."
+        "unavailable": "Geolocation is unavailable on this device.",
+        "eraseData": "Erase my location data",
+        "erased": "Data erased"
       }
     }
   },

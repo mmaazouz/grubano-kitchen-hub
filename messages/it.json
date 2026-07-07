@@ -4993,7 +4993,9 @@
         "pwaReminder": "Tieni l'app aperta affinché il tracciamento funzioni.",
         "idleNoMission": "Il tracciamento inizierà automaticamente alla tua prossima consegna.",
         "permDenied": "Posizione negata. Attivala nelle impostazioni del browser per condividere la tua posizione durante la consegna.",
-        "unavailable": "Geolocalizzazione non disponibile su questo dispositivo."
+        "unavailable": "Geolocalizzazione non disponibile su questo dispositivo.",
+        "eraseData": "Cancella i miei dati di posizione",
+        "erased": "Dati cancellati"
       }
     }
   },
