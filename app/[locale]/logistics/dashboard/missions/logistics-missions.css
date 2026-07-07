@@ -129,3 +129,27 @@
 .gb-op .dn-status{font-size:10px;font-weight:800;border-radius:999px;padding:4px 10px;white-space:nowrap;flex-shrink:0}
 .gb-op .dn-status.ok{background:var(--op-success-bg);color:var(--op-success)}
 .gb-op .dn-status.cancel{background:var(--op-surface-2);color:var(--op-muted-2);border:1px solid var(--op-border)}
+
+/* ── Géoloc ÉTAPE 3 — position-sharing opt-in + live status card (rendered only when the flag is ON) ── */
+.gb-op .track{background:var(--op-surface);border:1px solid var(--op-border);border-radius:14px;padding:16px;margin-bottom:16px}
+.gb-op .track__hd{display:flex;align-items:flex-start;gap:12px}
+.gb-op .track__ic{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--op-accent-weak);color:var(--op-accent);flex-shrink:0}
+.gb-op .track__ic .ms{font-size:20px}
+.gb-op .track__m{flex:1;min-width:0}
+.gb-op .track__m b{display:block;font-size:14px;font-weight:800}
+.gb-op .track__m>span{font-size:12px;color:var(--op-muted);line-height:1.45}
+.gb-op .track__badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;color:var(--op-muted-2);background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:999px;padding:4px 9px;white-space:nowrap;flex-shrink:0}
+.gb-op .track__badge .ms{font-size:13px}
+.gb-op .track__cta{margin-top:14px;width:100%}
+.gb-op .track__state{display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:12px;border-radius:10px;background:var(--op-surface-2);font-size:12px;color:var(--op-muted)}
+.gb-op .track__state b{display:block;font-size:13px;font-weight:700;color:var(--op-text)}
+.gb-op .track__state>.ms{font-size:18px;flex-shrink:0}
+.gb-op .track__state.is-live{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .track__state.is-live b{color:var(--op-success)}
+.gb-op .track__state.is-warn{background:var(--op-danger-bg,rgba(220,80,60,.1));color:var(--op-danger,#c0392b)}
+.gb-op .track__state.is-warn b{color:var(--op-danger,#c0392b)}
+.gb-op .track__dot{width:10px;height:10px;border-radius:50%;background:var(--op-success);flex-shrink:0;margin-top:3px;animation:trackPulse 1.6s infinite}
+@keyframes trackPulse{0%{box-shadow:0 0 0 0 rgba(16,160,90,.45)}70%{box-shadow:0 0 0 8px rgba(16,160,90,0)}100%{box-shadow:0 0 0 0 rgba(16,160,90,0)}}
+.gb-op .track__pwa{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:11px;opacity:.85}
+.gb-op .track__pwa .ms{font-size:14px}
+.gb-op .track__revoke{margin-top:12px;width:100%}

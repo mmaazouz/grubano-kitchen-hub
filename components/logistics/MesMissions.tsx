@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatMoney } from '@/lib/format-money'
 import type { MissionDTO, OwnMissionDTO } from '@/lib/mission-serialize'
+import CourierTracking from '@/components/logistics/CourierTracking'
 
 // ── MesMissions — the courier's missions surface (LO2). ───────────────────────
 // 3 tabs: Offres (GET /api/logistics/missions — MASKED drop-off, S1) · En cours
@@ -134,6 +135,12 @@ export default function MesMissions() {
           </span>
         )}
       </div>
+
+      {/* Géoloc ÉTAPE 3 — courier position-sharing opt-in + live capture. Mounted on every tab so
+          capture keeps running across tab switches. Renders NOTHING when the flag is OFF (byte-
+          identical); captures ONLY during an in-course mission (current[0], accepted/picked_up) —
+          when it ends it leaves `current` → the hook auto-stops. NO map / no position shown. */}
+      <CourierTracking activeMission={current[0] ?? null} />
 
       <div className="tabs">
         <button className={tab === 'offers' ? 'is-active' : undefined} onClick={() => setTab('offers')}>

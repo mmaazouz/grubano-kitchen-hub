@@ -4979,6 +4979,19 @@
         "successStepShare": "Access to the courier space opens after your file is validated.",
         "successNote": "No active account was created at this stage. You cannot sign in yet — access to the courier space opens after your file is validated.",
         "successCta": "Back to home"
+      },
+      "tracking": {
+        "title": "Location sharing",
+        "desc": "Your location is shared only during an ongoing delivery, to make it possible. It is erased as soon as the delivery ends. You can withdraw your consent at any time.",
+        "badge": "Private",
+        "enable": "Enable sharing during my deliveries",
+        "revoke": "Withdraw consent",
+        "activeTitle": "Tracking active",
+        "activeBody": "Your location is shared for the ongoing delivery.",
+        "pwaReminder": "Keep the app open for tracking to work.",
+        "idleNoMission": "Tracking will start automatically on your next delivery.",
+        "permDenied": "Location denied. Enable it in your browser settings to share your location during the delivery.",
+        "unavailable": "Geolocation is unavailable on this device."
       }
     }
   },

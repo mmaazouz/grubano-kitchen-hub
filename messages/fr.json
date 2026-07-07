@@ -4979,6 +4979,19 @@
         "successStepShare": "L’accès à l’espace livreur s’ouvrira après validation de votre dossier.",
         "successNote": "Aucun compte actif n’a été créé à cette étape. Vous ne pouvez pas encore vous connecter — l’accès à l’espace livreur s’ouvrira après validation de votre dossier.",
         "successCta": "Retour à l’accueil"
+      },
+      "tracking": {
+        "title": "Partage de position",
+        "desc": "Votre position n'est partagée que pendant une course en cours, pour permettre la livraison. Elle est effacée dès la fin de la course. Vous pouvez retirer votre accord à tout moment.",
+        "badge": "Confidentiel",
+        "enable": "Activer le partage pendant mes courses",
+        "revoke": "Retirer mon accord",
+        "activeTitle": "Suivi actif",
+        "activeBody": "Votre position est partagée pour la course en cours.",
+        "pwaReminder": "Gardez l'application ouverte pour que le suivi fonctionne.",
+        "idleNoMission": "Le suivi démarrera automatiquement à votre prochaine course.",
+        "permDenied": "Localisation refusée. Activez-la dans les réglages de votre navigateur pour partager votre position pendant la course.",
+        "unavailable": "Géolocalisation indisponible sur cet appareil."
       }
     }
   },

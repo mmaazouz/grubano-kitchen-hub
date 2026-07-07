@@ -4979,6 +4979,19 @@
         "successStepShare": "El acceso al espacio de repartidor se abrirá tras validar tu expediente.",
         "successNote": "No se ha creado ninguna cuenta activa en esta etapa. Todavía no puedes iniciar sesión: el acceso al espacio de repartidor se abrirá tras validar tu expediente.",
         "successCta": "Volver al inicio"
+      },
+      "tracking": {
+        "title": "Compartir ubicación",
+        "desc": "Tu ubicación se comparte solo durante una entrega en curso, para hacerla posible. Se borra en cuanto termina la entrega. Puedes retirar tu consentimiento en cualquier momento.",
+        "badge": "Privado",
+        "enable": "Activar el uso compartido durante mis entregas",
+        "revoke": "Retirar consentimiento",
+        "activeTitle": "Seguimiento activo",
+        "activeBody": "Tu ubicación se comparte para la entrega en curso.",
+        "pwaReminder": "Mantén la app abierta para que el seguimiento funcione.",
+        "idleNoMission": "El seguimiento comenzará automáticamente en tu próxima entrega.",
+        "permDenied": "Ubicación denegada. Actívala en los ajustes del navegador para compartir tu ubicación durante la entrega.",
+        "unavailable": "Geolocalización no disponible en este dispositivo."
       }
     }
   },

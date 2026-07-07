@@ -4979,6 +4979,19 @@
         "successStepShare": "L’accesso allo spazio rider si aprirà dopo la convalida della tua pratica.",
         "successNote": "In questa fase non è stato creato alcun account attivo. Non puoi ancora accedere: l’accesso allo spazio rider si aprirà dopo la convalida della tua pratica.",
         "successCta": "Torna alla home"
+      },
+      "tracking": {
+        "title": "Condivisione posizione",
+        "desc": "La tua posizione è condivisa solo durante una consegna in corso, per renderla possibile. Viene cancellata non appena la consegna termina. Puoi ritirare il consenso in qualsiasi momento.",
+        "badge": "Riservato",
+        "enable": "Attiva la condivisione durante le mie consegne",
+        "revoke": "Ritira il consenso",
+        "activeTitle": "Tracciamento attivo",
+        "activeBody": "La tua posizione è condivisa per la consegna in corso.",
+        "pwaReminder": "Tieni l'app aperta affinché il tracciamento funzioni.",
+        "idleNoMission": "Il tracciamento inizierà automaticamente alla tua prossima consegna.",
+        "permDenied": "Posizione negata. Attivala nelle impostazioni del browser per condividere la tua posizione durante la consegna.",
+        "unavailable": "Geolocalizzazione non disponibile su questo dispositivo."
       }
     }
   },
