@@ -3359,7 +3359,9 @@
       "iaSoonBadge": "IA — presto",
       "serviceFee": "Costi di servizio",
       "deliveryService": "Consegna + servizio",
-      "needHelp": "Hai bisogno di aiuto?"
+      "needHelp": "Hai bisogno di aiuto?",
+      "etaMinutes": "≈ {min} min",
+      "approxPosition": "Posizione approssimativa del corriere"
     },
     "account": {
       "title": "Il Mio Profilo",
@@ -8345,5 +8347,20 @@
     "fCancel": "Annulla",
     "fSave": "Salva",
     "fiscalNote": "Queste informazioni sono trasmesse in modo sicuro e usate solo per la dichiarazione fiscale obbligatoria (DAC7)."
+  },
+  "adminTracking": {
+    "title": "Tracciamento corriere",
+    "subtitle": "Posizione in tempo reale del corriere per un ordine (supporto).",
+    "orderIdPlaceholder": "ID ordine",
+    "view": "Vedi",
+    "etaMinutes": "≈ {min} min",
+    "exactBadge": "Posizione esatta (supporto)",
+    "status": "Stato",
+    "updatedAt": "Aggiornato",
+    "noPosition": "Nessuna posizione — nessuna consegna in corso per questo ordine.",
+    "denied": "Ordine non trovato o accesso negato.",
+    "error": "Errore di caricamento.",
+    "disabledTitle": "Tracciamento posizione disattivato",
+    "disabledBody": "La funzione di tracciamento non è attiva."
   }
 }

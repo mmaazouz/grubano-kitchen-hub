@@ -3359,7 +3359,9 @@
       "iaSoonBadge": "IA — bientôt",
       "serviceFee": "Frais de service",
       "deliveryService": "Livraison + service",
-      "needHelp": "Besoin d'aide ?"
+      "needHelp": "Besoin d'aide ?",
+      "etaMinutes": "≈ {min} min",
+      "approxPosition": "Position approximative du livreur"
     },
     "account": {
       "title": "Mon Profil",
@@ -8345,5 +8347,20 @@
     "fCancel": "Annuler",
     "fSave": "Enregistrer",
     "fiscalNote": "Ces informations sont transmises de façon sécurisée et utilisées uniquement pour la déclaration fiscale obligatoire (DAC7)."
+  },
+  "adminTracking": {
+    "title": "Suivi livreur",
+    "subtitle": "Position en temps réel du livreur pour une commande (support).",
+    "orderIdPlaceholder": "ID de commande",
+    "view": "Voir",
+    "etaMinutes": "≈ {min} min",
+    "exactBadge": "Position exacte (support)",
+    "status": "Statut",
+    "updatedAt": "Mis à jour",
+    "noPosition": "Aucune position — pas de livraison en cours pour cette commande.",
+    "denied": "Commande introuvable ou accès refusé.",
+    "error": "Erreur de chargement.",
+    "disabledTitle": "Suivi de position désactivé",
+    "disabledBody": "La fonctionnalité de suivi n'est pas activée."
   }
 }

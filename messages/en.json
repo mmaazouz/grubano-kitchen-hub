@@ -3359,7 +3359,9 @@
       "iaSoonBadge": "AI — soon",
       "serviceFee": "Service fee",
       "deliveryService": "Delivery + service",
-      "needHelp": "Need help?"
+      "needHelp": "Need help?",
+      "etaMinutes": "≈ {min} min",
+      "approxPosition": "Courier's approximate location"
     },
     "account": {
       "title": "My Profile",
@@ -8345,5 +8347,20 @@
     "fCancel": "Cancel",
     "fSave": "Save",
     "fiscalNote": "This information is transmitted securely and used only for the mandatory tax declaration (DAC7)."
+  },
+  "adminTracking": {
+    "title": "Courier tracking",
+    "subtitle": "Courier's live position for an order (support).",
+    "orderIdPlaceholder": "Order ID",
+    "view": "View",
+    "etaMinutes": "≈ {min} min",
+    "exactBadge": "Exact position (support)",
+    "status": "Status",
+    "updatedAt": "Updated",
+    "noPosition": "No position — no delivery in progress for this order.",
+    "denied": "Order not found or access denied.",
+    "error": "Loading error.",
+    "disabledTitle": "Position tracking disabled",
+    "disabledBody": "The tracking feature is not enabled."
   }
 }

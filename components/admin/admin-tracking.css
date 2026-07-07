@@ -1,0 +1,21 @@
+/* ── AdminTracking (Géoloc ÉTAPE 4) — admin/support courier-position view. --op- admin chrome. ── */
+.gb-op .admtrk__title { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.gb-op .admtrk__sub { font-size: 13px; color: var(--op-muted); margin: 0 0 18px; }
+.gb-op .admtrk__search { display: flex; gap: 10px; max-width: 520px; }
+.gb-op .admtrk__search input {
+  flex: 1; min-width: 0; height: 42px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid var(--op-border); background: var(--op-surface); color: var(--op-text); font-size: 14px;
+}
+.gb-op .admtrk__result { margin-top: 18px; max-width: 640px; }
+.gb-op .admtrk__map { position: relative; height: 340px; border-radius: 14px; overflow: hidden; border: 1px solid var(--op-border); }
+.gb-op .admtrk__meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: 12px; color: var(--op-muted); }
+.gb-op .admtrk__meta b { color: var(--op-text); }
+.gb-op .admtrk__exact { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; color: var(--op-admin, #4f46e5); }
+.gb-op .admtrk__exact .ms { font-size: 15px; }
+.gb-op .admtrk__note { margin-top: 16px; font-size: 13px; color: var(--op-muted); }
+.gb-op .admtrk__disabled {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  padding: 40px 20px; border: 1px dashed var(--op-border); border-radius: 14px; color: var(--op-muted);
+}
+.gb-op .admtrk__disabled .ms { font-size: 34px; color: var(--op-muted-2); }
+.gb-op .admtrk__disabled b { color: var(--op-text); font-size: 15px; }

@@ -3359,7 +3359,9 @@
       "iaSoonBadge": "IA — pronto",
       "serviceFee": "Gastos de servicio",
       "deliveryService": "Entrega + servicio",
-      "needHelp": "¿Necesitas ayuda?"
+      "needHelp": "¿Necesitas ayuda?",
+      "etaMinutes": "≈ {min} min",
+      "approxPosition": "Ubicación aproximada del repartidor"
     },
     "account": {
       "title": "Mi Perfil",
@@ -8345,5 +8347,20 @@
     "fCancel": "Cancelar",
     "fSave": "Guardar",
     "fiscalNote": "Esta información se transmite de forma segura y se usa solo para la declaración fiscal obligatoria (DAC7)."
+  },
+  "adminTracking": {
+    "title": "Seguimiento del repartidor",
+    "subtitle": "Posición en tiempo real del repartidor para un pedido (soporte).",
+    "orderIdPlaceholder": "ID del pedido",
+    "view": "Ver",
+    "etaMinutes": "≈ {min} min",
+    "exactBadge": "Posición exacta (soporte)",
+    "status": "Estado",
+    "updatedAt": "Actualizado",
+    "noPosition": "Sin posición — no hay entrega en curso para este pedido.",
+    "denied": "Pedido no encontrado o acceso denegado.",
+    "error": "Error de carga.",
+    "disabledTitle": "Seguimiento de posición desactivado",
+    "disabledBody": "La función de seguimiento no está activada."
   }
 }

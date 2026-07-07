@@ -6,6 +6,7 @@ import { formatEuros } from '@/lib/format-money'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import ClaimSection from '@/components/claims/ClaimSection'
+import CourierMap from '@/components/CourierMap'
 import { formatTime } from '@/lib/format'
 import '../track.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -42,6 +43,19 @@ interface Order {
   deliveryAddress: string
 }
 
+// Géoloc ÉTAPE 4 — the courier's (coarsened, for the client) live position for this order. Fed by
+// GET /api/orders/[id]/courier-position (owner-scoped, flag-gated). available:false / a 404 (flag
+// OFF) → the inert placeholder map stays (byte-identical). The point is ALREADY coarsened server-
+// side — the client never receives the exact courier coordinates.
+interface CourierPos {
+  available: boolean
+  approx?: boolean
+  courier?: { lat: number; lng: number }
+  pickup?: { lat: number; lng: number } | null
+  dropoff?: { lat: number; lng: number } | null
+  etaMinutes?: number | null
+}
+
 /** Real status → CD step index (0-based, 5 steps).  The CD stepper is the delivery
  *  journey: confirmée → préparation → récupérée → en route → livrée. */
 const STATUS_TO_STEP: Record<string, number> = {
@@ -59,6 +73,7 @@ export default function OrderTrackingScreen() {
   const router = useRouter()
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
+  const [courierPos, setCourierPos] = useState<CourierPos | null>(null)
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -74,11 +89,24 @@ export default function OrderTrackingScreen() {
     }
   }, [orderId, router])
 
+  // Géoloc ÉTAPE 4 — poll the owner-scoped courier position (coarsened). A 404 (flag OFF) / 403 /
+  // {available:false} → no live map → the inert placeholder stays (byte-identical when OFF).
+  const fetchCourierPos = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}/courier-position`, { cache: 'no-store' })
+      if (!res.ok) { setCourierPos(null); return }
+      const data = (await res.json()) as CourierPos
+      setCourierPos(data?.available ? data : null)
+    } catch {
+      setCourierPos(null)
+    }
+  }, [orderId])
+
   useEffect(() => {
-    fetchOrder()
-    const poll = setInterval(fetchOrder, 15_000)
+    fetchOrder(); fetchCourierPos()
+    const poll = setInterval(() => { fetchOrder(); fetchCourierPos() }, 15_000)
     return () => clearInterval(poll)
-  }, [fetchOrder])
+  }, [fetchOrder, fetchCourierPos])
 
   // ── Loading skeleton ────────────────────────────────────────────────────────
   if (loading) {
@@ -322,9 +350,25 @@ export default function OrderTrackingScreen() {
     </div>
   )
 
+  // ── Live map (Géoloc ÉTAPE 4) — REAL self-hosted map of the courier's COARSENED position, fed
+  // by the owner-scoped endpoint. Shown only while the courier is in course (the endpoint returns
+  // available:true then). When the flag is OFF / no position → LiveMap is null → the inert Map
+  // placeholder above renders (byte-identical). Never the exact courier point — coarsened server-side.
+  const LiveMap = courierPos?.available && courierPos.courier ? (
+    <div className="map map--live">
+      <CourierMap
+        courier={courierPos.courier}
+        pickup={courierPos.pickup ?? null}
+        dropoff={courierPos.dropoff ?? null}
+        etaText={courierPos.etaMinutes ? t('etaMinutes', { min: courierPos.etaMinutes }) : null}
+        approxText={courierPos.approx ? t('approxPosition') : null}
+      />
+    </div>
+  ) : null
+
   return (
     <div className="gb gb-track" data-theme="light">
-      {Map}
+      {LiveMap ?? Map}
       {Panel}
     </div>
   )
