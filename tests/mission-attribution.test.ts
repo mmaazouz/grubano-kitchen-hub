@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
 
 // ── lib/mission-attribution — Brick 2/4 compliant attribution (Agent 123) ──────
 // Verifies the 5 compliance invariants: offer-never-assign, free atomic first-come acceptance,

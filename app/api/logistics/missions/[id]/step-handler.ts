@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled } from '@/lib/missions'
 import { advanceMissionByCourier, type CourierMissionStep, type AdvanceResult } from '@/lib/mission-attribution'
 import { accrueCourierCourseEarning, accrueCourierTipEarning } from '@/lib/courier-accrual'
+import { deleteCourierPositionForMission } from '@/lib/courier-position'
 
 // ── Shared handler for the courier lifecycle steps — pickup / deliver / cancel (brick 3
 // wiring, Agent 126). One handler, three thin route.ts files (a courier drives a mission they
@@ -70,6 +71,23 @@ export async function handleCourierMissionStep(
       } catch (err) {
         console.error(
           `[logistics deliver] courier tip accrual failed for mission ${missionId} (delivery unaffected): ` +
+          (err instanceof Error ? err.message : String(err)),
+        )
+      }
+    }
+
+    // ── Géoloc ÉTAPE 2 — minimization: erase the courier's last point when the mission ENDS ──
+    // Both 'delivered' and 'cancelled' are terminal → the point NEVER survives the course. Flag-
+    // gated (OFF → deleteCourierPositionForMission is a no-op and the CourierPosition table is
+    // never touched → byte-identical) + best-effort (a deletion hiccup NEVER affects the HTTP
+    // response). Runs on a successful terminal transition AND on a 'conflict' retry (the mission
+    // is already terminal → HEALS a missed delete). Keyed by missionId (never courierId).
+    if ((to === 'delivered' || to === 'cancelled') && (result.ok || result.reason === 'conflict')) {
+      try {
+        await deleteCourierPositionForMission(missionId)
+      } catch (err) {
+        console.error(
+          `[logistics ${to}] courier position deletion failed for mission ${missionId} (${to} unaffected): ` +
           (err instanceof Error ? err.message : String(err)),
         )
       }

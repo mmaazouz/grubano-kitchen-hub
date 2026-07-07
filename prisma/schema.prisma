@@ -942,6 +942,18 @@ model LogisticsProfile {
   // no backfill; dropping them leaves the profile byte-identical.
   isOnline           Boolean  @default(false)
   lastSeenAt         DateTime?
+  // ── Position tracking opt-in (Géoloc ÉTAPE 2 — fondations INERTES, RGPD-sensible) ───────────
+  // EXPLICIT + revocable courier consent to live position tracking DURING a course. Default false
+  // → NOTHING is tracked until the courier opts in (minimization). trackingConsentAt = RGPD
+  // accountability (proof/timestamp of consent). Gated by LOGISTICS_TRACKING_ENABLED (default OFF):
+  // OFF → the POST /api/logistics/position receiver refuses WITHOUT writing and these columns + the
+  // CourierPosition table are NEVER touched (deploy-before-migration is safe). ADDITIVE +
+  // REVERSIBLE (nullable/defaulted, no backfill). NO geolocation here — Étape 3 = courier capture.
+  trackingConsent    Boolean  @default(false)
+  trackingConsentAt  DateTime?
+  // Inverse side of CourierPosition.courier — the courier's SINGLE current point per active mission
+  // (last-point-only, deleted at delivered/cancelled). Virtual list → no column on the profile.
+  positions          CourierPosition[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -1845,6 +1857,42 @@ model CourierEarning {
   @@index([courierId, status])
   @@index([missionId])
   @@index([orderId])
+}
+
+// ── CourierPosition (Géoloc ÉTAPE 2 — dernier point du livreur, INERTE + RGPD-minimisé) ──────
+// The courier's SINGLE current position for ONE in-progress mission — a LAST-POINT store, NEVER
+// a breadcrumb/trail. Privacy-by-design (frozen product + RGPD decisions):
+//   • LAST POINT ONLY  — @@unique([courierId, missionId]) makes POST /api/logistics/position an
+//     UPSERT: a new ping REPLACES the previous point, so at most one row exists per courier/mission.
+//   • IN-COURSE ONLY   — the receiver writes only while the courier's OWN mission is accepted/
+//     picked_up (owner-scoped by session → no IDOR); never before acceptance, never after the end.
+//   • DELETED AT END   — the row is erased the instant the mission becomes delivered/cancelled
+//     (lib/courier-position → deleteCourierPositionForMission, wired in the step-handler). The point
+//     NEVER survives the course and is NEVER retained indefinitely.
+//   • OPT-IN           — no row unless LogisticsProfile.trackingConsent is true.
+// ⚠️ ÉTAPE 2 = STRUCTURE + RECEIVER ONLY. NOTHING captures a position (courier-side capture =
+// Étape 3) and NOTHING reads it back / displays it (client map = Étape 4). Gated OFF by
+// LOGISTICS_TRACKING_ENABLED → the table is dormant (no path reads/writes it). ADDITIVE +
+// REVERSIBLE: onDelete Cascade so a courier's points die with the profile; loose missionId (no
+// Mission FK, mirrors CourierEarning) → dropping the table leaves every existing model intact.
+model CourierPosition {
+  id         String           @id @default(cuid())
+  // The courier this point belongs to — FK → LogisticsProfile.id (owner scope). Cascade so the
+  // ephemeral points are cleaned with the profile (never block a deletion, never outlive it).
+  courierId  String
+  courier    LogisticsProfile @relation(fields: [courierId], references: [id], onDelete: Cascade)
+  // The in-progress mission this point is for (loose id, no Mission FK — mirrors CourierEarning).
+  missionId  String
+  // Last known coordinates (Float, like Order.deliveryLat/lng). accuracy = optional GPS accuracy
+  // in metres. NO trail, NO history — only the current point (the upsert target below).
+  lat        Float
+  lng        Float
+  accuracy   Float?
+  updatedAt  DateTime         @updatedAt   // stamped on each upsert (the point's freshness)
+  createdAt  DateTime         @default(now())
+
+  @@unique([courierId, missionId])  // ONE current point per courier/mission — the upsert key (no breadcrumb)
+  @@index([missionId])              // deletion at delivered/cancelled targets missionId
 }
 
 // ── EmailOtp (Phase 3 auth hardening — Agent 88) — email one-time codes ───────────
