@@ -4,6 +4,10 @@ import '../globals.css'
 // app-wide here, like stellar-theme.css; only `gb-*` Tailwind utilities + brand-new CSS
 // vars are introduced, so non-migrated screens render byte-identical. See app/tokens.css.
 import '../tokens.css'
+// Self-hosted Material Symbols Rounded (go-live hardening) — the @font-face for the app's icon
+// font, loaded app-wide here so its `.ms` ligature icons ALWAYS render, independent of per-route
+// CSS bundle order (replaces the external <link>/@import that a strict CSP would break).
+import '../gb-foundation/material-symbols.css'
 import { notFound } from 'next/navigation'
 import { NextIntlClientProvider } from 'next-intl'
 import { getMessages, unstable_setRequestLocale } from 'next-intl/server'
@@ -59,17 +63,10 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} dir={dir} suppressHydrationWarning>
       <head>
-        {/* Material Symbols Rounded — loaded ROBUSTLY here so the consumer app's
-            `.ms` ligature icons ALWAYS render, independent of per-route CSS bundle
-            order. gb-tokens.css also `@import`s this font, but that @import is
-            invalidated on any route whose page CSS is bundled before it (per the
-            CSS spec @import must be first) — the icon ligatures then fall back to
-            raw text. This <link> is the belt; the import reorder is the suspenders.
-            Axes match the gb-tokens @import exactly. */}
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block"
-        />
+        {/* Material Symbols Rounded is now SELF-HOSTED (go-live hardening): the @font-face lives in
+            app/gb-foundation/material-symbols.css, imported app-wide in this layout above, pointing
+            to /fonts/material-symbols-rounded.woff2. No external <link>/@import → a strict CSP
+            (font-src 'self') can never break the icon ligatures. */}
         {/* Theme init (P1-THEME) — apply the saved consumer theme BEFORE first paint so a
             dark preference never flashes. Default (no stored value) = light, unchanged. */}
         <script

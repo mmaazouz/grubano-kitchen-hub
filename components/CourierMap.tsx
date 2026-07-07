@@ -69,20 +69,20 @@ export default function CourierMap({ courier, pickup, dropoff, etaText, approxTe
         {pk && (
           <g>
             <circle cx={pk.x} cy={pk.y} r="11" fill="#fff" stroke="#c3c9d0" strokeWidth="2" />
-            <text x={pk.x} y={pk.y + 4} textAnchor="middle" fontSize="12" fill="#6b7280" fontFamily="'Material Symbols Outlined'">store</text>
+            <text x={pk.x} y={pk.y + 4} textAnchor="middle" fontSize="12" fill="#6b7280" fontFamily="'Material Symbols Rounded'">store</text>
           </g>
         )}
         {/* Dropoff (the caller's own address). */}
         {dp && (
           <g>
             <circle cx={dp.x} cy={dp.y} r="11" fill="#fff" stroke={accent} strokeWidth="2" />
-            <text x={dp.x} y={dp.y + 4} textAnchor="middle" fontSize="12" fill={accent} fontFamily="'Material Symbols Outlined'">home</text>
+            <text x={dp.x} y={dp.y + 4} textAnchor="middle" fontSize="12" fill={accent} fontFamily="'Material Symbols Rounded'">home</text>
           </g>
         )}
         {/* Courier — a coarse "approximate area" halo (when approx) + the point. */}
         {approxText && <circle cx={c.x} cy={c.y} r="26" fill={accent} opacity="0.12" />}
         <circle className="cmap__dot" cx={c.x} cy={c.y} r="9" fill={accent} stroke="#fff" strokeWidth="3" />
-        <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize="11" fill="#fff" fontFamily="'Material Symbols Outlined'">two_wheeler</text>
+        <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize="11" fill="#fff" fontFamily="'Material Symbols Rounded'">two_wheeler</text>
       </svg>
 
       {(etaText || approxText) && (

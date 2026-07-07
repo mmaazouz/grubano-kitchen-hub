@@ -15,7 +15,6 @@
  *  + a small `.auth__error` block (the static reference has no error state) — functional only.
  * The `.preview-bar` test rules are intentionally omitted.
  * ───────────────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block');
 
 /* ── reference --gb-* tokens. ⭐ FIXED PER SCREEN (production-rules decision 28 Jun, DECOUPLED
  *    from the app's data-theme): the LIGHT values are the base on `.auth` (CONNEXION is ALWAYS

@@ -23,9 +23,10 @@ on:
         description: Which group to run
         type: choice
         default: all
-        options: [all, frequent, daily, monthly]
+        options: [all, frequent, daily, monthly, sweep]
   schedule:
     - cron: '15 * * * *'   # frequent  — hourly (email agent)
+    - cron: '*/20 * * * *' # sweep     — every 20 min (geoloc position retention — no-op when flag OFF)
     - cron: '20 3 * * *'   # daily     — 03:20 UTC batch
     - cron: '0 7 1 * *'    # monthly   — 1st, 07:00 UTC
 
@@ -68,6 +69,24 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           curl -sS -X POST "$BASE/api/email-agent" -H "Authorization: Bearer $CRON_SECRET" -o /dev/null -w "email-agent → HTTP %{http_code}\n"
+
+  sweep-positions:
+    # Géoloc ÉTAPE 5 retention sweep — erases stale/orphaned CourierPosition rows past their TTL +
+    # anonymises old terminal-order delivery coords. Each half is flag-gated → a NO-OP (zero counts)
+    # while LOGISTICS_TRACKING_ENABLED / LOGISTICS_DISTANCE_FEE_ENABLED are OFF, so scheduling this
+    # before activation is harmless. CRON_SECRET is masked by Actions; curl prints only the status.
+    needs: guard
+    if: >-
+      github.event.schedule == '*/20 * * * *' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.group == 'all' || inputs.group == 'sweep'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sweep courier positions (no-op if LOGISTICS_TRACKING_ENABLED off)
+        env:
+          BASE: ${{ needs.guard.outputs.base }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sS -X POST "$BASE/api/logistics/positions/sweep" -H "Authorization: Bearer $CRON_SECRET" -o /dev/null -w "positions-sweep → HTTP %{http_code}\n"
 
   daily:
     needs: guard

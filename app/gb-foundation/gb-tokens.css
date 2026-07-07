@@ -16,7 +16,6 @@
  *  - Gabarito / Hanken are already loaded app-wide by tokens.css; we add only the
  *    Material-Symbols icon font (CD uses Material icons, not lucide).
  * ───────────────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block');
 /* Arabic RTL — Cairo font for `ar` + the global RTL rule sheet (CD 38efd2c9-…-814c).
  * @import MUST precede all rules → kept here at the very top of the foundation. The
  * gb-rtl.css selectors are themselves `[dir="rtl"]`-gated so they are inert in LTR. */

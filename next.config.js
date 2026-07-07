@@ -1,6 +1,37 @@
 const createNextIntlPlugin = require('next-intl/plugin')
 const withNextIntl = createNextIntlPlugin('./i18n.ts')
 
+// ── Content-Security-Policy (go-live hardening) — REPORT-ONLY, blocks NOTHING ─────────────────
+// Sent as `Content-Security-Policy-Report-Only` so it OBSERVES what the app loads without
+// breaking anything. Directives already allow every legitimate source we enumerated, so once we
+// switch this to enforce (`Content-Security-Policy`, a LATER deliberate decision) connect-src /
+// img-src / font-src are locked down without breaking the app. Violations are POSTed to the
+// self-hosted /api/csp-report collector (no external host). Documented legitimate sources:
+//   • self-hosted Material Symbols woff2 → font-src 'self' (the icon font is now local)
+//   • remaining Google text fonts → style-src fonts.googleapis.com (CSS) + font-src fonts.gstatic.com
+//   • Stripe payments → script-src/frame-src js.stripe.com + connect-src api.stripe.com
+//   • images → 'self' + /images mirror; data:/blob: (upload previews); images.unsplash.com (fallback)
+// EXPECTED report-only violations to review before enforce: any inline <script> without
+// 'unsafe-inline' (kept permissive here — Next hydration + the theme-init inline script need it;
+// a nonce refactor is a future step), plus any host we missed (that is exactly what report-only
+// surfaces). script-src/style-src stay 'unsafe-inline' by necessity; the LOCK targets connect/img/font.
+const CSP_REPORT_ONLY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "form-action 'self'",
+  "script-src 'self' 'unsafe-inline' https://js.stripe.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: blob: https://images.unsplash.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "connect-src 'self' https://api.stripe.com",
+  "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  'report-uri /api/csp-report',
+].join('; ')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -38,6 +69,14 @@ const nextConfig = {
         headers: [
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Cache-Control', value: 'public, max-age=86400' },
+        ],
+      },
+      // CSP in REPORT-ONLY mode on all document routes (API excluded — CSP only applies to
+      // documents/workers anyway, and the report collector lives under /api). Blocks NOTHING.
+      {
+        source: '/((?!api/).*)',
+        headers: [
+          { key: 'Content-Security-Policy-Report-Only', value: CSP_REPORT_ONLY },
         ],
       },
     ]
