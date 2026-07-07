@@ -4788,7 +4788,9 @@
         "emptyDoneTitle": "Ninguna misión terminada",
         "emptyDoneBody": "Tus trayectos entregados y cancelados aparecerán aquí.",
         "statusDelivered": "Entregada",
-        "statusCancelled": "Cancelada"
+        "statusCancelled": "Cancelada",
+        "availOn": "En línea",
+        "availOff": "Desconectado"
       },
       "profilUi": {
         "title": "Perfil",

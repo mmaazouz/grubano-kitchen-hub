@@ -933,6 +933,15 @@ model LogisticsProfile {
   // CourierEarning.courier; virtual list → NO column on the profile (byte-identical). Empty
   // until ÉTAPE 3 feeds it; the rail is gated OFF (LOGISTICS_PAYOUT_ENABLED).
   courierEarnings    CourierEarning[]
+  // ── Availability (Géoloc ÉTAPE 1 — statut EN LIGNE, additive, ZÉRO géolocalisation) ────────
+  // A simple ON/OFF boolean: is the courier available to RECEIVE offers right now? NO position,
+  // NO GPS, NO tracking — just a switch. lastSeenAt is a lightweight heartbeat (stamped on each
+  // toggle). Gated by LOGISTICS_AVAILABILITY_ENABLED (default OFF): OFF → NOTHING reads or writes
+  // these columns and the offer pool is byte-identical (every 'active' courier is offered); ON →
+  // only couriers with isOnline=true receive offers. ADDITIVE + REVERSIBLE: nullable/defaulted,
+  // no backfill; dropping them leaves the profile byte-identical.
+  isOnline           Boolean  @default(false)
+  lastSeenAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

@@ -4788,7 +4788,9 @@
         "emptyDoneTitle": "لا توجد مهام مكتملة",
         "emptyDoneBody": "ستظهر هنا رحلاتك المُسلَّمة والمُلغاة.",
         "statusDelivered": "مُسلَّمة",
-        "statusCancelled": "مُلغاة"
+        "statusCancelled": "مُلغاة",
+        "availOn": "متصل",
+        "availOff": "غير متصل"
       },
       "profilUi": {
         "title": "الملف الشخصي",

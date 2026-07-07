@@ -10,9 +10,11 @@ import type { MissionDTO, OwnMissionDTO } from '@/lib/mission-serialize'
 // (GET /api/logistics/missions/mine, accepted/picked_up — FULL address revealed post-claim) ·
 // Terminées (delivered/cancelled). Actions call the REAL owner-scoped atomic routes
 // (accept/decline/pickup/deliver/cancel, shipped c379ae7). Prices are the INERT proposed
-// amount (formatMoney, muted, "proposé" — never a gain). The "Disponible" toggle is INERT
-// (no online field in the schema, audit §8). Refs = the REAL Mission.id (no fabricated
-// "MIS-2026-*"). No fabricated offers/contacts. Owner-scoped, NO money computed.
+// amount (formatMoney, muted, "proposé" — never a gain). The "Disponible" toggle is REAL
+// when LOGISTICS_AVAILABILITY_ENABLED is on (PATCH /api/logistics/availability, owner-scoped,
+// a pure boolean isOnline — ZÉRO géolocalisation) — otherwise the byte-identical inert
+// placeholder. Refs = the REAL Mission.id (no fabricated "MIS-2026-*"). No fabricated
+// offers/contacts. Owner-scoped, NO money computed.
 
 type Tab = 'offers' | 'current' | 'done'
 
@@ -40,18 +42,39 @@ export default function MesMissions() {
   const [done, setDone] = useState<OwnMissionDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Géoloc ÉTAPE 1 — the courier « en ligne » availability. `enabled` mirrors the
+  // LOGISTICS_AVAILABILITY_ENABLED flag: false (default) → the toggle stays the inert
+  // placeholder (byte-identical). ZÉRO géolocalisation — a pure on/off switch.
+  const [avail, setAvail] = useState<{ enabled: boolean; isOnline: boolean }>({ enabled: false, isOnline: false })
+  const [availBusy, setAvailBusy] = useState(false)
 
   const load = useCallback(async () => {
-    const [o, m] = await Promise.all([
+    const [o, m, a] = await Promise.all([
       getJson('/api/logistics/missions'),
       getJson('/api/logistics/missions/mine'),
+      getJson('/api/logistics/availability'),
     ])
     setOffers(o?.ok ? ((o.missions as MissionDTO[]) ?? []) : [])
     setCurrent(m?.ok ? ((m.current as OwnMissionDTO[]) ?? []) : [])
     setDone(m?.ok ? ((m.done as OwnMissionDTO[]) ?? []) : [])
+    setAvail({ enabled: !!a?.enabled, isOnline: !!a?.isOnline })
     setLoading(false)
   }, [])
   useEffect(() => { void load() }, [load])
+
+  // Flip the availability switch (only when the feature is enabled). Owner-scoped PATCH.
+  const toggleOnline = async () => {
+    if (availBusy || !avail.enabled) return
+    setAvailBusy(true)
+    const next = !avail.isOnline
+    try {
+      const res = await fetch('/api/logistics/availability', {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ isOnline: next }),
+      })
+      if (res.ok) setAvail((s) => ({ ...s, isOnline: next }))
+    } catch { /* best-effort — a reload reflects the real state */ }
+    finally { setAvailBusy(false) }
+  }
 
   // POST an action to a mission route, then refetch (a lost race / invalid step just refreshes).
   const act = async (id: string, action: 'accept' | 'decline' | 'pickup' | 'deliver' | 'cancel') => {
@@ -88,12 +111,28 @@ export default function MesMissions() {
           <h1 className="op-dash__title">{t('title')}</h1>
           <p className="op-dash__sub">{t('subtitle')}</p>
         </div>
-        {/* INERT availability control — no online field exists yet (audit §8). */}
-        <span className="avail-inert" title={t('availSoon')} aria-disabled>
-          <span className="ms">bolt</span>{t('availLabel')}
-          <span className="avail-inert__tog"><i /></span>
-          <span className="avail-inert__tag">{t('availSoon')}</span>
-        </span>
+        {/* Géoloc ÉTAPE 1 — availability control. REAL toggle when the feature is enabled
+            (writes isOnline via PATCH); otherwise the inert « bientôt » placeholder (byte-
+            identical). ZÉRO géolocalisation — a pure on/off switch. */}
+        {avail.enabled ? (
+          <button
+            type="button"
+            className={`avail${avail.isOnline ? ' on' : ''}`}
+            onClick={toggleOnline}
+            disabled={availBusy}
+            aria-pressed={avail.isOnline}
+            title={avail.isOnline ? t('availOn') : t('availOff')}
+          >
+            <span className="ms">bolt</span>{avail.isOnline ? t('availOn') : t('availOff')}
+            <span className="avail__tog"><i /></span>
+          </button>
+        ) : (
+          <span className="avail-inert" title={t('availSoon')} aria-disabled>
+            <span className="ms">bolt</span>{t('availLabel')}
+            <span className="avail-inert__tog"><i /></span>
+            <span className="avail-inert__tag">{t('availSoon')}</span>
+          </span>
+        )}
       </div>
 
       <div className="tabs">

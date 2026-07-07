@@ -4788,7 +4788,9 @@
         "emptyDoneTitle": "Nessuna missione completata",
         "emptyDoneBody": "Le tue corse consegnate e annullate appariranno qui.",
         "statusDelivered": "Consegnata",
-        "statusCancelled": "Annullata"
+        "statusCancelled": "Annullata",
+        "availOn": "Online",
+        "availOff": "Offline"
       },
       "profilUi": {
         "title": "Profilo",

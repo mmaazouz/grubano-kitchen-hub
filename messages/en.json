@@ -4788,7 +4788,9 @@
         "emptyDoneTitle": "No completed missions",
         "emptyDoneBody": "Your delivered and cancelled trips will appear here.",
         "statusDelivered": "Delivered",
-        "statusCancelled": "Cancelled"
+        "statusCancelled": "Cancelled",
+        "availOn": "Online",
+        "availOff": "Offline"
       },
       "profilUi": {
         "title": "Profile",

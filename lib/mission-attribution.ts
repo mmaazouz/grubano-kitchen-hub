@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import type { Mission, Prisma } from '@prisma/client'
 import { isMissionsEnabled, canTransition, buildTransitionData, type MissionStatus } from '@/lib/missions'
+import { isLogisticsAvailabilityEnabled } from '@/lib/logistics-availability'
 
 // ── Logistics mission ATTRIBUTION — Brick 2/4 (Agent 123) ──────────────────────
 //
@@ -112,8 +113,11 @@ export async function offerMission(missionId: string): Promise<OfferResult> {
     select: { id: true, type: true, zone: true },
   })
   if (!mission) return { ok: false, reason: 'not_found' }
+  // Géoloc ÉTAPE 1 — when availability gating is ON, the pool is restricted to ONLINE couriers;
+  // OFF (default) → no isOnline in the where → the pool is byte-identical (every 'active' courier)
+  // and the new isOnline column is never referenced (safe pre-migration).
   const couriers = await prisma.logisticsProfile.findMany({
-    where: { status: 'active' },
+    where: { status: 'active', ...(isLogisticsAvailabilityEnabled() ? { isOnline: true } : {}) },
     select: { id: true, status: true, missionTypes: true, vehicleTypes: true, zones: true },
   })
   const pool = eligibleCouriers({ type: mission.type, zone: mission.zone }, couriers.map(normalizeCourier))
@@ -190,6 +194,14 @@ export async function offeredMissionsForCourier(courierId: string): Promise<Miss
   if (!isMissionsEnabled()) return []
   const courier = await loadCourier(courierId)
   if (!courier || courier.status !== 'active') return []
+
+  // Géoloc ÉTAPE 1 — when availability gating is ON, an OFFLINE courier sees NO offers. This
+  // block runs ONLY under the flag (a single extra isOnline read), so OFF (default) is byte-
+  // identical and never references the new column (safe pre-migration).
+  if (isLogisticsAvailabilityEnabled()) {
+    const av = await prisma.logisticsProfile.findUnique({ where: { id: courierId }, select: { isOnline: true } })
+    if (!av?.isOnline) return []
+  }
 
   const candidates = await prisma.mission.findMany({
     where: {

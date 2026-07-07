@@ -170,3 +170,43 @@ describe('(e) gating — LOGISTICS_MISSIONS_ENABLED OFF → every op is a no-op'
     expect(db.logisticsProfile.findUnique).not.toHaveBeenCalled()
   })
 })
+
+describe('(f) availability gating — LOGISTICS_AVAILABILITY_ENABLED (Géoloc ÉTAPE 1)', () => {
+  afterEach(() => { delete process.env.LOGISTICS_AVAILABILITY_ENABLED })
+
+  it('OFF (default) → offer pool byte-identical: where {status:active}, NO isOnline', async () => {
+    db.mission.findUnique.mockResolvedValue({ id: 'm1', type: 'repas', zone: 'Paris' })
+    db.logisticsProfile.findMany.mockResolvedValue([COURIER({ id: 'c1' })])
+    await offerMission('m1')
+    expect(db.logisticsProfile.findMany.mock.calls[0][0].where).toEqual({ status: 'active' })
+  })
+
+  it('ON → offer pool restricted to ONLINE couriers: where {status:active, isOnline:true}', async () => {
+    process.env.LOGISTICS_AVAILABILITY_ENABLED = 'true'
+    db.mission.findUnique.mockResolvedValue({ id: 'm1', type: 'repas', zone: 'Paris' })
+    db.logisticsProfile.findMany.mockResolvedValue([COURIER({ id: 'c1' })])
+    await offerMission('m1')
+    expect(db.logisticsProfile.findMany.mock.calls[0][0].where).toEqual({ status: 'active', isOnline: true })
+  })
+
+  it('ON + courier OFFLINE → sees NO offers (short-circuits before the candidates query)', async () => {
+    process.env.LOGISTICS_AVAILABILITY_ENABLED = 'true'
+    db.logisticsProfile.findUnique.mockResolvedValue({ ...COURIER(), isOnline: false })
+    expect(await offeredMissionsForCourier('c1')).toEqual([])
+    expect(db.mission.findMany).not.toHaveBeenCalled()
+  })
+
+  it('ON + courier ONLINE → sees offers as usual', async () => {
+    process.env.LOGISTICS_AVAILABILITY_ENABLED = 'true'
+    db.logisticsProfile.findUnique.mockResolvedValue({ ...COURIER(), isOnline: true })
+    db.mission.findMany.mockResolvedValue([{ id: 'm1', type: 'repas', zone: 'Paris' }])
+    expect((await offeredMissionsForCourier('c1')).map((m: { id: string }) => m.id)).toEqual(['m1'])
+  })
+
+  it('OFF → offeredMissionsForCourier NEVER reads isOnline (byte-identical, only loadCourier)', async () => {
+    db.logisticsProfile.findUnique.mockResolvedValue(COURIER())
+    db.mission.findMany.mockResolvedValue([{ id: 'm1', type: 'repas', zone: 'Paris' }])
+    await offeredMissionsForCourier('c1')
+    expect(db.logisticsProfile.findUnique).toHaveBeenCalledTimes(1) // loadCourier only — no isOnline read
+  })
+})

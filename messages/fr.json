@@ -4788,7 +4788,9 @@
         "emptyDoneTitle": "Aucune mission terminée",
         "emptyDoneBody": "Vos courses livrées et annulées apparaîtront ici.",
         "statusDelivered": "Livrée",
-        "statusCancelled": "Annulée"
+        "statusCancelled": "Annulée",
+        "availOn": "En ligne",
+        "availOff": "Hors ligne"
       },
       "profilUi": {
         "title": "Profil",
