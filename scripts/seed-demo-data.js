@@ -248,7 +248,11 @@ async function ensureOperator({ id, email, name, role, withPassword }) {
     // Never clobber an existing account's password / role: an admin may have
     // configured these accounts already.
     update: { name, status: 'active' },
-    create: { id, name, email, role, status: 'active', password },
+    // notifPrefs: MariaDB maps Json → LONGTEXT with an implicit
+    // CHECK (json_valid(notifPrefs)); a column DEFAULT does not materialise on a
+    // TEXT-backed column, so an omitted value inserts '' and json_valid('')=0
+    // (error 4025 / SQLSTATE 23000). Always write a valid JSON value on create.
+    create: { id, name, email, role, status: 'active', password, notifPrefs: {} },
   })
 }
 
@@ -278,7 +282,7 @@ async function main() {
   const testUser = await prisma.operator.upsert({
     where:  { email: 'test@grubano.com' },
     update: { status: 'active' },
-    create: { name: 'Compte Démo', email: 'test@grubano.com', role: 'consumer', status: 'active', password: testHash },
+    create: { name: 'Compte Démo', email: 'test@grubano.com', role: 'consumer', status: 'active', password: testHash, notifPrefs: {} },
   })
   const client1 = await ensureOperator({ id: 'demo-consumer-1', email: 'demo-client1@grubano.com', name: 'Sophie Martin',   role: 'consumer', withPassword: false })
   const client2 = await ensureOperator({ id: 'demo-consumer-2', email: 'demo-client2@grubano.com', name: 'Lucas Bernard',   role: 'consumer', withPassword: false })
@@ -351,7 +355,9 @@ async function main() {
       await prisma.menuItem.upsert({
         where:  { id: menuId },
         update: { name, price, category, available: true },
-        create: { id: menuId, brandId: brand.id, name, price, category, available: true, isPopular: i === 0 },
+        // allergens/labels/photos/options: NOT-NULL Json defaults — write valid
+        // JSON arrays so MariaDB's json_valid() CHECK passes on insert.
+        create: { id: menuId, brandId: brand.id, name, price, category, available: true, isPopular: i === 0, allergens: [], labels: [], photos: [], options: [] },
       })
     }
     franchisorBrands.push(brand)
@@ -394,7 +400,7 @@ async function main() {
   const restoTest = await prisma.operator.upsert({
     where:  { email: 'resto@grubano.com' },
     update: { name: 'Resto Test', status: 'active' },
-    create: { id: 'demo-resto-test', name: 'Resto Test', email: 'resto@grubano.com', role: 'restaurant', status: 'active', password: restoTestHash },
+    create: { id: 'demo-resto-test', name: 'Resto Test', email: 'resto@grubano.com', role: 'restaurant', status: 'active', password: restoTestHash, notifPrefs: {} },
   })
   await prisma.brand.upsert({
     where:  { id: 'demo-brand-test' },
@@ -408,6 +414,7 @@ async function main() {
       openToFranchise: false,
       franchiseStatus: 'none',
       cuisineType: 'Street food',
+      franchiseZones: [], // NOT-NULL Json default — valid empty array for MariaDB json_valid()
     },
   })
   // Optional minimal Restaurant profile bound to the same operator (1-to-1).
@@ -441,7 +448,7 @@ async function main() {
   const restoTest2 = await prisma.operator.upsert({
     where:  { email: 'resto2@grubano.com' },
     update: { name: 'Resto Test 2', status: 'active' },
-    create: { id: 'demo-resto-test-2', name: 'Resto Test 2', email: 'resto2@grubano.com', role: 'restaurant', status: 'active', password: restoTestHash },
+    create: { id: 'demo-resto-test-2', name: 'Resto Test 2', email: 'resto2@grubano.com', role: 'restaurant', status: 'active', password: restoTestHash, notifPrefs: {} },
   })
   await prisma.brand.upsert({
     where:  { id: 'demo-brand-test-2' },
@@ -455,6 +462,7 @@ async function main() {
       openToFranchise: false,
       franchiseStatus: 'none',
       cuisineType: 'Street food',
+      franchiseZones: [], // NOT-NULL Json default — valid empty array for MariaDB json_valid()
     },
   })
   // Restaurant profile in the SAME city as Resto Test (Orange) — 1-to-1 by operator.
@@ -517,6 +525,7 @@ async function main() {
         cuisineType: d.cuisineType,
         status: 'approved',
         commission: 0.02, // champ legacy non lu — aligné sur le taux officiel 2 %
+        adoptedBy: [],    // NOT-NULL Json default — valid empty array for MariaDB json_valid()
         totalSales: randInt(20, 120),
       },
     })
