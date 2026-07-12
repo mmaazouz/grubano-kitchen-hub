@@ -50,7 +50,12 @@ export async function POST(req: Request) {
         where:  { email: session.user.email },
         select: { id: true, role: true },
       })
-      if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
+      // 🔒 SEC: ADMIN ONLY. Generating invoices aggregates PLATFORM-WIDE commission
+      // financials (no per-tenant scoping) AND issues gapless legal invoice numbers
+      // for every establishment — a non-admin 'restaurant' operator must never read
+      // other tenants' money nor mutate their invoice ledger. Matches the admin-only
+      // gate of the sibling money endpoints.
+      if (!operator || operator.role !== 'admin') {
         return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       }
       actorId = operator.id

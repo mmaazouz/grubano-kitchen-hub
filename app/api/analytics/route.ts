@@ -1,8 +1,23 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+
+// Session-dependent (per-operator revenue) — never prerender/cache.
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
+    // 🔒 SEC (cross-tenant revenue leak). This endpoint had NO auth and NO
+    // scoping: an ANONYMOUS caller read the revenue / brand stats / KPIs of EVERY
+    // restaurant on the platform. Now gated to the connected restaurateur
+    // (restaurant/admin) and scoped to THEIR OWN brands. Same family as the
+    // /api/briefing fix.
+    const scope = await resolveEstablishmentScope(null)
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
+    const { operatorId } = scope
+
     const now       = new Date()
     const today     = new Date(now); today.setHours(0, 0, 0, 0)
     const tomorrow  = new Date(today); tomorrow.setDate(today.getDate() + 1)
@@ -11,15 +26,15 @@ export async function GET() {
 
     const [allOrders, recentOrders, brands] = await Promise.all([
       prisma.loyaltyOrder.findMany({
-        where:   { validatedAt: { gte: monthAgo } },
+        where:   { brand: { operatorId }, validatedAt: { gte: monthAgo } },
         include: { brand: { select: { name: true, emoji: true } } },
         orderBy: { validatedAt: 'asc' },
       }),
       prisma.loyaltyOrder.findMany({
-        where:   { validatedAt: { gte: weekAgo } },
+        where:   { brand: { operatorId }, validatedAt: { gte: weekAgo } },
         include: { brand: { select: { name: true } } },
       }),
-      prisma.brand.findMany({ select: { id: true, name: true, emoji: true } }),
+      prisma.brand.findMany({ where: { operatorId }, select: { id: true, name: true, emoji: true } }),
     ])
 
     // Revenue by day (last 7 days)

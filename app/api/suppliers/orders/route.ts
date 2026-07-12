@@ -2,6 +2,15 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import nodemailer from 'nodemailer'
 import { z } from 'zod'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+
+export const dynamic = 'force-dynamic'
+
+// 🔒 SEC. This route had NO auth: GET returned every operator's purchase-order
+// history (+ supplier email) to anonymous callers, and POST forged orders + sent
+// real supplier emails. Now gated restaurant/admin. NB: SupplierOrder has no
+// operatorId, so an authenticated operator still sees the shared order pool — a
+// true per-operator scoping needs a schema column (flagged for follow-up).
 
 const orderItemSchema = z.object({
   name:     z.string(),
@@ -29,6 +38,10 @@ const transporter = nodemailer.createTransport({
 // ── GET /api/suppliers/orders?supplierId= ─────────────────────────────────────
 
 export async function GET(req: Request) {
+  const scope = await resolveEstablishmentScope(null)
+  if (!scope.ok) {
+    return NextResponse.json({ error: scope.error }, { status: scope.status })
+  }
   try {
     const { searchParams } = new URL(req.url)
     const supplierId = searchParams.get('supplierId') ?? undefined
@@ -49,6 +62,10 @@ export async function GET(req: Request) {
 // ── POST /api/suppliers/orders ────────────────────────────────────────────────
 
 export async function POST(req: Request) {
+  const scope = await resolveEstablishmentScope(null)
+  if (!scope.ok) {
+    return NextResponse.json({ error: scope.error }, { status: scope.status })
+  }
   try {
     const body = await req.json()
     const { supplierId, items, total } = createSchema.parse(body)

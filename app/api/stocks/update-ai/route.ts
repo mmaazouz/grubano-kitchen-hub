@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { llmComplete, LlmQuotaError } from '@/lib/llm'
-import { callerOperator } from '@/lib/operator-session'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+
+export const dynamic = 'force-dynamic'
 
 const schema = z.object({
   text:    z.string().min(1).max(2000),
@@ -41,11 +43,19 @@ function forecast(items: ParsedItem[]) {
 
 export async function POST(req: Request) {
   try {
+    // 🔒 SEC. Previously auth was best-effort (LLM-quota only): an anonymous caller
+    // could parse text AND — with a client-supplied brandId — create/UPDATE stock on
+    // ANY operator's brand (unauth cross-tenant write / IDOR). Now gated to the
+    // connected restaurateur, and any write is fenced to a brand they OWN (same rule
+    // as POST /api/stocks). The LLM call itself is also no longer free to anon.
+    const scope = await resolveEstablishmentScope(null)
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
+    const operatorId = scope.operatorId
+
     const body          = await req.json()
     const { text, brandId } = schema.parse(body)
-
-    // Per-partner LLM quota attribution (best-effort; undefined → no quota).
-    const operatorId = await callerOperator().then((o) => o?.id).catch(() => undefined)
 
     let parsed: ParsedItem[]
     try {
@@ -73,6 +83,15 @@ export async function POST(req: Request) {
         updated_items: parsed.map(p => ({ ...p, status: 'preview' })),
         message:       `${parsed.length} produit(s) détecté(s). Fournissez un brandId pour sauvegarder.`,
       })
+    }
+
+    // The target brand MUST belong to the caller (blocks cross-tenant stock writes).
+    const ownedBrand = await prisma.brand.findFirst({
+      where:  { id: brandId, operatorId },
+      select: { id: true },
+    })
+    if (!ownedBrand) {
+      return NextResponse.json({ error: 'Marque non autorisée' }, { status: 403 })
     }
 
     const updatedItems: Array<ParsedItem & { action: string }> = []

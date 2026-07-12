@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+
+export const dynamic = 'force-dynamic'
 
 const TIER_THRESHOLDS = [
   { tier: 'platine', min: 400 },
@@ -21,6 +24,16 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  // 🔒 SEC. This POST mutates money-adjacent loyalty state (points/tier). It had
+  // NO auth and matched the brand by fuzzy name across ALL operators, so an
+  // anonymous caller could credit arbitrary points to any customer at any brand.
+  // Now gated to the connected restaurateur, and the brand is resolved WITHIN the
+  // caller's own tenant (a restaurateur can only validate orders for their brands).
+  const scope = await resolveEstablishmentScope(null)
+  if (!scope.ok) {
+    return NextResponse.json({ error: scope.error }, { status: scope.status })
+  }
+
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
 
@@ -54,9 +67,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 3. Trouver la marque
+    // 3. Trouver la marque — SCOPÉE au tenant du caller (admin = plateforme).
     const brand = await prisma.brand.findFirst({
-      where: { name: { contains: brandName } },
+      where: scope.role === 'admin'
+        ? { name: { contains: brandName } }
+        : { name: { contains: brandName }, operatorId: scope.operatorId },
     })
     if (!brand) {
       return NextResponse.json(

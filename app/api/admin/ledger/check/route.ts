@@ -54,7 +54,12 @@ export async function GET(req: Request) {
         where:  { email: session.user.email },
         select: { role: true },
       })
-      if (!operator || !['admin', 'restaurant'].includes(operator.role)) {
+      // 🔒 SEC: ADMIN ONLY. This endpoint returns PLATFORM-WIDE ledger financials
+      // (no per-tenant scoping) — a non-admin 'restaurant' operator must NOT read
+      // other tenants' money. A restaurateur reads their OWN finances via the
+      // owner-scoped /api/restaurants/[id]/finance/*. Matches the admin-only gate
+      // of the sibling money endpoints (creator-payouts/run, franchise-settlements/run).
+      if (!operator || operator.role !== 'admin') {
         return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       }
     }

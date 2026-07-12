@@ -1,10 +1,23 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+
+export const dynamic = 'force-dynamic'
+
+// 🔒 SEC. This route had NO auth: GET exposed every supplier's email/phone +
+// product prices to anonymous callers, and POST created suppliers anonymously.
+// The operator UI (/suppliers) is gated restaurant/admin — so is this now. NB:
+// Supplier has no operatorId (a shared directory), so this is auth-only; a true
+// per-operator supplier scoping needs a schema column (flagged for follow-up).
 
 // ── GET /api/suppliers ────────────────────────────────────────────────────────
 
 export async function GET() {
+  const scope = await resolveEstablishmentScope(null)
+  if (!scope.ok) {
+    return NextResponse.json({ error: scope.error }, { status: scope.status })
+  }
   try {
     const suppliers = await prisma.supplier.findMany({
       orderBy:  { name: 'asc' },
@@ -30,6 +43,10 @@ const createSchema = z.object({
 })
 
 export async function POST(req: Request) {
+  const scope = await resolveEstablishmentScope(null)
+  if (!scope.ok) {
+    return NextResponse.json({ error: scope.error }, { status: scope.status })
+  }
   try {
     const body = await req.json()
     const data = createSchema.parse(body)
