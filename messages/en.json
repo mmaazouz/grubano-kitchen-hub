@@ -393,7 +393,12 @@
       "noPhone": "No number provided",
       "historyTitle": "Recent history",
       "historySoonTitle": "History coming soon",
-      "historySoonBody": "Orders, reservations and rewards per customer will be shown here."
+      "historySoonBody": "Orders, reservations and rewards per customer will be shown here.",
+      "subtitleProtected": "Your loyal customers — contact details protected by Grubano",
+      "privacyListTitle": "Customer privacy.",
+      "privacyListBody": "You see history, loyalty and preferences. Contact details (email, phone, address) stay protected by Grubano.",
+      "colOrders": "Orders",
+      "colAvg": "Avg. basket"
     },
     "dinein": {
       "title": "Table service",
@@ -905,6 +910,40 @@
       "errRestaurantFailed": "Unable to create the restaurant. Check your information.",
       "errNetwork": "Network error, please try again.",
       "addressPlaceholder": "12 Rue de la Paix"
+    },
+    "customerProfile": {
+      "loyalCustomer": "Loyal customer",
+      "ordersHere": "{count} orders with you",
+      "lastInline": "Last: {rel}",
+      "offerPoints": "Give points",
+      "message": "Message via Grubano",
+      "soon": "Coming soon",
+      "privacyTitle": "Contact details are protected by Grubano.",
+      "privacyBody": "You keep the history, preferences and loyalty — email, phone and address stay confidential.",
+      "relation": "Relationship",
+      "kOrders": "Orders",
+      "kOrdersSub": "at your establishment",
+      "kAvg": "Average basket",
+      "kAvgSub": "over the history",
+      "kSince": "Customer since",
+      "monthsSub": "{n} months",
+      "kLast": "Last visit",
+      "preferences": "Preferences",
+      "noFavorites": "No preference yet",
+      "usualModeSub": "Most frequent mode",
+      "modeDelivery": "Delivery",
+      "modePickup": "Pickup",
+      "loyalty": "Loyalty",
+      "points": "points",
+      "toNext": "{pts} points to reach {tier}",
+      "maxTier": "Top tier reached",
+      "history": "Recent history",
+      "historyEmpty": "No recent order",
+      "allergenTitle": "Allergen flagged on the order of {date}",
+      "allergenScope": "Shown per order (food safety), not kept on the profile.",
+      "note": "Internal note",
+      "noteScope": "visible to your team only",
+      "noteSoon": "Team notes are coming soon."
     }
   },
   "common": {
@@ -1234,7 +1273,8 @@
       "referral": "Referral code",
       "timeline": "Tracking",
       "cancelled": "Order cancelled",
-      "markOutOfStock": "Out of stock"
+      "markOutOfStock": "Out of stock",
+      "contactProtected": "Contact details protected by Grubano"
     },
     "stock": {
       "title": "Out of stock",

@@ -558,15 +558,14 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
                 <FullStepper status={detailOrder.status} fulfillmentType={detailOrder.fulfillmentType} statusLabel={statusLabel} />
               )}
 
-              {/* Customer */}
+              {/* Customer — MASKED identity only (founder hybrid model). Email,
+                  phone and personal address are never exposed to the operator;
+                  the delivery address stays in the courier flow. */}
               <div className="od-cust-box">
                 {detailOrder.customer ? (
                   <>
                     <div className="row"><span className="ms">person</span><b>{detailOrder.customer.name}</b></div>
-                    <div className="row"><span className="ms">mail</span><span>{detailOrder.customer.email}</span></div>
-                    {detailOrder.customer.phone && (
-                      <div className="row"><span className="ms">call</span><span className="mono">{detailOrder.customer.phone}</span></div>
-                    )}
+                    <div className="row row--muted"><span className="ms">verified_user</span><span>{t('detail.contactProtected')}</span></div>
                   </>
                 ) : (
                   <div className="row"><span className="ms">person</span><span>{t('detail.noCustomer')}</span></div>

@@ -3,6 +3,7 @@
 // (GET /api/orders/live, polled every 15 s) build the EXACT same filtered list
 // from ONE place (no duplicated filtering/mapping).
 import { prisma } from '@/lib/prisma'
+import { maskCustomerName } from '@/lib/customer-scope'
 
 // ── Ghost-orders filter (a1b3724) — THE source of truth, REUSED not rewritten ──
 // A CARD order not yet webhook-confirmed ('awaiting_payment') and an abandoned
@@ -40,7 +41,11 @@ export interface OrderView {
   items:           OrderItemView[]
   itemsPreview:    string
   brandNames:      string[]
-  customer:        { name: string; email: string; phone: string | null } | null
+  // SEC (founder hybrid model): the operator NEVER sees a customer's contact
+  // details. Only a MASKED identity (first name + last initial) reaches this feed
+  // — email and phone are never selected into the payload. The delivery address
+  // stays in the order/courier operational flow, not here.
+  customer:        { name: string } | null
 }
 
 // ── Status → resto tab (Orders v2) — ONE place, no scattered magic ────────────
@@ -130,7 +135,8 @@ export async function buildOrderViews(opts: {
   const consumers = consumerIds.length
     ? await prisma.operator.findMany({
         where:  { id: { in: consumerIds } },
-        select: { id: true, name: true, email: true, phone: true },
+        // name only — email/phone are deliberately NOT selected (masking at source).
+        select: { id: true, name: true },
       })
     : []
   const consumerMap = new Map(consumers.map(c => [c.id, c]))
@@ -191,9 +197,7 @@ export async function buildOrderViews(opts: {
       items,
       itemsPreview,
       brandNames,
-      customer: customer
-        ? { name: customer.name, email: customer.email, phone: customer.phone ?? null }
-        : null,
+      customer: customer ? { name: maskCustomerName(customer.name) } : null,
     }
   })
 }

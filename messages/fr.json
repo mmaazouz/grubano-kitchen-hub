@@ -393,7 +393,12 @@
       "noPhone": "Aucun numéro renseigné",
       "historyTitle": "Historique récent",
       "historySoonTitle": "Historique bientôt disponible",
-      "historySoonBody": "Commandes, réservations et récompenses par client seront affichées ici."
+      "historySoonBody": "Commandes, réservations et récompenses par client seront affichées ici.",
+      "subtitleProtected": "Vos clients fidèles — coordonnées protégées par Grubano",
+      "privacyListTitle": "Confidentialité clients.",
+      "privacyListBody": "Vous voyez l'historique, la fidélité et les préférences. Les coordonnées (e-mail, téléphone, adresse) restent protégées par Grubano.",
+      "colOrders": "Commandes",
+      "colAvg": "Panier moyen"
     },
     "dinein": {
       "title": "Service à table",
@@ -905,6 +910,40 @@
       "errRestaurantFailed": "Impossible de créer le restaurant. Vérifiez vos informations.",
       "errNetwork": "Erreur réseau, réessayez.",
       "addressPlaceholder": "12 rue de la Paix"
+    },
+    "customerProfile": {
+      "loyalCustomer": "Client fidèle",
+      "ordersHere": "{count} commandes chez vous",
+      "lastInline": "Dernière : {rel}",
+      "offerPoints": "Offrir des points",
+      "message": "Message via Grubano",
+      "soon": "Bientôt disponible",
+      "privacyTitle": "Les coordonnées sont protégées par Grubano.",
+      "privacyBody": "Vous gardez l'historique, les préférences et la fidélité — e-mail, téléphone et adresse restent confidentiels.",
+      "relation": "Relation",
+      "kOrders": "Commandes",
+      "kOrdersSub": "chez votre établissement",
+      "kAvg": "Panier moyen",
+      "kAvgSub": "sur l'historique",
+      "kSince": "Client depuis",
+      "monthsSub": "{n} mois",
+      "kLast": "Dernière visite",
+      "preferences": "Préférences",
+      "noFavorites": "Pas encore de préférence",
+      "usualModeSub": "Mode le plus fréquent",
+      "modeDelivery": "Livraison",
+      "modePickup": "À emporter",
+      "loyalty": "Fidélité",
+      "points": "points",
+      "toNext": "Plus que {pts} points pour atteindre {tier}",
+      "maxTier": "Palier maximum atteint",
+      "history": "Historique récent",
+      "historyEmpty": "Aucune commande récente",
+      "allergenTitle": "Allergène signalé sur la commande du {date}",
+      "allergenScope": "Visible par commande (sécurité alimentaire), pas conservé au profil.",
+      "note": "Note interne",
+      "noteScope": "visible par votre équipe uniquement",
+      "noteSoon": "Les notes d'équipe arriveront bientôt."
     }
   },
   "common": {
@@ -1234,7 +1273,8 @@
       "referral": "Code parrainage",
       "timeline": "Suivi",
       "cancelled": "Commande annulée",
-      "markOutOfStock": "Plat en rupture"
+      "markOutOfStock": "Plat en rupture",
+      "contactProtected": "Coordonnées protégées par Grubano"
     },
     "stock": {
       "title": "Rupture de stock",

@@ -393,7 +393,12 @@
       "noPhone": "Nessun numero indicato",
       "historyTitle": "Storico recente",
       "historySoonTitle": "Storico presto disponibile",
-      "historySoonBody": "Ordini, prenotazioni e premi per cliente saranno mostrati qui."
+      "historySoonBody": "Ordini, prenotazioni e premi per cliente saranno mostrati qui.",
+      "subtitleProtected": "I tuoi clienti fedeli — recapiti protetti da Grubano",
+      "privacyListTitle": "Privacy dei clienti.",
+      "privacyListBody": "Vedi lo storico, la fedeltà e le preferenze. I recapiti (email, telefono, indirizzo) restano protetti da Grubano.",
+      "colOrders": "Ordini",
+      "colAvg": "Scontrino medio"
     },
     "dinein": {
       "title": "Servizio al tavolo",
@@ -905,6 +910,40 @@
       "errRestaurantFailed": "Impossibile creare il ristorante. Controlla le tue informazioni.",
       "errNetwork": "Errore di rete, riprova.",
       "addressPlaceholder": "12 Rue de la Paix"
+    },
+    "customerProfile": {
+      "loyalCustomer": "Cliente fedele",
+      "ordersHere": "{count} ordini da te",
+      "lastInline": "Ultima: {rel}",
+      "offerPoints": "Regala punti",
+      "message": "Messaggio via Grubano",
+      "soon": "Presto disponibile",
+      "privacyTitle": "I recapiti sono protetti da Grubano.",
+      "privacyBody": "Mantieni lo storico, le preferenze e la fedeltà — email, telefono e indirizzo restano riservati.",
+      "relation": "Relazione",
+      "kOrders": "Ordini",
+      "kOrdersSub": "presso il tuo locale",
+      "kAvg": "Scontrino medio",
+      "kAvgSub": "sullo storico",
+      "kSince": "Cliente dal",
+      "monthsSub": "{n} mesi",
+      "kLast": "Ultima visita",
+      "preferences": "Preferenze",
+      "noFavorites": "Ancora nessuna preferenza",
+      "usualModeSub": "Modalità più frequente",
+      "modeDelivery": "Consegna",
+      "modePickup": "Da asporto",
+      "loyalty": "Fedeltà",
+      "points": "punti",
+      "toNext": "Ancora {pts} punti per raggiungere {tier}",
+      "maxTier": "Livello massimo raggiunto",
+      "history": "Storico recente",
+      "historyEmpty": "Nessun ordine recente",
+      "allergenTitle": "Allergene segnalato sull'ordine del {date}",
+      "allergenScope": "Visibile per ordine (sicurezza alimentare), non conservato nel profilo.",
+      "note": "Nota interna",
+      "noteScope": "visibile solo al tuo team",
+      "noteSoon": "Le note del team arriveranno presto."
     }
   },
   "common": {
@@ -1234,7 +1273,8 @@
       "referral": "Codice referral",
       "timeline": "Tracciamento",
       "cancelled": "Ordine annullato",
-      "markOutOfStock": "Piatto esaurito"
+      "markOutOfStock": "Piatto esaurito",
+      "contactProtected": "Recapiti protetti da Grubano"
     },
     "stock": {
       "title": "Esauriti",

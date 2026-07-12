@@ -393,7 +393,12 @@
       "noPhone": "Ningún número indicado",
       "historyTitle": "Historial reciente",
       "historySoonTitle": "Historial próximamente disponible",
-      "historySoonBody": "Los pedidos, reservas y recompensas por cliente se mostrarán aquí."
+      "historySoonBody": "Los pedidos, reservas y recompensas por cliente se mostrarán aquí.",
+      "subtitleProtected": "Tus clientes fieles — datos de contacto protegidos por Grubano",
+      "privacyListTitle": "Privacidad de clientes.",
+      "privacyListBody": "Ves el historial, la fidelidad y las preferencias. Los datos de contacto (correo, teléfono, dirección) permanecen protegidos por Grubano.",
+      "colOrders": "Pedidos",
+      "colAvg": "Cesta media"
     },
     "dinein": {
       "title": "Servicio en mesa",
@@ -905,6 +910,40 @@
       "errRestaurantFailed": "No se puede crear el restaurante. Revisa tu información.",
       "errNetwork": "Error de red, inténtalo de nuevo.",
       "addressPlaceholder": "12 Rue de la Paix"
+    },
+    "customerProfile": {
+      "loyalCustomer": "Cliente fiel",
+      "ordersHere": "{count} pedidos contigo",
+      "lastInline": "Última: {rel}",
+      "offerPoints": "Regalar puntos",
+      "message": "Mensaje vía Grubano",
+      "soon": "Próximamente",
+      "privacyTitle": "Los datos de contacto están protegidos por Grubano.",
+      "privacyBody": "Conservas el historial, las preferencias y la fidelidad — correo, teléfono y dirección permanecen confidenciales.",
+      "relation": "Relación",
+      "kOrders": "Pedidos",
+      "kOrdersSub": "en tu establecimiento",
+      "kAvg": "Cesta media",
+      "kAvgSub": "sobre el historial",
+      "kSince": "Cliente desde",
+      "monthsSub": "{n} meses",
+      "kLast": "Última visita",
+      "preferences": "Preferencias",
+      "noFavorites": "Sin preferencias aún",
+      "usualModeSub": "Modo más frecuente",
+      "modeDelivery": "Entrega",
+      "modePickup": "Para llevar",
+      "loyalty": "Fidelidad",
+      "points": "puntos",
+      "toNext": "{pts} puntos para alcanzar {tier}",
+      "maxTier": "Nivel máximo alcanzado",
+      "history": "Historial reciente",
+      "historyEmpty": "Sin pedidos recientes",
+      "allergenTitle": "Alérgeno indicado en el pedido del {date}",
+      "allergenScope": "Visible por pedido (seguridad alimentaria), no se guarda en el perfil.",
+      "note": "Nota interna",
+      "noteScope": "visible solo para tu equipo",
+      "noteSoon": "Las notas de equipo llegarán pronto."
     }
   },
   "common": {
@@ -1234,7 +1273,8 @@
       "referral": "Código de recomendación",
       "timeline": "Seguimiento",
       "cancelled": "Pedido cancelado",
-      "markOutOfStock": "Plato agotado"
+      "markOutOfStock": "Plato agotado",
+      "contactProtected": "Datos de contacto protegidos por Grubano"
     },
     "stock": {
       "title": "Agotados",

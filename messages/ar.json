@@ -393,7 +393,12 @@
       "noPhone": "لا يوجد رقم مُدخَل",
       "historyTitle": "السجل الأخير",
       "historySoonTitle": "السجل متاح قريبًا",
-      "historySoonBody": "ستُعرض هنا الطلبات والحجوزات والمكافآت لكل عميل."
+      "historySoonBody": "ستُعرض هنا الطلبات والحجوزات والمكافآت لكل عميل.",
+      "subtitleProtected": "عملاؤك الأوفياء — بيانات الاتصال محمية بواسطة Grubano",
+      "privacyListTitle": "خصوصية العملاء.",
+      "privacyListBody": "ترى السجل والولاء والتفضيلات. تبقى بيانات الاتصال (البريد الإلكتروني، الهاتف، العنوان) محمية بواسطة Grubano.",
+      "colOrders": "الطلبات",
+      "colAvg": "متوسط السلة"
     },
     "dinein": {
       "title": "الخدمة على الطاولة",
@@ -905,6 +910,40 @@
       "errRestaurantFailed": "تعذّر إنشاء المطعم. تحقّق من معلوماتك.",
       "errNetwork": "خطأ في الشبكة، أعد المحاولة.",
       "addressPlaceholder": "12 شارع باريس"
+    },
+    "customerProfile": {
+      "loyalCustomer": "عميل وفيّ",
+      "ordersHere": "{count} طلبات لديك",
+      "lastInline": "الأخيرة: {rel}",
+      "offerPoints": "منح نقاط",
+      "message": "رسالة عبر Grubano",
+      "soon": "قريباً",
+      "privacyTitle": "بيانات الاتصال محمية بواسطة Grubano.",
+      "privacyBody": "تحتفظ بالسجل والتفضيلات والولاء — يبقى البريد الإلكتروني والهاتف والعنوان سرية.",
+      "relation": "العلاقة",
+      "kOrders": "الطلبات",
+      "kOrdersSub": "في منشأتك",
+      "kAvg": "متوسط السلة",
+      "kAvgSub": "على مدى السجل",
+      "kSince": "عميل منذ",
+      "monthsSub": "{n} شهراً",
+      "kLast": "آخر زيارة",
+      "preferences": "التفضيلات",
+      "noFavorites": "لا تفضيلات بعد",
+      "usualModeSub": "الوضع الأكثر تكراراً",
+      "modeDelivery": "توصيل",
+      "modePickup": "استلام",
+      "loyalty": "الولاء",
+      "points": "نقاط",
+      "toNext": "{pts} نقطة للوصول إلى {tier}",
+      "maxTier": "تم بلوغ أعلى مستوى",
+      "history": "السجل الأخير",
+      "historyEmpty": "لا طلبات حديثة",
+      "allergenTitle": "تم الإبلاغ عن مادة مسببة للحساسية في طلب {date}",
+      "allergenScope": "يظهر لكل طلب (سلامة غذائية)، لا يُحفظ في الملف.",
+      "note": "ملاحظة داخلية",
+      "noteScope": "مرئية لفريقك فقط",
+      "noteSoon": "ملاحظات الفريق قادمة قريباً."
     }
   },
   "common": {
@@ -1234,7 +1273,8 @@
       "referral": "رمز الإحالة",
       "timeline": "التتبّع",
       "cancelled": "تم إلغاء الطلب",
-      "markOutOfStock": "طبق نفد"
+      "markOutOfStock": "طبق نفد",
+      "contactProtected": "بيانات الاتصال محمية بواسطة Grubano"
     },
     "stock": {
       "title": "نفاد المخزون",

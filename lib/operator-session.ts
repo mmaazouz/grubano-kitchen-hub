@@ -14,3 +14,22 @@ export async function callerOperator(): Promise<{ id: string; role: string } | n
     .findUnique({ where: { email: session.user.email }, select: { id: true, role: true } })
     .catch(() => null)
 }
+
+// Same resolver, but returns the FULL role set (Operator.role + OperatorRole rows)
+// so callers can scope on a multi-role account. Used by the /customers screens to
+// build the ScopedOperator for lib/customer-scope. Returns null when no session.
+export async function callerScopedOperator(): Promise<{ id: string; roles: string[] } | null> {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.email) return null
+  const operator = await prisma.operator
+    .findUnique({
+      where:  { email: session.user.email },
+      select: { id: true, role: true, operatorRoles: { select: { role: true } } },
+    })
+    .catch(() => null)
+  if (!operator) return null
+  return {
+    id:    operator.id,
+    roles: Array.from(new Set([operator.role, ...operator.operatorRoles.map((r) => r.role)])),
+  }
+}
