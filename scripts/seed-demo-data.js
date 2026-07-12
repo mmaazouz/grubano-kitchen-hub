@@ -516,7 +516,7 @@ async function main() {
         suggestedPrice: d.suggestedPrice,
         cuisineType: d.cuisineType,
         status: 'approved',
-        commission: 0.04,
+        commission: 0.02, // champ legacy non lu — aligné sur le taux officiel 2 %
         totalSales: randInt(20, 120),
       },
     })
@@ -651,15 +651,22 @@ async function main() {
       id: 'default',
       minCommitmentDays: 60,
       successThresholdEur: 300,
-      creatorCommissionPct: 0.04,           // LEGACY single rate (kept for rétrocompat)
-      creatorCommissionPctReferred: 0.04,   // levier 1 — FORT: recipe creator's own traffic
-      creatorCommissionPctOrganic: 0.01,    // levier 1 — RÉDUIT: organic / other creator
+      creatorCommissionPct: 0.02,           // LEGACY single rate (non lu — aligné sur le taux officiel)
+      creatorCommissionPctReferred: 0.02,   // taux créateur OFFICIEL (décision fondateur 2026-07-12)
+      creatorCommissionPctOrganic: 0.02,    // B0: les deux paliers à 2 %
       grubanoCutPct: 0.20,
       active: true,
     },
-    update: {}, // never overwrite tuned values
+    update: {
+      // Rétro-correction : les seeds antérieurs à la décision fondateur (taux
+      // créateur = 2 %) ont figé 0.04 ; on réaligne UNIQUEMENT les taux créateur,
+      // les autres valeurs tunées restent intactes.
+      creatorCommissionPct: 0.02,
+      creatorCommissionPctReferred: 0.02,
+      creatorCommissionPctOrganic: 0.02,
+    },
   })
-  const CREATOR_COMMISSION_PCT = adoptionConfig.creatorCommissionPct
+  const CREATOR_COMMISSION_PCT = adoptionConfig.creatorCommissionPctReferred ?? 0.02
   const GRUBANO_CUT_PCT        = adoptionConfig.grubanoCutPct
 
   // Two adoptions: a Brand puts a creator recipe on its menu. adoption-1 (Gnocchi

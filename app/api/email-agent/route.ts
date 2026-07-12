@@ -136,6 +136,15 @@ export async function POST(req: NextRequest) {
       include: { creator: true },
     })
 
+    // Official creator rate from AdoptionConfig (same field the payment calc
+    // reads) — never CreatorDish.commission, a legacy default (0.04) no write
+    // path ever sets.
+    const adoptionCfg = await prisma.adoptionConfig.findFirst({
+      where:  { active: true },
+      select: { creatorCommissionPctReferred: true },
+    })
+    const creatorPct = Math.round((adoptionCfg?.creatorCommissionPctReferred ?? 0.02) * 100)
+
     for (const dish of recentlyApproved) {
       const alreadySent = await prisma.emailLog.findFirst({
         where: { trigger: `dish_approved_${dish.id}` },
@@ -145,7 +154,7 @@ export async function POST(req: NextRequest) {
       const { html, tokens } = await generateEmail(
         `Write an exciting approval notification email in French for ${dish.creator.name},
          a food creator on Grubano. Their dish "${dish.name}" has just been approved and
-         is now available for dark kitchens to adopt. Mention they earn ${dish.commission * 100}%
+         is now available for dark kitchens to adopt. Mention they earn ${creatorPct}%
          commission on every sale. Format as HTML. Maximum 130 words.`,
       )
       await sendAndLog(
