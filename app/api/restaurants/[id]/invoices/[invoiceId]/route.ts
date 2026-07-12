@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic'
 // lines written before the channel column existed (pre-backfill).
 const CHANNEL_LABELS: Record<string, string> = {
   dinein:      'Sur place — additions de table',
-  pickup:      'À emporter',
+  pickup:      'Click & collect',
   delivery:    'Livraison',
   reservation: 'Réservations — pénalités no-show',
 }

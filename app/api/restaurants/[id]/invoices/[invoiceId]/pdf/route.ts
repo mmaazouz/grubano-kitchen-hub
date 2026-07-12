@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
 
 const CHANNEL_LABELS: Record<string, string> = {
   dinein:      'Sur place — additions de table',
-  pickup:      'À emporter',
+  pickup:      'Click & collect',
   delivery:    'Livraison',
   reservation: 'Réservations — pénalités no-show',
 }

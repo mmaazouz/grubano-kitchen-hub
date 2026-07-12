@@ -13,7 +13,7 @@ export type CommissionChannel = 'dinein' | 'pickup' | 'delivery' | 'reservation'
  *  finance dashboard (A7) — display ONLY from here, never hardcode elsewhere. */
 export const PLATFORM_COMMISSION_RATES: Record<CommissionChannel, number> = {
   dinein:      0.05, // sur-place / addition à table
-  pickup:      0.08, // à emporter
+  pickup:      0.08, // click & collect
   delivery:    0.12, // livraison
   reservation: 0,    // empreinte / no-show penalty: 100 % to the resto (A0)
 }

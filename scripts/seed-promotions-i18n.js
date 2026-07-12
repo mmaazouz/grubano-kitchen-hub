@@ -28,7 +28,7 @@ const KEYS = {
     minOrderPill: 'Dès {amount}',
     itemsPill: '{count} plat(s) ciblé(s)',
     channelDelivery: 'Livraison',
-    channelPickup: 'À emporter',
+    channelPickup: 'Click & collect',
     formTitle: 'Créer une promotion',
     fieldBrand: 'Marque',
     fieldName: 'Nom de l’offre',

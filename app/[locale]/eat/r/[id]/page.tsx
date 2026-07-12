@@ -478,7 +478,7 @@ export default function RestaurantScreen() {
             </div>
           )}
 
-          {/* 3-mode segmented control (Livraison / À emporter / Sur place). VISUAL. */}
+          {/* 3-mode segmented control (Livraison / Click & collect / Sur place). VISUAL. */}
           <div className="modes" role="tablist" aria-label={t('fulfilmentMode')}>
             {MODES.map((m) => (
               <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}>

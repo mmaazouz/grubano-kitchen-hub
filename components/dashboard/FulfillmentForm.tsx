@@ -298,7 +298,7 @@ function FulfillmentFormInner({ restaurantId, restaurantName, initial, billing }
             </div>
           </div>
 
-          {/* ── À emporter ── */}
+          {/* ── Click & collect ── */}
           <div className="channel-card pickup" data-on={form.pickupEnabled ? 'true' : 'false'}>
             <div className="channel-card__head">
               <span className="channel-card__ic"><span className="ms" aria-hidden="true">shopping_bag</span></span>

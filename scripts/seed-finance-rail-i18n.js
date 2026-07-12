@@ -57,7 +57,7 @@ const KEYS = {
     ratesTitle: 'Vos taux de commission',
     ratesDesc: 'Taux tout compris (frais bancaires et TVA inclus), prélevés à la source sur chaque encaissement.',
     rateDinein: 'Sur place / addition',
-    ratePickup: 'À emporter',
+    ratePickup: 'Click & collect',
     rateDelivery: 'Livraison',
     rateReservation: 'Réservation',
     rateFreeBadge: 'Offre fondateur : 0% jusqu’au {date}',

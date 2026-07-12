@@ -280,7 +280,7 @@ export async function sendRestaurantNewOrderEmail(p: {
   totalCents:      number
 }): Promise<{ status: SendStatus }> {
   const lines = p.items.map((it) => row(`${it.qty}×`, esc(it.name))).join('')
-  const mode  = p.fulfillmentType === 'pickup' ? 'À emporter / retrait' : 'Livraison'
+  const mode  = p.fulfillmentType === 'pickup' ? 'Click & collect' : 'Livraison'
   return sendOnce('resto_order_received', `order:${p.orderId}`, {
     to:      p.to,
     subject: `Nouvelle commande ${p.orderRef} — ${p.restaurantName}`,
@@ -688,7 +688,7 @@ export async function sendOrderConfirmation(p: {
     .map((it) => row(`${it.qty}×`, esc(it.name)))
     .join('')
   const mode = p.fulfillmentType === 'pickup'
-    ? 'À emporter — votre commande sera à retirer au restaurant.'
+    ? 'Click & collect — votre commande sera à retirer au restaurant.'
     : 'Livraison — votre commande arrive chez vous.'
   await sendTransactional({
     to:      p.to,

@@ -13,7 +13,7 @@ const KEYS = {
     recapTitle:      'Récapitulatif',
     subtotal:        'Sous-total produits',
     deliveryFee:     'Frais de livraison',
-    pickupNoFee:     'À emporter — aucun frais',
+    pickupNoFee:     'Click & collect — aucun frais',
     discount:        'Remise de bienvenue',
     total:           'Total',
     payNowNote:      'Montant débité maintenant par carte — le restaurant lance la préparation dès le paiement confirmé.',

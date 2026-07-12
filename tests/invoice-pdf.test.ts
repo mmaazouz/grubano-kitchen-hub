@@ -14,7 +14,7 @@ const view = (over: Partial<InvoicePdfView> = {}): InvoicePdfView => ({
   issuer:    { name: 'Grubano SAS', address: '1 rue de la Paix, Paris', siren: '123456789', vat: 'FR12345678901' },
   recipient: { name: 'Le Café Crème', address: "2 av. de l'Opéra", city: 'Paris', vat: '—' },
   lines: [
-    { label: 'À emporter', count: 5, grossCents: 10000, feeCents: 800 },
+    { label: 'Click & collect', count: 5, grossCents: 10000, feeCents: 800 },
     { label: 'Livraison',  count: 3, grossCents: 6000,  feeCents: 400 },
   ],
   driftDetailFeeCents: null,

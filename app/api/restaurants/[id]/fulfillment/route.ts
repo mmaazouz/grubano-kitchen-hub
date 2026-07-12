@@ -141,7 +141,7 @@ export async function POST(
       }
       if (!next.deliveryEnabled && !next.pickupEnabled && !next.reservationEnabled) {
         return NextResponse.json(
-          { error: 'Au moins un mode (livraison, à emporter ou réservation) doit rester actif.' },
+          { error: 'Au moins un mode (livraison, Click & collect ou réservation) doit rester actif.' },
           { status: 400 },
         )
       }
