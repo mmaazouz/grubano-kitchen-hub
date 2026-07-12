@@ -4,6 +4,7 @@ import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { rateLimit } from '@/lib/rate-limit'
 import { centsPerPoint, pointsToCents } from '@/lib/loyalty'
+import { loyaltyCustomerWhereForOperator } from '@/lib/customer-scope'
 
 const TIER_THRESHOLDS = [
   { tier: 'bronze',  min: 0,   next: 'Silver',  nextPts: 100 },
@@ -50,7 +51,11 @@ export async function GET(req: NextRequest) {
 
     const token = await getToken({ req })
 
+    // A restaurateur consulting an explicit ?email= is scoped to HIS OWN customers
+    // (SEC — cross-tenant). Admin keeps the platform-wide view; a consumer only ever
+    // reads their own wallet via the session fallback.
     let email: string | null
+    let scopeToOperatorId: string | null = null   // non-null ⇒ scope to this operator's tenant
     if (explicitEmail) {
       // WP-SEC-01 — an explicit ?email= lookup is an OPERATOR/ADMIN action (the
       // /loyalty screen consulting a client wallet). A consumer may ONLY read their
@@ -65,6 +70,17 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
       }
       email = explicitEmail
+      // WP-SEC-02 — AUTHN alone is not enough: without tenant scoping ANY
+      // restaurateur could read ANY platform customer's wallet + cross-tenant order
+      // history by guessing an email (and use the 404/200 as an email oracle). A
+      // restaurant caller is therefore fenced to customers who ordered chez lui;
+      // admin (no operator tenant) keeps the unscoped view.
+      if (role === 'restaurant') {
+        scopeToOperatorId = typeof token.sub === 'string' ? token.sub : null
+        if (!scopeToOperatorId) {
+          return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+        }
+      }
     } else {
       // No explicit email → the authenticated consumer's own wallet (session email).
       email = typeof token?.email === 'string' ? token.email : null
@@ -74,18 +90,39 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'email requis' }, { status: 400 })
     }
 
-    const customer = await prisma.loyaltyCustomer.findUnique({
-      where:   { email },
-      include: {
-        orders: {
-          orderBy: { validatedAt: 'desc' },
-          take:    10,
-          include: { brand: { select: { name: true } } },
+    let customer
+    if (scopeToOperatorId) {
+      // Tenant-scoped: the customer must have ordered at one of the caller's own
+      // brands/restaurants (same fence as the /customers screen), and only the
+      // caller's OWN brand orders are returned (no competitor brand names leak).
+      const scopedWhere = await loyaltyCustomerWhereForOperator(scopeToOperatorId)
+      customer = await prisma.loyaltyCustomer.findFirst({
+        where:   { AND: [{ email }, scopedWhere] },
+        include: {
+          orders: {
+            where:   { brand: { operatorId: scopeToOperatorId } },
+            orderBy: { validatedAt: 'desc' },
+            take:    10,
+            include: { brand: { select: { name: true } } },
+          },
         },
-      },
-    })
+      })
+    } else {
+      // Consumer's own wallet OR admin platform-wide lookup — unscoped by design.
+      customer = await prisma.loyaltyCustomer.findUnique({
+        where:   { email },
+        include: {
+          orders: {
+            orderBy: { validatedAt: 'desc' },
+            take:    10,
+            include: { brand: { select: { name: true } } },
+          },
+        },
+      })
+    }
 
     if (!customer) {
+      // Same 404 whether the customer doesn't exist or isn't the caller's — no oracle.
       return NextResponse.json({ error: 'Client introuvable' }, { status: 404 })
     }
 

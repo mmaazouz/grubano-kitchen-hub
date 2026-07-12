@@ -1,24 +1,42 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { llmComplete, LlmQuotaError } from '@/lib/llm'
-import { callerOperator } from '@/lib/operator-session'
+import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+
+// Session-dependent (per-establishment) — never prerender/cache.
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
+    // 🔒 SEC (cross-tenant PII). This endpoint had NO auth gate (GET with no req)
+    // and NO tenant scoping: an ANONYMOUS caller obtained today's reservations —
+    // customerName + allergies (RGPD art. 9 health data) — plus stock levels and
+    // revenue of EVERY establishment on the platform. Now gated to the connected
+    // restaurateur (restaurant/admin) and every query is scoped to THEIR OWN
+    // establishments (brand.operatorId for stock/loyalty, ownedIds for bookings).
+    const scope = await resolveEstablishmentScope(null)
+    if (!scope.ok) {
+      return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
+    const { operatorId, ownedIds } = scope
+
     const now      = new Date()
     const today    = new Date(now); today.setHours(0, 0, 0, 0)
     const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
 
-    // Gather context from DB
+    // Gather context from DB — every read fenced to the caller's own tenant.
     const [stockItems, reservations, todayOrders] = await Promise.all([
-      prisma.stockItem.findMany({ orderBy: { name: 'asc' } }),
+      prisma.stockItem.findMany({
+        where:   { brand: { operatorId } },
+        orderBy: { name: 'asc' },
+      }),
       prisma.reservation.findMany({
-        where:   { date: { gte: today, lt: tomorrow }, status: { notIn: ['cancelled', 'noshow'] } },
+        where:   { restaurantId: { in: ownedIds }, date: { gte: today, lt: tomorrow }, status: { notIn: ['cancelled', 'noshow'] } },
         include: { table: { select: { name: true } } },
         orderBy: { date: 'asc' },
       }),
       prisma.loyaltyOrder.findMany({
-        where:   { validatedAt: { gte: today, lt: tomorrow } },
+        where:   { brand: { operatorId }, validatedAt: { gte: today, lt: tomorrow } },
         include: { brand: { select: { name: true } } },
       }),
     ])
@@ -51,8 +69,7 @@ Génère un briefing matinal en français avec :
 
 Sois concis, direct et professionnel. Maximum 120 mots au total.`
 
-    // Per-partner LLM quota attribution (best-effort; undefined → no quota).
-    const operatorId = await callerOperator().then((o) => o?.id).catch(() => undefined)
+    // Per-partner LLM quota attribution — the authenticated caller (scope above).
     const { text } = await llmComplete({ task: 'briefing', content: prompt, operatorId })
     const briefing = text.trim()
 
