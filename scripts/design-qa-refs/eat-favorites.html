@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Favoris</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-fav:#E0356E; --gb-fav-bg:#FCE8F0;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-grad-fav:linear-gradient(135deg,#FF5C8A,#E0356E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif;
+  --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-fav:#FF6FA1; --gb-fav-bg:rgba(224,53,110,.18); --gb-zest:#FF7C39;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button{font-family:inherit}
+
+.fav{max-width:960px;margin:0 auto;padding:clamp(18px,3vw,30px) clamp(16px,3vw,28px) 80px}
+.fav-top{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.fav-top .back{font-size:24px;cursor:pointer}
+.fav-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em;display:flex;align-items:center;gap:9px}
+.fav-top h1 .ms{font-size:26px;color:var(--gb-fav);font-variation-settings:'FILL' 1}
+.fav-sub{font-size:13.5px;color:var(--gb-muted);margin:0 0 20px 38px}
+
+.tabs{display:inline-flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:2px;margin-bottom:20px}
+.tabs button{font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:9px 18px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.tabs button[aria-selected="true"]{color:#fff;background:var(--gb-grad-fav)}
+.tabs .count{font-size:11px;font-weight:800;background:rgba(255,255,255,.25);border-radius:6px;padding:1px 7px}
+.tabs button:not([aria-selected="true"]) .count{background:var(--gb-border);color:var(--gb-muted)}
+
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:860px){ .grid{grid-template-columns:1fr 1fr} }
+@media (max-width:560px){ .grid{grid-template-columns:1fr} }
+
+.card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);overflow:hidden;box-shadow:var(--gb-shadow-card);cursor:pointer}
+.card__img{position:relative;height:128px}
+.card__img.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 12px,#FFF1E7 12px 24px)}
+.card__img.t2{background:repeating-linear-gradient(135deg,#D7E3F2 0 12px,#EAEFF6 12px 24px)}
+.card__img.t3{background:repeating-linear-gradient(135deg,#CDEBD8 0 12px,#EAF7EF 12px 24px)}
+.card__img.t4{background:repeating-linear-gradient(135deg,#FFD9C2 0 12px,#FFE9D6 12px 24px)}
+.card__img.t5{background:repeating-linear-gradient(135deg,#F3D9E0 0 12px,#FBEAF1 12px 24px)}
+.card__img.t6{background:repeating-linear-gradient(135deg,#E6EFD9 0 12px,#EFF5E6 12px 24px)}
+[data-theme="dark"] .card__img.t1,[data-theme="dark"] .card__img.t4{background:repeating-linear-gradient(135deg,#3A2C22 0 12px,#2C2118 12px 24px)}
+[data-theme="dark"] .card__img.t2{background:repeating-linear-gradient(135deg,#21344B 0 12px,#1A2A3D 12px 24px)}
+[data-theme="dark"] .card__img.t3,[data-theme="dark"] .card__img.t6{background:repeating-linear-gradient(135deg,#1E3B2B 0 12px,#172E22 12px 24px)}
+[data-theme="dark"] .card__img.t5{background:repeating-linear-gradient(135deg,#3A2230 0 12px,#2C1A24 12px 24px)}
+.card__time{position:absolute;top:10px;left:10px;background:rgba(15,39,66,.82);color:#fff;font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px}
+.card__heart{position:absolute;top:9px;right:9px;width:34px;height:34px;border-radius:50%;background:var(--gb-surface);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(15,39,66,.18);cursor:pointer}
+.card__heart .ms{font-size:19px;color:var(--gb-fav);font-variation-settings:'FILL' 1}
+.card__heart.off .ms{color:var(--gb-muted-2);font-variation-settings:'FILL' 0}
+.card__b{padding:13px 15px}
+.card__row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card__row b{font-family:var(--gb-font-display);font-weight:700;font-size:15.5px;line-height:1.3;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card__rating{display:inline-flex;align-items:center;gap:3px;font-size:12.5px;font-weight:700;flex-shrink:0}
+.card__rating .ms{font-size:15px;color:#EA9410}
+.card__meta{font-size:12.5px;color:var(--gb-muted);margin-top:4px}
+.card__tags{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+.tag{font-size:11px;font-weight:600;border-radius:7px;padding:4px 9px}
+.tag--free{color:var(--gb-basil-600);background:rgba(46,164,92,.1)}
+.tag--closed{color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border)}
+.tag--pop{color:var(--gb-zest-600);background:#FFF1E7}
+[data-theme="dark"] .tag--pop{background:rgba(255,124,57,.16);color:var(--gb-zest)}
+
+.dish{display:flex;gap:13px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:12px;box-shadow:var(--gb-shadow-card)}
+.dish__img{width:84px;height:84px;border-radius:var(--gb-r-md);flex-shrink:0}
+.dish__b{flex:1;min-width:0;display:flex;flex-direction:column}
+.dish__b b{font-family:var(--gb-font-display);font-weight:700;font-size:15px}
+.dish__b .resto{font-size:12px;color:var(--gb-muted);margin-top:2px}
+.dish__b .bottom{margin-top:auto;display:flex;align-items:center;justify-content:space-between;padding-top:8px}
+.dish__b .price{font-family:var(--gb-font-display);font-weight:800;font-size:15px}
+.dish__add{width:32px;height:32px;border-radius:10px;background:var(--gb-grad);display:flex;align-items:center;justify-content:center;border:none;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.dish__add .ms{font-size:18px;color:#fff}
+.dish__heart{align-self:flex-start;width:30px;height:30px;border-radius:50%;background:var(--gb-fav-bg);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.dish__heart .ms{font-size:17px;color:var(--gb-fav);font-variation-settings:'FILL' 1}
+
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 24px}
+.empty__ico{width:96px;height:96px;border-radius:50%;background:var(--gb-fav-bg);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.empty__ico .ms{font-size:48px;color:var(--gb-fav)}
+.empty h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em}
+.empty p{margin:9px 0 22px;font-size:14px;line-height:1.55;color:var(--gb-muted);max-width:36ch}
+.btn{font-family:var(--gb-font-ui);font-weight:700;font-size:14px;cursor:pointer;border-radius:var(--gb-r-md);padding:13px 22px;border:none;display:inline-flex;align-items:center;gap:8px}
+.btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.btn--primary .ms{font-size:18px}
+
+.hint{display:flex;align-items:center;gap:10px;background:var(--gb-fav-bg);border:1px solid transparent;border-radius:var(--gb-r-md);padding:12px 15px;margin-bottom:18px}
+.hint .ms{font-size:19px;color:var(--gb-fav)}
+.hint span{flex:1;font-size:12.5px;color:var(--gb-text)}
+.hint b{font-weight:700}
+.hint a{font-size:12.5px;font-weight:700;color:var(--gb-fav);text-decoration:none;white-space:nowrap;cursor:pointer}
+
+#app[data-tab="resto"] .pane-dish,#app[data-tab="dish"] .pane-resto{display:none}
+#app[data-state="empty"] .pane-resto,#app[data-state="empty"] .pane-dish,#app[data-state="empty"] .tabs,#app[data-state="empty"] .hint{display:none}
+#app:not([data-state="empty"]) .empty{display:none}
+</style>
+</head>
+<body>
+<div id="app" data-tab="resto" data-state="list">
+<main class="fav">
+  <div class="fav-top"><span class="ms back">arrow_back</span><h1><span class="ms">favorite</span>Favoris</h1></div>
+  <p class="fav-sub">Vos restaurants et plats enregistrés, prêts à recommander.</p>
+
+  <div class="hint">
+    <span class="ms">tips_and_updates</span>
+    <span>Astuce : filtrez par <b>Favoris</b> directement dans la recherche pour comparer.</span>
+    <a>Ouvrir la recherche →</a>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" onclick="setTab('resto')">Restaurants <span class="count">5</span></button>
+    <button role="tab" aria-selected="false" onclick="setTab('dish')">Plats <span class="count">3</span></button>
+  </div>
+
+  <!-- RESTAURANTS -->
+  <div class="pane-resto"><div class="grid">
+    <article class="card"><div class="card__img t1"><span class="card__time">20–30 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Mama Trattoria</b><span class="card__rating"><span class="ms">star</span>4,8</span></div><div class="card__meta">Italien · $$ · 1,2 km</div><div class="card__tags"><span class="tag tag--free">Livraison offerte</span><span class="tag tag--pop">Populaire</span></div></div></article>
+    <article class="card"><div class="card__img t3"><span class="card__time">15–25 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Olive &amp; Thyme</b><span class="card__rating"><span class="ms">star</span>4,7</span></div><div class="card__meta">Méditerranéen · $$ · 1,0 km</div><div class="card__tags"><span class="tag tag--free">Livraison offerte</span></div></div></article>
+    <article class="card"><div class="card__img t2"><span class="card__time">25–35 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Sakura Sushi</b><span class="card__rating"><span class="ms">star</span>4,9</span></div><div class="card__meta">Japonais · $$$ · 2,0 km</div><div class="card__tags"><span class="tag tag--pop">Populaire</span></div></div></article>
+    <article class="card"><div class="card__img t4"><span class="card__time">Fermé · ouvre 18:00</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Casa Caldo</b><span class="card__rating"><span class="ms">star</span>4,8</span></div><div class="card__meta">Italien · $$$ · 2,4 km</div><div class="card__tags"><span class="tag tag--closed">Fermé</span></div></div></article>
+    <article class="card"><div class="card__img t6"><span class="card__time">18–28 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Verde Bowl</b><span class="card__rating"><span class="ms">star</span>4,7</span></div><div class="card__meta">Healthy · $$ · 0,8 km</div><div class="card__tags"><span class="tag tag--free">Livraison offerte</span></div></div></article>
+  </div></div>
+
+  <!-- PLATS -->
+  <div class="pane-dish"><div class="grid">
+    <article class="dish"><div class="card__img t1 dish__img" style="height:84px"></div><div class="dish__b"><b>Tagliatelles à la truffe</b><div class="resto">Mama Trattoria</div><div class="bottom"><span class="price">18 €</span><button class="dish__add"><span class="ms">add</span></button></div></div><span class="dish__heart"><span class="ms">favorite</span></span></article>
+    <article class="dish"><div class="card__img t5 dish__img" style="height:84px"></div><div class="dish__b"><b>Tiramisu maison</b><div class="resto">Casa Caldo</div><div class="bottom"><span class="price">8 €</span><button class="dish__add"><span class="ms">add</span></button></div></div><span class="dish__heart"><span class="ms">favorite</span></span></article>
+    <article class="dish"><div class="card__img t6 dish__img" style="height:84px"></div><div class="dish__b"><b>Buddha bowl vegan</b><div class="resto">Verde Bowl</div><div class="bottom"><span class="price">14 €</span><button class="dish__add"><span class="ms">add</span></button></div></div><span class="dish__heart"><span class="ms">favorite</span></span></article>
+  </div></div>
+
+  <!-- ÉTAT VIDE -->
+  <div class="empty">
+    <div class="empty__ico"><span class="ms">favorite_border</span></div>
+    <h2>Aucun favori pour l'instant</h2>
+    <p>Touchez le ♥ sur un restaurant ou un plat pour le retrouver ici en un instant.</p>
+    <button class="btn btn--primary"><span class="ms">search</span>Découvrir des restaurants</button>
+  </div>
+</main>
+</div>
+<script>
+  function setTab(t){var a=document.getElementById('app');a.dataset.state='list';a.dataset.tab=t;
+    document.querySelectorAll('.tabs button').forEach((b,i)=>b.setAttribute('aria-selected',(i===0)===(t==='resto')));}
+  document.querySelectorAll('.card__heart').forEach(h=>h.onclick=e=>{e.stopPropagation();h.classList.toggle('off');});
+</script>
+</body>
+</html>

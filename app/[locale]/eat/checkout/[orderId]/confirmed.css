@@ -1,0 +1,98 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * « Commande confirmée » (post-paiement) — VERBATIM reproduction of the FROZEN CD
+ * ref (Notion 38efd2c9-…-81f8, file eat/order-confirmed.html). This is the SUCCESS
+ * screen shown by the checkout page's 'paid' stage (re-skinned in place — the
+ * payment/order flow is untouched, this is presentational only).
+ *
+ * The CD design tokens live in the gb-foundation (gb-tokens.css — --gb-grad-green,
+ * --gb-grad, --gb-success(-bg), --gb-shadow-btn/-card, etc. are all present). Only the
+ * COMPONENT CSS lives here, scoped under `.gb-confirmed`. The CD's foundation-colliding
+ * generic class names (`.body`, `.sub`, `.meta`, `.r`, `.div`, `.tot`, `.ghost`) are
+ * renamed to `.cf-*` to avoid any clash with gb-components.css; non-colliding CD names
+ * are kept verbatim, scoped. The confetti colours are CD's decorative literals (verbatim).
+ * RTL: logical properties + `.ms-flip` on directional icons + `<bdi>` for €/refs.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* When the checkout page is on the « Commande confirmée » stage, the checkout
+ * container (.gb-checkout: max-width 1040px + 120px bottom padding) is neutralised
+ * so this CD success screen owns the full column it renders into (CD = full-page). */
+.gb-checkout.gb-checkout--confirmed{max-width:none;padding:0;display:flex;flex-direction:column;min-height:100%}
+
+/* ===================== PAGE CONTENT (sits inside the immersive shell) =========== */
+.gb-confirmed{position:relative;flex:1;min-height:100%;display:flex;flex-direction:column;color:var(--gb-text)}
+
+@keyframes cf-pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+@keyframes cf-fall{0%{transform:translateY(-20px) rotate(0);opacity:0}15%{opacity:1}100%{transform:translateY(220px) rotate(320deg);opacity:0}}
+
+/* confetti (decoration) */
+.gb-confirmed .confetti{position:absolute;inset-block-start:0;inset-inline:0;height:240px;pointer-events:none;overflow:hidden}
+.gb-confirmed .confetti i{position:absolute;width:8px;height:8px;border-radius:2px;animation:cf-fall 2.4s linear infinite}
+.gb-confirmed .confetti i:nth-child(1){inset-inline-start:14%;background:#FF6A1F}
+.gb-confirmed .confetti i:nth-child(2){inset-inline-start:28%;background:#2BA45C;animation-delay:.3s}
+.gb-confirmed .confetti i:nth-child(3){inset-inline-start:43%;background:#FFB020;animation-delay:.7s}
+.gb-confirmed .confetti i:nth-child(4){inset-inline-start:58%;background:#FF6A1F;animation-delay:.2s}
+.gb-confirmed .confetti i:nth-child(5){inset-inline-start:72%;background:#2BA45C;animation-delay:.9s}
+.gb-confirmed .confetti i:nth-child(6){inset-inline-start:86%;background:#FFB020;animation-delay:.5s}
+@media (prefers-reduced-motion:reduce){ .gb-confirmed .confetti i{animation:none} }
+
+/* body column (CD .body → .cf-body) */
+.gb-confirmed .cf-body{flex:1;padding:8px 22px;display:flex;flex-direction:column;align-items:center;text-align:center;max-width:440px;width:100%;margin-inline:auto}
+
+/* hero success icon */
+.gb-confirmed .hero-ic{width:90px;height:90px;border-radius:50%;background:var(--gb-grad-green);display:flex;align-items:center;justify-content:center;margin-block:18px;box-shadow:0 16px 30px -12px rgba(30,140,75,.6);animation:cf-pop .6s cubic-bezier(.3,1.4,.5,1) both}
+@media (prefers-reduced-motion:reduce){ .gb-confirmed .hero-ic{animation:none} }
+.gb-confirmed .hero-ic .ms{font-size:50px;color:#fff;font-variation-settings:'FILL' 1}
+
+/* title + sub (CD .sub → .cf-sub) */
+.gb-confirmed .h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-confirmed .cf-sub{margin:8px 0 18px;font-size:13px;line-height:1.5;color:var(--gb-muted)}
+.gb-confirmed .cf-sub b{color:var(--gb-text)}
+
+/* ETA card */
+.gb-confirmed .eta{width:100%;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);padding:16px;margin-bottom:12px;display:flex;align-items:center;gap:14px;text-align:start}
+.gb-confirmed .eta .ic{width:48px;height:48px;border-radius:13px;background:var(--gb-success-bg);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-confirmed .eta .ic .ms{font-size:26px;color:var(--gb-success)}
+.gb-confirmed .eta .m small{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--gb-muted-2)}
+.gb-confirmed .eta .m b{display:block;font-family:var(--gb-font-display);font-weight:800;font-size:22px;letter-spacing:-.02em;margin-top:1px;color:var(--gb-text)}
+.gb-confirmed .eta .m span{font-size:11.5px;color:var(--gb-muted)}
+
+/* meta boxes (CD .meta → .cf-meta) */
+.gb-confirmed .cf-meta{width:100%;display:flex;gap:10px;margin-bottom:12px}
+.gb-confirmed .cf-meta .box{flex:1;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 13px;text-align:start}
+.gb-confirmed .cf-meta .box small{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gb-muted-2)}
+.gb-confirmed .cf-meta .box b{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;margin-top:3px;color:var(--gb-text)}
+.gb-confirmed .cf-meta .box b .ms{font-size:15px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-confirmed .cf-meta .box b .ms{color:var(--gb-zest)}
+
+/* items summary (CD .sum verbatim; rows .r→.cf-r, .div→.cf-div, .tot→.cf-tot) */
+.gb-confirmed .sum{width:100%;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:14px 16px;margin-bottom:12px;text-align:start;color:var(--gb-text)}
+.gb-confirmed .sum .cf-r{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:9px}
+.gb-confirmed .sum .q{width:18px;height:18px;border-radius:5px;background:var(--gb-surface-2);border:1px solid var(--gb-border);font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;margin-inline-end:7px;color:var(--gb-muted);flex-shrink:0}
+.gb-confirmed .sum .nm{flex:1;display:flex;align-items:center;min-width:0}
+.gb-confirmed .sum .cf-div{height:1px;background:var(--gb-border);margin-block:11px}
+.gb-confirmed .sum .cf-tot{display:flex;justify-content:space-between;gap:10px;font-family:var(--gb-font-display);font-weight:800;font-size:15px}
+
+/* footer (CTAs) */
+.gb-confirmed .foot{flex-shrink:0;padding:11px 22px 16px;background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+.gb-confirmed .foot .inner{max-width:440px;margin-inline:auto}
+.gb-confirmed .track-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:var(--gb-grad);border:none;border-radius:13px;padding:14px;box-shadow:var(--gb-shadow-btn);cursor:pointer;margin-bottom:8px;text-decoration:none}
+.gb-confirmed .track-btn .ms{font-size:19px;color:#fff}
+.gb-confirmed .track-btn b{font-size:14.5px;font-weight:700;color:#fff}
+/* CD .ghost → .cf-ghost (avoid any future generic clash) */
+.gb-confirmed .cf-ghost{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;background:none;border:none;cursor:pointer;font-family:var(--gb-font-ui);font-weight:700;font-size:13px;color:var(--gb-muted);padding:4px}
+.gb-confirmed .cf-ghost:disabled{cursor:default;opacity:.85}
+.gb-confirmed .cf-ghost .soon{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--gb-muted-2);border:1px solid var(--gb-border-strong);border-radius:6px;padding:1px 6px}
+
+/* desktop centred card (CD @media min-width:740px) */
+@media (min-width:740px){
+  .gb-confirmed{justify-content:center;padding:40px 20px}
+  .gb-confirmed .cf-body{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:0 30px 70px -36px rgba(15,39,66,.4);padding:34px 30px;max-width:520px}
+  .gb-confirmed .foot{border:none;background:none;padding:14px 0 0;max-width:520px;margin-inline:auto;width:100%}
+  .gb-confirmed .foot .inner{display:flex;gap:10px}
+  .gb-confirmed .track-btn{flex:1;margin:0}
+  .gb-confirmed .cf-ghost{width:auto;border:1px solid var(--gb-border-strong);border-radius:13px;padding-inline:18px}
+}
+
+/* NB: the confirmed screen has no async gap of its own — it only renders once the
+ * checkout page has the REAL order in hand (stage === 'paid'). The page-level
+ * 'loading' stage (its .loadrow) covers the initial fetch; no extra skeleton here. */

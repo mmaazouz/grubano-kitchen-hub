@@ -1,0 +1,267 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_health_check:
+        description: 'Skip post-deploy health check'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+# Opt JS actions into Node 24 now (checkout/setup-node/FTP-Deploy-Action still
+# ship Node 20, deprecated on the runner from 2026-06-02). Silences the warning.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Finance gate (A6 gardiens) ────────────────────────────────────────────
+  # Same pure unit tests run on staging — block the production FTP push if
+  # the lib/commission / lib/invoice / ledger-equation properties regress.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      # Widened from test:finance after the full-suite audit (referral mock
+      # repaired, middleware green): every tests/ file now gates the deploy.
+      - name: Unit tests (full suite)
+        run: npm run test:ci
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # i18n completeness gate — fails the deploy if any locale is missing or
+      # has empty keys vs messages/fr.json, so untranslated strings never ship.
+      - name: Check translations
+        run: node scripts/check-translations.js
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: https://grubano.com
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Patch server.js for Linux
+        run: node scripts/fix-server.js
+
+      - name: Prepare deploy folder
+        run: |
+          mkdir -p deploy-temp/.next
+
+          # Copy entire standalone output — INCLUDING its own trimmed node_modules.
+          # .next/standalone/node_modules is built by Next.js standalone mode and
+          # contains next, react, and all runtime packages the server needs.
+          # Do NOT delete it — the server cannot start without it.
+          cp -r .next/standalone/. deploy-temp/
+
+          # Verify node_modules/next is present (sanity check)
+          if [ ! -d deploy-temp/node_modules/next ]; then
+            echo "ERROR: node_modules/next missing from standalone output!"
+            echo "Check that next.config.js has: output: 'standalone'"
+            exit 1
+          fi
+          echo "OK: node_modules/next present in standalone"
+
+          # Static assets (CSS/JS bundles — not inside standalone by default)
+          cp -r .next/static deploy-temp/.next/static
+
+          # Prisma schema (only schema.prisma needed on server)
+          mkdir -p deploy-temp/prisma
+          cp prisma/schema.prisma deploy-temp/prisma/schema.prisma
+
+          # Server-run OPS scripts (JS only). scripts/server/ is the DESIGNATED
+          # server bucket: prune-next.js (post-deploy static prune) + admin/ops
+          # scripts like legacy-password-reset-notify.js (C-1). The WHOLE bucket
+          # ships (*.js) so a new server ops script deploys automatically. The .sh
+          # deploy scripts and the local dev tooling at scripts/ root (notion-sync,
+          # seed-demo-data, backfill-*) deliberately do NOT ship to the public server.
+          mkdir -p deploy-temp/scripts/server
+          cp scripts/server/*.js deploy-temp/scripts/server/
+
+          # Cron probes (rail A6 gardiens — ledger check + monthly invoices,
+          # called by cPanel cron). ONLY scripts/cron/ ships — never the whole
+          # scripts/ folder (local tooling like notion-sync must NOT reach a
+          # public server).
+          mkdir -p deploy-temp/scripts/cron
+          cp scripts/cron/*.js deploy-temp/scripts/cron/
+
+          # Public assets
+          [ -d public ] && cp -r public deploy-temp/public || true
+
+          # .htaccess — Passenger config for production (printf avoids BOM)
+          printf 'PassengerEnabled on\nPassengerAppRoot /home/deyi0010/grubano.com\nPassengerAppType node\nPassengerStartupFile server.js\nPassengerNodejs /home/deyi0010/nodevenv/grubano.com/24/bin/node\nPassengerMaxPoolSize 2\nPassengerMaxRequests 1000\nPassengerStartTimeout 120\n' > deploy-temp/.htaccess
+
+          # .env.local is INTENTIONALLY NOT written into deploy-temp/. The
+          # ENV_LOCAL_CONTENT secret was unset, so this line was creating an
+          # empty file that the FTP sync would push and overwrite the real
+          # server .env.local — the runtime source of truth. The server's
+          # .env.local is now authoritative; the FTP step also excludes
+          # .env* below as a second safety net so a deploy-temp/.env.local
+          # accidentally introduced upstream still can't reach the server.
+
+          echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
+          echo "Files to upload: $(find deploy-temp -type f | wc -l)"
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          # O2SWITCH_HOST secret now holds the o2switch FTP hostname
+          # (ftp.deyi0010.odns.fr). The SSH step below uses the IP directly,
+          # because FTP and SSH use different endpoints on o2switch.
+          server: ${{ secrets.O2SWITCH_HOST }}
+          username: ${{ secrets.O2SWITCH_FTP_USER }}
+          password: ${{ secrets.O2SWITCH_FTP_PASS }}
+          # o2switch Pure-FTPd enforces explicit FTPS (FTP over TLS) on port 21.
+          # Plain `ftp` (the action default) hangs and times out — this is why
+          # no deploy had ever succeeded. ftps = explicit AUTH TLS.
+          protocol: ftps
+          port: 21
+          # Raise from the 30s default: TLS handshake + the many small files in
+          # the standalone node_modules push past 30s on shared hosting.
+          timeout: 120000
+          # Verbose so the exact FTP error is visible in the run log next time
+          # (job logs are admin-gated via the API).
+          log-level: verbose
+          local-dir: ./deploy-temp/
+          server-dir: /grubano.com/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            # Server-regenerated artifacts: the Post-deploy SSH step runs
+            # `npx prisma@5.22.0 generate` which rebuilds .prisma/client/*
+            # with the o2switch nodevenv binaryTarget. Including it in the
+            # FTP transfer is both redundant and triggers reproducible
+            # 553 "Can't open that file: No such file or directory" errors
+            # on Pure-FTPd when dir state diverges between deploys, which
+            # aborts the whole job (Post-deploy + restart + health check
+            # all skipped). Exclude entirely; the server regenerates it.
+            node_modules/.prisma
+            node_modules/.prisma/**
+            # Local CLI binaries / symlinks — not used at runtime by the
+            # standalone server, and FTP-syncing symlinks is fragile.
+            node_modules/.bin
+            node_modules/.bin/**
+            # Never overwrite the server's .env.local — it is the runtime
+            # source of truth (DB URL, NEXTAUTH_SECRET, etc.). The workflow
+            # no longer writes one into deploy-temp/, and this exclude is a
+            # belt-and-suspenders guard: even if a future change accidentally
+            # re-introduces a deploy-temp/.env.local (empty or stale), the
+            # FTP sync will skip every .env* file.
+            .env.local
+            .env*
+
+      # ── SSH: post-deploy server tasks ─────────────────────────────────────────
+      # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
+      # so a single failure (e.g. prisma generate hiccup) does not skip the
+      # Passenger restart at the end — that restart is the LAST line on
+      # purpose, so it always fires while the SSH session is still open.
+      #
+      # Order matters:
+      #   1. prisma generate  — rebuild client for the server's binaryTarget
+      #   2. seed test user   — idempotent demo account
+      #   3. prune-next       — delete stale .next/static artifacts owned by
+      #                          previous builds. This is the FIX for the
+      #                          recurring "blank page / CSS 404" right after
+      #                          a deploy: SamKirkland/FTP-Deploy-Action never
+      #                          removes remote files, so without this the
+      #                          new HTML keeps 404-ing on chunks the next
+      #                          process state still expects.
+      #   4. touch restart.txt — Passenger picks up fresh code + clean static
+      - name: Post-deploy server tasks
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            source ~/nodevenv/grubano.com/24/bin/activate
+            cd ~/grubano.com
+            export DATABASE_URL='${{ secrets.DATABASE_URL_PROD }}'
+            npx prisma@5.22.0 generate || true
+            node prisma/seed-test-user.js || true
+            node scripts/server/prune-next.js || true
+            mkdir -p tmp
+            touch tmp/restart.txt
+
+      # ── SSH: chmod + Passenger restart ────────────────────────────────────────
+      # node_modules is bundled in the standalone output — no npm ci needed.
+      - name: Fix permissions and restart
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          # SSH uses the IP directly — O2SWITCH_HOST now holds the FTP hostname,
+          # which is not the SSH endpoint. Restart is non-critical (continue-on-error).
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            chmod -R 755 ~/grubano.com/.next/    2>/dev/null || true
+            chmod 600    ~/grubano.com/.env.local 2>/dev/null || true
+            chmod 644    ~/grubano.com/server.js  2>/dev/null || true
+            mkdir -p ~/grubano.com/tmp
+            touch ~/grubano.com/tmp/restart.txt
+            echo "✅ Production restarted"
+
+      - name: Health check
+        if: ${{ !inputs.skip_health_check }}
+        run: |
+          sleep 25
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://www.grubano.com/dashboard || echo "000")
+          echo "www.grubano.com/dashboard → HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "ERR Health check failed (HTTP $STATUS) — check Passenger logs"
+            exit 1
+          fi
+          echo "OK Production is live!"
+
+      # ── Trigger docs rebuild ──────────────────────────────────────────────────
+      # Fires a repository_dispatch at grubano-docs after a successful prod deploy
+      # so the auto-update workflow there regenerates the API reference + changelog.
+      # Staging deploys deliberately do NOT do this (avoids Claude API spend on
+      # every dev push). Requires repo secret DOCS_DISPATCH_TOKEN — a fine-grained
+      # PAT scoped to mmaazouz/grubano-docs with Contents: write (or Actions: write).
+      # The default GITHUB_TOKEN cannot dispatch cross-repo.
+      - name: Trigger docs rebuild
+        if: success()
+        continue-on-error: true
+        run: |
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.DOCS_DISPATCH_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/mmaazouz/grubano-docs/dispatches \
+            -d '{"event_type":"app-updated"}'

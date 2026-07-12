@@ -1,0 +1,134 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/track — « Suivi de commande live » — VERBATIM reproduction of the FROZEN CD
+ * ref (Notion 38efd2c9-…-8152, file eat/order-tracking.html). Page CONTENT: the route
+ * is IMMERSIVE in EatShell (desktop rail kept, top-bar + mobile chrome dropped), so
+ * the page provides its own back affordance. The CD design tokens live in the
+ * gb-foundation (gb-tokens.css); only the COMPONENT CSS lives here, scoped under
+ * `.gb-track`.
+ *
+ * Foundation-colliding names are renamed to a `.tk-` prefix to avoid clashing with
+ * `.gb .card` / `.gb .btn` / `.gb .field` / `.gb .step`:
+ *    CD .step        → .tk-step     (foundation defines `.gb .step`)
+ *    CD .driver-card → .tk-driver   (defensive — keep the whole tracking cluster local)
+ * The CD map background var --gb-map-a/-b is page-local (not in the shared foundation);
+ * declared here on `.gb-track` (+ dark) verbatim from the CD :root / [data-theme=dark].
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* page-local CD tokens NOT in the shared foundation (the map weave) */
+.gb-track{ --gb-map-a:#E5EDE4; --gb-map-b:#EDF1EB }
+[data-theme="dark"] .gb-track,
+.gb-track[data-theme="dark"]{ --gb-map-a:#10202F; --gb-map-b:#16263A }
+
+/* ===================== LAYOUT (CD .track — 2-col ≥860px) ===================== */
+.gb-track{display:grid;grid-template-columns:1fr 400px;min-height:100vh}
+@media (max-width:860px){ .gb-track{grid-template-columns:1fr;min-height:100vh} }
+
+/* ===================== MAP (inert stylised placeholder) ===================== */
+.gb-track .map{position:relative;background:repeating-linear-gradient(135deg,var(--gb-map-a) 0 26px,var(--gb-map-b) 26px 52px);overflow:hidden}
+@media (max-width:860px){ .gb-track .map{height:300px} }
+.gb-track .map .resto{position:absolute;top:22%;left:24%;width:38px;height:38px;border-radius:50%;background:var(--gb-ink);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(15,39,66,.4)}
+.gb-track .map .resto .ms{font-size:21px;color:#fff}
+.gb-track .map .home{position:absolute;bottom:20%;right:22%;width:38px;height:38px;border-radius:50%;background:var(--gb-basil-600);display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(30,140,75,.4)}
+.gb-track .map .home .ms{font-size:21px;color:#fff}
+.gb-track .map svg{position:absolute;inset:0;width:100%;height:100%}
+.gb-track .map .driver{position:absolute;top:48%;left:50%;width:50px;height:50px;border-radius:50%;background:var(--gb-grad);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px -4px rgba(242,87,14,.7);border:4px solid var(--gb-surface)}
+.gb-track .map .driver .ms{font-size:27px;color:#fff}
+.gb-track .map .eta{position:absolute;top:18px;left:18px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:13px 18px;box-shadow:var(--gb-shadow-card)}
+.gb-track .map .eta small{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gb-muted-2)}
+.gb-track .map .eta b{display:block;font-family:var(--gb-font-display);font-weight:800;font-size:26px;letter-spacing:-.02em}
+.gb-track .map .eta .live{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:var(--gb-zest-600);margin-top:2px}
+[data-theme="dark"] .gb-track .map .eta .live{color:var(--gb-zest)}
+.gb-track .map .eta .live i{width:7px;height:7px;border-radius:50%;background:var(--gb-zest-600);animation:gb-pulse 1.4s infinite}
+[data-theme="dark"] .gb-track .map .eta .live i{background:var(--gb-zest)}
+.gb-track .map .recenter{position:absolute;right:18px;bottom:18px;width:44px;height:44px;border-radius:var(--gb-r-md);background:var(--gb-surface);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-track .map .recenter .ms{font-size:22px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-track .map .recenter .ms{color:var(--gb-zest)}
+
+/* ===================== PANEL (right column / stacked below) ===================== */
+.gb-track .panel{background:var(--gb-surface);border-left:1px solid var(--gb-border);display:flex;flex-direction:column;overflow-y:auto}
+@media (max-width:860px){ .gb-track .panel{border-left:none;border-top:1px solid var(--gb-border)} }
+.gb-track .panel__h{padding:20px 22px 16px;border-bottom:1px solid var(--gb-border)}
+.gb-track .panel__h .top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.gb-track .panel__h .top .back{font-size:24px;cursor:pointer;background:none;border:none;padding:0;color:var(--gb-text);display:inline-flex}
+.gb-track .panel__h .top b{font-family:var(--gb-font-display);font-weight:800;font-size:18px;flex:1}
+.gb-track .panel__h .top .id{font-family:var(--gb-font-ui);font-size:11.5px;color:var(--gb-muted);font-weight:600}
+.gb-track .panel__h .rest{font-size:13px;color:var(--gb-muted)}
+.gb-track .panel__h .rest b{color:var(--gb-text);font-weight:700}
+
+/* ===================== STEPPER (CD .steps / .step → .tk-step) ===================== */
+.gb-track .steps{padding:20px 22px;border-bottom:1px solid var(--gb-border)}
+.gb-track .tk-step{display:flex;gap:13px;position:relative;padding-bottom:20px}
+.gb-track .tk-step:last-child{padding-bottom:0}
+.gb-track .tk-step .dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;z-index:1}
+.gb-track .tk-step .dot.done{background:var(--gb-basil-600)} .gb-track .tk-step .dot.done .ms{font-size:16px;color:#fff}
+.gb-track .tk-step .dot.cur{background:var(--gb-zest-600);box-shadow:0 0 0 5px rgba(255,106,31,.16)} .gb-track .tk-step .dot.cur .ms{font-size:15px;color:#fff}
+[data-theme="dark"] .gb-track .tk-step .dot.cur{background:var(--gb-zest);box-shadow:0 0 0 5px rgba(255,124,57,.18)}
+.gb-track .tk-step .dot.todo{background:var(--gb-surface-2);border:2px solid var(--gb-border-strong)}
+.gb-track .tk-step .line{position:absolute;left:12px;top:26px;bottom:0;width:2px;background:var(--gb-border)}
+.gb-track .tk-step.done .line{background:var(--gb-basil-600)}
+.gb-track .tk-step:last-child .line{display:none}
+.gb-track .tk-step .tx b{font-size:14px;font-weight:700;display:block}
+.gb-track .tk-step .tx span{font-size:12px;color:var(--gb-muted)}
+.gb-track .tk-step.todo .tx b{color:var(--gb-muted)}
+
+/* ===================== DRIVER CARD (CD .driver-card → .tk-driver) ===================== */
+.gb-track .tk-driver{margin:20px 22px;display:flex;align-items:center;gap:13px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:14px}
+.gb-track .tk-driver .av{width:52px;height:52px;border-radius:50%;background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:16px;color:#B5560A;flex-shrink:0}
+[data-theme="dark"] .gb-track .tk-driver .av{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px);color:var(--gb-zest)}
+.gb-track .tk-driver .av .ms{font-size:24px;color:inherit}
+.gb-track .tk-driver .main{flex:1;min-width:0}
+.gb-track .tk-driver .main b{font-family:var(--gb-font-display);font-weight:700;font-size:15px}
+.gb-track .tk-driver .main span{display:block;font-size:12px;color:var(--gb-muted)}
+.gb-track .tk-driver .act{width:44px;height:44px;border-radius:50%;background:var(--gb-surface);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:not-allowed;opacity:.55}
+.gb-track .tk-driver .act .ms{font-size:21px}
+.gb-track .tk-driver .act.call .ms{color:var(--gb-basil-600)} .gb-track .tk-driver .act.chat .ms{color:var(--gb-text)}
+
+/* ===================== IA NOTE (inert — « bientôt ») ===================== */
+.gb-track .ainote{margin:0 22px 18px;border-radius:var(--gb-r-md);padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C)}
+.gb-track .ainote__in{background:var(--gb-surface-2);border-radius:calc(var(--gb-r-md) - 1px);padding:12px 14px;display:flex;gap:10px;align-items:flex-start}
+.gb-track .ainote__in .ms{font-size:19px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-track .ainote__in .ms{color:var(--gb-zest)}
+.gb-track .ainote__in p{margin:0;font-size:12px;line-height:1.45;color:var(--gb-muted);flex:1}
+.gb-track .ainote__in .soon{font-size:9px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 6px;white-space:nowrap}
+[data-theme="dark"] .gb-track .ainote__in .soon{color:var(--gb-zest)}
+
+/* ===================== RECAP (real items + total) ===================== */
+.gb-track .recap{margin:0 22px 24px}
+.gb-track .recap .lab{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin-bottom:10px}
+.gb-track .recap .row{display:flex;justify-content:space-between;gap:14px;font-size:13px;color:var(--gb-text);margin-bottom:8px}
+.gb-track .recap .row span:first-child{color:var(--gb-muted)}
+.gb-track .recap .row b{font-weight:700;white-space:nowrap}
+.gb-track .recap .row.tot{margin-top:12px;padding-top:12px;border-top:1px solid var(--gb-border);font-size:14px}
+.gb-track .recap .row.tot span:first-child{color:var(--gb-text);font-weight:700}
+.gb-track .recap .row.tot b{font-family:var(--gb-font-display);font-weight:800;font-size:16px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-track .recap .row.tot b{color:var(--gb-zest)}
+.gb-track .recap .help{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:14px;padding:13px;border:1px solid var(--gb-border);border-radius:var(--gb-r-md);background:var(--gb-surface);color:var(--gb-text);font-weight:700;font-size:13.5px;cursor:pointer}
+.gb-track .recap .help .ms{font-size:18px;color:var(--gb-muted-2)}
+
+/* points-earned celebration line (real loyalty data) */
+.gb-track .earned{display:flex;align-items:center;gap:9px;margin:0 22px 18px;padding:12px 14px;background:var(--gb-success-bg);border:1px solid var(--gb-success-bd);border-radius:var(--gb-r-md)}
+.gb-track .earned .ms{font-size:20px;color:var(--gb-success)}
+.gb-track .earned b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;color:var(--gb-success-fg);display:block}
+.gb-track .earned span{font-size:12px;color:var(--gb-success-fg);opacity:.85}
+
+/* claim / help section spacing (lives inside the panel for both layouts) */
+.gb-track .claimwrap{padding:0 22px 24px}
+
+/* ===================== STATE SCREENS (loading / not-found / awaiting / expired) === */
+.gb-track.gb-track--single{grid-template-columns:1fr}
+.gb-track .state{max-width:560px;margin:0 auto;width:100%;padding:24px 22px 48px}
+.gb-track .state__h{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.gb-track .state__h .back{font-size:24px;cursor:pointer;background:none;border:none;padding:0;color:var(--gb-text);display:inline-flex}
+.gb-track .state__h b{font-family:var(--gb-font-display);font-weight:800;font-size:18px}
+.gb-track .state__box{border-radius:var(--gb-r-lg);padding:24px;text-align:center;background:var(--gb-surface-2);border:1px solid var(--gb-border)}
+.gb-track .state__box.warn{background:var(--gb-warning-bg);border-color:var(--gb-warning-bg)}
+.gb-track .state__box .ico{font-size:40px}
+.gb-track .state__box h2{margin:8px 0 0;font-family:var(--gb-font-display);font-weight:800;font-size:20px;color:var(--gb-text)}
+.gb-track .state__box p{margin:8px 0 0;font-size:13px;line-height:1.5;color:var(--gb-muted)}
+.gb-track .state__cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;margin-top:18px;padding:13px 22px;border:none;border-radius:var(--gb-r-pill);background:var(--gb-grad);box-shadow:var(--gb-shadow-btn);color:#fff;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none}
+.gb-track .state__back{display:block;width:100%;margin-top:14px;padding:13px;border:1px solid var(--gb-border);border-radius:var(--gb-r-pill);background:var(--gb-surface);color:var(--gb-text);font-weight:700;font-size:14px;cursor:pointer}
+
+/* loading skeleton */
+.gb-track .skel-map{width:100%;height:300px;background:var(--gb-surface-2);animation:gb-pulse 1.4s ease-in-out infinite}
+@media (min-width:861px){ .gb-track .skel-map{height:auto;min-height:100vh} }
+.gb-track .skel-line{height:14px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);animation:gb-pulse 1.4s ease-in-out infinite}

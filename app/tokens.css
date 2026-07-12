@@ -1,0 +1,112 @@
+/* ── GRUBANO — Design System v1 tokens (Agent 148) ─────────────────────────────
+ *
+ * ADDITIVE design-token layer. Loaded app-wide via a JS import in the root layout
+ * (app/[locale]/layout.tsx), exactly like app/stellar-theme.css. globals.css is
+ * left byte-identical.
+ *
+ * SCOPING / NON-REGRESSION GUARANTEE
+ *  - The semantic CSS vars below live in a GLOBAL :root, but every variable name is
+ *    BRAND-NEW (--zest-*, --surface-bg, --accent-primary*, --text-*, --shadow-*…), so
+ *    nothing the existing screens reference is changed.
+ *  - The handful of Design-System names that WOULD collide with globals.css's existing
+ *    :root (--success / --warning / --ring are RGB-triplet vars consumed by tailwind's
+ *    `rgb(var(--x) / <alpha>)` colors) are deliberately PREFIXED here as
+ *    --gb-success / --gb-warning / --gb-error / --gb-info / --gb-ring (+ *-soft). This
+ *    keeps `bg-success`, `ring-ring`, etc. on the non-migrated screens 100% unchanged.
+ *  - The Tailwind side (tailwind.config.ts) exposes ALL of these under a `gb`-prefixed
+ *    namespace (bg-gb-surface, text-gb-content, rounded-gb-lg, shadow-gb-md, font-gb-*…),
+ *    so the default Tailwind keys the unmigrated screens rely on (rounded-lg, shadow-md,
+ *    font-sans, screens.sm, colors.accent/success/warning/ring) are never overwritten.
+ *  - Dark tokens are DEFINED ([data-theme="dark"] / "auto") but NOT activated — no UI
+ *    toggle and <html> carries no data-theme, so they are inert until a screen opts in.
+ *
+ * Values are extracted verbatim from Notion « Design Tokens v1 » (38afd2c9…911e);
+ * only the colliding variable NAMES were prefixed (hex values unchanged).
+ * Fonts: Gabarito (display) + Hanken Grotesk (sans) + JetBrains Mono (mono).
+ */
+@import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  /* ZEST (orange) */
+  --zest-50:#FFF3EA; --zest-100:#FFE3CE; --zest-200:#FFC59B; --zest-300:#FFA468; --zest-400:#FF8A3D; --zest-500:#FF6A1F; --zest-600:#F2570E; --zest-700:#C7430A; --zest-800:#963308; --zest-900:#5E2207;
+  /* BASIL (green) */
+  --basil-50:#EAF7EF; --basil-100:#CDEBD8; --basil-200:#A2DCBA; --basil-300:#6FCB95; --basil-400:#41BD78; --basil-500:#2BA45C; --basil-600:#1E8C4B; --basil-700:#176E3B; --basil-800:#12552E; --basil-900:#0C3A20;
+  /* INK (navy) */
+  --ink-50:#F1F5FA; --ink-100:#E0E8F1; --ink-200:#BFCDDF; --ink-300:#91A4C0; --ink-400:#5D739B; --ink-500:#36527C; --ink-600:#1E3E60; --ink-700:#163450; --ink-800:#0F2742; --ink-900:#0A1A2C;
+  /* OAT (warm neutral) */
+  --oat-0:#FFFFFF; --oat-50:#FAF8F4; --oat-100:#F2EEE7; --oat-200:#E7E1D7; --oat-300:#D4CCBE; --oat-400:#ADA496; --oat-500:#837A6C; --oat-600:#5E574B; --oat-700:#423D33; --oat-800:#2A261F; --oat-900:#1A1713;
+  /* FEEDBACK — prefixed --gb-* to avoid clobbering globals.css's --success/--warning */
+  --gb-success:#1E9E57; --gb-warning:#EA9410; --gb-error:#E0402E; --gb-info:#2E78F0;
+  /* GRADIENT */
+  --gradient-sunrise: linear-gradient(140deg, #FFB020 0%, #FF6A1F 55%, #F2570E 100%);
+  /* SPACING 4pt */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px; --space-8:48px; --space-10:64px; --space-12:96px;
+  /* RADIUS */
+  --radius-xs:6px; --radius-sm:8px; --radius-md:12px; --radius-lg:16px; --radius-xl:20px; --radius-full:9999px;
+  /* ELEVATION (warm, tinted Ink) */
+  --shadow-sm: 0 1px 2px rgba(15,39,66,.04), 0 14px 30px -18px rgba(15,39,66,.14);
+  --shadow-md: 0 1px 2px rgba(15,39,66,.05), 0 16px 32px -18px rgba(15,39,66,.16);
+  --shadow-lg: 0 16px 34px -12px rgba(15,39,66,.18);
+  --shadow-xl: 0 24px 48px -16px rgba(15,39,66,.22);
+  --shadow-glow: 0 0 16px rgba(255,138,40,.5);
+  --focus-ring: 0 0 0 3px rgba(255,106,31,.16);
+  /* TYPE */
+  --font-display:'Gabarito', ui-sans-serif, system-ui, sans-serif;
+  --font-sans:'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+  /* MOTION */
+  --ease: ease-in-out; --ease-standard: cubic-bezier(.4,0,.2,1);
+  --dur-fast:150ms; --dur-base:200ms; --dur-slow:300ms;
+  --logo-float-duration:6s; --logo-float-amplitude:14px; --logo-glow-duration:7s; --spinner-duration:1s;
+  /* SEMANTIC — LIGHT (use THESE in product code) */
+  --surface-bg:#FBF8F3; --surface-elevated:#FFFFFF; --surface-inverse:#0F2742;
+  --border-subtle:#ECE5D8; --border-strong:#D4CCBE;
+  --text-primary:#0F2742; --text-muted:#6B7682; --text-on-accent:#FFFFFF;
+  --accent-primary:#FF6A1F; --accent-primary-hover:#F2570E; --accent-primary-strong:#C7430A; --accent-secondary:#2BA45C;
+  --gb-ring:#FF6A1F;
+}
+[data-theme="dark"] {
+  --surface-bg:#0C1826; --surface-elevated:#14253A; --surface-inverse:#EEF3F9;
+  --border-subtle:#233247; --border-strong:#36527C;
+  --text-primary:#EEF3F9; --text-muted:#93A3B5; --text-on-accent:#0C1826;
+  --accent-primary:#FF7C39; --accent-primary-hover:#FF6A1F; --accent-primary-strong:#FF8A3D; --accent-secondary:#41BD78;
+  --gb-ring:#FF7C39;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.30), 0 14px 30px -18px rgba(0,0,0,.50);
+  --shadow-md: 0 1px 2px rgba(0,0,0,.35), 0 16px 32px -18px rgba(0,0,0,.55);
+  --shadow-lg: 0 16px 34px -12px rgba(0,0,0,.55);
+  --shadow-xl: 0 24px 48px -16px rgba(0,0,0,.60);
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] {
+    --surface-bg:#0C1826; --surface-elevated:#14253A; --surface-inverse:#EEF3F9;
+    --border-subtle:#233247; --border-strong:#36527C;
+    --text-primary:#EEF3F9; --text-muted:#93A3B5; --text-on-accent:#0C1826;
+    --accent-primary:#FF7C39; --accent-primary-hover:#FF6A1F; --accent-primary-strong:#FF8A3D; --accent-secondary:#41BD78;
+    --gb-ring:#FF7C39;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.30), 0 14px 30px -18px rgba(0,0,0,.50);
+    --shadow-md: 0 1px 2px rgba(0,0,0,.35), 0 16px 32px -18px rgba(0,0,0,.55);
+    --shadow-lg: 0 16px 34px -12px rgba(0,0,0,.55);
+    --shadow-xl: 0 24px 48px -16px rgba(0,0,0,.60);
+  }
+}
+/* SOFT FEEDBACK TINTS (color-mix, adapt light/dark) — prefixed --gb-* */
+:root {
+  --gb-success-soft: color-mix(in srgb, var(--gb-success) 12%, var(--surface-elevated));
+  --gb-warning-soft: color-mix(in srgb, var(--gb-warning) 14%, var(--surface-elevated));
+  --gb-error-soft:   color-mix(in srgb, var(--gb-error)   12%, var(--surface-elevated));
+  --gb-info-soft:    color-mix(in srgb, var(--gb-info)    12%, var(--surface-elevated));
+}
+/* LOGO MICRO-ANIMATION (decorative; never blocks interaction) */
+@keyframes gb-float { 0%,100%{transform:translateY(0);} 50%{transform:translateY(calc(-1 * var(--logo-float-amplitude)));} }
+@keyframes gb-glow  { 0%,100%{opacity:.65;transform:scale(1);} 50%{opacity:1;transform:scale(1.06);} }
+@keyframes gb-spin  { to{transform:rotate(360deg);} }
+.gb-logo-float { animation: gb-float var(--logo-float-duration) var(--ease) infinite; will-change: transform; }
+.gb-logo-glow  { animation: gb-glow  var(--logo-glow-duration)  var(--ease) infinite; will-change: opacity, transform; pointer-events: none; }
+.gb-spin       { animation: gb-spin  var(--spinner-duration) linear infinite; }
+/* Reduced-motion: scoped to the DS logo helpers only. The Notion source also carried a
+ * global `*, *::before, *::after { animation/transition … !important }` blanket — it is
+ * INTENTIONALLY OMITTED here so non-migrated screens keep byte-identical motion behavior
+ * under prefers-reduced-motion. Reinstate once the whole app is migrated. */
+@media (prefers-reduced-motion: reduce) {
+  .gb-logo-float, .gb-logo-glow { animation: none !important; transform: none !important; }
+}

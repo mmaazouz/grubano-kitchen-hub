@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<!-- Visual-QA reference for /eat/auth — VERBATIM copy of the Claude-Design FROZEN VALIDATED
+     mock (Notion 38dfd2c9-8146-81be-b002-f4214e0067a1). The only edits vs the Notion code:
+     the `.preview-bar` markup + the demo <script> were removed (design-qa.mjs drives the
+     state by adding `is-signup` to the root and setting data-theme). Reference INPUT to the
+     diff robot — never imported by the app. -->
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Auth (RÉFÉRENCE FIGÉE)</title>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-ink-700:#16395A;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-field-bg:#FFFFFF;
+  --gb-on-ink:#FFFFFF; --gb-on-ink-muted:#AFC0D6; --gb-on-ink-faint:#7E8FA3;
+  --gb-google:#4285F4;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-grad-sunrise:linear-gradient(150deg,#FFB020,#FF6A1F 60%,#F2570E);
+  --gb-panel-ink:linear-gradient(150deg,#0F2742,#16395A 70%,#1A2C3F);
+  --gb-font-display:'Gabarito',system-ui,sans-serif;
+  --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-focus:0 0 0 3px rgba(255,106,31,.16); --gb-focus-border:#FF6A1F;
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-field-bg:#14253A;
+  --gb-google:#5B9BFF;
+  --gb-zest:#FF7C39;
+  --gb-focus:0 0 0 3px rgba(255,124,57,.18); --gb-focus-border:#FF7C39;
+}
+*{box-sizing:border-box} html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+input{font-family:inherit}
+.auth{min-height:100vh;width:100%;display:grid;grid-template-columns:46% 1fr;background:var(--gb-bg)}
+.auth__brand{position:relative;overflow:hidden;color:var(--gb-on-ink);background:var(--gb-panel-ink);display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,3.4vw,44px)}
+.is-signup .auth__brand{background:var(--gb-grad-sunrise)}
+.auth__brand::before{content:"";position:absolute;right:-90px;top:-70px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(255,138,40,.32),transparent 66%);filter:blur(10px)}
+.is-signup .auth__brand::before{right:-80px;bottom:-110px;top:auto;width:400px;height:400px;background:rgba(255,255,255,.16);filter:none}
+.auth__brand::after{content:"";position:absolute;left:-70px;bottom:-90px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(43,164,92,.20),transparent 68%);filter:blur(12px)}
+.is-signup .auth__brand::after{display:none}
+.auth__logo{position:relative;display:flex;align-items:center;gap:11px}
+.is-signup .auth__logo{justify-content:flex-end}
+.auth__mark{height:40px;width:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:var(--gb-grad-sunrise);color:#fff;font-family:var(--gb-font-display);font-weight:900;font-size:24px;line-height:1}
+.is-signup .auth__mark{background:rgba(255,255,255,.20)}
+.auth__logo b{font-family:var(--gb-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em}
+.is-signup .auth__logo b{display:none}
+.auth__pitch{position:relative}
+.auth__pitch h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(26px,3vw,34px);letter-spacing:-.03em;line-height:1.06}
+.auth__pitch p{margin:14px 0 0;font-size:15px;line-height:1.6;color:var(--gb-on-ink-muted);max-width:34ch}
+.is-signup .auth__pitch p{color:rgba(255,255,255,.92)}
+.auth__meta{position:relative;display:flex;gap:18px;font-size:12.5px;color:var(--gb-on-ink-faint)}
+.is-signup .auth__meta{color:rgba(255,255,255,.9)}
+.auth__meta span{display:inline-flex;align-items:center;gap:6px}
+.auth__badge{position:relative;align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.2);border-radius:var(--gb-r-pill);padding:8px 14px;font-size:12.5px;font-weight:700;color:#fff}
+.auth__panel{display:flex;align-items:center;justify-content:center;padding:clamp(24px,4vw,40px)}
+.auth__form{width:100%;max-width:380px}
+.auth__title{font-family:var(--gb-font-display);font-weight:800;font-size:26px;letter-spacing:-.02em;margin:0;color:var(--gb-text)}
+.auth__sub{margin:7px 0 24px;font-size:14px;color:var(--gb-muted)}
+.auth__sub a{color:var(--gb-zest-600);font-weight:700;text-decoration:none;cursor:pointer}
+[data-theme="dark"] .auth__sub a{color:var(--gb-zest)}
+.oauth{display:flex;gap:10px;margin-bottom:18px}
+.btn-social{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:12px;cursor:pointer}
+.btn-social svg{height:17px;width:auto;display:block}
+.divider{display:flex;align-items:center;gap:12px;margin-bottom:18px;font-size:11.5px;font-weight:600;color:var(--gb-muted)}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--gb-border)}
+.field{margin-bottom:14px}
+.field__label{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:7px;color:var(--gb-text)}
+.field__label a{color:var(--gb-zest-600);font-weight:600;text-decoration:none;font-size:12px}
+[data-theme="dark"] .field__label a{color:var(--gb-zest)}
+.input{display:flex;align-items:center;gap:10px;background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:11px;padding:12px 14px}
+.input .ms{font-size:19px;color:var(--gb-muted-2)}
+.input input{border:none;outline:none;background:none;font-size:14px;color:var(--gb-text);width:100%}
+.input input::placeholder{color:var(--gb-muted);opacity:.7}
+.input:focus-within{border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.input:focus-within .ms{color:var(--gb-focus-border)}
+.input .toggle{cursor:pointer}
+.strength{display:none;gap:5px;margin:8px 0 20px}
+.strength i{flex:1;height:5px;border-radius:3px;background:var(--gb-border)}
+.strength i.on1{background:var(--gb-basil-600)} .strength i.on2{background:#EA9410}
+.btn{width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;cursor:pointer;border-radius:var(--gb-r-md);padding:14px;border:none}
+.btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn);margin-bottom:12px}
+.btn--line{display:inline-flex;align-items:center;justify-content:center;gap:8px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);font-weight:600;font-size:14px;padding:13px}
+.btn--line .ms{color:var(--gb-zest-600);font-size:19px}
+[data-theme="dark"] .btn--line .ms{color:var(--gb-zest)}
+.legal{margin:18px 0 0;font-size:11.5px;line-height:1.5;color:var(--gb-muted);text-align:center}
+.legal a{color:inherit;text-decoration:underline}
+.field--name{display:none} .is-signup .field--name{display:block}
+.show-signup{display:none} .is-signup .show-signin{display:none} .is-signup .show-signup{display:inline}
+.is-signup .auth__pitch h2.show-signup{display:block}
+.is-signup .auth__pitch p.show-signup{display:block}
+.is-signup .auth__badge.show-signup{display:inline-flex}
+.is-signup .strength{display:flex}
+.is-signup .forgot{visibility:hidden}
+.is-signup{grid-template-columns:1fr 46%}
+.is-signup .auth__panel{grid-column:1}
+.is-signup .auth__brand{grid-column:2}
+@media (max-width:880px){
+  .auth,.is-signup{grid-template-columns:1fr}
+  .auth__brand,.is-signup .auth__brand{grid-column:1;grid-row:1;order:-1;padding:22px 24px 24px;flex-direction:row;align-items:center;justify-content:space-between;gap:16px}
+  .auth__panel,.is-signup .auth__panel{grid-column:1;grid-row:2}
+  .auth__brand::before,.auth__brand::after{display:none}
+  .auth__pitch h2{font-size:20px}
+  .auth__pitch p,.auth__meta,.auth__badge{display:none}
+  .auth__panel{padding:24px 20px 40px;align-items:flex-start}
+  .auth__form{max-width:440px;margin:0 auto}
+}
+@media (max-width:380px){ .oauth{flex-wrap:wrap} }
+</style>
+</head>
+<body>
+<main class="auth" id="auth">
+  <aside class="auth__brand">
+    <!-- LOGO placeholder (the real app uses the real Grubano symbol) -->
+    <div class="auth__logo"><span class="auth__mark">g</span><b>Grubano</b></div>
+    <div class="auth__pitch">
+      <h2 class="show-signin">Installez-vous à table</h2>
+      <h2 class="show-signup" style="color:#fff">Rejoignez la table.<br>Gagnez en mangeant.</h2>
+      <p class="show-signin">Votre table est prête. Connectez-vous pour commander.</p>
+      <p class="show-signup">Cumulez des points à chaque commande, enregistrez vos favoris et suivez chaque livraison.</p>
+    </div>
+    <div class="auth__meta show-signin">
+      <span><span class="ms" style="font-size:17px;color:#41BD78">verified_user</span>Sécurisé</span>
+      <span><span class="ms" style="font-size:17px;color:#FF9A4D">bolt</span>Sans mot de passe</span>
+    </div>
+    <div class="auth__badge show-signup"><span class="ms" style="font-size:17px">redeem</span>Bonus de bienvenue offert</div>
+  </aside>
+  <section class="auth__panel">
+    <div class="auth__form">
+      <h1 class="auth__title"><span class="show-signin">Bon retour</span><span class="show-signup">Créer un compte</span></h1>
+      <p class="auth__sub">
+        <span class="show-signin">Pas encore de compte ? <a>S'inscrire</a></span>
+        <span class="show-signup">Déjà un compte ? <a>Se connecter</a></span>
+      </p>
+      <div class="oauth">
+        <button class="btn-social" type="button"><svg viewBox="0 0 24 24" fill="var(--gb-google)" aria-hidden="true"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>Google</button>
+        <button class="btn-social" type="button"><svg viewBox="0 0 384 512" fill="currentColor" aria-hidden="true"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5c0 26.2 4.8 53.3 14.4 81.2 12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/></svg>Apple</button>
+      </div>
+      <div class="divider">ou continuer avec</div>
+      <form onsubmit="return false">
+        <div class="field field--name"><div class="field__label">Nom complet</div><div class="input"><span class="ms">person</span><input type="text" autocomplete="name" placeholder="Jean Dupont"></div></div>
+        <div class="field"><div class="field__label">Adresse email</div><div class="input"><span class="ms">mail</span><input type="email" autocomplete="email" placeholder="votre@email.com"></div></div>
+        <div class="field"><div class="field__label">Mot de passe <a href="#" class="forgot">Mot de passe oublié ?</a></div><div class="input"><span class="ms">lock</span><input id="pw" type="password" autocomplete="current-password" placeholder="••••••••"><span class="ms toggle">visibility_off</span></div></div>
+        <div class="strength"><i class="on1"></i><i class="on1"></i><i class="on2"></i><i></i></div>
+        <button class="btn btn--primary"><span class="show-signin">Se connecter</span><span class="show-signup">Créer mon compte</span></button>
+        <button class="btn btn--line" type="button"><span class="ms">link</span>Recevoir un lien magique</button>
+      </form>
+      <p class="legal">En continuant, vous acceptez les <a href="#">Conditions</a> et la <a href="#">Politique de confidentialité</a> de Grubano.</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

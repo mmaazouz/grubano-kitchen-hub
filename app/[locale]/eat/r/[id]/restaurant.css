@@ -1,0 +1,190 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/r/[id] — Restaurant + menu — VERBATIM reproduction of the FROZEN CD ref v2
+ * « Restaurant + menu (barre haut + panier pleine hauteur) » (Notion 390fd2c9-…-6f64),
+ * which SUPERSEDES the v1 headcard-overlap (81f5). Rendered INSIDE the EatShell, which
+ * provides the left rail (desktop) + bottom-nav (mobile) via the `is-framed` mode. This
+ * page OWNS: a resto top bar (back · name · ★ | share · ♥), a clean hero, an info line,
+ * the 3-mode segmented control, category chips, dish cards, and a FULL-HEIGHT sticky
+ * cart column on the right (→ a « view cart » bar on mobile <1080).
+ *
+ * 🔒 MONEY: presentation only. The cart handlers (steppers, subtotal, add, checkout
+ * route) live in page.tsx and are BYTE-IDENTICAL. Tokens = gb-foundation. No search
+ * bar + no Menu/À propos/Galerie/Avis tabs (removed per CD v2); « À propos » is a
+ * collapsed <details>, « Avis » lives on the ★ (→ /eat/r/[id]/reviews route).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ═══════════ ROOT — 2-col grid inside the shell (main | full-height cart) ═══════════ */
+.gb-resto{
+  --gb-star:#F0A63A;
+  --gb-cart-w:360px;
+  display:grid;
+  grid-template-columns:1fr var(--gb-cart-w);
+  min-height:100vh;min-height:100dvh;
+  background:var(--gb-bg);
+  color:var(--gb-text);
+  font-family:var(--gb-font-ui);
+}
+[data-theme="dark"] .gb-resto{--gb-star:#F0B249}
+
+/* ═══════════ MAIN column ═══════════ */
+.gb-resto .rmain{min-width:0;background:var(--gb-bg)}
+
+/* resto top bar (sticky) — back · name · ★ | share · ♥
+   ⚠️ scoped `.gb.gb-resto .topbar` (0,3,0) to BEAT the shell's `.eat-nav .topbar`
+   (0,2,0) — which is `display:none` on mobile and would otherwise HIDE this bar. */
+.gb.gb-resto .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:14px;padding:17px 28px;background:var(--gb-surface);border-bottom:1px solid var(--gb-border)}
+.gb-resto .tb-name{display:flex;align-items:center;gap:10px;min-width:0}
+.gb-resto .tb-back{flex-shrink:0;display:flex;background:none;border:none;padding:0;cursor:pointer}
+.gb-resto .tb-back .ms{font-size:23px;color:var(--gb-text)}
+.gb-resto .tb-title{font-family:var(--gb-font-display);font-weight:800;font-size:18px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gb-text)}
+.gb-resto .tb-rate{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:14.5px;flex-shrink:0;background:none;border:none;padding:0;cursor:pointer;color:var(--gb-text);font-family:inherit}
+.gb-resto .tb-rate .ms{font-size:18px;color:var(--gb-star);font-variation-settings:'FILL' 1}
+.gb-resto .tb-actions{margin-left:auto;display:flex;gap:10px;flex-shrink:0}
+.gb-resto .tb-btn{width:40px;height:40px;border-radius:var(--gb-r-md);background:var(--gb-surface-2);border:1px solid var(--gb-border-strong);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-resto .tb-btn .ms{font-size:19px;color:var(--gb-text)}
+.gb-resto .tb-btn.fav{border-color:#F5C2A0}
+.gb-resto .tb-btn.fav .ms{color:var(--gb-zest-600);font-variation-settings:'FILL' 1}
+[data-theme="dark"] .gb-resto .tb-btn.fav{border-color:rgba(255,124,57,.4)}
+[data-theme="dark"] .gb-resto .tb-btn.fav .ms{color:var(--gb-zest)}
+
+.gb-resto .content-pad{max-width:900px;padding:22px 28px 60px}
+
+/* clean hero — rectangular ROUNDED banner, nothing overlaid.
+   ⚠️ scoped `.gb.gb-resto .hero` (0,3,0) to BEAT the foundation's circular `.gb .hero`
+   (a 104px icon, border-radius:50%) — same collision the v1 ellipse bug had. */
+.gb.gb-resto .hero{position:relative;display:block;width:100%;height:230px;border-radius:var(--gb-r-xl);overflow:hidden;background:repeating-linear-gradient(135deg,#FFD9C2 0 18px,#FFE9D6 18px 36px)}
+[data-theme="dark"] .gb.gb-resto .hero{background:repeating-linear-gradient(135deg,#3A2C22 0 18px,#2C2118 18px 36px)}
+/* neutralise the foundation `.gb .hero` circle-icon leftovers (width:104px + a pulsing
+   ::after halo) that bleed onto this reused class name. */
+.gb.gb-resto .hero::after{content:none}
+.gb.gb-resto .hero__img{position:absolute;inset:0;width:100%;height:100%;display:block}
+.gb.gb-resto .hero__img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+/* info line — cuisine · hours · free delivery (plain text row) */
+.gb-resto .il{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:13.5px;color:var(--gb-muted);margin-top:18px}
+.gb-resto .il .ok{display:inline-flex;align-items:center;gap:5px;color:var(--gb-basil-600);font-weight:600}
+.gb-resto .il .ok.closed{color:var(--gb-muted)}
+.gb-resto .il .ok .ms{font-size:16px}
+.gb-resto .closure{margin:8px 0 0;font-size:12px;color:var(--gb-muted)}
+
+/* promo strip (KEPT feature) — slim single line */
+.gb-resto .promo-strip{display:flex;align-items:center;flex-wrap:wrap;gap:7px 12px;margin-top:14px;font-size:12.5px;color:var(--gb-muted)}
+.gb-resto .promo__main{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--gb-zest-600);margin:0}
+[data-theme="dark"] .gb-resto .promo__main{color:var(--gb-zest)}
+.gb-resto .promo__main .ms{font-size:16px}
+.gb-resto .promo__flash{display:inline-flex;align-items:center;gap:4px;border-radius:var(--gb-r-pill);background:var(--gb-grad);color:#fff;font-size:10px;font-weight:700;padding:3px 9px}
+.gb-resto .promo__flash .ms{font-size:12px}
+.gb-resto .promo__name{color:var(--gb-muted)}
+.gb-resto .promo__more{color:var(--gb-muted-2)}
+
+/* 3-mode segmented control */
+.gb-resto .modes{display:inline-flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:3px;margin-top:16px}
+.gb-resto .modes button{display:inline-flex;align-items:center;gap:6px;font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:10px 20px;cursor:pointer}
+.gb-resto .modes button .ms{font-size:17px}
+.gb-resto .modes button[aria-selected="true"]{color:#fff;background:var(--gb-grad)}
+
+/* category chips */
+.gb-resto .chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}
+.gb-resto .chip{font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-sm);padding:9px 17px;cursor:pointer}
+.gb-resto .chip.on{color:#fff;background:var(--gb-ink);border-color:transparent}
+[data-theme="dark"] .gb-resto .chip.on{background:var(--gb-zest);color:#0C1826}
+
+/* sections + dish cards */
+.gb-resto .catsec{scroll-margin-top:76px}
+.gb-resto .catsec h2{font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em;margin:24px 0 14px;color:var(--gb-text)}
+.gb-resto .dishes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.gb-resto .dish{display:flex;gap:13px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:13px;box-shadow:var(--gb-shadow-card);cursor:pointer;text-align:start;width:100%;font:inherit;color:inherit}
+.gb-resto .dish__b{flex:1;min-width:0}
+.gb-resto .dish__b b{font-family:var(--gb-font-display);font-weight:700;font-size:15px;line-height:1.3;display:block;color:var(--gb-text)}
+.gb-resto .dish__b p{margin:5px 0 9px;font-size:12px;line-height:1.45;color:var(--gb-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.gb-resto .dish__b .pr{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gb-resto .dish__b .pr .price{font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:var(--gb-text)}
+.gb-resto .dish__b .pr .price.was{font-weight:600;font-size:13px;color:var(--gb-muted);text-decoration:line-through}
+.gb-resto .dish__b .pr .tag{font-size:10px;font-weight:600;color:var(--gb-basil-600);background:var(--gb-basil-bg);border:1px solid var(--gb-basil-bd);padding:3px 8px;border-radius:6px}
+.gb-resto .dish__b .pr .tag.promo{color:var(--gb-zest-600);background:var(--gb-surface-2);border-color:var(--gb-border)}
+[data-theme="dark"] .gb-resto .dish__b .pr .tag.promo{color:var(--gb-zest)}
+.gb-resto .dish__img{position:relative;width:96px;height:96px;border-radius:var(--gb-r-md);flex-shrink:0;overflow:visible}
+.gb-resto .dish__img .gb-resto-thumb{position:absolute;inset:0;border-radius:var(--gb-r-md);overflow:hidden}
+.gb-resto .dish__qty{position:absolute;top:-7px;left:-7px;min-width:24px;height:24px;padding:0 7px;border-radius:var(--gb-r-pill);background:var(--gb-ink);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;z-index:2}
+[data-theme="dark"] .gb-resto .dish__qty{background:var(--gb-zest);color:#0C1826}
+.gb-resto .dish__add{position:absolute;bottom:-8px;right:-7px;width:32px;height:32px;border-radius:10px;background:var(--gb-grad);display:flex;align-items:center;justify-content:center;box-shadow:var(--gb-shadow-btn);border:none;cursor:pointer;z-index:2}
+.gb-resto .dish__add .ms{font-size:18px;color:#fff}
+
+/* ── « À propos » — relocated as a COLLAPSED section (no tabs on this page) ── */
+.gb-resto .about{margin-top:26px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden}
+.gb-resto .about>summary{list-style:none;cursor:pointer;display:flex;align-items:center;padding:16px 18px;font-family:var(--gb-font-display);font-weight:800;font-size:16px;color:var(--gb-text)}
+.gb-resto .about>summary::-webkit-details-marker{display:none}
+.gb-resto .about>summary .ms{margin-left:auto;font-size:20px;color:var(--gb-muted);transition:transform .2s}
+.gb-resto .about[open]>summary .ms{transform:rotate(180deg)}
+.gb-resto .about__body{padding:0 18px 18px}
+.gb-resto .about__body p{font-size:13.5px;line-height:1.55;color:var(--gb-muted);margin:0 0 12px}
+.gb-resto .info-row{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--gb-muted);margin-top:10px}
+.gb-resto .info-row .ms{font-size:17px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-resto .info-row .ms{color:var(--gb-zest)}
+.gb-resto .hours-list{list-style:none;margin:10px 0 0;padding:0}
+.gb-resto .hours-list li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:13.5px;padding:5px 0;border-bottom:1px solid var(--gb-border)}
+.gb-resto .hours-list li:last-child{border-bottom:none}
+.gb-resto .hours-list .day{text-transform:capitalize;color:var(--gb-muted)}
+.gb-resto .hours-list .ranges{text-align:end;font-weight:600;color:var(--gb-text)}
+.gb-resto .hours-list .ranges span{display:block}
+
+/* ═══════════ CART column — full height, sticky, starts at top ═══════════ */
+.gb-resto .cartcol{position:sticky;top:0;height:100vh;height:100dvh;background:var(--gb-surface);border-left:1px solid var(--gb-border);display:flex;flex-direction:column}
+.gb-resto .cc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:20px 22px;border-bottom:1px solid var(--gb-border);flex-shrink:0}
+.gb-resto .cc-head b{font-family:var(--gb-font-display);font-weight:800;font-size:17px;color:var(--gb-text)}
+.gb-resto .cc-head span{font-size:12px;color:var(--gb-muted);white-space:nowrap}
+.gb-resto .cc-items{padding:18px 22px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;flex:1}
+.gb-resto .cc-item{display:flex;gap:12px;align-items:flex-start}
+.gb-resto .cc-item .im{width:52px;height:52px;border-radius:var(--gb-r-md);flex-shrink:0;overflow:hidden}
+.gb-resto .cc-item .main{flex:1;min-width:0}
+.gb-resto .cc-item .main b{font-size:14px;font-weight:700;display:block;margin-bottom:8px;color:var(--gb-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-resto .cc-item .step{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--gb-border-strong);border-radius:8px;padding:4px 10px}
+.gb-resto .cc-item .step .ms{font-size:15px;color:var(--gb-zest-600);cursor:pointer}
+[data-theme="dark"] .gb-resto .cc-item .step .ms{color:var(--gb-zest)}
+.gb-resto .cc-item .step b{font-size:12.5px;font-weight:700;color:var(--gb-text)}
+.gb-resto .cc-item .price{font-family:var(--gb-font-display);font-weight:700;font-size:14px;white-space:nowrap;flex-shrink:0;color:var(--gb-text)}
+.gb-resto .cc-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px 22px;gap:14px}
+.gb-resto .cc-empty .emoji{font-size:34px}
+.gb-resto .cc-empty p{font-size:13.5px;color:var(--gb-muted);margin:0}
+.gb-resto .cc-foot{flex-shrink:0;padding:16px 22px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--gb-border)}
+.gb-resto .cc-row{display:flex;justify-content:space-between;font-size:13.5px;color:var(--gb-muted);margin-bottom:8px}
+.gb-resto .cc-row b{color:var(--gb-text);font-weight:700}
+.gb-resto .cc-row.promo,.gb-resto .cc-row.promo b{color:var(--gb-basil-600)}
+.gb-resto .cc-checkout{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:space-between;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:15px 20px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.gb-resto .cc-checkout span{font-size:14.5px;font-weight:700;color:#fff}
+.gb-resto .cc-checkout b{font-family:var(--gb-font-display);font-weight:800;font-size:15.5px;color:#fff}
+.gb-resto .cc-checkout.ghost{background:var(--gb-surface-2);border:1px solid var(--gb-border);box-shadow:none;justify-content:center}
+.gb-resto .cc-checkout.ghost span{color:var(--gb-text)}
+
+/* thumbnails fill (FoodImage img inside .gb-resto-thumb / .cc-item .im) */
+.gb-resto .gb-resto-thumb img,.gb-resto .cc-item .im img{width:100%;height:100%;object-fit:cover;display:block}
+
+/* mobile « view cart » sticky bar (shown <1080; hidden on desktop) */
+.gb-resto .mcartbar{display:none}
+
+/* loading skeleton + empty */
+.gb-resto .sk{background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);animation:gb-pulse 1.4s ease-in-out infinite}
+.gb-resto .empty{text-align:center;color:var(--gb-muted);font-size:14px;padding:44px 20px}
+.gb-resto .empty .emoji{font-size:34px;display:block;margin-bottom:10px}
+
+/* ═══════════ RESPONSIVE — cart column collapses at 1080 (viewport) ═══════════ */
+@media (max-width:1080px){
+  .gb-resto{grid-template-columns:1fr}
+  .gb-resto .cartcol{display:none}
+  .gb.gb-resto .topbar{padding:14px 16px}
+  .gb-resto .content-pad{max-width:100%;padding:18px 16px 132px}
+  .gb.gb-resto .hero{height:190px;border-radius:var(--gb-r-lg)}
+  .gb-resto .dishes{grid-template-columns:1fr}
+  .gb-resto .chips{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .gb-resto .chips::-webkit-scrollbar{display:none}
+  .gb-resto .chip{flex-shrink:0}
+  /* sticky « view cart » bar — replaces the cart column */
+  .gb-resto .mcartbar{display:flex;position:fixed;left:12px;right:12px;bottom:16px;z-index:21;align-items:center;justify-content:space-between;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:13px 18px;box-shadow:var(--gb-shadow-btn);cursor:pointer}
+  .gb-resto .mcartbar .l{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;color:#fff}
+  .gb-resto .mcartbar .l .ms{font-size:20px}
+  .gb-resto .mcartbar b{font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:#fff}
+}
+/* below 900 the shell's bottom-nav appears → lift the « view cart » bar above it */
+@media (max-width:900px){
+  .gb-resto .mcartbar{bottom:74px}
+}

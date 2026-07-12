@@ -1,0 +1,340 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  # Do NOT cancel in-progress runs: the cold FTPS sync (~30+ min for the
+  # standalone node_modules) was being killed by rapid develop pushes, leaving
+  # the staging app half-uploaded. Better to queue and let each finish.
+  cancel-in-progress: false
+
+# Opt JS actions into Node 24 now (checkout/setup-node/FTP-Deploy-Action still
+# ship Node 20, deprecated on the runner from 2026-06-02). Silences the warning.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ── Finance gate (A6 gardiens) ────────────────────────────────────────────
+  # Pure unit tests against lib/commission, lib/invoice's splits + month
+  # bounds, and the ledger golden equation. NO DB / NO Stripe / NO network.
+  # The deploy job below has `needs: test` — red tests block the FTP push.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      # Widened from test:finance after the full-suite audit (referral mock
+      # repaired, middleware green): every tests/ file now gates the deploy.
+      - name: Unit tests (full suite)
+        run: npm run test:ci
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # i18n completeness gate — fails the deploy if any locale is missing or
+      # has empty keys vs messages/fr.json, so untranslated strings never ship.
+      - name: Check translations
+        run: node scripts/check-translations.js
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+
+      - name: Build
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: https://app.grubano.com
+          NEXT_TELEMETRY_DISABLED: 1
+
+      - name: Patch server.js for Linux
+        run: node scripts/fix-server.js
+
+      - name: Prepare deploy folder
+        run: |
+          mkdir -p deploy-temp/.next
+
+          # Copy entire standalone output — INCLUDING its own trimmed node_modules.
+          # .next/standalone/node_modules is built by Next.js standalone mode and
+          # contains next, react, and all runtime packages the server needs.
+          # Do NOT delete it — the server cannot start without it.
+          cp -r .next/standalone/. deploy-temp/
+
+          # Verify node_modules/next is present (sanity check)
+          if [ ! -d deploy-temp/node_modules/next ]; then
+            echo "ERROR: node_modules/next missing from standalone output!"
+            echo "Check that next.config.js has: output: 'standalone'"
+            exit 1
+          fi
+          echo "OK: node_modules/next present in standalone"
+
+          # Static assets (CSS/JS bundles — not inside standalone by default)
+          cp -r .next/static deploy-temp/.next/static
+
+          # Prisma schema (only schema.prisma needed on server)
+          mkdir -p deploy-temp/prisma
+          cp prisma/schema.prisma deploy-temp/prisma/schema.prisma
+
+          # Server-run OPS scripts (JS only). scripts/server/ is the DESIGNATED
+          # server bucket: prune-next.js (post-deploy static prune) + admin/ops
+          # scripts like legacy-password-reset-notify.js (C-1). The WHOLE bucket
+          # ships (*.js) so a new server ops script deploys automatically. The .sh
+          # deploy scripts and the local dev tooling at scripts/ root (notion-sync,
+          # seed-demo-data, backfill-*) deliberately do NOT ship to the public server.
+          mkdir -p deploy-temp/scripts/server
+          cp scripts/server/*.js deploy-temp/scripts/server/
+
+          # Cron probes (rail A6 gardiens — ledger check + monthly invoices,
+          # called by cPanel cron). ONLY scripts/cron/ ships — never the whole
+          # scripts/ folder (local tooling like notion-sync must NOT reach a
+          # public server).
+          mkdir -p deploy-temp/scripts/cron
+          cp scripts/cron/*.js deploy-temp/scripts/cron/
+
+          # Public assets
+          [ -d public ] && cp -r public deploy-temp/public || true
+
+          # .htaccess is INTENTIONALLY NOT written into deploy-temp/. The
+          # server's .htaccess is the live Passenger config and is not FTP-
+          # writable (553 Permission denied on STOR). Passenger reads it in
+          # place; we don't need to re-ship it on every deploy. The FTP step
+          # also excludes .htaccess below as a second safety net.
+
+          # .env.local is INTENTIONALLY NOT written into deploy-temp/. The
+          # ENV_LOCAL_CONTENT secret was unset, so this line was creating an
+          # empty file that the FTP sync would push and overwrite the real
+          # server .env.local — the runtime source of truth. The server's
+          # .env.local is now authoritative; the FTP step also excludes
+          # .env* below as a second safety net so a deploy-temp/.env.local
+          # accidentally introduced upstream still can't reach the server.
+
+          echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
+          echo "Files to upload: $(find deploy-temp -type f | wc -l)"
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          # O2SWITCH_HOST secret now holds the o2switch FTP hostname
+          # (ftp.deyi0010.odns.fr). The SSH step below uses the IP directly,
+          # because FTP and SSH use different endpoints on o2switch.
+          server: ${{ secrets.O2SWITCH_HOST }}
+          username: ${{ secrets.O2SWITCH_FTP_USER }}
+          password: ${{ secrets.O2SWITCH_FTP_PASS }}
+          # o2switch Pure-FTPd enforces explicit FTPS (FTP over TLS) on port 21.
+          # Plain `ftp` (the action default) hangs and times out — this is why
+          # no staging deploy had ever succeeded. ftps = explicit AUTH TLS.
+          protocol: ftps
+          port: 21
+          # Raise from the 30s default: TLS handshake + the many small files in
+          # the standalone node_modules push past 30s on shared hosting.
+          timeout: 120000
+          # Verbose so the exact FTP error is visible in the run log next time
+          # (job logs are admin-gated via the API).
+          log-level: verbose
+          local-dir: ./deploy-temp/
+          server-dir: /app.grubano.com/
+          exclude: |
+            # ~/app.grubano.com/node_modules on the server is a SYMLINK to
+            # the nodevenv's lib/node_modules. Pure-FTPd cannot CWD into it,
+            # so any FTP write under node_modules/ returns 550 "Can't change
+            # directory to node_modules" and aborts the whole sync. The app
+            # already runs on the nodevenv's modules — node_modules must NOT
+            # be transferred by FTP at all.
+            node_modules
+            node_modules/**
+            **/.git*
+            **/.git*/**
+            # Server-regenerated artifacts: the Post-deploy SSH step runs
+            # `npx prisma@5.22.0 generate` which rebuilds .prisma/client/*
+            # with the o2switch nodevenv binaryTarget. Including it in the
+            # FTP transfer is both redundant and triggers reproducible
+            # 553 "Can't open that file: No such file or directory" errors
+            # on Pure-FTPd when dir state diverges between deploys, which
+            # aborts the whole job (Post-deploy + restart + health check
+            # all skipped). Exclude entirely; the server regenerates it.
+            node_modules/.prisma
+            node_modules/.prisma/**
+            # Local CLI binaries / symlinks — not used at runtime by the
+            # standalone server, and FTP-syncing symlinks is fragile.
+            node_modules/.bin
+            node_modules/.bin/**
+            # @vercel/og + its WASM is shipped via deploy-temp/vercel-og.tar.gz
+            # and extracted server-side in the Post-deploy SSH step. Excluding
+            # the raw tree here keeps Pure-FTPd from drowning in thousands of
+            # nested binary STORs (the failure mode that took down deploys
+            # after the SEO change pulled in next/og).
+            node_modules/next/dist/compiled/@vercel/og
+            node_modules/next/dist/compiled/@vercel/og/**
+            # Never overwrite the server's .env.local — it is the runtime
+            # source of truth (DB URL, NEXTAUTH_SECRET, etc.). The workflow
+            # no longer writes one into deploy-temp/, and this exclude is a
+            # belt-and-suspenders guard: even if a future change accidentally
+            # re-introduces a deploy-temp/.env.local (empty or stale), the
+            # FTP sync will skip every .env* file.
+            .env.local
+            .env*
+            # Server's .htaccess (Passenger config) is not FTP-writable
+            # (553 Permission denied) and doesn't need to be re-shipped —
+            # Passenger reads it in place. The workflow no longer writes one
+            # into deploy-temp/, and this exclude is a second safety net.
+            .htaccess
+
+      # ── SSH: post-deploy server tasks ─────────────────────────────────────────
+      # Runs AFTER the FTP upload completes. Each line is best-effort (|| true)
+      # so a single failure (e.g. prisma generate hiccup) does not skip the
+      # Passenger restart at the end — that restart is the LAST line on
+      # purpose, so it always fires while the SSH session is still open.
+      #
+      # Order matters:
+      #   1. prisma generate  — rebuild client for the server's binaryTarget
+      #   2. seed test user   — idempotent demo account
+      #   3. prune-next       — delete stale .next/static artifacts owned by
+      #                          previous builds. This is the FIX for the
+      #                          recurring "blank page / CSS 404" right after
+      #                          a deploy: SamKirkland/FTP-Deploy-Action never
+      #                          removes remote files, so without this the
+      #                          new HTML keeps 404-ing on chunks the next
+      #                          process state still expects.
+      #   4. touch restart.txt — Passenger picks up fresh code + clean static
+      - name: Post-deploy server tasks
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            source ~/nodevenv/app.grubano.com/24/bin/activate
+            cd ~/app.grubano.com
+            export DATABASE_URL='${{ secrets.DATABASE_URL_STAGING }}'
+            npx prisma@5.22.0 generate || true
+            node prisma/seed-test-user.js || true
+            node scripts/server/prune-next.js || true
+            mkdir -p tmp
+            touch tmp/restart.txt
+
+      # ── SSH: chmod + Passenger restart ────────────────────────────────────────
+      # node_modules is bundled in the standalone output — no npm ci needed.
+      - name: Fix permissions and restart
+        uses: appleboy/ssh-action@v1.0.0
+        continue-on-error: true
+        with:
+          # SSH uses the IP directly — O2SWITCH_HOST now holds the FTP hostname,
+          # which is not the SSH endpoint. Restart is non-critical (continue-on-error).
+          host: 109.234.165.222
+          username: ${{ secrets.O2SWITCH_USER }}
+          key: ${{ secrets.O2SWITCH_SSH_KEY }}
+          port: 22
+          script: |
+            chmod -R 755 ~/app.grubano.com/.next/    2>/dev/null || true
+            chmod 600    ~/app.grubano.com/.env.local 2>/dev/null || true
+            chmod 644    ~/app.grubano.com/server.js  2>/dev/null || true
+            mkdir -p ~/app.grubano.com/tmp
+            touch ~/app.grubano.com/tmp/restart.txt
+            echo "✅ Staging restarted"
+
+      # ── Trigger Passenger restart via FTPS (SSH-independent fallback) ─────────
+      # Belt-and-suspenders alongside the two SSH `touch tmp/restart.txt` calls
+      # above. Both SSH steps can fail intermittently:
+      #   "Fix permissions and restart": dial tcp 109.234.165.222:22 i/o timeout
+      # → o2switch intermittently firewalls GHA runner IPs on SSH, so we can NOT
+      # rely on SSH for the restart. FTP/FTPS is on a different control channel
+      # and stays reachable when SSH does not.
+      #
+      # FTPS HOSTNAME — why we hardcode `muscadier.o2switch.net` here:
+      # The shared `O2SWITCH_HOST` secret (=ftp.deyi0010.odns.fr) is a per-user
+      # CNAME alias and is NOT in the FTPS server's Let's Encrypt certificate
+      # SAN list. Strict TLS verification therefore fails with curl exit 60:
+      #   "SSL: no alternative certificate subject name matches target host name"
+      # The main FTP step (SamKirkland/FTP-Deploy-Action with basic-ftp under
+      # the hood) tolerates that mismatch by default; a strict `curl --ssl-reqd`
+      # does not, so we have to use a hostname that IS in the cert's SAN.
+      # The cert SANs include `muscadier.o2switch.net` (the o2switch shared
+      # server hostname for this account), resolved to the same IP as the FTP
+      # secret. Verified locally:
+      #   subject=CN = autoconfig.muscadier.o2switch.net
+      #   SAN: ...muscadier.o2switch.net (bare)...cpanel.muscadier.o2switch.net...
+      #   openssl s_client ... → Verify return code: 0 (ok)
+      # Using this hostname keeps full strict cert chain + hostname verification
+      # ACTIVE (no --insecure), so the transfer is properly authenticated.
+      #
+      # Important runtime ordering: this step runs AFTER the main FTP sync AND
+      # AFTER both SSH steps, so the restart.txt mtime is bumped LAST — the new
+      # Passenger process picks up a fully-flushed deploy, not a partial one.
+      # tmp/restart.txt is deliberately NOT in deploy-temp/, so the main FTP
+      # step never touches it at random timing.
+      #
+      # Production workflow is intentionally NOT changed yet: this is staging-
+      # only until two consecutive deploys confirm the FTPS step finishes with
+      # exit 0 (no more exit 60) AND CSS lands without manual cPanel `touch`.
+      - name: Trigger Passenger restart via FTPS (independent of SSH)
+        if: success()
+        continue-on-error: true
+        run: |
+          STAMP="restart from run ${{ github.run_id }} at $(date -u +%FT%TZ) sha ${{ github.sha }}"
+          MARKER=$(mktemp)
+          ERRLOG=$(mktemp)
+          printf '%s\n' "$STAMP" > "$MARKER"
+          echo "── FTPS restart trigger ──"
+          echo "host:   muscadier.o2switch.net (cert SAN match — strict TLS verify)"
+          echo "target: ~/app.grubano.com/tmp/restart.txt"
+          echo "marker: $STAMP"
+          if curl --fail --silent --show-error \
+                  --ssl-reqd \
+                  --ftp-create-dirs \
+                  --connect-timeout 30 \
+                  --max-time 60 \
+                  --upload-file "$MARKER" \
+                  --user "${{ secrets.O2SWITCH_FTP_USER }}:${{ secrets.O2SWITCH_FTP_PASS }}" \
+                  "ftp://muscadier.o2switch.net/app.grubano.com/tmp/restart.txt" \
+                  2> "$ERRLOG"; then
+            RC=0
+            echo "✅ SUCCESS — FTPS upload returned exit 0"
+            echo "Passenger smart-spawner should reload within seconds."
+          else
+            RC=$?
+            echo "❌ FAILED — FTPS upload returned exit $RC"
+            echo "curl stderr:"
+            sed 's/^/  /' "$ERRLOG"
+            echo ""
+            echo 'The two SSH "touch tmp/restart.txt" steps above may still have'
+            echo 'triggered the restart. If staging still serves stale code, run'
+            echo 'in cPanel Terminal:  touch ~/app.grubano.com/tmp/restart.txt'
+          fi
+          rm -f "$MARKER" "$ERRLOG"
+          exit $RC
+
+      - name: Health check
+        run: |
+          sleep 25
+          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://www.grubano.com/dashboard || echo "000")
+          echo "www.grubano.com/dashboard → HTTP $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "OK Staging deploy done, production healthy"
+          else
+            echo "WARN Health check returned $STATUS (non-blocking)"
+          fi

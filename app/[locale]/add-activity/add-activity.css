@@ -1,0 +1,122 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /add-activity — operator "AJOUTER UNE ACTIVITÉ" content — CD v1 (Notion
+ * 391fd2c9-8146-812b-8707-cbed65c820ba — LOT 7, écran 6 : Ajouter une activité).
+ *
+ * ⚠️ BARE ROUTE : this page is in AppChrome BARE_PREFIXES and is wrapped by the
+ * neutral <PartnerChrome> (light Grubano-token header + centred <main>), NOT by the
+ * navy OperatorShell. So this file is SELF-SUFFICIENT: it re-declares the small set
+ * of --op-* content tokens it needs on the `.gb-op-aa` root (PartnerChrome does not
+ * provide them, and we must NOT redefine the shell tokens on `.gb-op`). Everything
+ * is scoped to `.gb-op-aa` so nothing leaks into PartnerChrome / the rest of /eat.
+ *
+ * 🔒 PRESENTATION ONLY. The routing logic is byte-identical: each card is a real
+ * <Link href={activityHref(activity, email, anchor)}> — the session email is
+ * prefilled + locked, the verified siren/company is an editable prefill on the
+ * company-backed journeys, and addableActivities() filters out roles already held.
+ * No fetch/mutation/create happens on this page: it ROUTES to the existing vetted
+ * journeys (supplier/creator/logistics register, franchise apply, …). We adapt the
+ * CD's "aa-type" card visual to the REAL list of addable activities (icon + title +
+ * description + register|apply CTA). The CD's fictional "create restaurant" form is
+ * NOT reproduced — the real page grants no role, it only routes. The CD demo bar +
+ * data-state/data-scale display-toggles are dropped: React renders the real variant
+ * (loaded list / empty "already have everything").
+ *
+ * Material Symbols (NOT lucide). RTL money fix applied on .mono figures.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-op-aa{
+  --op-zest:#FF6A1F; --op-zest-600:#F2570E; --op-zest-bg:#FFF1E7;
+  --op-role-creator:#6E56CF; --op-role-creator-bg:#F2EFFC;
+  --op-role-logistics:#1E9E57; --op-role-logistics-bg:#EAF7EF;
+  --op-role-franchise:#2E78F0; --op-role-franchise-bg:#E7F0FE;
+  --op-success:#1E9E57;
+  --op-info:#2E78F0; --op-info-bg:#E7F0FE; --op-info-bd:#C7DBFB;
+  --op-canvas:#F2F4F7; --op-surface:#FFFFFF; --op-surface-2:#F7F8FA;
+  --op-border:#E3E7EE; --op-border-strong:#D2D8E1;
+  --op-text:#101828; --op-muted:#5B6472; --op-muted-2:#8992A3;
+  --op-font-display:'Gabarito',system-ui,sans-serif;
+  --op-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --op-font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --op-r-sm:6px; --op-r-md:8px; --op-r-lg:12px; --op-r-xl:16px; --op-r-pill:999px;
+  --op-shadow-card:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.05);
+  --op-focus:0 0 0 3px rgba(255,106,31,.16);
+
+  width:100%;
+  max-width:760px;
+  color:var(--op-text);
+  font-family:var(--op-font-ui);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* base */
+.gb-op-aa .ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+.gb-op-aa .mono{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-op-aa .flip-rtl{display:inline-block}
+[dir="rtl"] .gb-op-aa .flip-rtl{transform:scaleX(-1)}
+
+/* ── back link (← Établissements) ── */
+.gb-op-aa .back-link{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--op-muted);margin-bottom:16px;cursor:pointer;transition:color .15s}
+.gb-op-aa .back-link .ms{font-size:18px}
+.gb-op-aa .back-link:hover{color:var(--op-text)}
+
+/* ── head ── */
+.gb-op-aa .aa-title{margin:0 0 4px;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em;color:var(--op-text)}
+.gb-op-aa .aa-sub{margin:0 0 22px;font-size:13px;color:var(--op-muted);line-height:1.5}
+.gb-op-aa .aa-section-label{font-size:12px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted);margin:0 0 12px}
+
+/* ── activity type cards (real addable activities → link) ── */
+.gb-op-aa .aa-types{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:26px;list-style:none;padding:0}
+.gb-op-aa .aa-types > li{min-width:0;display:flex}
+.gb-op-aa .aa-type{
+  display:flex;flex-direction:column;width:100%;
+  background:var(--op-surface);border:1.5px solid var(--op-border-strong);border-radius:var(--op-r-lg);
+  padding:18px;cursor:pointer;position:relative;
+  transition:border-color .15s, background .15s, box-shadow .15s, transform .15s;
+  text-align:start;
+}
+.gb-op-aa .aa-type:hover{border-color:var(--op-muted-2);box-shadow:var(--op-shadow-card);transform:translateY(-1px)}
+.gb-op-aa .aa-type:focus-visible{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+
+.gb-op-aa .aa-type__ic{width:42px;height:42px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.gb-op-aa .aa-type__ic .ms{font-size:23px;color:var(--op-muted)}
+
+/* per-role accent tints (kept literal so tokens survive) */
+.gb-op-aa .aa-type[data-role="supplier"]    .aa-type__ic{background:var(--op-zest-bg)}
+.gb-op-aa .aa-type[data-role="supplier"]    .aa-type__ic .ms{color:var(--op-zest-600)}
+.gb-op-aa .aa-type[data-role="creator"]     .aa-type__ic{background:var(--op-role-creator-bg)}
+.gb-op-aa .aa-type[data-role="creator"]     .aa-type__ic .ms{color:var(--op-role-creator)}
+.gb-op-aa .aa-type[data-role="logistics"]   .aa-type__ic{background:var(--op-role-logistics-bg)}
+.gb-op-aa .aa-type[data-role="logistics"]   .aa-type__ic .ms{color:var(--op-role-logistics)}
+.gb-op-aa .aa-type[data-role="franchise"]   .aa-type__ic{background:var(--op-role-franchise-bg)}
+.gb-op-aa .aa-type[data-role="franchise"]   .aa-type__ic .ms{color:var(--op-role-franchise)}
+.gb-op-aa .aa-type[data-role="affiliate"]   .aa-type__ic{background:var(--op-zest-bg)}
+.gb-op-aa .aa-type[data-role="affiliate"]   .aa-type__ic .ms{color:var(--op-zest-600)}
+.gb-op-aa .aa-type[data-role="prestataire"] .aa-type__ic{background:var(--op-zest-bg)}
+.gb-op-aa .aa-type[data-role="prestataire"] .aa-type__ic .ms{color:var(--op-zest-600)}
+
+.gb-op-aa .aa-type__head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.gb-op-aa .aa-type b{display:block;font-size:14px;font-weight:700;color:var(--op-text)}
+.gb-op-aa .aa-type__badge{display:inline-flex;align-items:center;border-radius:var(--op-r-pill);background:var(--op-surface-2);border:1px solid var(--op-border);padding:2px 8px;font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2)}
+.gb-op-aa .aa-type > span.aa-type__desc{font-size:11.5px;color:var(--op-muted);line-height:1.45}
+
+.gb-op-aa .aa-type__cta{margin-top:auto;padding-top:14px;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--op-zest-600)}
+[data-theme="dark"] .gb-op-aa .aa-type__cta{color:var(--op-zest)}
+.gb-op-aa .aa-type__cta .ms{font-size:16px;transition:transform .15s}
+.gb-op-aa .aa-type:hover .aa-type__cta .ms{transform:translateX(2px)}
+[dir="rtl"] .gb-op-aa .aa-type:hover .aa-type__cta .ms{transform:translateX(-2px)}
+
+/* ── info note (rassurante) ── */
+.gb-op-aa .aa-note{display:flex;gap:10px;background:var(--op-info-bg);border:1px solid var(--op-info-bd);border-radius:var(--op-r-md);padding:12px 14px;margin-top:4px}
+.gb-op-aa .aa-note .ms{font-size:18px;color:var(--op-info);flex-shrink:0}
+.gb-op-aa .aa-note p{margin:0;font-size:12px;line-height:1.5;color:var(--op-text)}
+
+/* ── empty (already have everything) ── */
+.gb-op-aa .aa-empty{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);padding:60px 20px;text-align:center;color:var(--op-muted)}
+.gb-op-aa .aa-empty .ms{font-size:34px;color:var(--op-success);display:block;margin-bottom:12px}
+.gb-op-aa .aa-empty b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:16px;color:var(--op-text);margin-bottom:4px}
+.gb-op-aa .aa-empty span{font-size:13px;color:var(--op-muted)}
+
+/* ── responsive (aligned on the CD @880 breakpoint) ── */
+@media (max-width:880px){
+  .gb-op-aa .aa-types{grid-template-columns:1fr}
+}

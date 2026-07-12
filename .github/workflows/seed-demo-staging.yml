@@ -1,0 +1,54 @@
+name: QA — Seed demo data on staging (manual)
+
+# Runs scripts/seed-demo-data.js against the STAGING database from a FRESH
+# checkout of the chosen branch, so the seed always uses the latest committed
+# code — never the stale copy sitting on the o2switch server (which the FTP
+# deploy deliberately does NOT ship: scripts/seed-demo-data.js is local dev
+# tooling, excluded in deploy-staging.yml / deploy-production.yml).
+#
+# The staging DB URL comes from the DATABASE_URL_STAGING secret — never exposed
+# to a human, never committed. The seed's own guards still apply (it prints the
+# masked target DB and refuses to run without SEED_DEMO_CONFIRM=yes; it is
+# additive/idempotent — only demo-* rows + the three named demo accounts).
+#
+# ⚠️ GitHub rule: a workflow_dispatch job is only triggerable once this file is
+# on the DEFAULT branch (main). It reaches main via the normal develop→main
+# promotion. It never runs on a push (no push trigger), so committing it is
+# inert until dispatched.
+#
+# How to run: Actions → "QA — Seed demo data on staging (manual)" → Run workflow
+# → pick the branch → type SEED-STAGING in the confirm box → Run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type SEED-STAGING to confirm you are seeding the STAGING database'
+        required: true
+        default: ''
+
+concurrency:
+  group: seed-demo-staging
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    if: ${{ inputs.confirm == 'SEED-STAGING' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install deps
+        run: npm ci
+      - name: Prisma generate (pinned 5.22.0 client)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+        run: npx prisma@5.22.0 generate
+      - name: Seed demo data (staging, guarded)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          SEED_DEMO_CONFIRM: 'yes'
+        run: node scripts/seed-demo-data.js

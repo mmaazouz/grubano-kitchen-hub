@@ -1,0 +1,131 @@
+/* ── CR6 · Mes gains (content classes, scoped under the CreatorShell .gb-op) ──
+ * Verbatim CD CR6 primitives, adapted to REAL owner-scoped data. Money figures
+ * are 🔒 read-only (euros derived from server CENTS, never client-recomputed).
+ * Consumes the --op-* / --op-cr tokens from creator-shell.css. The payout rail
+ * is gated OFF (CREATOR_PAYOUT/CONNECT) → the balance hero omits any fictive
+ * « prochain versement »/date, the « retrait manuel » CTA is INERT (payout-soon),
+ * and « Versements reçus » is an honest empty state unless real Payout rows exist. */
+
+/* ── read-only banner ── */
+.gb-op .ro-banner{display:flex;align-items:flex-start;gap:12px;background:var(--op-cr-bg);border:1px solid var(--op-cr-bd);border-radius:var(--op-r-lg);padding:14px 18px;margin-bottom:18px}
+.gb-op .ro-banner>.ms{font-size:21px;color:var(--op-cr);flex-shrink:0}
+[data-theme="dark"] .gb-op .ro-banner>.ms{color:var(--op-cr-2)}
+.gb-op .ro-banner .m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:14px;color:var(--op-cr-text)}
+[data-theme="dark"] .gb-op .ro-banner .m b{color:var(--op-cr-2)}
+.gb-op .ro-banner .m p{margin:3px 0 0;font-size:12px;line-height:1.5;color:var(--op-muted)}
+
+/* ── balance hero ── */
+.gb-op .bal{display:grid;grid-template-columns:1.3fr 1fr;gap:0;overflow:hidden;margin-bottom:16px}
+.gb-op .bal__main{padding:24px;background:linear-gradient(135deg,var(--op-cr-bg),transparent)}
+.gb-op .bal__label{font-size:12px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .bal__label .ms{font-size:15px}
+.gb-op .bal__v{font-family:var(--op-font-mono);font-weight:800;font-size:44px;letter-spacing:-.02em;margin:8px 0 2px;direction:ltr;unicode-bidi:isolate}
+.gb-op .bal__meta{font-size:12px;color:var(--op-muted)}
+.gb-op .bal__meta b{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-op .bal__side{padding:24px;border-inline-start:1px solid var(--op-border);display:flex;flex-direction:column;justify-content:center;gap:16px}
+.gb-op .bal__row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.gb-op .bal__row .k{font-size:12.5px;color:var(--op-muted)}
+.gb-op .bal__row .v{font-family:var(--op-font-mono);font-weight:800;font-size:16px;direction:ltr;unicode-bidi:isolate}
+.gb-op .bal__cta{margin-top:4px}
+.gb-op .payout-soon{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--op-border);background:var(--op-surface-2);border-radius:var(--op-r-md);padding:11px 14px;font-size:12.5px;font-weight:700;color:var(--op-muted-2);cursor:not-allowed;justify-content:center}
+.gb-op .payout-soon .ms{font-size:17px}
+.gb-op .payout-soon .soon{font-family:var(--op-font-ui);font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:var(--op-warning-bg);color:var(--op-warning);border:1px solid var(--op-warning-bd);border-radius:999px;padding:1px 6px}
+.gb-op .bal__auto{font-size:11px;color:var(--op-muted-2);text-align:center;display:flex;align-items:center;gap:5px;justify-content:center}
+.gb-op .bal__auto .ms{font-size:14px}
+
+/* ── two-column layout (history + payouts) ── */
+.gb-op .earn-two{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px;align-items:start}
+.gb-op .card-pad{padding:18px}
+.gb-op .card-pad__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
+.gb-op .card-pad__hd h3{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .card-pad .hint{font-size:11.5px;color:var(--op-muted);margin-bottom:16px}
+
+/* ── earnings history table ── */
+.gb-op .eh-thead{display:grid;grid-template-columns:130px 1fr 110px 120px;gap:12px;padding:11px 0;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2);border-bottom:1px solid var(--op-border)}
+.gb-op .eh-thead span:last-child{text-align:end}
+.gb-op .eh-row{display:grid;grid-template-columns:130px 1fr 110px 120px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .eh-row:last-child{border-bottom:none}
+.gb-op .eh-date{font-family:var(--op-font-mono);font-size:11.5px;color:var(--op-muted);direction:ltr;unicode-bidi:isolate}
+.gb-op .eh-src{display:flex;align-items:center;gap:9px;min-width:0}
+.gb-op .eh-src__ic{width:30px;height:30px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;color:var(--op-cr);flex-shrink:0}
+[data-theme="dark"] .gb-op .eh-src__ic{color:var(--op-cr-2)}
+.gb-op .eh-src__ic .ms{font-size:16px}
+.gb-op .eh-src b{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.gb-op .eh-src span{font-size:10.5px;color:var(--op-muted)}
+.gb-op .eh-status{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;border-radius:999px;padding:3px 9px;white-space:nowrap;width:fit-content}
+.gb-op .eh-status .ms{font-size:11px}
+.gb-op .eh-status.paid{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .eh-status.matured{background:var(--op-cr-bg);color:var(--op-cr-text)}
+[data-theme="dark"] .gb-op .eh-status.matured{color:var(--op-cr-2)}
+.gb-op .eh-status.pending{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .eh-status.cancelled{background:var(--op-surface-2);color:var(--op-muted-2);border:1px solid var(--op-border)}
+.gb-op .eh-amt{font-family:var(--op-font-mono);font-weight:800;font-size:13.5px;text-align:end;direction:ltr;unicode-bidi:isolate}
+.gb-op .eh-amt.is-cancelled{color:var(--op-muted-2);text-decoration:line-through}
+.gb-op .eh-mini{display:none}
+.gb-op .eh-loadmore{margin-top:14px;width:100%}
+
+/* ── adoptions (chef 2% pipe) reuse the eh- table styling ── */
+.gb-op .eh-empty{border:1px dashed var(--op-border);border-radius:var(--op-r-md);background:var(--op-surface-2);padding:22px 16px;text-align:center;font-size:12px;color:var(--op-muted)}
+
+/* ── payout history ── */
+.gb-op .po-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .po-row:last-child{border-bottom:none}
+.gb-op .po-ic{width:34px;height:34px;border-radius:var(--op-r-md);background:var(--op-success-bg);color:var(--op-success);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .po-ic.pending{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .po-ic.failed{background:var(--op-danger-bg);color:var(--op-danger)}
+.gb-op .po-ic .ms{font-size:18px}
+.gb-op .po-m{flex:1;min-width:0}
+.gb-op .po-m b{display:block;font-size:12.5px;font-weight:700}
+.gb-op .po-m span{font-size:10.5px;color:var(--op-muted);font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-op .po-amt{font-family:var(--op-font-mono);font-weight:800;font-size:13.5px;text-align:end;direction:ltr;unicode-bidi:isolate}
+.gb-op .po-empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:32px 16px;color:var(--op-muted)}
+.gb-op .po-empty .ms{font-size:34px;color:var(--op-muted-2)}
+.gb-op .po-empty p{margin:0;font-size:12px;line-height:1.5;max-width:280px}
+
+/* ── info note ── */
+.gb-op .info-note{display:flex;align-items:flex-start;gap:8px;font-size:11px;color:var(--op-muted-2);margin-top:14px;line-height:1.5}
+.gb-op .info-note .ms{font-size:14px;flex-shrink:0}
+
+/* ── transparency + cancelled lines ── */
+.gb-op .earn-line{font-size:11.5px;color:var(--op-muted);margin:0 2px 8px}
+
+/* ── share kit (real — both roles; CD CR6 mock omits it) ── */
+.gb-op .kit-grid{display:grid;grid-template-columns:1fr;gap:16px;margin-bottom:16px}
+.gb-op .kit-grid.two{grid-template-columns:1fr 1fr}
+.gb-op .kit-card{padding:18px}
+.gb-op .kit-card__hd{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.gb-op .kit-card__hd .ms{font-size:18px;color:var(--op-cr)}
+[data-theme="dark"] .gb-op .kit-card__hd .ms{color:var(--op-cr-2)}
+.gb-op .kit-card__hd h3{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:15px;flex:1;min-width:0}
+.gb-op .kit-card__hd .count{font-size:11px;color:var(--op-muted);white-space:nowrap}
+.gb-op .kit-copy{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:start;border:1px solid var(--op-border);background:var(--op-surface-2);border-radius:var(--op-r-md);padding:12px 14px;cursor:pointer;margin-bottom:9px}
+.gb-op .kit-copy:hover{border-color:var(--op-border-strong)}
+.gb-op .kit-copy .code{font-family:var(--op-font-mono);font-size:16px;font-weight:800;letter-spacing:.14em;color:var(--op-text);direction:ltr;unicode-bidi:isolate}
+.gb-op .kit-copy .lnk{min-width:0;flex:1;font-size:12px;color:var(--op-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:ltr;unicode-bidi:isolate}
+.gb-op .kit-copy .act{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--op-cr);flex-shrink:0}
+[data-theme="dark"] .gb-op .kit-copy .act{color:var(--op-cr-2)}
+.gb-op .kit-copy .act .ms{font-size:15px}
+.gb-op .kit-qrbtn{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--op-cr);background:none;border:none;cursor:pointer;padding:2px 0}
+[data-theme="dark"] .gb-op .kit-qrbtn{color:var(--op-cr-2)}
+.gb-op .kit-qrbtn .ms{font-size:15px}
+.gb-op .kit-qr{margin-top:10px;display:flex;flex-direction:column;align-items:center;gap:10px;border:1px solid var(--op-border);background:#fff;border-radius:var(--op-r-md);padding:16px}
+.gb-op .kit-qr p{margin:0;max-width:260px;text-align:center;font-size:11px;color:var(--op-muted)}
+.gb-op .kit-nocode{border:1px solid var(--op-border);background:var(--op-surface-2);border-radius:var(--op-r-md);padding:12px 14px;font-size:12px;color:var(--op-muted)}
+
+/* ── error state (reuse shell .op-error__card, add a wrapper) ── */
+.gb-op .earn-error{display:flex;align-items:center;justify-content:center;min-height:520px}
+
+@container gbop (max-width: 980px){
+  .gb-op .bal{grid-template-columns:1fr}
+  .gb-op .bal__side{border-inline-start:none;border-top:1px solid var(--op-border)}
+  .gb-op .earn-two{grid-template-columns:1fr}
+  .gb-op .kit-grid.two{grid-template-columns:1fr}
+}
+@container gbop (max-width: 680px){
+  .gb-op .eh-thead{display:none}
+  .gb-op .eh-row{grid-template-columns:1fr auto;gap:5px 12px}
+  .gb-op .eh-src{grid-column:1;grid-row:1}
+  .gb-op .eh-amt{grid-column:2;grid-row:1;align-self:center}
+  .gb-op .eh-date,.gb-op .eh-status-cell{display:none}
+  .gb-op .eh-mini{display:block;grid-column:1;grid-row:2;font-size:11px;color:var(--op-muted);font-family:var(--op-font-mono)}
+}

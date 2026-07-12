@@ -1,0 +1,60 @@
+/* ── FR5 · Redevances & versements (CD verbatim, scoped .gb-op). READ-ONLY 🔒. ────
+ * Real FranchiseRoyalty (accrued/settled/pending) + real Payout(role=franchise). NO
+ * payout button. The mock's fake "Versé"/PAY- schedule + the PDF statements section are
+ * DROPPED (no real payouts while settlement is gated OFF; no PDF generation exists). */
+
+.gb-op .ro-banner{display:flex;align-items:flex-start;gap:12px;background:var(--op-fr-bg);border:1px solid var(--op-fr-bd);border-radius:var(--op-r-lg);padding:14px 18px;margin-bottom:18px}
+.gb-op .ro-banner .ms{font-size:21px;color:var(--op-fr);flex-shrink:0}
+[data-theme="dark"] .gb-op .ro-banner .ms{color:var(--op-fr-2)}
+.gb-op .ro-banner .m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:14px;color:var(--op-fr-text)}
+[data-theme="dark"] .gb-op .ro-banner .m b{color:var(--op-fr-2)}
+.gb-op .ro-banner .m p{margin:3px 0 0;font-size:12px;line-height:1.5;color:var(--op-muted)}
+
+.gb-op .sum-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.gb-op .sum{padding:18px}
+.gb-op .sum .l{font-size:11.5px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .sum .l .ms{font-size:15px;color:var(--op-muted-2)}
+.gb-op .sum .v{font-family:var(--op-font-mono);font-weight:800;font-size:23px;margin-top:8px;direction:ltr;unicode-bidi:isolate}
+.gb-op .sum .s{font-size:10.5px;color:var(--op-muted-2);margin-top:4px}
+.gb-op .sum.hero{background:linear-gradient(120deg,var(--op-fr-bg),transparent)}
+.gb-op .sum.hero .v{color:var(--op-fr-text)}
+[data-theme="dark"] .gb-op .sum.hero .v{color:var(--op-fr-2)}
+
+.gb-op .two{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px;align-items:start}
+.gb-op .card-pad{padding:18px}
+.gb-op .card-pad h3{margin:0 0 4px;font-family:var(--op-font-display);font-weight:800;font-size:15px;display:flex;align-items:center;gap:8px}
+.gb-op .card-pad h3 .ms{font-size:18px;color:var(--op-muted-2)}
+.gb-op .card-pad .hint{font-size:11.5px;color:var(--op-muted);margin-bottom:14px}
+
+.gb-op .pay-row{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .pay-row:last-child{border-bottom:none}
+.gb-op .pay-ic{width:36px;height:36px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .pay-ic .ms{font-size:19px}
+.gb-op .pay-ic.done{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .pay-ic.next{background:var(--op-fr-bg);color:var(--op-fr)}
+.gb-op .pay-ic.wait{background:var(--op-surface-2);color:var(--op-muted-2);border:1px solid var(--op-border)}
+[data-theme="dark"] .gb-op .pay-ic.next{color:var(--op-fr-2)}
+.gb-op .pay-m{flex:1;min-width:0}
+.gb-op .pay-m b{display:block;font-size:13px;font-weight:700}
+.gb-op .pay-m span{font-size:11px;color:var(--op-muted);font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
+.gb-op .pay-amt{font-family:var(--op-font-mono);font-weight:800;font-size:14px;text-align:end;direction:ltr;unicode-bidi:isolate}
+.gb-op .pay-status{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;border-radius:999px;padding:3px 9px;margin-top:3px;white-space:nowrap}
+.gb-op .pay-status.done{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .pay-status.wait{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .pay-status.failed{background:var(--op-danger-bg);color:var(--op-danger)}
+
+.gb-op .bd-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .bd-row:last-child{border-bottom:none}
+.gb-op .bd-logo{width:32px;height:32px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:11px;color:#fff;flex-shrink:0;background:linear-gradient(135deg,#12B981,#0A6E4A)}
+.gb-op .bd-m{flex:1;min-width:0}
+.gb-op .bd-m b{display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-op .bd-amt{font-family:var(--op-font-mono);font-weight:800;font-size:13px;text-align:end;direction:ltr;unicode-bidi:isolate}
+.gb-op .bd-total{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:13px;margin-top:3px;border-top:2px solid var(--op-border)}
+.gb-op .bd-total b{font-family:var(--op-font-display);font-weight:800;font-size:14px}
+.gb-op .bd-total .v{font-family:var(--op-font-mono);font-weight:800;font-size:17px;color:var(--op-fr-text);direction:ltr;unicode-bidi:isolate}
+[data-theme="dark"] .gb-op .bd-total .v{color:var(--op-fr-2)}
+.gb-op .pay-empty,.gb-op .bd-empty{font-size:12px;color:var(--op-muted);padding:12px 0}
+
+@container gbop (max-width: 1100px){ .gb-op .sum-grid{grid-template-columns:repeat(2,1fr)} }
+@container gbop (max-width: 980px){ .gb-op .two{grid-template-columns:1fr} }
+@container gbop (max-width: 520px){ .gb-op .sum-grid{grid-template-columns:1fr} }

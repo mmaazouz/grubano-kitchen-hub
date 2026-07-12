@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Panier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C; --gb-field-bg:#FFFFFF;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-focus:0 0 0 3px rgba(255,106,31,.16); --gb-focus-border:#FF6A1F;
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-field-bg:#0C1826; --gb-zest:#FF7C39;
+  --gb-focus:0 0 0 3px rgba(255,124,57,.18); --gb-focus-border:#FF7C39;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button{font-family:inherit}
+.cart{max-width:1040px;margin:0 auto;padding:clamp(18px,3vw,30px) clamp(16px,3vw,28px) 120px}
+.cart-top{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.cart-top .back{font-size:24px;cursor:pointer}
+.cart-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em}
+.cart-top .clear{font-size:13px;font-weight:700;color:var(--gb-muted);background:none;border:none;cursor:pointer}
+.layout{display:grid;grid-template-columns:1fr 360px;gap:22px;align-items:start}
+@media (max-width:820px){ .layout{grid-template-columns:1fr} }
+.resto{display:flex;align-items:center;gap:12px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:14px 16px;margin-bottom:14px;box-shadow:var(--gb-shadow-card)}
+.resto .thumb{width:46px;height:46px;border-radius:var(--gb-r-md);background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px);flex-shrink:0}
+[data-theme="dark"] .resto .thumb{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px)}
+.resto .main{flex:1;min-width:0}
+.resto .main b{font-family:var(--gb-font-display);font-weight:700;font-size:15.5px}
+.resto .main span{display:block;font-size:12px;color:var(--gb-muted);margin-top:2px}
+.resto .change{font-size:12.5px;font-weight:700;color:var(--gb-zest-600);background:none;border:none;cursor:pointer}
+[data-theme="dark"] .resto .change{color:var(--gb-zest)}
+.modes{display:flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:3px;margin-bottom:16px}
+.modes button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:var(--gb-font-ui);font-weight:600;font-size:13px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:10px 0;cursor:pointer}
+.modes button .ms{font-size:17px}
+.modes button[aria-selected="true"]{color:#fff;background:var(--gb-grad);font-weight:700}
+.items{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden}
+.item{display:flex;gap:13px;padding:15px 16px;border-bottom:1px solid var(--gb-border)}
+.item:last-child{border-bottom:none}
+.item__img{width:64px;height:64px;border-radius:var(--gb-r-md);flex-shrink:0}
+.item__img.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px)}
+.item__img.t2{background:repeating-linear-gradient(135deg,#FCE9C9 0 8px,#FCF0D9 8px 16px)}
+.item__img.t3{background:repeating-linear-gradient(135deg,#F3D9E0 0 8px,#FBEAF1 8px 16px)}
+[data-theme="dark"] .item__img.t1,[data-theme="dark"] .item__img.t2{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px)}
+[data-theme="dark"] .item__img.t3{background:repeating-linear-gradient(135deg,#3A2230 0 8px,#2C1A24 8px 16px)}
+.item__b{flex:1;min-width:0}
+.item__row{display:flex;justify-content:space-between;gap:10px}
+.item__row b{font-family:var(--gb-font-display);font-weight:700;font-size:14.5px;line-height:1.3;min-width:0}
+.item__row .price{font-family:var(--gb-font-display);font-weight:800;font-size:14.5px;flex-shrink:0;white-space:nowrap}
+.item__opt{font-size:12px;color:var(--gb-muted);margin-top:3px;line-height:1.45}
+.item__foot{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+.stepper{display:inline-flex;align-items:center;gap:12px;border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:5px 11px}
+.stepper .ms{font-size:18px;color:var(--gb-zest-600);cursor:pointer}
+[data-theme="dark"] .stepper .ms{color:var(--gb-zest)}
+.stepper b{font-size:13.5px;font-weight:700;min-width:14px;text-align:center}
+.item__del{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--gb-muted);background:none;border:none;cursor:pointer}
+.item__del .ms{font-size:16px}
+.addmore{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;padding:13px;border:1.5px dashed var(--gb-border-strong);border-radius:var(--gb-r-md);background:none;color:var(--gb-zest-600);font-weight:700;font-size:13.5px;cursor:pointer}
+[data-theme="dark"] .addmore{color:var(--gb-zest)}
+.upsell{border-radius:var(--gb-r-lg);padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C);margin-top:14px;opacity:.92}
+.upsell__in{background:var(--gb-surface);border-radius:calc(var(--gb-r-lg) - 1px);padding:14px 16px}
+.upsell__h{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.upsell__h .ic{width:26px;height:26px;border-radius:var(--gb-r-sm);background:var(--gb-grad);display:flex;align-items:center;justify-content:center}
+.upsell__h .ic .ms{font-size:16px;color:#fff}
+.upsell__h b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px}
+.upsell__h .soon{margin-left:auto;font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 7px}
+[data-theme="dark"] .upsell__h .soon{color:var(--gb-zest)}
+.upsell__row{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none}
+.upsell__row::-webkit-scrollbar{display:none}
+.upcard{flex-shrink:0;width:128px;border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:9px;opacity:.75}
+.upcard .uim{height:58px;border-radius:var(--gb-r-sm);background:repeating-linear-gradient(135deg,#E6EFD9 0 8px,#EFF5E6 8px 16px);margin-bottom:8px}
+[data-theme="dark"] .upcard .uim{background:repeating-linear-gradient(135deg,#1E3B2B 0 8px,#172E22 8px 16px)}
+.upcard b{font-size:12px;font-weight:700;display:block}
+.upcard .ur{display:flex;align-items:center;justify-content:space-between;margin-top:5px}
+.upcard .ur span{font-size:12px;font-weight:800;font-family:var(--gb-font-display)}
+.upcard .ur .plus{width:24px;height:24px;border-radius:7px;background:var(--gb-border);display:flex;align-items:center;justify-content:center}
+.upcard .ur .plus .ms{font-size:15px;color:var(--gb-muted)}
+.summary{position:sticky;top:20px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden}
+.summary__h{padding:16px 18px;border-bottom:1px solid var(--gb-border);font-family:var(--gb-font-display);font-weight:800;font-size:16px}
+.summary__b{padding:16px 18px}
+.promo{display:flex;align-items:center;gap:9px;background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:10px 12px;margin-bottom:16px}
+.promo .ms{font-size:18px;color:var(--gb-muted-2)}
+.promo input{flex:1;border:none;outline:none;background:none;font-size:13px;color:var(--gb-text)}
+.promo button{font-size:12.5px;font-weight:700;color:var(--gb-zest-600);background:none;border:none;cursor:pointer}
+[data-theme="dark"] .promo button{color:var(--gb-zest)}
+.srow{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;color:var(--gb-muted);margin-bottom:9px}
+.srow.disc{color:var(--gb-basil-600);font-weight:600}
+.srow b,.srow span:last-child{color:var(--gb-text);font-weight:600;white-space:nowrap;flex-shrink:0}
+.srow.disc span:last-child{color:var(--gb-basil-600)}
+.sdiv{height:1px;background:var(--gb-border);margin:6px 0 12px}
+.stotal{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.stotal span{font-weight:700;font-size:15px}
+.stotal b{font-family:var(--gb-font-display);font-weight:800;font-size:22px;letter-spacing:-.01em}
+.cta{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:15px 18px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.cta span{font-size:14.5px;font-weight:700;color:#fff}
+.cta .ms{font-size:20px;color:#fff}
+.reassure{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;font-size:12px;color:var(--gb-muted)}
+.reassure .ms{font-size:15px;color:var(--gb-basil-600)}
+.mbar{display:none}
+@media (max-width:820px){
+  .summary{position:static}
+  .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 24px}
+.empty__ico{width:96px;height:96px;border-radius:50%;background:#FFF1E7;display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+[data-theme="dark"] .empty__ico{background:rgba(255,124,57,.16)}
+.empty__ico .ms{font-size:48px;color:var(--gb-zest-600)}
+[data-theme="dark"] .empty__ico .ms{color:var(--gb-zest)}
+.empty h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em}
+.empty p{margin:9px 0 22px;font-size:14px;line-height:1.55;color:var(--gb-muted);max-width:34ch}
+.btn{font-family:var(--gb-font-ui);font-weight:700;font-size:14px;cursor:pointer;border-radius:var(--gb-r-md);padding:13px 22px;border:none;display:inline-flex;align-items:center;gap:8px}
+.btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.btn--primary .ms{font-size:18px}
+#app[data-state="empty"] .layout,#app[data-state="empty"] .mbar,#app[data-state="empty"] .cart-top .clear{display:none}
+#app:not([data-state="empty"]) .empty{display:none}
+</style>
+</head>
+<body>
+<div id="app" data-state="filled">
+<main class="cart">
+  <div class="cart-top"><span class="ms back">arrow_back</span><h1>Mon panier</h1><button class="clear">Vider</button></div>
+  <div class="layout">
+    <div>
+      <div class="resto"><span class="thumb"></span><div class="main"><b>Mama Trattoria</b><span>Italien · 1,2 km · 20–30 min</span></div><button class="change">Changer</button></div>
+      <div class="modes" role="tablist">
+        <button aria-selected="true"><span class="ms">two_wheeler</span>Livraison</button>
+        <button aria-selected="false"><span class="ms">storefront</span>À emporter</button>
+        <button aria-selected="false"><span class="ms">table_restaurant</span>Sur place</button>
+      </div>
+      <div class="items">
+        <div class="item"><span class="item__img t1"></span><div class="item__b"><div class="item__row"><b>Tagliatelles à la truffe</b><span class="price">18,00 €</span></div><div class="item__opt">Taille : Grande · Supplément parmesan · Sans noix</div><div class="item__foot"><span class="stepper"><span class="ms">remove</span><b>1</b><span class="ms">add</span></span><button class="item__del"><span class="ms">delete</span>Retirer</button></div></div></div>
+        <div class="item"><span class="item__img t2"></span><div class="item__b"><div class="item__row"><b>Cacio e pepe</b><span class="price">15,00 €</span></div><div class="item__opt">Taille : Normale · Note : « bien poivré »</div><div class="item__foot"><span class="stepper"><span class="ms">remove</span><b>1</b><span class="ms">add</span></span><button class="item__del"><span class="ms">delete</span>Retirer</button></div></div></div>
+        <div class="item"><span class="item__img t3"></span><div class="item__b"><div class="item__row"><b>Tiramisu maison</b><span class="price">8,00 €</span></div><div class="item__opt">Part individuelle</div><div class="item__foot"><span class="stepper"><span class="ms">remove</span><b>2</b><span class="ms">add</span></span><button class="item__del"><span class="ms">delete</span>Retirer</button></div></div></div>
+      </div>
+      <button class="addmore"><span class="ms">add</span>Ajouter d'autres plats</button>
+      <div class="upsell"><div class="upsell__in">
+        <div class="upsell__h"><span class="ic"><span class="ms">auto_awesome</span></span><b>Ça irait bien avec</b><span class="soon">IA — bientôt</span></div>
+        <div class="upsell__row">
+          <div class="upcard"><div class="uim"></div><b>Pain à l'ail</b><div class="ur"><span>5 €</span><span class="plus"><span class="ms">add</span></span></div></div>
+          <div class="upcard"><div class="uim"></div><b>Bruschetta</b><div class="ur"><span>7 €</span><span class="plus"><span class="ms">add</span></span></div></div>
+          <div class="upcard"><div class="uim"></div><b>Chianti (verre)</b><div class="ur"><span>9 €</span><span class="plus"><span class="ms">add</span></span></div></div>
+        </div>
+      </div></div>
+    </div>
+    <aside class="summary">
+      <div class="summary__h">Récapitulatif</div>
+      <div class="summary__b">
+        <div class="promo"><span class="ms">sell</span><input value="TUESDAY20" placeholder="Code promo"><button>Appliquer</button></div>
+        <div class="srow"><span>Sous-total</span><b>49,00 €</b></div>
+        <div class="srow"><span>Frais de livraison</span><b>2,99 €</b></div>
+        <div class="srow"><span>Frais de service</span><b>1,50 €</b></div>
+        <div class="srow disc"><span>Tuesday Treat −20 %</span><span>−9,80 €</span></div>
+        <div class="sdiv"></div>
+        <div class="stotal"><span>Total</span><b>43,69 €</b></div>
+        <button class="cta"><span>Passer au paiement</span><span class="ms">arrow_forward</span></button>
+        <div class="reassure"><span class="ms">lock</span>Paiement sécurisé</div>
+      </div>
+    </aside>
+  </div>
+  <div class="empty"><div class="empty__ico"><span class="ms">shopping_bag</span></div><h2>Votre panier est vide</h2><p>Parcourez les restaurants près de chez vous et ajoutez vos plats préférés.</p><button class="btn btn--primary"><span class="ms">search</span>Découvrir des restaurants</button></div>
+</main>
+<div class="mbar"><button class="cta"><span>Paiement · 43,69 €</span><span class="ms">arrow_forward</span></button></div>
+</div>
+</body>
+</html>

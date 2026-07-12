@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-basil:#2BA45C; --gb-basil-600:#1E9E57; --gb-ink:#0F2742;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-info:#2E78F0; --gb-info-bg:#E7F0FE;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-grad-sunrise:linear-gradient(130deg,#FFB020,#FF6A1F 55%,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-2xl:24px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-bronze:#C7A86B; --gb-silver:#9AA6B2; --gb-gold:#F2570E; --gb-platinum:#5D739B;
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-info:#6FB6F5; --gb-info-bg:rgba(46,120,240,.18);
+  --gb-zest:#FF7C39;
+  --gb-bronze:#C7A86B; --gb-silver:#9AA6B2; --gb-gold:#FF9A4D; --gb-platinum:#8FA6C8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button{font-family:inherit}
+.wrap{max-width:1080px;margin:0 auto;padding:clamp(20px,4vw,40px) clamp(16px,4vw,28px)}
+.page-h{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.page-h .back{font-size:24px;cursor:pointer;display:none}            /* mobile only */
+.page-h h1{font-family:var(--gb-font-display);font-weight:800;font-size:clamp(24px,3.4vw,32px);letter-spacing:-.03em;margin:0}
+.layout{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;align-items:start}
+.hero{position:relative;overflow:hidden;border-radius:var(--gb-r-2xl);background:var(--gb-grad-sunrise);padding:clamp(22px,3vw,30px);color:#fff}
+.hero::after{content:"";position:absolute;right:-40px;bottom:-60px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.14)}
+.hero__top{position:relative;display:flex;justify-content:space-between;align-items:flex-start}
+.hero__chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:var(--gb-zest-600);background:#fff;border-radius:var(--gb-r-pill);padding:6px 13px}
+.hero__pts{position:relative;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(40px,6vw,54px);letter-spacing:-.02em;line-height:1.04;margin-top:8px}
+.hero__sub{position:relative;font-size:13.5px;color:rgba(255,255,255,.92);margin-bottom:16px}
+.hero__bar{position:relative;height:8px;border-radius:var(--gb-r-pill);background:rgba(255,255,255,.28)}
+.hero__bar i{display:block;height:8px;border-radius:var(--gb-r-pill);background:#fff;width:78%}   /* = progress % */
+.streak{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-2xl);padding:clamp(18px,2.4vw,24px);box-shadow:var(--gb-shadow-card)}
+.streak__top{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+.streak__ico{width:44px;height:44px;border-radius:var(--gb-r-md);background:#FFF1E7;display:flex;align-items:center;justify-content:center}
+[data-theme="dark"] .streak__ico{background:rgba(255,124,57,.16)}
+.streak__ico .ms{font-size:24px;color:var(--gb-zest-600)} [data-theme="dark"] .streak__ico .ms{color:var(--gb-zest)}
+.streak__top b{font-family:var(--gb-font-display);font-weight:800;font-size:17px}
+.streak__top div span{display:block;font-size:12px;color:var(--gb-muted);margin-top:1px}
+.streak__week{display:flex;gap:6px}
+.streak__week i{flex:1;height:9px;border-radius:5px;background:var(--gb-border)}
+.streak__week i.on{background:var(--gb-grad)}
+.card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-2xl);padding:clamp(18px,2.4vw,24px);box-shadow:var(--gb-shadow-card);margin-top:18px}
+.card__h{font-family:var(--gb-font-display);font-weight:700;font-size:16px;margin:0 0 18px}
+.ladder{display:flex;align-items:flex-start}
+.tier{flex:1;text-align:center;position:relative}
+.tier__dot{width:46px;height:46px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--gb-surface-2);border:1px solid var(--gb-border)}
+.tier__dot .ms{font-size:24px}
+.tier.cur .tier__dot{width:58px;height:58px;background:var(--gb-grad);box-shadow:0 8px 18px -6px rgba(242,87,14,.5);border:none}
+.tier.cur .tier__dot .ms{font-size:30px;color:#fff;font-variation-settings:'FILL' 1}
+.tier__name{font-size:12px;font-weight:700;margin-top:8px}
+.tier.cur .tier__name{font-size:13px;color:var(--gb-zest-600)} [data-theme="dark"] .tier.cur .tier__name{color:var(--gb-zest)}
+.tier__pts{font-size:10.5px;color:var(--gb-muted);margin-top:2px}
+.bridge{flex:0 0 auto;height:3px;width:8%;margin-top:22px;background:var(--gb-border)}
+.bridge.done{background:var(--gb-basil-600)}
+.rgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.reward{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:18px;position:relative}
+.reward__ico{width:46px;height:46px;border-radius:var(--gb-r-md);display:inline-flex;align-items:center;justify-content:center}
+.reward__ico .ms{font-size:25px}
+.reward__name{font-family:var(--gb-font-display);font-weight:700;font-size:14.5px;margin-top:12px}
+.reward__cost{font-size:12.5px;font-weight:600;color:var(--gb-zest-600);margin-top:3px} [data-theme="dark"] .reward__cost{color:var(--gb-zest)}
+.reward.locked{opacity:.55}
+.reward.locked .reward__lock{position:absolute;top:14px;right:14px;font-size:17px;color:var(--gb-muted)}
+.reward__cta{margin-top:12px;width:100%;border:none;border-radius:var(--gb-r-sm);padding:9px;font-size:12.5px;font-weight:700;cursor:pointer}
+.reward__cta.able{color:#fff;background:var(--gb-grad)}
+.reward__cta.unable{color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border);cursor:not-allowed}
+.insight{display:flex;align-items:center;gap:11px;background:var(--gb-info-bg);border:1px solid color-mix(in srgb,var(--gb-info) 30%,transparent);border-radius:var(--gb-r-lg);padding:14px 16px;margin-top:18px}
+.insight .ms{font-size:21px;color:var(--gb-info)}
+.insight p{margin:0;flex:1;font-size:13px;line-height:1.45;color:var(--gb-text)}
+.insight .ai-soon{font-size:10px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 8px} [data-theme="dark"] .insight .ai-soon{color:var(--gb-zest)}
+.section-h{font-family:var(--gb-font-display);font-weight:700;font-size:18px;margin:26px 0 14px}
+@media (max-width:760px){
+  .page-h .back{display:block}
+  .layout{grid-template-columns:1fr}
+  .rgrid{grid-template-columns:1fr 1fr}
+  .tier__pts{display:none}
+}
+@media (max-width:420px){ .ladder{overflow-x:auto} }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="page-h"><span class="ms back">arrow_back</span><h1>Rewards</h1></div>
+  <div class="layout">
+    <section class="hero">
+      <div class="hero__top">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">Grubano Rewards</div>
+          <div class="hero__pts">1,240</div>
+          <div class="hero__sub">points · 260 to Platinum</div>
+        </div>
+        <span class="hero__chip"><span class="ms" style="font-size:15px;font-variation-settings:'FILL' 1">workspace_premium</span>GOLD</span>
+      </div>
+      <div class="hero__bar"><i></i></div>
+    </section>
+    <section class="streak">
+      <div class="streak__top">
+        <span class="streak__ico"><span class="ms">local_fire_department</span></span>
+        <div><b>3-week streak</b><span>+50 bonus points this week</span></div>
+      </div>
+      <div class="streak__week"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i></div>
+    </section>
+  </div>
+  <section class="card">
+    <h2 class="card__h">Your tier</h2>
+    <div class="ladder">
+      <div class="tier"><span class="tier__dot"><span class="ms" style="color:var(--gb-bronze)">workspace_premium</span></span><div class="tier__name" style="color:var(--gb-bronze)">Bronze</div><div class="tier__pts">0 pts</div></div>
+      <div class="bridge done"></div>
+      <div class="tier"><span class="tier__dot"><span class="ms" style="color:var(--gb-silver)">workspace_premium</span></span><div class="tier__name" style="color:var(--gb-silver)">Silver</div><div class="tier__pts">500 pts</div></div>
+      <div class="bridge done"></div>
+      <div class="tier cur"><span class="tier__dot"><span class="ms">workspace_premium</span></span><div class="tier__name">Gold · you</div><div class="tier__pts">1,000 pts</div></div>
+      <div class="bridge"></div>
+      <div class="tier"><span class="tier__dot"><span class="ms" style="color:var(--gb-platinum)">diamond</span></span><div class="tier__name" style="color:var(--gb-platinum)">Platinum</div><div class="tier__pts">1,500 pts</div></div>
+    </div>
+    <div class="insight"><span class="ms">auto_awesome</span><p>You're on track to hit Platinum in ~3 orders. Keep your streak alive for a 50-pt weekly boost.</p><span class="ai-soon">AI — soon</span></div>
+  </section>
+  <h2 class="section-h">Redeem your points</h2>
+  <div class="rgrid">
+    <div class="reward"><span class="reward__ico" style="background:#EAF7EF"><span class="ms" style="color:var(--gb-basil-600)">two_wheeler</span></span><div class="reward__name">Free delivery</div><div class="reward__cost">200 pts</div><button class="reward__cta able">Redeem</button></div>
+    <div class="reward"><span class="reward__ico" style="background:#FBEAF1"><span class="ms" style="color:#B83A6E">icecream</span></span><div class="reward__name">Free dessert</div><div class="reward__cost">350 pts</div><button class="reward__cta able">Redeem</button></div>
+    <div class="reward"><span class="reward__ico" style="background:#E7F0FE"><span class="ms" style="color:var(--gb-info)">sell</span></span><div class="reward__name">€10 off</div><div class="reward__cost">500 pts</div><button class="reward__cta able">Redeem</button></div>
+    <div class="reward locked"><span class="ms reward__lock">lock</span><span class="reward__ico" style="background:#FCF0D9"><span class="ms" style="color:#EA9410">restaurant</span></span><div class="reward__name">Chef's table</div><div class="reward__cost">1,500 pts</div><button class="reward__cta unable">260 pts to go</button></div>
+  </div>
+</main>
+</body>
+</html>

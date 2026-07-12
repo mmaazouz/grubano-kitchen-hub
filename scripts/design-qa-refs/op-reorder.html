@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano Business — Réapprovisionnement</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --op-chrome-1:#0F2742; --op-chrome-2:#152F4E; --op-chrome-3:#1B3A5E;
+  --op-chrome-border:rgba(255,255,255,.09);
+  --op-chrome-text:#EEF3F9; --op-chrome-text-dim:#8CA0B8; --op-chrome-text-dim2:#5F7690;
+  --op-zest:#FF6A1F; --op-zest-600:#F2570E; --op-zest-bg:#FFF1E7;
+  --op-ai:#6E56CF; --op-ai-2:#8B74E0; --op-ai-bg:#F2EFFC; --op-ai-bd:#DED3F7; --op-ai-text:#4B3894;
+  --op-success:#1E9E57; --op-success-bg:#EAF7EF; --op-success-bd:#CDEBD8;
+  --op-warning:#B9740A; --op-warning-bg:#FFF4E0; --op-warning-bd:#F3DBA6;
+  --op-danger:#D5372A; --op-danger-bg:#FCEAE7; --op-danger-bd:#F5C9C0;
+  --op-info:#2E78F0; --op-info-bg:#E7F0FE; --op-info-bd:#C7DBFB;
+  --op-canvas:#F2F4F7; --op-surface:#FFFFFF; --op-surface-2:#F7F8FA;
+  --op-border:#E3E7EE; --op-border-strong:#D2D8E1;
+  --op-text:#101828; --op-muted:#5B6472; --op-muted-2:#8992A3;
+  --op-font-display:'Gabarito',system-ui,sans-serif;
+  --op-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --op-font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --op-r-sm:6px; --op-r-md:8px; --op-r-lg:12px; --op-r-xl:16px; --op-r-pill:999px;
+  --op-shadow-card:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.05);
+  --op-shadow-pop:0 16px 40px -12px rgba(16,24,40,.28);
+  --op-focus:0 0 0 3px rgba(255,106,31,.16);
+}
+[data-theme="dark"]{
+  --op-canvas:#0A1220; --op-surface:#101B2D; --op-surface-2:#0A1220;
+  --op-border:#1E2A3D; --op-border-strong:#293850;
+  --op-text:#EDF1F7; --op-muted:#8CA0B8; --op-muted-2:#64768C;
+  --op-zest:#FF7C39;
+  --op-ai:#9B87F0; --op-ai-2:#B0A0F5; --op-ai-bg:rgba(110,86,207,.16); --op-ai-bd:#3A2F60; --op-ai-text:#C9BDF5;
+  --op-success:#41BD78; --op-success-bg:rgba(65,189,120,.14); --op-success-bd:#22432E;
+  --op-warning:#E8A63D; --op-warning-bg:rgba(232,166,61,.14); --op-warning-bd:#4A3A1C;
+  --op-danger:#FF6B5C; --op-danger-bg:rgba(224,64,46,.14); --op-danger-bd:#4A2420;
+  --op-info:#6FB6F5; --op-info-bg:rgba(46,120,240,.16); --op-info-bd:#1E3350;
+  --op-shadow-card:0 1px 2px rgba(0,0,0,.2);
+  --op-shadow-pop:0 16px 40px -12px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#DCE1E8;color:var(--op-text);font-family:var(--op-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button,input,select,textarea{font-family:inherit}
+.mono{font-family:var(--op-font-mono)}
+.mono,.stat-strip b,.rq-stock,.rq-threshold,.rq-unit,.rq-qtyval,.rq-line-total,.rq-sub-val,.rq-min-val,.op-input.mono{direction:ltr;unicode-bidi:isolate}
+.flip-rtl{display:inline-block}
+[dir="rtl"] .flip-rtl{transform:scaleX(-1)}
+a{text-decoration:none;color:inherit}
+.bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:#fff;border-bottom:1px solid #E3E7EE;padding:9px 12px;font-family:var(--op-font-ui)}
+.bar group{display:flex;gap:2px;align-items:center;background:#F2F4F7;border-radius:999px;padding:3px}
+.bar button{border:none;background:none;cursor:pointer;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:#5B6472}
+.bar button.on{background:#101828;color:#fff}
+.bar .lbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8992A3;align-self:center;margin-inline-end:2px}
+.gb-op-wrap{width:100%;container-type:inline-size;container-name:gbop;transition:max-width .25s ease;margin:0 auto}
+.gb-op-wrap.force-mobile{max-width:428px;box-shadow:0 0 0 1px #C7CEDA, 0 30px 60px -30px rgba(16,24,40,.4)}
+.gb-op{display:flex;min-height:840px;background:var(--op-canvas);color:var(--op-text);overflow:hidden}
+.op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:relative}
+.gb-op[data-sidebar="collapsed"] .op-side{width:76px}
+.op-side__brand{display:flex;align-items:center;gap:10px;padding:16px 18px 18px}
+.op-side__brand img{height:28px;width:auto;flex-shrink:0}
+.op-side__word b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:15.5px;color:#fff;letter-spacing:-.01em}
+.op-side__word span{font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--op-chrome-text-dim)}
+.op-side__nav{flex:1;overflow-y:auto;padding:2px 10px}
+.op-nav-group{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--op-chrome-text-dim2);padding:16px 10px 7px}
+.op-nav-item{display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:var(--op-r-md);color:var(--op-chrome-text-dim);font-size:13.5px;font-weight:600;cursor:pointer;margin-bottom:1px}
+.op-nav-item .ms{font-size:20px;flex-shrink:0}
+.op-nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.op-nav-item.is-active{background:rgba(255,106,31,.16);color:#fff}
+.op-nav-item.is-active .ms{color:var(--op-zest)}
+.op-main{flex:1;display:flex;flex-direction:column;min-width:0}
+.op-top{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 20px;height:60px;background:var(--op-chrome-1);border-bottom:1px solid var(--op-chrome-border);position:relative;z-index:5}
+.op-content{flex:1;overflow-y:auto;padding:24px;background:var(--op-canvas)}
+.op-content>section{max-width:1100px;margin:0 auto}
+.op-dash__head{margin-bottom:18px}
+.op-dash__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em}
+.op-dash__sub{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
+.op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+.op-emptyline{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px}
+.op-emptyline .ms{font-size:40px;color:var(--op-success);margin-bottom:12px}
+.op-emptyline b{font-size:16px;font-weight:700}
+.op-emptyline span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:380px}
+.stat-strip{display:flex;padding:8px 4px;flex-wrap:wrap;margin-bottom:18px}
+.stat-strip .stat{flex:1;min-width:170px;padding:14px 20px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
+.stat-strip .stat:first-child{border-inline-start:none}
+.stat-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
+.stat-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:22px}
+.rq-group{margin-bottom:18px}
+.rq-group__head{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--op-border)}
+.rq-group__av{width:36px;height:36px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:12px;color:#fff;flex-shrink:0}
+.rq-group__m{flex:1;min-width:0}
+.rq-group__m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.rq-group__m span{font-size:11.5px;color:var(--op-muted)}
+.rq-group__min{flex-shrink:0;text-align:end}
+.rq-group__min .lbl{display:block;font-size:10px;font-weight:700;color:var(--op-muted-2)}
+.rq-min-val{font-family:var(--op-font-mono);font-weight:700;font-size:13px}
+.rq-line{display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--op-border)}
+.rq-line:last-of-type{border-bottom:none}
+.rq-line__m{flex:1;min-width:0}
+.rq-line__m b{display:block;font-size:13.5px;font-weight:700}
+.rq-line__stockrow{display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap}
+.rq-stock{font-family:var(--op-font-mono);font-size:11.5px;color:var(--op-muted)}
+.rq-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;border-radius:999px;padding:2px 8px}
+.rq-pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.rq-pill.low{background:var(--op-warning-bg);color:var(--op-warning)}
+.rq-pill.out{background:var(--op-danger-bg);color:var(--op-danger)}
+.rq-order-btn{display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 10px 22px -10px rgba(242,87,14,.45);white-space:nowrap;flex-shrink:0}
+.rq-note{display:flex;gap:9px;padding:2px 4px;margin-top:6px}
+.rq-note .ms{font-size:15px;color:var(--op-muted-2);flex-shrink:0}
+.rq-note span{font-size:11px;color:var(--op-muted);line-height:1.5}
+</style>
+</head>
+<body>
+<!-- STATIC EYE-CHECK REFERENCE — CD verbatim, LOT 6 écran 5 « Réapprovisionnement »
+     (Notion 390fd2c9-8146-8109-aaf7-c803a023210b). Demo bar kept here for reference ONLY;
+     the real React page renders content-only (a <section className="op-rq">) inside the
+     shared navy OperatorShell + uses REAL flat low-stock data (no fabricated supplier /
+     price / € total — StockItem has no price nor supplier link). -->
+<div class="gb-op-wrap" id="opwrap">
+<div class="gb-op" data-theme="light" data-state="loaded" data-sidebar="expanded" dir="ltr">
+  <div class="op-main">
+    <main class="op-content">
+      <section class="op-rq">
+        <div class="op-dash__head">
+          <h1 class="op-dash__title">Réapprovisionnement</h1>
+          <p class="op-dash__sub">Les articles à racheter, regroupés par fournisseur</p>
+        </div>
+        <div class="op-card stat-strip">
+          <div class="stat"><span class="lbl">Articles à réapprovisionner</span><b>4</b></div>
+          <div class="stat"><span class="lbl">Fournisseurs concernés</span><b>2</b></div>
+          <div class="stat"><span class="lbl">Total estimé</span><b>187,60&nbsp;€</b></div>
+        </div>
+        <div class="op-card rq-group">
+          <div class="rq-group__head">
+            <span class="rq-group__av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">MP</span>
+            <div class="rq-group__m"><b>Metro Paris 11e</b><span>Frais · Sec</span></div>
+            <div class="rq-group__min"><span class="lbl">Commande minimum</span><span class="rq-min-val">150,00&nbsp;€</span></div>
+          </div>
+          <div class="rq-line">
+            <div class="rq-line__m">
+              <b>Burrata</b>
+              <div class="rq-line__stockrow"><span class="rq-stock">0 kg en stock · seuil 3 kg</span><span class="rq-pill out"><i class="dot"></i>Rupture</span></div>
+            </div>
+          </div>
+          <div class="rq-note">
+            <span class="ms">info</span>
+            <span>Les quantités affichées sont des suggestions, ajustables. Prix, sous-totaux et minimums sont calculés côté serveur.</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</div>
+</body>
+</html>

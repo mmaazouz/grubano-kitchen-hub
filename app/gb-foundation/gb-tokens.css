@@ -1,0 +1,109 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * GRUBANO — gb-* DESIGN FOUNDATION · shared TOKEN layer
+ *
+ * Extracted VERBATIM from Claude-Design's own code (the union of the frozen auth
+ * pages: « Auth — RÉFÉRENCE VALIDÉE & FIGÉE » 38dfd2c9-8146-81be, « Auth — états
+ * OTP/magic-link/guest » 38cfd2c9-8146-81c5, « Auth — Lien magique DESKTOP »
+ * 38dfd2c9-8146-81be-9556). Every hex is CD's exact value — nothing invented.
+ *
+ * ⭐ ADDITIVE / NON-REGRESSION
+ *  - Scoped to the `.gb` root: the --gb-* are declared on `.gb` (light) and switch
+ *    under `[data-theme="dark"] .gb` / `.gb[data-theme="dark"]` (theme-aware, the
+ *    general DS behaviour — the auth screen is a SEPARATE fixed-per-screen case in
+ *    its own auth.css and is NOT affected).
+ *  - The --gb-* names are CD's own and live ONLY here (+ the auth.css); tokens.css /
+ *    tailwind.config.ts / globals.css are left byte-identical. No Tailwind mapping.
+ *  - Gabarito / Hanken are already loaded app-wide by tokens.css; we add only the
+ *    Material-Symbols icon font (CD uses Material icons, not lucide).
+ * ───────────────────────────────────────────────────────────────────────────── */
+/* Arabic RTL — Cairo font for `ar` + the global RTL rule sheet (CD 38efd2c9-…-814c).
+ * @import MUST precede all rules → kept here at the very top of the foundation. The
+ * gb-rtl.css selectors are themselves `[dir="rtl"]`-gated so they are inert in LTR. */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+@import './gb-rtl.css';
+
+/* ── LIGHT tokens (CD :root, verbatim) ───────────────────────────────────────── */
+.gb{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-ink-700:#16395A;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-field-bg:#FFFFFF;
+  --gb-on-ink:#FFFFFF; --gb-on-ink-muted:#AFC0D6; --gb-on-ink-faint:#7E8FA3;
+  --gb-google:#4285F4;
+  --gb-success:#1E9E57; --gb-success-bg:#EAF7EF; --gb-success-bd:#CDEBD8; --gb-success-fg:#235C3A;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-grad-sunrise:linear-gradient(150deg,#FFB020,#FF6A1F 60%,#F2570E);
+  --gb-panel-ink:linear-gradient(150deg,#0F2742,#16395A 70%,#1A2C3F);
+  --gb-font-display:'Gabarito',system-ui,sans-serif;
+  --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-focus:0 0 0 3px rgba(255,106,31,.16); --gb-focus-border:#FF6A1F;
+}
+
+/* ── DARK tokens (CD [data-theme="dark"], verbatim) — theme-aware ────────────── */
+[data-theme="dark"] .gb,
+.gb[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-field-bg:#14253A;
+  --gb-google:#5B9BFF;
+  --gb-success:#41BD78; --gb-success-bg:rgba(65,189,120,.14); --gb-success-bd:#2C5C40; --gb-success-fg:#A7E0C0;
+  --gb-zest:#FF7C39;
+  --gb-focus:0 0 0 3px rgba(255,124,57,.18); --gb-focus-border:#FF7C39;
+}
+
+/* ── base / Material icons / keyframes (CD verbatim, scoped) ──────────────────── */
+.gb{ color:var(--gb-text); font-family:var(--gb-font-ui); -webkit-font-smoothing:antialiased }
+/* font-family is !important: `.ms` is an ICON font and must never be overridden by a
+ * lower-down scope rule like `.gb-home .cui span{font-family:--gb-font-ui}` (which
+ * otherwise wins on specificity and renders the ligature as raw body text). */
+.gb .ms{ font-family:'Material Symbols Rounded' !important; font-weight:normal; font-style:normal; line-height:1; display:inline-block; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga' }
+.gb input,.gb button{ font-family:inherit }
+@keyframes gb-spin{ to{ transform:rotate(360deg) } }
+@keyframes gb-pulse{ 0%,100%{ opacity:.55; transform:scale(1) } 50%{ opacity:1; transform:scale(1.05) } }
+
+/* ── ADDITIVE tokens for the Rewards screen (CD /rewards 38cfd2c9-…-8198, verbatim).
+ *    --gb-grad-sunrise + --gb-r-{sm..pill} already exist above; we add only the new
+ *    --gb-info / --gb-info-bg (info pill), --gb-r-2xl, and the tier-medal colours. ──── */
+.gb{
+  --gb-info:#2E78F0; --gb-info-bg:#E7F0FE;
+  --gb-r-2xl:24px;
+  --gb-bronze:#C7A86B; --gb-silver:#9AA6B2; --gb-gold:#F2570E; --gb-platinum:#5D739B;
+  /* nav shell (CD 38cfd2c9-…-8182): rail width + the sunrise gradient alias */
+  --gb-nav-w:236px;
+  --gb-sunrise:linear-gradient(130deg,#FFB020,#FF6A1F 55%,#F2570E);
+  /* Orders screen (CD 38efd2c9-…-8155, verbatim): fulfilment-type colours + dine-in green
+   * gradient + mono font for the pickup code. Reusable by order-related screens. */
+  --gb-delivery:#F2570E; --gb-delivery-bg:#FFF1E7;
+  --gb-pickup:#2E78F0;  --gb-pickup-bg:#E7F0FE;
+  --gb-dinein:#1E9E57;  --gb-dinein-bg:#EAF7EF;
+  --gb-warning:#EA9410; --gb-warning-bg:#FCF0D9;
+  --gb-grad-green:linear-gradient(135deg,#41BD78,#1E8C4B);
+  --gb-font-mono:'JetBrains Mono',monospace;
+  /* Dish-detail modal (CD 38cfd2c9-…-81d9, verbatim): the pop-over shadow. */
+  --gb-shadow-pop:0 30px 60px -24px rgba(15,39,66,.45);
+  /* Addresses (CD 38cfd2c9-…-814d, verbatim): danger colour for delete/validation. */
+  --gb-danger:#E0402E; --gb-danger-bg:#FCEAE7; --gb-danger-bd:#F4CFC9;
+  /* Skeletons (CD 38efd2c9-…-813a « Skeletons de chargement », verbatim): shimmer
+   * base + highlight. Used by the `.sk` primitive in gb-components.css. light. */
+  --sk-base:#ECE6DB; --sk-hi:#F6F2EA;
+}
+[data-theme="dark"] .gb,
+.gb[data-theme="dark"]{
+  --gb-info:#6FB6F5; --gb-info-bg:rgba(46,120,240,.18);
+  --gb-gold:#FF9A4D; --gb-platinum:#8FA6C8;
+  --gb-delivery:#FF7C39; --gb-delivery-bg:rgba(255,124,57,.16);
+  --gb-pickup:#6FB6F5;  --gb-pickup-bg:rgba(46,120,240,.18);
+  --gb-dinein:#41BD78;  --gb-dinein-bg:rgba(65,189,120,.16);
+  --gb-warning:#F0B249; --gb-warning-bg:rgba(234,148,16,.16);
+  --gb-shadow-pop:0 30px 60px -24px rgba(0,0,0,.6);
+  --gb-danger:#FF6B5C; --gb-danger-bg:rgba(224,64,46,.16); --gb-danger-bd:#5C2C28;
+  /* Skeletons — dark (CD [data-theme="dark"], verbatim). */
+  --sk-base:#1C3047; --sk-hi:#26405C;
+}

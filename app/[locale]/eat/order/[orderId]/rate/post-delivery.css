@@ -1,0 +1,102 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/order/[orderId]/rate — « Après livraison » (note + pourboire + écran Merci)
+ * VERBATIM reproduction of the FROZEN CD ref (Notion 38efd2c9-…-81e5, file
+ * eat/post-delivery.html — views: rate/tip + « Merci »). Page CONTENT renders inside
+ * the EatShell as an IMMERSIVE flow (own .pd-bar close/skip — see report: EatShell
+ * needs /eat/order added to its IMMERSIVE list). The CD design tokens already live in
+ * the gb-foundation (gb-tokens.css — --gb-zest/-basil/-grad/-surface/-border/… all
+ * present); only the COMPONENT CSS lives here, scoped under `.gb-postdelivery`.
+ *
+ * Renaming (the foundation/other pages already own these generic names):
+ *   CD .card→.pd-card · .bar→.pd-bar · .body→.pd-body · .stars→.pd-stars · .tips→
+ *   .pd-tips · .tip→.pd-tip · .foot→.pd-foot · .submit→.pd-submit · .done→.pd-done …
+ * All other CD class names kept verbatim, scoped under `.gb-postdelivery`.
+ *
+ * Page-local token: --gb-star (CD's star gold — NOT in the foundation; declared here,
+ * theme-aware to match CD's light #EA9410 / dark #F0B249).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-postdelivery{ --gb-star:#EA9410 }
+[data-theme="dark"] .gb-postdelivery{ --gb-star:#F0B249 }
+
+/* ── screen scaffold (CD .screen; the EatShell .content is the scroll parent) ──── */
+.gb-postdelivery{display:flex;flex-direction:column;min-height:100%;color:var(--gb-text)}
+.gb-postdelivery .pd-bar{display:flex;align-items:center;gap:12px;padding:14px 18px 4px;flex-shrink:0}
+.gb-postdelivery .pd-bar .ms{font-size:23px;cursor:pointer}
+.gb-postdelivery .pd-bar .skip{margin-inline-start:auto;font-size:12.5px;font-weight:700;color:var(--gb-muted);cursor:pointer;background:none;border:none;font-family:var(--gb-font-ui)}
+.gb-postdelivery .pd-body{flex:1;padding:6px 18px;max-width:520px;width:100%;margin:0 auto}
+
+/* ── delivered hero ──────────────────────────────────────────────────────────── */
+.gb-postdelivery .dhero{text-align:center;padding:8px 0 6px}
+.gb-postdelivery .dhero .ic{width:64px;height:64px;border-radius:50%;background:var(--gb-success-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+.gb-postdelivery .dhero .ic .ms{font-size:34px;color:var(--gb-basil-600);font-variation-settings:'FILL' 1}
+.gb-postdelivery .dhero h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:21px;letter-spacing:-.02em}
+.gb-postdelivery .dhero p{margin:6px 0 0;font-size:12.5px;color:var(--gb-muted)}
+
+/* ── card (renamed: foundation owns .gb .card) ───────────────────────────────── */
+.gb-postdelivery .pd-card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);padding:16px;margin-top:14px}
+.gb-postdelivery .pd-card .ttl{font-family:var(--gb-font-display);font-weight:700;font-size:14.5px;text-align:center;margin-bottom:4px}
+.gb-postdelivery .pd-card .hint{font-size:11.5px;color:var(--gb-muted);text-align:center;margin-bottom:13px}
+
+/* ── order rating stars ──────────────────────────────────────────────────────── */
+.gb-postdelivery .pd-stars{display:flex;justify-content:center;gap:9px}
+.gb-postdelivery .pd-stars .ms{font-size:36px;color:var(--gb-star);cursor:pointer;background:none;border:none;padding:0;line-height:1;font-variation-settings:'FILL' 1}
+.gb-postdelivery .pd-stars .ms.off{color:var(--gb-border-strong);font-variation-settings:'FILL' 0}
+
+/* ── quick tags ──────────────────────────────────────────────────────────────── */
+.gb-postdelivery .qtags{display:flex;flex-wrap:wrap;gap:7px;justify-content:center;margin-top:12px}
+.gb-postdelivery .qtag{font-size:11.5px;font-weight:600;color:var(--gb-text);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-pill);padding:7px 13px;cursor:pointer;font-family:var(--gb-font-ui)}
+.gb-postdelivery .qtag.on{color:#fff;background:var(--gb-grad);border-color:transparent}
+
+/* ── courier row ─────────────────────────────────────────────────────────────── */
+.gb-postdelivery .courier{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.gb-postdelivery .courier .av{width:46px;height:46px;border-radius:50%;background:repeating-linear-gradient(135deg,#D7E3F2 0 7px,#EAEFF6 7px 14px);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:#1E3E60;flex-shrink:0}
+[data-theme="dark"] .gb-postdelivery .courier .av{background:repeating-linear-gradient(135deg,#21344B 0 7px,#1A2A3D 7px 14px);color:#9FC3EC}
+.gb-postdelivery .courier .m{flex:1;text-align:start}
+.gb-postdelivery .courier .m b{font-family:var(--gb-font-display);font-weight:700;font-size:14px}
+.gb-postdelivery .courier .m span{display:block;font-size:11px;color:var(--gb-muted)}
+.gb-postdelivery .courier .pd-stars .ms{font-size:26px}
+
+/* ── tip selector (ARGENT — visual/inert, see report) ────────────────────────── */
+.gb-postdelivery .pd-tips{display:flex;gap:8px;margin-bottom:11px}
+.gb-postdelivery .pd-tip{flex:1;text-align:center;border:1.5px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:11px 0;cursor:pointer;font-family:var(--gb-font-display);font-weight:800;font-size:15px;background:none;color:var(--gb-text)}
+.gb-postdelivery .pd-tip.on{border-color:var(--gb-zest-600);background:#FFF1E7;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-postdelivery .pd-tip.on{background:rgba(255,124,57,.16);color:var(--gb-zest);border-color:var(--gb-zest)}
+.gb-postdelivery .tip-custom{display:flex;align-items:center;gap:9px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 13px}
+.gb-postdelivery .tip-custom .ms{font-size:18px;color:var(--gb-muted-2)}
+.gb-postdelivery .tip-custom input{flex:1;border:none;outline:none;background:none;font-size:13px;color:var(--gb-text)}
+.gb-postdelivery .tip-note{font-size:11px;color:var(--gb-muted);text-align:center;margin-top:9px;display:flex;align-items:center;justify-content:center;gap:5px}
+.gb-postdelivery .tip-note .ms{font-size:14px;color:var(--gb-basil-600)}
+/* P2-TIP — read-only recap of the tip charged at checkout (no selector) */
+.gb-postdelivery .tip-recap{display:flex;align-items:center;gap:9px;margin-top:14px;background:rgba(43,138,62,.08);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 13px}
+.gb-postdelivery .tip-recap .ms{font-size:18px;color:var(--gb-basil-600);flex-shrink:0}
+.gb-postdelivery .tip-recap__txt{font-size:12.5px;font-weight:600;color:var(--gb-text)}
+
+/* ── report a problem (→ Aide) ───────────────────────────────────────────────── */
+.gb-postdelivery .report{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin:14px 0;background:none;border:none;cursor:pointer;font-family:var(--gb-font-ui);font-weight:700;font-size:12.5px;color:var(--gb-muted)}
+.gb-postdelivery .report .ms{font-size:17px}
+
+/* ── sticky footer submit ────────────────────────────────────────────────────── */
+.gb-postdelivery .pd-foot{flex-shrink:0;padding:12px 18px 16px;background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+.gb-postdelivery .pd-foot .inner{max-width:520px;margin:0 auto}
+.gb-postdelivery .pd-submit{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--gb-grad);border-radius:13px;padding:14px;box-shadow:var(--gb-shadow-btn);cursor:pointer;border:none;width:100%;font-family:var(--gb-font-ui)}
+.gb-postdelivery .pd-submit b{font-size:14px;font-weight:700;color:#fff}
+.gb-postdelivery .pd-submit .ms{font-size:18px;color:#fff}
+
+@media (min-width:740px){ .gb-postdelivery .pd-body{padding-bottom:20px} }
+
+/* ════ Vue C — Merci / +points (CD verbatim, renamed .done→.pd-done) ════════════ */
+.gb-postdelivery .pd-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 26px}
+.gb-postdelivery .pd-done .ic{width:88px;height:88px;border-radius:50%;background:rgba(65,189,120,.16);display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.gb-postdelivery .pd-done .ic .ms{font-size:46px;color:#41BD78;font-variation-settings:'FILL' 1}
+.gb-postdelivery .pd-done h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:22px;letter-spacing:-.02em}
+.gb-postdelivery .pd-done p{margin:9px 0 20px;font-size:12.5px;line-height:1.5;color:var(--gb-muted)}
+.gb-postdelivery .pd-done .pts{display:inline-flex;align-items:center;gap:7px;background:rgba(255,124,57,.16);border-radius:999px;padding:9px 15px;font-size:12.5px;font-weight:700;color:var(--gb-zest);margin-bottom:22px}
+.gb-postdelivery .pd-done .pts .ms{font-size:17px}
+.gb-postdelivery .pd-done .acts{display:flex;gap:9px;width:100%;max-width:520px}
+.gb-postdelivery .pd-done .acts button{flex:1;font-family:var(--gb-font-ui);font-weight:700;font-size:12.5px;border-radius:12px;padding:13px;cursor:pointer;border:none}
+.gb-postdelivery .pd-done .acts .w{color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong)}
+.gb-postdelivery .pd-done .acts .o{color:#fff;background:var(--gb-grad)}
+
+/* ── loading skeletons (foundation .sk primitive) ────────────────────────────── */
+.gb-postdelivery .pd-card .sk-line{margin:0 auto 10px}

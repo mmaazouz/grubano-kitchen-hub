@@ -1,0 +1,82 @@
+/* ── FR2 · Franchise dashboard content classes (CD verbatim, scoped .gb-op). ──────
+ * Chrome + tokens live in franchise-shell.css (loaded by FranchiseShell). These are the
+ * dashboard-only primitives (KPIs, network distribution, top establishments, royalty
+ * strip, action/activity queues). Route code-splitting isolates this file to /franchise
+ * /dashboard. Fabricated deltas from the mock are intentionally NOT reproduced. */
+
+.gb-op .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.gb-op .kpi{padding:18px}
+.gb-op .kpi__top{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.gb-op .kpi__ic{width:34px;height:34px;border-radius:var(--op-r-md);background:var(--op-fr-bg);display:flex;align-items:center;justify-content:center;color:var(--op-fr);flex-shrink:0}
+[data-theme="dark"] .gb-op .kpi__ic{color:var(--op-fr-2)}
+.gb-op .kpi__ic .ms{font-size:19px}
+.gb-op .kpi__label{font-size:12px;font-weight:700;color:var(--op-muted)}
+.gb-op .kpi__val{font-family:var(--op-font-mono);font-weight:800;font-size:26px;letter-spacing:-.02em;direction:ltr;unicode-bidi:isolate}
+.gb-op .kpi__sub{font-size:11.5px;color:var(--op-muted-2);margin-top:7px}
+.gb-op .kpi__ro{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;color:var(--op-muted-2);margin-top:7px}
+.gb-op .kpi__ro .ms{font-size:13px}
+
+.gb-op .ov-cols{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:16px}
+.gb-op .ov-card{padding:18px}
+.gb-op .ov-card h3{margin:0 0 4px;font-family:var(--op-font-display);font-weight:800;font-size:15px}
+.gb-op .ov-card .hint{font-size:11.5px;color:var(--op-muted);margin-bottom:16px}
+
+/* network status bars */
+.gb-op .net-row{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.gb-op .net-row:last-child{margin-bottom:0}
+.gb-op .net-ic{width:30px;height:30px;border-radius:var(--op-r-md);background:var(--op-surface-2);display:flex;align-items:center;justify-content:center;color:var(--op-muted);flex-shrink:0}
+.gb-op .net-ic .ms{font-size:17px}
+.gb-op .net-m{flex:1;min-width:0}
+.gb-op .net-m .top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.gb-op .net-m .top b{font-size:12.5px;font-weight:700}
+.gb-op .net-m .top .n{font-family:var(--op-font-mono);font-size:12px;color:var(--op-muted);direction:ltr;unicode-bidi:isolate}
+.gb-op .net-track{height:8px;border-radius:999px;background:var(--op-surface-2);overflow:hidden}
+.gb-op .net-track i{display:block;height:100%;border-radius:999px}
+.gb-op .net-track i.open{background:linear-gradient(90deg,#12B981,#0E9F6E)}
+.gb-op .net-track i.closed{background:var(--op-muted-2)}
+
+/* top establishments */
+.gb-op .top-list{display:flex;flex-direction:column}
+.gb-op .top-item{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .top-item:last-child{border-bottom:none}
+.gb-op .top-rank{font-family:var(--op-font-mono);font-weight:800;font-size:13px;color:var(--op-muted-2);width:20px;text-align:center;flex-shrink:0;direction:ltr;unicode-bidi:isolate}
+.gb-op .top-logo{width:34px;height:34px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:12px;color:#fff;flex-shrink:0;background:linear-gradient(135deg,#12B981,#0A6E4A)}
+.gb-op .top-m{flex:1;min-width:0}
+.gb-op .top-m b{display:block;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-op .top-m span{font-size:11px;color:var(--op-muted)}
+.gb-op .top-val{font-family:var(--op-font-mono);font-weight:800;font-size:13.5px;text-align:end;direction:ltr;unicode-bidi:isolate}
+.gb-op .top-val small{display:block;font-family:var(--op-font-ui);font-size:10px;font-weight:600;color:var(--op-muted-2)}
+
+/* action / activity queue */
+.gb-op .sup-list{display:flex;flex-direction:column}
+.gb-op .sup-item{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--op-border)}
+.gb-op .sup-item:last-child{border-bottom:none}
+.gb-op .sup-item__ic{width:36px;height:36px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .sup-item__ic .ms{font-size:19px}
+.gb-op .sup-item__ic.fr{background:var(--op-fr-bg);color:var(--op-fr)}
+.gb-op .sup-item__ic.warn{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .sup-item__ic.info{background:var(--op-info-bg);color:var(--op-info)}
+[data-theme="dark"] .gb-op .sup-item__ic.fr{color:var(--op-fr-2)}
+.gb-op .sup-item__m{flex:1;min-width:0}
+.gb-op .sup-item__m b{display:block;font-size:13px;font-weight:700}
+.gb-op .sup-item__m span{font-size:11.5px;color:var(--op-muted)}
+.gb-op .sup-item__n{font-family:var(--op-font-mono);font-weight:800;font-size:16px;direction:ltr;unicode-bidi:isolate}
+.gb-op .sup-item .ms.go{font-size:18px;color:var(--op-muted-2)}
+.gb-op a.sup-item{cursor:pointer}
+
+/* royalties strip */
+.gb-op .roy{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;overflow:hidden;margin-bottom:16px}
+.gb-op .roy .cell{padding:16px 18px;border-inline-end:1px solid var(--op-border)}
+.gb-op .roy .cell:last-child{border-inline-end:none}
+.gb-op .roy .l{font-size:11.5px;font-weight:700;color:var(--op-muted);display:flex;align-items:center;gap:6px}
+.gb-op .roy .l .ms{font-size:15px;color:var(--op-muted-2)}
+.gb-op .roy .v{font-family:var(--op-font-mono);font-weight:800;font-size:20px;margin-top:6px;direction:ltr;unicode-bidi:isolate}
+.gb-op .roy .s{font-size:10.5px;color:var(--op-muted-2);margin-top:3px}
+
+@container gbop (max-width: 1100px){ .gb-op .kpi-grid{grid-template-columns:repeat(2,1fr)} }
+@container gbop (max-width: 980px){ .gb-op .ov-cols{grid-template-columns:1fr} }
+@container gbop (max-width: 880px){
+  .gb-op .roy{grid-template-columns:1fr}
+  .gb-op .roy .cell{border-inline-end:none;border-bottom:1px solid var(--op-border)}
+}
+@container gbop (max-width: 520px){ .gb-op .kpi-grid{grid-template-columns:1fr} }

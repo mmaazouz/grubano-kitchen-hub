@@ -1,0 +1,111 @@
+/* ── /customers/[id] fiche client — CD « Fiche client » (detail). Scoped under
+   .cp-root so the plain CD class names never leak. Uses global operator --op-*
+   tokens (OperatorShell). ────────────────────────────────────────────────────── */
+
+.cp-root{ display:block }
+.cp-root .ms{ font-family:'Material Symbols Rounded'; font-weight:normal; font-style:normal; line-height:1; display:inline-block; -webkit-font-feature-settings:'liga' }
+.cp-root .flip-rtl{ display:inline-block }
+[dir="rtl"] .cp-root .flip-rtl{ transform:scaleX(-1) }
+.cp-root .mt{ margin-top:16px }
+
+.cp-root .crumb{ display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--op-muted,#5B6472); margin-bottom:16px }
+.cp-root .crumb .ms{ font-size:15px; color:var(--op-muted-2,#8992A3) }
+.cp-root .crumb a{ cursor:pointer; text-decoration:none; color:var(--op-muted,#5B6472) }
+.cp-root .crumb a:hover{ color:var(--op-text,#101828) }
+.cp-root .crumb .cur{ color:var(--op-text,#101828); font-weight:700 }
+
+.cp-root .card{ background:var(--op-surface,#fff); border:1px solid var(--op-border,#E3E7EE); border-radius:var(--op-r-lg,12px); box-shadow:var(--op-shadow-card,0 1px 3px rgba(16,24,40,.05)) }
+.cp-root .pad{ padding:18px }
+.cp-root .sec-t{ display:flex; align-items:center; gap:8px; font-size:12px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--op-muted-2,#8992A3); margin-bottom:12px }
+.cp-root .sec-t .ms{ font-size:16px }
+.cp-root .sec-t__soft{ text-transform:none; letter-spacing:0; font-weight:600; color:var(--op-muted-2,#8992A3) }
+.cp-root .muted-line{ margin:0; font-size:13px; color:var(--op-muted,#5B6472) }
+
+/* hero */
+.cp-root .hero{ display:flex; align-items:center; gap:18px; padding:22px; margin-bottom:16px; position:relative; overflow:hidden }
+.cp-root .hero::before{ content:""; position:absolute; inset:0; background:radial-gradient(circle at 88% 0%,var(--op-zest-bg,#FFF1E7),transparent 60%); pointer-events:none }
+.cp-root .hero__av{ width:66px; height:66px; border-radius:50%; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; flex-shrink:0 }
+.cp-root .hero__m{ flex:1; min-width:0; position:relative }
+.cp-root .hero__name{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+.cp-root .hero__name h1{ margin:0; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; letter-spacing:-.02em; color:var(--op-text,#101828) }
+.cp-root .hero__sub{ font-size:13px; color:var(--op-muted,#5B6472); margin-top:6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.cp-root .hero__sub .dot{ width:3px; height:3px; border-radius:50%; background:var(--op-muted-2,#8992A3) }
+.cp-root .hero__actions{ display:flex; flex-direction:column; gap:8px; align-items:flex-end; position:relative }
+
+.cp-root .loyal-badge{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; color:var(--op-basil-600,#1E8A4A); background:var(--op-basil-bg,#E8F6EE); border-radius:999px; padding:4px 10px }
+.cp-root .loyal-badge .ms{ font-size:14px }
+
+.cp-root .tier{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
+.cp-root .tier .ms{ font-size:14px }
+.cp-root .tier.bronze{ background:#F3E3D3; color:#8A5A2B }
+.cp-root .tier.silver{ background:#E7ECF0; color:#5B6472 }
+.cp-root .tier.gold{ background:linear-gradient(135deg,#FBE7B0,#F5C24A); color:#7A5410 }
+.cp-root .tier.plat{ background:#E3ECF6; color:#2E5A86 }
+
+.cp-root .btn-primary{ display:inline-flex; align-items:center; gap:7px; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; border:none; border-radius:var(--op-r-md,8px); padding:11px 16px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap }
+.cp-root .btn-primary .ms{ font-size:17px }
+.cp-root .btn-ghost{ display:inline-flex; align-items:center; gap:7px; background:var(--op-surface,#fff); border:1px solid var(--op-border-strong,#D2D8E1); border-radius:var(--op-r-md,8px); padding:10px 15px; font-size:12.5px; font-weight:700; color:var(--op-text,#101828); cursor:pointer; white-space:nowrap }
+.cp-root .btn-ghost .ms{ font-size:16px }
+.cp-root .btn-primary[disabled], .cp-root .btn-ghost[disabled]{ opacity:.55; cursor:not-allowed }
+
+/* privacy */
+.cp-root .privacy{ display:flex; align-items:center; gap:9px; background:var(--op-info-bg,#E7F0FE); border:1px solid var(--op-info-bd,#C7DBFB); border-radius:var(--op-r-md,8px); padding:10px 14px; margin-bottom:16px; font-size:12.5px; color:var(--op-muted,#5B6472) }
+.cp-root .privacy .ms{ font-size:18px; color:var(--op-info,#2E78F0); flex-shrink:0 }
+.cp-root .privacy b{ color:var(--op-text,#101828); font-weight:700 }
+
+.cp-root .grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px }
+
+/* relation KPIs */
+.cp-root .kpis{ display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--op-border,#E3E7EE); border-radius:var(--op-r-lg,12px); overflow:hidden }
+.cp-root .kpi{ background:var(--op-surface,#fff); padding:16px 18px }
+.cp-root .kpi .l{ font-size:11.5px; font-weight:700; color:var(--op-muted,#5B6472); display:flex; align-items:center; gap:6px }
+.cp-root .kpi .l .ms{ font-size:15px; color:var(--op-muted-2,#8992A3) }
+.cp-root .kpi .v{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-weight:800; font-size:22px; margin-top:7px; color:var(--op-text,#101828); direction:ltr; unicode-bidi:isolate }
+.cp-root .kpi .v.sm{ font-size:16px }
+.cp-root .kpi .s{ font-size:11px; color:var(--op-muted-2,#8992A3); margin-top:3px }
+
+/* preferences */
+.cp-root .chips{ display:flex; gap:8px; flex-wrap:wrap }
+.cp-root .chip{ display:inline-flex; align-items:center; gap:6px; background:var(--op-surface-2,#F7F8FA); border:1px solid var(--op-border,#E3E7EE); border-radius:999px; padding:7px 13px; font-size:12.5px; font-weight:600; color:var(--op-text,#101828) }
+.cp-root .chip .ms{ font-size:15px; color:var(--op-zest-600,#F2570E) }
+.cp-root .chip .ct{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-size:11px; color:var(--op-muted,#5B6472); margin-inline-start:2px }
+.cp-root .mode-row{ display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:14px; border-top:1px solid var(--op-border,#E3E7EE); font-size:13px }
+.cp-root .mode-row .ic{ width:34px; height:34px; border-radius:var(--op-r-md,8px); background:var(--op-zest-bg,#FFF1E7); color:var(--op-zest-600,#F2570E); display:flex; align-items:center; justify-content:center; flex-shrink:0 }
+.cp-root .mode-row .ic .ms{ font-size:18px }
+.cp-root .mode-row b{ font-weight:700; color:var(--op-text,#101828) }
+.cp-root .mode-row span{ color:var(--op-muted,#5B6472); font-size:12px; display:block; margin-top:1px }
+
+/* loyalty */
+.cp-root .loy__top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px }
+.cp-root .loy__pts{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-weight:800; font-size:26px; color:var(--op-text,#101828); direction:ltr; unicode-bidi:isolate }
+.cp-root .loy__pts small{ font-family:var(--op-font-ui,'Hanken Grotesk',system-ui,sans-serif); font-size:12px; font-weight:600; color:var(--op-muted,#5B6472) }
+.cp-root .loy__bar{ height:9px; border-radius:999px; background:var(--op-surface-2,#F7F8FA); overflow:hidden; border:1px solid var(--op-border,#E3E7EE) }
+.cp-root .loy__bar i{ display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#F5C24A,#F2570E) }
+.cp-root .loy__scale{ display:flex; justify-content:space-between; margin-top:8px; font-size:11px; font-weight:700; color:var(--op-muted-2,#8992A3) }
+.cp-root .loy__scale .now{ color:var(--op-zest-600,#F2570E) }
+.cp-root .loy__next{ font-size:12px; color:var(--op-muted,#5B6472); margin-top:12px; display:flex; align-items:center; gap:6px }
+.cp-root .loy__next .ms{ font-size:15px; color:var(--op-zest-600,#F2570E) }
+
+/* history + allergen */
+.cp-root .oh-row{ display:flex; align-items:center; gap:13px; padding:13px 0; border-bottom:1px solid var(--op-border,#E3E7EE) }
+.cp-root .oh-row:last-child{ border-bottom:none }
+.cp-root .oh-date{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-size:11.5px; color:var(--op-muted,#5B6472); width:52px; flex-shrink:0; direction:ltr; unicode-bidi:isolate }
+.cp-root .oh-m{ flex:1; min-width:0 }
+.cp-root .oh-m b{ font-size:13px; font-weight:700; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--op-text,#101828) }
+.cp-root .oh-mode{ font-size:11px; color:var(--op-muted,#5B6472); display:inline-flex; align-items:center; gap:4px; margin-top:2px }
+.cp-root .oh-mode .ms{ font-size:13px }
+.cp-root .oh-amt{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-weight:800; font-size:13.5px; color:var(--op-text,#101828); direction:ltr; unicode-bidi:isolate }
+.cp-root .allergen{ display:flex; align-items:flex-start; gap:9px; background:var(--op-danger-bg,#FCEAE7); border:1px solid var(--op-danger-bd,#F5C9C0); border-radius:var(--op-r-md,8px); padding:9px 12px; margin-top:10px }
+.cp-root .allergen .ms{ font-size:17px; color:var(--op-danger,#D5372A); flex-shrink:0 }
+.cp-root .allergen__m b{ font-size:12px; font-weight:800; color:var(--op-danger,#D5372A); text-transform:uppercase; letter-spacing:.03em; display:block }
+.cp-root .allergen__m span{ font-size:12.5px; color:var(--op-text,#101828); margin-top:2px; display:block }
+.cp-root .allergen__scope{ font-size:10.5px; color:var(--op-muted-2,#8992A3) !important; margin-top:3px; display:flex; align-items:center; gap:4px }
+.cp-root .allergen__scope .ms{ font-size:12px; color:var(--op-muted-2,#8992A3) }
+
+/* internal note */
+.cp-root .note-box{ border:1px dashed var(--op-border-strong,#D2D8E1); border-radius:var(--op-r-md,8px); padding:14px; font-size:13px; color:var(--op-muted,#5B6472); line-height:1.55 }
+.cp-root .note-box--soon{ display:flex; align-items:center; gap:8px; font-style:normal }
+.cp-root .note-box--soon .ms{ font-size:17px; color:var(--op-muted-2,#8992A3) }
+
+@media (max-width:760px){ .cp-root .grid{ grid-template-columns:1fr } }
+@media (max-width:640px){ .cp-root .hero{ flex-wrap:wrap } .cp-root .hero__actions{ flex-direction:row; align-items:stretch; width:100% } .cp-root .hero__actions .btn-primary, .cp-root .hero__actions .btn-ghost{ flex:1; justify-content:center } }

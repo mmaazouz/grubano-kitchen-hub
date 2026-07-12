@@ -1,0 +1,187 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/r/[id]/reserver — « Réserver une table + Click&Collect » — VERBATIM
+ * reproduction of the FROZEN CD ref (Notion 38efd2c9-…-81b8, file
+ * eat/reservation.html). Page CONTENT — renders inside the EatShell in is-bare /
+ * immersive mode (the route /eat/r/ is IMMERSIVE → desktop rail kept, no top bar;
+ * the page header governs). The CD design tokens live in the gb-foundation
+ * (gb-tokens.css); only the COMPONENT CSS lives here, scoped under `.gb-reserver`.
+ *
+ * Foundation-colliding generic CD class names are renamed to avoid clashing with
+ * `.gb .card` / `.gb .btn` / `.gb .field` from gb-components.css:
+ *   CD `.rcard`  → `.rs-rcard`   (restaurant recap card)
+ *   CD `.fcard`  → `.rs-fcard`   (form card)
+ *   CD `.code`   → `.rs-code`    (pickup-code block — kept verbatim otherwise)
+ *   CD `.order`  → `.rs-order`   (C&C order summary block)
+ *   CD `.ai`     → `.rs-ai`      (inert AI hint block)
+ *   CD `.foot`   → `.rs-foot`    (sticky CTA footer)
+ *   CD `.cta`    → `.rs-cta`
+ * All other CD class names (.pg, .grid, .modes, .dates, .date, .times, .time,
+ * .party, .pkrow, .pk, .lab …) are kept VERBATIM, scoped under `.gb-reserver`.
+ *
+ * Local --gb-* tokens already exist in gb-tokens.css (zest/ink/pickup/warn map to
+ * --gb-warning/-bg, basil-bg/-bd map to --gb-success-bg/-bd). The CD's `--gb-warn*`
+ * are mapped to the foundation `--gb-warning*`; `--gb-basil-bg/-bd` → `--gb-success-bg/-bd`.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Local tokens declared HERE (reported; not added to the shared foundation).
+ *    The CD ref uses --gb-warn-bd / --gb-warn-bg / --gb-warn which the foundation
+ *    exposes only partially (--gb-warning / --gb-warning-bg). We alias the missing
+ *    warn-border locally (CD's exact hex), scoped to this screen. ─────────────── */
+.gb-reserver{
+  --rs-warn-bd:#FAE0C8;
+}
+[data-theme="dark"] .gb-reserver{
+  --rs-warn-bd:rgba(234,148,16,.3);
+}
+
+/* ===================== PAGE CONTENT (sits inside nav shell) ===================== */
+.gb-reserver{max-width:920px;margin:0 auto;padding:clamp(18px,3vw,30px) clamp(16px,3vw,28px) 110px}
+
+.gb-reserver .pg-top{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.gb-reserver .pg-top .back{display:inline-flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;background:none;border:none;color:var(--gb-text);padding:0;line-height:1}
+.gb-reserver .pg-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em;color:var(--gb-text)}
+
+.gb-reserver .grid{display:grid;grid-template-columns:330px 1fr;gap:22px;align-items:start}
+@media (max-width:760px){ .gb-reserver .grid{grid-template-columns:1fr} }
+
+/* recap card */
+.gb-reserver .rs-rcard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);overflow:hidden;position:sticky;top:20px}
+@media (max-width:760px){ .gb-reserver .rs-rcard{position:static} }
+.gb-reserver .rs-rcard .img{height:140px;background:repeating-linear-gradient(135deg,#FFD9C2 0 14px,#FFE9D6 14px 28px);background-size:cover;background-position:center}
+[data-theme="dark"] .gb-reserver .rs-rcard .img{background:repeating-linear-gradient(135deg,#3A2C22 0 14px,#2C2118 14px 28px)}
+.gb-reserver .rs-rcard .b{padding:18px 20px}
+.gb-reserver .rs-rcard .b h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-reserver .rs-rcard .b .m{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12.5px;color:var(--gb-muted)}
+.gb-reserver .rs-rcard .b .m .rate{display:inline-flex;align-items:center;gap:3px;font-weight:700;color:var(--gb-text)}
+.gb-reserver .rs-rcard .b .m .rate .ms{font-size:14px;color:#EA9410}
+.gb-reserver .rs-rcard .b .addr{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--gb-text)}
+.gb-reserver .rs-rcard .b .addr .ms{font-size:16px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-reserver .rs-rcard .b .addr .ms{color:var(--gb-zest)}
+.gb-reserver .rs-rcard .b .div{height:1px;background:var(--gb-border);margin:16px 0}
+.gb-reserver .rs-rcard .b .know{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gb-muted-2);margin-bottom:9px}
+.gb-reserver .rs-rcard .b .know-row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--gb-text);margin-bottom:8px}
+.gb-reserver .rs-rcard .b .know-row .ms{font-size:16px;color:var(--gb-basil-600)}
+
+/* form card */
+.gb-reserver .rs-fcard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);padding:22px 24px}
+
+/* mode toggle */
+.gb-reserver .modes{display:flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:3px;margin-bottom:22px}
+.gb-reserver .modes button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:var(--gb-font-ui);font-weight:600;font-size:13px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:10px 0;cursor:pointer}
+.gb-reserver .modes button .ms{font-size:17px}
+.gb-reserver .modes button[aria-selected="true"]{color:#fff;background:var(--gb-grad);font-weight:700}
+
+.gb-reserver .lab{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gb-muted-2);margin:0 0 11px}
+.gb-reserver .rs-caption{margin:-8px 0 11px;font-size:12px;color:var(--gb-muted)}
+
+/* date strip */
+.gb-reserver .dates{display:flex;gap:9px;overflow-x:auto;scrollbar-width:none;margin-bottom:22px}
+.gb-reserver .dates::-webkit-scrollbar{display:none}
+.gb-reserver .date{flex-shrink:0;text-align:center;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 15px;cursor:pointer}
+.gb-reserver .date.sel{background:var(--gb-grad);border-color:transparent}
+.gb-reserver .date small{font-size:10.5px;font-weight:600;color:var(--gb-muted);display:block}
+.gb-reserver .date b{font-family:var(--gb-font-display);font-weight:800;font-size:18px;display:block;color:var(--gb-text)}
+.gb-reserver .date.sel small,.gb-reserver .date.sel b{color:#fff}
+.gb-reserver .date.sel small{color:rgba(255,255,255,.85)}
+.gb-reserver .date .d3{font-size:10px;color:var(--gb-muted)}
+.gb-reserver .date.sel .d3{color:rgba(255,255,255,.85)}
+
+/* time grid */
+.gb-reserver .times{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px}
+.gb-reserver .time{font-size:13px;font-weight:600;color:var(--gb-text);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:10px 16px;cursor:pointer}
+.gb-reserver .time .free{display:block;font-size:9px;font-weight:600;margin-top:2px;opacity:.8}
+.gb-reserver .time.sel{color:#fff;background:var(--gb-ink);border-color:transparent}
+[data-theme="dark"] .gb-reserver .time.sel{background:var(--gb-zest);color:#0C1826}
+.gb-reserver .time.off{color:var(--gb-border-strong);text-decoration:line-through;cursor:not-allowed}
+
+/* party-size selector */
+.gb-reserver .party{display:flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:2px;margin-bottom:22px;max-width:420px}
+.gb-reserver .party span{flex:1;text-align:center;font-weight:600;font-size:14px;color:var(--gb-muted);padding:10px 0;border-radius:var(--gb-r-sm);cursor:pointer}
+.gb-reserver .party span.sel{color:#fff;background:var(--gb-grad);font-weight:700}
+
+/* contact fields (re-skin of the real name/email/phone inputs) */
+.gb-reserver .rs-fields{display:flex;flex-direction:column;gap:13px;margin-bottom:22px}
+.gb-reserver .rs-field label{display:block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gb-muted-2);margin-bottom:7px}
+.gb-reserver .rs-field input{width:100%;font-family:var(--gb-font-ui);font-size:14px;color:var(--gb-text);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 14px}
+.gb-reserver .rs-field input::placeholder{color:var(--gb-muted);opacity:.85}
+.gb-reserver .rs-field input:focus-within,.gb-reserver .rs-field input:focus{outline:none;border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.gb-reserver .rs-field .hint{font-size:11px;color:var(--gb-muted);margin:6px 0 0}
+
+/* pickup time row (C&C) */
+.gb-reserver .pkrow{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px}
+.gb-reserver .pk{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--gb-text);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:10px 14px;cursor:pointer}
+.gb-reserver .pk.sel{color:#fff;background:var(--gb-ink);border-color:transparent}
+[data-theme="dark"] .gb-reserver .pk.sel{background:var(--gb-zest);color:#0C1826}
+.gb-reserver .pk .ms{font-size:16px}
+
+/* C&C order summary block */
+.gb-reserver .rs-order{background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:14px;margin-bottom:18px}
+.gb-reserver .rs-order .o{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px;color:var(--gb-text)}
+.gb-reserver .rs-order .o:last-child{margin-bottom:0}
+.gb-reserver .rs-order .o b{font-weight:700;white-space:nowrap}
+
+/* C&C pickup code */
+.gb-reserver .rs-code{display:flex;align-items:center;gap:12px;background:var(--gb-pickup-bg);border:1px solid transparent;border-radius:var(--gb-r-md);padding:13px 15px;margin-bottom:18px}
+.gb-reserver .rs-code .ms{font-size:24px;color:var(--gb-pickup)}
+.gb-reserver .rs-code .t{flex:1}
+.gb-reserver .rs-code .t small{font-size:11px;color:var(--gb-pickup);font-weight:600;display:block}
+.gb-reserver .rs-code .t b{font-family:var(--gb-font-display);font-weight:800;font-size:18px;color:var(--gb-pickup);letter-spacing:.06em}
+
+/* inert AI / info hint */
+.gb-reserver .rs-ai{display:flex;gap:10px;align-items:flex-start;background:var(--gb-warning-bg);border:1px solid var(--rs-warn-bd);border-radius:var(--gb-r-md);padding:13px;margin-bottom:6px}
+.gb-reserver .rs-ai .ms{font-size:19px;color:var(--gb-zest-600);flex-shrink:0}
+[data-theme="dark"] .gb-reserver .rs-ai .ms{color:var(--gb-zest)}
+.gb-reserver .rs-ai p{margin:0;font-size:12.5px;line-height:1.5;color:var(--gb-warning);flex:1}
+.gb-reserver .rs-ai p b{font-weight:800}
+.gb-reserver .rs-ai .soon{font-size:9px;font-weight:700;color:var(--gb-warning);background:rgba(181,86,10,.12);border-radius:6px;padding:3px 6px;white-space:nowrap}
+[data-theme="dark"] .gb-reserver .rs-ai .soon{background:rgba(240,178,73,.18)}
+
+/* loading / error / empty inline states (real-data states, CD-skinned) */
+.gb-reserver .rs-state{display:flex;align-items:center;gap:8px;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:14px 16px;font-size:13px;color:var(--gb-muted);margin-bottom:22px}
+.gb-reserver .rs-state .ms{font-size:18px}
+.gb-reserver .rs-state.err{background:var(--gb-danger-bg);border-color:var(--gb-danger-bd);color:var(--gb-danger)}
+.gb-reserver .rs-state.err .ms{color:var(--gb-danger)}
+.gb-reserver .rs-state .spin{display:inline-flex;animation:gb-spin .9s linear infinite}
+
+/* C&C placeholder (no order backend on THIS page — explicit, no fabrication) */
+.gb-reserver .rs-cc-empty{display:flex;flex-direction:column;align-items:flex-start;gap:6px;background:var(--gb-surface-2);border:1px dashed var(--gb-border-strong);border-radius:var(--gb-r-md);padding:18px;margin-bottom:6px}
+.gb-reserver .rs-cc-empty .ms{font-size:26px;color:var(--gb-pickup)}
+.gb-reserver .rs-cc-empty h3{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:var(--gb-text)}
+.gb-reserver .rs-cc-empty p{margin:0;font-size:12.5px;line-height:1.5;color:var(--gb-muted)}
+.gb-reserver .rs-cc-empty a{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-weight:700;font-size:13px;color:#fff;background:var(--gb-grad);border-radius:var(--gb-r-md);padding:10px 16px;text-decoration:none;box-shadow:var(--gb-shadow-btn)}
+.gb-reserver .rs-cc-empty a .ms{font-size:17px;color:#fff}
+
+/* deposit (Stripe empreinte) container — re-skinned; inner form byte-identical */
+.gb-reserver .rs-deposit{margin-bottom:6px}
+.gb-reserver .rs-deposit > h3{margin:0 0 12px;display:flex;align-items:center;gap:7px;font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:var(--gb-text)}
+.gb-reserver .rs-deposit > h3 .ms{font-size:18px;color:var(--gb-pickup)}
+
+/* success / done panel */
+.gb-reserver .rs-done{text-align:center;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);padding:30px 24px}
+.gb-reserver .rs-done .ok{width:56px;height:56px;border-radius:50%;background:var(--gb-grad-green);display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px}
+.gb-reserver .rs-done .ok .ms{font-size:30px;color:#fff}
+.gb-reserver .rs-done h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-reserver .rs-done p{margin:10px 0 0;font-size:13px;line-height:1.55;color:var(--gb-muted)}
+.gb-reserver .rs-done .session{margin:18px 0 0;display:flex;flex-direction:column;align-items:center;gap:7px}
+.gb-reserver .rs-done .session small{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gb-muted-2)}
+.gb-reserver .rs-done .rs-cta{margin-top:22px;width:100%;justify-content:center}
+
+/* sticky CTA footer */
+.gb-reserver .rs-foot{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--gb-surface);border-top:1px solid var(--gb-border);padding:14px clamp(16px,3vw,28px) calc(14px + env(safe-area-inset-bottom))}
+.gb-reserver .rs-foot__in{max-width:920px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:14px}
+.gb-reserver .rs-foot__sum{font-size:13px;color:var(--gb-muted)}
+.gb-reserver .rs-foot__sum b{color:var(--gb-text);font-weight:700}
+.gb-reserver .rs-cta{display:inline-flex;align-items:center;gap:8px;font-family:var(--gb-font-ui);font-weight:700;font-size:14.5px;color:#fff;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:14px 26px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.gb-reserver .rs-cta:disabled{opacity:.6;cursor:not-allowed}
+.gb-reserver .rs-cta .ms{font-size:19px}
+.gb-reserver .rs-cta .spin{display:inline-flex;animation:gb-spin .9s linear infinite}
+@media (max-width:560px){
+  .gb-reserver .rs-foot__sum{display:none}
+  .gb-reserver .rs-cta{width:100%;justify-content:center}
+  .gb-reserver .rs-foot__in{display:block}
+}
+
+/* On the ≥760 desktop rail, the EatShell already offsets .content; the fixed
+ * footer spans the viewport like the CD. On mobile (rail hidden) it spans full
+ * width too. The footer's z-index sits below the EatShell mobile chrome (which
+ * is bare-hidden on this immersive route), so no overlap. */

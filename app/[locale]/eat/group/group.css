@@ -1,0 +1,142 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/group — « Commande de groupe & partage d'addition » — VERBATIM reproduction
+ * of the FROZEN CD ref (Notion 38efd2c9-…-8132, file eat/group-order.html). This is a
+ * NEW epic that is FULLY VISUAL / INERT: there is NO group-order / multi-payer / bill-
+ * split backend yet (future chantier after Wave 5). The screen is a faithful CD shell
+ * with INERT controls — like the « bientôt » AI blocks. Page CONTENT only — renders
+ * inside the EatShell as an IMMERSIVE (is-bare) screen, so it carries its OWN top bar
+ * (back arrow + title + share) and sticky footer button.
+ *
+ * The CD design tokens already live in the gb-foundation (gb-tokens.css: --gb-zest/
+ * -zest-600/-zest-300, --gb-ink, --gb-grad, --gb-info, --gb-shadow-card/-btn, radii …);
+ * ONLY the component CSS lives here, scoped under `.gb-grouporder`.
+ *
+ * The CD's generic/foundation-colliding class names are PREFIXED `.go-*` to stay future-
+ * proof against the foundation (`.gb .card`, `.gb .btn`, `.gb .split`, etc. could exist):
+ *   CD .go (section)→.go-card · .go__head→.go-head · .go__body→.go-body · .go__foot→
+ *   .go-foot · .invite→.go-invite · .lbl→.go-lbl · .person→.go-person · .split→.go-split ·
+ *   .ai→.go-ai · .share-box→.go-sharebox · .btn→.go-btn.
+ * The CD's invite/avatar literal hexes (#FFF1E7 / #FAD9C0 / repeating-linear avatars) are
+ * kept verbatim (they have no token; CD itself inlined them), incl. the dark overrides.
+ * RTL: logical properties + `.ms-flip` on the back arrow; € amounts wrapped in <bdi>.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ===================== SCREEN (sits inside the bare nav shell) ===================== */
+.gb-grouporder{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;color:var(--gb-text)}
+
+/* card (CD .go) — modal-style sheet, becomes a full page < 560px */
+.gb-grouporder .go-card{width:100%;max-width:440px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);overflow:hidden;display:flex;flex-direction:column;max-height:92vh}
+
+/* head (CD .go__head) */
+.gb-grouporder .go-head{display:flex;align-items:center;gap:11px;padding:16px 18px;border-bottom:1px solid var(--gb-border)}
+.gb-grouporder .go-head .lead{font-size:23px;cursor:pointer;color:var(--gb-text);background:none;border:none;padding:0;display:inline-flex;align-items:center}
+.gb-grouporder .go-head h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:18px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-grouporder .go-head .share{width:38px;height:38px;border-radius:var(--gb-r-md);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-grouporder .go-head .share .ms{font-size:19px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-grouporder .go-head .share .ms,.gb[data-theme="dark"] .gb-grouporder .go-head .share .ms{color:var(--gb-zest)}
+
+/* body (CD .go__body) */
+.gb-grouporder .go-body{flex:1;overflow-y:auto;padding:16px 18px}
+
+/* invite banner (CD .invite — literal hexes kept verbatim) */
+.gb-grouporder .go-invite{display:flex;align-items:center;gap:11px;background:#FFF1E7;border:1px solid #FAD9C0;border-radius:var(--gb-r-md);padding:12px 14px;margin-bottom:16px}
+[data-theme="dark"] .gb-grouporder .go-invite,.gb[data-theme="dark"] .gb-grouporder .go-invite{background:rgba(255,124,57,.16);border-color:rgba(255,124,57,.3)}
+.gb-grouporder .go-invite>.ms{font-size:21px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-grouporder .go-invite>.ms,.gb[data-theme="dark"] .gb-grouporder .go-invite>.ms{color:var(--gb-zest)}
+.gb-grouporder .go-invite .m{flex:1;min-width:0}
+.gb-grouporder .go-invite .m b{font-size:13px;font-weight:700;display:block}
+.gb-grouporder .go-invite .m span{font-family:var(--gb-font-ui);font-size:11.5px;color:var(--gb-muted-2);word-break:break-all}
+.gb-grouporder .go-invite .copy{font-size:11.5px;font-weight:700;color:#fff;background:var(--gb-zest-600);border:none;border-radius:var(--gb-r-sm);padding:8px 12px;cursor:pointer;white-space:nowrap}
+
+/* section label (CD .lbl) */
+.gb-grouporder .go-lbl{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2);margin:4px 0 10px}
+
+/* participant rows (CD .person) */
+.gb-grouporder .go-person{display:flex;align-items:center;gap:11px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 13px;margin-bottom:9px}
+.gb-grouporder .go-person .av{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:12px;flex-shrink:0}
+.gb-grouporder .go-person .av.a1{background:repeating-linear-gradient(135deg,#FFE3CE 0 6px,#FFF1E7 6px 12px);color:#B5560A}
+.gb-grouporder .go-person .av.a2{background:repeating-linear-gradient(135deg,#D7E3F2 0 6px,#EAEFF6 6px 12px);color:#1E3E60}
+.gb-grouporder .go-person .av.a3{background:repeating-linear-gradient(135deg,#CDEBD8 0 6px,#EAF7EF 6px 12px);color:#1E8C4B}
+[data-theme="dark"] .gb-grouporder .go-person .av.a1,.gb[data-theme="dark"] .gb-grouporder .go-person .av.a1{background:repeating-linear-gradient(135deg,#3A2C22 0 6px,#2C2118 6px 12px);color:var(--gb-zest)}
+[data-theme="dark"] .gb-grouporder .go-person .av.a2,.gb[data-theme="dark"] .gb-grouporder .go-person .av.a2{background:repeating-linear-gradient(135deg,#21344B 0 6px,#1A2A3D 6px 12px);color:#6FB6F5}
+[data-theme="dark"] .gb-grouporder .go-person .av.a3,.gb[data-theme="dark"] .gb-grouporder .go-person .av.a3{background:repeating-linear-gradient(135deg,#1E3B2B 0 6px,#172E22 6px 12px);color:#41BD78}
+.gb-grouporder .go-person .who{flex:1;min-width:0}
+.gb-grouporder .go-person .who b{font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:6px}
+.gb-grouporder .go-person .who b .you{font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:#FFF1E7;border-radius:5px;padding:2px 6px}
+[data-theme="dark"] .gb-grouporder .go-person .who b .you,.gb[data-theme="dark"] .gb-grouporder .go-person .who b .you{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+.gb-grouporder .go-person .who span{font-size:11.5px;color:var(--gb-muted)}
+.gb-grouporder .go-person .who span.wait{color:var(--gb-info)}
+.gb-grouporder .go-person .amt{font-family:var(--gb-font-display);font-weight:800;font-size:14px}
+.gb-grouporder .go-person .amt.pending{color:var(--gb-muted-2);font-size:12px;font-weight:600}
+
+/* split toggle (CD .split — INERT visual tabs) */
+.gb-grouporder .go-split{display:flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:2px;margin:16px 0 14px}
+.gb-grouporder .go-split button{flex:1;font-family:var(--gb-font-ui);font-weight:700;font-size:12.5px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:9px 0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.gb-grouporder .go-split button .ms{font-size:16px}
+.gb-grouporder .go-split button[aria-selected="true"]{color:#fff;background:var(--gb-grad)}
+
+/* AI « bientôt » banner (CD .ai — INERT) */
+.gb-grouporder .go-ai{display:flex;align-items:flex-start;gap:10px;border-radius:var(--gb-r-md);padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C);margin-bottom:14px}
+.gb-grouporder .go-ai__in{display:flex;align-items:flex-start;gap:10px;background:var(--gb-surface);border-radius:calc(var(--gb-r-md) - 1px);padding:11px 13px;width:100%}
+.gb-grouporder .go-ai__in>.ms{font-size:19px;color:var(--gb-zest-600);flex-shrink:0}
+[data-theme="dark"] .gb-grouporder .go-ai__in>.ms,.gb[data-theme="dark"] .gb-grouporder .go-ai__in>.ms{color:var(--gb-zest)}
+.gb-grouporder .go-ai__in .t{flex:1}
+.gb-grouporder .go-ai__in .t .h{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+.gb-grouporder .go-ai__in .t .h b{font-size:12.5px;font-weight:700}
+.gb-grouporder .go-ai__in .t .h .soon{font-size:9px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:5px;padding:2px 6px}
+[data-theme="dark"] .gb-grouporder .go-ai__in .t .h .soon,.gb[data-theme="dark"] .gb-grouporder .go-ai__in .t .h .soon{color:var(--gb-zest)}
+.gb-grouporder .go-ai__in .t p{margin:0;font-size:11.5px;line-height:1.45;color:var(--gb-muted)}
+
+/* your-share box (CD .share-box — uses --gb-ink panel) */
+.gb-grouporder .go-sharebox{display:flex;align-items:center;justify-content:space-between;background:var(--gb-ink);border-radius:var(--gb-r-md);padding:14px 16px;margin-top:4px}
+.gb-grouporder .go-sharebox span{font-size:12.5px;color:#B6C2D4}
+.gb-grouporder .go-sharebox b{font-family:var(--gb-font-display);font-weight:800;font-size:20px;color:#fff}
+
+/* footer (CD .go__foot) */
+.gb-grouporder .go-foot{flex-shrink:0;border-top:1px solid var(--gb-border);padding:13px 18px;background:var(--gb-surface)}
+.gb-grouporder .go-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;color:#fff;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:14px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.gb-grouporder .go-foot small{display:block;text-align:center;font-size:11.5px;color:var(--gb-muted);margin-top:9px}
+
+/* empty state (no cart) */
+.gb-grouporder .go-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:34px 8px 12px}
+.gb-grouporder .go-empty>.ms{font-size:40px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-grouporder .go-empty>.ms,.gb[data-theme="dark"] .gb-grouporder .go-empty>.ms{color:var(--gb-zest)}
+.gb-grouporder .go-empty b{font-family:var(--gb-font-display);font-weight:800;font-size:16px}
+.gb-grouporder .go-empty p{margin:0 0 8px;font-size:12.5px;line-height:1.5;color:var(--gb-muted)}
+.gb-grouporder .go-empty .go-btn{margin-top:4px}
+
+/* party-size stepper (drives EVENLY split + BY-ITEM people) */
+.gb-grouporder .go-party{display:flex;align-items:center;justify-content:space-between;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:10px 14px;margin-bottom:14px}
+.gb-grouporder .go-party .lbl{font-size:13px;font-weight:700;color:var(--gb-text)}
+.gb-grouporder .go-party .stepper{display:flex;align-items:center;gap:14px}
+.gb-grouporder .go-party .stepper button{width:30px;height:30px;border-radius:50%;border:1px solid var(--gb-border);background:var(--gb-surface);color:var(--gb-text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.gb-grouporder .go-party .stepper button .ms{font-size:17px}
+.gb-grouporder .go-party .stepper button:disabled{opacity:.4;cursor:not-allowed}
+.gb-grouporder .go-party .stepper b{font-family:var(--gb-font-display);font-weight:800;font-size:16px;min-width:18px;text-align:center}
+
+/* BY-ITEM unassigned hint (CD info tone) */
+.gb-grouporder .go-hint{margin:-4px 0 10px;font-size:11.5px;line-height:1.4;color:var(--gb-info)}
+
+/* BY-ITEM per-line person picker (reuses .go-person spacing) */
+.gb-grouporder .go-assign{display:flex;align-items:center;gap:11px;width:100%;text-align:start;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 13px;margin-bottom:9px;cursor:pointer}
+.gb-grouporder .go-assign.is-unassigned{border-style:dashed}
+.gb-grouporder .go-assign .who{flex:1;min-width:0}
+.gb-grouporder .go-assign .who b{font-size:13.5px;font-weight:700;display:block}
+.gb-grouporder .go-assign .who span{font-size:11.5px;color:var(--gb-muted)}
+.gb-grouporder .go-assign .pick{font-size:11.5px;font-weight:700;color:#fff;background:var(--gb-zest-600);border-radius:var(--gb-r-pill);padding:5px 11px;white-space:nowrap}
+.gb-grouporder .go-assign .pick.is-unassigned{color:var(--gb-muted-2);background:var(--gb-surface-2);border:1px dashed var(--gb-border)}
+
+/* copy-recap button (secondary, under the share box) */
+.gb-grouporder .go-copy{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:13px;color:var(--gb-zest-600);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px;margin-top:10px;cursor:pointer}
+.gb-grouporder .go-copy .ms{font-size:17px}
+[data-theme="dark"] .gb-grouporder .go-copy,.gb[data-theme="dark"] .gb-grouporder .go-copy{color:var(--gb-zest)}
+
+/* loading skeleton (gb-foundation `.sk`) */
+.gb-grouporder .go-skel{width:100%;max-width:440px;height:560px;border-radius:var(--gb-r-xl)}
+
+/* CD breakpoint 560px → full page */
+@media (max-width:560px){
+  .gb-grouporder{padding:0;align-items:stretch}
+  .gb-grouporder .go-card{max-width:none;border:none;border-radius:0;min-height:100vh;max-height:none}
+  .gb-grouporder .go-skel{max-width:none;height:100vh;border-radius:0}
+}

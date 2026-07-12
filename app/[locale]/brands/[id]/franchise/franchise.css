@@ -1,0 +1,170 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /brands/[id]/franchise — operator BRAND-DETAIL / franchise content — VERBATIM
+ * CD v1 (Notion 390fd2c9-8146-810c-a96d-d286564d9400 — LOT 7, écran 2 : Détail
+ * d'une marque). Content-only : the navy shell (op-side / op-top / op-bottomnav /
+ * op-content) and all --op-* tokens live in components/operator/operator-shell.css
+ * — NOT redefined here. The CD's demo bar + data-state / data-scale / data-tab /
+ * data-empty CSS display-toggles are dropped — React renders the correct variant
+ * (loading / error / loaded) and switches the active tab with React state.
+ *
+ * 🔒 PRESENTATION ONLY. The two data handlers in franchise/page.tsx are byte-identical:
+ * GET /api/brands/[id] (loads the Brand) and PATCH /api/brands/[id] (saves the
+ * franchise conditions). The PERCENT→FRACTION conversion (pct/100) at save, the field
+ * names in the PATCH body {openToFranchise, royaltyPct, setupFee, franchiseZones,
+ * franchiseStatus}, and the validation are all UNCHANGED — this file only restyles
+ * markup.
+ *
+ * ⚠️ ARGENT : setupFee is a Float in EUROS, displayed straight from formatEuros() in
+ * the read-back preview — NEVER recomputed. royaltyPct is shown as a PERCENT figure.
+ * Both carry className="mono" (direction:ltr; unicode-bidi:isolate → RTL-safe).
+ *
+ * Self-sufficient: recopies the shared CD content components used here (op-card,
+ * back-link, op-btn-primary/ghost, op-field/input/select/textarea, op-sk, op-error,
+ * op-center, fr-head, fr-mono, brand-status, stat-strip, fr-rating, fr-tabs, fr-panel,
+ * estab-row, fr-empty-estabs, brand-color-row, brand-swatch, social-row,
+ * settings-block) from the CD. Does NOT redefine :root / --op-* tokens / .op-side /
+ * .op-top / .op-bottomnav / .op-content (owned by the shell).
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ⭐ RTL money fix — every mono / figure span stays LTR-ordered under dir=rtl */
+.gb-op .mono,
+.gb-op .stat-strip b,
+.gb-op .fr-rating,
+.gb-op .op-input.mono,
+.gb-op .brand-color-row .m span{direction:ltr;unicode-bidi:isolate}
+
+/* ── shared card shell ── */
+.gb-op .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+
+/* ── back link (← Marques) ── */
+.gb-op .back-link{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--op-muted);margin-bottom:16px;cursor:pointer}
+.gb-op .back-link .ms{font-size:18px}
+.gb-op .back-link:hover{color:var(--op-text)}
+.gb-op .flip-rtl{display:inline-block}
+[dir="rtl"] .gb-op .flip-rtl{transform:scaleX(-1)}
+
+/* ── buttons (shared) ── */
+.gb-op .op-btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit}
+.gb-op .op-btn-primary:disabled{opacity:.6;cursor:default}
+.gb-op .op-btn-ghost{background:none;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:10px 16px;font-size:12.5px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-family:inherit}
+.gb-op .op-btn-ghost[aria-disabled="true"]{opacity:.55;cursor:default}
+
+/* ── skeleton shimmer ── */
+@keyframes op-sk{100%{background-position:-200% 0}}
+.gb-op .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk 1.4s ease-in-out infinite;border-radius:6px;display:block}
+
+/* ── error / center ── */
+.gb-op .op-center{display:flex;align-items:center;justify-content:center;min-height:600px}
+.gb-op .op-error__card{max-width:400px;text-align:center}
+.gb-op .op-error__card .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:16px}
+.gb-op .op-error__card h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:18px}
+.gb-op .op-error__card p{margin:9px 0 22px;font-size:13px;line-height:1.55;color:var(--op-muted)}
+
+/* ── form primitives (shared) ── */
+.gb-op .op-field{display:flex;flex-direction:column;gap:6px}
+.gb-op .op-field label{font-size:11.5px;font-weight:700;color:var(--op-muted)}
+.gb-op .op-field-row{display:flex;gap:12px}
+.gb-op .op-field-row .op-field{flex:1;min-width:0}
+.gb-op .op-input,.gb-op .op-select,.gb-op .op-textarea{width:100%;box-sizing:border-box;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:10px 12px;font-family:var(--op-font-ui);font-size:13.5px;color:var(--op-text)}
+.gb-op .op-input:focus,.gb-op .op-select:focus,.gb-op .op-textarea:focus{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+.gb-op .op-textarea{resize:vertical;min-height:80px;line-height:1.55}
+.gb-op .op-field .hint{font-size:11px;color:var(--op-muted-2);line-height:1.5}
+
+/* ── brand header ── */
+.gb-op .fr-head{display:flex;align-items:center;gap:16px;padding:20px;flex-wrap:wrap;margin-bottom:18px}
+.gb-op .fr-mono{width:64px;height:64px;border-radius:var(--op-r-lg);display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:22px;color:#fff;flex-shrink:0;background:linear-gradient(135deg,#FF8A3D,#F2570E)}
+.gb-op .fr-head__m{flex:1;min-width:0}
+.gb-op .fr-head__m .name-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.gb-op .fr-head__m h1{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:21px;letter-spacing:-.01em}
+.gb-op .fr-head__m>span{font-size:12.5px;color:var(--op-muted);margin-top:3px;display:block}
+.gb-op .brand-status{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;border-radius:999px;padding:4px 9px;white-space:nowrap}
+.gb-op .brand-status .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.gb-op .brand-status.active{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .brand-status.draft{background:var(--op-surface-2);color:var(--op-muted-2);border:1px solid var(--op-border)}
+
+/* ── stat strip ── */
+.gb-op .stat-strip{display:flex;padding:8px 4px;flex-wrap:wrap;margin-bottom:18px}
+.gb-op .stat-strip .stat{flex:1;min-width:170px;padding:14px 20px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
+.gb-op .stat-strip .stat:first-child{border-inline-start:none}
+.gb-op .stat-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
+.gb-op .stat-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:22px}
+.gb-op .fr-rating{display:flex;align-items:center;gap:5px}
+.gb-op .fr-rating .ms{font-size:18px;color:var(--op-warning);font-variation-settings:'FILL' 1}
+.gb-op .stat-strip .stat .soon-val{font-family:var(--op-font-display);font-weight:800;font-size:15px;color:var(--op-muted-2)}
+
+/* ── tabs ── */
+.gb-op .fr-tabs{display:flex;gap:2px;background:var(--op-surface);border:1px solid var(--op-border-strong);border-radius:var(--op-r-pill);padding:3px;margin-bottom:18px;width:fit-content}
+.gb-op .fr-tabs button{border:none;background:none;cursor:pointer;font-family:var(--op-font-ui);font-weight:700;font-size:13px;color:var(--op-muted);padding:10px 18px;border-radius:var(--op-r-pill)}
+.gb-op .fr-tabs button.is-active{background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff}
+
+/* ── panels ── */
+.gb-op .fr-panel{display:block}
+
+/* ── settings blocks ── */
+.gb-op .settings-block{margin-bottom:18px}
+.gb-op .settings-block__head{padding:15px 18px;border-bottom:1px solid var(--op-border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.gb-op .settings-block__head h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:14.5px}
+.gb-op .settings-block__head .sub{font-size:11.5px;color:var(--op-muted);font-weight:600}
+.gb-op .settings-block__body{padding:18px;display:flex;flex-direction:column;gap:14px}
+
+/* ── open-to-franchise toggle row ── */
+.gb-op .fr-toggle{display:flex;align-items:center;gap:14px;padding:16px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .fr-toggle:last-child{border-bottom:none}
+.gb-op .fr-toggle .m{flex:1;min-width:0}
+.gb-op .fr-toggle .m b{display:block;font-size:13px;font-weight:700}
+.gb-op .fr-toggle .m span{font-size:11.5px;color:var(--op-muted);margin-top:2px;display:block;line-height:1.5}
+.gb-op .op-switch{position:relative;width:44px;height:24px;flex-shrink:0;cursor:pointer}
+.gb-op .op-switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.gb-op .op-switch .track{position:absolute;inset:0;border-radius:999px;background:var(--op-border-strong);transition:background .18s ease}
+.gb-op .op-switch .track::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.28);transition:transform .18s ease}
+.gb-op .op-switch input:checked+.track{background:var(--op-zest-600)}
+.gb-op .op-switch input:checked+.track::after{transform:translateX(20px)}
+[dir="rtl"] .gb-op .op-switch input:checked+.track::after{transform:translateX(-20px)}
+.gb-op .op-switch input:focus-visible+.track{box-shadow:var(--op-focus)}
+
+/* ── saved / error banners ── */
+.gb-op .fr-banner{display:flex;align-items:flex-start;gap:12px;border-radius:var(--op-r-lg);padding:14px 16px;margin-bottom:18px}
+.gb-op .fr-banner .ms{font-size:20px;flex-shrink:0;margin-top:1px}
+.gb-op .fr-banner b{display:block;font-size:13px;font-weight:700}
+.gb-op .fr-banner span{font-size:12px;line-height:1.5}
+.gb-op .fr-banner.success{background:var(--op-success-bg);border:1px solid var(--op-success-bd);color:var(--op-success)}
+.gb-op .fr-banner.success b,.gb-op .fr-banner.success span{color:var(--op-text)}
+.gb-op .fr-banner.danger{background:var(--op-danger-bg);border:1px solid var(--op-danger-bd);color:var(--op-danger)}
+.gb-op .fr-inline-error{border-radius:var(--op-r-md);background:var(--op-danger-bg);border:1px solid var(--op-danger-bd);color:var(--op-danger);padding:10px 12px;font-size:12.5px;font-weight:600}
+
+/* ── read-back preview line (honest « current values ») ── */
+.gb-op .fr-review{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .fr-review:last-child{border-bottom:none}
+.gb-op .fr-review .k{font-size:12.5px;color:var(--op-muted);font-weight:600}
+.gb-op .fr-review .v{font-size:13px;font-weight:700;color:var(--op-text)}
+.gb-op .fr-review .v.mono{font-family:var(--op-font-mono)}
+.gb-op .fr-review .v.muted{color:var(--op-muted-2);font-weight:600}
+
+/* ── zones chips (honest read-back of saved zones) ── */
+.gb-op .fr-zones{display:flex;flex-wrap:wrap;gap:7px;padding:14px 18px}
+.gb-op .fr-zone-chip{display:inline-flex;align-items:center;gap:5px;background:var(--op-surface-2);border:1px solid var(--op-border);border-radius:var(--op-r-pill);padding:5px 11px;font-size:12px;font-weight:700;color:var(--op-text)}
+.gb-op .fr-zone-chip .ms{font-size:14px;color:var(--op-muted-2)}
+.gb-op .fr-zones-empty{padding:14px 18px;font-size:12.5px;color:var(--op-muted)}
+
+/* ── save bar ── */
+.gb-op .fr-savebar{display:flex;align-items:center;gap:12px;padding-top:4px}
+
+/* ── responsive ── */
+@media (max-width: 1040px){
+  .gb-op .op-content>section{max-width:100%}
+}
+@media (max-width: 880px){
+  .gb-op .fr-head{padding:16px}
+  .gb-op .fr-mono{width:52px;height:52px;font-size:18px}
+  .gb-op .stat-strip{flex-direction:column;padding:4px}
+  .gb-op .stat-strip .stat{border-inline-start:none;border-top:1px solid var(--op-border);padding:12px 16px}
+  .gb-op .stat-strip .stat:first-child{border-top:none}
+  .gb-op .fr-tabs{width:100%}
+  .gb-op .fr-tabs button{flex:1}
+}
+@media (max-width: 460px){
+  .gb-op .fr-head__m h1{font-size:18px}
+  .gb-op .op-field-row{flex-direction:column}
+  .gb-op .fr-savebar{flex-direction:column;align-items:stretch}
+  .gb-op .fr-savebar .op-btn-primary{width:100%;justify-content:center}
+}

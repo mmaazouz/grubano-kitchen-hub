@@ -1,0 +1,172 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/dinein — « Order at table / dine-in » — VERBATIM reproduction of the FROZEN
+ * CD ref (Notion 38efd2c9-…-cd8b, file eat/order-at-table.html). A NEW *FUTURE-FEATURE*
+ * INERT demo flow (3 in-context screens A·B·C). The 4th CD screen — the cumulative
+ * « addition » bill — is ALREADY built at the REAL /t/[tableId] money page and is NOT
+ * rebuilt here.
+ *
+ * ⚠️ FULLY VISUAL / INERT. There is NO dine-in order model, NO kitchen routing, NO
+ * « Service 10 % » / split / pay-later backend (« build futur, hors scope migration »).
+ * The amounts (32 €, Service 10 %, 35,20 €), the table (« Table 12 / Marco »), the
+ * status and the AI/allergen blocks are CD DEMO PLACEHOLDERS framed as a preview — they
+ * are NEVER wired (no charge, no order, no fabricated real data). All controls are inert.
+ *
+ * The CD design tokens already live in the gb-foundation (gb-tokens.css — incl.
+ * --gb-grad, --gb-grad-green, --gb-basil/-600, --gb-zest-600, --gb-shadow-btn, the dark
+ * theme, the `.sk` skeleton). Only the COMPONENT CSS lives here, scoped under `.gb-dinein`.
+ * The CD's generic class names that would collide with the foundation are renamed → .di-*
+ * (.body→.di-body, .foot→.di-foot, .chip→.di-chip, .ai→.di-ai, .mi→.di-mi, .add→.di-add,
+ * .cartbar→.di-cartbar, .ocard→.di-ocard, .oline→.di-oline, .track→.di-track, .acts→.di-acts).
+ * RTL: logical properties throughout + `.ms-flip` on directional icons + <bdi> on €/codes.
+ * Pattern: app/[locale]/eat/orders/orders.css.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ===================== SCREEN SHELL (one phone-column per route) ===================== */
+.gb-dinein{
+  max-width:430px;margin:0 auto;padding:0;
+  display:flex;flex-direction:column;min-height:100%;
+  background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);
+}
+.gb-dinein .di-body{flex:1;overflow-y:auto;padding:13px 13px 0}
+.gb-dinein .di-foot{flex-shrink:0;padding:10px 13px 18px;background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+.gb-dinein .di-foot small{display:block;text-align:center;font-size:10.5px;color:var(--gb-muted);margin-top:7px}
+
+/* preview banner — frames the screen as an inert future-feature demo (NOT in CD) */
+.gb-dinein .di-preview{display:flex;align-items:center;gap:8px;margin:12px 13px 0;padding:9px 12px;border-radius:var(--gb-r-md);
+  background:var(--gb-warning-bg);color:var(--gb-warning);font-size:11px;font-weight:700;line-height:1.35}
+.gb-dinein .di-preview .ms{font-size:17px;flex-shrink:0}
+
+/* ===================== TABLE BANNER (.tbanner — CD verbatim, ink gradient) ===================== */
+.gb-dinein .tbanner{margin:6px 13px 0;border-radius:14px;background:linear-gradient(120deg,#0F2742,#16395A);
+  padding:12px 14px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.gb-dinein .tbanner .ic{width:36px;height:36px;border-radius:10px;background:rgba(255,138,40,.18);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-dinein .tbanner .ic .ms{font-size:20px;color:#FF9A4D}
+.gb-dinein .tbanner .m{flex:1;min-width:0}
+.gb-dinein .tbanner .m b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;color:#fff}
+.gb-dinein .tbanner .m span{display:block;font-size:10.5px;color:#AFC0D6}
+.gb-dinein .tbanner .live{font-size:9px;font-weight:700;color:#0F2742;background:#FF9A4D;border-radius:6px;padding:4px 7px;flex-shrink:0}
+
+/* ===================== HEADER BAR (.h2bar — CD verbatim) ===================== */
+.gb-dinein .h2bar{display:flex;align-items:center;gap:11px;padding:6px 16px 11px;flex-shrink:0}
+.gb-dinein .h2bar .back{appearance:none;background:none;border:none;padding:0;margin:0;cursor:pointer;color:var(--gb-text);display:inline-flex}
+.gb-dinein .h2bar .back .ms,.gb-dinein .h2bar>.ms{font-size:22px;color:var(--gb-text)}
+.gb-dinein .h2bar h2{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:700;font-size:17px;color:var(--gb-text)}
+.gb-dinein .h2bar .tnum{font-size:10px;font-weight:700;color:var(--gb-zest-600);background:#FFF1E7;border-radius:6px;padding:4px 8px;white-space:nowrap}
+[data-theme="dark"] .gb-dinein .h2bar .tnum{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+
+/* ===================== CHIPS (allergen / category filters — inert) ===================== */
+.gb-dinein .chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px}
+.gb-dinein .chips::-webkit-scrollbar{display:none}
+.gb-dinein .di-chip{font-size:11.5px;font-weight:700;border-radius:8px;padding:7px 11px;white-space:nowrap;flex-shrink:0;
+  appearance:none;cursor:pointer;font-family:inherit}
+.gb-dinein .di-chip.on{color:#fff;background:#0F2742;border:1px solid #0F2742}
+.gb-dinein .di-chip.off{color:var(--gb-muted);background:var(--gb-surface);border:1px solid var(--gb-border)}
+.gb-dinein .di-chip.diet{color:var(--gb-basil-600);background:var(--gb-success-bg);border:1px solid var(--gb-success-bd);
+  display:inline-flex;align-items:center;gap:4px}
+.gb-dinein .di-chip.diet .ms{font-size:13px}
+
+/* ===================== AI INLINE BLOCK (gradient border, inert « bientôt ») ===================== */
+.gb-dinein .di-ai{border-radius:13px;padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C);margin-bottom:12px}
+.gb-dinein .di-ai__in{display:flex;gap:9px;align-items:flex-start;background:var(--gb-surface);border-radius:11.5px;padding:11px}
+.gb-dinein .di-ai__in>.ms{font-size:18px;color:var(--gb-zest-600);flex-shrink:0}
+[data-theme="dark"] .gb-dinein .di-ai__in>.ms{color:var(--gb-zest)}
+.gb-dinein .di-ai__in p{margin:0;font-size:11px;line-height:1.4;color:var(--gb-muted)}
+.gb-dinein .di-ai__in p b{color:var(--gb-text)}
+.gb-dinein .di-ai__in .soon{display:inline-block;font-size:8.5px;font-weight:700;color:var(--gb-zest-600);
+  background:rgba(255,138,40,.14);border-radius:5px;padding:2px 6px;white-space:nowrap;margin-inline-start:4px}
+[data-theme="dark"] .gb-dinein .di-ai__in .soon{color:var(--gb-zest)}
+
+/* ===================== MENU ITEM (.di-mi — CD verbatim) ===================== */
+.gb-dinein .di-mi{display:flex;gap:11px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:14px;padding:10px;margin-bottom:10px}
+.gb-dinein .di-mi .t{flex:1;min-width:0}
+.gb-dinein .di-mi .t b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;color:var(--gb-text)}
+.gb-dinein .di-mi .t p{margin:3px 0 6px;font-size:10.5px;line-height:1.35;color:var(--gb-muted)}
+.gb-dinein .di-mi .t .pr{display:flex;align-items:center;gap:6px}
+.gb-dinein .di-mi .t .pr .price{font-family:var(--gb-font-display);font-weight:800;font-size:13.5px;color:var(--gb-text)}
+.gb-dinein .di-mi .t .pr .nf{font-size:9px;font-weight:700;color:var(--gb-basil-600);background:var(--gb-success-bg);padding:2px 6px;border-radius:5px}
+.gb-dinein .di-mi .img{position:relative;width:72px;height:72px;border-radius:11px;flex-shrink:0}
+.gb-dinein .di-mi .img.o{background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px)}
+.gb-dinein .di-mi .img.y{background:repeating-linear-gradient(135deg,#FCE9C9 0 8px,#FCF0D9 8px 16px)}
+[data-theme="dark"] .gb-dinein .di-mi .img.o{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px)}
+[data-theme="dark"] .gb-dinein .di-mi .img.y{background:repeating-linear-gradient(135deg,#33301F 0 8px,#26241A 8px 16px)}
+.gb-dinein .di-add{position:absolute;inset-block-end:-6px;inset-inline-end:-5px;width:30px;height:30px;border-radius:9px;
+  background:var(--gb-grad);display:flex;align-items:center;justify-content:center;box-shadow:var(--gb-shadow-btn);
+  appearance:none;border:none;cursor:pointer;padding:0}
+.gb-dinein .di-add .ms{font-size:17px;color:#fff}
+
+/* ===================== STICKY CART BAR (inert link to « send » screen) ===================== */
+.gb-dinein .di-cartbar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--gb-grad);
+  border-radius:13px;padding:12px 16px;box-shadow:var(--gb-shadow-btn);text-decoration:none;cursor:pointer;width:100%;
+  appearance:none;border:none;font-family:inherit}
+.gb-dinein .di-cartbar span{font-size:12.5px;font-weight:700;color:#fff}
+.gb-dinein .di-cartbar b{font-family:var(--gb-font-display);font-size:14px;font-weight:800;color:#fff}
+
+/* ===================== ORDER CARD / LINES (.di-ocard / .di-oline — CD verbatim) ===================== */
+.gb-dinein .di-ocard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:13px;padding:12px;margin-bottom:11px}
+.gb-dinein .di-oline{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--gb-text)}
+.gb-dinein .di-oline+.di-oline{margin-top:10px}
+.gb-dinein .di-oline>span:first-child{flex:1;min-width:0;padding-inline-end:10px;line-height:1.3}
+.gb-dinein .di-oline>span:last-child{flex-shrink:0;white-space:nowrap}
+
+/* green hint note (sent items go to kitchen) */
+.gb-dinein .note-g{display:flex;align-items:center;gap:8px;background:var(--gb-success-bg);border:1px solid var(--gb-success-bd);
+  border-radius:12px;padding:11px;margin-bottom:11px}
+.gb-dinein .note-g .ms{font-size:18px;color:var(--gb-basil-600);flex-shrink:0}
+.gb-dinein .note-g p{margin:0;font-size:10.5px;line-height:1.4;color:var(--gb-success-fg)}
+
+/* split-bill row (inert) */
+.gb-dinein .split-row{display:flex;align-items:center;gap:8px;background:var(--gb-surface);border:1px solid var(--gb-border);
+  border-radius:12px;padding:11px;margin-bottom:11px;width:100%;appearance:none;cursor:pointer;font-family:inherit}
+.gb-dinein .split-row>.ms{font-size:18px;color:var(--gb-zest-600);flex-shrink:0}
+[data-theme="dark"] .gb-dinein .split-row>.ms{color:var(--gb-zest)}
+.gb-dinein .split-row span{flex:1;min-width:0;text-align:start;font-size:12px;font-weight:600;color:var(--gb-text)}
+.gb-dinein .split-row .chev{color:var(--gb-muted-2);flex-shrink:0}
+
+/* total rows */
+.gb-dinein .totrow{font-size:12.5px;color:var(--gb-muted);display:flex;justify-content:space-between;gap:8px;margin-bottom:5px}
+.gb-dinein .totrow>span:last-child{white-space:nowrap}
+
+/* send-to-kitchen button (inert) */
+.gb-dinein .send-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--gb-grad);border-radius:13px;
+  padding:13px;box-shadow:var(--gb-shadow-btn);margin-bottom:7px;text-decoration:none;cursor:pointer;width:100%;
+  appearance:none;border:none;font-family:inherit}
+.gb-dinein .send-btn .ms{font-size:18px;color:#fff}
+.gb-dinein .send-btn b{font-size:13.5px;font-weight:700;color:#fff}
+
+/* ===================== « SENT » STATUS SCREEN (DARK variant — CD verbatim) ===================== */
+.gb-dinein .sent{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+.gb-dinein .sent__ic{width:84px;height:84px;border-radius:50%;background:rgba(65,189,120,.16);
+  display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.gb-dinein .sent__ic .ms{font-size:46px;color:#41BD78}
+.gb-dinein .sent h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:22px;letter-spacing:-.02em;color:var(--gb-text)}
+.gb-dinein .sent p{margin:9px 0 20px;font-size:12.5px;line-height:1.5;color:var(--gb-muted);max-width:34ch}
+.gb-dinein .sent p b{color:var(--gb-text)}
+.gb-dinein .di-track{width:100%;max-width:320px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:14px;padding:14px;margin-bottom:16px}
+.gb-dinein .di-track .row{display:flex;align-items:center;margin-bottom:8px}
+.gb-dinein .di-track .row .d{width:16px;height:16px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.gb-dinein .di-track .row .d.done{background:#41BD78}
+.gb-dinein .di-track .row .d.done .ms{font-size:11px;color:#06210F}
+.gb-dinein .di-track .row .d.cur{background:var(--gb-zest);box-shadow:0 0 0 4px rgba(255,124,57,.25)}
+.gb-dinein .di-track .row .d.off{background:var(--gb-border)}
+.gb-dinein .di-track .row .s{flex:1;height:3px;margin:0 4px}
+.gb-dinein .di-track .row .s.done{background:#41BD78}
+.gb-dinein .di-track .row .s.off{background:var(--gb-border)}
+.gb-dinein .di-track .lab{display:flex;justify-content:space-between;gap:6px;font-size:9px;font-weight:600;color:var(--gb-muted-2)}
+.gb-dinein .di-track .lab .on{color:var(--gb-zest);font-weight:700}
+.gb-dinein .di-acts{display:flex;gap:9px;width:100%;max-width:320px}
+.gb-dinein .di-acts button,.gb-dinein .di-acts a{flex:1;display:inline-flex;align-items:center;justify-content:center;
+  font-family:var(--gb-font-ui);font-weight:700;font-size:12.5px;border-radius:12px;padding:12px;cursor:pointer;border:none;
+  text-decoration:none;text-align:center}
+.gb-dinein .di-acts .w{color:#0F2742;background:#fff}
+.gb-dinein .di-acts .o{color:#fff;background:var(--gb-grad)}
+
+/* ===================== DESKTOP (≥900px) — the CD « desktop » screen : the 3-step
+ * dine-in flow centred in a roomier card (still one column, mobile-first per the DS). ====== */
+@media (min-width:900px){
+  .gb-dinein{max-width:560px;border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);
+    box-shadow:var(--gb-shadow-card);overflow:hidden;min-height:0;margin-top:clamp(16px,4vh,40px);margin-bottom:40px}
+}
+
+/* loading skeleton (foundation `.sk`) */
+.gb-dinein .di-skel{height:88px;border-radius:14px;margin-bottom:10px}

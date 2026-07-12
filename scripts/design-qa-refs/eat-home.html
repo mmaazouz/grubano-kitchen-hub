@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Accueil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C; --gb-field-bg:#FFFFFF;
+  --gb-basil-bg:#EAF7EF; --gb-basil-bd:#CDEBD8;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-grad-sunrise:linear-gradient(120deg,#FFB020,#FF6A1F 55%,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3; --gb-field-bg:#0C1826;
+  --gb-basil-bg:rgba(65,189,120,.14); --gb-basil-bd:#2C5C40; --gb-zest:#FF7C39;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button{font-family:inherit}
+.home{max-width:1100px;margin:0 auto;padding:clamp(18px,3vw,28px) clamp(16px,3vw,28px) 90px}
+.hero{display:flex;gap:16px;margin-bottom:26px}
+.promo{flex:1;position:relative;overflow:hidden;border-radius:var(--gb-r-xl);background:var(--gb-grad-sunrise);padding:28px 30px;min-height:154px;display:flex;flex-direction:column;justify-content:center}
+.promo::after{content:"";position:absolute;right:-30px;top:-30px;width:170px;height:170px;border-radius:50%;background:rgba(255,255,255,.16)}
+.promo h2{position:relative;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(24px,3vw,30px);color:#fff;letter-spacing:-.02em;line-height:1.05}
+.promo p{position:relative;margin:8px 0 14px;font-size:14px;color:rgba(255,255,255,.92)}
+.promo .b{position:relative;align-self:flex-start;font-size:13px;font-weight:700;color:var(--gb-zest-600);background:#fff;border-radius:var(--gb-r-md);padding:9px 16px;cursor:pointer}
+.foryou{width:300px;flex-shrink:0;border-radius:var(--gb-r-xl);padding:1.5px;background:linear-gradient(135deg,#FFB020,#FF6A1F,#2BA45C)}
+.foryou__in{background:var(--gb-surface);border-radius:calc(var(--gb-r-xl) - 1px);padding:20px;height:100%;display:flex;flex-direction:column}
+.foryou__h{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.foryou__h .ic{width:26px;height:26px;border-radius:var(--gb-r-sm);background:var(--gb-grad);display:flex;align-items:center;justify-content:center}
+.foryou__h .ic .ms{font-size:16px;color:#fff}
+.foryou__h b{font-family:var(--gb-font-display);font-weight:700;font-size:14px;flex:1}
+.foryou__h .soon{font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 7px}
+[data-theme="dark"] .foryou__h .soon{color:var(--gb-zest)}
+.foryou p{margin:0 0 14px;font-size:13px;line-height:1.5;color:var(--gb-muted)}
+.foryou .b{margin-top:auto;align-self:flex-start;font-size:12.5px;font-weight:700;color:var(--gb-zest-600);background:#FFF1E7;border-radius:var(--gb-r-sm);padding:8px 13px;cursor:pointer}
+[data-theme="dark"] .foryou .b{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+.cuisines{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;margin-bottom:30px;padding-bottom:4px}
+.cuisines::-webkit-scrollbar{display:none}
+.cui{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;cursor:pointer}
+.cui .c{width:64px;height:64px;border-radius:20px;display:flex;align-items:center;justify-content:center}
+.cui .c .ms{font-size:30px}
+.cui span{font-size:12.5px;font-weight:600}
+.sec{margin-bottom:30px}
+.sec__h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.sec__h b{font-family:var(--gb-font-display);font-weight:800;font-size:clamp(18px,2.4vw,22px);letter-spacing:-.02em}
+.sec__h a{font-size:13px;font-weight:700;color:var(--gb-zest-600);text-decoration:none;cursor:pointer}
+[data-theme="dark"] .sec__h a{color:var(--gb-zest)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:880px){ .hero{flex-direction:column} .foryou{width:auto} .grid{grid-template-columns:1fr 1fr} }
+@media (max-width:560px){ .grid{grid-template-columns:1fr} }
+.card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);overflow:hidden;box-shadow:var(--gb-shadow-card);cursor:pointer}
+.card__img{position:relative;height:130px}
+.card__img.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 12px,#FFF1E7 12px 24px)}
+.card__img.t2{background:repeating-linear-gradient(135deg,#D7E3F2 0 12px,#EAEFF6 12px 24px)}
+.card__img.t3{background:repeating-linear-gradient(135deg,#CDEBD8 0 12px,#EAF7EF 12px 24px)}
+.card__img.t4{background:repeating-linear-gradient(135deg,#FFD9C2 0 12px,#FFE9D6 12px 24px)}
+.card__img.t5{background:repeating-linear-gradient(135deg,#E6EFD9 0 12px,#EFF5E6 12px 24px)}
+.card__img.t6{background:repeating-linear-gradient(135deg,#F3D9E0 0 12px,#FBEAF1 12px 24px)}
+[data-theme="dark"] .card__img.t1,[data-theme="dark"] .card__img.t4{background:repeating-linear-gradient(135deg,#3A2C22 0 12px,#2C2118 12px 24px)}
+[data-theme="dark"] .card__img.t2{background:repeating-linear-gradient(135deg,#21344B 0 12px,#1A2A3D 12px 24px)}
+[data-theme="dark"] .card__img.t3,[data-theme="dark"] .card__img.t5{background:repeating-linear-gradient(135deg,#1E3B2B 0 12px,#172E22 12px 24px)}
+[data-theme="dark"] .card__img.t6{background:repeating-linear-gradient(135deg,#3A2230 0 12px,#2C1A24 12px 24px)}
+.card__time{position:absolute;top:10px;left:10px;background:rgba(15,39,66,.82);color:#fff;font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px}
+.card__heart{position:absolute;top:9px;right:9px;width:32px;height:32px;border-radius:50%;background:var(--gb-surface);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(15,39,66,.15)}
+.card__heart .ms{font-size:18px;color:var(--gb-muted-2)}
+.card__heart.on .ms{color:#E0356E;font-variation-settings:'FILL' 1}
+.card__b{padding:13px 15px}
+.card__row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card__row b{font-family:var(--gb-font-display);font-weight:700;font-size:15.5px;line-height:1.3;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card__rating{display:inline-flex;align-items:center;gap:3px;font-size:12.5px;font-weight:700;flex-shrink:0}
+.card__rating .ms{font-size:15px;color:#EA9410}
+.card__meta{font-size:12.5px;color:var(--gb-muted);margin-top:4px}
+.card__tags{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+.tag{font-size:11px;font-weight:600;border-radius:7px;padding:4px 9px}
+.tag--free{color:var(--gb-basil-600);background:var(--gb-basil-bg)}
+.tag--pop{color:var(--gb-zest-600);background:#FFF1E7}
+[data-theme="dark"] .tag--pop{background:rgba(255,124,57,.16);color:var(--gb-zest)}
+.tag--new{color:#2E78F0;background:#E7F0FE}
+[data-theme="dark"] .tag--new{color:#6FB6F5;background:rgba(46,120,240,.18)}
+.hrow{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none}
+.hrow::-webkit-scrollbar{display:none}
+.hcard{flex-shrink:0;width:150px;cursor:pointer}
+.hcard .him{height:100px;border-radius:var(--gb-r-md);position:relative;margin-bottom:9px}
+.hcard .him .again{position:absolute;left:8px;bottom:8px;font-size:10px;font-weight:700;color:#fff;background:rgba(15,39,66,.8);border-radius:6px;padding:3px 8px}
+.hcard b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;display:block}
+.hcard span{font-size:11.5px;color:var(--gb-muted)}
+.him.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 12px,#FFF1E7 12px 24px)}
+.him.t2{background:repeating-linear-gradient(135deg,#D7E3F2 0 12px,#EAEFF6 12px 24px)}
+.him.t4{background:repeating-linear-gradient(135deg,#FFD9C2 0 12px,#FFE9D6 12px 24px)}
+.him.t5{background:repeating-linear-gradient(135deg,#E6EFD9 0 12px,#EFF5E6 12px 24px)}
+[data-theme="dark"] .him.t1,[data-theme="dark"] .him.t4{background:repeating-linear-gradient(135deg,#3A2C22 0 12px,#2C2118 12px 24px)}
+[data-theme="dark"] .him.t2{background:repeating-linear-gradient(135deg,#21344B 0 12px,#1A2A3D 12px 24px)}
+[data-theme="dark"] .him.t5{background:repeating-linear-gradient(135deg,#1E3B2B 0 12px,#172E22 12px 24px)}
+</style>
+</head>
+<body>
+<div id="app">
+<main class="home">
+  <div class="hero">
+    <div class="promo">
+      <h2>Tuesday Treat — 20 % offerts</h2>
+      <p>En livraison &amp; à emporter, de 17 h à 21 h. Appliqué au paiement.</p>
+      <button class="b">Voir les offres</button>
+    </div>
+    <div class="foryou"><div class="foryou__in">
+      <div class="foryou__h"><span class="ic"><span class="ms">auto_awesome</span></span><b>Pour vous ce soir</b><span class="soon">IA — bientôt</span></div>
+      <p>Il fait frais — on a réuni 3 adresses réconfortantes à moins de 30 min de chez vous.</p>
+      <button class="b">Voir la sélection</button>
+    </div></div>
+  </div>
+  <div class="cuisines">
+    <div class="cui"><span class="c" style="background:#FFF1E7"><span class="ms" style="color:#F2570E">local_pizza</span></span><span>Pizza</span></div>
+    <div class="cui"><span class="c" style="background:#EAEFF6"><span class="ms" style="color:#1E3E60">set_meal</span></span><span>Sushi</span></div>
+    <div class="cui"><span class="c" style="background:#FCF0D9"><span class="ms" style="color:#B5760A">lunch_dining</span></span><span>Burgers</span></div>
+    <div class="cui"><span class="c" style="background:#EAF7EF"><span class="ms" style="color:#1E8C4B">eco</span></span><span>Healthy</span></div>
+    <div class="cui"><span class="c" style="background:#F3ECE4"><span class="ms" style="color:#7A5A3A">local_cafe</span></span><span>Café</span></div>
+    <div class="cui"><span class="c" style="background:#FFF1E7"><span class="ms" style="color:#F2570E">ramen_dining</span></span><span>Ramen</span></div>
+    <div class="cui"><span class="c" style="background:#FBEAF1"><span class="ms" style="color:#B83A6E">icecream</span></span><span>Dessert</span></div>
+    <div class="cui"><span class="c" style="background:#FCF0D9"><span class="ms" style="color:#B5760A">tapas</span></span><span>Tacos</span></div>
+  </div>
+  <section class="sec">
+    <div class="sec__h"><b>Recommander</b><a>Voir mes commandes →</a></div>
+    <div class="hrow">
+      <div class="hcard"><div class="him t1"><span class="again">Recommander</span></div><b>Mama Trattoria</b><span>2 articles · 34,34 €</span></div>
+      <div class="hcard"><div class="him t2"><span class="again">Recommander</span></div><b>Sakura Sushi</b><span>4 articles · 41,00 €</span></div>
+      <div class="hcard"><div class="him t5"><span class="again">Recommander</span></div><b>Verde Bowl</b><span>1 article · 17,90 €</span></div>
+      <div class="hcard"><div class="him t4"><span class="again">Recommander</span></div><b>Casa Caldo</b><span>3 articles · 58,50 €</span></div>
+    </div>
+  </section>
+  <section class="sec">
+    <div class="sec__h"><b>Populaires près de vous</b><a>Tout voir →</a></div>
+    <div class="grid">
+      <article class="card"><div class="card__img t1"><span class="card__time">20–30 min</span><span class="card__heart on"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Mama Trattoria</b><span class="card__rating"><span class="ms">star</span>4,8</span></div><div class="card__meta">Italien · $$ · 1,2 km</div><div class="card__tags"><span class="tag tag--free">Livraison offerte</span><span class="tag tag--pop">Populaire</span></div></div></article>
+      <article class="card"><div class="card__img t2"><span class="card__time">25–35 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Sakura Sushi</b><span class="card__rating"><span class="ms">star</span>4,9</span></div><div class="card__meta">Japonais · $$$ · 2,0 km</div><div class="card__tags"><span class="tag tag--pop">Populaire</span></div></div></article>
+      <article class="card"><div class="card__img t3"><span class="card__time">15–25 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Verde Bowl</b><span class="card__rating"><span class="ms">star</span>4,7</span></div><div class="card__meta">Healthy · $$ · 0,8 km</div><div class="card__tags"><span class="tag tag--new">Nouveau</span><span class="tag tag--free">Livraison offerte</span></div></div></article>
+      <article class="card"><div class="card__img t4"><span class="card__time">30–40 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Casa Caldo</b><span class="card__rating"><span class="ms">star</span>4,8</span></div><div class="card__meta">Italien · $$$ · 2,4 km</div><div class="card__tags"><span class="tag tag--pop">Choix du chef</span></div></div></article>
+      <article class="card"><div class="card__img t5"><span class="card__time">18–28 min</span><span class="card__heart on"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>Olive &amp; Thyme</b><span class="card__rating"><span class="ms">star</span>4,7</span></div><div class="card__meta">Méditerranéen · $$ · 1,0 km</div><div class="card__tags"><span class="tag tag--free">Livraison offerte</span></div></div></article>
+      <article class="card"><div class="card__img t6"><span class="card__time">20–30 min</span><span class="card__heart"><span class="ms">favorite</span></span></div><div class="card__b"><div class="card__row"><b>El Fuego</b><span class="card__rating"><span class="ms">star</span>4,6</span></div><div class="card__meta">Mexicain · $$ · 1,6 km</div><div class="card__tags"><span class="tag tag--pop">Épicé</span></div></div></article>
+    </div>
+  </section>
+</main>
+</div>
+</body>
+</html>

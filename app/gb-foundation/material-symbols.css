@@ -1,0 +1,13 @@
+/* ── Self-hosted Material Symbols Rounded (go-live hardening) ─────────────────────────────────
+ * The icon font, self-hosted so a future STRICT CSP (font-src 'self') never breaks the app's
+ * icons. Replaces the external @import from fonts.googleapis.com / fonts.gstatic.com. Same
+ * font-family name ('Material Symbols Rounded') → every existing `.ms` / `.material-symbols-*`
+ * rule keeps working unchanged. The .woff2 (variable, wght 400–700) lives in public/fonts/.
+ * font-display: block matches Google's `&display=block` (avoids a flash of the ligature text). */
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: block;
+  src: url('/fonts/material-symbols-rounded.woff2') format('woff2');
+}

@@ -1,0 +1,232 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/search — CONSUMER search screen, re-skinned to the FROZEN CD refs:
+ *   · MOBILE  : « Recherche mobile — suggestions au fil de la frappe »
+ *               (Notion 38efd2c9-8146-8135) — idle (recents + popular) / typing
+ *               (restos + dishes + "all-restaurants" search) / no-match.
+ *   · DESKTOP : « Recherche DESKTOP (barre unique + carte + filtre Favoris) »
+ *               (Notion 38efd2c9-8146-81e3) — subbar (filters/sort/count) + 2-col
+ *               grid + map panel + Favoris filter.
+ *
+ * The page renders INSIDE the existing EatShell (rail + topbar). It is a TOP-LEVEL
+ * nav tab (NOT immersive) so the shell topbar — WITH its AI search input — is shown
+ * above the page on desktop. We therefore DO NOT reproduce CD's demo rail/header:
+ *   · desktop → the page owns ONLY the subbar + content (grid + map panel); the
+ *     shell topbar IS the search bar (value read from the URL ?q= it routes to).
+ *   · mobile  → the page keeps its OWN search affordance (the typeahead screen),
+ *     per the CD mobile design (the shell's mobile chrome has no search field).
+ *
+ * Everything is scoped under `.gb-search` (no leak). Foundation-colliding class
+ * names (.btn/.field/.card/.chip) are renamed to .se-* so they never clash with
+ * gb-components.css. All values are CD-verbatim; tokens are the shared --gb-* from
+ * gb-tokens.css (the few CD-only locals are redeclared here, scoped).
+ * The root also carries `.gb` so the foundation tokens + Material `.ms` font apply.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-search{
+  /* CD desktop-only locals not in the shared token layer (verbatim CD values).
+   * --gb-basil-bg / --gb-basil-bd are identical to the shared --gb-success-bg/-bd
+   * but CD names them basil-*; we alias them locally so the tag styles read 1:1. */
+  --gb-basil-bg:#EAF7EF; --gb-basil-bd:#CDEBD8;
+  /* CD desktop map/pin pop shadow (its OWN value, lighter than the shared one) */
+  --se-shadow-pop:0 20px 40px -18px rgba(15,39,66,.3);
+  /* CD desktop card shadow (verbatim) */
+  --se-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+}
+[data-theme="dark"] .gb-search,
+.gb-search[data-theme="dark"]{
+  --gb-basil-bg:rgba(65,189,120,.14); --gb-basil-bd:#2C5C40;
+  --se-shadow-pop:0 20px 40px -18px rgba(0,0,0,.55);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * MOBILE — typeahead screen (CD search-typeahead.html). Shown <900px only.
+ * The CD page was full-screen; here it is the page content INSIDE the shell, so
+ * we drop CD's own .search-screen min-height and let the shell own the chrome.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.gb-search .se-mobile{display:flex;flex-direction:column;background:var(--gb-bg)}
+
+/* sticky search header (the page's OWN mobile search affordance) */
+.gb-search .search-bar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:11px;padding:12px 16px;background:var(--gb-bg);border-bottom:1px solid var(--gb-border)}
+.gb-search .search-bar .back{font-size:24px;cursor:pointer;color:var(--gb-text);flex-shrink:0;background:none;border:none;padding:0;line-height:1}
+.gb-search .search-field{flex:1;display:flex;align-items:center;gap:9px;background:var(--gb-field-bg);border:1.5px solid var(--gb-focus-border);border-radius:var(--gb-r-pill);padding:11px 15px;box-shadow:var(--gb-focus)}
+.gb-search .search-field .ms{font-size:20px;color:var(--gb-muted-2)}
+.gb-search .search-field input{flex:1;border:none;outline:none;background:none;font-size:14.5px;color:var(--gb-text);min-width:0}
+.gb-search .search-field input::placeholder{color:var(--gb-muted);opacity:.8}
+.gb-search .search-field .clear{cursor:pointer;color:var(--gb-muted-2);background:none;border:none;padding:0;line-height:1}
+
+.gb-search .panel{flex:1;overflow-y:auto;padding:16px}
+
+/* group heading */
+.gb-search .grp{display:flex;align-items:center;justify-content:space-between;margin:6px 2px 10px}
+.gb-search .grp:not(:first-child){margin-top:22px}
+.gb-search .grp h3{margin:0;font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gb-muted-2)}
+.gb-search .grp a{font-size:12px;font-weight:700;color:var(--gb-zest-600);cursor:pointer;background:none;border:none;padding:0;font-family:inherit}
+[data-theme="dark"] .gb-search .grp a{color:var(--gb-zest)}
+
+/* recent / term rows */
+.gb-search .row{display:flex;align-items:center;gap:12px;padding:11px 8px;border-radius:var(--gb-r-md);cursor:pointer;width:100%;background:none;border:none;text-align:left;font-family:inherit;color:inherit}
+.gb-search .row:hover{background:var(--gb-surface-2)}
+.gb-search .row .lead{width:36px;height:36px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-search .row .lead .ms{font-size:19px;color:var(--gb-muted-2)}
+.gb-search .row .txt{flex:1;min-width:0}
+.gb-search .row .txt b{font-size:14px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-search .row .txt b mark{background:none;color:var(--gb-zest-600);font-weight:800}
+[data-theme="dark"] .gb-search .row .txt b mark{color:var(--gb-zest)}
+.gb-search .row .txt span{font-size:12px;color:var(--gb-muted)}
+.gb-search .row .ms.go{font-size:18px;color:var(--gb-muted-2)}
+.gb-search .row .ms.up{font-size:18px;color:var(--gb-muted-2);transform:rotate(-45deg)}
+
+/* popular chips (renamed .chip → .se-chip) */
+.gb-search .chips{display:flex;flex-wrap:wrap;gap:8px}
+.gb-search .se-chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-pill);padding:9px 14px;cursor:pointer;font-family:inherit}
+.gb-search .se-chip .ms{font-size:16px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-search .se-chip .ms{color:var(--gb-zest)}
+
+/* restaurant / dish result row (with thumb + rating) */
+.gb-search .res{display:flex;align-items:center;gap:12px;padding:9px 8px;border-radius:var(--gb-r-md);cursor:pointer;width:100%;background:none;border:none;text-align:left;font-family:inherit;color:inherit}
+.gb-search .res:hover{background:var(--gb-surface-2)}
+.gb-search .res .thumb{width:46px;height:46px;border-radius:var(--gb-r-sm);flex-shrink:0;background-size:cover;background-position:center}
+.gb-search .res .thumb.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 7px,#FFF1E7 7px 14px)}
+.gb-search .res .thumb.t2{background:repeating-linear-gradient(135deg,#D7E3F2 0 7px,#EAEFF6 7px 14px)}
+.gb-search .res .thumb.t3{background:repeating-linear-gradient(135deg,#CDEBD8 0 7px,#EAF7EF 7px 14px)}
+[data-theme="dark"] .gb-search .res .thumb.t1{background:repeating-linear-gradient(135deg,#3A2C22 0 7px,#2C2118 7px 14px)}
+[data-theme="dark"] .gb-search .res .thumb.t2{background:repeating-linear-gradient(135deg,#21344B 0 7px,#1A2A3D 7px 14px)}
+[data-theme="dark"] .gb-search .res .thumb.t3{background:repeating-linear-gradient(135deg,#1E3B2B 0 7px,#172E22 7px 14px)}
+.gb-search .res .txt{flex:1;min-width:0}
+.gb-search .res .txt b{font-size:14px;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-search .res .txt b mark{background:none;color:var(--gb-zest-600);font-weight:800}
+[data-theme="dark"] .gb-search .res .txt b mark{color:var(--gb-zest)}
+.gb-search .res .txt span{font-size:12px;color:var(--gb-muted)}
+.gb-search .res .rating{display:inline-flex;align-items:center;gap:3px;font-size:12.5px;font-weight:700;flex-shrink:0}
+.gb-search .res .rating .ms{font-size:15px;color:#EA9410}
+.gb-search .dish-badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;color:var(--gb-zest-600);background:#FFF1E7;border-radius:6px;padding:2px 7px}
+[data-theme="dark"] .gb-search .dish-badge{color:var(--gb-zest);background:rgba(255,124,57,.16)}
+
+/* empty / no-match state */
+.gb-search .nomatch{display:flex;flex-direction:column;align-items:center;text-align:center;padding:48px 24px}
+.gb-search .nomatch__ico{width:84px;height:84px;border-radius:50%;background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.gb-search .nomatch__ico .ms{font-size:42px;color:var(--gb-muted-2)}
+.gb-search .nomatch h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em}
+.gb-search .nomatch p{margin:9px 0 18px;font-size:13.5px;line-height:1.55;color:var(--gb-muted);max-width:32ch}
+.gb-search .nomatch p b{color:var(--gb-text)}
+
+/* loading skeleton rows (mobile) — neutral surface-2 blocks, CD-consistent */
+.gb-search .res-skel{display:flex;align-items:center;gap:12px;padding:9px 8px}
+.gb-search .res-skel .sk-thumb{width:46px;height:46px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);flex-shrink:0;animation:gb-pulse 1.4s ease-in-out infinite}
+.gb-search .res-skel .sk-line{height:11px;border-radius:6px;background:var(--gb-surface-2);animation:gb-pulse 1.4s ease-in-out infinite}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * DESKTOP — subbar + 2-col grid + map panel (CD search-desktop.html). The CD
+ * demo rail/header are OMITTED — the EatShell provides them. We reproduce only
+ * .subbar + .content (.results grid + .mappanel). Shown ≥900px.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.gb-search .se-desktop{display:flex;flex-direction:column;min-height:0}
+
+/* SUBBAR : filters + sort + count (page-owned). CD anchored it under the header
+ * at top:71px; INSIDE the shell the topbar height differs, so we stick to top:0
+ * of the scroll container (the shell's .content scrolls), keeping the visual. */
+.gb-search .subbar{display:flex;align-items:center;gap:10px;padding:13px 26px;background:var(--gb-bg);border-bottom:1px solid var(--gb-border);position:sticky;top:0;z-index:3;flex-wrap:wrap}
+.gb-search .filters{display:flex;gap:8px;flex-wrap:wrap;flex:1;min-width:0}
+.gb-search .fchip{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-pill);padding:8px 14px;cursor:pointer;white-space:nowrap;font-family:inherit}
+.gb-search .fchip .ms{font-size:16px;color:var(--gb-muted-2)}
+.gb-search .fchip.on{color:#fff;background:var(--gb-grad);border-color:transparent}
+.gb-search .fchip.on .ms{color:#fff}
+.gb-search .fchip.fav.on{background:linear-gradient(135deg,#FF5C8A,#E0356E)}
+.gb-search .fchip.veg.on{background:linear-gradient(135deg,#41BD78,#1E8C4B)}
+/* inert/decorative filters (no backing data) — visually present, not interactive */
+.gb-search .fchip.inert{cursor:default}
+.gb-search .count{font-size:13px;font-weight:600;color:var(--gb-muted);white-space:nowrap}
+.gb-search .count b{color:var(--gb-text);font-weight:800}
+.gb-search .sort{display:flex;align-items:center;gap:7px;background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:8px 13px;cursor:pointer;white-space:nowrap;font-family:inherit;color:var(--gb-text)}
+.gb-search .sort .ms{font-size:18px;color:var(--gb-muted-2)}
+.gb-search .sort span{font-size:13px;font-weight:600}
+
+/* RESULTS + MAP */
+.gb-search .content{flex:1;display:flex;min-height:0}
+.gb-search .results{flex:1;overflow-y:auto;padding:20px 26px}
+.gb-search .ai-line{display:flex;align-items:flex-start;gap:11px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:13px 15px;margin-bottom:18px}
+.gb-search .ai-line .ms{font-size:20px;background:linear-gradient(135deg,#FFB020,#F2570E);-webkit-background-clip:text;background-clip:text;color:transparent;flex-shrink:0}
+.gb-search .ai-line p{margin:0;font-size:13px;line-height:1.5;color:var(--gb-muted);flex:1}
+.gb-search .ai-line .soon{font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:3px 7px;white-space:nowrap}
+[data-theme="dark"] .gb-search .ai-line .soon{color:var(--gb-zest)}
+
+.gb-search .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.gb-search .se-card{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);overflow:hidden;box-shadow:var(--se-shadow-card);cursor:pointer;text-align:left;padding:0;font-family:inherit;color:inherit;display:block;width:100%}
+.gb-search .card__img{position:relative;height:130px;background-size:cover;background-position:center}
+.gb-search .card__img.t1{background:repeating-linear-gradient(135deg,#FFE3CE 0 12px,#FFF1E7 12px 24px)}
+.gb-search .card__img.t2{background:repeating-linear-gradient(135deg,#D7E3F2 0 12px,#EAEFF6 12px 24px)}
+.gb-search .card__img.t3{background:repeating-linear-gradient(135deg,#CDEBD8 0 12px,#EAF7EF 12px 24px)}
+.gb-search .card__img.t4{background:repeating-linear-gradient(135deg,#FFD9C2 0 12px,#FFE9D6 12px 24px)}
+[data-theme="dark"] .gb-search .card__img.t1{background:repeating-linear-gradient(135deg,#3A2C22 0 12px,#2C2118 12px 24px)}
+[data-theme="dark"] .gb-search .card__img.t2{background:repeating-linear-gradient(135deg,#21344B 0 12px,#1A2A3D 12px 24px)}
+[data-theme="dark"] .gb-search .card__img.t3{background:repeating-linear-gradient(135deg,#1E3B2B 0 12px,#172E22 12px 24px)}
+[data-theme="dark"] .gb-search .card__img.t4{background:repeating-linear-gradient(135deg,#3A2C22 0 12px,#2C2118 12px 24px)}
+.gb-search .card__time{position:absolute;top:10px;left:10px;background:rgba(15,39,66,.82);color:#fff;font-size:11px;font-weight:600;padding:4px 9px;border-radius:7px}
+.gb-search .card__fav{position:absolute;top:9px;right:9px;width:32px;height:32px;border-radius:50%;background:var(--gb-surface);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(15,39,66,.15);border:none;cursor:pointer;padding:0}
+.gb-search .card__fav .ms{font-size:18px;color:var(--gb-muted-2)}
+.gb-search .card__fav.on .ms{color:#E0356E;font-variation-settings:'FILL' 1}
+.gb-search .card__b{padding:13px 15px}
+.gb-search .card__row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.gb-search .card__row b{font-family:var(--gb-font-display);font-weight:700;font-size:15.5px;line-height:1.3;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-search .card__rating{display:inline-flex;align-items:center;gap:3px;font-size:12.5px;font-weight:700;flex-shrink:0}
+.gb-search .card__rating .ms{font-size:15px;color:#EA9410}
+.gb-search .card__meta{font-size:12.5px;color:var(--gb-muted);margin-top:4px}
+.gb-search .card__tags{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+.gb-search .tag{font-size:11px;font-weight:600;border-radius:7px;padding:4px 9px}
+.gb-search .tag--free{color:var(--gb-basil-600);background:var(--gb-basil-bg)}
+.gb-search .tag--veg{color:var(--gb-basil-600);background:var(--gb-basil-bg)}
+.gb-search .tag--pop{color:var(--gb-zest-600);background:#FFF1E7}
+[data-theme="dark"] .gb-search .tag--pop{background:rgba(255,124,57,.16);color:var(--gb-zest)}
+
+/* map panel (INERT « à venir » placeholder — faux pins + faux card, no real map) */
+.gb-search .mappanel{width:38%;max-width:460px;flex-shrink:0;position:relative;border-left:1px solid var(--gb-border);background:repeating-linear-gradient(135deg,#E5EDE4 0 24px,#EDF1EB 24px 48px)}
+[data-theme="dark"] .gb-search .mappanel{background:repeating-linear-gradient(135deg,#10202F 0 24px,#16263A 24px 48px)}
+.gb-search .map-soon{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:2;font-size:9.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:6px;padding:4px 9px;white-space:nowrap}
+[data-theme="dark"] .gb-search .map-soon{color:var(--gb-zest)}
+.gb-search .mpin{position:absolute;display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-100%)}
+.gb-search .mpin .b{display:flex;align-items:center;gap:3px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-pill);padding:4px 9px;font-size:11px;font-weight:800;box-shadow:var(--se-shadow-pop)}
+.gb-search .mpin .b .ms{font-size:13px;color:#EA9410}
+.gb-search .mpin .tip{width:10px;height:10px;background:var(--gb-surface);border-right:1px solid var(--gb-border);border-bottom:1px solid var(--gb-border);transform:rotate(45deg);margin-top:-5px}
+.gb-search .mpin.act .b{background:var(--gb-zest-600);color:#fff;border-color:transparent}
+.gb-search .mpin.act .b .ms{color:#fff}
+.gb-search .mpin.act .tip{background:var(--gb-zest-600);border-color:transparent}
+.gb-search .mapcard{position:absolute;left:16px;right:16px;bottom:16px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:12px;display:flex;gap:12px;align-items:center;box-shadow:var(--se-shadow-pop)}
+.gb-search .mapcard .thumb{width:54px;height:54px;border-radius:var(--gb-r-sm);background:repeating-linear-gradient(135deg,#FFE3CE 0 8px,#FFF1E7 8px 16px);flex-shrink:0;background-size:cover;background-position:center}
+[data-theme="dark"] .gb-search .mapcard .thumb{background:repeating-linear-gradient(135deg,#3A2C22 0 8px,#2C2118 8px 16px)}
+.gb-search .mapcard .txt{flex:1;min-width:0}
+.gb-search .mapcard .txt b{font-family:var(--gb-font-display);font-weight:700;font-size:14.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-search .mapcard .txt span{font-size:12px;color:var(--gb-muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gb-search .se-btn{flex-shrink:0;font-family:var(--gb-font-ui);font-weight:700;font-size:13px;color:#fff;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:10px 15px;cursor:pointer}
+
+/* favorites filter on → only show favorited cards + swap the count label */
+.gb-search[data-fav="on"] .se-card:not(.is-fav){display:none}
+.gb-search[data-fav="on"] .count .all{display:none}
+.gb-search:not([data-fav="on"]) .count .favc{display:none}
+
+/* desktop loading skeleton cards */
+.gb-search .card-skel{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);overflow:hidden;box-shadow:var(--se-shadow-card)}
+.gb-search .card-skel .sk-img{height:130px;background:var(--gb-surface-2);animation:gb-pulse 1.4s ease-in-out infinite}
+.gb-search .card-skel .sk-b{padding:13px 15px;display:flex;flex-direction:column;gap:8px}
+.gb-search .card-skel .sk-line{height:12px;border-radius:6px;background:var(--gb-surface-2);animation:gb-pulse 1.4s ease-in-out infinite}
+
+/* empty (desktop, no results) */
+.gb-search .empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:56px 24px}
+.gb-search .empty__ico{width:84px;height:84px;border-radius:50%;background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;margin-bottom:18px}
+.gb-search .empty__ico .ms{font-size:42px;color:var(--gb-muted-2)}
+.gb-search .empty h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em}
+.gb-search .empty p{margin:9px 0 18px;font-size:13.5px;line-height:1.55;color:var(--gb-muted);max-width:36ch}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * RESPONSIVE SWITCH — CD desktop hides the map ≤1100px, drops to mobile ≤900px.
+ * We show the desktop layout ≥900px and the mobile typeahead screen <900px.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+.gb-search .se-desktop{display:none}
+.gb-search .se-mobile{display:flex}
+@media (min-width:900px){
+  .gb-search .se-mobile{display:none}
+  .gb-search .se-desktop{display:flex}
+}
+@media (max-width:1100px){
+  .gb-search .mappanel{display:none}
+  .gb-search .grid{grid-template-columns:1fr 1fr}
+}

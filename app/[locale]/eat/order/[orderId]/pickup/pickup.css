@@ -1,0 +1,126 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/order/[orderId]/pickup — « Code de retrait / commande prête » (Click&Collect
+ * pickup pass) — VERBATIM reproduction of the FROZEN CD ref (Notion 38efd2c9-…-81fd,
+ * file eat/pickup-ready.html). Material Symbols (NOT lucide), gb-foundation tokens.
+ *
+ * The page owns its whole column (own `.h2bar` header + sticky `.foot`), so it renders
+ * BARE inside the shell — EatShell already marks `/eat/order/` IMMERSIVE (rail kept on
+ * desktop, top-bar + mobile chrome dropped → the page header governs).
+ *
+ * Two REAL states, driven by the real order status:
+ *   • « Prête »          (status ready / picked_up) — hero ✅ + active QR/code
+ *   • « En préparation » (status received / preparing) — hero animé + mini-stepper +
+ *                         QR atténué `.dim` + bouton « Me prévenir »
+ *
+ * The CD tokens nearly all already live in the gb-foundation (gb-tokens.css):
+ * --gb-zest/-600, --gb-pickup/-bg, --gb-basil-600, --gb-grad, --gb-surface(-2),
+ * --gb-border(-strong), --gb-muted(-2), --gb-shadow-card/-btn, the radii. The two CD
+ * tokens NOT in the foundation (--gb-basil-bg / --gb-basil-bd, the "PRÊTE" green
+ * surface/border) are aliased HERE, scoped under `.gb-pickup`, to their EXACT CD hexes
+ * (which already exist verbatim in the foundation under other names: --gb-dinein-bg
+ * #EAF7EF / --gb-success-bd #CDEBD8). No foundation file is touched. The CD's generic
+ * class names (.screen/.body/.foot/.code/.rrow/.ocard/.oline/.totrow/.acts…) collide
+ * with nothing because they are all PREFIXED here. The CD generics renamed to .pk-*:
+ * .pk-status / .pk-step / .pk-lab were already prefixed in the CD; .code → .pk-code,
+ * .rrow → .pk-rrow, .ocard → .pk-ocard, .oline/.totrow → .pk-oline/.pk-totrow,
+ * .acts → .pk-acts (the foundation already defines a generic `.gb .card`, so we keep
+ * everything page-local & prefixed to be safe). Logical properties + .ms-flip keep the
+ * layout RTL-correct; the code/€ are wrapped in <bdi> in the TSX so they stay LTR.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* basil surface/border aliases — EXACT CD hexes (= foundation --gb-dinein-bg /
+   --gb-success-bd), scoped so no foundation token is added. */
+.gb-pickup{ --gb-basil-bg:#EAF7EF; --gb-basil-bd:#CDEBD8 }
+[data-theme="dark"] .gb-pickup{ --gb-basil-bg:rgba(65,189,120,.14); --gb-basil-bd:#2C5C40 }
+
+/* page plein écran (CD .screen) */
+.gb-pickup{min-height:100vh;display:flex;flex-direction:column;color:var(--gb-text);background:var(--gb-bg)}
+.gb-pickup .h2bar{display:flex;align-items:center;gap:11px;padding:14px 16px 8px;flex-shrink:0}
+.gb-pickup .h2bar .back{display:inline-flex;align-items:center;justify-content:center;border:none;background:none;padding:0;color:var(--gb-text);cursor:pointer}
+.gb-pickup .h2bar .back .ms{font-size:22px}
+.gb-pickup .h2bar h2{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:700;font-size:17px;color:var(--gb-text)}
+.gb-pickup .h2bar .badge{font-size:10px;font-weight:700;color:var(--gb-basil-600);background:var(--gb-basil-bg);border:1px solid var(--gb-basil-bd);border-radius:6px;padding:4px 8px;white-space:nowrap}
+.gb-pickup .body{flex:1;overflow-y:auto;padding:4px 18px;max-width:480px;width:100%;margin:0 auto}
+.gb-pickup .foot{flex-shrink:0;padding:10px 18px 16px;background:var(--gb-surface);border-top:1px solid var(--gb-border)}
+.gb-pickup .foot .inner{max-width:480px;margin:0 auto}
+.gb-pickup .foot small{display:block;text-align:center;font-size:10.5px;color:var(--gb-muted);margin-top:8px}
+
+/* status hero (CD .pk-status) */
+.gb-pickup .pk-status{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 0 2px}
+.gb-pickup .pk-status .ic{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:12px}
+.gb-pickup .pk-status.ready .ic{background:var(--gb-basil-bg)}
+.gb-pickup .pk-status.ready .ic .ms{font-size:40px;color:var(--gb-basil-600);font-variation-settings:'FILL' 1}
+.gb-pickup .pk-status.prep .ic{background:var(--gb-pickup-bg)}
+.gb-pickup .pk-status.prep .ic .ms{font-size:38px;color:var(--gb-pickup);animation:gb-pulse 1.8s ease-in-out infinite}
+.gb-pickup .pk-status h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:21px;letter-spacing:-.02em;line-height:1.18;color:var(--gb-text)}
+.gb-pickup .pk-status p{margin:9px 0 0;font-size:12px;line-height:1.45;color:var(--gb-muted)}
+.gb-pickup .pk-status p b{color:var(--gb-text)}
+
+/* mini stepper (état préparation) (CD .pk-step / .pk-lab) */
+.gb-pickup .pk-step{display:flex;align-items:center;width:100%;margin:14px 0 4px}
+.gb-pickup .pk-step .d{width:15px;height:15px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.gb-pickup .pk-step .d.done{background:var(--gb-basil-600)}
+.gb-pickup .pk-step .d.done .ms{font-size:10px;color:#fff}
+.gb-pickup .pk-step .d.cur{background:var(--gb-pickup);box-shadow:0 0 0 4px var(--gb-pickup-bg)}
+.gb-pickup .pk-step .d.off{background:var(--gb-border-strong)}
+.gb-pickup .pk-step .s{flex:1;height:3px;margin:0 4px}
+.gb-pickup .pk-step .s.done{background:var(--gb-basil-600)}
+.gb-pickup .pk-step .s.off{background:var(--gb-border-strong)}
+.gb-pickup .pk-lab{display:flex;justify-content:space-between;width:100%;font-size:9px;font-weight:600;color:var(--gb-muted);margin-bottom:14px}
+.gb-pickup .pk-lab .on{color:var(--gb-pickup);font-weight:700}
+
+/* GRAND code de retrait — reprend l'accent .code, agrandi (CD .code.big → .pk-code.big) */
+.gb-pickup .pk-code.big{display:flex;flex-direction:column;align-items:center;text-align:center;background:var(--gb-pickup-bg);border:1px solid transparent;border-radius:var(--gb-r-lg);padding:18px;margin:12px 0}
+.gb-pickup .pk-code.big .qr{width:152px;height:152px;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(46,120,240,.18);box-shadow:0 6px 16px -8px rgba(15,39,66,.25)}
+.gb-pickup .pk-code.big .qr .ms{font-size:132px;color:#0F2742;line-height:1}
+.gb-pickup .pk-code.big small{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--gb-pickup);margin-top:13px}
+.gb-pickup .pk-code.big b{font-family:var(--gb-font-display);font-weight:800;font-size:30px;letter-spacing:.16em;color:var(--gb-pickup);line-height:1.1}
+.gb-pickup .pk-code.big .hint{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--gb-pickup);margin-top:4px}
+.gb-pickup .pk-code.big .hint .ms{font-size:15px}
+.gb-pickup .pk-code.big.dim{opacity:.5}
+
+/* resto + adresse (CD .rrow → .pk-rrow) */
+.gb-pickup .pk-rrow{display:flex;align-items:center;gap:11px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:12px;margin-bottom:10px}
+.gb-pickup .pk-rrow .ic{width:38px;height:38px;border-radius:10px;background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-pickup .pk-rrow .ic .ms{font-size:20px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-pickup .pk-rrow .ic .ms{color:var(--gb-zest)}
+.gb-pickup .pk-rrow .m{flex:1;min-width:0}
+.gb-pickup .pk-rrow .m b{font-family:var(--gb-font-display);font-weight:700;font-size:13.5px;display:block}
+.gb-pickup .pk-rrow .m span{font-size:11px;color:var(--gb-muted)}
+.gb-pickup .pk-rrow .when{text-align:end;flex-shrink:0}
+.gb-pickup .pk-rrow .when small{font-size:9px;font-weight:700;color:var(--gb-muted-2);text-transform:uppercase;display:block}
+.gb-pickup .pk-rrow .when b{font-family:var(--gb-font-display);font-weight:800;font-size:14px}
+
+/* récap (CD .ocard/.oline/.totrow → .pk-ocard/.pk-oline/.pk-totrow) */
+.gb-pickup .pk-ocard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:13px;padding:12px;margin-bottom:10px}
+.gb-pickup .pk-oline{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:700}
+.gb-pickup .pk-oline+.pk-oline{margin-top:9px}
+.gb-pickup .pk-oline>span:first-child{flex:1;min-width:0;padding-inline-end:10px;line-height:1.3}
+.gb-pickup .pk-oline>span:last-child{flex-shrink:0;white-space:nowrap}
+.gb-pickup .pk-oline .div{height:1px;background:var(--gb-border);margin:2px 0}
+.gb-pickup .pk-totrow{font-size:12.5px;color:var(--gb-muted);display:flex;justify-content:space-between}
+.gb-pickup .pk-totrow.tot{color:var(--gb-text);font-family:var(--gb-font-display);font-weight:800;font-size:14.5px}
+
+/* actions (CD .acts → .pk-acts) */
+.gb-pickup .pk-acts{display:flex;gap:9px}
+.gb-pickup .pk-acts .o{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--gb-grad);border-radius:13px;padding:13px;box-shadow:var(--gb-shadow-btn);color:#fff;font-weight:700;font-size:13px;border:none;cursor:pointer;font-family:inherit}
+.gb-pickup .pk-acts .o .ms{font-size:18px}
+.gb-pickup .pk-acts .w{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:13px;padding:13px;color:var(--gb-text);font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+.gb-pickup .pk-acts .w .ms{font-size:18px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-pickup .pk-acts .w .ms{color:var(--gb-zest)}
+
+/* loading skeleton (foundation .sk primitive lives in gb-components.css) */
+.gb-pickup .sk{border-radius:var(--gb-r-md)}
+.gb-pickup .sk-hero{width:72px;height:72px;border-radius:50%;margin:6px auto 12px}
+.gb-pickup .sk-qr{height:236px;border-radius:var(--gb-r-lg);margin:12px 0}
+.gb-pickup .sk-row{height:62px;border-radius:var(--gb-r-md);margin-bottom:10px}
+.gb-pickup .sk-card{height:96px;border-radius:13px;margin-bottom:10px}
+
+/* not-found / not-signed-in state */
+.gb-pickup .state{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 24px;gap:6px}
+.gb-pickup .state .ico{width:72px;height:72px;border-radius:50%;background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+.gb-pickup .state .ico .ms{font-size:36px;color:var(--gb-muted-2)}
+.gb-pickup .state h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:18px;color:var(--gb-text)}
+.gb-pickup .state p{margin:0 0 8px;font-size:12.5px;line-height:1.5;color:var(--gb-muted);max-width:34ch}
+.gb-pickup .state .cta{display:inline-flex;align-items:center;gap:8px;background:var(--gb-grad);border:none;border-radius:13px;padding:12px 20px;box-shadow:var(--gb-shadow-btn);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;text-decoration:none}
+.gb-pickup .state .cta .ms{font-size:18px}

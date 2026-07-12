@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — États d'erreur</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C; --gb-field-bg:#FFFFFF;
+  --gb-focus-border:#FF6A1F;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3; --gb-field-bg:#0C1826;
+  --gb-focus-border:#FF7C39; --gb-zest:#FF7C39;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+button{font-family:inherit}
+.err{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 26px}
+.err__art{position:relative;width:128px;height:128px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:26px}
+.err__art.orange{background:#FFF1E7}
+.err__art.blue{background:#E7F0FE}
+.err__art.green{background:#EAF7EF}
+[data-theme="dark"] .err__art.orange{background:rgba(255,124,57,.16)}
+[data-theme="dark"] .err__art.blue{background:rgba(46,120,240,.18)}
+[data-theme="dark"] .err__art.green{background:rgba(65,189,120,.16)}
+.err__art .ms{font-size:64px}
+.err__art.orange .ms{color:var(--gb-zest-600)} [data-theme="dark"] .err__art.orange .ms{color:var(--gb-zest)}
+.err__art.blue .ms{color:#2E78F0} [data-theme="dark"] .err__art.blue .ms{color:#6FB6F5}
+.err__art.green .ms{color:#1E8C4B} [data-theme="dark"] .err__art.green .ms{color:#41BD78}
+.err__art .badge{position:absolute;bottom:6px;right:6px;width:42px;height:42px;border-radius:50%;background:var(--gb-surface);border:3px solid var(--gb-bg);display:flex;align-items:center;justify-content:center}
+.err__art .badge .ms{font-size:24px;color:var(--gb-zest-600)}
+[data-theme="dark"] .err__art .badge .ms{color:var(--gb-zest)}
+.err__code{font-family:var(--gb-font-display);font-weight:900;font-size:64px;letter-spacing:-.04em;line-height:1;color:var(--gb-text);margin-bottom:8px}
+.err h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.4vw,28px);letter-spacing:-.02em}
+.err p{margin:11px 0 26px;font-size:15px;line-height:1.6;color:var(--gb-muted);max-width:40ch}
+.err__cta{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;cursor:pointer;border-radius:var(--gb-r-md);padding:14px;border:none}
+.btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn)}
+.btn--line{color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong)}
+.btn .ms{font-size:19px}
+.zone-field{display:flex;align-items:center;gap:10px;background:var(--gb-field-bg);border:1.5px solid var(--gb-focus-border);border-radius:var(--gb-r-md);padding:13px 15px;width:100%;max-width:340px;box-shadow:0 0 0 3px rgba(255,106,31,.14);margin-bottom:14px}
+[data-theme="dark"] .zone-field{box-shadow:0 0 0 3px rgba(255,124,57,.18)}
+.zone-field .ms{font-size:19px;color:var(--gb-zest-600)}
+[data-theme="dark"] .zone-field .ms{color:var(--gb-zest)}
+.zone-field input{flex:1;border:none;outline:none;background:none;font-size:14px;color:var(--gb-text)}
+.zone-note{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--gb-muted);margin-bottom:22px}
+.zone-note .ms{font-size:16px;color:var(--gb-basil-600)}
+.off-pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:var(--gb-zest-600);background:rgba(255,138,40,.14);border-radius:var(--gb-r-pill);padding:7px 14px;margin-bottom:20px}
+[data-theme="dark"] .off-pill{color:var(--gb-zest)}
+.off-pill i{width:8px;height:8px;border-radius:50%;background:currentColor}
+/* visibilité des 3 variantes */
+#app:not([data-err="offline"]) .e-offline,#app:not([data-err="404"]) .e-404,#app:not([data-err="zone"]) .e-zone{display:none}
+</style>
+</head>
+<body>
+<div id="app" data-err="404">
+
+  <!-- HORS-LIGNE -->
+  <div class="err e-offline">
+    <span class="off-pill"><i></i>Pas de connexion</span>
+    <div class="err__art orange"><span class="ms">wifi_off</span></div>
+    <h1>Vous êtes hors-ligne</h1>
+    <p>Impossible de joindre Grubano. Vérifiez votre connexion Wi-Fi ou vos données mobiles, puis réessayez.</p>
+    <div class="err__cta">
+      <button class="btn btn--primary"><span class="ms">refresh</span>Réessayer</button>
+      <button class="btn btn--line"><span class="ms">receipt_long</span>Voir mes commandes hors-ligne</button>
+    </div>
+  </div>
+
+  <!-- 404 -->
+  <div class="err e-404">
+    <div class="err__code">404</div>
+    <h1>Cette page a filé en cuisine</h1>
+    <p>La page que vous cherchez est introuvable ou a été déplacée. Revenons à des choses appétissantes.</p>
+    <div class="err__cta">
+      <button class="btn btn--primary"><span class="ms">home</span>Retour à l'accueil</button>
+      <button class="btn btn--line"><span class="ms">search</span>Chercher un restaurant</button>
+    </div>
+  </div>
+
+  <!-- ZONE NON DESSERVIE -->
+  <div class="err e-zone">
+    <div class="err__art green"><span class="ms">location_off</span><span class="badge"><span class="ms">two_wheeler</span></span></div>
+    <h1>Pas encore chez vous… mais bientôt</h1>
+    <p>Grubano ne livre pas encore à cette adresse. Essayez une autre adresse, ou laissez-nous vous prévenir à l'ouverture.</p>
+    <div class="zone-field"><span class="ms">location_on</span><input value="22 Rue de la Paix, 60000 Beauvais" placeholder="Saisir une autre adresse"></div>
+    <div class="zone-note"><span class="ms">notifications_active</span>On vous prévient dès qu'on arrive dans votre quartier.</div>
+    <div class="err__cta">
+      <button class="btn btn--primary"><span class="ms">edit_location</span>Changer d'adresse</button>
+      <button class="btn btn--line"><span class="ms">mail</span>Me prévenir à l'ouverture</button>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

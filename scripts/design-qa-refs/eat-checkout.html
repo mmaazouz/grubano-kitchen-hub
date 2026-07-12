@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — Checkout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-bg:#FBF8F3; --gb-surface:#FFFFFF; --gb-surface-2:#FBF8F3;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C; --gb-field-bg:#FFFFFF;
+  --gb-basil-bg:#EAF7EF; --gb-basil-bd:#CDEBD8;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif; --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-card:0 1px 2px rgba(15,39,66,.04),0 14px 30px -20px rgba(15,39,66,.16);
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-focus:0 0 0 3px rgba(255,106,31,.16); --gb-focus-border:#FF6A1F;
+}
+[data-theme="dark"]{
+  --gb-bg:#0C1826; --gb-surface:#14253A; --gb-surface-2:#0C1826;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3; --gb-field-bg:#0C1826;
+  --gb-basil-bg:rgba(65,189,120,.14); --gb-basil-bd:#2C5C40; --gb-zest:#FF7C39;
+  --gb-focus:0 0 0 3px rgba(255,124,57,.18); --gb-focus-border:#FF7C39;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+input,button{font-family:inherit}
+.co{max-width:1040px;margin:0 auto;padding:clamp(18px,3vw,30px) clamp(16px,3vw,28px) 120px}
+.co-top{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+.co-top .back{font-size:24px;cursor:pointer}
+.co-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em}
+.steps{display:flex;align-items:center;gap:8px;margin:0 0 22px 38px;font-size:12.5px;color:var(--gb-muted)}
+.steps b{color:var(--gb-text);font-weight:700}
+.steps .ms{font-size:15px;color:var(--gb-border-strong)}
+.layout{display:grid;grid-template-columns:1fr 360px;gap:22px;align-items:start}
+@media (max-width:820px){ .layout{grid-template-columns:1fr} }
+.sec{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);padding:18px;margin-bottom:14px}
+.sec__h{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.sec__h .ms{font-size:20px;color:var(--gb-zest-600)}
+[data-theme="dark"] .sec__h .ms{color:var(--gb-zest)}
+.sec__h b{font-family:var(--gb-font-display);font-weight:700;font-size:15.5px;flex:1}
+.sec__h .edit{font-size:12.5px;font-weight:700;color:var(--gb-zest-600);background:none;border:none;cursor:pointer}
+[data-theme="dark"] .sec__h .edit{color:var(--gb-zest)}
+.opt{display:flex;align-items:center;gap:12px;border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:13px;cursor:pointer;margin-bottom:9px}
+.opt:last-child{margin-bottom:0}
+.opt.sel{border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.opt .ico{width:38px;height:38px;border-radius:var(--gb-r-sm);background:var(--gb-surface-2);border:1px solid var(--gb-border);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.opt .ico .ms{font-size:20px;color:var(--gb-zest-600)}
+[data-theme="dark"] .opt .ico .ms{color:var(--gb-zest)}
+.opt .main{flex:1;min-width:0}
+.opt .main b{font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:7px}
+.opt .main span{display:block;font-size:12px;color:var(--gb-muted);margin-top:2px}
+.opt .radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--gb-border-strong);flex-shrink:0;position:relative}
+.opt.sel .radio{border-color:var(--gb-zest-600)}
+.opt.sel .radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--gb-zest-600)}
+[data-theme="dark"] .opt.sel .radio{border-color:var(--gb-zest)} [data-theme="dark"] .opt.sel .radio::after{background:var(--gb-zest)}
+.badge-def{font-size:10px;font-weight:700;color:#fff;background:var(--gb-grad);border-radius:6px;padding:2px 7px;white-space:nowrap}
+.chiprow{display:flex;gap:8px;flex-wrap:wrap}
+.tchip{font-size:13px;font-weight:600;color:var(--gb-text);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:10px 15px;cursor:pointer}
+.tchip.sel{color:#fff;background:var(--gb-grad);border-color:transparent}
+.tchip.now{display:inline-flex;align-items:center;gap:5px}
+.tchip.now .ms{font-size:16px}
+.tiprow{display:flex;gap:8px}
+.tipopt{flex:1;text-align:center;font-size:13.5px;font-weight:700;color:var(--gb-muted);background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:11px 0;cursor:pointer}
+.tipopt.sel{color:#fff;background:var(--gb-grad);border-color:transparent}
+.tipnote{font-size:11.5px;color:var(--gb-muted);margin:10px 0 0;display:flex;align-items:center;gap:6px}
+.tipnote .ms{font-size:15px;color:var(--gb-basil-600)}
+.pay{display:flex;align-items:center;gap:12px;border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:13px;margin-bottom:9px;cursor:pointer}
+.pay:last-child{margin-bottom:0}
+.pay.sel{border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.pay .brand{width:42px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;font-weight:800;color:#fff}
+.pay .brand.visa{background:linear-gradient(135deg,#1A1F71,#2E78F0)}
+.pay .brand.mc{background:#1A1A1A}
+.pay .brand.apple{background:#000}
+.pay .brand .ms{font-size:18px;color:#fff}
+.pay .main{flex:1}.pay .main b{font-size:13.5px;font-weight:700}.pay .main span{display:block;font-size:11.5px;color:var(--gb-muted)}
+.pay .radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--gb-border-strong);flex-shrink:0;position:relative}
+.pay.sel .radio{border-color:var(--gb-zest-600)} .pay.sel .radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--gb-zest-600)}
+[data-theme="dark"] .pay.sel .radio{border-color:var(--gb-zest)} [data-theme="dark"] .pay.sel .radio::after{background:var(--gb-zest)}
+.addpay{display:flex;align-items:center;gap:8px;width:100%;margin-top:9px;padding:12px;border:1.5px dashed var(--gb-border-strong);border-radius:var(--gb-r-md);background:none;color:var(--gb-zest-600);font-weight:700;font-size:13px;cursor:pointer}
+[data-theme="dark"] .addpay{color:var(--gb-zest)}
+.summary{position:sticky;top:20px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden}
+.summary__h{padding:16px 18px;border-bottom:1px solid var(--gb-border);font-family:var(--gb-font-display);font-weight:800;font-size:16px}
+.miniitems{padding:14px 18px;border-bottom:1px solid var(--gb-border);display:flex;flex-direction:column;gap:9px}
+.mi{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.mi span{color:var(--gb-muted);min-width:0}.mi span b{color:var(--gb-text);font-weight:700;margin-right:5px}
+.mi .v{color:var(--gb-text);font-weight:600;white-space:nowrap;flex-shrink:0}
+.summary__b{padding:16px 18px}
+.srow{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;color:var(--gb-muted);margin-bottom:9px}
+.srow.disc{color:var(--gb-basil-600);font-weight:600}
+.srow b,.srow span:last-child{color:var(--gb-text);font-weight:600;white-space:nowrap;flex-shrink:0}
+.srow.disc span:last-child{color:var(--gb-basil-600)}
+.sdiv{height:1px;background:var(--gb-border);margin:6px 0 12px}
+.stotal{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.stotal span{font-weight:700;font-size:15px}.stotal b{font-family:var(--gb-font-display);font-weight:800;font-size:22px;letter-spacing:-.01em}
+.cta{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:15px 18px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
+.cta .ms{font-size:20px;color:#fff}.cta span{font-size:14.5px;font-weight:700;color:#fff}
+.reassure{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;font-size:12px;color:var(--gb-muted);text-align:center}
+.reassure .ms{font-size:15px;color:var(--gb-basil-600)}
+.mbar{display:none}
+@media (max-width:820px){ .summary{position:static}
+  .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--gb-surface);border-top:1px solid var(--gb-border)} }
+</style>
+</head>
+<body>
+<div id="app">
+<main class="co">
+  <div class="co-top"><span class="ms back">arrow_back</span><h1>Paiement</h1></div>
+  <div class="steps"><b>Panier</b><span class="ms">chevron_right</span><b style="color:var(--gb-zest-600)">Paiement</b><span class="ms">chevron_right</span>Confirmation</div>
+  <div class="layout">
+    <div>
+      <section class="sec">
+        <div class="sec__h"><span class="ms">location_on</span><b>Adresse de livraison</b><button class="edit">Changer</button></div>
+        <div class="opt sel"><span class="ico"><span class="ms">home</span></span><div class="main"><b>Domicile <span class="badge-def">Par défaut</span></b><span>14 Rue des Oliviers, Apt 3 · 75011 Paris</span></div><span class="radio"></span></div>
+        <div class="opt"><span class="ico"><span class="ms">work</span></span><div class="main"><b>Travail</b><span>8 Bd Haussmann · 75009 Paris</span></div><span class="radio"></span></div>
+      </section>
+      <section class="sec">
+        <div class="sec__h"><span class="ms">schedule</span><b>Créneau de livraison</b></div>
+        <div class="chiprow">
+          <span class="tchip now sel"><span class="ms">bolt</span>Au plus vite · 25–35 min</span>
+          <span class="tchip">19:30</span><span class="tchip">20:00</span><span class="tchip">20:30</span><span class="tchip">21:00</span>
+        </div>
+      </section>
+      <section class="sec">
+        <div class="sec__h"><span class="ms">volunteer_activism</span><b>Pourboire livreur</b></div>
+        <div class="tiprow">
+          <span class="tipopt">Aucun</span><span class="tipopt">10 %</span><span class="tipopt sel">15 %</span><span class="tipopt">20 %</span><span class="tipopt">Autre</span>
+        </div>
+        <p class="tipnote"><span class="ms">favorite</span>100 % du pourboire revient à votre livreur.</p>
+      </section>
+      <section class="sec">
+        <div class="sec__h"><span class="ms">credit_card</span><b>Moyen de paiement</b></div>
+        <div class="pay sel"><span class="brand visa">VISA</span><div class="main"><b>Visa •••• 4242</b><span>Expire 08/27</span></div><span class="radio"></span></div>
+        <div class="pay"><span class="brand mc"><span class="ms">credit_card</span></span><div class="main"><b>Mastercard •••• 8801</b><span>Expire 02/26</span></div><span class="radio"></span></div>
+        <div class="pay"><span class="brand apple"><span class="ms">apple</span></span><div class="main"><b>Apple Pay</b><span>Touch ID / Face ID</span></div><span class="radio"></span></div>
+        <button class="addpay"><span class="ms">add</span>Ajouter une carte</button>
+      </section>
+    </div>
+    <aside class="summary">
+      <div class="summary__h">Votre commande</div>
+      <div class="miniitems">
+        <div class="mi"><span><b>1×</b>Tagliatelles à la truffe</span><span class="v">18,00 €</span></div>
+        <div class="mi"><span><b>1×</b>Cacio e pepe</span><span class="v">15,00 €</span></div>
+        <div class="mi"><span><b>2×</b>Tiramisu maison</span><span class="v">16,00 €</span></div>
+      </div>
+      <div class="summary__b">
+        <div class="srow"><span>Sous-total</span><b>49,00 €</b></div>
+        <div class="srow"><span>Frais de livraison</span><b>2,99 €</b></div>
+        <div class="srow"><span>Frais de service</span><b>1,50 €</b></div>
+        <div class="srow"><span>Pourboire (15 %)</span><b>7,35 €</b></div>
+        <div class="srow disc"><span>Tuesday Treat −20 %</span><span>−9,80 €</span></div>
+        <div class="sdiv"></div>
+        <div class="stotal"><span>Total</span><b>51,04 €</b></div>
+        <button class="cta"><span class="ms">lock</span><span>Payer 51,04 €</span></button>
+        <div class="reassure"><span class="ms">verified_user</span>Paiement chiffré · annulation gratuite sous 2 min</div>
+      </div>
+    </aside>
+  </div>
+</main>
+<div class="mbar"><button class="cta"><span class="ms">lock</span><span>Payer 51,04 €</span></button></div>
+</div>
+</body>
+</html>

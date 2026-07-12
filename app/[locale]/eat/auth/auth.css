@@ -1,0 +1,231 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /eat/auth — reproduction of the FROZEN VALIDATED REFERENCE
+ * (Notion « ✅ Auth — RÉFÉRENCE VALIDÉE & FIGÉE » 38dfd2c9-8146-81be-b002-f4214e0067a1).
+ *
+ * Reproduced À L'IDENTIQUE: the reference --gb-* variables are declared verbatim below;
+ * the component rules are copied verbatim; CD's Material-Symbols icons and the Gabarito /
+ * Hanken fonts are kept (NO lucide, NO token remap, NO size change).
+ *
+ * Two mandatory, non-visual adaptations only:
+ *  1. generic selectors (.ms, .field, .input, .btn, .oauth, .divider, .strength, .legal,
+ *     .show-*, .forgot, .toggle …) are SCOPED under `.auth` so the reference's generic names
+ *     cannot leak onto the operator app (the global *, html, body resets are folded into `.auth`);
+ *  2. `.auth__mark` is sized for the real Grubano logo image (the reference's gradient "g" box
+ *     was a placeholder CC was told to replace). Nothing else changes.
+ *  + a small `.auth__error` block (the static reference has no error state) — functional only.
+ * The `.preview-bar` test rules are intentionally omitted.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── reference --gb-* tokens. ⭐ FIXED PER SCREEN (production-rules decision 28 Jun, DECOUPLED
+ *    from the app's data-theme): the LIGHT values are the base on `.auth` (CONNEXION is ALWAYS
+ *    light = navy panel + cream form), the DARK values override on `.auth.is-signup` (INSCRIPTION
+ *    is ALWAYS dark = #0C1826 form + Sunrise panel). The `:root`/`[data-theme="dark"]` selectors
+ *    were intentionally replaced by `.auth` / `.auth.is-signup` so the app theme can't flip them. */
+.auth{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-ink-700:#16395A;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-field-bg:#FFFFFF;
+  --gb-on-ink:#FFFFFF; --gb-on-ink-muted:#AFC0D6; --gb-on-ink-faint:#7E8FA3;
+  --gb-google:#4285F4;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-grad-sunrise:linear-gradient(150deg,#FFB020,#FF6A1F 60%,#F2570E);
+  --gb-panel-ink:linear-gradient(150deg,#0F2742,#16395A 70%,#1A2C3F);
+  --gb-font-display:'Gabarito',system-ui,sans-serif;
+  --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-focus:0 0 0 3px rgba(255,106,31,.16); --gb-focus-border:#FF6A1F;
+}
+.auth.is-signup{
+  --gb-bg:#0C1826; --gb-surface:#14253A;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-field-bg:#14253A;
+  --gb-google:#5B9BFF;
+  --gb-zest:#FF7C39;
+  --gb-focus:0 0 0 3px rgba(255,124,57,.18); --gb-focus-border:#FF7C39;
+}
+
+/* ── component rules — verbatim from the reference (scoped under .auth) ───────── */
+.auth .ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga';font-feature-settings:'liga'}
+.auth input{font-family:inherit}
+.auth{min-height:100vh;min-height:100dvh;width:100%;display:grid;align-items:stretch;grid-template-columns:46% 1fr;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased}
+.auth__brand{position:relative;overflow:hidden;color:var(--gb-on-ink);background:var(--gb-panel-ink);display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,3.4vw,44px)}
+.auth.is-signup .auth__brand{background:var(--gb-grad-sunrise)}
+.auth__brand::before{content:"";position:absolute;right:-90px;top:-70px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(255,138,40,.32),transparent 66%);filter:blur(10px)}
+.auth.is-signup .auth__brand::before{right:-80px;bottom:-110px;top:auto;width:400px;height:400px;background:rgba(255,255,255,.16);filter:none}
+.auth__brand::after{content:"";position:absolute;left:-70px;bottom:-90px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(43,164,92,.20),transparent 68%);filter:blur(12px)}
+.auth.is-signup .auth__brand::after{display:none}
+.auth__logo{position:relative;display:flex;align-items:center;gap:11px}
+.auth.is-signup .auth__logo{justify-content:flex-end}
+.auth__mark{height:40px;width:40px;display:block;object-fit:contain}
+.auth__logo b{font-family:var(--gb-font-display);font-weight:800;font-size:24px;letter-spacing:-.02em}
+.auth.is-signup .auth__logo b{display:none}
+.auth__pitch{position:relative}
+.auth__pitch h2{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(26px,3vw,34px);letter-spacing:-.03em;line-height:1.06}
+.auth__pitch p{margin:14px 0 0;font-size:15px;line-height:1.6;color:var(--gb-on-ink-muted);max-width:34ch}
+.auth.is-signup .auth__pitch p{color:rgba(255,255,255,.92)}
+.auth__meta{position:relative;display:flex;gap:18px;font-size:12.5px;color:var(--gb-on-ink-faint)}
+.auth.is-signup .auth__meta{color:rgba(255,255,255,.9)}
+.auth__meta span{display:inline-flex;align-items:center;gap:6px}
+.auth__badge{position:relative;align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.2);border-radius:var(--gb-r-pill);padding:8px 14px;font-size:12.5px;font-weight:700;color:#fff}
+.auth__panel{display:flex;align-items:center;justify-content:center;padding:clamp(24px,4vw,40px)}
+.auth__form{width:100%;max-width:380px}
+.auth__title{font-family:var(--gb-font-display);font-weight:800;font-size:26px;letter-spacing:-.02em;margin:0;color:var(--gb-text)}
+.auth__sub{margin:7px 0 24px;font-size:14px;color:var(--gb-muted)}
+.auth__sub a{color:var(--gb-zest-600);font-weight:700;text-decoration:none;cursor:pointer}
+.auth.is-signup .auth__sub a{color:var(--gb-zest)}
+.auth .oauth{display:flex;gap:10px;margin-bottom:18px}
+.auth .btn-social{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:12px;cursor:pointer}
+.auth .btn-social svg{height:17px;width:auto;display:block}
+.auth .divider{display:flex;align-items:center;gap:12px;margin-bottom:18px;font-size:11.5px;font-weight:600;color:var(--gb-muted)}
+.auth .divider::before,.auth .divider::after{content:"";flex:1;height:1px;background:var(--gb-border)}
+.auth .field{margin-bottom:14px}
+.auth .field__label{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:7px;color:var(--gb-text)}
+.auth .field__label a{color:var(--gb-zest-600);font-weight:600;text-decoration:none;font-size:12px}
+.auth.is-signup .field__label a{color:var(--gb-zest)}
+.auth .input{display:flex;align-items:center;gap:10px;background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:11px;padding:12px 14px}
+.auth .input .ms{font-size:19px;color:var(--gb-muted-2)}
+.auth .input input{border:none;outline:none;background:none;font-size:14px;color:var(--gb-text);width:100%}
+.auth .input input::placeholder{color:var(--gb-muted);opacity:.7}
+.auth .input:focus-within{border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.auth .input:focus-within .ms{color:var(--gb-focus-border)}
+.auth .input .toggle{cursor:pointer}
+.auth .strength{display:none;gap:5px;margin:8px 0 20px}
+.auth .strength i{flex:1;height:5px;border-radius:3px;background:var(--gb-border)}
+.auth .strength i.on1{background:var(--gb-basil-600)}
+.auth .strength i.on2{background:#EA9410}
+.auth .btn{width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;cursor:pointer;border-radius:var(--gb-r-md);padding:14px;border:none}
+.auth .btn--primary{color:#fff;background:var(--gb-grad);box-shadow:var(--gb-shadow-btn);margin-bottom:12px}
+.auth .btn--line{display:inline-flex;align-items:center;justify-content:center;gap:8px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);font-weight:600;font-size:14px;padding:13px}
+.auth .btn--line .ms{color:var(--gb-zest-600);font-size:19px}
+.auth.is-signup .btn--line .ms{color:var(--gb-zest)}
+.auth .legal{margin:18px 0 0;font-size:11.5px;line-height:1.5;color:var(--gb-muted);text-align:center}
+.auth .legal a{color:inherit;text-decoration:underline}
+.auth .field--name{display:none}
+.auth.is-signup .field--name{display:block}
+.auth .show-signup{display:none}
+.auth.is-signup .show-signin{display:none}
+.auth.is-signup .show-signup{display:inline}
+.auth.is-signup .auth__pitch h2.show-signup{display:block}
+.auth.is-signup .auth__pitch p.show-signup{display:block}
+.auth.is-signup .auth__badge.show-signup{display:inline-flex}
+.auth.is-signup .strength{display:flex}
+.auth.is-signup .forgot{visibility:hidden}
+.auth.is-signup{grid-template-columns:1fr 46%}
+.auth.is-signup .auth__panel{grid-column:1;grid-row:1}
+.auth.is-signup .auth__brand{grid-column:2;grid-row:1}
+
+/* form error — NOT in the static reference; minimal functional addition (icon + text). */
+.auth__error{display:flex;align-items:flex-start;gap:8px;margin-bottom:14px;padding:10px 12px;border-radius:var(--gb-r-md);background:rgba(224,64,46,.10);color:var(--gb-text);font-size:13px}
+.auth__error .ms{font-size:18px;color:#E0402E;flex:none}
+
+/* Phones (<768px) hide the 2-panel desktop entirely — the dedicated `.auth-mobile` layout
+   below takes over. The reference's 880px stacked-collapse breakpoint is lowered to 768px so
+   tablets (≥768px) get the real 2-panel desktop, not the stacked version. */
+@media (max-width:767.98px){
+  .auth{display:none}
+  .auth,.auth.is-signup{grid-template-columns:1fr}
+  .auth__brand,.auth.is-signup .auth__brand{grid-column:1;grid-row:1;order:-1;padding:22px 24px 24px;flex-direction:row;align-items:center;justify-content:space-between;gap:16px}
+  .auth__panel,.auth.is-signup .auth__panel{grid-column:1;grid-row:2}
+  .auth__brand::before,.auth__brand::after{display:none}
+  .auth__pitch h2{font-size:20px}
+  .auth__pitch p,.auth__meta,.auth__badge{display:none}
+  .auth__panel{padding:24px 20px 40px;align-items:flex-start}
+  .auth__form{max-width:440px;margin:0 auto}
+}
+@media (max-width:380px){ .auth .oauth{flex-wrap:wrap} }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * /eat/auth — DEDICATED MOBILE layout (phones, <768px). Reproduction of the FROZEN
+ * mobile reference (Notion 38dfd2c9-8146-818d-a71b-f37ed9517e76) — single centered
+ * column, no side panel, centered logo, STACKED full-width OAuth, magic link as a TEXT
+ * link. Every rule is SCOPED under `.auth-mobile`: the reference reuses the same generic
+ * names as the desktop (.oauth, .btn-social, .field, .input, .divider, .strength, .legal,
+ * .is-signup, .show-*, .forgot …) so renaming the root + scoping prevents any collision
+ * with the desktop `.auth` block above and any leak onto the operator app. The reference's
+ * global *, html, body resets are folded under `.auth-mobile`. Same FIXED-PER-SCREEN colour
+ * rule as the desktop (production-rules 38dfd2c9-81b7, DECOUPLED from data-theme): LIGHT
+ * tokens on the base (CONNEXION always light), DARK overrides on `.auth-mobile.is-signup`
+ * (INSCRIPTION always dark #0C1826). --gb-* values are the reference's, verbatim.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+.auth-mobile{
+  --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-300:#FF8A3D;
+  --gb-basil:#2BA45C; --gb-basil-600:#1E9E57;
+  --gb-ink:#0F2742; --gb-ink-700:#16395A;
+  --gb-bg:#FBF8F3; --gb-surface:#FFFFFF;
+  --gb-border:#ECE5D8; --gb-border-strong:#E2D9CC;
+  --gb-text:#0F2742; --gb-muted:#6B7682; --gb-muted-2:#9C7B5C;
+  --gb-field-bg:#FFFFFF;
+  --gb-grad:linear-gradient(135deg,#FF8A3D,#F2570E);
+  --gb-font-display:'Gabarito',system-ui,sans-serif;
+  --gb-font-ui:'Hanken Grotesk',system-ui,sans-serif;
+  --gb-r-sm:8px; --gb-r-md:12px; --gb-r-lg:16px; --gb-r-xl:20px; --gb-r-pill:999px;
+  --gb-shadow-btn:0 10px 22px -10px rgba(242,87,14,.55);
+  --gb-focus:0 0 0 3px rgba(255,106,31,.16); --gb-focus-border:#FF6A1F;
+}
+.auth-mobile.is-signup{
+  --gb-bg:#0C1826; --gb-surface:#14253A;
+  --gb-border:#233247; --gb-border-strong:#233247;
+  --gb-text:#EEF3F9; --gb-muted:#93A3B5; --gb-muted-2:#7E8FA3;
+  --gb-field-bg:#14253A;
+  --gb-zest:#FF7C39;
+  --gb-focus:0 0 0 3px rgba(255,124,57,.18); --gb-focus-border:#FF7C39;
+}
+.auth-mobile *{box-sizing:border-box}
+.auth-mobile .ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga';font-feature-settings:'liga'}
+.auth-mobile input,.auth-mobile button{font-family:inherit}
+.auth-mobile{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);-webkit-font-smoothing:antialiased;padding:0 24px env(safe-area-inset-bottom)}
+.auth-mobile .auth__top{display:flex;align-items:center;min-height:52px;flex-shrink:0}
+.auth-mobile .auth__top .ms{font-size:24px;cursor:pointer;color:var(--gb-text)}
+.auth-mobile .auth__main{flex:1;display:flex;flex-direction:column;width:100%;max-width:400px;margin:0 auto;padding-bottom:24px}
+.auth-mobile .brandmark{display:flex;flex-direction:column;align-items:center;text-align:center;margin:6px 0 26px}
+.auth-mobile .brandmark img{height:56px;width:auto;display:block;margin-bottom:16px}
+.auth-mobile .brandmark h1{margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:26px;letter-spacing:-.02em;color:var(--gb-text)}
+.auth-mobile .brandmark p{margin:8px 0 0;font-size:14px;line-height:1.5;color:var(--gb-muted)}
+.auth-mobile .brandmark p a{color:var(--gb-zest-600);font-weight:700;text-decoration:none}
+.auth-mobile.is-signup .brandmark p a{color:var(--gb-zest)}
+.auth-mobile .oauth{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.auth-mobile .btn-social{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:100%;font-family:var(--gb-font-ui);font-weight:600;font-size:14.5px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:13px;cursor:pointer}
+.auth-mobile .btn-social svg{height:18px;width:auto;display:block}
+.auth-mobile .divider{display:flex;align-items:center;gap:12px;margin-bottom:18px;font-size:11.5px;font-weight:600;color:var(--gb-muted)}
+.auth-mobile .divider::before,.auth-mobile .divider::after{content:"";flex:1;height:1px;background:var(--gb-border)}
+.auth-mobile .field{margin-bottom:13px}
+.auth-mobile .field__label{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:600;margin-bottom:7px;color:var(--gb-text)}
+.auth-mobile .field__label a{color:var(--gb-zest-600);font-weight:600;font-size:12px;text-decoration:none}
+.auth-mobile.is-signup .field__label a{color:var(--gb-zest)}
+.auth-mobile .input{display:flex;align-items:center;gap:10px;background:var(--gb-field-bg);border:1px solid var(--gb-border-strong);border-radius:11px;padding:13px 14px}
+.auth-mobile .input .ms{font-size:19px;color:var(--gb-muted-2)}
+.auth-mobile .input input{flex:1;border:none;outline:none;background:none;font-size:14px;color:var(--gb-text);width:100%}
+.auth-mobile .input input::placeholder{color:var(--gb-muted);opacity:.7}
+.auth-mobile .input:focus-within{border-color:var(--gb-focus-border);box-shadow:var(--gb-focus)}
+.auth-mobile .input .eye{cursor:pointer}
+.auth-mobile .strength{display:none;gap:5px;margin:9px 0 4px}
+.auth-mobile.is-signup .strength{display:flex}
+.auth-mobile .strength i{flex:1;height:5px;border-radius:3px;background:var(--gb-border)}
+.auth-mobile .strength i.on1{background:var(--gb-basil-600)}
+.auth-mobile .strength i.on2{background:#EA9410}
+.auth-mobile .strength-tip{display:none;font-size:11.5px;color:var(--gb-muted);margin:0 0 6px}
+.auth-mobile.is-signup .strength-tip{display:block}
+.auth-mobile .btn-primary{width:100%;font-family:var(--gb-font-ui);font-weight:700;font-size:15px;color:#fff;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:15px;cursor:pointer;box-shadow:var(--gb-shadow-btn);margin-top:8px}
+.auth-mobile .magic{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:16px;background:none;border:none;cursor:pointer;font-family:var(--gb-font-ui);font-weight:700;font-size:14px;color:var(--gb-zest-600)}
+.auth-mobile.is-signup .magic{color:var(--gb-zest)}
+.auth-mobile .magic .ms{font-size:18px}
+.auth-mobile .legal{margin:18px 0 4px;font-size:11.5px;line-height:1.5;color:var(--gb-muted);text-align:center}
+.auth-mobile .legal a{color:inherit;text-decoration:underline}
+.auth-mobile .field--name{display:none}
+.auth-mobile.is-signup .field--name{display:block}
+.auth-mobile.is-signup .show-signin,.auth-mobile .show-signup{display:none}
+.auth-mobile.is-signup .show-signup{display:inline}
+.auth-mobile.is-signup .forgot{display:none}
+
+/* form error inside the mobile column (functional only; mirrors the desktop .auth__error) */
+.auth-mobile .auth__error{margin-bottom:14px}
+
+/* ── responsive switch (PURE CSS, no JS): ≥768px hides the mobile column; <768px hides
+ *    the desktop (above). Tablets + desktop → 2-panel desktop; phones → this column. ──── */
+@media (min-width:768px){ .auth-mobile{display:none} }

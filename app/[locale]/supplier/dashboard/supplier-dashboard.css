@@ -1,0 +1,65 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * /supplier/dashboard — CD v1 Lot 1 dashboard content (VERBATIM). Chrome + tokens +
+ * shared primitives (op-card / op-dash__head / op-emptyline / op-sk) live in
+ * components/supplier/supplier-shell.css. This file holds only the dashboard-unique
+ * content classes. RTL mono isolation is handled by the shell's shared .mono rule.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+.gb-op .stat-strip{display:flex;padding:8px 4px;flex-wrap:wrap;margin-bottom:18px}
+.gb-op .stat-strip .stat{flex:1;min-width:170px;padding:14px 20px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
+.gb-op .stat-strip .stat:first-child{border-inline-start:none}
+.gb-op .stat-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
+.gb-op .stat-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:22px}
+
+.gb-op .dash-grid{display:grid;grid-template-columns:2fr 1fr;gap:18px;align-items:start}
+.gb-op .side-col{display:flex;flex-direction:column;gap:18px}
+
+.gb-op .ai-card{background:linear-gradient(135deg,var(--op-ai-bg),var(--op-surface));border:1.5px solid var(--op-ai-bd);border-radius:var(--op-r-lg);padding:20px;margin-bottom:18px;display:flex;align-items:center;gap:16px}
+.gb-op .ai-card__ic{width:44px;height:44px;border-radius:var(--op-r-md);background:linear-gradient(135deg,var(--op-ai),var(--op-ai-2));display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.gb-op .ai-card__ic .ms{font-size:23px;color:#fff}
+.gb-op .ai-card__m{flex:1;min-width:0}
+.gb-op .ai-card__m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:15px;margin-bottom:3px}
+.gb-op .ai-card__m span{font-size:12.5px;color:var(--op-muted)}
+.gb-op .ai-card-ask{flex-shrink:0;display:flex;align-items:center;gap:9px;background:var(--op-surface);border:1px solid var(--op-ai-bd);border-radius:var(--op-r-pill);padding:10px 16px;font-size:12.5px;color:var(--op-ai-text);cursor:pointer}
+[data-theme="dark"] .gb-op .ai-card-ask{color:var(--op-ai-2)}
+.gb-op .ai-card-ask .ms{font-size:16px;color:var(--op-ai)}
+
+.gb-op .ord-row{display:flex;align-items:center;gap:13px;padding:14px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .ord-row:last-child{border-bottom:none}
+.gb-op .ord-row__av{width:36px;height:36px;border-radius:var(--op-r-md);display:flex;align-items:center;justify-content:center;font-family:var(--op-font-display);font-weight:800;font-size:12px;color:#fff;flex-shrink:0}
+.gb-op .ord-row__m{flex:1;min-width:0}
+.gb-op .ord-row__m b{display:block;font-size:13.5px;font-weight:700}
+.gb-op .ord-row__m span{font-size:11.5px;color:var(--op-muted)}
+.gb-op .ord-row .amt{font-family:var(--op-font-mono);font-weight:800;font-size:13.5px;flex-shrink:0}
+.gb-op .ord-status{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;border-radius:999px;padding:4px 9px;white-space:nowrap}
+.gb-op .ord-status .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.gb-op .ord-status.confirm{background:var(--op-warning-bg);color:var(--op-warning)}
+.gb-op .ord-status.prep{background:var(--op-info-bg);color:var(--op-info)}
+.gb-op .ord-status.shipped{background:var(--op-success-bg);color:var(--op-success)}
+.gb-op .ord-action{flex-shrink:0;display:flex;align-items:center;gap:6px;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:8px 14px;font-size:12px;font-weight:700;color:var(--op-text);cursor:pointer;text-decoration:none}
+
+.gb-op .top-row{display:flex;align-items:center;gap:11px;padding:12px 18px;border-bottom:1px solid var(--op-border)}
+.gb-op .top-row:last-child{border-bottom:none}
+.gb-op .top-row .rank{width:20px;flex-shrink:0;font-family:var(--op-font-mono);font-weight:700;font-size:12px;color:var(--op-muted-2)}
+.gb-op .top-row .m{flex:1;min-width:0}
+.gb-op .top-row .m b{display:block;font-size:12.5px;font-weight:700}
+.gb-op .top-row .m span{font-size:10.5px;color:var(--op-muted)}
+.gb-op .top-row .val{font-family:var(--op-font-mono);font-weight:700;font-size:12.5px;flex-shrink:0}
+
+/* status banners (honest pending / coherence states) reuse op-card; a warning tint */
+.gb-op .sup-banner{display:flex;align-items:flex-start;gap:12px;padding:15px 18px;margin-bottom:18px;border:1px solid var(--op-warning-bd);background:var(--op-warning-bg);border-radius:var(--op-r-lg)}
+.gb-op .sup-banner .ms{font-size:20px;color:var(--op-warning);flex-shrink:0;margin-top:1px}
+.gb-op .sup-banner b{display:block;font-size:13.5px;font-weight:700;color:var(--op-text)}
+.gb-op .sup-banner span{font-size:12.5px;color:var(--op-muted)}
+
+/* transitional wrapper so the (old-design) SupplierConnectCard sits inside the shell */
+.gb-op .sup-connect-slot{margin-top:18px}
+
+@container gbop (max-width: 1080px){ .gb-op .dash-grid{grid-template-columns:1fr} }
+@container gbop (max-width: 880px){
+  .gb-op .stat-strip{flex-direction:column;padding:4px}
+  .gb-op .stat-strip .stat{border-inline-start:none;border-top:1px solid var(--op-border);padding:12px 16px}
+  .gb-op .stat-strip .stat:first-child{border-top:none}
+  .gb-op .ai-card{flex-wrap:wrap}
+  .gb-op .ai-card-ask{width:100%;justify-content:center}
+}
