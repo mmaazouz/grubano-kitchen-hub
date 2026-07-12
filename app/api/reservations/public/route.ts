@@ -5,6 +5,7 @@ import { rateLimit } from '@/lib/rate-limit'
 import { authOptions } from '@/lib/auth'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import { reservationCode } from '@/lib/reservation-code'
+import { maskCustomerName } from '@/lib/customer-scope'
 import { sendReservationConfirmation, sendRestaurantNewReservationEmail } from '@/lib/transactional-emails'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
@@ -190,6 +191,9 @@ export async function POST(req: Request) {
         restaurantId: restaurant.id,
         tableId:      picked.id,
         userId,
+        // Masquage PII /eat: mark the booking as CONSUMER-made so every operator
+        // surface masks the name and hides phone/email (founder hybrid model).
+        source:       'eat',
         date:         start,
         endTime,
         guests:       data.guests,
@@ -242,7 +246,9 @@ export async function POST(req: Request) {
           reservationId:  reservation.id,
           to:             ownerEmail,
           restaurantName: restaurant.name,
-          customerName:   data.customerName,
+          // /eat booking → the RESTAURANT sees the masked name only (the guest's
+          // own confirmation email above keeps the full name — it goes TO them).
+          customerName:   maskCustomerName(data.customerName),
           date:           reservation.date,
           guests:         reservation.guests,
           code:           reservationCode(reservation.id),

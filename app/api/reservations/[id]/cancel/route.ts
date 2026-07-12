@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { releaseHold } from '@/lib/deposit'
+import { maskCustomerName } from '@/lib/customer-scope'
 import {
   sendReservationCancelledByClientToClient,
   sendReservationCancelledByClientToOwner,
@@ -157,7 +158,9 @@ export async function POST(
     if (ownerEmail) {
       await sendReservationCancelledByClientToOwner({
         to:             ownerEmail,
-        customerName:   reservation.customerName,
+        // This route requires userId (consumer self-cancel) → always an /eat
+        // booking: the RESTAURANT sees the masked name only (founder model).
+        customerName:   maskCustomerName(reservation.customerName),
         restaurantName,
         date:           reservation.date,
         guests:         reservation.guests,

@@ -557,6 +557,13 @@ model Reservation {
   // status='arrived'). The QR walk-in channel ignores this — it stays open. Plain
   // indexed String (no strict FK — the NextAuth identity model is ambiguous).
   userId       String?
+  // ── Booking source (masquage PII /eat, additive) ─────────────────────────────
+  // 'staff' = typed by the restaurant team (direct book — full contact stays
+  // visible to the team that typed it) · 'eat' = consumer booking via the public
+  // /eat flow (POST /api/reservations/public) → the operator sees a MASKED name
+  // and NO phone/email (founder hybrid model). Default 'staff' so legacy rows
+  // stay unmasked; legacy consumer rows are still caught by userId != null.
+  source       String          @default("staff")
   customerName String
   phone        String?
   email        String?

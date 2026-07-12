@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { ticketHistorySelect } from '@/lib/ticket'
+import { isEatReservation, maskCustomerName } from '@/lib/customer-scope'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,7 +22,7 @@ export async function GET(
 
     const reservation = await prisma.reservation.findUnique({
       where:  { id: params.id },
-      select: { id: true, restaurantId: true, customerName: true, status: true, date: true },
+      select: { id: true, restaurantId: true, customerName: true, status: true, date: true, source: true, userId: true },
     })
     if (!reservation) return NextResponse.json({ error: 'Réservation introuvable' }, { status: 404 })
     if (!reservation.restaurantId || !scope.ownedIds.includes(reservation.restaurantId)) {
@@ -44,7 +45,11 @@ export async function GET(
 
     return NextResponse.json({
       reservation: {
-        id: reservation.id, customerName: reservation.customerName,
+        id: reservation.id,
+        // Masquage PII /eat: consumer bookings reach the operator masked.
+        customerName: isEatReservation(reservation)
+          ? maskCustomerName(reservation.customerName)
+          : reservation.customerName,
         status: reservation.status, date: reservation.date,
       },
       tickets: withReason,

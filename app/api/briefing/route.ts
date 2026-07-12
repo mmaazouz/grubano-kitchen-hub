@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { llmComplete, LlmQuotaError } from '@/lib/llm'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+import { maskEatReservation } from '@/lib/customer-scope'
 
 // Session-dependent (per-establishment) — never prerender/cache.
 export const dynamic = 'force-dynamic'
@@ -44,13 +45,17 @@ export async function GET() {
     // Low stock items
     const lowStock = stockItems.filter(i => i.quantity <= i.minThreshold * 1.2 && i.minThreshold > 0)
 
+    // Masquage PII /eat: consumer bookings reach the operator (and the LLM
+    // prompt) with a masked name. Staff-typed bookings stay unchanged.
+    const maskedReservations = reservations.map(maskEatReservation)
+
     // Build context string for Claude
     const todayDate     = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(now)
     const caToday       = todayOrders.reduce((s, o) => s + o.amount, 0)
     const reservCount   = reservations.length
     const guestCount    = reservations.reduce((s, r) => s + r.guests, 0)
     const lowStockList  = lowStock.map(i => `${i.name}: ${i.quantity}${i.unit} (seuil: ${i.minThreshold}${i.unit})`).join(', ')
-    const resaList      = reservations
+    const resaList      = maskedReservations
       .slice(0, 5)
       .map(r => `${new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} ${r.customerName} (${r.guests} pers.) – ${r.table.name}`)
       .join('\n')
@@ -81,12 +86,13 @@ Sois concis, direct et professionnel. Maximum 120 mots au total.`
         unit:         i.unit,
         minThreshold: i.minThreshold,
       })),
-      reservations: reservations.slice(0, 5).map(r => ({
+      reservations: maskedReservations.slice(0, 5).map(r => ({
         time:         new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
         customerName: r.customerName,
         guests:       r.guests,
         table:        r.table.name,
         status:       r.status,
+        // Per-booking food-safety data (service needs it) — not contact PII.
         allergies:    r.allergies,
       })),
       kpis: {

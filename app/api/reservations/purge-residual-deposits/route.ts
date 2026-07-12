@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { releaseHold } from '@/lib/deposit'
 import { retrieveIntent, type DepositStatus } from '@/lib/stripe'
+import { isEatReservation, maskCustomerName } from '@/lib/customer-scope'
 
 // ── POST /api/reservations/purge-residual-deposits ────────────────────────────
 // One-shot maintenance endpoint (OWNER-scoped). Releases empreintes that stayed
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
       select: {
         id: true, customerName: true, status: true,
         depositStatus: true, stripePaymentIntentId: true,
+        source: true, userId: true,
       },
     })
 
@@ -105,7 +107,8 @@ export async function POST(req: Request) {
 
       processed.push({
         id: r.id,
-        customerName: r.customerName,
+        // Masquage PII /eat: consumer bookings reach the operator masked.
+        customerName: isEatReservation(r) ? maskCustomerName(r.customerName) : r.customerName,
         reservationStatus: r.status,
         stripeBefore,
         depositStatusBefore: current,

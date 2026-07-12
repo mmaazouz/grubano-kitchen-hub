@@ -38,6 +38,36 @@ export function maskCustomerName(raw: string | null | undefined): string {
   return `${firstCap} ${lastInitial}.`
 }
 
+// ── /eat reservation masking (founder decision, dedicated pass) ───────────────
+// The DIRECT reservation book stays intact: the staff typed the contact details
+// themselves (direct resto↔client relation). Only CONSUMER bookings made through
+// the public /eat flow are masked to the operator: masked name, no phone/email.
+// Discriminator: Reservation.source === 'eat' (written by /api/reservations/public)
+// OR userId != null (legacy consumer rows created before the source column).
+
+export function isEatReservation(r: {
+  source?: string | null
+  userId?: string | null
+}): boolean {
+  return r.source === 'eat' || (typeof r.userId === 'string' && r.userId.length > 0)
+}
+
+/**
+ * Mask an /eat reservation for an OPERATOR payload: masked customerName, phone
+ * and email nulled (only when those keys exist on the row). A staff-entered
+ * reservation is returned unchanged. Allergies/preOrder stay — they are
+ * per-booking food-safety/service data, not contact PII.
+ */
+export function maskEatReservation<
+  T extends { customerName: string; source?: string | null; userId?: string | null },
+>(r: T): T {
+  if (!isEatReservation(r)) return r
+  const masked: T = { ...r, customerName: maskCustomerName(r.customerName) }
+  if ('phone' in masked) (masked as Record<string, unknown>).phone = null
+  if ('email' in masked) (masked as Record<string, unknown>).email = null
+  return masked
+}
+
 // ── Tenant fence ────────────────────────────────────────────────────────────
 /**
  * Build the Prisma `where` limiting LoyaltyCustomer rows to the operator's OWN

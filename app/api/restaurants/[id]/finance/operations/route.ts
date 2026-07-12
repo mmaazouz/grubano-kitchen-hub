@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
+import { isEatReservation, maskCustomerName } from '@/lib/customer-scope'
 
 // ── GET /api/restaurants/[id]/finance/operations?from&to&page ─────────────────
 // Rail A7 — the establishment's paginated money operations, straight from
@@ -96,7 +97,7 @@ export async function GET(
       reservationIds.length
         ? prisma.reservation.findMany({
             where:  { id: { in: reservationIds } },
-            select: { id: true, customerName: true, date: true, depositStatus: true },
+            select: { id: true, customerName: true, date: true, depositStatus: true, source: true, userId: true },
           })
         : [],
       // Cumulative refunds per PI (ANY date — a January payment refunded in
@@ -153,7 +154,10 @@ export async function GET(
         reservation: reservation
           ? {
               id:            reservation.id,
-              customerName:  reservation.customerName,
+              // Masquage PII /eat: consumer bookings reach the operator masked.
+              customerName:  isEatReservation(reservation)
+                ? maskCustomerName(reservation.customerName)
+                : reservation.customerName,
               date:          reservation.date.toISOString(),
               depositStatus: reservation.depositStatus,
             }

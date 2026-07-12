@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { releaseHold } from '@/lib/deposit'
 import { isValidTime, toMin, localParts, dateOnly } from '@/lib/opening-hours'
+import { isEatReservation, maskCustomerName } from '@/lib/customer-scope'
 import {
   sendReservationCancelledByClosure,
   resolveReservationRecipient,
@@ -103,7 +104,7 @@ export async function POST(
         ],
       },
       select: {
-        id: true, customerName: true, email: true, userId: true, date: true, endTime: true,
+        id: true, customerName: true, email: true, userId: true, source: true, date: true, endTime: true,
         status: true, depositStatus: true, stripePaymentIntentId: true,
       },
       orderBy: { date: 'asc' },
@@ -123,7 +124,8 @@ export async function POST(
 
     const toPublic = (r: (typeof matching)[number]) => ({
       id:            r.id, // the UI derives the short session code from it
-      customerName:  r.customerName,
+      // Masquage PII /eat: consumer bookings reach the operator masked.
+      customerName:  isEatReservation(r) ? maskCustomerName(r.customerName) : r.customerName,
       date:          r.date.toISOString(),
       status:        r.status,
       depositStatus: r.depositStatus,

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+import { maskEatReservation } from '@/lib/customer-scope'
 import { captureHold } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
@@ -91,7 +92,10 @@ export async function GET(req: Request) {
       orderBy: { date: 'asc' },
     })
 
-    return NextResponse.json({ reservations })
+    // Masquage PII /eat (founder hybrid model): a CONSUMER booking made via the
+    // public /eat flow reaches the operator with a MASKED name and NO phone/email.
+    // Staff-typed bookings (direct book) are returned unchanged.
+    return NextResponse.json({ reservations: reservations.map(maskEatReservation) })
   } catch (err) {
     console.error('[GET /api/reservations]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
@@ -376,7 +380,8 @@ export async function PATCH(req: Request) {
       }
     }
 
-    return NextResponse.json({ reservation, ...(ticketAlert ? { ticketAlert } : {}) })
+    // Masquage PII /eat — the PATCH response is an operator payload too.
+    return NextResponse.json({ reservation: maskEatReservation(reservation), ...(ticketAlert ? { ticketAlert } : {}) })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
