@@ -272,7 +272,10 @@ async function main() {
   })
   const COMMISSION_PCT = config.commissionPctOfGrubanoFee
   const DURATION_DAYS  = config.durationDays
-  const GRUBANO_FEE_PCT = 0.10 // Grubano's commission on a basket (demo assumption)
+  // Demo assumption for referral economics: the referred orders below are all
+  // delivery, so use the real delivery commission (12% — grille 12/8/5/0 par
+  // mode). Demo/staging data only; the live calc reads lib/commission per mode.
+  const GRUBANO_FEE_PCT = 0.12
   console.log(`\n[1/8] ReferralConfig: ${Math.round(COMMISSION_PCT * 100)}% of fee, ${DURATION_DAYS}-day window.`)
 
   // ── Consumers ────────────────────────────────────────────────────────────────
