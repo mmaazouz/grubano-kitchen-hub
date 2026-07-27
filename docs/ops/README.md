@@ -12,6 +12,8 @@ ne change rien** — aucun cron modifié, aucun secret listé, aucune exécution
 | [logs.md](logs.md) | Où regarder quand quelque chose casse (CI, Passenger, tables d'audit applicatives) |
 | [rotation-secrets.md](rotation-secrets.md) | Plan de rotation des secrets — **procédure documentée uniquement**, aucune valeur, aucune exécution |
 | [ci-garde-fous.md](ci-garde-fous.md) | (S0-5) Analyse des garde-fous CI : gates actuels, où brancher `check-flags.mjs`, quels tests bloquent une régression |
+| [branch-protection.md](branch-protection.md) | (B6) Procédure pas-à-pas pour rendre le check « CI — tests » obligatoire sur les PR — réglage GitHub à cliquer par Mohammed |
+| [code-mort-inventaire.md](code-mort-inventaire.md) | (S0-6/B1) Inventaire du code mort prouvé + journal des suppressions exécutées |
 
 Conventions :
 - ✅ = vérifié dans le repo (fichier:ligne ou workflow cité).
