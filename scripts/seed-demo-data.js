@@ -256,6 +256,21 @@ async function ensureOperator({ id, email, name, role, withPassword }) {
   })
 }
 
+// Restaurant.operatorId is no longer unique (Option B: multi-establishment), so
+// upsert({ where: { operatorId } }) is rejected by Prisma. Keep the original
+// idempotency contract — one seeded restaurant per demo operator, refreshed on
+// re-run whatever its id — by resolving the operator's oldest restaurant first.
+async function ensureRestaurantForOperator({ operatorId, update, create }) {
+  const existing = await prisma.restaurant.findFirst({
+    where: { operatorId },
+    orderBy: { createdAt: 'asc' },
+  })
+  if (existing) {
+    return prisma.restaurant.update({ where: { id: existing.id }, data: update })
+  }
+  return prisma.restaurant.create({ data: create })
+}
+
 async function main() {
   // ── Referral economics (read the live config, fall back to launch defaults) ──
   const config = await prisma.referralConfig.upsert({
@@ -306,8 +321,8 @@ async function main() {
         role: 'restaurant',
         withPassword: false,
       })
-      await prisma.restaurant.upsert({
-        where:  { operatorId: op.id },
+      await ensureRestaurantForOperator({
+        operatorId: op.id,
         update: { name: r.name, city: r.city, address: r.address, cuisine: r.cuisine, isActive: true },
         create: {
           id: `demo-resto-${r.key}`,
@@ -420,9 +435,9 @@ async function main() {
       franchiseZones: [], // NOT-NULL Json default — valid empty array for MariaDB json_valid()
     },
   })
-  // Optional minimal Restaurant profile bound to the same operator (1-to-1).
-  await prisma.restaurant.upsert({
-    where:  { operatorId: restoTest.id },
+  // Optional minimal Restaurant profile bound to the same operator.
+  await ensureRestaurantForOperator({
+    operatorId: restoTest.id,
     update: { name: 'Resto Test', city: 'Orange', isActive: true },
     create: {
       id: 'demo-resto-test-profile',
@@ -468,9 +483,9 @@ async function main() {
       franchiseZones: [], // NOT-NULL Json default — valid empty array for MariaDB json_valid()
     },
   })
-  // Restaurant profile in the SAME city as Resto Test (Orange) — 1-to-1 by operator.
-  await prisma.restaurant.upsert({
-    where:  { operatorId: restoTest2.id },
+  // Restaurant profile in the SAME city as Resto Test (Orange) — one per demo operator.
+  await ensureRestaurantForOperator({
+    operatorId: restoTest2.id,
     update: { name: 'Resto Test 2', city: 'Orange', isActive: true },
     create: {
       id: 'demo-resto-test-2-profile',
