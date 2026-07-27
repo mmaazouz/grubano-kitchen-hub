@@ -1,0 +1,40 @@
+# S0-5 — CI tests hors deploy (pur additif).
+# Comble le trou n°1 de docs/ops/ci-garde-fous.md : avant ce workflow, une
+# branche de travail ou une PR ne déclenchait AUCUN test — la suite ne tournait
+# qu'au moment du deploy (push develop/main). Ici : suite vitest complète +
+# parité i18n sur toute branche hors develop/main (déjà couvertes par le job
+# `test` de leurs workflows de deploy — on évite le double run) et sur toute PR.
+# Ce workflow ne déploie rien, ne lit aucun secret, et ne touche pas aux
+# workflows de deploy. En faire un check *required* = réglage branch protection
+# (décision Mohammed).
+name: CI — tests
+
+on:
+  push:
+    branches-ignore: [develop, main]
+  pull_request:
+
+concurrency:
+  group: ci-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests (full suite — includes tests/p1-p10 harness)
+        run: npm run test:ci
+      - name: i18n completeness
+        run: node scripts/check-translations.js
+      - name: Flag-coupling guard logic (self-check, env-less)
+        # L'env CI ne porte aucun flag → ceci ne valide PAS un environnement
+        # réel (voir ci-garde-fous.md §2) ; c'est un smoke-test que le script
+        # s'exécute et sort 0 sur un env sain.
+        run: npm run check:flags
