@@ -28,7 +28,7 @@ const intlMiddleware = createIntlMiddleware({
 //   /account                 → gated consumer/admin
 //   /creators, /franchise    → gated via their /dashboard sub-routes
 //   /supplier                → public landing + /register; /supplier/dashboard gated
-//   /eat /business /t /chef /ref /auth/magic /login /register /design → public
+//   /eat /business /t /chef /ref /auth/magic /login /design → public
 const OPERATOR_FLAT_PREFIXES = [
   '/menu', '/orders', '/stocks', '/loyalty', '/promotions', '/analytics',
   '/brands', '/reviews', '/wallet', '/suppliers', '/tables', '/customers',
@@ -119,7 +119,9 @@ export async function middleware(request: NextRequest) {
     restPath === '/admin' || restPath.startsWith('/admin/')
 
   // Public routes — no auth required. /eat/* is the consumer app (auth per-page).
-  const publicRoots = ['/', '/login', '/register', '/design']
+  // '/register' removed (B1 dead-reference): no bare /register page has ever
+  // existed (only /supplier|business/*/register) — the entry only whitelisted a 404.
+  const publicRoots = ['/', '/login', '/design']
   const isPublic =
     publicRoots.includes(restPath) ||
     restPath.startsWith('/eat') ||

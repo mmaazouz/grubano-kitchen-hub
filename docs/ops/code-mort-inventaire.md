@@ -1,12 +1,30 @@
-# Inventaire du code mort — S0-6 (preuves, ZÉRO suppression)
+# Inventaire du code mort — S0-6 (preuves) + journal d'exécution B1
 
-> Livrable Sprint 0 : **rien n'a été supprimé**. Chaque entrée « MORT-CONFIRMÉ »
-> a survécu à une contre-vérification adversariale (grep repo entier du basename,
-> imports par alias/relatifs/dynamic, références par chaîne/URL, barrels,
-> conventions Next implicites). La suppression effective = **Lot B**, après
-> validation Mohammed, avec re-grep + build vert + suite verte par lot.
-> Méthode : 4 chasses (composants 139 fichiers, lib 160 fichiers, routes/nav,
-> assets+scripts) puis contre-vérification indépendante de chaque candidat.
+> Inventaire produit au Sprint 0 (S0-6, zéro suppression). Chaque entrée
+> « MORT-CONFIRMÉ » a survécu à une contre-vérification adversariale (grep repo
+> entier du basename, imports alias/relatifs/dynamic, références chaîne/URL,
+> barrels, conventions Next implicites). Méthode : 4 chasses (composants 139
+> fichiers, lib 160 fichiers, routes/nav, assets+scripts) puis contre-vérif
+> indépendante de chaque candidat.
+
+## ✅ JOURNAL D'EXÉCUTION — B1 (Lot B validé fondateur, 27/07/2026)
+
+Liste fermée exécutée, re-grep de non-import refait avant chaque suppression
+(résidus = commentaires uniquement, collés au rapport de session), gates
+build frais + suite complète (2689 passed / 0 failed) verts après chaque lot :
+
+- **Supprimés** : les 4 composants shell legacy (§1 lot A) · les 5 orphelins
+  (§1 lot C) · les 9 assets `public/` (§3) · les 2 références mortes (§2 —
+  `'/register'` retiré de `middleware.ts` publicRoots et `AppChrome.tsx`
+  BARE_PREFIXES ; page `franchise-soon` supprimée, son test négatif survit).
+- **Archivés (déplacés, pas supprimés)** : 133 scripts i18n one-shot trackés →
+  `scripts/archive/i18n/` (+ README d'archive). `add-creators-home-i18n.js`
+  (untracked) SAUTÉ — règle d'arrêt : à vérifier « exécuté » avant rangement.
+- **PAS touchés (différé au sprint)** : `ConsolidatedHome` + `ConnectReturnToast`
+  (§1 lot B — retour Stripe `/dashboard?connect=return` à vérifier d'abord),
+  les 9 INCERTAINS (§5), tout le reste.
+
+Les sections ci-dessous restent le référentiel de preuves d'origine.
 
 ## 1. MORT-CONFIRMÉ — composants (11)
 

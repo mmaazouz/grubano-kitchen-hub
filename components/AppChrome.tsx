@@ -20,7 +20,7 @@ import { locales } from '@/i18n'
 //   /business/*     → partner space served on business.grubano.com (Agent 3 / 2C)
 //   /t/*            → public "table bill" QR landing (consumer, sober, no chrome)
 //   /legal/*        → public legal pages (mentions légales…) — own sober shell
-//   /login, /register → public auth pages
+//   /login          → public auth page (/register nu retiré — B1 : jamais eu de page)
 //   /onboarding     → operator FIRST-establishment wizard (CD LOT 7) — a
 //                     FULL-SCREEN assistant by design (« assistant plein écran,
 //                     PAS la coquille », founder-approved). It renders its OWN
@@ -32,7 +32,7 @@ import { locales } from '@/i18n'
 // Note: /deliveries is INTENTIONALLY absent → it renders UNDER the navy OperatorShell
 // (founder-approved « aperçu visible sous la coquille » exception for the gated Livraisons
 // screen; every other bare route is unchanged).
-const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/admin', '/logistics', '/business', '/t', '/legal', '/login', '/register', '/add-activity', '/affiliate', '/onboarding']
+const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/admin', '/logistics', '/business', '/t', '/legal', '/login', '/add-activity', '/affiliate', '/onboarding']
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
   const raw = usePathname() || '/'
