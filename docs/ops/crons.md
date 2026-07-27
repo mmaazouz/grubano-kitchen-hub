@@ -17,21 +17,30 @@ Env requis par ces scripts : `SITE_URL`, `INTERNAL_CRON_TOKEN`, `ALERT_EMAIL`,
 `SMTP_HOST/USER/PASS` (noms seulement — valeurs dans `.env.local` serveur /
 GitHub Secrets).
 
-## 2. Crontab cPanel (serveur o2switch) ⚠️ À CONFIRMER SERVEUR
+## 2. Crontab cPanel (serveur o2switch) ✅ RELEVÉ SERVEUR 26-27/07/2026
 
-Constat d'audit (M-vague, juillet 2026) : **3 crontabs actifs = les 3 scripts
-ci-dessus**, mais le crontab lui-même n'est **pas versionné**. Le relevé de
-référence exact (`crontab -l`) doit être copié ici lors de la prochaine session
-cPanel — c'est le seul morceau d'ops qui ne vit pas dans le repo.
-
-Modèle attendu (à remplacer par le relevé réel) :
+**Source : relevé `crontab -l` effectué par Mohammed en cPanel Terminal les
+26-27/07/2026** (clôture M7). C'est la référence versionnée du seul morceau
+d'ops qui ne vivait pas dans le repo. 3 jobs actifs, sorties dans `~/logs/` :
 
 ```cron
-# À COPIER DEPUIS `crontab -l` EN CPANEL TERMINAL — modèle indicatif
-20 3 * * * cd ~/app.grubano.com && node scripts/cron/ledger-check-probe.js
-25 3 * * * cd ~/app.grubano.com && node scripts/cron/creator-earnings-mature.js
-0  7 1 * * cd ~/app.grubano.com && node scripts/cron/monthly-invoices.js
+# Relevé serveur 26-27/07/2026 — 3 jobs actifs, logs dans ~/logs/
+30 6 * * * node scripts/cron/creator-earnings-mature.js   # quotidien 06:30
+0  7 * * * node scripts/cron/ledger-check-probe.js        # quotidien 07:00
+0  8 1 * * node scripts/cron/monthly-invoices.js          # mensuel, le 1er 08:00
 ```
+
+Écarts vs les hypothèses documentées précédemment (modèle indicatif retiré) :
+- Horaires réels ≠ modèle deviné (le modèle supposait 03:20/03:25/07:00) —
+  **le relevé fait foi**.
+- ⚠️ **Doublon programmé au go-live** : le groupe `daily` de `cron.yml`
+  (GitHub, `20 3 * * *` UTC) exécute AUSSI `ledger-check-probe.js` +
+  `creator-earnings-mature.js`, et son groupe `monthly` (`0 7 1 * *` UTC)
+  exécute AUSSI `monthly-invoices.js`. Tant que `cron.yml` n'est pas sur
+  `main`, seul le crontab cPanel tourne. Le jour où `cron.yml` s'active,
+  ces 3 jobs tourneront DEUX fois par période (idempotents par conception,
+  mais bruit d'alertes/emails doublé) → décision go-live : couper l'un des
+  deux schedulers pour ces 3 jobs.
 
 ## 3. Workflow GitHub `cron.yml` ✅ (inerte en schedule tant que pas sur `main`)
 

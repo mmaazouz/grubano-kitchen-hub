@@ -11,11 +11,9 @@
 
 ## 2. Serveur o2switch (cPanel)
 
-⚠️ À CONFIRMER SERVEUR (chemins standards o2switch/Passenger, à valider une
-fois en cPanel Terminal et à figer ici) :
-
-- Logs Passenger/app : `~/logs/` (stderr de l'app Node) ; cPanel → Métriques →
-  Erreurs pour l'Apache frontal.
+- Logs Passenger/app + sorties des crons : `~/logs/` — ✅ confirmé par le
+  relevé serveur des 26-27/07/2026 (cf. [crons.md](crons.md)). cPanel →
+  Métriques → Erreurs pour l'Apache frontal.
 - L'app loggue en anglais sur stderr (`console.error`) — les erreurs runtime
   Next.js arrivent là, avec le préfixe de la route ou du module.
 - `~/app.grubano.com/tmp/restart.txt` : mtime = dernier restart demandé.
