@@ -36,6 +36,23 @@ jobs:
       # repaired, middleware green): every tests/ file now gates the deploy.
       - name: Unit tests (full suite)
         run: npm run test:ci
+      # B4 (Sprint 0 Lot B) — compile gate BLOQUANT : next build casse parfois
+      # quand les tests passent (ex. useSearchParams sans <Suspense>). Le job
+      # deploy échouerait de toute façon à son propre build — ici on échoue
+      # AVANT le FTP, plus vite et plus lisiblement (aucun risque nouveau).
+      # Secrets repo-level : pure gate de compilation — le deploy rebuilde
+      # ensuite avec l'env de sa cible.
+      - name: Generate Prisma client (compile gate)
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+      - name: Build (compile gate)
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: https://app.grubano.com
+          NEXT_TELEMETRY_DISABLED: 1
 
   deploy:
     needs: test

@@ -49,13 +49,13 @@ est le garde-fou opérant.
   4. `tests/middleware.test.ts` + `tests/*-route.test.ts` (auth/scoping) ;
   5. `tests/i18n-completeness.test.ts` (doublonne `check-translations`, garde
      le signal au niveau vitest).
-- **Trou n°2 — le build n'est pas testé hors deploy** : `next build` ne tourne
-  que dans le job `deploy`. Un `useSearchParams` sans `<Suspense>` passe les
-  tests unitaires et casse au build. Le workflow `tests.yml` ajouté ne fait PAS
-  le build (trop long pour chaque push de branche) — mais la règle mémoire
-  « build frais avant de clore un lot » reste le filet local. Option Lot B :
-  ajouter `npm run build` au job `test` des deploys (avant FTP) pour échouer
-  plus tôt et plus lisiblement.
+- **Trou n°2 — ✅ COMBLÉ (B4, Lot B validé)** : `npm run build` est désormais
+  une compile-gate BLOQUANTE du job `test` des deux workflows de deploy (le
+  deploy échouait déjà si le build cassait — on échoue juste avant le FTP,
+  plus vite et plus lisiblement). Secrets repo-level exprès (le job `test`
+  prod n'a pas l'environment `production`). `tests.yml` (branches/PR) ne
+  builde toujours PAS (trop long à chaque push) — filet local : « build frais
+  avant de clore un lot ».
 - **Trou n°3 — pas de gate sur le schéma** : aucun CI ne vérifie que
   `prisma generate` passe sur une base vierge (le harnais S0-2 le prouve
   localement). Couvert indirectement par le `prisma generate` du job deploy.
