@@ -134,6 +134,13 @@ jobs:
           echo "deploy-temp size: $(du -sh deploy-temp | cut -f1)"
           echo "Files to upload: $(find deploy-temp -type f | wc -l)"
 
+      # S0-3 — build traceability: VERSION at the deploy root + public/version.json
+      # served statically at https://app.grubano.com/version.json (the middleware
+      # matcher excludes paths with a file extension, so it is never auth-gated).
+      # Static artifacts only — the app never reads them; zero runtime change.
+      - name: Stamp build info (VERSION + version.json)
+        run: node scripts/build-info.js deploy-temp
+
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -327,6 +334,21 @@ jobs:
           fi
           rm -f "$MARKER" "$ERRLOG"
           exit $RC
+
+      # S0-3 — verify the deployed build matches this run's commit. Non-blocking:
+      # Passenger may still be swapping processes when this runs. Manual check
+      # any time:  curl -s https://app.grubano.com/version.json
+      - name: Verify deployed build (version.json)
+        continue-on-error: true
+        run: |
+          sleep 20
+          DEPLOYED=$(curl -sL --max-time 30 https://app.grubano.com/version.json || echo '{}')
+          echo "deployed version.json: $DEPLOYED"
+          if printf '%s' "$DEPLOYED" | grep -q "${{ github.sha }}"; then
+            echo "OK deployed staging build matches commit ${{ github.sha }}"
+          else
+            echo "WARN staging does not (yet) serve ${{ github.sha }} — Passenger may still be restarting; re-check manually."
+          fi
 
       - name: Health check
         run: |

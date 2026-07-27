@@ -134,6 +134,14 @@ if (Test-Path "public") {
     Write-OK "public\ copied"
 }
 
+# 2e-bis. Build traceability (S0-3): VERSION at deploy root + public\version.json
+Write-Info "Stamping build info (VERSION + public\version.json)"
+node scripts\build-info.js $DeployDir
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "build-info.js failed. See error above."
+}
+Write-OK "Build info stamped"
+
 # 2f. .htaccess (Passenger config) -- ASCII, no BOM
 Write-Info "Generating .htaccess"
 $htaccess = "PassengerEnabled on`n" +
