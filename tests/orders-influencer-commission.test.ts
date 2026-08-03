@@ -69,7 +69,7 @@ const orderData    = () => (db.order.create.mock.calls[0]?.[0] as { data: Record
 function arm() {
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'consumer' })
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, deliveryFee: 0, minOrder: 5, pointOfSaleId: null,
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 0, minOrder: 5, pointOfSaleId: null,
     commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null,
   })
   db.openingHour.findMany.mockResolvedValue([])
@@ -94,7 +94,10 @@ function arm() {
   db.order.count.mockResolvedValue(0)
 }
 
-beforeEach(() => { vi.clearAllMocks(); ALL_OFF(); arm() })
+beforeEach(() => {
+  // P0-01: ces tests exercent le contrat LIVRAISON (post-pilote) -> flag ON explicitement.
+  process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
+  vi.clearAllMocks(); ALL_OFF(); arm() })
 afterEach(() => { ALL_OFF() })
 
 // Earning helper: capture the frozen creatorEarning written to the ReferralOrder.
@@ -246,3 +249,5 @@ describe('INF-3 — verified-affiliate commission uplift (order-time, frozen, ga
     expect(vEarn).toBeGreaterThan(bEarn) // only the affiliate accrual moves (0.63 > 0.47)
   })
 })
+
+afterEach(() => { delete process.env.DELIVERY_FULFILLMENT_ENABLED })

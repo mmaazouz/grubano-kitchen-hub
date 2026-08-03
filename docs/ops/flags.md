@@ -26,6 +26,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `CLAIM_AUTO_RESOLVE_ENABLED` | `lib/claims.ts` | Auto-résolution des PETITES réclamations `auto_small` (P0-27 — défaut OFF **toute la bêta** : elle remboursait sans humain dès 10 €). Verrou n°2 : `CLAIM_AUTO_APPROVE_MAX_CENTS` (plafond en centimes, **défaut 0 = désactivé**, valeur mal formée → 0 tracé, jamais permissif) |
 | `CONSUMER_REDESIGN_ENABLED` | `lib/consumer-redesign.ts` | Re-design conso |
 | `CREATOR_PAYOUT_ENABLED` | `lib/creator-payout.ts` | Versements créateurs |
+| `DELIVERY_FULFILLMENT_ENABLED` | `lib/fulfillment.ts` | P0-01 (pilote Q1) : OFF (défaut) = retrait UNIQUEMENT — `POST /api/orders` refuse `delivery` (403). ON = la livraison revient, gouvernée par les colonnes `Restaurant.deliveryEnabled`/`pickupEnabled` (lues dans les deux modes). ⚠️ Ops pilote : `pickupEnabled` défaut FALSE en base — activer explicitement les restaurants du pilote (le seed démo le fait). |
 | `DINEIN_SERVICE_ENABLED` | `lib/dinein-service.ts` | Frais de service dine-in |
 | `FRANCHISE_POS_TAGGING_ENABLED` | `lib/franchise-pos-tagging.ts` | Attribution POS des commandes |
 | `FRANCHISE_ROYALTY_ENABLED` | `lib/franchise-royalty.ts` | Royalties franchise |

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ── Borne de sécurité du crédit fidélité (D-A) — integration over POST /api/orders ─
@@ -55,10 +55,12 @@ const COMMISSION_CENTS = 160
 const STRIPE_CENTS = Math.round(2000 * 0.029) + 25 // 83
 
 beforeEach(() => {
+  // P0-01: ces tests exercent le contrat LIVRAISON (post-pilote) -> flag ON explicitement.
+  process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
   vi.clearAllMocks()
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'consumer' })
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 10,
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 10,
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
@@ -113,7 +115,7 @@ describe('POST /api/orders — small-order fee (V1.5)', () => {
   // Use minOrder 5 so an 11 € order is valid yet below the 12 € fee threshold.
   beforeEach(() => {
     db.restaurant.findFirst.mockResolvedValue({
-      id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 5,
+      deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 5,
       commissionRateDineIn: null, commissionRatePickup: null,
       commissionRateDelivery: null, commissionFreeUntil: null,
     })
@@ -153,7 +155,7 @@ describe('POST /api/orders — affiliation on NET margin (V1.5 §4)', () => {
     // Delivery 30 € chef dish via a still-valid referral binding (CAS 2). Delivery
     // commission 12% = 360c; stripe on 32,99 € = 121c; royalty 2% of 30 € = 60c.
     db.restaurant.findFirst.mockResolvedValue({
-      id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 10,
+      deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, archivedAt: null, deliveryFee: 2.99, minOrder: 10,
       commissionRateDineIn: null, commissionRatePickup: null,
       commissionRateDelivery: null, commissionFreeUntil: null,
     })
@@ -198,3 +200,5 @@ describe('POST /api/orders — affiliation on NET margin (V1.5 §4)', () => {
     expect(COMMISSION - creditCents - STRIPE - ROYALTY - AFFILIATION).toBeGreaterThanOrEqual(0)
   })
 })
+
+afterEach(() => { delete process.env.DELIVERY_FULFILLMENT_ENABLED })

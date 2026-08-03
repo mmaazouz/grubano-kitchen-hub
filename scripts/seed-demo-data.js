@@ -323,7 +323,7 @@ async function main() {
       })
       await ensureRestaurantForOperator({
         operatorId: op.id,
-        update: { name: r.name, city: r.city, address: r.address, cuisine: r.cuisine, isActive: true },
+        update: { name: r.name, city: r.city, address: r.address, cuisine: r.cuisine, isActive: true, pickupEnabled: true },
         create: {
           id: `demo-resto-${r.key}`,
           operatorId: op.id,
@@ -438,7 +438,7 @@ async function main() {
   // Optional minimal Restaurant profile bound to the same operator.
   await ensureRestaurantForOperator({
     operatorId: restoTest.id,
-    update: { name: 'Resto Test', city: 'Orange', isActive: true },
+    update: { name: 'Resto Test', city: 'Orange', isActive: true, pickupEnabled: true },
     create: {
       id: 'demo-resto-test-profile',
       operatorId: restoTest.id,
@@ -486,7 +486,7 @@ async function main() {
   // Restaurant profile in the SAME city as Resto Test (Orange) — one per demo operator.
   await ensureRestaurantForOperator({
     operatorId: restoTest2.id,
-    update: { name: 'Resto Test 2', city: 'Orange', isActive: true },
+    update: { name: 'Resto Test 2', city: 'Orange', isActive: true, pickupEnabled: true },
     create: {
       id: 'demo-resto-test-2-profile',
       operatorId: restoTest2.id,
