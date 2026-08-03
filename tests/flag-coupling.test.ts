@@ -85,6 +85,8 @@ describe('checkFlagCoupling', () => {
     expect(checkFlagCoupling({
       TIPS_ENABLED: 'true', LOGISTICS_COURIER_ACCRUAL_ENABLED: 'true',
       LOGISTICS_PAYOUT_ENABLED: 'true', LOGISTICS_CONNECT_ENABLED: 'true',
+      // P0-06 : la chaîne courier exige désormais le rôle livreur OUVERT (racine).
+      LOGISTICS_ENABLED: 'true',
     }).ok).toBe(true)
   })
   it('FRANCHISE_ROYALTY without SETTLEMENT → incoherent', () => {
@@ -104,6 +106,8 @@ describe('checkFlagCoupling', () => {
       LOGISTICS_PAYOUT_ENABLED: 'true', LOGISTICS_CONNECT_ENABLED: 'true',
       FRANCHISE_ROYALTY_ENABLED: 'true', FRANCHISE_SETTLEMENT_ENABLED: 'true', FRANCHISE_CONNECT_ENABLED: 'true',
       CREATOR_PAYOUT_ENABLED: 'true', CREATOR_CONNECT_ENABLED: 'true',
+      // P0-06 : les capacités ci-dessus exigent leurs racines de rôle.
+      LOGISTICS_ENABLED: 'true', FRANCHISE_ENABLED: 'true', CREATOR_ENABLED: 'true',
     })).toEqual({ ok: true, errors: [] })
   })
 
@@ -117,7 +121,7 @@ describe('checkFlagCoupling', () => {
     expect(r.errors).toHaveLength(2)
   })
 
-  it('COUPLING_RULES documents the 10 known couplings (courier ÉTAPE 6 + scission P0-04 + auto-approve P0-25 + auto-resolve P0-27)', () => {
-    expect(COUPLING_RULES).toHaveLength(10)
+  it('COUPLING_RULES documents the 21 known couplings (courier ÉTAPE 6 + scission P0-04 + auto-approve P0-25 + auto-resolve P0-27 + 11 racines de rôle P0-06)', () => {
+    expect(COUPLING_RULES).toHaveLength(21)
   })
 })
