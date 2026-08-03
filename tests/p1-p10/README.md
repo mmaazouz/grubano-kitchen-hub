@@ -42,7 +42,7 @@ automatiquement tout push qui changerait la photographie sans l'assumer.
 | P9 Avis / ★ seedée | `p9-avis-etoile-seedee.test.ts` | 12 | 6 | 5 | 1 | `orderId` fantôme stocké verbatim, aucun check rôle/commande (auto-avis possible) ; `Restaurant.rating` seedé jamais recalculé (documenté « choix produit différé » dans le code). |
 | P10 Claims activation | `p10-claims-activation.test.ts` | 14 | 8 | 3 | 3 | **Ré-photographié vague 1 (P0-27)** : plus d'`auto_small` par défaut — sans `CLAIM_AUTO_RESOLVE_ENABLED`+plafond explicites, une petite réclamation reste en revue restaurant (tracé). Vecteur de crash réel inchangé = flag ON sans `prisma db push` (P2021 → 500 brut), y compris en GET. Gate OFF = 403 `{gated:true}`, pas 404. |
 
-**Totaux : 90 PASS-ACTUEL · 34 FAIL-ATTENDU · 22 NON-TESTABLE** (à la création ; après la ré-photographie P8 de vague 1 : 92 · 32 · 22).
+**Totaux : 90 PASS-ACTUEL · 34 FAIL-ATTENDU · 22 NON-TESTABLE** (à la création — 146 tests ; après les ré-photographies de vague 1, P8 + P10 : 148 tests = 94 · 32 · 22).
 
 ## Écarts notables vs la Carte des écarts v1 (à reporter à Agent 0)
 
