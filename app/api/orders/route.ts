@@ -92,12 +92,14 @@ export async function POST(req: NextRequest) {
     const data = createOrderSchema.parse(body)
 
     // P0-02 (vague 1 — Q2/Q8 fondateur) : le paiement en ESPÈCES est retiré du
-    // pilote, et une capacité hors MVP doit être indisponible CÔTÉ SERVEUR, pas
-    // seulement masquée dans l'interface (jusqu'ici seul le panier /eat tenait
-    // Q2). 'wallet' (valeur héritée de l'enum, même famille : commande créée
-    // 'received' sans aucun paiement en ligne ni commission) est refusé au même
-    // titre. L'enum Zod garde les 3 valeurs pour que le refus soit EXPLICITE
-    // (message français ciblé) et non un 400 Zod générique.
+    // pilote, et une capacité hors MVP doit être indisponible CÔTÉ SERVEUR.
+    // NB : le panier /eat propose ENCORE le toggle espèces (cart/page.tsx —
+    // signalé, hors périmètre P0-02) → ce refus serveur est LA tenue de Q2 ;
+    // l'utilisateur qui choisit « espèces » voit ce message. 'wallet' (valeur
+    // héritée de l'enum, même famille : commande créée 'received' sans aucun
+    // paiement en ligne ni commission ; plus AUCUN client ne l'envoie) est
+    // refusé au même titre. L'enum Zod garde les 3 valeurs pour que le refus
+    // soit EXPLICITE (message français ciblé) et non un 400 Zod générique.
     if (data.paymentMethod !== 'card') {
       return NextResponse.json(
         {
