@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled } from '@/lib/missions'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 import { advanceMissionByCourier, type CourierMissionStep, type AdvanceResult } from '@/lib/mission-attribution'
 import { accrueCourierCourseEarning, accrueCourierTipEarning } from '@/lib/courier-accrual'
 import { deleteCourierPositionForMission } from '@/lib/courier-position'
@@ -32,6 +33,11 @@ export async function handleCourierMissionStep(
   missionId: string,
   to: CourierMissionStep,
 ): Promise<NextResponse> {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — couvre les 3 routes minces pickup/deliver/cancel qui délèguent ici
+  // (accept/decline ont leur gate direct dans leur route.ts).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   if (!isMissionsEnabled()) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 })
   }

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { callerSupplierProfile } from '@/lib/supplier-account'
 import { canTransition } from '@/lib/marketplace'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +16,10 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({ status: z.string().min(1) })
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const profile = await callerSupplierProfile()
     if (!profile) return NextResponse.json({ error: 'Profil fournisseur introuvable' }, { status: 401 })

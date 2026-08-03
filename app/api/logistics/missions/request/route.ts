@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled, createMission } from '@/lib/missions'
 import { serializeMission } from '@/lib/mission-serialize'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,10 @@ async function requester(): Promise<{ id: string; roles: string[] } | null> {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   if (!isMissionsEnabled()) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 })
   }
@@ -79,6 +84,10 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   if (!isMissionsEnabled()) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 })
   }

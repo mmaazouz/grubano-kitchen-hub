@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { rateLimit } from '@/lib/rate-limit'
 import { isLogisticsAvailabilityEnabled } from '@/lib/logistics-availability'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -25,6 +26,10 @@ async function sessionEmail(): Promise<string | null> {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const email = await sessionEmail()
   if (!email) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
@@ -40,6 +45,10 @@ export async function GET() {
 const patchSchema = z.object({ isOnline: z.boolean() })
 
 export async function PATCH(req: NextRequest) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     // Feature-gated: OFF → the toggle is not active → never write the new columns.
     if (!isLogisticsAvailabilityEnabled()) {

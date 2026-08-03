@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── /api/marketplace/orders/[id]/pay + B2B payment webhook (Slice 5c) ─────────
 // Pay is gated (flag + supplier active) + ownership + status confirmed; the
@@ -14,12 +14,18 @@ const { db, caller, gate, lib, stripe, supConnect } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/operator-session', () => ({ callerOperator: caller }))
-vi.mock('@/lib/supplier-connect', () => ({ isSupplierConnectEnabled: gate, applySupplierAccountStatus: supConnect.applySupplierAccountStatus }))
+vi.mock('@/lib/supplier-connect', () => ({ isSupplierConnectEnabled: gate, isSupplierConnectLive: () => process.env.SUPPLIER_ENABLED === 'true' && gate(), applySupplierAccountStatus: supConnect.applySupplierAccountStatus }))
 vi.mock('@/lib/supply-payment', () => lib)
 vi.mock('@/lib/stripe', () => ({ getStripe: stripe.getStripe, mapAccountStatus: stripe.mapAccountStatus }))
 
 import { POST as PAY } from '@/app/api/marketplace/orders/[id]/pay/route'
 import { POST as WEBHOOK } from '@/app/api/webhooks/stripe-supplier/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const payReq = () => new Request('http://x/api/marketplace/orders/o1/pay', { method: 'POST' })
 const params = (id: string) => ({ params: { id } })

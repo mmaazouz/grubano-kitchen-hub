@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── P4.3 ÉTAPE 5 — GET/POST /api/logistics/withdraw (LO7 feed + payout) ───────────────
 // Owner-scoped (session email → LogisticsProfile). GET = the 4-state feed. POST = payout,
@@ -21,6 +21,12 @@ vi.mock('@/lib/partner-balance', () => ({ computePartnerBalance: bal.computePart
 vi.mock('@/lib/payout-threshold', () => ({ payoutMinCents: thr.payoutMinCents }))
 
 import { GET, POST } from '@/app/api/logistics/withdraw/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 beforeEach(() => {
   vi.clearAllMocks()

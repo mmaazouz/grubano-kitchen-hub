@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── PATCH/GET /api/franchise/profile — self-service account edit (P5c, Agent 23) ─
 // The franchise has no dedicated profile model → this edits the Operator ACCOUNT's
@@ -15,6 +15,12 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 vi.mock('next-auth', () => ({ getServerSession: getSession }))
 
 import { GET, PATCH } from '@/app/api/franchise/profile/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.FRANCHISE_ENABLED = 'true' })
+afterEach(() => { delete process.env.FRANCHISE_ENABLED })
 
 const patch = (body: unknown) =>
   PATCH(new Request('http://x/api/franchise/profile', {

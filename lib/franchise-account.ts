@@ -93,3 +93,12 @@ export async function ensureFranchiseOperator(
     return { ok: false, reason: 'error' }
   }
 }
+
+// ── P0-06 — role flag (doctrine Q8: masked = UNAVAILABLE server-side) ──────────
+// The whole franchise surface (apply/approve — approve reaches verifyBusiness, a
+// PAID third-party call —, applications, brands, POS, finances, my-dashboard,
+// profile, connect, the franchisee enrolment side + the admin settlement rail) is
+// OFF by default. Mirror of isPrestataireEnabled: 404 first line, every verb.
+export function isFranchiseEnabled(): boolean {
+  return process.env.FRANCHISE_ENABLED === 'true'
+}

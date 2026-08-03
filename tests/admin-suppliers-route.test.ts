@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── GET /api/admin/suppliers — ADMIN supplier console list (Agent 85) ──────────
 // ADMIN-only (same guard as /api/admin/influencer-verifications: 401 no user, 403
@@ -16,6 +16,12 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 vi.mock('next-auth', () => ({ getServerSession: session }))
 
 import { GET } from '@/app/api/admin/suppliers/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const get = (url = 'http://x/api/admin/suppliers') => GET(new Request(url))
 

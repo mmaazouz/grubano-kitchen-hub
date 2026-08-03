@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 const applySchema = z.object({
   name:       z.string().min(2),
@@ -20,6 +21,10 @@ const applySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     const body    = await req.json()

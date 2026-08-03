@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── POST /api/creators/apply — Mission 14 (Agent 14) ──────────────────────────
 // The dish-concepts "portfolio" is CHEF-only. A PURE influencer (influencer ✔ /
@@ -19,6 +19,12 @@ const { db } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 import { POST } from '@/app/api/creators/apply/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
 
 const post = (body: Record<string, unknown>) =>
   POST(new Request('https://business.grubano.com/api/creators/apply', {

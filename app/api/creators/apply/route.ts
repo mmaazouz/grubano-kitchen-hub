@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { makeVerifyCode } from '@/lib/verify-code'
 import { ensureCreatorOperator } from '@/lib/creator-account'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 const dishConceptSchema = z.object({
   name:        z.string().min(1),
@@ -47,6 +48,10 @@ const applySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const body = await req.json()
     const data = applySchema.parse(body)

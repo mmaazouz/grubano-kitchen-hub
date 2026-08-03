@@ -8,6 +8,7 @@ import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit } from '@/lib/admin-audit'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,6 +34,10 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const limited = rateLimit(req, 'admin_supplier_status', { limitDefault: 30, windowDefault: 60 })
   if (limited) return limited
 

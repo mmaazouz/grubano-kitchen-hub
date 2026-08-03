@@ -7,6 +7,7 @@ import { readCreatorRoles } from '@/lib/creator-roles'
 import { buildAffiliateLink, buildAffiliateRestaurantLink } from '@/lib/affiliate-link'
 import { generateAffiliateCaptions, rateLimitCheck } from '@/lib/affiliate-content'
 import { LlmQuotaError } from '@/lib/llm'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── POST /api/creator/affiliate-content — Studio de contenu IA (Slice 2b) ──────
 // Given a target (restaurant, optional dish), generate 2-3 caption variants with
@@ -25,6 +26,10 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

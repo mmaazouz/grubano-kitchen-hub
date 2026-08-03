@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { gateFranchise } from '@/lib/franchise-pos'
 import { isFranchiseRoyaltyEnabled, resolveFranchiseRate } from '@/lib/franchise-royalty'
 import { getFranchiseEarnings, getFranchisePayouts } from '@/lib/franchise-earnings'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,10 @@ export const dynamic = 'force-dynamic'
 // page formats them to euros.
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const gate = await gateFranchise()
   if (!gate.ok) {
     return NextResponse.json(

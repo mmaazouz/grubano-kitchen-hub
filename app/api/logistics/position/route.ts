@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { rateLimit } from '@/lib/rate-limit'
 import { isLogisticsTrackingEnabled } from '@/lib/logistics-tracking'
 import { sweepStaleCourierPositions } from '@/lib/courier-position-sweep'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -43,6 +44,10 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     // (1) Feature-gated FIRST — OFF → 404 BEFORE any DB access. The CourierPosition table and the
     // trackingConsent column are NEVER touched when OFF (safe deploy-before-migration, inert).

@@ -23,8 +23,10 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `CHARGEBACKS_ENABLED` | `lib/dispute.ts` | Cycle litiges/chargebacks |
 | `CLAIMS_ENABLED` | `lib/claims.ts` | Réclamations client (⚠️ exige la table `Claim` en base — cf. harnais P10) |
 | `CONSUMER_REDESIGN_ENABLED` | `lib/consumer-redesign.ts` | Re-design conso |
+| `CREATOR_ENABLED` | `lib/creator-account.ts` | P0-06 (Q8) : rôle CRÉATEUR entier — 22 routes 404 OFF (apply/vetting/dishes/profil/pages publiques chef/earnings/connect + rails admin payout) |
 | `CREATOR_PAYOUT_ENABLED` | `lib/creator-payout.ts` | Versements créateurs |
 | `DINEIN_SERVICE_ENABLED` | `lib/dinein-service.ts` | Frais de service dine-in |
+| `FRANCHISE_ENABLED` | `lib/franchise-account.ts` | P0-06 (Q8) : rôle FRANCHISE entier — 12 routes 404 OFF (apply/approve/brands/POS/finances/profil + côté franchisé + rail settlement admin) |
 | `FRANCHISE_POS_TAGGING_ENABLED` | `lib/franchise-pos-tagging.ts` | Attribution POS des commandes |
 | `FRANCHISE_ROYALTY_ENABLED` | `lib/franchise-royalty.ts` | Royalties franchise |
 | `FRANCHISE_SETTLEMENT_ENABLED` | `lib/franchise-settlement.ts` | Reversement franchiseur |
@@ -33,6 +35,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `LOGISTICS_COURIER_ACCRUAL_ENABLED` | `lib/courier-accrual.ts` | Accrual course livreur (cas B) |
 | `LOGISTICS_COURIER_ACTIVATION_ENABLED` | `lib/logistics-account.ts` | Activation des comptes livreurs |
 | `LOGISTICS_DISTANCE_FEE_ENABLED` | `lib/logistics-fee.ts` | Frais de livraison à la distance |
+| `LOGISTICS_ENABLED` | `lib/logistics-account.ts` | P0-06 (Q8) : rôle LIVREUR entier — 17 routes 404 OFF. EXCLUSIONS voulues : fee-preview (surface panier conso), positions/sweep (purge RGPD cron), my-position-data (art. 15/17), tracking-consent (retrait du consentement) |
 | `LOGISTICS_MISSIONS_ENABLED` | `lib/missions.ts` | Missions livreur (404 OFF) |
 | `LOGISTICS_PAYOUT_ENABLED` | `lib/creator-payout.ts` | Versements livreurs |
 | `LOGISTICS_TRACKING_ENABLED` | `lib/logistics-tracking.ts` | Géoloc livreur (capture + affichage + purge) |
@@ -46,6 +49,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `PRESTATAIRE_CONNECT_ENABLED` | `lib/prestataire-connect.ts` | Connect prestataire |
 | `RATE_LIMIT_ENABLED` | `lib/rate-limit.ts` | Rate-limiting applicatif (sûr à activer — audit go-live) |
 | `REFUNDS_ENABLED` | `lib/refund.ts` | Moteur de remboursement |
+| `SUPPLIER_ENABLED` | `lib/supplier-account.ts` | P0-06 (Q8) : rôle FOURNISSEUR entier — 12 routes 404 OFF + webhook stripe-supplier (double flag). L'annuaire privé opérateur `/api/suppliers` (pluriel) n'est PAS gaté (feature restaurant) |
 | `SUPPLIER_CONNECT_ENABLED` | `lib/supplier-connect.ts` | Paiements fournisseurs B2B |
 | `TIPS_ENABLED` | `lib/tips.ts` | Pourboires (⚠️ fonds tiers — voir couplages) |
 
@@ -67,6 +71,10 @@ Un flag ON dont le prérequis est OFF = danger argent/confiance. Vérifiés par
 | `FRANCHISE_ROYALTY_ENABLED` | `FRANCHISE_SETTLEMENT_ENABLED` | royalties accumulées sans reversement |
 | `FRANCHISE_SETTLEMENT_ENABLED` | `FRANCHISE_CONNECT_ENABLED` | settlement sans compte Connect |
 | `CREATOR_PAYOUT_ENABLED` | `CREATOR_CONNECT_ENABLED` | payout créateur sans compte Connect |
+| `CREATOR_CONNECT_ENABLED` · `CREATOR_PAYOUT_ENABLED` | `CREATOR_ENABLED` | capacité créateur ON alors que le rôle est masqué (P0-06) |
+| `SUPPLIER_CONNECT_ENABLED` | `SUPPLIER_ENABLED` | paiements B2B ON alors que le rôle fournisseur est masqué (P0-06) |
+| `FRANCHISE_CONNECT_ENABLED` · `FRANCHISE_ROYALTY_ENABLED` · `FRANCHISE_POS_TAGGING_ENABLED` | `FRANCHISE_ENABLED` | capacité franchise ON alors que le rôle est masqué (P0-06) |
+| `LOGISTICS_CONNECT_ENABLED` · `LOGISTICS_MISSIONS_ENABLED` · `LOGISTICS_COURIER_ACTIVATION_ENABLED` · `LOGISTICS_AVAILABILITY_ENABLED` · `LOGISTICS_TRACKING_ENABLED` | `LOGISTICS_ENABLED` | capacité livreur ON alors que le rôle est masqué (P0-06) |
 
 ## Procédure de bascule d'un flag (staging) — sans rien exécuter ici
 

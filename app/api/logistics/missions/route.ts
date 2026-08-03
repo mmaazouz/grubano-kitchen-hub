@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled } from '@/lib/missions'
 import { offeredMissionsForCourier } from '@/lib/mission-attribution'
 import { serializeMission } from '@/lib/mission-serialize'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,10 @@ export const dynamic = 'force-dynamic'
 // drop-off is MASKED to a zone/quartier (maskDropoff) — the full address is revealed only once a
 // courier has claimed the mission (they are no longer part of an anonymous pool).
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   if (!isMissionsEnabled()) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 })
   }

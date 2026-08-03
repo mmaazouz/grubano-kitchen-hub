@@ -5,6 +5,7 @@ import { ensureSupplierOperator, decideSupplierOutcome } from '@/lib/supplier-ac
 import { verifyBusiness } from '@/lib/business-verification'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 import { sendAdminNewPartnerEmail } from '@/lib/transactional-emails'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,10 @@ function ok(outcome: Outcome) {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const body = await req.json().catch(() => null)
     const parsed = registerSchema.safeParse(body)

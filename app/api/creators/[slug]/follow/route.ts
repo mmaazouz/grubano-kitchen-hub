@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,10 @@ async function sessionUserId(): Promise<string | null> {
 }
 
 export async function GET(_req: Request, { params }: { params: { slug: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const creatorId = await resolveCreatorId(params.slug)
   if (!creatorId) return NextResponse.json({ error: 'not_found' }, { status: 404 })
   const userId = await sessionUserId()
@@ -42,6 +47,10 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
 }
 
 export async function POST(_req: Request, { params }: { params: { slug: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const userId = await sessionUserId()
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const creatorId = await resolveCreatorId(params.slug)
@@ -56,6 +65,10 @@ export async function POST(_req: Request, { params }: { params: { slug: string }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { slug: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const userId = await sessionUserId()
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   const creatorId = await resolveCreatorId(params.slug)

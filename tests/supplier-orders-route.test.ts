@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── /api/supplier/orders — supplier reception scoping (Slice 2, Agent 14) ─────
 // A supplier sees ONLY the orders placed to its own SupplierProfile (from the
@@ -9,9 +9,15 @@ const { db, caller } = vi.hoisted(() => ({
   caller: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: caller }))
+vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: caller, isSupplierEnabled: () => process.env.SUPPLIER_ENABLED === 'true' }))
 
 import { GET } from '@/app/api/supplier/orders/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 beforeEach(() => vi.clearAllMocks())
 

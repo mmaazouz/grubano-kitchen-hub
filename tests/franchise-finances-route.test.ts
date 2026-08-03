@@ -23,6 +23,12 @@ vi.mock('next-auth', () => ({ getServerSession: getSession }))
 
 import { GET } from '@/app/api/franchise/finances/route'
 
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.FRANCHISE_ENABLED = 'true' })
+afterEach(() => { delete process.env.FRANCHISE_ENABLED })
+
 beforeEach(() => {
   vi.clearAllMocks()
   delete process.env.FRANCHISE_ROYALTY_ENABLED

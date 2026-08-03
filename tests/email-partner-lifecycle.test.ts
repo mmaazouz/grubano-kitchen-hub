@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { Prisma } from '@prisma/client'
@@ -18,6 +18,12 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 import { sendPartnerStatusEmail } from '@/lib/transactional-emails'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const P = (code: string) => new Prisma.PrismaClientKnownRequestError(code, { code, clientVersion: '5.22.0' })
 

@@ -5,6 +5,7 @@ import { ensureLogisticsOperator, decideLogisticsOutcome, applyCourierActivation
 import { verifyBusiness } from '@/lib/business-verification'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 import { rateLimit } from '@/lib/rate-limit'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -66,6 +67,10 @@ function ok(outcome: Outcome, officialName?: string | null, waitlist = false) {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   // S2 (abuse/cost) — this PUBLIC endpoint triggers a paid verifyBusiness call (LLM + official
   // registry) on a fresh SIREN, so throttle it per-IP (in addition to the honeypot + 2 s delay
   // below, which are preserved). Flag-gated by RATE_LIMIT_ENABLED (default OFF) → NO-OP / byte-

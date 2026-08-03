@@ -6,6 +6,7 @@ import { matureCreatorEarnings } from '@/lib/creator-earnings'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── POST /api/admin/creator-earnings/mature ───────────────────────────────────
 // B2a — runs the daily maturation pass over every PENDING creator gain
@@ -22,6 +23,10 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   // Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
   const limited = rateLimit(req, 'admin_creator_earnings_mature', { limitDefault: 20, windowDefault: 60 })
   if (limited) return limited

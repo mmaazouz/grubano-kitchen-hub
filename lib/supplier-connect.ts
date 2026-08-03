@@ -106,3 +106,14 @@ export async function applySupplierAccountStatus(accountId: string, status: Supp
     return 0
   }
 }
+
+/**
+ * P0-06 — DOUBLE-flag gate for the supplier Connect surface, mirror of
+ * isPrestataireConnectLive (lib/prestataire-connect): live only when BOTH the
+ * role (SUPPLIER_ENABLED) AND the connect (SUPPLIER_CONNECT_ENABLED) flags are
+ * on. Used FIRST-LINE by the stripe-supplier webhook so a masked role means the
+ * endpoint does not exist — before the secret is even read.
+ */
+export function isSupplierConnectLive(): boolean {
+  return process.env.SUPPLIER_ENABLED === 'true' && isSupplierConnectEnabled()
+}

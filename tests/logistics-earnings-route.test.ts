@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── P4.3 ÉTAPE 5 — GET /api/logistics/earnings (LO6 feed) ────────────────────────────
 // Owner-scoped (session email → LogisticsProfile), real balances + CourierEarning rows,
@@ -15,6 +15,12 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/partner-balance', () => ({ computePartnerBalance: bal.computePartnerBalance }))
 
 import { GET } from '@/app/api/logistics/earnings/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 beforeEach(() => {
   vi.clearAllMocks()

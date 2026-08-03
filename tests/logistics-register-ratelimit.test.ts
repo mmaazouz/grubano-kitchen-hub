@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, vi, afterEach } from 'vitest'
 
 // ── S2 — /api/logistics/register rate-limit wiring (Agent 126) ─────────────────
 // The PUBLIC register triggers a PAID verifyBusiness call (LLM + official registry) on a fresh
@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 const { db, la, biz, idp } = vi.hoisted(() => ({
   db: { logisticsProfile: { findUnique: vi.fn(), create: vi.fn() } },
   la: {
+    isLogisticsEnabled: () => process.env.LOGISTICS_ENABLED === 'true',
     ensureLogisticsOperator: vi.fn(),
     decideLogisticsOutcome: vi.fn(),
     applyCourierActivationGate: vi.fn(),
@@ -24,6 +25,12 @@ vi.mock('@/lib/identity-propagation', () => idp)
 
 import { POST as register } from '@/app/api/logistics/register/route'
 import { __resetRateLimit } from '@/lib/rate-limit'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 const ENV = { ...process.env }
 const body = () => ({

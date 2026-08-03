@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +28,10 @@ async function sessionOperatorId(): Promise<string | null> {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const operatorId = await sessionOperatorId()
     if (!operatorId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -87,6 +92,10 @@ const createSchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const operatorId = await sessionOperatorId()
     if (!operatorId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })

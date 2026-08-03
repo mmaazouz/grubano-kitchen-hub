@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { readCreatorRoles } from '@/lib/creator-roles'
 import { authOptions } from '@/lib/auth'
 import { PAYOUT_THRESHOLD_CENTS } from '@/lib/creator-earnings'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── GET /api/creator/earnings?page=N ──────────────────────────────────────────
 // B2a — THE contract the creator dashboard (B1, Agent 13) consumes. CREATOR
@@ -20,6 +21,10 @@ const PAGE_SIZE = 20
 const cents = (eur: number) => Math.round(eur * 100)
 
 export async function GET(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

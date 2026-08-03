@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── PATCH/GET /api/creators/profile — self-service profile edit (P5b, Agent 22) ─
 // Owner-only (session e-mail, never a client id → no IDOR), role-gated (no Creator
@@ -14,6 +14,12 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 vi.mock('next-auth', () => ({ getServerSession: getSession }))
 
 import { GET, PATCH } from '@/app/api/creators/profile/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
 
 const patch = (body: unknown) =>
   PATCH(new Request('http://x/api/creators/profile', {
