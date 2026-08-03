@@ -4,7 +4,7 @@ import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ESTABLISHMENT_COOKIE, pickEstablishment } from '@/lib/establishment'
-import { EmptyState } from '@/components/design-system'
+import { EmptyState, ToastProvider } from '@/components/design-system'
 import { type EstablishmentOption } from '@/components/dashboard/EstablishmentSwitcher'
 import OrdersClient, {
   type OrderView,
@@ -155,8 +155,18 @@ export default async function OrdersPage(props: {
   return (
     <>
       {/* P4.5-C1 — claims awaiting response (server-gated; renders nothing when the
-          flag is OFF or there are no pending claims → byte-identical otherwise). */}
-      {isClaimsEnabled() && <RestaurantClaimsPanel />}
+          flag is OFF or there are no pending claims → byte-identical otherwise).
+          P0-14 — the panel calls useToast() on mount, and the page's only
+          ToastProvider lives INSIDE OrdersClient, so mounting it bare threw
+          "useToast must be used inside <ToastProvider>" and blanked the whole
+          page whenever CLAIMS_ENABLED was on. It gets its own provider here —
+          the same pattern every other operator client island uses (OrdersClient,
+          LiveOrders, FulfillmentForm…): operator pages have no global one. */}
+      {isClaimsEnabled() && (
+        <ToastProvider>
+          <RestaurantClaimsPanel />
+        </ToastProvider>
+      )}
       <OrdersClient
         restaurant={d.restaurant}
         establishments={d.establishments}
