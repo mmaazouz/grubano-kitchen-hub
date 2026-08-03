@@ -46,7 +46,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `PRESTATAIRE_ENABLED` | `lib/prestataire-account.ts` | Marketplace prestataires (404 OFF) |
 | `PRESTATAIRE_CONNECT_ENABLED` | `lib/prestataire-connect.ts` | Connect prestataire |
 | `RATE_LIMIT_ENABLED` | `lib/rate-limit.ts` | Rate-limiting applicatif (sûr à activer — audit go-live) |
-| `REFUNDS_ENABLED` | `lib/refund.ts` | Outil de remboursement ADMIN uniquement (P0-04 : ne gouverne PLUS l'auto-refund ghost-order — voir `GHOST_ORDER_AUTO_REFUND_ENABLED`) |
+| `REFUNDS_ENABLED` | `lib/refund.ts` | Moteur de remboursement : outil admin `/api/admin/refunds/run` **et** les rails `lib/claims.ts:199,325` / `lib/dispute.ts`. P0-04 : ne gouverne **plus** l'auto-refund ghost-order du webhook → `GHOST_ORDER_AUTO_REFUND_ENABLED`. ⚠️ Ne suffit donc PAS à garantir « aucun remboursement sans admin » : cf. note Q3 sous les couplages |
 | `SUPPLIER_CONNECT_ENABLED` | `lib/supplier-connect.ts` | Paiements fournisseurs B2B |
 | `TIPS_ENABLED` | `lib/tips.ts` | Pourboires (⚠️ fonds tiers — voir couplages) |
 
@@ -62,7 +62,19 @@ Un flag ON dont le prérequis est OFF = danger argent/confiance. Vérifiés par
 | Si ce flag est ON… | …alors celui-ci DOIT l'être | Pourquoi |
 |---|---|---|
 | `CLAIMS_ENABLED` | `REFUNDS_ENABLED` | claim approuvée sans refund = approuvée-mais-non-remboursée |
-| `GHOST_ORDER_AUTO_REFUND_ENABLED` | `REFUNDS_ENABLED` | l'auto-refund ghost-order réutilise le moteur admin (P0-04). ⚠️ L'inverse n'est PAS requis : `CLAIMS`+`REFUNDS` ON n'allument AUCUN remboursement automatique — l'auto-refund exige son propre flag, défaut OFF (Q3) |
+| `GHOST_ORDER_AUTO_REFUND_ENABLED` | `REFUNDS_ENABLED` | l'auto-refund ghost-order réutilise le moteur admin (P0-04). L'inverse n'est PAS requis : `REFUNDS` seul n'allume PAS le chemin webhook |
+
+### ⚠️ Note Q3 — ce que la scission P0-04 règle, et ce qu'elle NE règle PAS
+
+P0-04 supprime **un** chemin automatique : le webhook ghost-order ne rembourse plus
+sans son propre flag (défaut OFF). Il reste, avec `CLAIMS_ENABLED`+`REFUNDS_ENABLED` ON,
+**un remboursement déclenché par le RESTAURATEUR** (et non par un admin Grubano), pour un
+montant **partiel** : `RestaurantClaimsPanel` → `POST /api/claims/[id]/respond` (accept) →
+`lib/claims.ts:284` → `approveClaim:244` → `triggerClaimRefund:197` → `executeRefund`.
+Un second chemin machine existe aussi (`runClaimAutoApproval:302-338`, `auto_timeout` —
+son scheduler a été retiré par P0-07, mais la route `/api/admin/claims/auto-approve`
+demeure appelable). Les deux contredisent Q3 (validation admin seule + intégral) et
+**ne sont pas traités par P0-03/P0-04** — signalés, à arbitrer par Agent 0.
 | `TIPS_ENABLED` | `LOGISTICS_PAYOUT_ENABLED` | pourboire encaissé sans rail de reversement = fonds tiers retenus (D-1) |
 | `LOGISTICS_COURIER_ACCRUAL_ENABLED` | `LOGISTICS_PAYOUT_ENABLED` | course retenue sans reversement (D-1 symétrique) |
 | `LOGISTICS_PAYOUT_ENABLED` | `LOGISTICS_CONNECT_ENABLED` | reversement sans compte Connect onboardé |
