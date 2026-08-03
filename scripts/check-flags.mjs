@@ -14,6 +14,10 @@ const on = (env, k) => env[k] === 'true'
 /** The couplings. Flag names verified against the Phase-1 flag audit. */
 export const COUPLING_RULES = [
   { flag: 'CLAIMS_ENABLED',              requires: 'REFUNDS_ENABLED',             why: 'un claim approuvé sans REFUNDS = approuvé-mais-non-remboursé (risque chargeback)' },
+  // P0-04 (vague 1) : REFUNDS_ENABLED ne gouverne plus que l'OUTIL ADMIN ; l'auto-refund
+  // ghost-order du webhook a son propre flag (défaut OFF, peut rester OFF toute la bêta).
+  // S'il est allumé, il réutilise le moteur admin → exiger la cohérence du couple.
+  { flag: 'GHOST_ORDER_AUTO_REFUND_ENABLED', requires: 'REFUNDS_ENABLED',         why: 'l\'auto-refund ghost-order réutilise le moteur admin (lib/refund) — l\'activer avec le moteur déclaré OFF est incohérent' },
   // ── Rail livreur P4.3 (ÉTAPE 6) — remplace l'ANCIEN couplage fantôme TIPS⇒TIP_PAYOUT_ENABLED
   // (flag no-op supprimé). Le pourboire encaissé (TIPS) ET la course cas B retenue
   // (LOGISTICS_COURIER_ACCRUAL) sont des fonds tiers : sans rail de reversement (LOGISTICS_PAYOUT)

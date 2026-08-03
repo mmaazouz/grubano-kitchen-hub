@@ -53,9 +53,23 @@ import { recordRefundLedgerEntry } from '@/lib/ledger'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 
 /** Kill-switch — default OFF. Only the exact string 'true' enables the rail
- *  (mirrors isFranchiseRoyaltyEnabled / isCreatorPayoutEnabled). */
+ *  (mirrors isFranchiseRoyaltyEnabled / isCreatorPayoutEnabled).
+ *  P0-04 (vague 1) : ce flag gouverne l'OUTIL DE REMBOURSEMENT ADMIN uniquement
+ *  (route /api/admin/refunds/run + reprise claims). L'AUTO-remboursement
+ *  ghost-order du webhook est gouverné par le flag SÉPARÉ ci-dessous. */
 export function isRefundsEnabled(): boolean {
   return process.env.REFUNDS_ENABLED === 'true'
+}
+
+/** P0-04 (vague 1, principe fondateur) : « aucune automatisation produisant un
+ *  effet externe à impact financier sans validation humaine ». L'auto-refund
+ *  ghost-order (webhook payment_intent.succeeded sur commande expirée) est le
+ *  SEUL chemin du moteur sans humain → il a son PROPRE kill-switch, défaut OFF,
+ *  découplé de REFUNDS_ENABLED : l'outil admin peut être actif toute la bêta
+ *  pendant que ce chemin reste inactif (l'argent encaissé part alors en file
+ *  manuelle 'reconcile_manual' — jamais un money-out silencieux). */
+export function isGhostOrderAutoRefundEnabled(): boolean {
+  return process.env.GHOST_ORDER_AUTO_REFUND_ENABLED === 'true'
 }
 
 export interface RefundSplit {
