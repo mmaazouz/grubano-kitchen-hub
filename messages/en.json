@@ -8404,5 +8404,14 @@
     "error": "Loading error.",
     "disabledTitle": "Position tracking disabled",
     "disabledBody": "The tracking feature is not enabled."
+  },
+  "errors": {
+    "boundary": {
+      "title": "Something went wrong",
+      "body": "Something failed on our side. You can try again — none of your data was lost.",
+      "retry": "Try again",
+      "home": "Back to home",
+      "ref": "Reference to give to support"
+    }
   }
 }

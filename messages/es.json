@@ -8404,5 +8404,14 @@
     "error": "Error de carga.",
     "disabledTitle": "Seguimiento de posición desactivado",
     "disabledBody": "La función de seguimiento no está activada."
+  },
+  "errors": {
+    "boundary": {
+      "title": "Se ha producido un error",
+      "body": "Algo ha fallado por nuestra parte. Puede volver a intentarlo: no se ha perdido ningún dato.",
+      "retry": "Reintentar",
+      "home": "Volver al inicio",
+      "ref": "Referencia para el servicio de soporte"
+    }
   }
 }

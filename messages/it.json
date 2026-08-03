@@ -8404,5 +8404,14 @@
     "error": "Errore di caricamento.",
     "disabledTitle": "Tracciamento posizione disattivato",
     "disabledBody": "La funzione di tracciamento non è attiva."
+  },
+  "errors": {
+    "boundary": {
+      "title": "Si è verificato un errore",
+      "body": "Qualcosa non ha funzionato dalla nostra parte. Può riprovare: nessun dato è andato perso.",
+      "retry": "Riprova",
+      "home": "Torna alla home",
+      "ref": "Riferimento da comunicare all'assistenza"
+    }
   }
 }
