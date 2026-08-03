@@ -7040,7 +7040,7 @@
       "contestReasonPlaceholder": "Explain your disagreement…",
       "contestSubmit": "Submit contest",
       "contestSuccess": "Contest submitted. Grubano will decide.",
-      "arbitrationInfo": "Your contest is being reviewed by Grubano.",
+      "arbitrationInfo": "Your claim is being reviewed by Grubano.",
       "refusalReasonShown": "Refusal reason"
     },
     "restaurant": {
@@ -7053,12 +7053,12 @@
       "viewPhoto": "View photo",
       "timeLeft": "{hours}h left to respond",
       "expired": "Deadline passed — auto-approval imminent",
-      "accept": "Accept and refund",
+      "accept": "Accept",
       "refuse": "Refuse",
       "refuseReasonLabel": "Refusal reason",
       "refuseReasonPlaceholder": "Explain why…",
       "confirmRefuse": "Confirm refusal",
-      "accepted": "Claim accepted, refund triggered.",
+      "accepted": "Claim accepted — forwarded to Grubano for the refund decision.",
       "refused": "Claim refused.",
       "refundPending": "Accepted — refund pending activation.",
       "processing": "Processing…",

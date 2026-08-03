@@ -3,7 +3,8 @@
 // P4.5-C1 — restaurant claims panel, mounted on the operator Orders page (server-gated
 // by isClaimsEnabled() → not mounted at all when OFF, byte-identical). Lists the claims
 // awaiting a response on the operator's OWN orders (owner-scoped server-side), with the
-// 24h countdown, and Accept (→ triggers the refund engine) / Refuse (motivated) actions.
+// 24h countdown, and Accept (P0-24 : routes the claim to the ADMIN queue — no refund is
+// ever triggered from here) / Refuse (motivated) actions.
 // Renders nothing while the feature is off OR there are no pending claims.
 
 import { useState, useEffect, useCallback } from 'react'
