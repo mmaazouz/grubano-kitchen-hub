@@ -3,9 +3,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 // ── WP-MONEY-01 · ghost-order expiry reconciliation ───────────────────────────
 // A card order lazily expired (>24h) then its payment_intent.succeeded lands. The
 // money was captured — never mark it paid-and-dead. Explicit paymentStatus sentinel
-// ('reconcile_manual' / 'refunded'), admin alert, auto-refund ONLY via lib/refund
-// when REFUNDS_ENABLED (else manual queue), NEVER a silent money-out. The nominal
-// awaiting_payment→received path stays byte-identical (last test).
+// ('reconcile_manual' / 'refunded'), admin alert, NEVER a silent money-out.
+// P0-04 (vague 1) : l'auto-refund est gouverné par GHOST_ORDER_AUTO_REFUND_ENABLED
+// (défaut OFF, SÉPARÉ de REFUNDS_ENABLED qui ne gouverne plus que l'outil admin) —
+// REFUNDS_ENABLED=true seul ne déclenche AUCUN remboursement automatique. The
+// nominal awaiting_payment→received path stays byte-identical (last test).
 
 const { db, stripe, refund, emails } = vi.hoisted(() => ({
   db: {
@@ -18,12 +20,12 @@ const { db, stripe, refund, emails } = vi.hoisted(() => ({
     $transaction:       vi.fn(),
   },
   stripe: { getStripe: vi.fn(), retrieveChargeFacts: vi.fn(), mapAccountStatus: vi.fn(), constructEvent: vi.fn() },
-  refund: { isRefundsEnabled: vi.fn(), executeRefund: vi.fn() },
+  refund: { isRefundsEnabled: vi.fn(), isGhostOrderAutoRefundEnabled: vi.fn(), executeRefund: vi.fn() },
   emails: { sendAdminGhostOrderAlert: vi.fn() },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/stripe', () => ({ getStripe: stripe.getStripe, retrieveChargeFacts: stripe.retrieveChargeFacts, mapAccountStatus: stripe.mapAccountStatus }))
-vi.mock('@/lib/refund', () => ({ isRefundsEnabled: refund.isRefundsEnabled, executeRefund: refund.executeRefund }))
+vi.mock('@/lib/refund', () => ({ isRefundsEnabled: refund.isRefundsEnabled, isGhostOrderAutoRefundEnabled: refund.isGhostOrderAutoRefundEnabled, executeRefund: refund.executeRefund }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminGhostOrderAlert: emails.sendAdminGhostOrderAlert }))
 
 import { POST } from '@/app/api/webhooks/stripe/route'
@@ -48,14 +50,15 @@ beforeEach(() => {
   db.loyaltyTransaction.findFirst.mockResolvedValue(null)
   db.reservation.findFirst.mockResolvedValue(null)
   refund.isRefundsEnabled.mockReturnValue(false)
+  refund.isGhostOrderAutoRefundEnabled.mockReturnValue(false)
   refund.executeRefund.mockResolvedValue({ ok: true })
   emails.sendAdminGhostOrderAlert.mockResolvedValue({ status: 'sent' })
 })
 afterEach(() => { delete process.env.STRIPE_WEBHOOK_SECRET })
 
-describe('after expiry · REFUNDS ON', () => {
+describe('after expiry · AUTO-REFUND ON (GHOST_ORDER_AUTO_REFUND_ENABLED — P0-04)', () => {
   it('auto-refunds via lib/refund, marks refunded, never reveals to resto', async () => {
-    refund.isRefundsEnabled.mockReturnValue(true)
+    refund.isGhostOrderAutoRefundEnabled.mockReturnValue(true)
     db.order.findUnique.mockResolvedValue(expiredOrder())
     const res = await fire()
     expect(res.status).toBe(200)
@@ -67,7 +70,7 @@ describe('after expiry · REFUNDS ON', () => {
   })
 
   it('refund returns not-ok → marks reconcile_manual (never final paid)', async () => {
-    refund.isRefundsEnabled.mockReturnValue(true)
+    refund.isGhostOrderAutoRefundEnabled.mockReturnValue(true)
     refund.executeRefund.mockResolvedValue({ ok: false, status: 502, error: 'stripe down' })
     db.order.findUnique.mockResolvedValue(expiredOrder())
     const res = await fire()
@@ -76,7 +79,7 @@ describe('after expiry · REFUNDS ON', () => {
   })
 
   it('executeRefund THROWS → caught, marks reconcile_manual, webhook still 200', async () => {
-    refund.isRefundsEnabled.mockReturnValue(true)
+    refund.isGhostOrderAutoRefundEnabled.mockReturnValue(true)
     refund.executeRefund.mockRejectedValue(new Error('boom'))
     db.order.findUnique.mockResolvedValue(expiredOrder())
     const res = await fire()
@@ -85,16 +88,28 @@ describe('after expiry · REFUNDS ON', () => {
   })
 })
 
-describe('after expiry · REFUNDS OFF → manual queue, no money-out', () => {
+describe('after expiry · AUTO-REFUND OFF (défaut) → manual queue, no money-out', () => {
   it('marks reconcile_manual, alerts admin, does NOT refund or reveal', async () => {
-    refund.isRefundsEnabled.mockReturnValue(false)
+    refund.isGhostOrderAutoRefundEnabled.mockReturnValue(false)
     db.order.findUnique.mockResolvedValue(expiredOrder())
     const res = await fire()
-    expect(await res.json()).toMatchObject({ order: 'expired_needs_reconciliation' })
+    expect(await res.json()).toMatchObject({ order: 'expired_needs_reconciliation', autoRefund: 'gated' })
     expect(refund.executeRefund).not.toHaveBeenCalled()
     expect(emails.sendAdminGhostOrderAlert).toHaveBeenCalledWith(expect.objectContaining({ refundsOn: false }))
     expect(updates()).toEqual([{ paymentStatus: 'reconcile_manual', stripePaymentIntentId: 'pi_1' }])
     expect(db.order.updateMany).not.toHaveBeenCalled()
+  })
+
+  // ⭐ P0-04 — CRITÈRE D'ACCEPTATION Q3 : l'outil admin actif (REFUNDS_ENABLED=true,
+  // le réglage bêta) ne déclenche AUCUN remboursement automatique au webhook.
+  it("REFUNDS_ENABLED=true (outil admin actif) + auto-refund OFF → AUCUN refund auto, file manuelle", async () => {
+    refund.isRefundsEnabled.mockReturnValue(true)          // outil admin actif (bêta)
+    refund.isGhostOrderAutoRefundEnabled.mockReturnValue(false) // chemin webhook inactif
+    db.order.findUnique.mockResolvedValue(expiredOrder())
+    const res = await fire()
+    expect(await res.json()).toMatchObject({ order: 'expired_needs_reconciliation', autoRefund: 'gated' })
+    expect(refund.executeRefund).not.toHaveBeenCalled()    // aucune automatisation d'argent
+    expect(updates()).toEqual([{ paymentStatus: 'reconcile_manual', stripePaymentIntentId: 'pi_1' }])
   })
 })
 

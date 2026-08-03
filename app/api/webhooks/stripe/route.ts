@@ -6,7 +6,7 @@ import { getStripe, mapAccountStatus, retrieveChargeFacts, type DepositStatus } 
 import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
-import { isRefundsEnabled, executeRefund } from '@/lib/refund'
+import { isGhostOrderAutoRefundEnabled, executeRefund } from '@/lib/refund'
 import { clawbackCourierTip } from '@/lib/courier-accrual'
 import { sendAdminGhostOrderAlert } from '@/lib/admin-alerts'
 
@@ -378,17 +378,19 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
     // free String; a future admin reconciliation queue [WP-ADMIN-RECON] filters on it):
     //   'reconcile_manual' = captured, awaiting a manual admin decision;
     //   'refunded'         = auto-refunded via the royalty-aware engine.
-    // The kitchen status STAYS 'expired' (never revealed to the resto). Auto-refund
-    // happens ONLY via lib/refund.executeRefund AND ONLY when REFUNDS_ENABLED — else
-    // the money stays captured but flagged for manual reconciliation (NEVER a silent
-    // money-out).
+    // The kitchen status STAYS 'expired' (never revealed to the resto).
+    // P0-04 (vague 1) : l'auto-refund est gouverné par GHOST_ORDER_AUTO_REFUND_ENABLED
+    // (défaut OFF, SÉPARÉ de REFUNDS_ENABLED qui ne gouverne plus que l'outil admin) —
+    // « aucune automatisation à impact financier sans validation humaine ». OFF → the
+    // money stays captured but flagged for manual reconciliation (NEVER a silent
+    // money-out); the admin then decides via /api/admin/refunds/run.
     if (order.status === 'expired') {
       // (1) Idempotence — a replayed webhook after we already reconciled is a no-op.
       if (order.paymentStatus === 'refunded' || order.paymentStatus === 'reconcile_manual') {
         return NextResponse.json({ received: true, noop: true, order: order.paymentStatus })
       }
       const capturedCents = pi.amount_received ?? pi.amount ?? 0
-      const refundsOn = isRefundsEnabled()
+      const refundsOn = isGhostOrderAutoRefundEnabled()
       // Admin alert (both cases) — best-effort, idempotent (never blocks).
       try {
         await sendAdminGhostOrderAlert({ orderId: order.id, paymentIntentId: pi.id, amountCents: capturedCents, refundsOn })
@@ -416,10 +418,12 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
         return NextResponse.json({ received: true, order: 'expired_reconciled', refunded })
       }
 
-      // REFUNDS OFF → manual admin queue. Explicit marking (NOT 'paid'); the money
-      // stays captured but flagged — NEVER a silent money-out.
+      // AUTO-REFUND OFF (défaut — P0-04) → manual admin queue. Explicit marking
+      // (NOT 'paid'); the money stays captured but flagged — NEVER a silent
+      // money-out. Distinctly traced: gated marker + explicit log line.
+      console.warn(`[stripe webhook] [P0-04] ghost-order ${order.id}: auto-refund gated OFF (GHOST_ORDER_AUTO_REFUND_ENABLED) → reconcile_manual (${capturedCents}c capturés, décision admin requise)`)
       await prisma.order.update({ where: { id: order.id }, data: { paymentStatus: 'reconcile_manual', stripePaymentIntentId: pi.id } })
-      return NextResponse.json({ received: true, order: 'expired_needs_reconciliation' })
+      return NextResponse.json({ received: true, order: 'expired_needs_reconciliation', autoRefund: 'gated' })
     }
 
     const receivedCents = pi.amount_received ?? pi.amount ?? 0

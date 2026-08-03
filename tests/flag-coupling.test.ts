@@ -19,6 +19,19 @@ describe('checkFlagCoupling', () => {
     expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
   })
 
+  // P0-04 (vague 1) — scission REFUNDS (outil admin) / auto-refund ghost-order (webhook).
+  it('GHOST_ORDER_AUTO_REFUND without REFUNDS → incoherent (le chemin auto réutilise le moteur admin)', () => {
+    const r = checkFlagCoupling({ GHOST_ORDER_AUTO_REFUND_ENABLED: 'true' })
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((e: string) => e.includes('GHOST_ORDER_AUTO_REFUND_ENABLED') && e.includes('REFUNDS_ENABLED'))).toBe(true)
+  })
+  it('GHOST_ORDER_AUTO_REFUND with REFUNDS → coherent', () => {
+    expect(checkFlagCoupling({ GHOST_ORDER_AUTO_REFUND_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
+  })
+  it('⭐ Q3 bêta : CLAIMS+REFUNDS ON sans auto-refund → coherent (ouvrir les réclamations n\'allume plus l\'auto-remboursement)', () => {
+    expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' })).toEqual({ ok: true, errors: [] })
+  })
+
   // P4.3 ÉTAPE 6 — the REAL courier-rail couplings (replaces the phantom TIPS⇒TIP_PAYOUT).
   it('TIPS without LOGISTICS_PAYOUT → incoherent (D-1: tip charged, no reversal rail)', () => {
     const r = checkFlagCoupling({ TIPS_ENABLED: 'true' })
@@ -67,7 +80,7 @@ describe('checkFlagCoupling', () => {
     expect(r.errors).toHaveLength(2)
   })
 
-  it('COUPLING_RULES documents the 7 known couplings (incl. the real courier rail, ÉTAPE 6)', () => {
-    expect(COUPLING_RULES).toHaveLength(7)
+  it('COUPLING_RULES documents the 8 known couplings (courier rail ÉTAPE 6 + scission refund P0-04)', () => {
+    expect(COUPLING_RULES).toHaveLength(8)
   })
 })
