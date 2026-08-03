@@ -8404,5 +8404,14 @@
     "error": "Erreur de chargement.",
     "disabledTitle": "Suivi de position désactivé",
     "disabledBody": "La fonctionnalité de suivi n'est pas activée."
+  },
+  "errors": {
+    "boundary": {
+      "title": "Une erreur est survenue",
+      "body": "Quelque chose s'est mal passé de notre côté. Vous pouvez réessayer — vos données n'ont pas été perdues.",
+      "retry": "Réessayer",
+      "home": "Retour à l'accueil",
+      "ref": "Référence à communiquer au support"
+    }
   }
 }
