@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ const makeReq = (body: Record<string, unknown>) =>
   })
 
 const orderBody = (over: Record<string, unknown> = {}) => ({
+  fulfillmentType: 'delivery',
   restaurantId: 'rest1',
   items: [{ itemId: 'i1', name: 'Dish', qty: 1, price: 100, options: [] }],
   deliveryAddress: '12 rue de la Paix',
@@ -66,10 +67,12 @@ const orderBody = (over: Record<string, unknown> = {}) => ({
 const referralOrderArg = () => (db.referralOrder.create.mock.calls[0]?.[0] as any)?.data
 
 beforeEach(() => {
+  // P0-01: ces tests exercent le contrat LIVRAISON (post-pilote) -> flag ON explicitement.
+  process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
   vi.clearAllMocks()
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com' })
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
     // A1 commission fields: null = platform defaults (pickup 8 % / delivery 12 %)
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
@@ -127,7 +130,7 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
 
   it('honours the per-restaurant override rate (B0: real commission, never a fixed 10 %)', async () => {
     db.restaurant.findFirst.mockResolvedValue({
-      id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+      deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
       commissionRateDineIn: null, commissionRatePickup: null,
       commissionRateDelivery: 0.10, commissionFreeUntil: null, // override 10 %
     })
@@ -138,7 +141,7 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
 
   it('founders offer (commissionFreeUntil future): fee 0, earning 0 — an ACTIVATED bonus still flows', async () => {
     db.restaurant.findFirst.mockResolvedValue({
-      id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+      deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
       commissionRateDineIn: null, commissionRatePickup: null,
       commissionRateDelivery: null,
       commissionFreeUntil: new Date(Date.now() + 30 * 86_400_000),
@@ -235,3 +238,5 @@ describe('POST /api/orders — referral edge cases', () => {
     expect(db.referralOrder.create).not.toHaveBeenCalled()
   })
 })
+
+afterEach(() => { delete process.env.DELIVERY_FULFILLMENT_ENABLED })

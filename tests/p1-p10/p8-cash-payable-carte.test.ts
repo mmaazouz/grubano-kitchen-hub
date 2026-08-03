@@ -146,6 +146,8 @@ const cashOrderRow = (over: Record<string, unknown> = {}) => ({
 let lastCreateData: Record<string, unknown> = {}
 
 beforeEach(() => {
+  // P0-01: ces tests exercent le contrat LIVRAISON (post-pilote) -> flag ON explicitement.
+  process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
   vi.clearAllMocks()
   lastCreateData = {}
 
@@ -165,7 +167,7 @@ beforeEach(() => {
   isAffiliateEnabled.mockReturnValue(false)
   isInfluencerEnabled.mockReturnValue(false)
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'r1', isActive: true, archivedAt: null, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: null,
+    deliveryEnabled: true, pickupEnabled: true, id: 'r1', isActive: true, archivedAt: null, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: null,
   })
   db.dishAdoption.findMany.mockResolvedValue([])
   db.referral.findFirst.mockResolvedValue(null)
@@ -371,3 +373,5 @@ describe('P8 — payer par CARTE une commande CASH (POST /api/orders/[id]/pay)',
 
   it.todo('[NON-TESTABLE: UI navigateur] URL directe /eat/checkout/[orderId] : la page de paiement carte s’ouvre pour une commande cash (app/[locale]/eat/checkout/[orderId]/page.tsx) — parcours navigateur hors harnais node')
 })
+
+afterEach(() => { delete process.env.DELIVERY_FULFILLMENT_ENABLED })

@@ -10,6 +10,7 @@ import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { isTipsEnabled, sanitizeTipCents } from '@/lib/tips'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
 import { isDeliveryZoneEnforcementEnabled, checkDeliveryZone } from '@/lib/delivery-zone'
+import { refuseForbiddenFulfillment } from '@/lib/fulfillment'
 import { isLogisticsDistanceFeeEnabled, resolveDistanceDeliveryFee } from '@/lib/logistics-fee'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
@@ -40,8 +41,14 @@ const createOrderSchema = z.object({
   paymentMethod:   z.enum(['card', 'cash', 'wallet']).default('card'),
   // Pickup vs delivery. The /eat cart already sends this; the server uses it to
   // zero the delivery fee on pickup (a customer collecting in person must NOT be
-  // charged €1.99). Defaults to 'delivery' to keep the existing contract intact.
-  fulfillmentType: z.enum(['delivery', 'pickup']).default('delivery'),
+  // charged €1.99). P0-01: REQUIRED — the old `.default('delivery')` meant a body
+  // with NO mode silently became a DELIVERY order, which is exactly what the Q1
+  // pilot (pickup-only) forbids. A missing/invalid mode is now an explicit 400,
+  // and the (mode × restaurant × flag) rule is enforced below (lib/fulfillment).
+  fulfillmentType: z.enum(['delivery', 'pickup'], {
+    required_error:     'Mode de récupération requis (retrait sur place ou livraison).',
+    invalid_type_error: 'Mode de récupération invalide.',
+  }),
   // brique 5B: optional manual referral code. The `grubano_ref` cookie is the
   // primary source; this body field is a future-proof fallback for manual entry.
   // .optional() keeps the existing request contract intact.
@@ -98,6 +105,14 @@ export async function POST(req: NextRequest) {
     if (!restaurant) {
       return NextResponse.json({ error: 'Restaurant introuvable ou fermé' }, { status: 404 })
     }
+
+    // ── P0-01 — pilot Q1: pickup-only, enforced SERVER-SIDE ────────────────────
+    // 'delivery' is refused while DELIVERY_FULFILLMENT_ENABLED is OFF (default),
+    // and BOTH modes honour the restaurant's own deliveryEnabled/pickupEnabled
+    // columns (finally read — findFirst returns the full row). Placed BEFORE any
+    // pricing/write so a refused order writes strictly nothing.
+    const fulfillmentRefusal = refuseForbiddenFulfillment(data.fulfillmentType, restaurant)
+    if (fulfillmentRefusal) return fulfillmentRefusal
 
     // Opening hours (Chantier horaires): a delivery/pickup order is placed for
     // NOW, so it is blocked while the establishment is closed — with the next

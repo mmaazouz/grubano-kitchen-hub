@@ -60,7 +60,7 @@ const ENVS = ['LOGISTICS_DISTANCE_FEE_ENABLED', 'LOGISTICS_FEE_BASE_CENTS', 'LOG
 function arm() {
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'consumer' })
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, deliveryFee: 4.5, minOrder: 5, lat: 48.86, lng: 2.35, city: 'Paris',
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 4.5, minOrder: 5, lat: 48.86, lng: 2.35, city: 'Paris',
     pointOfSaleId: null, commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null,
   })
   db.openingHour.findMany.mockResolvedValue([]); db.closureException.findMany.mockResolvedValue([])
@@ -75,7 +75,10 @@ function arm() {
   geo.haversineKm.mockReturnValue(3) // 3 km → 150 + 50×3 = 300c = €3.00
 }
 
-beforeEach(() => { vi.clearAllMocks(); ENVS.forEach(e => delete process.env[e]); arm() })
+beforeEach(() => {
+  // P0-01: ces tests exercent le contrat LIVRAISON (post-pilote) -> flag ON explicitement.
+  process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
+  vi.clearAllMocks(); ENVS.forEach(e => delete process.env[e]); arm() })
 afterEach(() => { ENVS.forEach(e => delete process.env[e]) })
 
 describe('flag OFF (default) — FLAT fee, byte-identical', () => {
@@ -110,7 +113,7 @@ describe('flag ON — distance barème', () => {
   it('resto not geocoded (lat/lng null) → FLAT fee fallback; no geocode call', async () => {
     process.env.LOGISTICS_DISTANCE_FEE_ENABLED = 'true'
     db.restaurant.findFirst.mockResolvedValue({
-      id: 'rest1', isActive: true, deliveryFee: 4.5, minOrder: 5, lat: null, lng: null, city: 'Paris',
+      deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 4.5, minOrder: 5, lat: null, lng: null, city: 'Paris',
       pointOfSaleId: null, commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null,
     })
     const res = await createOrder(makeReq(orderBody()))
@@ -128,3 +131,5 @@ describe('flag ON — distance barème', () => {
     expect(coordUpdate()).toBeUndefined()
   })
 })
+
+afterEach(() => { delete process.env.DELIVERY_FULFILLMENT_ENABLED })

@@ -64,7 +64,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'restaurant' })
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
