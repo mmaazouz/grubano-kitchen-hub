@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { maskEatReservation } from '@/lib/customer-scope'
-import { captureHold } from '@/lib/deposit'
+import { captureHold, releaseHold } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import {
@@ -272,7 +272,7 @@ export async function PATCH(req: Request) {
       where:  { id },
       select: {
         restaurantId: true, stripePaymentIntentId: true,
-        depositAmount: true, noShowPenalty: true,
+        depositAmount: true, noShowPenalty: true, depositStatus: true,
       },
     })
     if (!existing) {
@@ -292,6 +292,41 @@ export async function PATCH(req: Request) {
     // Symmetric cancellation trace (Annulation client): a dashboard cancel is
     // stamped 'operator' — the consumer self-cancel route stamps 'consumer'.
     if (data.status === 'cancelled') writeData.cancelledBy = 'operator'
+
+    // ── P0-12 (vague 1, Q12 fondateur) — annulation par le RESTAURANT ⇒ libérer
+    // l'empreinte, conformément à la promesse de l'email de confirmation. Réutilise
+    // lib/deposit.releaseHold (le mécanisme du webhook / tickets/[id]/close / du
+    // self-cancel conso — appelé, jamais réécrit) : lit le PI live, no-op idempotent
+    // si déjà annulé, refuse si déjà capturé. Règle d'échec (calque du self-cancel
+    // conso reservations/[id]/cancel:101-124) : un pépin Stripe ne bloque JAMAIS le
+    // droit d'annuler (le hold non capturé expire de lui-même côté Stripe) mais il
+    // n'est JAMAIS avalé — console.error + depositError surfacé dans la réponse.
+    // Sans empreinte (pas de PI / déjà released / captured) → aucun appel, aucune erreur.
+    let depositReleased = false
+    let depositError: string | null = null
+    if (
+      data.status === 'cancelled' &&
+      existing.stripePaymentIntentId &&
+      existing.depositStatus !== 'released' &&
+      existing.depositStatus !== 'captured'
+    ) {
+      try {
+        const settle = await releaseHold(existing.stripePaymentIntentId)
+        if (settle.ok) {
+          writeData.depositStatus = settle.depositStatus ?? 'released'
+          depositReleased = true
+        } else {
+          depositError = settle.error
+        }
+      } catch (e) {
+        depositError = e instanceof Error ? e.message : 'release failed'
+      }
+      if (depositError) {
+        console.error('[PATCH /api/reservations] [P0-12] empreinte NON libérée à l\'annulation opérateur',
+          JSON.stringify({ reservationId: id, paymentIntentId: existing.stripePaymentIntentId, error: depositError }))
+      }
+    }
+
     let capturedCents: number | null = null
     if (existing.stripePaymentIntentId && data.status === 'noshow') {
       const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
@@ -381,7 +416,15 @@ export async function PATCH(req: Request) {
     }
 
     // Masquage PII /eat — the PATCH response is an operator payload too.
-    return NextResponse.json({ reservation: maskEatReservation(reservation), ...(ticketAlert ? { ticketAlert } : {}) })
+    // P0-12 : l'issue de la libération d'empreinte est TOUJOURS surfacée sur une
+    // annulation (jamais un échec silencieux) — depositReleased + depositError.
+    return NextResponse.json({
+      reservation: maskEatReservation(reservation),
+      ...(ticketAlert ? { ticketAlert } : {}),
+      ...(data.status === 'cancelled'
+        ? { depositReleased, ...(depositError ? { depositError } : {}) }
+        : {}),
+    })
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: err.errors[0]?.message ?? 'Données invalides' }, { status: 400 })
