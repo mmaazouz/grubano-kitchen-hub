@@ -1,17 +1,20 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { resolveEstablishmentScope } from '@/lib/establishment-scope'
+import { requireRefundAdmin } from '@/lib/refund-route-guard'
+import { recordAdminAudit } from '@/lib/admin-audit'
 import { refundPayment } from '@/lib/refunds'
 import { sendRefundConfirmation } from '@/lib/transactional-emails'
 
 // ── POST /api/tickets/[id]/refund ─────────────────────────────────────────────
-// Rail A5 — OWNER refunds a PAID bill, partially ({ amountCents }) or fully
-// (empty body). A0: the refund takes Grubano's commission back pro-rata and, on
-// a routed charge, pulls the funds back from the resto's account (lib/refunds).
-// The ticket STAYS 'paid' (no state change, no migration): the compensating
-// 'refund' ledger line written by the charge.refunded webhook is the source of
-// truth of what was given back — A7 surfaces it.
+// P0-03 (vague 1, Q3 fondateur) : refund a PAID bill — ADMIN GRUBANO ONLY
+// (used to be OWNER-scoped; every refund now requires a Grubano-admin session,
+// denied + accepted attempts audited). Mechanics unchanged (rail A5): partial
+// ({ amountCents }) or full (empty body); the refund takes Grubano's commission
+// back pro-rata and, on a routed charge, pulls the funds back from the resto's
+// account (lib/refunds). The ticket STAYS 'paid' (no state change, no
+// migration): the compensating 'refund' ledger line written by the
+// charge.refunded webhook is the source of truth of what was given back.
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -24,8 +27,9 @@ export async function POST(
   { params }: { params: { id: string } },
 ) {
   try {
-    const scope = await resolveEstablishmentScope(null)
-    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status })
+    // P0-03 — ADMIN GRUBANO only (denied attempts audited inside the gate).
+    const gate = await requireRefundAdmin(req, { route: 'tickets/[id]/refund', targetType: 'ticket', targetId: params.id })
+    if (!gate.ok) return gate.res
 
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
     if (!parsed.success) {
@@ -37,9 +41,6 @@ export async function POST(
       select: { id: true, restaurantId: true, status: true, stripePaymentIntentId: true, reservationId: true },
     })
     if (!ticket) return NextResponse.json({ error: 'Addition introuvable' }, { status: 404 })
-    if (!scope.ownedIds.includes(ticket.restaurantId)) {
-      return NextResponse.json({ error: 'Addition non autorisée' }, { status: 403 })
-    }
     if (ticket.status !== 'paid' || !ticket.stripePaymentIntentId) {
       return NextResponse.json({ error: 'Addition non payée — rien à rembourser.' }, { status: 409 })
     }
@@ -49,6 +50,17 @@ export async function POST(
       amountCents:     parsed.data.amountCents,
     })
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+
+    // P0-03 — audit the ACCEPTED refund (best-effort, after the money moved).
+    await recordAdminAudit({
+      actorId:    gate.actorId,
+      actorEmail: gate.actorEmail,
+      action:     'refund.run',
+      targetType: 'ticket',
+      targetId:   ticket.id,
+      metadata:   { route: 'tickets/[id]/refund', refundId: result.refund.id, refundedCents: result.refundedCents, remainingCents: result.remainingCents },
+      req,
+    })
 
     // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws).
     // The client's email lives on the LINKED reservation; a walk-in ticket
