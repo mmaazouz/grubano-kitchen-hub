@@ -28,7 +28,12 @@ describe('checkFlagCoupling', () => {
   it('GHOST_ORDER_AUTO_REFUND with REFUNDS → coherent', () => {
     expect(checkFlagCoupling({ GHOST_ORDER_AUTO_REFUND_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
   })
-  it('⭐ Q3 bêta : CLAIMS+REFUNDS ON sans auto-refund → coherent (ouvrir les réclamations n\'allume plus l\'auto-remboursement)', () => {
+  // Set bêta Q3 : le garde-fou de flags accepte CLAIMS+REFUNDS sans exiger le flag
+  // d'auto-refund → ouvrir les réclamations n'allume plus le chemin WEBHOOK ghost-order.
+  // ⚠️ Portée exacte : ceci ne dit RIEN du chemin claims-accept (un restaurateur qui
+  // accepte une réclamation rembourse encore, partiellement) — défaut signalé hors
+  // périmètre P0-03/P0-04, cf. docs/ops/flags.md note Q3.
+  it('set bêta CLAIMS+REFUNDS ON → cohérent, et n\'implique PAS le flag d\'auto-refund webhook', () => {
     expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' })).toEqual({ ok: true, errors: [] })
   })
 
