@@ -101,9 +101,13 @@ export async function POST(req: NextRequest) {
     // refusé au même titre. L'enum Zod garde les 3 valeurs pour que le refus
     // soit EXPLICITE (message français ciblé) et non un 400 Zod générique.
     if (data.paymentMethod !== 'card') {
+      // Message keyed on the ACTUAL refused method (revue : dire « espèces » à un
+      // client 'wallet' serait factuellement faux, même si plus aucun client réel
+      // n'envoie cette valeur).
+      const label = data.paymentMethod === 'cash' ? 'en espèces' : `« ${data.paymentMethod} »`
       return NextResponse.json(
         {
-          error: "Le paiement en espèces n'est pas disponible pour le moment — seul le paiement par carte est accepté.",
+          error: `Le paiement ${label} n'est pas disponible pour le moment — seul le paiement par carte est accepté.`,
           code:  'payment_method_unavailable',
         },
         { status: 400 },

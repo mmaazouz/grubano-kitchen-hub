@@ -93,12 +93,15 @@ describe('(a-bis) P0-27 — verrou fail-safe de l’auto-résolution', () => {
     warnSpy.mockRestore()
   })
 
-  it('flag ON mais plafond ABSENT → 0 = désactivé (le verrou n°2 tient seul)', async () => {
+  it('flag ON mais plafond ABSENT → 0 = désactivé (le verrou n°2 tient seul) ET tracé « config incomplète » (revue : jamais un no-op silencieux)', async () => {
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const r = await autoResolveSmallClaim(smallClaim)
     expect(r).toEqual({ state: 'not_eligible' })
     expect(execMock).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('absent/0'))
+    warnSpy.mockRestore()
   })
 
   it('flag ON + plafond NON NUMÉRIQUE (« dix-euros ») → 0 tracé, jamais permissif', async () => {

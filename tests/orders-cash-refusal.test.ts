@@ -82,10 +82,12 @@ describe('POST /api/orders — P0-02 : refus serveur des modes non-carte', () =>
     expect(db.order.update).not.toHaveBeenCalled()
   })
 
-  it("⭐ 'wallet' (valeur héritée) → même refus 400, AUCUNE écriture DB", async () => {
+  it("⭐ 'wallet' (valeur héritée) → même refus 400, message NOMMANT wallet (pas « espèces »), AUCUNE écriture DB", async () => {
     const res = await createOrder(makeReq(orderBody({ paymentMethod: 'wallet' })))
     expect(res.status).toBe(400)
-    expect((await res.json()).code).toBe('payment_method_unavailable')
+    const json = await res.json()
+    expect(json.code).toBe('payment_method_unavailable')
+    expect(json.error).toContain('« wallet »') // revue : le message dit la vérité par méthode
     expect(db.order.create).not.toHaveBeenCalled()
   })
 

@@ -412,7 +412,13 @@ export async function autoResolveSmallClaim(
   }
   if (claim.status !== 'restaurant_review') return { state: 'not_eligible' }
   const ceiling = claimAutoApproveMaxCents()
-  if (ceiling <= 0 || claim.requestedAmountCents > ceiling) return { state: 'not_eligible' }
+  if (ceiling <= 0) {
+    // Revue P0-27 : flag ON mais plafond absent/0 = config incomplète — sans cette
+    // trace, le no-op serait TOTALEMENT silencieux (sûr mais indébuggable).
+    console.warn('[claims auto-resolve] [P0-27] CLAIM_AUTO_RESOLVE_ENABLED est ON mais le plafond CLAIM_AUTO_APPROVE_MAX_CENTS est absent/0 — auto-résolution inopérante (fail-safe).')
+    return { state: 'not_eligible' }
+  }
+  if (claim.requestedAmountCents > ceiling) return { state: 'not_eligible' }
   if (await isConsumerAbuseFlagged(claim.consumerId)) return { state: 'not_eligible' } // orient to resto review
   return approveClaim(claim.id, 'auto_small')
 }

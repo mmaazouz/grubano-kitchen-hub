@@ -27,11 +27,11 @@ Les deux workflows de déploiement (`deploy-staging.yml`, `deploy-production.yml
 exécutent déjà `npm run test:ci` en gate bloquant → ce harnais bloque
 automatiquement tout push qui changerait la photographie sans l'assumer.
 
-## Inventaire (état au commit de création — 146 tests, 0 failed)
+## Inventaire (146 tests au commit de création ; 148 après les ré-photographies de vague 1 — P8/P10, voir totaux)
 
 | Parcours | Fichier | Tests | PASS | FAIL-ATT. | NON-TEST. | Constat clé |
 |---|---|---|---|---|---|---|
-| P1 Référence C&C carte | `p1-reference-click-collect.test.ts` | 30 | 25 | 3 | 2 | Socle hors-argent OK bout en bout (machine d'états + fidélité idempotente à `delivered`). |
+| P1 Référence C&C carte | `p1-reference-click-collect.test.ts` | 30 | 25 | 3 | 2 | Socle hors-argent OK bout en bout (machine d'états + fidélité idempotente à `delivered`). **1 test ré-photographié vague 1 (P0-02)** : pickup+espèces → 400 (comptes inchangés). |
 | P2 Carte refusée | `p2-carte-refusee.test.ts` | 19 | 15 | 1 | 3 | Anti-double-paiement **CONFIRMÉ** (3 couches). Mais aucun handler `payment_intent.payment_failed` → un refus carte ne laisse aucune trace serveur. |
 | P3 Annulation resto payée | `p3-annulation-resto-payee.test.ts` | 14 | 10 | 2 | 2 | Aucun remboursement automatique à l'annulation d'une commande payée (lib refund jamais appelée). |
 | P4 Annulation client | `p4-annulation-client.test.ts` | 7 | 3 | 3 | 1 | Annulation client **inexistante** (aucune route ; PATCH status → 403 pour un consumer). |

@@ -139,7 +139,10 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     // Ré-photographié en vague 1 (P0-27) : l'ancien défaut permissif (plafond 1000
     // implicite → auto-remboursement ACTIF sans config) est supprimé. Sans
     // CLAIM_AUTO_RESOLVE_ENABLED + CLAIM_AUTO_APPROVE_MAX_CENTS explicites,
-    // une petite réclamation suit le flux C1 normal.
+    // une petite réclamation suit le flux C1 normal. Stub '' DÉTERMINISTE (revue) :
+    // le test ne doit pas dépendre de l'absence AMBIANTE des variables en CI.
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', '')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 5 })) // 500 cents — sous l'ANCIEN plafond
     const res = await CREATE(req({ orderId: 'o1', reason: 'missing_item' }))

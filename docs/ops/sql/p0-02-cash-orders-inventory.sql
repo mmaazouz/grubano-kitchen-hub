@@ -12,8 +12,13 @@
 --     le flux cash n'a JAMAIS posé de statut de paiement (constat audit P8) ;
 --   • statut_commande 'delivered' + paiement NULL = commandes servies dont
 --     l'encaissement n'a aucune preuve en base ;
---   • toute ligne avec statut_paiement 'pending'/'paid' sur un mode non-carte
---     = suspect de double encaissement (voir requête 2).
+--   • 'paid' sur un mode non-carte = ARGENT RÉELLEMENT PRÉLEVÉ par carte →
+--     double encaissement probable (espèces à la livraison + carte en ligne) ;
+--   • 'pending' = PaymentIntent créé mais NON confirmé par le webhook — aucun
+--     argent prélevé, à lever de doute via la requête 2 ;
+--   • 'refunded' / 'reconcile_manual' (écrits par le webhook Stripe) peuvent
+--     aussi apparaître : 'reconcile_manual' est le sentinelle d'AMBIGUÏTÉ
+--     monétaire (encaissement à réconcilier À LA MAIN) — à traiter en priorité.
 SELECT
   paymentMethod                                       AS mode_paiement,
   status                                              AS statut_commande,
@@ -31,7 +36,10 @@ ORDER BY mode_paiement, statut_commande, statut_paiement;
 -- ── Requête 2 — suspects de DOUBLE ENCAISSEMENT ──────────────────────────────
 -- Commandes non-carte portant AUSSI un PaymentIntent Stripe : la commande a pu
 -- être encaissée en espèces à la livraison ET payée par carte en ligne (la
--- route /pay ne lisait pas paymentMethod — constat P8). Zéro ligne = aucun cas.
+-- route /pay ne lit pas paymentMethod — constat P8, toujours vrai). Zéro ligne
+-- = aucun cas TRACÉ EN BASE (le PI est créé chez Stripe AVANT d'être persisté :
+-- un résidu jamais écrit — webhook perdu — serait invisible ici ; croisement
+-- possible côté dashboard Stripe par metadata.orderId en cas de doute).
 SELECT
   id, status AS statut_commande, paymentStatus AS statut_paiement,
   stripePaymentIntentId, ROUND(total, 2) AS total_eur, createdAt
