@@ -1,23 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
-// ── P8 — Sprint 0 characterization: CASH order, then pay it by CARD ──────────
-// Two acts, photographed as-is (bugs included — the suite is GREEN today):
-//   ACT 1 — POST /api/orders with paymentMethod:'cash' → the order is created
-//     'received' (visible to the kitchen IMMEDIATELY, no payment step), with
-//     paymentStatus NEVER initialized (schema: String? nullable, NO default →
-//     null forever, there is no cash settlement flow anywhere) and pointsEarned
-//     already provisioned (floor of food total incl. delivery fee).
-//   ACT 2 — POST /api/orders/[id]/pay on that SAME cash order (reachable via the
-//     direct URL /eat/checkout/[orderId]) → the route creates a PaymentIntent
-//     WITHOUT OBJECTION: its prisma select does not even READ paymentMethod, so
-//     no guard on it is structurally possible. The order then carries
-//     paymentStatus:'pending' + a card PI while paymentMethod stays 'cash' →
-//     double-collection risk (cash on delivery AND card online).
-//
-// Audit verdicts encoded (both CONFIRMED by the code read on sprint0-prep):
-//   • cash = FALSE economic trace (no payment trace ever, points provisioned);
-//   • the PI is created with NO objection on a cash order.
+// ── P8 — CASH order, then pay it by CARD — ÉTAT VAGUE 1 (P0-02) ──────────────
+// Two acts. ACT 1 was re-photographed after P0-02 (Q2 : espèces hors pilote,
+// tenu CÔTÉ SERVEUR — Q8) ; ACT 2 still photographs the LEGACY exposure as-is:
+//   ACT 1 — POST /api/orders with paymentMethod:'cash' (or the legacy 'wallet')
+//     → REFUSED 400 with an explicit French message + code
+//     'payment_method_unavailable', BEFORE any DB/economic side effect. The old
+//     Sprint-0 photographs (order created 'received', paymentStatus null forever,
+//     points provisioned on a never-collected order) are INVERTED accordingly.
+//   ACT 2 — POST /api/orders/[id]/pay on an EXISTING cash order row (legacy rows
+//     created before P0-02 survive in DB; the direct URL /eat/checkout/[orderId]
+//     still reaches them) → the route STILL creates a PaymentIntent WITHOUT
+//     OBJECTION: its prisma select does not even READ paymentMethod, so no guard
+//     on it is structurally possible. The row then carries paymentStatus:'pending'
+//     + a card PI while paymentMethod stays 'cash' → double-collection risk
+//     remains OPEN on legacy rows (signalé, hors périmètre P0-02 — the founder's
+//     read-only SQL inventory quantifies the exposed rows).
 //
 // Mock pattern copied from tests/p1-p10/p3-annulation-resto-payee.test.ts and
 // tests/order-refund.test.ts (same domain). No real DB, no real Stripe.
@@ -202,19 +201,25 @@ afterEach(() => {
 // ACT 1 — cash order creation
 // ══════════════════════════════════════════════════════════════════════════════
 
-describe('P8 — commande CASH au checkout (POST /api/orders)', () => {
+describe('P8 — commande CASH au checkout (POST /api/orders) — ÉTAT P0-02', () => {
 
-  it('[PASS-ACTUEL] cash → 201, statut initial « received » : visible cuisine immédiatement, aucun paiement demandé', async () => {
-    // Cash has no online payment → the route deliberately creates it 'received'
-    // (the ghost-orders gate 'awaiting_payment' is card-only). No PI is created.
+  it('[PASS-ACTUEL P0-02] cash → 400 explicite (« seul le paiement par carte est accepté »), aucune commande créée, aucun PI', async () => {
+    // INVERSION du photographiage Sprint 0 (« cash → 201 received ») : le refus
+    // Q2 est désormais tenu par le SERVEUR — plus par la seule UI du panier.
     const res = await postOrder(cashBody())
-    expect(res.status).toBe(201)
-    expect(await res.json()).toMatchObject({
-      orderId: 'ocash1', status: 'received', total: 21.99, pointsEarned: 21, discount: 0,
-    })
-    expect(lastCreateData.status).toBe('received')
-    expect(lastCreateData.paymentMethod).toBe('cash')
-    expect(stripeCreate).not.toHaveBeenCalled() // no payment at creation — cash flow
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    expect(json.code).toBe('payment_method_unavailable')
+    expect(json.error).toContain('seul le paiement par carte est accepté')
+    expect(db.order.create).not.toHaveBeenCalled()
+    expect(stripeCreate).not.toHaveBeenCalled()
+  })
+
+  it("[PASS-ACTUEL P0-02] 'wallet' (valeur héritée de l'enum) → même refus 400, aucune commande créée", async () => {
+    const res = await postOrder(cashBody({ paymentMethod: 'wallet' }))
+    expect(res.status).toBe(400)
+    expect((await res.json()).code).toBe('payment_method_unavailable')
+    expect(db.order.create).not.toHaveBeenCalled()
   })
 
   it('[PASS-ACTUEL] contraste carte : paymentMethod « card » → statut initial « awaiting_payment » (invisible cuisine avant confirmation webhook)', async () => {
@@ -225,35 +230,17 @@ describe('P8 — commande CASH au checkout (POST /api/orders)', () => {
     expect(lastCreateData.status).toBe('awaiting_payment')
   })
 
-  it('[FAIL-ATTENDU: trace économique FAUSSE — commande cash créée sans AUCUNE trace de paiement, paymentStatus jamais initialisé (null à vie)] le create n’écrit ni paymentStatus ni stripePaymentIntentId, et aucun update ultérieur ne les pose', async () => {
-    // AUDIT: Order.paymentStatus is String? with NO default (schema) and the cash
-    // creation path never sets it — nor does ANY later flow (there is no cash
-    // settlement/encaissement rail anywhere). A cash order therefore lives its
-    // whole life with paymentStatus=null while being fully counted (kitchen,
-    // analytics, loyalty at 'delivered'): the economic trace is FALSE. After the
-    // post-arbitrage fix (a real cash payment status / settlement trace), this
-    // test must be INVERTED (expect an explicit initial cash payment state).
+  it('[PASS-ACTUEL P0-02 — INVERSION des 2 FAIL-ATTENDU Sprint 0] plus AUCUN effet économique : ni trace fausse (paymentStatus null à vie) ni points provisionnés — zéro écriture DB sur un refus cash', async () => {
+    // Sprint 0 photographed two audit defects on the cash CREATE path: a FALSE
+    // economic trace (paymentStatus never initialized) and loyalty points
+    // provisioned on a never-collected order. P0-02 removes the path itself —
+    // the refusal happens BEFORE any write, so both defects are closed at the
+    // root for NEW orders (legacy rows: see ACT 2 + the founder's SQL inventory).
     const res = await postOrder(cashBody())
-    expect(res.status).toBe(201)
-    expect('paymentStatus' in lastCreateData).toBe(false)
-    expect('stripePaymentIntentId' in lastCreateData).toBe(false)
-    // The ONLY post-create update on this plain path is the tracking one — proves
-    // no write ever touches the payment columns at creation time.
-    expect(db.order.update).toHaveBeenCalledTimes(1)
-    expect(Object.keys(db.order.update.mock.calls[0][0].data).sort())
-      .toEqual(['estimatedTime', 'trackingUrl'])
-  })
-
-  it('[FAIL-ATTENDU: points fidélité provisionnés dès la création d’une commande cash jamais encaissée] pointsEarned = floor(nourriture + livraison) = 21, stocké au create', async () => {
-    // AUDIT: pointsEarned is provisioned at creation (floor(21.99) = 21 — note it
-    // INCLUDES the delivery fee) and the status route credits it at 'delivered'
-    // with NO payment check (its loyalty block is gated on the status only — see
-    // P3). For cash, no payment can ever be confirmed, so loyalty value is granted
-    // on a never-verified collection. After the fix (points gated on a confirmed
-    // encaissement), this expectation moves to the settlement flow.
-    const res = await postOrder(cashBody())
-    expect(res.status).toBe(201)
-    expect(lastCreateData.pointsEarned).toBe(21)
+    expect(res.status).toBe(400)
+    expect(db.order.create).not.toHaveBeenCalled()
+    expect(db.order.update).not.toHaveBeenCalled()
+    expect(lastCreateData).toEqual({}) // no create payload ever captured
   })
 })
 
