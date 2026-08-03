@@ -22,6 +22,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `AUTH_MONEY_STEPUP_ENABLED` | `lib/email-otp.ts` | Step-up OTP sur actions argent |
 | `CHARGEBACKS_ENABLED` | `lib/dispute.ts` | Cycle litiges/chargebacks |
 | `CLAIMS_ENABLED` | `lib/claims.ts` | Réclamations client (⚠️ exige la table `Claim` en base — cf. harnais P10) |
+| `CLAIMS_AUTO_APPROVE_ENABLED` | `lib/claims.ts` | Route d'auto-approbation des réclamations (P0-25 — défaut OFF **toute la bêta** : le sweep `auto_timeout` rembourse sans humain ; OFF → 403 explicite tracé) |
 | `CONSUMER_REDESIGN_ENABLED` | `lib/consumer-redesign.ts` | Re-design conso |
 | `CREATOR_PAYOUT_ENABLED` | `lib/creator-payout.ts` | Versements créateurs |
 | `DINEIN_SERVICE_ENABLED` | `lib/dinein-service.ts` | Frais de service dine-in |
@@ -63,6 +64,7 @@ Un flag ON dont le prérequis est OFF = danger argent/confiance. Vérifiés par
 |---|---|---|
 | `CLAIMS_ENABLED` | `REFUNDS_ENABLED` | claim approuvée sans refund = approuvée-mais-non-remboursée |
 | `GHOST_ORDER_AUTO_REFUND_ENABLED` | `REFUNDS_ENABLED` | l'auto-refund ghost-order réutilise le moteur admin (P0-04). L'inverse n'est PAS requis : `REFUNDS` seul n'allume PAS le chemin webhook |
+| `CLAIMS_AUTO_APPROVE_ENABLED` | `CLAIMS_ENABLED` | l'auto-approbation balaye des réclamations (P0-25) ; via `CLAIMS`⇒`REFUNDS` elle exige transitivement le moteur |
 
 ### ⚠️ Note Q3 — ce que la scission P0-04 règle, et ce qu'elle NE règle PAS
 
@@ -73,8 +75,15 @@ montant **partiel** : `RestaurantClaimsPanel` → `POST /api/claims/[id]/respond
 `lib/claims.ts:284` → `approveClaim:244` → `triggerClaimRefund:197` → `executeRefund`.
 Un second chemin machine existe aussi (`runClaimAutoApproval:302-338`, `auto_timeout` —
 son scheduler a été retiré par P0-07, mais la route `/api/admin/claims/auto-approve`
-demeure appelable). Les deux contredisent Q3 (validation admin seule + intégral) et
-**ne sont pas traités par P0-03/P0-04** — signalés, à arbitrer par Agent 0.
+demeure appelable). Les deux contredisent Q3 (validation admin seule + intégral).
+
+**Mise à jour vague 1 (mission E)** : ces deux portes sont désormais fermées —
+P0-24 route l'accept restaurateur vers la file admin (`arbitration`, zéro argent) ;
+P0-25 met la route d'auto-approbation derrière `CLAIMS_AUTO_APPROVE_ENABLED`
+(défaut OFF toute la bêta, 403 explicite tracé). Reste signalée (hors vague 1) :
+l'auto-résolution des petites réclamations ≤ 10 € (`autoResolveSmallClaim`,
+`decidedBy 'auto_small'`) qui rembourse sans humain quand CLAIMS+REFUNDS sont ON —
+à arbitrer par Agent 0.
 | `TIPS_ENABLED` | `LOGISTICS_PAYOUT_ENABLED` | pourboire encaissé sans rail de reversement = fonds tiers retenus (D-1) |
 | `LOGISTICS_COURIER_ACCRUAL_ENABLED` | `LOGISTICS_PAYOUT_ENABLED` | course retenue sans reversement (D-1 symétrique) |
 | `LOGISTICS_PAYOUT_ENABLED` | `LOGISTICS_CONNECT_ENABLED` | reversement sans compte Connect onboardé |

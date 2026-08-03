@@ -25,6 +25,16 @@ export function isClaimsEnabled(): boolean {
   return process.env.CLAIMS_ENABLED === 'true'
 }
 
+/** P0-25 (vague 1, principe fondateur) : « aucune automatisation à effet financier
+ *  sans validation humaine ». La route /api/admin/claims/auto-approve (sweep
+ *  auto_timeout + re-pilotage des refunds en attente, via runClaimAutoApproval)
+ *  REMBOURSE SANS HUMAIN — P0-07 a retiré son scheduler, ce flag rend la ROUTE
+ *  elle-même inopérante. Défaut OFF (toute la bêta) ; seul le string exact 'true'
+ *  l'active (post-pilote, décision fondateur + couplage check-flags). */
+export function isClaimsAutoApproveEnabled(): boolean {
+  return process.env.CLAIMS_AUTO_APPROVE_ENABLED === 'true'
+}
+
 function envHours(name: string, def: number): number {
   const v = Number.parseInt(process.env[name] ?? '', 10)
   return Number.isFinite(v) && v > 0 ? v : def

@@ -18,6 +18,9 @@ export const COUPLING_RULES = [
   // ghost-order du webhook a son propre flag (défaut OFF, peut rester OFF toute la bêta).
   // S'il est allumé, il réutilise le moteur admin → exiger la cohérence du couple.
   { flag: 'GHOST_ORDER_AUTO_REFUND_ENABLED', requires: 'REFUNDS_ENABLED',         why: 'l\'auto-refund ghost-order réutilise le moteur admin (lib/refund) — l\'activer avec le moteur déclaré OFF est incohérent' },
+  // P0-25 (vague 1) : la route d'auto-approbation des réclamations (sweep auto_timeout,
+  // rembourse SANS humain) a son propre kill-switch, défaut OFF toute la bêta.
+  { flag: 'CLAIMS_AUTO_APPROVE_ENABLED',     requires: 'CLAIMS_ENABLED',           why: 'l\'auto-approbation balaye des réclamations — sans le cycle réclamations actif elle n\'a aucun sens (et via CLAIMS⇒REFUNDS elle exige transitivement le moteur)' },
   // ── Rail livreur P4.3 (ÉTAPE 6) — remplace l'ANCIEN couplage fantôme TIPS⇒TIP_PAYOUT_ENABLED
   // (flag no-op supprimé). Le pourboire encaissé (TIPS) ET la course cas B retenue
   // (LOGISTICS_COURIER_ACCRUAL) sont des fonds tiers : sans rail de reversement (LOGISTICS_PAYOUT)
