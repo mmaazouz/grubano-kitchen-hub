@@ -52,9 +52,9 @@ fonctionne. Chaque job est idempotent et no-op quand son flag est OFF.
 
 | Groupe | Cadence | Actions |
 |---|---|---|
-| frequent | `15 * * * *` | `POST /api/email-agent` (Bearer `CRON_SECRET`) |
+| ~~frequent~~ | — | **RETIRÉ (P0-07)** — le groupe horaire `POST /api/email-agent` a été supprimé de `cron.yml` par décision fondateur : automatisation à effet externe (emails rédigés par LLM envoyés à de vrais clients/créateurs/restaurateurs) sans validation humaine. |
 | sweep | `*/20 * * * *` | `POST /api/logistics/positions/sweep` (rétention géoloc, no-op flags OFF) |
-| daily | `20 3 * * *` | `ledger-check-probe.js` + `creator-earnings-mature.js` + `POST /api/admin/claims/auto-approve` + `POST /api/admin/creator-payouts/run` + `POST /api/admin/onboarding-nudges/run` + `GET /api/admin/reconcile-ghost-orders` (read-only) |
+| daily | `20 3 * * *` | `ledger-check-probe.js` + `creator-earnings-mature.js` + `POST /api/admin/creator-payouts/run` + `POST /api/admin/onboarding-nudges/run` + `GET /api/admin/reconcile-ghost-orders` (read-only) — **`POST /api/admin/claims/auto-approve` RETIRÉ (P0-07)** : auto-approbation des réclamations en timeout 24 h **et remboursement**, sans admin dans la boucle. |
 | monthly | `0 7 1 * *` | `monthly-invoices.js` + `POST /api/admin/franchise-settlements/run` |
 
 ## 4. Routes cron-appelables SANS scheduler actif ✅ (le « trou » constaté)
@@ -63,12 +63,12 @@ fonctionne. Chaque job est idempotent et no-op quand son flag est OFF.
 
 | Route | Scheduler |
 |---|---|
-| `/api/email-agent` | cron.yml (frequent) — inerte hors `main` |
+| `/api/email-agent` | **AUCUN scheduler (P0-07)** — job `frequent` retiré de cron.yml. La route existe toujours et reste appelable avec `CRON_SECRET`, mais plus rien ne la déclenche automatiquement. |
 | `/api/logistics/positions/sweep` | cron.yml (sweep) — inerte hors `main` |
 | `/api/admin/ledger/check` | script + cPanel crontab ✅ actif |
 | `/api/admin/creator-earnings/mature` | script + cPanel crontab ✅ actif |
 | `/api/admin/invoices/generate` | script + cPanel crontab ✅ actif |
-| `/api/admin/claims/auto-approve` | cron.yml (daily) — inerte hors `main` |
+| `/api/admin/claims/auto-approve` | **AUCUN scheduler (P0-07)** — step retiré du groupe `daily`. Route et lib intactes : un admin peut encore la déclencher délibérément, mais elle n'est plus planifiée. |
 | `/api/admin/creator-payouts/run` | cron.yml (daily) — inerte hors `main` |
 | `/api/admin/onboarding-nudges/run` | cron.yml (daily) — inerte hors `main` |
 | `/api/admin/reconcile-ghost-orders` | cron.yml (daily) — inerte hors `main` |
