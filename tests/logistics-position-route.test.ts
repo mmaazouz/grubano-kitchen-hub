@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ── Géoloc ÉTAPE 2 — POST /api/logistics/position (INERT last-point receiver, RGPD-sensible) ──
@@ -26,6 +26,12 @@ vi.mock('@/lib/logistics-tracking', () => ({ isLogisticsTrackingEnabled: flag.is
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: rl.rateLimit }))
 
 import { POST } from '@/app/api/logistics/position/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 const post = (body: unknown) => POST(new NextRequest('http://x/api/logistics/position', {
   method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' },

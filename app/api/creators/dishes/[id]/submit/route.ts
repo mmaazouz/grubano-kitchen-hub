@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { runDishVetting } from '@/lib/dish-submit'
 import { hasAllergenDeclaration } from '@/lib/dish-sheet'
 import { readDishSheet } from '@/lib/dish-sheet-db'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── POST /api/creators/dishes/[id]/submit — submit to vetting (Mission 3) ─────
 //
@@ -23,6 +24,10 @@ export const dynamic = 'force-dynamic'
 const SUBMITTABLE = ['draft', 'rejected', 'pending']
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

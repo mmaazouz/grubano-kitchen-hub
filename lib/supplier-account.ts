@@ -177,3 +177,14 @@ export async function ensureSupplierOperator(
     return { ok: false, reason: 'error' }
   }
 }
+
+// ── P0-06 — role flag (doctrine Q8: masked = UNAVAILABLE server-side) ──────────
+// The whole B2B supplier surface (register/approve/catalog/orders/clients/profile/
+// connect + admin moderation + the stripe-supplier webhook via isSupplierConnectLive)
+// is OFF by default. register reaches verifyBusiness (PAID third-party call): the
+// 404-first gate guarantees it is never reached while the role is masked. Mirror of
+// isPrestataireEnabled. NOTE: the operator's private directory (/api/suppliers,
+// plural) is a RESTAURANT feature and is intentionally NOT behind this flag.
+export function isSupplierEnabled(): boolean {
+  return process.env.SUPPLIER_ENABLED === 'true'
+}

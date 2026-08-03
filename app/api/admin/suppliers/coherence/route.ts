@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit } from '@/lib/admin-audit'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,10 @@ function isAdmin(user: { role?: string; roles?: string[] } | undefined): boolean
 const bodySchema = z.object({ email: z.string().email() })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const limited = rateLimit(req, 'admin_supplier_coherence', { limitDefault: 30, windowDefault: 60 })
   if (limited) return limited
 

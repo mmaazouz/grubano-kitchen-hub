@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,6 +25,10 @@ function isAdmin(user: { role?: string; roles?: string[] } | undefined): boolean
 const VALID_STATUS = ['pending', 'active', 'suspended', 'rejected'] as const
 
 export async function GET(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const session = await getServerSession(authOptions)
   const user = session?.user as { role?: string; roles?: string[] } | undefined
   if (!user)          return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })

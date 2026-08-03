@@ -78,3 +78,13 @@ export async function ensureCreatorOperator(
     return { ok: false, reason: 'error' }
   }
 }
+
+// ── P0-06 — role flag (doctrine Q8: masked = UNAVAILABLE server-side) ──────────
+// The whole creator surface (apply/vetting/dishes/profile/public pages/earnings/
+// connect + the admin payout rails) is OFF by default. Mirror of
+// isPrestataireEnabled (lib/prestataire-account): 404 in the FIRST line of every
+// handler, before any secret/session/body read and before any write. Only the
+// exact string 'true' enables (repo convention).
+export function isCreatorEnabled(): boolean {
+  return process.env.CREATOR_ENABLED === 'true'
+}

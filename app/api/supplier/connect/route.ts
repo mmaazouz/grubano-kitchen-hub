@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { callerSupplierProfile } from '@/lib/supplier-account'
 import { isSupplierConnectEnabled, startSupplierOnboarding, syncSupplierPayoutStatus } from '@/lib/supplier-connect'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,10 @@ function baseUrl(req: Request): string {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     // Immatriculation gate (default CLOSED until Grubano is registered).
     if (!isSupplierConnectEnabled()) {
@@ -48,6 +53,10 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const base = await callerSupplierProfile()
   if (!base) return NextResponse.json({ error: 'Profil fournisseur introuvable' }, { status: 401 })
   const profile = await prisma.supplierProfile.findUnique({

@@ -177,3 +177,19 @@ export async function ensureLogisticsOperator(
     return { ok: false, reason: 'error' }
   }
 }
+
+// ── P0-06 — role flag (doctrine Q8: masked = UNAVAILABLE server-side) ──────────
+// The courier ROLE surface (register — reaches verifyBusiness, a PAID third-party
+// call —, missions, availability, earnings, withdraw, profile, justificatifs,
+// position CAPTURE, connect + the admin activation rail) is OFF by default.
+// INTENTIONALLY NOT behind this flag (documented in docs/ops/flags.md):
+//   • /api/logistics/fee-preview       — CONSUMER cart surface (delivery-fee quote),
+//     already gated by LOGISTICS_DISTANCE_FEE_ENABLED;
+//   • /api/logistics/positions/sweep   — CRON_SECRET-protected RGPD purge: a data-
+//     DELETION obligation must never stop because a role is masked;
+//   • /api/logistics/my-position-data  — RGPD art. 15/17 rights of EXISTING data
+//     subjects over already-stored positions;
+//   • /api/logistics/tracking-consent  — consent WITHDRAWAL must stay reachable.
+export function isLogisticsEnabled(): boolean {
+  return process.env.LOGISTICS_ENABLED === 'true'
+}

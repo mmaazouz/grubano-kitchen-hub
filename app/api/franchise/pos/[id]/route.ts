@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { gateFranchise } from '@/lib/franchise-pos'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +31,10 @@ function deny(status: 401 | 403) {
 const notFound = () => NextResponse.json({ ok: false, error: 'Point de vente introuvable' }, { status: 404 })
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const g = await gateFranchise()
     if (!g.ok) return deny(g.status)
@@ -101,6 +106,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const g = await gateFranchise()
     if (!g.ok) return deny(g.status)

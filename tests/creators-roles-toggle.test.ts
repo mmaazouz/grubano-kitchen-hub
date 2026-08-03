@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── PATCH /api/creators/me/roles — Agent 120 (unification « recommander » incr. 3/3) ──
 // The recommend/influencer rail moved to the Affiliate programme. A creator can no longer
@@ -17,6 +17,12 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 vi.mock('@/lib/creator-roles', () => ({ readCreatorRoles: rolesMock }))
 
 import { PATCH } from '@/app/api/creators/me/roles/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
 
 const patch = (body: unknown) =>
   PATCH(new Request('http://x/api/creators/me/roles', {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── Courier step ROUTES — pickup / deliver / cancel (brick 3 wiring, Agent 126) ─
 // Thin routes over the shared step-handler: gating (flag OFF → 404, brick-2 untouched), auth
@@ -21,6 +21,12 @@ vi.mock('@/lib/mission-attribution', () => attr)
 import { POST as pickup } from '@/app/api/logistics/missions/[id]/pickup/route'
 import { POST as deliver } from '@/app/api/logistics/missions/[id]/deliver/route'
 import { POST as cancel } from '@/app/api/logistics/missions/[id]/cancel/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 const req = () => new Request('http://t/x', { method: 'POST' })
 const ctx = { params: { id: 'm1' } }

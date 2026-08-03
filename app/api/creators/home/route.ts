@@ -7,6 +7,7 @@ import {
   computeStarsForCreators, nextStarProgress,
   type StarLevel, type StarProgress, type CreatorStarsInput,
 } from '@/lib/creator-stars'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── Types returned to the client ──────────────────────────────────────────────
 
@@ -102,6 +103,10 @@ export type CreatorHomeData = {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

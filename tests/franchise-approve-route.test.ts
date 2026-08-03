@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── B1.3-A — franchise approval wiring (Agent 30) ────────────────────────────
 // POST /api/franchise/approve mirrors the supplier approval: admin-gated, grants
@@ -26,6 +26,12 @@ const { setIdentityMock } = vi.hoisted(() => ({ setIdentityMock: vi.fn() }))
 vi.mock('@/lib/operator-identity', () => ({ setVerifiedCompanyIdentity: setIdentityMock }))
 
 import { POST } from '@/app/api/franchise/approve/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.FRANCHISE_ENABLED = 'true' })
+afterEach(() => { delete process.env.FRANCHISE_ENABLED })
 
 function post(body: Record<string, unknown>, user: { role?: string; roles?: string[] } | null) {
   sessionMock.mockResolvedValue(user ? { user } : null)

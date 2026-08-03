@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── POST /api/admin/suppliers/coherence — admin clears the visibility gate (Agent 111, D2) ──
 // The admin override for the coherence review queue: approve a status='active' but still
@@ -14,6 +14,12 @@ vi.mock('next-auth', () => ({ getServerSession: getSession }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 
 import { POST } from '@/app/api/admin/suppliers/coherence/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const post = (body: unknown) =>
   POST(new Request('http://x/api/admin/suppliers/coherence', {

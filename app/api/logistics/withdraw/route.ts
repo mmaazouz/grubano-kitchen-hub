@@ -6,6 +6,7 @@ import { isLogisticsPayoutEnabled, payPartner } from '@/lib/creator-payout'
 import { isConnectOnboardingEnabled, syncConnectStatus } from '@/lib/connect-onboarding'
 import { computePartnerBalance } from '@/lib/partner-balance'
 import { payoutMinCents } from '@/lib/payout-threshold'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -82,6 +83,10 @@ async function recentPayouts(logisticsProfileId: string) {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const caller = await callerLogistics()
   if (!caller) return NextResponse.json({ error: 'Profil livreur introuvable' }, { status: 401 })
   const { profile, operator } = caller
@@ -109,6 +114,10 @@ export async function GET() {
 }
 
 export async function POST() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     // The Retirer button requires the payout rail. OFF → inert (no transfer, honest status).
     if (!isLogisticsPayoutEnabled()) {

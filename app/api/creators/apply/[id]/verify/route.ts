@@ -4,6 +4,7 @@ import { makeVerifyCode } from '@/lib/verify-code'
 import { resolveChannelId, getChannelStats, getRecentVideoTitles, hasYouTubeKey } from '@/lib/youtube'
 import { vetCreator } from '@/lib/creator-vetting'
 import { ensureCreatorOperator } from '@/lib/creator-account'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // Orchestration route — does live network calls (YouTube) + a Claude vetting
 // call, so it must always be server-rendered on demand.
@@ -181,6 +182,10 @@ async function finalize(
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const id          = params.id
     // Mission 2 — role choice forwarded by the wizard (the application row is

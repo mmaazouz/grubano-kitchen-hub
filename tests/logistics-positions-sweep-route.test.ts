@@ -10,6 +10,12 @@ vi.mock('@/lib/courier-position-sweep', () => ({ runGeolocRetentionSweep: sweep.
 
 import { POST } from '@/app/api/logistics/positions/sweep/route'
 
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
+
 const post = (auth?: string) => POST(new NextRequest('http://x/api/logistics/positions/sweep', {
   method: 'POST', headers: auth !== undefined ? { authorization: auth } : {},
 }))

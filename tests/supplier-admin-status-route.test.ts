@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── POST /api/supplier/admin/status — admin moderation + SUSPEND (Agent 14) ───
 // Admin-only. Sets the supplier BUSINESS status. 'active' also activates the
@@ -12,11 +12,17 @@ const { db, ensureOp, session } = vi.hoisted(() => ({
   session: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-vi.mock('@/lib/supplier-account', () => ({ ensureSupplierOperator: ensureOp }))
+vi.mock('@/lib/supplier-account', () => ({ ensureSupplierOperator: ensureOp, isSupplierEnabled: () => process.env.SUPPLIER_ENABLED === 'true' }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 vi.mock('next-auth', () => ({ getServerSession: session }))
 
 import { POST } from '@/app/api/supplier/admin/status/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const post = (body: Record<string, unknown>) =>
   POST(new Request('http://x/api/supplier/admin/status', {

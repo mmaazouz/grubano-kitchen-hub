@@ -76,6 +76,12 @@ vi.mock('@/lib/courier-position', () => position)
 import { PATCH } from '@/app/api/orders/[id]/status/route'
 import { POST as deliver } from '@/app/api/logistics/missions/[id]/deliver/route'
 
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
+
 const patchStatus = (id: string, body: Record<string, unknown>) =>
   PATCH(
     new NextRequest(`http://x/api/orders/${id}/status`, {

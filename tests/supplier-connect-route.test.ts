@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── /api/supplier/connect + /api/webhooks/stripe-supplier (B2B Slice 5b) ──────
 // POST onboarding is gated + session-scoped; the B2B webhook is SEPARATE and only
@@ -7,16 +7,22 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const { db, caller, lib, stripe } = vi.hoisted(() => ({
   db: { supplierProfile: { findUnique: vi.fn() } },
   caller: vi.fn(),
-  lib: { isSupplierConnectEnabled: vi.fn(), startSupplierOnboarding: vi.fn(), syncSupplierPayoutStatus: vi.fn(), applySupplierAccountStatus: vi.fn() },
+  lib: { isSupplierConnectEnabled: vi.fn(), isSupplierConnectLive: vi.fn(), startSupplierOnboarding: vi.fn(), syncSupplierPayoutStatus: vi.fn(), applySupplierAccountStatus: vi.fn() },
   stripe: { getStripe: vi.fn(), mapAccountStatus: vi.fn() },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: caller }))
+vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: caller, isSupplierEnabled: () => process.env.SUPPLIER_ENABLED === 'true' }))
 vi.mock('@/lib/supplier-connect', () => lib)
 vi.mock('@/lib/stripe', () => ({ getStripe: stripe.getStripe, mapAccountStatus: stripe.mapAccountStatus }))
 
 import { POST as CONNECT_POST } from '@/app/api/supplier/connect/route'
 import { POST as WEBHOOK_POST } from '@/app/api/webhooks/stripe-supplier/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const connectPost = () => new Request('http://x/api/supplier/connect', { method: 'POST' })
 const webhookPost = (body = '{}') =>
@@ -54,6 +60,17 @@ describe('POST /api/supplier/connect — immatriculation gate + session scoping'
 })
 
 describe('POST /api/webhooks/stripe-supplier — SEPARATE B2B webhook', () => {
+  // P0-06 — le webhook est désormais DOUBLE-gaté (rôle + connect, patron prestataire).
+  // Ces tests exercent le comportement gate OUVERT ; le 404 gate-fermé est prouvé
+  // ci-dessous et dans tests/role-locks.test.ts.
+  beforeEach(() => { lib.isSupplierConnectLive.mockReturnValue(true) })
+
+  it('404 when the role/connect gate is CLOSED — before the secret is read', async () => {
+    lib.isSupplierConnectLive.mockReturnValue(false)
+    delete process.env.STRIPE_SUPPLIER_WEBHOOK_SECRET
+    expect((await WEBHOOK_POST(webhookPost())).status).toBe(404)
+  })
+
   it('400 when the dedicated secret is not configured', async () => {
     delete process.env.STRIPE_SUPPLIER_WEBHOOK_SECRET
     expect((await WEBHOOK_POST(webhookPost())).status).toBe(400)

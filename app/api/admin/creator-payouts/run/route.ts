@@ -6,6 +6,7 @@ import { isCreatorPayoutEnabled, payCreator, runCreatorPayouts } from '@/lib/cre
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,6 +23,10 @@ export const dynamic = 'force-dynamic'
 // Idempotent at the run level (re-running pays nothing already paid).
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   // 0. Flag-gated rate limit (ADM7; no-op when RATE_LIMIT_ENABLED is off → byte-identical).
   const limited = rateLimit(req, 'admin_creator_payouts_run', { limitDefault: 20, windowDefault: 60 })
   if (limited) return limited

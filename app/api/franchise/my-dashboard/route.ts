@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { resolveFranchiseRate, isFranchiseRoyaltyEnabled } from '@/lib/franchise-royalty'
 import { getFranchiseEarnings } from '@/lib/franchise-earnings'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 // B4: the royalty rate is now PER-BRAND, resolved through the SAME helper the accrual
 // uses (resolveFranchiseRate(brand) = brand.royaltyPct ?? 6%) → the dashboard estimate
@@ -34,6 +35,10 @@ const NETWORK_AVG = 7800
 const POS_EMOJI = '📍'
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {

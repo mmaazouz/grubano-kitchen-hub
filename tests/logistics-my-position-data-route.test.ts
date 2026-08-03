@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── Géoloc ÉTAPE 5 — GET/DELETE /api/logistics/my-position-data (courier RGPD access + erasure) ──
 // Owner-scoped (session email → LogisticsProfile; never a client id → no IDOR). Flag-gated.
@@ -14,6 +14,12 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/logistics-tracking', () => ({ isLogisticsTrackingEnabled: flag.isLogisticsTrackingEnabled }))
 
 import { GET, DELETE } from '@/app/api/logistics/my-position-data/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 beforeEach(() => {
   vi.clearAllMocks()

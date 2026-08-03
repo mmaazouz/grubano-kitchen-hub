@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { callerSupplierProfile } from '@/lib/supplier-account'
 import { maybeRunSupplierCoherenceCheck } from '@/lib/supplier-coherence'
 import { CATALOG_UNITS, eurosToCents, normalizeAllergens } from '@/lib/supplier-catalog'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,10 @@ const UNAUTH = NextResponse.json({ error: 'Profil fournisseur introuvable' }, { 
 const NOT_ACTIVE = NextResponse.json({ error: 'Compte fournisseur non activé' }, { status: 403 })
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const profile = await callerSupplierProfile()
   if (!profile) return UNAUTH
   const items = await prisma.supplierCatalogItem.findMany({
@@ -41,6 +46,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const profile = await callerSupplierProfile()
     if (!profile) return UNAUTH
@@ -79,6 +88,10 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const profile = await callerSupplierProfile()
     if (!profile) return UNAUTH
@@ -120,6 +133,10 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const profile = await callerSupplierProfile()
     if (!profile) return UNAUTH

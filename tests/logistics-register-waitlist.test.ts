@@ -26,6 +26,12 @@ vi.mock('@/lib/identity-propagation', () => ({ propagateVerifiedCompanyIdentity:
 
 import { POST } from '@/app/api/logistics/register/route'
 
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
+
 const BASE = {
   partnerType: 'independent', contactName: 'Karim', contactEmail: 'K@Course.fr', siren: '123456789',
   missionTypes: ['repas'], vehicleTypes: ['velo'], zones: ['Lyon'], consent: true, formStartedAt: 0,

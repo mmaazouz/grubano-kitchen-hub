@@ -4,6 +4,7 @@ import { computeStarsForCreators } from '@/lib/creator-stars'
 import { publicFace } from '@/lib/dish-sheet'
 import { readDishSheets } from '@/lib/dish-sheet-db'
 import { readCreatorRoles } from '@/lib/creator-roles'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // PUBLIC, read-only, no auth. A dynamic param route is server-rendered on demand.
 export const dynamic = 'force-dynamic'
@@ -28,6 +29,10 @@ export async function GET(
   _req: Request,
   { params }: { params: { slug: string } },
 ) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const raw = decodeURIComponent(params.slug ?? '').trim()
     if (!raw) {

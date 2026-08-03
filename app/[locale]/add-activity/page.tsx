@@ -8,6 +8,10 @@ import { readOperatorRoles } from '@/lib/operator-roles'
 import { getOperatorCompanyIdentity } from '@/lib/operator-identity'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
+import { isCreatorEnabled } from '@/lib/creator-account'
+import { isSupplierEnabled } from '@/lib/supplier-account'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 import { addableActivities, activityHref, activityMode, type AddableActivity } from '@/lib/add-activity'
 import PartnerChrome from '@/components/business/PartnerChrome'
 import './add-activity.css'
@@ -65,6 +69,13 @@ export default async function AddActivityPage({ params }: { params: { locale: st
   const addable = addableActivities(roles, {
     includeAffiliate:   isAffiliateEnabled(),
     includePrestataire: isPrestataireEnabled(),
+    // P0-06 — rôles masqués (Q8) : un parcours dont le rôle est OFF n'est plus offert.
+    enabledPartnerActivities: {
+      supplier:  isSupplierEnabled(),
+      creator:   isCreatorEnabled(),
+      logistics: isLogisticsEnabled(),
+      franchise: isFranchiseEnabled(),
+    },
   })
   // Best-effort: the B1.1 columns may not be migrated yet → no prefill, page still works.
   const anchor = await getOperatorCompanyIdentity(operator.id).catch(() => null)

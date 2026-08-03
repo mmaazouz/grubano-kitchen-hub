@@ -7,6 +7,7 @@ import { ensureFranchiseOperator } from '@/lib/franchise-account'
 import { setVerifiedCompanyIdentity } from '@/lib/operator-identity'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit } from '@/lib/admin-audit'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,10 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({ applicationId: z.string().min(1) })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const limited = rateLimit(req, 'admin_franchise_approve', { limitDefault: 20, windowDefault: 60 })
   if (limited) return limited
 

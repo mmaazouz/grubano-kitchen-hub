@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── POST /api/franchise/apply — LEAN signup (Agent 115) ────────────────────────
 // The franchisor application now collects ONLY name + email + brandName + motivation
@@ -18,6 +18,12 @@ vi.mock('next-auth', () => ({ getServerSession: getSession }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 
 import { POST } from '@/app/api/franchise/apply/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.FRANCHISE_ENABLED = 'true' })
+afterEach(() => { delete process.env.FRANCHISE_ENABLED })
 
 const BASE = {
   name: 'Jean Dupont', email: 'jean@exemple.fr',
