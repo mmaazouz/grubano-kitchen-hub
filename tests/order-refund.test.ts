@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// ── C3-fix — POST /api/orders/[id]/refund (the A5×C1 gap) ─────────────────────
-// Route-level spec, A5 pattern: owner-scope guards, paid-only, pass-through to
-// lib/refunds (which owns the Stripe pro-rata + reverse_transfer + idempotency),
-// 409s surfaced verbatim, paymentStatus NEVER mutated (ledger = truth).
+// ── P0-03 (vague 1) — POST /api/orders/[id]/refund ────────────────────────────
+// Route-level spec. Q3 fondateur : the route is ADMIN GRUBANO ONLY (it used to be
+// owner-scoped) — a restaurateur session is 403, no session is 401, both attempts
+// AUDITED ('refund.denied'); an accepted refund is audited ('refund.run'). The A5
+// mechanics are unchanged: pass-through to lib/refunds (Stripe pro-rata +
+// reverse_transfer + idempotency), 409s surfaced verbatim, paymentStatus NEVER
+// mutated (ledger = truth).
 const { db } = vi.hoisted(() => ({
   db: {
     order:      { findUnique: vi.fn(), update: vi.fn() },
@@ -13,8 +16,12 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
-const { scopeMock } = vi.hoisted(() => ({ scopeMock: vi.fn() }))
-vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: scopeMock }))
+const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
+vi.mock('next-auth', () => ({ getServerSession: sessionMock }))
+vi.mock('@/lib/auth', () => ({ authOptions: {} }))
+
+const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
+vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
 
 const { refundMock } = vi.hoisted(() => ({ refundMock: vi.fn() }))
 vi.mock('@/lib/refunds', () => ({ refundPayment: refundMock }))
@@ -32,6 +39,9 @@ const makeReq = (body?: Record<string, unknown>) =>
   })
 const call = (body?: Record<string, unknown>) => POST(makeReq(body), { params: { id: 'o1' } })
 
+const ADMIN = { user: { id: 'adm1', email: 'admin@grubano.com', role: 'admin', roles: ['admin'] } }
+const RESTO = { user: { id: 'op1', email: 'resto@x.com', role: 'restaurant', roles: ['restaurant'] } }
+
 const paidOrder = {
   id: 'o1', restaurantId: 'rest1', consumerId: 'cust1',
   paymentStatus: 'paid', stripePaymentIntentId: 'pi_order_1',
@@ -39,7 +49,8 @@ const paidOrder = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  scopeMock.mockResolvedValue({ ok: true, ownedIds: ['rest1'] })
+  sessionMock.mockResolvedValue(ADMIN)
+  auditMock.mockResolvedValue(undefined)
   db.order.findUnique.mockResolvedValue(paidOrder)
   db.operator.findUnique.mockResolvedValue({ email: 'client@example.com', name: 'Client' })
   db.restaurant.findUnique.mockResolvedValue({ name: 'Resto Test' })
@@ -49,16 +60,47 @@ beforeEach(() => {
   emailMock.mockResolvedValue(undefined)
 })
 
+describe('POST /api/orders/[id]/refund — P0-03 admin gate + audit', () => {
+  it('401 without a session — attempt audited refund.denied (unauthenticated)', async () => {
+    sessionMock.mockResolvedValue(null)
+    expect((await call()).status).toBe(401)
+    expect(refundMock).not.toHaveBeenCalled()
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'refund.denied', actorId: 'anonymous',
+      metadata: expect.objectContaining({ reason: 'unauthenticated' }),
+    }))
+  })
+
+  it('403 for a RESTAURATEUR session (owner can no longer refund) — audited refund.denied (not_admin)', async () => {
+    sessionMock.mockResolvedValue(RESTO)
+    const res = await call()
+    expect(res.status).toBe(403)
+    expect(refundMock).not.toHaveBeenCalled()
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'refund.denied', actorId: 'op1', targetType: 'order', targetId: 'o1',
+      metadata: expect.objectContaining({ reason: 'not_admin', role: 'restaurant' }),
+    }))
+  })
+
+  it('200 for an ADMIN session — accepted refund audited refund.run', async () => {
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'refund.run', actorId: 'adm1', targetType: 'order', targetId: 'o1',
+      metadata: expect.objectContaining({ refundId: 're_1', refundedCents: 1000 }),
+    }))
+  })
+
+  it('admin via the multi-role SET (primary role ≠ admin) is accepted', async () => {
+    sessionMock.mockResolvedValue({ user: { id: 'adm2', email: 'a2@grubano.com', role: 'restaurant', roles: ['restaurant', 'admin'] } })
+    expect((await call()).status).toBe(200)
+  })
+})
+
 describe('POST /api/orders/[id]/refund — guards', () => {
   it('404 when the order does not exist', async () => {
     db.order.findUnique.mockResolvedValue(null)
     expect((await call()).status).toBe(404)
-    expect(refundMock).not.toHaveBeenCalled()
-  })
-
-  it("403 when the order belongs to another restaurateur", async () => {
-    scopeMock.mockResolvedValue({ ok: true, ownedIds: ['otherResto'] })
-    expect((await call()).status).toBe(403)
     expect(refundMock).not.toHaveBeenCalled()
   })
 

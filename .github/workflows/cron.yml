@@ -23,9 +23,11 @@ on:
         description: Which group to run
         type: choice
         default: all
-        options: [all, frequent, daily, monthly, sweep]
+        options: [all, daily, monthly, sweep]
   schedule:
-    - cron: '15 * * * *'   # frequent  — hourly (email agent)
+    # P0-07 — the hourly `frequent` group (email agent) was REMOVED by founder
+    # decision: it is an automation with an external effect (LLM-written emails
+    # sent to real customers/creators/restaurateurs) and no human validation.
     - cron: '*/20 * * * *' # sweep     — every 20 min (geoloc position retention — no-op when flag OFF)
     - cron: '20 3 * * *'   # daily     — 03:20 UTC batch
     - cron: '0 7 1 * *'    # monthly   — 1st, 07:00 UTC
@@ -56,19 +58,9 @@ jobs:
           echo "Target host: $(printf '%s' "$BASE" | sed -E 's#(https?://[^/]+).*#\1#')"
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
-  frequent:
-    needs: guard
-    if: >-
-      github.event.schedule == '15 * * * *' ||
-      (github.event_name == 'workflow_dispatch' && (inputs.group == 'all' || inputs.group == 'frequent'))
-    runs-on: ubuntu-latest
-    steps:
-      - name: Email agent
-        env:
-          BASE: ${{ needs.guard.outputs.base }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          curl -sS -X POST "$BASE/api/email-agent" -H "Authorization: Bearer $CRON_SECRET" -o /dev/null -w "email-agent → HTTP %{http_code}\n"
+  # P0-07 — job `frequent` (hourly `POST /api/email-agent`) REMOVED.
+  # The route itself is untouched and still reachable with CRON_SECRET; only
+  # this scheduler entry is gone, so nothing fires it automatically at go-live.
 
   sweep-positions:
     # Géoloc ÉTAPE 5 retention sweep — erases stale/orphaned CourierPosition rows past their TTL +
@@ -113,9 +105,12 @@ jobs:
         run: |
           node scripts/cron/ledger-check-probe.js || echo "ledger probe reported issues (see log)"
           node scripts/cron/creator-earnings-mature.js || echo "earnings maturation non-zero exit (see log)"
-      - name: Claims auto-approve (no-op if CLAIMS_ENABLED off)
-        run: |
-          curl -sS -X POST "$BASE/api/admin/claims/auto-approve" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-auto-approve → HTTP %{http_code}\n"
+      # P0-07 — step "Claims auto-approve" REMOVED by founder decision.
+      # runClaimAutoApproval() auto-approves 24h-timeout claims AND refunds them
+      # (lib/claims.ts:309-316 → approveClaim('auto_timeout') → triggerClaimRefund),
+      # i.e. money leaving without any admin in the loop. The route and the lib
+      # are untouched — an admin can still trigger it deliberately; it is simply
+      # no longer scheduled.
       - name: Creator payouts (no-op if CREATOR_PAYOUT_ENABLED off)
         run: |
           curl -sS -X POST "$BASE/api/admin/creator-payouts/run" -H "X-Internal-Token: $TOK" -o /dev/null -w "creator-payouts → HTTP %{http_code}\n"
