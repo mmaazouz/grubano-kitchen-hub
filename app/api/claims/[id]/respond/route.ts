@@ -6,13 +6,14 @@ import { isClaimsEnabled, respondToClaim } from '@/lib/claims'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// ── POST /api/claims/[id]/respond (P4.5-C1) ───────────────────────────────────────
+// ── POST /api/claims/[id]/respond (P4.5-C1 · P0-24) ───────────────────────────────
 // The owning restaurant accepts or refuses a claim. Gated by CLAIMS_ENABLED.
 // Owner-scoped via the establishment scope → a claim on another operator's order is
-// INVISIBLE (404, not 403 — no IDOR/enumeration). ACCEPT → triggers the P4.5-A engine
-// (executeRefund) for the claimed amount, idempotently (at most one refund per claim).
-// REFUSE → terminal 'refused' + motive (contest = C2). The real refund only moves money
-// when REFUNDS_ENABLED is ON; otherwise the claim rests 'approved' (refund pending).
+// INVISIBLE (404, not 403 — no IDOR/enumeration).
+// P0-24 (Q3 volet 2) : ACCEPT ne déclenche PLUS aucun remboursement — il route la
+// réclamation vers la FILE ADMIN ('arbitration') où seul un admin Grubano décide et
+// déclenche (POST /api/admin/claims/[id]/arbitrate). `refund` est donc toujours null
+// sur un accept. REFUSE → terminal 'refused' + motive (contest = C2).
 const bodySchema = z.object({
   action: z.enum(['accept', 'refuse']),
   reason: z.string().max(1000).optional(),

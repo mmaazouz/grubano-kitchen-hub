@@ -7040,7 +7040,7 @@
       "contestReasonPlaceholder": "اشرح اعتراضك…",
       "contestSubmit": "إرسال الاعتراض",
       "contestSuccess": "تم إرسال الاعتراض. ستبتّ Grubano.",
-      "arbitrationInfo": "يخضع اعتراضك للمراجعة من Grubano.",
+      "arbitrationInfo": "شكواك قيد المراجعة من طرف Grubano.",
       "refusalReasonShown": "سبب الرفض"
     },
     "restaurant": {
@@ -7053,12 +7053,12 @@
       "viewPhoto": "عرض الصورة",
       "timeLeft": "يتبقى {hours} ساعة للرد",
       "expired": "انتهى الموعد — الموافقة التلقائية وشيكة",
-      "accept": "القبول ورد المبلغ",
+      "accept": "قبول",
       "refuse": "رفض",
       "refuseReasonLabel": "سبب الرفض",
       "refuseReasonPlaceholder": "اشرح السبب…",
       "confirmRefuse": "تأكيد الرفض",
-      "accepted": "تم قبول الشكوى وبدء رد المبلغ.",
+      "accepted": "تم قبول الشكوى — أُحيلت إلى Grubano لاتخاذ قرار الاسترداد.",
       "refused": "تم رفض الشكوى.",
       "refundPending": "تم القبول — رد المبلغ بانتظار التفعيل.",
       "processing": "جارٍ المعالجة…",

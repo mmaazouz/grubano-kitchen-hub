@@ -7040,7 +7040,7 @@
       "contestReasonPlaceholder": "Explique su desacuerdo…",
       "contestSubmit": "Enviar impugnación",
       "contestSuccess": "Impugnación enviada. Grubano decidirá.",
-      "arbitrationInfo": "Su impugnación está siendo revisada por Grubano.",
+      "arbitrationInfo": "Su reclamación está siendo examinada por Grubano.",
       "refusalReasonShown": "Motivo del rechazo"
     },
     "restaurant": {
@@ -7053,12 +7053,12 @@
       "viewPhoto": "Ver foto",
       "timeLeft": "{hours} h restantes para responder",
       "expired": "Plazo vencido — aprobación automática inminente",
-      "accept": "Aceptar y reembolsar",
+      "accept": "Aceptar",
       "refuse": "Rechazar",
       "refuseReasonLabel": "Motivo del rechazo",
       "refuseReasonPlaceholder": "Explique por qué…",
       "confirmRefuse": "Confirmar rechazo",
-      "accepted": "Reclamación aceptada, reembolso iniciado.",
+      "accepted": "Reclamación aceptada — enviada a Grubano para la decisión de reembolso.",
       "refused": "Reclamación rechazada.",
       "refundPending": "Aceptada — reembolso pendiente de activación.",
       "processing": "Procesando…",

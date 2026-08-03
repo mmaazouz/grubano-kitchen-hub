@@ -245,6 +245,13 @@ async function approveClaim(claimId: string, decidedBy: 'restaurant' | 'auto_tim
 }
 
 // ── RESTO — respond to a claim (owner-scoped by the route) ────────────────────────
+// P0-24 (vague 1, Q3 volet 2) : ACCEPTER ne déclenche PLUS de remboursement. Le
+// restaurateur garde le droit de RECONNAÎTRE le problème (restaurantResponse
+// 'accepted') ; la réclamation est routée vers la FILE ADMIN (status 'arbitration',
+// la file existante) où SEUL un admin Grubano décide et déclenche le remboursement
+// (arbitrateClaim → triggerClaimRefund). decidedBy/decidedAt restent vides : la
+// décision d'argent appartient à l'admin, pas au resto. Aucun montant (partiel ou
+// intégral) n'est déclenchable depuis ce chemin.
 export async function respondToClaim(input: {
   claimId: string
   restaurantIds: string[]   // the responding operator's owned restaurants (from session)
@@ -280,13 +287,20 @@ export async function respondToClaim(input: {
     return { ok: true, claim: updated }
   }
 
-  // accept → approve + (attempt) refund
-  const refund = await approveClaim(claim.id, 'restaurant')
-  if (refund.state === 'already_handled') {
-    return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
-  }
+  // accept → FILE ADMIN (P0-24). CAS restaurant_review → arbitration (count===1
+  // winner) ; activeOrderKey reste posé (arbitration est un statut ACTIF). AUCUN
+  // appel au moteur de remboursement ici — l'admin décide via arbitrateClaim.
+  const moved = await prisma.claim.updateMany({
+    where: { id: claim.id, status: 'restaurant_review' },
+    data:  {
+      status:                   'arbitration',
+      restaurantResponse:       'accepted',
+      restaurantResponseReason: input.reason ?? null,
+    },
+  })
+  if (moved.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a déjà été traitée.' }
   const updated = await prisma.claim.findUnique({ where: { id: claim.id } })
-  return { ok: true, claim: updated, refund }
+  return { ok: true, claim: updated }
 }
 
 // ── CRON — auto-approve expired claims + drive pending refunds ────────────────────
@@ -403,17 +417,32 @@ export async function contestClaim(input: { claimId: string; consumerId: string;
   return { ok: true, claim: updated }
 }
 
-// ── ADMIN — arbitrate a contested claim (NEUTRAL third party, never a party) ──────
+// ── ADMIN — arbitrate a claim awaiting a Grubano decision ─────────────────────────
+// P0-24 : la file admin reçoit désormais TROIS provenances — (1) contestation client
+// (C2, chemin historique), (2) acceptation RESTAURATEUR (routée ici sans argent),
+// (3) HÉRITAGE : les réclamations déjà 'approved' AVANT P0-24 avec refundAttempted
+// false (acceptées sous l'ancienne règle, argent jamais parti car REFUNDS était OFF).
+// Pour (3), l'admin décide aussi : approve → déclenche le remboursement idempotent ;
+// refuse_final → clôture sans argent. Les 'approved' avec refundAttempted=true sont
+// EXCLUS (l'argent a pu bouger — reprise manuelle uniquement, jamais un re-trigger).
 export async function arbitrateClaim(input: { claimId: string; adminId: string; decision: 'approve' | 'refuse_final'; reason?: string | null }): Promise<ClaimActionResult> {
-  const claim = await prisma.claim.findUnique({ where: { id: input.claimId }, select: { id: true, status: true } })
+  const claim = await prisma.claim.findUnique({
+    where:  { id: input.claimId },
+    select: { id: true, status: true, refundAttempted: true },
+  })
   if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
-  if (claim.status !== 'arbitration') {
+  const legacyApproved = claim.status === 'approved' && !claim.refundAttempted // héritage pré-P0-24
+  if (claim.status !== 'arbitration' && !legacyApproved) {
     return { ok: false, status: 409, error: 'Cette réclamation n’est pas en arbitrage.' }
   }
 
   if (input.decision === 'refuse_final') {
     const done = await prisma.claim.updateMany({
-      where: { id: claim.id, status: 'arbitration' },
+      // CAS depuis l'état constaté ; pour l'héritage, refundAttempted:false dans le
+      // WHERE garantit qu'aucun remboursement n'a été tenté entre-temps (race-safe).
+      where: legacyApproved
+        ? { id: claim.id, status: 'approved', refundAttempted: false }
+        : { id: claim.id, status: 'arbitration' },
       data:  {
         status: 'refused_final', arbitratedBy: input.adminId, arbitrationDecision: 'refused_final',
         arbitrationReason: input.reason ?? null, arbitratedAt: new Date(), decidedBy: 'admin',
@@ -425,9 +454,13 @@ export async function arbitrateClaim(input: { claimId: string; adminId: string; 
     return { ok: true, claim: updated }
   }
 
-  // approve → CAS arbitration → approved (count===1), then the SAME idempotent refund.
+  // approve → CAS vers 'approved' avec les métadonnées d'arbitrage (count===1),
+  // puis le MÊME remboursement idempotent (triggerClaimRefund, ≤1 par réclamation).
+  // Héritage : déjà 'approved' → on n'écrit QUE les métadonnées (même garde CAS).
   const moved = await prisma.claim.updateMany({
-    where: { id: claim.id, status: 'arbitration' },
+    where: legacyApproved
+      ? { id: claim.id, status: 'approved', refundAttempted: false }
+      : { id: claim.id, status: 'arbitration' },
     data:  {
       status: 'approved', arbitratedBy: input.adminId, arbitrationDecision: 'approved',
       arbitrationReason: input.reason ?? null, arbitratedAt: new Date(), decidedBy: 'admin', decidedAt: new Date(),
@@ -466,9 +499,16 @@ export async function restaurantRefusalStats(restaurantId: string): Promise<Rest
   return { refused, overturned, overturnRate, flagged: refused >= 3 && overturnRate >= 0.5 }
 }
 
-/** The admin arbitration queue, each claim enriched with both parties' abuse signals. */
+/** The admin arbitration queue, each claim enriched with both parties' abuse signals.
+ *  P0-24 : inclut aussi l'HÉRITAGE — les réclamations 'approved' non remboursées
+ *  (refundAttempted=false, acceptées avant P0-24 pendant que REFUNDS était OFF) —
+ *  pour qu'aucune décision d'argent en attente n'échappe à la file admin. */
 export async function listArbitrationQueue() {
-  const claims = await prisma.claim.findMany({ where: { status: 'arbitration' }, orderBy: { contestedAt: 'asc' }, take: 200 })
+  const claims = await prisma.claim.findMany({
+    where:   { OR: [{ status: 'arbitration' }, { status: 'approved', refundAttempted: false }] },
+    orderBy: { createdAt: 'asc' },
+    take:    200,
+  })
   return Promise.all(claims.map(async (c) => ({
     ...c,
     consumerStats:   await consumerClaimStats(c.consumerId),
