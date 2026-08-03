@@ -37,6 +37,22 @@ describe('checkFlagCoupling', () => {
     expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' })).toEqual({ ok: true, errors: [] })
   })
 
+  // P0-25 (vague 1) — route d'auto-approbation derrière son propre kill-switch.
+  it('CLAIMS_AUTO_APPROVE without CLAIMS → incoherent', () => {
+    const r = checkFlagCoupling({ CLAIMS_AUTO_APPROVE_ENABLED: 'true' })
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((e: string) => e.includes('CLAIMS_AUTO_APPROVE_ENABLED') && e.includes('CLAIMS_ENABLED'))).toBe(true)
+  })
+  it('CLAIMS_AUTO_APPROVE + CLAIMS sans REFUNDS → incoherent (transitif via CLAIMS⇒REFUNDS)', () => {
+    expect(checkFlagCoupling({ CLAIMS_AUTO_APPROVE_ENABLED: 'true', CLAIMS_ENABLED: 'true' }).ok).toBe(false)
+  })
+  it('chaîne complète AUTO+CLAIMS+REFUNDS → coherent (config post-bêta)', () => {
+    expect(checkFlagCoupling({ CLAIMS_AUTO_APPROVE_ENABLED: 'true', CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
+  })
+  it('⭐ set bêta (CLAIMS+REFUNDS, auto-approve ABSENT) → cohérent : la route reste inopérante sans que check:flags proteste', () => {
+    expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' })).toEqual({ ok: true, errors: [] })
+  })
+
   // P4.3 ÉTAPE 6 — the REAL courier-rail couplings (replaces the phantom TIPS⇒TIP_PAYOUT).
   it('TIPS without LOGISTICS_PAYOUT → incoherent (D-1: tip charged, no reversal rail)', () => {
     const r = checkFlagCoupling({ TIPS_ENABLED: 'true' })
@@ -85,7 +101,7 @@ describe('checkFlagCoupling', () => {
     expect(r.errors).toHaveLength(2)
   })
 
-  it('COUPLING_RULES documents the 8 known couplings (courier rail ÉTAPE 6 + scission refund P0-04)', () => {
-    expect(COUPLING_RULES).toHaveLength(8)
+  it('COUPLING_RULES documents the 9 known couplings (courier ÉTAPE 6 + scission P0-04 + auto-approve P0-25)', () => {
+    expect(COUPLING_RULES).toHaveLength(9)
   })
 })

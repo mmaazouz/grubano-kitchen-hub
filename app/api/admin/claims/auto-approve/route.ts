@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { isClaimsEnabled, runClaimAutoApproval } from '@/lib/claims'
+import { isClaimsEnabled, isClaimsAutoApproveEnabled, runClaimAutoApproval } from '@/lib/claims'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
@@ -18,6 +18,10 @@ export const dynamic = 'force-dynamic'
 //
 // GATE ORDER (all BEFORE any work):
 //   1. CLAIMS_ENABLED kill-switch (default OFF) → 403 gated.
+//   1-bis. P0-25 : CLAIMS_AUTO_APPROVE_ENABLED (défaut OFF, TOUTE la bêta) → 403 gated
+//          explicite + trace. P0-07 a retiré le scheduler ; ce flag rend la route
+//          elle-même inopérante — ce sweep rembourse SANS validation humaine
+//          (decidedBy 'auto_timeout'), interdit par le principe transversal.
 //   2. AUTH (mirror of creator-payouts/run): INTERNAL_CRON_TOKEN via X-Internal-Token,
 //      OR an ADMIN session. 401 without either; 403 for a non-admin session.
 export async function POST(req: Request) {
@@ -27,6 +31,15 @@ export async function POST(req: Request) {
 
   if (!isClaimsEnabled()) {
     return NextResponse.json({ error: 'Réclamations indisponibles', gated: true }, { status: 403 })
+  }
+
+  // P0-25 — jamais un échec silencieux : refus explicite, tracé, avec le nom du flag.
+  if (!isClaimsAutoApproveEnabled()) {
+    console.warn('[claims auto-approve] [P0-25] appel refusé — CLAIMS_AUTO_APPROVE_ENABLED est OFF (le sweep auto_timeout rembourserait sans validation humaine)')
+    return NextResponse.json(
+      { error: 'Auto-approbation désactivée (validation humaine requise pendant la bêta).', gated: true, flag: 'CLAIMS_AUTO_APPROVE_ENABLED' },
+      { status: 403 },
+    )
   }
 
   const internalToken    = req.headers.get('x-internal-token')
