@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireRefundAdmin } from '@/lib/refund-route-guard'
 import { recordAdminAudit } from '@/lib/admin-audit'
+import { isRefundsEnabled } from '@/lib/refund'
+import { rateLimit } from '@/lib/rate-limit'
 import { refundPayment } from '@/lib/refunds'
 import { sendRefundConfirmation } from '@/lib/transactional-emails'
 
@@ -31,6 +33,15 @@ export async function POST(
   { params }: { params: { id: string } },
 ) {
   try {
+    // P0-26 — même régime que /api/admin/refunds/run : (0) rate-limit flag-gaté,
+    // (1) kill-switch REFUNDS_ENABLED (défaut OFF → 403 explicite, AUCUN Stripe),
+    // (2) garde admin. Couper le flag arrête désormais AUSSI cette route.
+    const limited = rateLimit(req, 'order_refund', { limitDefault: 20, windowDefault: 60 })
+    if (limited) return limited
+    if (!isRefundsEnabled()) {
+      return NextResponse.json({ error: 'Remboursements indisponibles', gated: true }, { status: 403 })
+    }
+
     // P0-03 — ADMIN GRUBANO only (denied attempts audited inside the gate).
     const gate = await requireRefundAdmin(req, { route: 'orders/[id]/refund', targetType: 'order', targetId: params.id })
     if (!gate.ok) return gate.res

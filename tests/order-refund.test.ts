@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// ── P0-03 (vague 1) — POST /api/orders/[id]/refund ────────────────────────────
+// ── P0-03 + P0-26 (vague 1) — POST /api/orders/[id]/refund ────────────────────
 // Route-level spec. Q3 fondateur : the route is ADMIN GRUBANO ONLY (it used to be
 // owner-scoped) — a restaurateur session is 403, no session is 401, both attempts
-// AUDITED ('refund.denied'); an accepted refund is audited ('refund.run'). The A5
-// mechanics are unchanged: pass-through to lib/refunds (Stripe pro-rata +
-// reverse_transfer + idempotency), 409s surfaced verbatim, paymentStatus NEVER
-// mutated (ledger = truth).
+// AUDITED ('refund.denied'); an accepted refund is audited ('refund.run').
+// P0-26 : même régime que /api/admin/refunds/run — rate-limit → kill-switch
+// REFUNDS_ENABLED (défaut OFF → 403 « Remboursements indisponibles », AVANT toute
+// auth/DB/Stripe) → garde admin. The A5 mechanics are unchanged: pass-through to
+// lib/refunds (Stripe pro-rata + reverse_transfer + idempotency), 409s surfaced
+// verbatim, paymentStatus NEVER mutated (ledger = truth).
 const { db } = vi.hoisted(() => ({
   db: {
     order:      { findUnique: vi.fn(), update: vi.fn() },
@@ -25,6 +27,11 @@ vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
 
 const { refundMock } = vi.hoisted(() => ({ refundMock: vi.fn() }))
 vi.mock('@/lib/refunds', () => ({ refundPayment: refundMock }))
+
+// P0-26 — kill-switch + rate-limit du même régime que refunds/run.
+const { flagMock, limitMock } = vi.hoisted(() => ({ flagMock: vi.fn(), limitMock: vi.fn() }))
+vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock }))
+vi.mock('@/lib/rate-limit', () => ({ rateLimit: limitMock }))
 
 const { emailMock } = vi.hoisted(() => ({ emailMock: vi.fn() }))
 vi.mock('@/lib/transactional-emails', () => ({ sendRefundConfirmation: emailMock }))
@@ -49,6 +56,8 @@ const paidOrder = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  flagMock.mockReturnValue(true)   // REFUNDS_ENABLED ON (réglage bêta) pour les tests de passage
+  limitMock.mockReturnValue(null)  // non limité par défaut
   sessionMock.mockResolvedValue(ADMIN)
   auditMock.mockResolvedValue(undefined)
   db.order.findUnique.mockResolvedValue(paidOrder)
@@ -58,6 +67,32 @@ beforeEach(() => {
     ok: true, refund: { id: 're_1' }, refundedCents: 1000, remainingCents: 1500, routed: true,
   })
   emailMock.mockResolvedValue(undefined)
+})
+
+describe('POST /api/orders/[id]/refund — P0-26 kill-switch + rate-limit (régime refunds/run)', () => {
+  it('⭐ REFUNDS_ENABLED OFF → 403 « Remboursements indisponibles » AVANT auth/DB/Stripe', async () => {
+    flagMock.mockReturnValue(false)
+    const res = await call()
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ error: 'Remboursements indisponibles', gated: true })
+    expect(refundMock).not.toHaveBeenCalled()
+    expect(sessionMock).not.toHaveBeenCalled()      // gate AVANT la garde admin
+    expect(db.order.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('rate-limit : la réponse du limiteur est renvoyée telle quelle, rien ne s\'exécute', async () => {
+    const tooMany = new Response(JSON.stringify({ error: 'Trop de requêtes' }), { status: 429 })
+    limitMock.mockReturnValue(tooMany)
+    const res = await call()
+    expect(res.status).toBe(429)
+    expect(limitMock).toHaveBeenCalledWith(expect.anything(), 'order_refund', { limitDefault: 20, windowDefault: 60 })
+    expect(flagMock).not.toHaveBeenCalled()
+    expect(refundMock).not.toHaveBeenCalled()
+  })
+
+  it('flag ON + admin → accès normal conservé (200)', async () => {
+    expect((await call()).status).toBe(200)
+  })
 })
 
 describe('POST /api/orders/[id]/refund — P0-03 admin gate + audit', () => {
