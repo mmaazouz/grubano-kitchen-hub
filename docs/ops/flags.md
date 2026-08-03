@@ -28,6 +28,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `FRANCHISE_POS_TAGGING_ENABLED` | `lib/franchise-pos-tagging.ts` | Attribution POS des commandes |
 | `FRANCHISE_ROYALTY_ENABLED` | `lib/franchise-royalty.ts` | Royalties franchise |
 | `FRANCHISE_SETTLEMENT_ENABLED` | `lib/franchise-settlement.ts` | Reversement franchiseur |
+| `GHOST_ORDER_AUTO_REFUND_ENABLED` | `lib/refund.ts` | Auto-refund ghost-order du webhook (P0-04 — défaut OFF, peut rester OFF toute la bêta ; OFF → file manuelle `reconcile_manual`) |
 | `INFLUENCER_ENABLED` | `lib/influencer-verification.ts` | Palier influenceur (vérif audience + taux majoré) |
 | `LOGISTICS_AVAILABILITY_ENABLED` | `lib/logistics-availability.ts` | Statut en ligne livreur |
 | `LOGISTICS_COURIER_ACCRUAL_ENABLED` | `lib/courier-accrual.ts` | Accrual course livreur (cas B) |
@@ -45,7 +46,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `PRESTATAIRE_ENABLED` | `lib/prestataire-account.ts` | Marketplace prestataires (404 OFF) |
 | `PRESTATAIRE_CONNECT_ENABLED` | `lib/prestataire-connect.ts` | Connect prestataire |
 | `RATE_LIMIT_ENABLED` | `lib/rate-limit.ts` | Rate-limiting applicatif (sûr à activer — audit go-live) |
-| `REFUNDS_ENABLED` | `lib/refund.ts` | Moteur de remboursement |
+| `REFUNDS_ENABLED` | `lib/refund.ts` | Outil de remboursement ADMIN uniquement (P0-04 : ne gouverne PLUS l'auto-refund ghost-order — voir `GHOST_ORDER_AUTO_REFUND_ENABLED`) |
 | `SUPPLIER_CONNECT_ENABLED` | `lib/supplier-connect.ts` | Paiements fournisseurs B2B |
 | `TIPS_ENABLED` | `lib/tips.ts` | Pourboires (⚠️ fonds tiers — voir couplages) |
 
@@ -61,6 +62,7 @@ Un flag ON dont le prérequis est OFF = danger argent/confiance. Vérifiés par
 | Si ce flag est ON… | …alors celui-ci DOIT l'être | Pourquoi |
 |---|---|---|
 | `CLAIMS_ENABLED` | `REFUNDS_ENABLED` | claim approuvée sans refund = approuvée-mais-non-remboursée |
+| `GHOST_ORDER_AUTO_REFUND_ENABLED` | `REFUNDS_ENABLED` | l'auto-refund ghost-order réutilise le moteur admin (P0-04). ⚠️ L'inverse n'est PAS requis : `CLAIMS`+`REFUNDS` ON n'allument AUCUN remboursement automatique — l'auto-refund exige son propre flag, défaut OFF (Q3) |
 | `TIPS_ENABLED` | `LOGISTICS_PAYOUT_ENABLED` | pourboire encaissé sans rail de reversement = fonds tiers retenus (D-1) |
 | `LOGISTICS_COURIER_ACCRUAL_ENABLED` | `LOGISTICS_PAYOUT_ENABLED` | course retenue sans reversement (D-1 symétrique) |
 | `LOGISTICS_PAYOUT_ENABLED` | `LOGISTICS_CONNECT_ENABLED` | reversement sans compte Connect onboardé |
