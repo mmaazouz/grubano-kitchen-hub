@@ -45,12 +45,27 @@ export function claimWindowHours(): number { return envHours('CLAIM_WINDOW_HOURS
 export function claimResponseHours(): number { return envHours('CLAIM_RESPONSE_HOURS', 24) }
 /** Contest window (default 48h) — a client may contest a refusal within this delay (C2). */
 export function claimContestHours(): number { return envHours('CLAIM_CONTEST_HOURS', 48) }
-/** Auto-resolution ceiling in CENTS (default 1000 = 10€). A claim at/below this — from a
- *  non-flagged consumer — is approved directly (carried by the resto via the engine's
- *  prorata), no resto round-trip. 0 disables auto-resolution. (C2) */
+/** P0-27 (vague 1) — verrou fail-safe de l'AUTO-RÉSOLUTION des petites réclamations
+ *  (`autoResolveSmallClaim`, decidedBy 'auto_small' — le dernier chemin qui remboursait
+ *  sans humain, signalé par la note Q3 de docs/ops/flags.md). Défaut OFF : l'ABSENCE de
+ *  configuration signifie « désactivé », jamais « 10 € ». Seule la chaîne exacte 'true'
+ *  active (convention maison, couplage check-flags : exige CLAIMS_ENABLED). */
+export function isClaimAutoResolveEnabled(): boolean {
+  return process.env.CLAIM_AUTO_RESOLVE_ENABLED === 'true'
+}
+/** Auto-resolution ceiling in CENTS. P0-27 : FAIL-SAFE — l'ancien défaut permissif
+ *  (1000 = 10 € d'auto-remboursement ACTIF sans aucune config) est supprimé :
+ *  absent/vide → 0 (désactivé) ; valeur mal formée (non-entier, négatif, texte) → 0
+ *  + trace console — une erreur de configuration ne retombe JAMAIS sur un
+ *  comportement permissif. Ne sert que si isClaimAutoResolveEnabled() est ON. (C2) */
 export function claimAutoApproveMaxCents(): number {
-  const v = Number.parseInt(process.env.CLAIM_AUTO_APPROVE_MAX_CENTS ?? '', 10)
-  return Number.isFinite(v) && v >= 0 ? v : 1000
+  const raw = (process.env.CLAIM_AUTO_APPROVE_MAX_CENTS ?? '').trim()
+  if (raw === '') return 0
+  if (!/^\d+$/.test(raw)) {
+    console.warn(`[claims auto-resolve] [P0-27] CLAIM_AUTO_APPROVE_MAX_CENTS mal formée (« ${raw} ») — plafond forcé à 0, auto-résolution désactivée (fail-safe).`)
+    return 0
+  }
+  return Number.parseInt(raw, 10)
 }
 /** SOFT anti-abuse orientation thresholds (no money sanction, no hard block). */
 function abuseRecentThreshold(): number {
@@ -384,9 +399,17 @@ export async function isConsumerAbuseFlagged(consumerId: string): Promise<boolea
 // the resto via the engine prorata), no resto round-trip. Otherwise a NO-OP → the claim
 // stays 'restaurant_review' = the exact C1 flow. Reuses approveClaim (CAS) +
 // triggerClaimRefund (≤1 refund/claim). Never a second refund (refundAttempted guard).
+// P0-27 : DOUBLE VERROU FAIL-SAFE — flag booléen (défaut OFF, gate n°1) ET plafond > 0
+// (défaut 0, gate n°2). Sans configuration explicite des DEUX, aucun remboursement
+// automatique ne part : la réclamation suit le flux C1 (revue restaurant), et le
+// non-déclenchement est TRACÉ (console.warn), jamais silencieux.
 export async function autoResolveSmallClaim(
   claim: { id: string; consumerId: string; requestedAmountCents: number; status: string },
 ): Promise<RefundTriggerResult | { state: 'not_eligible' }> {
+  if (!isClaimAutoResolveEnabled()) {
+    console.warn('[claims auto-resolve] [P0-27] CLAIM_AUTO_RESOLVE_ENABLED est OFF — aucune auto-résolution, la réclamation part en revue restaurant (validation humaine).')
+    return { state: 'not_eligible' }
+  }
   if (claim.status !== 'restaurant_review') return { state: 'not_eligible' }
   const ceiling = claimAutoApproveMaxCents()
   if (ceiling <= 0 || claim.requestedAmountCents > ceiling) return { state: 'not_eligible' }

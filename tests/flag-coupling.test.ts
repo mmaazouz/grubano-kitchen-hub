@@ -53,6 +53,22 @@ describe('checkFlagCoupling', () => {
     expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' })).toEqual({ ok: true, errors: [] })
   })
 
+  // P0-27 (vague 1) — auto-résolution auto_small derrière son propre verrou fail-safe.
+  it('CLAIM_AUTO_RESOLVE without CLAIMS → incoherent', () => {
+    const r = checkFlagCoupling({ CLAIM_AUTO_RESOLVE_ENABLED: 'true' })
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((e: string) => e.includes('CLAIM_AUTO_RESOLVE_ENABLED') && e.includes('CLAIMS_ENABLED'))).toBe(true)
+  })
+  it('CLAIM_AUTO_RESOLVE + CLAIMS sans REFUNDS → incoherent (transitif via CLAIMS⇒REFUNDS)', () => {
+    expect(checkFlagCoupling({ CLAIM_AUTO_RESOLVE_ENABLED: 'true', CLAIMS_ENABLED: 'true' }).ok).toBe(false)
+  })
+  it('chaîne complète AUTO_RESOLVE+CLAIMS+REFUNDS → coherent (config post-pilote)', () => {
+    expect(checkFlagCoupling({ CLAIM_AUTO_RESOLVE_ENABLED: 'true', CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
+  })
+  it('⭐ set bêta (CLAIMS+REFUNDS, auto-resolve ABSENT) → cohérent : l\'auto-résolution reste inopérante sans que check:flags proteste', () => {
+    expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' })).toEqual({ ok: true, errors: [] })
+  })
+
   // P4.3 ÉTAPE 6 — the REAL courier-rail couplings (replaces the phantom TIPS⇒TIP_PAYOUT).
   it('TIPS without LOGISTICS_PAYOUT → incoherent (D-1: tip charged, no reversal rail)', () => {
     const r = checkFlagCoupling({ TIPS_ENABLED: 'true' })
@@ -101,7 +117,7 @@ describe('checkFlagCoupling', () => {
     expect(r.errors).toHaveLength(2)
   })
 
-  it('COUPLING_RULES documents the 9 known couplings (courier ÉTAPE 6 + scission P0-04 + auto-approve P0-25)', () => {
-    expect(COUPLING_RULES).toHaveLength(9)
+  it('COUPLING_RULES documents the 10 known couplings (courier ÉTAPE 6 + scission P0-04 + auto-approve P0-25 + auto-resolve P0-27)', () => {
+    expect(COUPLING_RULES).toHaveLength(10)
   })
 })

@@ -40,7 +40,7 @@ automatiquement tout push qui changerait la photographie sans l'assumer.
 | P7 Livraison | `p7-livraison-terminale.test.ts` | 12 | 8 | 3 | 1 | `delivered` **atteignable via l'API resto** (écart vs audit) mais jamais via l'UI (bouton gaté pickup) ni via le rail livreur (Mission ≠ Order) → fidélité jamais créditée sur une delivery pilotée par les surfaces réelles. |
 | P8 Cash payable carte | `p8-cash-payable-carte.test.ts` | 13 | 8 | 3 | 2 | **Ré-photographié vague 1 (P0-02)** : ACT 1 inversé — cash/wallet REFUSÉS 400 côté serveur, zéro écriture DB. ACT 2 inchangé : `/pay` ne lit toujours pas `paymentMethod` → double encaissement encore possible sur les lignes cash HÉRITÉES. |
 | P9 Avis / ★ seedée | `p9-avis-etoile-seedee.test.ts` | 12 | 6 | 5 | 1 | `orderId` fantôme stocké verbatim, aucun check rôle/commande (auto-avis possible) ; `Restaurant.rating` seedé jamais recalculé (documenté « choix produit différé » dans le code). |
-| P10 Claims activation | `p10-claims-activation.test.ts` | 12 | 6 | 3 | 3 | La logique flag ON **ne crashe pas** au niveau route ; vecteur de crash réel = flag ON sans `prisma db push` (P2021 → 500 brut, aucune frontière d'erreur), y compris en GET. Gate OFF = 403 `{gated:true}`, pas 404. |
+| P10 Claims activation | `p10-claims-activation.test.ts` | 14 | 8 | 3 | 3 | **Ré-photographié vague 1 (P0-27)** : plus d'`auto_small` par défaut — sans `CLAIM_AUTO_RESOLVE_ENABLED`+plafond explicites, une petite réclamation reste en revue restaurant (tracé). Vecteur de crash réel inchangé = flag ON sans `prisma db push` (P2021 → 500 brut), y compris en GET. Gate OFF = 403 `{gated:true}`, pas 404. |
 
 **Totaux : 90 PASS-ACTUEL · 34 FAIL-ATTENDU · 22 NON-TESTABLE** (à la création ; après la ré-photographie P8 de vague 1 : 92 · 32 · 22).
 

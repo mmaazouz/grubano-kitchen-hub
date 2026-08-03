@@ -21,6 +21,10 @@ export const COUPLING_RULES = [
   // P0-25 (vague 1) : la route d'auto-approbation des réclamations (sweep auto_timeout,
   // rembourse SANS humain) a son propre kill-switch, défaut OFF toute la bêta.
   { flag: 'CLAIMS_AUTO_APPROVE_ENABLED',     requires: 'CLAIMS_ENABLED',           why: 'l\'auto-approbation balaye des réclamations — sans le cycle réclamations actif elle n\'a aucun sens (et via CLAIMS⇒REFUNDS elle exige transitivement le moteur)' },
+  // P0-27 (vague 1) : l'auto-résolution des PETITES réclamations (auto_small — le dernier
+  // chemin qui remboursait sans humain) a désormais son propre verrou fail-safe, défaut
+  // OFF toute la bêta ; son plafond CLAIM_AUTO_APPROVE_MAX_CENTS vaut 0 par défaut.
+  { flag: 'CLAIM_AUTO_RESOLVE_ENABLED',      requires: 'CLAIMS_ENABLED',           why: 'l\'auto-résolution des petites réclamations (auto_small) rembourse sans validation humaine — sans le cycle réclamations actif elle n\'a aucun sens (et via CLAIMS⇒REFUNDS elle exige transitivement le moteur)' },
   // ── Rail livreur P4.3 (ÉTAPE 6) — remplace l'ANCIEN couplage fantôme TIPS⇒TIP_PAYOUT_ENABLED
   // (flag no-op supprimé). Le pourboire encaissé (TIPS) ET la course cas B retenue
   // (LOGISTICS_COURIER_ACCRUAL) sont des fonds tiers : sans rail de reversement (LOGISTICS_PAYOUT)
