@@ -238,8 +238,13 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
     return () => clearInterval(id)
   }, [hasPending, playChime])
 
-  const statusLabel = (s: string): string =>
-    KNOWN_STATUS.has(s) ? ts(`status_${s}`) : ts('status_unknown')
+  // P0-19 — on a PICKUP order, 'picked_up'/'delivered' mean "collected by the
+  // client": never show delivery vocabulary. Display only — status values and
+  // transitions are untouched.
+  const statusLabel = (s: string, fulfillmentType?: string): string => {
+    if (fulfillmentType === 'pickup' && (s === 'picked_up' || s === 'delivered')) return ts('status_collected')
+    return KNOWN_STATUS.has(s) ? ts(`status_${s}`) : ts('status_unknown')
+  }
 
   // Brand-filtered orders, then split into tabs. Tab badge counts respect the
   // brand filter so the badges and the visible list stay consistent. A new order
@@ -509,7 +514,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
                   <span className="oc-total mono">{formatEuros(o.total, locale)}</span>
                   <MiniStepper status={o.status} fulfillmentType={o.fulfillmentType} />
                   <span className={'stage-label' + (o.status === 'delivered' ? ' done' : o.status === 'cancelled' ? ' cancelled' : '')}>
-                    {statusLabel(o.status)}
+                    {statusLabel(o.status, o.fulfillmentType)}
                   </span>
                 </div>
 
@@ -555,7 +560,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
                   <span className="ms">block</span>{t('detail.cancelled')}
                 </div>
               ) : (
-                <FullStepper status={detailOrder.status} fulfillmentType={detailOrder.fulfillmentType} statusLabel={statusLabel} />
+                <FullStepper status={detailOrder.status} fulfillmentType={detailOrder.fulfillmentType} statusLabel={(s) => statusLabel(s, detailOrder.fulfillmentType)} />
               )}
 
               {/* Customer — MASKED identity only (founder hybrid model). Email,
@@ -609,7 +614,10 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
                 {detailOrder.discount > 0 && (
                   <div className="row discount"><span>{t('detail.discount')}</span><span>−{formatEuros(detailOrder.discount, locale)}</span></div>
                 )}
-                <div className="row"><span>{t('detail.deliveryFee')}</span><span>{formatEuros(detailOrder.deliveryFee, locale)}</span></div>
+                {/* P0-19 — no delivery-fee line on a pickup order (delivery vocabulary). */}
+                {detailOrder.fulfillmentType !== 'pickup' && (
+                  <div className="row"><span>{t('detail.deliveryFee')}</span><span>{formatEuros(detailOrder.deliveryFee, locale)}</span></div>
+                )}
                 <div className="row grand"><span>{t('detail.total')}</span><b>{formatEuros(detailOrder.total, locale)}</b></div>
               </div>
 

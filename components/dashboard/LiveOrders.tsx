@@ -49,8 +49,12 @@ function LiveOrdersInner({ orders }: { orders: LiveOrder[] }) {
   const t = useTranslations('dashboard.home.liveOrders')
   const { advance, pendingId } = useOrderAdvance()
 
-  const statusLabel = (status: string): string =>
-    KNOWN_STATUS.has(status) ? t(`status_${status}`) : t('status_unknown')
+  // P0-19 — pickup orders never show delivery vocabulary ("En route"/"Livrée"):
+  // 'picked_up'/'delivered' mean "collected by the client". Display only.
+  const statusLabel = (status: string, fulfillmentType?: string): string => {
+    if (fulfillmentType === 'pickup' && (status === 'picked_up' || status === 'delivered')) return t('status_collected')
+    return KNOWN_STATUS.has(status) ? t(`status_${status}`) : t('status_unknown')
+  }
 
   return (
     <div className="space-y-2">
@@ -82,7 +86,7 @@ function LiveOrdersInner({ orders }: { orders: LiveOrder[] }) {
                   <span className="text-xs font-bold text-grubano-ink">
                     #{o.id.slice(-6).toUpperCase()}
                   </span>
-                  <Badge tone={statusTone(o.status)} size="sm">{statusLabel(o.status)}</Badge>
+                  <Badge tone={statusTone(o.status)} size="sm">{statusLabel(o.status, o.fulfillmentType)}</Badge>
                   <Badge
                     tone="neutral"
                     size="sm"
