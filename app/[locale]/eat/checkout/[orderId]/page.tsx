@@ -290,7 +290,9 @@ export default function CheckoutPage() {
       {stage === 'error' && (
         <div className="center">
           <div className="panel">
-            <div className="notice notice--err"><span className="ms" aria-hidden="true">error</span><span>{error || t('errLoad')}</span></div>
+            {/* P0-30bis — no `.ms` ligature next to refusal messages (renders as a
+                glued « error » word when the icon font is unavailable). */}
+            <div className="notice notice--err" role="alert"><span>{error || t('errLoad')}</span></div>
             <div className="pcta"><button type="button" className="cta" onClick={loadOrder}><span className="ms" aria-hidden="true">refresh</span><span>{t('retry')}</span></button></div>
           </div>
         </div>
@@ -492,7 +494,7 @@ export default function CheckoutPage() {
                 )}
 
                 {error && stage === 'review' && (
-                  <div className="notice notice--err"><span className="ms" aria-hidden="true">error</span><span>{error}</span></div>
+                  <div className="notice notice--err" role="alert"><span>{error}</span></div>
                 )}
 
                 {/* desktop CTA (hidden under the sticky mobile bar at ≤820px) */}
@@ -506,7 +508,7 @@ export default function CheckoutPage() {
           {/* mobile sticky pay bar */}
           {stage === 'review' && (
             <div className="mbar">
-              {error && <div className="notice notice--err"><span className="ms" aria-hidden="true">error</span><span>{error}</span></div>}
+              {error && <div className="notice notice--err" role="alert"><span>{error}</span></div>}
               <PayCta id="pay-cta-mobile" />
             </div>
           )}

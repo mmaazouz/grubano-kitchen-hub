@@ -341,7 +341,8 @@ export default function OrderHelpScreen() {
           {/* FLAG ON, submit ERROR → the API error, verbatim. */}
           {claimsEnabled && submitState === 'error' && submitError && (
             <div className="soon" role="alert">
-              <span className="ms" aria-hidden="true">error</span>{submitError}
+              {/* P0-30bis — no `.ms` ligature glued to the refusal message. */}
+              {submitError}
             </div>
           )}
 
