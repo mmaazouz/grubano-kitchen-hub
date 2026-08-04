@@ -715,7 +715,7 @@ export default function CartScreen() {
                             </span>
                           </button>
                         ))}
-                        <div className="sel-err"><span className="ms" aria-hidden="true">error</span>{ta('selErr')}</div>
+                        <div className="sel-err" role="alert">{ta('selErr')}</div>
                         <button type="button" className="sel-add" onClick={() => router.push('/eat/account/addresses')}><span className="ms" aria-hidden="true">add_location_alt</span>{ta('selAdd')}</button>
                       </div>
                     </div>
@@ -944,7 +944,10 @@ export default function CartScreen() {
                 <div className="reassure"><span className="ms" aria-hidden="true">lock</span>{t('securePayment')}</div>
 
                 {error && (
-                  <div className="cart-err"><span className="ms" aria-hidden="true">error</span>{error}</div>
+                  /* P0-30bis — no `.ms` ligature next to the message: when the icon
+                     font is unavailable the word « error » renders glued to the text
+                     (« errorLa livraison… »). The refusal message displays alone. */
+                  <div className="cart-err" role="alert">{error}</div>
                 )}
               </div>
             </aside>
