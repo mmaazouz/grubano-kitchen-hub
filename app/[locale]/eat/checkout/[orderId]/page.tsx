@@ -144,7 +144,20 @@ export default function CheckoutPage() {
     try {
       const r = await fetch(`/api/orders/${order.id}/pay`, { method: 'POST' })
       const body = await r.json().catch(() => null)
-      if (r.status === 409) { setStage('already-paid'); return }
+      if (r.status === 409) {
+        // P0-29 (vague 2) : un 409 du rail /pay n'est PLUS forcément « déjà
+        // payée » — il refuse aussi les commandes héritées NON-CARTE
+        // (code 'payment_method_mismatch'). Sans cette branche, une commande
+        // cash NON payée s'affichait avec la coche verte « Cette commande est
+        // déjà payée » (fausse validation d'encaissement — trouvé en revue
+        // adversariale). Message serveur VERBATIM, comme les 400 ci-dessous.
+        if (body?.code === 'payment_method_mismatch') {
+          setError((body?.error as string) || t('errPayInit'))
+          return
+        }
+        setStage('already-paid')
+        return
+      }
       if (!r.ok || !body?.clientSecret || !body?.publishableKey) {
         // 400 cancelled / amount guard → the server message VERBATIM.
         setError((body?.error as string) || t('errPayInit'))

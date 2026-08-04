@@ -14,7 +14,7 @@ ne change rien** — aucun cron modifié, aucun secret listé, aucune exécution
 | [ci-garde-fous.md](ci-garde-fous.md) | (S0-5) Analyse des garde-fous CI : gates actuels, où brancher `check-flags.mjs`, quels tests bloquent une régression |
 | [branch-protection.md](branch-protection.md) | (B6) Procédure pas-à-pas pour rendre le check « CI — tests » obligatoire sur les PR — réglage GitHub à cliquer par Mohammed |
 | [code-mort-inventaire.md](code-mort-inventaire.md) | (S0-6/B1) Inventaire du code mort prouvé + journal des suppressions exécutées |
-| [sql/p0-02-cash-orders-inventory.sql](sql/p0-02-cash-orders-inventory.sql) | (P0-02, vague 1) Inventaire READ-ONLY des commandes non-carte héritées — 3 SELECT prêts à coller (phpMyAdmin/CLI), à exécuter par Mohammed ; grille de lecture en commentaire |
+| [sql/p0-02-cash-orders-inventory.sql](sql/p0-02-cash-orders-inventory.sql) | (P0-02 vague 1 + addendum P0-29 vague 2) Inventaire READ-ONLY des commandes non-carte héritées — 5 SELECT prêts à coller (R1-R3 dénombrement/suspects/cohérence, R4-R5 stock protégé par le garde /pay + double encaissement matérialisé), à exécuter par Mohammed ; grille de lecture en commentaire |
 
 Conventions :
 - ✅ = vérifié dans le repo (fichier:ligne ou workflow cité).

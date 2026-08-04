@@ -32,7 +32,13 @@ describe('P0-30 — le mode espèces n’est plus proposé par le panier', () =>
 
   it("plus aucune mention d'espèces dans le code actif (cashOnDelivery retiré de l'affichage)", () => {
     expect(/cashOnDelivery/.test(code)).toBe(false)
-    expect(/'cash'/.test(code.replace(/const payment = 'card' as const/, ''))).toBe(false)
+    expect(/'cash'/.test(code)).toBe(false)
+  })
+
+  it("l'AUTRE émetteur (eat-next/checkout-order.ts) reste câblé 'card' en dur — verrouillé lui aussi (revue)", () => {
+    const co = stripComments(read('app/[locale]/eat-next/checkout-order.ts'))
+    expect(/paymentMethod:\s*'card'/.test(co)).toBe(true)
+    expect(/'cash'|'wallet'/.test(co)).toBe(false)
   })
 
   it('parcours carte inchangé : post-succès → TOUJOURS /eat/checkout/[orderId] (la branche non-carte → /eat/track est retirée)', () => {
