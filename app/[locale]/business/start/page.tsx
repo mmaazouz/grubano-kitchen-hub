@@ -4,6 +4,10 @@ import { Store, Truck, UtensilsCrossed, Bike, Wrench, Megaphone, ChevronRight } 
 import { Card } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
+import { isCreatorEnabled } from '@/lib/creator-account'
+import { isSupplierEnabled } from '@/lib/supplier-account'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 
 /**
@@ -59,9 +63,14 @@ export default async function BusinessStartPage({ params }: { params: { locale: 
   const t = await getTranslations('business.start')
 
   // Conditional cards avoid dead links: each gated surface 404s when its flag is OFF, so the
-  // card is shown ONLY when its flag is ON (prestataire = PRESTATAIRE_ENABLED, affiliate =
-  // AFFILIATE_ENABLED). The base partners are always shown.
-  const partners: Partner[] = [...BASE_PARTNERS]
+  // card is shown ONLY when its flag is ON. P0-38 — les 3 parcours historiques
+  // (fournisseur, créateur, logistique) deviennent conditionnels comme prestataire/
+  // affilié : un lien de navigation vers une capacité masquée est une promesse
+  // fantôme (échec constaté par le fondateur). Rôles gelés → cartes ABSENTES.
+  const ROLE_FLAG_OF: Record<string, () => boolean> = {
+    fournisseur: isSupplierEnabled, creator: isCreatorEnabled, logistique: isLogisticsEnabled,
+  }
+  const partners: Partner[] = BASE_PARTNERS.filter((p) => ROLE_FLAG_OF[p.key]?.() ?? true)
   if (isPrestataireEnabled()) partners.push(PRESTATAIRE_PARTNER)
   if (isAffiliateEnabled()) partners.push(AFFILIATE_PARTNER)
 
@@ -115,13 +124,15 @@ export default async function BusinessStartPage({ params }: { params: { locale: 
           ))}
         </div>
 
-        {/* ── Group & Franchise — discreet line ── */}
-        <p className="mt-5 text-center text-grubano-sm text-grubano-ink-muted">
-          {t('franchiseLine')}{' '}
-          <Link href="/franchise/apply" className="font-semibold text-grubano-primary hover:underline">
-            {t('franchiseCta')}
-          </Link>
-        </p>
+        {/* ── Group & Franchise — discreet line (P0-38 : cachée rôle gelé) ── */}
+        {isFranchiseEnabled() && (
+          <p className="mt-5 text-center text-grubano-sm text-grubano-ink-muted">
+            {t('franchiseLine')}{' '}
+            <Link href="/franchise/apply" className="font-semibold text-grubano-primary hover:underline">
+              {t('franchiseCta')}
+            </Link>
+          </p>
+        )}
 
         {/* ── Already a partner ── */}
         <p className="mt-6 text-center text-grubano-sm text-grubano-ink-muted">

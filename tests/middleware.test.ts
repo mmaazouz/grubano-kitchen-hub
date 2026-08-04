@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -34,9 +34,16 @@ const asRole = (role: string) =>
 const asRoles = (roles: string[]) =>
   getTokenMock.mockResolvedValue({ role: roles[0], roles, sub: 'u1', email: 'u@example.com' })
 
+// P0-38 — les redirections de rôle du middleware ne s'appliquent que ROLES OUVERTS :
+// quand le flag racine est OFF, l'espace traverse (le layout de l'arbre répond 404).
+// Ces tests historiques exercent le comportement rôles OUVERTS → flags ON explicites ;
+// le comportement flag OFF (traversant, sans redirection) est prouvé en fin de fichier.
+const ROLE_FLAGS = ['CREATOR_ENABLED', 'SUPPLIER_ENABLED', 'FRANCHISE_ENABLED', 'LOGISTICS_ENABLED']
 beforeEach(() => {
   getTokenMock.mockReset()
+  for (const f of ROLE_FLAGS) process.env[f] = 'true'
 })
+afterEach(() => { for (const f of ROLE_FLAGS) delete process.env[f] })
 
 describe('middleware — role routing after locale strip', () => {
   it('lets a restaurant role through to /dashboard', async () => {
@@ -351,5 +358,29 @@ describe('middleware — anti-infinite-loop (bounded redirects)', () => {
     const r = await followChain('/fr/stocks', 'creator')
     expect(r.settled).toBe(true)
     expect(r.hops).toBeLessThanOrEqual(2)
+  })
+})
+
+describe('middleware — P0-38 : rôle gelé (flag OFF) → espace TRAVERSANT, aucune redirection', () => {
+  const OFF = () => { for (const f of ROLE_FLAGS) delete process.env[f] }
+  it('restaurateur connecté : les 4 tableaux de bord passent (le layout 404era)', async () => {
+    OFF(); asRole('restaurant')
+    for (const p of ['/fr/supplier/dashboard', '/fr/logistics/dashboard', '/fr/franchise/dashboard', '/fr/creators/dashboard']) {
+      const res = await middleware(reqFor(p))
+      expect(passed(res), p).toBe(true)
+    }
+  })
+  it('anonyme : les mêmes chemins passent aussi — pas de détour /login (introuvable, pas gardé)', async () => {
+    OFF(); getTokenMock.mockResolvedValue(null)
+    for (const p of ['/fr/supplier/dashboard', '/fr/logistics/dashboard', '/fr/franchise/dashboard', '/fr/creators/dashboard']) {
+      const res = await middleware(reqFor(p))
+      expect(passed(res), p).toBe(true)
+    }
+  })
+  it('contrôle positif flags ON : restaurateur toujours redirigé de /supplier/dashboard', async () => {
+    for (const f of ROLE_FLAGS) process.env[f] = 'true'
+    asRole('restaurant')
+    const res = await middleware(reqFor('/fr/supplier/dashboard'))
+    expect(passed(res)).toBe(false)
   })
 })
