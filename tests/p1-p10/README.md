@@ -27,22 +27,22 @@ Les deux workflows de déploiement (`deploy-staging.yml`, `deploy-production.yml
 exécutent déjà `npm run test:ci` en gate bloquant → ce harnais bloque
 automatiquement tout push qui changerait la photographie sans l'assumer.
 
-## Inventaire (état au commit de création — 146 tests, 0 failed)
+## Inventaire (146 tests au commit de création ; 148 après les ré-photographies de vague 1 — P8/P10, voir totaux)
 
 | Parcours | Fichier | Tests | PASS | FAIL-ATT. | NON-TEST. | Constat clé |
 |---|---|---|---|---|---|---|
-| P1 Référence C&C carte | `p1-reference-click-collect.test.ts` | 30 | 25 | 3 | 2 | Socle hors-argent OK bout en bout (machine d'états + fidélité idempotente à `delivered`). |
+| P1 Référence C&C carte | `p1-reference-click-collect.test.ts` | 30 | 25 | 3 | 2 | Socle hors-argent OK bout en bout (machine d'états + fidélité idempotente à `delivered`). **1 test ré-photographié vague 1 (P0-02)** : pickup+espèces → 400 (comptes inchangés). |
 | P2 Carte refusée | `p2-carte-refusee.test.ts` | 19 | 15 | 1 | 3 | Anti-double-paiement **CONFIRMÉ** (3 couches). Mais aucun handler `payment_intent.payment_failed` → un refus carte ne laisse aucune trace serveur. |
 | P3 Annulation resto payée | `p3-annulation-resto-payee.test.ts` | 14 | 10 | 2 | 2 | Aucun remboursement automatique à l'annulation d'une commande payée (lib refund jamais appelée). |
 | P4 Annulation client | `p4-annulation-client.test.ts` | 7 | 3 | 3 | 1 | Annulation client **inexistante** (aucune route ; PATCH status → 403 pour un consumer). |
 | P5 Refund humain | `p5-refund-humain.test.ts` | 7 | 5 | 0 | 2 | Modale `/finance` inerte **par construction** (bouton `disabled` en dur) ; le rail owner `POST /api/orders/[id]/refund` fonctionne, lui, indépendamment de la surface. |
 | P6 Support | `p6-support-decoratif.test.ts` | 20 | 6 | 9 | 5 | Support décoratif confirmé (aucun backend, e-mail sans `mailto:`, présence « En ligne » simulée, ETA promis en dur). Nuance : la vue remboursement de l'aide est câblée sur `/api/claims` mais gatée `CLAIMS_ENABLED` OFF. |
 | P7 Livraison | `p7-livraison-terminale.test.ts` | 12 | 8 | 3 | 1 | `delivered` **atteignable via l'API resto** (écart vs audit) mais jamais via l'UI (bouton gaté pickup) ni via le rail livreur (Mission ≠ Order) → fidélité jamais créditée sur une delivery pilotée par les surfaces réelles. |
-| P8 Cash payable carte | `p8-cash-payable-carte.test.ts` | 13 | 6 | 5 | 2 | `/pay` ne lit même pas `paymentMethod` (absent du `select`) → PI carte créé sans objection sur une commande cash déjà en cuisine ; double encaissement possible. |
+| P8 Cash payable carte | `p8-cash-payable-carte.test.ts` | 13 | 8 | 3 | 2 | **Ré-photographié vague 1 (P0-02)** : ACT 1 inversé — cash/wallet REFUSÉS 400 côté serveur, zéro écriture DB. ACT 2 inchangé : `/pay` ne lit toujours pas `paymentMethod` → double encaissement encore possible sur les lignes cash HÉRITÉES. |
 | P9 Avis / ★ seedée | `p9-avis-etoile-seedee.test.ts` | 12 | 6 | 5 | 1 | `orderId` fantôme stocké verbatim, aucun check rôle/commande (auto-avis possible) ; `Restaurant.rating` seedé jamais recalculé (documenté « choix produit différé » dans le code). |
-| P10 Claims activation | `p10-claims-activation.test.ts` | 12 | 6 | 3 | 3 | La logique flag ON **ne crashe pas** au niveau route ; vecteur de crash réel = flag ON sans `prisma db push` (P2021 → 500 brut, aucune frontière d'erreur), y compris en GET. Gate OFF = 403 `{gated:true}`, pas 404. |
+| P10 Claims activation | `p10-claims-activation.test.ts` | 14 | 8 | 3 | 3 | **Ré-photographié vague 1 (P0-27)** : plus d'`auto_small` par défaut — sans `CLAIM_AUTO_RESOLVE_ENABLED`+plafond explicites, une petite réclamation reste en revue restaurant (tracé). Vecteur de crash réel inchangé = flag ON sans `prisma db push` (P2021 → 500 brut), y compris en GET. Gate OFF = 403 `{gated:true}`, pas 404. |
 
-**Totaux : 90 PASS-ACTUEL · 34 FAIL-ATTENDU · 22 NON-TESTABLE.**
+**Totaux : 90 PASS-ACTUEL · 34 FAIL-ATTENDU · 22 NON-TESTABLE** (à la création — 146 tests ; après les ré-photographies de vague 1, P8 + P10 : 148 tests = 94 · 32 · 22).
 
 ## Écarts notables vs la Carte des écarts v1 (à reporter à Agent 0)
 

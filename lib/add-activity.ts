@@ -33,10 +33,21 @@ export interface AnchorIdentity {
  *  stays pure). When OFF, the affiliate activity is NEVER offered. */
 export function addableActivities(
   roles: string[] | undefined | null,
-  opts?: { includeAffiliate?: boolean; includePrestataire?: boolean },
+  opts?: {
+    includeAffiliate?: boolean
+    includePrestataire?: boolean
+    // P0-06 — the four historic journeys are now flag-gated too (doctrine Q8:
+    // masked = unavailable). The caller resolves each role flag (never read here
+    // so this stays pure). OMITTED (undefined) → offered, which keeps existing
+    // callers/tests byte-identical; the page passes the real flags.
+    enabledPartnerActivities?: Partial<Record<'supplier' | 'creator' | 'logistics' | 'franchise', boolean>>
+  },
 ): AddableActivity[] {
   const have = new Set(Array.isArray(roles) ? roles : [])
-  let out: AddableActivity[] = ADDABLE_ACTIVITIES.filter((a) => !have.has(a))
+  const enabled = opts?.enabledPartnerActivities
+  let out: AddableActivity[] = ADDABLE_ACTIVITIES.filter(
+    (a) => !have.has(a) && (enabled?.[a as 'supplier' | 'creator' | 'logistics' | 'franchise'] !== false),
+  )
   // 'prestataire' (Phase 6 P1) is offered ONLY when PRESTATAIRE_ENABLED is ON (resolved by
   // the caller, never read here so this stays pure). When OFF it is NEVER offered → byte-
   // identical to before this brick.

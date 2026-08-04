@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── POST /api/supplier/register — LEAN signup (Agent 111, étape 2) ─────────────
 // The registration now collects ONLY the identity: companyName + contactName + email
@@ -25,6 +25,12 @@ vi.mock('@/lib/supplier-account', async (importOriginal) => {
 vi.mock('@/lib/business-verification', () => ({ verifyBusiness: verify }))
 
 import { POST } from '@/app/api/supplier/register/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const BASE = {
   companyName: 'Primeurs Lyon', contactName: 'Marie', email: 'M@Primeurs.fr', siren: '123456789',

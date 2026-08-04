@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── GET /api/creator/affiliate-opportunities — Brief du jour 2d (Agent 14) ─────
 // Session-aware (email, never ?creatorId), isInfluencer-gated, READ-ONLY heuristic
@@ -19,6 +19,12 @@ const { db } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 import { GET } from '@/app/api/creator/affiliate-opportunities/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
 
 const CREATOR = { id: 'cr1', isChef: true, isInfluencer: true }
 

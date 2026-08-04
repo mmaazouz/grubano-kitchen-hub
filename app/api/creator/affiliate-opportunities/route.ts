@@ -6,6 +6,7 @@ import { readCreatorRoles } from '@/lib/creator-roles'
 import {
   rankOpportunities, estimateTypicalGainCents, type OpportunityCandidate,
 } from '@/lib/affiliate-opportunities'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── GET /api/creator/affiliate-opportunities — « Brief du jour » (Slice 2d) ────
 // HEURISTIC (no LLM), READ-ONLY. Session-aware (Creator from the SESSION email,
@@ -24,6 +25,10 @@ function itemIdsOf(conditions: unknown): string[] {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

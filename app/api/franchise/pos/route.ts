@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { gateFranchise } from '@/lib/franchise-pos'
 import { resolveFranchiseRate } from '@/lib/franchise-royalty'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +31,10 @@ function deny(status: 401 | 403) {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const g = await gateFranchise()
     if (!g.ok) return deny(g.status)
@@ -113,6 +118,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const g = await gateFranchise()
     if (!g.ok) return deny(g.status)

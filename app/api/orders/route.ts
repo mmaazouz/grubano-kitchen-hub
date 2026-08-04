@@ -10,6 +10,7 @@ import { smallOrderFeeCents, netBeforeAffiliateCents } from '@/lib/pricing'
 import { isTipsEnabled, sanitizeTipCents } from '@/lib/tips'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
 import { isDeliveryZoneEnforcementEnabled, checkDeliveryZone } from '@/lib/delivery-zone'
+import { refuseForbiddenFulfillment } from '@/lib/fulfillment'
 import { isLogisticsDistanceFeeEnabled, resolveDistanceDeliveryFee } from '@/lib/logistics-fee'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
@@ -40,8 +41,14 @@ const createOrderSchema = z.object({
   paymentMethod:   z.enum(['card', 'cash', 'wallet']).default('card'),
   // Pickup vs delivery. The /eat cart already sends this; the server uses it to
   // zero the delivery fee on pickup (a customer collecting in person must NOT be
-  // charged €1.99). Defaults to 'delivery' to keep the existing contract intact.
-  fulfillmentType: z.enum(['delivery', 'pickup']).default('delivery'),
+  // charged €1.99). P0-01: REQUIRED — the old `.default('delivery')` meant a body
+  // with NO mode silently became a DELIVERY order, which is exactly what the Q1
+  // pilot (pickup-only) forbids. A missing/invalid mode is now an explicit 400,
+  // and the (mode × restaurant × flag) rule is enforced below (lib/fulfillment).
+  fulfillmentType: z.enum(['delivery', 'pickup'], {
+    required_error:     'Mode de récupération requis (retrait sur place ou livraison).',
+    invalid_type_error: 'Mode de récupération invalide.',
+  }),
   // brique 5B: optional manual referral code. The `grubano_ref` cookie is the
   // primary source; this body field is a future-proof fallback for manual entry.
   // .optional() keeps the existing request contract intact.
@@ -91,6 +98,29 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const data = createOrderSchema.parse(body)
 
+    // P0-02 (vague 1 — Q2/Q8 fondateur) : le paiement en ESPÈCES est retiré du
+    // pilote, et une capacité hors MVP doit être indisponible CÔTÉ SERVEUR.
+    // NB : le panier /eat propose ENCORE le toggle espèces (cart/page.tsx —
+    // signalé, hors périmètre P0-02) → ce refus serveur est LA tenue de Q2 ;
+    // l'utilisateur qui choisit « espèces » voit ce message. 'wallet' (valeur
+    // héritée de l'enum, même famille : commande créée 'received' sans aucun
+    // paiement en ligne ni commission ; plus AUCUN client ne l'envoie) est
+    // refusé au même titre. L'enum Zod garde les 3 valeurs pour que le refus
+    // soit EXPLICITE (message français ciblé) et non un 400 Zod générique.
+    if (data.paymentMethod !== 'card') {
+      // Message keyed on the ACTUAL refused method (revue : dire « espèces » à un
+      // client 'wallet' serait factuellement faux, même si plus aucun client réel
+      // n'envoie cette valeur).
+      const label = data.paymentMethod === 'cash' ? 'en espèces' : `« ${data.paymentMethod} »`
+      return NextResponse.json(
+        {
+          error: `Le paiement ${label} n'est pas disponible pour le moment — seul le paiement par carte est accepté.`,
+          code:  'payment_method_unavailable',
+        },
+        { status: 400 },
+      )
+    }
+
     // Verify restaurant exists, is active, and is not archived (soft-deleted).
     const restaurant = await prisma.restaurant.findFirst({
       where: { id: data.restaurantId, isActive: true, archivedAt: null },
@@ -98,6 +128,14 @@ export async function POST(req: NextRequest) {
     if (!restaurant) {
       return NextResponse.json({ error: 'Restaurant introuvable ou fermé' }, { status: 404 })
     }
+
+    // ── P0-01 — pilot Q1: pickup-only, enforced SERVER-SIDE ────────────────────
+    // 'delivery' is refused while DELIVERY_FULFILLMENT_ENABLED is OFF (default),
+    // and BOTH modes honour the restaurant's own deliveryEnabled/pickupEnabled
+    // columns (finally read — findFirst returns the full row). Placed BEFORE any
+    // pricing/write so a refused order writes strictly nothing.
+    const fulfillmentRefusal = refuseForbiddenFulfillment(data.fulfillmentType, restaurant)
+    if (fulfillmentRefusal) return fulfillmentRefusal
 
     // Opening hours (Chantier horaires): a delivery/pickup order is placed for
     // NOW, so it is blocked while the establishment is closed — with the next
@@ -481,8 +519,10 @@ export async function POST(req: NextRequest) {
     // its payment is SERVER-confirmed (webhook). It is created as
     // 'awaiting_payment' — the webhook flips it to 'received' at
     // payment_intent.succeeded, and THAT is when it appears in the resto's
-    // Orders screen. Cash (and the legacy 'wallet' value) has no online payment
-    // → visible at creation, the legitimate current flow.
+    // Orders screen. Since P0-02, non-card methods are refused upstream, so the
+    // 'received' branch is unreachable here — kept as defense-in-depth for the
+    // day a non-card mode returns (it must NEVER default to 'awaiting_payment',
+    // which would strand a paymentless order invisible forever).
     const initialStatus = data.paymentMethod === 'card' ? 'awaiting_payment' : 'received'
 
     // B5 (FRANCHISE_POS_TAGGING_ENABLED, default OFF): tag the order with its franchise

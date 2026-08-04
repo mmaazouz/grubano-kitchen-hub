@@ -3,7 +3,8 @@ import { NextRequest } from 'next/server'
 
 // ── Ghost-orders fix — the executable spec ─────────────────────────────────────
 // A CARD order is INVISIBLE to the resto until the webhook confirms payment:
-//   1. POST /api/orders: card → 'awaiting_payment', cash → 'received';
+//   1. POST /api/orders: card → 'awaiting_payment'; cash/wallet → REFUSED 400
+//      since P0-02 (Q2 : espèces hors pilote, tenu CÔTÉ SERVEUR — Q8);
 //   2. webhook payment_intent.succeeded → guarded flip awaiting_payment→received
 //      (THE server-side reveal — never the browser return);
 //   3. pickup hand-off: the state machine now allows ready → delivered directly
@@ -64,7 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'restaurant' })
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
@@ -86,11 +87,11 @@ describe('POST /api/orders — initial visibility status', () => {
     expect(created.status).toBe('awaiting_payment')
   })
 
-  it("CASH: created as 'received' (no online payment — visible at once, the legitimate flow)", async () => {
+  it('CASH: refused 400 server-side since P0-02 (espèces hors pilote — Q2/Q8), no order row created', async () => {
     const res = await createOrder(makeReq(orderBody({ paymentMethod: 'cash' })))
-    expect(res.status).toBe(201)
-    const created = (db.order.create.mock.calls[0]?.[0] as any)?.data
-    expect(created.status).toBe('received')
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'payment_method_unavailable' })
+    expect(db.order.create).not.toHaveBeenCalled()
   })
 })
 

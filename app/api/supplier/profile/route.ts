@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { maybeRunSupplierCoherenceCheck } from '@/lib/supplier-coherence'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,10 @@ async function sessionEmail(): Promise<string | null> {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const email = await sessionEmail()
     if (!email) return NextResponse.json({ ok: false, error: 'Non autorisé' }, { status: 401 })
@@ -86,6 +91,10 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const email = await sessionEmail()
     if (!email) return NextResponse.json({ ok: false, error: 'Non autorisé' }, { status: 401 })

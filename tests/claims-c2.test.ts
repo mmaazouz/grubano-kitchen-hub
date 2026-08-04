@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Prisma } from '@prisma/client'
 
 // ── P4.5-C2 — lib/claims extensions: auto-resolution, contest, arbitration, abuse ──
 // Reuses the C1 idempotent refund trigger. Prisma + the P4.5-A engine are mocked.
+// P0-27 (vague 1) : l'auto-résolution est désormais FAIL-SAFE — double verrou
+// CLAIM_AUTO_RESOLVE_ENABLED (défaut OFF) + CLAIM_AUTO_APPROVE_MAX_CENTS (défaut 0,
+// mal formée → 0). Les tests positifs du bloc (a) stubbent donc la config post-pilote
+// COMPLÈTE ; le bloc (a-bis) épingle le contrat fail-safe sans configuration.
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -33,7 +37,15 @@ beforeEach(() => {
   refundsFlag.mockReturnValue(true)
 })
 
-describe('(a) auto-resolution of small claims', () => {
+afterEach(() => vi.unstubAllEnvs())
+
+describe('(a) auto-resolution of small claims — config post-pilote EXPLICITE (P0-27)', () => {
+  // Sans ces DEUX stubs, plus rien ne s'auto-résout (contrat épinglé en (a-bis)).
+  beforeEach(() => {
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
+  })
+
   it('≤ ceiling + not flagged → approve + ONE refund', async () => {
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
     expect(r).toMatchObject({ state: 'refunded', refundId: 'rf1' })
@@ -61,6 +73,78 @@ describe('(a) auto-resolution of small claims', () => {
     const r = await autoResolveSmallClaim({ id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' })
     expect(r).toEqual({ state: 'pending', reason: 'refunds_disabled' })
     expect(execMock).not.toHaveBeenCalled()
+  })
+})
+
+// ── P0-27 — le contrat FAIL-SAFE : sans config, une réclamation de 5 € ne
+// déclenche RIEN ; une valeur mal formée ne réactive JAMAIS l'auto-remboursement.
+describe('(a-bis) P0-27 — verrou fail-safe de l’auto-résolution', () => {
+  const smallClaim = { id: 'cl1', consumerId: 'c1', requestedAmountCents: 500, status: 'restaurant_review' }
+
+  it('⭐ SANS AUCUNE configuration (état bêta) : réclamation de 5 € → not_eligible, ZÉRO refund, ZÉRO écriture, et le refus est TRACÉ (console.warn)', async () => {
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', '')     // déterministe même si l'env CI pose la var
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const r = await autoResolveSmallClaim(smallClaim)
+    expect(r).toEqual({ state: 'not_eligible' })
+    expect(execMock).not.toHaveBeenCalled()
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CLAIM_AUTO_RESOLVE_ENABLED'))
+    warnSpy.mockRestore()
+  })
+
+  it('flag ON mais plafond ABSENT → 0 = désactivé (le verrou n°2 tient seul) ET tracé « config incomplète » (revue : jamais un no-op silencieux)', async () => {
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const r = await autoResolveSmallClaim(smallClaim)
+    expect(r).toEqual({ state: 'not_eligible' })
+    expect(execMock).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('absent/0'))
+    warnSpy.mockRestore()
+  })
+
+  it('flag ON + plafond NON NUMÉRIQUE (« dix-euros ») → 0 tracé, jamais permissif', async () => {
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', 'dix-euros')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const r = await autoResolveSmallClaim(smallClaim)
+    expect(r).toEqual({ state: 'not_eligible' })
+    expect(execMock).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('mal formée'))
+    warnSpy.mockRestore()
+  })
+
+  it('flag ON + plafond NÉGATIF (« -1000 ») → rejeté par le parse strict (regex \\d+) → 0, aucun refund', async () => {
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '-1000')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const r = await autoResolveSmallClaim(smallClaim)
+    expect(r).toEqual({ state: 'not_eligible' })
+    expect(execMock).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it("flag ON + plafond PARTIELLEMENT numérique (« 1000abc » — parseInt laxiste l'accepterait) → rejeté strict, 0, aucun refund", async () => {
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000abc')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const r = await autoResolveSmallClaim(smallClaim)
+    expect(r).toEqual({ state: 'not_eligible' })
+    expect(execMock).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it("seul le string exact 'true' active le verrou n°1 — 'TRUE' et '1' restent OFF", async () => {
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    for (const v of ['TRUE', '1']) {
+      vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', v)
+      const r = await autoResolveSmallClaim(smallClaim)
+      expect(r).toEqual({ state: 'not_eligible' })
+    }
+    expect(execMock).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
   })
 })
 

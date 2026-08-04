@@ -57,7 +57,7 @@ beforeEach(() => {
   getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'restaurant' })
   // A FRANCHISED restaurant by default (pointOfSaleId set) — the demanding case.
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: 'pos1',
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: 'pos1',
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
@@ -93,7 +93,7 @@ describe('B5 — Order.pointOfSaleId tagging (FRANCHISE_POS_TAGGING_ENABLED)', (
   it('(c) FLAG ON + NON-franchised restaurant (pointOfSaleId null) → pointOfSaleId = null (= today)', async () => {
     ON()
     db.restaurant.findFirst.mockResolvedValue({
-      id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: null,
+      deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: null,
       commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null,
     })
     const res = await createOrder(makeReq(orderBody()))
@@ -119,7 +119,7 @@ describe('B5 — Order.pointOfSaleId tagging (FRANCHISE_POS_TAGGING_ENABLED)', (
     vi.clearAllMocks()
     // re-arm the mocks consumed above
     getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'restaurant' })
-    db.restaurant.findFirst.mockResolvedValue({ id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: 'pos1', commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null })
+    db.restaurant.findFirst.mockResolvedValue({ deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: 'pos1', commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null })
     db.openingHour.findMany.mockResolvedValue([]); db.closureException.findMany.mockResolvedValue([])
     db.creator.findFirst.mockResolvedValue(null); db.promotion.findMany.mockResolvedValue([]); db.dishAdoption.findMany.mockResolvedValue([])
     db.order.create.mockResolvedValue({ id: 'order1' }); db.order.update.mockResolvedValue({ id: 'order1', total: 20, status: 'received' }); db.order.updateMany.mockResolvedValue({ count: 1 })

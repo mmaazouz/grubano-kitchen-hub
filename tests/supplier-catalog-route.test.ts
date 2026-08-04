@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── /api/supplier/catalog scoping + ownership isolation (Slice 1, Agent 14) ───
 // The supplierProfileId is ALWAYS derived from the session (callerSupplierProfile),
@@ -14,9 +14,15 @@ const { db, caller } = vi.hoisted(() => ({
   caller: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: caller }))
+vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: caller, isSupplierEnabled: () => process.env.SUPPLIER_ENABLED === 'true' }))
 
 import { GET, POST, PUT, DELETE } from '@/app/api/supplier/catalog/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const post = (body: unknown) =>
   new Request('http://x/api/supplier/catalog', { method: 'POST', body: JSON.stringify(body) })

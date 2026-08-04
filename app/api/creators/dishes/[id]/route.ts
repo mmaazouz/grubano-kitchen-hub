@@ -7,6 +7,7 @@ import { runDishVetting, detectAdvertising } from '@/lib/dish-submit'
 import { vetDish } from '@/lib/creator-vetting'
 import { sheetSchema } from '@/lib/dish-sheet'
 import { readDishSheet } from '@/lib/dish-sheet-db'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── /api/creators/dishes/[id] — edit & delete (Mission 3 editor) ──────────────
 //
@@ -72,6 +73,10 @@ async function dishHistory(dishId: string) {
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const resolved = await resolveOwnedDish(params.id)
     if ('error' in resolved) {
@@ -230,6 +235,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const resolved = await resolveOwnedDish(params.id)
     if ('error' in resolved) {

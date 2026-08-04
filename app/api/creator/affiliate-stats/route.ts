@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { readCreatorRoles } from '@/lib/creator-roles'
 import { computeTier, computeStreakWeeks, computeBadges, rankLeaderboard, type LeaderRow } from '@/lib/affiliate-status'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── GET /api/creator/affiliate-stats ──────────────────────────────────────────
 // Dashboard Affiliés — Slice 2a. The INFLUENCER's affiliation feed, READ-ONLY.
@@ -40,6 +41,10 @@ function emptyPayload(over: Record<string, unknown> = {}) {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

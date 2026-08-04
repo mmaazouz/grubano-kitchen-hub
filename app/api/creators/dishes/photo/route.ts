@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { readCreatorRoles } from '@/lib/creator-roles'
 import { processDishImage, ALLOWED_IMAGE_TYPES } from '@/lib/dish-photo'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── POST /api/creators/dishes/photo — recipe photo upload (Mission 3) ─────────
 //
@@ -24,6 +25,10 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {

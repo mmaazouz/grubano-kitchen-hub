@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── Promo V2 Slice 2 — chef campaigns + resto opt-in ──────────────────────────
 // Chef launch requires ownership + an adopted recipe; opt-in creates a STANDARD
@@ -26,6 +26,12 @@ vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: scopeMo
 
 import { POST as CHEF_POST } from '@/app/api/creators/campaigns/route'
 import { GET as RESTO_GET, POST as RESTO_OPTIN } from '@/app/api/restaurant/campaigns/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
 
 const future = (d: number) => new Date(Date.now() + d * 86_400_000)
 const liveCampaign = {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── Mission 6 — the D1 lock + the D2 gate, route level ─────────────────────────
 //   GET /api/dishes/[id]/sheet : 404 for a NON-adopter resto / 200 for the
@@ -24,6 +24,12 @@ vi.mock('@/lib/dish-submit', () => ({ runDishVetting: vetMock }))
 
 import { GET as SHEET } from '@/app/api/dishes/[id]/sheet/route'
 import { POST as SUBMIT } from '@/app/api/creators/dishes/[id]/submit/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
 
 const dishRow = {
   id: 'd1', creatorId: 'c1', name: 'Gnocchi truffe', photo: null,

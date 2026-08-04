@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── P4.1 — Connect onboarding routes (Agent 37) ──────────────────────────────
 // Locks the security wiring of the 3 owner-scoped routes: flag default OFF → 403,
@@ -32,6 +32,12 @@ vi.mock('@/lib/operator-roles', () => ({ readOperatorRoles: rolesMock }))
 import { POST as creatorPOST } from '@/app/api/creator/connect/route'
 import { POST as logisticsPOST } from '@/app/api/logistics/connect/route'
 import { POST as franchisePOST } from '@/app/api/franchise/connect/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true'; process.env.FRANCHISE_ENABLED = 'true'; process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED; delete process.env.FRANCHISE_ENABLED; delete process.env.LOGISTICS_ENABLED })
 
 const post = (fn: (req: Request) => Promise<Response>, path: string) =>
   fn(new Request(`https://app.grubano.com${path}`, { method: 'POST' }))

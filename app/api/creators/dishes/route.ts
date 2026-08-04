@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { readCreatorRoles } from '@/lib/creator-roles'
 import { runDishVetting } from '@/lib/dish-submit'
 import { sheetSchema, parseSheet, hasAllergenDeclaration } from '@/lib/dish-sheet'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ── POST /api/creators/dishes — create a recipe (Mission 3 editor) ────────────
 //
@@ -31,6 +32,10 @@ const dishSchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {

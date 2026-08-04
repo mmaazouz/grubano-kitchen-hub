@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── /api/franchise/pos (+ /[id]) — franchisor POS CRUD (B3, Agent 44) ────────────
 // Owner-scoped (franchiseId = SESSION operator, never a client id → no IDOR),
@@ -22,6 +22,12 @@ vi.mock('next-auth', () => ({ getServerSession: getSession }))
 
 import { GET, POST } from '@/app/api/franchise/pos/route'
 import { PATCH, DELETE } from '@/app/api/franchise/pos/[id]/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.FRANCHISE_ENABLED = 'true' })
+afterEach(() => { delete process.env.FRANCHISE_ENABLED })
 
 const post = (body: unknown) =>
   POST(new Request('http://x/api/franchise/pos', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }))

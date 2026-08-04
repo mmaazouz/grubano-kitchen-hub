@@ -18,6 +18,11 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 import { POST } from '@/app/api/admin/creator-earnings/mature/route'
 
+// P0-06 — rôle créateur ouvert pour ces tests (la surface est derrière CREATOR_ENABLED,
+// 404 OFF prouvé par tests/role-locks.test.ts) ; ici on teste la logique métier.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
+
 const post = (token?: string) =>
   POST(new Request('https://app.grubano.com/api/admin/creator-earnings/mature', {
     method: 'POST', headers: token ? { 'x-internal-token': token } : {},

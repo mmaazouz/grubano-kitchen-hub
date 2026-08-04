@@ -14,18 +14,18 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 //     modal is inert with default flags AND with REFUNDS_ENABLED=true — the audit
 //     verdict ("refund humain impossible via la surface même flag ON") is
 //     confirmed by code reading. Browser-level truth → it.todo below.
-//   • RAIL owner POST /api/orders/[id]/refund → lib/refunds.ts (PLURAL) — this
-//     path is UNGATED by design (header of lib/refunds.ts, C-2 gate report,
-//     2026-07-03): neither the route nor lib/refunds ever reads REFUNDS_ENABLED.
-//     The flag gate lives ONLY in lib/refund.ts (SINGULAR — the royalty-aware
-//     engine: isRefundsEnabled), used by the admin/claims/dispute/webhook rails.
-//   → CONTRAST: with REFUNDS_ENABLED=true the /finance modal stays inert, while
-//     with REFUNDS_ENABLED unset the API rail moves real money. The kill-switch
-//     has no grip on the owner rail — a documented decision, photographed here.
+//   • RAIL POST /api/orders/[id]/refund → lib/refunds.ts (PLURAL) — the lib
+//     itself never reads REFUNDS_ENABLED (header of lib/refunds.ts, C-2 gate
+//     report, 2026-07-03). ⚠️ UPDATED BY P0-03 puis P0-26 (vague 1, Q3) : the
+//     ROUTE is now ADMIN-GRUBANO-ONLY (requireRefundAdmin, P0-03) AND governed
+//     by the SAME regime as /api/admin/refunds/run (P0-26) : rate-limit →
+//     REFUNDS_ENABLED kill-switch (default OFF → 403, zero Stripe) → admin gate.
+//   → ÉTAT FINAL : flag OFF ⇒ personne ne rembourse (403 explicite) ; flag ON ⇒
+//     seul un ADMIN rembourse ; la modale /finance reste inerte dans tous les cas.
 //
 // Complementary coverage — NOT duplicated here: tests/order-refund.test.ts owns
-// the route guards (404/403 owner-scope/409 unpaid/400 amount) and the
-// pass-through mechanics to a MOCKED lib/refunds. This file instead runs the
+// the route guards (401/403 admin-gate + audit/404/409 unpaid/400 amount) and
+// the pass-through mechanics to a MOCKED lib/refunds. This file instead runs the
 // REAL lib/refunds (Stripe client mocked underneath) to characterize the actual
 // flag (non-)gating end-to-end on the rail.
 // ═════════════════════════════════════════════════════════════════════════════
@@ -39,8 +39,12 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
-const { scopeMock } = vi.hoisted(() => ({ scopeMock: vi.fn() }))
-vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: scopeMock }))
+// P0-03: the route is admin-gated by session (owner scope removed).
+const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
+vi.mock('next-auth', () => ({ getServerSession: sessionMock }))
+vi.mock('@/lib/auth', () => ({ authOptions: {} }))
+const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
+vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
 
 const { emailMock } = vi.hoisted(() => ({ emailMock: vi.fn() }))
 vi.mock('@/lib/transactional-emails', () => ({ sendRefundConfirmation: emailMock }))
@@ -71,7 +75,9 @@ const call = (body?: Record<string, unknown>) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  scopeMock.mockResolvedValue({ ok: true, ownedIds: ['rest1'] })
+  // P0-03: the rail is characterized under the ADMIN session Q3 requires.
+  sessionMock.mockResolvedValue({ user: { id: 'adm1', email: 'admin@grubano.com', role: 'admin', roles: ['admin'] } })
+  auditMock.mockResolvedValue(undefined)
   db.order.findUnique.mockResolvedValue({
     id: 'o1', restaurantId: 'rest1', consumerId: 'cust1',
     paymentStatus: 'paid', stripePaymentIntentId: 'pi_p5',
@@ -110,21 +116,37 @@ describe("P5 — Surface /finance : rembourser en tant qu'humain via l'UI", () =
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The RAIL — POST /api/orders/[id]/refund through the REAL lib/refunds.
-// Question posed by the mission: does the owner rail work independently of
-// REFUNDS_ENABLED? Answer photographed below: YES — fully independent.
+// Historique : le rail était flag-indépendant (photographié en Sprint 0), puis
+// admin-gaté (P0-03). P0-26 aligne le rail sur le régime de refunds/run : le
+// kill-switch REFUNDS_ENABLED a DÉSORMAIS prise — nouvelle photographie ci-dessous.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('P5 — Rail owner POST /api/orders/[id]/refund : gating de flag réel', () => {
-  it("[PASS-ACTUEL] flag OFF (défaut) : le rail owner rembourse quand même — 200 + refund Stripe réellement créé (lib/refunds pluriel = UNGATED, décision C-2 documentée)", async () => {
+describe('P5 — Rail POST /api/orders/[id]/refund : rail ADMIN (P0-03) + kill-switch (P0-26)', () => {
+  it('[PASS-ACTUEL P0-03] un RESTAURATEUR ne peut plus déclencher le rail — 403 + aucun appel Stripe + tentative auditée', async () => {
+    vi.stubEnv('REFUNDS_ENABLED', 'true') // le flag ouvert isole la garde de RÔLE
+    sessionMock.mockResolvedValue({ user: { id: 'op1', email: 'resto@x.com', role: 'restaurant', roles: ['restaurant'] } })
+    const res = await call()
+    expect(res.status).toBe(403)
+    expect(stripe.refunds.create).not.toHaveBeenCalled()
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'refund.denied' }))
+  })
+
+  it("[PASS-ACTUEL P0-26] flag OFF (défaut) : 403 « Remboursements indisponibles » — le kill-switch a désormais prise sur le rail, AUCUN Stripe, même admin", async () => {
     // Deterministic OFF even if the ambient CI env sets the flag ('' !== 'true').
     vi.stubEnv('REFUNDS_ENABLED', '')
+    const res = await call()
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ error: 'Remboursements indisponibles', gated: true })
+    expect(stripe.refunds.create).not.toHaveBeenCalled()
+    expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled()
+  })
 
+  it('[PASS-ACTUEL] flag ON + admin : le rail rembourse réellement — 200 + refund Stripe créé (clé idempotente état-dépendante)', async () => {
+    vi.stubEnv('REFUNDS_ENABLED', 'true')
     const res = await call() // empty body = full refund of the remainder
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
       refundId: 're_p5', refundedCents: 2500, remainingCents: 0, routed: false,
     })
-    // Real money movement reached Stripe, flag OFF — with the state-dependent
-    // idempotency key computed by lib/refunds (refund-<pi>-<amount>-<already>).
     expect(stripe.refunds.create).toHaveBeenCalledTimes(1)
     expect(stripe.refunds.create).toHaveBeenCalledWith(
       { payment_intent: 'pi_p5', amount: 2500 },
@@ -132,33 +154,7 @@ describe('P5 — Rail owner POST /api/orders/[id]/refund : gating de flag réel'
     )
   })
 
-  it('[PASS-ACTUEL] flag ON (REFUNDS_ENABLED=true) : comportement strictement identique au flag OFF — le rail ne lit jamais le flag', async () => {
-    const runOnce = async () => {
-      stripe.paymentIntents.retrieve.mockClear()
-      stripe.refunds.create.mockClear()
-      const res = await call({ amountCents: 750 }) // partial, to also pin the amount path
-      return {
-        status:     res.status,
-        body:       await res.json(),
-        createArgs: stripe.refunds.create.mock.calls,
-      }
-    }
-
-    vi.stubEnv('REFUNDS_ENABLED', '')
-    const off = await runOnce()
-    vi.unstubAllEnvs()
-    vi.stubEnv('REFUNDS_ENABLED', 'true')
-    const on = await runOnce()
-
-    // Byte-identical outcome in both flag states = the rail is flag-independent.
-    expect(on).toEqual(off)
-    expect(off.status).toBe(200)
-    expect(off.body).toEqual({
-      refundId: 're_p5', refundedCents: 750, remainingCents: 1750, routed: false,
-    })
-  })
-
-  it('[PASS-ACTUEL] le rail ne mute jamais paymentStatus, flag ON comme OFF (le ledger webhook est la vérité)', async () => {
+  it('[PASS-ACTUEL] le rail ne mute jamais paymentStatus (le ledger webhook est la vérité)', async () => {
     vi.stubEnv('REFUNDS_ENABLED', 'true')
     await call()
     expect(db.order.update).not.toHaveBeenCalled()

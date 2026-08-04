@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe, mapAccountStatus } from '@/lib/stripe'
-import { applySupplierAccountStatus } from '@/lib/supplier-connect'
+import { applySupplierAccountStatus, isSupplierConnectLive } from '@/lib/supplier-connect'
 import { applySupplyOrderPaid, SUPPLY_PAY_CHANNEL } from '@/lib/supply-payment'
 
 export const runtime = 'nodejs'
@@ -14,6 +14,10 @@ export const dynamic = 'force-dynamic'
 // distinct Stripe endpoint). It NEVER touches the B2C webhook (/api/webhooks/stripe).
 // No-ops for non-supplier accounts / non-B2B sessions / any other event type.
 export async function POST(req: Request) {
+  // P0-06 — double-flag gate (patron stripe-prestataire, défaut FERMÉ) : rôle masqué →
+  // l'endpoint n'existe pas. 404 AVANT la lecture du secret et avant tout travail.
+  if (!isSupplierConnectLive()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const secret = process.env.STRIPE_SUPPLIER_WEBHOOK_SECRET
   if (!secret) return NextResponse.json({ error: 'webhook_not_configured' }, { status: 400 })
 

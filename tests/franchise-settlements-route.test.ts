@@ -23,6 +23,12 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 import { POST } from '@/app/api/admin/franchise-settlements/run/route'
 
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.FRANCHISE_ENABLED = 'true' })
+afterEach(() => { delete process.env.FRANCHISE_ENABLED })
+
 const req = (opts: { token?: string; body?: unknown } = {}) =>
   new Request('http://x/api/admin/franchise-settlements/run', {
     method: 'POST',

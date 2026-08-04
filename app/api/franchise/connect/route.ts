@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { readOperatorRoles } from '@/lib/operator-roles'
 import { isConnectOnboardingEnabled, startConnectOnboarding, syncConnectStatus } from '@/lib/connect-onboarding'
+import { isFranchiseEnabled } from '@/lib/franchise-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,10 @@ async function callerFranchise() {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     if (!isConnectOnboardingEnabled('franchise')) {
       return NextResponse.json({ error: 'Onboarding paiements indisponible', gated: true }, { status: 403 })
@@ -67,6 +72,10 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isFranchiseEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const op = await callerFranchise()
   if (!op) return NextResponse.json({ error: 'Accès franchiseur requis' }, { status: 401 })
   const status = await syncConnectStatus('franchise', {

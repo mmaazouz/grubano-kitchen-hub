@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 const FALLBACK = [
   { rank: 1, name: 'Amina K.',   dishes: 8, totalSales: 1240, earnings: 2480 },
@@ -10,6 +11,10 @@ const FALLBACK = [
 ]
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const creators = await prisma.creator.findMany({
       include: {

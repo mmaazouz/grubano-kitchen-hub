@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isConnectOnboardingEnabled, startConnectOnboarding, syncConnectStatus } from '@/lib/connect-onboarding'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +31,10 @@ async function callerCreator() {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     if (!isConnectOnboardingEnabled('creator')) {
       return NextResponse.json({ error: 'Onboarding paiements indisponible', gated: true }, { status: 403 })
@@ -54,6 +59,10 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const creator = await callerCreator()
   if (!creator) return NextResponse.json({ error: 'Profil créateur introuvable' }, { status: 401 })
   const status = await syncConnectStatus('creator', {

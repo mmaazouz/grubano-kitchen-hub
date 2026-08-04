@@ -7040,7 +7040,7 @@
       "contestReasonPlaceholder": "Spieghi il suo disaccordo…",
       "contestSubmit": "Invia contestazione",
       "contestSuccess": "Contestazione inviata. Grubano deciderà.",
-      "arbitrationInfo": "La sua contestazione è in esame da Grubano.",
+      "arbitrationInfo": "Il Suo reclamo è in fase di esame da parte di Grubano.",
       "refusalReasonShown": "Motivo del rifiuto"
     },
     "restaurant": {
@@ -7053,12 +7053,12 @@
       "viewPhoto": "Vedi foto",
       "timeLeft": "{hours} h rimaste per rispondere",
       "expired": "Termine scaduto — approvazione automatica imminente",
-      "accept": "Accetta e rimborsa",
+      "accept": "Accetta",
       "refuse": "Rifiuta",
       "refuseReasonLabel": "Motivo del rifiuto",
       "refuseReasonPlaceholder": "Spieghi perché…",
       "confirmRefuse": "Conferma il rifiuto",
-      "accepted": "Reclamo accettato, rimborso avviato.",
+      "accepted": "Reclamo accettato — inoltrato a Grubano per la decisione sul rimborso.",
       "refused": "Reclamo rifiutato.",
       "refundPending": "Accettata — rimborso in attesa di attivazione.",
       "processing": "Elaborazione…",
@@ -8404,5 +8404,14 @@
     "error": "Errore di caricamento.",
     "disabledTitle": "Tracciamento posizione disattivato",
     "disabledBody": "La funzione di tracciamento non è attiva."
+  },
+  "errors": {
+    "boundary": {
+      "title": "Si è verificato un errore",
+      "body": "Qualcosa non ha funzionato dalla nostra parte. Può riprovare: nessun dato è andato perso.",
+      "retry": "Riprova",
+      "home": "Torna alla home",
+      "ref": "Riferimento da comunicare all'assistenza"
+    }
   }
 }

@@ -53,9 +53,29 @@ import { recordRefundLedgerEntry } from '@/lib/ledger'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 
 /** Kill-switch — default OFF. Only the exact string 'true' enables the rail
- *  (mirrors isFranchiseRoyaltyEnabled / isCreatorPayoutEnabled). */
+ *  (mirrors isFranchiseRoyaltyEnabled / isCreatorPayoutEnabled).
+ *  P0-04 (vague 1) : ce flag gouverne l'outil admin /api/admin/refunds/run ET
+ *  les rails claims (lib/claims.ts:199,325) / dispute. Il ne gouverne PLUS
+ *  l'auto-remboursement ghost-order du webhook (flag séparé ci-dessous).
+ *  ⚠️ Il ne suffit donc PAS à garantir « aucun remboursement sans admin » :
+ *  un accept de réclamation par le RESTAURATEUR rembourse encore via ce flag
+ *  (chemin signalé hors périmètre P0-03/P0-04 — cf. docs/ops/flags.md, note Q3). */
 export function isRefundsEnabled(): boolean {
   return process.env.REFUNDS_ENABLED === 'true'
+}
+
+/** P0-04 (vague 1, principe fondateur) : « aucune automatisation produisant un
+ *  effet externe à impact financier sans validation humaine ». L'auto-refund
+ *  ghost-order (webhook payment_intent.succeeded sur commande expirée) est le
+ *  chemin du moteur déclenché SANS AUCUNE action humaine → il a son PROPRE
+ *  kill-switch, défaut OFF, découplé de REFUNDS_ENABLED : l'outil admin peut
+ *  être actif toute la bêta pendant que ce chemin reste inactif (l'argent
+ *  encaissé part alors en file manuelle 'reconcile_manual' — jamais un money-out
+ *  silencieux). NB : un second chemin machine subsiste hors périmètre de ce
+ *  ticket — runClaimAutoApproval (lib/claims.ts:302-338, decidedBy 'auto_timeout'),
+ *  dont le scheduler a été retiré par P0-07 mais dont la route demeure appelable. */
+export function isGhostOrderAutoRefundEnabled(): boolean {
+  return process.env.GHOST_ORDER_AUTO_REFUND_ENABLED === 'true'
 }
 
 export interface RefundSplit {

@@ -125,7 +125,7 @@ beforeEach(() => {
     ok: true, operatorId: 'op1', role: 'restaurant', ownedIds: ['rest1'], restaurantId: 'rest1',
   })
   db.restaurant.findFirst.mockResolvedValue({
-    id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
+    deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10,
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
@@ -193,11 +193,13 @@ describe('P1 — POST /api/orders (création click & collect, carte)', () => {
     })
   })
 
-  it("[PASS-ACTUEL] pickup + espèces : créée 'received' directement (pas de paiement en ligne → visible immédiatement)", async () => {
+  it('[PASS-ACTUEL P0-02] pickup + espèces : REFUSÉE 400 côté serveur (Q2 — espèces hors pilote), aucune ligne créée', async () => {
+    // Re-photographié en vague 1 (P0-02) : l'ancien flux « cash → received »
+    // n'existe plus — le refus est tenu par le serveur, plus par le seul panier.
     const res = await createOrder(orderReq(orderBody({ paymentMethod: 'cash' })))
-    expect(res.status).toBe(201)
-    const created = (db.order.create.mock.calls[0]?.[0] as any)?.data
-    expect(created.status).toBe('received')
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ code: 'payment_method_unavailable' })
+    expect(db.order.create).not.toHaveBeenCalled()
   })
 
   it('[PASS-ACTUEL] sous le minimum de commande → 400 (contrôlé sur le subtotal AVANT remises)', async () => {

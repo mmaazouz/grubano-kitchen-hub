@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { isValidDiscountPct } from '@/lib/campaigns'
+import { isCreatorEnabled } from '@/lib/creator-account'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // /api/creators/campaigns — the CHEF launches a demand-driver campaign on one of
@@ -36,6 +37,10 @@ async function sessionCreator() {
 }
 
 export async function GET() {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const creator = await sessionCreator()
     if (!creator) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -67,6 +72,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const creator = await sessionCreator()
     if (!creator) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -122,6 +131,10 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isCreatorEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   try {
     const creator = await sessionCreator()
     if (!creator) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })

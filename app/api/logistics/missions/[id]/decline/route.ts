@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled } from '@/lib/missions'
 import { declineMission } from '@/lib/mission-attribution'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,10 @@ export const dynamic = 'force-dynamic'
 // records a do-not-re-offer marker. There is NO penalty, NO score, NO status change — the
 // route returns {ok:true} regardless, and the UI shows NO penalty wording. NO money.
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   if (!isMissionsEnabled()) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 })
   }

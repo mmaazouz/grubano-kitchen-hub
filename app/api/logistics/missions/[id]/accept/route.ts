@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isMissionsEnabled } from '@/lib/missions'
 import { acceptMission } from '@/lib/mission-attribution'
+import { isLogisticsEnabled } from '@/lib/logistics-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,6 +14,10 @@ export const dynamic = 'force-dynamic'
 // first eligible acceptor wins; a lost race comes back {ok:false, reason:'unavailable'}
 // — returned VERBATIM so the UI can show it GRACEFULLY (never an error / penalty). NO money.
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   if (!isMissionsEnabled()) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 })
   }

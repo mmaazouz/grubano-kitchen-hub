@@ -135,7 +135,31 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
-  it("[PASS-ACTUEL] petite réclamation (≤ plafond 10 €) → auto-résolution C2 'auto_small' ; REFUNDS off → remboursement PENDING, jamais le moteur ; le 201 renvoie le snapshot AVANT approbation", async () => {
+  it("[PASS-ACTUEL P0-27] petite réclamation (5 €) SANS config auto-résolution → PLUS d'auto_small : la réclamation reste en revue restaurant (fail-safe, validation humaine)", async () => {
+    // Ré-photographié en vague 1 (P0-27) : l'ancien défaut permissif (plafond 1000
+    // implicite → auto-remboursement ACTIF sans config) est supprimé. Sans
+    // CLAIM_AUTO_RESOLVE_ENABLED + CLAIM_AUTO_APPROVE_MAX_CENTS explicites,
+    // une petite réclamation suit le flux C1 normal. Stub '' DÉTERMINISTE (revue) :
+    // le test ne doit pas dépendre de l'absence AMBIANTE des variables en CI.
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', '')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    db.order.findUnique.mockResolvedValue(paidOrder({ total: 5 })) // 500 cents — sous l'ANCIEN plafond
+    const res = await CREATE(req({ orderId: 'o1', reason: 'missing_item' }))
+    expect(res.status).toBe(201)
+    // AUCUNE approbation machine : pas d'updateMany 'approved', moteur jamais appelé.
+    const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.status === 'approved')
+    expect(approved).toBeUndefined()
+    expect(execMock).not.toHaveBeenCalled()
+    // Le non-déclenchement est TRACÉ (jamais silencieux) et la claim reste C1.
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CLAIM_AUTO_RESOLVE_ENABLED'))
+    expect((await res.json()).claim).toMatchObject({ status: 'restaurant_review' })
+    warnSpy.mockRestore()
+  })
+
+  it("[PASS-ACTUEL P0-27] config post-pilote EXPLICITE (flag + plafond) → l'auto_small refonctionne ; REFUNDS off → remboursement PENDING, jamais le moteur", async () => {
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // 800 cents ≤ 1000 ceiling
     const res = await CREATE(req({ orderId: 'o1', reason: 'missing_item' }))
     expect(res.status).toBe(201)
@@ -176,12 +200,28 @@ describe("P10 — activation : le crash (aucune frontière d'erreur dans la rout
     await expect(CREATE(req({ orderId: 'o1', reason: 'quality' }))).rejects.toHaveProperty('code', 'P2021')
   })
 
-  it("[FAIL-ATTENDU: crash APRÈS création via C2] petite réclamation + erreur DB dans l'anti-abus → le handler rejette alors que la claim EST déjà persistée", async () => {
-    // AUDIT: autoResolveSmallClaim runs AFTER prisma.claim.create with no error
-    // boundary either — a DB failure in isConsumerAbuseFlagged (claim.count) makes
-    // the request 500 although the claim row exists: the consumer sees a crash and
-    // may resubmit (blocked only by the activeOrderKey unique). After fix, INVERT:
-    // the 201 must survive a post-create C2 failure (best-effort auto-resolution).
+  it("[PASS-ACTUEL P0-27] défaut fail-safe : l'anti-abus n'est PLUS ATTEINT (gate flag AVANT) → une erreur DB dans claim.count ne crashe plus le handler, 201 propre", async () => {
+    // Ré-photographié en vague 1 (P0-27) : le verrou CLAIM_AUTO_RESOLVE_ENABLED
+    // (défaut OFF) court-circuite autoResolveSmallClaim AVANT isConsumerAbuseFlagged
+    // → le vecteur de crash « erreur DB dans l'anti-abus » est fermé en config bêta.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 }))
+    db.claim.count.mockRejectedValue(new Error('db_down'))
+    const res = await CREATE(req({ orderId: 'o1', reason: 'missing_item' }))
+    expect(res.status).toBe(201)
+    expect(db.claim.create).toHaveBeenCalledTimes(1)
+    warnSpy.mockRestore()
+  })
+
+  it("[FAIL-ATTENDU: crash APRÈS création via C2 — SUBSISTE en config post-pilote] flag+plafond explicites + erreur DB dans l'anti-abus → le handler rejette alors que la claim EST déjà persistée", async () => {
+    // AUDIT (toujours vrai une fois l'auto-résolution ACTIVÉE explicitement) :
+    // autoResolveSmallClaim runs AFTER prisma.claim.create with no error boundary —
+    // a DB failure in isConsumerAbuseFlagged (claim.count) makes the request 500
+    // although the claim row exists: the consumer sees a crash and may resubmit
+    // (blocked only by the activeOrderKey unique). After fix, INVERT: the 201 must
+    // survive a post-create C2 failure (best-effort auto-resolution).
+    vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
+    vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // C2-eligible amount
     db.claim.count.mockRejectedValue(new Error('db_down'))
     await expect(CREATE(req({ orderId: 'o1', reason: 'missing_item' }))).rejects.toThrow('db_down')

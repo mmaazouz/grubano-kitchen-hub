@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── POST /api/creator/affiliate-content — Studio de contenu 2b (Agent 14) ──────
 // Session-aware (email, never ?creatorId), isInfluencer-gated, rate-limited,
@@ -25,6 +25,12 @@ vi.mock('@/lib/affiliate-content', () => ({
 }))
 
 import { POST } from '@/app/api/creator/affiliate-content/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.CREATOR_ENABLED = 'true' })
+afterEach(() => { delete process.env.CREATOR_ENABLED })
 
 const makeReq = (body: unknown) =>
   new Request('https://app.grubano.com/api/creator/affiliate-content', {

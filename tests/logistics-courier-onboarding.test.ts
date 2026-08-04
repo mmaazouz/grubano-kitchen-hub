@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── Courier onboarding — justificatifs + GATED admin activation (Agent 125) ────
 // ⭐ The headline guardrail: admin activation is a STRICT NO-OP unless
@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const { auth, db, logiAcct } = vi.hoisted(() => ({
   auth: { getServerSession: vi.fn() },
   db: { logisticsProfile: { findUnique: vi.fn(), update: vi.fn() } },
-  logiAcct: { isCourierActivationEnabled: vi.fn(), ensureLogisticsOperator: vi.fn() },
+  logiAcct: { isLogisticsEnabled: () => process.env.LOGISTICS_ENABLED === 'true', isCourierActivationEnabled: vi.fn(), ensureLogisticsOperator: vi.fn() },
 }))
 vi.mock('next-auth', () => ({ getServerSession: auth.getServerSession }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
@@ -17,6 +17,12 @@ vi.mock('@/lib/logistics-account', () => logiAcct)
 
 import { GET as justGet, PATCH as justPatch } from '@/app/api/logistics/justificatifs/route'
 import { POST as activate } from '@/app/api/admin/logistics/activation/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 const VALID = { insuranceInsurer: 'AXA', insurancePolicyNumber: 'P-123', insuranceExpiry: '2027-01-01', rcProInsurer: 'MAAF', rcProPolicyNumber: 'RC-9' }
 const post = (body?: unknown) => new Request('http://t/x', { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── Supply order status routes (B2B Slice 3, Agent 14) ────────────────────────
 // Supplier advances its OWN orders along the state machine; resto cancels its OWN
@@ -10,12 +10,18 @@ const { db, supplierCaller, operatorCaller } = vi.hoisted(() => ({
   operatorCaller: vi.fn(),
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
-vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: supplierCaller }))
+vi.mock('@/lib/supplier-account', () => ({ callerSupplierProfile: supplierCaller, isSupplierEnabled: () => process.env.SUPPLIER_ENABLED === 'true' }))
 vi.mock('@/lib/operator-session', () => ({ callerOperator: operatorCaller }))
 
 import { PATCH as SUPPLIER_PATCH } from '@/app/api/supplier/orders/[id]/route'
 import { PATCH as RESTO_PATCH } from '@/app/api/marketplace/orders/[id]/route'
 import { GET as RESTO_GET } from '@/app/api/marketplace/orders/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.SUPPLIER_ENABLED = 'true' })
+afterEach(() => { delete process.env.SUPPLIER_ENABLED })
 
 const sPatch = (id: string, body: unknown) =>
   new Request(`http://x/api/supplier/orders/${id}`, { method: 'PATCH', body: JSON.stringify(body) })

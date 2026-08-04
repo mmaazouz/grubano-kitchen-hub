@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ensureSupplierOperator } from '@/lib/supplier-account'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
+import { isSupplierEnabled } from '@/lib/supplier-account'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,10 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({ email: z.string().email() })
 
 export async function POST(req: Request) {
+  // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
+  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
+  if (!isSupplierEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const session = await getServerSession(authOptions)
   const user = session?.user as { role?: string; roles?: string[] } | undefined
   const isAdmin = user?.role === 'admin' || (Array.isArray(user?.roles) && user!.roles!.includes('admin'))

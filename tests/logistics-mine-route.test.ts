@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
 // ── GET /api/logistics/missions/mine — the courier's own missions (LO2) ────────
 // Verify: gating (flag OFF → 404, no DB), owner-scoping (session email → LogisticsProfile,
@@ -16,6 +16,12 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/missions', () => missionsLib) // real mission-serialize is used (no mock)
 
 import { GET } from '@/app/api/logistics/missions/mine/route'
+
+// P0-06 — rôle(s) ouvert(s) pour ces tests : la surface est désormais derrière un
+// flag de rôle (404 OFF — prouvé par tests/role-locks.test.ts) ; ici on teste la
+// logique métier, donc on ouvre le rôle explicitement.
+beforeEach(() => { process.env.LOGISTICS_ENABLED = 'true' })
+afterEach(() => { delete process.env.LOGISTICS_ENABLED })
 
 const MISSION = (over = {}) => ({
   id: 'm1', type: 'repas', pickupAddress: 'Resto, 5 Rue Pizza', dropoffAddress: '22 rue de Charonne, 75011 Paris',
