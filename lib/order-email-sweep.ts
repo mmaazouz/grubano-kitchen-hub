@@ -56,8 +56,13 @@ export async function sweepUnconfirmedPaidOrders(opts?: {
 
   // paymentStatus 'paid' est posé par le webhook (source de vérité) ; updatedAt
   // borne la fenêtre (les commandes plus vieilles ont eu 48 h de polls + sweeps).
+  // Revue P0-42 : status 'expired' EXCLU — le webhook ghost-order pose
+  // transitoirement 'paid' sur une commande FANTÔME avant de la basculer
+  // refunded/reconcile_manual ; sans cette exclusion, un sweep tombant dans la
+  // fenêtre (ou après une mort du process entre les deux writes) enverrait
+  // « commande confirmée » pour une commande jamais servie.
   const orders = await prisma.order.findMany({
-    where:   { paymentStatus: 'paid', updatedAt: { gte: since } },
+    where:   { paymentStatus: 'paid', status: { not: 'expired' }, updatedAt: { gte: since } },
     select:  {
       id: true, consumerId: true, total: true, fulfillmentType: true, items: true,
       restaurant: { select: { name: true, operator: { select: { email: true } } } },

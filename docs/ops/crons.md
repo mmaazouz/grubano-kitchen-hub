@@ -59,7 +59,7 @@ fonctionne. Chaque job est idempotent et no-op quand son flag est OFF.
 
 ## 4. Routes cron-appelables SANS scheduler actif ✅ (le « trou » constaté)
 
-11 routes lisent `CRON_SECRET` ou `INTERNAL_CRON_TOKEN`. Couverture :
+12 routes lisent `CRON_SECRET` ou `INTERNAL_CRON_TOKEN` (les 11 du relevé Sprint 0 + `confirm-sweep` P0-42). Couverture :
 
 | Route | Scheduler |
 |---|---|

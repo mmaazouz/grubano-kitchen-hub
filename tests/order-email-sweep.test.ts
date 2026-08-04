@@ -58,10 +58,14 @@ describe('lib/order-email-sweep — le chemin « onglet fermé » (aucun dispatc
     }))
   })
 
-  it('ne balaye QUE les commandes payées récentes, lot borné (where + take asserté)', async () => {
+  it('ne balaye QUE les commandes payées récentes NON-fantômes, lot borné (where + take asserté)', async () => {
     await sweepUnconfirmedPaidOrders()
     const q = db.order.findMany.mock.calls[0][0]
     expect(q.where.paymentStatus).toBe('paid')
+    // Revue P0-42 : une commande FANTÔME (status 'expired') transitoirement
+    // 'paid' pendant le traitement webhook ne doit JAMAIS recevoir de
+    // « commande confirmée ».
+    expect(q.where.status).toEqual({ not: 'expired' })
     expect(q.where.updatedAt.gte).toBeInstanceOf(Date)
     expect(q.take).toBeLessThanOrEqual(500)
   })
