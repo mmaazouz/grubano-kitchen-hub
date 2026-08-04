@@ -56,3 +56,38 @@ SELECT
   SUM(paymentMethod <> 'card')                    AS nb_non_carte,
   ROUND(SUM(IF(paymentMethod <> 'card', total, 0)), 2) AS total_eur_non_carte
 FROM `Order`;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- ADDENDUM P0-29 (vague 2) — commandes héritées CONCERNÉES PAR LE GARDE /pay
+-- LECTURE SEULE. Depuis P0-29, POST /api/orders/[id]/pay refuse toute commande
+-- non-carte (409 payment_method_mismatch, tracé). Ces requêtes dénombrent le
+-- stock que le garde protège désormais, et ce qui a pu se produire AVANT lui.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── Requête 4 — le stock protégé : non-carte encore « payables » avant P0-29 ──
+-- Lecture : chaque ligne = un ensemble de commandes héritées qui, AVANT le
+-- garde, pouvaient recevoir un PaymentIntent carte par URL directe. Les états
+-- 'paid' sont ceux où le double encaissement a PU se matérialiser (recouper
+-- avec la R2/R5) ; NULL = jamais tenté ; 'pending' = PI créé mais jamais
+-- confirmé (aucun argent prélevé).
+SELECT
+  COALESCE(paymentStatus, 'NULL (jamais tenté)') AS statut_paiement,
+  status                                          AS statut_commande,
+  COUNT(*)                                        AS nb_commandes,
+  ROUND(SUM(total), 2)                            AS total_eur
+FROM `Order`
+WHERE paymentMethod <> 'card'
+GROUP BY paymentStatus, status
+ORDER BY statut_paiement, statut_commande;
+
+-- ── Requête 5 — double encaissement MATÉRIALISÉ (argent réellement prélevé) ──
+-- Le sous-ensemble critique de la R2 : non-carte ET webhook-confirmé 'paid'.
+-- Chaque ligne ici = un client potentiellement débité DEUX fois (espèces à la
+-- livraison + carte en ligne) → à traiter au cas par cas (remboursement admin).
+SELECT
+  id, status AS statut_commande, stripePaymentIntentId,
+  ROUND(total, 2) AS total_eur, createdAt
+FROM `Order`
+WHERE paymentMethod <> 'card'
+  AND paymentStatus = 'paid'
+ORDER BY createdAt DESC;

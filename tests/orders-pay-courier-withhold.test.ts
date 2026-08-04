@@ -31,6 +31,7 @@ const ORDER = {
   id: 'o1', consumerId: 'c1', restaurantId: 'r1', status: 'received',
   subtotal: 100, deliveryFee: 5, total: 105, fulfillmentType: 'delivery',
   stripePaymentIntentId: null, paymentStatus: 'pending', pointOfSaleId: null,
+  paymentMethod: 'card', // P0-29: the route now reads + guards the payment mode
   loyaltyCreditCents: 0, smallOrderFeeCents: 0, tipCents: 0, deliveryMode: 'restaurant',
 }
 const ROUTED = { stripeAccountId: 'acct_x', stripeAccountStatus: 'active', commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null }
