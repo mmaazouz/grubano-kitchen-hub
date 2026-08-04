@@ -118,6 +118,16 @@ export async function middleware(request: NextRequest) {
   const isAdminSpace =
     restPath === '/admin' || restPath.startsWith('/admin/')
 
+  // ── P0-38 — rôles gelés (doctrine Q8) : quand le flag racine d'un rôle est OFF,
+  // son espace de pages devient traversant au middleware (ni login, ni redirection
+  // de rôle) et c'est le layout SERVEUR de l'arbre qui répond notFound(). Une
+  // capacité masquée est INTROUVABLE — rediriger vers l'espace du rôle courant
+  // n'est pas un masquage. Quand le flag est ON, comportement byte-identique.
+  const creatorPagesOn   = process.env.CREATOR_ENABLED === 'true'
+  const supplierPagesOn  = process.env.SUPPLIER_ENABLED === 'true'
+  const franchisePagesOn = process.env.FRANCHISE_ENABLED === 'true'
+  const logisticsPagesOn = process.env.LOGISTICS_ENABLED === 'true'
+
   // Public routes — no auth required. /eat/* is the consumer app (auth per-page).
   // '/register' removed (B1 dead-reference): no bare /register page has ever
   // existed (only /supplier|business/*/register) — the entry only whitelisted a 404.
@@ -157,7 +167,12 @@ export async function middleware(request: NextRequest) {
     // /supplier landing + /supplier/register are public (self-serve signup); every
     // other /supplier route (dashboard, catalog, …) is gated below. (Never matches
     // /suppliers — the operator directory — gated via OPERATOR_FLAT_PREFIXES.)
-    (isSupplierSpace && isSupplierPublic)
+    (isSupplierSpace && isSupplierPublic) ||
+    // P0-38 — flag OFF → l'espace entier traverse (le layout 404) :
+    (isSupplierSpace && !supplierPagesOn) ||
+    (isLogisticsSpace && !logisticsPagesOn) ||
+    (isFranchiseDashboard && !franchisePagesOn) ||
+    (isCreatorsDashboard && !creatorPagesOn)
 
   if (!isPublic) {
     const token = await getToken({ req: request })
