@@ -63,6 +63,10 @@ export async function POST(
         id: true, consumerId: true, restaurantId: true, status: true,
         subtotal: true, deliveryFee: true, total: true, fulfillmentType: true,
         stripePaymentIntentId: true, paymentStatus: true,
+        // P0-29 (vague 2): the route was structurally BLIND to the payment mode
+        // (paymentMethod absent from this select — audit P8) → the guard below
+        // needs the read.
+        paymentMethod: true,
         // P4-Franchise-A: needed to resolve the franchisor (PointOfSale.franchiseId)
         // for the held-back royalty. Inert (null) when the order is not franchised.
         pointOfSaleId: true,
@@ -79,6 +83,25 @@ export async function POST(
     }
     if (order.status === 'cancelled') {
       return NextResponse.json({ error: 'Commande annulée.' }, { status: 400 })
+    }
+    // ── P0-29 (vague 2 — Q2/Q8 fondateur) : le rail carte est réservé aux
+    // commandes CARTE. P0-02 a fermé la CRÉATION cash/wallet ; ce garde ferme le
+    // PAIEMENT PAR LIEN (/eat/checkout/[orderId]) des lignes HÉRITÉES — c'était
+    // le double encaissement établi de l'audit A-F/P8 (espèces à la livraison ET
+    // carte en ligne). Tentative TRACÉE : sur une ligne héritée réelle c'est un
+    // signal d'incident (client double-facturable), pas un simple 4xx.
+    if (order.paymentMethod !== 'card') {
+      console.warn(
+        `[order pay] [P0-29] paiement carte REFUSÉ sur une commande non-carte ` +
+        `(order ${order.id}, mode « ${order.paymentMethod} », consumer ${token.sub})`,
+      )
+      return NextResponse.json(
+        {
+          error: `Cette commande n'est pas payable en ligne — son mode de paiement (« ${order.paymentMethod} ») n'est pas la carte.`,
+          code:  'payment_method_mismatch',
+        },
+        { status: 409 },
+      )
     }
 
     const currency    = 'eur'

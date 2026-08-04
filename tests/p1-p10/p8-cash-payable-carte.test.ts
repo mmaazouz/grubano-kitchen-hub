@@ -1,22 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
-// ── P8 — CASH order, then pay it by CARD — ÉTAT VAGUE 1 (P0-02) ──────────────
-// Two acts. ACT 1 was re-photographed after P0-02 (Q2 : espèces hors pilote,
-// tenu CÔTÉ SERVEUR — Q8) ; ACT 2 still photographs the LEGACY exposure as-is:
-//   ACT 1 — POST /api/orders with paymentMethod:'cash' (or the legacy 'wallet')
-//     → REFUSED 400 with an explicit French message + code
+// ── P8 — CASH order, then pay it by CARD — ÉTAT VAGUE 2 (P0-02 + P0-29) ──────
+// Two acts, BOTH doors now closed server-side (Q2 : espèces hors pilote — Q8) :
+//   ACT 1 (P0-02, vague 1) — POST /api/orders with paymentMethod:'cash' (or the
+//     legacy 'wallet') → REFUSED 400 with an explicit French message + code
 //     'payment_method_unavailable', BEFORE any DB/economic side effect. The old
 //     Sprint-0 photographs (order created 'received', paymentStatus null forever,
 //     points provisioned on a never-collected order) are INVERTED accordingly.
-//   ACT 2 — POST /api/orders/[id]/pay on an EXISTING cash order row (legacy rows
-//     created before P0-02 survive in DB; the direct URL /eat/checkout/[orderId]
-//     still reaches them) → the route STILL creates a PaymentIntent WITHOUT
-//     OBJECTION: its prisma select does not even READ paymentMethod, so no guard
-//     on it is structurally possible. The row then carries paymentStatus:'pending'
-//     + a card PI while paymentMethod stays 'cash' → double-collection risk
-//     remains OPEN on legacy rows (signalé, hors périmètre P0-02 — the founder's
-//     read-only SQL inventory quantifies the exposed rows).
+//   ACT 2 (P0-29, vague 2) — POST /api/orders/[id]/pay on an EXISTING cash order
+//     row (legacy rows created before P0-02 survive in DB; the direct URL
+//     /eat/checkout/[orderId] still reaches them) → the route now READS
+//     paymentMethod in its select and REFUSES any non-card order: 409 + code
+//     'payment_method_mismatch', ZERO PaymentIntent, ZERO write, attempt TRACED
+//     (console.warn). The Sprint-0 double-collection exposure (cash on delivery
+//     AND card online) is CLOSED — the 3 FAIL-ATTENDU below are INVERTED. The
+//     founder's read-only SQL inventory still quantifies the legacy rows.
 //
 // Mock pattern copied from tests/p1-p10/p3-annulation-resto-payee.test.ts and
 // tests/order-refund.test.ts (same domain). No real DB, no real Stripe.
@@ -132,13 +131,14 @@ const pay = (id: string, body?: Record<string, unknown>) =>
     { params: { id } },
   )
 
-// The cash order AS the /pay route's select returns it. Faithful to Prisma: the
-// select does NOT include paymentMethod, so the returned row has no such key —
-// the route is structurally blind to it (asserted below on the select itself).
+// The cash order AS the /pay route's select returns it. P0-29: the select now
+// INCLUDES paymentMethod (asserted below on the select itself) — the faithful
+// row therefore carries the legacy 'cash' value the guard refuses.
 const cashOrderRow = (over: Record<string, unknown> = {}) => ({
   id: 'ocash1', consumerId: 'c1', restaurantId: 'r1', status: 'received',
   subtotal: 20, deliveryFee: 1.99, total: 21.99, fulfillmentType: 'delivery',
   stripePaymentIntentId: null, paymentStatus: null, pointOfSaleId: null,
+  paymentMethod: 'cash',
   ...over,
 })
 
@@ -269,7 +269,7 @@ describe('P8 — payer par CARTE une commande CASH (POST /api/orders/[id]/pay)',
     expect(stripeCreate).not.toHaveBeenCalled()
   })
 
-  it('[PASS-ACTUEL] gardes présents : déjà payée → 409, annulée → 400 — mais AUCUN garde sur paymentMethod', async () => {
+  it('[PASS-ACTUEL] gardes amont inchangés : déjà payée → 409, annulée → 400 (ils tombent AVANT le garde P0-29)', async () => {
     db.order.findUnique.mockResolvedValue(cashOrderRow({ paymentStatus: 'paid' }))
     let res = await pay('ocash1')
     expect(res.status).toBe(409)
@@ -281,23 +281,71 @@ describe('P8 — payer par CARTE une commande CASH (POST /api/orders/[id]/pay)',
     expect(stripeCreate).not.toHaveBeenCalled()
   })
 
-  // ── The P8 core: the cash order is card-payable WITHOUT OBJECTION ───────────
+  // ── The P8 core, INVERTED by P0-29: the cash order is NO LONGER card-payable ─
 
-  it('[FAIL-ATTENDU: PaymentIntent créé SANS OBJECTION sur une commande cash — double encaissement possible (espèces à la livraison + carte en ligne)] cash « received » → 201 + clientSecret', async () => {
-    // AUDIT: the cash order is ALREADY visible to the kitchen ('received', ACT 1)
-    // and will be collected in cash on delivery — yet /pay charges its FULL total
-    // by card with zero objection. The route checks owner/paid/cancelled/minimum
-    // only; paymentMethod is never considered. After the post-arbitrage fix, a
-    // cash order must be REJECTED here (e.g. 409) or explicitly converted to
-    // card — this test must then be INVERTED.
+  it('[PASS-ACTUEL P0-29 — INVERSION] cash « received » → 409 « payment_method_mismatch », AUCUN PaymentIntent, AUCUNE écriture, tentative TRACÉE', async () => {
+    // INVERSION du FAIL-ATTENDU Sprint 0 (« PI créé SANS OBJECTION ») : le rail
+    // carte refuse désormais toute commande non-carte — le double encaissement
+    // (espèces à la livraison + carte en ligne) est fermé sur les lignes héritées.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const res = await pay('ocash1')
+    expect(res.status).toBe(409)
+    const json = await res.json()
+    expect(json.code).toBe('payment_method_mismatch')
+    expect(json.error).toContain('« cash »')
+    expect(stripeCreate).not.toHaveBeenCalled()
+    expect(db.order.update).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[P0-29]'))
+    warnSpy.mockRestore()
+  })
+
+  it('[PASS-ACTUEL P0-29 — INVERSION] le select Prisma de /pay LIT désormais paymentMethod (le garde est structurellement possible)', async () => {
+    // INVERSION du FAIL-ATTENDU Sprint 0 (« paymentMethod même pas LU ») : la
+    // route sélectionne la colonne et fonde son garde dessus.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await pay('ocash1')
+    const firstFind = db.order.findUnique.mock.calls[0][0] as { select: Record<string, unknown> }
+    expect(firstFind.select.paymentMethod).toBe(true)
+    // The other guards' columns stay selected (photograph):
+    expect(firstFind.select.paymentStatus).toBe(true)
+    expect(firstFind.select.status).toBe(true)
+    expect(firstFind.select.consumerId).toBe(true)
+    warnSpy.mockRestore()
+  })
+
+  it("[PASS-ACTUEL P0-29 — INVERSION] plus AUCUNE requalification silencieuse : le refus tombe AVANT l'update { stripePaymentIntentId, paymentStatus }", async () => {
+    // INVERSION du FAIL-ATTENDU Sprint 0 : la ligne cash ne reçoit plus jamais un
+    // PI carte + paymentStatus 'pending' (les deux vérités contradictoires ne
+    // peuvent plus coexister — la ligne héritée reste intacte en base).
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await pay('ocash1')
+    expect(db.order.update).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it("[PASS-ACTUEL] la valeur héritée 'wallet' est refusée au même titre (garde strict : tout ce qui n'est pas 'card')", async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    db.order.findUnique.mockResolvedValue(cashOrderRow({ paymentMethod: 'wallet' }))
+    const res = await pay('ocash1')
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toContain('« wallet »')
+    expect(stripeCreate).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('[PASS-ACTUEL] NON-RÉGRESSION carte : une commande CARTE paie normalement — 201 + clientSecret, montant fixé côté SERVEUR (body ignoré)', async () => {
+    // The anti-fraud invariant (/pay never parses the body; the charge is always
+    // order.total read server-side) is re-photographed on a CARD order — the only
+    // mode the rail now accepts.
+    db.order.findUnique.mockResolvedValue(cashOrderRow({ paymentMethod: 'card' }))
+    const res = await pay('ocash1', { amount: 1, total: 0.01 })
     expect(res.status).toBe(201)
     expect(await res.json()).toMatchObject({
       clientSecret: 'pi_mock_1_secret_mock', publishableKey: 'pk_test_mock', amount: 2199, currency: 'eur',
     })
     expect(stripeCreate).toHaveBeenCalledTimes(1)
     expect(stripeCreate).toHaveBeenCalledWith(expect.objectContaining({
-      amountCents:    2199,             // the CASH order's full total, charged by card
+      amountCents:    2199,             // server-side total — the client body changed nothing
       currency:       'eur',
       metadata:       { restaurantId: 'r1' },
       connect:        undefined,        // resto not routed → bare platform PI (A2 fallback)
@@ -305,60 +353,22 @@ describe('P8 — payer par CARTE une commande CASH (POST /api/orders/[id]/pay)',
     }))
   })
 
-  it('[FAIL-ATTENDU: paymentMethod même pas LU par la route — le garde cash est structurellement impossible] le select Prisma de /pay ne contient pas paymentMethod', async () => {
-    // AUDIT: the route's findUnique select enumerates id/consumerId/restaurantId/
-    // status/amount fields/stripePaymentIntentId/paymentStatus/pointOfSaleId —
-    // paymentMethod is ABSENT, so no code path in /pay can even observe that the
-    // order is cash. The fix must first READ it, then guard on it.
-    const res = await pay('ocash1')
-    expect(res.status).toBe(201)
-    const firstFind = db.order.findUnique.mock.calls[0][0] as { select: Record<string, unknown> }
-    expect('paymentMethod' in firstFind.select).toBe(false)
-    // The guards the route DOES base itself on are selected (photograph):
-    expect(firstFind.select.paymentStatus).toBe(true)
-    expect(firstFind.select.status).toBe(true)
-    expect(firstFind.select.consumerId).toBe(true)
-  })
-
-  it('[FAIL-ATTENDU: requalification silencieuse — paymentStatus passe à « pending » + PI stocké, mais paymentMethod reste « cash »] l’update n’écrit QUE { stripePaymentIntentId, paymentStatus }', async () => {
-    // AUDIT: after /pay, the DB row says paymentMethod='cash' AND carries a live
-    // card PaymentIntent with paymentStatus='pending' (then 'paid' via webhook) —
-    // two contradictory truths on the same order; the kitchen/courier still see a
-    // cash order to collect. The fix must reconcile paymentMethod when a card
-    // payment is initiated on a cash order (or forbid it) — this exact-payload
-    // assertion will then need updating.
-    const res = await pay('ocash1')
-    expect(res.status).toBe(201)
-    expect(db.order.update).toHaveBeenCalledTimes(1)
-    // Deep equality on the FULL argument proves paymentMethod is NOT reconciled.
-    expect(db.order.update).toHaveBeenCalledWith({
-      where: { id: 'ocash1' },
-      data:  { stripePaymentIntentId: 'pi_mock_1', paymentStatus: 'pending' },
-    })
-  })
-
-  it('[PASS-ACTUEL] montant fixé côté SERVEUR : le body de la requête est ignoré — un « amount » client ne change rien', async () => {
-    // Anti-fraud invariant worth photographing: /pay never parses the request
-    // body; the charge is always order.total read server-side.
-    const res = await pay('ocash1', { amount: 1, total: 0.01 })
-    expect(res.status).toBe(201)
-    expect(stripeCreate).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 2199 }))
-  })
-
   // ── Non-testable in this node harness ───────────────────────────────────────
 
   it.skipIf(!hasStripe)(
-    '[NON-TESTABLE: clés Stripe absentes en CI — présence testée seulement, valeur jamais affichée] avec STRIPE_SECRET_KEY présent, la commande cash est toujours acceptée (garde indépendant de la clé)',
+    '[NON-TESTABLE: clés Stripe absentes en CI — présence testée seulement, valeur jamais affichée] avec STRIPE_SECRET_KEY présent, la commande cash est toujours REFUSÉE (le garde P0-29 est indépendant de la clé)',
     async () => {
-      // The no-objection behavior is key-INDEPENDENT (the guard logic never touches
-      // the key; lib/stripe is mocked). Runs only when a key exists locally.
+      // The refusal is key-INDEPENDENT (the guard never touches the key;
+      // lib/stripe is mocked). Runs only when a key exists locally.
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const res = await pay('ocash1')
-      expect(res.status).toBe(201)
-      expect(stripeCreate).toHaveBeenCalledTimes(1)
+      expect(res.status).toBe(409)
+      expect(stripeCreate).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
     },
   )
 
-  it.todo('[NON-TESTABLE: UI navigateur] URL directe /eat/checkout/[orderId] : la page de paiement carte s’ouvre pour une commande cash (app/[locale]/eat/checkout/[orderId]/page.tsx) — parcours navigateur hors harnais node')
+  it.todo('[NON-TESTABLE: UI navigateur] URL directe /eat/checkout/[orderId] sur une commande cash héritée : la page reçoit désormais le 409 payment_method_mismatch du serveur (plus de formulaire carte) — parcours navigateur hors harnais node')
 })
 
 afterEach(() => { delete process.env.DELIVERY_FULFILLMENT_ENABLED })

@@ -83,6 +83,7 @@ const ORDER = {
   id: 'o1', consumerId: 'c1', restaurantId: 'r1', status: 'awaiting_payment',
   subtotal: 22, deliveryFee: 3.5, total: 25.5, fulfillmentType: 'delivery',
   stripePaymentIntentId: null as string | null, paymentStatus: 'pending',
+  paymentMethod: 'card', // P0-29: the route now reads + guards the payment mode
   pointOfSaleId: null, loyaltyCreditCents: 0, smallOrderFeeCents: 0,
 }
 const PLATFORM = {
