@@ -55,6 +55,9 @@ const createSchema = z.object({
 const patchSchema = z.object({
   id:      z.string(),
   status:  z.enum(['confirmed', 'arrived', 'overrun', 'cancelled', 'noshow']).optional(),
+  // P0-31 (vague 2 — Q8) : le champ reste DÉCLARÉ pour que l'envoyer produise un
+  // REFUS EXPLICITE (et non un strip Zod silencieux) — mais il n'est plus jamais
+  // écrit depuis le client (verrou dans le handler ci-dessous).
   depositPaid: z.boolean().optional(),
 })
 
@@ -266,6 +269,28 @@ export async function PATCH(req: Request) {
     const scope = await resolveEstablishmentScope(null)
     if (!scope.ok) {
       return NextResponse.json({ error: scope.error }, { status: scope.status })
+    }
+
+    // ── P0-31 (vague 2 — Q8 fondateur, P0-31 : verrou, PAS un chantier dine-in) ──
+    // depositPaid ne peut PLUS être déclaré par le client : ce booléen alimente le
+    // total « acomptes » du tableau de bord (TablesShell), et une déclaration
+    // manuelle était indistinguable d'une capture Stripe réelle (fausse validation
+    // d'encaissement). Les SEULS écrivains restants sont tous adossés à une
+    // capture réelle : le webhook Stripe ('captured'), tickets/[id]/close
+    // (capture à la clôture), reservations/[id]/deposit/capture, et la branche
+    // no-show ci-dessous (captureHold). Refus EXPLICITE + tracé, jamais silencieux.
+    if (data.depositPaid !== undefined) {
+      console.warn(
+        `[PATCH /api/reservations] [P0-31] déclaration manuelle depositPaid=${data.depositPaid} ` +
+        `REFUSÉE (reservation ${id}, operator ${scope.operatorId ?? 'inconnu'}) — seule une capture Stripe réelle valide un acompte`,
+      )
+      return NextResponse.json(
+        {
+          error: "L'acompte ne peut pas être déclaré encaissé manuellement — seule une capture bancaire réelle le valide.",
+          code:  'deposit_declaration_forbidden',
+        },
+        { status: 403 },
+      )
     }
 
     const existing = await prisma.reservation.findUnique({

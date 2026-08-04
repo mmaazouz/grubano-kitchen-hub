@@ -41,7 +41,13 @@ export default function CartScreen() {
   // place-order / payment flow is byte-identical.
   const [savedAddrs, setSavedAddrs] = useState<EatAddress[]>([])
   const [selectedAddrId, setSelectedAddrId] = useState('')
-  const [payment, setPayment] = useState<'card' | 'cash'>('card')
+  // P0-30 (vague 2 — Q2 fondateur) : le paiement en espèces est HORS PILOTE — le
+  // choix est RETIRÉ de l'interface (le serveur le refuse déjà : P0-02 à la
+  // création, P0-29 au paiement). La capacité peut revenir après le pilote :
+  // réintroduire alors le state `useState<'card' | 'cash'>('card')`, le toggle de
+  // la ligne « Méthode de paiement » du récapitulatif et la branche post-succès
+  // non-carte (→ /eat/track) — cf. git log de ce fichier (commit P0-30).
+  const payment = 'card' as const
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   // P1-PROMO — consumer promo CODE. The input string + the server's PREVIEW
@@ -518,14 +524,10 @@ export default function CartScreen() {
         return
       }
       writeCart(null)
-      // Checkout C2: card orders go through the payment journey (recap →
-      // Stripe Elements → confirmation). Cash-on-delivery keeps the legacy
-      // direct-to-tracking path — C1 only gated the card flow.
-      if (payment === 'card') {
-        router.push(`/eat/checkout/${data.orderId}`)
-      } else {
-        router.push(`/eat/track/${data.orderId}`)
-      }
+      // Checkout C2: orders go through the payment journey (recap → Stripe
+      // Elements → confirmation). P0-30 : la carte est le SEUL mode — l'ancienne
+      // branche non-carte (direct-to-tracking) est retirée avec le choix espèces.
+      router.push(`/eat/checkout/${data.orderId}`)
     } catch {
       setError(t('errorNetwork'))
     } finally {
@@ -713,7 +715,7 @@ export default function CartScreen() {
                             </span>
                           </button>
                         ))}
-                        <div className="sel-err"><span className="ms" aria-hidden="true">error</span>{ta('selErr')}</div>
+                        <div className="sel-err" role="alert">{ta('selErr')}</div>
                         <button type="button" className="sel-add" onClick={() => router.push('/eat/account/addresses')}><span className="ms" aria-hidden="true">add_location_alt</span>{ta('selAdd')}</button>
                       </div>
                     </div>
@@ -835,15 +837,16 @@ export default function CartScreen() {
               <div className="summary__h">{t('summary')}</div>
               <div className="summary__b">
                 {/* Payment-method row — INERT placeholder (no Stripe saved-cards
-                    backend). The « Modifier » button toggles the real card/cash
-                    paymentMethod state; the «•••• 4521» line is decorative. */}
+                    backend); the «•••• 4521» line is decorative. P0-30 : le
+                    toggle espèces est RETIRÉ (Q2 — hors pilote) ; la carte est le
+                    seul mode proposé, aucun chemin d'interface ne mène au refus
+                    serveur P0-02. */}
                 <div className="pay">
                   <span className="ms" aria-hidden="true">credit_card</span>
                   <div className="pay__txt">
                     <b>{t('paymentMethod')}</b>
-                    <span>{payment === 'card' ? '•••• •••• •••• 4521' : t('cashOnDelivery')}</span>
+                    <span>{'•••• •••• •••• 4521'}</span>
                   </div>
-                  <button onClick={() => setPayment((p) => (p === 'card' ? 'cash' : 'card'))}>{t('edit')}</button>
                 </div>
 
                 {/* P1-PROMO — promo-code input (gb-foundation styled). The preview
@@ -941,7 +944,10 @@ export default function CartScreen() {
                 <div className="reassure"><span className="ms" aria-hidden="true">lock</span>{t('securePayment')}</div>
 
                 {error && (
-                  <div className="cart-err"><span className="ms" aria-hidden="true">error</span>{error}</div>
+                  /* P0-30bis — no `.ms` ligature next to the message: when the icon
+                     font is unavailable the word « error » renders glued to the text
+                     (« errorLa livraison… »). The refusal message displays alone. */
+                  <div className="cart-err" role="alert">{error}</div>
                 )}
               </div>
             </aside>

@@ -1025,6 +1025,7 @@
         "status_preparing": "In preparazione",
         "status_ready": "Pronto",
         "status_picked_up": "In consegna",
+        "status_collected": "Ritirato",
         "status_delivered": "Consegnato",
         "status_cancelled": "Annullato",
         "status_unknown": "In corso",
@@ -2946,6 +2947,7 @@
       "statusPreparing": "In preparazione",
       "statusReady": "Pronto",
       "statusEnRoute": "In arrivo",
+      "statusCollected": "Ritirato",
       "statusDelivered": "Consegnato",
       "statusCancelled": "Annullato",
       "optMissingTitle": "Articolo mancante o errato",
@@ -7016,7 +7018,7 @@
     "client": {
       "reportProblem": "Segnala un problema",
       "title": "Richiedi un rimborso",
-      "description": "Ci dica cosa è successo. Il ristorante ha 24 h per rispondere.",
+      "description": "Ci dica cosa è successo. Il ristorante esamina la richiesta e la risposta apparirà qui.",
       "reasonLabel": "Motivo",
       "amountLabel": "Importo da rimborsare",
       "wholeOrder": "Tutto l’ordine",
@@ -7027,7 +7029,7 @@
       "photoHint": "Aggiunga una foto a supporto della richiesta.",
       "submit": "Invia il reclamo",
       "submitting": "Invio…",
-      "success": "Reclamo inviato. Il ristorante ha 24 h per rispondere.",
+      "success": "Reclamo inviato. Il ristorante lo sta esaminando — la risposta apparirà su questa pagina.",
       "statusTitle": "Il suo reclamo",
       "refusedReason": "Motivo del rifiuto",
       "maxRefundable": "Massimo rimborsabile: {amount}",
@@ -7052,7 +7054,7 @@
       "details": "Dettagli",
       "viewPhoto": "Vedi foto",
       "timeLeft": "{hours} h rimaste per rispondere",
-      "expired": "Termine scaduto — approvazione automatica imminente",
+      "expired": "Termine di risposta superato — può ancora rispondere, lo faccia al più presto",
       "accept": "Accetta",
       "refuse": "Rifiuta",
       "refuseReasonLabel": "Motivo del rifiuto",
@@ -7062,7 +7064,7 @@
       "refused": "Reclamo rifiutato.",
       "refundPending": "Accettata — rimborso in attesa di attivazione.",
       "processing": "Elaborazione…",
-      "autoApproveNote": "Senza risposta entro 24 h, il reclamo viene approvato automaticamente."
+      "responseNote": "Un reclamo senza risposta resta in attesa: risponda al più presto. Il cliente vede la decisione dal proprio ordine e può contestare un rifiuto presso Grubano."
     },
     "admin": {
       "title": "Arbitrato dei reclami",

@@ -1025,6 +1025,7 @@
         "status_preparing": "قيد التحضير",
         "status_ready": "جاهز",
         "status_picked_up": "في الطريق",
+        "status_collected": "تم الاستلام",
         "status_delivered": "تم التوصيل",
         "status_cancelled": "ملغى",
         "status_unknown": "جارٍ",
@@ -2946,6 +2947,7 @@
       "statusPreparing": "قيد التحضير",
       "statusReady": "جاهز",
       "statusEnRoute": "في الطريق",
+      "statusCollected": "تم الاستلام",
       "statusDelivered": "تم التوصيل",
       "statusCancelled": "ملغاة",
       "optMissingTitle": "عنصر مفقود أو خاطئ",
@@ -7016,7 +7018,7 @@
     "client": {
       "reportProblem": "الإبلاغ عن مشكلة",
       "title": "طلب استرداد",
-      "description": "أخبرنا بما حدث. أمام المطعم 24 ساعة للرد.",
+      "description": "أخبرنا بما حدث. يراجع المطعم طلبك وسيظهر رده هنا.",
       "reasonLabel": "السبب",
       "amountLabel": "المبلغ المطلوب رده",
       "wholeOrder": "الطلب بالكامل",
@@ -7027,7 +7029,7 @@
       "photoHint": "أضف صورة لدعم طلبك.",
       "submit": "إرسال الشكوى",
       "submitting": "جارٍ الإرسال…",
-      "success": "تم إرسال الشكوى. أمام المطعم 24 ساعة للرد.",
+      "success": "تم إرسال الشكوى. المطعم يراجعها — تابع رده على هذه الصفحة.",
       "statusTitle": "شكواك",
       "refusedReason": "سبب الرفض",
       "maxRefundable": "الحد الأقصى القابل للرد: {amount}",
@@ -7052,7 +7054,7 @@
       "details": "التفاصيل",
       "viewPhoto": "عرض الصورة",
       "timeLeft": "يتبقى {hours} ساعة للرد",
-      "expired": "انتهى الموعد — الموافقة التلقائية وشيكة",
+      "expired": "انتهت مهلة الرد — لا يزال بإمكانك الرد، يرجى القيام بذلك في أقرب وقت",
       "accept": "قبول",
       "refuse": "رفض",
       "refuseReasonLabel": "سبب الرفض",
@@ -7062,7 +7064,7 @@
       "refused": "تم رفض الشكوى.",
       "refundPending": "تم القبول — رد المبلغ بانتظار التفعيل.",
       "processing": "جارٍ المعالجة…",
-      "autoApproveNote": "بدون رد خلال 24 ساعة، تتم الموافقة على الشكوى تلقائيًا."
+      "responseNote": "الشكوى بدون رد تبقى قيد الانتظار: يرجى الرد في أقرب وقت. يرى العميل قرارك من طلبه ويمكنه الاعتراض على الرفض لدى Grubano."
     },
     "admin": {
       "title": "تحكيم الشكاوى",

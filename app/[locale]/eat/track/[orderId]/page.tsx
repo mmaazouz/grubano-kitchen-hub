@@ -195,7 +195,9 @@ export default function OrderTrackingScreen() {
 
   const statusBadgeKey: Record<string, string> = {
     received: 'statusReceived', preparing: 'statusPreparing', ready: 'statusReady',
-    picked_up: isPickup ? 'statusCollected' : 'statusPickedUp', delivered: 'statusDelivered',
+    // P0-19 — a pickup order that reaches 'delivered' was COLLECTED, never « Livrée ».
+    picked_up: isPickup ? 'statusCollected' : 'statusPickedUp',
+    delivered: isPickup ? 'statusCollected' : 'statusDelivered',
     cancelled: 'statusCancelled',
   }
 

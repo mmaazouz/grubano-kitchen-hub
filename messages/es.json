@@ -1025,6 +1025,7 @@
         "status_preparing": "En preparación",
         "status_ready": "Listo",
         "status_picked_up": "En camino",
+        "status_collected": "Recogido",
         "status_delivered": "Entregado",
         "status_cancelled": "Cancelado",
         "status_unknown": "En curso",
@@ -2946,6 +2947,7 @@
       "statusPreparing": "En preparación",
       "statusReady": "Listo",
       "statusEnRoute": "En camino",
+      "statusCollected": "Recogido",
       "statusDelivered": "Entregado",
       "statusCancelled": "Cancelado",
       "optMissingTitle": "Artículo faltante o incorrecto",
@@ -7016,7 +7018,7 @@
     "client": {
       "reportProblem": "Reportar un problema",
       "title": "Solicitar un reembolso",
-      "description": "Cuéntenos qué pasó. El restaurante tiene 24 h para responder.",
+      "description": "Cuéntenos qué pasó. El restaurante revisa su solicitud y su respuesta aparecerá aquí.",
       "reasonLabel": "Motivo",
       "amountLabel": "Importe a reembolsar",
       "wholeOrder": "Todo el pedido",
@@ -7027,7 +7029,7 @@
       "photoHint": "Añada una foto para respaldar su solicitud.",
       "submit": "Enviar reclamación",
       "submitting": "Enviando…",
-      "success": "Reclamación enviada. El restaurante tiene 24 h para responder.",
+      "success": "Reclamación enviada. El restaurante la está revisando — consulte su respuesta en esta página.",
       "statusTitle": "Su reclamación",
       "refusedReason": "Motivo del rechazo",
       "maxRefundable": "Máximo reembolsable: {amount}",
@@ -7052,7 +7054,7 @@
       "details": "Detalles",
       "viewPhoto": "Ver foto",
       "timeLeft": "{hours} h restantes para responder",
-      "expired": "Plazo vencido — aprobación automática inminente",
+      "expired": "Plazo de respuesta vencido — aún puede responder, hágalo cuanto antes",
       "accept": "Aceptar",
       "refuse": "Rechazar",
       "refuseReasonLabel": "Motivo del rechazo",
@@ -7062,7 +7064,7 @@
       "refused": "Reclamación rechazada.",
       "refundPending": "Aceptada — reembolso pendiente de activación.",
       "processing": "Procesando…",
-      "autoApproveNote": "Sin respuesta en 24 h, la reclamación se aprueba automáticamente."
+      "responseNote": "Una reclamación sin respuesta permanece pendiente: responda lo antes posible. El cliente ve su decisión desde su pedido y puede impugnar un rechazo ante Grubano."
     },
     "admin": {
       "title": "Arbitraje de reclamaciones",

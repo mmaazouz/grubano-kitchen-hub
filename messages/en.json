@@ -1025,6 +1025,7 @@
         "status_preparing": "Preparing",
         "status_ready": "Ready",
         "status_picked_up": "On the way",
+        "status_collected": "Collected",
         "status_delivered": "Delivered",
         "status_cancelled": "Cancelled",
         "status_unknown": "In progress",
@@ -2946,6 +2947,7 @@
       "statusPreparing": "Preparing",
       "statusReady": "Ready",
       "statusEnRoute": "On the way",
+      "statusCollected": "Collected",
       "statusDelivered": "Delivered",
       "statusCancelled": "Cancelled",
       "optMissingTitle": "Missing or wrong item",
@@ -7016,7 +7018,7 @@
     "client": {
       "reportProblem": "Report a problem",
       "title": "Request a refund",
-      "description": "Tell us what happened. The restaurant has 24h to respond.",
+      "description": "Tell us what happened. The restaurant reviews your request and its response will appear here.",
       "reasonLabel": "Reason",
       "amountLabel": "Amount to refund",
       "wholeOrder": "Whole order",
@@ -7027,7 +7029,7 @@
       "photoHint": "Add a photo to support your request.",
       "submit": "Submit claim",
       "submitting": "Submitting…",
-      "success": "Claim submitted. The restaurant has 24h to respond.",
+      "success": "Claim submitted. The restaurant is reviewing it — check this page for its response.",
       "statusTitle": "Your claim",
       "refusedReason": "Refusal reason",
       "maxRefundable": "Maximum refundable: {amount}",
@@ -7052,7 +7054,7 @@
       "details": "Details",
       "viewPhoto": "View photo",
       "timeLeft": "{hours}h left to respond",
-      "expired": "Deadline passed — auto-approval imminent",
+      "expired": "Response window passed — you can still respond, please do so as soon as possible",
       "accept": "Accept",
       "refuse": "Refuse",
       "refuseReasonLabel": "Refusal reason",
@@ -7062,7 +7064,7 @@
       "refused": "Claim refused.",
       "refundPending": "Accepted — refund pending activation.",
       "processing": "Processing…",
-      "autoApproveNote": "Without a response within 24h, the claim is approved automatically."
+      "responseNote": "An unanswered claim stays pending: respond as soon as possible. The customer sees your decision from their order and can contest a refusal with Grubano."
     },
     "admin": {
       "title": "Claim arbitration",

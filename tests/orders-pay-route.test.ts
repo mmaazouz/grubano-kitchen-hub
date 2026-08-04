@@ -40,6 +40,7 @@ const ORDER = {
   id: 'o1', consumerId: 'c1', restaurantId: 'r1', status: 'received',
   subtotal: 100, deliveryFee: 5, total: 105, fulfillmentType: 'delivery',
   stripePaymentIntentId: null, paymentStatus: 'pending', pointOfSaleId: null,
+  paymentMethod: 'card', // P0-29: the route now reads + guards the payment mode
   loyaltyCreditCents: 0, smallOrderFeeCents: 0, tipCents: 0,
 }
 const ROUTED = { stripeAccountId: 'acct_x', stripeAccountStatus: 'active', commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null }
@@ -70,6 +71,19 @@ describe('guards — no Stripe call on any rejected path', () => {
   it('409 already paid', async () => { db.order.findUnique.mockResolvedValue({ ...ORDER, paymentStatus: 'paid' }); expect((await pay()).status).toBe(409) })
   it('400 cancelled', async () => { db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'cancelled' }); expect((await pay()).status).toBe(400) })
   it('400 amount below Stripe minimum', async () => { db.order.findUnique.mockResolvedValue({ ...ORDER, total: 0.3 }); expect((await pay()).status).toBe(400) })
+  // P0-29 (vague 2 — Q2/Q8): the card rail refuses any NON-CARD order — closes the
+  // legacy double-collection door (cash rows created before P0-02 were card-payable).
+  it("⭐ P0-29: 409 payment_method_mismatch on a legacy 'cash' order — no Stripe, no write, attempt traced", async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    db.order.findUnique.mockResolvedValue({ ...ORDER, paymentMethod: 'cash' })
+    const res = await pay()
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: 'payment_method_mismatch' })
+    expect(stripe.createTicketPayment).not.toHaveBeenCalled()
+    expect(db.order.update).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[P0-29]'))
+    warnSpy.mockRestore()
+  })
 })
 
 describe('ROUTED (Connect active) — destination charge + fee on the food base', () => {
