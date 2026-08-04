@@ -80,6 +80,26 @@ jobs:
         run: |
           curl -sS -X POST "$BASE/api/logistics/positions/sweep" -H "Authorization: Bearer $CRON_SECRET" -o /dev/null -w "positions-sweep → HTTP %{http_code}\n"
 
+  sweep-order-emails:
+    # P0-42 (vague 2) — rattrapage SERVEUR des confirmations de commande : les emails
+    # order_confirmation / resto_order_received ne partaient que via le POLL navigateur
+    # (onglet fermé avant le webhook ⇒ resto jamais notifié d'une commande payée).
+    # Idempotent de bout en bout (sendOnce, mêmes triggers+dedupeKey que /confirm) →
+    # rejouable sans doublon ; contenus transactionnels FIXES du rail B1/B2 (rien à
+    # voir avec l'email-agent LLM retiré par P0-07). Délai borné = cadence sweep (20 min).
+    needs: guard
+    if: >-
+      github.event.schedule == '*/20 * * * *' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.group == 'all' || inputs.group == 'sweep'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Order confirmation catch-up sweep (idempotent — no-op when nothing is missing)
+        env:
+          BASE: ${{ needs.guard.outputs.base }}
+          TOK: ${{ secrets.INTERNAL_CRON_TOKEN }}
+        run: |
+          curl -sS -X POST "$BASE/api/admin/orders/confirm-sweep" -H "X-Internal-Token: $TOK" -o /dev/null -w "orders-confirm-sweep → HTTP %{http_code}\n"
+
   daily:
     needs: guard
     if: >-
