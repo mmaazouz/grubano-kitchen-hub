@@ -53,6 +53,8 @@ interface Order {
   total: number
   items: OrderItem[]
   restaurant?: { name?: string } | null
+  // P0-19 — served by GET /api/orders/[id]; drives pickup-aware status labels.
+  fulfillmentType?: string
 }
 
 type View = 'help' | 'refund' | 'chat'
@@ -147,14 +149,18 @@ export default function OrderHelpScreen() {
   )
   const anySelected = Object.values(selected).some(Boolean)
 
+  // P0-19 — on a pickup order, 'picked_up'/'delivered' mean "collected by the
+  // client": never « En route »/« Livrée » (delivery vocabulary). Display only.
+  const isPickupOrder = order?.fulfillmentType === 'pickup'
   const statusLabel = (s?: string) =>
-    s === 'received' ? t('statusReceived')
-      : s === 'preparing' ? t('statusPreparing')
-        : s === 'ready' ? t('statusReady')
-          : s === 'picked_up' ? t('statusEnRoute')
-            : s === 'delivered' ? t('statusDelivered')
-              : s === 'cancelled' ? t('statusCancelled')
-                : t('statusReceived')
+    isPickupOrder && (s === 'picked_up' || s === 'delivered') ? t('statusCollected')
+      : s === 'received' ? t('statusReceived')
+        : s === 'preparing' ? t('statusPreparing')
+          : s === 'ready' ? t('statusReady')
+            : s === 'picked_up' ? t('statusEnRoute')
+              : s === 'delivered' ? t('statusDelivered')
+                : s === 'cancelled' ? t('statusCancelled')
+                  : t('statusReceived')
 
   const restaurantName = order?.restaurant?.name ?? '—'
 
