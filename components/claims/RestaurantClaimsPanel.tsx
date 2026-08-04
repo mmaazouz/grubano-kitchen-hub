@@ -72,7 +72,7 @@ export default function RestaurantClaimsPanel() {
     <div className="mx-auto max-w-3xl px-4 pt-4">
       <div className="rounded-2xl border border-[#FFD9C9] bg-[#FFF7F3] p-4">
         <p className="text-[15px] font-extrabold text-[#1a1a1a]">{t('restaurant.title')}</p>
-        <p className="mt-0.5 text-xs text-[#888]">{t('restaurant.autoApproveNote')}</p>
+        <p className="mt-0.5 text-xs text-[#888]">{t('restaurant.responseNote')}</p>
 
         <div className="mt-3 space-y-3">
           {claims.map((c) => {
