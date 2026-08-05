@@ -7088,7 +7088,11 @@
       "consumerSignal": "Cliente: {recent} reclamo/i recente/i, {rate}% approvati",
       "restaurantSignal": "Ristorante: {overturned}/{refused} rifiuti ribaltati in arbitrato",
       "flaggedConsumer": "Cliente da monitorare",
-      "flaggedRestaurant": "Ristorante da monitorare"
+      "flaggedRestaurant": "Ristorante da monitorare",
+      "pendingTitle": "In attesa del ristorante",
+      "pendingHint": "Il ristorante non ha ancora risposto. Nessuna azione automatica sarà intrapresa — la decisione spetta al ristorante, poi a Lei in arbitrato.",
+      "pendingOverdue": "Termine di risposta superato",
+      "arbitrationTitle": "In arbitrato — da decidere"
     }
   },
   "fiscal": {
@@ -8414,6 +8418,44 @@
       "retry": "Riprova",
       "home": "Torna alla home",
       "ref": "Riferimento da comunicare all'assistenza"
+    }
+  },
+  "claimEmails": {
+    "greeting": "Buongiorno {name},",
+    "footer": "Grubano — questa email è stata inviata automaticamente; può rispondere se necessario.",
+    "theRestaurant": "Il ristorante",
+    "reasonLabel": "Motivo:",
+    "ack": {
+      "subject": "Il Suo reclamo {ref} è stato registrato",
+      "title": "Reclamo registrato",
+      "body": "Abbiamo ricevuto il Suo reclamo sull’ordine {ref} (importo richiesto: {euros} €).",
+      "next": "Il ristorante lo esaminerà. Sarà informato della decisione via email."
+    },
+    "accepted": {
+      "subject": "Reclamo {ref}: accettato dal ristorante",
+      "title": "Reclamo accettato",
+      "body": "{resto} ha accettato il Suo reclamo sull’ordine {ref}. È stato trasmesso a Grubano per la decisione di rimborso."
+    },
+    "refused": {
+      "subject": "Reclamo {ref}: rifiutato dal ristorante",
+      "title": "Reclamo rifiutato",
+      "body": "{resto} ha rifiutato il Suo reclamo sull’ordine {ref}.",
+      "contest": "Può contestarlo dalla pagina di monitoraggio del Suo ordine — Grubano arbitrerà."
+    },
+    "refunded": {
+      "subject": "Reclamo {ref}: rimborso emesso",
+      "title": "Rimborso emesso",
+      "body": "Grubano ha deciso a Suo favore: è stato emesso un rimborso di {euros} € sull’ordine {ref} verso il Suo metodo di pagamento."
+    },
+    "approved": {
+      "subject": "Reclamo {ref}: accettato da Grubano",
+      "title": "Reclamo accettato",
+      "body": "Grubano ha deciso a Suo favore sull’ordine {ref}."
+    },
+    "refusedFinal": {
+      "subject": "Reclamo {ref}: decisione finale di Grubano",
+      "title": "Rifiuto confermato",
+      "body": "Grubano ha esaminato il Suo reclamo sull’ordine {ref} e ha confermato il rifiuto. Questa decisione è definitiva."
     }
   }
 }

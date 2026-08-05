@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { isClaimsEnabled, arbitrateClaim } from '@/lib/claims'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit } from '@/lib/admin-audit'
+import { sendClaimDecisionEmail } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -52,5 +53,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     metadata:   { decision: parsed.data.decision, refunded: result.refund != null },
     req,
   })
+
+  // ── T43 (vague 3) — notification de DÉCISION au client, STRICTEMENT ADDITIVE,
+  // post-succès, BEST-EFFORT (même position que recordAdminAudit ci-dessus : la
+  // décision, le moteur et la transition sont déjà JOUÉS et INTOUCHÉS — un échec
+  // d'email ne change rien à la réponse). L'email dit PAR QUI (Grubano) et CE QUI
+  // a été décidé : remboursement ÉMIS (refund.state 'refunded', montant), accepté
+  // sans émission encore (pending/failed — aucune promesse de délai), ou refus
+  // DÉFINITIF. Idempotent (trigger dédié par décision, dedupeKey claim:<id>).
+  {
+    const c = result.claim as { id: string; consumerId: string; orderId: string; requestedAmountCents: number }
+    const refunded = result.refund?.state === 'refunded'
+    await sendClaimDecisionEmail({
+      claimId:       c.id,
+      consumerId:    c.consumerId,
+      orderId:       c.orderId,
+      decision:      parsed.data.decision === 'refuse_final' ? 'refused_final' : (refunded ? 'refunded' : 'approved'),
+      reason:        parsed.data.reason ?? null,
+      refundedCents: refunded ? c.requestedAmountCents : null,
+    })
+  }
+
   return NextResponse.json({ claim: result.claim, refund: result.refund ?? null })
 }

@@ -7,6 +7,7 @@ import {
   autoResolveSmallClaim,
 } from '@/lib/claims'
 import { processDishImage, ALLOWED_IMAGE_TYPES, type DishImageType } from '@/lib/dish-photo'
+import { sendClaimAckEmail } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -62,6 +63,21 @@ export async function POST(req: NextRequest) {
   // immediately (→ engine refund). NO-OP for non-small/flagged → exactly the C1 flow.
   // The client refetches eligibility right after, so it sees the resolved status.
   await autoResolveSmallClaim(result.claim as { id: string; consumerId: string; requestedAmountCents: number; status: string })
+
+  // ── T43 (vague 3) — accusé de réception au CLIENT, post-succès, BEST-EFFORT ──
+  // Additif : la création/l'auto-résolution ci-dessus sont INTOUCHÉES ; un échec
+  // d'email ne casse jamais le 201 (sendClaimAckEmail est intégralement
+  // try/catch'é et idempotent — trigger claim_ack, dedupeKey claim:<id>).
+  {
+    const c = result.claim as { id: string; consumerId: string; orderId: string; requestedAmountCents: number }
+    await sendClaimAckEmail({
+      claimId:              c.id,
+      consumerId:           c.consumerId,
+      orderId:              c.orderId,
+      requestedAmountCents: c.requestedAmountCents,
+    })
+  }
+
   return NextResponse.json({ claim: result.claim }, { status: 201 })
 }
 
