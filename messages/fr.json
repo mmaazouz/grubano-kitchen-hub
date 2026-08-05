@@ -1239,9 +1239,6 @@
     "pauseToastPaused": "Restaurant mis en pause",
     "pauseToastActive": "Restaurant réactivé",
     "pauseError": "Impossible de changer l'état du restaurant",
-    "proBannerTitle": "Voir UberEats, Deliveroo & Just Eat ici",
-    "proBannerDesc": "Pause unique multi-plateforme · Grubano Pro",
-    "proBadge": "Pro",
     "filterAll": "Toutes",
     "statusAll": "Toutes",
     "statusLive": "En cours",
@@ -4258,7 +4255,6 @@
     "reportsSoon": "Bientôt",
     "proTitle": "Export comptable automatique",
     "proDesc": "Intégration Sage, QuickBooks · Grubano Pro",
-    "proBadge": "Pro",
     "loading": "Chargement…",
     "emptyTitle": "Aucune commande sur la période",
     "emptyDesc": "Tes 30 derniers jours apparaîtront ici dès tes premières commandes."
@@ -4277,8 +4273,6 @@
     "statusPaused": "Pause",
     "sortMost": "Plus de plats",
     "sortLeast": "Moins de plats",
-    "proBanner": "Activez Grubano Pro pour voir UberEats, Deliveroo & Just Eat",
-    "proPrice": "29€/mois",
     "badgeActive": "Actif",
     "badgePaused": "Pause",
     "statMenu": "Plats au menu",
@@ -6434,7 +6428,6 @@
     "hubIntegrationsTitle": "Intégrations",
     "hubIntegrationsNote": "Les connexions aux plateformes de livraison et de paiement arrivent bientôt.",
     "hubSoon": "Bientôt",
-    "hubCatDelivery": "Livraison",
     "hubCatPayment": "Paiement",
     "hubCatMarketing": "Marketing",
     "minOrderLabel": "Commande minimum",
@@ -7088,7 +7081,11 @@
       "consumerSignal": "Client : {recent} réclamation(s) récente(s), {rate}% approuvées",
       "restaurantSignal": "Restaurant : {overturned}/{refused} refus infirmés en arbitrage",
       "flaggedConsumer": "Client à surveiller",
-      "flaggedRestaurant": "Restaurant à surveiller"
+      "flaggedRestaurant": "Restaurant à surveiller",
+      "pendingTitle": "En attente du restaurant",
+      "pendingHint": "Le restaurant n’a pas encore répondu. Aucune action automatique ne sera prise — la décision reste au restaurant, puis à vous en arbitrage.",
+      "pendingOverdue": "Délai de réponse dépassé",
+      "arbitrationTitle": "En arbitrage — à trancher"
     }
   },
   "fiscal": {
@@ -8414,6 +8411,44 @@
       "retry": "Réessayer",
       "home": "Retour à l'accueil",
       "ref": "Référence à communiquer au support"
+    }
+  },
+  "claimEmails": {
+    "greeting": "Bonjour {name},",
+    "footer": "Grubano — cet email a été envoyé automatiquement, vous pouvez y répondre si besoin.",
+    "theRestaurant": "Le restaurant",
+    "reasonLabel": "Motif :",
+    "ack": {
+      "subject": "Votre réclamation {ref} est bien enregistrée",
+      "title": "Réclamation enregistrée",
+      "body": "Nous avons bien reçu votre réclamation sur la commande {ref} (montant demandé : {euros} €).",
+      "next": "Vous serez informé(e) par email dès qu’une décision sera prise."
+    },
+    "accepted": {
+      "subject": "Réclamation {ref} : acceptée par le restaurant",
+      "title": "Réclamation acceptée",
+      "body": "{resto} a accepté votre réclamation sur la commande {ref}. Elle est transmise à Grubano pour décision de remboursement."
+    },
+    "refused": {
+      "subject": "Réclamation {ref} : refusée par le restaurant",
+      "title": "Réclamation refusée",
+      "body": "{resto} a refusé votre réclamation sur la commande {ref}.",
+      "contest": "Vous pouvez la contester depuis le suivi de votre commande — Grubano arbitrera."
+    },
+    "refunded": {
+      "subject": "Réclamation {ref} : remboursement émis",
+      "title": "Remboursement émis",
+      "body": "Grubano a tranché en votre faveur : un remboursement de {euros} € a été émis sur la commande {ref} vers votre moyen de paiement."
+    },
+    "approved": {
+      "subject": "Réclamation {ref} : acceptée par Grubano",
+      "title": "Réclamation acceptée",
+      "body": "Grubano a tranché en votre faveur sur la commande {ref}."
+    },
+    "refusedFinal": {
+      "subject": "Réclamation {ref} : décision finale de Grubano",
+      "title": "Refus confirmé",
+      "body": "Grubano a examiné votre réclamation sur la commande {ref} et a confirmé le refus. Cette décision est définitive."
     }
   }
 }

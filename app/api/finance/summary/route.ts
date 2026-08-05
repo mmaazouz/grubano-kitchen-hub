@@ -6,10 +6,6 @@ import { authOptions } from '@/lib/auth'
 // Reading session → never statically prerendered.
 export const dynamic = 'force-dynamic'
 
-// Grubano's commission on a basket. SAME constant as POST /api/orders
-// (GRUBANO_FEE_PCT) so the P&L shown here matches what the checkout freezes.
-const GRUBANO_FEE_PCT = 0.10
-
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 // Roles allowed to see an operator's financial P&L.
@@ -18,7 +14,7 @@ const ALLOWED_ROLES = new Set(['restaurant', 'admin'])
 // ── GET /api/finance/summary ────────────────────────────────────────────────
 // Real restaurateur P&L over a rolling 30-day window, with creator COST and
 // creator VALUE side by side. READ-ONLY: no write, no migration — every figure
-// is derived from existing Order / DishSale / ReferralOrder rows.
+// is derived from existing Order / DishSale / ReferralOrder / LedgerEntry rows.
 export async function GET() {
   // Safe zero-filled shape: the page must render even if anything goes wrong.
   const empty = {
@@ -96,9 +92,27 @@ export async function GET() {
     // they are pass-through to the courier, not restaurateur revenue).
     const caBrut = round2(orders.reduce((s, o) => s + o.subtotal, 0))
 
-    // commissionGrubano — Grubano's 10 % basket commission (same rate the
-    // checkout freezes on each ReferralOrder.grubanoFee).
-    const commissionGrubano = round2(caBrut * GRUBANO_FEE_PCT)
+    // commissionGrubano — the commission Grubano ACTUALLY kept over the window,
+    // READ from the stamped ledger (V3-2). LedgerEntry.applicationFeeAmount is
+    // frozen per transaction by the payment rail (per-channel 12/8/5/0 grid,
+    // per-establishment overrides, founders 0 % offer — lib/commission at charge
+    // time), so this screen shows the stamped truth, never a flat-rate estimate.
+    // Same money-in/refund semantics as GET /api/restaurants/[id]/finance/summary
+    // (rail A7, the ledger-reading reference): refund lines carry NEGATIVE
+    // amounts, so summing payment + deposit_capture + refund yields the NET fee
+    // kept. A flow with no ledger line (e.g. cash) shows no fee — because none
+    // was taken.
+    const feeLines = await prisma.ledgerEntry.findMany({
+      where: {
+        restaurantId: { in: restaurantIds },
+        createdAt:    { gte: windowStart, lte: now },
+        type:         { in: ['payment', 'deposit_capture', 'refund'] },
+      },
+      select: { applicationFeeAmount: true },
+    })
+    const commissionGrubano = round2(
+      feeLines.reduce((s, l) => s + l.applicationFeeAmount, 0) / 100,
+    )
 
     // verseAuxCreateurs — the REAL recipe cost paid to creators: the sum of the
     // FROZEN DishSale.creatorEarning for sales tied to these orders (4 % or 1 %

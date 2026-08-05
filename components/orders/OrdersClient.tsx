@@ -22,8 +22,7 @@
  *   • stock-out toggle: PATCH /api/menu/[id]/availability.
  *
  * Money: Order.{subtotal,deliveryFee,discount,total} = Float EUROS via
- * formatEuros(x, locale) — NEVER recomputed. The multi-platform (UberEats / Deliveroo
- * / Just Eat) banner stays a VISUAL PLACEHOLDER → /pricing (no real aggregation).
+ * formatEuros(x, locale) — NEVER recomputed.
  * Mounts its own ToastProvider (operator pages have no global one).
  */
 
@@ -31,7 +30,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatEuros } from '@/lib/format-money'
-import { Link } from '@/navigation'
 import { ToastProvider, useToast } from '@/components/design-system'
 import EstablishmentSwitcher, {
   type EstablishmentOption,
@@ -415,16 +413,6 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
           )}
         </div>
       )}
-
-      {/* Pro multi-platform placeholder (no real integration) — upsell lives on /pricing */}
-      <Link href="/pricing" className="op-callout clickable">
-        <span className="ms">lock</span>
-        <div className="op-callout__t">
-          <b>{t('proBannerTitle')}</b>
-          <span>{t('proBannerDesc')}</span>
-        </div>
-        <span className="cta">{t('proBadge')}</span>
-      </Link>
 
       {/* Brand filters + stock-out button */}
       <div className="op-filters">

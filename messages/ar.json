@@ -1239,9 +1239,6 @@
     "pauseToastPaused": "تم إيقاف المطعم مؤقتًا",
     "pauseToastActive": "تمت إعادة تفعيل المطعم",
     "pauseError": "تعذّر تغيير حالة المطعم",
-    "proBannerTitle": "اعرض UberEats وDeliveroo وJust Eat هنا",
-    "proBannerDesc": "إيقاف موحّد متعدد المنصات · Grubano Pro",
-    "proBadge": "Pro",
     "filterAll": "الكل",
     "statusAll": "الكل",
     "statusLive": "قيد التنفيذ",
@@ -4258,7 +4255,6 @@
     "reportsSoon": "قريبًا",
     "proTitle": "تصدير محاسبي تلقائي",
     "proDesc": "تكامل Sage وQuickBooks · Grubano Pro",
-    "proBadge": "Pro",
     "loading": "جارٍ التحميل…",
     "emptyTitle": "لا طلبات في هذه الفترة",
     "emptyDesc": "ستظهر آخر 30 يومًا هنا بمجرد استلام أولى طلباتك."
@@ -4277,8 +4273,6 @@
     "statusPaused": "متوقفة",
     "sortMost": "أكثر الأطباق",
     "sortLeast": "أقل الأطباق",
-    "proBanner": "فعّل Grubano Pro لرؤية UberEats وDeliveroo وJust Eat",
-    "proPrice": "29€/شهر",
     "badgeActive": "نشطة",
     "badgePaused": "متوقفة",
     "statMenu": "أطباق القائمة",
@@ -6434,7 +6428,6 @@
     "hubIntegrationsTitle": "التكاملات",
     "hubIntegrationsNote": "اتصالات منصات التوصيل والدفع قادمة قريبًا.",
     "hubSoon": "قريبًا",
-    "hubCatDelivery": "التوصيل",
     "hubCatPayment": "الدفع",
     "hubCatMarketing": "التسويق",
     "minOrderLabel": "الحد الأدنى للطلب",
@@ -7088,7 +7081,11 @@
       "consumerSignal": "العميل: {recent} شكوى حديثة، {rate}% موافق عليها",
       "restaurantSignal": "المطعم: {overturned}/{refused} رفض أُلغي في التحكيم",
       "flaggedConsumer": "عميل يستحق المتابعة",
-      "flaggedRestaurant": "مطعم يستحق المتابعة"
+      "flaggedRestaurant": "مطعم يستحق المتابعة",
+      "pendingTitle": "في انتظار المطعم",
+      "pendingHint": "لم يرد المطعم بعد. لن يُتخذ أي إجراء تلقائي — القرار يعود إلى المطعم، ثم إليك في التحكيم.",
+      "pendingOverdue": "تم تجاوز مهلة الرد",
+      "arbitrationTitle": "قيد التحكيم — بانتظار البتّ"
     }
   },
   "fiscal": {
@@ -8414,6 +8411,44 @@
       "retry": "إعادة المحاولة",
       "home": "العودة إلى الصفحة الرئيسية",
       "ref": "المرجع الذي يجب إبلاغ الدعم به"
+    }
+  },
+  "claimEmails": {
+    "greeting": "مرحباً {name}،",
+    "footer": "Grubano — أُرسل هذا البريد تلقائياً، ويمكنك الرد عليه عند الحاجة.",
+    "theRestaurant": "المطعم",
+    "reasonLabel": "السبب:",
+    "ack": {
+      "subject": "تم تسجيل شكواك {ref}",
+      "title": "تم تسجيل الشكوى",
+      "body": "لقد استلمنا شكواك بخصوص الطلب {ref} (المبلغ المطلوب: {euros} €).",
+      "next": "سيتم إبلاغك عبر البريد الإلكتروني فور اتخاذ قرار."
+    },
+    "accepted": {
+      "subject": "الشكوى {ref}: قبلها المطعم",
+      "title": "تم قبول الشكوى",
+      "body": "قبل {resto} شكواك بخصوص الطلب {ref}. وقد أُحيلت إلى Grubano لاتخاذ قرار الاسترداد."
+    },
+    "refused": {
+      "subject": "الشكوى {ref}: رفضها المطعم",
+      "title": "تم رفض الشكوى",
+      "body": "رفض {resto} شكواك بخصوص الطلب {ref}.",
+      "contest": "يمكنك الاعتراض عليها من صفحة متابعة طلبك — وستتولى Grubano التحكيم."
+    },
+    "refunded": {
+      "subject": "الشكوى {ref}: تم إصدار الاسترداد",
+      "title": "تم إصدار الاسترداد",
+      "body": "حكمت Grubano لصالحك: تم إصدار استرداد بقيمة {euros} € على الطلب {ref} إلى وسيلة الدفع الخاصة بك."
+    },
+    "approved": {
+      "subject": "الشكوى {ref}: قبلتها Grubano",
+      "title": "تم قبول الشكوى",
+      "body": "حكمت Grubano لصالحك بخصوص الطلب {ref}."
+    },
+    "refusedFinal": {
+      "subject": "الشكوى {ref}: قرار Grubano النهائي",
+      "title": "تأكيد الرفض",
+      "body": "راجعت Grubano شكواك بخصوص الطلب {ref} وأكدت الرفض. هذا القرار نهائي."
     }
   }
 }

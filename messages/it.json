@@ -1239,9 +1239,6 @@
     "pauseToastPaused": "Ristorante messo in pausa",
     "pauseToastActive": "Ristorante riattivato",
     "pauseError": "Impossibile cambiare lo stato del ristorante",
-    "proBannerTitle": "Vedi UberEats, Deliveroo e Just Eat qui",
-    "proBannerDesc": "Pausa unica multipiattaforma · Grubano Pro",
-    "proBadge": "Pro",
     "filterAll": "Tutte",
     "statusAll": "Tutti",
     "statusLive": "In corso",
@@ -4258,7 +4255,6 @@
     "reportsSoon": "Presto",
     "proTitle": "Esportazione contabile automatica",
     "proDesc": "Integrazione Sage, QuickBooks · Grubano Pro",
-    "proBadge": "Pro",
     "loading": "Caricamento…",
     "emptyTitle": "Nessun ordine nel periodo",
     "emptyDesc": "I tuoi ultimi 30 giorni appariranno qui non appena ricevi i primi ordini."
@@ -4277,8 +4273,6 @@
     "statusPaused": "In pausa",
     "sortMost": "Più piatti",
     "sortLeast": "Meno piatti",
-    "proBanner": "Attiva Grubano Pro per vedere UberEats, Deliveroo e Just Eat",
-    "proPrice": "29€/mese",
     "badgeActive": "Attivo",
     "badgePaused": "In pausa",
     "statMenu": "Piatti nel menu",
@@ -6434,7 +6428,6 @@
     "hubIntegrationsTitle": "Integrazioni",
     "hubIntegrationsNote": "Le connessioni con le piattaforme di consegna e pagamento arriveranno presto.",
     "hubSoon": "Presto",
-    "hubCatDelivery": "Consegna",
     "hubCatPayment": "Pagamento",
     "hubCatMarketing": "Marketing",
     "minOrderLabel": "Ordine minimo",
@@ -7088,7 +7081,11 @@
       "consumerSignal": "Cliente: {recent} reclamo/i recente/i, {rate}% approvati",
       "restaurantSignal": "Ristorante: {overturned}/{refused} rifiuti ribaltati in arbitrato",
       "flaggedConsumer": "Cliente da monitorare",
-      "flaggedRestaurant": "Ristorante da monitorare"
+      "flaggedRestaurant": "Ristorante da monitorare",
+      "pendingTitle": "In attesa del ristorante",
+      "pendingHint": "Il ristorante non ha ancora risposto. Nessuna azione automatica sarà intrapresa — la decisione spetta al ristorante, poi a Lei in arbitrato.",
+      "pendingOverdue": "Termine di risposta superato",
+      "arbitrationTitle": "In arbitrato — da decidere"
     }
   },
   "fiscal": {
@@ -8414,6 +8411,44 @@
       "retry": "Riprova",
       "home": "Torna alla home",
       "ref": "Riferimento da comunicare all'assistenza"
+    }
+  },
+  "claimEmails": {
+    "greeting": "Buongiorno {name},",
+    "footer": "Grubano — questa email è stata inviata automaticamente; può rispondere se necessario.",
+    "theRestaurant": "Il ristorante",
+    "reasonLabel": "Motivo:",
+    "ack": {
+      "subject": "Il Suo reclamo {ref} è stato registrato",
+      "title": "Reclamo registrato",
+      "body": "Abbiamo ricevuto il Suo reclamo sull’ordine {ref} (importo richiesto: {euros} €).",
+      "next": "Sarà informato via email non appena verrà presa una decisione."
+    },
+    "accepted": {
+      "subject": "Reclamo {ref}: accettato dal ristorante",
+      "title": "Reclamo accettato",
+      "body": "{resto} ha accettato il Suo reclamo sull’ordine {ref}. È stato trasmesso a Grubano per la decisione di rimborso."
+    },
+    "refused": {
+      "subject": "Reclamo {ref}: rifiutato dal ristorante",
+      "title": "Reclamo rifiutato",
+      "body": "{resto} ha rifiutato il Suo reclamo sull’ordine {ref}.",
+      "contest": "Può contestarlo dalla pagina di monitoraggio del Suo ordine — Grubano arbitrerà."
+    },
+    "refunded": {
+      "subject": "Reclamo {ref}: rimborso emesso",
+      "title": "Rimborso emesso",
+      "body": "Grubano ha deciso a Suo favore: è stato emesso un rimborso di {euros} € sull’ordine {ref} verso il Suo metodo di pagamento."
+    },
+    "approved": {
+      "subject": "Reclamo {ref}: accettato da Grubano",
+      "title": "Reclamo accettato",
+      "body": "Grubano ha deciso a Suo favore sull’ordine {ref}."
+    },
+    "refusedFinal": {
+      "subject": "Reclamo {ref}: decisione finale di Grubano",
+      "title": "Rifiuto confermato",
+      "body": "Grubano ha esaminato il Suo reclamo sull’ordine {ref} e ha confermato il rifiuto. Questa decisione è definitiva."
     }
   }
 }

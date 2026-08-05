@@ -554,3 +554,27 @@ export async function listArbitrationQueue() {
     restaurantStats: await restaurantRefusalStats(c.restaurantId),
   })))
 }
+
+/** P0-39 (vague 3) — les réclamations EN ATTENTE DE RÉPONSE DU RESTAURANT, pour
+ *  la console admin. L'auto-approbation 24 h (la soupape du circuit) a été
+ *  retirée (P0-07 + P0-25, conformément à Q3) sans remplacement : une
+ *  réclamation qu'un restaurant ignore restait bloquée indéfiniment, invisible
+ *  de tous. REQUÊTE PURE, lecture seule — AUCUNE transition, AUCUN effet : la
+ *  décision reste au restaurant, puis à l'admin en arbitrage (Q3 interdit toute
+ *  automatisation à effet financier). Indexée ([status, responseDeadlineAt] /
+ *  [restaurantId, status]) ; les plus anciennes d'abord (l'ancienneté est
+ *  l'information que l'admin vient chercher). */
+export async function listPendingRestaurantClaims() {
+  return prisma.claim.findMany({
+    where:   { status: 'restaurant_review' },
+    // Revue P0-39 : SELECT curaté — la console n'affiche que ces champs, on
+    // n'expose pas toute la ligne Claim (surface minimale, même esprit que la
+    // forme curatée de la file d'arbitrage).
+    select: {
+      id: true, orderId: true, reason: true, requestedAmountCents: true,
+      description: true, createdAt: true, responseDeadlineAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+    take:    200,
+  })
+}

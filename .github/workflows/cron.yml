@@ -140,6 +140,9 @@ jobs:
       - name: Ghost-order reconciliation sweep (READ-ONLY — list + admin digest, no money action)
         run: |
           curl -sS "$BASE/api/admin/reconcile-ghost-orders" -H "X-Internal-Token: $TOK" -o /dev/null -w "reconcile-ghost-orders → HTTP %{http_code}\n"
+      - name: Stale-claims heads-up (P0-39 — READ-ONLY, one idempotent alert per claim, NO auto action)
+        run: |
+          curl -sS "$BASE/api/admin/claims/stale-alerts" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-stale-alerts → HTTP %{http_code}\n"
 
   monthly:
     needs: guard
