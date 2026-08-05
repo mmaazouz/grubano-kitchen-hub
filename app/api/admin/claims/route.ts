@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { isClaimsEnabled, listArbitrationQueue } from '@/lib/claims'
+import { isClaimsEnabled, listArbitrationQueue, listPendingRestaurantClaims } from '@/lib/claims'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +19,9 @@ export async function GET() {
   const isAdmin = user.role === 'admin' || (Array.isArray(user.roles) && user.roles.includes('admin'))
   if (!isAdmin) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
-  const claims = await listArbitrationQueue()
-  return NextResponse.json({ enabled: true, claims })
+  // P0-39 (vague 3) — ADDITIF : la file d'arbitrage est inchangée ; `pending`
+  // expose EN PLUS les réclamations en attente du restaurant (lecture seule,
+  // aucune action possible dessus — l'admin VOIT, il ne se substitue pas).
+  const [claims, pending] = await Promise.all([listArbitrationQueue(), listPendingRestaurantClaims()])
+  return NextResponse.json({ enabled: true, claims, pending })
 }

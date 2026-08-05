@@ -54,18 +54,19 @@ fonctionne. Chaque job est idempotent et no-op quand son flag est OFF.
 |---|---|---|
 | ~~frequent~~ | — | **RETIRÉ (P0-07)** — le groupe horaire `POST /api/email-agent` a été supprimé de `cron.yml` par décision fondateur : automatisation à effet externe (emails rédigés par LLM envoyés à de vrais clients/créateurs/restaurateurs) sans validation humaine. |
 | sweep | `*/20 * * * *` | `POST /api/logistics/positions/sweep` (rétention géoloc, no-op flags OFF) + `POST /api/admin/orders/confirm-sweep` (P0-42 — rattrapage serveur des confirmations de commande payée : idempotent via sendOnce, mêmes triggers+dedupeKey que /confirm ; contenus transactionnels FIXES B1/B2, pas l'email-agent LLM de P0-07) |
-| daily | `20 3 * * *` | `ledger-check-probe.js` + `creator-earnings-mature.js` + `POST /api/admin/creator-payouts/run` + `POST /api/admin/onboarding-nudges/run` + `GET /api/admin/reconcile-ghost-orders` (read-only) — **`POST /api/admin/claims/auto-approve` RETIRÉ (P0-07)** : auto-approbation des réclamations en timeout 24 h **et remboursement**, sans admin dans la boucle. |
+| daily | `20 3 * * *` | `ledger-check-probe.js` + `creator-earnings-mature.js` + `POST /api/admin/creator-payouts/run` + `POST /api/admin/onboarding-nudges/run` + `GET /api/admin/reconcile-ghost-orders` (read-only) + `GET /api/admin/claims/stale-alerts` (P0-39 — read-only, UNE alerte idempotente par réclamation en retard, aucune action auto : remplace la VISIBILITÉ que l'auto-approbation retirée assurait, jamais sa décision) — **`POST /api/admin/claims/auto-approve` RETIRÉ (P0-07)** : auto-approbation des réclamations en timeout 24 h **et remboursement**, sans admin dans la boucle. |
 | monthly | `0 7 1 * *` | `monthly-invoices.js` + `POST /api/admin/franchise-settlements/run` |
 
 ## 4. Routes cron-appelables SANS scheduler actif ✅ (le « trou » constaté)
 
-12 routes lisent `CRON_SECRET` ou `INTERNAL_CRON_TOKEN` (les 11 du relevé Sprint 0 + `confirm-sweep` P0-42). Couverture :
+13 routes lisent `CRON_SECRET` ou `INTERNAL_CRON_TOKEN` (les 11 du relevé Sprint 0 + `confirm-sweep` P0-42 + `claims/stale-alerts` P0-39). Couverture :
 
 | Route | Scheduler |
 |---|---|
 | `/api/email-agent` | **AUCUN scheduler (P0-07)** — job `frequent` retiré de cron.yml. La route existe toujours et reste appelable avec `CRON_SECRET`, mais plus rien ne la déclenche automatiquement. |
 | `/api/logistics/positions/sweep` | cron.yml (sweep) — inerte hors `main` |
 | `/api/admin/orders/confirm-sweep` | cron.yml (sweep, P0-42) — inerte hors `main` ; appelable aussi en session ADMIN |
+| `/api/admin/claims/stale-alerts` | cron.yml (daily, P0-39) — inerte hors `main` ; appelable aussi en session ADMIN |
 | `/api/admin/ledger/check` | script + cPanel crontab ✅ actif |
 | `/api/admin/creator-earnings/mature` | script + cPanel crontab ✅ actif |
 | `/api/admin/invoices/generate` | script + cPanel crontab ✅ actif |
