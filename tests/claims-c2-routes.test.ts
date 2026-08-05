@@ -4,14 +4,17 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // Flag gating, client owner-scoping (session token), admin-only (session role). lib +
 // auth mocked.
 
-const { flag, contestMock, arbitrateMock, queueMock } = vi.hoisted(() => ({
+const { flag, contestMock, arbitrateMock, queueMock, pendingMock } = vi.hoisted(() => ({
   flag: vi.fn(), contestMock: vi.fn(), arbitrateMock: vi.fn(), queueMock: vi.fn(),
+  // P0-39 — la route admin liste AUSSI les réclamations en attente du resto.
+  pendingMock: vi.fn(async () => []),
 }))
 vi.mock('@/lib/claims', () => ({
   isClaimsEnabled: flag,
   contestClaim: contestMock,
   arbitrateClaim: arbitrateMock,
   listArbitrationQueue: queueMock,
+  listPendingRestaurantClaims: pendingMock,
 }))
 
 const { tokenMock } = vi.hoisted(() => ({ tokenMock: vi.fn() }))

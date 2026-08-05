@@ -7081,7 +7081,11 @@
       "consumerSignal": "Cliente: {recent} reclamación(es) reciente(s), {rate}% aprobadas",
       "restaurantSignal": "Restaurante: {overturned}/{refused} rechazos revocados en arbitraje",
       "flaggedConsumer": "Cliente a vigilar",
-      "flaggedRestaurant": "Restaurante a vigilar"
+      "flaggedRestaurant": "Restaurante a vigilar",
+      "pendingTitle": "A la espera del restaurante",
+      "pendingHint": "El restaurante aún no ha respondido. No se tomará ninguna acción automática — la decisión corresponde al restaurante y, después, a usted en arbitraje.",
+      "pendingOverdue": "Plazo de respuesta superado",
+      "arbitrationTitle": "En arbitraje — por decidir"
     }
   },
   "fiscal": {
@@ -8407,6 +8411,44 @@
       "retry": "Reintentar",
       "home": "Volver al inicio",
       "ref": "Referencia para el servicio de soporte"
+    }
+  },
+  "claimEmails": {
+    "greeting": "Hola {name}:",
+    "footer": "Grubano — este correo se envió automáticamente; puede responderlo si lo necesita.",
+    "theRestaurant": "El restaurante",
+    "reasonLabel": "Motivo:",
+    "ack": {
+      "subject": "Su reclamación {ref} ha sido registrada",
+      "title": "Reclamación registrada",
+      "body": "Hemos recibido su reclamación sobre el pedido {ref} (importe solicitado: {euros} €).",
+      "next": "Le informaremos por correo electrónico en cuanto se tome una decisión."
+    },
+    "accepted": {
+      "subject": "Reclamación {ref}: aceptada por el restaurante",
+      "title": "Reclamación aceptada",
+      "body": "{resto} ha aceptado su reclamación sobre el pedido {ref}. Se ha transmitido a Grubano para la decisión de reembolso."
+    },
+    "refused": {
+      "subject": "Reclamación {ref}: rechazada por el restaurante",
+      "title": "Reclamación rechazada",
+      "body": "{resto} ha rechazado su reclamación sobre el pedido {ref}.",
+      "contest": "Puede impugnarla desde el seguimiento de su pedido — Grubano arbitrará."
+    },
+    "refunded": {
+      "subject": "Reclamación {ref}: reembolso emitido",
+      "title": "Reembolso emitido",
+      "body": "Grubano ha fallado a su favor: se ha emitido un reembolso de {euros} € sobre el pedido {ref} a su método de pago."
+    },
+    "approved": {
+      "subject": "Reclamación {ref}: aceptada por Grubano",
+      "title": "Reclamación aceptada",
+      "body": "Grubano ha fallado a su favor sobre el pedido {ref}."
+    },
+    "refusedFinal": {
+      "subject": "Reclamación {ref}: decisión final de Grubano",
+      "title": "Rechazo confirmado",
+      "body": "Grubano ha examinado su reclamación sobre el pedido {ref} y ha confirmado el rechazo. Esta decisión es definitiva."
     }
   }
 }

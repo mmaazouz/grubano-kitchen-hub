@@ -7081,7 +7081,11 @@
       "consumerSignal": "Client : {recent} réclamation(s) récente(s), {rate}% approuvées",
       "restaurantSignal": "Restaurant : {overturned}/{refused} refus infirmés en arbitrage",
       "flaggedConsumer": "Client à surveiller",
-      "flaggedRestaurant": "Restaurant à surveiller"
+      "flaggedRestaurant": "Restaurant à surveiller",
+      "pendingTitle": "En attente du restaurant",
+      "pendingHint": "Le restaurant n’a pas encore répondu. Aucune action automatique ne sera prise — la décision reste au restaurant, puis à vous en arbitrage.",
+      "pendingOverdue": "Délai de réponse dépassé",
+      "arbitrationTitle": "En arbitrage — à trancher"
     }
   },
   "fiscal": {
@@ -8407,6 +8411,44 @@
       "retry": "Réessayer",
       "home": "Retour à l'accueil",
       "ref": "Référence à communiquer au support"
+    }
+  },
+  "claimEmails": {
+    "greeting": "Bonjour {name},",
+    "footer": "Grubano — cet email a été envoyé automatiquement, vous pouvez y répondre si besoin.",
+    "theRestaurant": "Le restaurant",
+    "reasonLabel": "Motif :",
+    "ack": {
+      "subject": "Votre réclamation {ref} est bien enregistrée",
+      "title": "Réclamation enregistrée",
+      "body": "Nous avons bien reçu votre réclamation sur la commande {ref} (montant demandé : {euros} €).",
+      "next": "Vous serez informé(e) par email dès qu’une décision sera prise."
+    },
+    "accepted": {
+      "subject": "Réclamation {ref} : acceptée par le restaurant",
+      "title": "Réclamation acceptée",
+      "body": "{resto} a accepté votre réclamation sur la commande {ref}. Elle est transmise à Grubano pour décision de remboursement."
+    },
+    "refused": {
+      "subject": "Réclamation {ref} : refusée par le restaurant",
+      "title": "Réclamation refusée",
+      "body": "{resto} a refusé votre réclamation sur la commande {ref}.",
+      "contest": "Vous pouvez la contester depuis le suivi de votre commande — Grubano arbitrera."
+    },
+    "refunded": {
+      "subject": "Réclamation {ref} : remboursement émis",
+      "title": "Remboursement émis",
+      "body": "Grubano a tranché en votre faveur : un remboursement de {euros} € a été émis sur la commande {ref} vers votre moyen de paiement."
+    },
+    "approved": {
+      "subject": "Réclamation {ref} : acceptée par Grubano",
+      "title": "Réclamation acceptée",
+      "body": "Grubano a tranché en votre faveur sur la commande {ref}."
+    },
+    "refusedFinal": {
+      "subject": "Réclamation {ref} : décision finale de Grubano",
+      "title": "Refus confirmé",
+      "body": "Grubano a examiné votre réclamation sur la commande {ref} et a confirmé le refus. Cette décision est définitive."
     }
   }
 }

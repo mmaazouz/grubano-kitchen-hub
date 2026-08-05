@@ -15,12 +15,19 @@ type Claim = {
   description?: string | null; restaurantResponseReason?: string | null; contestReason?: string | null; photoUrl?: string | null
   consumerStats?: Stats; restaurantStats?: Stats
 }
+// P0-39 — réclamation EN ATTENTE du restaurant (lecture seule : l'admin VOIT,
+// aucune action possible — Q3 interdit de se substituer au restaurant).
+type PendingClaim = {
+  id: string; orderId: string; reason: string; requestedAmountCents: number
+  description?: string | null; createdAt: string; responseDeadlineAt: string
+}
 
 export default function AdminClaimsArbitration() {
   const t = useTranslations('claims')
   const locale = useLocale()
   const toast = useToast()
   const [claims, setClaims] = useState<Claim[]>([])
+  const [pending, setPending] = useState<PendingClaim[]>([])
   const [loaded, setLoaded] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refusingId, setRefusingId] = useState<string | null>(null)
@@ -32,6 +39,7 @@ export default function AdminClaimsArbitration() {
       if (!res.ok) return
       const data = await res.json()
       setClaims(Array.isArray(data.claims) ? data.claims : [])
+      setPending(Array.isArray(data.pending) ? data.pending : [])
     } catch { /* ignore */ } finally { setLoaded(true) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -53,12 +61,54 @@ export default function AdminClaimsArbitration() {
     } finally { setBusyId(null) }
   }, [load, t, toast])
 
-  if (loaded && claims.length === 0) {
+  // P0-39 — ancienneté lisible dans la locale de l'admin (heures < 48 h, sinon jours).
+  const ageOf = (iso: string) => {
+    const hours = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000))
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'always' })
+    return hours < 48 ? rtf.format(-hours, 'hour') : rtf.format(-Math.floor(hours / 24), 'day')
+  }
+  const isOverdue = (p: PendingClaim) => new Date(p.responseDeadlineAt).getTime() < Date.now()
+
+  if (loaded && claims.length === 0 && pending.length === 0) {
     return <EmptyState emoji="⚖️" title={t('admin.empty')} />
   }
 
   return (
     <div className="space-y-4">
+      {/* ── P0-39 — EN ATTENTE DU RESTAURANT (lecture seule, distincte de l'arbitrage :
+          fond ambré, ancienneté, badge « délai dépassé » — AUCUN bouton d'action). */}
+      {pending.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-grubano-ink-muted">
+            {t('admin.pendingTitle')} ({pending.length})
+          </h2>
+          <p className="mb-3 text-[13px] text-grubano-ink-muted">{t('admin.pendingHint')}</p>
+          <div className="space-y-3">
+            {pending.map((p) => (
+              <div key={p.id} className="rounded-grubano-xl border border-amber-300 bg-amber-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-bold text-grubano-ink">{t('admin.order')} #{p.orderId.slice(-6)}</span>
+                  <span className="text-sm font-semibold text-grubano-primary">{formatEuros(p.requestedAmountCents / 100, locale)}</span>
+                </div>
+                <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
+                  <p><span className="font-semibold">{t('admin.reason')}:</span> {t(`reason.${p.reason}`)}</p>
+                  {p.description && <p><span className="font-semibold">{t('admin.clientDetails')}:</span> {p.description}</p>}
+                </dl>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge tone="neutral">{ageOf(p.createdAt)}</Badge>
+                  {isOverdue(p) && <Badge tone="warning">{t('admin.pendingOverdue')}</Badge>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {claims.length > 0 && pending.length > 0 && (
+        <h2 className="mb-2 mt-6 text-sm font-bold uppercase tracking-wide text-grubano-ink-muted">
+          {t('admin.arbitrationTitle')} ({claims.length})
+        </h2>
+      )}
       {claims.map((c) => {
         const cs = c.consumerStats ?? {}
         const rs = c.restaurantStats ?? {}

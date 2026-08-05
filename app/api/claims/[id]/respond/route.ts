@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { isClaimsEnabled, respondToClaim } from '@/lib/claims'
+import { prisma } from '@/lib/prisma'
+import { sendClaimDecisionEmail } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,6 +38,28 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     reason:        parsed.data.reason,
   })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+
+  // ── T43 (vague 3) — notification de DÉCISION au client, post-succès, BEST-
+  // EFFORT. Additif : la transition (P0-24 accept → arbitration / refuse →
+  // refused) est INTOUCHÉE ; l'email dit CE QUI a été décidé et PAR QUI (le nom
+  // du restaurant). Idempotent (trigger claim_decision_<décision>, dedupeKey
+  // claim:<id>) — rejouer la même décision ne renvoie rien.
+  {
+    const c = result.claim as { id: string; consumerId: string; orderId: string; restaurantId: string }
+    let restaurantName: string | null = null
+    try {
+      const resto = await prisma.restaurant.findUnique({ where: { id: c.restaurantId }, select: { name: true } })
+      restaurantName = resto?.name ?? null
+    } catch { /* best-effort — le sender a un libellé de repli */ }
+    await sendClaimDecisionEmail({
+      claimId:        c.id,
+      consumerId:     c.consumerId,
+      orderId:        c.orderId,
+      decision:       parsed.data.action === 'accept' ? 'accepted' : 'refused',
+      reason:         parsed.data.reason ?? null,
+      restaurantName,
+    })
+  }
 
   return NextResponse.json({
     claim:  result.claim,
