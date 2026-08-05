@@ -97,6 +97,30 @@ describe('POST /api/claims — accusé de réception à l’ouverture', () => {
     const res = await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord123abc', reason: 'quality' }))
     expect(res.status).toBe(201)
   })
+
+  it("⭐ chemin MACHINE auto_small (revue) : auto-résolution 'refunded' → l'email de décision part AUSSI (ack + refunded), rien n'est re-déclenché", async () => {
+    claims.createClaim.mockResolvedValue({ ok: true, claim: CLAIM })
+    claims.autoResolveSmallClaim.mockResolvedValue({ state: 'refunded', refundId: 'rf1' })
+    const res = await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord123abc', reason: 'quality' }))
+    expect(res.status).toBe(201)
+    expect(ackMock).toHaveBeenCalledTimes(1)
+    expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
+      claimId: 'cl1', decision: 'refunded', refundedCents: 1250,
+    }))
+    expect(claims.autoResolveSmallClaim).toHaveBeenCalledTimes(1) // pas de re-déclenchement
+  })
+
+  it("auto-résolution 'pending' (REFUNDS off) → email 'approved' sans montant ; 'not_eligible' (bêta) → ack SEUL", async () => {
+    claims.createClaim.mockResolvedValue({ ok: true, claim: CLAIM })
+    claims.autoResolveSmallClaim.mockResolvedValue({ state: 'pending', reason: 'refunds_disabled' })
+    await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord123abc', reason: 'quality' }))
+    expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({ decision: 'approved', refundedCents: null }))
+
+    decisionMock.mockClear()
+    claims.autoResolveSmallClaim.mockResolvedValue({ state: 'not_eligible' })
+    await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord456def', reason: 'quality' }))
+    expect(decisionMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('POST /api/claims/[id]/respond — décision du RESTAURANT', () => {

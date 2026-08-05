@@ -10,8 +10,8 @@ const { db } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
-const { sendMock } = vi.hoisted(() => ({ sendMock: vi.fn() }))
-vi.mock('@/lib/transactional-emails', () => ({ sendTransactional: sendMock }))
+const { sendMock, skipLogMock } = vi.hoisted(() => ({ sendMock: vi.fn(), skipLogMock: vi.fn() }))
+vi.mock('@/lib/transactional-emails', () => ({ sendTransactional: sendMock, logEmailSkipped: skipLogMock }))
 
 // getTranslations écho : t(key, vars) → "key|{vars}" — permet d'asserter clé + variables.
 const { getTranslationsMock } = vi.hoisted(() => ({
@@ -45,7 +45,7 @@ describe('sendClaimAckEmail — accusé de réception (claim_ack / claim:<id>)',
     expect(call.subject).toContain('ack.subject')
     expect(call.subject).toContain('#123ABC')          // même dérivation de ref que le checkout
     expect(call.html).toContain('ack.body')
-    expect(call.html).toContain('12.50')               // montant demandé en euros
+    expect(call.html).toContain('12,50')               // euros dans la LOCALE (fr → virgule)
   })
 
   it('locale du client respectée (Operator.locale en → getTranslations en) ; null ⇒ fr ; ar ⇒ RTL', async () => {
@@ -62,20 +62,28 @@ describe('sendClaimAckEmail — accusé de réception (claim_ack / claim:<id>)',
     expect(sendMock.mock.calls[2][0].html).toContain('dir="rtl"')
   })
 
-  it('client sans email → skipped, AUCUN envoi (jamais un throw)', async () => {
+  it('client sans email → skipped, AUCUN envoi, MAIS trace EmailLog via logEmailSkipped (revue : aucun MISS sans audit)', async () => {
     db.operator.findUnique.mockResolvedValue({ email: null, name: 'X', locale: null })
     const r = await sendClaimAckEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'o1', requestedAmountCents: 500 })
     expect(r).toEqual({ status: 'skipped' })
     expect(sendMock).not.toHaveBeenCalled()
+    expect(skipLogMock).toHaveBeenCalledWith('claim_ack', expect.stringContaining('cl1'), expect.objectContaining({ reason: 'no_recipient' }))
   })
 
-  it('panne DB → failed tracé [EMAIL MISS], jamais un throw vers la route', async () => {
+  it('panne DB → failed tracé [EMAIL MISS] + EmailLog via logEmailSkipped, jamais un throw vers la route', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     db.operator.findUnique.mockRejectedValue(new Error('db down'))
     const r = await sendClaimAckEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'o1', requestedAmountCents: 500 })
     expect(r).toEqual({ status: 'failed' })
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('[EMAIL MISS]'), 'cl1', 'db down')
+    expect(skipLogMock).toHaveBeenCalledWith('claim_ack', expect.stringContaining('cl1'), expect.objectContaining({ reason: 'sender_error' }))
     errSpy.mockRestore()
+  })
+
+  it("Operator.name vide → pas de « Bonjour , » orphelin (le paragraphe de salutation est omis)", async () => {
+    db.operator.findUnique.mockResolvedValue({ email: 'l@x.fr', name: null, locale: null })
+    await sendClaimAckEmail({ claimId: 'cl1', consumerId: 'c1', orderId: 'o1', requestedAmountCents: 500 })
+    expect(sendMock.mock.calls[0][0].html).not.toContain('greeting')
   })
 })
 
@@ -105,12 +113,12 @@ describe('sendClaimDecisionEmail — un trigger DÉDIÉ par décision, dedupeKey
     expect(sendMock.mock.calls[0][0].html).toContain('theRestaurant')
   })
 
-  it("⭐ 'refunded' (Grubano) : trigger claim_decision_refunded + montant remboursé en euros", async () => {
+  it("⭐ 'refunded' (Grubano) : trigger claim_decision_refunded + montant remboursé en euros localisés", async () => {
     await sendClaimDecisionEmail({ ...base, decision: 'refunded', refundedCents: 2199 })
     const call = sendMock.mock.calls[0][0]
     expect(call.trigger).toBe('claim_decision_refunded')
     expect(call.html).toContain('refunded.body')
-    expect(call.html).toContain('21.99')
+    expect(call.html).toContain('21,99')               // fr → virgule décimale
   })
 
   it("'approved' (Grubano, remboursement pas encore émis) : trigger dédié, AUCUNE promesse de délai (clé approved.*)", async () => {

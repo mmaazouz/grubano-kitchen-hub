@@ -29,7 +29,7 @@
 
 import { getTranslations } from 'next-intl/server'
 import { prisma } from '@/lib/prisma'
-import { sendTransactional, type SendStatus } from '@/lib/transactional-emails'
+import { sendTransactional, logEmailSkipped, type SendStatus } from '@/lib/transactional-emails'
 import { resolveNudgeLocale } from '@/lib/onboarding-nudge'
 
 const esc = (s: string): string =>
@@ -37,6 +37,18 @@ const esc = (s: string): string =>
 
 /** Même dérivation de référence courte que le checkout / les emails commande. */
 const orderRef = (id: string) => `#${id.slice(-6).toUpperCase()}`
+
+/** Montant en euros dans la LOCALE du destinataire (revue : .toFixed(2) mettait
+ *  un point décimal dans les emails FR/ES/IT). Les 5 codes sont des tags BCP-47. */
+const euros = (locale: string, cents: number) =>
+  new Intl.NumberFormat(locale, { style: 'currency', currency: 'EUR' }).format(cents / 100)
+
+/** Revue T43 (« aucun envoi sans ligne d'audit ») : un MISS hors rail — pas de
+ *  destinataire, ou panne avant sendTransactional — laisse quand même sa trace
+ *  EmailLog via logEmailSkipped (lui-même best-effort, ne throw jamais). */
+async function traceMiss(trigger: string, claimId: string, reason: string) {
+  try { await logEmailSkipped(trigger, `claim ${claimId}`, { claimId, reason }) } catch { /* best-effort */ }
+}
 
 /** Gabarit sobre local (patron renderNudgeHtml / admin-alerts — shell() du rail
  *  est privé ; AUCUNE refonte de gabarit, juste le strict nécessaire + RTL ar). */
@@ -68,9 +80,11 @@ export async function sendClaimAckEmail(p: {
 }): Promise<{ status: SendStatus }> {
   try {
     const consumer = await resolveConsumer(p.consumerId)
-    if (!consumer) return { status: 'skipped' }
+    if (!consumer) {
+      await traceMiss('claim_ack', p.claimId, 'no_recipient')
+      return { status: 'skipped' }
+    }
     const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
-    const euros = (p.requestedAmountCents / 100).toFixed(2)
     return await sendTransactional({
       to:        consumer.to,
       subject:   t('ack.subject', { ref: orderRef(p.orderId) }),
@@ -81,14 +95,16 @@ export async function sendClaimAckEmail(p: {
         title: t('ack.title'),
         footer: t('footer'),
         bodyHtml:
-          `<p>${esc(t('greeting', { name: consumer.name }))}</p>`
-          + `<p>${esc(t('ack.body', { ref: orderRef(p.orderId), euros }))}</p>`
+          // Revue : pas de « Bonjour , » orphelin quand Operator.name est vide.
+          (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+          + `<p>${esc(t('ack.body', { ref: orderRef(p.orderId), euros: euros(consumer.locale, p.requestedAmountCents) }))}</p>`
           + `<p style="font-size:13px;color:#6b7280">${esc(t('ack.next'))}</p>`,
       }),
     })
   } catch (e) {
     console.error('[EMAIL MISS] [claim-emails] ack failed (non-fatal):',
       p.claimId, e instanceof Error ? e.message : e)
+    await traceMiss('claim_ack', p.claimId, 'sender_error')
     return { status: 'failed' }
   }
 }
@@ -115,7 +131,10 @@ export async function sendClaimDecisionEmail(p: {
 }): Promise<{ status: SendStatus }> {
   try {
     const consumer = await resolveConsumer(p.consumerId)
-    if (!consumer) return { status: 'skipped' }
+    if (!consumer) {
+      await traceMiss(`claim_decision_${p.decision}`, p.claimId, 'no_recipient')
+      return { status: 'skipped' }
+    }
     const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
     const ref = orderRef(p.orderId)
     const resto = p.restaurantName ?? t('theRestaurant')
@@ -126,10 +145,10 @@ export async function sendClaimDecisionEmail(p: {
       approved:      'approved',
       refused_final: 'refusedFinal',
     }[p.decision]
-    const euros = ((p.refundedCents ?? 0) / 100).toFixed(2)
     const body =
-      `<p>${esc(t('greeting', { name: consumer.name }))}</p>`
-      + `<p>${esc(t(`${key}.body`, { ref, resto, euros }))}</p>`
+      // Revue : pas de « Bonjour , » orphelin quand Operator.name est vide.
+      (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+      + `<p>${esc(t(`${key}.body`, { ref, resto, euros: euros(consumer.locale, p.refundedCents ?? 0) }))}</p>`
       + (p.reason ? `<p style="font-size:13px;color:#6b7280">${esc(t('reasonLabel'))} ${esc(p.reason)}</p>` : '')
       + (p.decision === 'refused' ? `<p style="font-size:13px;color:#6b7280">${esc(t('refused.contest'))}</p>` : '')
     return await sendTransactional({
@@ -147,6 +166,7 @@ export async function sendClaimDecisionEmail(p: {
   } catch (e) {
     console.error('[EMAIL MISS] [claim-emails] decision failed (non-fatal):',
       p.claimId, p.decision, e instanceof Error ? e.message : e)
+    await traceMiss(`claim_decision_${p.decision}`, p.claimId, 'sender_error')
     return { status: 'failed' }
   }
 }

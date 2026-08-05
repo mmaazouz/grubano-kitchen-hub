@@ -7,7 +7,7 @@ import {
   autoResolveSmallClaim,
 } from '@/lib/claims'
 import { processDishImage, ALLOWED_IMAGE_TYPES, type DishImageType } from '@/lib/dish-photo'
-import { sendClaimAckEmail } from '@/lib/claim-emails'
+import { sendClaimAckEmail, sendClaimDecisionEmail } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -62,12 +62,12 @@ export async function POST(req: NextRequest) {
   // C2 auto-resolution — a small, obvious claim from a non-flagged consumer is approved
   // immediately (→ engine refund). NO-OP for non-small/flagged → exactly the C1 flow.
   // The client refetches eligibility right after, so it sees the resolved status.
-  await autoResolveSmallClaim(result.claim as { id: string; consumerId: string; requestedAmountCents: number; status: string })
+  const auto = await autoResolveSmallClaim(result.claim as { id: string; consumerId: string; requestedAmountCents: number; status: string })
 
   // ── T43 (vague 3) — accusé de réception au CLIENT, post-succès, BEST-EFFORT ──
   // Additif : la création/l'auto-résolution ci-dessus sont INTOUCHÉES ; un échec
-  // d'email ne casse jamais le 201 (sendClaimAckEmail est intégralement
-  // try/catch'é et idempotent — trigger claim_ack, dedupeKey claim:<id>).
+  // d'email ne casse jamais le 201 (les senders sont intégralement try/catch'és
+  // et idempotents — dedupeKey claim:<id>).
   {
     const c = result.claim as { id: string; consumerId: string; orderId: string; requestedAmountCents: number }
     await sendClaimAckEmail({
@@ -76,6 +76,21 @@ export async function POST(req: NextRequest) {
       orderId:              c.orderId,
       requestedAmountCents: c.requestedAmountCents,
     })
+    // Revue T43 : le chemin de décision MACHINE auto_small (config post-pilote
+    // CLAIM_AUTO_RESOLVE_ENABLED + plafond) n'envoyait AUCUN email — l'ack aurait
+    // menti (« vous serez informé de la décision »). On lit le RÉSULTAT de
+    // l'auto-résolution déjà jouée (rien n'est re-déclenché) : remboursée →
+    // claim_decision_refunded ; approuvée sans émission → claim_decision_approved.
+    // En config bêta (flag OFF), auto.state = 'not_eligible' → aucun envoi.
+    if (auto.state === 'refunded' || auto.state === 'pending') {
+      await sendClaimDecisionEmail({
+        claimId:       c.id,
+        consumerId:    c.consumerId,
+        orderId:       c.orderId,
+        decision:      auto.state === 'refunded' ? 'refunded' : 'approved',
+        refundedCents: auto.state === 'refunded' ? c.requestedAmountCents : null,
+      })
+    }
   }
 
   return NextResponse.json({ claim: result.claim }, { status: 201 })

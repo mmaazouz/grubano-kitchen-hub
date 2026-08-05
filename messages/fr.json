@@ -8429,7 +8429,7 @@
       "subject": "Votre réclamation {ref} est bien enregistrée",
       "title": "Réclamation enregistrée",
       "body": "Nous avons bien reçu votre réclamation sur la commande {ref} (montant demandé : {euros} €).",
-      "next": "Le restaurant va l’examiner. Vous serez informé(e) par email de la décision."
+      "next": "Vous serez informé(e) par email dès qu’une décision sera prise."
     },
     "accepted": {
       "subject": "Réclamation {ref} : acceptée par le restaurant",

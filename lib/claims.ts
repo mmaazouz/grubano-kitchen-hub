@@ -567,6 +567,13 @@ export async function listArbitrationQueue() {
 export async function listPendingRestaurantClaims() {
   return prisma.claim.findMany({
     where:   { status: 'restaurant_review' },
+    // Revue P0-39 : SELECT curaté — la console n'affiche que ces champs, on
+    // n'expose pas toute la ligne Claim (surface minimale, même esprit que la
+    // forme curatée de la file d'arbitrage).
+    select: {
+      id: true, orderId: true, reason: true, requestedAmountCents: true,
+      description: true, createdAt: true, responseDeadlineAt: true,
+    },
     orderBy: { createdAt: 'asc' },
     take:    200,
   })
