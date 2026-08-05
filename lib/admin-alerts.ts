@@ -48,6 +48,41 @@ export async function sendAdminGhostOrderAlert(p: {
 }
 
 /**
+ * P0-39 (vague 3) — a claim has been AWAITING the restaurant's answer past its
+ * response deadline. The 24h auto-approval (the circuit's relief valve) was
+ * removed by P0-07/P0-25 per Q3 with nothing replacing it — without this alert
+ * a claim a restaurant ignores stays stuck, invisible to everyone (the founder
+ * is a single operator with no backup). ONE idempotent alert per claim, EVER
+ * (sendOnce trigger `admin_stale_claim`, dedupeKey `claim:<id>` — the @@unique
+ * makes daily re-runs a no-op, no daily reminder loop). READ-ONLY signal: the
+ * admin SEES (console /admin/claims, section « En attente du restaurant ») —
+ * no automatic action of any kind (Q3 forbids automated financial effects).
+ */
+export async function sendAdminStaleClaimAlert(p: {
+  claimId:              string
+  orderId:              string
+  requestedAmountCents: number
+  ageHours:             number
+}): Promise<{ status: SendStatus }> {
+  try {
+    const to = (process.env.ALERT_EMAIL || '').trim()
+    if (!to) return { status: 'skipped' } // ALERT_EMAIL not configured → clean no-op
+    const euros = (p.requestedAmountCents / 100).toFixed(2)
+    const subject = '[Grubano] Réclamation sans réponse du restaurant — délai dépassé'
+    const html =
+      `<div style="font-family:system-ui,Arial,sans-serif;color:#111827;max-width:520px">`
+      + `<h2 style="font-size:17px">Réclamation en attente — délai de réponse dépassé</h2>`
+      + `<p>Une réclamation attend la réponse du restaurant depuis <b>${Math.floor(p.ageHours)} h</b> — le délai de réponse est dépassé. Sans votre œil, elle resterait bloquée indéfiniment (l'auto-approbation a été retirée, décision Q3).</p>`
+      + `<p style="font-size:14px">Réclamation : <b>${escHtml(p.claimId)}</b><br>Commande : <b>${escHtml(p.orderId)}</b><br>Montant demandé : <b>${euros} €</b></p>`
+      + `<p style="font-size:13px;color:#6b7280">Aucune action automatique n'a été prise. Elle est visible dans la console d'arbitrage (/admin/claims, section « En attente du restaurant ») — la décision reste au restaurant, puis à vous en arbitrage.</p>`
+      + `</div>`
+    return await sendOnce('admin_stale_claim', `claim:${p.claimId}`, { to, subject, html })
+  } catch {
+    return { status: 'failed' } // never throws
+  }
+}
+
+/**
  * WP-OPS-01 — daily digest of orders awaiting ghost-order reconciliation (expired +
  * captured/flagged). Best-effort, one digest per day (dedupeKey `reconcile:<YYYY-MM-DD>`).
  * READ-ONLY signal — no money action. Never throws.
