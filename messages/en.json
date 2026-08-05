@@ -7088,7 +7088,11 @@
       "consumerSignal": "Customer: {recent} recent claim(s), {rate}% approved",
       "restaurantSignal": "Restaurant: {overturned}/{refused} refusals overturned in arbitration",
       "flaggedConsumer": "Customer to watch",
-      "flaggedRestaurant": "Restaurant to watch"
+      "flaggedRestaurant": "Restaurant to watch",
+      "pendingTitle": "Awaiting the restaurant",
+      "pendingHint": "The restaurant has not answered yet. No automatic action will be taken — the decision stays with the restaurant, then with you in arbitration.",
+      "pendingOverdue": "Response deadline exceeded",
+      "arbitrationTitle": "In arbitration — to decide"
     }
   },
   "fiscal": {
@@ -8414,6 +8418,44 @@
       "retry": "Try again",
       "home": "Back to home",
       "ref": "Reference to give to support"
+    }
+  },
+  "claimEmails": {
+    "greeting": "Hello {name},",
+    "footer": "Grubano — this email was sent automatically; you can reply to it if needed.",
+    "theRestaurant": "The restaurant",
+    "reasonLabel": "Reason:",
+    "ack": {
+      "subject": "Your claim {ref} has been received",
+      "title": "Claim received",
+      "body": "We have received your claim on order {ref} (requested amount: €{euros}).",
+      "next": "The restaurant will review it. You will be notified of the decision by email."
+    },
+    "accepted": {
+      "subject": "Claim {ref}: accepted by the restaurant",
+      "title": "Claim accepted",
+      "body": "{resto} accepted your claim on order {ref}. It has been passed to Grubano for the refund decision."
+    },
+    "refused": {
+      "subject": "Claim {ref}: refused by the restaurant",
+      "title": "Claim refused",
+      "body": "{resto} refused your claim on order {ref}.",
+      "contest": "You can contest it from your order tracking page — Grubano will arbitrate."
+    },
+    "refunded": {
+      "subject": "Claim {ref}: refund issued",
+      "title": "Refund issued",
+      "body": "Grubano ruled in your favour: a refund of €{euros} has been issued on order {ref} to your payment method."
+    },
+    "approved": {
+      "subject": "Claim {ref}: accepted by Grubano",
+      "title": "Claim accepted",
+      "body": "Grubano ruled in your favour on order {ref}."
+    },
+    "refusedFinal": {
+      "subject": "Claim {ref}: Grubano’s final decision",
+      "title": "Refusal confirmed",
+      "body": "Grubano reviewed your claim on order {ref} and confirmed the refusal. This decision is final."
     }
   }
 }
