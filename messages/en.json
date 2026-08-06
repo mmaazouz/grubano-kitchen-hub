@@ -8455,7 +8455,8 @@
       "subject": "Order {ref} cancelled — refund request submitted",
       "title": "Order cancelled",
       "body": "{resto} cancelled your order {ref}, which had been paid. A refund request has been submitted to Grubano.",
-      "next": "It will be reviewed by a member of the Grubano team — you will be notified of the decision by email."
+      "next": "It will be reviewed by a member of the Grubano team — you will be notified of the decision by email.",
+      "bodyExisting": "{resto} cancelled your order {ref}, which had been paid. Your existing claim on this order already carries the refund question — it follows its normal process."
     }
   }
 }

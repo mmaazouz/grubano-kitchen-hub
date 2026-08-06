@@ -8455,7 +8455,8 @@
       "subject": "Ordine {ref} annullato — richiesta di rimborso trasmessa",
       "title": "Ordine annullato",
       "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Una richiesta di rimborso è stata trasmessa a Grubano.",
-      "next": "Sarà esaminata da un membro del team Grubano — sarà informato della decisione via email."
+      "next": "Sarà esaminata da un membro del team Grubano — sarà informato della decisione via email.",
+      "bodyExisting": "{resto} ha annullato il Suo ordine {ref}, già pagato. Il Suo reclamo in corso su questo ordine copre già la questione del rimborso — segue il suo iter normale."
     }
   }
 }

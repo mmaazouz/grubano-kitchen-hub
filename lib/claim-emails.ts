@@ -122,6 +122,11 @@ export async function sendOrderCancelledPaidEmail(p: {
   orderId:        string
   consumerId:     string
   restaurantName: string
+  /** Revue P0-08 : true = AUCUNE demande système créée (une réclamation était
+   *  déjà ACTIVE sur la commande) — le corps dit alors que la réclamation EN
+   *  COURS porte la question du remboursement, au lieu d'annoncer une demande
+   *  qui n'existe pas. */
+  existingClaim?: boolean
 }): Promise<{ status: SendStatus }> {
   try {
     const consumer = await resolveConsumer(p.consumerId)
@@ -142,7 +147,7 @@ export async function sendOrderCancelledPaidEmail(p: {
         footer: t('footer'),
         bodyHtml:
           (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
-          + `<p>${esc(t('orderCancelledPaid.body', { ref, resto: p.restaurantName }))}</p>`
+          + `<p>${esc(t(p.existingClaim ? 'orderCancelledPaid.bodyExisting' : 'orderCancelledPaid.body', { ref, resto: p.restaurantName }))}</p>`
           + `<p style="font-size:13px;color:#6b7280">${esc(t('orderCancelledPaid.next'))}</p>`,
       }),
     })

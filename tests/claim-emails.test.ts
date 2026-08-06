@@ -54,6 +54,13 @@ describe('P0-08 — sendOrderCancelledPaidEmail (annulation PAYÉE : email honn�
     expect(sendMock).not.toHaveBeenCalled()
     expect(skipLogMock).toHaveBeenCalledWith('order_cancelled', expect.stringContaining('o1'), expect.objectContaining({ reason: 'no_recipient' }))
   })
+
+  it("existingClaim:true (réclamation déjà active — AUCUNE demande créée) → corps bodyExisting, l'email ne ment pas", async () => {
+    await sendOrderCancelledPaidEmail({ orderId: 'o1', consumerId: 'c1', restaurantName: 'R', existingClaim: true })
+    const html = sendMock.mock.calls[0][0].html as string
+    expect(html).toContain('orderCancelledPaid.bodyExisting')
+    expect(html).not.toContain('orderCancelledPaid.body|')
+  })
 })
 
 describe('sendClaimAckEmail — accusé de réception (claim_ack / claim:<id>)', () => {

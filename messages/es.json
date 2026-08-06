@@ -8455,7 +8455,8 @@
       "subject": "Pedido {ref} cancelado — solicitud de reembolso transmitida",
       "title": "Pedido cancelado",
       "body": "{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Se ha transmitido una solicitud de reembolso a Grubano.",
-      "next": "Será examinada por un miembro del equipo de Grubano — le informaremos de la decisión por correo electrónico."
+      "next": "Será examinada por un miembro del equipo de Grubano — le informaremos de la decisión por correo electrónico.",
+      "bodyExisting": "{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Su reclamación en curso sobre este pedido ya recoge la cuestión del reembolso — sigue su circuito normal."
     }
   }
 }

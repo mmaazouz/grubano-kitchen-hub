@@ -3,7 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
-import { createSystemClaim } from '@/lib/claims'
+import { createSystemClaim, isClaimsEnabled } from '@/lib/claims'
 import { sendOrderCancelledPaidEmail } from '@/lib/claim-emails'
 import { z } from 'zod'
 
@@ -92,7 +92,16 @@ export async function PATCH(
     // crée pas de doublon et ne bloque pas l'annulation — la question de l'argent
     // est déjà dans le circuit. Une commande NON payée garde le chemin
     // historique, byte-identique.
-    const paidCancellation = newStatus === 'cancelled' && order.paymentStatus === 'paid'
+    // Revue adversariale : la branche est GATÉE par isClaimsEnabled(), comme TOUS
+    // les autres écrivains de Claim — flag OFF ⇒ chemin historique byte-identique
+    // (la demande serait invisible et intranchable, l'email mentirait ; et une
+    // table Claim absente pré-db-push casserait l'annulation). Flag ON + table
+    // absente = config CASSÉE (contrat docs/ops/flags.md : CLAIMS_ENABLED exige
+    // la table) ⇒ échec BRUYANT voulu (rollback + 500), jamais silencieux.
+    const claimAmountCents = Math.max(0, Math.round(order.total * 100))
+    const paidCancellation =
+      newStatus === 'cancelled' && order.paymentStatus === 'paid' && isClaimsEnabled() && claimAmountCents > 0
+    let systemClaim: Awaited<ReturnType<typeof createSystemClaim>> | null = null
     let updated
     if (paidCancellation) {
       updated = await prisma.$transaction(async (tx) => {
@@ -100,16 +109,24 @@ export async function PATCH(
           where: { id: params.id },
           data:  { status: newStatus },
         })
-        await createSystemClaim({
+        systemClaim = await createSystemClaim({
           orderId:              order.id,
           consumerId:           order.consumerId,
           restaurantId:         order.restaurantId,
-          requestedAmountCents: Math.round(order.total * 100),
+          requestedAmountCents: claimAmountCents,
           description:          `Annulation par le restaurant d'une commande payée (${order.id}).`,
           tx,
         })
         return u
       })
+      // Revue : le cas P2002 (réclamation déjà active) est TRACÉ — la question de
+      // l'argent est déjà portée par la réclamation existante, aucune demande
+      // système n'a été créée, et l'email ci-dessous le dit HONNÊTEMENT.
+      if (systemClaim !== null && !(systemClaim as Awaited<ReturnType<typeof createSystemClaim>>).created) {
+        console.warn(
+          `[P0-08] annulation payée ${order.id} : demande système NON créée — une réclamation est déjà ACTIVE sur cette commande (la question du remboursement y est déjà portée).`,
+        )
+      }
     } else {
       updated = await prisma.order.update({
         where: { id: params.id },
@@ -183,6 +200,10 @@ export async function PATCH(
           orderId:        order.id,
           consumerId:     order.consumerId,
           restaurantName: resto?.name ?? 'votre restaurant',
+          // Revue : quand la demande N'A PAS été créée (réclamation déjà active),
+          // l'email ne dit plus « une demande a été transmise » — il dit la
+          // vérité : la réclamation EN COURS porte la question du remboursement.
+          existingClaim:  systemClaim != null && !(systemClaim as Awaited<ReturnType<typeof createSystemClaim>>).created,
         })
       } else if (consumer?.email) {
         await sendOrderStatusEmail({

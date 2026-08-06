@@ -8455,7 +8455,8 @@
       "subject": "Commande {ref} annulée — demande de remboursement transmise",
       "title": "Commande annulée",
       "body": "{resto} a annulé votre commande {ref}, qui avait été payée. Une demande de remboursement a été transmise à Grubano.",
-      "next": "Elle sera examinée par un membre de l’équipe Grubano — vous serez informé(e) par email de la décision."
+      "next": "Elle sera examinée par un membre de l’équipe Grubano — vous serez informé(e) par email de la décision.",
+      "bodyExisting": "{resto} a annulé votre commande {ref}, qui avait été payée. Votre réclamation en cours sur cette commande porte déjà la question du remboursement — elle suit son circuit normal."
     }
   }
 }

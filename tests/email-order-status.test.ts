@@ -116,7 +116,8 @@ describe('status route wiring + invariants (source-scan)', () => {
     // aucune occurrence de order.total hors de cette seule ligne.
     const totalUses = route.match(/order\.total/g) ?? []
     expect(totalUses).toHaveLength(1)
-    expect(/requestedAmountCents:\s*Math\.round\(order\.total \* 100\)/.test(route)).toBe(true)
+    expect(/const claimAmountCents = Math\.max\(0, Math\.round\(order\.total \* 100\)\)/.test(route)).toBe(true)
+    expect(/requestedAmountCents:\s*claimAmountCents/.test(route)).toBe(true)
     // les DEUX senders d'email restent sans montant (status-only / honnête sans chiffre)
     expect(/sendOrderStatusEmail\(\{[^}]*total/s.test(route)).toBe(false)
     expect(/sendOrderCancelledPaidEmail\(\{[^}]*total/s.test(route)).toBe(false)

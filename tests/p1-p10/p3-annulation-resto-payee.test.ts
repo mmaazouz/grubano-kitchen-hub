@@ -77,6 +77,10 @@ const paidOrder = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // P0-08 (durci en revue) : la branche demande-système est gatée isClaimsEnabled()
+  // comme TOUS les écrivains de Claim — les tests du chemin payé stubbent le set
+  // bêta réel (CLAIMS ON) ; le test « flag OFF » couvre le chemin historique.
+  vi.stubEnv('CLAIMS_ENABLED', 'true')
   getToken.mockResolvedValue({ role: 'restaurant' })
   resolveScope.mockResolvedValue(scopeOk())
   db.order.findUnique.mockResolvedValue(paidOrder())
@@ -182,11 +186,29 @@ describe('P3 — annulation resto d’une commande PAYÉE (PATCH /api/orders/[id
     expect(db.loyaltyCustomer.update).not.toHaveBeenCalled()
   })
 
-  it('[PASS-ACTUEL P0-08] REJEU / réclamation déjà active : P2002 sur activeOrderKey → l’annulation passe (200), AUCUN doublon', async () => {
+  it('[PASS-ACTUEL P0-08] REJEU / réclamation déjà active : P2002 → l’annulation passe (200), AUCUN doublon, cas TRACÉ, email VÉRIDIQUE (existingClaim)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     db.claim.create.mockRejectedValue({ code: 'P2002' })
+    db.operator.findUnique.mockResolvedValue({ email: 'lea@x.fr', name: 'Léa' })
     const res = await patch('o1', { status: 'cancelled' })
     expect(res.status).toBe(200)
     expect(refundPayment).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[P0-08]'))
+    // Revue : l'email ne dit PLUS « demande transmise » quand elle n'existe pas —
+    // il dit que la réclamation EN COURS porte la question du remboursement.
+    expect(cancelledPaidEmail).toHaveBeenCalledWith(expect.objectContaining({ existingClaim: true }))
+    warnSpy.mockRestore()
+  })
+
+  it('[PASS-ACTUEL P0-08] CLAIMS_ENABLED OFF → chemin HISTORIQUE byte-identique (pas de demande, email générique) — la demande serait invisible et intranchable', async () => {
+    vi.stubEnv('CLAIMS_ENABLED', '')
+    db.operator.findUnique.mockResolvedValue({ email: 'lea@x.fr', name: 'Léa' })
+    const res = await patch('o1', { status: 'cancelled' })
+    expect(res.status).toBe(200)
+    expect(db.claim.create).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(cancelledPaidEmail).not.toHaveBeenCalled()
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }))
   })
 
   it('[PASS-ACTUEL P0-08] ATOMICITÉ : une panne (non-P2002) de la création de demande fait échouer l’annulation AUSSI (500, les deux ensemble)', async () => {
@@ -222,7 +244,7 @@ describe('P3 — annulation resto d’une commande PAYÉE (PATCH /api/orders/[id
     expect(res.status).toBe(200)
     expect(cancelledPaidEmail).toHaveBeenCalledTimes(1)
     expect(cancelledPaidEmail).toHaveBeenCalledWith({
-      orderId: 'o1', consumerId: 'c1', restaurantName: 'Gnocchi Bar',
+      orderId: 'o1', consumerId: 'c1', restaurantName: 'Gnocchi Bar', existingClaim: false,
     })
     expect(sendEmail).not.toHaveBeenCalled()
   })
