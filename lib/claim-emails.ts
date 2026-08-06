@@ -109,6 +109,51 @@ export async function sendClaimAckEmail(p: {
   }
 }
 
+// ── (1-bis) P0-08 — annulation d'une commande PAYÉE par le restaurant ──────────
+// Remplace, POUR LES COMMANDES PAYÉES SEULEMENT, l'email d'annulation générique
+// (qui ne disait RIEN de l'argent — constat d'exécution du 06/08). Contenu
+// VÉRIDIQUE : la commande est annulée, une demande de remboursement a été
+// transmise à Grubano (createSystemClaim — file d'arbitrage, réel), elle sera
+// examinée par un humain (l'admin arbitre — réel, T43 notifiera la décision).
+// AUCUNE promesse de remboursement déjà effectué, AUCUN délai. Même trigger
+// `order_cancelled` + dedupeKey `order:<id>` que l'email générique → UNE seule
+// annulation notifiée par commande, quel que soit le chemin, rejeu = duplicate.
+export async function sendOrderCancelledPaidEmail(p: {
+  orderId:        string
+  consumerId:     string
+  restaurantName: string
+}): Promise<{ status: SendStatus }> {
+  try {
+    const consumer = await resolveConsumer(p.consumerId)
+    if (!consumer) {
+      await traceMiss('order_cancelled', p.orderId, 'no_recipient')
+      return { status: 'skipped' }
+    }
+    const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
+    const ref = orderRef(p.orderId)
+    return await sendTransactional({
+      to:        consumer.to,
+      subject:   t('orderCancelledPaid.subject', { ref }),
+      trigger:   'order_cancelled',
+      dedupeKey: `order:${p.orderId}`,
+      html: claimShell({
+        rtl:    consumer.locale === 'ar',
+        title:  t('orderCancelledPaid.title'),
+        footer: t('footer'),
+        bodyHtml:
+          (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+          + `<p>${esc(t('orderCancelledPaid.body', { ref, resto: p.restaurantName }))}</p>`
+          + `<p style="font-size:13px;color:#6b7280">${esc(t('orderCancelledPaid.next'))}</p>`,
+      }),
+    })
+  } catch (e) {
+    console.error('[EMAIL MISS] [claim-emails] cancelled-paid failed (non-fatal):',
+      p.orderId, e instanceof Error ? e.message : e)
+    await traceMiss('order_cancelled', p.orderId, 'sender_error')
+    return { status: 'failed' }
+  }
+}
+
 // ── (2) Notification de DÉCISION au client ─────────────────────────────────────
 export type ClaimDecisionKind =
   | 'accepted'       // le RESTAURANT accepte → transmise à Grubano (P0-24)

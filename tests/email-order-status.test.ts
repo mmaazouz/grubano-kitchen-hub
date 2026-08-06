@@ -110,7 +110,16 @@ describe('status route wiring + invariants (source-scan)', () => {
   it('the state machine is unchanged and no money lib / amount recompute was added', () => {
     expect(/const TRANSITIONS: Record<string, string\[\]> = \{/.test(route)).toBe(true)
     expect(/lib\/commission|lib\/ledger|lib\/pricing|lib\/stripe|webhooks\/stripe/.test(route)).toBe(false)
-    expect(/order\.total/.test(route)).toBe(false) // status emails never touch the amount
+    // P0-08 (vague 4) : la route lit DÉSORMAIS order.total — UNIQUEMENT pour le
+    // montant de la DEMANDE d'arbitrage système (requestedAmountCents), jamais
+    // pour un email ni un recalcul de fee. L'invariant email reste entier :
+    // aucune occurrence de order.total hors de cette seule ligne.
+    const totalUses = route.match(/order\.total/g) ?? []
+    expect(totalUses).toHaveLength(1)
+    expect(/requestedAmountCents:\s*Math\.round\(order\.total \* 100\)/.test(route)).toBe(true)
+    // les DEUX senders d'email restent sans montant (status-only / honnête sans chiffre)
+    expect(/sendOrderStatusEmail\(\{[^}]*total/s.test(route)).toBe(false)
+    expect(/sendOrderCancelledPaidEmail\(\{[^}]*total/s.test(route)).toBe(false)
   })
 
   it('GOLDEN RULE — the Stripe webhook still imports no email sender', () => {
