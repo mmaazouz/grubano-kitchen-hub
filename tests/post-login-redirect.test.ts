@@ -21,7 +21,10 @@ describe('postLoginPath / POST_LOGIN_REDIRECTS', () => {
 
   it('untouched roles keep their landing (non-regression)', () => {
     expect(postLoginPath('restaurant')).toBe('/dashboard')
-    expect(postLoginPath('admin')).toBe('/dashboard')
+    // V4-3 — un admin atterrit sur SA console, plus sur le dashboard restaurateur
+    // (qui exige un établissement et accueillait l'admin pur par « créez votre
+    // premier établissement »).
+    expect(postLoginPath('admin')).toBe('/admin')
     expect(postLoginPath('supplier')).toBe('/supplier/dashboard')
     expect(postLoginPath('consumer')).toBe('/eat')
   })

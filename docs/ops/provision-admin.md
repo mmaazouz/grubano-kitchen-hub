@@ -8,13 +8,23 @@
 
 ## En une commande
 
-Dans cPanel → **Terminal** :
+Dans cPanel → **Terminal**, copiez-collez TELLE QUELLE la ligne ci-dessous,
+en remplaçant seulement l’adresse email (gardez tout le reste, y compris le
+long chemin — c’est l’emplacement du programme node sur le serveur, il n’est
+pas dans le PATH) :
 
 ```bash
-cd ~/app.grubano.com && node scripts/server/provision-admin.js VOTRE-EMAIL@exemple.fr
+cd ~/app.grubano.com && /home/deyi0010/nodevenv/app.grubano.com/24/bin/node scripts/server/provision-admin.js --email admin@grubano.com
 ```
 
-(Production, après la bascule : remplacer `app.grubano.com` par `grubano.com`.)
+En production, après la bascule, la même commande devient :
+
+```bash
+cd ~/grubano.com && /home/deyi0010/nodevenv/grubano.com/24/bin/node scripts/server/provision-admin.js --email admin@grubano.com
+```
+
+(La commande affichée par le script quand on le lance sans argument est
+exactement celle du premier bloc — l’aide et cette page disent la même chose.)
 
 C'est tout. Le script affiche en français ce qu'il a fait. Ensuite :
 **se déconnecter puis se reconnecter** sur le site — le rôle ne prend effet
@@ -29,10 +39,11 @@ qu'au login (le badge de session est fabriqué à la connexion).
 | Le compte existe mais n'est pas actif | Il est **activé** au passage |
 | Il est déjà admin | Le script le dit et ne change rien (rejouable sans danger) |
 
-Option : `--name "Prénom Nom"` pour le nom d'affichage à la création.
+Option : `--name "Prénom Nom"` pour le nom d’affichage à la création —
+exemple complet, copiable tel quel :
 
 ```bash
-node scripts/server/provision-admin.js admin@grubano.com --name "Mohammed Maazouz"
+cd ~/app.grubano.com && /home/deyi0010/nodevenv/app.grubano.com/24/bin/node scripts/server/provision-admin.js --email admin@grubano.com --name "Mohammed Maazouz"
 ```
 
 ## Traçabilité
@@ -92,5 +103,6 @@ WHERE notifPrefs IS NOT NULL AND NOT JSON_VALID(notifPrefs);
 |---|---|
 | `DATABASE_URL introuvable` | Lancer depuis la racine : `cd ~/app.grubano.com` d'abord |
 | `@prisma/client introuvable` | Même cause — le `node_modules` de l'app contient le client |
+| `node : commande introuvable` | Le programme node n'est pas dans le PATH du serveur : utilisez le chemin complet du bloc « En une commande » (il commence par `/home/deyi0010/nodevenv/…`) |
 | `… n'a PAS pu être activé (status)` | Ligne `notifPrefs` récalcitrante → requête de réparation ci-dessus, puis relancer |
 | Le rôle ne prend pas effet sur le site | Déconnexion/reconnexion pas faite — le badge de session date d'avant |

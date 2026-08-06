@@ -11,7 +11,7 @@
    - `.env.local` serveur (cPanel Terminal, `chmod 600`, jamais par FTP) ;
    - GitHub → Settings → Secrets and variables → Actions (même nom) ;
    - staging ET prod si le secret existe dans les deux.
-3. **Restart** : `touch ~/<site>/tmp/restart.txt` (Passenger recharge l'env).
+3. **Restart** — staging : `touch ~/app.grubano.com/tmp/restart.txt` · production : `touch ~/grubano.com/tmp/restart.txt` (Passenger recharge l'env).
 4. **Vérifier** (voir colonne Vérification) avant de révoquer l'ancienne valeur.
 5. **Révoquer** l'ancienne valeur côté fournisseur.
 6. Consigner date + périmètre de la rotation (sans valeur) dans le canal Notion.
@@ -27,7 +27,7 @@ sinon impossible d'attribuer une panne.
 | `DATABASE_URL` (+ `DATABASE_URL_STAGING`/`_PROD` en CI) | `.env.local` serveur + GitHub Secrets | Créer un NOUVEAU user MySQL en cPanel avec les mêmes droits, basculer l'URL, vérifier, puis supprimer l'ancien user (jamais l'inverse) | Health check + une lecture authentifiée (`/dashboard`) |
 | `ANTHROPIC_API_KEY` | `.env.local` serveur + GitHub Secret | Console Anthropic : créer la clé, basculer, révoquer l'ancienne | Scan IA d'un plat en staging |
 | `SMTP_HOST/USER/PASS` | `.env.local` serveur + GitHub Secrets (cron) | Côté fournisseur email ; basculer serveur + secrets cron ensemble | `EmailLog` passe `sent` sur un email de test |
-| `CRON_SECRET` | `.env.local` serveur + GitHub Secret | Générer, basculer des DEUX côtés dans la même fenêtre (sinon les crons 401) | `curl -X POST .../api/email-agent -H "Authorization: Bearer <nouveau>"` → 200 |
+| `CRON_SECRET` | `.env.local` serveur + GitHub Secret | Générer, basculer des DEUX côtés dans la même fenêtre (sinon les crons 401) | `curl -X POST https://app.grubano.com/api/email-agent -H "Authorization: Bearer LE-NOUVEAU-SECRET"` → 200 (collez le nouveau secret à la place de LE-NOUVEAU-SECRET, sans chevrons) |
 | `INTERNAL_CRON_TOKEN` | `.env.local` serveur + GitHub Secret | Idem `CRON_SECRET` (routes admin internes) | `ledger-check-probe.js` en dispatch manuel → OK |
 | `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` | `.env.local` serveur | Dashboard Stripe → API keys → roll. En mode TEST aujourd'hui ; la rotation LIVE fait partie de la bascule prod | Paiement test 4242… aboutit |
 | `O2SWITCH_FTP_PASS` | GitHub Secret | cPanel → comptes FTP → changer le mot de passe, puis le Secret | Deploy staging vert |

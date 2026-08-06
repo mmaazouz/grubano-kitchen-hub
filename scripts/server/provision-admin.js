@@ -190,15 +190,37 @@ async function provisionAdmin(prisma, emailRaw, opts = {}) {
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
+// V4-3 — parsing : la forme DOCUMENTÉE est --email (l'aide et la doc disent la
+// même chose) ; la forme positionnelle reste ACCEPTÉE (tolérance, jamais un
+// piège). AUCUNE notation à substituer dans l'aide : la commande affichée est
+// réelle et copiable telle quelle (le fondateur a échoué 3 fois sur des
+// chevrons et un node hors PATH — l'aide montre le chemin absolu du binaire).
+function parseArgs(argv) {
+  const args = [...argv]
+  const out = { email: undefined, name: undefined }
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--email') { out.email = args[i + 1]; i++; continue }
+    if (args[i] === '--name')  { out.name  = args[i + 1]; i++; continue }
+    if (out.email === undefined && !String(args[i]).startsWith('--')) { out.email = args[i]; continue }
+  }
+  return out
+}
+
+const USAGE = [
+  'Crée (ou promeut) un ADMINISTRATEUR Grubano — docs/ops/provision-admin.md.',
+  '',
+  'Commande complète, copiable telle quelle (remplacez seulement l’adresse) :',
+  '',
+  '  cd ~/app.grubano.com && /home/deyi0010/nodevenv/app.grubano.com/24/bin/node scripts/server/provision-admin.js --email admin@grubano.com',
+  '',
+  'Option : --name "Mohammed Maazouz"   (nom d’affichage si le compte est créé)',
+].join('\n')
+
 async function main() {
-  const args = process.argv.slice(2)
-  const nameIdx = args.indexOf('--name')
-  const name = nameIdx >= 0 ? args[nameIdx + 1] : undefined
-  const email = args.filter((a, i) => a !== '--name' && i !== nameIdx + 1)[0]
+  const { email, name } = parseArgs(process.argv.slice(2))
 
   if (!email) {
-    console.log('Usage : node scripts/server/provision-admin.js <email> [--name "Prénom Nom"]')
-    console.log('Crée (ou promeut) un ADMINISTRATEUR Grubano. Voir docs/ops/provision-admin.md.')
+    console.log(USAGE)
     process.exit(1)
   }
 
@@ -238,5 +260,5 @@ async function main() {
   }
 }
 
-module.exports = { provisionAdmin }
+module.exports = { provisionAdmin, parseArgs }
 if (require.main === module) main()
