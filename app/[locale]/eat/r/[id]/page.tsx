@@ -52,7 +52,7 @@ interface RestaurantInfo {
   coverPhoto?: string
   logo?: string
   cuisine: string[]
-  rating: number
+  rating: number | null // V4-2 : null tant qu'aucun avis réel (l'API gate la colonne fabriquée)
   reviewCount: number
   deliveryTime: number
   minOrder: number
@@ -419,9 +419,11 @@ export default function RestaurantScreen() {
               <span className="ms" aria-hidden="true">arrow_back</span>
             </button>
             <span className="tb-title">{restaurant.name}</span>
-            <button type="button" className="tb-rate" onClick={goToReviews} aria-label={t('tabReviews')}>
-              <span className="ms" aria-hidden="true">star</span>{restaurant.rating.toFixed(1).replace('.', locale === 'en' ? '.' : ',')}
-            </button>
+            {restaurant.rating != null && (
+              <button type="button" className="tb-rate" onClick={goToReviews} aria-label={t('tabReviews')}>
+                <span className="ms" aria-hidden="true">star</span>{restaurant.rating.toFixed(1).replace('.', locale === 'en' ? '.' : ',')}
+              </button>
+            )}
           </div>
           <div className="tb-actions">
             <button type="button" className="tb-btn" aria-label={t('share')}>
