@@ -19,7 +19,9 @@ const { scopeMock } = vi.hoisted(() => ({ scopeMock: vi.fn() }))
 vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: scopeMock }))
 
 const { releaseMock, captureMock } = vi.hoisted(() => ({ releaseMock: vi.fn(), captureMock: vi.fn() }))
-vi.mock('@/lib/deposit', () => ({ releaseHold: releaseMock, captureHold: captureMock }))
+// V4-1 : flag mocké ON — ce fichier photographie le comportement CAPTURE historique
+// (le contrat flag OFF vit dans tests/punitive-capture.test.ts).
+vi.mock('@/lib/deposit', () => ({ releaseHold: releaseMock, captureHold: captureMock, isPunitiveCaptureEnabled: vi.fn(() => true) }))
 
 const { emails, recipientMock } = vi.hoisted(() => ({
   emails: {
