@@ -18,6 +18,7 @@
 // money moved, so a blind re-call could double-refund. Manual/C2 handles a stuck refund.
 
 import { prisma } from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 import { executeRefund, isRefundsEnabled } from '@/lib/refund'
 
 /** Kill-switch — default OFF (mirrors isRefundsEnabled / isChargebacksEnabled). */
@@ -564,6 +565,56 @@ export async function listArbitrationQueue() {
  *  automatisation à effet financier). Indexée ([status, responseDeadlineAt] /
  *  [restaurantId, status]) ; les plus anciennes d'abord (l'ancienneté est
  *  l'information que l'admin vient chercher). */
+/** P0-08 (vague 4) — demande de remboursement SYSTÈME. L'annulation par le
+ *  restaurant d'une commande PAYÉE entre DIRECTEMENT dans la file d'arbitrage
+ *  admin (status 'arbitration') : l'argent encaissé d'une commande annulée ne
+ *  peut pas rester acquis par défaut — mais Q3 est absolu, AUCUN remboursement
+ *  n'est déclenché ici : une DEMANDE est créée, l'admin tranche (arbitrateClaim,
+ *  le circuit prouvé en exécution le 04/08).
+ *  · Le motif est DISTINCT de CLAIM_REASONS et INACCESSIBLE au schéma public
+ *    (z.enum(CLAIM_REASONS) ne peut pas le produire — même patron que le
+ *    `cancelledBy` système des réservations, hors enum client).
+ *  · activeOrderKey @unique ⇒ au plus UNE demande ACTIVE par commande : un
+ *    rejeu, ou une réclamation client déjà active sur la même commande, retombe
+ *    en P2002 → { created:false, reason:'already_active' } — la question de
+ *    l'argent est DÉJÀ dans le circuit, jamais de doublon.
+ *  · `tx` optionnel : l'appelant peut l'inscrire dans la MÊME transaction que
+ *    l'annulation (atomicité annulation+demande — P0-08 critère 1).
+ *  CETTE FONCTION EST ADDITIVE : aucune transition existante n'est modifiée. */
+export const SYSTEM_CLAIM_REASON_ORDER_CANCELLED = 'system_order_cancelled'
+
+export async function createSystemClaim(input: {
+  orderId:              string
+  consumerId:           string
+  restaurantId:         string
+  requestedAmountCents: number
+  description?:         string | null
+  tx?:                  Prisma.TransactionClient
+}): Promise<{ created: true; claimId: string } | { created: false; reason: 'already_active' }> {
+  const db = input.tx ?? prisma
+  try {
+    const claim = await db.claim.create({
+      data: {
+        orderId:              input.orderId,
+        consumerId:           input.consumerId,
+        restaurantId:         input.restaurantId,
+        reason:               SYSTEM_CLAIM_REASON_ORDER_CANCELLED,
+        description:          input.description ?? null,
+        requestedAmountCents: input.requestedAmountCents,
+        status:               'arbitration', // directement la file admin — pas de revue resto
+        // Champ NOT NULL du modèle ; sans objet en arbitration (la sonde P0-39
+        // ne regarde que 'restaurant_review') — posé à maintenant.
+        responseDeadlineAt:   new Date(),
+        activeOrderKey:       input.orderId, // @unique → anti-doublon structurel
+      },
+    })
+    return { created: true, claimId: claim.id }
+  } catch (err) {
+    if (isP2002(err)) return { created: false, reason: 'already_active' }
+    throw err // toute autre panne remonte → l'appelant (transaction) échoue AVEC l'annulation
+  }
+}
+
 export async function listPendingRestaurantClaims() {
   return prisma.claim.findMany({
     where:   { status: 'restaurant_review' },

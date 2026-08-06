@@ -6997,7 +6997,8 @@
       "wrong_order": "Mauvaise commande",
       "quality": "Problème de qualité",
       "not_delivered": "Non livrée",
-      "other": "Autre"
+      "other": "Autre",
+      "system_order_cancelled": "Annulation d’une commande payée (système)"
     },
     "status": {
       "restaurant_review": "En attente de réponse du restaurant",
@@ -8449,6 +8450,12 @@
       "subject": "Réclamation {ref} : décision finale de Grubano",
       "title": "Refus confirmé",
       "body": "Grubano a examiné votre réclamation sur la commande {ref} et a confirmé le refus. Cette décision est définitive."
+    },
+    "orderCancelledPaid": {
+      "subject": "Commande {ref} annulée — demande de remboursement transmise",
+      "title": "Commande annulée",
+      "body": "{resto} a annulé votre commande {ref}, qui avait été payée. Une demande de remboursement a été transmise à Grubano.",
+      "next": "Elle sera examinée par un membre de l’équipe Grubano — vous serez informé(e) par email de la décision."
     }
   }
 }
