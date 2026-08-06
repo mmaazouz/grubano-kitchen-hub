@@ -8422,7 +8422,7 @@
     "ack": {
       "subject": "Your claim {ref} has been received",
       "title": "Claim received",
-      "body": "We have received your claim on order {ref} (requested amount: €{euros}).",
+      "body": "We have received your claim on order {ref} (requested amount: {euros}).",
       "next": "You will be notified by email as soon as a decision is made."
     },
     "accepted": {
@@ -8439,7 +8439,7 @@
     "refunded": {
       "subject": "Claim {ref}: refund issued",
       "title": "Refund issued",
-      "body": "Grubano ruled in your favour: a refund of €{euros} has been issued on order {ref} to your payment method."
+      "body": "Grubano ruled in your favour: a refund of {euros} has been issued on order {ref} to your payment method."
     },
     "approved": {
       "subject": "Claim {ref}: accepted by Grubano",

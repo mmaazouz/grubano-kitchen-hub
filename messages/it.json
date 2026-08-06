@@ -8422,7 +8422,7 @@
     "ack": {
       "subject": "Il Suo reclamo {ref} è stato registrato",
       "title": "Reclamo registrato",
-      "body": "Abbiamo ricevuto il Suo reclamo sull’ordine {ref} (importo richiesto: {euros} €).",
+      "body": "Abbiamo ricevuto il Suo reclamo sull’ordine {ref} (importo richiesto: {euros}).",
       "next": "Sarà informato via email non appena verrà presa una decisione."
     },
     "accepted": {
@@ -8439,7 +8439,7 @@
     "refunded": {
       "subject": "Reclamo {ref}: rimborso emesso",
       "title": "Rimborso emesso",
-      "body": "Grubano ha deciso a Suo favore: è stato emesso un rimborso di {euros} € sull’ordine {ref} verso il Suo metodo di pagamento."
+      "body": "Grubano ha deciso a Suo favore: è stato emesso un rimborso di {euros} sull’ordine {ref} verso il Suo metodo di pagamento."
     },
     "approved": {
       "subject": "Reclamo {ref}: accettato da Grubano",
