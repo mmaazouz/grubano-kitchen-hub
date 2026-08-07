@@ -16,7 +16,7 @@ import '@/app/gb-foundation/gb-components.css'
 // back arrow. Dine-in « Voir l'addition & payer » routes to the EXISTING /t/[tableId]
 // bill+pay page (money byte-identical — no new payment code here).
 
-type Kind = 'delivery' | 'pickup' | 'dinein'
+type Kind = 'delivery' | 'pickup' | 'dinein' | 'reservation'
 interface Card {
   id: string
   kind: Kind
@@ -32,9 +32,18 @@ interface Card {
   trackingId?: string
   tableLabel?: string
   tableId?: string
+  // V5-1 — kind 'reservation' only (additive; food cards untouched). The hold
+  // display is driven by depositStatus + depositAmount, NEVER noShowPenalty
+  // (the API never selects it — founder decision).
+  date?: string
+  endTime?: string
+  guests?: number
+  depositAmount?: number
+  depositStatus?: string
+  cancellable?: boolean
 }
 
-const TYPE_ICON: Record<Kind, string> = { delivery: 'two_wheeler', pickup: 'storefront', dinein: 'table_restaurant' }
+const TYPE_ICON: Record<Kind, string> = { delivery: 'two_wheeler', pickup: 'storefront', dinein: 'table_restaurant', reservation: 'event' }
 const THUMBS = ['t1', 't2', 't3', 't4']
 
 export default function OrdersPage() {
@@ -47,6 +56,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'current' | 'past'>('current')
   const [query, setQuery] = useState('')
+  // V5-1 — bumped after a successful reservation cancel so the list refetches.
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -58,10 +69,13 @@ export default function OrdersPage() {
       .catch(() => { if (alive) setData({ current: [], past: [] }) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [status])
+  }, [status, reloadTick])
 
   const fmtDate = (iso: string) =>
     new Intl.DateTimeFormat(locale === 'ar' ? 'ar-MA' : locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+  // V5-1 — a reservation is a moment, not just a day.
+  const fmtDateTime = (iso: string) =>
+    new Intl.DateTimeFormat(locale === 'ar' ? 'ar-MA' : locale, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 
   const current = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -183,6 +197,89 @@ export default function OrdersPage() {
   const finalLabel = (c: Card) =>
     c.status === 'cancelled' ? t('finalCancelled') : c.kind === 'pickup' ? t('finalPickedUp') : c.kind === 'dinein' ? t('finalPaid') : t('finalDelivered')
 
+  // ── V5-1 — reservation card (both tabs). Reuses the o-card markup family; the
+  // food CurrentCard/PastCard render paths are byte-identical (list switch only).
+  // The deposit line is the WHOLE point: amount + REAL hold state, driven by
+  // depositStatus/depositAmount (never noShowPenalty — the API doesn't send it).
+  // Cancel = the EXISTING route POST /api/reservations/[id]/cancel, its guards
+  // untouched: a 409 (window closed / not cancellable) surfaces the server's
+  // French message as-is.
+  const ReservationCard = ({ c, i }: { c: Card; i: number }) => {
+    const [confirming, setConfirming] = useState(false)
+    const [busy, setBusy] = useState(false)
+    const [err, setErr] = useState('')
+    const hasDeposit = typeof c.depositAmount === 'number' && c.depositAmount > 0 && c.depositStatus !== 'none'
+    const amount = formatEuros(c.depositAmount ?? 0, locale)
+    const depositLine =
+      !hasDeposit ? null
+        : c.depositStatus === 'authorized' ? t('resDepositAuthorized', { amount })
+          : c.depositStatus === 'released' ? (c.status === 'noshow' ? t('resNoShowReleased', { amount }) : t('resDepositReleased', { amount }))
+            : c.depositStatus === 'captured' ? t('resDepositCaptured', { amount })
+              : null
+    const stateLabel =
+      c.status === 'cancelled' ? t('resCancelled')
+        : c.status === 'noshow' ? t('resNoShow')
+          : c.phase === 'current' ? (c.status === 'confirmed' ? t('resUpcoming') : t('resUnderway'))
+            : t('resPast')
+
+    async function cancel() {
+      if (busy) return
+      setBusy(true)
+      setErr('')
+      try {
+        const r = await fetch(`/api/reservations/${c.id}/cancel`, { method: 'POST' })
+        if (r.ok) { setReloadTick((n) => n + 1); return }
+        const d = await r.json().catch(() => null)
+        setErr(typeof d?.error === 'string' ? d.error : t('resCancelError'))
+      } catch {
+        setErr(t('resCancelError'))
+      } finally {
+        setBusy(false)
+        setConfirming(false)
+      }
+    }
+
+    return (
+      <article className="o-card">
+        <div className="o-card__top">
+          <div className={`thumb ${THUMBS[i % 4]}`} />
+          <div className="o-card__id">
+            <div className="o-card__name">{c.restaurantName}
+              <span className="type type--reservation"><span className="ms" style={{ fontSize: 13 }} aria-hidden="true">{TYPE_ICON.reservation}</span>{t('type_reservation')}</span>
+            </div>
+            <div className="o-card__meta">{c.date ? fmtDateTime(c.date) : fmtDate(c.createdAt)} · {t('resGuests', { count: c.guests ?? 1 })}</div>
+          </div>
+          <span className={`final ${c.phase === 'past' ? 'final--done' : ''}`.trim()}>{stateLabel}</span>
+        </div>
+        {depositLine && (
+          <div className={`res-deposit${c.depositStatus === 'captured' ? ' captured' : ''}`}>
+            <span className="ms" aria-hidden="true">{c.depositStatus === 'authorized' ? 'credit_card' : 'check_circle'}</span>
+            <span>{depositLine}</span>
+          </div>
+        )}
+        {err && <div className="res-cancel-err" role="alert">{err}</div>}
+        {c.cancellable && (
+          <div className="past-foot">
+            {!confirming ? (
+              <button className="btn-sm btn-sm--line" type="button" onClick={() => setConfirming(true)}>
+                <span className="ms" aria-hidden="true">event_busy</span>{t('resCancel')}
+              </button>
+            ) : (
+              <>
+                <button className="btn-sm btn-sm--solid" type="button" disabled={busy} onClick={cancel}>
+                  {busy ? t('resCancelBusy') : t('resCancelConfirm')}
+                </button>
+                <button className="btn-sm btn-sm--line" type="button" disabled={busy} onClick={() => setConfirming(false)}>
+                  {t('resCancelKeep')}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </article>
+    )
+  }
+
   const PastCard = ({ c, i }: { c: Card; i: number }) => (
     <article className="o-card">
       <div className="o-card__top">
@@ -220,10 +317,12 @@ export default function OrdersPage() {
       </div>
 
       <div className="list tab-current">
-        {loading ? [0, 1, 2].map((i) => <div key={i} className="o-skel" />) : current.map((c, i) => <CurrentCard key={c.id} c={c} i={i} />)}
+        {loading ? [0, 1, 2].map((i) => <div key={i} className="o-skel" />) : current.map((c, i) =>
+          c.kind === 'reservation' ? <ReservationCard key={c.id} c={c} i={i} /> : <CurrentCard key={c.id} c={c} i={i} />)}
       </div>
       <div className="list tab-past">
-        {loading ? [0, 1].map((i) => <div key={i} className="o-skel" />) : past.map((c, i) => <PastCard key={c.id} c={c} i={i} />)}
+        {loading ? [0, 1].map((i) => <div key={i} className="o-skel" />) : past.map((c, i) =>
+          c.kind === 'reservation' ? <ReservationCard key={c.id} c={c} i={i} /> : <PastCard key={c.id} c={c} i={i} />)}
       </div>
 
       <div className="empty">
