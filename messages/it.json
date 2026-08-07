@@ -7102,7 +7102,9 @@
       "pendingTitle": "In attesa del ristorante",
       "pendingHint": "Il ristorante non ha ancora risposto. Nessuna azione automatica sarà intrapresa — la decisione spetta al ristorante, poi a Lei in arbitrato.",
       "pendingOverdue": "Termine di risposta superato",
-      "arbitrationTitle": "In arbitrato — da decidere"
+      "arbitrationTitle": "In arbitrato — da decidere",
+      "reasonSystem": "Motivo (sistema)",
+      "systemDetails": "Dettagli (sistema)"
     }
   },
   "fiscal": {

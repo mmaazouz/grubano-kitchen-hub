@@ -61,6 +61,11 @@ export default function AdminClaimsArbitration() {
     } finally { setBusyId(null) }
   }, [load, t, toast])
 
+  // V5-3 — une demande dont le reason porte le marqueur P0-08 'system_' a été
+  // créée par le SYSTÈME (rail remboursement d'annulation), pas par le client :
+  // ses étiquettes doivent le dire. Une demande client garde les siennes.
+  const isSystemClaim = (reason: string) => reason.startsWith('system_')
+
   // P0-39 — ancienneté lisible dans la locale de l'admin (heures < 48 h, sinon jours).
   const ageOf = (iso: string) => {
     const hours = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000))
@@ -91,8 +96,8 @@ export default function AdminClaimsArbitration() {
                   <span className="text-sm font-semibold text-grubano-primary">{formatEuros(p.requestedAmountCents / 100, locale)}</span>
                 </div>
                 <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
-                  <p><span className="font-semibold">{t('admin.reason')}:</span> {t(`reason.${p.reason}`)}</p>
-                  {p.description && <p><span className="font-semibold">{t('admin.clientDetails')}:</span> {p.description}</p>}
+                  <p><span className="font-semibold">{t(isSystemClaim(p.reason) ? 'admin.reasonSystem' : 'admin.reason')}:</span> {t(`reason.${p.reason}`)}</p>
+                  {p.description && <p><span className="font-semibold">{t(isSystemClaim(p.reason) ? 'admin.systemDetails' : 'admin.clientDetails')}:</span> {p.description}</p>}
                 </dl>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge tone="neutral">{ageOf(p.createdAt)}</Badge>
@@ -120,8 +125,8 @@ export default function AdminClaimsArbitration() {
             </div>
 
             <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
-              <p><span className="font-semibold">{t('admin.reason')}:</span> {t(`reason.${c.reason}`)}</p>
-              {c.description && <p><span className="font-semibold">{t('admin.clientDetails')}:</span> {c.description}</p>}
+              <p><span className="font-semibold">{t(isSystemClaim(c.reason) ? 'admin.reasonSystem' : 'admin.reason')}:</span> {t(`reason.${c.reason}`)}</p>
+              {c.description && <p><span className="font-semibold">{t(isSystemClaim(c.reason) ? 'admin.systemDetails' : 'admin.clientDetails')}:</span> {c.description}</p>}
               {c.restaurantResponseReason && <p><span className="font-semibold">{t('admin.refusalReason')}:</span> {c.restaurantResponseReason}</p>}
               {c.contestReason && <p><span className="font-semibold">{t('admin.contestReason')}:</span> {c.contestReason}</p>}
               {c.photoUrl && (

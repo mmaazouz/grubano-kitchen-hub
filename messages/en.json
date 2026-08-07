@@ -7102,7 +7102,9 @@
       "pendingTitle": "Awaiting the restaurant",
       "pendingHint": "The restaurant has not answered yet. No automatic action will be taken — the decision stays with the restaurant, then with you in arbitration.",
       "pendingOverdue": "Response deadline exceeded",
-      "arbitrationTitle": "In arbitration — to decide"
+      "arbitrationTitle": "In arbitration — to decide",
+      "reasonSystem": "Reason (system)",
+      "systemDetails": "Details (system)"
     }
   },
   "fiscal": {
