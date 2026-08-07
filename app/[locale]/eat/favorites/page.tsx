@@ -28,7 +28,7 @@ interface Restaurant {
   id: string
   name: string
   cuisine: string[]
-  rating: number
+  rating: number | null // V4-2 : null tant qu'aucun avis réel (l'API gate la colonne fabriquée)
   reviewCount: number
   deliveryTime: number
   deliveryFee: number
@@ -149,10 +149,12 @@ export default function FavoritesScreen() {
                     <div className="card__b">
                       <div className="card__row">
                         <b>{r.name}</b>
-                        <span className="card__rating">
-                          <span className="ms" aria-hidden="true">star</span>
-                          {r.rating.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                        </span>
+                        {r.rating != null && (
+                          <span className="card__rating">
+                            <span className="ms" aria-hidden="true">star</span>
+                            {r.rating.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                          </span>
+                        )}
                       </div>
                       <div className="card__meta">{meta}</div>
                       {r.deliveryFee === 0 && (

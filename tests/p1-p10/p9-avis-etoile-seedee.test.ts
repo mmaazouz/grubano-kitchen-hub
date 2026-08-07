@@ -200,16 +200,20 @@ describe('P9 — ★ de tête : Restaurant.rating (seedé) jamais recalculé', (
     expect(db.review.aggregate).not.toHaveBeenCalled()
   })
 
-  it('[FAIL-ATTENDU: la fiche publique sert la ★ stockée] preuve source : /api/restaurants/[id] renvoie restaurant.rating (colonne seedée) et la route reviews ne contient aucun recalcul', () => {
-    // AUDIT: source-level proof closing the loop — the consumer-facing
-    // restaurant sheet serves the stored (seeded) rating/reviewCount columns
-    // verbatim, and the reviews route contains no restaurant.update nor any
-    // aggregate call. After fix: update these expectations to the recompute
-    // wiring.
+  it('[INVERSÉ par V4-2: la fiche publique ne sert PLUS la ★ stockée sans avis réel] preuve source : /api/restaurants/[id] gate la colonne seedée, la route reviews reste sans recalcul', () => {
+    // V4-2 (vague 4, décision fondateur) : l'assertion d'origine photographiait
+    // la fiche servant restaurant.rating/reviewCount VERBATIM (colonnes seedées
+    // 4,7-4,8 / « 120+ avis » avec ZÉRO avis réel en base). INVERSÉE : la fiche
+    // applique désormais le gate d'honnêteté (rating null + compteur RÉEL via
+    // lib/review-stats tant qu'aucun avis publié n'existe). La colonne stockée
+    // reste NON recalculée — le défaut d'agrégat demeure documenté ci-dessous
+    // (aucun recalcul construit : décision produit ultérieure, hors V4-2).
     const sheetSrc = fs.readFileSync(
       path.join(ROOT, 'app', 'api', 'restaurants', '[id]', 'route.ts'), 'utf-8')
-    expect(sheetSrc).toMatch(/rating:\s+restaurant\.rating/)
-    expect(sheetSrc).toMatch(/reviewCount:\s+restaurant\.reviewCount/)
+    expect(sheetSrc).not.toMatch(/rating:\s+restaurant\.rating/)       // plus de colonne servie verbatim
+    expect(sheetSrc).not.toMatch(/reviewCount:\s+restaurant\.reviewCount/)
+    expect(sheetSrc).toContain("from '@/lib/review-stats'")            // le gate d'honnêteté est branché
+    expect(sheetSrc).toMatch(/rating:\s+realCount > 0 \? restaurant\.rating : null/)
 
     const reviewsSrc = fs.readFileSync(
       path.join(ROOT, 'app', 'api', 'restaurants', '[id]', 'reviews', 'route.ts'), 'utf-8')

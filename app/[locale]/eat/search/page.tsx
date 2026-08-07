@@ -44,10 +44,11 @@ const CUISINES = [
   { labelKey: 'cuisineSushi', ms: 'set_meal', q: 'sushi' },
   { labelKey: 'cuisineDesserts', ms: 'icecream', q: 'desserts' },
 ]
+// V4-2 : le tri « Note » est retiré — il s'appuyait sur la colonne rating
+// FABRIQUÉE (seed, jamais recalculée). Il reviendra avec un vrai agrégat d'avis.
 const SORTS = [
-  { labelKey: 'sortRating', value: 'rating' },
-  { labelKey: 'sortDelivery', value: 'delivery' },
   { labelKey: 'sortNewest', value: 'newest' },
+  { labelKey: 'sortDelivery', value: 'delivery' },
 ]
 // CD desktop subbar filters that have NO backing data → INERT/decorative. Rendered
 // visually (per CD) but they do NOT filter (noted in the report). `veg` carries the
@@ -64,7 +65,7 @@ interface Restaurant {
   id: string
   name: string
   cuisine: string[]
-  rating: number
+  rating: number | null // V4-2 : null tant qu'aucun avis réel (l'API gate la colonne fabriquée)
   reviewCount: number
   deliveryTime: number
   minOrder: number
@@ -149,7 +150,7 @@ function SearchContent() {
   const urlQuery = params.get('q') ?? ''
   const [query, setQuery] = useState(urlQuery)
   const [cuisine, setCuisine] = useState(params.get('cuisine') ?? '')
-  const [sort, setSort] = useState('rating')
+  const [sort, setSort] = useState('newest') // V4-2 : défaut honnête (ex-'rating' fabriqué)
   const [results, setResults] = useState<Restaurant[]>([])
   const [fallback, setFallback] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -204,7 +205,7 @@ function SearchContent() {
     run()
   }, [run])
 
-  const sortLabel = t(SORTS.find((s) => s.value === sort)?.labelKey ?? 'sortRating')
+  const sortLabel = t(SORTS.find((s) => s.value === sort)?.labelKey ?? 'sortNewest')
   const cycleSort = () => {
     if (coords) return // geo drives the order — sort is inert when location is on
     const i = SORTS.findIndex((s) => s.value === sort)
@@ -360,7 +361,9 @@ function SearchContent() {
                     <b><Highlighted text={r.name} term={query} /></b>
                     <span>{meta(r)}</span>
                   </div>
-                  <span className="rating"><span className="ms" aria-hidden="true">star</span>{r.rating.toLocaleString(locale)}</span>
+                  {r.rating != null && (
+                    <span className="rating"><span className="ms" aria-hidden="true">star</span>{r.rating.toLocaleString(locale)}</span>
+                  )}
                 </button>
               ))}
 
@@ -480,7 +483,9 @@ function SearchContent() {
                       <div className="card__b">
                         <div className="card__row">
                           <b>{r.name}</b>
-                          <span className="card__rating"><span className="ms" aria-hidden="true">star</span>{r.rating.toLocaleString(locale)}</span>
+                          {r.rating != null && (
+                            <span className="card__rating"><span className="ms" aria-hidden="true">star</span>{r.rating.toLocaleString(locale)}</span>
+                          )}
                         </div>
                         <div className="card__meta">{meta(r)}</div>
                         {/* REAL tag: free delivery. Other CD tags (veg/popular) have no

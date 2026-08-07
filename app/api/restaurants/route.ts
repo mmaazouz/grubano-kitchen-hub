@@ -5,13 +5,17 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { geocodeAddressDetailed, isPlausibleAddress, haversineKm } from '@/lib/geocode'
+import { realReviewCounts, honestRating } from '@/lib/review-stats'
 
 // ── GET /api/restaurants ──────────────────────────────────────────────────────
 // Query params:
 //   city     – filter by city (case-insensitive contains)
 //   cuisine  – filter by cuisine tag (e.g. "italian")
 //   q        – free-text search on name / description
-//   sort     – "rating" | "newest" | "delivery"  (default: rating)
+//   sort     – "newest" | "delivery"  (default: newest). V4-2 : "rating" est
+//              toujours ACCEPTÉ (anciens clients) mais retombe sur "newest" —
+//              la colonne rating est FABRIQUÉE (seed, jamais recalculée), le
+//              listing public ne peut plus s'ordonner dessus.
 //   take     – page size (default 20, max 50)
 //   skip     – offset for pagination
 //
@@ -42,7 +46,7 @@ export async function GET(req: Request) {
     // Accept both ?cuisine= and ?category= for the geo path (task aliases them).
     const category = searchParams.get('category') ?? cuisine
     const q       = searchParams.get('q')       ?? undefined
-    const sort    = searchParams.get('sort')    ?? 'rating'
+    const sort    = searchParams.get('sort')    ?? 'newest' // V4-2 : défaut honnête (plus jamais la colonne fabriquée)
     const take    = Math.min(Number(searchParams.get('take') ?? 20), 50)
     const skip    = Number(searchParams.get('skip') ?? 0)
 
@@ -136,8 +140,13 @@ export async function GET(req: Request) {
         radiusUsedKm = null
       }
 
+      // V4-2 : gate d'honnêteté — note servie SEULEMENT si des avis réels
+      // existent, compteur servi = compteur réel (le tri géo, lui, est déjà
+      // honnête : distance uniquement).
+      const shown  = chosen.slice(0, limit)
+      const counts = await realReviewCounts(shown.map(r => r.id))
       return NextResponse.json({
-        restaurants: chosen.slice(0, limit),
+        restaurants: shown.map(r => honestRating(r, counts.get(r.id) ?? 0)),
         total:        chosen.length,
         radiusUsedKm,                         // null = no radius cap (Infinity)
         categoryHadNoMatch,                   // true = we widened past category
@@ -164,10 +173,14 @@ export async function GET(req: Request) {
       ]
     }
 
+    // V4-2 : le tri « rating » s'appuyait sur la colonne FABRIQUÉE (seed 4,7-4,8,
+    // jamais recalculée — base à ZÉRO avis réel). Repli honnête choisi : la
+    // NOUVEAUTÉ (createdAt desc) — déterministe, indépendant de toute valeur
+    // fabriquée, et il favorise les nouvelles publications au lieu d'un
+    // classement inventé. Le tri par note reviendra avec un vrai agrégat d'avis.
     const orderBy: Prisma.RestaurantOrderByWithRelationInput =
       sort === 'delivery' ? { deliveryTime: 'asc' }
-      : sort === 'newest' ? { createdAt: 'desc' }
-      : { rating: 'desc' }
+      : { createdAt: 'desc' }
 
     const [restaurants, total] = await Promise.all([
       prisma.restaurant.findMany({
@@ -205,8 +218,10 @@ export async function GET(req: Request) {
         })
       : restaurants
 
+    // V4-2 : même gate d'honnêteté que la branche géo.
+    const counts = await realReviewCounts(filtered.map(r => r.id))
     return NextResponse.json({
-      restaurants: filtered.map(r => ({ ...r, distanceKm: null })),
+      restaurants: filtered.map(r => ({ ...honestRating(r, counts.get(r.id) ?? 0), distanceKm: null })),
       total,
       take,
       skip,

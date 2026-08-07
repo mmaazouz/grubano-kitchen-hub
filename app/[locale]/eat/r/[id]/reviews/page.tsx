@@ -12,10 +12,11 @@ import './reviews.css'
 // ── /eat/r/[id]/reviews — « Avis & notes » ─────────────────────────────────────
 // VERBATIM CD design (Notion 38efd2c9-…-818c) wired to the REAL consumer review
 // backend (P0-DATA-2): model Review + GET/POST /api/restaurants/[id]/reviews.
-//   • SCORE + review COUNT (headline) bind to the REAL Restaurant.rating /
-//     reviewCount (GET /api/restaurants/[id]) — the platform-wide aggregate, kept
-//     as the headline (it is NOT recomputed from on-platform reviews — a later
-//     product decision).
+//   • SCORE + review COUNT (headline) bind to GET /api/restaurants/[id] — V4-2 :
+//     l'API applique le gate d'honnêteté (rating null + compteur RÉEL tant
+//     qu'aucun avis publié n'existe → le headline affiche « — » et le vrai
+//     compte ; la colonne stockée reste non recalculée — décision produit
+//     ultérieure, hors ticket).
 //   • The DISTRIBUTION bars + the review LIST come from the real published reviews
 //     (GET …/reviews). Empty/loading states stay honest (no fabricated reviews).
 //   • « Publier » does a REAL POST (upserts the user's one review for this resto);
