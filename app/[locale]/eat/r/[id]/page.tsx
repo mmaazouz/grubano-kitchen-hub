@@ -175,6 +175,10 @@ export default function RestaurantScreen() {
   // POST /api/orders gate). Default false (pilot = pickup-only) so the chip
   // never flashes; default mode follows: 'takeaway', never a refused mode.
   const [deliveryAvailable, setDeliveryAvailable] = useState(false)
+  // V5-1b — the booking flow is only ENTERED when it can succeed in principle
+  // (server-computed: at least one configured table). Default false: a resto
+  // without tables (dark kitchen) never exposes a dead-end entry point.
+  const [reservable, setReservable] = useState(false)
   const [mode, setMode] = useState<Mode>('takeaway')
   const [fav, setFav] = useState(false)
   const [cart, setCart] = useState<EatCartData | null>(null)
@@ -202,6 +206,8 @@ export default function RestaurantScreen() {
         setItemPromo(d.itemPromo && typeof d.itemPromo === 'object' ? d.itemPromo : {})
         // V5-2 — tolerant: absent/odd payload ⇒ delivery stays hidden (safe).
         if (d.fulfillment && d.fulfillment.delivery === true) setDeliveryAvailable(true)
+        // V5-1b — tolerant: absent/odd payload ⇒ booking entry stays hidden.
+        if (d.reservable === true) setReservable(true)
         const existing = readCart()
         if (existing && existing.restaurantId === id) setCart(existing)
       })
@@ -493,7 +499,21 @@ export default function RestaurantScreen() {
               on the server refusal. Other modes strictly unchanged. */}
           <div className="modes" role="tablist" aria-label={t('fulfilmentMode')}>
             {MODES.filter((m) => m !== 'delivery' || deliveryAvailable).map((m) => (
-              <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}>
+              // V5-1b: the « Sur place » chip is the entry point clients try
+              // naturally — when the restaurant CAN take a reservation (has
+              // tables), tapping it OPENS the real booking flow (mobile AND
+              // desktop; the flow was previously reachable only from the empty
+              // desktop cart panel). Not reservable ⇒ previous visual behaviour,
+              // no dead-end flow exposed. Other chips strictly unchanged.
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() =>
+                  m === 'dinein' && reservable ? router.push(`/eat/r/${id}/reserver`) : setMode(m)
+                }
+              >
                 <span className="ms" aria-hidden="true">{MODE_ICON[m]}</span>{modeLabel(m)}
               </button>
             ))}
@@ -678,9 +698,13 @@ export default function RestaurantScreen() {
           <div className="cc-empty">
             <span className="emoji" aria-hidden="true">🛒</span>
             <p>{t('cartEmpty')}</p>
-            <button type="button" className="cc-checkout ghost" onClick={() => router.push(`/eat/r/${id}/reserver`)}>
-              <span>{t('reserveTable')}</span>
-            </button>
+            {/* V5-1b: same operability gate as the « Sur place » chip — a resto
+                without tables must not expose a dead-end booking entry. */}
+            {reservable && (
+              <button type="button" className="cc-checkout ghost" onClick={() => router.push(`/eat/r/${id}/reserver`)}>
+                <span>{t('reserveTable')}</span>
+              </button>
+            )}
           </div>
         )}
       </aside>

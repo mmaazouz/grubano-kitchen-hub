@@ -305,6 +305,17 @@ export async function GET(
       fulfillment: {
         delivery: isDeliveryFulfillmentEnabled() && restaurant.deliveryEnabled === true,
       },
+      // Additive (V5-1b) — can this restaurant take a TABLE RESERVATION at all?
+      // Operability gate = at least one configured table (dark kitchens simply
+      // have 0 tables — RestaurantTable schema comment). Day-level emptiness
+      // (exceptional closure, full slots) is handled INSIDE the booking flow by
+      // its honest empty states; the fiche only exposes an entry point when the
+      // flow can succeed in principle. Tolerant: a count hiccup hides the entry
+      // (safe), never breaks the fiche.
+      reservable: await prisma.restaurantTable
+        .count({ where: { restaurantId: restaurant.id } })
+        .then((n) => n > 0)
+        .catch(() => false),
     })
   } catch (err) {
     console.error('[GET /api/restaurants/:id]', err)
