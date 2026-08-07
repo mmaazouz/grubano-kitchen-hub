@@ -15,7 +15,7 @@ const { db, scope } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/establishment-scope', () => scope)
-vi.mock('@/lib/deposit', () => ({ captureHold: vi.fn() }))
+vi.mock('@/lib/deposit', () => ({ captureHold: vi.fn(), releaseHold: vi.fn(), isPunitiveCaptureEnabled: vi.fn(() => true) }))
 vi.mock('@/lib/ticket', () => ({ ensureOpenTicket: vi.fn(async () => ({ ok: true })) }))
 vi.mock('@/lib/opening-hours', () => ({ loadHoursContext: vi.fn(), slotFitsCtx: vi.fn(() => ({ ok: true })) }))
 vi.mock('@/lib/transactional-emails', () => ({

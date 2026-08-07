@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { maskEatReservation } from '@/lib/customer-scope'
-import { captureHold, releaseHold } from '@/lib/deposit'
+import { captureHold, releaseHold, isPunitiveCaptureEnabled } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import {
@@ -354,14 +354,40 @@ export async function PATCH(req: Request) {
 
     let capturedCents: number | null = null
     if (existing.stripePaymentIntentId && data.status === 'noshow') {
-      const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
-      if (!settle.ok) {
-        return NextResponse.json({ error: settle.error }, { status: settle.status })
-      }
-      if (settle.depositStatus) writeData.depositStatus = settle.depositStatus
-      if (settle.depositStatus === 'captured') {
-        writeData.depositPaid = true
-        capturedCents = settle.capturedAmount ?? null
+      if (isPunitiveCaptureEnabled()) {
+        const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
+        if (!settle.ok) {
+          return NextResponse.json({ error: settle.error }, { status: settle.status })
+        }
+        if (settle.depositStatus) writeData.depositStatus = settle.depositStatus
+        if (settle.depositStatus === 'captured') {
+          writeData.depositPaid = true
+          capturedCents = settle.capturedAmount ?? null
+        }
+      } else {
+        // ── V4-1 (vague 4, décision fondateur — motif juridique) : la capture de
+        // pénalité est INOPÉRANTE pendant le pilote. Marquer le no-show RESTE
+        // possible ; la garantie n'est pas exercée : l'empreinte est LIBÉRÉE
+        // (garder le hold gelé sans capturer serait une sanction déguisée —
+        // l'argent du client resterait bloqué des jours). Best-effort, calque
+        // P0-12 : un pépin Stripe ne bloque JAMAIS le marquage, mais il est
+        // tracé et jamais avalé. Aucun depositPaid, aucun email de pénalité
+        // (capturedCents reste null → sendNoShowPenaltyCharged n'est pas envoyé).
+        console.warn(
+          `[PATCH /api/reservations] [V4-1] no-show SANS capture (PUNITIVE_CAPTURE_ENABLED OFF) — libération de l'empreinte (reservation ${id})`,
+        )
+        try {
+          const settle = await releaseHold(existing.stripePaymentIntentId)
+          if (settle.ok) {
+            if (settle.depositStatus) writeData.depositStatus = settle.depositStatus
+          } else {
+            console.error('[PATCH /api/reservations] [V4-1] empreinte NON libérée au no-show',
+              JSON.stringify({ reservationId: id, paymentIntentId: existing.stripePaymentIntentId, error: settle.error }))
+          }
+        } catch (e) {
+          console.error('[PATCH /api/reservations] [V4-1] libération no-show en échec',
+            JSON.stringify({ reservationId: id }), e instanceof Error ? e.message : e)
+        }
       }
     }
 
