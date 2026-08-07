@@ -170,7 +170,12 @@ export default function RestaurantScreen() {
   const [menu, setMenu] = useState<MenuCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [menuFilter, setMenuFilter] = useState('Tout')
-  const [mode, setMode] = useState<Mode>('delivery')
+  // V5-2 — delivery is only OFFERED when the server says it would ACCEPT it
+  // (GET /api/restaurants/[id].fulfillment.delivery, computed by the exact
+  // POST /api/orders gate). Default false (pilot = pickup-only) so the chip
+  // never flashes; default mode follows: 'takeaway', never a refused mode.
+  const [deliveryAvailable, setDeliveryAvailable] = useState(false)
+  const [mode, setMode] = useState<Mode>('takeaway')
   const [fav, setFav] = useState(false)
   const [cart, setCart] = useState<EatCartData | null>(null)
   const [modalDish, setModalDish] = useState<MenuItem | null>(null)
@@ -195,6 +200,8 @@ export default function RestaurantScreen() {
         setMenu(d.menu ?? [])
         setPromotions(Array.isArray(d.promotions) ? d.promotions : [])
         setItemPromo(d.itemPromo && typeof d.itemPromo === 'object' ? d.itemPromo : {})
+        // V5-2 — tolerant: absent/odd payload ⇒ delivery stays hidden (safe).
+        if (d.fulfillment && d.fulfillment.delivery === true) setDeliveryAvailable(true)
         const existing = readCart()
         if (existing && existing.restaurantId === id) setCart(existing)
       })
@@ -480,9 +487,12 @@ export default function RestaurantScreen() {
             </div>
           )}
 
-          {/* 3-mode segmented control (Livraison / Click & collect / Sur place). VISUAL. */}
+          {/* Segmented control (Livraison / Click & collect / Sur place). VISUAL.
+              V5-2: the delivery chip only renders when the SERVER would accept a
+              delivery order (same gate as POST /api/orders) — no UI path may end
+              on the server refusal. Other modes strictly unchanged. */}
           <div className="modes" role="tablist" aria-label={t('fulfilmentMode')}>
-            {MODES.map((m) => (
+            {MODES.filter((m) => m !== 'delivery' || deliveryAvailable).map((m) => (
               <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}>
                 <span className="ms" aria-hidden="true">{MODE_ICON[m]}</span>{modeLabel(m)}
               </button>

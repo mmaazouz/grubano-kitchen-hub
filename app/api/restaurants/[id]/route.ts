@@ -9,6 +9,7 @@ import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '
 import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
 import { smallOrderFeeConfigCents, smallOrderThresholdCents } from '@/lib/pricing'
+import { isDeliveryFulfillmentEnabled } from '@/lib/fulfillment'
 import { isTipsEnabled } from '@/lib/tips'
 import { realReviewCounts } from '@/lib/review-stats'
 
@@ -294,6 +295,16 @@ export async function GET(
       // Mirrors the TIPS_ENABLED server flag; when false (default) the cart hides the
       // tip UI entirely → byte-identical. The SERVER alone validates + charges the tip.
       tipsEnabled: isTipsEnabled(),
+      // Additive (V5-2) — whether the SERVER would accept a DELIVERY order for
+      // this restaurant, computed from the EXACT gates POST /api/orders applies
+      // (lib/fulfillment: pilot env flag DELIVERY_FULFILLMENT_ENABLED default
+      // OFF, AND Restaurant.deliveryEnabled). DISPLAY ONLY — the UI hides the
+      // mode instead of letting the client discover the 403 at payment; the
+      // server refusal stays authoritative. Post-pilot, flipping the env flag
+      // re-opens delivery here AND at the gate: one switch, two surfaces.
+      fulfillment: {
+        delivery: isDeliveryFulfillmentEnabled() && restaurant.deliveryEnabled === true,
+      },
     })
   } catch (err) {
     console.error('[GET /api/restaurants/:id]', err)
