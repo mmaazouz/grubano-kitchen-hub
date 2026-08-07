@@ -118,6 +118,21 @@ describe('V4-2 — helper honestRating (lib/review-stats)', () => {
     expect(honestRating(row, 0)).toEqual({ rating: null, reviewCount: 0 })
     expect(honestRating(row, 5)).toEqual({ rating: 4.8, reviewCount: 5 })
   })
+
+  it('⭐ FAIL-SAFE (durci en revue) : table Review indisponible (groupBy rejette) → le listing répond 200, notes MASQUÉES (jamais la valeur fabriquée), erreur tracée', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    db.review.groupBy.mockRejectedValue(new Error('P2021: table Review absente'))
+    const res = await call()
+    expect(res.status).toBe(200) // le listing public ne tombe JAMAIS à cause du gate
+    const { restaurants } = await res.json()
+    expect(restaurants).toHaveLength(2)
+    for (const r of restaurants) {
+      expect(r.rating).toBeNull()   // l'échec dégrade vers PLUS de prudence
+      expect(r.reviewCount).toBe(0)
+    }
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('[V4-2]'), expect.anything())
+    errSpy.mockRestore()
+  })
 })
 
 describe('V4-2 — les surfaces conso ne demandent plus le tri fabriqué (épinglage source)', () => {
@@ -132,7 +147,7 @@ describe('V4-2 — les surfaces conso ne demandent plus le tri fabriqué (éping
     expect(search).not.toContain("value: 'rating'")
   })
 
-  it('les 4 pages /eat qui affichent une note la gardent derrière un garde null (aucun .toFixed/.toLocaleString sur une note absente)', () => {
+  it('les 4 pages /eat déclarent la note nullable et posent la garde `rating != null` (épinglage de la PRÉSENCE des gardes — pas une preuve d’absence de tout accès non gardé)', () => {
     for (const rel of [
       ['app', '[locale]', 'eat', 'page.tsx'],
       ['app', '[locale]', 'eat', 'search', 'page.tsx'],

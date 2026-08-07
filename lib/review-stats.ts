@@ -10,15 +10,26 @@ import { prisma } from '@/lib/prisma'
 // et le compteur affiché devient ce compte réel.
 
 /** Nombre d'avis RÉELS (table Review, status='published') par restaurant.
- *  Une seule requête groupée pour la liste affichée (≤ 60 ids). */
+ *  Une seule requête groupée pour la liste affichée (≤ 60 ids).
+ *  FAIL-SAFE (durci en revue adversariale) : si la table Review est
+ *  indisponible (ex. P2021, table non poussée — précédent P10), le listing et
+ *  la fiche publics ne doivent PAS tomber en 500 : on renvoie 0 partout →
+ *  notes masquées (l'échec dégrade vers PLUS de prudence, jamais vers
+ *  l'affichage d'une note fabriquée). */
 export async function realReviewCounts(restaurantIds: string[]): Promise<Map<string, number>> {
   if (restaurantIds.length === 0) return new Map()
-  const rows = await prisma.review.groupBy({
-    by:     ['restaurantId'],
-    where:  { restaurantId: { in: restaurantIds }, status: 'published' },
-    _count: { _all: true },
-  })
-  return new Map(rows.map(r => [r.restaurantId, r._count._all]))
+  try {
+    const rows = await prisma.review.groupBy({
+      by:     ['restaurantId'],
+      where:  { restaurantId: { in: restaurantIds }, status: 'published' },
+      _count: { _all: true },
+    })
+    return new Map(rows.map(r => [r.restaurantId, r._count._all]))
+  } catch (err) {
+    console.error('[review-stats] [V4-2] comptage des avis réels indisponible — notes masquées (fail-safe)',
+      err instanceof Error ? err.message : err)
+    return new Map()
+  }
 }
 
 /** Masque note + compteur fabriqués : la note stockée n'est servie QUE si des

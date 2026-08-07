@@ -15,7 +15,7 @@ interface ApiRestaurant {
   id: string
   name: string
   cuisine: string[]
-  rating: number
+  rating: number | null // V4-2 : null tant qu'aucun avis réel (le composant masque la ★)
   reviewCount: number
   deliveryTime: number
   minOrder: number

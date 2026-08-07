@@ -122,8 +122,62 @@ describe('V4-1 — PATCH /api/reservations no-show, flag OFF (lib deposit RÉELL
     expect(writeData.depositStatus).toBe('released')
     expect('depositPaid' in writeData).toBe(false)                 // aucune fausse validation
     expect(emails.sendNoShowPenaltyCharged).not.toHaveBeenCalled() // aucun email de pénalité
+    expect(await res.json()).toMatchObject({ depositReleased: true }) // issue SURFACÉE (calque P0-12)
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[V4-1]'))
     warnSpy.mockRestore()
+  })
+
+  it('⭐ échec Stripe à la libération no-show → marquage RÉUSSIT (200), depositError SURFACÉ (jamais un hold gelé silencieux), depositStatus non écrit', async () => {
+    vi.stubEnv('PUNITIVE_CAPTURE_ENABLED', '')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const errSpy  = vi.spyOn(console, 'error').mockImplementation(() => {})
+    scopeMock.mockResolvedValue({ ok: true, operatorId: 'op1', ownedIds: ['rest1'] })
+    db.reservation.findUnique.mockResolvedValue({
+      restaurantId: 'rest1', stripePaymentIntentId: 'pi_hold_1',
+      depositAmount: 10, noShowPenalty: 10, depositStatus: 'authorized',
+    })
+    db.reservation.update.mockResolvedValue({
+      id: 'resv1', status: 'noshow', restaurantId: 'rest1', date: new Date(), customerName: 'Client',
+      email: null, table: null,
+    })
+    stripe.releaseDeposit.mockRejectedValue(new Error('stripe down'))
+    const { PATCH } = await import('@/app/api/reservations/route')
+    const res = await PATCH(new Request('https://app.grubano.com/api/reservations', {
+      method: 'PATCH', body: JSON.stringify({ id: 'resv1', status: 'noshow' }),
+      headers: { 'content-type': 'application/json' },
+    }))
+    expect(res.status).toBe(200) // le droit de marquer le no-show n'est jamais bloqué
+    const body = await res.json()
+    expect(body).toMatchObject({ depositReleased: false, depositError: 'Erreur paiement, réessayez.' })
+    const writeData = (db.reservation.update.mock.calls[0][0] as { data: Record<string, unknown> }).data
+    expect(writeData.status).toBe('noshow')
+    expect(writeData.depositStatus).toBeUndefined() // jamais un statut mensonger
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('empreinte NON libérée au no-show'), expect.anything())
+    warnSpy.mockRestore(); errSpy.mockRestore()
+  })
+
+  it('idempotence : empreinte déjà capturée (pré-pilote) → AUCUN appel Stripe, aucun bruit d’erreur, marquage normal', async () => {
+    vi.stubEnv('PUNITIVE_CAPTURE_ENABLED', '')
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    scopeMock.mockResolvedValue({ ok: true, operatorId: 'op1', ownedIds: ['rest1'] })
+    db.reservation.findUnique.mockResolvedValue({
+      restaurantId: 'rest1', stripePaymentIntentId: 'pi_hold_1',
+      depositAmount: 10, noShowPenalty: 10, depositStatus: 'captured',
+    })
+    db.reservation.update.mockResolvedValue({
+      id: 'resv1', status: 'noshow', restaurantId: 'rest1', date: new Date(), customerName: 'Client',
+      email: null, table: null,
+    })
+    const { PATCH } = await import('@/app/api/reservations/route')
+    const res = await PATCH(new Request('https://app.grubano.com/api/reservations', {
+      method: 'PATCH', body: JSON.stringify({ id: 'resv1', status: 'noshow' }),
+      headers: { 'content-type': 'application/json' },
+    }))
+    expect(res.status).toBe(200)
+    expect(stripe.releaseDeposit).not.toHaveBeenCalled() // une pénalité déjà capturée ne se « libère » pas
+    expect(await res.json()).toMatchObject({ depositReleased: false })
+    expect(errSpy).not.toHaveBeenCalled() // pas de faux incident argent dans les logs
+    errSpy.mockRestore()
   })
 })
 
@@ -194,13 +248,16 @@ describe('V4-1 — aucun texte client/opérateur n’annonce une pénalité non 
   const root = join(__dirname, '..')
   // Par locale : les tournures de PROMESSE DE DÉBIT retirées des clés traitées.
   const FORBIDDEN: Record<string, string[]> = {
-    fr: ['Vous ne serez débité', 'sera débitée du client', 'Pénalité no-show = 100%'],
-    en: ['You are only charged', 'will be charged to the guest', 'No-show penalty = 100%'],
-    es: ['Solo se cobra', 'se cobrará al cliente', 'Penalización por no-show = 100%'],
-    it: ['Verrai addebitato', 'sarà addebitata al cliente', 'Penale no-show = 100%'],
-    ar: ['لن يتم الخصم إلا', 'سيتم خصم غرامة', 'غرامة عدم الحضور = 100%'],
+    fr: ['Vous ne serez débité', 'sera débitée du client', 'Pénalité no-show = 100%', 'sera débité de'],
+    en: ['You are only charged', 'will be charged to the guest', 'No-show penalty = 100%', 'will be charged {amount}'],
+    es: ['Solo se cobra', 'se cobrará al cliente', 'Penalización por no-show = 100%', 'Se cobrará {amount}'],
+    it: ['Verrai addebitato', 'sarà addebitata al cliente', 'Penale no-show = 100%', 'sarà addebitato di'],
+    ar: ['لن يتم الخصم إلا', 'سيتم خصم غرامة', 'غرامة عدم الحضور = 100%', 'سيتم خصم {amount}'],
   }
-  // Clés traitées par V4-1 — seules surfaces qui annonçaient le débit punitif.
+  // Clés traitées par V4-1 — seules surfaces qui annonçaient le débit punitif
+  // (+ les 2 clés de l'écran de CONFIRMATION walk-out, ajoutées au durcissement
+  // de revue adversariale : elles promettaient encore le débit sur le chemin
+  // dégradé capture→release).
   const TREATED = (m: Record<string, any>) => [
     m.eat.reservation.depositIntro,
     m.tables.deposit.actionConfirm,
@@ -208,9 +265,11 @@ describe('V4-1 — aucun texte client/opérateur n’annonce une pénalité non 
     m.tables.deposit.actionConfirmNoshowBody,
     m.tables.noShow.penaltyNote,
     m.premium.closure.depositCapture,
+    m.premium.closure.captureWarning,
+    m.premium.closure.confirmCapture,
   ].join('\n')
 
-  it('⭐ les 6 clés traitées sont purgées de la promesse de débit dans les 5 locales (placeholder {amount} préservé)', () => {
+  it('⭐ les 8 clés traitées sont purgées de la promesse de débit dans les 5 locales (placeholder {amount} préservé)', () => {
     for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
       const m = JSON.parse(readFileSync(join(root, 'messages', `${loc}.json`), 'utf8'))
       const treated = TREATED(m)
@@ -220,6 +279,7 @@ describe('V4-1 — aucun texte client/opérateur n’annonce une pénalité non 
       // Les clés paramétrées gardent leur placeholder (parité check-translations).
       expect(m.tables.deposit.actionConfirmNoshowBody).toContain('{amount}')
       expect(m.premium.closure.depositCapture).toContain('{amount}')
+      expect(m.premium.closure.captureWarning).toContain('{amount}')
       expect(m.eat.reservation.depositIntro).toContain('{amount}')
     }
   })

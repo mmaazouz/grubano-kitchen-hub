@@ -19,8 +19,9 @@ const { scopeMock } = vi.hoisted(() => ({ scopeMock: vi.fn() }))
 vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: scopeMock }))
 
 const { releaseMock, captureMock } = vi.hoisted(() => ({ releaseMock: vi.fn(), captureMock: vi.fn() }))
-// V4-1 : flag mocké ON — ce fichier photographie le comportement CAPTURE historique
-// (le contrat flag OFF vit dans tests/punitive-capture.test.ts).
+// V4-1 : export requis par le module route (import nommé) ; mocké ON mais INERTE
+// ici — aucun test de ce fichier n'exerce le chemin no-show (le contrat flag OFF
+// vit dans tests/punitive-capture.test.ts, le monde ON dans reservations-deposit-lock).
 vi.mock('@/lib/deposit', () => ({ releaseHold: releaseMock, captureHold: captureMock, isPunitiveCaptureEnabled: vi.fn(() => true) }))
 
 const { emails, recipientMock } = vi.hoisted(() => ({
@@ -126,6 +127,6 @@ describe('PATCH /api/reservations → cancelled — libération de l\'empreinte 
     const res = await call({ id: 'resv1', status: 'arrived' })
     expect(res.status).toBe(200)
     expect(releaseMock).not.toHaveBeenCalled()
-    expect((await res.json()).depositReleased).toBeUndefined() // marqueur réservé à l'annulation
+    expect((await res.json()).depositReleased).toBeUndefined() // marqueur réservé à l'annulation (et au no-show flag OFF, V4-1)
   })
 })

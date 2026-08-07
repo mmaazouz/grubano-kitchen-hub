@@ -200,7 +200,7 @@ describe('P9 — ★ de tête : Restaurant.rating (seedé) jamais recalculé', (
     expect(db.review.aggregate).not.toHaveBeenCalled()
   })
 
-  it('[INVERSÉ par V4-2: la fiche publique ne sert PLUS la ★ stockée sans avis réel] preuve source : /api/restaurants/[id] gate la colonne seedée, la route reviews reste sans recalcul', () => {
+  it('[PASS-ACTUEL — INVERSION V4-2] la fiche publique ne sert PLUS la ★ stockée sans avis réel — preuve source : /api/restaurants/[id] gate la colonne seedée, la route reviews reste sans recalcul', () => {
     // V4-2 (vague 4, décision fondateur) : l'assertion d'origine photographiait
     // la fiche servant restaurant.rating/reviewCount VERBATIM (colonnes seedées
     // 4,7-4,8 / « 120+ avis » avec ZÉRO avis réel en base). INVERSÉE : la fiche

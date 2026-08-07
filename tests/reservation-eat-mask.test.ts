@@ -15,6 +15,8 @@ const { db, scope } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/establishment-scope', () => scope)
+// V4-1 : isPunitiveCaptureEnabled = export requis par le module route ; mocké ON
+// mais INERTE ici (aucun test no-show — contrat flag OFF dans punitive-capture.test.ts).
 vi.mock('@/lib/deposit', () => ({ captureHold: vi.fn(), releaseHold: vi.fn(), isPunitiveCaptureEnabled: vi.fn(() => true) }))
 vi.mock('@/lib/ticket', () => ({ ensureOpenTicket: vi.fn(async () => ({ ok: true })) }))
 vi.mock('@/lib/opening-hours', () => ({ loadHoursContext: vi.fn(), slotFitsCtx: vi.fn(() => ({ ok: true })) }))
