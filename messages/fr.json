@@ -7086,7 +7086,9 @@
       "pendingTitle": "En attente du restaurant",
       "pendingHint": "Le restaurant n’a pas encore répondu. Aucune action automatique ne sera prise — la décision reste au restaurant, puis à vous en arbitrage.",
       "pendingOverdue": "Délai de réponse dépassé",
-      "arbitrationTitle": "En arbitrage — à trancher"
+      "arbitrationTitle": "En arbitrage — à trancher",
+      "reasonSystem": "Motif (système)",
+      "systemDetails": "Détails (système)"
     }
   },
   "fiscal": {
