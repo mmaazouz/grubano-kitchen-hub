@@ -102,7 +102,7 @@ describe('V5-2 — gardes source : les 2 surfaces UI gatent leur chip livraison'
 
   it('le panier ne rend le tab Livraison que sous deliveryAvailable, et démarre en pickup', () => {
     const src = fs.readFileSync(path.join(ROOT, 'app/[locale]/eat/cart/page.tsx'), 'utf8')
-    expect(src).toMatch(/deliveryAvailable && \(\s*<button role="tab"[^>]*'delivery'/s)
+    expect(src).toMatch(/deliveryAvailable && \([\s\S]{0,200}?setFulfillment\('delivery'\)/)
     expect(src).toMatch(/useState<Fulfillment>\('pickup'\)/)
     expect(src).not.toMatch(/useState<Fulfillment>\('delivery'\)/)
   })
