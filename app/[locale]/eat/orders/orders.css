@@ -112,8 +112,12 @@
 
 /* ── V5-1 — reservation cards (same visual family as dinein) ────────────────── */
 .gb-orders .type--reservation{color:var(--gb-dinein);background:var(--gb-dinein-bg)}
-.gb-orders .res-deposit{display:flex;align-items:flex-start;gap:7px;margin:10px 16px 0;padding:9px 12px;border-radius:var(--gb-r-md);font-size:12.5px;font-weight:600;background:var(--gb-dinein-bg);color:var(--gb-text)}
+.gb-orders .res-deposit{display:flex;align-items:flex-start;gap:7px;margin:10px 16px 14px;padding:9px 12px;border-radius:var(--gb-r-md);font-size:12.5px;font-weight:600;background:var(--gb-dinein-bg);color:var(--gb-text)}
 .gb-orders .res-deposit .ms{font-size:16px;flex-shrink:0;color:var(--gb-dinein)}
 .gb-orders .res-deposit.captured{background:var(--gb-danger-bg);color:var(--gb-danger)}
 .gb-orders .res-deposit.captured .ms{color:var(--gb-danger)}
 .gb-orders .res-cancel-err{margin:8px 16px 0;font-size:12.5px;font-weight:600;color:var(--gb-danger)}
+/* Revue V5 — tons du badge d'état résa : jamais la pastille verte de succès
+   pour Annulée/Non-présentation ; « À venir / En cours » a son propre ton. */
+.gb-orders .final--res{color:var(--gb-dinein);background:var(--gb-dinein-bg)}
+.gb-orders .final--warn{color:var(--gb-danger);background:var(--gb-danger-bg)}

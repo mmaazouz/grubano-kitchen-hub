@@ -156,4 +156,33 @@ describe('GET /api/eat/orders — cartes réservation (V5-1)', () => {
     const j = await (await GET(req())).json()
     expect(j.current.map((c: { kind: string }) => c.kind)).toEqual(['reservation', 'pickup'])
   })
+
+  it('REVUE V5 : dans la fenêtre d’annulation (45 min, fenêtre défaut 2 h) → cancellable FALSE (plus de 409 garanti)', async () => {
+    db.reservation.findMany.mockResolvedValue([resa({
+      date: new Date(now + 0.75 * H), endTime: new Date(now + 2.75 * H),
+    })])
+    const j = await (await GET(req())).json()
+    expect(j.current[0].cancellable).toBe(false)
+  })
+
+  it('REVUE V5 : fenêtre par établissement respectée (24 h : résa à J+2 annulable, à 12 h non)', async () => {
+    const resto = { id: 'r1', name: 'Chez Test', cancellationWindowHours: 24 }
+    db.reservation.findMany.mockResolvedValue([
+      resa({ id: 'far', restaurant: resto }),
+      resa({ id: 'near', date: new Date(now + 12 * H), endTime: new Date(now + 14 * H), restaurant: resto }),
+    ])
+    const j = await (await GET(req())).json()
+    const byId = Object.fromEntries(j.current.map((c: { id: string; cancellable: boolean }) => [c.id, c.cancellable]))
+    expect(byId.far).toBe(true)
+    expect(byId.near).toBe(false)
+  })
+
+  it('REVUE V5 : overrun au-delà de endTime = session EN COURS (current), pas « Passée »', async () => {
+    db.reservation.findMany.mockResolvedValue([resa({
+      status: 'overrun', date: new Date(now - 3 * H), endTime: new Date(now - 1 * H),
+    })])
+    const j = await (await GET(req())).json()
+    expect(j.current).toHaveLength(1)
+    expect(j.current[0].status).toBe('overrun')
+  })
 })

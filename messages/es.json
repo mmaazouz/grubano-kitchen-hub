@@ -3217,12 +3217,14 @@
       "resDepositAuthorized": "Retención de {amount} preautorizada — no se cobra nada; se libera a su llegada.",
       "resDepositReleased": "La retención de {amount} ha sido liberada — no se ha cobrado nada. La preautorización desaparece de su extracto en unos días.",
       "resNoShowReleased": "No presentado — la retención de {amount} ha sido liberada, no se ha cobrado nada.",
-      "resDepositCaptured": "{amount} cobrados por no presentarse.",
+      "resDepositCaptured": "{amount} cobrados de la retención.",
       "resCancel": "Anular la reserva",
       "resCancelConfirm": "Confirmar la anulación",
       "resCancelKeep": "Mantener mi reserva",
       "resCancelBusy": "Anulando…",
-      "resCancelError": "La anulación no se ha completado. Inténtelo de nuevo o contacte con el restaurante."
+      "resCancelError": "La anulación no se ha completado. Inténtelo de nuevo o contacte con el restaurante.",
+      "resDepositAuthorizedArrived": "Retención de {amount} preautorizada — no se cobra nada; se libera al pagar la cuenta.",
+      "resDepositAuthorizedPending": "La retención de {amount} sigue preautorizada — su liberación está en curso, no se cobra nada."
     },
     "postDelivery": {
       "close": "Cerrar",

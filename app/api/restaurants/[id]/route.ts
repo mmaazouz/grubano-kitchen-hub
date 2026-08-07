@@ -312,8 +312,10 @@ export async function GET(
       // its honest empty states; the fiche only exposes an entry point when the
       // flow can succeed in principle. Tolerant: a count hiccup hides the entry
       // (safe), never breaks the fiche.
+      // Revue V5 — active:true : des tables toutes désactivées ne doivent pas
+      // rouvrir l'entrée (le cul-de-sac que ce gate ferme).
       reservable: await prisma.restaurantTable
-        .count({ where: { restaurantId: restaurant.id } })
+        .count({ where: { restaurantId: restaurant.id, active: true } })
         .then((n) => n > 0)
         .catch(() => false),
     })

@@ -3217,12 +3217,14 @@
       "resDepositAuthorized": "A {amount} hold is pre-authorised — nothing is charged; it is released when you arrive.",
       "resDepositReleased": "The {amount} hold has been released — nothing was charged. The pre-authorisation disappears from your statement within a few days.",
       "resNoShowReleased": "No-show — the {amount} hold has been released, nothing was charged.",
-      "resDepositCaptured": "{amount} charged for no-show.",
+      "resDepositCaptured": "{amount} charged from the hold.",
       "resCancel": "Cancel reservation",
       "resCancelConfirm": "Confirm cancellation",
       "resCancelKeep": "Keep my reservation",
       "resCancelBusy": "Cancelling…",
-      "resCancelError": "The cancellation failed. Try again or contact the restaurant."
+      "resCancelError": "The cancellation failed. Try again or contact the restaurant.",
+      "resDepositAuthorizedArrived": "A {amount} hold is pre-authorised — nothing is charged; it is released when the bill is settled.",
+      "resDepositAuthorizedPending": "The {amount} hold is still pre-authorised — its release is in progress, nothing is charged."
     },
     "postDelivery": {
       "close": "Close",

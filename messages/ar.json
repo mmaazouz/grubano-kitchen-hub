@@ -3217,12 +3217,14 @@
       "resDepositAuthorized": "تم حجز مبلغ {amount} مسبقًا كتأمين — لن يُخصم أي شيء، ويُحرَّر عند وصولك.",
       "resDepositReleased": "تم تحرير مبلغ التأمين {amount} — لم يُخصم أي شيء. تختفي عملية الحجز المسبق من كشف حسابك خلال أيام قليلة.",
       "resNoShowReleased": "عدم حضور — تم تحرير مبلغ التأمين {amount} ولم يُخصم أي شيء.",
-      "resDepositCaptured": "تم خصم {amount} بسبب عدم الحضور.",
+      "resDepositCaptured": "تم خصم {amount} من مبلغ التأمين.",
       "resCancel": "إلغاء الحجز",
       "resCancelConfirm": "تأكيد الإلغاء",
       "resCancelKeep": "الاحتفاظ بالحجز",
       "resCancelBusy": "جارٍ الإلغاء…",
-      "resCancelError": "تعذّر الإلغاء. حاول مجددًا أو تواصل مع المطعم."
+      "resCancelError": "تعذّر الإلغاء. حاول مجددًا أو تواصل مع المطعم.",
+      "resDepositAuthorizedArrived": "مبلغ تأمين {amount} محجوز مسبقًا — لن يُخصم شيء، ويُحرَّر عند تسوية الحساب.",
+      "resDepositAuthorizedPending": "ما زال مبلغ التأمين {amount} محجوزًا — التحرير قيد التنفيذ ولن يُخصم شيء."
     },
     "postDelivery": {
       "close": "إغلاق",

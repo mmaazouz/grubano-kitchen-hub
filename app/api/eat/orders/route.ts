@@ -83,8 +83,8 @@ export async function GET(req: NextRequest) {
       select: {
         id: true, date: true, endTime: true, guests: true, status: true,
         depositAmount: true, depositStatus: true,
-        restaurant: { select: { id: true, name: true } },
-        table: { select: { restaurant: { select: { id: true, name: true } } } },
+        restaurant: { select: { id: true, name: true, cancellationWindowHours: true } },
+        table: { select: { restaurant: { select: { id: true, name: true, cancellationWindowHours: true } } } },
       },
     })
     const reservationIds = reservations.map((r) => r.id)
@@ -148,13 +148,23 @@ export async function GET(req: NextRequest) {
     //    future start) — POST /api/reservations/[id]/cancel re-judges ownership,
     //    status and the cancellation window, unchanged.
     const now = Date.now()
-    const UNDERWAY = ['confirmed', 'arrived', 'overrun']
     for (const r of reservations.slice(0, 50)) {
       const restaurant = r.restaurant ?? r.table?.restaurant ?? null
+      // Revue V5 — cancellable mirrors the cancel route's OWN rule (confirmed +
+      // now ≤ start − cancellationWindowHours, défaut 2 h) so the button is
+      // never offered where the route would systematically 409. The route
+      // stays the judge — this is only the honest UI hint.
+      const windowH = restaurant?.cancellationWindowHours ?? 2
+      const cancellable =
+        r.status === 'confirmed' && now <= r.date.getTime() - windowH * 3_600_000
       cards.push({
         id: r.id,
         kind: 'reservation',
-        phase: UNDERWAY.includes(r.status) && r.endTime.getTime() > now ? 'current' : 'past',
+        // Revue V5 — arrived/overrun = the session IS running (overrun exists
+        // precisely for a slot that overshot its endTime) → always 'current';
+        // a confirmed slot is current until its end; cancelled/noshow → past.
+        phase: r.status === 'arrived' || r.status === 'overrun' ||
+          (r.status === 'confirmed' && r.endTime.getTime() > now) ? 'current' : 'past',
         restaurantName: restaurant?.name ?? '—',
         itemsCount: 0,
         total: 0,
@@ -168,7 +178,7 @@ export async function GET(req: NextRequest) {
         guests: r.guests,
         depositAmount: r.depositAmount,
         depositStatus: r.depositStatus,
-        cancellable: r.status === 'confirmed' && r.date.getTime() > now,
+        cancellable,
       })
     }
 

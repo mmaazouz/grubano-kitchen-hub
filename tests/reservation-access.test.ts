@@ -69,7 +69,8 @@ describe('GET /api/restaurants/[id] — reservable (V5-1b, garde d’opérabilit
     db.restaurantTable.count.mockResolvedValue(3)
     const j = await getJson()
     expect(j.reservable).toBe(true)
-    expect(db.restaurantTable.count).toHaveBeenCalledWith({ where: { restaurantId: 'r1' } })
+    // Revue V5 : active:true — des tables toutes désactivées ne rouvrent pas l'entrée.
+    expect(db.restaurantTable.count).toHaveBeenCalledWith({ where: { restaurantId: 'r1', active: true } })
   })
 
   it('0 table (dark kitchen) → reservable false : aucun point d’entrée vers un parcours qui échouera', async () => {

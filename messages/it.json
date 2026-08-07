@@ -3217,12 +3217,14 @@
       "resDepositAuthorized": "Pre-autorizzazione di {amount} — non viene addebitato nulla; viene svincolata al Suo arrivo.",
       "resDepositReleased": "La pre-autorizzazione di {amount} è stata svincolata — non è stato addebitato nulla. Scompare dall'estratto conto entro pochi giorni.",
       "resNoShowReleased": "Mancata presentazione — la pre-autorizzazione di {amount} è stata svincolata, non è stato addebitato nulla.",
-      "resDepositCaptured": "{amount} addebitati per mancata presentazione.",
+      "resDepositCaptured": "{amount} addebitati dalla pre-autorizzazione.",
       "resCancel": "Annulla la prenotazione",
       "resCancelConfirm": "Conferma l'annullamento",
       "resCancelKeep": "Mantieni la prenotazione",
       "resCancelBusy": "Annullamento…",
-      "resCancelError": "L'annullamento non è riuscito. Riprovi o contatti il ristorante."
+      "resCancelError": "L'annullamento non è riuscito. Riprovi o contatti il ristorante.",
+      "resDepositAuthorizedArrived": "Pre-autorizzazione di {amount} — non viene addebitato nulla; viene svincolata al saldo del conto.",
+      "resDepositAuthorizedPending": "La pre-autorizzazione di {amount} è ancora attiva — lo svincolo è in corso, non viene addebitato nulla."
     },
     "postDelivery": {
       "close": "Chiudi",

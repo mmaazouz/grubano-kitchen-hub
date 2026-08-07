@@ -3217,12 +3217,14 @@
       "resDepositAuthorized": "Empreinte de {amount} pré-autorisée — rien n'est débité, elle est libérée à votre arrivée.",
       "resDepositReleased": "Empreinte de {amount} libérée — rien n'a été débité. La pré-autorisation disparaît de votre relevé sous quelques jours.",
       "resNoShowReleased": "Non-présentation — l'empreinte de {amount} a été libérée, rien n'a été débité.",
-      "resDepositCaptured": "{amount} débités pour non-présentation.",
+      "resDepositCaptured": "{amount} débités sur l'empreinte.",
       "resCancel": "Annuler la réservation",
       "resCancelConfirm": "Confirmer l'annulation",
       "resCancelKeep": "Garder ma réservation",
       "resCancelBusy": "Annulation…",
-      "resCancelError": "L'annulation n'a pas abouti. Réessayez ou contactez le restaurant."
+      "resCancelError": "L'annulation n'a pas abouti. Réessayez ou contactez le restaurant.",
+      "resDepositAuthorizedArrived": "Empreinte de {amount} pré-autorisée — rien n'est débité ; elle est libérée au règlement de l'addition.",
+      "resDepositAuthorizedPending": "Empreinte de {amount} encore pré-autorisée — la libération est en cours, rien n'est débité."
     },
     "postDelivery": {
       "close": "Fermer",
