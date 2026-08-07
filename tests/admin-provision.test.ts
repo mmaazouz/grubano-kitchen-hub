@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // mission sont chacun couverts par un test nommé.
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { provisionAdmin } = require('../scripts/server/provision-admin.js')
+const { provisionAdmin, parseArgs } = require('../scripts/server/provision-admin.js')
 
 type Db = {
   operator:      { findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> }
@@ -127,6 +127,19 @@ describe('sécurité structurelle — jamais déclenchable depuis le web', () =>
     for (const verb of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
       expect(mod[verb], verb).toBeUndefined()
     }
-    expect(Object.keys(mod)).toEqual(['provisionAdmin'])
+    expect(Object.keys(mod).sort()).toEqual(['parseArgs', 'provisionAdmin'])
+  })
+})
+
+describe('V4-3 — parseArgs : la forme documentée (--email) ET la positionnelle marchent', () => {
+  it('--email + --name (la forme de la doc et de l’aide)', () => {
+    expect(parseArgs(['--email', 'a@b.fr', '--name', 'Mo'])).toEqual({ email: 'a@b.fr', name: 'Mo' })
+  })
+  it('positionnelle (tolérance — l’ancienne forme ne devient pas un piège)', () => {
+    expect(parseArgs(['a@b.fr'])).toEqual({ email: 'a@b.fr', name: undefined })
+    expect(parseArgs(['--name', 'Mo', 'a@b.fr'])).toEqual({ email: 'a@b.fr', name: 'Mo' })
+  })
+  it('sans argument → ni email ni name (le CLI affiche l’aide copiable)', () => {
+    expect(parseArgs([])).toEqual({ email: undefined, name: undefined })
   })
 })

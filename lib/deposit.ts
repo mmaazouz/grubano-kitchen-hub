@@ -9,9 +9,22 @@ import {
   retrieveIntent, releaseDeposit, captureDeposit, eurosToCents, type DepositStatus,
 } from '@/lib/stripe'
 
+/** V4-1 (vague 4) — décision fondateur, motif JURIDIQUE : débiter une carte à
+ *  titre de SANCTION (pénalité no-show, walk-out impayé) exige une base
+ *  contractuelle que le pilote n'a pas (information préalable, consentement
+ *  exprès, droit de contestation — conseil hors budget). La capture punitive
+ *  est donc INOPÉRANTE par défaut. Flag DÉDIÉ plutôt que retrait : la capacité
+ *  doit pouvoir revenir après le pilote sans réécriture (le code testé reste,
+ *  seule la bascule d'env change — convention maison, seul 'true' active).
+ *  ⚠️ L'EMPREINTE N'EST PAS TOUCHÉE : la pré-autorisation (garantie) et sa
+ *  libération (releaseHold) fonctionnent exactement comme avant. */
+export function isPunitiveCaptureEnabled(): boolean {
+  return process.env.PUNITIVE_CAPTURE_ENABLED === 'true'
+}
+
 export type SettleResult =
   | { ok: true;  depositStatus?: DepositStatus; capturedAmount?: number }
-  | { ok: false; status: 400 | 409 | 500 | 502; error: string }
+  | { ok: false; status: 400 | 403 | 409 | 500 | 502; error: string }
 
 // PaymentIntent statuses that can still be cancelled (released).
 const CANCELLABLE = new Set([
@@ -46,12 +59,19 @@ export async function releaseHold(piId: string | null | undefined): Promise<Sett
   return { ok: true, depositStatus: 'released' }
 }
 
-/** NO-SHOW: capture the penalty (≤ the authorised hold). Reads the live PI. */
+/** NO-SHOW: capture the penalty (≤ the authorised hold). Reads the live PI.
+ *  V4-1 : POINT D'ÉTRANGLEMENT — le flag est vérifié ICI, dans la lib partagée,
+ *  pour qu'AUCUN chemin (PATCH no-show, /deposit/capture, tickets/close, tout
+ *  futur appelant) ne puisse capturer à titre de pénalité pendant le pilote. */
 export async function captureHold(
   piId: string | null | undefined,
   penaltyEur: number,
   depositEur: number,
 ): Promise<SettleResult> {
+  if (!isPunitiveCaptureEnabled()) {
+    console.warn('[deposit] [V4-1] capture de pénalité REFUSÉE — PUNITIVE_CAPTURE_ENABLED est OFF (pilote) ; l\'empreinte reste intacte.')
+    return { ok: false, status: 403, error: 'Capture de pénalité désactivée pendant le pilote.' }
+  }
   if (!piId) return { ok: false, status: 400, error: 'Aucune empreinte à capturer.' }
 
   let status: string

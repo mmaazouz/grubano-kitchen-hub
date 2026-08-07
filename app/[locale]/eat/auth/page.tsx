@@ -14,7 +14,9 @@ type Tab = 'login' | 'register'
 // One unified sign-in for every role → route by role after login.
 const ROLE_REDIRECTS: Record<string, string> = {
   restaurant: '/dashboard',
-  admin: '/dashboard',
+  // V4-3 — même correction que lib/post-login-redirect : la console admin, pas
+  // le dashboard restaurateur (qui exige un établissement).
+  admin: '/admin',
   franchise: '/franchise',
   creator: '/creators',
   consumer: '/eat',

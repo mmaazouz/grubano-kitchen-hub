@@ -25,12 +25,42 @@ vi.mock('@/lib/onboarding-nudge', () => ({
     l && ['fr', 'en', 'es', 'it', 'ar'].includes(l) ? l : 'fr',
 }))
 
-import { sendClaimAckEmail, sendClaimDecisionEmail } from '@/lib/claim-emails'
+import { sendClaimAckEmail, sendClaimDecisionEmail, sendOrderCancelledPaidEmail } from '@/lib/claim-emails'
 
 beforeEach(() => {
   vi.clearAllMocks()
   db.operator.findUnique.mockResolvedValue({ email: 'lea@x.fr', name: 'Léa', locale: null })
   sendMock.mockResolvedValue({ status: 'sent' })
+})
+
+describe('P0-08 — sendOrderCancelledPaidEmail (annulation PAYÉE : email honnête)', () => {
+  it('⭐ trigger order_cancelled + dedupeKey order:<id> — UNE notification d’annulation par commande ; contenu : demande transmise, décision humaine, AUCUN remboursement promis', async () => {
+    const r = await sendOrderCancelledPaidEmail({ orderId: 'ord123abc', consumerId: 'c1', restaurantName: 'Gnocchi Bar' })
+    expect(r).toEqual({ status: 'sent' })
+    const call = sendMock.mock.calls[0][0]
+    expect(call.trigger).toBe('order_cancelled')
+    expect(call.dedupeKey).toBe('order:ord123abc')
+    expect(call.to).toBe('lea@x.fr')
+    expect(call.subject).toContain('orderCancelledPaid.subject')
+    expect(call.html).toContain('orderCancelledPaid.body')
+    expect(call.html).toContain('Gnocchi Bar')
+    expect(call.html).toContain('orderCancelledPaid.next')
+  })
+
+  it('client sans email → skipped TRACÉ (logEmailSkipped), jamais un throw', async () => {
+    db.operator.findUnique.mockResolvedValue({ email: null, name: 'X', locale: null })
+    const r = await sendOrderCancelledPaidEmail({ orderId: 'o1', consumerId: 'c1', restaurantName: 'R' })
+    expect(r).toEqual({ status: 'skipped' })
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(skipLogMock).toHaveBeenCalledWith('order_cancelled', expect.stringContaining('o1'), expect.objectContaining({ reason: 'no_recipient' }))
+  })
+
+  it("existingClaim:true (réclamation déjà active — AUCUNE demande créée) → corps bodyExisting, l'email ne ment pas", async () => {
+    await sendOrderCancelledPaidEmail({ orderId: 'o1', consumerId: 'c1', restaurantName: 'R', existingClaim: true })
+    const html = sendMock.mock.calls[0][0].html as string
+    expect(html).toContain('orderCancelledPaid.bodyExisting')
+    expect(html).not.toContain('orderCancelledPaid.body|')
+  })
 })
 
 describe('sendClaimAckEmail — accusé de réception (claim_ack / claim:<id>)', () => {

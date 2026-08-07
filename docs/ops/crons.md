@@ -30,6 +30,12 @@ d'ops qui ne vivait pas dans le repo. 3 jobs actifs, sorties dans `~/logs/` :
 0  8 1 * * node scripts/cron/monthly-invoices.js          # mensuel, le 1er 08:00
 ```
 
+> ℹ️ V4-3 — Le bloc ci-dessus est la PHOTO du crontab serveur (il fonctionne tel
+> quel dans l'environnement cron de cPanel). En revanche, pour toute commande
+> `node` tapée À LA MAIN dans le Terminal cPanel, `node` n'est PAS dans le PATH :
+> utilisez le chemin complet `/home/deyi0010/nodevenv/app.grubano.com/24/bin/node`
+> (production : `/home/deyi0010/nodevenv/grubano.com/24/bin/node`).
+
 Écarts vs les hypothèses documentées précédemment (modèle indicatif retiré) :
 - Horaires réels ≠ modèle deviné (le modèle supposait 03:20/03:25/07:00) —
   **le relevé fait foi**.

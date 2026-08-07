@@ -3682,7 +3682,7 @@
       "submitBook": "Reservar",
       "submitWithDeposit": "Continuar con la huella",
       "depositTitle": "Huella bancaria",
-      "depositIntro": "Huella de {amount} — permanece activa hasta el pago de la cuenta y se libera automáticamente al pagar. Solo se cobra en caso de no-show o si te marchas sin pagar la cuenta.",
+      "depositIntro": "Huella de {amount} — permanece activa hasta el pago de la cuenta y se libera automáticamente al pagar.",
       "depositHint": "Tarjeta de prueba: 4242 4242 4242 4242, fecha futura, CVC libre.",
       "depositSubmit": "Confirmar la huella",
       "depositProcessing": "Confirmando…",
@@ -5192,9 +5192,9 @@
       "actionArrived": "Cliente llegó",
       "actionNoshow": "No-show",
       "actionMarkArrived": "Llegada",
-      "actionConfirmNoshowTitle": "¿Cobrar la penalización?",
-      "actionConfirmNoshowBody": "La penalización de {amount} se cobrará al cliente. Esta acción no se puede deshacer.",
-      "actionConfirm": "Cobrar la penalización",
+      "actionConfirmNoshowTitle": "¿Marcar como no-show?",
+      "actionConfirmNoshowBody": "La reserva se marcará como no-show. Durante el piloto no se aplica ninguna penalización: la huella de {amount} será liberada.",
+      "actionConfirm": "Marcar el no-show",
       "actionCancel": "Cancelar",
       "actionReleasing": "Liberando…",
       "actionCapturing": "Cobrando…",
@@ -5208,7 +5208,7 @@
       "intro": "Pre-autorización de tarjeta en el momento de la reserva.",
       "depositLabel": "Garantía / huella (€)",
       "depositHint": "Importe retenido en la tarjeta del cliente al reservar. La huella permanece activa hasta el pago de la cuenta (liberada automáticamente al pagar). 0 = sin huella.",
-      "penaltyNote": "Penalización por no-show = 100% de la huella.",
+      "penaltyNote": "Durante el piloto no se aplica ninguna penalización — la huella es una garantía y se libera automáticamente.",
       "customerSeesPrefix": "El cliente ve: {amount}€ retenidos en su tarjeta hasta el pago de la cuenta.",
       "customerSeesNone": "El cliente ve: sin huella requerida.",
       "disabledLabel": "Huella desactivada",
@@ -5359,10 +5359,10 @@
       "confirmEmpty": "Liberar la mesa",
       "reasonUnpaid": "Cerrar como impagada",
       "depositChoice": "Garantía",
-      "depositCapture": "Cobrar la penalización ({amount})",
+      "depositCapture": "Penalización desactivada durante el piloto — la huella ({amount}) será liberada",
       "depositRelease": "Liberar la garantía (sin cobro)",
-      "captureWarning": "Se cobrará {amount} al cliente. Esta acción no se puede deshacer.",
-      "confirmCapture": "Confirmar el cobro",
+      "captureWarning": "Durante el piloto no se aplica ninguna penalización: la huella de {amount} será liberada (sin cargo).",
+      "confirmCapture": "Confirmar — la huella será liberada",
       "confirmClose": "Cerrar",
       "cancel": "Cancelar",
       "closing": "Cerrando…",
@@ -6997,7 +6997,8 @@
       "wrong_order": "Pedido equivocado",
       "quality": "Problema de calidad",
       "not_delivered": "No entregado",
-      "other": "Otro"
+      "other": "Otro",
+      "system_order_cancelled": "Cancelación de un pedido pagado (sistema)"
     },
     "status": {
       "restaurant_review": "Esperando respuesta del restaurante",
@@ -8421,7 +8422,7 @@
     "ack": {
       "subject": "Su reclamación {ref} ha sido registrada",
       "title": "Reclamación registrada",
-      "body": "Hemos recibido su reclamación sobre el pedido {ref} (importe solicitado: {euros} €).",
+      "body": "Hemos recibido su reclamación sobre el pedido {ref} (importe solicitado: {euros}).",
       "next": "Le informaremos por correo electrónico en cuanto se tome una decisión."
     },
     "accepted": {
@@ -8438,7 +8439,7 @@
     "refunded": {
       "subject": "Reclamación {ref}: reembolso emitido",
       "title": "Reembolso emitido",
-      "body": "Grubano ha fallado a su favor: se ha emitido un reembolso de {euros} € sobre el pedido {ref} a su método de pago."
+      "body": "Grubano ha fallado a su favor: se ha emitido un reembolso de {euros} sobre el pedido {ref} a su método de pago."
     },
     "approved": {
       "subject": "Reclamación {ref}: aceptada por Grubano",
@@ -8449,6 +8450,13 @@
       "subject": "Reclamación {ref}: decisión final de Grubano",
       "title": "Rechazo confirmado",
       "body": "Grubano ha examinado su reclamación sobre el pedido {ref} y ha confirmado el rechazo. Esta decisión es definitiva."
+    },
+    "orderCancelledPaid": {
+      "subject": "Pedido {ref} cancelado — solicitud de reembolso transmitida",
+      "title": "Pedido cancelado",
+      "body": "{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Se ha transmitido una solicitud de reembolso a Grubano.",
+      "next": "Será examinada por un miembro del equipo de Grubano — le informaremos de la decisión por correo electrónico.",
+      "bodyExisting": "{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Su reclamación en curso sobre este pedido ya recoge la cuestión del reembolso — sigue su circuito normal."
     }
   }
 }

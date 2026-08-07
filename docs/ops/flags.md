@@ -50,6 +50,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `ONBOARDING_GUIDE_ENABLED` | `lib/onboarding-progress.ts` | Guide d'onboarding |
 | `ONBOARDING_NUDGE_ENABLED` | `lib/onboarding-nudge.ts` | Relances email onboarding (cron) |
 | `PRESTATAIRE_ENABLED` | `lib/prestataire-account.ts` | Marketplace prestataires (404 OFF) |
+| `PUNITIVE_CAPTURE_ENABLED` | `lib/deposit.ts` | V4-1 (décision fondateur, motif JURIDIQUE — défaut OFF **tout le pilote**) : capture PUNITIVE d'empreinte (pénalité no-show + walk-out impayé). OFF → `captureHold` refuse (403 tracé, point d'étranglement lib) et le no-show LIBÈRE l'empreinte au lieu de la capturer. L'empreinte (pré-autorisation + libération) n'est PAS gouvernée par ce flag. Le choix walk-out `capture` (tickets/close) DÉGRADE en libération. Aucun couplage : bascule autonome (flux ENTRANT, aucun fonds tiers retenu — les holds sont libérés). ⚠️ À la réactivation post-pilote, RESTAURER les annonces de pénalité retirées par V4-1 (`eat.reservation.depositIntro`, email `sendReservationConfirmation`, `tables.deposit.actionConfirm*`, `tables.noShow.penaltyNote`, `premium.closure.depositCapture`, `premium.closure.captureWarning`, `premium.closure.confirmCapture` ×5 locales) — capturer sans l'annoncer au client serait pire juridiquement |
 | `PRESTATAIRE_CONNECT_ENABLED` | `lib/prestataire-connect.ts` | Connect prestataire |
 | `RATE_LIMIT_ENABLED` | `lib/rate-limit.ts` | Rate-limiting applicatif (sûr à activer — audit go-live) |
 | `REFUNDS_ENABLED` | `lib/refund.ts` | Moteur de remboursement : outil admin `/api/admin/refunds/run` **et** les rails `lib/claims.ts:199,325` / `lib/dispute.ts`. P0-04 : ne gouverne **plus** l'auto-refund ghost-order du webhook → `GHOST_ORDER_AUTO_REFUND_ENABLED`. ⚠️ Ne suffit donc PAS à garantir « aucun remboursement sans admin » : cf. note Q3 sous les couplages |
@@ -112,7 +113,9 @@ admin (P0-03/P0-26) et `arbitrateClaim` (P0-24).
 ## Procédure de bascule d'un flag (staging) — sans rien exécuter ici
 
 1. Vérifier le couplage EN LOCAL avant toute bascule :
-   `FLAG1=true FLAG2=true node scripts/check-flags.mjs` (avec le set cible complet).
+   (sur votre ordinateur, dans le dossier du projet — exemple concret, copiable :)
+   `CLAIMS_ENABLED=true REFUNDS_ENABLED=true node scripts/check-flags.mjs`
+   — en remplaçant les deux flags par le set cible complet.
 2. Vérifier les prérequis DB du flag (ex. `CLAIMS_ENABLED` exige que la table
    `Claim` existe → `bash ~/app.grubano.com/scripts/server/prisma-push.sh` si
    le schéma a changé depuis le dernier push).

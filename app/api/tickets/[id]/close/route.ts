@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { ticketSelect } from '@/lib/ticket'
-import { releaseHold, captureHold } from '@/lib/deposit'
+import { releaseHold, captureHold, isPunitiveCaptureEnabled } from '@/lib/deposit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -100,12 +100,21 @@ export async function POST(
       if (!reservation?.stripePaymentIntentId) {
         depositSettled = { error: 'Aucune empreinte à régler pour cette addition.' }
       } else {
+        // V4-1 (décision fondateur, motif JURIDIQUE) : la capture walk-out est
+        // INOPÉRANTE pendant le pilote — le choix 'capture' DÉGRADE en libération
+        // (laisser le hold gelé serait une sanction déguisée). La réponse reste
+        // honnête : settled.depositStatus='released' → le toast opérateur affiche
+        // la libération, jamais une capture qui n'a pas eu lieu.
+        const effective = deposit === 'capture' && !isPunitiveCaptureEnabled() ? 'release' : deposit
+        if (effective !== deposit) {
+          console.warn(`[close] [V4-1] capture walk-out REFUSÉE (pilote, PUNITIVE_CAPTURE_ENABLED OFF) — empreinte libérée à la place — ticket ${ticket.id}`)
+        }
         try {
-          const settle = deposit === 'capture'
+          const settle = effective === 'capture'
             ? await captureHold(reservation.stripePaymentIntentId, reservation.noShowPenalty, reservation.depositAmount)
             : await releaseHold(reservation.stripePaymentIntentId)
           if (settle.ok) {
-            const newStatus = settle.depositStatus ?? (deposit === 'capture' ? 'captured' : 'released')
+            const newStatus = settle.depositStatus ?? (effective === 'capture' ? 'captured' : 'released')
             await prisma.reservation.update({
               where: { id: reservation.id },
               data:  {

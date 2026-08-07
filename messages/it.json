@@ -3682,7 +3682,7 @@
       "submitBook": "Prenota",
       "submitWithDeposit": "Continua con l’impronta",
       "depositTitle": "Impronta bancaria",
-      "depositIntro": "Impronta di {amount} — resta attiva fino al pagamento del conto e viene rilasciata automaticamente al pagamento. Verrai addebitato solo in caso di no-show o se te ne vai senza saldare il conto.",
+      "depositIntro": "Impronta di {amount} — resta attiva fino al pagamento del conto e viene rilasciata automaticamente al pagamento.",
       "depositHint": "Carta di test: 4242 4242 4242 4242, data futura, CVC libero.",
       "depositSubmit": "Conferma l’impronta",
       "depositProcessing": "Conferma…",
@@ -5192,9 +5192,9 @@
       "actionArrived": "Cliente arrivato",
       "actionNoshow": "No-show",
       "actionMarkArrived": "Arrivo",
-      "actionConfirmNoshowTitle": "Addebitare la penale?",
-      "actionConfirmNoshowBody": "La penale di {amount} sarà addebitata al cliente. Azione irreversibile.",
-      "actionConfirm": "Addebita la penale",
+      "actionConfirmNoshowTitle": "Segnare come no-show?",
+      "actionConfirmNoshowBody": "La prenotazione sarà segnata come no-show. Durante il progetto pilota non viene applicata alcuna penale: l’impronta di {amount} sarà rilasciata.",
+      "actionConfirm": "Segna il no-show",
       "actionCancel": "Annulla",
       "actionReleasing": "Rilascio…",
       "actionCapturing": "Addebito…",
@@ -5208,7 +5208,7 @@
       "intro": "Pre-autorizzazione della carta al momento della prenotazione.",
       "depositLabel": "Caparra / impronta (€)",
       "depositHint": "Importo bloccato sulla carta del cliente alla prenotazione. L'impronta resta attiva fino al pagamento del conto (rilasciata automaticamente al pagamento). 0 = nessuna impronta.",
-      "penaltyNote": "Penale no-show = 100% dell’impronta.",
+      "penaltyNote": "Durante il progetto pilota non viene applicata alcuna penale — l’impronta è una garanzia, rilasciata automaticamente.",
       "customerSeesPrefix": "Il cliente vede: {amount}€ bloccati sulla sua carta fino al pagamento del conto.",
       "customerSeesNone": "Il cliente vede: nessuna impronta richiesta.",
       "disabledLabel": "Impronta disattivata",
@@ -5359,10 +5359,10 @@
       "confirmEmpty": "Libera il tavolo",
       "reasonUnpaid": "Chiudi come non pagato",
       "depositChoice": "Impronta di garanzia",
-      "depositCapture": "Addebita la penale ({amount})",
+      "depositCapture": "Penale disattivata durante il progetto pilota — l’impronta ({amount}) sarà rilasciata",
       "depositRelease": "Rilascia l’impronta (nessun addebito)",
-      "captureWarning": "Il cliente sarà addebitato di {amount}. Azione irreversibile.",
-      "confirmCapture": "Conferma l’addebito",
+      "captureWarning": "Durante il progetto pilota non viene applicata alcuna penale: l’impronta di {amount} sarà rilasciata (nessun addebito).",
+      "confirmCapture": "Conferma — l’impronta sarà rilasciata",
       "confirmClose": "Chiudi",
       "cancel": "Annulla",
       "closing": "Chiusura…",
@@ -6997,7 +6997,8 @@
       "wrong_order": "Ordine sbagliato",
       "quality": "Problema di qualità",
       "not_delivered": "Non consegnato",
-      "other": "Altro"
+      "other": "Altro",
+      "system_order_cancelled": "Annullamento di un ordine pagato (sistema)"
     },
     "status": {
       "restaurant_review": "In attesa di risposta del ristorante",
@@ -8421,7 +8422,7 @@
     "ack": {
       "subject": "Il Suo reclamo {ref} è stato registrato",
       "title": "Reclamo registrato",
-      "body": "Abbiamo ricevuto il Suo reclamo sull’ordine {ref} (importo richiesto: {euros} €).",
+      "body": "Abbiamo ricevuto il Suo reclamo sull’ordine {ref} (importo richiesto: {euros}).",
       "next": "Sarà informato via email non appena verrà presa una decisione."
     },
     "accepted": {
@@ -8438,7 +8439,7 @@
     "refunded": {
       "subject": "Reclamo {ref}: rimborso emesso",
       "title": "Rimborso emesso",
-      "body": "Grubano ha deciso a Suo favore: è stato emesso un rimborso di {euros} € sull’ordine {ref} verso il Suo metodo di pagamento."
+      "body": "Grubano ha deciso a Suo favore: è stato emesso un rimborso di {euros} sull’ordine {ref} verso il Suo metodo di pagamento."
     },
     "approved": {
       "subject": "Reclamo {ref}: accettato da Grubano",
@@ -8449,6 +8450,13 @@
       "subject": "Reclamo {ref}: decisione finale di Grubano",
       "title": "Rifiuto confermato",
       "body": "Grubano ha esaminato il Suo reclamo sull’ordine {ref} e ha confermato il rifiuto. Questa decisione è definitiva."
+    },
+    "orderCancelledPaid": {
+      "subject": "Ordine {ref} annullato — richiesta di rimborso trasmessa",
+      "title": "Ordine annullato",
+      "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Una richiesta di rimborso è stata trasmessa a Grubano.",
+      "next": "Sarà esaminata da un membro del team Grubano — sarà informato della decisione via email.",
+      "bodyExisting": "{resto} ha annullato il Suo ordine {ref}, già pagato. Il Suo reclamo in corso su questo ordine copre già la questione del rimborso — segue il suo iter normale."
     }
   }
 }

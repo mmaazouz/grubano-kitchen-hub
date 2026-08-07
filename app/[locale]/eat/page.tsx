@@ -56,7 +56,7 @@ interface Restaurant {
   id: string
   name: string
   cuisine: string[]
-  rating: number
+  rating: number | null // V4-2 : null tant qu'aucun avis réel (l'API gate la colonne fabriquée)
   reviewCount: number
   deliveryTime: number
   minOrder: number
@@ -112,7 +112,8 @@ export default function HomeScreen() {
     }
   }, [])
 
-  // Restaurants — nearest-first when geo is on, else top-rated (real wiring, kept).
+  // Restaurants — nearest-first when geo is on, else newest (V4-2 : le tri par
+  // note s'appuyait sur la colonne fabriquée du seed — repli honnête nouveauté).
   useEffect(() => {
     setLoading(true)
     const sp = new URLSearchParams({ take: '20' })
@@ -120,7 +121,7 @@ export default function HomeScreen() {
       sp.set('lat', String(coords.lat))
       sp.set('lng', String(coords.lng))
     } else {
-      sp.set('sort', 'rating')
+      sp.set('sort', 'newest')
     }
     fetch(`/api/restaurants?${sp}`)
       .then((r) => r.json())
@@ -368,12 +369,14 @@ export default function HomeScreen() {
                   <div className="hm-card__b">
                     <div className="hm-card__row">
                       <b>{r.name}</b>
-                      <span className="hm-card__rating"><span className="ms" aria-hidden="true">star</span>{r.rating.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+                      {r.rating != null && (
+                        <span className="hm-card__rating"><span className="ms" aria-hidden="true">star</span>{r.rating.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+                      )}
                     </div>
                     <div className="hm-card__meta">{cuisineWithMeta(r)}</div>
                     <div className="hm-card__tags">
                       {r.deliveryFee === 0 && <span className="hm-tag hm-tag--free">{tc('free')}</span>}
-                      {r.rating >= 4.7 && <span className="hm-tag hm-tag--pop">{t('tagPopular')}</span>}
+                      {r.rating != null && r.rating >= 4.7 && <span className="hm-tag hm-tag--pop">{t('tagPopular')}</span>}
                     </div>
                   </div>
                 </article>

@@ -481,10 +481,13 @@ export async function sendReservationConfirmation(p: {
     row('Date', formatDateFr(p.date)) +
     row('Couverts', String(p.guests)) +
     row('N° de session', esc(p.code))
+  // V4-1 (pilote) : la phrase annonçant le débit no-show/walk-out est RETIRÉE —
+  // aucune capture punitive n'existe flag OFF (promesse inversée sinon). À la
+  // réactivation de PUNITIVE_CAPTURE_ENABLED, RESTAURER l'annonce : une capture
+  // non annoncée au client serait pire juridiquement que l'absence de capture.
   const deposit = p.depositEur > 0
     ? `<p style="font-size:13px;color:#6b7280">Une empreinte de ${p.depositEur.toFixed(2).replace('.', ',')} € est associée à cette réservation —
-       elle reste active jusqu’au paiement de l’addition et est libérée automatiquement au paiement.
-       Vous ne serez débité qu’en cas de no-show ou de départ sans règlement de l’addition.</p>`
+       elle reste active jusqu’au paiement de l’addition et est libérée automatiquement au paiement.</p>`
     : ''
   await sendTransactional({
     to:      p.to,

@@ -10,6 +10,7 @@ import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
 import { smallOrderFeeConfigCents, smallOrderThresholdCents } from '@/lib/pricing'
 import { isTipsEnabled } from '@/lib/tips'
+import { realReviewCounts } from '@/lib/review-stats'
 
 // ── GET /api/restaurants/:id ──────────────────────────────────────────────────
 // Returns full restaurant details + menu grouped by category
@@ -253,6 +254,12 @@ export async function GET(
       promotions = []
     }
 
+    // V4-2 : gate d'honnêteté — les colonnes stockées rating/reviewCount sont
+    // héritées du seed (fabriquées, jamais recalculées) : la note n'est servie
+    // que si des avis RÉELS (table Review) existent, et le compteur servi est
+    // le compteur réel.
+    const realCount = (await realReviewCounts([restaurant.id])).get(restaurant.id) ?? 0
+
     return NextResponse.json({
       restaurant: {
         id:           restaurant.id,
@@ -261,8 +268,8 @@ export async function GET(
         coverPhoto:   restaurant.coverPhoto,
         logo:         restaurant.logo,
         cuisine:      restaurant.cuisine,
-        rating:       restaurant.rating,
-        reviewCount:  restaurant.reviewCount,
+        rating:       realCount > 0 ? restaurant.rating : null,
+        reviewCount:  realCount,
         deliveryTime: restaurant.deliveryTime,
         minOrder:     restaurant.minOrder,
         deliveryFee:  restaurant.deliveryFee,

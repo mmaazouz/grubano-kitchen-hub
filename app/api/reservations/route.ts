@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { maskEatReservation } from '@/lib/customer-scope'
-import { captureHold, releaseHold } from '@/lib/deposit'
+import { captureHold, releaseHold, isPunitiveCaptureEnabled } from '@/lib/deposit'
 import { ensureOpenTicket } from '@/lib/ticket'
 import { loadHoursContext, slotFitsCtx } from '@/lib/opening-hours'
 import {
@@ -354,14 +354,49 @@ export async function PATCH(req: Request) {
 
     let capturedCents: number | null = null
     if (existing.stripePaymentIntentId && data.status === 'noshow') {
-      const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
-      if (!settle.ok) {
-        return NextResponse.json({ error: settle.error }, { status: settle.status })
-      }
-      if (settle.depositStatus) writeData.depositStatus = settle.depositStatus
-      if (settle.depositStatus === 'captured') {
-        writeData.depositPaid = true
-        capturedCents = settle.capturedAmount ?? null
+      if (isPunitiveCaptureEnabled()) {
+        const settle = await captureHold(existing.stripePaymentIntentId, existing.noShowPenalty, existing.depositAmount)
+        if (!settle.ok) {
+          return NextResponse.json({ error: settle.error }, { status: settle.status })
+        }
+        if (settle.depositStatus) writeData.depositStatus = settle.depositStatus
+        if (settle.depositStatus === 'captured') {
+          writeData.depositPaid = true
+          capturedCents = settle.capturedAmount ?? null
+        }
+      } else if (
+        existing.depositStatus !== 'released' &&
+        existing.depositStatus !== 'captured'
+      ) {
+        // ── V4-1 (vague 4, décision fondateur — motif juridique) : la capture de
+        // pénalité est INOPÉRANTE pendant le pilote. Marquer le no-show RESTE
+        // possible ; la garantie n'est pas exercée : l'empreinte est LIBÉRÉE
+        // (garder le hold gelé sans capturer serait une sanction déguisée —
+        // l'argent du client resterait bloqué des jours). Calque COMPLET de
+        // P0-12 (durci en revue adversariale) : garde d'idempotence ci-dessus
+        // (déjà released/captured → aucun appel, aucun bruit), un pépin Stripe
+        // ne bloque JAMAIS le marquage, et l'issue est tracée ET SURFACÉE dans
+        // la réponse (depositReleased/depositError) — jamais un hold gelé
+        // silencieux. Aucun depositPaid, aucun email de pénalité (capturedCents
+        // reste null → sendNoShowPenaltyCharged n'est pas envoyé).
+        console.warn(
+          `[PATCH /api/reservations] [V4-1] no-show SANS capture (PUNITIVE_CAPTURE_ENABLED OFF) — libération de l'empreinte (reservation ${id})`,
+        )
+        try {
+          const settle = await releaseHold(existing.stripePaymentIntentId)
+          if (settle.ok) {
+            writeData.depositStatus = settle.depositStatus ?? 'released'
+            depositReleased = true
+          } else {
+            depositError = settle.error
+          }
+        } catch (e) {
+          depositError = e instanceof Error ? e.message : 'release failed'
+        }
+        if (depositError) {
+          console.error('[PATCH /api/reservations] [V4-1] empreinte NON libérée au no-show',
+            JSON.stringify({ reservationId: id, paymentIntentId: existing.stripePaymentIntentId, error: depositError }))
+        }
       }
     }
 
@@ -443,10 +478,12 @@ export async function PATCH(req: Request) {
     // Masquage PII /eat — the PATCH response is an operator payload too.
     // P0-12 : l'issue de la libération d'empreinte est TOUJOURS surfacée sur une
     // annulation (jamais un échec silencieux) — depositReleased + depositError.
+    // V4-1 : même surfaçage sur le no-show flag OFF (la libération y remplace la
+    // capture — un échec doit être visible, pas seulement loggé).
     return NextResponse.json({
       reservation: maskEatReservation(reservation),
       ...(ticketAlert ? { ticketAlert } : {}),
-      ...(data.status === 'cancelled'
+      ...(data.status === 'cancelled' || (data.status === 'noshow' && !isPunitiveCaptureEnabled())
         ? { depositReleased, ...(depositError ? { depositError } : {}) }
         : {}),
     })

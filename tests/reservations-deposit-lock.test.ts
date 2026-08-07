@@ -23,7 +23,9 @@ const { scopeMock } = vi.hoisted(() => ({ scopeMock: vi.fn() }))
 vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: scopeMock }))
 
 const { releaseMock, captureMock } = vi.hoisted(() => ({ releaseMock: vi.fn(), captureMock: vi.fn() }))
-vi.mock('@/lib/deposit', () => ({ releaseHold: releaseMock, captureHold: captureMock }))
+// V4-1 : flag mocké ON — la photographie « capture réelle no-show » de ce fichier
+// reste le contrat du monde flag-ON (le flag OFF vit dans punitive-capture.test.ts).
+vi.mock('@/lib/deposit', () => ({ releaseHold: releaseMock, captureHold: captureMock, isPunitiveCaptureEnabled: vi.fn(() => true) }))
 
 const { emails, recipientMock } = vi.hoisted(() => ({
   emails: {
@@ -113,7 +115,7 @@ describe('PATCH /api/reservations — P0-31 : la déclaration manuelle depositPa
     expect('depositPaid' in writeData).toBe(false)
   })
 
-  it('⭐ la capture RÉELLE no-show survit : captureHold captured → depositPaid:true écrit PAR LE SERVEUR', async () => {
+  it('⭐ (monde flag-ON — PUNITIVE_CAPTURE_ENABLED mocké true) la capture RÉELLE no-show survit : captureHold captured → depositPaid:true écrit PAR LE SERVEUR', async () => {
     // Le seul chemin du PATCH qui pose depositPaid est adossé à une capture Stripe
     // réelle (captureHold) — le verrou ne touche pas ce chemin.
     const res = await call({ id: 'resv1', status: 'noshow' })
@@ -124,7 +126,7 @@ describe('PATCH /api/reservations — P0-31 : la déclaration manuelle depositPa
     }))
   })
 
-  it('no-show dont la capture échoue → l’erreur Stripe est surfacée et depositPaid n’est JAMAIS écrit', async () => {
+  it('(monde flag-ON) no-show dont la capture échoue → l’erreur Stripe est surfacée et depositPaid n’est JAMAIS écrit', async () => {
     captureMock.mockResolvedValue({ ok: false, status: 502, error: 'capture failed' })
     const res = await call({ id: 'resv1', status: 'noshow' })
     expect(res.status).toBe(502)

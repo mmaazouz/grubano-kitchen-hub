@@ -3,6 +3,8 @@ import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
+import { createSystemClaim, isClaimsEnabled } from '@/lib/claims'
+import { sendOrderCancelledPaidEmail } from '@/lib/claim-emails'
 import { z } from 'zod'
 
 // ── Valid status machine ──────────────────────────────────────────────────────
@@ -79,10 +81,58 @@ export async function PATCH(
       )
     }
 
-    const updated = await prisma.order.update({
-      where: { id: params.id },
-      data:  { status: newStatus },
-    })
+    // ── P0-08 (vague 4) — annuler une commande PAYÉE crée une demande de
+    // remboursement SYSTÈME qui entre DIRECTEMENT dans la file d'arbitrage admin,
+    // dans la MÊME transaction que l'annulation : les deux réussissent ou
+    // échouent ENSEMBLE (sans demande, l'annulation reproduirait le défaut
+    // constaté en exécution le 06/08 : « annuler une commande payée garde
+    // l'argent »). AUCUN remboursement n'est déclenché ici (Q3 absolu) — l'admin
+    // tranche via le circuit d'arbitrage prouvé le 04/08. Cas particulier VOULU :
+    // une réclamation DÉJÀ ACTIVE sur la commande (P2002 sur activeOrderKey) ne
+    // crée pas de doublon et ne bloque pas l'annulation — la question de l'argent
+    // est déjà dans le circuit. Une commande NON payée garde le chemin
+    // historique, byte-identique.
+    // Revue adversariale : la branche est GATÉE par isClaimsEnabled(), comme TOUS
+    // les autres écrivains de Claim — flag OFF ⇒ chemin historique byte-identique
+    // (la demande serait invisible et intranchable, l'email mentirait ; et une
+    // table Claim absente pré-db-push casserait l'annulation). Flag ON + table
+    // absente = config CASSÉE (contrat docs/ops/flags.md : CLAIMS_ENABLED exige
+    // la table) ⇒ échec BRUYANT voulu (rollback + 500), jamais silencieux.
+    const claimAmountCents = Math.max(0, Math.round(order.total * 100))
+    const paidCancellation =
+      newStatus === 'cancelled' && order.paymentStatus === 'paid' && isClaimsEnabled() && claimAmountCents > 0
+    let systemClaim: Awaited<ReturnType<typeof createSystemClaim>> | null = null
+    let updated
+    if (paidCancellation) {
+      updated = await prisma.$transaction(async (tx) => {
+        const u = await tx.order.update({
+          where: { id: params.id },
+          data:  { status: newStatus },
+        })
+        systemClaim = await createSystemClaim({
+          orderId:              order.id,
+          consumerId:           order.consumerId,
+          restaurantId:         order.restaurantId,
+          requestedAmountCents: claimAmountCents,
+          description:          `Annulation par le restaurant d'une commande payée (${order.id}).`,
+          tx,
+        })
+        return u
+      })
+      // Revue : le cas P2002 (réclamation déjà active) est TRACÉ — la question de
+      // l'argent est déjà portée par la réclamation existante, aucune demande
+      // système n'a été créée, et l'email ci-dessous le dit HONNÊTEMENT.
+      if (systemClaim !== null && !(systemClaim as Awaited<ReturnType<typeof createSystemClaim>>).created) {
+        console.warn(
+          `[P0-08] annulation payée ${order.id} : demande système NON créée — une réclamation est déjà ACTIVE sur cette commande (la question du remboursement y est déjà portée).`,
+        )
+      }
+    } else {
+      updated = await prisma.order.update({
+        where: { id: params.id },
+        data:  { status: newStatus },
+      })
+    }
 
     // When order is delivered: credit loyalty points to the consumer.
     // Loyalty is an AUTOMATIC acquis — every consumer earns, with NO opt-in. The
@@ -138,7 +188,24 @@ export async function PATCH(
         prisma.operator.findUnique({ where: { id: order.consumerId }, select: { email: true, name: true } }),
         prisma.restaurant.findUnique({ where: { id: order.restaurantId }, select: { name: true } }),
       ])
-      if (consumer?.email) {
+      if (paidCancellation) {
+        // P0-08 — contenu VÉRIDIQUE pour une annulation PAYÉE : la demande de
+        // remboursement vient d'être créée dans la même transaction ; l'ancien
+        // email (« contactez directement le restaurant », muet sur l'argent) ne
+        // décrivait pas la situation réelle. Localisé (rail T43), même trigger
+        // order_cancelled + dedupeKey order:<id> → une seule notification
+        // d'annulation par commande. La commande NON payée garde l'email
+        // historique ci-dessous, byte-identique.
+        await sendOrderCancelledPaidEmail({
+          orderId:        order.id,
+          consumerId:     order.consumerId,
+          restaurantName: resto?.name ?? 'votre restaurant',
+          // Revue : quand la demande N'A PAS été créée (réclamation déjà active),
+          // l'email ne dit plus « une demande a été transmise » — il dit la
+          // vérité : la réclamation EN COURS porte la question du remboursement.
+          existingClaim:  systemClaim != null && !(systemClaim as Awaited<ReturnType<typeof createSystemClaim>>).created,
+        })
+      } else if (consumer?.email) {
         await sendOrderStatusEmail({
           orderId:         order.id,
           to:              consumer.email,

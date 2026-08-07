@@ -3,8 +3,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // ── Mocks ────────────────────────────────────────────────────────────────────
 // Only the geo branch of GET /api/restaurants is under test; it touches one
 // Prisma call (restaurant.findMany) and the real haversineKm (left unmocked).
-const { findMany } = vi.hoisted(() => ({ findMany: vi.fn() }))
-vi.mock('@/lib/prisma', () => ({ prisma: { restaurant: { findMany } } }))
+const { findMany, groupBy } = vi.hoisted(() => ({ findMany: vi.fn(), groupBy: vi.fn() }))
+// V4-2 : la route applique le gate d'honnêteté des notes (lib/review-stats →
+// prisma.review.groupBy). Zéro avis réel ici → rating null (non asserté par ce
+// fichier, qui ne teste que la géo/radius).
+vi.mock('@/lib/prisma', () => ({ prisma: { restaurant: { findMany }, review: { groupBy } } }))
 // The route imports auth at module load for its POST handler; stub so the
 // import is cheap and side-effect free for these GET-only tests.
 vi.mock('next-auth', () => ({ getServerSession: vi.fn() }))
@@ -33,7 +36,11 @@ const callGeo = async (extra = '') => {
   return res.json() as Promise<any>
 }
 
-beforeEach(() => findMany.mockReset())
+beforeEach(() => {
+  findMany.mockReset()
+  groupBy.mockReset()
+  groupBy.mockResolvedValue([]) // zéro avis réel — le gate V4-2 nulle les notes, hors sujet ici
+})
 
 describe('GET /api/restaurants — radius expansion', () => {
   it('walks tiers 5→10→25 until ≥8 results and reports the tier used', async () => {

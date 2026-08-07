@@ -11,7 +11,9 @@ import { StellarPriceTag } from './PriceTag'
 export interface StellarRestaurantCardProps {
   name: string
   cuisine: string
-  rating: number
+  /** V4-2 : GET /api/restaurants sert null tant qu'aucun avis réel — la ★ est
+   *  masquée dans ce cas (jamais de .toFixed sur une note absente). */
+  rating: number | null
   deliveryFeeEur: number
   etaMin: number
   tag?: string
@@ -32,7 +34,9 @@ export function StellarRestaurantCard({
             <p className="font-stellar-display font-bold text-stellar-fg">{name}</p>
             <p className="truncate text-sm text-stellar-muted-fg">{cuisine}</p>
           </div>
-          <span className="shrink-0 text-sm font-semibold text-stellar-fg">★ {rating.toFixed(1)}</span>
+          {rating != null && (
+            <span className="shrink-0 text-sm font-semibold text-stellar-fg">★ {rating.toFixed(1)}</span>
+          )}
         </div>
         {/* Transparency: fee + ETA on the card (bataille 2). */}
         <div className="mt-2 flex items-center gap-3 text-xs text-stellar-muted-fg">
