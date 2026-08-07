@@ -3206,7 +3206,25 @@
       "emptyCta": "Parcourir les restaurants",
       "signInTitle": "Connectez-vous pour voir vos commandes",
       "signInBody": "Vos commandes en cours et passées apparaîtront ici une fois connecté.",
-      "signInCta": "Se connecter"
+      "signInCta": "Se connecter",
+      "type_reservation": "Réservation",
+      "resGuests": "{count, plural, one {# couvert} other {# couverts}}",
+      "resUpcoming": "À venir",
+      "resUnderway": "En cours",
+      "resPast": "Passée",
+      "resCancelled": "Annulée",
+      "resNoShow": "Non-présentation",
+      "resDepositAuthorized": "Empreinte de {amount} pré-autorisée — rien n'est débité, elle est libérée à votre arrivée.",
+      "resDepositReleased": "Empreinte de {amount} libérée — rien n'a été débité. La pré-autorisation disparaît de votre relevé sous quelques jours.",
+      "resNoShowReleased": "Non-présentation — l'empreinte de {amount} a été libérée, rien n'a été débité.",
+      "resDepositCaptured": "{amount} débités sur l'empreinte.",
+      "resCancel": "Annuler la réservation",
+      "resCancelConfirm": "Confirmer l'annulation",
+      "resCancelKeep": "Garder ma réservation",
+      "resCancelBusy": "Annulation…",
+      "resCancelError": "L'annulation n'a pas abouti. Réessayez ou contactez le restaurant.",
+      "resDepositAuthorizedArrived": "Empreinte de {amount} pré-autorisée — rien n'est débité ; elle est libérée au règlement de l'addition.",
+      "resDepositAuthorizedPending": "Empreinte de {amount} encore pré-autorisée — la libération est en cours, rien n'est débité."
     },
     "postDelivery": {
       "close": "Fermer",
@@ -7086,7 +7104,9 @@
       "pendingTitle": "En attente du restaurant",
       "pendingHint": "Le restaurant n’a pas encore répondu. Aucune action automatique ne sera prise — la décision reste au restaurant, puis à vous en arbitrage.",
       "pendingOverdue": "Délai de réponse dépassé",
-      "arbitrationTitle": "En arbitrage — à trancher"
+      "arbitrationTitle": "En arbitrage — à trancher",
+      "reasonSystem": "Motif (système)",
+      "systemDetails": "Détails (système)"
     }
   },
   "fiscal": {

@@ -4,10 +4,13 @@ import { prisma } from '@/lib/prisma'
 
 // ── GET /api/eat/orders ──────────────────────────────────────────────────────
 // READ-ONLY consumer feed for the « Mes commandes » screen (/eat/orders). Merges
-// the authenticated consumer's delivery/pickup ORDERS with their dine-in
-// TableTickets (linked via a Reservation they own), normalised into a single list
-// of cards split into current / past. No writes, no money flow — the dine-in
-// payment + the order tracking are reached by routing to EXISTING pages.
+// the authenticated consumer's delivery/pickup ORDERS, their dine-in
+// TableTickets (linked via a Reservation they own) and — V5-1 — their table
+// RESERVATIONS themselves (a reservation without a ticket used to produce NO
+// card, leaving a client no page to understand a 15 € pre-authorisation on
+// their bank statement). Normalised into a single list of cards split into
+// current / past. No writes, no money flow — the dine-in payment, the order
+// tracking and the reservation CANCEL are reached via EXISTING routes.
 //
 // Dine-in linkage: a TableTicket carries reservationId (nullable). A ticket is the
 // consumer's iff that reservation is theirs (Reservation.userId). Walk-in tickets
@@ -15,7 +18,7 @@ import { prisma } from '@/lib/prisma'
 
 type Card = {
   id: string
-  kind: 'delivery' | 'pickup' | 'dinein'
+  kind: 'delivery' | 'pickup' | 'dinein' | 'reservation'
   phase: 'current' | 'past'
   restaurantName: string
   itemsCount: number
@@ -28,6 +31,16 @@ type Card = {
   trackingId?: string
   tableLabel?: string
   tableId?: string
+  // ── kind 'reservation' only (V5-1) — ADDITIVE, existing cards unchanged ─────
+  // The deposit pair is the WHOLE point (founder decision: display driven by
+  // depositStatus + depositAmount, noShowPenalty NEVER selected nor exposed —
+  // the explicit prisma select below guarantees it structurally).
+  date?: string          // reservation start (also the card's sort axis)
+  endTime?: string
+  guests?: number
+  depositAmount?: number
+  depositStatus?: string // none | authorized | captured | released
+  cancellable?: boolean  // UI hint; the cancel ROUTE re-judges everything
 }
 
 const ACTIVE_ORDER = ['received', 'preparing', 'ready', 'picked_up']
@@ -56,10 +69,23 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    // 2) Dine-in tickets reachable from a reservation the consumer owns.
+    // 2) The consumer's OWN reservations (V5-1: now cards in their own right,
+    //    no longer just a bridge). SECURITY: the where is the ownership gate —
+    //    userId = token.sub, nothing else ever widens it. The select DELIBERATELY
+    //    omits noShowPenalty (config value, never a debt — founder decision) and
+    //    every PII the client doesn't need; depositStatus + depositAmount drive
+    //    the hold display. No take: the same rows keep feeding the dine-in
+    //    ticket bridge below exactly as before (a cap could drop old paid
+    //    tickets); the CARD list is capped at 50 further down.
     const reservations = await prisma.reservation.findMany({
       where: { userId: consumerId },
-      select: { id: true },
+      orderBy: { date: 'desc' },
+      select: {
+        id: true, date: true, endTime: true, guests: true, status: true,
+        depositAmount: true, depositStatus: true,
+        restaurant: { select: { id: true, name: true, cancellationWindowHours: true } },
+        table: { select: { restaurant: { select: { id: true, name: true, cancellationWindowHours: true } } } },
+      },
     })
     const reservationIds = reservations.map((r) => r.id)
     const tickets = reservationIds.length
@@ -114,6 +140,53 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // 3) Reservation cards (V5-1). One card per reservation, ticket or not — an
+    //    upcoming reservation IS the thing the client looks for when a 15 €
+    //    pre-authorisation sits on their statement. Phase: a confirmed/underway
+    //    reservation whose slot hasn't ended is 'current'; cancelled / noshow /
+    //    ended slots are 'past'. Cancellable is a UI HINT only (confirmed +
+    //    future start) — POST /api/reservations/[id]/cancel re-judges ownership,
+    //    status and the cancellation window, unchanged.
+    const now = Date.now()
+    for (const r of reservations.slice(0, 50)) {
+      const restaurant = r.restaurant ?? r.table?.restaurant ?? null
+      // Revue V5 — cancellable mirrors the cancel route's OWN rule (confirmed +
+      // now ≤ start − cancellationWindowHours, défaut 2 h) so the button is
+      // never offered where the route would systematically 409. The route
+      // stays the judge — this is only the honest UI hint.
+      const windowH = restaurant?.cancellationWindowHours ?? 2
+      const cancellable =
+        r.status === 'confirmed' && now <= r.date.getTime() - windowH * 3_600_000
+      cards.push({
+        id: r.id,
+        kind: 'reservation',
+        // Revue V5 — arrived/overrun = the session IS running (overrun exists
+        // precisely for a slot that overshot its endTime) → always 'current';
+        // a confirmed slot is current until its end; cancelled/noshow → past.
+        phase: r.status === 'arrived' || r.status === 'overrun' ||
+          (r.status === 'confirmed' && r.endTime.getTime() > now) ? 'current' : 'past',
+        restaurantName: restaurant?.name ?? '—',
+        itemsCount: 0,
+        total: 0,
+        status: r.status,
+        // The card's sort axis = the EVENT time (see comparator note below).
+        createdAt: r.date.toISOString(),
+        ref: refOf(r.id),
+        restaurantId: restaurant?.id,
+        date: r.date.toISOString(),
+        endTime: r.endTime.toISOString(),
+        guests: r.guests,
+        depositAmount: r.depositAmount,
+        depositStatus: r.depositStatus,
+        cancellable,
+      })
+    }
+
+    // Sort criterion (V5-1, deliberate): ONE axis for the mixed list — the
+    // moment the thing happens (orders/tickets: created/opened at; reservations:
+    // the booked slot). It is the only field that means the same thing for both
+    // object kinds, and it keeps the relative order of existing food cards
+    // strictly unchanged (their axis is untouched). Descending, as before.
     const byDateDesc = (a: Card, b: Card) => (a.createdAt < b.createdAt ? 1 : -1)
     const current = cards.filter((c) => c.phase === 'current').sort(byDateDesc)
     const past = cards.filter((c) => c.phase === 'past').sort(byDateDesc)

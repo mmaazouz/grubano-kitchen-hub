@@ -3206,7 +3206,25 @@
       "emptyCta": "Esplora i ristoranti",
       "signInTitle": "Accedi per vedere i tuoi ordini",
       "signInBody": "I tuoi ordini in corso e passati appariranno qui dopo l'accesso.",
-      "signInCta": "Accedi"
+      "signInCta": "Accedi",
+      "type_reservation": "Prenotazione",
+      "resGuests": "{count, plural, one {# coperto} other {# coperti}}",
+      "resUpcoming": "In arrivo",
+      "resUnderway": "In corso",
+      "resPast": "Passata",
+      "resCancelled": "Annullata",
+      "resNoShow": "No-show",
+      "resDepositAuthorized": "Pre-autorizzazione di {amount} — non viene addebitato nulla; viene svincolata al Suo arrivo.",
+      "resDepositReleased": "La pre-autorizzazione di {amount} è stata svincolata — non è stato addebitato nulla. Scompare dall'estratto conto entro pochi giorni.",
+      "resNoShowReleased": "Mancata presentazione — la pre-autorizzazione di {amount} è stata svincolata, non è stato addebitato nulla.",
+      "resDepositCaptured": "{amount} addebitati dalla pre-autorizzazione.",
+      "resCancel": "Annulla la prenotazione",
+      "resCancelConfirm": "Conferma l'annullamento",
+      "resCancelKeep": "Mantieni la prenotazione",
+      "resCancelBusy": "Annullamento…",
+      "resCancelError": "L'annullamento non è riuscito. Riprovi o contatti il ristorante.",
+      "resDepositAuthorizedArrived": "Pre-autorizzazione di {amount} — non viene addebitato nulla; viene svincolata al saldo del conto.",
+      "resDepositAuthorizedPending": "La pre-autorizzazione di {amount} è ancora attiva — lo svincolo è in corso, non viene addebitato nulla."
     },
     "postDelivery": {
       "close": "Chiudi",
@@ -7086,7 +7104,9 @@
       "pendingTitle": "In attesa del ristorante",
       "pendingHint": "Il ristorante non ha ancora risposto. Nessuna azione automatica sarà intrapresa — la decisione spetta al ristorante, poi a Lei in arbitrato.",
       "pendingOverdue": "Termine di risposta superato",
-      "arbitrationTitle": "In arbitrato — da decidere"
+      "arbitrationTitle": "In arbitrato — da decidere",
+      "reasonSystem": "Motivo (sistema)",
+      "systemDetails": "Dettagli (sistema)"
     }
   },
   "fiscal": {

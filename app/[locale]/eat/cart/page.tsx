@@ -34,7 +34,13 @@ export default function CartScreen() {
   const { status: authStatus } = useSession()
   const [cart, setCart] = useState<EatCartData | null>(null)
   const [hydrated, setHydrated] = useState(false)
-  const [fulfillment, setFulfillment] = useState<Fulfillment>('delivery')
+  // V5-2 — the delivery tab only renders when the SERVER says it would accept a
+  // delivery order for this restaurant (GET /api/restaurants/[id].fulfillment,
+  // computed by the exact POST /api/orders gate — pilot flag OFF ⇒ hidden).
+  // Default false (safe: no flash) and default mode 'pickup' so no UI path can
+  // end on the server's 403 delivery refusal. Post-pilot: one env toggle.
+  const [deliveryAvailable, setDeliveryAvailable] = useState(false)
+  const [fulfillment, setFulfillment] = useState<Fulfillment>('pickup')
   const [address, setAddress] = useState('')
   // Saved delivery addresses (lib/eat-addresses, client-side) — the CD checkout selector
   // (Wave 4 screen 3). The selected address only fills the `address` string below; the
@@ -118,6 +124,8 @@ export default function CartScreen() {
           setSmallOrderCfg({ feeCents: d.smallOrder.feeCents, thresholdCents: d.smallOrder.thresholdCents })
         }
         if (typeof d.tipsEnabled === 'boolean') setTipsEnabled(d.tipsEnabled)
+        // V5-2 — tolerant: absent/odd payload ⇒ delivery stays hidden (safe).
+        if (d.fulfillment && d.fulfillment.delivery === true) setDeliveryAvailable(true)
         if (Array.isArray(d.menu)) {
           setMenuItems(d.menu.flatMap(
             (c: { items?: Array<{ id: string; name: string; price: number; photos?: string[]; category?: string }> }) => c.items ?? [],
@@ -623,9 +631,12 @@ export default function CartScreen() {
                   third « Sur place » mode, omitted — no dine-in order path exists in
                   placeOrder (Fulfillment is 'delivery' | 'pickup'). */}
               <div className="modes" role="tablist">
-                <button role="tab" aria-selected={fulfillment === 'delivery'} onClick={() => setFulfillment('delivery')}>
-                  <span className="ms" aria-hidden="true">two_wheeler</span>{t('tabDelivery')}
-                </button>
+                {/* V5-2: the delivery tab only exists when the server would accept it. */}
+                {deliveryAvailable && (
+                  <button role="tab" aria-selected={fulfillment === 'delivery'} onClick={() => setFulfillment('delivery')}>
+                    <span className="ms" aria-hidden="true">two_wheeler</span>{t('tabDelivery')}
+                  </button>
+                )}
                 <button role="tab" aria-selected={fulfillment === 'pickup'} onClick={() => setFulfillment('pickup')}>
                   <span className="ms" aria-hidden="true">storefront</span>{t('tabPickup')}
                 </button>

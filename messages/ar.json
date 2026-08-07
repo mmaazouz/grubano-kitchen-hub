@@ -3206,7 +3206,25 @@
       "emptyCta": "تصفّح المطاعم",
       "signInTitle": "سجّل الدخول لعرض طلباتك",
       "signInBody": "ستظهر هنا طلباتك الحالية والسابقة بعد تسجيل الدخول.",
-      "signInCta": "تسجيل الدخول"
+      "signInCta": "تسجيل الدخول",
+      "type_reservation": "حجز",
+      "resGuests": "{count, plural, zero {بدون أشخاص} one {شخص واحد} two {شخصان} few {# أشخاص} many {# شخصًا} other {# شخص}}",
+      "resUpcoming": "قادم",
+      "resUnderway": "جارٍ",
+      "resPast": "منتهٍ",
+      "resCancelled": "ملغى",
+      "resNoShow": "عدم حضور",
+      "resDepositAuthorized": "تم حجز مبلغ {amount} مسبقًا كتأمين — لن يُخصم أي شيء، ويُحرَّر عند وصولك.",
+      "resDepositReleased": "تم تحرير مبلغ التأمين {amount} — لم يُخصم أي شيء. تختفي عملية الحجز المسبق من كشف حسابك خلال أيام قليلة.",
+      "resNoShowReleased": "عدم حضور — تم تحرير مبلغ التأمين {amount} ولم يُخصم أي شيء.",
+      "resDepositCaptured": "تم خصم {amount} من مبلغ التأمين.",
+      "resCancel": "إلغاء الحجز",
+      "resCancelConfirm": "تأكيد الإلغاء",
+      "resCancelKeep": "الاحتفاظ بالحجز",
+      "resCancelBusy": "جارٍ الإلغاء…",
+      "resCancelError": "تعذّر الإلغاء. حاول مجددًا أو تواصل مع المطعم.",
+      "resDepositAuthorizedArrived": "مبلغ تأمين {amount} محجوز مسبقًا — لن يُخصم شيء، ويُحرَّر عند تسوية الحساب.",
+      "resDepositAuthorizedPending": "ما زال مبلغ التأمين {amount} محجوزًا — التحرير قيد التنفيذ ولن يُخصم شيء."
     },
     "postDelivery": {
       "close": "إغلاق",
@@ -7086,7 +7104,9 @@
       "pendingTitle": "في انتظار المطعم",
       "pendingHint": "لم يرد المطعم بعد. لن يُتخذ أي إجراء تلقائي — القرار يعود إلى المطعم، ثم إليك في التحكيم.",
       "pendingOverdue": "تم تجاوز مهلة الرد",
-      "arbitrationTitle": "قيد التحكيم — بانتظار البتّ"
+      "arbitrationTitle": "قيد التحكيم — بانتظار البتّ",
+      "reasonSystem": "السبب (النظام)",
+      "systemDetails": "التفاصيل (النظام)"
     }
   },
   "fiscal": {

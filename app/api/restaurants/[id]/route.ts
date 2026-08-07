@@ -9,6 +9,7 @@ import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '
 import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
 import { smallOrderFeeConfigCents, smallOrderThresholdCents } from '@/lib/pricing'
+import { isDeliveryFulfillmentEnabled } from '@/lib/fulfillment'
 import { isTipsEnabled } from '@/lib/tips'
 import { realReviewCounts } from '@/lib/review-stats'
 
@@ -294,6 +295,29 @@ export async function GET(
       // Mirrors the TIPS_ENABLED server flag; when false (default) the cart hides the
       // tip UI entirely → byte-identical. The SERVER alone validates + charges the tip.
       tipsEnabled: isTipsEnabled(),
+      // Additive (V5-2) — whether the SERVER would accept a DELIVERY order for
+      // this restaurant, computed from the EXACT gates POST /api/orders applies
+      // (lib/fulfillment: pilot env flag DELIVERY_FULFILLMENT_ENABLED default
+      // OFF, AND Restaurant.deliveryEnabled). DISPLAY ONLY — the UI hides the
+      // mode instead of letting the client discover the 403 at payment; the
+      // server refusal stays authoritative. Post-pilot, flipping the env flag
+      // re-opens delivery here AND at the gate: one switch, two surfaces.
+      fulfillment: {
+        delivery: isDeliveryFulfillmentEnabled() && restaurant.deliveryEnabled === true,
+      },
+      // Additive (V5-1b) — can this restaurant take a TABLE RESERVATION at all?
+      // Operability gate = at least one configured table (dark kitchens simply
+      // have 0 tables — RestaurantTable schema comment). Day-level emptiness
+      // (exceptional closure, full slots) is handled INSIDE the booking flow by
+      // its honest empty states; the fiche only exposes an entry point when the
+      // flow can succeed in principle. Tolerant: a count hiccup hides the entry
+      // (safe), never breaks the fiche.
+      // Revue V5 — active:true : des tables toutes désactivées ne doivent pas
+      // rouvrir l'entrée (le cul-de-sac que ce gate ferme).
+      reservable: await prisma.restaurantTable
+        .count({ where: { restaurantId: restaurant.id, active: true } })
+        .then((n) => n > 0)
+        .catch(() => false),
     })
   } catch (err) {
     console.error('[GET /api/restaurants/:id]', err)
