@@ -3,7 +3,7 @@
 // SINGLE SOURCE OF TRUTH for where /auth/magic sends a user after a successful
 // passwordless sign-in. Each partner role lands on its OWN space (its private
 // dashboard), never a public marketing/discovery landing:
-//   restaurant/admin → /dashboard            franchise → /franchise/dashboard
+//   restaurant → /dashboard   admin → /admin   franchise → /franchise/dashboard
 //   creator          → /creators/dashboard   supplier  → /supplier/dashboard
 //   logistics        → /logistics/dashboard  consumer  → /eat
 //
@@ -14,7 +14,9 @@
 
 export const POST_LOGIN_REDIRECTS: Record<string, string> = {
   restaurant: '/dashboard',
-  admin:      '/dashboard',
+  // V4-3 — un admin atterrit sur SA console. /dashboard exigeait un établissement
+  // et accueillait un admin pur par « créez votre premier établissement ».
+  admin:      '/admin',
   franchise:  '/franchise/dashboard',
   creator:    '/creators/dashboard',
   supplier:   '/supplier/dashboard',

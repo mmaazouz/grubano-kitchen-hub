@@ -113,7 +113,9 @@ admin (P0-03/P0-26) et `arbitrateClaim` (P0-24).
 ## Procédure de bascule d'un flag (staging) — sans rien exécuter ici
 
 1. Vérifier le couplage EN LOCAL avant toute bascule :
-   `FLAG1=true FLAG2=true node scripts/check-flags.mjs` (avec le set cible complet).
+   (sur votre ordinateur, dans le dossier du projet — exemple concret, copiable :)
+   `CLAIMS_ENABLED=true REFUNDS_ENABLED=true node scripts/check-flags.mjs`
+   — en remplaçant les deux flags par le set cible complet.
 2. Vérifier les prérequis DB du flag (ex. `CLAIMS_ENABLED` exige que la table
    `Claim` existe → `bash ~/app.grubano.com/scripts/server/prisma-push.sh` si
    le schéma a changé depuis le dernier push).
