@@ -4058,7 +4058,8 @@
       "sealLabel": "Cuenta pagada",
       "bannerTable": "En sala · Mesa {name}",
       "bannerDinein": "En sala",
-      "linesCount": "{count, plural, one {# artículo} other {# artículos}}"
+      "linesCount": "{count, plural, one {# artículo} other {# artículos}}",
+      "linesNote": "Detalle de las consumiciones tal como en el momento del pago."
     }
   },
   "menu": {

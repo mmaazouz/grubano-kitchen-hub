@@ -4058,7 +4058,8 @@
       "sealLabel": "Bill settled",
       "bannerTable": "Dine-in · Table {name}",
       "bannerDinein": "Dine-in",
-      "linesCount": "{count, plural, one {# item} other {# items}}"
+      "linesCount": "{count, plural, one {# item} other {# items}}",
+      "linesNote": "Item details as at the time of payment."
     }
   },
   "menu": {

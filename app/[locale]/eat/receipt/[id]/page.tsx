@@ -116,8 +116,16 @@ export default function DineinReceiptScreen() {
     const city = (receipt.city ?? '').trim()
     if (!addr) return city || null
     if (!city) return addr
+    // Revue AW : containment par MOTS ENTIERS consécutifs, pas par sous-chaîne —
+    // « Pau » ne doit pas être avalé par « rue Paul Bert », ni « Eu » par
+    // « Vieux » ; « Le Havre » (multi-mots) reste détecté dans « 76600 Le Havre ».
     const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    return norm(addr).includes(norm(city)) ? addr : `${addr}, ${city}`
+    const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
+    const aw = words(addr)
+    const cw = words(city)
+    const cityInAddr =
+      cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
+    return cityInAddr ? addr : `${addr}, ${city}`
   })()
 
   return (
@@ -181,7 +189,7 @@ export default function DineinReceiptScreen() {
             <ul>
               {receipt.lines.map((l, i) => (
                 <li key={i}>
-                  <span className="rc-line__qty">{l.quantity}×</span>
+                  <span className="rc-line__qty"><bdi>{l.quantity}×</bdi></span>
                   <span className="rc-line__label">
                     {l.name}
                     <small>{t.rich('unitPrice', { price: money(l.unitPrice), m: (chunks) => <bdi>{chunks}</bdi> })}</small>
@@ -194,7 +202,7 @@ export default function DineinReceiptScreen() {
                 montant payé — égaux, le héros suffit et rien n'est répété. Les deux
                 montants restent sous libellés distincts, jamais d'explication ;
                 amountPaid reste la référence, jamais recalculé. */}
-            {receipt.subtotal !== receipt.amountPaid ? (
+            {Math.round(receipt.subtotal * 100) !== Math.round(receipt.amountPaid * 100) ? (
               <div className="rc-totals">
                 <div className="rc-total"><span>{t('linesTotal')}</span><span><bdi>{money(receipt.subtotal)}</bdi></span></div>
                 <div className="rc-total rc-total--paid"><span>{t('amountPaid')}</span><b><bdi>{money(receipt.amountPaid)}</bdi></b></div>
@@ -217,8 +225,12 @@ export default function DineinReceiptScreen() {
             </div>
             <div className="rc-foot">
               {/* Clause de NATURE + mention de consultation — RESTAURÉES par revue
-                  adversariale : elles restent, discrètes, jamais retirées. */}
+                  adversariale : elles restent, discrètes, jamais retirées.
+                  linesNote (revue AW) : la parenthèse technique a quitté le TITRE
+                  (décision fondateur) mais la divulgation « lignes gelées au
+                  paiement » reste portée par le document — ici, discrète. */}
               <p className="rc-nature">{t('disclaimer')}</p>
+              <p>{t('linesNote')}</p>
               <p>{t('editedLine', { date: fmtDate(new Date().toISOString()) })}</p>
               <span className="rc-brand">Grubano</span>
             </div>

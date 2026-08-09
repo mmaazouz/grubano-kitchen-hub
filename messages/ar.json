@@ -4058,7 +4058,8 @@
       "sealLabel": "تمت تسوية الحساب",
       "bannerTable": "في المطعم · طاولة {name}",
       "bannerDinein": "في المطعم",
-      "linesCount": "{count, plural, zero {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}"
+      "linesCount": "{count, plural, zero {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
+      "linesNote": "تفاصيل الطلبات كما كانت عند الدفع."
     }
   },
   "menu": {

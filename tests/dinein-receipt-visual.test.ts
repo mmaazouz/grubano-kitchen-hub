@@ -16,37 +16,53 @@ const CSS = readFileSync(join(ROOT, 'app', '[locale]', 'eat', 'receipt', '[id]',
 const ORDERS = readFileSync(join(ROOT, 'app', '[locale]', 'eat', 'orders', 'page.tsx'), 'utf8')
 
 describe('AW — total des consommations : conditionnel selon la règle AQ', () => {
-  it('⭐ le bloc totaux ne se rend QUE quand subtotal diverge de amountPaid (égaux → le héros suffit, rien de répété)', () => {
-    // Le rendu des totaux est enveloppé dans le test de divergence…
-    expect(PAGE).toMatch(/receipt\.subtotal !== receipt\.amountPaid \? \([\s\S]{0,400}?rc-totals[\s\S]{0,400}?\) : null/)
-    // …et les deux libellés distincts y restent (le cas divergent affiche TOUJOURS les deux).
-    const totalsBlock = PAGE.match(/receipt\.subtotal !== receipt\.amountPaid \? \(([\s\S]*?)\) : null/)?.[1] ?? ''
+  // Revue AW : la divergence se juge EN CENTIMES (deux Float à un dixième de
+  // centime d'écart rendraient deux montants IDENTIQUES à l'écran sous deux
+  // libellés — la confusion exacte que la règle AQ évite).
+  const GUARD = /Math\.round\(receipt\.subtotal \* 100\) !== Math\.round\(receipt\.amountPaid \* 100\) \? \(([\s\S]*?)\) : null/
+
+  it('⭐ le bloc totaux ne se rend QUE quand subtotal diverge de amountPaid, comparés en CENTIMES', () => {
+    expect(PAGE).toMatch(GUARD)
+    const totalsBlock = PAGE.match(GUARD)?.[1] ?? ''
+    expect(totalsBlock).toContain('rc-totals')
     expect(totalsBlock).toContain("t('linesTotal')")
     expect(totalsBlock).toContain("t('amountPaid')")
     expect(totalsBlock).toContain('money(receipt.subtotal)')
   })
 
   it('⭐ le montant payé n’est plus rendu deux fois hors divergence : un seul money(amountPaid) hors du bloc conditionnel (le héros)', () => {
-    const outside = PAGE.replace(/receipt\.subtotal !== receipt\.amountPaid \? \(([\s\S]*?)\) : null/, '')
+    const outside = PAGE.replace(GUARD, '')
     expect((outside.match(/money\(receipt\.amountPaid\)/g) ?? []).length).toBe(1)
   })
 })
 
 describe('AW — la ville n’apparaît qu’une fois', () => {
-  it('⭐ l’adresse est dédupliquée (containment insensible casse/accents) et l’ancienne jointure aveugle a disparu', () => {
-    expect(PAGE).toMatch(/norm\(addr\)\.includes\(norm\(city\)\) \? addr : `\$\{addr\}, \$\{city\}`/)
+  it('⭐ l’adresse est dédupliquée par MOTS ENTIERS consécutifs (revue AW) et l’ancienne jointure aveugle a disparu', () => {
+    expect(PAGE).toMatch(/cw\.every\(\(w, j\) => aw\[i \+ j\] === w\)/)
     expect(PAGE).toContain("normalize('NFD')")
     expect(PAGE).not.toContain('[receipt.address, receipt.city].filter(Boolean).join')
+    expect(PAGE).not.toMatch(/norm\(addr\)\.includes\(norm\(city\)\)/) // le containment brut est interdit
   })
 
-  it('la logique elle-même : « 84100 Orange » + ville « Orange » → une seule occurrence ; ville absente → ajoutée', () => {
-    // Reproduit la fonction de la page (même classe de caractères combinants).
+  it('la logique : ville contenue → une fois ; ville absente → ajoutée ; JAMAIS avalée par un mot (Pau/Eu/Aÿ — contre-cas revue)', () => {
+    // Reproduit la fonction de la page (mêmes normalisation et fenêtre de mots).
     const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    const line = (addr: string, city: string) =>
-      norm(addr).includes(norm(city)) ? addr : `${addr}, ${city}`
+    const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
+    const line = (addr: string, city: string) => {
+      const aw = words(addr)
+      const cw = words(city)
+      const inAddr = cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
+      return inAddr ? addr : `${addr}, ${city}`
+    }
     expect(line('12 Rue de la République, 84100 Orange', 'Orange')).toBe('12 Rue de la République, 84100 Orange')
     expect(line('1 quai des Moulins, 34200 SETE', 'Sète')).toBe('1 quai des Moulins, 34200 SETE')
     expect(line('12 Rue des Lices', 'Avignon')).toBe('12 Rue des Lices, Avignon')
+    // Contre-cas de la revue : la ville n'est JAMAIS perdue par sous-chaîne.
+    expect(line('12 rue Paul Bert', 'Pau')).toBe('12 rue Paul Bert, Pau')
+    expect(line('Place du Vieux Marché', 'Eu')).toBe('Place du Vieux Marché, Eu')
+    expect(line('3 rue Lafayette', 'Aÿ')).toBe('3 rue Lafayette, Aÿ')
+    // Ville multi-mots détectée en séquence.
+    expect(line('5 quai de Southampton, 76600 Le Havre', 'Le Havre')).toBe('5 quai de Southampton, 76600 Le Havre')
   })
 })
 
@@ -55,7 +71,7 @@ describe('AW — les mentions restaurées par revue adversariale restent (discr�
     expect(PAGE).toContain("t('disclaimer')")
     expect(PAGE).toContain("t('editedLine'")
     // Discrètes : dans le pied (rc-foot), tailles CSS < corps de texte.
-    expect(PAGE).toMatch(/rc-foot[\s\S]{0,300}?t\('disclaimer'\)/)
+    expect(PAGE).toMatch(/rc-foot[\s\S]{0,700}?t\('disclaimer'\)/)
     expect(CSS).toMatch(/\.rc-foot p \{[^}]*font-size: 11\.5px/)
   })
 })
@@ -89,16 +105,23 @@ describe('AW — le VERT rendu à l’état payé (l’orange reste à l’addit
     expect(CSS).toMatch(/\.rc-blocks \{ display: grid; gap: 14px/)
   })
 
-  it('le titre du détail n’a plus de parenthèse technique + un compteur d’articles existe (×5 locales)', () => {
-    for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
+  it('le titre du détail a perdu SA parenthèse technique, la divulgation « gelé au paiement » reste portée ailleurs (×5)', () => {
+    // Revue AW : la règle vise LA parenthèse technique retirée du titre — pas
+    // toute parenthèse à jamais (une reformulation future reste possible) — ET
+    // la divulgation du caractère FIGÉ des lignes doit continuer d'exister sur
+    // le document (clé linesNote, rendue dans le pied).
+    const OLD = { fr: 'au moment du paiement', en: 'at the time of payment', es: 'en el momento del pago', it: 'al momento del pagamento', ar: 'عند الدفع' } as const
+    for (const loc of ['fr', 'en', 'es', 'it', 'ar'] as const) {
       const j = JSON.parse(readFileSync(join(ROOT, `messages/${loc}.json`), 'utf8'))
       const r = j.eat?.receipt
-      expect(r?.linesLabel, `${loc} linesLabel`).not.toMatch(/\(|\)/)
+      expect(r?.linesLabel, `${loc} linesLabel`).not.toContain(OLD[loc])
+      expect(r?.linesNote, `${loc} linesNote`).toContain(OLD[loc])
       for (const k of ['paidPill', 'heroLabel', 'sealLabel', 'bannerTable', 'bannerDinein', 'linesCount']) {
         expect(r?.[k], `${loc} ${k}`).toBeTruthy()
       }
     }
     expect(PAGE).toContain("t('linesCount', { count: receipt.lines.length })")
+    expect(PAGE).toContain("t('linesNote')")
   })
 })
 

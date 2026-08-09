@@ -197,6 +197,10 @@ describe('AU — la PAGE du reçu est épinglée (revue : la surface livrée n�
   const src = readFileSync(join(__dirname, '..', 'app', '[locale]', 'eat', 'receipt', '[id]', 'page.tsx'), 'utf8')
 
   it('⭐ les DEUX montants sous libellés distincts + clause de NATURE + mention datée AQ sont rendus', () => {
+    // NOTE (mission AW) : les totaux sont désormais CONDITIONNELS (règle AQ —
+    // rendus seulement quand subtotal diverge d'amountPaid, comparés en
+    // centimes). Ceci reste une garantie de PRÉSENCE AU SOURCE ; la garantie
+    // RUNTIME des deux sens vit dans tests/dinein-receipt-visual.test.ts.
     expect(src).toContain("t('linesTotal')")
     expect(src).toContain("t('amountPaid')")
     expect(src).toContain("t('disclaimer')")   // « ne constitue pas une pièce comptable officielle »

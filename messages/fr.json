@@ -4058,7 +4058,8 @@
       "sealLabel": "Addition réglée",
       "bannerTable": "Sur place · Table {name}",
       "bannerDinein": "Sur place",
-      "linesCount": "{count, plural, one {# article} other {# articles}}"
+      "linesCount": "{count, plural, one {# article} other {# articles}}",
+      "linesNote": "Détail des consommations tel qu'au moment du paiement."
     }
   },
   "menu": {

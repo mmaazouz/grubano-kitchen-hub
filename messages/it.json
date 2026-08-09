@@ -4058,7 +4058,8 @@
       "sealLabel": "Conto saldato",
       "bannerTable": "Al tavolo · Tavolo {name}",
       "bannerDinein": "Al tavolo",
-      "linesCount": "{count, plural, one {# articolo} other {# articoli}}"
+      "linesCount": "{count, plural, one {# articolo} other {# articoli}}",
+      "linesNote": "Dettaglio delle consumazioni come al momento del pagamento."
     }
   },
   "menu": {
