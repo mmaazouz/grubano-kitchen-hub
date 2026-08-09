@@ -238,7 +238,7 @@ async function pdfVisibleText(bytes: Uint8Array): Promise<string> {
   const { inflateSync } = await import('node:zlib')
   const buf = Buffer.from(bytes)
   const decodeHex = (s: string) =>
-    [...s.matchAll(/<([0-9A-Fa-f]+)>/g)].map((m) => Buffer.from(m[1], 'hex').toString('latin1')).join('\n')
+    Array.from(s.matchAll(/<([0-9A-Fa-f]+)>/g), (m) => Buffer.from(m[1], 'hex').toString('latin1')).join('\n')
   let out = buf.toString('latin1') // métadonnées (Info dict) + flux non compressés
   out += '\n' + decodeHex(out)
   let idx = 0
