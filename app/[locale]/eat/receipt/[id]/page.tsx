@@ -138,9 +138,10 @@ export default function DineinReceiptScreen() {
             <span className="rc-paid__amount"><bdi>{money(receipt.amountPaid)}</bdi></span>
           </div>
 
-          {/* Ponctuation dans la clé (localisée) ; code isolé LTR + gras. */}
+          {/* Ponctuation dans la clé (localisée) ; code isolé LTR + gras via le
+              tag <c> du message (t.rich n'accepte que des valeurs scalaires). */}
           <div className="rc-session">
-            {t.rich('sessionLabel', { code: <b><bdi>{receipt.sessionCode}</bdi></b> })}
+            {t.rich('sessionLabel', { code: receipt.sessionCode, c: (chunks) => <b><bdi>{chunks}</bdi></b> })}
           </div>
 
           {/* Détail des consommations — instantané historique (lignes gelées). */}
@@ -151,7 +152,7 @@ export default function DineinReceiptScreen() {
                 <li key={i}>
                   <span className="rc-line__label">
                     {l.quantity} × {l.name}{' '}
-                    <small>{t.rich('unitPrice', { price: <bdi>{money(l.unitPrice)}</bdi> })}</small>
+                    <small>{t.rich('unitPrice', { price: money(l.unitPrice), m: (chunks) => <bdi>{chunks}</bdi> })}</small>
                   </span>
                   <span className="rc-line__amount"><bdi>{money(l.unitPrice * l.quantity)}</bdi></span>
                 </li>
