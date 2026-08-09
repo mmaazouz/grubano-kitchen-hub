@@ -3224,7 +3224,9 @@
       "resCancelBusy": "Annulation…",
       "resCancelError": "L'annulation n'a pas abouti. Réessayez ou contactez le restaurant.",
       "resDepositAuthorizedArrived": "Empreinte de {amount} pré-autorisée — rien n'est débité ; elle est libérée au règlement de l'addition.",
-      "resDepositAuthorizedPending": "Empreinte de {amount} encore pré-autorisée — la libération est en cours, rien n'est débité."
+      "resDepositAuthorizedPending": "Empreinte de {amount} encore pré-autorisée — la libération est en cours, rien n'est débité.",
+      "paymentProof": "Justificatif de paiement",
+      "paymentProofError": "Le justificatif n’a pas pu être généré — aucun fichier n’a été créé. Réessayez ; en cas d’échec répété, le support peut vérifier votre paiement."
     },
     "postDelivery": {
       "close": "Fermer",
