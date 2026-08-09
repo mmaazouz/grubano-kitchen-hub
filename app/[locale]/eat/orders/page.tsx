@@ -164,10 +164,6 @@ export default function OrdersPage() {
   const [query, setQuery] = useState('')
   // V5-1 — bumped after a successful reservation cancel so the list refetches.
   const [reloadTick, setReloadTick] = useState(0)
-  // Mission AR — notices d'échec du justificatif, par carte (id de ticket).
-  // Déclaré ICI avec les autres hooks : plus bas, il tombait après un return
-  // conditionnel (rules-of-hooks, attrapé par le build).
-  const [proofErrs, setProofErrs] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -304,38 +300,6 @@ export default function OrdersPage() {
   const finalLabel = (c: Card) =>
     c.status === 'cancelled' ? t('finalCancelled') : c.kind === 'pickup' ? t('finalPickedUp') : c.kind === 'dinein' ? t('finalPaid') : t('finalDelivered')
 
-  // ── Mission AR — justificatif de paiement (addition dine-in PAYÉE) ──────────
-  // fetch → blob : un échec ne produit JAMAIS de fichier — notice honnête avec
-  // des issues réelles (réessayer ; le paiement reste vérifiable par le support),
-  // rendue INLINE dans la carte avec le style d'alerte existant (revue
-  // adversariale : le toast global stylait l'échec en info neutre — heuristique
-  // ToastBridge insensible aux mots accentués). Le message d'erreur SERVEUR
-  // (français, règle projet) est affiché tel quel quand il existe. L'état
-  // proofErrs est déclaré en tête de composant (rules-of-hooks).
-  async function downloadPaymentProof(ticketId: string) {
-    setProofErrs((p) => ({ ...p, [ticketId]: '' }))
-    try {
-      const res = await fetch(`/api/eat/tickets/${ticketId}/payment-proof`)
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        setProofErrs((p) => ({ ...p, [ticketId]: (body?.error as string) || t('paymentProofError') }))
-        return
-      }
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
-        ?? 'justificatif-paiement.pdf'
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-    } catch {
-      setProofErrs((p) => ({ ...p, [ticketId]: t('paymentProofError') }))
-    }
-  }
-
   const PastCard = ({ c, i }: { c: Card; i: number }) => (
     <article className="o-card">
       <div className="o-card__top">
@@ -351,19 +315,12 @@ export default function OrdersPage() {
       <div className="statusline" style={{ justifyContent: 'space-between', paddingTop: 2 }}>
         <span className="total" style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}><small>{t('total')}</small><b style={{ fontSize: 16 }}>{formatEuros(c.total, locale)}</b></span>
       </div>
-      {/* Mission AR — notice d'échec inline (aucun fichier n'a été produit). */}
-      {c.kind === 'dinein' && proofErrs[c.id] ? (
-        <div className="res-cancel-err" role="alert">{proofErrs[c.id]}</div>
-      ) : null}
       <div className="past-foot">
-        <Link href={c.kind === 'dinein' && c.tableId ? `/t/${c.tableId}` : `/eat/track/${c.trackingId}`} className="btn-sm btn-sm--line"><span className="ms" aria-hidden="true">receipt_long</span>{t('receipt')}</Link>
-        {/* Mission AR — uniquement une addition dine-in PAYÉE (le serveur re-juge
-            propriété + statut ; walk-in : jamais de carte ici, donc jamais de bouton). */}
-        {c.kind === 'dinein' && c.status === 'paid' && (
-          <button className="btn-sm btn-sm--line" type="button" onClick={() => downloadPaymentProof(c.id)}>
-            <span className="ms" aria-hidden="true">download</span>{t('paymentProof')}
-          </button>
-        )}
+        {/* Mission AU — le « Reçu » dine-in mène à la surface PRIVÉE de reçu
+            (le serveur re-juge propriété AVANT statut ; jamais /t/[tableId],
+            qui est publique et ne sert que les tickets ouverts). La branche
+            delivery/pickup est STRICTEMENT inchangée. */}
+        <Link href={c.kind === 'dinein' ? `/eat/receipt/${c.id}` : `/eat/track/${c.trackingId}`} className="btn-sm btn-sm--line"><span className="ms" aria-hidden="true">receipt_long</span>{t('receipt')}</Link>
         <button className="btn-sm btn-sm--solid" type="button" onClick={() => reorder(c)}><span className="ms" aria-hidden="true">refresh</span>{t('reorder')}</button>
       </div>
     </article>

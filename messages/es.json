@@ -4035,6 +4035,24 @@
       "confirmTakenBody": "Esta dirección acaba de asociarse a otra cuenta. Tu correo electrónico no se ha cambiado.",
       "confirmToAuth": "Iniciar sesión",
       "confirmToAccount": "Ir a mi cuenta"
+    },
+    "receipt": {
+      "title": "Recibo",
+      "back": "Volver",
+      "retry": "Reintentar",
+      "loadError": "No se pudo cargar el recibo — vuelve a intentarlo; el soporte puede verificar tu pago.",
+      "officialName": "Razón social: {name}",
+      "table": "Mesa: {name}",
+      "paidLine": "Cuenta saldada el {date} a las {time}",
+      "sessionLabel": "Sesión / reserva: <c>{code}</c>",
+      "linesLabel": "Consumiciones (en el momento del pago)",
+      "unitPrice": "<m>{price}</m> la unidad",
+      "linesTotal": "Total de consumiciones",
+      "amountPaid": "Importe pagado",
+      "editedLine": "Consultado el {date} — los datos del establecimiento y de la mesa son los conocidos en esta fecha.",
+      "disclaimer": "Solo prueba de pago — este documento no constituye un registro contable oficial.",
+      "signIn": "Inicia sesión para ver este recibo.",
+      "signInCta": "Iniciar sesión"
     }
   },
   "menu": {
