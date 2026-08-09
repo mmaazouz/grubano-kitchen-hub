@@ -4044,12 +4044,15 @@
       "officialName": "Raison sociale : {name}",
       "table": "Table : {name}",
       "paidLine": "Addition réglée le {date} à {time}",
-      "sessionLabel": "Session / réservation",
+      "sessionLabel": "Session / réservation : {code}",
       "linesLabel": "Consommations (au moment du paiement)",
       "unitPrice": "à {price} l’unité",
       "linesTotal": "Total des consommations",
       "amountPaid": "Montant payé",
-      "editedLine": "Consulté le {date} — les coordonnées de l’établissement et de la table sont celles connues à cette date."
+      "editedLine": "Consulté le {date} — les coordonnées de l’établissement et de la table sont celles connues à cette date.",
+      "disclaimer": "Preuve de paiement uniquement — ce document ne constitue pas une pièce comptable officielle.",
+      "signIn": "Connectez-vous pour consulter ce reçu.",
+      "signInCta": "Se connecter"
     }
   },
   "menu": {

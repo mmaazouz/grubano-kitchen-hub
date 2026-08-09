@@ -170,9 +170,10 @@ describe('AU — carte « Mes commandes » : Reçu redirigé, Justificatif retir
 })
 
 describe('AU — i18n : eat.receipt ×5, clés du justificatif conservées (règle « aucune clé supprimée »)', () => {
-  it('⭐ les 13 clés eat.receipt existent dans les 5 locales, placeholders préservés, et paymentProof/paymentProofError restent (mortes, documentées)', () => {
+  it('⭐ les 16 clés eat.receipt existent dans les 5 locales, placeholders préservés, et paymentProof/paymentProofError restent (mortes, documentées)', () => {
     const NEEDED = ['title', 'back', 'retry', 'loadError', 'officialName', 'table', 'paidLine',
-      'sessionLabel', 'linesLabel', 'unitPrice', 'linesTotal', 'amountPaid', 'editedLine']
+      'sessionLabel', 'linesLabel', 'unitPrice', 'linesTotal', 'amountPaid', 'editedLine',
+      'disclaimer', 'signIn', 'signInCta']
     for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
       const m = JSON.parse(readFileSync(join(__dirname, '..', 'messages', `${loc}.json`), 'utf8'))
       for (const k of NEEDED) expect(m.eat.receipt?.[k], `${loc}: eat.receipt.${k}`).toBeTruthy()
@@ -180,9 +181,61 @@ describe('AU — i18n : eat.receipt ×5, clés du justificatif conservées (règ
       expect(m.eat.receipt.paidLine).toContain('{time}')
       expect(m.eat.receipt.editedLine).toContain('{date}')
       expect(m.eat.receipt.unitPrice).toContain('{price}')
+      // Ponctuation LOCALISÉE dans la clé (revue : plus de « : » codé en dur).
+      expect(m.eat.receipt.sessionLabel).toContain('{code}')
       // Clés AR conservées mortes (jamais supprimer une clé — précédent sortRating).
       expect(m.eat.orders.paymentProof).toBeTruthy()
       expect(m.eat.orders.paymentProofError).toBeTruthy()
     }
+    // IT : forme de politesse Lei homogène dans le bloc (revue : « Riprova » cassait le registre).
+    const it_ = JSON.parse(readFileSync(join(__dirname, '..', 'messages', 'it.json'), 'utf8'))
+    expect(it_.eat.receipt.retry).toBe('Riprovi')
+  })
+})
+
+describe('AU — la PAGE du reçu est épinglée (revue : la surface livrée n’était couverte par rien)', () => {
+  const src = readFileSync(join(__dirname, '..', 'app', '[locale]', 'eat', 'receipt', '[id]', 'page.tsx'), 'utf8')
+
+  it('⭐ les DEUX montants sous libellés distincts + clause de NATURE + mention datée AQ sont rendus', () => {
+    expect(src).toContain("t('linesTotal')")
+    expect(src).toContain("t('amountPaid')")
+    expect(src).toContain("t('disclaimer')")   // « ne constitue pas une pièce comptable officielle »
+    expect(src).toContain("t('editedLine'")    // date de consultation distincte + mention
+    // amountPaid affiché TEL QUEL — jamais une somme de lignes à sa place.
+    expect(src).toContain('money(receipt.amountPaid)')
+    expect(src).toContain('money(receipt.subtotal)')
+  })
+
+  it('⭐ RTL : montants isolés en <bdi> (règle 2 gb-rtl) et flèche retour miroitée ms-flip (règle 3)', () => {
+    expect((src.match(/<bdi>/g) ?? []).length).toBeGreaterThanOrEqual(5) // vedette, unité, ligne, 2 totaux (+ code)
+    expect(src).toContain('className="ms ms-flip rc-back"')
+  })
+
+  it('⭐ session : fetch gaté authenticated + PURGE du reçu si la session tombe ; id encodé ; erreur AVANT reçu (jamais un reçu partiel)', () => {
+    expect(src).toContain("authStatus === 'authenticated'")
+    expect(src).toContain("authStatus === 'unauthenticated'")
+    expect(src).toContain('setReceipt(null)')
+    expect(src).toContain('encodeURIComponent(id)')
+    expect(src.indexOf(': error ?')).toBeGreaterThan(-1)
+    expect(src.indexOf(': error ?')).toBeLessThan(src.indexOf(': receipt ?')) // ordre des états
+  })
+
+  it('argent via lib/format-money (locale validée) — devise inattendue affichée telle quelle, jamais substituée', () => {
+    expect(src).toContain("from '@/lib/format-money'")
+    expect(src).toContain('formatEuros(n, locale)')
+    expect(src).not.toContain("|| 'eur'") // plus d'euro inventé
+    expect(src).toContain('cur.toUpperCase()')
+  })
+
+  it('dates : mois en toutes lettres (jamais de tout-numérique ambigu) + fuseau Europe/Paris', () => {
+    expect(src).toContain("month: 'long'")
+    expect(src).not.toMatch(/month:\s*'2-digit'/)
+    expect(src).toContain("'Europe/Paris'")
+  })
+
+  it('aucune ressource distante (page + css)', () => {
+    expect(src).not.toMatch(/https?:\/\//)
+    const css = readFileSync(join(__dirname, '..', 'app', '[locale]', 'eat', 'receipt', '[id]', 'receipt.css'), 'utf8')
+    expect(css).not.toMatch(/url\(|@import|@font-face|https?:\/\//)
   })
 })

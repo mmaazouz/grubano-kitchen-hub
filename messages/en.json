@@ -4044,12 +4044,15 @@
       "officialName": "Registered name: {name}",
       "table": "Table: {name}",
       "paidLine": "Bill settled on {date} at {time}",
-      "sessionLabel": "Session / reservation",
+      "sessionLabel": "Session / reservation: {code}",
       "linesLabel": "Items (at the time of payment)",
       "unitPrice": "{price} each",
       "linesTotal": "Items total",
       "amountPaid": "Amount paid",
-      "editedLine": "Viewed on {date} — the establishment and table details are those known on this date."
+      "editedLine": "Viewed on {date} — the establishment and table details are those known on this date.",
+      "disclaimer": "Proof of payment only — this document is not an official accounting record.",
+      "signIn": "Sign in to view this receipt.",
+      "signInCta": "Sign in"
     }
   },
   "menu": {
