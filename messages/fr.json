@@ -4035,6 +4035,21 @@
       "confirmTakenBody": "Cette adresse vient d'être associée à un autre compte. Votre e-mail n'a pas été changé.",
       "confirmToAuth": "Se connecter",
       "confirmToAccount": "Aller à mon compte"
+    },
+    "receipt": {
+      "title": "Reçu",
+      "back": "Retour",
+      "retry": "Réessayer",
+      "loadError": "Le reçu n’a pas pu être chargé — réessayez ; le support peut vérifier votre paiement.",
+      "officialName": "Raison sociale : {name}",
+      "table": "Table : {name}",
+      "paidLine": "Addition réglée le {date} à {time}",
+      "sessionLabel": "Session / réservation",
+      "linesLabel": "Consommations (au moment du paiement)",
+      "unitPrice": "à {price} l’unité",
+      "linesTotal": "Total des consommations",
+      "amountPaid": "Montant payé",
+      "editedLine": "Consulté le {date} — les coordonnées de l’établissement et de la table sont celles connues à cette date."
     }
   },
   "menu": {

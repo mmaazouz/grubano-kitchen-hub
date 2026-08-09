@@ -4035,6 +4035,21 @@
       "confirmTakenBody": "This address has just been linked to another account. Your email has not been changed.",
       "confirmToAuth": "Sign in",
       "confirmToAccount": "Go to my account"
+    },
+    "receipt": {
+      "title": "Receipt",
+      "back": "Back",
+      "retry": "Try again",
+      "loadError": "The receipt could not be loaded — try again; support can verify your payment.",
+      "officialName": "Registered name: {name}",
+      "table": "Table: {name}",
+      "paidLine": "Bill settled on {date} at {time}",
+      "sessionLabel": "Session / reservation",
+      "linesLabel": "Items (at the time of payment)",
+      "unitPrice": "{price} each",
+      "linesTotal": "Items total",
+      "amountPaid": "Amount paid",
+      "editedLine": "Viewed on {date} — the establishment and table details are those known on this date."
     }
   },
   "menu": {
