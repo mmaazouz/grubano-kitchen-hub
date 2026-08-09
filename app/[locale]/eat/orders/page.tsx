@@ -164,6 +164,10 @@ export default function OrdersPage() {
   const [query, setQuery] = useState('')
   // V5-1 — bumped after a successful reservation cancel so the list refetches.
   const [reloadTick, setReloadTick] = useState(0)
+  // Mission AR — notices d'échec du justificatif, par carte (id de ticket).
+  // Déclaré ICI avec les autres hooks : plus bas, il tombait après un return
+  // conditionnel (rules-of-hooks, attrapé par le build).
+  const [proofErrs, setProofErrs] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -306,8 +310,8 @@ export default function OrdersPage() {
   // rendue INLINE dans la carte avec le style d'alerte existant (revue
   // adversariale : le toast global stylait l'échec en info neutre — heuristique
   // ToastBridge insensible aux mots accentués). Le message d'erreur SERVEUR
-  // (français, règle projet) est affiché tel quel quand il existe.
-  const [proofErrs, setProofErrs] = useState<Record<string, string>>({})
+  // (français, règle projet) est affiché tel quel quand il existe. L'état
+  // proofErrs est déclaré en tête de composant (rules-of-hooks).
   async function downloadPaymentProof(ticketId: string) {
     setProofErrs((p) => ({ ...p, [ticketId]: '' }))
     try {
