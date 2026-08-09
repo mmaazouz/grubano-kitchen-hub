@@ -10,15 +10,17 @@ import './receipt.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
 
-// ── /eat/receipt/[id] — Mission AU : reçu post-paiement dine-in ────────────────
+// ── /eat/receipt/[id] — reçu post-paiement dine-in (AU ; rendu AW) ─────────────
 // SURFACE PRIVÉE (l'API re-juge propriété AVANT statut — un tiers n'apprend
 // jamais si l'addition est payée). HTML mobile d'abord, pensé pour la CAPTURE
-// D'ÉCRAN : tout le reçu — clause de nature comprise — tient dans une carte.
-// Hiérarchie AQ : établissement · table · date-heure du PAIEMENT · détail des
-// consommations · quantités · prix unitaires · montant payé · devise ·
-// « Session / réservation ».
-//   • amountPaid = référence (jamais recalculé) ; le total STOCKÉ des lignes est
-//     affiché sous un libellé DISTINCT — toujours les deux, aucune explication.
+// D'ÉCRAN. Rendu = la conception AQ en CINQ BLOCS SÉPARÉS (mission AW) :
+// bannière d'établissement (navy, pastille verte PAYÉE) · montant en héros
+// (dégradé vert — le VERT est l'état acquis, l'ORANGE l'action en cours) ·
+// sceau « addition réglée » · carte de détail (compteur + lignes) · méta à
+// icônes + mentions discrètes.
+//   • amountPaid = référence (jamais recalculé) ; le total STOCKÉ des lignes
+//     n'apparaît QUE s'il DIVERGE du montant payé (règle AQ) — alors les deux
+//     montants s'affichent sous libellés distincts, aucune explication.
 //   • Paiement = HISTORIQUE (« Addition réglée le … », Europe/Paris, mois en
 //     toutes lettres — jamais de date tout-numérique ambiguë en anglais) ;
 //     coordonnées = ACTUELLES, date de consultation distincte + mention (AQ).
@@ -101,6 +103,23 @@ export default function DineinReceiptScreen() {
   const fmtTime = (iso: string) =>
     new Intl.DateTimeFormat(intlLocale, { timeZone: PARIS, hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 
+  // Adresse SANS ville dupliquée (mission AW). Constat : Restaurant.address est
+  // saisi en adresse complète (« 12 Rue de la République, 84100 Orange ») et
+  // Restaurant.city la répète (« Orange ») — la concaténation aveugle affichait
+  // la ville deux fois. La ville n'est ajoutée QUE si l'adresse ne la porte pas
+  // déjà (comparaison insensible à la casse et aux accents) — aucune information
+  // n'est perdue : une adresse sans ville garde sa ville, une adresse complète
+  // n'est plus doublée. AFFICHAGE seul — la route sert les deux champs tels quels.
+  const addressLine = (() => {
+    if (!receipt) return null
+    const addr = (receipt.address ?? '').trim()
+    const city = (receipt.city ?? '').trim()
+    if (!addr) return city || null
+    if (!city) return addr
+    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    return norm(addr).includes(norm(city)) ? addr : `${addr}, ${city}`
+  })()
+
   return (
     <div className="gb gb-receipt">
       <div className="rc-top">
@@ -121,57 +140,88 @@ export default function DineinReceiptScreen() {
           <button type="button" className="gb-btn gb-btn--ghost" onClick={load}>{t('retry')}</button>
         </div>
       ) : receipt ? (
-        <article className="rc-card">
-          {/* Établissement + table — données ACTUELLES (mention datée en pied). */}
-          <header className="rc-estab">
-            <b>{receipt.restaurantName}</b>
-            {receipt.officialName ? <span className="rc-muted">{t('officialName', { name: receipt.officialName })}</span> : null}
-            {(receipt.address || receipt.city) ? (
-              <span className="rc-muted">{[receipt.address, receipt.city].filter(Boolean).join(', ')}</span>
-            ) : null}
-            {receipt.tableName ? <span className="rc-muted">{t('table', { name: receipt.tableName })}</span> : null}
+        <article className="rc-blocks">
+          {/* ── 1. BANNIÈRE D'ÉTABLISSEMENT (AQ) — navy en dégradé (token panel-ink
+              existant), icône table locale, nom, « Sur place · Table X », pastille
+              verte PAYÉE. L'ancrage : où on est, dans quel état. Données ACTUELLES
+              (mention datée en pied, inchangée). */}
+          <header className="rc-banner">
+            <span className="ms rc-banner__ic" aria-hidden="true">table_restaurant</span>
+            <div className="rc-banner__id">
+              <b>{receipt.restaurantName}</b>
+              <span>{receipt.tableName ? t('bannerTable', { name: receipt.tableName }) : t('bannerDinein')}</span>
+            </div>
+            <span className="rc-banner__pill">{t('paidPill')}</span>
           </header>
 
-          {/* Bloc dominant — date-heure du PAIEMENT (historique) + montant payé. */}
-          <div className="rc-paid">
-            <span className="rc-paid__when">{t('paidLine', { date: fmtDate(receipt.paidAt), time: fmtTime(receipt.paidAt) })}</span>
-            <span className="rc-paid__amount"><bdi>{money(receipt.amountPaid)}</bdi></span>
+          {/* ── 2. MONTANT EN HÉROS (AQ) — dégradé VERT (état acquis — l'orange est
+              réservé à l'addition EN COURS), label au-dessus en petites capitales,
+              somme dominante, date-heure du PAIEMENT en sous-titre discret.
+              amountPaid servi par l'API, jamais recalculé. */}
+          <div className="rc-hero">
+            <span className="rc-hero__label">{t('heroLabel')}</span>
+            <b className="rc-hero__amount"><bdi>{money(receipt.amountPaid)}</bdi></b>
+            <span className="rc-hero__when">{t('paidLine', { date: fmtDate(receipt.paidAt), time: fmtTime(receipt.paidAt) })}</span>
           </div>
 
-          {/* Ponctuation dans la clé (localisée) ; code isolé LTR + gras via le
-              tag <c> du message (t.rich n'accepte que des valeurs scalaires). */}
-          <div className="rc-session">
-            {t.rich('sessionLabel', { code: receipt.sessionCode, c: (chunks) => <b><bdi>{chunks}</bdi></b> })}
+          {/* ── 3. SCEAU (AQ) — « ─── ✓ addition réglée ─── », filets en CSS. */}
+          <div className="rc-seal">
+            <span className="ms" aria-hidden="true">check</span>{t('sealLabel')}
           </div>
 
-          {/* Détail des consommations — instantané historique (lignes gelées). */}
-          <div className="rc-lines">
-            <span className="rc-lines__head">{t('linesLabel')}</span>
+          {/* ── 4. CARTE DE DÉTAIL (AQ) — en-tête icône + titre + COMPTEUR, puis les
+              lignes : quantité en accent, nom, prix unitaire en sous-ligne, prix de
+              ligne à droite. Lignes GELÉES au paiement (instantané historique). */}
+          <section className="rc-lines">
+            <header className="rc-lines__head">
+              <span className="ms" aria-hidden="true">receipt_long</span>
+              <span className="rc-lines__title">{t('linesLabel')}</span>
+              <span className="rc-lines__count">{t('linesCount', { count: receipt.lines.length })}</span>
+            </header>
             <ul>
               {receipt.lines.map((l, i) => (
                 <li key={i}>
+                  <span className="rc-line__qty">{l.quantity}×</span>
                   <span className="rc-line__label">
-                    {l.quantity} × {l.name}{' '}
+                    {l.name}
                     <small>{t.rich('unitPrice', { price: money(l.unitPrice), m: (chunks) => <bdi>{chunks}</bdi> })}</small>
                   </span>
                   <span className="rc-line__amount"><bdi>{money(l.unitPrice * l.quantity)}</bdi></span>
                 </li>
               ))}
             </ul>
-          </div>
+            {/* Règle AQ : « Total des consommations » n'apparaît QUE s'il DIVERGE du
+                montant payé — égaux, le héros suffit et rien n'est répété. Les deux
+                montants restent sous libellés distincts, jamais d'explication ;
+                amountPaid reste la référence, jamais recalculé. */}
+            {receipt.subtotal !== receipt.amountPaid ? (
+              <div className="rc-totals">
+                <div className="rc-total"><span>{t('linesTotal')}</span><span><bdi>{money(receipt.subtotal)}</bdi></span></div>
+                <div className="rc-total rc-total--paid"><span>{t('amountPaid')}</span><b><bdi>{money(receipt.amountPaid)}</bdi></b></div>
+              </div>
+            ) : null}
+          </section>
 
-          {/* Les DEUX montants, libellés distincts — jamais d'explication.
-              amountPaid est la référence servie par l'API, jamais recalculé. */}
-          <div className="rc-totals">
-            <div className="rc-total"><span>{t('linesTotal')}</span><span><bdi>{money(receipt.subtotal)}</bdi></span></div>
-            <div className="rc-total rc-total--paid"><span>{t('amountPaid')}</span><b><bdi>{money(receipt.amountPaid)}</bdi></b></div>
-          </div>
-
-          <footer className="rc-foot">
-            {/* Clause de NATURE (héritée du PDF — une capture doit la porter). */}
-            <p className="rc-nature">{t('disclaimer')}</p>
-            <p>{t('editedLine', { date: fmtDate(new Date().toISOString()) })}</p>
-            <span className="rc-brand">Grubano</span>
+          {/* ── 5. LIGNES DE MÉTA à icônes (AQ), puis mentions de bas de carte. */}
+          <footer className="rc-meta">
+            {addressLine ? (
+              <div className="rc-meta__row"><span className="ms" aria-hidden="true">location_on</span><span>{addressLine}</span></div>
+            ) : null}
+            {receipt.officialName ? (
+              <div className="rc-meta__row"><span className="ms" aria-hidden="true">storefront</span><span>{t('officialName', { name: receipt.officialName })}</span></div>
+            ) : null}
+            <div className="rc-meta__row">
+              <span className="ms" aria-hidden="true">confirmation_number</span>
+              {/* Ponctuation dans la clé ; code isolé LTR + gras via le tag <c>. */}
+              <span>{t.rich('sessionLabel', { code: receipt.sessionCode, c: (chunks) => <b><bdi>{chunks}</bdi></b> })}</span>
+            </div>
+            <div className="rc-foot">
+              {/* Clause de NATURE + mention de consultation — RESTAURÉES par revue
+                  adversariale : elles restent, discrètes, jamais retirées. */}
+              <p className="rc-nature">{t('disclaimer')}</p>
+              <p>{t('editedLine', { date: fmtDate(new Date().toISOString()) })}</p>
+              <span className="rc-brand">Grubano</span>
+            </div>
           </footer>
         </article>
       ) : null}

@@ -4045,14 +4045,20 @@
       "table": "Mesa: {name}",
       "paidLine": "Cuenta saldada el {date} a las {time}",
       "sessionLabel": "Sesión / reserva: <c>{code}</c>",
-      "linesLabel": "Consumiciones (en el momento del pago)",
+      "linesLabel": "Consumiciones",
       "unitPrice": "<m>{price}</m> la unidad",
       "linesTotal": "Total de consumiciones",
       "amountPaid": "Importe pagado",
       "editedLine": "Consultado el {date} — los datos del establecimiento y de la mesa son los conocidos en esta fecha.",
       "disclaimer": "Solo prueba de pago — este documento no constituye un registro contable oficial.",
       "signIn": "Inicia sesión para ver este recibo.",
-      "signInCta": "Iniciar sesión"
+      "signInCta": "Iniciar sesión",
+      "paidPill": "Pagada",
+      "heroLabel": "Total pagado",
+      "sealLabel": "Cuenta pagada",
+      "bannerTable": "En sala · Mesa {name}",
+      "bannerDinein": "En sala",
+      "linesCount": "{count, plural, one {# artículo} other {# artículos}}"
     }
   },
   "menu": {
