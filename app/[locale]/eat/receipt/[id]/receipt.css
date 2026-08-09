@@ -1,6 +1,15 @@
-/* ── /eat/receipt/[id] — Mission AU : reçu post-paiement dine-in ──────────────
-   Mobile d'abord, pensé pour la CAPTURE D'ÉCRAN : une carte contrastée, une
-   colonne, aucune dépendance externe (tokens gb- + Material Symbols locaux). */
+/* ── /eat/receipt/[id] — reçu post-paiement dine-in (AU ; rendu AW) ───────────
+   Conception AQ : CINQ BLOCS SÉPARÉS avec respiration — pas une carte unique.
+   Le VERT (tokens --gb-success, thème-aware) porte l'état ACQUIS ; l'orange
+   accent reste réservé à l'addition EN COURS (/t). Mobile d'abord, pensé pour
+   la CAPTURE D'ÉCRAN. Aucune dépendance externe (tokens gb- + Material Symbols
+   locaux). Contrastes mesurés (fonds nouveaux) :
+     bannière : #FFFFFF sur #0F2742 (panel-ink) ≈ 15,9:1 · sous-ligne #AFC0D6
+       ≈ 8,8:1 · pastille #235C3A sur #EAF7EF ≈ 7,6:1 ;
+     héros (clair) : label/date #235C3A sur #EAF7EF→#D9F0E3 ≈ 7,6:1 mini ;
+       montant 36 px/800 #1E9E57 ≈ 3,5:1 (grand texte ≥ 3:1) — et aucun texte
+       porteur de montant sous 12,5 px (date 13 px, labels 11,5 px sans montant).
+   Thème sombre : les mêmes tokens --gb-success-* redéfinis par gb-tokens. */
 
 .gb-receipt {
   max-width: 480px;
@@ -37,53 +46,107 @@
 }
 .gb-receipt .rc-error p { margin: 0; font-size: 14px; }
 
-/* La carte-reçu : tout le contenu utile tient dedans (capture d'écran). */
-.gb-receipt .rc-card {
+/* ── Les 5 blocs et leur RESPIRATION (le geste principal de AW) ─────────────── */
+.gb-receipt .rc-blocks { display: grid; gap: 14px; }
+
+/* ── 1. Bannière d'établissement — navy en dégradé (token existant), ancrage. */
+.gb-receipt .rc-banner {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--gb-panel-ink, linear-gradient(150deg, #0F2742, #16395A 70%, #1A2C3F));
+  color: var(--gb-on-ink, #fff);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.gb-receipt .rc-banner__ic { font-size: 26px; flex-shrink: 0; opacity: 0.92; }
+.gb-receipt .rc-banner__id { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.gb-receipt .rc-banner__id b { font-size: 16.5px; overflow-wrap: anywhere; }
+.gb-receipt .rc-banner__id span { font-size: 12.5px; color: var(--gb-on-ink-muted, #AFC0D6); }
+.gb-receipt .rc-banner__pill {
+  flex-shrink: 0;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--gb-success-fg, #235C3A);
+  background: var(--gb-success-bg, #EAF7EF);
+  border-radius: 999px; padding: 5px 11px;
+}
+
+/* ── 2. Montant en héros — dégradé VERT, label au-dessus, somme dominante,
+       date-heure du paiement en sous-titre discret. */
+.gb-receipt .rc-hero {
+  display: grid; gap: 3px; justify-items: center; text-align: center;
+  border-radius: 16px;
+  padding: 18px 16px 16px;
+  background: linear-gradient(160deg,
+    var(--gb-success-bg, #EAF7EF),
+    color-mix(in srgb, var(--gb-success, #1E9E57) 16%, var(--gb-success-bg, #EAF7EF)));
+  border: 1px solid var(--gb-success-bd, #CDEBD8);
+}
+.gb-receipt .rc-hero__label {
+  font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--gb-success-fg, #235C3A);
+}
+.gb-receipt .rc-hero__amount {
+  font-size: 36px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15;
+  color: var(--gb-success, #1E9E57);
+  overflow-wrap: anywhere; /* montant démesuré : la colonne 480px ne déborde jamais (capture) */
+}
+.gb-receipt .rc-hero__when { font-size: 13px; color: var(--gb-success-fg, #235C3A); opacity: 0.85; }
+
+/* ── 3. Sceau — « ─── ✓ addition réglée ─── », filets en CSS pur. */
+.gb-receipt .rc-seal {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--gb-success, #1E9E57);
+}
+.gb-receipt .rc-seal .ms { font-size: 15px; }
+.gb-receipt .rc-seal::before,
+.gb-receipt .rc-seal::after {
+  content: ''; flex: 1; height: 1px;
+  background: color-mix(in srgb, var(--gb-success, #1E9E57) 38%, transparent);
+}
+
+/* ── 4. Carte de détail — en-tête icône + titre + compteur, puis les lignes :
+       quantité en accent, nom, prix unitaire en sous-ligne, prix de ligne à
+       droite. */
+.gb-receipt .rc-lines {
   background: var(--gb-surface, #fff);
   border: 1px solid var(--gb-border, #e5e7eb);
   border-radius: 16px;
-  padding: 18px 16px;
-  display: grid;
-  gap: 14px;
+  padding: 14px 16px;
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
 }
-
-.gb-receipt .rc-estab { display: grid; gap: 2px; min-width: 0; }
-.gb-receipt .rc-estab b { font-size: 17px; overflow-wrap: anywhere; }
-.gb-receipt .rc-muted { font-size: 12.5px; opacity: 0.72; overflow-wrap: anywhere; }
-
-.gb-receipt .rc-paid {
-  display: grid; gap: 4px;
-  padding: 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--gb-accent, #FF6A1F) 9%, transparent);
-}
-.gb-receipt .rc-paid__when { font-size: 13.5px; font-weight: 700; }
-.gb-receipt .rc-paid__amount {
-  font-size: 30px; font-weight: 800; letter-spacing: -0.02em;
-  color: var(--gb-accent, #FF6A1F);
-  overflow-wrap: anywhere; /* montant démesuré : la carte 480px ne déborde jamais (capture) */
-}
-
-.gb-receipt .rc-session { font-size: 13px; }
-
 .gb-receipt .rc-lines__head {
-  display: block; font-size: 11.5px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6;
-  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+  padding-bottom: 10px; margin-bottom: 10px;
+  border-bottom: 1px solid var(--gb-border, #e5e7eb);
 }
-.gb-receipt .rc-lines ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.gb-receipt .rc-lines__head .ms { font-size: 18px; opacity: 0.75; }
+.gb-receipt .rc-lines__title {
+  flex: 1; font-size: 13px; font-weight: 800;
+}
+.gb-receipt .rc-lines__count {
+  font-size: 11.5px; font-weight: 700; opacity: 0.65;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border-radius: 999px; padding: 3px 9px;
+}
+.gb-receipt .rc-lines ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .gb-receipt .rc-lines li {
-  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  display: flex; align-items: baseline; gap: 10px;
   font-size: 14px;
 }
-.gb-receipt .rc-line__label { min-width: 0; overflow-wrap: anywhere; }
-.gb-receipt .rc-line__label small { display: block; font-size: 12px; opacity: 0.65; }
-.gb-receipt .rc-line__amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gb-receipt .rc-line__qty {
+  flex-shrink: 0; min-width: 26px;
+  font-weight: 800; font-variant-numeric: tabular-nums;
+  color: var(--gb-success, #1E9E57);
+}
+.gb-receipt .rc-line__label { min-width: 0; flex: 1; overflow-wrap: anywhere; font-weight: 600; }
+.gb-receipt .rc-line__label small { display: block; font-size: 12px; font-weight: 500; opacity: 0.65; }
+.gb-receipt .rc-line__amount { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; }
 
+/* Totaux — rendus SEULEMENT quand le total des lignes diverge du montant payé
+   (règle AQ) ; alors les deux montants, libellés distincts. */
 .gb-receipt .rc-totals {
   border-top: 1px dashed var(--gb-border, #e5e7eb);
-  padding-top: 10px;
+  margin-top: 12px; padding-top: 10px;
   display: grid; gap: 6px;
 }
 .gb-receipt .rc-total {
@@ -91,11 +154,18 @@
   font-size: 13.5px; opacity: 0.8;
 }
 .gb-receipt .rc-total--paid { font-size: 16px; opacity: 1; }
-.gb-receipt .rc-total--paid b { color: var(--gb-accent, #FF6A1F); }
+.gb-receipt .rc-total--paid b { color: var(--gb-success, #1E9E57); }
 
+/* ── 5. Méta à icônes, puis mentions de bas de carte — présentes, DISCRÈTES. */
+.gb-receipt .rc-meta { display: grid; gap: 8px; padding: 0 2px; }
+.gb-receipt .rc-meta__row {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 12.5px; opacity: 0.78; overflow-wrap: anywhere; min-width: 0;
+}
+.gb-receipt .rc-meta__row .ms { font-size: 15px; flex-shrink: 0; opacity: 0.8; }
 .gb-receipt .rc-foot {
   border-top: 1px solid var(--gb-border, #e5e7eb);
-  padding-top: 10px;
+  margin-top: 6px; padding-top: 10px;
   display: grid; gap: 4px;
 }
 .gb-receipt .rc-foot p { margin: 0; font-size: 11.5px; opacity: 0.62; }

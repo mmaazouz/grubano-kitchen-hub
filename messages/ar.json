@@ -4045,14 +4045,21 @@
       "table": "الطاولة: {name}",
       "paidLine": "سُدِّدت الفاتورة في {date} الساعة {time}",
       "sessionLabel": "الجلسة / الحجز: <c>{code}</c>",
-      "linesLabel": "الطلبات (عند الدفع)",
+      "linesLabel": "الطلبات",
       "unitPrice": "<m>{price}</m> للوحدة",
       "linesTotal": "إجمالي الطلبات",
       "amountPaid": "المبلغ المدفوع",
       "editedLine": "عُرض في {date} — بيانات المطعم والطاولة هي المعروفة في هذا التاريخ.",
       "disclaimer": "إثبات دفع فقط — هذا المستند ليس سجلاً محاسبيًا رسميًا.",
       "signIn": "سجّل الدخول لعرض هذا الإيصال.",
-      "signInCta": "تسجيل الدخول"
+      "signInCta": "تسجيل الدخول",
+      "paidPill": "مدفوع",
+      "heroLabel": "إجمالي المدفوع",
+      "sealLabel": "تمت تسوية الحساب",
+      "bannerTable": "في المطعم · طاولة {name}",
+      "bannerDinein": "في المطعم",
+      "linesCount": "{count, plural, zero {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
+      "linesNote": "تفاصيل الطلبات كما كانت عند الدفع."
     }
   },
   "menu": {
