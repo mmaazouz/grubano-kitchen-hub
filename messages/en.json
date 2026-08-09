@@ -3224,7 +3224,9 @@
       "resCancelBusy": "Cancelling…",
       "resCancelError": "The cancellation failed. Try again or contact the restaurant.",
       "resDepositAuthorizedArrived": "A {amount} hold is pre-authorised — nothing is charged; it is released when the bill is settled.",
-      "resDepositAuthorizedPending": "The {amount} hold is still pre-authorised — its release is in progress, nothing is charged."
+      "resDepositAuthorizedPending": "The {amount} hold is still pre-authorised — its release is in progress, nothing is charged.",
+      "paymentProof": "Payment proof",
+      "paymentProofError": "The payment proof could not be generated — no file was created. Try again; if it keeps failing, support can verify your payment."
     },
     "postDelivery": {
       "close": "Close",

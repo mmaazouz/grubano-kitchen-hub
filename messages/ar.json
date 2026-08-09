@@ -3224,7 +3224,9 @@
       "resCancelBusy": "جارٍ الإلغاء…",
       "resCancelError": "تعذّر الإلغاء. حاول مجددًا أو تواصل مع المطعم.",
       "resDepositAuthorizedArrived": "مبلغ تأمين {amount} محجوز مسبقًا — لن يُخصم شيء، ويُحرَّر عند تسوية الحساب.",
-      "resDepositAuthorizedPending": "ما زال مبلغ التأمين {amount} محجوزًا — التحرير قيد التنفيذ ولن يُخصم شيء."
+      "resDepositAuthorizedPending": "ما زال مبلغ التأمين {amount} محجوزًا — التحرير قيد التنفيذ ولن يُخصم شيء.",
+      "paymentProof": "إثبات الدفع",
+      "paymentProofError": "تعذّر إنشاء إثبات الدفع — لم يُنشأ أي ملف. أعد المحاولة؛ وإذا تكرر الفشل، يمكن للدعم التحقق من دفعتك."
     },
     "postDelivery": {
       "close": "إغلاق",

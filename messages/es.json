@@ -3224,7 +3224,9 @@
       "resCancelBusy": "Anulando…",
       "resCancelError": "La anulación no se ha completado. Inténtelo de nuevo o contacte con el restaurante.",
       "resDepositAuthorizedArrived": "Retención de {amount} preautorizada — no se cobra nada; se libera al pagar la cuenta.",
-      "resDepositAuthorizedPending": "La retención de {amount} sigue preautorizada — su liberación está en curso, no se cobra nada."
+      "resDepositAuthorizedPending": "La retención de {amount} sigue preautorizada — su liberación está en curso, no se cobra nada.",
+      "paymentProof": "Comprobante de pago",
+      "paymentProofError": "No se pudo generar el comprobante — no se creó ningún archivo. Vuelve a intentarlo; si persiste, el soporte puede verificar tu pago."
     },
     "postDelivery": {
       "close": "Cerrar",
