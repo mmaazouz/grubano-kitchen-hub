@@ -4045,14 +4045,21 @@
       "table": "Table: {name}",
       "paidLine": "Bill settled on {date} at {time}",
       "sessionLabel": "Session / reservation: <c>{code}</c>",
-      "linesLabel": "Items (at the time of payment)",
+      "linesLabel": "Items",
       "unitPrice": "<m>{price}</m> each",
       "linesTotal": "Items total",
       "amountPaid": "Amount paid",
       "editedLine": "Viewed on {date} — the establishment and table details are those known on this date.",
       "disclaimer": "Proof of payment only — this document is not an official accounting record.",
       "signIn": "Sign in to view this receipt.",
-      "signInCta": "Sign in"
+      "signInCta": "Sign in",
+      "paidPill": "Paid",
+      "heroLabel": "Total paid",
+      "sealLabel": "Bill settled",
+      "bannerTable": "Dine-in · Table {name}",
+      "bannerDinein": "Dine-in",
+      "linesCount": "{count, plural, one {# item} other {# items}}",
+      "linesNote": "Item details as at the time of payment."
     }
   },
   "menu": {

@@ -4045,14 +4045,21 @@
       "table": "Tavolo: {name}",
       "paidLine": "Conto saldato il {date} alle {time}",
       "sessionLabel": "Sessione / prenotazione: <c>{code}</c>",
-      "linesLabel": "Consumazioni (al momento del pagamento)",
+      "linesLabel": "Consumazioni",
       "unitPrice": "<m>{price}</m> l’uno",
       "linesTotal": "Totale consumazioni",
       "amountPaid": "Importo pagato",
       "editedLine": "Consultato il {date} — i dati del locale e del tavolo sono quelli noti a questa data.",
       "disclaimer": "Solo prova di pagamento — questo documento non costituisce un documento contabile ufficiale.",
       "signIn": "Acceda per consultare questa ricevuta.",
-      "signInCta": "Accedi"
+      "signInCta": "Accedi",
+      "paidPill": "Pagata",
+      "heroLabel": "Totale pagato",
+      "sealLabel": "Conto saldato",
+      "bannerTable": "Al tavolo · Tavolo {name}",
+      "bannerDinein": "Al tavolo",
+      "linesCount": "{count, plural, one {# articolo} other {# articoli}}",
+      "linesNote": "Dettaglio delle consumazioni come al momento del pagamento."
     }
   },
   "menu": {
