@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
-import { writeCart, type EatCartLineItem } from '@/lib/eat-cart'
+import { writeCart, showToast, type EatCartLineItem } from '@/lib/eat-cart'
 import { formatEuros } from '@/lib/format-money'
 import './orders.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -300,6 +300,34 @@ export default function OrdersPage() {
   const finalLabel = (c: Card) =>
     c.status === 'cancelled' ? t('finalCancelled') : c.kind === 'pickup' ? t('finalPickedUp') : c.kind === 'dinein' ? t('finalPaid') : t('finalDelivered')
 
+  // ── Mission AR — justificatif de paiement (addition dine-in PAYÉE) ──────────
+  // fetch → blob : un échec ne produit JAMAIS de fichier — notice honnête avec
+  // des issues réelles (réessayer ; le paiement reste vérifiable par le support).
+  // Le message d'erreur SERVEUR (français, règle projet) est affiché tel quel
+  // quand il existe.
+  async function downloadPaymentProof(ticketId: string) {
+    try {
+      const res = await fetch(`/api/eat/tickets/${ticketId}/payment-proof`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        showToast((body?.error as string) || t('paymentProofError'))
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]
+        ?? 'justificatif-paiement.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      showToast(t('paymentProofError'))
+    }
+  }
+
   const PastCard = ({ c, i }: { c: Card; i: number }) => (
     <article className="o-card">
       <div className="o-card__top">
@@ -317,6 +345,13 @@ export default function OrdersPage() {
       </div>
       <div className="past-foot">
         <Link href={c.kind === 'dinein' && c.tableId ? `/t/${c.tableId}` : `/eat/track/${c.trackingId}`} className="btn-sm btn-sm--line"><span className="ms" aria-hidden="true">receipt_long</span>{t('receipt')}</Link>
+        {/* Mission AR — uniquement une addition dine-in PAYÉE (le serveur re-juge
+            propriété + statut ; walk-in : jamais de carte ici, donc jamais de bouton). */}
+        {c.kind === 'dinein' && c.status === 'paid' && (
+          <button className="btn-sm btn-sm--line" type="button" onClick={() => downloadPaymentProof(c.id)}>
+            <span className="ms" aria-hidden="true">download</span>{t('paymentProof')}
+          </button>
+        )}
         <button className="btn-sm btn-sm--solid" type="button" onClick={() => reorder(c)}><span className="ms" aria-hidden="true">refresh</span>{t('reorder')}</button>
       </div>
     </article>

@@ -3224,7 +3224,9 @@
       "resCancelBusy": "Annullamento…",
       "resCancelError": "L'annullamento non è riuscito. Riprovi o contatti il ristorante.",
       "resDepositAuthorizedArrived": "Pre-autorizzazione di {amount} — non viene addebitato nulla; viene svincolata al saldo del conto.",
-      "resDepositAuthorizedPending": "La pre-autorizzazione di {amount} è ancora attiva — lo svincolo è in corso, non viene addebitato nulla."
+      "resDepositAuthorizedPending": "La pre-autorizzazione di {amount} è ancora attiva — lo svincolo è in corso, non viene addebitato nulla.",
+      "paymentProof": "Attestazione di pagamento",
+      "paymentProofError": "Non è stato possibile generare l’attestazione — nessun file è stato creato. Riprovi; se il problema persiste, l’assistenza può verificare il Suo pagamento."
     },
     "postDelivery": {
       "close": "Chiudi",
