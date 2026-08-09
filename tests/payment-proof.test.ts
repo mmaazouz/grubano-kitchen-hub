@@ -28,7 +28,7 @@ vi.mock('next-auth/jwt', () => ({ getToken: tokenMock }))
 
 import { GET } from '@/app/api/eat/tickets/[id]/payment-proof/route'
 import { GET as ORDERS_GET } from '@/app/api/eat/orders/route'
-import { buildPaymentProofView, amountText } from '@/lib/payment-proof-pdf'
+import { buildPaymentProofView, renderPaymentProofPdf, amountText } from '@/lib/payment-proof-pdf'
 import { reservationCode } from '@/lib/reservation-code'
 
 const call = (id = 'tk1') =>
@@ -116,6 +116,26 @@ describe('AR — GET /api/eat/tickets/[id]/payment-proof : accès', () => {
     expect((await call('tk-ghost')).status).toBe(404)
   })
 
+  it('réservation ANONYME (userId null) → 403 — jamais un accès par défaut', async () => {
+    db.reservation.findUnique.mockResolvedValue({ userId: null })
+    const res = await call()
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'Cette addition n’est pas liée à votre compte.' })
+  })
+
+  it('⭐ libellé NON IMPRIMABLE (nom de plat entièrement arabe, police Latin-1) → 500 tracé, AUCUN document amputé', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    db.tableTicket.findUnique.mockResolvedValue({
+      ...PAID_TICKET,
+      items: [{ name: 'كسكس ملكي', unitPrice: 12, quantity: 1 }],
+    })
+    const res = await call()
+    expect(res.status).toBe(500)
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('non imprimable'))
+    errSpy.mockRestore()
+  })
+
   it('payée mais amountPaid/paidAt absents (anomalie) → 500 tracé, AUCUN fichier, aucun montant inventé', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     db.tableTicket.findUnique.mockResolvedValue({ ...PAID_TICKET, amountPaid: null })
@@ -177,8 +197,9 @@ describe('AR — contenu du document (modèle COMPLET, libellés compris)', () =
     }
   })
 
-  it('date de paiement HISTORIQUE au bloc dominant ; date d’édition DISTINCTE + mention coordonnées actuelles (règles 3, 5, 7)', () => {
-    expect(view.paidAtLabel).toBe('Payé le 08/08/2026 à 21:47')  // Europe/Paris (UTC+2 en août)
+  it('date de règlement HISTORIQUE au bloc dominant — « Addition réglée le » (vrai même en paiement fractionné : amountPaid cumulatif + paidAt = dernier encaissement) ; date d’édition DISTINCTE + mention (règles 3, 5, 7)', () => {
+    expect(view.paidAtLabel).toBe('Addition réglée le 08/08/2026 à 21:47')  // Europe/Paris (UTC+2 en août)
+    expect(view.paidAtLabel).not.toContain('Payé le') // la conjonction « payé X € à HH:MM » serait fausse en fractionné
     expect(view.editedLine).toContain('Édité le 09/08/2026')
     expect(view.editedLine).toContain('connues à cette date')
   })
@@ -205,6 +226,90 @@ describe('AR — contenu du document (modèle COMPLET, libellés compris)', () =
   it('devise : eur → € ; autre code affiché tel quel, jamais inventé', () => {
     expect(amountText(12, 'eur')).toBe('12,00 €')
     expect(amountText(12, 'chf')).toBe('12,00 CHF')
+  })
+})
+
+// Les flux de contenu pdf-lib sont compressés (FlateDecode) et le texte dessiné
+// y est encodé en CHAÎNES HEX (PDFHexString, octets WinAnsi) : pour scanner le
+// TEXTE réellement imprimé, on déflate chaque segment stream…endstream puis on
+// décode toutes les chaînes <hex> en latin1 (vérifié empiriquement sur pdf-lib
+// 1.17.1 — le texte n'apparaît JAMAIS en clair dans les octets bruts).
+async function pdfVisibleText(bytes: Uint8Array): Promise<string> {
+  const { inflateSync } = await import('node:zlib')
+  const buf = Buffer.from(bytes)
+  const decodeHex = (s: string) =>
+    [...s.matchAll(/<([0-9A-Fa-f]+)>/g)].map((m) => Buffer.from(m[1], 'hex').toString('latin1')).join('\n')
+  let out = buf.toString('latin1') // métadonnées (Info dict) + flux non compressés
+  out += '\n' + decodeHex(out)
+  let idx = 0
+  for (;;) {
+    const s = buf.indexOf('stream', idx)
+    if (s === -1) break
+    const start = buf.indexOf('\n', s) + 1
+    const end = buf.indexOf('endstream', start)
+    if (start <= 0 || end === -1) break
+    try {
+      const inflated = inflateSync(buf.subarray(start, end)).toString('latin1')
+      out += '\n' + inflated + '\n' + decodeHex(inflated)
+    } catch { /* flux non-flate */ }
+    idx = end + 9
+  }
+  return out
+}
+
+describe('AR — rendu pdf-lib réel (métadonnées, pagination, octets)', () => {
+  const smallView = buildPaymentProofView({
+    paidAt: new Date('2026-08-08T19:47:00Z'), amountPaid: 34.5, subtotal: 30.5,
+    currency: 'eur', lines: PAID_TICKET.items, sessionCode: '#A3F2',
+    restaurantName: 'Gnocchi Bar', officialName: null,
+    address: '12 rue des Antiquaires', city: 'Orange', tableName: 'T4',
+    editedAt: new Date('2026-08-09T10:00:00Z'),
+  })
+
+  it('⭐ métadonnées + octets du DOCUMENT RÉEL : titre/producteur véridiques, aucun terme interdit, montants présents', async () => {
+    const { PDFDocument } = await import('pdf-lib')
+    const bytes = await renderPaymentProofPdf(smallView)
+    const doc = await PDFDocument.load(bytes)
+    expect(doc.getTitle()).toBe('Justificatif de paiement - Gnocchi Bar')
+    // pdf-lib estampille SON producer au save (idem factures pro) — on exige
+    // seulement qu'aucun terme interdit n'y figure, pas une égalité.
+    expect(doc.getProducer() ?? '').not.toMatch(/facture|tva|n°/i)
+    expect(doc.getPageCount()).toBe(1)
+    // On scanne le FICHIER produit (flux décompressés), pas seulement le modèle.
+    const raw = await pdfVisibleText(bytes)
+    expect(raw).toContain('Montant pay')            // les montants sont bien DANS le fichier
+    expect(raw).toContain('Total des consommations')
+    expect(raw).toContain('Session / r')            // « réservation » (é encodé latin1)
+    for (const bad of ['Facture', 'facture', 'TVA', 'N°', 'Num\xe9ro', 'stripe', 'pi_', 'HT ', 'TTC']) {
+      expect(raw, `terme interdit dans le PDF : ${bad}`).not.toContain(bad)
+    }
+  })
+
+  it('⭐ addition LONGUE (45 lignes) : PAGINÉE — les deux montants et la mention datée restent DANS le document (jamais un justificatif amputé servi en 200)', async () => {
+    const { PDFDocument } = await import('pdf-lib')
+    const longView = buildPaymentProofView({
+      paidAt: new Date('2026-08-08T19:47:00Z'), amountPaid: 540, subtotal: 540,
+      currency: 'eur',
+      lines: Array.from({ length: 45 }, (_, i) => ({ name: `Plat n${i + 1} de la grande tablée`, unitPrice: 12, quantity: 1 })),
+      sessionCode: '#A3F2', restaurantName: 'Gnocchi Bar', officialName: null,
+      address: null, city: null, tableName: null, editedAt: new Date('2026-08-09T10:00:00Z'),
+    })
+    const bytes = await renderPaymentProofPdf(longView)
+    const doc = await PDFDocument.load(bytes)
+    expect(doc.getPageCount()).toBeGreaterThanOrEqual(2)
+    const raw = await pdfVisibleText(bytes)
+    expect(raw).toContain('Montant pay')
+    expect(raw).toContain('connues \xe0 cette date') // la mention règle 5 n'est jamais perdue
+  })
+
+  it('nom démesuré sans espace (191 caractères, plafond colonne MySQL) : coupé DUR, jamais rogné hors page', async () => {
+    const bytes = await renderPaymentProofPdf(buildPaymentProofView({
+      paidAt: new Date(), amountPaid: 10, subtotal: 10, currency: 'eur',
+      lines: [{ name: 'X'.repeat(191), unitPrice: 10, quantity: 1 }],
+      sessionCode: '#A3F2', restaurantName: 'R'.repeat(150), officialName: null,
+      address: null, city: null, tableName: null, editedAt: new Date(),
+    }))
+    expect(bytes.length).toBeGreaterThan(500) // rend sans throw ; le wrap coupe au caractère
   })
 })
 

@@ -91,7 +91,12 @@ export function buildPaymentProofView(input: PaymentProofInput): PaymentProofVie
     title: 'Justificatif de paiement',
     disclaimer:
       'Preuve de paiement uniquement — ce document ne constitue pas une pièce comptable officielle.',
-    paidAtLabel: `Payé le ${dateFr(input.paidAt)} à ${timeFr(input.paidAt)}`,
+    // « Addition réglée le … » (revue adversariale) : amountPaid est CUMULATIF
+    // et paidAt = l'instant du DERNIER encaissement (paiement fractionné prévu
+    // par /pay). « Payé le X à Y » + montant total affirmait une conjonction
+    // fausse dans ce cas ; « addition réglée le X » + « montant payé (total) »
+    // est vrai dans tous les états atteignables.
+    paidAtLabel: `Addition réglée le ${dateFr(input.paidAt)} à ${timeFr(input.paidAt)}`,
     amountPaidText: amountText(input.amountPaid, cur),
     sessionLabel: 'Session / réservation',
     sessionCode: input.sessionCode,
@@ -140,8 +145,23 @@ function safe(s: unknown): string {
     .replace(/[^\x20-\x7E¡-ÿ€]/g, '')
 }
 
+/** Coupe DUR un token unique plus large que la colonne (revue adversariale :
+ *  le wrap du patron ne cassait jamais un mot de 191 caractères → rang rogné
+ *  hors page en silence). */
+function hardBreak(word: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const parts: string[] = []
+  let cur = ''
+  for (const ch of word.split('')) {
+    if (cur && font.widthOfTextAtSize(cur + ch, size) > maxWidth) { parts.push(cur); cur = ch }
+    else cur += ch
+  }
+  if (cur) parts.push(cur)
+  return parts
+}
+
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = safe(text).split(/\s+/).filter(Boolean)
+    .flatMap((w) => (font.widthOfTextAtSize(w, size) > maxWidth ? hardBreak(w, font, size, maxWidth) : [w]))
   const lines: string[] = []
   let cur = ''
   for (const w of words) {
@@ -153,65 +173,92 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
   return lines
 }
 
+/** VRAI si la chaîne survit au filtre WinAnsi (safe) avec du contenu visible.
+ *  Un libellé source non vide qui deviendrait VIDE à l'impression (nom
+ *  entièrement arabe/CJK) ne doit PAS produire un document amputé : l'appelant
+ *  refuse la génération (aucun fichier, notice honnête — règle 16). */
+export function isPrintable(s: string | null | undefined): boolean {
+  const src = String(s ?? '').trim()
+  if (!src) return true // vide à la source = rien à imprimer, pas une perte
+  return safe(src).trim().length > 0
+}
+
 export async function renderPaymentProofPdf(v: PaymentProofView): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
   doc.setTitle(safe(`${v.title} - ${v.restaurantName}`))
   doc.setProducer('Grubano')
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const bold = await doc.embedFont(StandardFonts.HelveticaBold)
-  const page: PDFPage = doc.addPage([PAGE_W, PAGE_H])
 
-  const text = (s: string, x: number, y: number, size: number, f: PDFFont = font, color = INK) =>
-    page.drawText(safe(s), { x, y, size, font: f, color })
-  const textRight = (s: string, y: number, size: number, f: PDFFont = font, color = INK) =>
-    page.drawText(safe(s), { x: RIGHT - f.widthOfTextAtSize(safe(s), size), y, size, font: f, color })
-  const hr = (y: number) =>
-    page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 0.7, color: RULE })
-
+  // ── Pagination (revue adversariale) : pdf-lib dessine SANS ERREUR en y
+  // négatif — une addition longue produisait un 200 avec les montants et la
+  // mention datée HORS page. need() ouvre une page neuve dès que la place
+  // manque : les deux montants et le pied sont toujours visibles.
+  let page: PDFPage = doc.addPage([PAGE_W, PAGE_H])
   let y = PAGE_H - M
+  const need = (pts: number) => {
+    if (y - pts < M) {
+      page = doc.addPage([PAGE_W, PAGE_H])
+      y = PAGE_H - M
+    }
+  }
+
+  const text = (s: string, x: number, yy: number, size: number, f: PDFFont = font, color = INK) =>
+    page.drawText(safe(s), { x, y: yy, size, font: f, color })
+  const textRight = (s: string, yy: number, size: number, f: PDFFont = font, color = INK) =>
+    page.drawText(safe(s), { x: RIGHT - f.widthOfTextAtSize(safe(s), size), y: yy, size, font: f, color })
+  const hr = (yy: number) =>
+    page.drawLine({ start: { x: M, y: yy }, end: { x: RIGHT, y: yy }, thickness: 0.7, color: RULE })
+  const para = (s: string, size: number, lineH: number, f: PDFFont = font, color = INK) => {
+    for (const l of wrap(s, f, size, RIGHT - M)) { need(lineH); text(l, M, y, size, f, color); y -= lineH }
+  }
 
   // Titre + avertissement de nature.
   text(v.title, M, y, 20, bold, ORANGE); y -= 16
-  for (const l of wrap(v.disclaimer, font, 9, RIGHT - M)) { text(l, M, y, 9, font, MUTED); y -= 12 }
+  para(v.disclaimer, 9, 12, font, MUTED)
   y -= 10; hr(y); y -= 26
 
-  // BLOC DOMINANT (règle 7) : date-heure de paiement + montant. Un repère de
+  // BLOC DOMINANT (règle 7) : date-heure de règlement + montant. Un repère de
   // lecture — jamais présenté comme identifiant.
-  text(v.paidAtLabel, M, y, 13, bold); y -= 26
+  para(v.paidAtLabel, 13, 26, bold)
   text(v.amountPaidText, M, y, 28, bold, ORANGE); y -= 34
 
   // Session / réservation (règle 8 — seul libellé autorisé pour le code).
-  text(`${v.sessionLabel} : ${v.sessionCode}`, M, y, 11, font); y -= 24
+  para(`${v.sessionLabel} : ${v.sessionCode}`, 11, 24)
   hr(y); y -= 18
 
-  // Établissement — données ACTUELLES (la mention datée est en pied).
+  // Établissement — données ACTUELLES (la mention datée est en pied). Tout est
+  // wrappé (revue : un nom de 124+ caractères sortait de la colonne en silence).
+  need(60)
   text(v.establishmentLabel, M, y, 9, bold, MUTED); y -= 14
-  text(v.restaurantName, M, y, 12, bold); y -= 15
-  if (v.officialNameLine) { text(v.officialNameLine, M, y, 10, font, MUTED); y -= 13 }
-  if (v.addressLine) { for (const l of wrap(v.addressLine, font, 10, RIGHT - M)) { text(l, M, y, 10); y -= 13 } }
-  if (v.tableLine) { text(v.tableLine, M, y, 10); y -= 13 }
+  para(v.restaurantName, 12, 15, bold)
+  if (v.officialNameLine) para(v.officialNameLine, 10, 13, font, MUTED)
+  if (v.addressLine) para(v.addressLine, 10, 13)
+  if (v.tableLine) para(v.tableLine, 10, 13)
   y -= 8; hr(y); y -= 18
 
   // Consommations — instantané historique.
+  need(30)
   text(v.linesLabel, M, y, 9, bold, MUTED); y -= 16
   for (const l of v.lines) {
     const label = wrap(l.text, font, 10, RIGHT - M - 90)
     for (let i = 0; i < label.length; i++) {
+      need(13)
       text(label[i], M, y, 10)
       if (i === 0) textRight(l.amountText, y, 10)
       y -= 13
     }
   }
-  y -= 6; hr(y); y -= 18
+  y -= 6; need(50); hr(y); y -= 18
 
   // Les DEUX montants, libellés distincts (règles 1-2) — jamais d'explication.
-  text(v.subtotalLabel, M, y, 10, font, MUTED); textRight(v.subtotalText, y, 10); y -= 16
-  text(v.amountPaidLabel, M, y, 12, bold); textRight(v.amountPaidText, y, 12, bold, ORANGE); y -= 26
+  need(16); text(v.subtotalLabel, M, y, 10, font, MUTED); textRight(v.subtotalText, y, 10); y -= 16
+  need(26); text(v.amountPaidLabel, M, y, 12, bold); textRight(v.amountPaidText, y, 12, bold, ORANGE); y -= 26
 
   // Pied : date d'édition distincte + mention coordonnées actuelles (règle 5).
-  for (const l of wrap(v.editedLine, font, 8.5, RIGHT - M)) { text(l, M, y, 8.5, font, MUTED); y -= 11 }
+  para(v.editedLine, 8.5, 11, font, MUTED)
   y -= 4
-  text(v.footer, M, y, 9, bold, MUTED)
+  need(12); text(v.footer, M, y, 9, bold, MUTED)
 
   return doc.save()
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { reservationCode } from '@/lib/reservation-code'
-import { buildPaymentProofView, renderPaymentProofPdf } from '@/lib/payment-proof-pdf'
+import { buildPaymentProofView, renderPaymentProofPdf, isPrintable } from '@/lib/payment-proof-pdf'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -108,6 +108,18 @@ export async function GET(
       )
     }
 
+    // Garde d'imprimabilité (revue adversariale) : la police WinAnsi du patron
+    // ne rend pas l'arabe/CJK — un nom d'établissement ou de plat entièrement
+    // non latin serait imprimé VIDE en silence. Un document amputé ne sort
+    // JAMAIS : refus honnête, aucun fichier (règle 16).
+    if (!isPrintable(ticket.restaurant.name) || ticket.items.some((i) => !isPrintable(i.name))) {
+      console.error(`[payment-proof] [AR] ticket ${params.id} — libellé non imprimable (police Latin-1), aucun document produit`)
+      return NextResponse.json(
+        { error: 'Le justificatif n’a pas pu être généré pour cette addition — le support peut fournir la preuve du paiement.' },
+        { status: 500 },
+      )
+    }
+
     const view = buildPaymentProofView({
       paidAt:      ticket.paidAt,
       amountPaid:  ticket.amountPaid,
@@ -115,17 +127,23 @@ export async function GET(
       currency:    ticket.currency,
       lines:       ticket.items,
       sessionCode: reservationCode(ticket.reservationId),
-      restaurantName: ticket.restaurant?.name ?? '—',
-      officialName:   ticket.restaurant?.operator?.officialName ?? null,
-      address:        ticket.restaurant?.address ?? null,
-      city:           ticket.restaurant?.city ?? null,
-      tableName:      ticket.restaurantTable?.name ?? null,
+      // Relations OBLIGATOIRES au schéma → jamais de placeholder (règle 12 ; le
+      // « ?? '—' » initial était littéralement le placeholder interdit).
+      restaurantName: ticket.restaurant.name,
+      officialName:   ticket.restaurant.operator?.officialName ?? null,
+      address:        ticket.restaurant.address ?? null,
+      city:           ticket.restaurant.city ?? null,
+      tableName:      ticket.restaurantTable.name ?? null,
       editedAt:       new Date(),
     })
     const pdf = await renderPaymentProofPdf(view)
 
     // Nom de fichier : date de paiement (repère humain) — aucune numérotation.
-    const d = ticket.paidAt.toISOString().slice(0, 10)
+    // Europe/Paris comme le corps du document (revue : l'UTC datait de la
+    // veille tout paiement de 00:00-02:00 heure de Paris).
+    const d = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(ticket.paidAt)
     return new NextResponse(Buffer.from(pdf), {
       status: 200,
       headers: {

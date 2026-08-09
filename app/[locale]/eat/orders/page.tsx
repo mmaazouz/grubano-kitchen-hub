@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
-import { writeCart, showToast, type EatCartLineItem } from '@/lib/eat-cart'
+import { writeCart, type EatCartLineItem } from '@/lib/eat-cart'
 import { formatEuros } from '@/lib/format-money'
 import './orders.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -302,15 +302,19 @@ export default function OrdersPage() {
 
   // ── Mission AR — justificatif de paiement (addition dine-in PAYÉE) ──────────
   // fetch → blob : un échec ne produit JAMAIS de fichier — notice honnête avec
-  // des issues réelles (réessayer ; le paiement reste vérifiable par le support).
-  // Le message d'erreur SERVEUR (français, règle projet) est affiché tel quel
-  // quand il existe.
+  // des issues réelles (réessayer ; le paiement reste vérifiable par le support),
+  // rendue INLINE dans la carte avec le style d'alerte existant (revue
+  // adversariale : le toast global stylait l'échec en info neutre — heuristique
+  // ToastBridge insensible aux mots accentués). Le message d'erreur SERVEUR
+  // (français, règle projet) est affiché tel quel quand il existe.
+  const [proofErrs, setProofErrs] = useState<Record<string, string>>({})
   async function downloadPaymentProof(ticketId: string) {
+    setProofErrs((p) => ({ ...p, [ticketId]: '' }))
     try {
       const res = await fetch(`/api/eat/tickets/${ticketId}/payment-proof`)
       if (!res.ok) {
         const body = await res.json().catch(() => null)
-        showToast((body?.error as string) || t('paymentProofError'))
+        setProofErrs((p) => ({ ...p, [ticketId]: (body?.error as string) || t('paymentProofError') }))
         return
       }
       const blob = await res.blob()
@@ -324,7 +328,7 @@ export default function OrdersPage() {
       a.remove()
       URL.revokeObjectURL(url)
     } catch {
-      showToast(t('paymentProofError'))
+      setProofErrs((p) => ({ ...p, [ticketId]: t('paymentProofError') }))
     }
   }
 
@@ -343,6 +347,10 @@ export default function OrdersPage() {
       <div className="statusline" style={{ justifyContent: 'space-between', paddingTop: 2 }}>
         <span className="total" style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}><small>{t('total')}</small><b style={{ fontSize: 16 }}>{formatEuros(c.total, locale)}</b></span>
       </div>
+      {/* Mission AR — notice d'échec inline (aucun fichier n'a été produit). */}
+      {c.kind === 'dinein' && proofErrs[c.id] ? (
+        <div className="res-cancel-err" role="alert">{proofErrs[c.id]}</div>
+      ) : null}
       <div className="past-foot">
         <Link href={c.kind === 'dinein' && c.tableId ? `/t/${c.tableId}` : `/eat/track/${c.trackingId}`} className="btn-sm btn-sm--line"><span className="ms" aria-hidden="true">receipt_long</span>{t('receipt')}</Link>
         {/* Mission AR — uniquement une addition dine-in PAYÉE (le serveur re-juge
