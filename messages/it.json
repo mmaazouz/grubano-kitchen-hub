@@ -4035,6 +4035,21 @@
       "confirmTakenBody": "Questo indirizzo è appena stato associato a un altro account. La tua e-mail non è stata cambiata.",
       "confirmToAuth": "Accedi",
       "confirmToAccount": "Vai al mio account"
+    },
+    "receipt": {
+      "title": "Ricevuta",
+      "back": "Indietro",
+      "retry": "Riprova",
+      "loadError": "Impossibile caricare la ricevuta — riprovi; l’assistenza può verificare il Suo pagamento.",
+      "officialName": "Ragione sociale: {name}",
+      "table": "Tavolo: {name}",
+      "paidLine": "Conto saldato il {date} alle {time}",
+      "sessionLabel": "Sessione / prenotazione",
+      "linesLabel": "Consumazioni (al momento del pagamento)",
+      "unitPrice": "{price} l’uno",
+      "linesTotal": "Totale consumazioni",
+      "amountPaid": "Importo pagato",
+      "editedLine": "Consultato il {date} — i dati del locale e del tavolo sono quelli noti a questa data."
     }
   },
   "menu": {
