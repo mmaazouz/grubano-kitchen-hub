@@ -6,30 +6,35 @@ import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatEuros, formatAmount } from '@/lib/format-money'
+import { receiptAddressLines } from '@/lib/receipt-address'
 import './receipt.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
 
-// ── /eat/receipt/[id] — reçu post-paiement dine-in (AU ; rendu AW) ─────────────
+// ── /eat/receipt/[id] — reçu post-paiement dine-in (AU ; rendu BC VERBATIM) ────
 // SURFACE PRIVÉE (l'API re-juge propriété AVANT statut — un tiers n'apprend
-// jamais si l'addition est payée). HTML mobile d'abord, pensé pour la CAPTURE
-// D'ÉCRAN. Rendu = la conception AQ en CINQ BLOCS SÉPARÉS (mission AW) :
-// bannière d'établissement (navy, pastille verte PAYÉE) · montant en héros
-// (dégradé vert — le VERT est l'état acquis, l'ORANGE l'action en cours) ·
-// sceau « addition réglée » · carte de détail (compteur + lignes) · méta à
-// icônes + mentions discrètes.
-//   • amountPaid = référence (jamais recalculé) ; le total STOCKÉ des lignes
-//     n'apparaît QUE s'il DIVERGE du montant payé (règle AQ) — alors les deux
-//     montants s'affichent sous libellés distincts, aucune explication.
-//   • Paiement = HISTORIQUE (« Addition réglée le … », Europe/Paris, mois en
-//     toutes lettres — jamais de date tout-numérique ambiguë en anglais) ;
-//     coordonnées = ACTUELLES, date de consultation distincte + mention (AQ).
-//   • Argent : lib/format-money (source de vérité EUR, locale validée) ; devise
-//     inattendue → nombre localisé + code TEL QUEL, jamais substitué.
-//   • RTL : montants isolés en <bdi> (règle 2 gb-rtl), flèche retour ms-flip
-//     (règle 3). Aucune police externe, aucune icône distante.
-//   • Session : fetch gaté sur l'authentification (patron /eat/orders) + purge
-//     du reçu si la session tombe pendant que la page reste ouverte.
+// jamais si l'addition est payée). Rendu = REPRODUCTION VERBATIM de la
+// référence archivée scripts/design-qa-refs/eat-receipt.html (écran 3 « Payée »
+// de la conception AQ), mesurée par le robot design-qa (écran `eat-receipt`) :
+// barre « Mon addition » + pastille de référence · bannière navy (icône orange,
+// pastille PAYÉE) · héros pâle au montant NAVY et date nue · sceau · carte
+// détail fermée par « Total payé » · méta 5 rangées clé/valeur (mono) ·
+// 2 actions · pied « Reçu conservé dans “Mes commandes” ».
+//   • amountPaid = référence (jamais recalculé) ; si le total STOCKÉ des lignes
+//     diverge (comparé en centimes), les DEUX montants restent affichés sous
+//     libellés distincts dans la carte détail.
+//   • Décision fondateur (BC) : les mentions « preuve de paiement », « consulté
+//     le » et « détail tel qu'au moment du paiement » SORTENT de la page (la
+//     référence prime) — ne pas les rétablir sans conception CD mise à jour.
+//   • Dates : mois en toutes lettres, Europe/Paris (règle non négociable — la
+//     rangée « Payée le » de la référence est tout-numérique : écart ASSUMÉ).
+//   • Écart assumé n°2 : le prix unitaire porte un MONTANT → 12,5 px minimum
+//     (règle non négociable), là où la référence le rend à 10 px.
+//   • RTL : montants/codes isolés en <bdi> (règle 2 gb-rtl), flèches ms-flip.
+//     Aucune police ni icône distante AJOUTÉE (Material Symbols locaux ; les
+//     polices Gabarito/JetBrains Mono sont déjà chargées app-wide par tokens.css).
+//   • Session : fetch gaté sur l'authentification + purge du reçu si la session
+//     tombe pendant que la page reste ouverte.
 
 interface ReceiptData {
   paidAt: string
@@ -57,6 +62,30 @@ export default function DineinReceiptScreen() {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  // « Noter ce restaurant » (référence) : l'id du restaurant n'est PAS servi par
+  // la route du reçu (select étroit, intouchable). Il est retrouvé par une
+  // lecture SERVEUR de MES commandes — GET /api/eat/orders, session-gatée, qui
+  // ne renvoie que les cartes du porteur du jeton : celle dont l'id est CE
+  // ticket porte le restaurantId. JAMAIS un paramètre d'URL (revue BC : un ?r=
+  // falsifié aurait affiché « Noter » sous ce reçu et publié un VRAI avis chez
+  // un autre restaurant — la destination poste réellement). Best-effort : pas
+  // de correspondance ⇒ la rangée n'apparaît pas, jamais d'action dont le
+  // contexte n'est pas vrai.
+  const [rateRestoId, setRateRestoId] = useState<string | null>(null)
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return
+    let alive = true
+    fetch('/api/eat/orders')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d) return
+        const cards = [...(d.current ?? []), ...(d.past ?? [])] as Array<{ id?: string; kind?: string; restaurantId?: string }>
+        const mine = cards.find((c) => c?.kind === 'dinein' && c?.id === id)
+        if (mine?.restaurantId) setRateRestoId(mine.restaurantId)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [authStatus, id])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -78,8 +107,7 @@ export default function DineinReceiptScreen() {
   }, [id, t])
 
   // Fetch gaté sur la session (patron /eat/orders) ; si la session tombe
-  // pendant que la page reste ouverte (elle est faite pour ça — capture),
-  // le reçu est PURGÉ : jamais un reçu affiché sans session valide.
+  // pendant que la page reste ouverte, le reçu est PURGÉ.
   useEffect(() => {
     if (authStatus === 'authenticated') load()
   }, [authStatus, load])
@@ -88,8 +116,8 @@ export default function DineinReceiptScreen() {
   }, [authStatus])
 
   // Argent = lib/format-money (locale validée, jamais brute vers Intl).
-  // 'eur' est la seule devise réelle (défaut schéma) ; tout autre code —
-  // y compris vide — est affiché TEL QUEL après le nombre localisé.
+  // 'eur' est la seule devise réelle ; tout autre code — y compris vide — est
+  // affiché TEL QUEL après le nombre localisé.
   const money = (n: number) => {
     const cur = (receipt?.currency ?? '').trim().toLowerCase()
     if (cur === 'eur') return formatEuros(n, locale)
@@ -103,36 +131,25 @@ export default function DineinReceiptScreen() {
   const fmtTime = (iso: string) =>
     new Intl.DateTimeFormat(intlLocale, { timeZone: PARIS, hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 
-  // Adresse SANS ville dupliquée (mission AW). Constat : Restaurant.address est
-  // saisi en adresse complète (« 12 Rue de la République, 84100 Orange ») et
-  // Restaurant.city la répète (« Orange ») — la concaténation aveugle affichait
-  // la ville deux fois. La ville n'est ajoutée QUE si l'adresse ne la porte pas
-  // déjà (comparaison insensible à la casse et aux accents) — aucune information
-  // n'est perdue : une adresse sans ville garde sa ville, une adresse complète
-  // n'est plus doublée. AFFICHAGE seul — la route sert les deux champs tels quels.
-  const addressLine = (() => {
-    if (!receipt) return null
-    const addr = (receipt.address ?? '').trim()
-    const city = (receipt.city ?? '').trim()
-    if (!addr) return city || null
-    if (!city) return addr
-    // Revue AW : containment par MOTS ENTIERS consécutifs, pas par sous-chaîne —
-    // « Pau » ne doit pas être avalé par « rue Paul Bert », ni « Eu » par
-    // « Vieux » ; « Le Havre » (multi-mots) reste détecté dans « 76600 Le Havre ».
-    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
-    const aw = words(addr)
-    const cw = words(city)
-    const cityInAddr =
-      cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
-    return cityInAddr ? addr : `${addr}, ${city}`
-  })()
+  const showSubtotal =
+    receipt != null && Math.round(receipt.subtotal * 100) !== Math.round(receipt.amountPaid * 100)
+
+  // ── Adresse sur DEUX lignes (référence BF) ───────────────────────────────────
+  // Restaurant.address (voie) et .city sont NOT NULL au schéma : la rangée est
+  // INCONDITIONNELLE — le bloc méta garde une hauteur stable, comme la référence
+  // l'exige. La découpe vit dans lib/receipt-address (fonction pure, exercée
+  // telle quelle par les tests). AFFICHAGE seul : la route sert les deux champs
+  // tels quels (diff vide).
+  const addressLines = receiptAddressLines(receipt?.address ?? null, receipt?.city ?? null)
 
   return (
     <div className="gb gb-receipt">
+      {/* Barre de titre (référence .h2bar) : retour · « Mon addition » ·
+          pastille de référence (code de session, mono, zest). */}
       <div className="rc-top">
         <button type="button" className="ms ms-flip rc-back" onClick={() => router.back()} aria-label={t('back')}>arrow_back</button>
         <h1>{t('title')}</h1>
+        {receipt ? <span className="rc-tnum mono"><bdi>#{receipt.sessionCode}</bdi></span> : null}
       </div>
 
       {authStatus === 'unauthenticated' ? (
@@ -149,12 +166,9 @@ export default function DineinReceiptScreen() {
         </div>
       ) : receipt ? (
         <article className="rc-blocks">
-          {/* ── 1. BANNIÈRE D'ÉTABLISSEMENT (AQ) — navy en dégradé (token panel-ink
-              existant), icône table locale, nom, « Sur place · Table X », pastille
-              verte PAYÉE. L'ancrage : où on est, dans quel état. Données ACTUELLES
-              (mention datée en pied, inchangée). */}
+          {/* Bannière d'établissement (référence .tbanner). */}
           <header className="rc-banner">
-            <span className="ms rc-banner__ic" aria-hidden="true">table_restaurant</span>
+            <span className="rc-banner__ic"><span className="ms" aria-hidden="true">table_restaurant</span></span>
             <div className="rc-banner__id">
               <b>{receipt.restaurantName}</b>
               <span>{receipt.tableName ? t('bannerTable', { name: receipt.tableName }) : t('bannerDinein')}</span>
@@ -162,79 +176,110 @@ export default function DineinReceiptScreen() {
             <span className="rc-banner__pill">{t('paidPill')}</span>
           </header>
 
-          {/* ── 2. MONTANT EN HÉROS (AQ) — dégradé VERT (état acquis — l'orange est
-              réservé à l'addition EN COURS), label au-dessus en petites capitales,
-              somme dominante, date-heure du PAIEMENT en sous-titre discret.
-              amountPaid servi par l'API, jamais recalculé. */}
+          {/* Héros (référence .amt.paid) : dégradé TRÈS PÂLE, label basil,
+              montant NAVY (couleur de texte), date NUE en sous-titre. */}
           <div className="rc-hero">
-            <span className="rc-hero__label">{t('heroLabel')}</span>
+            <span className="rc-hero__label"><span className="ms" aria-hidden="true">check_circle</span>{t('heroLabel')}</span>
             <b className="rc-hero__amount"><bdi>{money(receipt.amountPaid)}</bdi></b>
-            <span className="rc-hero__when">{t('paidLine', { date: fmtDate(receipt.paidAt), time: fmtTime(receipt.paidAt) })}</span>
+            <span className="rc-hero__when">{t('heroDate', { date: fmtDate(receipt.paidAt), time: fmtTime(receipt.paidAt) })}</span>
           </div>
 
-          {/* ── 3. SCEAU (AQ) — « ─── ✓ addition réglée ─── », filets en CSS. */}
+          {/* Sceau (référence .stamp). */}
           <div className="rc-seal">
-            <span className="ms" aria-hidden="true">check</span>{t('sealLabel')}
+            <span className="rc-seal__ln" />
+            <span className="ms" aria-hidden="true">verified</span>
+            {t('sealLabel')}
+            <span className="rc-seal__ln" />
           </div>
 
-          {/* ── 4. CARTE DE DÉTAIL (AQ) — en-tête icône + titre + COMPTEUR, puis les
-              lignes : quantité en accent, nom, prix unitaire en sous-ligne, prix de
-              ligne à droite. Lignes GELÉES au paiement (instantané historique). */}
+          {/* Carte de détail (référence .ocard) — fermée par « Total payé ».
+              amountPaid jamais recalculé ; si le total STOCKÉ des lignes diverge
+              (centimes), il s'affiche AUSSI, sous son libellé distinct. */}
           <section className="rc-lines">
             <header className="rc-lines__head">
-              <span className="ms" aria-hidden="true">receipt_long</span>
+              <span className="ms" aria-hidden="true">restaurant_menu</span>
               <span className="rc-lines__title">{t('linesLabel')}</span>
-              <span className="rc-lines__count">{t('linesCount', { count: receipt.lines.length })}</span>
+              <span className="rc-lines__count mono" aria-label={t('linesCount', { count: receipt.lines.length })}>{receipt.lines.length}</span>
             </header>
             <ul>
               {receipt.lines.map((l, i) => (
                 <li key={i}>
-                  <span className="rc-line__qty"><bdi>{l.quantity}×</bdi></span>
                   <span className="rc-line__label">
-                    {l.name}
+                    <span className="rc-line__qty mono"><bdi>{l.quantity}×</bdi></span> {l.name}
                     <small>{t.rich('unitPrice', { price: money(l.unitPrice), m: (chunks) => <bdi>{chunks}</bdi> })}</small>
                   </span>
                   <span className="rc-line__amount"><bdi>{money(l.unitPrice * l.quantity)}</bdi></span>
                 </li>
               ))}
             </ul>
-            {/* Règle AQ : « Total des consommations » n'apparaît QUE s'il DIVERGE du
-                montant payé — égaux, le héros suffit et rien n'est répété. Les deux
-                montants restent sous libellés distincts, jamais d'explication ;
-                amountPaid reste la référence, jamais recalculé. */}
-            {Math.round(receipt.subtotal * 100) !== Math.round(receipt.amountPaid * 100) ? (
-              <div className="rc-totals">
-                <div className="rc-total"><span>{t('linesTotal')}</span><span><bdi>{money(receipt.subtotal)}</bdi></span></div>
-                <div className="rc-total rc-total--paid"><span>{t('amountPaid')}</span><b><bdi>{money(receipt.amountPaid)}</bdi></b></div>
-              </div>
+            <div className="rc-lines__div" />
+            {showSubtotal ? (
+              <div className="rc-total rc-total--sub"><span>{t('linesTotal')}</span><span><bdi>{money(receipt.subtotal)}</bdi></span></div>
             ) : null}
+            <div className="rc-total rc-total--paid"><span>{t('amountPaid')}</span><span><bdi>{money(receipt.amountPaid)}</bdi></span></div>
           </section>
 
-          {/* ── 5. LIGNES DE MÉTA à icônes (AQ), puis mentions de bas de carte. */}
-          <footer className="rc-meta">
-            {addressLine ? (
-              <div className="rc-meta__row"><span className="ms" aria-hidden="true">location_on</span><span>{addressLine}</span></div>
-            ) : null}
-            {receipt.officialName ? (
-              <div className="rc-meta__row"><span className="ms" aria-hidden="true">storefront</span><span>{t('officialName', { name: receipt.officialName })}</span></div>
-            ) : null}
+          {/* Méta (référence .meta) : CINQ rangées clé/valeur dans l'ordre de la
+              référence — Restaurant · Adresse · Table · Payée le · Référence.
+              L'adresse suit immédiatement le nom : nom commercial et adresse
+              forment un bloc d'identité continu que « Table » ne coupe pas.
+              AUCUNE rangée conditionnelle (hauteur stable) : les trois champs
+              sont NOT NULL au schéma. AUCUNE raison sociale — retirée de la
+              conception par décision du fondateur, aucun repli prévu. Valeurs
+              mono pour la date et la référence ; la date de paiement reste en
+              toutes lettres (règle non négociable — écart assumé vs la
+              référence numérique). */}
+          <section className="rc-meta">
             <div className="rc-meta__row">
-              <span className="ms" aria-hidden="true">confirmation_number</span>
-              {/* Ponctuation dans la clé ; code isolé LTR + gras via le tag <c>. */}
-              <span>{t.rich('sessionLabel', { code: receipt.sessionCode, c: (chunks) => <b><bdi>{chunks}</bdi></b> })}</span>
+              <span className="ms" aria-hidden="true">storefront</span>
+              <span className="rc-meta__k">{t('metaRestaurant')}</span>
+              <span className="rc-meta__v">{receipt.restaurantName}</span>
             </div>
-            <div className="rc-foot">
-              {/* Clause de NATURE + mention de consultation — RESTAURÉES par revue
-                  adversariale : elles restent, discrètes, jamais retirées.
-                  linesNote (revue AW) : la parenthèse technique a quitté le TITRE
-                  (décision fondateur) mais la divulgation « lignes gelées au
-                  paiement » reste portée par le document — ici, discrète. */}
-              <p className="rc-nature">{t('disclaimer')}</p>
-              <p>{t('linesNote')}</p>
-              <p>{t('editedLine', { date: fmtDate(new Date().toISOString()) })}</p>
-              <span className="rc-brand">Grubano</span>
+            <div className="rc-meta__row">
+              <span className="ms" aria-hidden="true">place</span>
+              <span className="rc-meta__k">{t('metaAddress')}</span>
+              <span className="rc-meta__v rc-meta__v--addr">
+                {addressLines.map((line, i) => (
+                  <span key={i} className="rc-addr__l">{line}</span>
+                ))}
+              </span>
             </div>
-          </footer>
+            <div className="rc-meta__row">
+              <span className="ms" aria-hidden="true">table_restaurant</span>
+              <span className="rc-meta__k">{t('metaTable')}</span>
+              <span className="rc-meta__v">{receipt.tableName}</span>
+            </div>
+            <div className="rc-meta__row">
+              <span className="ms" aria-hidden="true">event</span>
+              <span className="rc-meta__k">{t('metaPaidAt')}</span>
+              <span className="rc-meta__v mono"><bdi>{t('heroDate', { date: fmtDate(receipt.paidAt), time: fmtTime(receipt.paidAt) })}</bdi></span>
+            </div>
+            <div className="rc-meta__row">
+              <span className="ms" aria-hidden="true">tag</span>
+              <span className="rc-meta__k">{t('metaRef')}</span>
+              <span className="rc-meta__v mono"><bdi>#{receipt.sessionCode}</bdi></span>
+            </div>
+          </section>
+
+          {/* Actions (référence .split-row). « Noter » n'apparaît qu'avec un id
+              resto valide (contexte vrai — passé par la carte Mes commandes) ;
+              « Un problème » ouvre le canal réel (email de contact) avec la
+              référence de l'addition en objet. */}
+          {rateRestoId ? (
+            <Link href={`/eat/r/${rateRestoId}/reviews`} className="rc-act">
+              <span className="ms" aria-hidden="true">star</span>
+              <span>{t('rateAction')}</span>
+              <span className="ms ms-flip rc-act__chev" aria-hidden="true">chevron_right</span>
+            </Link>
+          ) : null}
+          <a href={`mailto:contact@grubano.com?subject=${encodeURIComponent(t('issueSubject', { code: receipt.sessionCode }))}`} className="rc-act">
+            <span className="ms" aria-hidden="true">support_agent</span>
+            <span>{t('issueAction')}</span>
+            <span className="ms ms-flip rc-act__chev" aria-hidden="true">chevron_right</span>
+          </a>
+
+          {/* Pied (référence .foot). */}
+          <p className="rc-foot">{t('footNote')}</p>
         </article>
       ) : null}
     </div>

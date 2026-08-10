@@ -4037,7 +4037,7 @@
       "confirmToAccount": "الذهاب إلى حسابي"
     },
     "receipt": {
-      "title": "إيصال",
+      "title": "حسابي",
       "back": "رجوع",
       "retry": "إعادة المحاولة",
       "loadError": "تعذّر تحميل الإيصال — أعد المحاولة؛ ويمكن للدعم التحقق من دفعتك.",
@@ -4045,12 +4045,10 @@
       "table": "الطاولة: {name}",
       "paidLine": "سُدِّدت الفاتورة في {date} الساعة {time}",
       "sessionLabel": "الجلسة / الحجز: <c>{code}</c>",
-      "linesLabel": "الطلبات",
+      "linesLabel": "تفاصيل الحساب",
       "unitPrice": "<m>{price}</m> للوحدة",
       "linesTotal": "إجمالي الطلبات",
-      "amountPaid": "المبلغ المدفوع",
-      "editedLine": "عُرض في {date} — بيانات المطعم والطاولة هي المعروفة في هذا التاريخ.",
-      "disclaimer": "إثبات دفع فقط — هذا المستند ليس سجلاً محاسبيًا رسميًا.",
+      "amountPaid": "إجمالي المدفوع",
       "signIn": "سجّل الدخول لعرض هذا الإيصال.",
       "signInCta": "تسجيل الدخول",
       "paidPill": "مدفوع",
@@ -4059,7 +4057,16 @@
       "bannerTable": "في المطعم · طاولة {name}",
       "bannerDinein": "في المطعم",
       "linesCount": "{count, plural, zero {لا عناصر} one {عنصر واحد} two {عنصران} few {# عناصر} many {# عنصرًا} other {# عنصر}}",
-      "linesNote": "تفاصيل الطلبات كما كانت عند الدفع."
+      "heroDate": "{date} الساعة {time}",
+      "metaRestaurant": "المطعم",
+      "metaTable": "الطاولة",
+      "metaPaidAt": "تاريخ الدفع",
+      "metaRef": "المرجع",
+      "footNote": "يُحفظ الإيصال في «طلباتي».",
+      "rateAction": "قيّم هذا المطعم",
+      "issueAction": "مشكلة في هذا الحساب؟",
+      "issueSubject": "الحساب {code} — Grubano",
+      "metaAddress": "العنوان"
     }
   },
   "menu": {
