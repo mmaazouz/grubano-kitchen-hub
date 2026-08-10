@@ -984,7 +984,7 @@ export const screens = [
           `{name:'Burrata di Puglia',unitPrice:12.5,quantity:1},` +
           `{name:'Spritz maison',unitPrice:9,quantity:2},` +
           `{name:'Tiramisu',unitPrice:10,quantity:1}],` +
-          `sessionCode:'B-4471',restaurantName:'Mama Trattoria',officialName:null,address:null,city:null,tableName:'12'` +
+          `sessionCode:'B-4471',restaurantName:'Mama Trattoria',officialName:null,address:'14 rue de la Roquette',city:'Paris',tableName:'12'` +
           `}}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
@@ -1003,7 +1003,7 @@ export const screens = [
           `{name:'Burrata di Puglia',unitPrice:12.5,quantity:1},` +
           `{name:'Spritz maison',unitPrice:9,quantity:2},` +
           `{name:'Tiramisu',unitPrice:10,quantity:1}],` +
-          `sessionCode:'B-4471',restaurantName:'Mama Trattoria',officialName:null,address:null,city:null,tableName:'12'` +
+          `sessionCode:'B-4471',restaurantName:'Mama Trattoria',officialName:null,address:'14 rue de la Roquette',city:'Paris',tableName:'12'` +
           `}}),{headers:{'content-type':'application/json'}}))}` +
           `return of.call(this,u,o)}})()`,
       },
