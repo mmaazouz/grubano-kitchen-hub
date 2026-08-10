@@ -950,4 +950,63 @@ export const screens = [
       { name: 'sent', query: '?step=sent', theme: 'dark', waitUntil: 'domcontentloaded', clip: '.gb-dinein', refClip: '.demo > div:nth-child(3) .vp' },
     ],
   },
+  {
+    // /eat/receipt/[id] — reçu post-paiement dine-in (vague 8). Ref = ÉCRAN 3
+    // « Payée — le reçu » EXTRAIT de la conception AQ « Vue d'addition » fournie
+    // par le fondateur (mission BB) ; les 5 autres écrans de la maquette (ouverte,
+    // transition, annulée, introuvable, accès/walk-in) ne sont PAS cette page.
+    // La page est un client component gaté session : le `before` stubbe
+    // /api/auth/session (SessionProvider → authenticated) PUIS le endpoint
+    // receipt avec les DONNÉES DE LA MAQUETTE (Mama Trattoria · Table 12 ·
+    // 58,50 € · payée 08/08 20:41 Paris) pour réduire le diff au DESIGN seul.
+    // clip app `.gb-receipt` ↔ ref `.vp` (écran extrait plein viewport).
+    name: 'eat-receipt',
+    url: '/fr/eat/receipt/demo',
+    reference: 'scripts/design-qa-refs/eat-receipt.html',
+    settle: 900,
+    viewports: [
+      { name: 'mobile', w: 390, h: 1100 },
+      { name: 'desktop', w: 1280, h: 1000 },
+    ],
+    states: [
+      {
+        name: 'paid',
+        theme: 'light',
+        waitUntil: 'domcontentloaded',
+        clip: '.gb-receipt',
+        refClip: '.vp',
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{name:'QA',email:'qa@grubano.local'},expires:'2027-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/receipt')>-1){return Promise.resolve(new Response(JSON.stringify({receipt:{` +
+          `paidAt:'2026-08-08T18:41:00.000Z',amountPaid:58.5,subtotal:58.5,currency:'eur',` +
+          `lines:[{name:'Tagliatelles à la truffe',unitPrice:18,quantity:1},` +
+          `{name:'Burrata di Puglia',unitPrice:12.5,quantity:1},` +
+          `{name:'Spritz maison',unitPrice:9,quantity:2},` +
+          `{name:'Tiramisu',unitPrice:10,quantity:1}],` +
+          `sessionCode:'B-4471',restaurantName:'Mama Trattoria',officialName:null,address:null,city:null,tableName:'12'` +
+          `}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+      {
+        name: 'paid-dark',
+        theme: 'dark',
+        waitUntil: 'domcontentloaded',
+        clip: '.gb-receipt',
+        refClip: '.vp',
+        before:
+          `(function(){var of=window.fetch;window.fetch=function(u,o){var s=String(u);` +
+          `if(s.indexOf('/api/auth/session')>-1){return Promise.resolve(new Response(JSON.stringify({user:{name:'QA',email:'qa@grubano.local'},expires:'2027-01-01T00:00:00.000Z'}),{headers:{'content-type':'application/json'}}))}` +
+          `if(s.indexOf('/receipt')>-1){return Promise.resolve(new Response(JSON.stringify({receipt:{` +
+          `paidAt:'2026-08-08T18:41:00.000Z',amountPaid:58.5,subtotal:58.5,currency:'eur',` +
+          `lines:[{name:'Tagliatelles à la truffe',unitPrice:18,quantity:1},` +
+          `{name:'Burrata di Puglia',unitPrice:12.5,quantity:1},` +
+          `{name:'Spritz maison',unitPrice:9,quantity:2},` +
+          `{name:'Tiramisu',unitPrice:10,quantity:1}],` +
+          `sessionCode:'B-4471',restaurantName:'Mama Trattoria',officialName:null,address:null,city:null,tableName:'12'` +
+          `}}),{headers:{'content-type':'application/json'}}))}` +
+          `return of.call(this,u,o)}})()`,
+      },
+    ],
+  },
 ]
