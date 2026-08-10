@@ -85,13 +85,21 @@ describe('BC — structure de la référence (écran 3 « Payée »)', () => {
       expect(meta).toContain(`t('${k}')`)
     }
     expect((meta.match(/rc-meta__v mono/g) ?? []).length).toBe(2)
-    // Plus d'adresse/raison sociale (absentes de la référence) ni de dédup ville.
-    expect(PAGE).not.toContain('addressLine')
-    expect(PAGE).not.toContain("t('officialName'")
+    // La méta compte EXACTEMENT les 4 rangées de la référence — adresse et
+    // raison sociale n'y figurent pas. Revue BC : c'est un retrait de contenu
+    // AU-DELÀ des 3 mentions listées par le fondateur, signalé au rapport pour
+    // arbitrage ; on verrouille donc la conformité à la référence (4 rangées),
+    // PAS une interdiction définitive de ces deux données.
+    expect((meta.match(/rc-meta__row/g) ?? []).length).toBe(4)
   })
 
-  it('⭐ actions : « Noter » gatée par un id resto VALIDÉ (cuid, via ?r=) ; « Un problème » = canal réel mailto avec la référence', () => {
-    expect(PAGE).toMatch(/\/\^\[a-z0-9\]\{20,32\}\$\/i\.test\(r\)/)
+  it('⭐ actions : « Noter » gatée par une lecture SERVEUR (jamais un paramètre d’URL) ; « Un problème » = canal réel mailto avec la référence', () => {
+    // Revue BC : un ?r= falsifié aurait publié un VRAI avis chez un autre
+    // restaurant. L'id vient de MES commandes (session-gatée) et doit
+    // correspondre à CE ticket.
+    expect(PAGE).not.toContain('URLSearchParams')
+    expect(PAGE).toContain("fetch('/api/eat/orders')")
+    expect(PAGE).toMatch(/c\?\.kind === 'dinein' && c\?\.id === id/)
     expect(PAGE).toMatch(/\{rateRestoId \? \([\s\S]{0,400}?\/eat\/r\/\$\{rateRestoId\}\/reviews/)
     expect(PAGE).toMatch(/mailto:contact@grubano\.com\?subject=\$\{encodeURIComponent\(t\('issueSubject'/)
   })
@@ -115,7 +123,9 @@ describe('BC — structure de la référence (écran 3 « Payée »)', () => {
 
 describe('BC — sûreté et non-régression', () => {
   it('⭐ aucun terme interdit sur la page ni dans les nouvelles clés ×5', () => {
-    expect(PAGE).not.toMatch(/stripe|pi_|\btva\b|\bvat\b|\bttc\b|facture|invoice|allergi|paymentMethod/i)
+    // Revue BC : \bht\b et cardNumber RESTAURÉS (aucun des deux ne matchait la
+    // page — leur retrait avait affaibli le filet sans nécessité).
+    expect(PAGE).not.toMatch(/stripe|pi_|\btva\b|\bvat\b|\bttc\b|\bht\b|facture|invoice|allergi|paymentMethod|cardNumber/i)
     for (const loc of LOCALES) {
       const vals = Object.values(msg(loc).eat.receipt as Record<string, string>).join(' ')
       expect(vals, loc).not.toMatch(/stripe|pi_|\btva\b|\bvat\b|facture d|invoice/i)
@@ -133,8 +143,18 @@ describe('BC — sûreté et non-régression', () => {
     expect(PAGE).toContain('ms ms-flip rc-act__chev')
   })
 
-  it('⭐ delivery/pickup inchangés : leurs « Reçu » pointent /eat/track, seule la branche dinein porte ?r=', () => {
-    expect(ORDERS).toContain("c.kind === 'dinein' ? `/eat/receipt/${c.id}${c.restaurantId ? `?r=${c.restaurantId}` : ''}` : `/eat/track/${c.trackingId}`")
+  it('⭐ « Mes commandes » STRICTEMENT inchangée : le Link partagé est byte-identique (delivery/pickup → /eat/track)', () => {
+    expect(ORDERS).toContain("c.kind === 'dinein' ? `/eat/receipt/${c.id}` : `/eat/track/${c.trackingId}`")
+  })
+
+  it('⭐ l’état ACQUIS reste vert (héros + sceau sur basil/success) ; les accents zest reproduisent la référence, jamais --gb-accent', () => {
+    // Revue BC : la garde couleur d'AW avait disparu. La référence emploie
+    // elle-même --gb-zest-600 pour les accents (quantité, chevrons, pastille de
+    // référence) — c'est l'ÉTAT PAYÉ (héros, sceau) qui doit rester vert.
+    expect(CSS).toMatch(/rc-hero__label \{[\s\S]{0,300}?--gb-basil-600/)
+    expect(CSS).toMatch(/rc-seal \{[\s\S]{0,300}?--gb-basil-600/)
+    expect(CSS).toMatch(/rc-banner__pill \{[\s\S]{0,300}?#7FD8A4/)
+    expect(CSS).not.toContain('--gb-accent')
   })
 
   it('⭐ la RÉFÉRENCE et son câblage ne sont PAS altérés (la mesure n’a pas bougé)', () => {

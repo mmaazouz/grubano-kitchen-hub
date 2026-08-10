@@ -143,10 +143,7 @@ describe('AU — carte « Mes commandes » : Reçu redirigé, Justificatif retir
   const src = readFileSync(join(__dirname, '..', 'app', '[locale]', 'eat', 'orders', 'page.tsx'), 'utf8')
 
   it('⭐ le « Reçu » dine-in mène à /eat/receipt/[id] ; delivery/pickup gardent /eat/track (branche BYTE-identique) ; jamais /t/ pour le reçu', () => {
-    // MAJ mission BC : la branche dinein porte ?r= (id resto de la carte) pour
-    // la rangée « Noter ce restaurant » du reçu — même intention (dinein → reçu
-    // privé, delivery/pickup → /eat/track INCHANGÉS, jamais /t/ pour le reçu).
-    expect(src).toContain("c.kind === 'dinein' ? `/eat/receipt/${c.id}${c.restaurantId ? `?r=${c.restaurantId}` : ''}` : `/eat/track/${c.trackingId}`")
+    expect(src).toContain("c.kind === 'dinein' ? `/eat/receipt/${c.id}` : `/eat/track/${c.trackingId}`")
   })
 
   it('⭐ la carte COURANTE dine-in garde « Voir l’addition & payer » vers /t/[tableId] (surface publique de PAIEMENT, hors périmètre)', () => {

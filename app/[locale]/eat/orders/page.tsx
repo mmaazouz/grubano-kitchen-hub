@@ -319,10 +319,8 @@ export default function OrdersPage() {
         {/* Mission AU — le « Reçu » dine-in mène à la surface PRIVÉE de reçu
             (le serveur re-juge propriété AVANT statut ; jamais /t/[tableId],
             qui est publique et ne sert que les tickets ouverts). La branche
-            delivery/pickup est STRICTEMENT inchangée. BC : la branche dinein
-            porte ?r= (id resto de la carte) pour la rangée « Noter ce
-            restaurant » du reçu — la route du reçu reste intouchée. */}
-        <Link href={c.kind === 'dinein' ? `/eat/receipt/${c.id}${c.restaurantId ? `?r=${c.restaurantId}` : ''}` : `/eat/track/${c.trackingId}`} className="btn-sm btn-sm--line"><span className="ms" aria-hidden="true">receipt_long</span>{t('receipt')}</Link>
+            delivery/pickup est STRICTEMENT inchangée. */}
+        <Link href={c.kind === 'dinein' ? `/eat/receipt/${c.id}` : `/eat/track/${c.trackingId}`} className="btn-sm btn-sm--line"><span className="ms" aria-hidden="true">receipt_long</span>{t('receipt')}</Link>
         <button className="btn-sm btn-sm--solid" type="button" onClick={() => reorder(c)}><span className="ms" aria-hidden="true">refresh</span>{t('reorder')}</button>
       </div>
     </article>

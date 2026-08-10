@@ -61,16 +61,30 @@ export default function DineinReceiptScreen() {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  // « Noter ce restaurant » (référence) : l'id resto n'est PAS servi par la
-  // route (select étroit, intouchable) — la carte « Mes commandes » le passe en
-  // ?r=. Lu post-mount (pas de useSearchParams → pas de Suspense build) et
-  // validé strictement (cuid) : sans id valide, la rangée n'apparaît pas —
-  // jamais d'action dont le contexte n'est pas vrai.
+  // « Noter ce restaurant » (référence) : l'id du restaurant n'est PAS servi par
+  // la route du reçu (select étroit, intouchable). Il est retrouvé par une
+  // lecture SERVEUR de MES commandes — GET /api/eat/orders, session-gatée, qui
+  // ne renvoie que les cartes du porteur du jeton : celle dont l'id est CE
+  // ticket porte le restaurantId. JAMAIS un paramètre d'URL (revue BC : un ?r=
+  // falsifié aurait affiché « Noter » sous ce reçu et publié un VRAI avis chez
+  // un autre restaurant — la destination poste réellement). Best-effort : pas
+  // de correspondance ⇒ la rangée n'apparaît pas, jamais d'action dont le
+  // contexte n'est pas vrai.
   const [rateRestoId, setRateRestoId] = useState<string | null>(null)
   useEffect(() => {
-    const r = new URLSearchParams(window.location.search).get('r')
-    if (r && /^[a-z0-9]{20,32}$/i.test(r)) setRateRestoId(r)
-  }, [])
+    if (authStatus !== 'authenticated') return
+    let alive = true
+    fetch('/api/eat/orders')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d) return
+        const cards = [...(d.current ?? []), ...(d.past ?? [])] as Array<{ id?: string; kind?: string; restaurantId?: string }>
+        const mine = cards.find((c) => c?.kind === 'dinein' && c?.id === id)
+        if (mine?.restaurantId) setRateRestoId(mine.restaurantId)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [authStatus, id])
 
   const load = useCallback(async () => {
     setLoading(true)
