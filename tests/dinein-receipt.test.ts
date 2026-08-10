@@ -143,7 +143,10 @@ describe('AU — carte « Mes commandes » : Reçu redirigé, Justificatif retir
   const src = readFileSync(join(__dirname, '..', 'app', '[locale]', 'eat', 'orders', 'page.tsx'), 'utf8')
 
   it('⭐ le « Reçu » dine-in mène à /eat/receipt/[id] ; delivery/pickup gardent /eat/track (branche BYTE-identique) ; jamais /t/ pour le reçu', () => {
-    expect(src).toContain("c.kind === 'dinein' ? `/eat/receipt/${c.id}` : `/eat/track/${c.trackingId}`")
+    // MAJ mission BC : la branche dinein porte ?r= (id resto de la carte) pour
+    // la rangée « Noter ce restaurant » du reçu — même intention (dinein → reçu
+    // privé, delivery/pickup → /eat/track INCHANGÉS, jamais /t/ pour le reçu).
+    expect(src).toContain("c.kind === 'dinein' ? `/eat/receipt/${c.id}${c.restaurantId ? `?r=${c.restaurantId}` : ''}` : `/eat/track/${c.trackingId}`")
   })
 
   it('⭐ la carte COURANTE dine-in garde « Voir l’addition & payer » vers /t/[tableId] (surface publique de PAIEMENT, hors périmètre)', () => {
@@ -171,15 +174,16 @@ describe('AU — carte « Mes commandes » : Reçu redirigé, Justificatif retir
 
 describe('AU — i18n : eat.receipt ×5, clés du justificatif conservées (règle « aucune clé supprimée »)', () => {
   it('⭐ les 16 clés eat.receipt existent dans les 5 locales, placeholders préservés, et paymentProof/paymentProofError restent (mortes, documentées)', () => {
+    // MAJ mission BC : disclaimer / editedLine / linesNote SORTIES par décision
+    // fondateur (la référence prime) — clés RETIRÉES ×5, ne plus les exiger.
     const NEEDED = ['title', 'back', 'retry', 'loadError', 'officialName', 'table', 'paidLine',
-      'sessionLabel', 'linesLabel', 'unitPrice', 'linesTotal', 'amountPaid', 'editedLine',
-      'disclaimer', 'signIn', 'signInCta']
+      'sessionLabel', 'linesLabel', 'unitPrice', 'linesTotal', 'amountPaid',
+      'signIn', 'signInCta']
     for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
       const m = JSON.parse(readFileSync(join(__dirname, '..', 'messages', `${loc}.json`), 'utf8'))
       for (const k of NEEDED) expect(m.eat.receipt?.[k], `${loc}: eat.receipt.${k}`).toBeTruthy()
       expect(m.eat.receipt.paidLine).toContain('{date}')
       expect(m.eat.receipt.paidLine).toContain('{time}')
-      expect(m.eat.receipt.editedLine).toContain('{date}')
       expect(m.eat.receipt.unitPrice).toContain('{price}')
       // Ponctuation LOCALISÉE dans la clé (revue : plus de « : » codé en dur).
       expect(m.eat.receipt.sessionLabel).toContain('{code}')
@@ -196,15 +200,15 @@ describe('AU — i18n : eat.receipt ×5, clés du justificatif conservées (règ
 describe('AU — la PAGE du reçu est épinglée (revue : la surface livrée n’était couverte par rien)', () => {
   const src = readFileSync(join(__dirname, '..', 'app', '[locale]', 'eat', 'receipt', '[id]', 'page.tsx'), 'utf8')
 
-  it('⭐ les DEUX montants sous libellés distincts + clause de NATURE + mention datée AQ sont rendus', () => {
-    // NOTE (mission AW) : les totaux sont désormais CONDITIONNELS (règle AQ —
-    // rendus seulement quand subtotal diverge d'amountPaid, comparés en
-    // centimes). Ceci reste une garantie de PRÉSENCE AU SOURCE ; la garantie
-    // RUNTIME des deux sens vit dans tests/dinein-receipt-visual.test.ts.
+  it('⭐ les DEUX montants sous libellés distincts sont au source (divergence → les deux rendus)', () => {
+    // NOTE (mission AW) : totaux CONDITIONNELS (règle AQ — rendus quand
+    // subtotal diverge d'amountPaid, comparés en centimes) ; garantie RUNTIME
+    // dans tests/dinein-receipt-visual.test.ts.
+    // MAJ mission BC : clause de nature + mention de consultation SORTIES par
+    // décision fondateur (la référence prime) — leurs asserts sont déplacés en
+    // asserts d'ABSENCE dans dinein-receipt-visual.test.ts.
     expect(src).toContain("t('linesTotal')")
     expect(src).toContain("t('amountPaid')")
-    expect(src).toContain("t('disclaimer')")   // « ne constitue pas une pièce comptable officielle »
-    expect(src).toContain("t('editedLine'")    // date de consultation distincte + mention
     // amountPaid affiché TEL QUEL — jamais une somme de lignes à sa place.
     expect(src).toContain('money(receipt.amountPaid)')
     expect(src).toContain('money(receipt.subtotal)')
