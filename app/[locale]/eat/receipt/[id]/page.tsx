@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link, useRouter } from '@/navigation'
 import { formatEuros, formatAmount } from '@/lib/format-money'
+import { receiptAddressLines } from '@/lib/receipt-address'
 import './receipt.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
@@ -17,7 +18,7 @@ import '@/app/gb-foundation/gb-components.css'
 // de la conception AQ), mesurée par le robot design-qa (écran `eat-receipt`) :
 // barre « Mon addition » + pastille de référence · bannière navy (icône orange,
 // pastille PAYÉE) · héros pâle au montant NAVY et date nue · sceau · carte
-// détail fermée par « Total payé » · méta 4 rangées clé/valeur (mono) ·
+// détail fermée par « Total payé » · méta 5 rangées clé/valeur (mono) ·
 // 2 actions · pied « Reçu conservé dans “Mes commandes” ».
 //   • amountPaid = référence (jamais recalculé) ; si le total STOCKÉ des lignes
 //     diverge (comparé en centimes), les DEUX montants restent affichés sous
@@ -133,38 +134,13 @@ export default function DineinReceiptScreen() {
   const showSubtotal =
     receipt != null && Math.round(receipt.subtotal * 100) !== Math.round(receipt.amountPaid * 100)
 
-  // ── Adresse sur DEUX lignes (référence BF : voie, puis code postal + ville) ──
-  // Restaurant.address et .city sont NOT NULL au schéma : la rangée est
-  // INCONDITIONNELLE — le bloc méta garde une hauteur stable, comme la
-  // référence l'exige. Le champ address est saisi COMPLET (« 12 Rue de la
-  // République, 84100 Orange ») : la 2ᵉ ligne est donc découpée DANS l'adresse
-  // — d'abord sur le code postal, sinon sur la dernière virgule. Ce n'est qu'à
-  // défaut (adresse d'un seul tenant, sans code postal ni virgule) que la ville
-  // du modèle sert de 2ᵉ ligne, et alors seulement si l'adresse ne la porte pas
-  // déjà : la comparaison est celle RÉTABLIE par la revue AW — MOTS ENTIERS
-  // consécutifs, jamais une sous-chaîne (« Pau » ne doit pas être avalé par
-  // « rue Paul Bert », ni « Eu » par « Vieux »). AFFICHAGE seul : la route sert
-  // les deux champs tels quels (diff vide).
-  const addressLines = (() => {
-    if (!receipt) return []
-    const addr = (receipt.address ?? '').trim().replace(/\s+/g, ' ')
-    const city = (receipt.city ?? '').trim()
-    if (!addr) return city ? [city] : []
-    // 1) l'adresse porte son code postal → coupe juste avant (« …, 84100 Orange »).
-    const byZip = addr.match(/^(.*\S)[,\s]+(\d{4,6}\b.*)$/)
-    if (byZip) return [byZip[1].replace(/,\s*$/, '').trim(), byZip[2].trim()]
-    // 2) sinon, dernière virgule (« 12 Rue des Lices, Avignon »).
-    const cut = addr.lastIndexOf(',')
-    if (cut > 0) return [addr.slice(0, cut).trim(), addr.slice(cut + 1).trim()]
-    // 3) à défaut : la ville du modèle, seulement si elle manque à l'adresse.
-    if (!city) return [addr]
-    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
-    const aw = words(addr)
-    const cw = words(city)
-    const cityInAddr = cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
-    return cityInAddr ? [addr] : [addr, city]
-  })()
+  // ── Adresse sur DEUX lignes (référence BF) ───────────────────────────────────
+  // Restaurant.address (voie) et .city sont NOT NULL au schéma : la rangée est
+  // INCONDITIONNELLE — le bloc méta garde une hauteur stable, comme la référence
+  // l'exige. La découpe vit dans lib/receipt-address (fonction pure, exercée
+  // telle quelle par les tests). AFFICHAGE seul : la route sert les deux champs
+  // tels quels (diff vide).
+  const addressLines = receiptAddressLines(receipt?.address ?? null, receipt?.city ?? null)
 
   return (
     <div className="gb gb-receipt">

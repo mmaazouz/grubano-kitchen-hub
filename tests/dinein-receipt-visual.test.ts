@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { receiptAddressLines } from '@/lib/receipt-address'
 
 // ── Mission BC — reproduction VERBATIM de la référence archivée ───────────────
 // La cible est scripts/design-qa-refs/eat-receipt.html (écran 3 « Payée » de la
@@ -113,40 +114,52 @@ describe('BC — structure de la référence (écran 3 « Payée »)', () => {
     expect(PAGE).not.toContain('receipt.officialName')
   })
 
-  it('la découpe de l’adresse : code postal, sinon dernière virgule, sinon ville — contre-cas AW (Pau/Eu/Aÿ) jamais avalés', () => {
-    // Reproduit la fonction de la page (mêmes règles).
-    const split = (address: string, city: string): string[] => {
-      const addr = address.trim().replace(/\s+/g, ' ')
-      const c = city.trim()
-      if (!addr) return c ? [c] : []
-      const byZip = addr.match(/^(.*\S)[,\s]+(\d{4,6}\b.*)$/)
-      if (byZip) return [byZip[1].replace(/,\s*$/, '').trim(), byZip[2].trim()]
-      const cut = addr.lastIndexOf(',')
-      if (cut > 0) return [addr.slice(0, cut).trim(), addr.slice(cut + 1).trim()]
-      if (!c) return [addr]
-      const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-      const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
-      const aw = words(addr)
-      const cw = words(c)
-      const inAddr = cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
-      return inAddr ? [addr] : [addr, c]
-    }
-    // Cas réel du modèle : adresse complète → voie / CP + ville, sans doublon.
-    expect(split('12 Rue de la République, 84100 Orange', 'Orange')).toEqual(['12 Rue de la République', '84100 Orange'])
-    expect(split('14 rue de la Roquette 75012 Paris', 'Paris')).toEqual(['14 rue de la Roquette', '75012 Paris'])
-    // Sans code postal : dernière virgule.
-    expect(split('12 Rue des Lices, Avignon', 'Avignon')).toEqual(['12 Rue des Lices', 'Avignon'])
-    // Sans virgule ni CP : la ville complète la 2ᵉ ligne…
-    expect(split('12 Rue des Lices', 'Avignon')).toEqual(['12 Rue des Lices', 'Avignon'])
-    // …et n'est PAS avalée par un mot qui la contient (contre-cas revue AW).
-    expect(split('12 rue Paul Bert', 'Pau')).toEqual(['12 rue Paul Bert', 'Pau'])
-    expect(split('Place du Vieux Marché', 'Eu')).toEqual(['Place du Vieux Marché', 'Eu'])
-    expect(split('3 rue Lafayette', 'Aÿ')).toEqual(['3 rue Lafayette', 'Aÿ'])
-    // Ville déjà présente en mots entiers → pas de répétition.
-    expect(split('5 quai de Southampton Le Havre', 'Le Havre')).toEqual(['5 quai de Southampton Le Havre'])
-    // Valeur anormale (vide) : repli sur la ville, jamais de crash.
-    expect(split('', 'Lyon')).toEqual(['Lyon'])
-    expect(split('', '')).toEqual([])
+  it('⭐ la découpe d’adresse exerce la VRAIE fonction livrée (lib/receipt-address), pas une copie', () => {
+    // Revue BG : le test précédent ré-implémentait la logique — toute dérive du
+    // code livré serait passée inaperçue. La page importe désormais la fonction.
+    expect(PAGE).toContain("from '@/lib/receipt-address'")
+    expect(PAGE).toContain('receiptAddressLines(receipt?.address ?? null, receipt?.city ?? null)')
+  })
+
+  it('⭐ découpe : cas du MODÈLE (voie + ville), ville jamais perdue, contre-cas AW et chiffres non traités comme un code postal', () => {
+    // Cas normal du modèle : address = la voie, city = la ville → 2 lignes.
+    expect(receiptAddressLines('12 Rue de Rivoli', 'Paris')).toEqual(['12 Rue de Rivoli', 'Paris'])
+    expect(receiptAddressLines('14 rue de la Roquette', 'Paris')).toEqual(['14 rue de la Roquette', 'Paris'])
+
+    // Revue BG — AUCUNE heuristique sur les chiffres : un numéro ou un nom de
+    // lieu chiffré ne doit ni couper l'adresse ni FAIRE PERDRE la ville.
+    expect(receiptAddressLines('Centre Commercial Cap 3000, avenue Eugene Donadei', 'Saint-Laurent-du-Var'))
+      .toEqual(['Centre Commercial Cap 3000, avenue Eugene Donadei', 'Saint-Laurent-du-Var'])
+    expect(receiptAddressLines('Via Roma 1500', 'Milano')).toEqual(['Via Roma 1500', 'Milano'])
+    expect(receiptAddressLines('Zone Industrielle Nord Lot 1204 avenue de l Europe', 'Toulouse'))
+      .toEqual(['Zone Industrielle Nord Lot 1204 avenue de l Europe', 'Toulouse'])
+    expect(receiptAddressLines('Residence Le Parc 2000, 4 rue des Lilas', 'Nice'))
+      .toEqual(['Residence Le Parc 2000, 4 rue des Lilas', 'Nice'])
+    // (« Tanger » est déjà dans la voie en mot entier → la ville n'est pas
+    //  répétée, mais le nombre chiffré ne coupe RIEN.)
+    expect(receiptAddressLines('Km 4500 route de Tanger', 'Tanger')).toEqual(['Km 4500 route de Tanger'])
+
+    // Contre-cas rétablis par la revue AW : la ville n'est jamais avalée par un
+    // mot qui la contient.
+    expect(receiptAddressLines('12 rue Paul Bert', 'Pau')).toEqual(['12 rue Paul Bert', 'Pau'])
+    expect(receiptAddressLines('Place du Vieux Marché', 'Eu')).toEqual(['Place du Vieux Marché', 'Eu'])
+    expect(receiptAddressLines('3 rue Lafayette', 'Aÿ')).toEqual(['3 rue Lafayette', 'Aÿ'])
+
+    // Saisie libre héritée qui porte DÉJÀ la ville : pas de répétition, coupe
+    // sur la dernière virgule si elle existe.
+    expect(receiptAddressLines('12 Rue de la République, 84100 Orange', 'Orange'))
+      .toEqual(['12 Rue de la République', '84100 Orange'])
+    expect(receiptAddressLines('350 Fifth Avenue, New York, NY 10118', 'New York'))
+      .toEqual(['350 Fifth Avenue, New York', 'NY 10118'])
+    expect(receiptAddressLines('5 quai de Southampton Le Havre', 'Le Havre'))
+      .toEqual(['5 quai de Southampton Le Havre'])
+
+    // Valeurs anormales : dégradation, jamais d'exception.
+    expect(receiptAddressLines('', 'Lyon')).toEqual(['Lyon'])
+    expect(receiptAddressLines('12 Rue A', '')).toEqual(['12 Rue A'])
+    expect(receiptAddressLines('', '')).toEqual([])
+    expect(receiptAddressLines(null, null)).toEqual([])
+    expect(receiptAddressLines('  12   Rue   A  ', ' Lyon ')).toEqual(['12 Rue A', 'Lyon'])
   })
 
   it('⭐ actions : « Noter » gatée par une lecture SERVEUR (jamais un paramètre d’URL) ; « Un problème » = canal réel mailto avec la référence', () => {
