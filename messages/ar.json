@@ -4065,7 +4065,8 @@
       "footNote": "يُحفظ الإيصال في «طلباتي».",
       "rateAction": "قيّم هذا المطعم",
       "issueAction": "مشكلة في هذا الحساب؟",
-      "issueSubject": "الحساب {code} — Grubano"
+      "issueSubject": "الحساب {code} — Grubano",
+      "metaAddress": "العنوان"
     }
   },
   "menu": {

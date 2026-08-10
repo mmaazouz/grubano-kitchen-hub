@@ -4065,7 +4065,8 @@
       "footNote": "Recibo guardado en «Mis pedidos».",
       "rateAction": "Valorar este restaurante",
       "issueAction": "¿Un problema con esta cuenta?",
-      "issueSubject": "Cuenta {code} — Grubano"
+      "issueSubject": "Cuenta {code} — Grubano",
+      "metaAddress": "Dirección"
     }
   },
   "menu": {

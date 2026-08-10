@@ -182,6 +182,13 @@
 .gb-receipt .rc-meta__k { flex: 1; font-size: 11.5px; color: var(--gb-muted); }
 .gb-receipt .rc-meta__v { font-size: 12px; font-weight: 700; text-align: end; overflow-wrap: anywhere; }
 .gb-receipt .rc-meta__v.mono { font-size: 11.5px; }
+/* Adresse (référence : valeur sur DEUX lignes, alignée à la fin, interligne
+   1.35). Les lignes sont des <span> en bloc plutôt qu'un <br> : le retour suit
+   alors la direction du texte, y compris en RTL. Contrastes mesurés (valeur
+   --gb-text sur --gb-surface) : 15,12:1 en clair · 13,89:1 en sombre ; le
+   libellé --gb-muted : 4,63:1 clair · 6,01:1 sombre. */
+.gb-receipt .rc-meta__v--addr { line-height: 1.35; }
+.gb-receipt .rc-addr__l { display: block; }
 
 /* Actions (référence .split-row). */
 .gb-receipt .rc-act {

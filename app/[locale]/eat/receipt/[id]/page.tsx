@@ -133,6 +133,39 @@ export default function DineinReceiptScreen() {
   const showSubtotal =
     receipt != null && Math.round(receipt.subtotal * 100) !== Math.round(receipt.amountPaid * 100)
 
+  // ── Adresse sur DEUX lignes (référence BF : voie, puis code postal + ville) ──
+  // Restaurant.address et .city sont NOT NULL au schéma : la rangée est
+  // INCONDITIONNELLE — le bloc méta garde une hauteur stable, comme la
+  // référence l'exige. Le champ address est saisi COMPLET (« 12 Rue de la
+  // République, 84100 Orange ») : la 2ᵉ ligne est donc découpée DANS l'adresse
+  // — d'abord sur le code postal, sinon sur la dernière virgule. Ce n'est qu'à
+  // défaut (adresse d'un seul tenant, sans code postal ni virgule) que la ville
+  // du modèle sert de 2ᵉ ligne, et alors seulement si l'adresse ne la porte pas
+  // déjà : la comparaison est celle RÉTABLIE par la revue AW — MOTS ENTIERS
+  // consécutifs, jamais une sous-chaîne (« Pau » ne doit pas être avalé par
+  // « rue Paul Bert », ni « Eu » par « Vieux »). AFFICHAGE seul : la route sert
+  // les deux champs tels quels (diff vide).
+  const addressLines = (() => {
+    if (!receipt) return []
+    const addr = (receipt.address ?? '').trim().replace(/\s+/g, ' ')
+    const city = (receipt.city ?? '').trim()
+    if (!addr) return city ? [city] : []
+    // 1) l'adresse porte son code postal → coupe juste avant (« …, 84100 Orange »).
+    const byZip = addr.match(/^(.*\S)[,\s]+(\d{4,6}\b.*)$/)
+    if (byZip) return [byZip[1].replace(/,\s*$/, '').trim(), byZip[2].trim()]
+    // 2) sinon, dernière virgule (« 12 Rue des Lices, Avignon »).
+    const cut = addr.lastIndexOf(',')
+    if (cut > 0) return [addr.slice(0, cut).trim(), addr.slice(cut + 1).trim()]
+    // 3) à défaut : la ville du modèle, seulement si elle manque à l'adresse.
+    if (!city) return [addr]
+    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
+    const aw = words(addr)
+    const cw = words(city)
+    const cityInAddr = cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
+    return cityInAddr ? [addr] : [addr, city]
+  })()
+
   return (
     <div className="gb gb-receipt">
       {/* Barre de titre (référence .h2bar) : retour · « Mon addition » ·
@@ -210,22 +243,36 @@ export default function DineinReceiptScreen() {
             <div className="rc-total rc-total--paid"><span>{t('amountPaid')}</span><span><bdi>{money(receipt.amountPaid)}</bdi></span></div>
           </section>
 
-          {/* Méta (référence .meta) : 4 rangées clé/valeur, valeurs mono pour la
-              date et la référence. La date de paiement reste en toutes lettres
-              (règle non négociable — écart assumé vs la référence numérique). */}
+          {/* Méta (référence .meta) : CINQ rangées clé/valeur dans l'ordre de la
+              référence — Restaurant · Adresse · Table · Payée le · Référence.
+              L'adresse suit immédiatement le nom : nom commercial et adresse
+              forment un bloc d'identité continu que « Table » ne coupe pas.
+              AUCUNE rangée conditionnelle (hauteur stable) : les trois champs
+              sont NOT NULL au schéma. AUCUNE raison sociale — retirée de la
+              conception par décision du fondateur, aucun repli prévu. Valeurs
+              mono pour la date et la référence ; la date de paiement reste en
+              toutes lettres (règle non négociable — écart assumé vs la
+              référence numérique). */}
           <section className="rc-meta">
             <div className="rc-meta__row">
               <span className="ms" aria-hidden="true">storefront</span>
               <span className="rc-meta__k">{t('metaRestaurant')}</span>
               <span className="rc-meta__v">{receipt.restaurantName}</span>
             </div>
-            {receipt.tableName ? (
-              <div className="rc-meta__row">
-                <span className="ms" aria-hidden="true">table_restaurant</span>
-                <span className="rc-meta__k">{t('metaTable')}</span>
-                <span className="rc-meta__v">{receipt.tableName}</span>
-              </div>
-            ) : null}
+            <div className="rc-meta__row">
+              <span className="ms" aria-hidden="true">place</span>
+              <span className="rc-meta__k">{t('metaAddress')}</span>
+              <span className="rc-meta__v rc-meta__v--addr">
+                {addressLines.map((line, i) => (
+                  <span key={i} className="rc-addr__l">{line}</span>
+                ))}
+              </span>
+            </div>
+            <div className="rc-meta__row">
+              <span className="ms" aria-hidden="true">table_restaurant</span>
+              <span className="rc-meta__k">{t('metaTable')}</span>
+              <span className="rc-meta__v">{receipt.tableName}</span>
+            </div>
             <div className="rc-meta__row">
               <span className="ms" aria-hidden="true">event</span>
               <span className="rc-meta__k">{t('metaPaidAt')}</span>

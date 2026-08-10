@@ -4065,7 +4065,8 @@
       "footNote": "Reçu conservé dans « Mes commandes ».",
       "rateAction": "Noter ce restaurant",
       "issueAction": "Un problème avec cette addition ?",
-      "issueSubject": "Addition {code} — Grubano"
+      "issueSubject": "Addition {code} — Grubano",
+      "metaAddress": "Adresse"
     }
   },
   "menu": {

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 // conception AQ), mesurée par le robot design-qa (écran `eat-receipt`). Ces
 // tests verrouillent la STRUCTURE (le pixel est jugé par le robot, pas ici) :
 // les 3 mentions SORTIES (décision fondateur), la hiérarchie du héros (montant
-// NAVY, date nue), la carte détail fermée par « Total payé », la méta 4 rangées,
+// NAVY, date nue), la carte détail fermée par « Total payé », la méta 5 rangées,
 // les 2 actions gatées par contexte, l'absence de termes interdits et de
 // ressources distantes, la non-régression delivery/pickup, et l'intégrité de la
 // référence + de son câblage (la mesure ne doit pas être déplacée).
@@ -79,18 +79,74 @@ describe('BC — structure de la référence (écran 3 « Payée »)', () => {
     expect(CSS).toMatch(/rc-lines__count \{[\s\S]{0,200}?border-radius: 999px/)
   })
 
-  it('⭐ méta : 4 rangées clé/valeur (Restaurant · Table · Payée le · Référence), valeurs date/réf en mono', () => {
+  it('⭐ méta : CINQ rangées dans l’ORDRE de la référence (Restaurant · Adresse · Table · Payée le · Référence), date/réf en mono', () => {
     const meta = PAGE.match(/<section className="rc-meta">([\s\S]*?)<\/section>/)?.[1] ?? ''
-    for (const k of ['metaRestaurant', 'metaTable', 'metaPaidAt', 'metaRef']) {
-      expect(meta).toContain(`t('${k}')`)
-    }
+    const ORDER = ['metaRestaurant', 'metaAddress', 'metaTable', 'metaPaidAt', 'metaRef']
+    for (const k of ORDER) expect(meta, k).toContain(`t('${k}')`)
+    // ORDRE strict : chaque libellé apparaît après le précédent.
+    const positions = ORDER.map((k) => meta.indexOf(`t('${k}')`))
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
     expect((meta.match(/rc-meta__v mono/g) ?? []).length).toBe(2)
-    // La méta compte EXACTEMENT les 4 rangées de la référence — adresse et
-    // raison sociale n'y figurent pas. Revue BC : c'est un retrait de contenu
-    // AU-DELÀ des 3 mentions listées par le fondateur, signalé au rapport pour
-    // arbitrage ; on verrouille donc la conformité à la référence (4 rangées),
-    // PAS une interdiction définitive de ces deux données.
-    expect((meta.match(/rc-meta__row/g) ?? []).length).toBe(4)
+    // La référence (BF) porte exactement 5 rangées : mise à jour du verrou BC
+    // qui en exigeait 4 (écrit ainsi pour ne pas cimenter une décision non prise).
+    expect((meta.match(/rc-meta__row/g) ?? []).length).toBe(5)
+  })
+
+  it('⭐ l’ADRESSE est placée SOUS « Restaurant » (bloc d’identité continu que « Table » ne coupe pas) et rendue sur 2 lignes', () => {
+    const meta = PAGE.match(/<section className="rc-meta">([\s\S]*?)<\/section>/)?.[1] ?? ''
+    expect(meta.indexOf("t('metaAddress')")).toBeGreaterThan(meta.indexOf("t('metaRestaurant')"))
+    expect(meta.indexOf("t('metaAddress')")).toBeLessThan(meta.indexOf("t('metaTable')"))
+    expect(meta).toContain('rc-meta__v--addr')
+    expect(meta).toContain('addressLines.map')
+    expect(CSS).toMatch(/rc-meta__v--addr \{ line-height: 1\.35/)
+    expect(CSS).toMatch(/rc-addr__l \{ display: block/)
+  })
+
+  it('⭐ AUCUNE rangée conditionnelle dans la méta : hauteur STABLE (les 3 champs sont NOT NULL au schéma)', () => {
+    const meta = PAGE.match(/<section className="rc-meta">([\s\S]*?)<\/section>/)?.[1] ?? ''
+    expect(meta).not.toContain('? (')   // plus de rangée Table conditionnelle
+    expect(meta).not.toContain(': null')
+  })
+
+  it('⭐ AUCUNE raison sociale rendue, même si la donnée existe (retirée de la conception — aucun repli)', () => {
+    expect(PAGE).not.toContain("t('officialName'")
+    expect(PAGE).not.toContain('receipt.officialName')
+  })
+
+  it('la découpe de l’adresse : code postal, sinon dernière virgule, sinon ville — contre-cas AW (Pau/Eu/Aÿ) jamais avalés', () => {
+    // Reproduit la fonction de la page (mêmes règles).
+    const split = (address: string, city: string): string[] => {
+      const addr = address.trim().replace(/\s+/g, ' ')
+      const c = city.trim()
+      if (!addr) return c ? [c] : []
+      const byZip = addr.match(/^(.*\S)[,\s]+(\d{4,6}\b.*)$/)
+      if (byZip) return [byZip[1].replace(/,\s*$/, '').trim(), byZip[2].trim()]
+      const cut = addr.lastIndexOf(',')
+      if (cut > 0) return [addr.slice(0, cut).trim(), addr.slice(cut + 1).trim()]
+      if (!c) return [addr]
+      const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
+      const aw = words(addr)
+      const cw = words(c)
+      const inAddr = cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
+      return inAddr ? [addr] : [addr, c]
+    }
+    // Cas réel du modèle : adresse complète → voie / CP + ville, sans doublon.
+    expect(split('12 Rue de la République, 84100 Orange', 'Orange')).toEqual(['12 Rue de la République', '84100 Orange'])
+    expect(split('14 rue de la Roquette 75012 Paris', 'Paris')).toEqual(['14 rue de la Roquette', '75012 Paris'])
+    // Sans code postal : dernière virgule.
+    expect(split('12 Rue des Lices, Avignon', 'Avignon')).toEqual(['12 Rue des Lices', 'Avignon'])
+    // Sans virgule ni CP : la ville complète la 2ᵉ ligne…
+    expect(split('12 Rue des Lices', 'Avignon')).toEqual(['12 Rue des Lices', 'Avignon'])
+    // …et n'est PAS avalée par un mot qui la contient (contre-cas revue AW).
+    expect(split('12 rue Paul Bert', 'Pau')).toEqual(['12 rue Paul Bert', 'Pau'])
+    expect(split('Place du Vieux Marché', 'Eu')).toEqual(['Place du Vieux Marché', 'Eu'])
+    expect(split('3 rue Lafayette', 'Aÿ')).toEqual(['3 rue Lafayette', 'Aÿ'])
+    // Ville déjà présente en mots entiers → pas de répétition.
+    expect(split('5 quai de Southampton Le Havre', 'Le Havre')).toEqual(['5 quai de Southampton Le Havre'])
+    // Valeur anormale (vide) : repli sur la ville, jamais de crash.
+    expect(split('', 'Lyon')).toEqual(['Lyon'])
+    expect(split('', '')).toEqual([])
   })
 
   it('⭐ actions : « Noter » gatée par une lecture SERVEUR (jamais un paramètre d’URL) ; « Un problème » = canal réel mailto avec la référence', () => {

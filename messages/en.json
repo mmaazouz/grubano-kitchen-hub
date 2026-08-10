@@ -4065,7 +4065,8 @@
       "footNote": "Receipt kept in “My orders”.",
       "rateAction": "Rate this restaurant",
       "issueAction": "A problem with this bill?",
-      "issueSubject": "Bill {code} — Grubano"
+      "issueSubject": "Bill {code} — Grubano",
+      "metaAddress": "Address"
     }
   },
   "menu": {
