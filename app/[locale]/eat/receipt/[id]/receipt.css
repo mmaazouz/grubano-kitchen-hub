@@ -1,34 +1,49 @@
-/* ── /eat/receipt/[id] — reçu post-paiement dine-in (AU ; rendu AW) ───────────
-   Conception AQ : CINQ BLOCS SÉPARÉS avec respiration — pas une carte unique.
-   Le VERT (tokens --gb-success, thème-aware) porte l'état ACQUIS ; l'orange
-   accent reste réservé à l'addition EN COURS (/t). Mobile d'abord, pensé pour
-   la CAPTURE D'ÉCRAN. Aucune dépendance externe (tokens gb- + Material Symbols
-   locaux). Contrastes mesurés (fonds nouveaux) :
-     bannière : #FFFFFF sur #0F2742 (panel-ink) ≈ 15,9:1 · sous-ligne #AFC0D6
-       ≈ 8,8:1 · pastille #235C3A sur #EAF7EF ≈ 7,6:1 ;
-     héros (clair) : label/date #235C3A sur #EAF7EF→#D9F0E3 ≈ 7,6:1 mini ;
-       montant 36 px/800 #1E9E57 ≈ 3,5:1 (grand texte ≥ 3:1) — et aucun texte
-       porteur de montant sous 12,5 px (date 13 px, labels 11,5 px sans montant).
-   Thème sombre : les mêmes tokens --gb-success-* redéfinis par gb-tokens. */
+/* ── /eat/receipt/[id] — reçu post-paiement dine-in (AU ; rendu BC VERBATIM) ──
+   Reproduction de scripts/design-qa-refs/eat-receipt.html (écran 3 « Payée »
+   de la conception AQ), mesurée par le robot design-qa (écran `eat-receipt`).
+   Tailles/espacements/couleurs = la référence, mappés sur les tokens gb- de
+   l'app (mêmes valeurs). Écarts ASSUMÉS (règles non négociables > verbatim) :
+   le prix unitaire porte un montant → 12,5 px (référence : 10 px) ; la date
+   « Payée le » reste en toutes lettres (référence : tout-numérique).
+   Aucune ressource distante (polices Gabarito/JetBrains Mono déjà chargées
+   app-wide par tokens.css ; Material Symbols local). */
 
 .gb-receipt {
   max-width: 480px;
   margin: 0 auto;
-  padding: 12px 16px calc(24px + var(--gb-bottomnav-h, 64px));
+  /* Référence .vp : pas de padding haut propre (la barre de titre porte le
+     sien) ; colonne haute pour pousser le pied vers le bas comme la ref —
+     bornée SOUS le chrome du shell (appbar sticky + bottom-nav), sinon la page
+     scrolle et le chrome entre dans la capture. */
+  padding: 0 12px 14px;
+  min-height: calc(100dvh - 150px);
+  display: flex;
+  flex-direction: column;
+  /* Référence : body { line-height: 1.45 } — aligne la dérive verticale fine. */
+  line-height: 1.45;
 }
+.gb-receipt .mono { font-family: var(--gb-font-mono); direction: ltr; unicode-bidi: isolate; }
 
+/* Barre de titre (référence .h2bar). */
 .gb-receipt .rc-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 0 14px;
+  gap: 9px;
+  padding: 8px 1px 10px;
 }
-.gb-receipt .rc-top h1 { font-size: 20px; font-weight: 800; margin: 0; }
+.gb-receipt .rc-top h1 { flex: 1; font-family: var(--gb-font-display); font-size: 15px; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
 .gb-receipt .rc-back {
   border: 0; background: none; cursor: pointer;
-  font-size: 22px; line-height: 1; padding: 6px; margin-inline-start: -6px;
-  color: inherit;
+  font-size: 20px; line-height: 1; padding: 0;
+  color: var(--gb-text);
 }
+.gb-receipt .rc-tnum {
+  font-size: 9.5px; font-weight: 700;
+  color: var(--gb-zest-600);
+  background: color-mix(in srgb, var(--gb-zest) 12%, transparent);
+  border-radius: 6px; padding: 4px 7px;
+}
+[data-theme="dark"] .gb-receipt .rc-tnum { color: var(--gb-zest); }
 
 .gb-receipt .rc-skel {
   height: 320px; border-radius: 16px;
@@ -46,128 +61,147 @@
 }
 .gb-receipt .rc-error p { margin: 0; font-size: 14px; }
 
-/* ── Les 5 blocs et leur RESPIRATION (le geste principal de AW) ─────────────── */
-.gb-receipt .rc-blocks { display: grid; gap: 14px; }
+/* Blocs — la référence espace chaque bloc de 11 px ; le pied est poussé en
+   bas du viewport (référence : .foot ancré sous le .body flex). */
+.gb-receipt .rc-blocks { display: flex; flex-direction: column; gap: 11px; flex: 1; }
 
-/* ── 1. Bannière d'établissement — navy en dégradé (token existant), ancrage. */
+/* Bannière (référence .tbanner). */
 .gb-receipt .rc-banner {
-  display: flex; align-items: center; gap: 12px;
-  background: var(--gb-panel-ink, linear-gradient(150deg, #0F2742, #16395A 70%, #1A2C3F));
-  color: var(--gb-on-ink, #fff);
-  border-radius: 16px;
-  padding: 14px 16px;
+  display: flex; align-items: center; gap: 10px;
+  background: linear-gradient(120deg, #0F2742, #16395A);
+  border-radius: 14px;
+  padding: 11px 13px;
 }
-.gb-receipt .rc-banner__ic { font-size: 26px; flex-shrink: 0; opacity: 0.92; }
-.gb-receipt .rc-banner__id { min-width: 0; flex: 1; display: grid; gap: 2px; }
-.gb-receipt .rc-banner__id b { font-size: 16.5px; overflow-wrap: anywhere; }
-.gb-receipt .rc-banner__id span { font-size: 12.5px; color: var(--gb-on-ink-muted, #AFC0D6); }
+.gb-receipt .rc-banner__ic {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  background: rgba(255, 138, 40, 0.18);
+  display: flex; align-items: center; justify-content: center;
+}
+.gb-receipt .rc-banner__ic .ms { font-size: 19px; color: #FF9A4D; }
+.gb-receipt .rc-banner__id { flex: 1; min-width: 0; }
+.gb-receipt .rc-banner__id b { display: block; font-family: var(--gb-font-display); font-weight: 700; font-size: 13px; color: #fff; overflow-wrap: anywhere; }
+.gb-receipt .rc-banner__id span { display: block; font-size: 10px; color: #AFC0D6; }
 .gb-receipt .rc-banner__pill {
   flex-shrink: 0;
-  font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--gb-success-fg, #235C3A);
-  background: var(--gb-success-bg, #EAF7EF);
-  border-radius: 999px; padding: 5px 11px;
+  font-size: 8.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+  color: #0F2742;
+  background: #7FD8A4;
+  border-radius: 6px; padding: 4px 7px;
 }
 
-/* ── 2. Montant en héros — dégradé VERT, label au-dessus, somme dominante,
-       date-heure du paiement en sous-titre discret. */
+/* Héros (référence .amt.paid) — dégradé TRÈS PÂLE, montant NAVY. */
 .gb-receipt .rc-hero {
-  display: grid; gap: 3px; justify-items: center; text-align: center;
-  border-radius: 16px;
-  padding: 18px 16px 16px;
-  background: linear-gradient(160deg,
-    var(--gb-success-bg, #EAF7EF),
-    color-mix(in srgb, var(--gb-success, #1E9E57) 16%, var(--gb-success-bg, #EAF7EF)));
+  text-align: center;
+  border-radius: 14px;
+  padding: 15px;
+  background: linear-gradient(160deg, var(--gb-success-bg, #EAF7EF), var(--gb-surface, #fff));
   border: 1px solid var(--gb-success-bd, #CDEBD8);
 }
 .gb-receipt .rc-hero__label {
-  font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--gb-success-fg, #235C3A);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--gb-basil-600, #1E9E57);
 }
+.gb-receipt .rc-hero__label .ms { font-size: 14px; }
 .gb-receipt .rc-hero__amount {
-  font-size: 36px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15;
-  color: var(--gb-success, #1E9E57);
-  overflow-wrap: anywhere; /* montant démesuré : la colonne 480px ne déborde jamais (capture) */
+  display: block;
+  font-family: var(--gb-font-display);
+  font-size: 36px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.05;
+  margin-top: 5px;
+  color: var(--gb-text);
+  overflow-wrap: anywhere;
 }
-.gb-receipt .rc-hero__when { font-size: 13px; color: var(--gb-success-fg, #235C3A); opacity: 0.85; }
+.gb-receipt .rc-hero__when { display: block; font-size: 11px; color: var(--gb-muted); margin-top: 5px; }
 
-/* ── 3. Sceau — « ─── ✓ addition réglée ─── », filets en CSS pur. */
+/* Sceau (référence .stamp). */
 .gb-receipt .rc-seal {
   display: flex; align-items: center; justify-content: center; gap: 7px;
-  font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--gb-success, #1E9E57);
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--gb-basil-600, #1E9E57);
 }
-.gb-receipt .rc-seal .ms { font-size: 15px; }
-.gb-receipt .rc-seal::before,
-.gb-receipt .rc-seal::after {
-  content: ''; flex: 1; height: 1px;
-  background: color-mix(in srgb, var(--gb-success, #1E9E57) 38%, transparent);
-}
+.gb-receipt .rc-seal .ms { font-size: 16px; }
+.gb-receipt .rc-seal__ln { flex: 1; height: 1px; background: var(--gb-success-bd, #CDEBD8); }
 
-/* ── 4. Carte de détail — en-tête icône + titre + compteur, puis les lignes :
-       quantité en accent, nom, prix unitaire en sous-ligne, prix de ligne à
-       droite. */
+/* Carte de détail (référence .ocard). */
 .gb-receipt .rc-lines {
   background: var(--gb-surface, #fff);
   border: 1px solid var(--gb-border, #e5e7eb);
-  border-radius: 16px;
-  padding: 14px 16px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  border-radius: 13px;
+  padding: 12px;
 }
 .gb-receipt .rc-lines__head {
   display: flex; align-items: center; gap: 8px;
   padding-bottom: 10px; margin-bottom: 10px;
   border-bottom: 1px solid var(--gb-border, #e5e7eb);
 }
-.gb-receipt .rc-lines__head .ms { font-size: 18px; opacity: 0.75; }
-.gb-receipt .rc-lines__title {
-  flex: 1; font-size: 13px; font-weight: 800;
-}
+.gb-receipt .rc-lines__head .ms { font-size: 17px; color: var(--gb-muted-2); }
+.gb-receipt .rc-lines__title { flex: 1; font-family: var(--gb-font-display); font-size: 12.5px; font-weight: 800; }
 .gb-receipt .rc-lines__count {
-  font-size: 11.5px; font-weight: 700; opacity: 0.65;
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  border-radius: 999px; padding: 3px 9px;
+  font-size: 10px; font-weight: 700; color: var(--gb-muted);
+  background: var(--gb-surface-2);
+  border: 1px solid var(--gb-border, #e5e7eb);
+  border-radius: 999px; padding: 2px 8px;
 }
-.gb-receipt .rc-lines ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.gb-receipt .rc-lines ul { list-style: none; margin: 0; padding: 0; }
 .gb-receipt .rc-lines li {
-  display: flex; align-items: baseline; gap: 10px;
-  font-size: 14px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  font-size: 12.5px; font-weight: 700;
 }
-.gb-receipt .rc-line__qty {
-  flex-shrink: 0; min-width: 26px;
-  font-weight: 800; font-variant-numeric: tabular-nums;
-  color: var(--gb-success, #1E9E57);
-}
-.gb-receipt .rc-line__label { min-width: 0; flex: 1; overflow-wrap: anywhere; font-weight: 600; }
-.gb-receipt .rc-line__label small { display: block; font-size: 12px; font-weight: 500; opacity: 0.65; }
-.gb-receipt .rc-line__amount { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; }
-
-/* Totaux — rendus SEULEMENT quand le total des lignes diverge du montant payé
-   (règle AQ) ; alors les deux montants, libellés distincts. */
-.gb-receipt .rc-totals {
-  border-top: 1px dashed var(--gb-border, #e5e7eb);
-  margin-top: 12px; padding-top: 10px;
-  display: grid; gap: 6px;
-}
+.gb-receipt .rc-lines li + li { margin-top: 10px; }
+.gb-receipt .rc-line__label { flex: 1; min-width: 0; padding-inline-end: 10px; line-height: 1.3; overflow-wrap: anywhere; }
+.gb-receipt .rc-line__qty { color: var(--gb-zest-600); }
+[data-theme="dark"] .gb-receipt .rc-line__qty { color: var(--gb-zest); }
+/* Montant → 12,5 px minimum (règle non négociable ; référence : 10 px). */
+.gb-receipt .rc-line__label small { display: block; font-size: 12.5px; font-weight: 600; color: var(--gb-muted-2); margin-top: 2px; }
+.gb-receipt .rc-line__amount { flex-shrink: 0; white-space: nowrap; }
+.gb-receipt .rc-lines__div { height: 1px; background: var(--gb-border, #e5e7eb); margin: 10px 0 0; }
 .gb-receipt .rc-total {
   display: flex; justify-content: space-between; gap: 12px;
-  font-size: 13.5px; opacity: 0.8;
+  font-size: 12.5px; color: var(--gb-muted);
+  margin-top: 9px;
 }
-.gb-receipt .rc-total--paid { font-size: 16px; opacity: 1; }
-.gb-receipt .rc-total--paid b { color: var(--gb-success, #1E9E57); }
-
-/* ── 5. Méta à icônes, puis mentions de bas de carte — présentes, DISCRÈTES. */
-.gb-receipt .rc-meta { display: grid; gap: 8px; padding: 0 2px; }
-.gb-receipt .rc-meta__row {
-  display: flex; align-items: baseline; gap: 8px;
-  font-size: 12.5px; opacity: 0.78; overflow-wrap: anywhere; min-width: 0;
-}
-.gb-receipt .rc-meta__row .ms { font-size: 15px; flex-shrink: 0; opacity: 0.8; }
-.gb-receipt .rc-foot {
+.gb-receipt .rc-total--paid {
+  color: var(--gb-text);
+  font-family: var(--gb-font-display);
+  font-weight: 800; font-size: 15px;
   border-top: 1px solid var(--gb-border, #e5e7eb);
-  margin-top: 6px; padding-top: 10px;
-  display: grid; gap: 4px;
+  padding-top: 9px; margin-top: 9px;
 }
-.gb-receipt .rc-foot p { margin: 0; font-size: 11.5px; opacity: 0.62; }
-.gb-receipt .rc-nature { font-weight: 700; opacity: 0.75; } /* clause de nature : lisible sur la capture */
-.gb-receipt .rc-brand { font-size: 12px; font-weight: 800; opacity: 0.7; }
+.gb-receipt .rc-total--sub + .rc-total--paid { margin-top: 5px; }
+
+/* Méta (référence .meta) — rangées clé/valeur. */
+.gb-receipt .rc-meta {
+  background: var(--gb-surface, #fff);
+  border: 1px solid var(--gb-border, #e5e7eb);
+  border-radius: 13px;
+  padding: 4px 12px;
+}
+.gb-receipt .rc-meta__row { display: flex; align-items: center; gap: 9px; padding: 10px 0; }
+.gb-receipt .rc-meta__row + .rc-meta__row { border-top: 1px solid var(--gb-border, #e5e7eb); }
+.gb-receipt .rc-meta__row > .ms { font-size: 17px; color: var(--gb-muted-2); flex-shrink: 0; }
+.gb-receipt .rc-meta__k { flex: 1; font-size: 11.5px; color: var(--gb-muted); }
+.gb-receipt .rc-meta__v { font-size: 12px; font-weight: 700; text-align: end; overflow-wrap: anywhere; }
+.gb-receipt .rc-meta__v.mono { font-size: 11.5px; }
+
+/* Actions (référence .split-row). */
+.gb-receipt .rc-act {
+  display: flex; align-items: center; gap: 9px;
+  background: var(--gb-surface, #fff);
+  border: 1px solid var(--gb-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 46px;
+  color: inherit; text-decoration: none;
+}
+.gb-receipt .rc-act > .ms { font-size: 18px; color: var(--gb-zest-600); }
+[data-theme="dark"] .gb-receipt .rc-act > .ms { color: var(--gb-zest); }
+.gb-receipt .rc-act > span:nth-child(2) { flex: 1; font-size: 12px; font-weight: 700; }
+.gb-receipt .rc-act__chev { color: var(--gb-muted-2) !important; font-size: 18px !important; }
+
+/* Pied (référence .foot) — ancré en bas de la colonne. */
+.gb-receipt .rc-foot {
+  margin: auto 0 0; padding-top: 17px;
+  border-top: 1px solid var(--gb-border, #e5e7eb);
+  text-align: center;
+  font-size: 10px; color: var(--gb-muted);
+}

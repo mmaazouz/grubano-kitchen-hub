@@ -4037,7 +4037,7 @@
       "confirmToAccount": "Ir a mi cuenta"
     },
     "receipt": {
-      "title": "Recibo",
+      "title": "Mi cuenta",
       "back": "Volver",
       "retry": "Reintentar",
       "loadError": "No se pudo cargar el recibo — vuelve a intentarlo; el soporte puede verificar tu pago.",
@@ -4045,12 +4045,10 @@
       "table": "Mesa: {name}",
       "paidLine": "Cuenta saldada el {date} a las {time}",
       "sessionLabel": "Sesión / reserva: <c>{code}</c>",
-      "linesLabel": "Consumiciones",
+      "linesLabel": "Detalle de la cuenta",
       "unitPrice": "<m>{price}</m> la unidad",
       "linesTotal": "Total de consumiciones",
-      "amountPaid": "Importe pagado",
-      "editedLine": "Consultado el {date} — los datos del establecimiento y de la mesa son los conocidos en esta fecha.",
-      "disclaimer": "Solo prueba de pago — este documento no constituye un registro contable oficial.",
+      "amountPaid": "Total pagado",
       "signIn": "Inicia sesión para ver este recibo.",
       "signInCta": "Iniciar sesión",
       "paidPill": "Pagada",
@@ -4059,7 +4057,15 @@
       "bannerTable": "En sala · Mesa {name}",
       "bannerDinein": "En sala",
       "linesCount": "{count, plural, one {# artículo} other {# artículos}}",
-      "linesNote": "Detalle de las consumiciones tal como en el momento del pago."
+      "heroDate": "{date} a las {time}",
+      "metaRestaurant": "Restaurante",
+      "metaTable": "Mesa",
+      "metaPaidAt": "Pagada el",
+      "metaRef": "Referencia",
+      "footNote": "Recibo guardado en «Mis pedidos».",
+      "rateAction": "Valorar este restaurante",
+      "issueAction": "¿Un problema con esta cuenta?",
+      "issueSubject": "Cuenta {code} — Grubano"
     }
   },
   "menu": {

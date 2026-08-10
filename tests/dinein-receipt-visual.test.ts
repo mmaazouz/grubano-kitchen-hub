@@ -2,156 +2,169 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-// ── Mission AW — rendu du reçu post-paiement : la conception AQ en 5 blocs ────
-// Correction PUREMENT VISUELLE : gardes, sélection serveur et données intactes
-// (la route n'est pas touchée — tests AU inchangés). Ces tests verrouillent :
-// le total des consommations conditionnel (règle AQ), la ville dédupliquée,
-// les mentions restaurées toujours présentes, le vert rendu à l'état payé
-// (plus d'orange), l'absence de termes interdits et de ressources distantes,
-// et la non-régression du lien « Reçu » delivery/pickup.
+// ── Mission BC — reproduction VERBATIM de la référence archivée ───────────────
+// La cible est scripts/design-qa-refs/eat-receipt.html (écran 3 « Payée » de la
+// conception AQ), mesurée par le robot design-qa (écran `eat-receipt`). Ces
+// tests verrouillent la STRUCTURE (le pixel est jugé par le robot, pas ici) :
+// les 3 mentions SORTIES (décision fondateur), la hiérarchie du héros (montant
+// NAVY, date nue), la carte détail fermée par « Total payé », la méta 4 rangées,
+// les 2 actions gatées par contexte, l'absence de termes interdits et de
+// ressources distantes, la non-régression delivery/pickup, et l'intégrité de la
+// référence + de son câblage (la mesure ne doit pas être déplacée).
 
 const ROOT = process.cwd()
 const PAGE = readFileSync(join(ROOT, 'app', '[locale]', 'eat', 'receipt', '[id]', 'page.tsx'), 'utf8')
 const CSS = readFileSync(join(ROOT, 'app', '[locale]', 'eat', 'receipt', '[id]', 'receipt.css'), 'utf8')
 const ORDERS = readFileSync(join(ROOT, 'app', '[locale]', 'eat', 'orders', 'page.tsx'), 'utf8')
+const LOCALES = ['fr', 'en', 'es', 'it', 'ar'] as const
+const msg = (loc: string) => JSON.parse(readFileSync(join(ROOT, `messages/${loc}.json`), 'utf8'))
 
-describe('AW — total des consommations : conditionnel selon la règle AQ', () => {
-  // Revue AW : la divergence se juge EN CENTIMES (deux Float à un dixième de
-  // centime d'écart rendraient deux montants IDENTIQUES à l'écran sous deux
-  // libellés — la confusion exacte que la règle AQ évite).
-  const GUARD = /Math\.round\(receipt\.subtotal \* 100\) !== Math\.round\(receipt\.amountPaid \* 100\) \? \(([\s\S]*?)\) : null/
-
-  it('⭐ le bloc totaux ne se rend QUE quand subtotal diverge de amountPaid, comparés en CENTIMES', () => {
-    expect(PAGE).toMatch(GUARD)
-    const totalsBlock = PAGE.match(GUARD)?.[1] ?? ''
-    expect(totalsBlock).toContain('rc-totals')
-    expect(totalsBlock).toContain("t('linesTotal')")
-    expect(totalsBlock).toContain("t('amountPaid')")
-    expect(totalsBlock).toContain('money(receipt.subtotal)')
+describe('BC — les trois mentions SORTENT (décision fondateur — la référence prime)', () => {
+  it('⭐ clause de nature, mention de consultation et note lignes-gelées ABSENTES du rendu', () => {
+    expect(PAGE).not.toContain("t('disclaimer')")
+    expect(PAGE).not.toContain("t('editedLine'")
+    expect(PAGE).not.toContain("t('linesNote')")
+    expect(PAGE).not.toContain('rc-nature')
+    expect(PAGE).not.toContain('rc-brand') // logotype de pied absent de la référence
   })
 
-  it('⭐ le montant payé n’est plus rendu deux fois hors divergence : un seul money(amountPaid) hors du bloc conditionnel (le héros)', () => {
-    const outside = PAGE.replace(GUARD, '')
-    expect((outside.match(/money\(receipt\.amountPaid\)/g) ?? []).length).toBe(1)
-  })
-})
-
-describe('AW — la ville n’apparaît qu’une fois', () => {
-  it('⭐ l’adresse est dédupliquée par MOTS ENTIERS consécutifs (revue AW) et l’ancienne jointure aveugle a disparu', () => {
-    expect(PAGE).toMatch(/cw\.every\(\(w, j\) => aw\[i \+ j\] === w\)/)
-    expect(PAGE).toContain("normalize('NFD')")
-    expect(PAGE).not.toContain('[receipt.address, receipt.city].filter(Boolean).join')
-    expect(PAGE).not.toMatch(/norm\(addr\)\.includes\(norm\(city\)\)/) // le containment brut est interdit
-  })
-
-  it('la logique : ville contenue → une fois ; ville absente → ajoutée ; JAMAIS avalée par un mot (Pau/Eu/Aÿ — contre-cas revue)', () => {
-    // Reproduit la fonction de la page (mêmes normalisation et fenêtre de mots).
-    const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    const words = (s: string) => norm(s).split(/[^a-z0-9]+/).filter(Boolean)
-    const line = (addr: string, city: string) => {
-      const aw = words(addr)
-      const cw = words(city)
-      const inAddr = cw.length > 0 && aw.some((_, i) => cw.every((w, j) => aw[i + j] === w))
-      return inAddr ? addr : `${addr}, ${city}`
+  it('⭐ leurs clés i18n sont retirées des 5 locales (ordre fondateur explicite)', () => {
+    for (const loc of LOCALES) {
+      const r = msg(loc).eat.receipt
+      expect(r.disclaimer, `${loc} disclaimer`).toBeUndefined()
+      expect(r.editedLine, `${loc} editedLine`).toBeUndefined()
+      expect(r.linesNote, `${loc} linesNote`).toBeUndefined()
     }
-    expect(line('12 Rue de la République, 84100 Orange', 'Orange')).toBe('12 Rue de la République, 84100 Orange')
-    expect(line('1 quai des Moulins, 34200 SETE', 'Sète')).toBe('1 quai des Moulins, 34200 SETE')
-    expect(line('12 Rue des Lices', 'Avignon')).toBe('12 Rue des Lices, Avignon')
-    // Contre-cas de la revue : la ville n'est JAMAIS perdue par sous-chaîne.
-    expect(line('12 rue Paul Bert', 'Pau')).toBe('12 rue Paul Bert, Pau')
-    expect(line('Place du Vieux Marché', 'Eu')).toBe('Place du Vieux Marché, Eu')
-    expect(line('3 rue Lafayette', 'Aÿ')).toBe('3 rue Lafayette, Aÿ')
-    // Ville multi-mots détectée en séquence.
-    expect(line('5 quai de Southampton, 76600 Le Havre', 'Le Havre')).toBe('5 quai de Southampton, 76600 Le Havre')
   })
 })
 
-describe('AW — les mentions restaurées par revue adversariale restent (discrètes, jamais retirées)', () => {
-  it('⭐ clause de nature + mention de consultation toujours rendues', () => {
-    expect(PAGE).toContain("t('disclaimer')")
-    expect(PAGE).toContain("t('editedLine'")
-    // Discrètes : dans le pied (rc-foot), tailles CSS < corps de texte.
-    expect(PAGE).toMatch(/rc-foot[\s\S]{0,700}?t\('disclaimer'\)/)
-    expect(CSS).toMatch(/\.rc-foot p \{[^}]*font-size: 11\.5px/)
-  })
-})
-
-describe('AW — le VERT rendu à l’état payé (l’orange reste à l’addition en cours)', () => {
-  it('⭐ héros, pastille et sceau sur les tokens --gb-success ; plus AUCUN --gb-accent dans le CSS du reçu', () => {
-    expect(CSS).toMatch(/\.rc-hero \{[\s\S]{0,400}?--gb-success/)
-    expect(CSS).toMatch(/rc-banner__pill[\s\S]{0,200}?--gb-success/)
-    expect(CSS).toMatch(/rc-seal[\s\S]{0,200}?--gb-success/)
-    expect(CSS).not.toContain('--gb-accent')
-    expect(CSS).not.toContain('#FF6A1F')
+describe('BC — structure de la référence (écran 3 « Payée »)', () => {
+  it('⭐ barre de titre : « Mon addition » + pastille de référence mono (code de session)', () => {
+    expect(msg('fr').eat.receipt.title).toBe('Mon addition')
+    expect(PAGE).toMatch(/rc-tnum mono"><bdi>#\{receipt\.sessionCode\}/)
   })
 
-  it('⭐ hiérarchie du héros : label AU-DESSUS, montant dominant (36px/800), date en sous-titre EN DESSOUS', () => {
+  it('⭐ héros : label → montant → date NUE (sans préfixe), montant en NAVY (couleur de texte), fond TRÈS PÂLE', () => {
     const hero = PAGE.match(/<div className="rc-hero">([\s\S]*?)<\/div>/)?.[1] ?? ''
     const iLabel = hero.indexOf("t('heroLabel')")
     const iAmount = hero.indexOf('money(receipt.amountPaid)')
-    const iWhen = hero.indexOf("t('paidLine'")
+    const iWhen = hero.indexOf("t('heroDate'")
     expect(iLabel).toBeGreaterThan(-1)
     expect(iAmount).toBeGreaterThan(iLabel)
     expect(iWhen).toBeGreaterThan(iAmount)
-    expect(CSS).toMatch(/rc-hero__amount \{[^}]*font-size: 36px/)
+    expect(hero).not.toContain("t('paidLine'") // la date du héros est NUE
+    expect(CSS).toMatch(/rc-hero__amount \{[\s\S]{0,300}?color: var\(--gb-text\)/)
+    expect(CSS).toMatch(/rc-hero \{[\s\S]{0,300}?linear-gradient\(160deg, var\(--gb-success-bg/)
+    expect(CSS).toMatch(/rc-hero__amount \{[\s\S]{0,200}?font-size: 36px/)
   })
 
-  it('les 5 blocs séparés existent avec respiration (grid gap), l’ancienne carte unique a disparu', () => {
-    for (const cls of ['rc-banner', 'rc-hero', 'rc-seal', 'rc-lines', 'rc-meta']) {
-      expect(PAGE).toContain(`className="${cls}`)
+  it('⭐ la carte détail se ferme par « Total payé » ; le total des lignes ne s’y ajoute QUE s’il diverge (centimes)', () => {
+    const card = PAGE.match(/<section className="rc-lines">([\s\S]*?)<\/section>/)?.[1] ?? ''
+    expect(card).toContain('rc-total--paid')
+    expect(card).toContain('money(receipt.amountPaid)')
+    expect(PAGE).toMatch(/Math\.round\(receipt\.subtotal \* 100\) !== Math\.round\(receipt\.amountPaid \* 100\)/)
+    const cond = PAGE.match(/\{showSubtotal \? \(([\s\S]*?)\) : null\}/)?.[1] ?? ''
+    expect(cond).toContain("t('linesTotal')")
+    expect(cond).toContain('money(receipt.subtotal)')
+    // « Session / réservation » n'est plus intercalée entre détail et total.
+    expect(PAGE).not.toContain("t('sessionLabel'")
+  })
+
+  it('⭐ en-tête du détail : « Détail de l’addition », icône restaurant_menu, compteur ROND (nombre seul + aria pluriel)', () => {
+    expect(msg('fr').eat.receipt.linesLabel).toBe("Détail de l'addition")
+    const head = PAGE.match(/rc-lines__head([\s\S]*?)<\/header>/)?.[1] ?? ''
+    expect(head).toContain('restaurant_menu')
+    expect(head).toMatch(/rc-lines__count mono" aria-label=\{t\('linesCount'/)
+    expect(head).toContain('{receipt.lines.length}')
+    expect(CSS).toMatch(/rc-lines__count \{[\s\S]{0,200}?border-radius: 999px/)
+  })
+
+  it('⭐ méta : 4 rangées clé/valeur (Restaurant · Table · Payée le · Référence), valeurs date/réf en mono', () => {
+    const meta = PAGE.match(/<section className="rc-meta">([\s\S]*?)<\/section>/)?.[1] ?? ''
+    for (const k of ['metaRestaurant', 'metaTable', 'metaPaidAt', 'metaRef']) {
+      expect(meta).toContain(`t('${k}')`)
     }
-    expect(PAGE).not.toContain('rc-card')
-    expect(PAGE).not.toContain('rc-estab')
-    expect(CSS).toMatch(/\.rc-blocks \{ display: grid; gap: 14px/)
+    expect((meta.match(/rc-meta__v mono/g) ?? []).length).toBe(2)
+    // La méta compte EXACTEMENT les 4 rangées de la référence — adresse et
+    // raison sociale n'y figurent pas. Revue BC : c'est un retrait de contenu
+    // AU-DELÀ des 3 mentions listées par le fondateur, signalé au rapport pour
+    // arbitrage ; on verrouille donc la conformité à la référence (4 rangées),
+    // PAS une interdiction définitive de ces deux données.
+    expect((meta.match(/rc-meta__row/g) ?? []).length).toBe(4)
   })
 
-  it('le titre du détail a perdu SA parenthèse technique, la divulgation « gelé au paiement » reste portée ailleurs (×5)', () => {
-    // Revue AW : la règle vise LA parenthèse technique retirée du titre — pas
-    // toute parenthèse à jamais (une reformulation future reste possible) — ET
-    // la divulgation du caractère FIGÉ des lignes doit continuer d'exister sur
-    // le document (clé linesNote, rendue dans le pied).
-    const OLD = { fr: 'au moment du paiement', en: 'at the time of payment', es: 'en el momento del pago', it: 'al momento del pagamento', ar: 'عند الدفع' } as const
-    for (const loc of ['fr', 'en', 'es', 'it', 'ar'] as const) {
-      const j = JSON.parse(readFileSync(join(ROOT, `messages/${loc}.json`), 'utf8'))
-      const r = j.eat?.receipt
-      expect(r?.linesLabel, `${loc} linesLabel`).not.toContain(OLD[loc])
-      expect(r?.linesNote, `${loc} linesNote`).toContain(OLD[loc])
-      for (const k of ['paidPill', 'heroLabel', 'sealLabel', 'bannerTable', 'bannerDinein', 'linesCount']) {
-        expect(r?.[k], `${loc} ${k}`).toBeTruthy()
+  it('⭐ actions : « Noter » gatée par une lecture SERVEUR (jamais un paramètre d’URL) ; « Un problème » = canal réel mailto avec la référence', () => {
+    // Revue BC : un ?r= falsifié aurait publié un VRAI avis chez un autre
+    // restaurant. L'id vient de MES commandes (session-gatée) et doit
+    // correspondre à CE ticket.
+    expect(PAGE).not.toContain('URLSearchParams')
+    expect(PAGE).toContain("fetch('/api/eat/orders')")
+    expect(PAGE).toMatch(/c\?\.kind === 'dinein' && c\?\.id === id/)
+    expect(PAGE).toMatch(/\{rateRestoId \? \([\s\S]{0,400}?\/eat\/r\/\$\{rateRestoId\}\/reviews/)
+    expect(PAGE).toMatch(/mailto:contact@grubano\.com\?subject=\$\{encodeURIComponent\(t\('issueSubject'/)
+  })
+
+  it('pied : « Reçu conservé dans “Mes commandes” » (référence), rien d’autre', () => {
+    expect(PAGE).toMatch(/rc-foot">\{t\('footNote'\)\}/)
+  })
+
+  it('les 9 nouvelles clés existent ×5 et paidLine/sessionLabel/table/officialName restent (règle « aucune clé supprimée » hors ordre fondateur)', () => {
+    for (const loc of LOCALES) {
+      const r = msg(loc).eat.receipt
+      for (const k of ['heroDate', 'metaRestaurant', 'metaTable', 'metaPaidAt', 'metaRef', 'footNote', 'rateAction', 'issueAction', 'issueSubject']) {
+        expect(r[k], `${loc} ${k}`).toBeTruthy()
+      }
+      for (const k of ['paidLine', 'sessionLabel', 'table', 'officialName']) {
+        expect(r[k], `${loc} ${k} (conservée)`).toBeTruthy()
       }
     }
-    expect(PAGE).toContain("t('linesCount', { count: receipt.lines.length })")
-    expect(PAGE).toContain("t('linesNote')")
   })
 })
 
-describe('AW — sûreté du rendu', () => {
-  it('⭐ aucun terme interdit sur la page ni dans les clés ×5 (Stripe, TVA/HT/TTC, facture, moyen de paiement, PII)', () => {
-    const FORBIDDEN = /stripe|pi_|\btva\b|\bvat\b|\bttc\b|\bht\b|facture|invoice|allergi|paymentMethod|cardNumber/i
-    expect(PAGE).not.toMatch(FORBIDDEN)
-    for (const loc of ['fr', 'en', 'es', 'it', 'ar']) {
-      const j = JSON.parse(readFileSync(join(ROOT, `messages/${loc}.json`), 'utf8'))
-      const vals = Object.values(j.eat.receipt as Record<string, string>).join(' ')
+describe('BC — sûreté et non-régression', () => {
+  it('⭐ aucun terme interdit sur la page ni dans les nouvelles clés ×5', () => {
+    // Revue BC : \bht\b et cardNumber RESTAURÉS (aucun des deux ne matchait la
+    // page — leur retrait avait affaibli le filet sans nécessité).
+    expect(PAGE).not.toMatch(/stripe|pi_|\btva\b|\bvat\b|\bttc\b|\bht\b|facture|invoice|allergi|paymentMethod|cardNumber/i)
+    for (const loc of LOCALES) {
+      const vals = Object.values(msg(loc).eat.receipt as Record<string, string>).join(' ')
       expect(vals, loc).not.toMatch(/stripe|pi_|\btva\b|\bvat\b|facture d|invoice/i)
     }
   })
 
-  it('⭐ aucune ressource distante (page + css), icônes = Material Symbols locaux uniquement', () => {
+  it('⭐ aucune ressource distante dans la PAGE (le mailto n’est pas une ressource) ni dans le CSS', () => {
     expect(PAGE).not.toMatch(/https?:\/\//)
     expect(CSS).not.toMatch(/url\(|@import|@font-face|https?:\/\//)
-    expect(PAGE).not.toMatch(/from 'lucide-react'/) // pas nécessaire ici — ms locaux suffisent
   })
 
-  it('⭐ RTL conservé : montants en <bdi> (≥5) + flèche retour ms-flip, y compris dans les nouveaux blocs', () => {
-    expect((PAGE.match(/<bdi>/g) ?? []).length).toBeGreaterThanOrEqual(5)
+  it('⭐ RTL : montants/codes en <bdi> (≥7) + flèche retour et chevrons ms-flip', () => {
+    expect((PAGE.match(/<bdi>/g) ?? []).length).toBeGreaterThanOrEqual(7)
     expect(PAGE).toContain('className="ms ms-flip rc-back"')
-    const hero = PAGE.match(/rc-hero__amount"><bdi>/)
-    expect(hero).not.toBeNull()
+    expect(PAGE).toContain('ms ms-flip rc-act__chev')
   })
 
-  it('⭐ NON-RÉGRESSION delivery/pickup : le Link « Reçu » partagé garde EXACTEMENT ses deux branches (AU, byte-identique)', () => {
-    expect(ORDERS).toContain(
-      'href={c.kind === \'dinein\' ? `/eat/receipt/${c.id}` : `/eat/track/${c.trackingId}`}',
-    )
+  it('⭐ « Mes commandes » STRICTEMENT inchangée : le Link partagé est byte-identique (delivery/pickup → /eat/track)', () => {
+    expect(ORDERS).toContain("c.kind === 'dinein' ? `/eat/receipt/${c.id}` : `/eat/track/${c.trackingId}`")
+  })
+
+  it('⭐ l’état ACQUIS reste vert (héros + sceau sur basil/success) ; les accents zest reproduisent la référence, jamais --gb-accent', () => {
+    // Revue BC : la garde couleur d'AW avait disparu. La référence emploie
+    // elle-même --gb-zest-600 pour les accents (quantité, chevrons, pastille de
+    // référence) — c'est l'ÉTAT PAYÉ (héros, sceau) qui doit rester vert.
+    expect(CSS).toMatch(/rc-hero__label \{[\s\S]{0,300}?--gb-basil-600/)
+    expect(CSS).toMatch(/rc-seal \{[\s\S]{0,300}?--gb-basil-600/)
+    expect(CSS).toMatch(/rc-banner__pill \{[\s\S]{0,300}?#7FD8A4/)
+    expect(CSS).not.toContain('--gb-accent')
+  })
+
+  it('⭐ la RÉFÉRENCE et son câblage ne sont PAS altérés (la mesure n’a pas bougé)', () => {
+    const ref = readFileSync(join(ROOT, 'scripts', 'design-qa-refs', 'eat-receipt.html'), 'utf8')
+    expect(ref).toContain('<b>Mon addition</b>')
+    expect(ref).toContain("Détail de l'addition")
+    expect(ref).toContain('class="totrow tot"')
+    const cfg = readFileSync(join(ROOT, 'scripts', 'design-qa.config.mjs'), 'utf8')
+    expect(cfg).toContain("name: 'eat-receipt'")
+    expect(cfg).toContain("url: '/fr/eat/receipt/demo'")
+    expect(cfg).toContain("reference: 'scripts/design-qa-refs/eat-receipt.html'")
   })
 })
