@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CD ref — /eat/receipt/[id] (écran 3 « Payée — le reçu » de la conception AQ)</title>
-<!-- EXTRACTION (mission BB) de la maquette AQ « Vue d'addition » fournie par le
+<title>CD ref — /eat/receipt/[id] (écran 3 « Payée — le reçu » — maquette mise à jour BD/BE (bill-view.html))</title>
+<!-- EXTRACTION (mission BB, ré-extraite mission BF — ajout de la rangée Adresse) de la maquette AQ « Vue d'addition » fournie par le
      fondateur — ÉCRAN 3 UNIQUEMENT (reçu payé). Le CSS d'origine est repris
      VERBATIM et INTÉGRAL (les règles des 5 autres écrans restent inertes).
      Fonts/icônes distantes : conservées — c'est la convention des 46 refs
@@ -221,11 +221,12 @@ body{background:var(--gb-bg)}
     </div>
 
     <div class="meta">
-      <div class="mrow"><span class="ms">storefront</span><span class="k">Restaurant</span><span class="v">Mama Trattoria</span></div>
-      <div class="mrow"><span class="ms">table_restaurant</span><span class="k">Table</span><span class="v">12</span></div>
-      <div class="mrow"><span class="ms">event</span><span class="k">Payée le</span><span class="v mono">08/08/2026 20:41</span></div>
-      <div class="mrow"><span class="ms">tag</span><span class="k">Référence</span><span class="v mono">#B-4471</span></div>
-    </div>
+            <div class="mrow"><span class="ms">storefront</span><span class="k">Restaurant</span><span class="v">Mama Trattoria</span></div>
+            <div class="mrow"><span class="ms">place</span><span class="k">Adresse</span><span class="v" style="text-align:end;line-height:1.35">14 rue de la Roquette<br>75012 Paris</span></div>
+            <div class="mrow"><span class="ms">table_restaurant</span><span class="k">Table</span><span class="v">12</span></div>
+            <div class="mrow"><span class="ms">event</span><span class="k">Payée le</span><span class="v mono">08/08/2026 20:41</span></div>
+            <div class="mrow"><span class="ms">tag</span><span class="k">Référence</span><span class="v mono">#B-4471</span></div>
+          </div>
 
     <div class="split-row"><span class="ms">star</span><span>Noter ce restaurant</span><span class="ms chev flip-rtl">chevron_right</span></div>
     <div class="split-row"><span class="ms">support_agent</span><span>Un problème avec cette addition&nbsp;?</span><span class="ms chev flip-rtl">chevron_right</span></div>
