@@ -33,6 +33,7 @@ import { PNG } from 'pngjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { diagnoseShot } from './operator-qa-diagnose.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(__dirname, '..', '..')
@@ -155,13 +156,14 @@ async function shoot(browser, target, vp, sessionCookie) {
         secure: BASE.startsWith('https'),
       })
     }
-    // goto errors are swallowed so we still capture whatever painted.
-    await page.goto(target, { waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {})
+    // goto errors are swallowed so we still capture whatever painted — but the
+    // response is kept so the caller can diagnose HTTP errors (mission CD).
+    const resp = await page.goto(target, { waitUntil: 'networkidle0', timeout: 30000 }).catch(() => null)
     try { await page.evaluate(() => document.fonts && document.fonts.ready) } catch {}
     await new Promise((r) => setTimeout(r, 600)) // settle fonts / late paints
     const finalUrl = page.url()
     const buf = await page.screenshot({ type: 'png', fullPage: true })
-    return { buf, finalUrl }
+    return { buf, finalUrl, status: resp ? resp.status() : null }
   } finally {
     await page.close()
   }
@@ -188,7 +190,10 @@ async function main() {
   })
 
   const grand = []
-  let roleWarned = false
+  // One console warning per DIAGNOSIS KIND (not per screen — an unauthenticated
+  // run would otherwise warn 30+ times); every case still records its verdict
+  // in resume.json.
+  const warnedKinds = new Set()
   try {
     for (const screen of screens) {
       const viewports = screen.viewports ?? [{ name: 'desktop', w: 1440, h: 1024 }]
@@ -202,19 +207,22 @@ async function main() {
         fs.mkdirSync(dir, { recursive: true })
 
         // App shot (authenticated).
-        const { buf: appBuf, finalUrl } = await shoot(browser, BASE + screen.url, vp, sessionCookie)
+        const { buf: appBuf, finalUrl, status } = await shoot(browser, BASE + screen.url, vp, sessionCookie)
         fs.writeFileSync(path.join(dir, 'app.png'), appBuf)
 
-        // Guard: a session that still bounces to /eat/auth ⇒ the account lacks the operator role.
-        if (!roleWarned && /\/eat\/auth/.test(finalUrl)) {
-          console.warn(
-            `⚠ ${screen.name}: navigated to ${finalUrl} — the session is valid but the account may ` +
-            `lack the operator role (expected role 'restaurant'/'admin'). Re-seed with role 'restaurant'.`,
-          )
-          roleWarned = true
+        // Guard (mission CD): classify the navigation outcome — unauthenticated /
+        // role-mismatch / app-error / ok — instead of the previous inverted check.
+        // A true LOGIN failure is diagnosed earlier by login(), which throws.
+        const verdict = diagnoseShot({ requestedUrl: BASE + screen.url, finalUrl, status })
+        if (verdict.kind !== 'ok' && !warnedKinds.has(verdict.kind)) {
+          console.warn(`⚠ ${screen.name} [${verdict.kind}]: ${verdict.message}`)
+          warnedKinds.add(verdict.kind)
         }
 
-        const rec = { screen: screen.name, viewport: vp.name, hasRef: !!refExists, diffPercent: null, finalUrl }
+        const rec = {
+          screen: screen.name, viewport: vp.name, hasRef: !!refExists, diffPercent: null,
+          finalUrl, httpStatus: status, authDiagnosis: verdict.kind,
+        }
         if (refUrl) {
           // Ref shot (no cookie needed for a local file).
           const { buf: refBuf } = await shoot(browser, refUrl, vp, null)
