@@ -1,0 +1,96 @@
+{
+  "date": "(voir git log du commit)",
+  "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "urls": {
+    "texte": "https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap",
+    "icones": "https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block"
+  },
+  "fichiers": {
+    "gabarito-latin-ext.woff2": {
+      "source": "https://fonts.gstatic.com/s/gabarito/v9/QGYtz_0dZAGKJJ4t3HtmW4XUng.woff2",
+      "sha256": "d38497efbc5dbb9c00a3f4a23940b0acc4cd4759ee8dae32dd58cff1332af200",
+      "octets": 12256
+    },
+    "gabarito-latin.woff2": {
+      "source": "https://fonts.gstatic.com/s/gabarito/v9/QGYtz_0dZAGKJJ4t3HtoW4U.woff2",
+      "sha256": "780dd129f53815f23c37d4b786c98139c3cfa3086c391ec0bb9aa40d26e7a8fe",
+      "octets": 34236
+    },
+    "hanken-grotesk-cyrillic-ext.woff2": {
+      "source": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpQ59CjCQ.woff2",
+      "sha256": "7ba47c78279dc529afe577dc2476bc8fd3c0e32f78efa26dca9f9382d49a157d",
+      "octets": 1668
+    },
+    "hanken-grotesk-vietnamese.woff2": {
+      "source": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpS59CjCQ.woff2",
+      "sha256": "992b5d147edde9d637ce22e7bb9cc9e6909c05410226b36a2e581ada9877eb4a",
+      "octets": 9320
+    },
+    "hanken-grotesk-latin-ext.woff2": {
+      "source": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpT59CjCQ.woff2",
+      "sha256": "768af2923e0ab1549f1dfba0a5c8ea749c4c01f01d8e77ffaf7fcd12f57a0a24",
+      "octets": 19588
+    },
+    "hanken-grotesk-latin.woff2": {
+      "source": "https://fonts.gstatic.com/s/hankengrotesk/v12/ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2",
+      "sha256": "e9201eddf1d41d0b62253295d869ce3cf65768f7102b797f02c7f8c876b4a9d5",
+      "octets": 34704
+    },
+    "jetbrains-mono-cyrillic-ext.woff2": {
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx3cwhsk.woff2",
+      "sha256": "62213be8a78b42f1e29d1452d91e2f8b3e745572a9dd98d3941e39fa00b37d76",
+      "octets": 1640
+    },
+    "jetbrains-mono-cyrillic.woff2": {
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxTcwhsk.woff2",
+      "sha256": "e17cfd15fb96909d64095015f958207063a0c07191da3512df7d560a781aebdf",
+      "octets": 8872
+    },
+    "jetbrains-mono-greek.woff2": {
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxPcwhsk.woff2",
+      "sha256": "0a557721b1f8b36d3f3f84442689a71ca4a744300abcb46a1953f51bfc663b66",
+      "octets": 6836
+    },
+    "jetbrains-mono-vietnamese.woff2": {
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx_cwhsk.woff2",
+      "sha256": "c89b9cc0bc6262bd4f8d8494b6961601f3aefa829d08c2e3635f4d501d3a47c2",
+      "octets": 5888
+    },
+    "jetbrains-mono-latin-ext.woff2": {
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPx7cwhsk.woff2",
+      "sha256": "db5ff4db83e580426280e9337a58dc57d3a83784a1b03ad80914651594441d52",
+      "octets": 11624
+    },
+    "jetbrains-mono-latin.woff2": {
+      "source": "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2",
+      "sha256": "83c005d49d8a6a50474c73a5a36ac0468076e9c4a29da7bdb14995d80560a5be",
+      "octets": 31432
+    },
+    "material-symbols-rounded.woff2": {
+      "source": "COPIE de public/fonts/material-symbols-rounded.woff2 (self-hoste par 9e1888a) — PAS un telechargement",
+      "sha256": "e3bdfa4d822f187fbfd753caf070bd29879ac73366854cf891039dae9bdcf27b",
+      "octets": 3076072,
+      "axes": "fvar: wght 100..700, opsz 20..48, FILL 0..1 (couvre la demande css2 des maquettes)",
+      "urlGoogleNonTelechargee": "https://fonts.gstatic.com/s/materialsymbolsrounded/v368/sykd-zNym6YjUruM-QrEh7-nyTnjDwKNJ_190FjpZIvLgyidOK7BDB_QddU.woff2"
+    }
+  },
+  "assetSvg": {
+    "fichier": "scripts/assets/grubano-symbol.svg",
+    "source": "COPIE OCTET de public/brand/grubano-symbol-color.svg",
+    "sha256": "08b33da04977af7aa500db6d65a17c3095701f9c51b649f75bf77e04f9687e52",
+    "octets": 3691,
+    "baseDeLaDecision": {
+      "identiteDocumentaire": "NON ETABLIE, et inatteignable par construction — le fichier attendu (../assets/grubano-symbol.svg) n a jamais existe, aucune page CD ne nomme la variante",
+      "canonicite": "ETABLIE — les 7 path data sont verbatim dans le master SVG de la page Notion « source de verite » (38afd2c9-8146-818b-a40f-c6aa04aaa84f), memes 4 gradients, memes 6 couleurs, seul le viewBox differe (declinaison croppee conforme a la spec)",
+      "critereFonctionnel": "ETABLI PAR LE RENDU, pour -color seul — le fichier rend dans la maquette ce que l application rend au meme endroit (OperatorShell.tsx:143-147, regle CSS et fond byte-identiques)",
+      "decision": "option (a) validee par le fondateur sur la foi du critere fonctionnel — ces trois niveaux ne doivent jamais etre confondus"
+    }
+  },
+  "rebankingOpAnalytics": {
+    "fichier": "scripts/design-qa-refs/op-analytics.html",
+    "probleme": "le fichier commite au banquage initial (2204c6c) etait un artefact JSON-echappe : 1878 guillemets \\\" litteraux, 394 class echappees — aucun selecteur CSS applicable, aucun lien interpretable, la maquette rendait en HTML brut",
+    "restauration": "EXTRACTION du bloc code de la page Notion source « 📈 Analytics operateur — CODE exact CD v1 (VERBATIM) — LOT 2 » (390fd2c9-8146-81aa-837b-dd9140863e7a, bloc 0e8ad8d0-858a-4748-a65f-455b6e7860ab, jamais retouchee depuis 2026-07-01) — AUCUNE reecriture manuelle",
+    "preuve": "le fichier restaure est IDENTIQUE A L OCTET PRES a l ancien fichier commite des-echappe (57 686 caracteres, 692 lignes, 0 ligne differente) — l echappement etait ne au banquage, pas en amont",
+    "autorisation": "re-banking valide explicitement par le fondateur (decision ①, mission auto-hebergement phase 2)"
+  }
+}
