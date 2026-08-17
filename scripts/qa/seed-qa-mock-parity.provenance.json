@@ -25,6 +25,28 @@
       "regle": "5 commandes d historique (1 delivered par client fidele)",
       "valeur": "createdAt = J-(2+3i), plat rotatif de la carte, total = prix du plat",
       "type": "recommandation de la spec pour donner de la matiere aux ecrans clients/analytics — AUCUNE source maquette (volumes agreges inatteignables)"
+    },
+    {
+      "regle": "jour-maquette op-customers",
+      "valeur": "2026-07-05 — seul ancrage minimal rendant coherentes les 7 mentions « Derniere visite » (« Hier » + 6 dates explicites, verifie par difference : 3 juil.=J-2, 28 juin=J-7, 20 juin=J-15, 18 juin=J-17, 2 juin=J-33, 18 mai=J-48)",
+      "type": "derive — DISTINCT du jour-maquette global 2026-07-01 (op-customers porte « 3 juil. », posterieur au 1er juillet)",
+      "source": "op-customers.html:424,433,442,451,460,469,478"
+    },
+    {
+      "regle": "historique fidelite (LoyaltyOrder) par client",
+      "valeur": "N commandes = colonne « Commandes » ; somme des montants = colonne « Total depense » repartie en centimes egaux (reste d arrondi sur les premieres commandes) ; validatedAt repartis uniformement entre createdAt du client et sa derniere visite",
+      "type": "derive — la maquette ne donne que les agregats par client, jamais le detail des commandes ; la repartition est une convention deterministe",
+      "source": "op-customers.html:414-481 (colonnes Commandes / Total depense / Derniere visite)"
+    },
+    {
+      "regle": "uberOrderNumber des commandes fidelite",
+      "valeur": "QA-PARITY-<slug du nom>-NNN",
+      "type": "convention QA — champ unique requis par le schema, absent des maquettes ; sert aussi de marqueur d idempotence (suppression scopee brand QA + prefixe)"
+    },
+    {
+      "regle": "pointsEarned par commande fidelite",
+      "valeur": "floor(montant EUR) — regle produit 1 point = 1 EUR ; la somme (~total depense) ne reconstruit PAS le solde maquette (ex. Sophie Martin : 4 820 pts pour 2 340 EUR depenses) — le solde AFFICHE reste pointsBalance verbatim maquette, cet ecart est INTERNE a la maquette",
+      "type": "derive de la regle produit documentee (CLAUDE.md §13)"
     }
   ],
   "valeursDerivees": [
@@ -333,6 +355,48 @@
       "valeur": "J-26 · 8800c",
       "regle": "date relative (« 5 juin ») ; totalCents VERBATIM (#F-1998) — pour F-2052 : 21050 conserve bien que la somme des lignes fasse 19640 (arbitrage documente)",
       "sourceMaquette": "op-marketplace-orders.html:413"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Sophie Martin)",
+      "valeur": "J-1",
+      "regle": "« Hier » -> offset 1 depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:424"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Karim Belhadj)",
+      "valeur": "J-2",
+      "regle": "« 3 juil. » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:433"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Julie Roussel)",
+      "valeur": "J-7",
+      "regle": "« 28 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:442"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Marc Dubois)",
+      "valeur": "J-15",
+      "regle": "« 20 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:451"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere d Amine Lahlou)",
+      "valeur": "J-17",
+      "regle": "« 18 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:460"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Lea Fontaine)",
+      "valeur": "J-33",
+      "regle": "« 2 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:469"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Thomas Petit)",
+      "valeur": "J-48",
+      "regle": "« 18 mai » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:478"
     }
   ]
 }

@@ -402,7 +402,10 @@ const DATA = {
    "points": 4820,
    "phone": "06 12 34 56 78",
    "email": "sophie.martin@email.com",
-   "createdAt": "2024-03-01"
+   "createdAt": "2024-03-01",
+   "ordersCount": 86,
+   "totalSpentEUR": 2340,
+   "lastVisitOffset": 1
   },
   {
    "name": "Karim Belhadj",
@@ -410,7 +413,10 @@ const DATA = {
    "points": 2910,
    "phone": "06 45 67 89 10",
    "email": "karim.belhadj@email.com",
-   "createdAt": "2023-06-01"
+   "createdAt": "2023-06-01",
+   "ordersCount": 54,
+   "totalSpentEUR": 1480,
+   "lastVisitOffset": 2
   },
   {
    "name": "Julie Roussel",
@@ -418,7 +424,10 @@ const DATA = {
    "points": 2340,
    "phone": "06 78 90 12 34",
    "email": "julie.roussel@email.com",
-   "createdAt": "2024-01-01"
+   "createdAt": "2024-01-01",
+   "ordersCount": 47,
+   "totalSpentEUR": 1205,
+   "lastVisitOffset": 7
   },
   {
    "name": "Marc Dubois",
@@ -426,7 +435,10 @@ const DATA = {
    "points": 1120,
    "phone": "06 23 45 67 89",
    "email": "marc.dubois@email.com",
-   "createdAt": "2024-09-01"
+   "createdAt": "2024-09-01",
+   "ordersCount": 22,
+   "totalSpentEUR": 560,
+   "lastVisitOffset": 15
   },
   {
    "name": "Amine Lahlou",
@@ -434,7 +446,10 @@ const DATA = {
    "points": 820,
    "phone": "06 34 56 78 90",
    "email": "amine.lahlou@email.com",
-   "createdAt": "2025-02-01"
+   "createdAt": "2025-02-01",
+   "ordersCount": 18,
+   "totalSpentEUR": 410,
+   "lastVisitOffset": 17
   },
   {
    "name": "Léa Fontaine",
@@ -442,7 +457,10 @@ const DATA = {
    "points": 280,
    "phone": "06 56 78 90 12",
    "email": "lea.fontaine@email.com",
-   "createdAt": "2025-05-01"
+   "createdAt": "2025-05-01",
+   "ordersCount": 6,
+   "totalSpentEUR": 142,
+   "lastVisitOffset": 33
   },
   {
    "name": "Thomas Petit",
@@ -450,7 +468,10 @@ const DATA = {
    "points": 130,
    "phone": "06 67 89 01 23",
    "email": "thomas.petit@email.com",
-   "createdAt": "2025-04-01"
+   "createdAt": "2025-04-01",
+   "ordersCount": 3,
+   "totalSpentEUR": 68,
+   "lastVisitOffset": 48
   }
  ],
  "tables": [
@@ -966,14 +987,50 @@ async function main() {
     }
     console.log(`· commandes → ${DATA.orders.length} du mock + ${DATA.consumers.length} historiques`)
 
-    // 6) Fidélité — 7 clients (paliers/points/anciennetés du mock).
+    // 6) Fidélité — 7 clients (paliers/points/anciennetés du mock) + leur
+    //    historique LoyaltyOrder. Sans cet historique l'écran Clients est VIDE :
+    //    la clôture lib/customer-scope.ts ne retient un LoyaltyCustomer que par
+    //    chemin A (LoyaltyOrder.brandId → operatorId) ou chemin B (email d'un
+    //    compte /eat ayant commandé). Les emails fidélité sont des données de la
+    //    maquette (op-customers:418-472) — on ne les aligne PAS sur les comptes
+    //    qa-*.test : chemin A seul, les colonnes Commandes/Total restent exactes.
+    const loyaltyIdByEmail = {}
     for (const l of DATA.loyalty) {
-      await prisma.loyaltyCustomer.upsert({
+      const row = await prisma.loyaltyCustomer.upsert({
         where: { email: l.email },
         update: { name: l.name, tier: l.tier, pointsBalance: l.points, phone: l.phone },
         create: { name: l.name, email: l.email, phone: l.phone, tier: l.tier, pointsBalance: l.points, referralCode: `QA-${slug(l.name)}`, createdAt: new Date(l.createdAt) },
       })
+      loyaltyIdByEmail[l.email] = row.id
     }
+    // Historique : N = colonne « Commandes », somme = colonne « Total dépensé »
+    // répartie en centimes égaux (reste d'arrondi sur les premières commandes),
+    // dates uniformes entre l'ancienneté du client et sa dernière visite
+    // (offsets dérivés — voir seed-qa-mock-parity.provenance.json). Idempotence :
+    // marqueur uberOrderNumber QA-PARITY-*, suppression scopée à la brand QA.
+    await prisma.loyaltyOrder.deleteMany({ where: { brandId: brand.id, uberOrderNumber: { startsWith: 'QA-PARITY-' } } })
+    let loyOrderCount = 0
+    for (const l of DATA.loyalty) {
+      const totalCents = Math.round(l.totalSpentEUR * 100)
+      const base = Math.floor(totalCents / l.ordersCount)
+      const rest = totalCents - base * l.ordersCount
+      const last = at(l.lastVisitOffset)
+      const since = new Date(l.createdAt)
+      const step = l.ordersCount > 1 ? (last.getTime() - since.getTime()) / (l.ordersCount - 1) : 0
+      const rows = []
+      for (let i = 0; i < l.ordersCount; i++) {
+        const cents = base + (i < rest ? 1 : 0)
+        rows.push({
+          customerId: loyaltyIdByEmail[l.email], brandId: brand.id,
+          uberOrderNumber: `QA-PARITY-${slug(l.name)}-${String(i + 1).padStart(3, '0')}`,
+          amount: cents / 100, pointsEarned: Math.floor(cents / 100),
+          validatedAt: new Date(last.getTime() - i * step),
+        })
+      }
+      await prisma.loyaltyOrder.createMany({ data: rows })
+      loyOrderCount += rows.length
+    }
+    console.log(`· fidélité → ${DATA.loyalty.length} clients · historique → ${loyOrderCount} commandes (chemin A)`)
 
     // 7) Tables + réservations du jour (source qa-parity ; depositStatus JAMAIS
     //    touché — 'none', aucun identifiant Stripe).
