@@ -18,9 +18,12 @@
 
 .cl-root .card{ background:var(--op-surface,#fff); border:1px solid var(--op-border,#E3E7EE); border-radius:var(--op-r-lg,12px); box-shadow:var(--op-shadow-card,0 1px 3px rgba(16,24,40,.05)) }
 
-.cl-root .lthead{ display:grid; grid-template-columns:1.6fr 1fr 1fr 120px; gap:12px; padding:11px 18px; font-size:10.5px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--op-muted-2,#8992A3); border-bottom:1px solid var(--op-border,#E3E7EE) }
-.cl-root .lthead span:nth-child(2), .cl-root .lthead span:nth-child(3){ text-align:end }
-.cl-root .lrow{ display:grid; grid-template-columns:1.6fr 1fr 1fr 120px; gap:12px; align-items:center; padding:13px 18px; border-bottom:1px solid var(--op-border,#E3E7EE); cursor:pointer; text-decoration:none; color:inherit }
+/* 7 tracks — CD list (op-customers .cl-head-row): Client · Palier · Commandes ·
+   Total dépensé · Points · Dernière visite · fiche */
+.cl-root .lthead{ display:grid; grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px; gap:10px; padding:11px 18px; font-size:10.5px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--op-muted-2,#8992A3); border-bottom:1px solid var(--op-border,#E3E7EE) }
+.cl-root .lthead span:nth-child(3), .cl-root .lthead span:nth-child(4),
+.cl-root .lthead span:nth-child(5), .cl-root .lthead span:nth-child(6){ text-align:end }
+.cl-root .lrow{ display:grid; grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px; gap:10px; align-items:center; padding:13px 18px; border-bottom:1px solid var(--op-border,#E3E7EE); cursor:pointer; text-decoration:none; color:inherit }
 .cl-root .lrow:last-child{ border-bottom:none }
 .cl-root .lrow:hover{ background:var(--op-surface-2,#F7F8FA) }
 .cl-root .lrow:focus-visible{ outline:none; box-shadow:var(--op-focus,0 0 0 3px rgba(255,106,31,.18)) inset }
@@ -30,7 +33,14 @@
 .cl-root .lc__m b{ font-size:13.5px; font-weight:700; display:block; color:var(--op-text,#101828) }
 .cl-root .lc__m span{ font-size:11px; color:var(--op-muted,#5B6472) }
 .cl-root .lnum{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-weight:700; font-size:13px; text-align:end; color:var(--op-text,#101828); direction:ltr; unicode-bidi:isolate }
-.cl-root .ltier{ display:flex; justify-content:flex-end }
+/* Total dépensé (LTV) — CD .ltv weight/size. Points stay .lnum NEUTRAL mono: the
+   mock's orange (--op-zest-600) is a documented product divergence (CD 18/08). */
+.cl-root .lnum.strong{ font-weight:800; font-size:13.5px }
+.cl-root .llast{ font-size:11.5px; color:var(--op-muted,#5B6472); text-align:end }
+.cl-root .lview{ display:flex; justify-content:flex-end }
+.cl-root .lview .ms{ width:30px; height:30px; border-radius:var(--op-r-md,8px); display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--op-muted,#5B6472) }
+.cl-root .lrow:hover .lview .ms{ background:var(--op-surface-2,#F7F8FA); color:var(--op-text,#101828) }
+.cl-root .ltier{ display:flex; justify-content:flex-start }
 .cl-root .lmini{ display:none; font-size:11px; color:var(--op-muted,#5B6472); font-family:var(--op-font-mono,'JetBrains Mono',monospace) }
 
 .cl-root .tier{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
@@ -50,7 +60,7 @@
   .cl-root .lthead{ display:none }
   .cl-root .lrow{ grid-template-columns:1fr auto; gap:6px 12px }
   .cl-root .lc{ grid-column:1; grid-row:1 }
-  .cl-root .ltier{ grid-column:2; grid-row:1 }
-  .cl-root .lnum{ display:none }
+  .cl-root .ltier{ grid-column:2; grid-row:1; justify-content:flex-end }
+  .cl-root .lnum, .cl-root .llast, .cl-root .lview{ display:none }
   .cl-root .lmini{ display:block; grid-column:1; grid-row:2 }
 }

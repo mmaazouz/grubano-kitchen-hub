@@ -21,6 +21,7 @@ export type CustomerRow = {
   pointsBalance: number
   createdAt: string       // ISO
   ordersCount: number
+  totalSpentCents: number
   avgBasketCents: number
   lastOrderAt: string | null
 }
@@ -57,6 +58,20 @@ export default function CustomersClient({ customers, total }: { customers: Custo
       const m = new Intl.DateTimeFormat(locale, { month: 'short', year: 'numeric' }).format(new Date(iso))
       return t('customers.since', { date: m })
     } catch { return '' }
+  }
+  // CD list shows "Hier" / "3 juil." — relative for today/yesterday, short date beyond.
+  const lastVisitLabel = (iso: string | null) => {
+    if (!iso) return '—'
+    try {
+      const d = new Date(iso)
+      const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+      const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000)
+      if (days === 0 || days === 1) {
+        const rel = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(-days, 'day')
+        return rel.charAt(0).toUpperCase() + rel.slice(1)
+      }
+      return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(d)
+    } catch { return '—' }
   }
   const tierClass = (tier: string) => TIER_CLASS[tier] ?? 'bronze'
   const tierLabel = (tier: string) => t(`customers.tier.${tierClass(tier) === 'plat' ? 'platinum' : tierClass(tier)}`)
@@ -106,11 +121,15 @@ export default function CustomersClient({ customers, total }: { customers: Custo
       </div>
 
       <div className="card">
+        {/* CD list order (op-customers): Client · Palier · Commandes · Total dépensé · Points · Dernière visite · fiche */}
         <div className="lthead">
           <span>{t('customers.colClient')}</span>
-          <span>{t('customers.colOrders')}</span>
-          <span>{t('customers.colAvg')}</span>
           <span>{t('customers.colTier')}</span>
+          <span>{t('customers.colOrders')}</span>
+          <span>{t('customers.colTotal')}</span>
+          <span>{t('customers.colPoints')}</span>
+          <span>{t('customers.colLastVisit')}</span>
+          <span aria-hidden="true" />
         </div>
 
         {visible.length === 0 ? (
@@ -126,16 +145,23 @@ export default function CustomersClient({ customers, total }: { customers: Custo
                 <span className="lc__av" style={{ background: TIER_GRADIENT[row.tier] ?? TIER_GRADIENT.bronze }}>{initials(row.name)}</span>
                 <div className="lc__m"><b>{row.name}</b><span>{sinceLabel(row.createdAt)}</span></div>
               </div>
-              <span className="lnum">{row.ordersCount > 0 ? row.ordersCount.toLocaleString(locale) : '—'}</span>
-              <span className="lnum">{row.ordersCount > 0 ? eur(row.avgBasketCents) : '—'}</span>
               <div className="ltier">
                 <span className={`tier sm ${tierClass(row.tier)}`}>
                   {tierClass(row.tier) === 'gold' ? <span className="ms" aria-hidden="true">workspace_premium</span> : null}
                   {tierLabel(row.tier)}
                 </span>
               </div>
+              <span className="lnum">{row.ordersCount > 0 ? row.ordersCount.toLocaleString(locale) : '—'}</span>
+              <span className="lnum strong">{row.ordersCount > 0 ? eur(row.totalSpentCents) : '—'}</span>
+              {/* neutral mono — the CD mock's orange on points is a DOCUMENTED divergence
+                  (orange = "action en cours" in the system, decision CD 18/08) */}
+              <span className="lnum">{row.pointsBalance.toLocaleString(locale)}</span>
+              <span className="llast">{lastVisitLabel(row.lastOrderAt)}</span>
+              <span className="lview" title={t('customers.viewProfile')}>
+                <span className="ms" aria-hidden="true">visibility</span>
+              </span>
               <span className="lmini">
-                {row.ordersCount > 0 ? `${row.ordersCount} · ${eur(row.avgBasketCents)} · ` : ''}{tierLabel(row.tier)}
+                {row.ordersCount > 0 ? `${row.ordersCount} · ${eur(row.totalSpentCents)} · ` : ''}{tierLabel(row.tier)}
               </span>
             </Link>
           ))

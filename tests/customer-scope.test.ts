@@ -95,6 +95,7 @@ describe('getScopedCustomers — masked, contact-free, real aggregates', () => {
     expect(row.name).toBe('Mohammed M.')          // MASKED
     // real relation aggregates: 1 /eat order (24,90) + 1 loyalty order (30,00)
     expect(row.ordersCount).toBe(2)
+    expect(row.totalSpentCents).toBe(5490) // exact sum exposed — never avg×count
     expect(row.avgBasketCents).toBe(2745)
     for (const k of CONTACT_KEYS) expect(row).not.toHaveProperty(k)
   })

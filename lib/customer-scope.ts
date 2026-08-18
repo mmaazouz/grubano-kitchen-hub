@@ -123,6 +123,7 @@ export async function getOperatorTenant(operatorId: string): Promise<OperatorTen
 // ── Relation aggregates (real, tenant-scoped) ─────────────────────────────────
 export type CustomerAgg = {
   ordersCount:   number
+  totalSpentCents: number      // exact sum — avg×count would lose the rounding
   avgBasketCents: number
   lastOrderAt:   string | null // ISO
   firstOrderAt:  string | null // ISO
@@ -201,12 +202,13 @@ async function collectOrders(
 
 function summarize(orders: FlowOrder[]): CustomerAgg {
   if (orders.length === 0) {
-    return { ordersCount: 0, avgBasketCents: 0, lastOrderAt: null, firstOrderAt: null }
+    return { ordersCount: 0, totalSpentCents: 0, avgBasketCents: 0, lastOrderAt: null, firstOrderAt: null }
   }
   const spent = orders.reduce((s, o) => s + o.totalCents, 0)
   const times = orders.map((o) => o.at.getTime())
   return {
     ordersCount:    orders.length,
+    totalSpentCents: spent,
     avgBasketCents: Math.round(spent / orders.length),
     lastOrderAt:    new Date(Math.max(...times)).toISOString(),
     firstOrderAt:   new Date(Math.min(...times)).toISOString(),
@@ -221,6 +223,7 @@ export type ScopedCustomerRow = {
   pointsBalance: number
   createdAt: string     // ISO
   ordersCount: number
+  totalSpentCents: number
   avgBasketCents: number
   lastOrderAt: string | null
   // NB: NO email, NO phone, NO address — by construction, never selected out.
@@ -262,6 +265,7 @@ export async function getScopedCustomers(
         pointsBalance:  c.pointsBalance,
         createdAt:      c.createdAt.toISOString(),
         ordersCount:    agg?.ordersCount ?? 0,
+        totalSpentCents: agg?.totalSpentCents ?? 0,
         avgBasketCents: agg?.avgBasketCents ?? 0,
         lastOrderAt:    agg?.lastOrderAt ?? null,
       }

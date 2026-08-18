@@ -398,7 +398,11 @@
       "privacyListTitle": "Privacy dei clienti.",
       "privacyListBody": "Vedi lo storico, la fedeltà e le preferenze. I recapiti (email, telefono, indirizzo) restano protetti da Grubano.",
       "colOrders": "Ordini",
-      "colAvg": "Scontrino medio"
+      "colAvg": "Scontrino medio",
+      "colTotal": "Totale speso",
+      "colPoints": "Punti",
+      "colLastVisit": "Ultima visita",
+      "viewProfile": "Vedi scheda"
     },
     "dinein": {
       "title": "Servizio al tavolo",
