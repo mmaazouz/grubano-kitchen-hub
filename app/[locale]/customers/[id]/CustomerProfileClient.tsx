@@ -14,6 +14,7 @@ import { useMemo } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
 import type { CustomerProfile } from '@/lib/customer-scope'
+import { customerAvatarGradient } from '@/lib/customer-avatar'
 
 const TIER_CLASS: Record<string, string> = {
   bronze: 'bronze', silver: 'silver', gold: 'gold', platine: 'plat', platinum: 'plat',
@@ -81,7 +82,9 @@ export default function CustomerProfileClient({ profile }: { profile: CustomerPr
 
       {/* ── Hero / identity ── */}
       <div className="card hero">
-        <span className="hero__av">{initials(profile.name)}</span>
+        {/* color per CLIENT from LoyaltyCustomer.id — same derivation as the list
+            (decision F): same id → same color on both screens. */}
+        <span className="hero__av" style={{ background: customerAvatarGradient(profile.id) }}>{initials(profile.name)}</span>
         <div className="hero__m">
           <div className="hero__name">
             <h1>{profile.name}</h1>

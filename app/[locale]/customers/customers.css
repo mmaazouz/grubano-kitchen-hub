@@ -34,6 +34,11 @@
 
 /* 7 tracks — CD list (op-customers .cl-head-row): Client · Palier · Commandes ·
    Total dépensé · Points · Dernière visite · fiche */
+/* D — card scope label (CD .op-card__head): a plain card title, no new component. */
+.cl-root .card__head{ display:flex; align-items:center; gap:9px; padding:15px 18px; border-bottom:1px solid var(--op-border,#E3E7EE) }
+.cl-root .card__head h2{ margin:0; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:14.5px; flex:1; display:flex; align-items:center; gap:7px; color:var(--op-text,#101828) }
+.cl-root .card__head h2 .ms{ font-size:17px; color:var(--op-muted-2,#8992A3) }
+
 .cl-root .lthead{ display:grid; grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px; gap:10px; padding:11px 18px; font-size:10.5px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--op-muted-2,#8992A3); border-bottom:1px solid var(--op-border,#E3E7EE) }
 .cl-root .lthead span:nth-child(3), .cl-root .lthead span:nth-child(4),
 .cl-root .lthead span:nth-child(5), .cl-root .lthead span:nth-child(6){ text-align:end }

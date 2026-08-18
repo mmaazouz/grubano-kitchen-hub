@@ -14,6 +14,7 @@ import { useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
 import type { CustomerScreenStats, CustomerTier } from '@/lib/customer-scope'
+import { customerAvatarGradient } from '@/lib/customer-avatar'
 
 // Chip order — the CD mock's tier filter row (op-customers .tier-filters).
 const TIER_FILTERS: CustomerTier[] = ['bronze', 'silver', 'gold', 'platinum']
@@ -33,13 +34,6 @@ export type CustomerRow = {
 // DB tier value → CD css class (top tier = "plat").
 const TIER_CLASS: Record<string, string> = {
   bronze: 'bronze', silver: 'silver', gold: 'gold', platine: 'plat', platinum: 'plat',
-}
-const TIER_GRADIENT: Record<string, string> = {
-  bronze: 'linear-gradient(135deg,#B9740A,#8A5600)',
-  silver: 'linear-gradient(135deg,#8992A3,#5B6472)',
-  gold:   'linear-gradient(135deg,#FF8A3D,#F2570E)',
-  platine:'linear-gradient(135deg,#0E9F6E,#0A6E4A)',
-  platinum:'linear-gradient(135deg,#0E9F6E,#0A6E4A)',
 }
 
 function initials(name: string): string {
@@ -109,7 +103,9 @@ export default function CustomersClient({ customers, total, stats, activeTier }:
       <div className="lhead">
         <div>
           <h1>{t('customers.title')}</h1>
-          <p>{t('customers.subtitleProtected')}</p>
+          {/* H — the privacy wording lives in the banner ONLY; the subtitle is the
+              CD scope label « Programme de fidélité actif ». */}
+          <p>{t('customers.subtitle')}</p>
         </div>
         <div className="lsearch">
           <span className="ms" aria-hidden="true">search</span>
@@ -158,6 +154,10 @@ export default function CustomersClient({ customers, total, stats, activeTier }:
       </div>
 
       <div className="card">
+        {/* D — scope label: a list of top-N must say what it is (CD op-card__head). */}
+        <div className="card__head">
+          <h2><span className="ms" aria-hidden="true">workspace_premium</span>{t('customers.listTitle')}</h2>
+        </div>
         {/* CD list order (op-customers): Client · Palier · Commandes · Total dépensé · Points · Dernière visite · fiche */}
         <div className="lthead">
           <span>{t('customers.colClient')}</span>
@@ -179,7 +179,9 @@ export default function CustomersClient({ customers, total, stats, activeTier }:
           visible.map((row) => (
             <Link key={row.id} href={`/customers/${row.id}`} className="lrow">
               <div className="lc">
-                <span className="lc__av" style={{ background: TIER_GRADIENT[row.tier] ?? TIER_GRADIENT.bronze }}>{initials(row.name)}</span>
+                {/* color per CLIENT, derived from LoyaltyCustomer.id — never the name,
+                    never the tier (decision F). Same id → same color list & fiche. */}
+                <span className="lc__av" style={{ background: customerAvatarGradient(row.id) }}>{initials(row.name)}</span>
                 <div className="lc__m"><b>{row.name}</b><span>{sinceLabel(row.createdAt)}</span></div>
               </div>
               <div className="ltier">
