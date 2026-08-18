@@ -18,6 +18,20 @@
 
 .cl-root .card{ background:var(--op-surface,#fff); border:1px solid var(--op-border,#E3E7EE); border-radius:var(--op-r-lg,12px); box-shadow:var(--op-shadow-card,0 1px 3px rgba(16,24,40,.05)) }
 
+/* B — KPI strip (CD .stat-strip, op-customers): 4 stats, mono figures. */
+.cl-root .stat-strip{ display:flex; padding:8px 4px; flex-wrap:wrap; margin-bottom:16px }
+.cl-root .stat-strip .stat{ flex:1; min-width:150px; padding:14px 20px; display:flex; flex-direction:column; gap:6px; border-inline-start:1px solid var(--op-border,#E3E7EE) }
+.cl-root .stat-strip .stat:first-child{ border-inline-start:none }
+.cl-root .stat-strip .stat .lbl{ font-size:11px; font-weight:700; color:var(--op-muted,#5B6472) }
+.cl-root .stat-strip .stat b{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-weight:700; font-size:22px; color:var(--op-text,#101828); direction:ltr; unicode-bidi:isolate }
+
+/* C — tier filter chips (CD .tier-filters): server counters, navigation links. */
+.cl-root .tier-filters{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px }
+.cl-root .tier-filters .chip{ border:1px solid var(--op-border-strong,#D2D8E1); background:var(--op-surface,#fff); border-radius:999px; padding:8px 15px; font-size:12px; font-weight:700; color:var(--op-text,#101828); cursor:pointer; display:flex; align-items:center; gap:7px; text-decoration:none }
+.cl-root .tier-filters .chip.is-active{ background:var(--op-text,#101828); color:var(--op-surface,#fff); border-color:transparent }
+.cl-root .tier-filters .cnt{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-size:10.5px; font-weight:700; opacity:.7; direction:ltr; unicode-bidi:isolate }
+.cl-root .tier-filters .chip:focus-visible{ outline:none; box-shadow:var(--op-focus,0 0 0 3px rgba(255,106,31,.18)) }
+
 /* 7 tracks — CD list (op-customers .cl-head-row): Client · Palier · Commandes ·
    Total dépensé · Points · Dernière visite · fiche */
 .cl-root .lthead{ display:grid; grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px; gap:10px; padding:11px 18px; font-size:10.5px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--op-muted-2,#8992A3); border-bottom:1px solid var(--op-border,#E3E7EE) }

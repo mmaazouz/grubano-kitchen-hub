@@ -13,6 +13,10 @@
 import { useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
+import type { CustomerScreenStats, CustomerTier } from '@/lib/customer-scope'
+
+// Chip order — the CD mock's tier filter row (op-customers .tier-filters).
+const TIER_FILTERS: CustomerTier[] = ['bronze', 'silver', 'gold', 'platinum']
 
 export type CustomerRow = {
   id: string
@@ -44,7 +48,12 @@ function initials(name: string): string {
   )
 }
 
-export default function CustomersClient({ customers, total }: { customers: CustomerRow[]; total: number }) {
+export default function CustomersClient({ customers, total, stats, activeTier }: {
+  customers: CustomerRow[]
+  total: number
+  stats: CustomerScreenStats
+  activeTier: CustomerTier | null
+}) {
   const t = useTranslations('operator')
   const locale = useLocale()
   const [query, setQuery] = useState('')
@@ -118,6 +127,34 @@ export default function CustomersClient({ customers, total }: { customers: Custo
       <div className="privacy">
         <span className="ms" aria-hidden="true">verified_user</span>
         <div><b>{t('customers.privacyListTitle')}</b> {t('customers.privacyListBody')}</div>
+      </div>
+
+      {/* B — the 4 KPIs (CD stat-strip). Server-computed over EXACTLY the list's
+          scope; « Nouveaux ce mois » = first in-scope order this calendar month. */}
+      <div className="card stat-strip">
+        <div className="stat"><span className="lbl">{t('customers.statTotal')}</span><b>{stats.totalCustomers.toLocaleString(locale)}</b></div>
+        <div className="stat"><span className="lbl">{t('customers.statNew')}</span><b>{stats.newThisMonth.toLocaleString(locale)}</b></div>
+        <div className="stat"><span className="lbl">{t('customers.statMembers')}</span><b>{stats.loyaltyMembers.toLocaleString(locale)}</b></div>
+        <div className="stat"><span className="lbl">{t('customers.statAvg')}</span><b>{eur(stats.avgBasketCents)}</b></div>
+      </div>
+
+      {/* C — tier filters. Counters cover the FULL fenced population (server
+          groupBy), and each chip NAVIGATES (?tier=…) → a real server re-query,
+          never a client-side cut of the 20 visible rows. */}
+      <div className="tier-filters">
+        <Link href={{ pathname: '/customers' }} className={activeTier === null ? 'chip is-active' : 'chip'}>
+          {t('customers.filterAll')} <span className="cnt">{stats.loyaltyMembers.toLocaleString(locale)}</span>
+        </Link>
+        {TIER_FILTERS.map((tf) => (
+          <Link
+            key={tf}
+            href={{ pathname: '/customers', query: { tier: tf } }}
+            className={activeTier === tf ? 'chip is-active' : 'chip'}
+          >
+            <span className={`tier sm ${tierClass(tf)}`}>{tierLabel(tf)}</span>
+            <span className="cnt">{(stats.tierCounts[tf] ?? 0).toLocaleString(locale)}</span>
+          </Link>
+        ))}
       </div>
 
       <div className="card">

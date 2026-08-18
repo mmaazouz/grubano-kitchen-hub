@@ -402,7 +402,12 @@
       "colTotal": "إجمالي الإنفاق",
       "colPoints": "النقاط",
       "colLastVisit": "آخر زيارة",
-      "viewProfile": "عرض الملف"
+      "viewProfile": "عرض الملف",
+      "statTotal": "إجمالي العملاء",
+      "statNew": "جدد هذا الشهر",
+      "statMembers": "أعضاء الولاء",
+      "statAvg": "متوسط السلة",
+      "filterAll": "الكل"
     },
     "dinein": {
       "title": "الخدمة على الطاولة",

@@ -402,7 +402,12 @@
       "colTotal": "Total spent",
       "colPoints": "Points",
       "colLastVisit": "Last visit",
-      "viewProfile": "View profile"
+      "viewProfile": "View profile",
+      "statTotal": "Total customers",
+      "statNew": "New this month",
+      "statMembers": "Loyalty members",
+      "statAvg": "Avg. basket",
+      "filterAll": "All"
     },
     "dinein": {
       "title": "Table service",

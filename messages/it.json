@@ -402,7 +402,12 @@
       "colTotal": "Totale speso",
       "colPoints": "Punti",
       "colLastVisit": "Ultima visita",
-      "viewProfile": "Vedi scheda"
+      "viewProfile": "Vedi scheda",
+      "statTotal": "Clienti totali",
+      "statNew": "Nuovi questo mese",
+      "statMembers": "Membri fedeltà",
+      "statAvg": "Scontrino medio",
+      "filterAll": "Tutti"
     },
     "dinein": {
       "title": "Servizio al tavolo",

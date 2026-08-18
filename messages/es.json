@@ -402,7 +402,12 @@
       "colTotal": "Total gastado",
       "colPoints": "Puntos",
       "colLastVisit": "Última visita",
-      "viewProfile": "Ver ficha"
+      "viewProfile": "Ver ficha",
+      "statTotal": "Clientes en total",
+      "statNew": "Nuevos este mes",
+      "statMembers": "Miembros de fidelidad",
+      "statAvg": "Cesta media",
+      "filterAll": "Todos"
     },
     "dinein": {
       "title": "Servicio en mesa",

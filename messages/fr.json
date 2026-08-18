@@ -402,7 +402,12 @@
       "colTotal": "Total dépensé",
       "colPoints": "Points",
       "colLastVisit": "Dernière visite",
-      "viewProfile": "Voir la fiche"
+      "viewProfile": "Voir la fiche",
+      "statTotal": "Clients au total",
+      "statNew": "Nouveaux ce mois",
+      "statMembers": "Membres fidélité",
+      "statAvg": "Panier moyen",
+      "filterAll": "Tous"
     },
     "dinein": {
       "title": "Service à table",

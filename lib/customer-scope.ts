@@ -229,11 +229,19 @@ export type ScopedCustomerRow = {
   // NB: NO email, NO phone, NO address — by construction, never selected out.
 }
 
+/** The four loyalty tiers — the only accepted values for the ?tier list filter. */
+export const CUSTOMER_TIERS = ['bronze', 'silver', 'gold', 'platinum'] as const
+export type CustomerTier = (typeof CUSTOMER_TIERS)[number]
+
 export async function getScopedCustomers(
   operator: ScopedOperator,
+  opts?: { tier?: CustomerTier },
 ): Promise<{ customers: ScopedCustomerRow[]; total: number }> {
   const isAdmin = operator.roles.includes('admin')
-  const where = isAdmin ? {} : await loyaltyCustomerWhereForOperator(operator.id)
+  const fence = isAdmin ? {} : await loyaltyCustomerWhereForOperator(operator.id)
+  // The tier filter narrows the LIST server-side; `total` stays the UNfiltered
+  // member count (it drives the empty state and equals the KPI « Membres fidélité »).
+  const where = opts?.tier ? { AND: [fence, { tier: opts.tier }] } : fence
 
   const [rows, total] = await Promise.all([
     prisma.loyaltyCustomer.findMany({
@@ -243,7 +251,7 @@ export async function getScopedCustomers(
       // email is selected ONLY to join orders server-side — it is NEVER returned.
       select: { id: true, name: true, email: true, pointsBalance: true, tier: true, createdAt: true },
     }),
-    prisma.loyaltyCustomer.count({ where }),
+    prisma.loyaltyCustomer.count({ where: fence }),
   ])
 
   // Real relation aggregates, batched. Admin (platform view) has no single tenant,
@@ -375,5 +383,81 @@ export async function getCustomerProfile(
     favorites,
     usualMode,
     recent,
+  }
+}
+
+// ── Screen stats (vague 2 — B + C) ────────────────────────────────────────────
+// The four KPIs + per-tier counters ABOVE the customer list. RULE: they use
+// EXACTLY the list's scope — the operator tenant (both order flows, same fence,
+// same status exclusions as collectOrders). Counts are of PEOPLE (distinct by
+// email across flows), never of orders. « Nouveaux ce mois » = FIRST order in
+// scope falls in the current calendar month — NEVER LoyaltyCustomer.createdAt.
+export type CustomerScreenStats = {
+  totalCustomers: number   // KPI 1 — distinct persons with ≥1 order in scope
+  newThisMonth: number     // KPI 2 — persons whose FIRST in-scope order is this month
+  loyaltyMembers: number   // KPI 3 — programme members in scope (0-point balance counts)
+  avgBasketCents: number   // KPI 4 — Σ order amounts ÷ order count (source amounts)
+  tierCounts: Record<string, number> // per-tier member counts over the FULL fenced population
+}
+
+export async function getCustomerScreenStats(operator: ScopedOperator): Promise<CustomerScreenStats> {
+  const isAdmin = operator.roles.includes('admin')
+  const tenant = isAdmin ? null : await getOperatorTenant(operator.id)
+  const fence = isAdmin ? {} : await loyaltyCustomerWhereForOperator(operator.id)
+  // Same status exclusions as collectOrders — an unpaid/expired/cancelled order
+  // never makes someone a « client ».
+  const orderWhere = {
+    ...(tenant ? { restaurantId: { in: tenant.restaurantIds } } : {}),
+    status: { notIn: ['awaiting_payment', 'expired', 'cancelled'] },
+  }
+  const loyWhere = tenant ? { brandId: { in: tenant.brandIds } } : {}
+
+  const [eatFirst, loyFirst, eatAgg, loyAgg, members, tierGroups] = await Promise.all([
+    prisma.order.groupBy({ by: ['consumerId'], where: orderWhere, _min: { createdAt: true } }),
+    prisma.loyaltyOrder.groupBy({ by: ['customerId'], where: loyWhere, _min: { validatedAt: true } }),
+    prisma.order.aggregate({ where: orderWhere, _count: { _all: true }, _sum: { total: true } }),
+    prisma.loyaltyOrder.aggregate({ where: loyWhere, _count: { _all: true }, _sum: { amount: true } }),
+    prisma.loyaltyCustomer.count({ where: fence }),
+    prisma.loyaltyCustomer.groupBy({ by: ['tier'], where: fence, _count: { _all: true } }),
+  ])
+
+  // Distinct PERSONS across both flows, deduplicated by email (the same person
+  // can order via /eat AND hold loyalty orders — collectOrders' path-B join).
+  const eatIds = eatFirst.map((g) => g.consumerId).filter(Boolean)
+  const loyIds = loyFirst.map((g) => g.customerId)
+  const [eatOps, loyCusts] = await Promise.all([
+    eatIds.length ? prisma.operator.findMany({ where: { id: { in: eatIds } }, select: { id: true, email: true } }) : [],
+    loyIds.length ? prisma.loyaltyCustomer.findMany({ where: { id: { in: loyIds } }, select: { id: true, email: true } }) : [],
+  ])
+  const eatEmail = new Map(eatOps.map((o) => [o.id, o.email]))
+  const loyEmail = new Map(loyCusts.map((c) => [c.id, c.email]))
+
+  const firstByPerson = new Map<string, number>()
+  const keep = (key: string, at: Date | null) => {
+    if (!at) return
+    const t = at.getTime()
+    const prev = firstByPerson.get(key)
+    if (prev === undefined || t < prev) firstByPerson.set(key, t)
+  }
+  for (const g of eatFirst) keep(eatEmail.get(g.consumerId) ?? `consumer:${g.consumerId}`, g._min.createdAt)
+  for (const g of loyFirst) keep(loyEmail.get(g.customerId) ?? `member:${g.customerId}`, g._min.validatedAt)
+
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+  let newThisMonth = 0
+  firstByPerson.forEach((t) => { if (t >= monthStart) newThisMonth++ })
+
+  const orderCount = eatAgg._count._all + loyAgg._count._all
+  const totalCents = Math.round((eatAgg._sum.total ?? 0) * 100) + Math.round((loyAgg._sum.amount ?? 0) * 100)
+
+  const tierCounts: Record<string, number> = {}
+  for (const g of tierGroups) tierCounts[g.tier] = g._count._all
+
+  return {
+    totalCustomers: firstByPerson.size,
+    newThisMonth,
+    loyaltyMembers: members,
+    avgBasketCents: orderCount > 0 ? Math.round(totalCents / orderCount) : 0,
+    tierCounts,
   }
 }
