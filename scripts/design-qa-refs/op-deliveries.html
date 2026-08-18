@@ -50,14 +50,17 @@ button,input,select,textarea{font-family:inherit}
 .flip-rtl{display:inline-block}
 [dir="rtl"] .flip-rtl{transform:scaleX(-1)}
 a{text-decoration:none;color:inherit}
+
 .bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:#fff;border-bottom:1px solid #E3E7EE;padding:9px 12px;font-family:var(--op-font-ui)}
 .bar group{display:flex;gap:2px;align-items:center;background:#F2F4F7;border-radius:999px;padding:3px}
 .bar button{border:none;background:none;cursor:pointer;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:#5B6472}
 .bar button.on{background:#101828;color:#fff}
 .bar .lbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8992A3;align-self:center;margin-inline-end:2px}
+
 .gb-op-wrap{width:100%;container-type:inline-size;container-name:gbop;transition:max-width .25s ease;margin:0 auto}
 .gb-op-wrap.force-mobile{max-width:428px;box-shadow:0 0 0 1px #C7CEDA, 0 30px 60px -30px rgba(16,24,40,.4)}
 .gb-op{display:flex;min-height:840px;background:var(--op-canvas);color:var(--op-text);overflow:hidden}
+
 .op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:relative}
 .gb-op[data-sidebar="collapsed"] .op-side{width:76px}
 .op-side__brand{display:flex;align-items:center;gap:10px;padding:16px 18px 18px}
@@ -83,6 +86,7 @@ a{text-decoration:none;color:inherit}
 .gb-op[data-scale="none"] .op-nav-item--ai{opacity:.35;pointer-events:none}
 .op-side__collapse{position:absolute;top:22px;inset-inline-end:-12px;width:24px;height:24px;border-radius:50%;background:var(--op-chrome-1);border:1px solid var(--op-chrome-border);color:var(--op-chrome-text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
 .op-side__collapse .ms{font-size:15px}
+
 .op-main{flex:1;display:flex;flex-direction:column;min-width:0}
 .op-top{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 20px;height:60px;background:var(--op-chrome-1);border-bottom:1px solid var(--op-chrome-border);position:relative;z-index:5}
 .op-hamburger{display:none;width:34px;height:34px;border-radius:var(--op-r-md);background:rgba(255,255,255,.06);border:none;color:#fff;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
@@ -134,6 +138,7 @@ a{text-decoration:none;color:inherit}
 .op-profile__name{font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap}
 .op-profile .ms{font-size:17px;color:var(--op-chrome-text-dim)}
 @container gbop (max-width: 700px){ .op-profile__name, .op-top__date{display:none} }
+
 .op-content{flex:1;overflow-y:auto;padding:24px;background:var(--op-canvas)}
 .op-content>section{max-width:1520px;margin:0 auto}
 .op-onboarding,.op-skel,.op-error,.op-empty-del,.op-del{display:none}
@@ -142,18 +147,22 @@ a{text-decoration:none;color:inherit}
 .gb-op:not([data-scale="none"])[data-state="error"] .op-error{display:block}
 .gb-op:not([data-scale="none"])[data-state="empty"] .op-empty-del{display:block}
 .gb-op:not([data-scale="none"])[data-state="loaded"] .op-del{display:block}
+
 .op-dash__head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px;flex-wrap:wrap}
 .op-dash__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em}
 .op-dash__sub{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
 .op-agg-label{display:none}
 .gb-op[data-scale="multi"] .op-agg-label{display:inline}
 .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+
+/* ---- honest rollout banner — mandatory, always visible when loaded/empty ---- */
 .preview-banner{display:flex;align-items:flex-start;gap:12px;background:var(--op-info-bg);border:1px solid var(--op-info-bd);border-radius:var(--op-r-lg);padding:14px 16px;margin-bottom:18px}
 .preview-banner .ms{font-size:21px;color:var(--op-info);flex-shrink:0;margin-top:1px}
 .preview-banner .m b{display:block;font-size:13px;font-weight:800;color:var(--op-text);margin-bottom:2px}
 .preview-banner .m p{margin:0;font-size:12px;line-height:1.5;color:var(--op-muted)}
 .preview-banner .tag{flex-shrink:0;font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--op-info);
   background:var(--op-surface);border:1px solid var(--op-info-bd);border-radius:6px;padding:4px 9px;white-space:nowrap;align-self:flex-start}
+
 .op-onboarding{display:none}
 .op-center{display:flex;align-items:center;justify-content:center;min-height:600px}
 .op-onb__card{max-width:520px;text-align:center;background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-xl);padding:44px 40px;box-shadow:var(--op-shadow-card)}
@@ -167,24 +176,29 @@ a{text-decoration:none;color:inherit}
 .op-onb__steps .n{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--op-text);color:var(--op-surface);font-size:11px;font-weight:800;margin-bottom:8px}
 .op-onb__steps b{display:block;font-size:12px;font-weight:700;margin-bottom:2px}
 .op-onb__steps span{font-size:10.5px;color:var(--op-muted)}
+
 .op-error{display:none}
 .op-error__card{max-width:400px;text-align:center}
 .op-error__card .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:16px}
 .op-error__card h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:18px}
 .op-error__card p{margin:9px 0 22px;font-size:13px;line-height:1.55;color:var(--op-muted)}
 .op-btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer}
+
 @keyframes op-sk{100%{background-position:-200% 0}}
 .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk 1.4s ease-in-out infinite;border-radius:6px;display:block}
+
 .op-emptyline{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px}
 .op-emptyline .ms{font-size:34px;color:var(--op-muted-2);margin-bottom:10px}
 .op-emptyline b{font-size:15px;font-weight:700}
 .op-emptyline span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:360px}
+
 .op-bottomnav{display:none;flex-shrink:0;background:var(--op-chrome-1);border-top:1px solid var(--op-chrome-border);padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
 .op-bottomnav .row{display:flex}
 .op-bottomnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--op-chrome-text-dim);padding:4px 0}
 .op-bottomnav a.is-active{color:var(--op-zest)}
 .op-bottomnav a .ms{font-size:22px}
 .op-bottomnav a span{font-size:9.5px;font-weight:700}
+
 .op-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(10,18,32,.55);z-index:100;align-items:center;justify-content:center;padding:20px}
 .op-modal-backdrop.open{display:flex}
 .op-modal{width:100%;max-width:520px;background:var(--op-surface);border-radius:var(--op-r-xl);box-shadow:var(--op-shadow-pop);max-height:92vh;overflow-y:auto}
@@ -200,12 +214,17 @@ a{text-decoration:none;color:inherit}
 .op-callout{display:flex;gap:10px;background:var(--op-info-bg);border:1px solid var(--op-info-bd);border-radius:var(--op-r-md);padding:12px}
 .op-callout .ms{font-size:18px;color:var(--op-info);flex-shrink:0}
 .op-callout p{margin:0;font-size:12px;line-height:1.5;color:var(--op-text)}
+
+/* ============================================================================
+   NEW — DELIVERIES TRACKING COMPONENTS
+   ============================================================================ */
 .stat-strip{display:flex;padding:8px 4px;flex-wrap:wrap}
 .stat-strip .stat{flex:1;min-width:150px;padding:14px 20px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
 .stat-strip .stat:first-child{border-inline-start:none}
 .stat-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
 .stat-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:22px}
 .stat-strip .stat b.alert{color:var(--op-warning)}
+
 .delivery-list{display:flex;flex-direction:column;gap:12px}
 .delivery-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);padding:16px;display:flex;flex-direction:column;gap:12px}
 .dc-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -214,14 +233,18 @@ a{text-decoration:none;color:inherit}
 .dc-cust .ms{font-size:16px;color:var(--op-muted-2)}
 .dc-addr{font-size:11.5px;color:var(--op-muted);display:flex;align-items:center;gap:6px;margin-inline-start:auto}
 .dc-addr .ms{font-size:15px;color:var(--op-muted-2)}
+
 .courier-chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;padding:6px 12px 6px 8px;border-radius:999px;background:var(--op-surface-2);border:1px solid var(--op-border-strong);width:fit-content}
 .courier-chip .ms{font-size:17px;color:var(--op-muted-2)}
 .courier-chip.waiting{background:var(--op-warning-bg);color:var(--op-warning);border-color:var(--op-warning-bd)}
 .courier-chip.waiting .ms{color:var(--op-warning)}
+
 .dc-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:10px;border-top:1px dashed var(--op-border-strong)}
 .dc-eta{display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0}
 .dc-eta b{font-family:var(--op-font-mono);font-weight:800;font-size:16px}
 .dc-eta span{font-size:10.5px;color:var(--op-muted);font-weight:600}
+
+/* mini-stepper (5 stages, reused pattern) */
 .mini-stepper{display:flex;align-items:center;gap:0;flex:1;min-width:170px}
 .mini-stepper .node{width:9px;height:9px;border-radius:50%;background:var(--op-border-strong);flex-shrink:0}
 .mini-stepper .line{flex:1;height:2px;background:var(--op-border-strong);min-width:8px}
@@ -233,8 +256,11 @@ a{text-decoration:none;color:inherit}
 .stage-label{font-size:11px;font-weight:700;color:var(--op-zest-600);white-space:nowrap}
 [data-theme="dark"] .stage-label{color:var(--op-zest)}
 .stage-label.waiting{color:var(--op-warning)}
+
 .dc-track-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:9px 15px;font-size:12px;font-weight:700;color:var(--op-text);cursor:pointer}
 .dc-track-btn .ms{font-size:16px}
+
+/* ---- full stepper (in modal, 5 stages) ---- */
 .full-stepper{display:flex;align-items:flex-start}
 .full-stepper .step{display:flex;flex-direction:column;align-items:center;gap:6px;flex:1;min-width:0;position:relative}
 .full-stepper .step .dot{width:22px;height:22px;border-radius:50%;background:var(--op-surface-2);border:2px solid var(--op-border-strong);display:flex;align-items:center;justify-content:center;color:var(--op-muted-2);flex-shrink:0}
@@ -249,6 +275,7 @@ a{text-decoration:none;color:inherit}
 [data-theme="dark"] .full-stepper .step.current .dot{background:var(--op-zest);border-color:var(--op-zest);box-shadow:0 0 0 4px rgba(255,124,57,.16)}
 .full-stepper .step.current span{color:var(--op-zest-600);font-weight:800}
 [data-theme="dark"] .full-stepper .step.current span{color:var(--op-zest)}
+
 .dt-eta-box{display:flex;align-items:center;gap:14px;background:var(--op-surface-2);border-radius:var(--op-r-md);padding:12px 14px}
 .dt-eta-box .ic{width:36px;height:36px;border-radius:var(--op-r-md);background:var(--op-surface);border:1px solid var(--op-border);display:flex;align-items:center;justify-content:center;color:var(--op-zest-600);flex-shrink:0}
 [data-theme="dark"] .dt-eta-box .ic{color:var(--op-zest)}
@@ -256,10 +283,13 @@ a{text-decoration:none;color:inherit}
 .dt-eta-box .m{flex:1;min-width:0}
 .dt-eta-box .m b{display:block;font-size:11px;font-weight:700;color:var(--op-muted)}
 .dt-eta-val{font-family:var(--op-font-mono);font-weight:800;font-size:17px}
+
 .dt-info-box{background:var(--op-surface-2);border-radius:var(--op-r-md);padding:12px 14px;display:flex;flex-direction:column;gap:7px}
 .dt-info-box .row{display:flex;align-items:center;gap:9px;font-size:12.5px}
 .dt-info-box .ms{font-size:16px;color:var(--op-muted-2);flex-shrink:0}
 .dt-info-box b{font-weight:700}
+
+/* ---- tracking preview (honest placeholder, no fake live map) ---- */
 .track-preview{position:relative;border-radius:var(--op-r-md);border:1.5px dashed var(--op-border-strong);background:
   repeating-linear-gradient(45deg,var(--op-surface-2) 0 10px, var(--op-surface) 10px 20px);
   min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:20px}
@@ -268,13 +298,16 @@ a{text-decoration:none;color:inherit}
 .track-preview span{font-size:11px;color:var(--op-muted);max-width:280px;line-height:1.5}
 .track-preview .tag{position:absolute;top:10px;inset-inline-end:10px;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
   color:var(--op-info);background:var(--op-surface);border:1px solid var(--op-info-bd);border-radius:6px;padding:3px 8px}
+
 .dt-fee-row{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--op-muted);padding:4px 0}
 .dt-fee-row span:last-child{font-family:var(--op-font-mono);font-weight:700;color:var(--op-text)}
 .payout-row{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--op-muted);padding:4px 0}
 .payout-inactive{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;
   color:var(--op-muted-2);background:var(--op-surface-2);border:1px solid var(--op-border-strong);border-radius:999px;padding:4px 10px}
 .payout-inactive .ms{font-size:13px}
+
 .op-empty-del{display:none}
+
 @container gbop (max-width: 880px){
   .gb-op{flex-direction:column}
   .op-side{display:none}
@@ -304,6 +337,7 @@ a{text-decoration:none;color:inherit}
 </style>
 </head>
 <body>
+
 <div class="bar">
   <group><span class="lbl">Établissements</span><button id="sc-none" onclick="setScale('none')">N=0</button><button id="sc-single" onclick="setScale('single')">N=1</button><button id="sc-multi" class="on" onclick="setScale('multi')">N≥2</button></group>
   <group><span class="lbl">État</span><button id="st-loaded" class="on" onclick="setState('loaded')">Chargé</button><button id="st-loading" onclick="setState('loading')">Chargement</button><button id="st-empty" onclick="setState('empty')">Vide</button><button id="st-error" onclick="setState('error')">Erreur</button></group>
@@ -311,8 +345,11 @@ a{text-decoration:none;color:inherit}
   <group><span class="lbl">Sens</span><button id="dir-ltr" class="on" onclick="setDir('ltr')">LTR</button><button id="dir-rtl" onclick="setDir('rtl')">RTL</button></group>
   <group><span class="lbl">Écran</span><button id="dev-desktop" class="on" onclick="setDevice('desktop')">Bureau</button><button id="dev-mobile" onclick="setDevice('mobile')">Mobile</button></group>
 </div>
+
 <div class="gb-op-wrap" id="opwrap">
 <div class="gb-op" id="app" data-theme="light" data-scale="multi" data-state="loaded" data-sidebar="expanded" dir="ltr" data-screen-label="Operator — Livraisons">
+
+  <!-- "Commandes" active — deliveries are the delivery-side view of orders; final placement /deliveries to be confirmed by CC -->
   <aside class="op-side">
     <div class="op-side__brand"><img src="../assets/grubano-symbol.svg" alt="Grubano"><div class="op-side__word"><b>Grubano</b><span>Business</span></div></div>
     <nav class="op-side__nav">
@@ -332,12 +369,13 @@ a{text-decoration:none;color:inherit}
       <a class="op-nav-item" data-requires-estab><span class="ms">account_balance_wallet</span><span class="t">Finances</span></a>
       <div class="op-nav-group">Organisation</div>
       <a class="op-nav-item" data-requires-estab><span class="ms">branding_watermark</span><span class="t">Marques</span></a>
-      <a class="op-nav-item" data-requires-estab><span class="ms">badge</span><span class="t">Équipe</span></a>
+      <a class="op-nav-item" data-requires-estab style="opacity:.45;pointer-events:none"><span class="ms">badge</span><span class="t">Équipe · Bientôt</span></a>
       <a class="op-nav-item"><span class="ms">settings</span><span class="t">Réglages</span></a>
     </nav>
-    <a class="op-nav-item op-nav-item--ai" data-requires-estab><span class="ms">auto_awesome</span><span class="t">Copilote IA</span></a>
+    <a class="op-nav-item op-nav-item--ai" data-requires-estab style="opacity:.45;pointer-events:none"><span class="ms">auto_awesome</span><span class="t">Copilote IA · Bientôt</span></a>
     <button class="op-side__collapse" onclick="toggleSidebar()" title="Réduire"><span class="ms flip-rtl" id="collapseIcon">chevron_left</span></button>
   </aside>
+
   <div class="op-main">
     <header class="op-top">
       <button class="op-hamburger" onclick="toggleSidebar()"><span class="ms">menu</span></button>
@@ -361,10 +399,12 @@ a{text-decoration:none;color:inherit}
       <div class="op-top__date"><span class="ms">calendar_today</span>Mercredi 1 juillet</div>
       <div class="op-top__spacer"></div>
       <button class="op-openclosed is-open" onclick="this.classList.toggle('is-open')"><i class="dot"></i><span class="txt-open">Ouvert</span><span class="txt-closed">Fermé</span><span class="ms">expand_more</span></button>
-      <button class="op-icon-btn"><span class="ms">notifications</span><span class="badge">5</span></button>
+      <button class="op-icon-btn"><span class="ms">notifications</span></button>
       <button class="op-profile"><span class="op-profile__av">MD</span><span class="op-profile__name">Marco D.</span><span class="ms">expand_more</span></button>
     </header>
+
     <main class="op-content">
+
       <section class="op-onboarding"><div class="op-center">
         <div class="op-onb__card">
           <img src="../assets/grubano-symbol.svg" alt="Grubano">
@@ -378,6 +418,7 @@ a{text-decoration:none;color:inherit}
           </div>
         </div>
       </div></section>
+
       <section class="op-error"><div class="op-center">
         <div class="op-error__card">
           <span class="ms">cloud_off</span>
@@ -386,6 +427,7 @@ a{text-decoration:none;color:inherit}
           <button class="op-btn-primary"><span class="ms">refresh</span>Réessayer</button>
         </div>
       </div></section>
+
       <section class="op-skel">
         <div style="margin-bottom:18px"><span class="op-sk" style="width:120px;height:22px"></span></div>
         <span class="op-sk" style="width:100%;height:56px;border-radius:12px;margin-bottom:18px;display:block"></span>
@@ -396,6 +438,7 @@ a{text-decoration:none;color:inherit}
           <span class="op-sk" style="width:100%;height:120px;border-radius:12px"></span><span class="op-sk" style="width:100%;height:120px;border-radius:12px"></span><span class="op-sk" style="width:100%;height:120px;border-radius:12px"></span>
         </div>
       </section>
+
       <section class="op-empty-del">
         <div class="op-dash__head"><div><h1 class="op-dash__title">Livraisons</h1></div></div>
         <div class="preview-banner">
@@ -409,22 +452,27 @@ a{text-decoration:none;color:inherit}
           <span>Les commandes en cours de livraison apparaîtront ici avec leur statut.</span>
         </div></div>
       </section>
+
       <section class="op-del">
         <div class="op-dash__head">
           <div><h1 class="op-dash__title">Livraisons</h1><p class="op-dash__sub"><span class="op-agg-label">Vue agrégée · 3 établissements · </span>Mercredi 1 juillet 2026</p></div>
         </div>
+
         <div class="preview-banner">
           <span class="ms">local_shipping</span>
           <div class="m"><b>Le réseau de coursiers Grubano se déploie progressivement</b><p>L'affectation automatique des livreurs et le suivi en direct arrivent bientôt — les statuts ci-dessous sont mis à jour manuellement pour l'instant.</p></div>
           <span class="tag">Bientôt</span>
         </div>
+
         <div class="op-card stat-strip" style="margin-bottom:18px">
           <div class="stat"><span class="lbl">Livraisons en cours</span><b>4</b></div>
           <div class="stat"><span class="lbl">Temps de livraison moyen</span><b>27 min</b></div>
           <div class="stat"><span class="lbl">Coursiers actifs</span><b>3</b></div>
           <div class="stat"><span class="lbl">Retards</span><b class="alert">1</b></div>
         </div>
+
         <div class="delivery-list">
+
           <div class="delivery-card">
             <div class="dc-top">
               <span class="dc-num">#1042</span>
@@ -441,6 +489,7 @@ a{text-decoration:none;color:inherit}
               <button class="dc-track-btn" onclick="openDelivery('#1042','Sophie Martin','assigned')"><span class="ms">visibility</span>Voir</button>
             </div>
           </div>
+
           <div class="delivery-card">
             <div class="dc-top">
               <span class="dc-num">#1044</span>
@@ -457,6 +506,7 @@ a{text-decoration:none;color:inherit}
               <button class="dc-track-btn" onclick="openDelivery('#1044','Amine Lahlou','assigned')"><span class="ms">visibility</span>Voir</button>
             </div>
           </div>
+
           <div class="delivery-card">
             <div class="dc-top">
               <span class="dc-num">#1038</span>
@@ -473,6 +523,7 @@ a{text-decoration:none;color:inherit}
               <button class="dc-track-btn" onclick="openDelivery('#1038','Julie Roussel','assigned')"><span class="ms">visibility</span>Voir</button>
             </div>
           </div>
+
           <div class="delivery-card">
             <div class="dc-top">
               <span class="dc-num">#1036</span>
@@ -489,10 +540,13 @@ a{text-decoration:none;color:inherit}
               <button class="dc-track-btn" onclick="openDelivery('#1036','Marc Dubois','waiting')"><span class="ms">visibility</span>Voir</button>
             </div>
           </div>
+
         </div>
       </section>
+
     </main>
   </div>
+
   <nav class="op-bottomnav">
     <div class="row">
       <a><span class="ms">dashboard</span><span>Dashboard</span></a>
@@ -502,6 +556,7 @@ a{text-decoration:none;color:inherit}
       <a><span class="ms">menu</span><span>Plus</span></a>
     </div>
   </nav>
+
   <!-- DELIVERY DETAIL MODAL — no live GPS yet; tracking area clearly marked as preview. Courier payout marked inactive. -->
   <div class="op-modal-backdrop" id="delBackdrop" onclick="if(event.target===this) closeDelivery()">
     <div class="op-modal">
@@ -513,6 +568,7 @@ a{text-decoration:none;color:inherit}
         <button class="op-modal__close" onclick="closeDelivery()"><span class="ms">close</span></button>
       </div>
       <div class="op-modal__body">
+
         <div class="full-stepper" id="dtStepper">
           <div class="step done"><span class="ln"></span><span class="dot"><span class="ms">check</span></span><span>Assignée</span></div>
           <div class="step done"><span class="ln"></span><span class="dot"><span class="ms">check</span></span><span>En route resto</span></div>
@@ -520,25 +576,30 @@ a{text-decoration:none;color:inherit}
           <div class="step current"><span class="ln"></span><span class="dot"><span class="ms">moped</span></span><span>En livraison</span></div>
           <div class="step"><span class="ln"></span><span class="dot"><span class="ms">flag</span></span><span>Livrée</span></div>
         </div>
+
         <div class="dt-eta-box">
           <span class="ic"><span class="ms">schedule</span></span>
           <div class="m"><b>Arrivée estimée</b><span class="dt-eta-val" id="dtEta">19:42 · dans ~6 min</span></div>
         </div>
+
         <div class="dt-info-box" id="dtCourierBox">
           <div class="row"><span class="ms">sports_motorsports</span><b>Thomas B.</b><span>· Scooter</span></div>
           <div class="row"><span class="ms">call</span><span class="mono">06 11 22 33 44</span></div>
           <div class="row"><span class="ms">location_on</span><span>12 rue des Lilas, Apt 4B — 75011 Paris</span></div>
         </div>
+
         <div class="track-preview">
           <span class="tag">Aperçu</span>
           <span class="ms">map</span>
           <b>Suivi GPS en direct — bientôt disponible</b>
           <span>La position du coursier en temps réel n'est pas encore active sur cet aperçu. Le fil de progression ci-dessus reflète le dernier statut connu.</span>
         </div>
+
         <div>
           <div class="dt-fee-row"><span>Frais de livraison (client)</span><span>3,50&nbsp;€</span></div>
           <div class="payout-row"><span>Rémunération du coursier</span><span class="payout-inactive"><span class="ms">schedule</span>Bientôt actif</span></div>
         </div>
+
         <div class="op-callout">
           <span class="ms">info</span>
           <p>L'affectation automatique, le suivi GPS en direct et le versement des coursiers sont en cours de déploiement — cette fenêtre n'affiche que le dernier statut connu.</p>
@@ -549,8 +610,10 @@ a{text-decoration:none;color:inherit}
       </div>
     </div>
   </div>
+
 </div>
 </div>
+
 <script>
   var app = document.getElementById('app');
   function toggleSidebar(){
@@ -566,12 +629,14 @@ a{text-decoration:none;color:inherit}
     var panel = document.getElementById('estabPanel'), btn = e.target.closest('.op-estab');
     if (!btn && panel.classList.contains('open') && !e.target.closest('.op-estab__panel')) panel.classList.remove('open');
   });
+
   function openDelivery(num, cust, kind){
     document.getElementById('dtNum').textContent = num;
     document.getElementById('dtCust').textContent = cust;
     document.getElementById('delBackdrop').classList.add('open');
   }
   function closeDelivery(){ document.getElementById('delBackdrop').classList.remove('open'); }
+
   function syncBar(prefix, v){
     document.querySelectorAll('[id^="'+prefix+'"]').forEach(function(b){ if(b.id.indexOf(prefix)===0) b.classList.remove('on'); });
     var el = document.getElementById(prefix+v); if(el) el.classList.add('on');

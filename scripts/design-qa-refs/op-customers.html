@@ -50,14 +50,17 @@ button,input,select,textarea{font-family:inherit}
 .flip-rtl{display:inline-block}
 [dir="rtl"] .flip-rtl{transform:scaleX(-1)}
 a{text-decoration:none;color:inherit}
+
 .bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:#fff;border-bottom:1px solid #E3E7EE;padding:9px 12px;font-family:var(--op-font-ui)}
 .bar group{display:flex;gap:2px;align-items:center;background:#F2F4F7;border-radius:999px;padding:3px}
 .bar button{border:none;background:none;cursor:pointer;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:#5B6472}
 .bar button.on{background:#101828;color:#fff}
 .bar .lbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8992A3;align-self:center;margin-inline-end:2px}
+
 .gb-op-wrap{width:100%;container-type:inline-size;container-name:gbop;transition:max-width .25s ease;margin:0 auto}
 .gb-op-wrap.force-mobile{max-width:428px;box-shadow:0 0 0 1px #C7CEDA, 0 30px 60px -30px rgba(16,24,40,.4)}
 .gb-op{display:flex;min-height:840px;background:var(--op-canvas);color:var(--op-text);overflow:hidden}
+
 .op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:relative}
 .gb-op[data-sidebar="collapsed"] .op-side{width:76px}
 .op-side__brand{display:flex;align-items:center;gap:10px;padding:16px 18px 18px}
@@ -83,6 +86,7 @@ a{text-decoration:none;color:inherit}
 .gb-op[data-scale="none"] .op-nav-item--ai{opacity:.35;pointer-events:none}
 .op-side__collapse{position:absolute;top:22px;inset-inline-end:-12px;width:24px;height:24px;border-radius:50%;background:var(--op-chrome-1);border:1px solid var(--op-chrome-border);color:var(--op-chrome-text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
 .op-side__collapse .ms{font-size:15px}
+
 .op-main{flex:1;display:flex;flex-direction:column;min-width:0}
 .op-top{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 20px;height:60px;background:var(--op-chrome-1);border-bottom:1px solid var(--op-chrome-border);position:relative;z-index:5}
 .op-hamburger{display:none;width:34px;height:34px;border-radius:var(--op-r-md);background:rgba(255,255,255,.06);border:none;color:#fff;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
@@ -134,6 +138,7 @@ a{text-decoration:none;color:inherit}
 .op-profile__name{font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap}
 .op-profile .ms{font-size:17px;color:var(--op-chrome-text-dim)}
 @container gbop (max-width: 700px){ .op-profile__name, .op-top__date{display:none} }
+
 .op-content{flex:1;overflow-y:auto;padding:24px;background:var(--op-canvas)}
 .op-content>section{max-width:1520px;margin:0 auto}
 .op-onboarding,.op-skel,.op-error,.op-empty-cl,.op-cl{display:none}
@@ -142,6 +147,7 @@ a{text-decoration:none;color:inherit}
 .gb-op:not([data-scale="none"])[data-state="error"] .op-error{display:block}
 .gb-op:not([data-scale="none"])[data-state="empty"] .op-empty-cl{display:block}
 .gb-op:not([data-scale="none"])[data-state="loaded"] .op-cl{display:block}
+
 .op-dash__head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
 .op-dash__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em}
 .op-dash__sub{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
@@ -151,10 +157,12 @@ a{text-decoration:none;color:inherit}
 .op-card__head{display:flex;align-items:center;gap:9px;padding:15px 18px;border-bottom:1px solid var(--op-border)}
 .op-card__head h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:14.5px;flex:1;display:flex;align-items:center;gap:7px}
 .op-card__head h2 .ms{font-size:17px;color:var(--op-muted-2)}
+
 .op-search{display:flex;align-items:center;gap:9px;background:var(--op-surface);border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:10px 14px;max-width:340px;flex:1}
 .op-search .ms{font-size:19px;color:var(--op-muted-2);flex-shrink:0}
 .op-search input{border:none;background:none;outline:none;font-size:13.5px;color:var(--op-text);width:100%;font-family:inherit}
 .op-search input::placeholder{color:var(--op-muted-2)}
+
 .op-onboarding{display:none}
 .op-center{display:flex;align-items:center;justify-content:center;min-height:600px}
 .op-onb__card{max-width:520px;text-align:center;background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-xl);padding:44px 40px;box-shadow:var(--op-shadow-card)}
@@ -168,27 +176,33 @@ a{text-decoration:none;color:inherit}
 .op-onb__steps .n{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--op-text);color:var(--op-surface);font-size:11px;font-weight:800;margin-bottom:8px}
 .op-onb__steps b{display:block;font-size:12px;font-weight:700;margin-bottom:2px}
 .op-onb__steps span{font-size:10.5px;color:var(--op-muted)}
+
 .op-error{display:none}
 .op-error__card{max-width:400px;text-align:center}
 .op-error__card .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:16px}
 .op-error__card h2{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:18px}
 .op-error__card p{margin:9px 0 22px;font-size:13px;line-height:1.55;color:var(--op-muted)}
 .op-btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer}
+
 @keyframes op-sk{100%{background-position:-200% 0}}
 .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk 1.4s ease-in-out infinite;border-radius:6px;display:block}
+
 .op-emptyline{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px}
 .op-emptyline .ms{font-size:34px;color:var(--op-muted-2);margin-bottom:10px}
 .op-emptyline b{font-size:15px;font-weight:700}
 .op-emptyline span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:360px}
+
 .op-bottomnav{display:none;flex-shrink:0;background:var(--op-chrome-1);border-top:1px solid var(--op-chrome-border);padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
 .op-bottomnav .row{display:flex}
 .op-bottomnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--op-chrome-text-dim);padding:4px 0}
 .op-bottomnav a.is-active{color:var(--op-zest)}
 .op-bottomnav a .ms{font-size:22px}
 .op-bottomnav a span{font-size:9.5px;font-weight:700}
+
 .icon-btn-sm{width:30px;height:30px;border-radius:var(--op-r-md);border:none;background:none;color:var(--op-muted);display:flex;align-items:center;justify-content:center;cursor:pointer}
 .icon-btn-sm:hover{background:var(--op-surface-2);color:var(--op-text)}
 .icon-btn-sm .ms{font-size:18px}
+
 .op-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(10,18,32,.55);z-index:100;align-items:center;justify-content:flex-end;padding:0}
 .op-modal-backdrop.open{display:flex}
 .op-panel{width:100%;max-width:440px;height:100%;background:var(--op-surface);box-shadow:var(--op-shadow-pop);overflow-y:auto;display:flex;flex-direction:column}
@@ -202,11 +216,16 @@ a{text-decoration:none;color:inherit}
 .op-callout p{margin:0;font-size:12px;line-height:1.5;color:var(--op-text)}
 .op-textarea{width:100%;box-sizing:border-box;border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:var(--op-r-md);padding:10px 12px;font-family:var(--op-font-ui);font-size:13px;color:var(--op-text);resize:vertical;min-height:70px}
 .op-textarea:focus{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+
+/* ============================================================================
+   NEW — CLIENTS-SPECIFIC COMPONENTS
+   ============================================================================ */
 .stat-strip{display:flex;padding:8px 4px;flex-wrap:wrap}
 .stat-strip .stat{flex:1;min-width:150px;padding:14px 20px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
 .stat-strip .stat:first-child{border-inline-start:none}
 .stat-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
 .stat-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:22px}
+
 .tier-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;border-radius:999px;padding:4px 11px;border:1px solid transparent;white-space:nowrap}
 .tier-chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
 .tier-chip.bronze{background:#F3E4D5;color:#8C5A2B}
@@ -217,10 +236,12 @@ a{text-decoration:none;color:inherit}
 [data-theme="dark"] .tier-chip.silver{background:rgba(148,163,181,.18);color:#C4CDD6}
 [data-theme="dark"] .tier-chip.gold{background:rgba(200,160,40,.2);color:#F0CB6C}
 [data-theme="dark"] .tier-chip.platinum{background:rgba(139,116,224,.22);color:#C3B8F5}
+
 .tier-filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
 .tier-filters button{border:1px solid var(--op-border-strong);background:var(--op-surface);border-radius:999px;padding:8px 15px;font-size:12px;font-weight:700;color:var(--op-text);cursor:pointer;display:flex;align-items:center;gap:7px}
 .tier-filters button.is-active{background:var(--op-text);color:var(--op-surface);border-color:transparent}
 .tier-filters .cnt{font-family:var(--op-font-mono);font-size:10.5px;font-weight:700;opacity:.7}
+
 .cl-table{width:100%}
 .cl-head-row{display:grid;grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px;gap:10px;padding:10px 18px;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2);border-bottom:1px solid var(--op-border)}
 .cl-row{display:grid;grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px;gap:10px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--op-border);cursor:pointer}
@@ -237,6 +258,8 @@ a{text-decoration:none;color:inherit}
 [data-theme="dark"] .cl-row .pts{color:var(--op-zest)}
 .cl-row .lastvisit{font-size:11.5px;color:var(--op-muted);text-align:end}
 .cl-row .viewbtn{display:flex;justify-content:flex-end}
+
+/* ---- customer detail panel ---- */
 .detail-hero{display:flex;align-items:center;gap:14px}
 .detail-hero .cl-av{width:54px;height:54px;font-size:18px}
 .detail-hero .m b{display:block;font-family:var(--op-font-display);font-weight:800;font-size:17px}
@@ -257,7 +280,9 @@ a{text-decoration:none;color:inherit}
 .detail-hist .m span{font-size:10.5px;color:var(--op-muted)}
 .detail-hist .amt{font-family:var(--op-font-mono);font-weight:700;font-size:12.5px}
 .detail-section-title{font-size:11.5px;font-weight:700;color:var(--op-muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 -6px}
+
 .op-empty-cl{display:none}
+
 @container gbop (max-width: 1040px){
   .cl-head-row,.cl-row{grid-template-columns:1.6fr 90px 100px 80px}
   .cl-head-row span:nth-child(2),.cl-row .orders,.cl-head-row span:nth-child(5),.cl-row .lastvisit{display:none}
@@ -291,6 +316,7 @@ a{text-decoration:none;color:inherit}
 </style>
 </head>
 <body>
+
 <div class="bar">
   <group><span class="lbl">Établissements</span><button id="sc-none" onclick="setScale('none')">N=0</button><button id="sc-single" onclick="setScale('single')">N=1</button><button id="sc-multi" class="on" onclick="setScale('multi')">N≥2</button></group>
   <group><span class="lbl">État</span><button id="st-loaded" class="on" onclick="setState('loaded')">Chargé</button><button id="st-loading" onclick="setState('loading')">Chargement</button><button id="st-empty" onclick="setState('empty')">Vide</button><button id="st-error" onclick="setState('error')">Erreur</button></group>
@@ -298,8 +324,10 @@ a{text-decoration:none;color:inherit}
   <group><span class="lbl">Sens</span><button id="dir-ltr" class="on" onclick="setDir('ltr')">LTR</button><button id="dir-rtl" onclick="setDir('rtl')">RTL</button></group>
   <group><span class="lbl">Écran</span><button id="dev-desktop" class="on" onclick="setDevice('desktop')">Bureau</button><button id="dev-mobile" onclick="setDevice('mobile')">Mobile</button></group>
 </div>
+
 <div class="gb-op-wrap" id="opwrap">
 <div class="gb-op" id="app" data-theme="light" data-scale="multi" data-state="loaded" data-sidebar="expanded" dir="ltr" data-screen-label="Operator — Clients">
+
   <aside class="op-side">
     <div class="op-side__brand"><img src="../assets/grubano-symbol.svg" alt="Grubano"><div class="op-side__word"><b>Grubano</b><span>Business</span></div></div>
     <nav class="op-side__nav">
@@ -319,12 +347,13 @@ a{text-decoration:none;color:inherit}
       <a class="op-nav-item" data-requires-estab><span class="ms">account_balance_wallet</span><span class="t">Finances</span></a>
       <div class="op-nav-group">Organisation</div>
       <a class="op-nav-item" data-requires-estab><span class="ms">branding_watermark</span><span class="t">Marques</span></a>
-      <a class="op-nav-item" data-requires-estab><span class="ms">badge</span><span class="t">Équipe</span></a>
+      <a class="op-nav-item" data-requires-estab style="opacity:.45;pointer-events:none"><span class="ms">badge</span><span class="t">Équipe · Bientôt</span></a>
       <a class="op-nav-item"><span class="ms">settings</span><span class="t">Réglages</span></a>
     </nav>
-    <a class="op-nav-item op-nav-item--ai" data-requires-estab><span class="ms">auto_awesome</span><span class="t">Copilote IA</span></a>
+    <a class="op-nav-item op-nav-item--ai" data-requires-estab style="opacity:.45;pointer-events:none"><span class="ms">auto_awesome</span><span class="t">Copilote IA · Bientôt</span></a>
     <button class="op-side__collapse" onclick="toggleSidebar()" title="Réduire"><span class="ms flip-rtl" id="collapseIcon">chevron_left</span></button>
   </aside>
+
   <div class="op-main">
     <header class="op-top">
       <button class="op-hamburger" onclick="toggleSidebar()"><span class="ms">menu</span></button>
@@ -348,10 +377,12 @@ a{text-decoration:none;color:inherit}
       <div class="op-top__date"><span class="ms">calendar_today</span>Mercredi 1 juillet</div>
       <div class="op-top__spacer"></div>
       <button class="op-openclosed is-open" onclick="this.classList.toggle('is-open')"><i class="dot"></i><span class="txt-open">Ouvert</span><span class="txt-closed">Fermé</span><span class="ms">expand_more</span></button>
-      <button class="op-icon-btn"><span class="ms">notifications</span><span class="badge">5</span></button>
+      <button class="op-icon-btn"><span class="ms">notifications</span></button>
       <button class="op-profile"><span class="op-profile__av">MD</span><span class="op-profile__name">Marco D.</span><span class="ms">expand_more</span></button>
     </header>
+
     <main class="op-content">
+
       <section class="op-onboarding"><div class="op-center">
         <div class="op-onb__card">
           <img src="../assets/grubano-symbol.svg" alt="Grubano">
@@ -365,6 +396,7 @@ a{text-decoration:none;color:inherit}
           </div>
         </div>
       </div></section>
+
       <section class="op-error"><div class="op-center">
         <div class="op-error__card">
           <span class="ms">cloud_off</span>
@@ -373,6 +405,7 @@ a{text-decoration:none;color:inherit}
           <button class="op-btn-primary"><span class="ms">refresh</span>Réessayer</button>
         </div>
       </div></section>
+
       <section class="op-skel">
         <div style="display:flex;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px"><span class="op-sk" style="width:100px;height:22px"></span><span class="op-sk" style="width:260px;height:38px;border-radius:8px"></span></div>
         <div class="op-card" style="margin-bottom:18px"><div style="padding:18px;display:flex;gap:24px">
@@ -383,6 +416,7 @@ a{text-decoration:none;color:inherit}
           <span class="op-sk" style="width:100%;height:48px"></span><span class="op-sk" style="width:100%;height:48px"></span><span class="op-sk" style="width:100%;height:48px"></span><span class="op-sk" style="width:100%;height:48px"></span>
         </div></div>
       </section>
+
       <section class="op-empty-cl">
         <div class="op-dash__head"><div><h1 class="op-dash__title">Clients</h1></div></div>
         <div class="op-card"><div class="op-emptyline">
@@ -391,17 +425,20 @@ a{text-decoration:none;color:inherit}
           <span>Vos clients apparaîtront ici après leur première commande — vous pourrez suivre leur fidélité et leur historique.</span>
         </div></div>
       </section>
+
       <section class="op-cl">
         <div class="op-dash__head">
           <div><h1 class="op-dash__title">Clients</h1><p class="op-dash__sub"><span class="op-agg-label">Vue agrégée · 3 établissements · </span>Programme de fidélité actif</p></div>
           <div class="op-search"><span class="ms">search</span><input type="text" placeholder="Rechercher un client…"></div>
         </div>
+
         <div class="op-card stat-strip" style="margin-bottom:18px">
           <div class="stat"><span class="lbl">Clients au total</span><b>1 284</b></div>
           <div class="stat"><span class="lbl">Nouveaux ce mois</span><b>96</b></div>
           <div class="stat"><span class="lbl">Membres fidélité</span><b>842</b></div>
           <div class="stat"><span class="lbl">Panier moyen</span><b>24,60&nbsp;€</b></div>
         </div>
+
         <div class="tier-filters">
           <button class="is-active" onclick="setTier(this)">Tous <span class="cnt">1 284</span></button>
           <button onclick="setTier(this)"><span class="tier-chip bronze"><i class="dot"></i>Bronze</span><span class="cnt">512</span></button>
@@ -409,14 +446,16 @@ a{text-decoration:none;color:inherit}
           <button onclick="setTier(this)"><span class="tier-chip gold"><i class="dot"></i>Or</span><span class="cnt">38</span></button>
           <button onclick="setTier(this)"><span class="tier-chip platinum"><i class="dot"></i>Platine</span><span class="cnt">8</span></button>
         </div>
+
         <div class="op-card">
           <div class="op-card__head"><h2><span class="ms">workspace_premium</span>Meilleurs clients</h2></div>
           <div class="cl-table">
             <div class="cl-head-row">
               <span>Client</span><span>Palier</span><span style="text-align:end">Commandes</span><span style="text-align:end">Total dépensé</span><span style="text-align:end">Points</span><span style="text-align:end">Dernière visite</span><span></span>
             </div>
-            <div class="cl-row" onclick="openDetail('Sophie Martin','SM','#FF8A3D,#F2570E','platinum','Platine','06 12 34 56 78','sophie.martin@email.com','Client depuis mars 2024')">
-              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#FF8A3D,#F2570E)">SM</span><div class="m"><b>Sophie Martin</b><span>Client depuis mars 2024</span></div></div>
+
+            <div class="cl-row" onclick="openDetail('Sophie M.','SM','#FF8A3D,#F2570E','platinum','Platine','Client depuis mars 2024')">
+              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#FF8A3D,#F2570E)">SM</span><div class="m"><b>Sophie M.</b><span>Client depuis mars 2024</span></div></div>
               <span><span class="tier-chip platinum"><i class="dot"></i>Platine</span></span>
               <span class="orders">86</span>
               <span class="ltv">2 340,00&nbsp;€</span>
@@ -424,8 +463,9 @@ a{text-decoration:none;color:inherit}
               <span class="lastvisit">Hier</span>
               <span class="viewbtn"><button class="icon-btn-sm" title="Voir la fiche"><span class="ms">visibility</span></button></span>
             </div>
-            <div class="cl-row" onclick="openDetail('Karim Belhadj','KB','#3E5A7D,#1B3A5E','gold','Or','06 45 67 89 10','karim.belhadj@email.com','Client depuis juin 2023')">
-              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">KB</span><div class="m"><b>Karim Belhadj</b><span>Client depuis juin 2023</span></div></div>
+
+            <div class="cl-row" onclick="openDetail('Karim B.','KB','#3E5A7D,#1B3A5E','gold','Or','Client depuis juin 2023')">
+              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">KB</span><div class="m"><b>Karim B.</b><span>Client depuis juin 2023</span></div></div>
               <span><span class="tier-chip gold"><i class="dot"></i>Or</span></span>
               <span class="orders">54</span>
               <span class="ltv">1 480,00&nbsp;€</span>
@@ -433,8 +473,9 @@ a{text-decoration:none;color:inherit}
               <span class="lastvisit">3 juil.</span>
               <span class="viewbtn"><button class="icon-btn-sm" title="Voir la fiche"><span class="ms">visibility</span></button></span>
             </div>
-            <div class="cl-row" onclick="openDetail('Julie Roussel','JR','#41BD78,#1E9E57','gold','Or','06 78 90 12 34','julie.roussel@email.com','Client depuis janvier 2024')">
-              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#41BD78,#1E9E57)">JR</span><div class="m"><b>Julie Roussel</b><span>Client depuis janvier 2024</span></div></div>
+
+            <div class="cl-row" onclick="openDetail('Julie R.','JR','#41BD78,#1E9E57','gold','Or','Client depuis janvier 2024')">
+              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#41BD78,#1E9E57)">JR</span><div class="m"><b>Julie R.</b><span>Client depuis janvier 2024</span></div></div>
               <span><span class="tier-chip gold"><i class="dot"></i>Or</span></span>
               <span class="orders">47</span>
               <span class="ltv">1 205,00&nbsp;€</span>
@@ -442,8 +483,9 @@ a{text-decoration:none;color:inherit}
               <span class="lastvisit">28 juin</span>
               <span class="viewbtn"><button class="icon-btn-sm" title="Voir la fiche"><span class="ms">visibility</span></button></span>
             </div>
-            <div class="cl-row" onclick="openDetail('Marc Dubois','MD','#E8A63D,#B9740A','silver','Argent','06 23 45 67 89','marc.dubois@email.com','Client depuis septembre 2024')">
-              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#E8A63D,#B9740A)">MD</span><div class="m"><b>Marc Dubois</b><span>Client depuis septembre 2024</span></div></div>
+
+            <div class="cl-row" onclick="openDetail('Marc D.','MD','#E8A63D,#B9740A','silver','Argent','Client depuis septembre 2024')">
+              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#E8A63D,#B9740A)">MD</span><div class="m"><b>Marc D.</b><span>Client depuis septembre 2024</span></div></div>
               <span><span class="tier-chip silver"><i class="dot"></i>Argent</span></span>
               <span class="orders">22</span>
               <span class="ltv">560,00&nbsp;€</span>
@@ -451,8 +493,9 @@ a{text-decoration:none;color:inherit}
               <span class="lastvisit">20 juin</span>
               <span class="viewbtn"><button class="icon-btn-sm" title="Voir la fiche"><span class="ms">visibility</span></button></span>
             </div>
-            <div class="cl-row" onclick="openDetail('Amine Lahlou','AL','#8B74E0,#6E56CF','silver','Argent','06 34 56 78 90','amine.lahlou@email.com','Client depuis février 2025')">
-              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#8B74E0,#6E56CF)">AL</span><div class="m"><b>Amine Lahlou</b><span>Client depuis février 2025</span></div></div>
+
+            <div class="cl-row" onclick="openDetail('Amine L.','AL','#8B74E0,#6E56CF','silver','Argent','Client depuis février 2025')">
+              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#8B74E0,#6E56CF)">AL</span><div class="m"><b>Amine L.</b><span>Client depuis février 2025</span></div></div>
               <span><span class="tier-chip silver"><i class="dot"></i>Argent</span></span>
               <span class="orders">18</span>
               <span class="ltv">410,00&nbsp;€</span>
@@ -460,8 +503,9 @@ a{text-decoration:none;color:inherit}
               <span class="lastvisit">18 juin</span>
               <span class="viewbtn"><button class="icon-btn-sm" title="Voir la fiche"><span class="ms">visibility</span></button></span>
             </div>
-            <div class="cl-row" onclick="openDetail('Léa Fontaine','LF','#D5372A,#A8281D','bronze','Bronze','06 56 78 90 12','lea.fontaine@email.com','Client depuis mai 2025')">
-              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#D5372A,#A8281D)">LF</span><div class="m"><b>Léa Fontaine</b><span>Client depuis mai 2025</span></div></div>
+
+            <div class="cl-row" onclick="openDetail('Léa F.','LF','#D5372A,#A8281D','bronze','Bronze','Client depuis mai 2025')">
+              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#D5372A,#A8281D)">LF</span><div class="m"><b>Léa F.</b><span>Client depuis mai 2025</span></div></div>
               <span><span class="tier-chip bronze"><i class="dot"></i>Bronze</span></span>
               <span class="orders">6</span>
               <span class="ltv">142,00&nbsp;€</span>
@@ -469,8 +513,9 @@ a{text-decoration:none;color:inherit}
               <span class="lastvisit">2 juin</span>
               <span class="viewbtn"><button class="icon-btn-sm" title="Voir la fiche"><span class="ms">visibility</span></button></span>
             </div>
-            <div class="cl-row" onclick="openDetail('Thomas Petit','TP','#2E78F0,#1E56B8','bronze','Bronze','06 67 89 01 23','thomas.petit@email.com','Client depuis avril 2025')">
-              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#2E78F0,#1E56B8)">TP</span><div class="m"><b>Thomas Petit</b><span>Client depuis avril 2025</span></div></div>
+
+            <div class="cl-row" onclick="openDetail('Thomas P.','TP','#2E78F0,#1E56B8','bronze','Bronze','Client depuis avril 2025')">
+              <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#2E78F0,#1E56B8)">TP</span><div class="m"><b>Thomas P.</b><span>Client depuis avril 2025</span></div></div>
               <span><span class="tier-chip bronze"><i class="dot"></i>Bronze</span></span>
               <span class="orders">3</span>
               <span class="ltv">68,00&nbsp;€</span>
@@ -481,8 +526,10 @@ a{text-decoration:none;color:inherit}
           </div>
         </div>
       </section>
+
     </main>
   </div>
+
   <nav class="op-bottomnav">
     <div class="row">
       <a><span class="ms">dashboard</span><span>Dashboard</span></a>
@@ -492,32 +539,39 @@ a{text-decoration:none;color:inherit}
       <a><span class="ms">menu</span><span>Plus</span></a>
     </div>
   </nav>
+
+  <!-- CUSTOMER DETAIL PANEL — LTV & points are real server-computed values; visual only for now -->
   <div class="op-modal-backdrop" id="detailBackdrop" onclick="if(event.target===this) closeDetail()">
     <div class="op-panel">
       <div class="op-panel__head"><h3>Fiche client</h3><button class="op-modal__close" onclick="closeDetail()"><span class="ms">close</span></button></div>
       <div class="op-panel__body">
+
         <div class="detail-hero">
           <span class="cl-av" id="dtAvatar" style="background:linear-gradient(135deg,#FF8A3D,#F2570E)">SM</span>
-          <div class="m"><b id="dtName">Sophie Martin</b><span id="dtSince">Client depuis mars 2024</span></div>
+          <div class="m"><b id="dtName">Sophie M.</b><span id="dtSince">Client depuis mars 2024</span></div>
         </div>
+
         <div><span id="dtTier" class="tier-chip platinum"><i class="dot"></i>Platine</span></div>
+
         <div class="detail-grid">
           <div class="detail-box"><span class="lbl">Total dépensé (LTV)</span><span class="detail-val" id="dtLtv">2 340,00&nbsp;€</span></div>
           <div class="detail-box"><span class="lbl">Commandes</span><span class="detail-val" id="dtOrders">86</span></div>
           <div class="detail-box"><span class="lbl">Solde de points</span><span class="detail-val" style="color:var(--op-zest-600)" id="dtPts">4 820</span></div>
           <div class="detail-box"><span class="lbl">Panier moyen</span><span class="detail-val" id="dtAvg">27,20&nbsp;€</span></div>
         </div>
+
         <div class="op-callout">
           <span class="ms">info</span>
           <p>Le total dépensé et le solde de points sont calculés côté serveur à partir de l'historique réel des commandes — ils ne peuvent pas être modifiés ici.</p>
         </div>
+
         <div>
-          <p class="detail-section-title">Coordonnées</p>
+          <p class="detail-section-title">Confidentialité</p>
           <div class="detail-contact" style="margin-top:10px">
-            <div class="row"><span class="ms">call</span><span id="dtPhone" class="mono">06 12 34 56 78</span></div>
-            <div class="row"><span class="ms">mail</span><span id="dtEmail">sophie.martin@email.com</span></div>
+            <div class="row"><span class="ms">shield</span><span>Les coordonnées sont protégées par Grubano</span></div>
           </div>
         </div>
+
         <div>
           <p class="detail-section-title">Historique récent</p>
           <div class="detail-hist" style="margin-top:10px">
@@ -527,6 +581,7 @@ a{text-decoration:none;color:inherit}
             <div class="row"><span class="ms">receipt_long</span><div class="m"><b>Commande — À emporter</b><span>2 juin 2026</span></div><span class="amt">19,90&nbsp;€</span></div>
           </div>
         </div>
+
         <div>
           <p class="detail-section-title">Note interne</p>
           <textarea class="op-textarea" style="margin-top:10px" placeholder="Ex. préfère une table calme, allergie aux fruits de mer…">Cliente régulière, toujours très aimable. Préfère les tables près de la fenêtre.</textarea>
@@ -534,8 +589,10 @@ a{text-decoration:none;color:inherit}
       </div>
     </div>
   </div>
+
 </div>
 </div>
+
 <script>
   var app = document.getElementById('app');
   function toggleSidebar(){
@@ -552,8 +609,9 @@ a{text-decoration:none;color:inherit}
     if (!btn && panel.classList.contains('open') && !e.target.closest('.op-estab__panel')) panel.classList.remove('open');
   });
   function setTier(btn){ btn.parentElement.querySelectorAll('button').forEach(function(b){ b.classList.remove('is-active'); }); btn.classList.add('is-active'); }
+
   var tierMap = {bronze:'Bronze', silver:'Argent', gold:'Or', platinum:'Platine'};
-  function openDetail(name, initials, grad, tierClass, tierLabel, phone, email, since){
+  function openDetail(name, initials, grad, tierClass, tierLabel, since){
     document.getElementById('dtAvatar').textContent = initials;
     document.getElementById('dtAvatar').style.background = 'linear-gradient(135deg,' + grad + ')';
     document.getElementById('dtName').textContent = name;
@@ -561,11 +619,10 @@ a{text-decoration:none;color:inherit}
     var t = document.getElementById('dtTier');
     t.className = 'tier-chip ' + tierClass;
     t.innerHTML = '<i class="dot"></i>' + tierLabel;
-    document.getElementById('dtPhone').textContent = phone;
-    document.getElementById('dtEmail').textContent = email;
     document.getElementById('detailBackdrop').classList.add('open');
   }
   function closeDetail(){ document.getElementById('detailBackdrop').classList.remove('open'); }
+
   function syncBar(prefix, v){
     document.querySelectorAll('[id^="'+prefix+'"]').forEach(function(b){ if(b.id.indexOf(prefix)===0) b.classList.remove('on'); });
     var el = document.getElementById(prefix+v); if(el) el.classList.add('on');

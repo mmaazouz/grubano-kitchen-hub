@@ -50,14 +50,17 @@ button,input,select,textarea{font-family:inherit}
 .flip-rtl{display:inline-block}
 [dir="rtl"] .flip-rtl{transform:scaleX(-1)}
 a{text-decoration:none;color:inherit}
+
 .bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:#fff;border-bottom:1px solid #E3E7EE;padding:9px 12px;font-family:var(--op-font-ui)}
 .bar group{display:flex;gap:2px;align-items:center;background:#F2F4F7;border-radius:999px;padding:3px}
 .bar button{border:none;background:none;cursor:pointer;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:#5B6472}
 .bar button.on{background:#101828;color:#fff}
 .bar .lbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8992A3;align-self:center;margin-inline-end:2px}
+
 .gb-op-wrap{width:100%;container-type:inline-size;container-name:gbop;transition:max-width .25s ease;margin:0 auto}
 .gb-op-wrap.force-mobile{max-width:428px;box-shadow:0 0 0 1px #C7CEDA, 0 30px 60px -30px rgba(16,24,40,.4)}
 .gb-op{display:flex;min-height:840px;background:var(--op-canvas);color:var(--op-text);overflow:hidden}
+
 .op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:relative}
 .gb-op[data-sidebar="collapsed"] .op-side{width:76px}
 .op-side__brand{display:flex;align-items:center;gap:10px;padding:16px 18px 18px}
@@ -83,6 +86,7 @@ a{text-decoration:none;color:inherit}
 .gb-op[data-scale="none"] .op-nav-item--ai{opacity:.35;pointer-events:none}
 .op-side__collapse{position:absolute;top:22px;inset-inline-end:-12px;width:24px;height:24px;border-radius:50%;background:var(--op-chrome-1);border:1px solid var(--op-chrome-border);color:var(--op-chrome-text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
 .op-side__collapse .ms{font-size:15px}
+
 .op-main{flex:1;display:flex;flex-direction:column;min-width:0}
 .op-top{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 20px;height:60px;background:var(--op-chrome-1);border-bottom:1px solid var(--op-chrome-border);position:relative;z-index:5}
 .op-hamburger{display:none;width:34px;height:34px;border-radius:var(--op-r-md);background:rgba(255,255,255,.06);border:none;color:#fff;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
@@ -134,6 +138,7 @@ a{text-decoration:none;color:inherit}
 .op-profile__name{font-size:12.5px;font-weight:700;color:#fff;white-space:nowrap}
 .op-profile .ms{font-size:17px;color:var(--op-chrome-text-dim)}
 @container gbop (max-width: 700px){ .op-profile__name, .op-top__date{display:none} }
+
 .op-content{flex:1;overflow-y:auto;padding:24px;background:var(--op-canvas)}
 .op-content>section{max-width:1400px;margin:0 auto}
 .op-onboarding,.op-skel,.op-error,.op-empty-ord,.op-ford{display:none}
@@ -142,12 +147,14 @@ a{text-decoration:none;color:inherit}
 .gb-op:not([data-scale="none"])[data-state="error"] .op-error{display:block}
 .gb-op:not([data-scale="none"])[data-state="empty"] .op-empty-ord{display:block}
 .gb-op:not([data-scale="none"])[data-state="loaded"] .op-ford{display:block}
+
 .op-dash__head{margin-bottom:18px}
 .op-dash__title{margin:0;font-family:var(--op-font-display);font-weight:800;font-size:23px;letter-spacing:-.02em}
 .op-dash__sub{margin:5px 0 0;font-size:12.5px;color:var(--op-muted)}
 .op-agg-label{display:none}
 .gb-op[data-scale="multi"] .op-agg-label{display:inline}
 .op-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);min-width:0}
+
 .op-onboarding{display:none}
 .op-center{display:flex;align-items:center;justify-content:center;min-height:600px}
 .op-onb__card{max-width:520px;text-align:center;background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-xl);padding:44px 40px;box-shadow:var(--op-shadow-card)}
@@ -161,6 +168,7 @@ a{text-decoration:none;color:inherit}
 .op-onb__steps .n{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--op-text);color:var(--op-surface);font-size:11px;font-weight:800;margin-bottom:8px}
 .op-onb__steps b{display:block;font-size:12px;font-weight:700;margin-bottom:2px}
 .op-onb__steps span{font-size:10.5px;color:var(--op-muted)}
+
 .op-error{display:none}
 .op-error__card{max-width:400px;text-align:center}
 .op-error__card .ms{font-size:44px;color:var(--op-muted-2);margin-bottom:16px}
@@ -168,17 +176,21 @@ a{text-decoration:none;color:inherit}
 .op-error__card p{margin:9px 0 22px;font-size:13px;line-height:1.55;color:var(--op-muted)}
 .op-btn-primary{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border:none;border-radius:var(--op-r-md);padding:12px 20px;font-size:13.5px;font-weight:700;cursor:pointer}
 .op-btn-ghost{background:none;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:9px 15px;font-size:12.5px;font-weight:700;color:var(--op-text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+
 @keyframes op-sk{100%{background-position:-200% 0}}
 .op-sk{background:linear-gradient(90deg,var(--op-border) 25%,var(--op-surface-2) 37%,var(--op-border) 63%);background-size:200% 100%;background-position:200% 0;animation:op-sk 1.4s ease-in-out infinite;border-radius:6px;display:block}
+
 .op-emptyline{display:flex;flex-direction:column;align-items:center;text-align:center;padding:60px 20px}
 .op-emptyline .ms{font-size:34px;color:var(--op-muted-2);margin-bottom:10px}
 .op-emptyline b{font-size:15px;font-weight:700}
 .op-emptyline span{font-size:12.5px;color:var(--op-muted);margin-top:5px;max-width:380px}
+
 .op-bottomnav{display:none;flex-shrink:0;background:var(--op-chrome-1);border-top:1px solid var(--op-chrome-border);padding:8px 4px calc(8px + env(safe-area-inset-bottom))}
 .op-bottomnav .row{display:flex}
 .op-bottomnav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--op-chrome-text-dim);padding:4px 0}
 .op-bottomnav a .ms{font-size:22px}
 .op-bottomnav a span{font-size:9.5px;font-weight:700}
+
 .op-modal-backdrop{display:none;position:fixed;inset:0;background:rgba(10,18,32,.55);z-index:100;align-items:center;justify-content:center;padding:20px}
 .op-modal-backdrop.open{display:flex}
 .op-modal{width:100%;max-width:520px;background:var(--op-surface);border-radius:var(--op-r-xl);box-shadow:var(--op-shadow-pop);max-height:92vh;overflow-y:auto}
@@ -191,22 +203,29 @@ a{text-decoration:none;color:inherit}
 .op-callout{display:flex;gap:10px;background:var(--op-info-bg);border:1px solid var(--op-info-bd);border-radius:var(--op-r-md);padding:12px}
 .op-callout .ms{font-size:18px;color:var(--op-info);flex-shrink:0}
 .op-callout p{margin:0;font-size:12px;line-height:1.5;color:var(--op-text)}
+
+/* ============================================================================
+   NEW — SUPPLIER ORDERS + PAYMENTS
+   ============================================================================ */
 .stat-strip{display:flex;padding:8px 4px;flex-wrap:wrap;margin-bottom:18px}
 .stat-strip .stat{flex:1;min-width:170px;padding:14px 20px;display:flex;flex-direction:column;gap:6px;border-inline-start:1px solid var(--op-border)}
 .stat-strip .stat:first-child{border-inline-start:none}
 .stat-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
 .stat-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:20px}
 .stat-strip .stat b.alert{color:var(--op-warning)}
+
 .ford-tabs{display:flex;gap:2px;background:var(--op-surface);border:1px solid var(--op-border-strong);border-radius:var(--op-r-pill);padding:3px;margin-bottom:18px;width:fit-content}
 .ford-tabs button{border:none;background:none;cursor:pointer;font-family:var(--op-font-ui);font-weight:700;font-size:12.5px;color:var(--op-muted);padding:9px 16px;border-radius:var(--op-r-pill);display:flex;align-items:center;gap:7px}
 .ford-tabs button.is-active{background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff}
 .ford-tabs .cnt{font-family:var(--op-font-mono);font-size:10.5px;font-weight:700;background:rgba(0,0,0,.08);border-radius:999px;padding:1px 7px}
 .ford-tabs button.is-active .cnt{background:rgba(255,255,255,.25)}
+
 .ford-set{display:none !important}
 .op-ford[data-tab="all"] .ford-set.all{display:grid !important}
 .op-ford[data-tab="topay"] .ford-set.topay{display:grid !important}
 .op-ford[data-tab="ongoing"] .ford-set.ongoing{display:grid !important}
 .op-ford[data-tab="delivered"] .ford-set.delivered{display:grid !important}
+
 .o-head-row{display:grid;grid-template-columns:110px 1.8fr 100px 90px 110px 1.2fr 130px;gap:10px;padding:11px 18px;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--op-muted-2);border-bottom:1px solid var(--op-border)}
 .o-head-row span:nth-child(4){text-align:end}
 .o-row{display:grid;grid-template-columns:110px 1.8fr 100px 90px 110px 1.2fr 130px;gap:10px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--op-border)}
@@ -231,12 +250,16 @@ a{text-decoration:none;color:inherit}
 .o-action{display:inline-flex;align-items:center;gap:6px;border-radius:var(--op-r-md);padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;border:1px solid var(--op-border-strong);background:var(--op-surface);color:var(--op-text)}
 .o-action.pay{background:linear-gradient(135deg,#FF8A3D,#F2570E);color:#fff;border-color:transparent;box-shadow:0 10px 22px -10px rgba(242,87,14,.45)}
 .o-action .ms{font-size:16px}
+
+/* mobile cards */
 .ford-cards{display:none}
 .o-card{background:var(--op-surface);border:1px solid var(--op-border);border-radius:var(--op-r-lg);box-shadow:var(--op-shadow-card);padding:14px;display:flex;flex-direction:column;gap:10px}
 .o-card__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .o-card__meta{display:flex;justify-content:space-between;font-size:12px;color:var(--op-muted)}
 .o-card__meta b{font-family:var(--op-font-mono);color:var(--op-text);font-weight:700}
 .o-card .o-action{width:100%;justify-content:center}
+
+/* ---- order detail modal ---- */
 .od-sup-box{display:flex;align-items:center;gap:11px;background:var(--op-surface-2);border-radius:var(--op-r-md);padding:12px}
 .od-sup-box b{display:block;font-size:13.5px;font-weight:700}
 .od-sup-box span{font-size:11.5px;color:var(--op-muted)}
@@ -256,7 +279,9 @@ a{text-decoration:none;color:inherit}
 .od-total .row.grand{font-size:16px;font-weight:800;color:var(--op-text);padding-top:6px;border-top:1px dashed var(--op-border-strong)}
 .od-total .row.grand .od-total-val{font-family:var(--op-font-mono)}
 .stripe-btn{width:100%;justify-content:center;background:#635BFF;box-shadow:0 10px 22px -10px rgba(99,91,255,.5)}
+
 .op-empty-ord{display:none}
+
 @container gbop (max-width: 1020px){
   .o-head-row,.o-row{display:none}
   .ford-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
@@ -285,6 +310,7 @@ a{text-decoration:none;color:inherit}
 </style>
 </head>
 <body>
+
 <div class="bar">
   <group><span class="lbl">Établissements</span><button id="sc-none" onclick="setScale('none')">N=0</button><button id="sc-single" onclick="setScale('single')">N=1</button><button id="sc-multi" class="on" onclick="setScale('multi')">N≥2</button></group>
   <group><span class="lbl">État</span><button id="st-loaded" class="on" onclick="setState('loaded')">Chargé</button><button id="st-loading" onclick="setState('loading')">Chargement</button><button id="st-empty" onclick="setState('empty')">Vide</button><button id="st-error" onclick="setState('error')">Erreur</button></group>
@@ -292,8 +318,10 @@ a{text-decoration:none;color:inherit}
   <group><span class="lbl">Sens</span><button id="dir-ltr" class="on" onclick="setDir('ltr')">LTR</button><button id="dir-rtl" onclick="setDir('rtl')">RTL</button></group>
   <group><span class="lbl">Écran</span><button id="dev-desktop" class="on" onclick="setDevice('desktop')">Bureau</button><button id="dev-mobile" onclick="setDevice('mobile')">Mobile</button></group>
 </div>
+
 <div class="gb-op-wrap" id="opwrap">
 <div class="gb-op" id="app" data-theme="light" data-scale="multi" data-state="loaded" data-sidebar="expanded" dir="ltr" data-screen-label="Operator — Commandes fournisseurs">
+
   <aside class="op-side">
     <div class="op-side__brand"><img src="../assets/grubano-symbol.svg" alt="Grubano"><div class="op-side__word"><b>Grubano</b><span>Business</span></div></div>
     <nav class="op-side__nav">
@@ -313,12 +341,13 @@ a{text-decoration:none;color:inherit}
       <a class="op-nav-item" data-requires-estab><span class="ms">account_balance_wallet</span><span class="t">Finances</span></a>
       <div class="op-nav-group">Organisation</div>
       <a class="op-nav-item" data-requires-estab><span class="ms">branding_watermark</span><span class="t">Marques</span></a>
-      <a class="op-nav-item" data-requires-estab><span class="ms">badge</span><span class="t">Équipe</span></a>
+      <a class="op-nav-item" data-requires-estab style="opacity:.45;pointer-events:none"><span class="ms">badge</span><span class="t">Équipe · Bientôt</span></a>
       <a class="op-nav-item"><span class="ms">settings</span><span class="t">Réglages</span></a>
     </nav>
-    <a class="op-nav-item op-nav-item--ai" data-requires-estab><span class="ms">auto_awesome</span><span class="t">Copilote IA</span></a>
+    <a class="op-nav-item op-nav-item--ai" data-requires-estab style="opacity:.45;pointer-events:none"><span class="ms">auto_awesome</span><span class="t">Copilote IA · Bientôt</span></a>
     <button class="op-side__collapse" onclick="toggleSidebar()" title="Réduire"><span class="ms flip-rtl" id="collapseIcon">chevron_left</span></button>
   </aside>
+
   <div class="op-main">
     <header class="op-top">
       <button class="op-hamburger" onclick="toggleSidebar()"><span class="ms">menu</span></button>
@@ -342,10 +371,12 @@ a{text-decoration:none;color:inherit}
       <div class="op-top__date"><span class="ms">calendar_today</span>Mercredi 1 juillet</div>
       <div class="op-top__spacer"></div>
       <button class="op-openclosed is-open" onclick="this.classList.toggle('is-open')"><i class="dot"></i><span class="txt-open">Ouvert</span><span class="txt-closed">Fermé</span><span class="ms">expand_more</span></button>
-      <button class="op-icon-btn"><span class="ms">notifications</span><span class="badge">5</span></button>
+      <button class="op-icon-btn"><span class="ms">notifications</span></button>
       <button class="op-profile"><span class="op-profile__av">MD</span><span class="op-profile__name">Marco D.</span><span class="ms">expand_more</span></button>
     </header>
+
     <main class="op-content">
+
       <section class="op-onboarding"><div class="op-center">
         <div class="op-onb__card">
           <img src="../assets/grubano-symbol.svg" alt="Grubano">
@@ -359,6 +390,7 @@ a{text-decoration:none;color:inherit}
           </div>
         </div>
       </div></section>
+
       <section class="op-error"><div class="op-center">
         <div class="op-error__card">
           <span class="ms">cloud_off</span>
@@ -367,6 +399,7 @@ a{text-decoration:none;color:inherit}
           <button class="op-btn-primary"><span class="ms">refresh</span>Réessayer</button>
         </div>
       </div></section>
+
       <section class="op-skel">
         <div style="margin-bottom:18px"><span class="op-sk" style="width:220px;height:22px"></span></div>
         <div class="op-card" style="margin-bottom:18px"><div style="padding:18px;display:flex;gap:24px">
@@ -377,6 +410,7 @@ a{text-decoration:none;color:inherit}
           <span class="op-sk" style="width:100%;height:50px"></span><span class="op-sk" style="width:100%;height:50px"></span><span class="op-sk" style="width:100%;height:50px"></span>
         </div></div>
       </section>
+
       <section class="op-empty-ord">
         <div class="op-dash__head"><h1 class="op-dash__title">Commandes fournisseurs</h1></div>
         <div class="op-card"><div class="op-emptyline">
@@ -385,25 +419,31 @@ a{text-decoration:none;color:inherit}
           <span>Vos commandes passées à vos fournisseurs apparaîtront ici, avec leur statut de paiement et de livraison.</span>
         </div></div>
       </section>
+
       <section class="op-ford" data-tab="all">
         <div class="op-dash__head">
           <h1 class="op-dash__title">Commandes fournisseurs</h1>
           <p class="op-dash__sub"><span class="op-agg-label">Vue agrégée · 3 établissements · </span>Suivez et payez vos commandes passées aux fournisseurs</p>
         </div>
+
         <div class="op-card stat-strip">
           <div class="stat"><span class="lbl">Commandes en cours</span><b>2</b></div>
           <div class="stat"><span class="lbl">À payer</span><b class="alert">1</b></div>
           <div class="stat"><span class="lbl">Dépensé ce mois-ci</span><b>825,50&nbsp;€</b></div>
           <div class="stat"><span class="lbl">Prochaine livraison prévue</span><b>3 juillet</b></div>
         </div>
+
         <div class="ford-tabs" role="tablist">
           <button class="is-active" data-f="all" onclick="setFordTab('all',this)">Toutes <span class="cnt">6</span></button>
           <button data-f="topay" onclick="setFordTab('topay',this)">À payer <span class="cnt">1</span></button>
           <button data-f="ongoing" onclick="setFordTab('ongoing',this)">En cours <span class="cnt">2</span></button>
           <button data-f="delivered" onclick="setFordTab('delivered',this)">Livrées <span class="cnt">2</span></button>
         </div>
+
+        <!-- ================= DESKTOP TABLE ================= -->
         <div class="op-card">
           <div class="o-head-row"><span>N° commande</span><span>Fournisseur</span><span>Date</span><span>Articles</span><span>Total</span><span>Statut</span><span></span></div>
+
           <div class="ford-set all" style="display:grid">
             <div class="o-row"><span class="o-num">#F-2052</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#2E78F0,#1E56B8)">GB</span><b>Grossiste Boissons IDF</b></div><span class="o-date">30 juin</span><span class="o-items-n">8</span><span class="o-total">210,50&nbsp;€</span><span class="o-status topay"><i class="dot"></i>À payer</span><div class="o-actioncell"><button class="o-action pay" onclick="openOrderDetail('F-2052')"><span class="ms">payments</span>Payer</button></div></div>
             <div class="o-row"><span class="o-num">#F-2058</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#41BD78,#1E9E57)">EP</span><b>Emballages Pro</b></div><span class="o-date">1 juil.</span><span class="o-items-n">4</span><span class="o-total">95,00&nbsp;€</span><span class="o-status prep"><i class="dot"></i>En préparation</span><div class="o-actioncell"><button class="o-action" onclick="openOrderDetail('F-2058')"><span class="ms">visibility</span>Voir le détail</button></div></div>
@@ -412,18 +452,23 @@ a{text-decoration:none;color:inherit}
             <div class="o-row"><span class="o-num">#F-2019</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">MP</span><b>Metro Paris 11e</b></div><span class="o-date">15 juin</span><span class="o-items-n">15</span><span class="o-total">265,40&nbsp;€</span><span class="o-status delivered"><i class="dot"></i>Livrée</span><div class="o-actioncell"><button class="o-action" onclick="openOrderDetail('F-2019')"><span class="ms">visibility</span>Voir le détail</button></div></div>
             <div class="o-row"><span class="o-num">#F-1998</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#D5372A,#A8281D)">BG</span><b>Boucherie Grossiste Paris</b></div><span class="o-date">5 juin</span><span class="o-items-n">3</span><span class="o-total">88,00&nbsp;€</span><span class="o-status cancelled"><i class="dot"></i>Annulée</span><div class="o-actioncell"><button class="o-action" onclick="openOrderDetail('F-1998')"><span class="ms">visibility</span>Voir le détail</button></div></div>
           </div>
+
           <div class="ford-set topay" style="display:none">
             <div class="o-row"><span class="o-num">#F-2052</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#2E78F0,#1E56B8)">GB</span><b>Grossiste Boissons IDF</b></div><span class="o-date">30 juin</span><span class="o-items-n">8</span><span class="o-total">210,50&nbsp;€</span><span class="o-status topay"><i class="dot"></i>À payer</span><div class="o-actioncell"><button class="o-action pay" onclick="openOrderDetail('F-2052')"><span class="ms">payments</span>Payer</button></div></div>
           </div>
+
           <div class="ford-set ongoing" style="display:none">
             <div class="o-row"><span class="o-num">#F-2058</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#41BD78,#1E9E57)">EP</span><b>Emballages Pro</b></div><span class="o-date">1 juil.</span><span class="o-items-n">4</span><span class="o-total">95,00&nbsp;€</span><span class="o-status prep"><i class="dot"></i>En préparation</span><div class="o-actioncell"><button class="o-action" onclick="openOrderDetail('F-2058')"><span class="ms">visibility</span>Voir le détail</button></div></div>
             <div class="o-row"><span class="o-num">#F-2033</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#FF8A3D,#F2570E)">MF</span><b>Marché Fermier Rungis</b></div><span class="o-date">24 juin</span><span class="o-items-n">6</span><span class="o-total">180,00&nbsp;€</span><span class="o-status shipped"><i class="dot"></i>Expédiée</span><div class="o-actioncell"><button class="o-action" onclick="openOrderDetail('F-2033')"><span class="ms">visibility</span>Voir le détail</button></div></div>
           </div>
+
           <div class="ford-set delivered" style="display:none">
             <div class="o-row"><span class="o-num">#F-2041</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">MP</span><b>Metro Paris 11e</b></div><span class="o-date">28 juin</span><span class="o-items-n">12</span><span class="o-total">340,00&nbsp;€</span><span class="o-status delivered"><i class="dot"></i>Livrée</span><div class="o-actioncell"><button class="o-action" onclick="openOrderDetail('F-2041')"><span class="ms">visibility</span>Voir le détail</button></div></div>
             <div class="o-row"><span class="o-num">#F-2019</span><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">MP</span><b>Metro Paris 11e</b></div><span class="o-date">15 juin</span><span class="o-items-n">15</span><span class="o-total">265,40&nbsp;€</span><span class="o-status delivered"><i class="dot"></i>Livrée</span><div class="o-actioncell"><button class="o-action" onclick="openOrderDetail('F-2019')"><span class="ms">visibility</span>Voir le détail</button></div></div>
           </div>
         </div>
+
+        <!-- ================= MOBILE CARDS ================= -->
         <div class="ford-cards ford-set all">
           <div class="o-card"><div class="o-card__top"><b class="o-num">#F-2052</b><span class="o-status topay"><i class="dot"></i>À payer</span></div><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#2E78F0,#1E56B8)">GB</span><b>Grossiste Boissons IDF</b></div><div class="o-card__meta"><span>30 juin · 8 articles</span><b>210,50&nbsp;€</b></div><button class="o-action pay" onclick="openOrderDetail('F-2052')"><span class="ms">payments</span>Payer</button></div>
           <div class="o-card"><div class="o-card__top"><b class="o-num">#F-2058</b><span class="o-status prep"><i class="dot"></i>En préparation</span></div><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#41BD78,#1E9E57)">EP</span><b>Emballages Pro</b></div><div class="o-card__meta"><span>1 juil. · 4 articles</span><b>95,00&nbsp;€</b></div><button class="o-action" onclick="openOrderDetail('F-2058')"><span class="ms">visibility</span>Voir le détail</button></div>
@@ -443,9 +488,12 @@ a{text-decoration:none;color:inherit}
           <div class="o-card"><div class="o-card__top"><b class="o-num">#F-2041</b><span class="o-status delivered"><i class="dot"></i>Livrée</span></div><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">MP</span><b>Metro Paris 11e</b></div><div class="o-card__meta"><span>28 juin · 12 articles</span><b>340,00&nbsp;€</b></div><button class="o-action" onclick="openOrderDetail('F-2041')"><span class="ms">visibility</span>Voir le détail</button></div>
           <div class="o-card"><div class="o-card__top"><b class="o-num">#F-2019</b><span class="o-status delivered"><i class="dot"></i>Livrée</span></div><div class="o-sup"><span class="o-sup__av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">MP</span><b>Metro Paris 11e</b></div><div class="o-card__meta"><span>15 juin · 15 articles</span><b>265,40&nbsp;€</b></div><button class="o-action" onclick="openOrderDetail('F-2019')"><span class="ms">visibility</span>Voir le détail</button></div>
         </div>
+
       </section>
+
     </main>
   </div>
+
   <nav class="op-bottomnav">
     <div class="row">
       <a><span class="ms">dashboard</span><span>Dashboard</span></a>
@@ -455,25 +503,31 @@ a{text-decoration:none;color:inherit}
       <a><span class="ms">menu</span><span>Plus</span></a>
     </div>
   </nav>
+
+  <!-- ORDER DETAIL MODAL — amounts server-computed; Stripe payment is real, never simulated here -->
   <div class="op-modal-backdrop" id="ordBackdrop" onclick="if(event.target===this) closeOrderDetail()">
     <div class="op-modal">
       <div class="op-modal__head"><h3 id="odNum">#F-2052</h3><button class="op-modal__close" onclick="closeOrderDetail()"><span class="ms">close</span></button></div>
       <div class="op-modal__body">
         <div class="od-sup-box"><span class="op-estab__mini" id="odSupAv" style="width:34px;height:34px;background:linear-gradient(135deg,#2E78F0,#1E56B8);color:#fff">GB</span><div><b id="odSupName">Grossiste Boissons IDF</b><span id="odDate">Commandée le 30 juin 2026</span></div></div>
+
         <div class="od-status-row">
           <div><span class="lbl">Statut de paiement</span><span class="o-status topay" id="odPayStatus"><i class="dot"></i>À payer</span></div>
           <div><span class="lbl">Statut de livraison</span><span class="o-status shipped" id="odShipStatus"><i class="dot"></i>Expédiée</span></div>
         </div>
+
         <div class="od-items" id="odItems">
           <div class="od-row"><span class="qty">3×</span><div class="m"><b>Chianti Classico</b><span>Carton de 6</span></div><span class="price">162,00&nbsp;€</span></div>
           <div class="od-row"><span class="qty">5×</span><div class="m"><b>Eau plate 1 L</b><span>Carton de 12</span></div><span class="price">24,00&nbsp;€</span></div>
           <div class="od-row"><span class="qty">2×</span><div class="m"><b>Eau gazeuse 1 L</b><span>Carton de 12</span></div><span class="price">10,40&nbsp;€</span></div>
         </div>
+
         <div class="od-total">
           <div class="row"><span>Sous-total</span><span>196,40&nbsp;€</span></div>
           <div class="row"><span>Frais de livraison</span><span>14,10&nbsp;€</span></div>
           <div class="row grand"><span>Total</span><span class="od-total-val">210,50&nbsp;€</span></div>
         </div>
+
         <div class="op-callout">
           <span class="ms">info</span>
           <p>Montants calculés côté serveur. Le paiement s'effectue réellement via Stripe — aucune confirmation n'est simulée ici.</p>
@@ -485,8 +539,10 @@ a{text-decoration:none;color:inherit}
       </div>
     </div>
   </div>
+
 </div>
 </div>
+
 <script>
   var app = document.getElementById('app');
   function toggleSidebar(){
@@ -502,17 +558,21 @@ a{text-decoration:none;color:inherit}
     var panel = document.getElementById('estabPanel'), btn = e.target.closest('.op-estab');
     if (!btn && panel.classList.contains('open') && !e.target.closest('.op-estab__panel')) panel.classList.remove('open');
   });
+
   function setFordTab(tab, btn){
     document.querySelector('.op-ford').dataset.tab = tab;
     document.querySelectorAll('.ford-tabs button').forEach(function(b){ b.classList.remove('is-active'); });
     if (btn) btn.classList.add('is-active');
   }
+
+  /* order detail — visual only; only order #F-2052 (à payer) shows the Stripe action, others show "Fermer" only */
   function openOrderDetail(id){
     document.getElementById('odNum').textContent = '#' + id;
     document.getElementById('odFoot').querySelector('.stripe-btn').style.display = (id === 'F-2052') ? 'inline-flex' : 'none';
     document.getElementById('ordBackdrop').classList.add('open');
   }
   function closeOrderDetail(){ document.getElementById('ordBackdrop').classList.remove('open'); }
+
   function syncBar(prefix, v){
     document.querySelectorAll('[id^="'+prefix+'"]').forEach(function(b){ if(b.id.indexOf(prefix)===0) b.classList.remove('on'); });
     var el = document.getElementById(prefix+v); if(el) el.classList.add('on');
