@@ -24,7 +24,10 @@
 /* hero */
 .cp-root .hero{ display:flex; align-items:center; gap:18px; padding:22px; margin-bottom:16px; position:relative; overflow:hidden }
 .cp-root .hero::before{ content:""; position:absolute; inset:0; background:radial-gradient(circle at 88% 0%,var(--op-zest-bg,#FFF1E7),transparent 60%); pointer-events:none }
-.cp-root .hero__av{ width:66px; height:66px; border-radius:50%; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; flex-shrink:0 }
+/* overflow:hidden = clip CIRCULAIRE — filet final de la contention arbitrée
+   (Design 2026-08-19), toujours actif. Réduction adaptative (24→18px) dans
+   CustomerAvatar. */
+.cp-root .hero__av{ width:66px; height:66px; border-radius:50%; overflow:hidden; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; flex-shrink:0 }
 .cp-root .hero__m{ flex:1; min-width:0; position:relative }
 .cp-root .hero__name{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
 .cp-root .hero__name h1{ margin:0; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; letter-spacing:-.02em; color:var(--op-text,#101828) }

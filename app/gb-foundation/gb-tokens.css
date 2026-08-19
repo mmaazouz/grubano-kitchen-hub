@@ -19,7 +19,9 @@
 /* Arabic RTL — Cairo font for `ar` + the global RTL rule sheet (CD 38efd2c9-…-814c).
  * @import MUST precede all rules → kept here at the very top of the foundation. The
  * gb-rtl.css selectors are themselves `[dir="rtl"]`-gated so they are inert in LTR. */
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
+/* Cairo (RTL arabe) : AUTO-HÉBERGÉE via app/brand-fonts.css (layout racine). L'@import
+ * css2 historique était repoussé en milieu de chunk par l'inlining de gb-rtl.css
+ * → invalide → ignoré. Retiré (arbitrage Design 2026-08-19). */
 @import './gb-rtl.css';
 
 /* ── LIGHT tokens (CD :root, verbatim) ───────────────────────────────────────── */

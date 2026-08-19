@@ -14,7 +14,7 @@ import { useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
 import type { CustomerScreenStats, CustomerTier } from '@/lib/customer-scope'
-import { customerAvatarGradient } from '@/lib/customer-avatar'
+import CustomerAvatar from './CustomerAvatar'
 
 // Chip order — the CD mock's tier filter row (op-customers .tier-filters).
 const TIER_FILTERS: CustomerTier[] = ['bronze', 'silver', 'gold', 'platinum']
@@ -36,11 +36,8 @@ const TIER_CLASS: Record<string, string> = {
   bronze: 'bronze', silver: 'silver', gold: 'gold', platine: 'plat', platinum: 'plat',
 }
 
-function initials(name: string): string {
-  return (
-    name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?'
-  )
-}
+// Initiales par graphèmes + contention adaptative : CustomerAvatar (arbitrage
+// Design 2026-08-19) — l'ancienne dérivation par code units vivait ici.
 
 export default function CustomersClient({ customers, total, stats, activeTier }: {
   customers: CustomerRow[]
@@ -181,7 +178,7 @@ export default function CustomersClient({ customers, total, stats, activeTier }:
               <div className="lc">
                 {/* color per CLIENT, derived from LoyaltyCustomer.id — never the name,
                     never the tier (decision F). Same id → same color list & fiche. */}
-                <span className="lc__av" style={{ background: customerAvatarGradient(row.id) }}>{initials(row.name)}</span>
+                <CustomerAvatar customerId={row.id} name={row.name} variant="list" className="lc__av" />
                 <div className="lc__m"><b>{row.name}</b><span>{sinceLabel(row.createdAt)}</span></div>
               </div>
               <div className="ltier">
