@@ -226,7 +226,8 @@ a{text-decoration:none;color:inherit}
 .stat-strip .stat .lbl{font-size:11px;font-weight:700;color:var(--op-muted)}
 .stat-strip .stat b{font-family:var(--op-font-mono);font-weight:700;font-size:22px}
 
-.tier-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;border-radius:999px;padding:4px 11px;border:1px solid transparent;white-space:nowrap}
+.tier-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;line-height:16.5px;font-weight:800;border-radius:999px;padding:4px 11px;border:none;white-space:nowrap}
+.tier-chip.tc-sm{gap:5px;font-size:10px;line-height:15px;padding:3px 11px}
 .tier-chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
 .tier-chip.bronze{background:#F3E4D5;color:#8C5A2B}
 .tier-chip.silver{background:#E7EAED;color:#5E6B75}
@@ -445,10 +446,10 @@ a{text-decoration:none;color:inherit}
 
         <div class="tier-filters">
           <button class="is-active" onclick="setTier(this)">Tous <span class="cnt">1 284</span></button>
-          <button onclick="setTier(this)"><span class="tier-chip bronze"><i class="dot"></i>Bronze</span><span class="cnt">512</span></button>
-          <button onclick="setTier(this)"><span class="tier-chip silver"><i class="dot"></i>Argent</span><span class="cnt">284</span></button>
-          <button onclick="setTier(this)"><span class="tier-chip gold"><i class="dot"></i>Or</span><span class="cnt">38</span></button>
-          <button onclick="setTier(this)"><span class="tier-chip platinum"><i class="dot"></i>Platine</span><span class="cnt">8</span></button>
+          <button onclick="setTier(this)"><span class="tier-chip tc-sm bronze"><i class="dot"></i>Bronze</span><span class="cnt">512</span></button>
+          <button onclick="setTier(this)"><span class="tier-chip tc-sm silver"><i class="dot"></i>Argent</span><span class="cnt">284</span></button>
+          <button onclick="setTier(this)"><span class="tier-chip tc-sm gold"><i class="dot"></i>Or</span><span class="cnt">38</span></button>
+          <button onclick="setTier(this)"><span class="tier-chip tc-sm platinum"><i class="dot"></i>Platine</span><span class="cnt">8</span></button>
         </div>
 
         <div class="op-card">
@@ -460,7 +461,7 @@ a{text-decoration:none;color:inherit}
 
             <div class="cl-row" onclick="openDetail('Sophie M.','SM','#DB5700,#973608','platinum','Platine','Client depuis mars 2024')">
               <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#DB5700,#973608)">SM</span><div class="m"><b>Sophie M.</b><span>Client depuis mars 2024</span></div></div>
-              <span><span class="tier-chip platinum"><i class="dot"></i>Platine</span></span>
+              <span><span class="tier-chip tc-sm platinum"><i class="dot"></i>Platine</span></span>
               <span class="orders">86</span>
               <span class="ltv">2 340,00&nbsp;€</span>
               <span class="pts">4 820</span>
@@ -470,7 +471,7 @@ a{text-decoration:none;color:inherit}
 
             <div class="cl-row" onclick="openDetail('Karim B.','KB','#3E5A7D,#1B3A5E','gold','Or','Client depuis juin 2023')">
               <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#3E5A7D,#1B3A5E)">KB</span><div class="m"><b>Karim B.</b><span>Client depuis juin 2023</span></div></div>
-              <span><span class="tier-chip gold"><i class="dot"></i>Or</span></span>
+              <span><span class="tier-chip tc-sm gold"><i class="dot"></i>Or</span></span>
               <span class="orders">54</span>
               <span class="ltv">1 480,00&nbsp;€</span>
               <span class="pts">2 910</span>
@@ -480,7 +481,7 @@ a{text-decoration:none;color:inherit}
 
             <div class="cl-row" onclick="openDetail('Julie R.','JR','#318F5B,#146B3B','gold','Or','Client depuis janvier 2024')">
               <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#318F5B,#146B3B)">JR</span><div class="m"><b>Julie R.</b><span>Client depuis janvier 2024</span></div></div>
-              <span><span class="tier-chip gold"><i class="dot"></i>Or</span></span>
+              <span><span class="tier-chip tc-sm gold"><i class="dot"></i>Or</span></span>
               <span class="orders">47</span>
               <span class="ltv">1 205,00&nbsp;€</span>
               <span class="pts">2 340</span>
@@ -490,7 +491,7 @@ a{text-decoration:none;color:inherit}
 
             <div class="cl-row" onclick="openDetail('Marc D.','MD','#B47715,#623D05','silver','Argent','Client depuis septembre 2024')">
               <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#B47715,#623D05)">MD</span><div class="m"><b>Marc D.</b><span>Client depuis septembre 2024</span></div></div>
-              <span><span class="tier-chip silver"><i class="dot"></i>Argent</span></span>
+              <span><span class="tier-chip tc-sm silver"><i class="dot"></i>Argent</span></span>
               <span class="orders">22</span>
               <span class="ltv">560,00&nbsp;€</span>
               <span class="pts">1 120</span>
@@ -500,7 +501,7 @@ a{text-decoration:none;color:inherit}
 
             <div class="cl-row" onclick="openDetail('Amine L.','AL','#644ACC,#8168DD','silver','Argent','Client depuis février 2025')">
               <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#644ACC,#8168DD)">AL</span><div class="m"><b>Amine L.</b><span>Client depuis février 2025</span></div></div>
-              <span><span class="tier-chip silver"><i class="dot"></i>Argent</span></span>
+              <span><span class="tier-chip tc-sm silver"><i class="dot"></i>Argent</span></span>
               <span class="orders">18</span>
               <span class="ltv">410,00&nbsp;€</span>
               <span class="pts">820</span>
@@ -510,7 +511,7 @@ a{text-decoration:none;color:inherit}
 
             <div class="cl-row" onclick="openDetail('Léa F.','LF','#D5372A,#A8281D','bronze','Bronze','Client depuis mai 2025')">
               <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#D5372A,#A8281D)">LF</span><div class="m"><b>Léa F.</b><span>Client depuis mai 2025</span></div></div>
-              <span><span class="tier-chip bronze"><i class="dot"></i>Bronze</span></span>
+              <span><span class="tier-chip tc-sm bronze"><i class="dot"></i>Bronze</span></span>
               <span class="orders">6</span>
               <span class="ltv">142,00&nbsp;€</span>
               <span class="pts">280</span>
@@ -520,7 +521,7 @@ a{text-decoration:none;color:inherit}
 
             <div class="cl-row" onclick="openDetail('Thomas P.','TP','#2E78F0,#1E56B8','bronze','Bronze','Client depuis avril 2025')">
               <div class="cl-name"><span class="cl-av" style="background:linear-gradient(135deg,#2E78F0,#1E56B8)">TP</span><div class="m"><b>Thomas P.</b><span>Client depuis avril 2025</span></div></div>
-              <span><span class="tier-chip bronze"><i class="dot"></i>Bronze</span></span>
+              <span><span class="tier-chip tc-sm bronze"><i class="dot"></i>Bronze</span></span>
               <span class="orders">3</span>
               <span class="ltv">68,00&nbsp;€</span>
               <span class="pts">130</span>
