@@ -42,8 +42,8 @@
 .cp-root .tier .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0 }
 .cp-root .tier.bronze{ background:#F3E3D3; color:#8A5A2B }
 .cp-root .tier.silver{ background:#E7ECF0; color:#5B6472 }
-.cp-root .tier.gold{ background:linear-gradient(135deg,#FBE7B0,#F5C24A); color:#7A5410 }
-.cp-root .tier.plat{ background:#E3ECF6; color:#2E5A86 }
+.cp-root .tier.gold{ background:#FCEFC7; color:#9C7318 }
+.cp-root .tier.plat{ background:#E7E4FB; color:#5B4FC4 }
 
 .cp-root .btn-primary{ display:inline-flex; align-items:center; gap:7px; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; border:none; border-radius:var(--op-r-md,8px); padding:11px 16px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap }
 .cp-root .btn-primary .ms{ font-size:17px }

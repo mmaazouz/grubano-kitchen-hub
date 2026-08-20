@@ -70,8 +70,8 @@
 .cl-root .tier .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0 }
 .cl-root .tier.bronze{ background:#F3E3D3; color:#8A5A2B }
 .cl-root .tier.silver{ background:#E7ECF0; color:#5B6472 }
-.cl-root .tier.gold{ background:linear-gradient(135deg,#FBE7B0,#F5C24A); color:#7A5410 }
-.cl-root .tier.plat{ background:#E3ECF6; color:#2E5A86 }
+.cl-root .tier.gold{ background:#FCEFC7; color:#9C7318 }
+.cl-root .tier.plat{ background:#E7E4FB; color:#5B4FC4 }
 
 .cl-root .cl-empty{ display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; padding:44px 20px; color:var(--op-muted,#5B6472) }
 .cl-root .cl-empty .ms{ font-size:30px; color:var(--op-muted-2,#8992A3) }
