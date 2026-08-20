@@ -144,7 +144,7 @@ export default function CustomersClient({ customers, total, stats, activeTier }:
             href={{ pathname: '/customers', query: { tier: tf } }}
             className={activeTier === tf ? 'chip is-active' : 'chip'}
           >
-            <span className={`tier sm ${tierClass(tf)}`}>{tierLabel(tf)}</span>
+            <span className={`tier sm ${tierClass(tf)}`}><i className="dot" aria-hidden="true" />{tierLabel(tf)}</span>
             <span className="cnt">{(stats.tierCounts[tf] ?? 0).toLocaleString(locale)}</span>
           </Link>
         ))}
@@ -183,7 +183,10 @@ export default function CustomersClient({ customers, total, stats, activeTier }:
               </div>
               <div className="ltier">
                 <span className={`tier sm ${tierClass(row.tier)}`}>
-                  {tierClass(row.tier) === 'gold' ? <span className="ms" aria-hidden="true">workspace_premium</span> : null}
+                  {/* pastille neutre 7×7 en currentColor sur TOUS les paliers (décision
+                      CD 20/08) — le glyphe workspace_premium ne sert plus de pictogramme
+                      de chip ; il reste le pictogramme du TITRE de carte. */}
+                  <i className="dot" aria-hidden="true" />
                   {tierLabel(row.tier)}
                 </span>
               </div>

@@ -16,7 +16,7 @@ export type AvatarFitSpec = {
 }
 
 export const AVATAR_FIT: Record<'list' | 'profile', AvatarFitSpec> = {
-  list: { nominal: 14, floor: 11, diameter: 40, safeMargin: 1 },
+  list: { nominal: 11.5, floor: 11, diameter: 32, safeMargin: 1 },
   profile: { nominal: 24, floor: 18, diameter: 66, safeMargin: 1 },
 }
 

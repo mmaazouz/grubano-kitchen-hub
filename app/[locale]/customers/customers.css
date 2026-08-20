@@ -50,7 +50,7 @@
 /* overflow:hidden = clip CIRCULAIRE (suit le border-radius) — filet final de la
    contention arbitrée (Design 2026-08-19) : toujours actif, même quand le texte
    tient. La réduction adaptative (14→11px) vit dans CustomerAvatar. */
-.cl-root .lc__av{ width:40px; height:40px; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; color:#fff; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:14px; flex-shrink:0 }
+.cl-root .lc__av{ width:32px; height:32px; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; color:#fff; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:11.5px; flex-shrink:0 }
 .cl-root .lc__m{ min-width:0 }
 .cl-root .lc__m b{ font-size:13.5px; font-weight:700; display:block; color:var(--op-text,#101828) }
 .cl-root .lc__m span{ font-size:11px; color:var(--op-muted,#5B6472) }
@@ -65,9 +65,9 @@
 .cl-root .ltier{ display:flex; justify-content:flex-start }
 .cl-root .lmini{ display:none; font-size:11px; color:var(--op-muted,#5B6472); font-family:var(--op-font-mono,'JetBrains Mono',monospace) }
 
-.cl-root .tier{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
-.cl-root .tier.sm{ font-size:10px; padding:3px 9px }
-.cl-root .tier .ms{ font-size:14px }
+.cl-root .tier{ display:inline-flex; align-items:center; gap:6px; font-size:11px; line-height:16.5px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
+.cl-root .tier.sm{ font-size:10px; line-height:15px; padding:3px 11px; gap:5px }
+.cl-root .tier .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0 }
 .cl-root .tier.bronze{ background:#F3E3D3; color:#8A5A2B }
 .cl-root .tier.silver{ background:#E7ECF0; color:#5B6472 }
 .cl-root .tier.gold{ background:linear-gradient(135deg,#FBE7B0,#F5C24A); color:#7A5410 }

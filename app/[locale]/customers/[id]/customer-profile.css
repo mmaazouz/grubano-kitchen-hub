@@ -38,8 +38,8 @@
 .cp-root .loyal-badge{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; color:var(--op-basil-600,#1E8A4A); background:var(--op-basil-bg,#E8F6EE); border-radius:999px; padding:4px 10px }
 .cp-root .loyal-badge .ms{ font-size:14px }
 
-.cp-root .tier{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
-.cp-root .tier .ms{ font-size:14px }
+.cp-root .tier{ display:inline-flex; align-items:center; gap:6px; font-size:11px; line-height:16.5px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
+.cp-root .tier .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0 }
 .cp-root .tier.bronze{ background:#F3E3D3; color:#8A5A2B }
 .cp-root .tier.silver{ background:#E7ECF0; color:#5B6472 }
 .cp-root .tier.gold{ background:linear-gradient(135deg,#FBE7B0,#F5C24A); color:#7A5410 }

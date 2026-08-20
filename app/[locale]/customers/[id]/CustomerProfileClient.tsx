@@ -88,7 +88,8 @@ export default function CustomerProfileClient({ profile }: { profile: CustomerPr
           <div className="hero__name">
             <h1>{profile.name}</h1>
             <span className={`tier ${tierClass}`}>
-              {tierClass === 'gold' ? <span className="ms" aria-hidden="true">workspace_premium</span> : null}
+              {/* pastille neutre 7×7, variante de BASE de la fiche (décision CD 20/08) */}
+              <i className="dot" aria-hidden="true" />
               {tierName}
             </span>
             {isLoyal && (
@@ -155,7 +156,7 @@ export default function CustomerProfileClient({ profile }: { profile: CustomerPr
           <div className="card pad">
             <div className="loy__top">
               <div className="loy__pts">{profile.pointsBalance.toLocaleString(locale)} <small>{t('customerProfile.points')}</small></div>
-              <span className={`tier ${tierClass}`}>{tierClass === 'gold' ? <span className="ms" aria-hidden="true">workspace_premium</span> : null}{tierName}</span>
+              <span className={`tier ${tierClass}`}><i className="dot" aria-hidden="true" />{tierName}</span>
             </div>
             <div className="loy__bar"><i style={{ width: `${ladder.pct}%` }} /></div>
             <div className="loy__scale">
