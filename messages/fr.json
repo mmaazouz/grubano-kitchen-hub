@@ -394,11 +394,21 @@
       "historyTitle": "Historique récent",
       "historySoonTitle": "Historique bientôt disponible",
       "historySoonBody": "Commandes, réservations et récompenses par client seront affichées ici.",
-      "subtitleProtected": "Vos clients fidèles — coordonnées protégées par Grubano",
+      "subtitle": "Programme de fidélité actif",
+      "listTitle": "Meilleurs clients",
       "privacyListTitle": "Confidentialité clients.",
       "privacyListBody": "Vous voyez l'historique, la fidélité et les préférences. Les coordonnées (e-mail, téléphone, adresse) restent protégées par Grubano.",
       "colOrders": "Commandes",
-      "colAvg": "Panier moyen"
+      "colAvg": "Panier moyen",
+      "colTotal": "Total dépensé",
+      "colPoints": "Points",
+      "colLastVisit": "Dernière visite",
+      "viewProfile": "Voir la fiche",
+      "statTotal": "Clients au total",
+      "statNew": "Nouveaux ce mois",
+      "statMembers": "Membres fidélité",
+      "statAvg": "Panier moyen",
+      "filterAll": "Tous"
     },
     "dinein": {
       "title": "Service à table",

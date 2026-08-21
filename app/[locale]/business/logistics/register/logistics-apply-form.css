@@ -15,8 +15,7 @@
  * sends no mail), waitlist success wording, no auto-login.
  * --------------------------------------------------------------------------- */
 
-@import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&display=swap');
+/* Polices de la charte AUTO-HÉBERGÉES via app/brand-fonts.css (layout racine) — @import css2 retiré (arbitrage Design 2026-08-19 : aucune dépendance Google Fonts). */
 
 .lo-mkt{
   --gb-zest:#FF6A1F; --gb-zest-600:#F2570E; --gb-zest-bg:#FFF1E7;

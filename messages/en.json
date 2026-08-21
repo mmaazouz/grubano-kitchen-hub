@@ -394,11 +394,21 @@
       "historyTitle": "Recent history",
       "historySoonTitle": "History coming soon",
       "historySoonBody": "Orders, reservations and rewards per customer will be shown here.",
-      "subtitleProtected": "Your loyal customers — contact details protected by Grubano",
+      "subtitle": "Loyalty programme active",
+      "listTitle": "Top customers",
       "privacyListTitle": "Customer privacy.",
       "privacyListBody": "You see history, loyalty and preferences. Contact details (email, phone, address) stay protected by Grubano.",
       "colOrders": "Orders",
-      "colAvg": "Avg. basket"
+      "colAvg": "Avg. basket",
+      "colTotal": "Total spent",
+      "colPoints": "Points",
+      "colLastVisit": "Last visit",
+      "viewProfile": "View profile",
+      "statTotal": "Total customers",
+      "statNew": "New this month",
+      "statMembers": "Loyalty members",
+      "statAvg": "Avg. basket",
+      "filterAll": "All"
     },
     "dinein": {
       "title": "Table service",

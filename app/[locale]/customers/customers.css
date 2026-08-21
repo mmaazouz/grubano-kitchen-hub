@@ -18,28 +18,60 @@
 
 .cl-root .card{ background:var(--op-surface,#fff); border:1px solid var(--op-border,#E3E7EE); border-radius:var(--op-r-lg,12px); box-shadow:var(--op-shadow-card,0 1px 3px rgba(16,24,40,.05)) }
 
-.cl-root .lthead{ display:grid; grid-template-columns:1.6fr 1fr 1fr 120px; gap:12px; padding:11px 18px; font-size:10.5px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--op-muted-2,#8992A3); border-bottom:1px solid var(--op-border,#E3E7EE) }
-.cl-root .lthead span:nth-child(2), .cl-root .lthead span:nth-child(3){ text-align:end }
-.cl-root .lrow{ display:grid; grid-template-columns:1.6fr 1fr 1fr 120px; gap:12px; align-items:center; padding:13px 18px; border-bottom:1px solid var(--op-border,#E3E7EE); cursor:pointer; text-decoration:none; color:inherit }
+/* B — KPI strip (CD .stat-strip, op-customers): 4 stats, mono figures. */
+.cl-root .stat-strip{ display:flex; padding:8px 4px; flex-wrap:wrap; margin-bottom:16px }
+.cl-root .stat-strip .stat{ flex:1; min-width:150px; padding:14px 20px; display:flex; flex-direction:column; gap:6px; border-inline-start:1px solid var(--op-border,#E3E7EE) }
+.cl-root .stat-strip .stat:first-child{ border-inline-start:none }
+.cl-root .stat-strip .stat .lbl{ font-size:11px; font-weight:700; color:var(--op-muted,#5B6472) }
+.cl-root .stat-strip .stat b{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-weight:700; font-size:22px; color:var(--op-text,#101828); direction:ltr; unicode-bidi:isolate }
+
+/* C — tier filter chips (CD .tier-filters): server counters, navigation links. */
+.cl-root .tier-filters{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px }
+.cl-root .tier-filters .chip{ border:1px solid var(--op-border-strong,#D2D8E1); background:var(--op-surface,#fff); border-radius:999px; padding:8px 15px; font-size:12px; font-weight:700; color:var(--op-text,#101828); cursor:pointer; display:flex; align-items:center; gap:7px; text-decoration:none }
+.cl-root .tier-filters .chip.is-active{ background:var(--op-text,#101828); color:var(--op-surface,#fff); border-color:transparent }
+.cl-root .tier-filters .cnt{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-size:10.5px; font-weight:700; opacity:.7; direction:ltr; unicode-bidi:isolate }
+.cl-root .tier-filters .chip:focus-visible{ outline:none; box-shadow:var(--op-focus,0 0 0 3px rgba(255,106,31,.18)) }
+
+/* 7 tracks — CD list (op-customers .cl-head-row): Client · Palier · Commandes ·
+   Total dépensé · Points · Dernière visite · fiche */
+/* D — card scope label (CD .op-card__head): a plain card title, no new component. */
+.cl-root .card__head{ display:flex; align-items:center; gap:9px; padding:15px 18px; border-bottom:1px solid var(--op-border,#E3E7EE) }
+.cl-root .card__head h2{ margin:0; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:14.5px; flex:1; display:flex; align-items:center; gap:7px; color:var(--op-text,#101828) }
+.cl-root .card__head h2 .ms{ font-size:17px; color:var(--op-muted-2,#8992A3) }
+
+.cl-root .lthead{ display:grid; grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px; gap:10px; padding:11px 18px; font-size:10.5px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--op-muted-2,#8992A3); border-bottom:1px solid var(--op-border,#E3E7EE) }
+.cl-root .lthead span:nth-child(3), .cl-root .lthead span:nth-child(4),
+.cl-root .lthead span:nth-child(5), .cl-root .lthead span:nth-child(6){ text-align:end }
+.cl-root .lrow{ display:grid; grid-template-columns:2fr 1fr 90px 110px 90px 110px 80px; gap:10px; align-items:center; padding:13px 18px; border-bottom:1px solid var(--op-border,#E3E7EE); cursor:pointer; text-decoration:none; color:inherit }
 .cl-root .lrow:last-child{ border-bottom:none }
 .cl-root .lrow:hover{ background:var(--op-surface-2,#F7F8FA) }
 .cl-root .lrow:focus-visible{ outline:none; box-shadow:var(--op-focus,0 0 0 3px rgba(255,106,31,.18)) inset }
 .cl-root .lc{ display:flex; align-items:center; gap:12px; min-width:0 }
-.cl-root .lc__av{ width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:14px; flex-shrink:0 }
+/* overflow:hidden = clip CIRCULAIRE (suit le border-radius) — filet final de la
+   contention arbitrée (Design 2026-08-19) : toujours actif, même quand le texte
+   tient. La réduction adaptative (14→11px) vit dans CustomerAvatar. */
+.cl-root .lc__av{ width:32px; height:32px; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; color:#fff; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:11.5px; flex-shrink:0 }
 .cl-root .lc__m{ min-width:0 }
 .cl-root .lc__m b{ font-size:13.5px; font-weight:700; display:block; color:var(--op-text,#101828) }
 .cl-root .lc__m span{ font-size:11px; color:var(--op-muted,#5B6472) }
 .cl-root .lnum{ font-family:var(--op-font-mono,'JetBrains Mono',monospace); font-weight:700; font-size:13px; text-align:end; color:var(--op-text,#101828); direction:ltr; unicode-bidi:isolate }
-.cl-root .ltier{ display:flex; justify-content:flex-end }
+/* Total dépensé (LTV) — CD .ltv weight/size. Points stay .lnum NEUTRAL mono: the
+   mock's orange (--op-zest-600) is a documented product divergence (CD 18/08). */
+.cl-root .lnum.strong{ font-weight:800; font-size:13.5px }
+.cl-root .llast{ font-size:11.5px; color:var(--op-muted,#5B6472); text-align:end }
+.cl-root .lview{ display:flex; justify-content:flex-end }
+.cl-root .lview .ms{ width:30px; height:30px; border-radius:var(--op-r-md,8px); display:flex; align-items:center; justify-content:center; font-size:18px; color:var(--op-muted,#5B6472) }
+.cl-root .lrow:hover .lview .ms{ background:var(--op-surface-2,#F7F8FA); color:var(--op-text,#101828) }
+.cl-root .ltier{ display:flex; justify-content:flex-start }
 .cl-root .lmini{ display:none; font-size:11px; color:var(--op-muted,#5B6472); font-family:var(--op-font-mono,'JetBrains Mono',monospace) }
 
-.cl-root .tier{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
-.cl-root .tier.sm{ font-size:10px; padding:3px 9px }
-.cl-root .tier .ms{ font-size:14px }
+.cl-root .tier{ display:inline-flex; align-items:center; gap:6px; font-size:11px; line-height:16.5px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
+.cl-root .tier.sm{ font-size:10px; line-height:15px; padding:3px 11px; gap:5px }
+.cl-root .tier .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0 }
 .cl-root .tier.bronze{ background:#F3E3D3; color:#8A5A2B }
 .cl-root .tier.silver{ background:#E7ECF0; color:#5B6472 }
-.cl-root .tier.gold{ background:linear-gradient(135deg,#FBE7B0,#F5C24A); color:#7A5410 }
-.cl-root .tier.plat{ background:#E3ECF6; color:#2E5A86 }
+.cl-root .tier.gold{ background:#FCEFC7; color:#9C7318 }
+.cl-root .tier.plat{ background:#E7E4FB; color:#5B4FC4 }
 
 .cl-root .cl-empty{ display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center; padding:44px 20px; color:var(--op-muted,#5B6472) }
 .cl-root .cl-empty .ms{ font-size:30px; color:var(--op-muted-2,#8992A3) }
@@ -50,7 +82,7 @@
   .cl-root .lthead{ display:none }
   .cl-root .lrow{ grid-template-columns:1fr auto; gap:6px 12px }
   .cl-root .lc{ grid-column:1; grid-row:1 }
-  .cl-root .ltier{ grid-column:2; grid-row:1 }
-  .cl-root .lnum{ display:none }
+  .cl-root .ltier{ grid-column:2; grid-row:1; justify-content:flex-end }
+  .cl-root .lnum, .cl-root .llast, .cl-root .lview{ display:none }
   .cl-root .lmini{ display:block; grid-column:1; grid-row:2 }
 }

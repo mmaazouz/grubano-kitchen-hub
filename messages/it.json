@@ -394,11 +394,21 @@
       "historyTitle": "Storico recente",
       "historySoonTitle": "Storico presto disponibile",
       "historySoonBody": "Ordini, prenotazioni e premi per cliente saranno mostrati qui.",
-      "subtitleProtected": "I tuoi clienti fedeli — recapiti protetti da Grubano",
+      "subtitle": "Programma fedeltà attivo",
+      "listTitle": "Migliori clienti",
       "privacyListTitle": "Privacy dei clienti.",
       "privacyListBody": "Vedi lo storico, la fedeltà e le preferenze. I recapiti (email, telefono, indirizzo) restano protetti da Grubano.",
       "colOrders": "Ordini",
-      "colAvg": "Scontrino medio"
+      "colAvg": "Scontrino medio",
+      "colTotal": "Totale speso",
+      "colPoints": "Punti",
+      "colLastVisit": "Ultima visita",
+      "viewProfile": "Vedi scheda",
+      "statTotal": "Clienti totali",
+      "statNew": "Nuovi questo mese",
+      "statMembers": "Membri fedeltà",
+      "statAvg": "Scontrino medio",
+      "filterAll": "Tutti"
     },
     "dinein": {
       "title": "Servizio al tavolo",

@@ -11,7 +11,14 @@
  *   design-qa/operator/<name>/<viewport>/app.png   — the real staging page
  *   design-qa/operator/<name>/<viewport>/ref.png   — the CD reference mock (when a ref exists)
  *   design-qa/operator/<name>/<viewport>/diff.png  — pixelmatch highlight (when a ref exists)
- * plus a resume.json + a console.table of {screen, hasRef, diff%}.
+ * plus a resume.json + a console.table of {screen, hasRef, diff%, render health}.
+ *
+ * RENDER-HEALTH GUARD (mission CK): a capture whose critical static resources
+ * (CSS, fonts, /_next/ chunks) failed to load is NOT comparable — the robot
+ * records renderHealth/renderErrors (and refRenderHealth for the CD mock shot,
+ * which hot-links Google Fonts), skips the pixel diff with an explicit
+ * skipReason, and prints RENDER INVALID — CRITICAL STATIC RESOURCE FAILED
+ * instead of a meaningless diffPercent. See operator-qa-render-health.mjs.
  *
  * TOOLING ONLY — never imports app code; only calls public HTTP endpoints + reads local CD mocks.
  *
@@ -33,6 +40,8 @@ import { PNG } from 'pngjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { diagnoseShot } from './operator-qa-diagnose.mjs'
+import { classifyRenderHealth, domProbe } from './operator-qa-render-health.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(__dirname, '..', '..')
@@ -155,13 +164,54 @@ async function shoot(browser, target, vp, sessionCookie) {
         secure: BASE.startsWith('https'),
       })
     }
-    // goto errors are swallowed so we still capture whatever painted.
-    await page.goto(target, { waitUntil: 'networkidle0', timeout: 30000 }).catch(() => {})
+    // Render-health collection (mission CK) — listeners attached BEFORE goto so
+    // the navigation's own subresources are observed. Handler bodies never throw
+    // (a throw inside a page.on handler would abort the whole multi-screen run).
+    // A 429 is a COMPLETED response → it arrives via 'response'; 'requestfailed'
+    // only carries net-level errors. The MAIN-frame document is excluded here
+    // (diagnoseShot owns it); SUB-frame documents are recorded.
+    const failures = []
+    let pageErrors = 0
+    page.on('pageerror', () => { pageErrors += 1 })
+    // frame() is NULLABLE ("null if navigating to error pages" — puppeteer
+    // types.d.ts:3894-3897): a net-level failure of the MAIN document arrives
+    // with a null frame, so a bare `frame() === mainFrame()` comparison would
+    // let the main document slip into failures as a phantom sub-frame
+    // (adversarial review). diagnoseShot owns the main document either way.
+    const isMainDocument = (req) =>
+      req.resourceType() === 'document' &&
+      (req.frame() === page.mainFrame() || req.frame() === null)
+    page.on('response', (response) => {
+      try {
+        if (response.status() < 400) return
+        const req = response.request()
+        if (isMainDocument(req)) return
+        failures.push({ type: req.resourceType(), url: response.url(), status: response.status() })
+      } catch { /* never break the shot */ }
+    })
+    page.on('requestfailed', (request) => {
+      try {
+        const errorText = request.failure()?.errorText ?? 'unknown'
+        // net::ERR_ABORTED = benign cancellation (navigation, media-off <link>…);
+        // ERR_FAILED and the rest stay — CORS-blocked fonts land there.
+        if (errorText === 'net::ERR_ABORTED') return
+        if (isMainDocument(request)) return
+        failures.push({ type: request.resourceType(), url: request.url(), status: null, errorText })
+      } catch { /* never break the shot */ }
+    })
+    // goto errors are swallowed so we still capture whatever painted — but the
+    // response is kept so the caller can diagnose HTTP errors (mission CD).
+    const resp = await page.goto(target, { waitUntil: 'networkidle0', timeout: 30000 }).catch(() => null)
     try { await page.evaluate(() => document.fonts && document.fonts.ready) } catch {}
     await new Promise((r) => setTimeout(r, 600)) // settle fonts / late paints
+    // DOM ground-truth probe (mission CK) — runs EVEN when goto timed out
+    // (resp === null): the capture still happens, so its health must still be
+    // judged. A probe failure yields null → health 'unknown', never a crash.
+    let probe = null
+    try { probe = await page.evaluate(domProbe) } catch { /* probe = null */ }
     const finalUrl = page.url()
     const buf = await page.screenshot({ type: 'png', fullPage: true })
-    return { buf, finalUrl }
+    return { buf, finalUrl, status: resp ? resp.status() : null, failures, probe, pageErrors }
   } finally {
     await page.close()
   }
@@ -188,7 +238,10 @@ async function main() {
   })
 
   const grand = []
-  let roleWarned = false
+  // One console warning per DIAGNOSIS KIND (not per screen — an unauthenticated
+  // run would otherwise warn 30+ times); every case still records its verdict
+  // in resume.json.
+  const warnedKinds = new Set()
   try {
     for (const screen of screens) {
       const viewports = screen.viewports ?? [{ name: 'desktop', w: 1440, h: 1024 }]
@@ -202,31 +255,83 @@ async function main() {
         fs.mkdirSync(dir, { recursive: true })
 
         // App shot (authenticated).
-        const { buf: appBuf, finalUrl } = await shoot(browser, BASE + screen.url, vp, sessionCookie)
+        const { buf: appBuf, finalUrl, status, failures, probe, pageErrors } =
+          await shoot(browser, BASE + screen.url, vp, sessionCookie)
         fs.writeFileSync(path.join(dir, 'app.png'), appBuf)
 
-        // Guard: a session that still bounces to /eat/auth ⇒ the account lacks the operator role.
-        if (!roleWarned && /\/eat\/auth/.test(finalUrl)) {
-          console.warn(
-            `⚠ ${screen.name}: navigated to ${finalUrl} — the session is valid but the account may ` +
-            `lack the operator role (expected role 'restaurant'/'admin'). Re-seed with role 'restaurant'.`,
-          )
-          roleWarned = true
+        // Guard (mission CD): classify the navigation outcome — unauthenticated /
+        // role-mismatch / app-error / ok — instead of the previous inverted check.
+        // A true LOGIN failure is diagnosed earlier by login(), which throws.
+        const verdict = diagnoseShot({ requestedUrl: BASE + screen.url, finalUrl, status })
+        if (verdict.kind !== 'ok' && !warnedKinds.has(verdict.kind)) {
+          console.warn(`⚠ ${screen.name} [${verdict.kind}]: ${verdict.message}`)
+          warnedKinds.add(verdict.kind)
         }
 
-        const rec = { screen: screen.name, viewport: vp.name, hasRef: !!refExists, diffPercent: null, finalUrl }
+        // Guard (mission CK): classify the RENDER health of the capture — a doc
+        // 200 whose CSS/fonts were refused (the /fr/orders 738x844 case) is a
+        // valid navigation but an INVALID capture for visual comparison.
+        const appHealth = classifyRenderHealth({
+          pageOrigin: new URL(BASE).origin, failures, probe, navSettled: status !== null,
+        })
+        // The auth verdict is the primary fact — the render warning is printed
+        // only when navigation was clean, and once per health kind (a 429 storm
+        // must not print 35 identical lines). Every case still records its
+        // health in resume.json.
+        if (verdict.kind === 'ok' && appHealth.message && !warnedKinds.has(`render-${appHealth.health}`)) {
+          console.warn(`⚠ ${screen.name} [render-${appHealth.health}]: ${appHealth.message}`)
+          warnedKinds.add(`render-${appHealth.health}`)
+        }
+
+        const rec = {
+          screen: screen.name, viewport: vp.name, hasRef: !!refExists, diffPercent: null,
+          finalUrl, httpStatus: status, authDiagnosis: verdict.kind,
+          renderHealth: appHealth.health, pageErrors, skipReason: null,
+        }
+        if (appHealth.errors.length) rec.renderErrors = appHealth.errors.slice(0, 20)
         if (refUrl) {
-          // Ref shot (no cookie needed for a local file).
-          const { buf: refBuf } = await shoot(browser, refUrl, vp, null)
-          fs.writeFileSync(path.join(dir, 'ref.png'), refBuf)
-          const d = diffPng(appBuf, refBuf)
-          fs.writeFileSync(path.join(dir, 'diff.png'), d.diffBuf)
-          rec.diffPercent = d.pct
-          rec.appSize = d.appSize; rec.refSize = d.refSize; rec.compared = d.compared
+          // Ref shot (no cookie needed for a local file). Same health guard: the
+          // committed CD mocks hot-link Google Fonts — a ref rendered in fallback
+          // glyphs is as non-comparable as an unstyled app page.
+          const refShot = await shoot(browser, refUrl, vp, null)
+          fs.writeFileSync(path.join(dir, 'ref.png'), refShot.buf)
+          const refHealth = classifyRenderHealth({
+            pageOrigin: null, failures: refShot.failures, probe: refShot.probe,
+            navSettled: refShot.status !== null,
+          })
+          rec.refRenderHealth = refHealth.health
+          rec.refPageErrors = refShot.pageErrors
+          if (refHealth.errors.length) rec.refRenderErrors = refHealth.errors.slice(0, 20)
+
+          // The pixel diff is a VERDICT — it exists only when the document was
+          // accepted AND both captures actually rendered. Otherwise app.png/
+          // ref.png stay on disk for diagnosis, diffPercent stays null and
+          // skipReason says why. (Ref invalid ⇒ diff annulled too — flagged to
+          // the founder as an open decision; flip: compute d and keep pct.)
+          if (verdict.kind !== 'ok') rec.skipReason = `auth-${verdict.kind}`
+          else if (appHealth.health === 'invalid') rec.skipReason = 'render-invalid'
+          else if (appHealth.health === 'unknown') rec.skipReason = 'render-unknown'
+          else if (refHealth.health === 'invalid') rec.skipReason = 'ref-render-invalid'
+          else if (refHealth.health === 'unknown') rec.skipReason = 'ref-render-unknown'
+
+          if (!rec.skipReason) {
+            const d = diffPng(appBuf, refShot.buf)
+            fs.writeFileSync(path.join(dir, 'diff.png'), d.diffBuf)
+            rec.diffPercent = d.pct
+            rec.appSize = d.appSize; rec.refSize = d.refSize; rec.compared = d.compared
+          } else {
+            // A skipped case must not leave a STALE diff.png from a previous
+            // run sitting next to fresh app/ref captures (adversarial review).
+            try { fs.rmSync(path.join(dir, 'diff.png'), { force: true }) } catch {}
+          }
         }
         rec.dir = path.relative(ROOT, dir).replace(/\\/g, '/')
         cases.push(rec); grand.push(rec)
-        console.log(`  ${screen.name} · ${vp.name}${refExists ? ` → diff ${rec.diffPercent}%` : ' (capture-only)'}`)
+        const degraded = rec.renderHealth === 'degraded' || rec.refRenderHealth === 'degraded'
+        console.log(`  ${screen.name} · ${vp.name}${
+          !refExists ? ' (capture-only)'
+          : rec.skipReason ? ` → diff SKIPPED (${rec.skipReason})`
+          : ` → diff ${rec.diffPercent}%${degraded ? ' ⚠ DEGRADED (not a normal verdict)' : ''}`}`)
       }
 
       const resume = { screen: screen.name, url: screen.url, ref: screen.ref || null, generatedBy: 'operator-visual-qa.mjs', cases }
@@ -240,7 +345,16 @@ async function main() {
   fs.mkdirSync(OUT_ROOT, { recursive: true })
   fs.writeFileSync(path.join(OUT_ROOT, 'resume.json'), JSON.stringify({ base: BASE, generatedBy: 'operator-visual-qa.mjs', cases: grand }, null, 2))
   console.log(`\n✓ done — artifacts under design-qa/operator/ (app.png · ref.png · diff.png · resume.json)`)
-  console.table(grand.map((g) => ({ screen: g.screen, viewport: g.viewport, hasRef: g.hasRef, 'diff%': g.diffPercent })))
+  console.table(grand.map((g) => ({
+    screen: g.screen, viewport: g.viewport, hasRef: g.hasRef,
+    // A diffPercent is only shown when it IS a verdict; degraded is impossible
+    // to miss; skipped rows say why instead of a number.
+    'diff%': g.diffPercent === null
+      ? (g.skipReason ?? (g.hasRef ? '—' : ''))
+      : (g.renderHealth === 'degraded' || g.refRenderHealth === 'degraded'
+        ? `${g.diffPercent} ⚠ degraded` : g.diffPercent),
+    render: g.renderHealth, ref: g.refRenderHealth ?? '', pageErr: g.pageErrors,
+  })))
 }
 
 main().catch((e) => { console.error('operator-visual-qa failed:', e?.message || e); process.exit(1) })

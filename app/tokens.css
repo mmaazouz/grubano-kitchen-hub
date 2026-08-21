@@ -24,7 +24,10 @@
  * only the colliding variable NAMES were prefixed (hex values unchanged).
  * Fonts: Gabarito (display) + Hanken Grotesk (sans) + JetBrains Mono (mono).
  */
-@import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* Gabarito / Hanken Grotesk / JetBrains Mono : AUTO-HÉBERGÉES via app/brand-fonts.css
+ * (layout racine). L'@import css2 historique finissait au milieu du chunk CSS bundlé
+ * → invalide (spec) → ignoré : la production rendait en police système. Retiré
+ * (arbitrage Design 2026-08-19 : aucune dépendance Google Fonts). */
 
 :root {
   /* ZEST (orange) */

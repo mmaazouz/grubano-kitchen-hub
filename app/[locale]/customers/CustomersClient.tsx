@@ -13,6 +13,11 @@
 import { useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
+import type { CustomerScreenStats, CustomerTier } from '@/lib/customer-scope'
+import CustomerAvatar from './CustomerAvatar'
+
+// Chip order — the CD mock's tier filter row (op-customers .tier-filters).
+const TIER_FILTERS: CustomerTier[] = ['bronze', 'silver', 'gold', 'platinum']
 
 export type CustomerRow = {
   id: string
@@ -21,6 +26,7 @@ export type CustomerRow = {
   pointsBalance: number
   createdAt: string       // ISO
   ordersCount: number
+  totalSpentCents: number
   avgBasketCents: number
   lastOrderAt: string | null
 }
@@ -29,21 +35,16 @@ export type CustomerRow = {
 const TIER_CLASS: Record<string, string> = {
   bronze: 'bronze', silver: 'silver', gold: 'gold', platine: 'plat', platinum: 'plat',
 }
-const TIER_GRADIENT: Record<string, string> = {
-  bronze: 'linear-gradient(135deg,#B9740A,#8A5600)',
-  silver: 'linear-gradient(135deg,#8992A3,#5B6472)',
-  gold:   'linear-gradient(135deg,#FF8A3D,#F2570E)',
-  platine:'linear-gradient(135deg,#0E9F6E,#0A6E4A)',
-  platinum:'linear-gradient(135deg,#0E9F6E,#0A6E4A)',
-}
 
-function initials(name: string): string {
-  return (
-    name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?'
-  )
-}
+// Initiales par graphèmes + contention adaptative : CustomerAvatar (arbitrage
+// Design 2026-08-19) — l'ancienne dérivation par code units vivait ici.
 
-export default function CustomersClient({ customers, total }: { customers: CustomerRow[]; total: number }) {
+export default function CustomersClient({ customers, total, stats, activeTier }: {
+  customers: CustomerRow[]
+  total: number
+  stats: CustomerScreenStats
+  activeTier: CustomerTier | null
+}) {
   const t = useTranslations('operator')
   const locale = useLocale()
   const [query, setQuery] = useState('')
@@ -57,6 +58,20 @@ export default function CustomersClient({ customers, total }: { customers: Custo
       const m = new Intl.DateTimeFormat(locale, { month: 'short', year: 'numeric' }).format(new Date(iso))
       return t('customers.since', { date: m })
     } catch { return '' }
+  }
+  // CD list shows "Hier" / "3 juil." — relative for today/yesterday, short date beyond.
+  const lastVisitLabel = (iso: string | null) => {
+    if (!iso) return '—'
+    try {
+      const d = new Date(iso)
+      const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+      const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000)
+      if (days === 0 || days === 1) {
+        const rel = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(-days, 'day')
+        return rel.charAt(0).toUpperCase() + rel.slice(1)
+      }
+      return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(d)
+    } catch { return '—' }
   }
   const tierClass = (tier: string) => TIER_CLASS[tier] ?? 'bronze'
   const tierLabel = (tier: string) => t(`customers.tier.${tierClass(tier) === 'plat' ? 'platinum' : tierClass(tier)}`)
@@ -85,7 +100,9 @@ export default function CustomersClient({ customers, total }: { customers: Custo
       <div className="lhead">
         <div>
           <h1>{t('customers.title')}</h1>
-          <p>{t('customers.subtitleProtected')}</p>
+          {/* H — the privacy wording lives in the banner ONLY; the subtitle is the
+              CD scope label « Programme de fidélité actif ». */}
+          <p>{t('customers.subtitle')}</p>
         </div>
         <div className="lsearch">
           <span className="ms" aria-hidden="true">search</span>
@@ -105,12 +122,48 @@ export default function CustomersClient({ customers, total }: { customers: Custo
         <div><b>{t('customers.privacyListTitle')}</b> {t('customers.privacyListBody')}</div>
       </div>
 
+      {/* B — the 4 KPIs (CD stat-strip). Server-computed over EXACTLY the list's
+          scope; « Nouveaux ce mois » = first in-scope order this calendar month. */}
+      <div className="card stat-strip">
+        <div className="stat"><span className="lbl">{t('customers.statTotal')}</span><b>{stats.totalCustomers.toLocaleString(locale)}</b></div>
+        <div className="stat"><span className="lbl">{t('customers.statNew')}</span><b>{stats.newThisMonth.toLocaleString(locale)}</b></div>
+        <div className="stat"><span className="lbl">{t('customers.statMembers')}</span><b>{stats.loyaltyMembers.toLocaleString(locale)}</b></div>
+        <div className="stat"><span className="lbl">{t('customers.statAvg')}</span><b>{eur(stats.avgBasketCents)}</b></div>
+      </div>
+
+      {/* C — tier filters. Counters cover the FULL fenced population (server
+          groupBy), and each chip NAVIGATES (?tier=…) → a real server re-query,
+          never a client-side cut of the 20 visible rows. */}
+      <div className="tier-filters">
+        <Link href={{ pathname: '/customers' }} className={activeTier === null ? 'chip is-active' : 'chip'}>
+          {t('customers.filterAll')} <span className="cnt">{stats.loyaltyMembers.toLocaleString(locale)}</span>
+        </Link>
+        {TIER_FILTERS.map((tf) => (
+          <Link
+            key={tf}
+            href={{ pathname: '/customers', query: { tier: tf } }}
+            className={activeTier === tf ? 'chip is-active' : 'chip'}
+          >
+            <span className={`tier sm ${tierClass(tf)}`}><i className="dot" aria-hidden="true" />{tierLabel(tf)}</span>
+            <span className="cnt">{(stats.tierCounts[tf] ?? 0).toLocaleString(locale)}</span>
+          </Link>
+        ))}
+      </div>
+
       <div className="card">
+        {/* D — scope label: a list of top-N must say what it is (CD op-card__head). */}
+        <div className="card__head">
+          <h2><span className="ms" aria-hidden="true">workspace_premium</span>{t('customers.listTitle')}</h2>
+        </div>
+        {/* CD list order (op-customers): Client · Palier · Commandes · Total dépensé · Points · Dernière visite · fiche */}
         <div className="lthead">
           <span>{t('customers.colClient')}</span>
-          <span>{t('customers.colOrders')}</span>
-          <span>{t('customers.colAvg')}</span>
           <span>{t('customers.colTier')}</span>
+          <span>{t('customers.colOrders')}</span>
+          <span>{t('customers.colTotal')}</span>
+          <span>{t('customers.colPoints')}</span>
+          <span>{t('customers.colLastVisit')}</span>
+          <span aria-hidden="true" />
         </div>
 
         {visible.length === 0 ? (
@@ -123,19 +176,31 @@ export default function CustomersClient({ customers, total }: { customers: Custo
           visible.map((row) => (
             <Link key={row.id} href={`/customers/${row.id}`} className="lrow">
               <div className="lc">
-                <span className="lc__av" style={{ background: TIER_GRADIENT[row.tier] ?? TIER_GRADIENT.bronze }}>{initials(row.name)}</span>
+                {/* color per CLIENT, derived from LoyaltyCustomer.id — never the name,
+                    never the tier (decision F). Same id → same color list & fiche. */}
+                <CustomerAvatar customerId={row.id} name={row.name} variant="list" className="lc__av" />
                 <div className="lc__m"><b>{row.name}</b><span>{sinceLabel(row.createdAt)}</span></div>
               </div>
-              <span className="lnum">{row.ordersCount > 0 ? row.ordersCount.toLocaleString(locale) : '—'}</span>
-              <span className="lnum">{row.ordersCount > 0 ? eur(row.avgBasketCents) : '—'}</span>
               <div className="ltier">
                 <span className={`tier sm ${tierClass(row.tier)}`}>
-                  {tierClass(row.tier) === 'gold' ? <span className="ms" aria-hidden="true">workspace_premium</span> : null}
+                  {/* pastille neutre 7×7 en currentColor sur TOUS les paliers (décision
+                      CD 20/08) — le glyphe workspace_premium ne sert plus de pictogramme
+                      de chip ; il reste le pictogramme du TITRE de carte. */}
+                  <i className="dot" aria-hidden="true" />
                   {tierLabel(row.tier)}
                 </span>
               </div>
+              <span className="lnum">{row.ordersCount > 0 ? row.ordersCount.toLocaleString(locale) : '—'}</span>
+              <span className="lnum strong">{row.ordersCount > 0 ? eur(row.totalSpentCents) : '—'}</span>
+              {/* neutral mono — the CD mock's orange on points is a DOCUMENTED divergence
+                  (orange = "action en cours" in the system, decision CD 18/08) */}
+              <span className="lnum">{row.pointsBalance.toLocaleString(locale)}</span>
+              <span className="llast">{lastVisitLabel(row.lastOrderAt)}</span>
+              <span className="lview" title={t('customers.viewProfile')}>
+                <span className="ms" aria-hidden="true">visibility</span>
+              </span>
               <span className="lmini">
-                {row.ordersCount > 0 ? `${row.ordersCount} · ${eur(row.avgBasketCents)} · ` : ''}{tierLabel(row.tier)}
+                {row.ordersCount > 0 ? `${row.ordersCount} · ${eur(row.totalSpentCents)} · ` : ''}{tierLabel(row.tier)}
               </span>
             </Link>
           ))

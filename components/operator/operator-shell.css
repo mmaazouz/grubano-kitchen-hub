@@ -165,3 +165,26 @@
 @media (max-width:700px){
   .gb-op .op-profile__name{display:none}
 }
+
+/* ── Décision typographique CD (chrome uniquement) ─────────────────────────────
+ * Le chrome héritait du line-height:1.5 de Tailwind Preflight — jamais décidé.
+ * Décision Claude Design : TEXTE du chrome = 1.3 · éléments COMPOSÉS = 1
+ * (le .ms reste sur son line-height:1 existant, ligne 50).
+ * Scopé aux éléments du chrome EUX-MÊMES — jamais .op-content ni un conteneur
+ * englobant : le contenu applicatif reste sur l'héritage global. */
+.gb-op .op-nav-item .t,
+.gb-op .op-nav-group,
+.gb-op .op-estab__t b,
+.gb-op .op-estab__t span,
+.gb-op .op-estab__opt b,
+.gb-op .op-estab__opt span,
+.gb-op .op-estab__add,
+.gb-op .op-top__date,
+.gb-op .op-profile__name,
+.gb-op .op-bottomnav a span:not(.ms){line-height:1.3}
+.gb-op .op-side__word b,
+.gb-op .op-side__word span,
+.gb-op .op-estab__logo,
+.gb-op .op-estab__mini,
+.gb-op .op-profile__av,
+.gb-op .op-openclosed{line-height:1}

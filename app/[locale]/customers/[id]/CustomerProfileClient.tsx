@@ -14,6 +14,7 @@ import { useMemo } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
 import type { CustomerProfile } from '@/lib/customer-scope'
+import CustomerAvatar from '../CustomerAvatar'
 
 const TIER_CLASS: Record<string, string> = {
   bronze: 'bronze', silver: 'silver', gold: 'gold', platine: 'plat', platinum: 'plat',
@@ -25,9 +26,8 @@ const LADDER = [
   { key: 'platine', min: 400 },
 ] as const
 
-function initials(name: string): string {
-  return name.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?'
-}
+// Initiales par graphèmes + contention adaptative : CustomerAvatar (arbitrage
+// Design 2026-08-19) — l'ancienne dérivation par code units vivait ici.
 
 export default function CustomerProfileClient({ profile }: { profile: CustomerProfile }) {
   const t = useTranslations('operator')
@@ -81,12 +81,15 @@ export default function CustomerProfileClient({ profile }: { profile: CustomerPr
 
       {/* ── Hero / identity ── */}
       <div className="card hero">
-        <span className="hero__av">{initials(profile.name)}</span>
+        {/* color per CLIENT from LoyaltyCustomer.id — same derivation as the list
+            (decision F): same id → same color on both screens. */}
+        <CustomerAvatar customerId={profile.id} name={profile.name} variant="profile" className="hero__av" />
         <div className="hero__m">
           <div className="hero__name">
             <h1>{profile.name}</h1>
             <span className={`tier ${tierClass}`}>
-              {tierClass === 'gold' ? <span className="ms" aria-hidden="true">workspace_premium</span> : null}
+              {/* pastille neutre 7×7, variante de BASE de la fiche (décision CD 20/08) */}
+              <i className="dot" aria-hidden="true" />
               {tierName}
             </span>
             {isLoyal && (
@@ -153,7 +156,7 @@ export default function CustomerProfileClient({ profile }: { profile: CustomerPr
           <div className="card pad">
             <div className="loy__top">
               <div className="loy__pts">{profile.pointsBalance.toLocaleString(locale)} <small>{t('customerProfile.points')}</small></div>
-              <span className={`tier ${tierClass}`}>{tierClass === 'gold' ? <span className="ms" aria-hidden="true">workspace_premium</span> : null}{tierName}</span>
+              <span className={`tier ${tierClass}`}><i className="dot" aria-hidden="true" />{tierName}</span>
             </div>
             <div className="loy__bar"><i style={{ width: `${ladder.pct}%` }} /></div>
             <div className="loy__scale">

@@ -24,7 +24,10 @@
 /* hero */
 .cp-root .hero{ display:flex; align-items:center; gap:18px; padding:22px; margin-bottom:16px; position:relative; overflow:hidden }
 .cp-root .hero::before{ content:""; position:absolute; inset:0; background:radial-gradient(circle at 88% 0%,var(--op-zest-bg,#FFF1E7),transparent 60%); pointer-events:none }
-.cp-root .hero__av{ width:66px; height:66px; border-radius:50%; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; flex-shrink:0 }
+/* overflow:hidden = clip CIRCULAIRE — filet final de la contention arbitrée
+   (Design 2026-08-19), toujours actif. Réduction adaptative (24→18px) dans
+   CustomerAvatar. */
+.cp-root .hero__av{ width:66px; height:66px; border-radius:50%; overflow:hidden; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; display:flex; align-items:center; justify-content:center; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; flex-shrink:0 }
 .cp-root .hero__m{ flex:1; min-width:0; position:relative }
 .cp-root .hero__name{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
 .cp-root .hero__name h1{ margin:0; font-family:var(--op-font-display,'Gabarito',system-ui,sans-serif); font-weight:800; font-size:24px; letter-spacing:-.02em; color:var(--op-text,#101828) }
@@ -35,12 +38,12 @@
 .cp-root .loyal-badge{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; color:var(--op-basil-600,#1E8A4A); background:var(--op-basil-bg,#E8F6EE); border-radius:999px; padding:4px 10px }
 .cp-root .loyal-badge .ms{ font-size:14px }
 
-.cp-root .tier{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
-.cp-root .tier .ms{ font-size:14px }
+.cp-root .tier{ display:inline-flex; align-items:center; gap:6px; font-size:11px; line-height:16.5px; font-weight:800; border-radius:999px; padding:4px 11px; white-space:nowrap }
+.cp-root .tier .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0 }
 .cp-root .tier.bronze{ background:#F3E3D3; color:#8A5A2B }
 .cp-root .tier.silver{ background:#E7ECF0; color:#5B6472 }
-.cp-root .tier.gold{ background:linear-gradient(135deg,#FBE7B0,#F5C24A); color:#7A5410 }
-.cp-root .tier.plat{ background:#E3ECF6; color:#2E5A86 }
+.cp-root .tier.gold{ background:#FCEFC7; color:#9C7318 }
+.cp-root .tier.plat{ background:#E7E4FB; color:#5B4FC4 }
 
 .cp-root .btn-primary{ display:inline-flex; align-items:center; gap:7px; background:linear-gradient(135deg,#FF8A3D,#F2570E); color:#fff; border:none; border-radius:var(--op-r-md,8px); padding:11px 16px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap }
 .cp-root .btn-primary .ms{ font-size:17px }

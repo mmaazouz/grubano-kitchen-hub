@@ -10,10 +10,10 @@ const { db } = vi.hoisted(() => ({
   db: {
     restaurant:      { findMany: vi.fn() },
     brand:           { findMany: vi.fn() },
-    order:           { findMany: vi.fn() },
+    order:           { findMany: vi.fn(), groupBy: vi.fn(), aggregate: vi.fn() },
     operator:        { findMany: vi.fn() },
-    loyaltyOrder:    { findMany: vi.fn() },
-    loyaltyCustomer: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
+    loyaltyOrder:    { findMany: vi.fn(), groupBy: vi.fn(), aggregate: vi.fn() },
+    loyaltyCustomer: { findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn(), groupBy: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -23,6 +23,7 @@ import {
   loyaltyCustomerWhereForOperator,
   getScopedCustomers,
   getCustomerProfile,
+  getCustomerScreenStats,
 } from '@/lib/customer-scope'
 
 const OP_A = 'op-A'
@@ -95,6 +96,7 @@ describe('getScopedCustomers — masked, contact-free, real aggregates', () => {
     expect(row.name).toBe('Mohammed M.')          // MASKED
     // real relation aggregates: 1 /eat order (24,90) + 1 loyalty order (30,00)
     expect(row.ordersCount).toBe(2)
+    expect(row.totalSpentCents).toBe(5490) // exact sum exposed — never avg×count
     expect(row.avgBasketCents).toBe(2745)
     for (const k of CONTACT_KEYS) expect(row).not.toHaveProperty(k)
   })
@@ -112,6 +114,69 @@ describe('getScopedCustomers — masked, contact-free, real aggregates', () => {
     const row = customers[0]!
     expect(row.name).toBe('Mohammed M.')
     for (const k of CONTACT_KEYS) expect(row).not.toHaveProperty(k)
+  })
+})
+
+describe('getCustomerScreenStats — vague 2: KPIs + tier counters on the LIST scope', () => {
+  const NOW = new Date()
+  beforeEach(() => {
+    // Two /eat consumers + one loyalty member who IS consumer 1 (same email) —
+    // proves person-level dedup across flows and MIN(first order) per person.
+    db.order.groupBy.mockResolvedValue([
+      { consumerId: 'cons1', _min: { createdAt: new Date('2026-07-09') } },
+      { consumerId: 'cons2', _min: { createdAt: NOW } },            // first order THIS month
+    ])
+    db.loyaltyOrder.groupBy.mockResolvedValue([
+      { customerId: 'lc1', _min: { validatedAt: new Date('2026-07-01') } }, // same person as cons1
+    ])
+    db.order.aggregate.mockResolvedValue({ _count: { _all: 3 }, _sum: { total: 74.7 } })
+    db.loyaltyOrder.aggregate.mockResolvedValue({ _count: { _all: 1 }, _sum: { amount: 30 } })
+    db.loyaltyCustomer.groupBy.mockResolvedValue([{ tier: 'gold', _count: { _all: 1 } }])
+    db.operator.findMany.mockResolvedValue([
+      { id: 'cons1', email: 'c1@x.fr' },
+      { id: 'cons2', email: 'c2@x.fr' },
+    ])
+  })
+
+  it('KPI 1 counts PERSONS (dedup by email across flows), never orders', async () => {
+    const s = await getCustomerScreenStats({ id: OP_A, roles: ['restaurant'] })
+    // cons1 (c1@x.fr) and lc1 are the SAME person → 2 distinct persons, not 3.
+    expect(s.totalCustomers).toBe(2)
+    // KPI 1 CAN exceed KPI 3 (c2 ordered but is no member).
+    expect(s.totalCustomers).toBeGreaterThan(s.loyaltyMembers)
+  })
+
+  it('KPI 2 = FIRST in-scope order this calendar month (never LoyaltyCustomer.createdAt)', async () => {
+    const s = await getCustomerScreenStats({ id: OP_A, roles: ['restaurant'] })
+    // c1's first order is 2026-07-01 (loyalty flow, EARLIER than the /eat one) →
+    // not new; c2's first order is NOW → new. CUSTOMER.createdAt (2025-03-01)
+    // plays no role.
+    expect(s.newThisMonth).toBe(1)
+  })
+
+  it('KPI 3 + tier counters come from the fenced FULL population, KPI 4 from source amounts', async () => {
+    const s = await getCustomerScreenStats({ id: OP_A, roles: ['restaurant'] })
+    expect(s.loyaltyMembers).toBe(1)
+    expect(s.tierCounts).toEqual({ gold: 1 })
+    // 74,70 € over 3 orders + 30,00 € over 1 order → 10 470c / 4 = 2 618c.
+    expect(s.avgBasketCents).toBe(2618)
+  })
+
+  it('order stats exclude unpaid/expired/cancelled — same rule as the list', async () => {
+    await getCustomerScreenStats({ id: OP_A, roles: ['restaurant'] })
+    const call = db.order.groupBy.mock.calls[0]![0]
+    expect(call.where.status).toEqual({ notIn: ['awaiting_payment', 'expired', 'cancelled'] })
+    expect(call.where.restaurantId).toEqual({ in: ['r1'] })
+  })
+})
+
+describe('getScopedCustomers — ?tier filter is a SERVER re-query', () => {
+  it('narrows findMany by tier but keeps `total` on the unfiltered fence', async () => {
+    await getScopedCustomers({ id: OP_A, roles: ['restaurant'] }, { tier: 'gold' })
+    const listCall = db.loyaltyCustomer.findMany.mock.calls[0]![0]
+    expect(listCall.where.AND[1]).toEqual({ tier: 'gold' })
+    const countCall = db.loyaltyCustomer.count.mock.calls[0]![0]
+    expect(countCall.where.AND).toBeUndefined() // unfiltered fence
   })
 })
 

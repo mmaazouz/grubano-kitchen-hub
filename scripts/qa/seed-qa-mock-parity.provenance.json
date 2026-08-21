@@ -1,0 +1,402 @@
+{
+  "$comment": "Provenance des valeurs DERIVEES (classe B) du seed de parite — decision fondateur D2. Les valeurs BRUTES (noms, prix, quantites) se verifient par recherche directe dans scripts/design-qa-refs/op-*.html (attention aux entites HTML : « & » y est « &amp; ») et ne sont pas listees ici. Jour-maquette de reference : 2026-07-01 (« 1 juillet » des maquettes) ; les offsets sont relatifs au jour d EXECUTION du seed.",
+  "classification": {
+    "objectivable": "valeur textuelle absente des 15 maquettes (grep = 0) : emails, referralCodes, dates ISO",
+    "releveHumain": "derivations, offsets et arbitrages non isolables mecaniquement (les nombres courts se greppent par coincidence) — liste exhaustive au releve pres, pas par preuve mecanique"
+  },
+  "reglesGlobales": [
+    {
+      "regle": "mot de passe des comptes consommateurs de test",
+      "valeur": "LocalQA-2026! (bcrypt cout 12)",
+      "type": "convention QA — absent des maquettes"
+    },
+    {
+      "regle": "positions x/y des 16 tables",
+      "valeur": "grille generee x=(i%4)*130, y=floor(i/4)*120",
+      "type": "derive du code du seed — les maquettes ne donnent pas de coordonnees"
+    },
+    {
+      "regle": "reservation « Table 14+15 »",
+      "valeur": "FK unique vers T14",
+      "type": "arbitrage — Reservation.tableId est un FK simple",
+      "source": "op-tables.html:441"
+    },
+    {
+      "regle": "5 commandes d historique (1 delivered par client fidele)",
+      "valeur": "createdAt = J-(2+3i), plat rotatif de la carte, total = prix du plat",
+      "type": "recommandation de la spec pour donner de la matiere aux ecrans clients/analytics — AUCUNE source maquette (volumes agreges inatteignables)"
+    },
+    {
+      "regle": "jour-maquette op-customers",
+      "valeur": "2026-07-05 — seul ancrage minimal rendant coherentes les 7 mentions « Derniere visite » (« Hier » + 6 dates explicites, verifie par difference : 3 juil.=J-2, 28 juin=J-7, 20 juin=J-15, 18 juin=J-17, 2 juin=J-33, 18 mai=J-48)",
+      "type": "derive — DISTINCT du jour-maquette global 2026-07-01 (op-customers porte « 3 juil. », posterieur au 1er juillet)",
+      "source": "op-customers.html:424,433,442,451,460,469,478"
+    },
+    {
+      "regle": "historique fidelite (LoyaltyOrder) par client",
+      "valeur": "N commandes = colonne « Commandes » ; somme des montants = colonne « Total depense » repartie en centimes egaux (reste d arrondi sur les premieres commandes) ; validatedAt repartis uniformement entre createdAt du client et sa derniere visite",
+      "type": "derive — la maquette ne donne que les agregats par client, jamais le detail des commandes ; la repartition est une convention deterministe",
+      "source": "op-customers.html:414-481 (colonnes Commandes / Total depense / Derniere visite)"
+    },
+    {
+      "regle": "uberOrderNumber des commandes fidelite",
+      "valeur": "QA-PARITY-<slug du nom>-NNN",
+      "type": "convention QA — champ unique requis par le schema, absent des maquettes ; sert aussi de marqueur d idempotence (suppression scopee brand QA + prefixe)"
+    },
+    {
+      "regle": "pointsEarned par commande fidelite",
+      "valeur": "floor(montant EUR) — regle produit 1 point = 1 EUR ; la somme (~total depense) ne reconstruit PAS le solde maquette (ex. Sophie Martin : 4 820 pts pour 2 340 EUR depenses) — le solde AFFICHE reste pointsBalance verbatim maquette, cet ecart est INTERNE a la maquette",
+      "type": "derive de la regle produit documentee (CLAUDE.md §13)"
+    }
+  ],
+  "valeursDerivees": [
+    {
+      "champ": "operator.email",
+      "valeur": "qa-sophie.martin@grubano.test",
+      "regle": "convention qa-<prenom>.<nom>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-orders.html:451, op-reviews.html:433 (nom seul)"
+    },
+    {
+      "champ": "operator.email",
+      "valeur": "qa-julie.roussel@grubano.test",
+      "regle": "convention qa-<prenom>.<nom>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-orders.html:494, op-reviews.html:457 (nom seul)"
+    },
+    {
+      "champ": "operator.email",
+      "valeur": "qa-karim.belhadj@grubano.test",
+      "regle": "convention qa-<prenom>.<nom>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-orders.html:513, op-reviews.html:445 (nom seul)"
+    },
+    {
+      "champ": "operator.email",
+      "valeur": "qa-marc.dubois@grubano.test",
+      "regle": "convention qa-<prenom>.<nom>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-orders.html:535, op-reviews.html:469 (nom seul)"
+    },
+    {
+      "champ": "operator.email",
+      "valeur": "qa-amine.lahlou@grubano.test",
+      "regle": "convention qa-<prenom>.<nom>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-orders.html:557, op-reviews.html:507 (nom seul)"
+    },
+    {
+      "champ": "supplierProfile.email",
+      "valeur": "qa-supplier-grossiste-boissons-idf@grubano.test",
+      "regle": "convention qa-supplier-<slug>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-marketplace-orders.html:408"
+    },
+    {
+      "champ": "supplierProfile.email",
+      "valeur": "qa-supplier-emballages-pro@grubano.test",
+      "regle": "convention qa-supplier-<slug>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-marketplace-orders.html:409"
+    },
+    {
+      "champ": "supplierProfile.email",
+      "valeur": "qa-supplier-marche-fermier-rungis@grubano.test",
+      "regle": "convention qa-supplier-<slug>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-marketplace-orders.html:410"
+    },
+    {
+      "champ": "supplierProfile.email",
+      "valeur": "qa-supplier-boucherie-grossiste-paris@grubano.test",
+      "regle": "convention qa-supplier-<slug>@grubano.test — email absent des maquettes",
+      "sourceMaquette": "op-marketplace-orders.html:413"
+    },
+    {
+      "champ": "loyaltyCustomer.referralCode",
+      "valeur": "QA-sophie-martin",
+      "regle": "convention QA-<slug du nom> — champ unique requis par le schema, absent des maquettes",
+      "sourceMaquette": "op-customers.html:418-426 (tel/email :418, points :423)"
+    },
+    {
+      "champ": "loyaltyCustomer.createdAt",
+      "valeur": "2024-03-01",
+      "regle": "« Client depuis mars 2024 » -> premier jour du mois cite",
+      "sourceMaquette": "op-customers.html:418-426 (tel/email :418, points :423)"
+    },
+    {
+      "champ": "loyaltyCustomer.referralCode",
+      "valeur": "QA-karim-belhadj",
+      "regle": "convention QA-<slug du nom> — champ unique requis par le schema, absent des maquettes",
+      "sourceMaquette": "op-customers.html:427-435"
+    },
+    {
+      "champ": "loyaltyCustomer.createdAt",
+      "valeur": "2023-06-01",
+      "regle": "« Client depuis juin 2023 » -> premier jour du mois cite",
+      "sourceMaquette": "op-customers.html:427-435"
+    },
+    {
+      "champ": "loyaltyCustomer.referralCode",
+      "valeur": "QA-julie-roussel",
+      "regle": "convention QA-<slug du nom> — champ unique requis par le schema, absent des maquettes",
+      "sourceMaquette": "op-customers.html:436-444"
+    },
+    {
+      "champ": "loyaltyCustomer.createdAt",
+      "valeur": "2024-01-01",
+      "regle": "« Client depuis janvier 2024 » -> premier jour du mois cite",
+      "sourceMaquette": "op-customers.html:436-444"
+    },
+    {
+      "champ": "loyaltyCustomer.referralCode",
+      "valeur": "QA-marc-dubois",
+      "regle": "convention QA-<slug du nom> — champ unique requis par le schema, absent des maquettes",
+      "sourceMaquette": "op-customers.html:445-453"
+    },
+    {
+      "champ": "loyaltyCustomer.createdAt",
+      "valeur": "2024-09-01",
+      "regle": "« Client depuis septembre 2024 » -> premier jour du mois cite",
+      "sourceMaquette": "op-customers.html:445-453"
+    },
+    {
+      "champ": "loyaltyCustomer.referralCode",
+      "valeur": "QA-amine-lahlou",
+      "regle": "convention QA-<slug du nom> — champ unique requis par le schema, absent des maquettes",
+      "sourceMaquette": "op-customers.html:454-462"
+    },
+    {
+      "champ": "loyaltyCustomer.createdAt",
+      "valeur": "2025-02-01",
+      "regle": "« Client depuis février 2025 » -> premier jour du mois cite",
+      "sourceMaquette": "op-customers.html:454-462"
+    },
+    {
+      "champ": "loyaltyCustomer.referralCode",
+      "valeur": "QA-lea-fontaine",
+      "regle": "convention QA-<slug du nom> — champ unique requis par le schema, absent des maquettes",
+      "sourceMaquette": "op-customers.html:463-471"
+    },
+    {
+      "champ": "loyaltyCustomer.createdAt",
+      "valeur": "2025-05-01",
+      "regle": "« Client depuis mai 2025 » -> premier jour du mois cite",
+      "sourceMaquette": "op-customers.html:463-471"
+    },
+    {
+      "champ": "loyaltyCustomer.referralCode",
+      "valeur": "QA-thomas-petit",
+      "regle": "convention QA-<slug du nom> — champ unique requis par le schema, absent des maquettes",
+      "sourceMaquette": "op-customers.html:472-480"
+    },
+    {
+      "champ": "loyaltyCustomer.createdAt",
+      "valeur": "2025-04-01",
+      "regle": "« Client depuis avril 2025 » -> premier jour du mois cite",
+      "sourceMaquette": "op-customers.html:472-480"
+    },
+    {
+      "champ": "order.createdAt",
+      "valeur": "J-0 -1min",
+      "regle": "libelle relatif de la maquette (« il y a X min » / date) -> offset par rapport a l instant d execution",
+      "sourceMaquette": "op-orders.html:445-463 + adresse op-deliveries.html:432"
+    },
+    {
+      "champ": "order.total",
+      "valeur": 28.4,
+      "regle": "total VERBATIM maquette — conserve meme quand il diverge de la somme des lignes (#1042)",
+      "sourceMaquette": "op-orders.html:445-463 + adresse op-deliveries.html:432"
+    },
+    {
+      "champ": "order.createdAt",
+      "valeur": "J-0 -8min",
+      "regle": "libelle relatif de la maquette (« il y a X min » / date) -> offset par rapport a l instant d execution",
+      "sourceMaquette": "op-orders.html:488-505 (adresse modal op-orders.html:602)"
+    },
+    {
+      "champ": "order.total",
+      "valeur": 41.5,
+      "regle": "total VERBATIM maquette — conserve meme quand il diverge de la somme des lignes (#1040)",
+      "sourceMaquette": "op-orders.html:488-505 (adresse modal op-orders.html:602)"
+    },
+    {
+      "champ": "order.createdAt",
+      "valeur": "J-0 -12min",
+      "regle": "libelle relatif de la maquette (« il y a X min » / date) -> offset par rapport a l instant d execution",
+      "sourceMaquette": "op-orders.html:507-524"
+    },
+    {
+      "champ": "order.total",
+      "valeur": 22,
+      "regle": "total VERBATIM maquette — conserve meme quand il diverge de la somme des lignes (#1039)",
+      "sourceMaquette": "op-orders.html:507-524"
+    },
+    {
+      "champ": "order.createdAt",
+      "valeur": "J-0 -22min",
+      "regle": "libelle relatif de la maquette (« il y a X min » / date) -> offset par rapport a l instant d execution",
+      "sourceMaquette": "op-orders.html:529-546 + adresse op-deliveries.html:480"
+    },
+    {
+      "champ": "order.total",
+      "valeur": 19.9,
+      "regle": "total VERBATIM maquette — conserve meme quand il diverge de la somme des lignes (#1036)",
+      "sourceMaquette": "op-orders.html:529-546 + adresse op-deliveries.html:480"
+    },
+    {
+      "champ": "order.createdAt",
+      "valeur": "J-0 -55min",
+      "regle": "libelle relatif de la maquette (« il y a X min » / date) -> offset par rapport a l instant d execution",
+      "sourceMaquette": "op-orders.html:551-565"
+    },
+    {
+      "champ": "order.total",
+      "valeur": 19.9,
+      "regle": "total VERBATIM maquette — conserve meme quand il diverge de la somme des lignes (#1028)",
+      "sourceMaquette": "op-orders.html:551-565"
+    },
+    {
+      "champ": "order.createdAt",
+      "valeur": "J-0",
+      "regle": "libelle relatif de la maquette (« il y a X min » / date) -> offset par rapport a l instant d execution",
+      "sourceMaquette": "op-deliveries.html:444-458"
+    },
+    {
+      "champ": "order.createdAt",
+      "valeur": "J-0",
+      "regle": "libelle relatif de la maquette (« il y a X min » / date) -> offset par rapport a l instant d execution",
+      "sourceMaquette": "op-deliveries.html:460-473"
+    },
+    {
+      "champ": "review.createdAt",
+      "valeur": "J-3",
+      "regle": "« 28 juin 2026 » -> offset depuis le jour-maquette 2026-07-01",
+      "sourceMaquette": "op-reviews.html:429-439"
+    },
+    {
+      "champ": "review.createdAt",
+      "valeur": "J-5",
+      "regle": "« 26 juin 2026 » -> offset depuis le jour-maquette 2026-07-01",
+      "sourceMaquette": "op-reviews.html:441-451"
+    },
+    {
+      "champ": "review.createdAt",
+      "valeur": "J-7",
+      "regle": "« 24 juin 2026 » -> offset depuis le jour-maquette 2026-07-01",
+      "sourceMaquette": "op-reviews.html:453-463"
+    },
+    {
+      "champ": "review.createdAt",
+      "valeur": "J-11",
+      "regle": "« 20 juin 2026 » -> offset depuis le jour-maquette 2026-07-01",
+      "sourceMaquette": "op-reviews.html:465-475"
+    },
+    {
+      "champ": "review.createdAt",
+      "valeur": "J-13",
+      "regle": "« 18 juin 2026 » -> offset depuis le jour-maquette 2026-07-01",
+      "sourceMaquette": "op-reviews.html:503-513"
+    },
+    {
+      "champ": "reservation.date",
+      "valeur": "12:00 jour d execution",
+      "regle": "creneau du jour de la maquette rendu RELATIF au jour d execution (duree 60 min par defaut du schema, arrondie a 2h par le seed)",
+      "sourceMaquette": "op-tables.html:415-420 (tel modal :509)"
+    },
+    {
+      "champ": "reservation.date",
+      "valeur": "12:30 jour d execution",
+      "regle": "creneau du jour de la maquette rendu RELATIF au jour d execution (duree 60 min par defaut du schema, arrondie a 2h par le seed)",
+      "sourceMaquette": "op-tables.html:421-426"
+    },
+    {
+      "champ": "reservation.date",
+      "valeur": "13:00 jour d execution",
+      "regle": "creneau du jour de la maquette rendu RELATIF au jour d execution (duree 60 min par defaut du schema, arrondie a 2h par le seed)",
+      "sourceMaquette": "op-tables.html:427-432"
+    },
+    {
+      "champ": "reservation.date",
+      "valeur": "19:30 jour d execution",
+      "regle": "creneau du jour de la maquette rendu RELATIF au jour d execution (duree 60 min par defaut du schema, arrondie a 2h par le seed)",
+      "sourceMaquette": "op-tables.html:433-438"
+    },
+    {
+      "champ": "reservation.date",
+      "valeur": "20:00 jour d execution",
+      "regle": "creneau du jour de la maquette rendu RELATIF au jour d execution (duree 60 min par defaut du schema, arrondie a 2h par le seed)",
+      "sourceMaquette": "op-tables.html:439-443 (montant acompte 20,00 EUR du modal op-tables.html:523)"
+    },
+    {
+      "champ": "supplyOrder.createdAt+totalCents",
+      "valeur": "J-1 · 21050c",
+      "regle": "date relative (« 30 juin ») ; totalCents VERBATIM (#F-2052) — pour F-2052 : 21050 conserve bien que la somme des lignes fasse 19640 (arbitrage documente)",
+      "sourceMaquette": "op-marketplace-orders.html:408 (lignes modal :468-476)"
+    },
+    {
+      "champ": "supplyOrder.createdAt+totalCents",
+      "valeur": "J-0 · 9500c",
+      "regle": "date relative (« 1 juil. ») ; totalCents VERBATIM (#F-2058) — pour F-2052 : 21050 conserve bien que la somme des lignes fasse 19640 (arbitrage documente)",
+      "sourceMaquette": "op-marketplace-orders.html:409"
+    },
+    {
+      "champ": "supplyOrder.createdAt+totalCents",
+      "valeur": "J-7 · 18000c",
+      "regle": "date relative (« 24 juin ») ; totalCents VERBATIM (#F-2033) — pour F-2052 : 21050 conserve bien que la somme des lignes fasse 19640 (arbitrage documente)",
+      "sourceMaquette": "op-marketplace-orders.html:410"
+    },
+    {
+      "champ": "supplyOrder.createdAt+totalCents",
+      "valeur": "J-3 · 34000c",
+      "regle": "date relative (« 28 juin ») ; totalCents VERBATIM (#F-2041) — pour F-2052 : 21050 conserve bien que la somme des lignes fasse 19640 (arbitrage documente)",
+      "sourceMaquette": "op-marketplace-orders.html:411"
+    },
+    {
+      "champ": "supplyOrder.createdAt+totalCents",
+      "valeur": "J-16 · 26540c",
+      "regle": "date relative (« 15 juin ») ; totalCents VERBATIM (#F-2019) — pour F-2052 : 21050 conserve bien que la somme des lignes fasse 19640 (arbitrage documente)",
+      "sourceMaquette": "op-marketplace-orders.html:412"
+    },
+    {
+      "champ": "supplyOrder.createdAt+totalCents",
+      "valeur": "J-26 · 8800c",
+      "regle": "date relative (« 5 juin ») ; totalCents VERBATIM (#F-1998) — pour F-2052 : 21050 conserve bien que la somme des lignes fasse 19640 (arbitrage documente)",
+      "sourceMaquette": "op-marketplace-orders.html:413"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Sophie Martin)",
+      "valeur": "J-1",
+      "regle": "« Hier » -> offset 1 depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:424"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Karim Belhadj)",
+      "valeur": "J-2",
+      "regle": "« 3 juil. » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:433"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Julie Roussel)",
+      "valeur": "J-7",
+      "regle": "« 28 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:442"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Marc Dubois)",
+      "valeur": "J-15",
+      "regle": "« 20 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:451"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere d Amine Lahlou)",
+      "valeur": "J-17",
+      "regle": "« 18 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:460"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Lea Fontaine)",
+      "valeur": "J-33",
+      "regle": "« 2 juin » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:469"
+    },
+    {
+      "champ": "loyaltyOrder.validatedAt (derniere de Thomas Petit)",
+      "valeur": "J-48",
+      "regle": "« 18 mai » -> offset depuis le jour-maquette op-customers 2026-07-05",
+      "sourceMaquette": "op-customers.html:478"
+    }
+  ]
+}

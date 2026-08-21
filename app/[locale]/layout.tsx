@@ -8,6 +8,12 @@ import '../tokens.css'
 // font, loaded app-wide here so its `.ms` ligature icons ALWAYS render, independent of per-route
 // CSS bundle order (replaces the external <link>/@import that a strict CSP would break).
 import '../gb-foundation/material-symbols.css'
+// Self-hosted BRAND fonts (arbitrage Design 2026-08-19) — Gabarito / Hanken Grotesk /
+// JetBrains Mono / Cairo as local @font-face (public/fonts/). Replaces the css2
+// @import of tokens.css & co: bundled mid-file they were invalid per spec and
+// silently ignored, so production rendered in system fonts. Same architectural
+// precedent as material-symbols.css above.
+import '../brand-fonts.css'
 import { notFound } from 'next/navigation'
 import { NextIntlClientProvider } from 'next-intl'
 import { getMessages, unstable_setRequestLocale } from 'next-intl/server'

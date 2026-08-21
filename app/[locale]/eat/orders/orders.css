@@ -8,8 +8,7 @@
  * already defines `.gb .card`); all other class names are kept verbatim, scoped.
  * JetBrains Mono (the pickup-reference font) is loaded here (page-local).
  * ───────────────────────────────────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
+/* Polices de la charte AUTO-HÉBERGÉES via app/brand-fonts.css (layout racine) — @import css2 retiré (arbitrage Design 2026-08-19 : aucune dépendance Google Fonts). */
 /* ===================== PAGE CONTENT (sits inside nav shell) ===================== */
 .gb-orders{max-width:880px;margin:0 auto;padding:clamp(20px,3vw,32px) clamp(16px,3vw,28px) 64px}
 .gb-orders .orders__head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
