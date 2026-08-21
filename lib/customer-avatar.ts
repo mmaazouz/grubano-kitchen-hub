@@ -5,20 +5,27 @@
 // visit, on the LIST and on the FICHE (the two screens in scope — decision B).
 //
 // CLOSED, CYCLING palette — no infinite hue generation, collisions are fine
-// (the color is a visual memory aid, not an identifier). Every gradient comes
-// from the EXISTING charte: the six avatar gradients already shipped in the
-// product's AV_GRADS (supplier/orders, supplier/livraisons) plus the blue pair
-// of the op-customers CD mock (#2E78F0 is also the product's --op-info token).
-// No grey, homogeneous saturation, white initials carried by the dark stop of
-// each 135deg gradient — the exact pattern the product already uses.
+// (the color is a visual memory aid, not an identifier). The families ORIGINATE
+// from the charte's avatar gradients (the product's AV_GRADS plus the blue pair
+// of the customers mock) and were then adjusted for contrast — see below — so
+// the stops are no longer byte-identical to those sources. No grey, homogeneous
+// saturation, white initials on a 135deg gradient — the pattern the product uses.
 
-// AA (décision CD 18/08, dérivation mécanique encadrée) : les familles orange,
-// ambre, vert et violet sont ASSOMBRIES au minimum nécessaire (réduction de L en
-// HSL, angle de teinte et direction du gradient conservés, pas de 1 point, k−1
-// prouvé insuffisant au rendu réel) pour que le pire pixel réellement situé sous
-// les initiales atteigne ≥ 4,5:1 en liste (14px/800, texte normal WCAG) :
-// orange −19L · ambre −18L · vert −12L · violet −3L. Bleu, rouge et navy sont
-// conformes d'origine et inchangés.
+// CONTRAST ADJUSTMENT (white initials on the gradient disc). Families whose
+// lightest rendered disc pixel fell short of the acceptance threshold in force
+// were darkened. The rule is NORMATIVE for any future darkening of a gradient:
+//   - remove the SAME absolute amount of HSL lightness from BOTH stops
+//     (additive, never a multiplicative factor): this preserves the gradient's
+//     amplitude, whereas a factor would shrink it a little more at every pass;
+//   - never adjust hue or saturation on purpose — any residual H/S drift in the
+//     hex values below is 8-bit RGB quantisation only;
+//   - keep the 135deg direction and the stop order (a family may legitimately
+//     run light-to-dark the other way; do not "fix" it).
+// Contrast is judged on the rendered disc itself, excluding the anti-aliased
+// edge pixels composited with the page background, and each family gets the
+// minimum darkening that passes. The stop values below are therefore the OUTPUT
+// of that rule applied to the previous palette, not hand-picked colours:
+// re-derive them with the same rule rather than editing hexes by eye.
 export const CUSTOMER_AVATAR_GRADIENTS = [
   'linear-gradient(135deg,#D25400,#8F3308)',
   'linear-gradient(135deg,#D5372A,#A8281D)',
