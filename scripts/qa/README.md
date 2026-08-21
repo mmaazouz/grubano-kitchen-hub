@@ -66,6 +66,41 @@ wraps all writes in `try/finally prisma.$disconnect()`.
 
 ---
 
+## 1b. Local QA passes — run the ENVIRONMENT GATE first
+
+When the passes run against the **local** QA MariaDB (user-space instance, see the
+QA fiche), run the gate before anything else. It makes an absent or foreign database
+observable **before** a pass can misread it as a product defect (a stopped base yields
+`POST /api/auth/callback/credentials → 401`, indistinguishable from a bad password):
+
+```bash
+DATABASE_URL='<local QA url>' node scripts/qa/qa-env-gate.mjs
+```
+
+It checks, separately and in order: ① a TCP listener on the URL's port · ② a REAL SQL
+query · ③ the instance identity by `SELECT @@datadir` against the fiche's QA datadir ·
+④ the expected database + `Operator` table · ⑤ the QA operator seed row. Exit codes are
+distinct so the cause is readable: `0` ok · `10` port closed · `11` SQL unreachable ·
+`12` wrong instance · `13` schema missing · `14` seed missing · `2` config error.
+
+**The gate repairs nothing** — it never starts or kills `mysqld`, never seeds — it prints
+the fiche's exact relaunch command and refuses. Decision logic is pure
+(`qa-env-gate-classify.mjs`, tested in `tests/qa-env-gate.test.ts`). Not wired into the
+robot yet: the narrowest wiring point is the top of `main()` in `operator-visual-qa.mjs`,
+before `login()`.
+
+**Machine-specific values and what is overridable (as the code stands):**
+
+| What | Role | Default | Override |
+|---|---|---|---|
+| expected datadir | identity of the QA instance, compared to `SELECT @@datadir` | `C:\Users\Lenovo\grubano-localdb\data` (this QA machine's fiche) | `QA_DB_DATADIR` env var |
+| database URL | host, port, credentials and database name of the checks | none — `DATABASE_URL` is **required** (never printed; only host/port/db name are echoed) | `DATABASE_URL` env var |
+| QA account | seed row that must exist | `qa+op@grubano.test`, role `restaurant`, status `active` | `QA_EMAIL`, `QA_DB_ROLE`, `QA_DB_STATUS` |
+| relaunch command | shown in the `port-closed` message only | the exact command of this QA machine's fiche (MariaDB 12.3, Windows) | **not overridable** — documentary constant in `qa-env-gate-classify.mjs`; the gate **never executes it** |
+
+On another machine, set `DATABASE_URL` and `QA_DB_DATADIR` to that machine's QA instance;
+the relaunch hint will still name this machine's command until the constant is changed.
+
 ## 2. Run the robot
 
 ```bash
