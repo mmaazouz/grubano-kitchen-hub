@@ -20,13 +20,13 @@
 // orange −19L · ambre −18L · vert −12L · violet −3L. Bleu, rouge et navy sont
 // conformes d'origine et inchangés.
 export const CUSTOMER_AVATAR_GRADIENTS = [
-  'linear-gradient(135deg,#DB5700,#973608)',
+  'linear-gradient(135deg,#D25400,#8F3308)',
   'linear-gradient(135deg,#D5372A,#A8281D)',
-  'linear-gradient(135deg,#B47715,#623D05)',
+  'linear-gradient(135deg,#AE7314,#5C3905)',
   'linear-gradient(135deg,#3E5A7D,#1B3A5E)',
-  'linear-gradient(135deg,#318F5B,#146B3B)',
-  'linear-gradient(135deg,#644ACC,#8168DD)',
-  'linear-gradient(135deg,#2E78F0,#1E56B8)',
+  'linear-gradient(135deg,#2F8A58,#136638)',
+  'linear-gradient(135deg,#6248CB,#7F66DD)',
+  'linear-gradient(135deg,#2A75F0,#1D54B4)',
 ] as const
 
 /** Deterministic gradient for one customer — input is LoyaltyCustomer.id ONLY.
