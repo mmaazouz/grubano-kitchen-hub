@@ -42,6 +42,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { diagnoseShot } from './operator-qa-diagnose.mjs'
 import { classifyRenderHealth, domProbe } from './operator-qa-render-health.mjs'
+import { parseNormSteps, normCssFor, normScriptFor } from './operator-qa-normalize.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.join(__dirname, '..', '..')
@@ -49,6 +50,9 @@ const OUT_ROOT = path.join(ROOT, 'design-qa', 'operator')
 const BASE = (process.env.QA_BASE_URL || 'https://app.grubano.com').replace(/\/$/, '')
 const EMAIL = process.env.QA_EMAIL || ''
 const PASSWORD = process.env.QA_PASSWORD || ''
+// Capture-time normalizations (baseline mission): QA_NORM="harness,scale,anim,dates".
+// Throws on unknown steps so a typo cannot silently skip a normalization.
+const NORM = parseNormSteps(process.env.QA_NORM)
 
 /* ── locate an installed Chrome/Edge (no download) — mirrors design-qa.mjs ─────── */
 function findChrome() {
@@ -141,15 +145,31 @@ function diffPng(appBuf, refBuf) {
   }
   const ca = crop(a), cb = crop(b), out = new PNG({ width: w, height: h })
   const nDiff = pixelmatch(ca.data, cb.data, out.data, w, h, { threshold: 0.1 })
+  // Localisation (baseline mission): bounding box of raw differing pixels, and
+  // the fraction of the REFERENCE actually compared — the diffPercent must
+  // never travel without it (silent min-crop means heterogeneous denominators).
+  let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const i = (y * w + x) * 4
+      if (ca.data[i] !== cb.data[i] || ca.data[i + 1] !== cb.data[i + 1] || ca.data[i + 2] !== cb.data[i + 2]) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x
+        if (y < minY) minY = y; if (y > maxY) maxY = y
+      }
+    }
+  }
   return {
     diffBuf: PNG.sync.write(out),
     pct: +((100 * nDiff) / (w * h)).toFixed(2),
     appSize: `${a.width}x${a.height}`, refSize: `${b.width}x${b.height}`, compared: `${w}x${h}`,
+    comparedFraction: +((100 * h) / b.height).toFixed(1),
+    ignoredRefPx: Math.max(0, b.height - h),
+    diffBox: maxX < 0 ? null : `x[${minX}..${maxX}] y[${minY}..${maxY}]`,
   }
 }
 
 /* ── screenshot helper (full page at the given viewport) ──────────────────────── */
-async function shoot(browser, target, vp, sessionCookie) {
+async function shoot(browser, target, vp, sessionCookie, side = 'app') {
   const page = await browser.newPage()
   try {
     await page.setViewport({ width: vp.w, height: vp.h, deviceScaleFactor: 1 })
@@ -204,6 +224,20 @@ async function shoot(browser, target, vp, sessionCookie) {
     const resp = await page.goto(target, { waitUntil: 'networkidle0', timeout: 30000 }).catch(() => null)
     try { await page.evaluate(() => document.fonts && document.fonts.ready) } catch {}
     await new Promise((r) => setTimeout(r, 600)) // settle fonts / late paints
+    // Capture-time normalizations (baseline mission) — applied AFTER settle,
+    // BEFORE probe/screenshot. Non-destructive: injection only, the reference
+    // files and the product are never modified. Scale first (it reflows the
+    // mock), then CSS (harness/anim/dates masks).
+    let scaleApplied = null
+    if (NORM.length) {
+      const script = normScriptFor(NORM, side)
+      if (script) {
+        try { scaleApplied = await page.evaluate(`(() => (${script}))()`) } catch { scaleApplied = false }
+      }
+      const css = normCssFor(NORM, side)
+      if (css) { try { await page.addStyleTag({ content: css }) } catch { /* keep capture */ } }
+      await new Promise((r) => setTimeout(r, 200))
+    }
     // DOM ground-truth probe (mission CK) — runs EVEN when goto timed out
     // (resp === null): the capture still happens, so its health must still be
     // judged. A probe failure yields null → health 'unknown', never a crash.
@@ -211,7 +245,7 @@ async function shoot(browser, target, vp, sessionCookie) {
     try { probe = await page.evaluate(domProbe) } catch { /* probe = null */ }
     const finalUrl = page.url()
     const buf = await page.screenshot({ type: 'png', fullPage: true })
-    return { buf, finalUrl, status: resp ? resp.status() : null, failures, probe, pageErrors }
+    return { buf, finalUrl, status: resp ? resp.status() : null, failures, probe, pageErrors, scaleApplied }
   } finally {
     await page.close()
   }
@@ -256,7 +290,7 @@ async function main() {
 
         // App shot (authenticated).
         const { buf: appBuf, finalUrl, status, failures, probe, pageErrors } =
-          await shoot(browser, BASE + screen.url, vp, sessionCookie)
+          await shoot(browser, BASE + screen.url, vp, sessionCookie, 'app')
         fs.writeFileSync(path.join(dir, 'app.png'), appBuf)
 
         // Guard (mission CD): classify the navigation outcome — unauthenticated /
@@ -288,12 +322,14 @@ async function main() {
           finalUrl, httpStatus: status, authDiagnosis: verdict.kind,
           renderHealth: appHealth.health, pageErrors, skipReason: null,
         }
+        if (NORM.length) rec.normApplied = NORM.join(',')
         if (appHealth.errors.length) rec.renderErrors = appHealth.errors.slice(0, 20)
         if (refUrl) {
           // Ref shot (no cookie needed for a local file). Same health guard: the
           // committed CD mocks hot-link Google Fonts — a ref rendered in fallback
           // glyphs is as non-comparable as an unstyled app page.
-          const refShot = await shoot(browser, refUrl, vp, null)
+          const refShot = await shoot(browser, refUrl, vp, null, 'ref')
+          if (NORM.includes('scale')) rec.refScaleApplied = refShot.scaleApplied === true
           fs.writeFileSync(path.join(dir, 'ref.png'), refShot.buf)
           const refHealth = classifyRenderHealth({
             pageOrigin: null, failures: refShot.failures, probe: refShot.probe,
@@ -319,11 +355,23 @@ async function main() {
             fs.writeFileSync(path.join(dir, 'diff.png'), d.diffBuf)
             rec.diffPercent = d.pct
             rec.appSize = d.appSize; rec.refSize = d.refSize; rec.compared = d.compared
+            // The diffPercent never travels alone (baseline mission): fraction
+            // of the REFERENCE actually compared, ignored ref pixels, and the
+            // bounding box of the differing zone.
+            rec.comparedFraction = d.comparedFraction
+            rec.ignoredRefPx = d.ignoredRefPx
+            rec.diffBox = d.diffBox
           } else {
             // A skipped case must not leave a STALE diff.png from a previous
             // run sitting next to fresh app/ref captures (adversarial review).
             try { fs.rmSync(path.join(dir, 'diff.png'), { force: true }) } catch {}
           }
+        }
+        if (!refUrl) {
+          // Capture-only cases also record their dimensions (auditability gap
+          // found in adversarial review — appSize used to exist only when a
+          // diff ran).
+          try { const p = PNG.sync.read(appBuf); rec.appSize = `${p.width}x${p.height}` } catch {}
         }
         rec.dir = path.relative(ROOT, dir).replace(/\\/g, '/')
         cases.push(rec); grand.push(rec)
@@ -343,16 +391,21 @@ async function main() {
 
   // Top-level resume + table.
   fs.mkdirSync(OUT_ROOT, { recursive: true })
-  fs.writeFileSync(path.join(OUT_ROOT, 'resume.json'), JSON.stringify({ base: BASE, generatedBy: 'operator-visual-qa.mjs', cases: grand }, null, 2))
-  console.log(`\n✓ done — artifacts under design-qa/operator/ (app.png · ref.png · diff.png · resume.json)`)
+  fs.writeFileSync(path.join(OUT_ROOT, 'resume.json'), JSON.stringify({
+    base: BASE, generatedBy: 'operator-visual-qa.mjs',
+    normalizations: NORM, cases: grand,
+  }, null, 2))
+  console.log(`\n✓ done — artifacts under design-qa/operator/ (app.png · ref.png · diff.png · resume.json)${NORM.length ? ` · normalisations: ${NORM.join(',')}` : ''}`)
   console.table(grand.map((g) => ({
     screen: g.screen, viewport: g.viewport, hasRef: g.hasRef,
     // A diffPercent is only shown when it IS a verdict; degraded is impossible
-    // to miss; skipped rows say why instead of a number.
+    // to miss; skipped rows say why instead of a number. The compared fraction
+    // ALWAYS accompanies the number (silent-crop rule).
     'diff%': g.diffPercent === null
       ? (g.skipReason ?? (g.hasRef ? '—' : ''))
       : (g.renderHealth === 'degraded' || g.refRenderHealth === 'degraded'
         ? `${g.diffPercent} ⚠ degraded` : g.diffPercent),
+    'ref cmp%': g.comparedFraction ?? '',
     render: g.renderHealth, ref: g.refRenderHealth ?? '', pageErr: g.pageErrors,
   })))
 }
