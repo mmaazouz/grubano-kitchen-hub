@@ -4453,6 +4453,15 @@
     "brandsErrorTitle": "Impossible de charger vos marques"
   },
   "business": {
+    "shell": {
+      "exit": "Quitter",
+      "stepsAria": "Étapes du parcours",
+      "contact": "Nous contacter",
+      "stepAccount": "Compte",
+      "stepEstablishment": "Établissement",
+      "stepVerification": "Vérification",
+      "stepGoLive": "Mise en ligne"
+    },
     "auth": {
       "brandPartners": "Partenaires",
       "verifiedSpace": "Espace vérifié",
@@ -4632,7 +4641,17 @@
       "finalSubtitle": "Rejoignez les partenaires Grubano en quelques minutes.",
       "footerTagline": "La plateforme des partenaires de la restauration.",
       "footerLegal": "Mentions légales",
-      "footerRights": "© {year} Grubano. Tous droits réservés."
+      "footerRights": "© {year} Grubano. Tous droits réservés.",
+      "ptChip1Title": "Un seul outil",
+      "ptChip1Sub": "au lieu de cinq",
+      "ptChip2Title": "Vos clients",
+      "ptChip2Sub": "restent les vôtres",
+      "ptBand1Value": "3 modes",
+      "ptBand1Label": "livraison · click & collect · sur place",
+      "ptBand2Value": "15 min",
+      "ptBand2Label": "pour créer votre espace",
+      "ptBand3Value": "0 €",
+      "ptBand3Label": "à l’inscription"
     },
     "logistics": {
       "registerTitle": "Devenir partenaire logistique",

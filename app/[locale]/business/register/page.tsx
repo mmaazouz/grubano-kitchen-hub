@@ -2,10 +2,8 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { Mail, User as UserIcon, CheckCircle2, Loader2 } from 'lucide-react'
 import { Link } from '@/navigation'
-import { Card, Button, Input } from '@/components/design-system'
-import PartnerChrome from '@/components/business/PartnerChrome'
+import PartnerShell from '@/components/business/PartnerShell'
 
 // ── /business/register — restaurateur INSCRIPTION (S2 login-unification) ──────
 // Self-serve sign-up only. The LOGIN is unified at /auth/magic for every partner
@@ -15,9 +13,17 @@ import PartnerChrome from '@/components/business/PartnerChrome'
 // PASSWORDLESS (P6): no password field — the account is created with password=null
 // and signs in by magic-link (/auth/magic). Only name + e-mail + RGPD consent are
 // collected; the e-mail verification flow + magic-link login are unchanged.
+//
+// PRÉSENTATION (PartnerShell, mode parcours — référence partner-shell.html) : frise
+// « Compte » en cours, « Quitter » → /business, colonne 560, champs .fld/.inp,
+// erreur .note--error, confirmation .note--ok, bouton .btn. Le pitch latéral
+// (heroTitle/bullets) n'existe pas dans la colonne formulaire de la référence :
+// retiré de cette page (clés i18n conservées). Validation, états, honeypot,
+// formStartedAt et l'appel API sont byte-identiques.
 
 export default function PartnerRegisterScreen() {
   const t = useTranslations('business.auth')
+  const tShell = useTranslations('business.shell')
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -55,87 +61,102 @@ export default function PartnerRegisterScreen() {
     }
   }
 
+  const steps = [
+    { label: tShell('stepAccount'),       state: 'now'  as const },
+    { label: tShell('stepEstablishment'), state: 'todo' as const },
+    { label: tShell('stepVerification'),  state: 'todo' as const },
+    { label: tShell('stepGoLive'),        state: 'todo' as const },
+  ]
+
   // ── Confirmation screen ──────────────────────────────────────────────────
   if (registeredMessage) {
     return (
-      <Layout>
-        <Card elevation="premium" padding="lg" className="w-full max-w-md text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-grubano-success/15">
-            <CheckCircle2 size={32} className="text-grubano-success" />
+      <PartnerShell mode="parcours" exitHref="/business" steps={steps}>
+        <div className="card card--raised card__pad">
+          <div className="note note--ok" role="status">
+            <span className="ms" aria-hidden="true">check_circle</span>
+            <span><b>{t('confirmationTitle')}</b> {registeredMessage}</span>
           </div>
-          <h2 className="font-display text-2xl font-extrabold text-grubano-ink">{t('confirmationTitle')}</h2>
-          <p className="mt-2 text-grubano-sm leading-relaxed text-grubano-ink-muted">{registeredMessage}</p>
-          <Link href="/auth/magic" className="mt-6 block">
-            <Button variant="secondary" size="md" fullWidth>{t('backToLogin')}</Button>
+          <Link href="/auth/magic" className="btn btn--md btn--secondary btn--block" style={{ marginTop: 'var(--pt-4)' }}>
+            {t('backToLogin')}
           </Link>
-        </Card>
-      </Layout>
+        </div>
+      </PartnerShell>
     )
   }
 
   // ── Register card ─────────────────────────────────────────────────────────
   return (
-    <Layout>
-      <Card elevation="premium" padding="lg" className="w-full max-w-md">
-        <h2 className="mb-1 font-display text-xl font-bold text-grubano-ink">{t('tabRegister')}</h2>
-        <p className="mb-5 text-grubano-sm text-grubano-ink-muted">
+    <PartnerShell mode="parcours" exitHref="/business" steps={steps}>
+      <div className="card card--raised card__pad">
+        <h1 className="t-h2">{t('tabRegister')}</h1>
+        <p className="t-small" style={{ margin: '6px 0 var(--pt-5)' }}>
           {t('loginPrompt')}{' '}
-          <Link href="/auth/magic" className="font-semibold text-grubano-primary hover:underline">{t('signIn')}</Link>
+          <Link href="/auth/magic" style={{ fontWeight: 700, color: 'var(--pt-zest-600)' }}>{t('signIn')}</Link>
         </p>
 
         {error && (
-          <div className="mb-4 rounded-grubano-md border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-grubano-sm text-grubano-danger">
-            {error}
+          <div className="note note--error" role="alert" style={{ marginBottom: 'var(--pt-4)' }}>
+            <span className="ms" aria-hidden="true">error</span>
+            <span>{error}</span>
           </div>
         )}
 
-        <form onSubmit={handleRegister} className="space-y-4" noValidate>
-          <Input
-            label={t('nameLabel')}
-            autoComplete="name"
-            required
-            minLength={2}
-            maxLength={80}
-            leftIcon={<UserIcon size={16} />}
-            placeholder={t('namePlaceholder')}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Input
-            label={t('emailLabel')}
-            type="email"
-            autoComplete="email"
-            required
-            leftIcon={<Mail size={16} />}
-            placeholder={t('emailPlaceholder')}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          {/* Consent — RGPD: never pre-checked */}
-          <label className="flex cursor-pointer items-start gap-2.5 rounded-grubano-md border border-grubano-border bg-grubano-surface-muted p-3">
+        <form onSubmit={handleRegister} noValidate>
+          <div className="fld">
+            <label className="t-label" htmlFor="business-register-name">{t('nameLabel')}</label>
             <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-grubano-primary"
+              id="business-register-name"
+              className="inp"
+              type="text"
+              autoComplete="name"
               required
+              minLength={2}
+              maxLength={80}
+              placeholder={t('namePlaceholder')}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
-            <span className="text-xs leading-relaxed text-grubano-ink-muted">
-              {t.rich('consentText', {
-                privacy: (chunks) => (
-                  <Link
-                    href="/legal/confidentialite"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="font-semibold text-grubano-primary hover:underline"
-                  >
-                    {chunks}
-                  </Link>
-                ),
-              })}
-            </span>
-          </label>
+          </div>
+          <div className="fld">
+            <label className="t-label" htmlFor="business-register-email">{t('emailLabel')}</label>
+            <input
+              id="business-register-email"
+              className="inp"
+              type="email"
+              autoComplete="email"
+              required
+              placeholder={t('emailPlaceholder')}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          {/* Consent — RGPD: never pre-checked */}
+          <div className="fld">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                required
+              />
+              <span className="t-help">
+                {t.rich('consentText', {
+                  privacy: (chunks) => (
+                    <Link
+                      href="/legal/confidentialite"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ fontWeight: 700, color: 'var(--pt-zest-600)' }}
+                    >
+                      {chunks}
+                    </Link>
+                  ),
+                })}
+              </span>
+            </label>
+          </div>
 
           {/* Honeypot — visible only to bots that read the DOM. */}
           <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', height: 0, overflow: 'hidden' }}>
@@ -151,42 +172,13 @@ export default function PartnerRegisterScreen() {
             />
           </div>
 
-          <Button type="submit" variant="primary" size="lg" fullWidth loading={loading} leftIcon={loading ? <Loader2 className="animate-spin" size={16} /> : undefined}>
+          <button type="submit" className="btn btn--lg btn--primary btn--block" disabled={loading} aria-busy={loading} style={{ marginTop: 'var(--pt-4)' }}>
+            {loading && <span className="ms" aria-hidden="true">progress_activity</span>}
             {t('createAccount')}
-          </Button>
-          <p className="text-center text-[11px] leading-relaxed text-grubano-ink-faint">{t('legalNote')}</p>
+          </button>
+          <p className="t-help" style={{ textAlign: 'center', marginTop: 'var(--pt-3)' }}>{t('legalNote')}</p>
         </form>
-      </Card>
-    </Layout>
-  )
-}
-
-// ── Layout — shared partner chrome (P4 unification, Agent 20) ───────────────
-// Delegates the header/background to <PartnerChrome> (same chrome as the landing /
-// /business/start). The register-specific 2-column pitch (left) + form (right) is
-// PRESERVED as PartnerChrome's children — only the duplicated inline chrome is gone.
-function Layout({ children }: { children: React.ReactNode }) {
-  const t = useTranslations('business.auth')
-  return (
-    <PartnerChrome>
-      <div className="flex w-full flex-col md:flex-row md:items-stretch md:gap-12">
-        {/* Pitch column (hidden on small screens — the form is the priority on mobile) */}
-        <section className="hidden flex-1 flex-col justify-center md:flex">
-          <h1 className="font-display text-3xl font-extrabold leading-tight tracking-tight text-grubano-ink">{t('heroTitle')}</h1>
-          <p className="mt-3 max-w-md text-grubano-sm leading-relaxed text-grubano-ink-muted">{t('heroSubtitle')}</p>
-          <ul className="mt-6 space-y-3 text-grubano-sm">
-            {(['heroBullet1', 'heroBullet2', 'heroBullet3'] as const).map((k) => (
-              <li key={k} className="flex items-start gap-2.5">
-                <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-grubano-primary" />
-                <span className="text-grubano-ink-muted">{t(k)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Register card column */}
-        <section className="mt-2 flex w-full flex-1 justify-center md:mt-0 md:justify-end">{children}</section>
       </div>
-    </PartnerChrome>
+    </PartnerShell>
   )
 }

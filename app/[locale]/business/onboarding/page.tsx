@@ -16,7 +16,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react'
 import { Card, Button, Input } from '@/components/design-system'
-import PartnerChrome from '@/components/business/PartnerChrome'
+import PartnerShell from '@/components/business/PartnerShell'
 
 type Step = 'brand' | 'restaurant' | 'done'
 
@@ -592,9 +592,13 @@ function FulfilmentToggle({
   )
 }
 
-// ── Layout — shared partner chrome (P4 unification, Agent 20) ───────────────
-// Delegates the header/background to <PartnerChrome> (same chrome as the landing).
-// The onboarding gate, resume logic, steps and states are all unchanged.
+// ── Layout — PartnerShell (mode parcours), fondations communes SEULEMENT ──────
+// Chrome / canvas / typographie / conteneur du PartnerShell (référence
+// partner-shell.html), « Quitter » → /business. AUCUNE frise : la référence
+// Design ne couvre pas cet écran (checklist 6 crans « à vous / à Grubano », R3/R8)
+// et une frise d'étapes métier sans référence serait une invention — décision
+// Design à obtenir. Le contenu (gate, reprise, étapes brand→restaurant, Card/
+// Button/Input du DS, états, appels API) est INCHANGÉ.
 function Layout({ children }: { children: React.ReactNode }) {
-  return <PartnerChrome>{children}</PartnerChrome>
+  return <PartnerShell mode="parcours" exitHref="/business">{children}</PartnerShell>
 }

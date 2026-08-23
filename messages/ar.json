@@ -4453,6 +4453,15 @@
     "brandsErrorTitle": "تعذّر تحميل علاماتك التجارية"
   },
   "business": {
+    "shell": {
+      "exit": "خروج",
+      "stepsAria": "خطوات المسار",
+      "contact": "اتصل بنا",
+      "stepAccount": "الحساب",
+      "stepEstablishment": "المنشأة",
+      "stepVerification": "التحقق",
+      "stepGoLive": "النشر"
+    },
     "auth": {
       "brandPartners": "الشركاء",
       "verifiedSpace": "فضاء موثّق",
@@ -4632,7 +4641,17 @@
       "finalSubtitle": "انضم إلى شركاء Grubano في دقائق.",
       "footerTagline": "منصة شركاء قطاع المطاعم.",
       "footerLegal": "إشعار قانوني",
-      "footerRights": "© {year} Grubano. جميع الحقوق محفوظة."
+      "footerRights": "© {year} Grubano. جميع الحقوق محفوظة.",
+      "ptChip1Title": "أداة واحدة",
+      "ptChip1Sub": "بدلاً من خمس",
+      "ptChip2Title": "عملاؤكم",
+      "ptChip2Sub": "يبقون لكم",
+      "ptBand1Value": "3 أنماط",
+      "ptBand1Label": "توصيل · استلام · في المطعم",
+      "ptBand2Value": "15 دقيقة",
+      "ptBand2Label": "لإنشاء مساحتكم",
+      "ptBand3Value": "0 €",
+      "ptBand3Label": "عند التسجيل"
     },
     "logistics": {
       "registerTitle": "كن شريكًا لوجستيًا",
