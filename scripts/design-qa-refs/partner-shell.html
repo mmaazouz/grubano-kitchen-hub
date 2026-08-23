@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grubano — PartnerShell (référence maîtresse)</title>
+<link href="fonts/op-fonts.css" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   PARTNERSHELL — TOKENS
+   Contexte PUBLIC / PARTENAIRE. Système visuel Grubano commun,
+   chrome propre au parcours découverte → inscription → activation.
+   ⚠ Ce n'est PAS OperatorShell : ni sidebar navy, ni nav 12 entrées,
+   ni sélecteur d'établissement, ni mobilier d'exploitation.
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  /* Marque — identiques au système récent */
+  --pt-zest:#FF6A1F; --pt-zest-600:#F2570E; --pt-zest-bg:#FFF1E7; --pt-zest-bd:#FBD9C2;
+  --pt-basil:#2BA45C; --pt-basil-600:#1E8A4A; --pt-basil-bg:#E8F6EE; --pt-basil-bd:#C9E9D6;
+  --pt-ink:#0F2742; --pt-ink-2:#1B3A5E;
+  --pt-sunrise:linear-gradient(140deg,#FFB020,#FF6A1F 55%,#F2570E);
+
+  /* Surfaces — canvas chaud (public), distinct du canvas froid opérateur */
+  --pt-bg:#FBF8F3; --pt-surface:#FFFFFF; --pt-surface-2:#F5EFE6; --pt-surface-3:#FAF6F0;
+
+  /* Texte — aucun gris sous 4,5:1 ; #9AA3AD et #73869B interdits */
+  --pt-text:#0F2742; --pt-muted:#5A6672; --pt-muted-2:#6B7682;
+
+  /* Bordures */
+  --pt-border:#ECE5D8; --pt-border-2:#E0D6C4; --pt-border-3:#D3C7B2;
+
+  /* États */
+  --pt-info:#2E78F0; --pt-info-bg:#E7F0FE; --pt-info-bd:#C7DBFB;
+  --pt-warn:#B9740A; --pt-warn-bg:#FFF4E0; --pt-warn-bd:#F3DBA6;
+  --pt-error:#D5372A; --pt-error-bg:#FCEAE7; --pt-error-bd:#F5C9C0;
+  --pt-ok:#1E8A4A; --pt-ok-bg:#E8F6EE; --pt-ok-bd:#C9E9D6;
+
+  /* Typographie */
+  --pt-display:'Gabarito',system-ui,sans-serif;   /* titres, chiffres d'accent */
+  --pt-ui:'Hanken Grotesk',system-ui,sans-serif;  /* corps, labels, boutons */
+  --pt-mono:'JetBrains Mono',ui-monospace,monospace; /* SIREN, montants, codes */
+  /* RTL : Cairo remplace --pt-ui et --pt-display via [dir="rtl"] */
+
+  /* Rayons — plus généreux qu'en opérateur : contexte accueillant */
+  --pt-r-sm:8px; --pt-r-md:12px; --pt-r-lg:18px; --pt-r-xl:26px; --pt-r-pill:999px;
+
+  /* Ombres — douces, chaudes */
+  --pt-sh-1:0 1px 2px rgba(15,39,66,.04), 0 2px 6px rgba(15,39,66,.05);
+  --pt-sh-2:0 2px 8px rgba(15,39,66,.06), 0 12px 30px -14px rgba(15,39,66,.14);
+  --pt-focus:0 0 0 3px rgba(255,106,31,.20);
+
+  /* Espacements — échelle 4pt */
+  --pt-1:4px; --pt-2:8px; --pt-3:12px; --pt-4:16px; --pt-5:24px;
+  --pt-6:32px; --pt-7:48px; --pt-8:64px; --pt-9:80px;
+
+  /* Rythme */
+  --pt-content:1080px;   /* contenu éditorial / landing */
+  --pt-form:560px;       /* colonne de formulaire (start/register) */
+  --pt-chrome-h:64px;    /* hauteur du header */
+}
+[dir="rtl"]{ --pt-display:'Cairo',system-ui,sans-serif; --pt-ui:'Cairo',system-ui,sans-serif; }
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:#E7E1D8;color:var(--pt-text);font-family:var(--pt-ui);-webkit-font-smoothing:antialiased;line-height:1.5}
+.ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga'}
+a{text-decoration:none;color:inherit}
+button,input,select,textarea{font-family:inherit}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:none;box-shadow:var(--pt-focus)}
+.mono{font-family:var(--pt-mono);direction:ltr;unicode-bidi:isolate}
+.flip-rtl{display:inline-block}
+[dir="rtl"] .flip-rtl{transform:scaleX(-1)}
+h1,h2,h3,h4{margin:0;font-family:var(--pt-display);letter-spacing:-.02em;line-height:1.12}
+p{margin:0}
+
+/* Barre de démonstration — retirée à l'intégration */
+.demo{position:sticky;top:0;z-index:80;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;background:#fff;border-bottom:1px solid #E3E7EE;padding:9px 12px}
+.demo group{display:flex;gap:2px;align-items:center;background:#F2F4F7;border-radius:999px;padding:3px}
+.demo button{border:none;background:none;cursor:pointer;border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;color:#5B6472}
+.demo button.on{background:#0F2742;color:#fff}
+.demo .lbl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#8992A3;align-self:center;margin-inline-end:2px}
+
+/* ═══════════════════════════════════════════════════════════════
+   A. CHROME
+   ═══════════════════════════════════════════════════════════════ */
+.pt-wrap{width:100%;container-type:inline-size;container-name:pt;margin:0 auto;transition:max-width .25s ease}
+.pt-wrap.force-mobile{max-width:428px;box-shadow:0 0 0 1px #C7CEDA,0 30px 60px -30px rgba(15,39,66,.4)}
+.pt-shell{min-height:900px;background:var(--pt-bg);display:flex;flex-direction:column}
+
+/* Header — fin, clair, aucune sidebar */
+.pt-head{position:sticky;top:0;z-index:40;height:var(--pt-chrome-h);flex-shrink:0;background:rgba(251,248,243,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--pt-border)}
+.pt-head__in{max-width:var(--pt-content);height:100%;margin:0 auto;padding:0 var(--pt-5);display:flex;align-items:center;gap:var(--pt-4)}
+.pt-brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.pt-brand img{height:28px;width:auto}
+.pt-brand b{font-family:var(--pt-display);font-weight:800;font-size:17.5px;letter-spacing:-.01em}
+.pt-brand .ctx{font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--pt-zest-600);background:var(--pt-zest-bg);border:1px solid var(--pt-zest-bd);border-radius:6px;padding:3px 7px}
+/* Navigation partenaire — 3 entrées maximum. En mode "parcours", elle disparaît. */
+.pt-nav{margin-inline-start:auto;display:flex;align-items:center;gap:var(--pt-5)}
+.pt-nav a{font-size:13.5px;font-weight:600;color:var(--pt-muted)}
+.pt-nav a:hover{color:var(--pt-text)}
+.pt-nav__cta{display:inline-flex;align-items:center;gap:6px;background:var(--pt-ink);color:#fff;border-radius:var(--pt-r-pill);padding:9px 17px;font-size:13.5px;font-weight:700}
+.pt-nav__cta:hover{background:var(--pt-ink-2)}
+.pt-head__exit{margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--pt-muted)}
+.pt-head__exit .ms{font-size:18px}
+
+/* Deux modes de chrome, pilotés par data-mode sur .pt-shell */
+.pt-shell[data-mode="parcours"] .pt-nav{display:none}
+.pt-shell[data-mode="vitrine"] .pt-head__exit{display:none}
+.pt-shell[data-mode="vitrine"] .pt-steps{display:none}
+
+/* Frise d'étapes — visible uniquement en mode parcours */
+.pt-steps{background:var(--pt-surface);border-bottom:1px solid var(--pt-border)}
+.pt-steps__in{max-width:var(--pt-form);margin:0 auto;padding:var(--pt-4) var(--pt-5);display:flex;align-items:center;gap:0}
+.pt-step{display:flex;align-items:center;gap:9px;flex:1}
+.pt-step:last-child{flex:0}
+.pt-step__d{width:26px;height:26px;border-radius:50%;background:var(--pt-surface);border:2px solid var(--pt-border-3);color:var(--pt-muted-2);display:flex;align-items:center;justify-content:center;font-family:var(--pt-display);font-weight:800;font-size:12px;flex-shrink:0}
+.pt-step__l{font-size:12px;font-weight:700;color:var(--pt-muted-2);white-space:nowrap}
+.pt-step__bar{flex:1;height:2px;border-radius:2px;background:var(--pt-border-3);min-width:12px}
+.pt-step.is-done .pt-step__d{background:var(--pt-basil);border-color:var(--pt-basil);color:#fff}
+.pt-step.is-done .pt-step__l,.pt-step.is-now .pt-step__l{color:var(--pt-text)}
+.pt-step.is-now .pt-step__d{background:var(--pt-sunrise);border-color:transparent;color:#fff}
+
+/* Corps + footer */
+.pt-body{flex:1;padding:var(--pt-7) 0 var(--pt-8)}
+.pt-body>section{max-width:var(--pt-content);margin:0 auto;padding:0 var(--pt-5)}
+.pt-body[data-width="form"]>section{max-width:var(--pt-form)}
+.pt-foot{border-top:1px solid var(--pt-border);background:var(--pt-surface-3)}
+.pt-foot__in{max-width:var(--pt-content);margin:0 auto;padding:var(--pt-5);display:flex;align-items:center;gap:var(--pt-4);flex-wrap:wrap}
+.pt-foot__b{display:flex;align-items:center;gap:8px}
+.pt-foot__b img{height:22px}
+.pt-foot__b b{font-family:var(--pt-display);font-weight:800;font-size:14.5px}
+.pt-foot__links{margin-inline-start:auto;display:flex;gap:var(--pt-4);flex-wrap:wrap}
+.pt-foot__links a{font-size:12.5px;font-weight:600;color:var(--pt-muted)}
+.pt-foot__c{width:100%;font-size:11.5px;color:var(--pt-muted-2)}
+
+/* ═══════════════════════════════════════════════════════════════
+   B. TYPOGRAPHIE — échelle du contexte partenaire
+   ═══════════════════════════════════════════════════════════════ */
+.t-hero{font-family:var(--pt-display);font-weight:800;font-size:48px;line-height:1.06;letter-spacing:-.03em}
+.t-h1{font-family:var(--pt-display);font-weight:800;font-size:34px;line-height:1.12;letter-spacing:-.025em}
+.t-h2{font-family:var(--pt-display);font-weight:800;font-size:24px;line-height:1.18;letter-spacing:-.02em}
+.t-h3{font-family:var(--pt-display);font-weight:800;font-size:17px;line-height:1.25;letter-spacing:-.01em}
+.t-lead{font-size:17.5px;line-height:1.55;color:var(--pt-muted)}
+.t-body{font-size:15px;line-height:1.6}
+.t-small{font-size:13.5px;line-height:1.55;color:var(--pt-muted)}
+.t-label{font-size:12.5px;font-weight:700;line-height:1.4}
+.t-help{font-size:12px;line-height:1.5;color:var(--pt-muted-2)}
+.t-eyebrow{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--pt-zest-600)}
+@container pt (max-width:720px){
+  .t-hero{font-size:33px}.t-h1{font-size:26px}.t-h2{font-size:20px}.t-lead{font-size:15.5px}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   D. COMPOSANTS FONDAMENTAUX
+   ═══════════════════════════════════════════════════════════════ */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--pt-r-pill);font-family:var(--pt-ui);font-weight:700;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn .ms{font-size:19px}
+.btn--lg{padding:14px 26px;font-size:15px}
+.btn--md{padding:11px 20px;font-size:13.5px}
+.btn--primary{background:var(--pt-sunrise);color:#fff;font-weight:800;box-shadow:0 8px 22px -10px rgba(242,87,14,.55)}
+.btn--secondary{background:var(--pt-surface);color:var(--pt-text);border-color:var(--pt-border-2)}
+.btn--secondary:hover{border-color:var(--pt-border-3)}
+.btn--ghost{background:none;color:var(--pt-muted);padding-inline:6px}
+.btn--ghost:hover{color:var(--pt-text)}
+.btn[disabled]{opacity:.5;cursor:not-allowed;box-shadow:none}
+.btn--block{width:100%}
+
+.fld{margin-bottom:var(--pt-4)}
+.fld:last-child{margin-bottom:0}
+.fld label{display:block;margin-bottom:6px}
+.fld label .opt{color:var(--pt-muted-2);font-weight:600}
+.inp{width:100%;border:1px solid var(--pt-border-2);border-radius:var(--pt-r-md);background:var(--pt-surface);padding:12px 14px;font-size:15px;color:var(--pt-text)}
+.inp::placeholder{color:var(--pt-muted-2)}
+.inp:focus{outline:none;border-color:var(--pt-zest);box-shadow:var(--pt-focus)}
+.inp.is-error{border-color:var(--pt-error);background:#FFFCFB}
+.inp.mono{font-family:var(--pt-mono)}
+textarea.inp{min-height:92px;resize:vertical;line-height:1.55}
+.fld__help{margin-top:6px;display:flex;align-items:flex-start;gap:5px}
+.fld__help .ms{font-size:15px;color:var(--pt-muted-2);flex-shrink:0}
+.fld__err{margin-top:6px;display:flex;align-items:flex-start;gap:5px;font-size:12.5px;font-weight:600;color:var(--pt-error)}
+.fld__err .ms{font-size:15px;flex-shrink:0}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--pt-3)}
+
+.card{background:var(--pt-surface);border:1px solid var(--pt-border);border-radius:var(--pt-r-lg);box-shadow:var(--pt-sh-1)}
+.card--raised{box-shadow:var(--pt-sh-2);border-radius:var(--pt-r-xl)}
+.card__pad{padding:var(--pt-5)}
+.card__hd{padding:var(--pt-5) var(--pt-5) 0}
+.card__ft{padding:var(--pt-4) var(--pt-5);border-top:1px solid var(--pt-border);background:var(--pt-surface-3);border-radius:0 0 var(--pt-r-lg) var(--pt-r-lg)}
+
+.note{display:flex;align-items:flex-start;gap:10px;border-radius:var(--pt-r-md);padding:13px 16px;font-size:13.5px;line-height:1.55;border:1px solid}
+.note .ms{font-size:19px;flex-shrink:0}
+.note b{font-weight:800}
+.note--info{background:var(--pt-info-bg);border-color:var(--pt-info-bd)}
+.note--info .ms{color:var(--pt-info)}
+.note--ok{background:var(--pt-ok-bg);border-color:var(--pt-ok-bd)}
+.note--ok .ms{color:var(--pt-ok)}
+.note--warn{background:var(--pt-warn-bg);border-color:var(--pt-warn-bd)}
+.note--warn .ms{color:var(--pt-warn)}
+.note--error{background:var(--pt-error-bg);border-color:var(--pt-error-bd)}
+.note--error .ms{color:var(--pt-error)}
+
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;line-height:15px;border-radius:var(--pt-r-pill);padding:3px 11px}
+.pill i{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.pill--ok{background:var(--pt-ok-bg);color:var(--pt-ok)}
+.pill--wait{background:var(--pt-warn-bg);color:var(--pt-warn)}
+.pill--todo{background:var(--pt-surface-2);color:var(--pt-muted)}
+
+@keyframes pt-sk{100%{background-position:-200% 0}}
+.sk{display:block;border-radius:8px;background:linear-gradient(90deg,var(--pt-border) 25%,var(--pt-surface-2) 37%,var(--pt-border) 63%);background-size:200% 100%;background-position:200% 0;animation:pt-sk 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){ .sk{animation:none} }
+.empty{text-align:center;padding:var(--pt-8) var(--pt-5)}
+.empty .ms{font-size:44px;color:var(--pt-muted-2)}
+.empty b{display:block;font-family:var(--pt-display);font-weight:800;font-size:18px;margin-top:var(--pt-3)}
+.empty p{margin-top:6px;max-width:380px;margin-inline:auto}
+
+/* ═══════════════════════════════════════════════════════════════
+   /fr/business — ÉCRAN DE DÉMONSTRATION (shell habité, mode vitrine)
+   ═══════════════════════════════════════════════════════════════ */
+.hero{display:grid;grid-template-columns:1.08fr .92fr;gap:var(--pt-7);align-items:center;margin-bottom:var(--pt-9)}
+.hero__cta{display:flex;gap:var(--pt-3);flex-wrap:wrap;margin-top:var(--pt-5)}
+.hero__note{display:flex;align-items:center;gap:8px;margin-top:var(--pt-4);font-size:12.5px;color:var(--pt-muted-2)}
+.hero__note .ms{font-size:17px;color:var(--pt-basil)}
+.hero__art{aspect-ratio:1/1;border-radius:var(--pt-r-xl);background:var(--pt-sunrise);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:0 30px 70px -30px rgba(242,87,14,.5)}
+.hero__art::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.42),transparent 55%)}
+.hero__art img{width:50%;position:relative;filter:drop-shadow(0 18px 36px rgba(0,0,0,.22))}
+.hero__chip{position:absolute;background:rgba(255,255,255,.96);border-radius:var(--pt-r-md);padding:11px 14px;box-shadow:0 14px 30px -12px rgba(15,39,66,.45);display:flex;align-items:center;gap:10px}
+.hero__chip .ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+.hero__chip b{display:block;font-family:var(--pt-display);font-weight:800;font-size:15px;line-height:1}
+.hero__chip span{font-size:11px;color:var(--pt-muted)}
+
+.tri{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--pt-4);margin-bottom:var(--pt-9)}
+.tri__it{padding:var(--pt-5)}
+.tri__ic{width:46px;height:46px;border-radius:13px;background:var(--pt-zest-bg);color:var(--pt-zest-600);display:flex;align-items:center;justify-content:center;margin-bottom:var(--pt-3)}
+.tri__ic .ms{font-size:24px}
+.tri__it.basil .tri__ic{background:var(--pt-basil-bg);color:var(--pt-basil-600)}
+.tri__it p{margin-top:8px}
+
+.band{display:grid;grid-template-columns:repeat(3,1fr);gap:0;overflow:hidden;margin-bottom:var(--pt-9)}
+.band__c{padding:var(--pt-5);border-inline-end:1px solid var(--pt-border);text-align:center}
+.band__c:last-child{border-inline-end:none}
+.band__v{font-family:var(--pt-display);font-weight:800;font-size:30px;color:var(--pt-zest-600);letter-spacing:-.02em}
+.band__l{font-size:12.5px;color:var(--pt-muted);font-weight:600;margin-top:4px}
+
+.close{border-radius:var(--pt-r-xl);background:var(--pt-ink);color:#fff;padding:var(--pt-7) var(--pt-5);text-align:center;position:relative;overflow:hidden}
+.close::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 78% 22%,rgba(255,106,31,.34),transparent 55%)}
+.close__in{position:relative}
+.close p{margin:var(--pt-3) auto var(--pt-5);max-width:460px;color:rgba(255,255,255,.78);font-size:16px;line-height:1.55}
+
+/* Vitrine des composants (annexe de la référence) */
+.spec{max-width:var(--pt-content);margin:0 auto;padding:var(--pt-8) var(--pt-5) var(--pt-9)}
+.spec__h{border-top:2px dashed var(--pt-border-3);padding-top:var(--pt-6);margin-bottom:var(--pt-5)}
+.spec__grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--pt-4)}
+.spec__cell{padding:var(--pt-5)}
+.spec__cell h4{font-family:var(--pt-display);font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--pt-muted-2);margin-bottom:var(--pt-4)}
+.spec__row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:var(--pt-3)}
+.spec__row:last-child{margin-bottom:0}
+.swatch{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:600}
+.swatch i{width:26px;height:26px;border-radius:8px;border:1px solid rgba(15,39,66,.08);flex-shrink:0}
+.scale{display:flex;flex-direction:column;gap:var(--pt-3)}
+.scale__it{display:flex;align-items:baseline;gap:var(--pt-4)}
+.scale__k{font-family:var(--pt-mono);font-size:11px;color:var(--pt-muted-2);width:78px;flex-shrink:0}
+
+@container pt (max-width:900px){
+  .hero{grid-template-columns:1fr;gap:var(--pt-6)}
+  .hero__art{max-width:340px;margin:0 auto}
+  .tri{grid-template-columns:1fr}
+  .spec__grid{grid-template-columns:1fr}
+}
+@container pt (max-width:720px){
+  .pt-head__in,.pt-body>section,.pt-foot__in,.spec{padding-inline:var(--pt-4)}
+  .pt-nav a:not(.pt-nav__cta){display:none}
+  .pt-step__l{display:none}
+  .band{grid-template-columns:1fr}
+  .band__c{border-inline-end:none;border-bottom:1px solid var(--pt-border)}
+  .row2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="demo">
+  <group><span class="lbl">Chrome</span><button id="md-vitrine" class="on" onclick="setMode('vitrine')">Vitrine</button><button id="md-parcours" onclick="setMode('parcours')">Parcours</button></group>
+  <group><span class="lbl">Sens</span><button id="dr-ltr" class="on" onclick="setDir('ltr')">LTR</button><button id="dr-rtl" onclick="setDir('rtl')">RTL</button></group>
+  <group><span class="lbl">Écran</span><button id="dv-desktop" class="on" onclick="setDev('desktop')">Bureau</button><button id="dv-mobile" onclick="setDev('mobile')">Mobile</button></group>
+</div>
+
+<div class="pt-wrap" id="wrap">
+<div class="pt-shell" id="shell" data-mode="vitrine" dir="ltr" data-screen-label="PartnerShell">
+
+  <!-- ══ CHROME : header ══ -->
+  <header class="pt-head">
+    <div class="pt-head__in">
+      <a class="pt-brand" href="#"><img src="../assets/grubano-symbol.svg" alt="Grubano"><b>Grubano</b><span class="ctx">Partenaires</span></a>
+      <nav class="pt-nav">
+        <a href="#">Pourquoi Grubano</a>
+        <a href="#">Tarifs</a>
+        <a href="#">Questions</a>
+        <a class="pt-nav__cta" href="#">Créer mon espace<span class="ms flip-rtl">arrow_forward</span></a>
+      </nav>
+      <a class="pt-head__exit" href="#"><span class="ms">close</span>Quitter</a>
+    </div>
+  </header>
+
+  <!-- ══ CHROME : frise d'étapes (mode parcours uniquement) ══ -->
+  <div class="pt-steps">
+    <div class="pt-steps__in">
+      <div class="pt-step is-done"><span class="pt-step__d"><span class="ms" style="font-size:14px">check</span></span><span class="pt-step__l">Compte</span></div>
+      <span class="pt-step__bar"></span>
+      <div class="pt-step is-now"><span class="pt-step__d">2</span><span class="pt-step__l">Établissement</span></div>
+      <span class="pt-step__bar"></span>
+      <div class="pt-step"><span class="pt-step__d">3</span><span class="pt-step__l">Vérification</span></div>
+      <span class="pt-step__bar"></span>
+      <div class="pt-step"><span class="pt-step__d">4</span><span class="pt-step__l">Mise en ligne</span></div>
+    </div>
+  </div>
+
+  <!-- ══ /fr/business : shell habité ══ -->
+  <main class="pt-body">
+    <section>
+
+      <div class="hero">
+        <div>
+          <span class="t-eyebrow">Grubano pour les restaurants</span>
+          <h1 class="t-hero" style="margin-top:var(--pt-4)">Votre restaurant,<br>en ligne et à vous.</h1>
+          <p class="t-lead" style="margin-top:var(--pt-4);max-width:480px">Commandes, réservations, click &amp; collect et fidélité — dans un seul espace. Vous gardez votre relation client.</p>
+          <div class="hero__cta">
+            <a class="btn btn--lg btn--primary" href="#"><span class="ms">rocket_launch</span>Créer mon espace</a>
+            <a class="btn btn--lg btn--secondary" href="#"><span class="ms">play_circle</span>Voir comment ça marche</a>
+          </div>
+          <div class="hero__note"><span class="ms">check_circle</span>Gratuit à l'inscription · vous publiez quand vous êtes prêt</div>
+        </div>
+        <div class="hero__art">
+          <img src="../assets/grubano-symbol.svg" alt="">
+          <div class="hero__chip" style="top:24px;inset-inline-start:-14px"><span class="ic" style="background:var(--pt-basil)"><span class="ms">storefront</span></span><div><b>Un seul outil</b><span>au lieu de cinq</span></div></div>
+          <div class="hero__chip" style="bottom:28px;inset-inline-end:-12px"><span class="ic" style="background:var(--pt-zest-600)"><span class="ms">groups</span></span><div><b>Vos clients</b><span>restent les vôtres</span></div></div>
+        </div>
+      </div>
+
+      <div class="tri">
+        <div class="card tri__it">
+          <div class="tri__ic"><span class="ms">receipt_long</span></div>
+          <h3 class="t-h3">Recevez vos commandes</h3>
+          <p class="t-small">Livraison, à emporter, sur place. Une seule file, un seul écran, aucun logiciel à ajouter.</p>
+        </div>
+        <div class="card tri__it basil">
+          <div class="tri__ic"><span class="ms">event_available</span></div>
+          <h3 class="t-h3">Remplissez votre salle</h3>
+          <p class="t-small">Réservations et click &amp; collect intégrés, visibles depuis votre page publique.</p>
+        </div>
+        <div class="card tri__it">
+          <div class="tri__ic"><span class="ms">insights</span></div>
+          <h3 class="t-h3">Pilotez votre activité</h3>
+          <p class="t-small">Ventes, plats qui marchent, clients fidèles — les chiffres qui servent à décider.</p>
+        </div>
+      </div>
+
+      <div class="card band">
+        <div class="band__c"><div class="band__v">3 modes</div><div class="band__l">livraison · à emporter · sur place</div></div>
+        <div class="band__c"><div class="band__v">15 min</div><div class="band__l">pour créer votre espace</div></div>
+        <div class="band__c"><div class="band__v">0 €</div><div class="band__l">à l'inscription</div></div>
+      </div>
+
+      <div class="close">
+        <div class="close__in">
+          <h2 class="t-h1">Prêt à démarrer&nbsp;?</h2>
+          <p>Créez votre espace, préparez votre carte, publiez quand vous voulez.</p>
+          <a class="btn btn--lg btn--primary" href="#"><span class="ms">rocket_launch</span>Créer mon espace</a>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- ══ CHROME : footer ══ -->
+  <footer class="pt-foot">
+    <div class="pt-foot__in">
+      <div class="pt-foot__b"><img src="../assets/grubano-symbol.svg" alt=""><b>Grubano</b></div>
+      <div class="pt-foot__links">
+        <a href="#">Conditions générales</a>
+        <a href="#">Confidentialité</a>
+        <a href="#">Aide</a>
+        <a href="#">Nous contacter</a>
+      </div>
+      <div class="pt-foot__c">© 2026 Grubano — espace partenaires.</div>
+    </div>
+  </footer>
+
+  <!-- ══ ANNEXE : grammaire des composants (référence, non écran produit) ══ -->
+  <div class="spec">
+
+    <div class="spec__h"><h2 class="t-h2">Grammaire du PartnerShell</h2><p class="t-small" style="margin-top:6px">Ce que tout écran du parcours partenaire réutilise. Aucun composant hors de cette liste ne doit être inventé par écran.</p></div>
+
+    <div class="spec__grid">
+      <div class="card spec__cell">
+        <h4>Typographie</h4>
+        <div class="scale">
+          <div class="scale__it"><span class="scale__k">t-hero 48/800</span><span class="t-hero" style="font-size:26px">Gabarito</span></div>
+          <div class="scale__it"><span class="scale__k">t-h1 34/800</span><span class="t-h1" style="font-size:22px">Gabarito</span></div>
+          <div class="scale__it"><span class="scale__k">t-h2 24/800</span><span class="t-h2">Gabarito</span></div>
+          <div class="scale__it"><span class="scale__k">t-h3 17/800</span><span class="t-h3">Gabarito</span></div>
+          <div class="scale__it"><span class="scale__k">t-lead 17,5</span><span class="t-lead" style="font-size:14px">Hanken Grotesk</span></div>
+          <div class="scale__it"><span class="scale__k">t-body 15</span><span class="t-body">Hanken Grotesk</span></div>
+          <div class="scale__it"><span class="scale__k">t-label 12,5/700</span><span class="t-label">Hanken Grotesk</span></div>
+          <div class="scale__it"><span class="scale__k">t-help 12</span><span class="t-help">Hanken Grotesk — aide, mentions</span></div>
+          <div class="scale__it"><span class="scale__k">mono</span><span class="mono" style="font-size:13px">812 345 678 00025</span></div>
+        </div>
+      </div>
+
+      <div class="card spec__cell">
+        <h4>Couleurs &amp; surfaces</h4>
+        <div class="spec__row">
+          <span class="swatch"><i style="background:var(--pt-zest)"></i>zest</span>
+          <span class="swatch"><i style="background:var(--pt-basil)"></i>basil</span>
+          <span class="swatch"><i style="background:var(--pt-ink)"></i>ink</span>
+          <span class="swatch"><i style="background:var(--pt-bg)"></i>bg</span>
+          <span class="swatch"><i style="background:var(--pt-surface);border-color:var(--pt-border-2)"></i>surface</span>
+          <span class="swatch"><i style="background:var(--pt-surface-2)"></i>surface-2</span>
+        </div>
+        <div class="spec__row">
+          <span class="swatch"><i style="background:var(--pt-info)"></i>info</span>
+          <span class="swatch"><i style="background:var(--pt-ok)"></i>ok</span>
+          <span class="swatch"><i style="background:var(--pt-warn)"></i>warn</span>
+          <span class="swatch"><i style="background:var(--pt-error)"></i>error</span>
+        </div>
+        <p class="t-help" style="margin-top:var(--pt-3)">Canvas chaud (<span class="mono">#FBF8F3</span>) : c'est ce qui distingue le contexte partenaire du canvas froid opérateur. Aucun gris de texte sous 4,5:1.</p>
+      </div>
+
+      <div class="card spec__cell">
+        <h4>Boutons</h4>
+        <div class="spec__row">
+          <button class="btn btn--lg btn--primary"><span class="ms">rocket_launch</span>Action principale</button>
+          <button class="btn btn--md btn--secondary">Secondaire</button>
+          <button class="btn btn--md btn--ghost">Ghost</button>
+        </div>
+        <div class="spec__row">
+          <button class="btn btn--md btn--primary" disabled>Indisponible</button>
+          <button class="btn btn--md btn--secondary" disabled>Indisponible</button>
+        </div>
+        <p class="t-help">Une seule action principale par écran. Le pilulier (radius pill) est la forme du contexte partenaire.</p>
+      </div>
+
+      <div class="card spec__cell">
+        <h4>Champs</h4>
+        <div class="fld"><label class="t-label">Nom de l'établissement</label><input class="inp" type="text" placeholder="Chez Waguih"><div class="fld__help"><span class="ms">info</span><span class="t-help">Le nom que vos clients verront.</span></div></div>
+        <div class="row2">
+          <div class="fld"><label class="t-label">SIREN <span class="opt">(à la publication)</span></label><input class="inp mono" type="text" value="812 345 678"></div>
+          <div class="fld"><label class="t-label">Ville</label><input class="inp is-error" type="text" value=""><div class="fld__err"><span class="ms">error</span>Champ requis</div></div>
+        </div>
+      </div>
+
+      <div class="card spec__cell">
+        <h4>Messages</h4>
+        <div style="display:flex;flex-direction:column;gap:var(--pt-3)">
+          <div class="note note--info"><span class="ms">info</span><span><b>Vous pouvez avancer par étapes.</b> Rien ne vous oblige à tout renseigner maintenant.</span></div>
+          <div class="note note--ok"><span class="ms">check_circle</span><span><b>Espace créé.</b> Vous pouvez préparer votre carte dès maintenant.</span></div>
+          <div class="note note--warn"><span class="ms">pending</span><span><b>Vérification en cours.</b> Nous revenons vers vous sous 48 h.</span></div>
+          <div class="note note--error"><span class="ms">error</span><span><b>Vérification impossible.</b> Le numéro saisi n'a pas été reconnu.</span></div>
+        </div>
+      </div>
+
+      <div class="card spec__cell">
+        <h4>Progression &amp; états</h4>
+        <div class="spec__row">
+          <span class="pill pill--ok"><i></i>Fait</span>
+          <span class="pill pill--wait"><i></i>En attente</span>
+          <span class="pill pill--todo"><i></i>À faire</span>
+        </div>
+        <div class="spec__row" style="flex-direction:column;align-items:stretch;gap:8px">
+          <span class="sk" style="height:14px;width:60%"></span>
+          <span class="sk" style="height:14px;width:85%"></span>
+          <span class="sk" style="height:44px"></span>
+        </div>
+        <div class="empty" style="padding:var(--pt-5) 0 0">
+          <span class="ms">inbox</span>
+          <b>Rien ici pour l'instant</b>
+          <p class="t-small">Le motif d'état vide : icône, titre, une phrase, une action.</p>
+          <button class="btn btn--md btn--primary" style="margin-top:var(--pt-4)"><span class="ms">add</span>Commencer</button>
+        </div>
+      </div>
+
+      <div class="card spec__cell">
+        <h4>Rythme</h4>
+        <div class="scale">
+          <div class="scale__it"><span class="scale__k">contenu</span><span class="t-small"><span class="mono">1080px</span> — vitrine, listes, éditorial</span></div>
+          <div class="scale__it"><span class="scale__k">formulaire</span><span class="t-small"><span class="mono">560px</span> — start, register, verified</span></div>
+          <div class="scale__it"><span class="scale__k">gouttière</span><span class="t-small"><span class="mono">24px</span> bureau · <span class="mono">16px</span> mobile</span></div>
+          <div class="scale__it"><span class="scale__k">header</span><span class="t-small"><span class="mono">64px</span>, collant, fin, clair</span></div>
+          <div class="scale__it"><span class="scale__k">section</span><span class="t-small"><span class="mono">80px</span> entre blocs · <span class="mono">48px</span> mobile</span></div>
+          <div class="scale__it"><span class="scale__k">carte</span><span class="t-small">padding <span class="mono">24px</span>, radius <span class="mono">18px</span></span></div>
+        </div>
+      </div>
+
+      <div class="card spec__cell">
+        <h4>Les deux modes du chrome</h4>
+        <p class="t-small"><b>Vitrine</b> — nav 3 entrées + CTA, largeur contenu, footer complet. Pour <span class="mono">/fr/business</span>.</p>
+        <p class="t-small" style="margin-top:var(--pt-3)"><b>Parcours</b> — nav masquée, « Quitter » à droite, frise d'étapes, largeur formulaire. Pour <span class="mono">start</span>, <span class="mono">register</span>, <span class="mono">verified</span>, <span class="mono">onboarding</span>.</p>
+        <p class="t-help" style="margin-top:var(--pt-3)">Un seul header, deux configurations : le partenaire ne change jamais de mobilier entre découverte et inscription.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+  var shell = document.getElementById('shell');
+  function sync(p,v){document.querySelectorAll('[id^="'+p+'"]').forEach(function(b){b.classList.remove('on')});var e=document.getElementById(p+v);if(e)e.classList.add('on')}
+  function setMode(v){
+    shell.dataset.mode = v;
+    document.querySelector('.pt-body').dataset.width = (v==='parcours') ? 'form' : '';
+    sync('md-',v);
+  }
+  function setDir(v){ shell.setAttribute('dir',v); sync('dr-',v); }
+  function setDev(v){ document.getElementById('wrap').classList.toggle('force-mobile', v==='mobile'); sync('dv-',v); }
+</script>
+</body>
+</html>
