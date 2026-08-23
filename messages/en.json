@@ -4454,8 +4454,8 @@
   },
   "business": {
     "shell": {
-      "exit": "Exit",
-      "stepsAria": "Journey steps",
+      "exit": "Quit",
+      "stepsAria": "Steps",
       "contact": "Contact us",
       "stepAccount": "Account",
       "stepEstablishment": "Establishment",
@@ -4641,17 +4641,7 @@
       "finalSubtitle": "Join Grubano partners in minutes.",
       "footerTagline": "The platform for foodservice partners.",
       "footerLegal": "Legal notice",
-      "footerRights": "© {year} Grubano. All rights reserved.",
-      "ptChip1Title": "One tool",
-      "ptChip1Sub": "instead of five",
-      "ptChip2Title": "Your customers",
-      "ptChip2Sub": "stay yours",
-      "ptBand1Value": "3 modes",
-      "ptBand1Label": "delivery · click & collect · dine-in",
-      "ptBand2Value": "15 min",
-      "ptBand2Label": "to create your space",
-      "ptBand3Value": "€0",
-      "ptBand3Label": "at sign-up"
+      "footerRights": "© {year} Grubano. All rights reserved."
     },
     "logistics": {
       "registerTitle": "Become a logistics partner",

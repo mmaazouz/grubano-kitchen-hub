@@ -4455,12 +4455,12 @@
   "business": {
     "shell": {
       "exit": "Salir",
-      "stepsAria": "Etapas del recorrido",
-      "contact": "Contáctenos",
+      "stepsAria": "Pasos",
+      "contact": "Contáctanos",
       "stepAccount": "Cuenta",
       "stepEstablishment": "Establecimiento",
       "stepVerification": "Verificación",
-      "stepGoLive": "Publicación"
+      "stepGoLive": "Puesta en línea"
     },
     "auth": {
       "brandPartners": "Socios",
@@ -4641,17 +4641,7 @@
       "finalSubtitle": "Únete a los socios de Grubano en minutos.",
       "footerTagline": "La plataforma de los socios de la restauración.",
       "footerLegal": "Aviso legal",
-      "footerRights": "© {year} Grubano. Todos los derechos reservados.",
-      "ptChip1Title": "Una sola herramienta",
-      "ptChip1Sub": "en lugar de cinco",
-      "ptChip2Title": "Sus clientes",
-      "ptChip2Sub": "siguen siendo suyos",
-      "ptBand1Value": "3 modos",
-      "ptBand1Label": "entrega · click & collect · en el local",
-      "ptBand2Value": "15 min",
-      "ptBand2Label": "para crear su espacio",
-      "ptBand3Value": "0 €",
-      "ptBand3Label": "al registrarse"
+      "footerRights": "© {year} Grubano. Todos los derechos reservados."
     },
     "logistics": {
       "registerTitle": "Conviértete en socio logístico",

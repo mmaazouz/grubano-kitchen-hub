@@ -4455,10 +4455,10 @@
   "business": {
     "shell": {
       "exit": "Esci",
-      "stepsAria": "Tappe del percorso",
+      "stepsAria": "Passaggi",
       "contact": "Contattaci",
       "stepAccount": "Account",
-      "stepEstablishment": "Locale",
+      "stepEstablishment": "Sede",
       "stepVerification": "Verifica",
       "stepGoLive": "Pubblicazione"
     },
@@ -4641,17 +4641,7 @@
       "finalSubtitle": "Unisciti ai partner Grubano in pochi minuti.",
       "footerTagline": "La piattaforma dei partner della ristorazione.",
       "footerLegal": "Note legali",
-      "footerRights": "© {year} Grubano. Tutti i diritti riservati.",
-      "ptChip1Title": "Un solo strumento",
-      "ptChip1Sub": "invece di cinque",
-      "ptChip2Title": "I vostri clienti",
-      "ptChip2Sub": "restano vostri",
-      "ptBand1Value": "3 modalità",
-      "ptBand1Label": "consegna · click & collect · sul posto",
-      "ptBand2Value": "15 min",
-      "ptBand2Label": "per creare il vostro spazio",
-      "ptBand3Value": "0 €",
-      "ptBand3Label": "all’iscrizione"
+      "footerRights": "© {year} Grubano. Tutti i diritti riservati."
     },
     "logistics": {
       "registerTitle": "Diventa partner logistico",

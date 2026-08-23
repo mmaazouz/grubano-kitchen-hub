@@ -4455,8 +4455,8 @@
   "business": {
     "shell": {
       "exit": "خروج",
-      "stepsAria": "خطوات المسار",
-      "contact": "اتصل بنا",
+      "stepsAria": "الخطوات",
+      "contact": "تواصل معنا",
       "stepAccount": "الحساب",
       "stepEstablishment": "المنشأة",
       "stepVerification": "التحقق",
@@ -4641,17 +4641,7 @@
       "finalSubtitle": "انضم إلى شركاء Grubano في دقائق.",
       "footerTagline": "منصة شركاء قطاع المطاعم.",
       "footerLegal": "إشعار قانوني",
-      "footerRights": "© {year} Grubano. جميع الحقوق محفوظة.",
-      "ptChip1Title": "أداة واحدة",
-      "ptChip1Sub": "بدلاً من خمس",
-      "ptChip2Title": "عملاؤكم",
-      "ptChip2Sub": "يبقون لكم",
-      "ptBand1Value": "3 أنماط",
-      "ptBand1Label": "توصيل · استلام · في المطعم",
-      "ptBand2Value": "15 دقيقة",
-      "ptBand2Label": "لإنشاء مساحتكم",
-      "ptBand3Value": "0 €",
-      "ptBand3Label": "عند التسجيل"
+      "footerRights": "© {year} Grubano. جميع الحقوق محفوظة."
     },
     "logistics": {
       "registerTitle": "كن شريكًا لوجستيًا",
