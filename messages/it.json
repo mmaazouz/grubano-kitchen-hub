@@ -4453,6 +4453,15 @@
     "brandsErrorTitle": "Impossibile caricare i tuoi marchi"
   },
   "business": {
+    "shell": {
+      "exit": "Esci",
+      "stepsAria": "Passaggi",
+      "contact": "Contattaci",
+      "stepAccount": "Account",
+      "stepEstablishment": "Sede",
+      "stepVerification": "Verifica",
+      "stepGoLive": "Pubblicazione"
+    },
     "auth": {
       "brandPartners": "Partner",
       "verifiedSpace": "Spazio verificato",

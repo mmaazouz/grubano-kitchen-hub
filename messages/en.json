@@ -4453,6 +4453,15 @@
     "brandsErrorTitle": "Unable to load your brands"
   },
   "business": {
+    "shell": {
+      "exit": "Quit",
+      "stepsAria": "Steps",
+      "contact": "Contact us",
+      "stepAccount": "Account",
+      "stepEstablishment": "Establishment",
+      "stepVerification": "Verification",
+      "stepGoLive": "Go live"
+    },
     "auth": {
       "brandPartners": "Partners",
       "verifiedSpace": "Verified space",

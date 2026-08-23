@@ -4,13 +4,27 @@ import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { useTranslations } from 'next-intl'
-import { CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react'
-import { Card, Button } from '@/components/design-system'
-import PartnerChrome from '@/components/business/PartnerChrome'
+import PartnerShell, { type PartnerStep } from '@/components/business/PartnerShell'
 
 type VerifyStatus = 'success' | 'invalid' | 'expired' | 'used' | 'error'
 
 const VALID_STATUSES: readonly VerifyStatus[] = ['success', 'invalid', 'expired', 'used', 'error']
+
+// PRÉSENTATION (PartnerShell, mode parcours — référence partner-shell.html) :
+// message .note--ok (succès) / .note--warn (lien expiré ou déjà utilisé) /
+// .note--error (invalide, erreur), bouton .btn, frise « Compte » (faite si succès,
+// en cours sinon). Logique INCHANGÉE : lecture de ?status=, repli 'error', CTA →
+// /auth/magic, Suspense autour de useSearchParams.
+
+function useSteps(success: boolean): PartnerStep[] {
+  const tShell = useTranslations('business.shell')
+  return [
+    { label: tShell('stepAccount'),       state: success ? 'done' : 'now' },
+    { label: tShell('stepEstablishment'), state: 'todo' },
+    { label: tShell('stepVerification'),  state: 'todo' },
+    { label: tShell('stepGoLive'),        state: 'todo' },
+  ]
+}
 
 function VerifiedContent() {
   const t = useTranslations('business.verified')
@@ -25,6 +39,7 @@ function VerifiedContent() {
     : 'error'
 
   const isSuccess = status === 'success'
+  const steps = useSteps(isSuccess)
 
   const titleKey =
     status === 'success' ? 'successTitle'
@@ -40,73 +55,57 @@ function VerifiedContent() {
     : status === 'invalid' ? 'invalidBody'
     : 'errorBody'
 
+  // Reference message grammar: ok (success) · warn (expired / used) · error (invalid / error).
+  const tone = isSuccess ? 'ok' : status === 'expired' || status === 'used' ? 'warn' : 'error'
+  const icon = tone === 'ok' ? 'check_circle' : tone === 'warn' ? 'pending' : 'error'
+
   function goToAuth() {
     router.push('/auth/magic')
   }
 
   return (
-    <Card elevation="premium" padding="lg" className="w-full max-w-md text-center">
-      <div
-        className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full ${
-          isSuccess ? 'bg-grubano-success/15' : 'bg-grubano-warning/15'
-        }`}
-      >
-        {isSuccess ? (
-          <CheckCircle2 size={36} className="text-grubano-success" />
-        ) : (
-          <AlertTriangle size={32} className="text-grubano-warning" />
+    <PartnerShell mode="parcours" exitHref="/business" steps={steps}>
+      <div className="card card--raised card__pad">
+        <div className={`note note--${tone}`} role={isSuccess ? 'status' : 'alert'}>
+          <span className="ms" aria-hidden="true">{icon}</span>
+          <span>
+            <b>{t(titleKey)}</b>{' '}
+            <span style={{ whiteSpace: 'pre-line' }}>{t(bodyKey)}</span>
+          </span>
+        </div>
+
+        <button type="button" className="btn btn--lg btn--primary btn--block" onClick={goToAuth} style={{ marginTop: 'var(--pt-4)' }}>
+          {isSuccess ? t('successCta') : t('errorCta')}
+          <span className="ms flip-rtl" aria-hidden="true">arrow_forward</span>
+        </button>
+
+        {!isSuccess && (
+          <p className="t-help" style={{ textAlign: 'center', marginTop: 'var(--pt-3)' }}>
+            {t('helpHint')}
+          </p>
         )}
       </div>
-
-      <h1 className="font-display text-2xl font-extrabold text-grubano-ink">{t(titleKey)}</h1>
-      <p className="mt-3 whitespace-pre-line text-grubano-sm leading-relaxed text-grubano-ink-muted">
-        {t(bodyKey)}
-      </p>
-
-      <div className="mt-6">
-        <Button
-          variant="primary"
-          size="lg"
-          fullWidth
-          rightIcon={<ArrowRight size={16} />}
-          onClick={goToAuth}
-        >
-          {isSuccess ? t('successCta') : t('errorCta')}
-        </Button>
-      </div>
-
-      {!isSuccess && (
-        <p className="mt-4 text-[11px] leading-relaxed text-grubano-ink-faint">
-          {t('helpHint')}
-        </p>
-      )}
-    </Card>
+    </PartnerShell>
   )
 }
 
 function VerifiedFallback() {
+  const steps = useSteps(false)
   return (
-    <Card elevation="premium" padding="lg" className="w-full max-w-md text-center">
-      <div className="mx-auto mb-4 h-16 w-16 animate-pulse rounded-full bg-grubano-surface-muted" />
-      <div className="mx-auto h-6 w-2/3 animate-pulse rounded bg-grubano-surface-muted" />
-      <div className="mx-auto mt-3 h-4 w-3/4 animate-pulse rounded bg-grubano-surface-muted" />
-    </Card>
+    <PartnerShell mode="parcours" exitHref="/business" steps={steps}>
+      <div className="card card--raised card__pad" aria-busy="true">
+        <span className="sk" style={{ height: 18, width: '60%' }} />
+        <span className="sk" style={{ height: 14, width: '85%', marginTop: 10 }} />
+        <span className="sk" style={{ height: 44, marginTop: 16 }} />
+      </div>
+    </PartnerShell>
   )
 }
 
 export default function PartnerVerifiedPage() {
   return (
-    <Layout>
-      <Suspense fallback={<VerifiedFallback />}>
-        <VerifiedContent />
-      </Suspense>
-    </Layout>
+    <Suspense fallback={<VerifiedFallback />}>
+      <VerifiedContent />
+    </Suspense>
   )
-}
-
-// ── Layout — the shared partner chrome (P4 unification, Agent 20) ────────────
-// Delegates the header/background to <PartnerChrome> (same chrome as the landing /
-// /business/start). Content (the verified-state card) is unchanged.
-function Layout({ children }: { children: React.ReactNode }) {
-  return <PartnerChrome>{children}</PartnerChrome>
 }

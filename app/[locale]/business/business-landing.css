@@ -1,0 +1,31 @@
+/* /business — landing partenaire = PartnerShell HABITÉ en mode vitrine
+   (référence scripts/design-qa-refs/partner-shell.html, zones hero → trois
+   piliers  → bloc de clôture). Toutes les règles sont scopées
+   sous `.pt-shell` (zéro fuite, zéro collision avec les .hero/.sec des landings
+   marketing .cr-mkt/.fr-mkt/.lo-mkt). Les tokens --pt-* viennent de
+   components/business/partner-shell.css. */
+.pt-shell .hero{display:grid;grid-template-columns:1.08fr .92fr;gap:var(--pt-7);align-items:center;margin-bottom:var(--pt-9)}
+.pt-shell .hero__cta{display:flex;gap:var(--pt-3);flex-wrap:wrap;margin-top:var(--pt-5)}
+.pt-shell .hero__note{display:flex;align-items:center;gap:8px;margin-top:var(--pt-4);font-size:12.5px;color:var(--pt-muted-2)}
+.pt-shell .hero__note .ms{font-size:17px;color:var(--pt-basil)}
+.pt-shell .hero__art{aspect-ratio:1/1;border-radius:var(--pt-r-xl);background:var(--pt-sunrise);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;box-shadow:0 30px 70px -30px rgba(242,87,14,.5)}
+.pt-shell .hero__art::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 22%,rgba(255,255,255,.42),transparent 55%)}
+.pt-shell .hero__art img{width:50%;position:relative;filter:drop-shadow(0 18px 36px rgba(0,0,0,.22))}
+
+.pt-shell .tri{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--pt-4);margin-bottom:var(--pt-9)}
+.pt-shell .tri__it{padding:var(--pt-5)}
+.pt-shell .tri__ic{width:46px;height:46px;border-radius:13px;background:var(--pt-zest-bg);color:var(--pt-zest-600);display:flex;align-items:center;justify-content:center;margin-bottom:var(--pt-3)}
+.pt-shell .tri__ic .ms{font-size:24px}
+.pt-shell .tri__it.basil .tri__ic{background:var(--pt-basil-bg);color:var(--pt-basil-600)}
+.pt-shell .tri__it p{margin-top:8px}
+
+.pt-shell .close{border-radius:var(--pt-r-xl);background:var(--pt-ink);color:#fff;padding:var(--pt-7) var(--pt-5);text-align:center;position:relative;overflow:hidden}
+.pt-shell .close::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 78% 22%,rgba(255,106,31,.34),transparent 55%)}
+.pt-shell .close__in{position:relative}
+.pt-shell .close p{margin:var(--pt-3) auto var(--pt-5);max-width:460px;color:rgba(255,255,255,.78);font-size:16px;line-height:1.55}
+
+@container pt (max-width:900px){
+  .pt-shell .hero{grid-template-columns:1fr;gap:var(--pt-6)}
+  .pt-shell .hero__art{max-width:340px;margin:0 auto}
+  .pt-shell .tri{grid-template-columns:1fr}
+}

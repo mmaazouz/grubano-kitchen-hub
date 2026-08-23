@@ -4453,6 +4453,15 @@
     "brandsErrorTitle": "Impossible de charger vos marques"
   },
   "business": {
+    "shell": {
+      "exit": "Quitter",
+      "stepsAria": "Étapes",
+      "contact": "Nous contacter",
+      "stepAccount": "Compte",
+      "stepEstablishment": "Établissement",
+      "stepVerification": "Vérification",
+      "stepGoLive": "Mise en ligne"
+    },
     "auth": {
       "brandPartners": "Partenaires",
       "verifiedSpace": "Espace vérifié",

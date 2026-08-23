@@ -4453,6 +4453,15 @@
     "brandsErrorTitle": "تعذّر تحميل علاماتك التجارية"
   },
   "business": {
+    "shell": {
+      "exit": "خروج",
+      "stepsAria": "الخطوات",
+      "contact": "تواصل معنا",
+      "stepAccount": "الحساب",
+      "stepEstablishment": "المنشأة",
+      "stepVerification": "التحقق",
+      "stepGoLive": "النشر"
+    },
     "auth": {
       "brandPartners": "الشركاء",
       "verifiedSpace": "فضاء موثّق",

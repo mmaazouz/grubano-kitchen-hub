@@ -1,0 +1,236 @@
+/* ═══════════════════════════════════════════════════════════════
+   PARTNERSHELL — contexte PUBLIC / PARTENAIRE (référence maîtresse
+   scripts/design-qa-refs/partner-shell.html, Claude Design 2026-08-23).
+   Un seul shell, deux configurations pilotées par data-mode sur .pt-shell :
+   "vitrine" (nav + CTA, contenu 1080) et "parcours" (« Quitter », frise,
+   colonne formulaire 560). Ce n'est PAS OperatorShell : ni sidebar navy, ni
+   nav 12 entrées, ni sélecteur d'établissement.
+
+   🔒 ZÉRO FUITE : TOUTES les règles sont confinées sous `.pt-shell` (ou
+   `.pt-wrap`, l'enveloppe conteneur). Les règles globales de la référence
+   (:root, *, html/body, h1-h4, a, button/input, .ms, .mono) sont rescopées ;
+   les 56 tokens --pt-* vivent sur .pt-shell, jamais sur :root ; aucun token
+   --op-* / --gb-* n'est redéfini ; globals.css n'est pas touché. Les noms
+   génériques de la référence (.card, .btn, .note, .pill, .sk, .empty, .fld,
+   .inp) sont conservés pour rester 1:1 avec la maquette mais n'existent que
+   sous `.pt-shell`.
+
+   Typographie : familles auto-hébergées par app/brand-fonts.css (layout
+   racine) — Gabarito / Hanken Grotesk / JetBrains Mono / Cairo (RTL) — et
+   Material Symbols Rounded par app/gb-foundation/material-symbols.css.
+   Aucune police distante. Le shell IMPOSE ses font-family localement (le
+   body Inter / h1-h4 Space Grotesk de globals.css sont surchargés ici).
+   ═══════════════════════════════════════════════════════════════ */
+.pt-shell{
+  /* Marque — identiques au système récent */
+  --pt-zest:#FF6A1F; --pt-zest-600:#F2570E; --pt-zest-bg:#FFF1E7; --pt-zest-bd:#FBD9C2;
+  --pt-basil:#2BA45C; --pt-basil-600:#1E8A4A; --pt-basil-bg:#E8F6EE; --pt-basil-bd:#C9E9D6;
+  --pt-ink:#0F2742; --pt-ink-2:#1B3A5E;
+  --pt-sunrise:linear-gradient(140deg,#FFB020,#FF6A1F 55%,#F2570E);
+
+  /* Surfaces — canvas chaud (public), distinct du canvas froid opérateur */
+  --pt-bg:#FBF8F3; --pt-surface:#FFFFFF; --pt-surface-2:#F5EFE6; --pt-surface-3:#FAF6F0;
+
+  /* Texte — aucun gris sous 4,5:1 ; #9AA3AD et #73869B interdits */
+  --pt-text:#0F2742; --pt-muted:#5A6672; --pt-muted-2:#6B7682;
+
+  /* Bordures */
+  --pt-border:#ECE5D8; --pt-border-2:#E0D6C4; --pt-border-3:#D3C7B2;
+
+  /* États */
+  --pt-info:#2E78F0; --pt-info-bg:#E7F0FE; --pt-info-bd:#C7DBFB;
+  --pt-warn:#B9740A; --pt-warn-bg:#FFF4E0; --pt-warn-bd:#F3DBA6;
+  --pt-error:#D5372A; --pt-error-bg:#FCEAE7; --pt-error-bd:#F5C9C0;
+  --pt-ok:#1E8A4A; --pt-ok-bg:#E8F6EE; --pt-ok-bd:#C9E9D6;
+
+  /* Typographie */
+  --pt-display:'Gabarito',system-ui,sans-serif;   /* titres, chiffres d'accent */
+  --pt-ui:'Hanken Grotesk',system-ui,sans-serif;  /* corps, labels, boutons */
+  --pt-mono:'JetBrains Mono',ui-monospace,monospace; /* SIREN, montants, codes */
+  /* RTL : Cairo remplace --pt-ui et --pt-display via [dir="rtl"] .pt-shell */
+
+  /* Rayons — plus généreux qu'en opérateur : contexte accueillant */
+  --pt-r-sm:8px; --pt-r-md:12px; --pt-r-lg:18px; --pt-r-xl:26px; --pt-r-pill:999px;
+
+  /* Ombres — douces, chaudes */
+  --pt-sh-1:0 1px 2px rgba(15,39,66,.04), 0 2px 6px rgba(15,39,66,.05);
+  --pt-sh-2:0 2px 8px rgba(15,39,66,.06), 0 12px 30px -14px rgba(15,39,66,.14);
+  --pt-focus:0 0 0 3px rgba(255,106,31,.20);
+
+  /* Espacements — échelle 4pt */
+  --pt-1:4px; --pt-2:8px; --pt-3:12px; --pt-4:16px; --pt-5:24px;
+  --pt-6:32px; --pt-7:48px; --pt-8:64px; --pt-9:80px;
+
+  /* Rythme */
+  --pt-content:1080px;   /* contenu éditorial / landing */
+  --pt-form:560px;       /* colonne de formulaire (start/register) */
+  --pt-chrome-h:64px;    /* hauteur du header */
+}
+[dir="rtl"] .pt-shell{ --pt-display:'Cairo',system-ui,sans-serif; --pt-ui:'Cairo',system-ui,sans-serif; }
+
+/* Rescopage des règles globales de la référence (*, html/body, a, button/input, h1-h4, .ms, .mono) */
+.pt-shell,.pt-shell *{box-sizing:border-box}
+.pt-shell{min-height:100vh;min-height:100dvh;margin:0;padding:0;background:var(--pt-bg);color:var(--pt-text);font-family:var(--pt-ui);-webkit-font-smoothing:antialiased;line-height:1.5;display:flex;flex-direction:column}
+.pt-shell .ms{font-family:'Material Symbols Rounded';font-weight:normal;font-style:normal;line-height:1;display:inline-block;-webkit-font-feature-settings:'liga';font-feature-settings:'liga'}
+.pt-shell a{text-decoration:none;color:inherit}
+.pt-shell button,.pt-shell input,.pt-shell select,.pt-shell textarea{font-family:inherit}
+.pt-shell button:focus-visible,.pt-shell a:focus-visible,.pt-shell input:focus-visible{outline:none;box-shadow:var(--pt-focus)}
+.pt-shell .mono{font-family:var(--pt-mono);direction:ltr;unicode-bidi:isolate}
+.pt-shell .flip-rtl{display:inline-block}
+[dir="rtl"] .pt-shell .flip-rtl{transform:scaleX(-1)}
+.pt-shell h1,.pt-shell h2,.pt-shell h3,.pt-shell h4{margin:0;font-family:var(--pt-display);letter-spacing:-.02em;line-height:1.12}
+.pt-shell p{margin:0}
+
+/* ═══════════════════════════════════════════════════════════════
+   A. CHROME
+   ═══════════════════════════════════════════════════════════════ */
+.pt-wrap{width:100%;container-type:inline-size;container-name:pt;margin:0 auto}
+
+/* Header — fin, clair, aucune sidebar */
+.pt-shell .pt-head{position:sticky;top:0;z-index:40;height:var(--pt-chrome-h);flex-shrink:0;background:rgba(251,248,243,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--pt-border)}
+.pt-shell .pt-head__in{max-width:var(--pt-content);height:100%;margin:0 auto;padding:0 var(--pt-5);display:flex;align-items:center;gap:var(--pt-4)}
+.pt-shell .pt-brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.pt-shell .pt-brand img{height:28px;width:auto}
+.pt-shell .pt-brand b{font-family:var(--pt-display);font-weight:800;font-size:17.5px;letter-spacing:-.01em}
+.pt-shell .pt-brand .ctx{font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--pt-zest-600);background:var(--pt-zest-bg);border:1px solid var(--pt-zest-bd);border-radius:6px;padding:3px 7px}
+/* Navigation partenaire — 3 entrées maximum. En mode "parcours", elle disparaît. */
+.pt-shell .pt-nav{margin-inline-start:auto;display:flex;align-items:center;gap:var(--pt-5)}
+.pt-shell .pt-nav a{font-size:13.5px;font-weight:600;color:var(--pt-muted)}
+.pt-shell .pt-nav a:hover{color:var(--pt-text)}
+.pt-shell .pt-nav__cta{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;background:var(--pt-ink);color:#fff;border-radius:var(--pt-r-pill);padding:9px 17px;font-size:13.5px;font-weight:700}
+.pt-shell .pt-nav a.pt-nav__cta{color:#fff}
+.pt-shell .pt-nav__cta:hover{background:var(--pt-ink-2)}
+.pt-shell .pt-head__exit{margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--pt-muted)}
+.pt-shell .pt-head__exit .ms{font-size:18px}
+
+/* Deux modes de chrome, pilotés par data-mode sur .pt-shell (le composant ne rend
+   de toute façon que les éléments du mode courant — ces règles gardent la
+   maquette 1:1 si le DOM porte les deux). */
+.pt-shell[data-mode="parcours"] .pt-nav{display:none}
+.pt-shell[data-mode="vitrine"] .pt-head__exit{display:none}
+.pt-shell[data-mode="vitrine"] .pt-steps{display:none}
+
+/* Frise d'étapes — visible uniquement en mode parcours */
+.pt-shell .pt-steps{background:var(--pt-surface);border-bottom:1px solid var(--pt-border)}
+.pt-shell .pt-steps__in{max-width:var(--pt-form);margin:0 auto;padding:var(--pt-4) var(--pt-5);display:flex;align-items:center;gap:0}
+.pt-shell .pt-step{display:flex;align-items:center;gap:9px;flex:1}
+.pt-shell .pt-step:last-child{flex:0}
+.pt-shell .pt-step__d{width:26px;height:26px;border-radius:50%;background:var(--pt-surface);border:2px solid var(--pt-border-3);color:var(--pt-muted-2);display:flex;align-items:center;justify-content:center;font-family:var(--pt-display);font-weight:800;font-size:12px;flex-shrink:0}
+.pt-shell .pt-step__l{font-size:12px;font-weight:700;color:var(--pt-muted-2);white-space:nowrap}
+.pt-shell .pt-step__bar{flex:1;height:2px;border-radius:2px;background:var(--pt-border-3);min-width:12px}
+.pt-shell .pt-step.is-done .pt-step__d{background:var(--pt-basil);border-color:var(--pt-basil);color:#fff}
+.pt-shell .pt-step.is-done .pt-step__l,.pt-shell .pt-step.is-now .pt-step__l{color:var(--pt-text)}
+.pt-shell .pt-step.is-now .pt-step__d{background:var(--pt-sunrise);border-color:transparent;color:#fff}
+
+/* Corps + footer — la largeur dérive de data-width, posé par le COMPOSANT d'après
+   son mode (pas d'un script) : vitrine → contenu 1080, parcours → formulaire 560. */
+.pt-shell .pt-body{flex:1;padding:var(--pt-7) 0 var(--pt-8)}
+.pt-shell .pt-body>section{max-width:var(--pt-content);margin:0 auto;padding:0 var(--pt-5)}
+.pt-shell .pt-body[data-width="form"]>section{max-width:var(--pt-form)}
+.pt-shell .pt-foot{border-top:1px solid var(--pt-border);background:var(--pt-surface-3)}
+.pt-shell .pt-foot__in{max-width:var(--pt-content);margin:0 auto;padding:var(--pt-5);display:flex;align-items:center;gap:var(--pt-4);flex-wrap:wrap}
+.pt-shell .pt-foot__b{display:flex;align-items:center;gap:8px}
+.pt-shell .pt-foot__b img{height:22px}
+.pt-shell .pt-foot__b b{font-family:var(--pt-display);font-weight:800;font-size:14.5px}
+.pt-shell .pt-foot__links{margin-inline-start:auto;display:flex;align-items:center;gap:var(--pt-4);flex-wrap:wrap}
+.pt-shell .pt-foot__links a{font-size:12.5px;font-weight:600;color:var(--pt-muted)}
+.pt-shell .pt-foot__c{width:100%;font-size:11.5px;color:var(--pt-muted-2)}
+
+/* ═══════════════════════════════════════════════════════════════
+   B. TYPOGRAPHIE — échelle du contexte partenaire
+   ═══════════════════════════════════════════════════════════════ */
+.pt-shell .t-hero{font-family:var(--pt-display);font-weight:800;font-size:48px;line-height:1.06;letter-spacing:-.03em}
+.pt-shell .t-h1{font-family:var(--pt-display);font-weight:800;font-size:34px;line-height:1.12;letter-spacing:-.025em}
+.pt-shell .t-h2{font-family:var(--pt-display);font-weight:800;font-size:24px;line-height:1.18;letter-spacing:-.02em}
+.pt-shell .t-h3{font-family:var(--pt-display);font-weight:800;font-size:17px;line-height:1.25;letter-spacing:-.01em}
+.pt-shell .t-lead{font-size:17.5px;line-height:1.55;color:var(--pt-muted)}
+.pt-shell .t-body{font-size:15px;line-height:1.6}
+.pt-shell .t-small{font-size:13.5px;line-height:1.55;color:var(--pt-muted)}
+.pt-shell .t-label{font-size:12.5px;font-weight:700;line-height:1.4}
+.pt-shell .t-help{font-size:12px;line-height:1.5;color:var(--pt-muted-2)}
+.pt-shell .t-eyebrow{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--pt-zest-600)}
+@container pt (max-width:720px){
+  .pt-shell .t-hero{font-size:33px}.pt-shell .t-h1{font-size:26px}.pt-shell .t-h2{font-size:20px}.pt-shell .t-lead{font-size:15.5px}
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   D. COMPOSANTS FONDAMENTAUX
+   ═══════════════════════════════════════════════════════════════ */
+.pt-shell .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--pt-r-pill);font-family:var(--pt-ui);font-weight:700;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.pt-shell .btn .ms{font-size:19px}
+.pt-shell .btn--lg{padding:14px 26px;font-size:15px}
+.pt-shell .btn--md{padding:11px 20px;font-size:13.5px}
+.pt-shell .btn--primary{background:var(--pt-sunrise);color:#fff;font-weight:800;box-shadow:0 8px 22px -10px rgba(242,87,14,.55)}
+.pt-shell .btn--secondary{background:var(--pt-surface);color:var(--pt-text);border-color:var(--pt-border-2)}
+.pt-shell .btn--secondary:hover{border-color:var(--pt-border-3)}
+.pt-shell .btn--ghost{background:none;color:var(--pt-muted);padding-inline:6px}
+.pt-shell .btn--ghost:hover{color:var(--pt-text)}
+.pt-shell .btn[disabled]{opacity:.5;cursor:not-allowed;box-shadow:none}
+.pt-shell .btn--block{width:100%}
+
+.pt-shell .fld{margin-bottom:var(--pt-4)}
+.pt-shell .fld:last-child{margin-bottom:0}
+.pt-shell .fld label{display:block;margin-bottom:6px}
+.pt-shell .fld label .opt{color:var(--pt-muted-2);font-weight:600}
+.pt-shell .inp{width:100%;border:1px solid var(--pt-border-2);border-radius:var(--pt-r-md);background:var(--pt-surface);padding:12px 14px;font-size:15px;color:var(--pt-text)}
+.pt-shell .inp::placeholder{color:var(--pt-muted-2)}
+.pt-shell .inp:focus{outline:none;border-color:var(--pt-zest);box-shadow:var(--pt-focus)}
+.pt-shell .inp.is-error{border-color:var(--pt-error);background:#FFFCFB}
+.pt-shell .inp.mono{font-family:var(--pt-mono)}
+.pt-shell textarea.inp{min-height:92px;resize:vertical;line-height:1.55}
+.pt-shell .fld__help{margin-top:6px;display:flex;align-items:flex-start;gap:5px}
+.pt-shell .fld__help .ms{font-size:15px;color:var(--pt-muted-2);flex-shrink:0}
+.pt-shell .fld__err{margin-top:6px;display:flex;align-items:flex-start;gap:5px;font-size:12.5px;font-weight:600;color:var(--pt-error)}
+.pt-shell .fld__err .ms{font-size:15px;flex-shrink:0}
+.pt-shell .row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--pt-3)}
+/* Case à cocher (consentement) — même grammaire que les champs ; la référence n'en
+   définit pas, on reste sur le natif accentué par le jeton zest. */
+.pt-shell .check,.pt-shell .fld label.check{display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:0}
+.pt-shell .check input{margin:3px 0 0;width:16px;height:16px;flex-shrink:0;accent-color:var(--pt-zest-600)}
+
+.pt-shell .card{background:var(--pt-surface);border:1px solid var(--pt-border);border-radius:var(--pt-r-lg);box-shadow:var(--pt-sh-1)}
+.pt-shell .card--raised{box-shadow:var(--pt-sh-2);border-radius:var(--pt-r-xl)}
+.pt-shell .card__pad{padding:var(--pt-5)}
+.pt-shell .card__hd{padding:var(--pt-5) var(--pt-5) 0}
+.pt-shell .card__ft{padding:var(--pt-4) var(--pt-5);border-top:1px solid var(--pt-border);background:var(--pt-surface-3);border-radius:0 0 var(--pt-r-lg) var(--pt-r-lg)}
+.pt-shell a.card{display:block;color:inherit}
+.pt-shell a.card:hover{border-color:var(--pt-border-3)}
+
+.pt-shell .note{display:flex;align-items:flex-start;gap:10px;border-radius:var(--pt-r-md);padding:13px 16px;font-size:13.5px;line-height:1.55;border:1px solid}
+.pt-shell .note .ms{font-size:19px;flex-shrink:0}
+.pt-shell .note b{font-weight:800}
+.pt-shell .note--info{background:var(--pt-info-bg);border-color:var(--pt-info-bd)}
+.pt-shell .note--info .ms{color:var(--pt-info)}
+.pt-shell .note--ok{background:var(--pt-ok-bg);border-color:var(--pt-ok-bd)}
+.pt-shell .note--ok .ms{color:var(--pt-ok)}
+.pt-shell .note--warn{background:var(--pt-warn-bg);border-color:var(--pt-warn-bd)}
+.pt-shell .note--warn .ms{color:var(--pt-warn)}
+.pt-shell .note--error{background:var(--pt-error-bg);border-color:var(--pt-error-bd)}
+.pt-shell .note--error .ms{color:var(--pt-error)}
+
+.pt-shell .pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;line-height:15px;border-radius:var(--pt-r-pill);padding:3px 11px}
+.pt-shell .pill i{width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0}
+.pt-shell .pill--ok{background:var(--pt-ok-bg);color:var(--pt-ok)}
+.pt-shell .pill--wait{background:var(--pt-warn-bg);color:var(--pt-warn)}
+.pt-shell .pill--todo{background:var(--pt-surface-2);color:var(--pt-muted)}
+
+@keyframes pt-sk{100%{background-position:-200% 0}}
+.pt-shell .sk{display:block;border-radius:8px;background:linear-gradient(90deg,var(--pt-border) 25%,var(--pt-surface-2) 37%,var(--pt-border) 63%);background-size:200% 100%;background-position:200% 0;animation:pt-sk 1.4s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){ .pt-shell .sk{animation:none} }
+.pt-shell .empty{text-align:center;padding:var(--pt-8) var(--pt-5)}
+.pt-shell .empty .ms{font-size:44px;color:var(--pt-muted-2)}
+.pt-shell .empty b{display:block;font-family:var(--pt-display);font-weight:800;font-size:18px;margin-top:var(--pt-3)}
+.pt-shell .empty p{margin-top:6px;max-width:380px;margin-inline:auto}
+
+/* Responsive du chrome (référence : @container pt ≤ 720) */
+@container pt (max-width:720px){
+  .pt-shell .pt-head__in,.pt-shell .pt-body>section,.pt-shell .pt-foot__in{padding-inline:var(--pt-4)}
+  .pt-shell .pt-nav a:not(.pt-nav__cta){display:none}
+  .pt-shell .pt-step__l{display:none}
+  .pt-shell .row2{grid-template-columns:1fr}
+}
+
+/* Bouton à état occupé (largeur stable — D28 de la référence) : l'icône tourne. */
+@keyframes pt-spin{to{transform:rotate(360deg)}}
+.pt-shell .btn[aria-busy="true"] .ms{animation:pt-spin 1s linear infinite}
+@media (prefers-reduced-motion:reduce){ .pt-shell .btn[aria-busy="true"] .ms{animation:none} }
