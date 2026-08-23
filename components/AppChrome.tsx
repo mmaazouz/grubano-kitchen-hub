@@ -1,68 +1,25 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { SessionProvider } from 'next-auth/react'
 import OperatorShell from '@/components/operator/OperatorShell'
-import { locales } from '@/i18n'
+import { isBarePathname } from '@/lib/app-chrome-rules'
 
-// Routes that must render WITHOUT the operator dashboard chrome
-// (Sidebar + MobileHeader + operator BottomNav).
-//
-//   /eat/*          → consumer app, has its own BottomNav (app/eat/layout.tsx)
-//   /franchise/*    → franchise portal (Agent 4 mounts its own sidebar here)
-//   /creators/*     → creator portal  (Agent 4 mounts its own sidebar here)
-//   /supplier/*     → B2B supplier space (Slice 0 — its own sober shell)
-//   /admin/*        → admin console (ADM1 — its own navy AdminShell, mounted per page,
-//                     like /supplier; sheds the mismatched operator sidebar. Screens not
-//                     yet wrapped in AdminShell render bare until their ADM lot.)
-//   /logistics/*    → courier/logistics space (P1 — its own sober shell, like /supplier)
-//   /business/*     → partner space served on business.grubano.com (Agent 3 / 2C)
-//   /t/*            → public "table bill" QR landing (consumer, sober, no chrome)
-//   /legal/*        → public legal pages (mentions légales…) — own sober shell
-//   /login          → public auth page (/register nu retiré — B1 : jamais eu de page)
-//   /onboarding     → operator FIRST-establishment wizard (CD LOT 7) — a
-//                     FULL-SCREEN assistant by design (« assistant plein écran,
-//                     PAS la coquille », founder-approved). It renders its OWN
-//                     layout, NOT wrapped by OperatorShell.
-//   /               → redirects to /dashboard, never renders content
-//
-// Note: the locale prefix is stripped BEFORE matching below, so these
-// patterns work across /fr/franchise, /en/creators, /es/eat, etc.
-// Note: /deliveries is INTENTIONALLY absent → it renders UNDER the navy OperatorShell
-// (founder-approved « aperçu visible sous la coquille » exception for the gated Livraisons
-// screen; every other bare route is unchanged).
-const BARE_PREFIXES = ['/eat', '/eat-next', '/franchise', '/creators', '/supplier', '/admin', '/logistics', '/business', '/t', '/legal', '/login', '/add-activity', '/affiliate', '/onboarding']
+// The chrome decision (which routes render WITHOUT the operator dashboard chrome)
+// lives in lib/app-chrome-rules.ts — a PURE function of the pathname, unit-tested
+// in tests/app-chrome-rules.test.ts. It is host-independent and effect-free on
+// purpose: the first server render, the hydration render and every client
+// navigation take the same decision, so a bare route can never flash the
+// operator furniture. (The former client-side hostname rule for /auth/magic —
+// commit 69f2424 — is gone: /auth/magic is now bare on every host, which makes
+// that rule strictly redundant; the page still mounts its own partner chrome on
+// the business host.)
 
 export default function AppChrome({ children }: { children: React.ReactNode }) {
-  const raw = usePathname() || '/'
-  // Strip the leading locale segment (e.g. /fr/eat → /eat) so chrome rules
-  // stay locale-agnostic.
-  const segments = raw.split('/')
-  const pathname =
-    locales.includes(segments[1] as never)
-      ? '/' + segments.slice(2).join('/') || '/'
-      : raw
-  const normalized = pathname === '' ? '/' : pathname
+  const pathname = usePathname() || '/'
 
-  // Partner host (business.grubano.com): the passwordless sign-in /auth/magic must
-  // wear the partner chrome (PartnerChrome, mounted by the page itself), NOT the
-  // operator dashboard sidebar. Detected CLIENT-side and defaulting to false, so the
-  // app host's SSR + first hydration render are byte-identical to before (no change,
-  // no mismatch); on business the sidebar is dropped post-mount. The static root
-  // layout can't read the host server-side without deopting the whole app to dynamic.
-  const [partnerHost, setPartnerHost] = useState(false)
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hostname.includes('business')) setPartnerHost(true)
-  }, [])
-
-  const isBare =
-    normalized === '/' ||
-    BARE_PREFIXES.some(p => normalized === p || normalized.startsWith(`${p}/`)) ||
-    (partnerHost && normalized === '/auth/magic')
-
-  // Public / consumer routes: render bare, no operator chrome.
-  if (isBare) return <>{children}</>
+  // Public / consumer / partner routes: render bare, no operator chrome.
+  if (isBarePathname(pathname)) return <>{children}</>
 
   // Operator app (/dashboard, /menu, /stocks, /orders, … — all flat routes): wrap in
   // the CD v1 operator shell (OperatorShell — navy gb-foundation chrome, LOT 1).
