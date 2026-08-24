@@ -49,6 +49,30 @@ export interface ChecklistStep {
 // consumer calls useTranslations('activation'). Every role's checklist copy
 // lives under this single namespace.
 
+// ── Contract v1.1 named outputs (mission CA) ─────────────────────────────────
+// D26 separates STATE / REASON / PRESENTATION: a capacity carries its value AND
+// the reason it is false, never a rendered sentence. `reason` is null when the
+// capacity holds.
+// These are STABLE CODES, NOT i18n keys: no translation was added on purpose —
+// naming a label would presume a display surface, and no screen is in scope for
+// this mission. Whoever renders the capacity maps these codes to its own copy.
+export type CardReadyReason =
+  | 'no_establishment'   // no establishment to carry a menu
+  | 'no_attached_brand'  // establishment exists, no brand attached to IT (D11)
+  | 'no_available_dish'  // attached brand(s), zero AVAILABLE dish
+
+/**
+ * CARTE PRÊTE (contract §3) — « il existe des plats publiables réellement
+ * rattachés à l'établissement ». D11 makes the attachment CONSTITUTIVE: a dish
+ * on an orphan brand does NOT count. Scope decided by the founder (mission CA):
+ * PER ESTABLISHMENT.
+ * B1: value AND reason are exposed. The engine never decides where to show it.
+ */
+export interface CardReady {
+  value:  boolean
+  reason: CardReadyReason | null
+}
+
 export interface ActivationChecklist {
   role:          string
   steps:         ChecklistStep[]
@@ -58,6 +82,18 @@ export interface ActivationChecklist {
   currentStepId: string | null
   /** True while at least one step is not done → UI shows the discovery banner. */
   isDiscovery:   boolean
+  /**
+   * PRÉPARÉ (contract v1.1 §2) — « Condition · l'établissement est créé ».
+   * Founder arbitration B2: the existence of a BRAND is NOT part of this
+   * definition and must not be added to it.
+   * Undefined for roles whose definition does not carry this state.
+   */
+  prepared?:     boolean
+  /**
+   * CARTE PRÊTE — value + reason (B1). Undefined when the caller did not supply
+   * the per-establishment signals, and for roles that do not carry it.
+   */
+  cardReady?:    CardReady
 }
 
 /**
@@ -82,6 +118,14 @@ export interface ChecklistSignals {
   stripeConnected: boolean
   /** Raw Restaurant.stripeAccountStatus for sub-labelling ('pending'|'active'|'restricted'|null). */
   stripeStatus?:  string | null
+  // ── CARTE PRÊTE, per-establishment signals (mission CA) ────────────────────
+  // OPTIONAL by design: adding a REQUIRED field would break 19 annotated
+  // literals (13 of them in production code) at build time. Undefined here means
+  // "the caller did not measure it" → no cardReady output, never a false value.
+  /** Count of brands whose Brand.restaurantId === the scoped establishment id. */
+  attachedBrandCount?:     number
+  /** Count of AVAILABLE MenuItem carried by those attached brands only (D11). */
+  availableDishCount?:     number
 
   // ── Affiliate signals (Agent 98) — read-only, derived from the EXISTING Affiliate entity
   //    + the operator's stored payout/fiscal fields. OPTIONAL by design: ONLY the 'affiliate'
@@ -583,5 +627,44 @@ export function buildActivationChecklist(role: string, signals: ChecklistSignals
 
   const isDiscovery = steps.some((st) => st.state !== 'done')
 
-  return { role, steps, progressPct, currentStepId: current?.id ?? null, isDiscovery }
+  return {
+    role, steps, progressPct, currentStepId: current?.id ?? null, isDiscovery,
+    ...namedOutputs(role, signals),
+  }
+}
+
+/**
+ * Contract v1.1 NAMED OUTPUTS (mission CA) — computed OUTSIDE the step list so
+ * the six steps, their order, their gates and progressPct are byte-identical to
+ * before. Only roles whose contract carries a state/capacity get a value; every
+ * other role gets `undefined` (the key is absent from the object).
+ *
+ * ⚠️ ONLY the two outputs authorised by mission CA are produced here:
+ *   • prepared  — PRÉPARÉ, condition « l'établissement est créé » (B2).
+ *   • cardReady — CARTE PRÊTE, value + reason (B1), per establishment (D11).
+ * Opérationnel, Approuvé, Publié, Demande de publication, Encaissement and
+ * Retrait are NOT produced: their conditions are either arbitrated away
+ * (B3/B4), ambiguous, or deferred to the financial model. A capacity that
+ * cannot be computed is not emitted — never approximated (authority ④).
+ */
+function namedOutputs(role: string, s: ChecklistSignals): Partial<ActivationChecklist> {
+  if (role !== 'restaurant') return {}
+
+  // PRÉPARÉ — the establishment exists. The brand is deliberately NOT a
+  // condition here (founder arbitration B2, Contract v1.1 §2).
+  const prepared = s.hasRestaurant
+
+  // CARTE PRÊTE — emitted ONLY when the caller measured the per-establishment
+  // signals. Undefined signals mean "not measured", never "false".
+  const measured =
+    typeof s.attachedBrandCount === 'number' && typeof s.availableDishCount === 'number'
+  if (!measured) return { prepared }
+
+  const reason: CardReadyReason | null =
+    !s.hasRestaurant            ? 'no_establishment'
+      : s.attachedBrandCount === 0 ? 'no_attached_brand'
+        : s.availableDishCount === 0 ? 'no_available_dish'
+          : null
+
+  return { prepared, cardReady: { value: reason === null, reason } }
 }

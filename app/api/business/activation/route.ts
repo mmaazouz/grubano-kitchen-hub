@@ -123,6 +123,32 @@ export async function GET(req: Request) {
       prisma.menuItem.count({ where: { brand: { operatorId: operator.id } } }),
     ])
 
+    // ── CARTE PRÊTE — per-establishment measurement (mission CA, D11) ─────────
+    // Scope arbitrated by the founder: PER ESTABLISHMENT. The establishment is
+    // the one already resolved above (first non-archived of this operator) — no
+    // new selection rule is invented here.
+    // D11 makes the attachment CONSTITUTIVE: only brands whose restaurantId IS
+    // this establishment count, and only AVAILABLE dishes carried by them. Same
+    // rule as the one already applied by GET /api/dashboard/overview.
+    // Without an establishment both counts are 0 by LOGICAL CERTAINTY — there is
+    // no establishment for a brand to be attached TO — so they are reported as
+    // measured zeros, not as "unmeasured". The capacity therefore stays exposed
+    // (reason `no_establishment`) instead of disappearing from the payload.
+    let attachedBrandCount = 0
+    let availableDishCount = 0
+    if (restaurant) {
+      attachedBrandCount = await prisma.brand.count({
+        where: { operatorId: operator.id, restaurantId: restaurant.id },
+      })
+      // Second round-trip skipped when no brand is attached: the count is then 0
+      // by construction, since only an attached brand can carry a counted dish.
+      availableDishCount = attachedBrandCount === 0
+        ? 0
+        : await prisma.menuItem.count({
+          where: { available: true, brand: { operatorId: operator.id, restaurantId: restaurant.id } },
+        })
+    }
+
     const signals: ChecklistSignals = {
       accountActive:   operator.status === 'active',
       emailVerified:   operator.emailVerifiedAt !== null,
@@ -132,6 +158,8 @@ export async function GET(req: Request) {
       isActive:        restaurant?.isActive ?? false,
       stripeConnected: restaurant?.stripeAccountStatus === 'active',
       stripeStatus:    restaurant?.stripeAccountStatus ?? null,
+      attachedBrandCount,
+      availableDishCount,
     }
 
     return NextResponse.json({
