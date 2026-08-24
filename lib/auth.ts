@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma'
 import { authorizeMagicLink } from '@/lib/magic-link'
 import { authorizeEmailOtpLogin, isEmailOtpEnabled } from '@/lib/email-otp'
 import { readOperatorRoles } from '@/lib/operator-roles'
+import { rateLimitExceeded } from '@/lib/rate-limit'
 
 // Build the provider list dynamically. Google / Apple are only registered when
 // their credentials exist in the environment, so the app never breaks when the
@@ -29,7 +30,19 @@ const providers: Provider[] = [
       // magic-link + password paths are untouched.
       otp:        { label: 'Email code', type: 'text' },
     },
-    async authorize(credentials) {
+    async authorize(credentials, req) {
+      // ── P0 rate-limit (WP-SEC-03 wiring) ────────────────────────────────────
+      // ONE throttle in front of ALL three sign-in sub-paths (magic-token, OTP,
+      // password), BEFORE any DB lookup or bcrypt work. Keyed by client IP
+      // (last-hop XFF — req.headers is NextAuth's plain lower-cased record).
+      // Gated by RATE_LIMIT_ENABLED (OFF → byte-identical to before). On exceed
+      // we throw a STABLE code: NextAuth surfaces it as the sign-in error and
+      // the UI keeps its existing generic copy — no new user text, and no
+      // account-existence signal (the refusal depends on the IP only).
+      if (rateLimitExceeded(req?.headers, 'auth_login', { limitDefault: 20, windowDefault: 60 })) {
+        throw new Error('rate_limited')
+      }
+
       // ── Magic-link path (passwordless) ──────────────────────────────────────
       // A valid single-use token signs the user in and is consumed. Self-contained
       // (operator derived from the token), so no email/password needed here.

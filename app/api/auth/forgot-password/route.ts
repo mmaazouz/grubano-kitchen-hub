@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendPasswordResetEmail } from '@/lib/transactional-emails'
+import { rateLimit } from '@/lib/rate-limit'
 
 // ── POST /api/auth/forgot-password — Emails v2 FIX 3 (step 1/2) ────────────────
 //
@@ -30,6 +31,13 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0 rate-limit (WP-SEC-03 wiring) — throttle BEFORE any DB lookup, token
+  // mint or reset email. IP-keyed; gated by RATE_LIMIT_ENABLED (OFF →
+  // byte-identical). The always-200 anti-enumeration contract is preserved:
+  // the 429 depends on the caller's IP, never on the account's existence.
+  const limited = rateLimit(req, 'auth_forgot_password', { limitDefault: 5, windowDefault: 600 })
+  if (limited) return limited
+
   try {
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
     if (!parsed.success) {
