@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import nodemailer from 'nodemailer'
 import { z } from 'zod'
+import { rateLimit } from '@/lib/rate-limit'
 
 // nodemailer needs the Node runtime (it is the default for app routes, made
 // explicit here like /api/partners/register).
@@ -63,6 +64,14 @@ async function sendWelcomeEmail(to: string, name: string) {
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  // P0 rate-limit (WP-SEC-03 wiring) — throttle BEFORE any DB lookup, bcrypt
+  // hash or welcome email. IP-keyed (no PII in bucket keys); gated by
+  // RATE_LIMIT_ENABLED (OFF → byte-identical). Also blunts the 409
+  // account-existence oracle: past the window, existing and unknown emails
+  // both get the same 429.
+  const limited = rateLimit(req, 'auth_register', { limitDefault: 10, windowDefault: 600 })
+  if (limited) return limited
+
   try {
     const body = await req.json()
     const data = registerSchema.parse(body)

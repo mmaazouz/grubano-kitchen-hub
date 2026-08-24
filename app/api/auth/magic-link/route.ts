@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/prisma'
 import { createMagicLinkToken } from '@/lib/magic-link'
 import { issueEmailOtp, isEmailOtpEnabled } from '@/lib/email-otp'
+import { rateLimit } from '@/lib/rate-limit'
 import { locales, defaultLocale } from '@/i18n'
 
 export const runtime = 'nodejs'
@@ -112,6 +113,14 @@ async function sendMagicEmail(name: string, to: string, link: string, code?: str
 }
 
 export async function POST(req: NextRequest) {
+  // P0 rate-limit (WP-SEC-03 wiring) — throttle BEFORE any DB lookup, token
+  // mint or email send (each accepted request for an active account sends a
+  // REAL email). IP-keyed; gated by RATE_LIMIT_ENABLED (OFF → byte-identical).
+  // The refusal is IP-based only, so the anti-enumeration property of the
+  // generic response is preserved.
+  const limited = rateLimit(req, 'auth_magic_link', { limitDefault: 5, windowDefault: 600 })
+  if (limited) return limited
+
   try {
     const body   = (await req.json().catch(() => null)) as { email?: unknown; locale?: unknown; space?: unknown } | null
     const email  = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''

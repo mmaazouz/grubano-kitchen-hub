@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { sendPasswordChangedEmail } from '@/lib/transactional-emails'
+import { rateLimit } from '@/lib/rate-limit'
 
 // ── POST /api/auth/reset-password — Emails v2 FIX 3 (step 2/2) ─────────────────
 //
@@ -26,6 +27,13 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request) {
+  // P0 rate-limit (WP-SEC-03 wiring) — throttle BEFORE the token lookup and
+  // the bcrypt hash (cost 12) of the new password. IP-keyed; gated by
+  // RATE_LIMIT_ENABLED (OFF → byte-identical). Token guessing is already
+  // entropy-infeasible; this caps the per-request DB + hash cost.
+  const limited = rateLimit(req, 'auth_reset_password', { limitDefault: 10, windowDefault: 600 })
+  if (limited) return limited
+
   try {
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
     if (!parsed.success) {
