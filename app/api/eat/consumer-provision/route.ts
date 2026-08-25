@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { ensureConsumerByEmail } from '@/lib/consumer-signup'
+import { resolveClientIp as clientIp } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,11 +23,6 @@ export const dynamic = 'force-dynamic'
 // RATE-LIMIT: per-IP AND per-email sliding window — provisioning creates an account AND triggers a
 //   downstream email, an abuse vector, so both axes are bounded.
 
-function clientIp(req: Request): string {
-  const xff = req.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0].trim()
-  return req.headers.get('x-real-ip')?.trim() || 'unknown'
-}
 
 // Process-local sliding windows (mirror app/api/eat-next/consumer-provision/route.ts).
 const WINDOW_MS = 60 * 60 * 1000

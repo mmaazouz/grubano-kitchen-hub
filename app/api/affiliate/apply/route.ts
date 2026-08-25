@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { ensureAffiliateApplicant } from '@/lib/affiliate-signup'
+import { resolveClientIp as clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -21,11 +22,6 @@ export const runtime = 'nodejs'
 // per-IP rate-limit. MONEY untouched: earning / payout / ledger / attribution / the 40% tier and
 // the (OFF) customer discount are not referenced here.
 
-function clientIp(req: Request): string {
-  const xff = req.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0].trim()
-  return req.headers.get('x-real-ip')?.trim() || 'unknown'
-}
 
 // Per-IP sliding window (process-local) — mirrors /api/affiliate/join + the partner register limiter.
 const RATE_WINDOW_MS = 60 * 60 * 1000

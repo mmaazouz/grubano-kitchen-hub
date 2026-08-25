@@ -148,6 +148,18 @@ export function rateLimitExceeded(
   }
 }
 
+/**
+ * Shared client-IP resolution, exported for the hand-rolled limiters that live
+ * inside individual routes (partner/affiliate/consumer provisioning). They used
+ * to parse x-forwarded-for themselves and took the FIRST hop, which a client can
+ * forge to mint a fresh bucket on every request. Re-using this resolver gives
+ * them the same spoof-resistant LAST-hop key as the shared limiter.
+ * Purely additive: no existing caller's behaviour changes.
+ */
+export function resolveClientIp(req: Request): string {
+  return clientIp(req)
+}
+
 /** Test-only: reset the in-memory windows between cases. */
 export function __resetRateLimit(): void {
   WINDOWS.clear()

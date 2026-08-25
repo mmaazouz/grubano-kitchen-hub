@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { createVerificationToken } from '@/lib/partner-verification'
 import { sendAdminNewPartnerEmail } from '@/lib/transactional-emails'
+import { resolveClientIp as clientIp } from '@/lib/rate-limit'
 
 // Live network (DNS MX lookup + SMTP) + DB writes — must always run on demand on
 // the Node.js runtime (dns / nodemailer are unavailable on the edge runtime).
@@ -65,11 +66,6 @@ const RATE_WINDOW_MS = 60 * 60 * 1000
 const RATE_MAX = 5
 const ipHits = new Map<string, number[]>()
 
-function clientIp(req: NextRequest): string {
-  const xff = req.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0].trim()
-  return req.headers.get('x-real-ip')?.trim() || 'unknown'
-}
 
 function rateLimited(ip: string): boolean {
   const now = Date.now()
