@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { isAffiliateEnabled, ensureAffiliateOperator, getAffiliateByOperator } from '@/lib/affiliate-account'
+import { resolveClientIp as clientIp } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -17,11 +18,6 @@ export const runtime = 'nodejs'
 // (the grant is session-gated, so abuse is already bounded; this caps link-minting
 // bursts). NO money here — the grant only enables sharing a link; the credit = Brique B.
 
-function clientIp(req: Request): string {
-  const xff = req.headers.get('x-forwarded-for')
-  if (xff) return xff.split(',')[0].trim()
-  return req.headers.get('x-real-ip')?.trim() || 'unknown'
-}
 
 // Per-IP sliding window (process-local) — mirrors the partner-register limiter.
 const RATE_WINDOW_MS = 60 * 60 * 1000
