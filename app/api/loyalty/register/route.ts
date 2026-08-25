@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { rateLimit } from '@/lib/rate-limit'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -9,6 +10,13 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  // Abuse — PUBLIC unauthenticated endpoint: every call writes a LoyaltyCustomer (+10 pts bonus)
+  // and the 409 leaks whether an email is registered (enumeration oracle), so throttle per-IP
+  // BEFORE body parse. Flag-gated by RATE_LIMIT_ENABLED (default OFF) → NO-OP / byte-identical
+  // today; generous 10 / 10 min never hit by a real human (who registers once).
+  const limited = rateLimit(req, 'loyalty_register', { limitDefault: 10, windowDefault: 600 })
+  if (limited) return limited
+
   const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
 
