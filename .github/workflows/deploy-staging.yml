@@ -370,13 +370,49 @@ jobs:
             echo "WARN staging does not (yet) serve ${{ github.sha }} — Passenger may still be restarting; re-check manually."
           fi
 
-      - name: Health check
+      # S0-D — Health check STAGING, BLOQUANT. Interroge app.grubano.com (jamais
+      # la production) et exige que le build SERVI soit EXACTEMENT le commit de
+      # ce run, lu dans /version.json (stampe par scripts/build-info.js).
+      # Bug corrige : l'ancien step interrogeait le domaine de PRODUCTION et
+      # journalisait un succes a partir de sa reponse — un staging casse (ou
+      # jamais redemarre) passait vert tant que la production repondait 200.
+      # Tolerance de propagation : Passenger respawn apres touch tmp/restart.txt,
+      # d'ou la boucle de retries (~15 s + 8 x 15 s ~ 2 min) avant de conclure.
+      - name: Health check (staging @ expected SHA)
         run: |
-          sleep 25
-          STATUS=$(curl -sL -o /dev/null -w "%{http_code}" https://www.grubano.com/dashboard || echo "000")
-          echo "www.grubano.com/dashboard → HTTP $STATUS"
-          if [ "$STATUS" = "200" ]; then
-            echo "OK Staging deploy done, production healthy"
-          else
-            echo "WARN Health check returned $STATUS (non-blocking)"
-          fi
+          EXPECTED="${{ github.sha }}"
+          URL="https://app.grubano.com/version.json"
+          ATTEMPTS=8
+          DELAY=15
+          BODY_FILE="$(mktemp)"
+          CODE="000"
+          SERVED=""
+          echo "expected sha : $EXPECTED"
+          echo "target       : $URL"
+          sleep 15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            : > "$BODY_FILE"
+            CODE=$(curl -sS -L --max-time 30 -o "$BODY_FILE" -w '%{http_code}' "$URL") || CODE="000"
+            SERVED=$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([0-9a-fA-F]\{7,40\}\)".*/\1/p' "$BODY_FILE" | head -n 1)
+            echo "attempt $i/$ATTEMPTS — HTTP $CODE — served commit: ${SERVED:-<none>}"
+            if [ "$CODE" = "200" ] && [ "$SERVED" = "$EXPECTED" ]; then
+              echo "OK staging healthy at expected SHA ($EXPECTED)"
+              rm -f "$BODY_FILE"
+              exit 0
+            fi
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR staging health check FAILED after $ATTEMPTS attempts"
+          echo "  url             : $URL"
+          echo "  last HTTP status: $CODE"
+          echo "  expected commit : $EXPECTED"
+          echo "  served commit   : ${SERVED:-<none — version.json illisible ou absent>}"
+          echo "  body (400 o max):"
+          head -c 400 "$BODY_FILE" | sed 's/^/    /'
+          echo ""
+          echo "  Piste : Passenger n'a pas repris le build. En cPanel Terminal :"
+          echo "    touch ~/app.grubano.com/tmp/restart.txt"
+          rm -f "$BODY_FILE"
+          exit 1
