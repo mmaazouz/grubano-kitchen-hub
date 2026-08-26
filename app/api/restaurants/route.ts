@@ -250,6 +250,17 @@ const CreateInput = z.object({
   deliveryTime: z.number().int().min(0).max(180).optional(),
   minOrder:     z.number().min(0).max(500).optional(),
   deliveryFee:  z.number().min(0).max(50).optional(),
+  // Fulfillment channels chosen by the partner during onboarding. Both columns
+  // ALREADY exist on Restaurant (schema: deliveryEnabled default true,
+  // pickupEnabled default FALSE) and are already enforced server-side at order
+  // creation by lib/fulfillment. They were simply never accepted at CREATE, so a
+  // restaurant onboarded through /business/onboarding kept pickupEnabled=false
+  // while DELIVERY_FULFILLMENT_ENABLED (default OFF) refuses delivery for
+  // everyone — it could therefore take NO order at all. Accepting them here
+  // makes the choice real. No new semantics: the pilot flag still overrides
+  // delivery, and activation stays admin-only (isActive is forced false below).
+  deliveryEnabled: z.boolean().optional(),
+  pickupEnabled:   z.boolean().optional(),
   // Option B (step 5B): explicit opt-in to add a SECOND (or Nth) establishment.
   // The onboarding wizard never sends this, so its duplicate-submit guard (the
   // 409 below) stays intact; the deliberate "add an establishment" flow sends

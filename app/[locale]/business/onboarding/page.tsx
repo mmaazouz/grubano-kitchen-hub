@@ -215,6 +215,13 @@ export default function PartnerOnboardingPage() {
           city:        city.trim(),
           address:     address.trim(),
           postalCode:  postalCode.trim() || undefined,
+          // Le choix des modes de retrait etait valide (voir la garde plus haut)
+          // puis jete : il ne figurait pas dans ce corps. Les deux colonnes
+          // existent deja sur Restaurant et gouvernent la creation de commande —
+          // sans elles, un etablissement onboarde restait injoignable (retrait
+          // desactive par defaut, livraison refusee par le flag pilote).
+          deliveryEnabled,
+          pickupEnabled,
         }),
       })
       const data = await res.json().catch(() => null)
