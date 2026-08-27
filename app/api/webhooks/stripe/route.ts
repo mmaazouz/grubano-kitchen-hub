@@ -8,7 +8,7 @@ import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, executeRefund } from '@/lib/refund'
 import { clawbackCourierTip } from '@/lib/courier-accrual'
-import { sendAdminGhostOrderAlert } from '@/lib/admin-alerts'
+import { sendAdminGhostOrderAlert, sendAdminStalePiAlert } from '@/lib/admin-alerts'
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
 // Stripe pushes PaymentIntent lifecycle events here so payment state is synced
@@ -157,6 +157,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true, ignored: event.type })
   }
 
+  // ── M6-03 / M1-01 — CROSS-TALK GUARD ─────────────────────────────────────────
+  // Un PI d'ADDITION (tickets/pay) porte AUSSI metadata.reservationId quand le
+  // ticket est lié à une résa — et /pay l'ANNULE en cancel+recreate. Sans ce
+  // filtre, son payment_intent.canceled tombait ici et basculait depositStatus
+  // en 'released' alors que le VRAI hold restait requires_capture : état menteur
+  // + toutes les libérations légitimes sautées ensuite (gardes !=='released').
+  // Un PI d'addition/commande ne pilote JAMAIS le cycle empreinte.
+  if (pi.metadata?.ticketId || pi.metadata?.orderId) {
+    return NextResponse.json({ received: true, ignored: 'bill_or_order_pi' })
+  }
+
   const reservationId = pi.metadata?.reservationId || null
 
   try {
@@ -177,6 +188,14 @@ export async function POST(req: Request) {
     if (!reservation) {
       console.warn(`[stripe webhook] ${event.type} for ${pi.id} — no matching reservation (reservationId=${reservationId ?? 'none'})`)
       return NextResponse.json({ received: true, matched: false })
+    }
+
+    // ── Garde stale-PI (symétrique aux branches ticket/order) ────────────────
+    // Un PI d'empreinte ORPHELIN (prédécesseur d'un cancel+recreate) ne doit pas
+    // écraser l'état du hold COURANT de la réservation.
+    if (reservation.stripePaymentIntentId && reservation.stripePaymentIntentId !== pi.id) {
+      console.warn(`[stripe webhook] ${event.type}: stale deposit PI ${pi.id} for reservation ${reservation.id} (current ${reservation.stripePaymentIntentId}) — skipped`)
+      return NextResponse.json({ received: true, skipped: 'stale_deposit_pi' })
     }
 
     const current = reservation.depositStatus as DepositStatus
@@ -239,6 +258,9 @@ async function handleTicketPaid(pi: Stripe.PaymentIntent) {
       // must not double-count — surface it for manual review instead.
       if (ticket.stripePaymentIntentId && ticket.stripePaymentIntentId !== pi.id) {
         console.error(`[stripe webhook] MONEY REVIEW: succeeded PI ${pi.id} is not ticket ${ticket.id}'s current PI (${ticket.stripePaymentIntentId}) — NOT accounted`)
+        // M2-03/M6-01 — argent réel capturé sur un PI périmé : alerte admin
+        // idempotente (best-effort) au lieu d'un simple console.error.
+        await sendAdminStalePiAlert({ kind: 'ticket', entityId: ticket.id, paymentIntentId: pi.id, currentPiId: ticket.stripePaymentIntentId, amountCents: pi.amount_received ?? pi.amount ?? 0 })
         return NextResponse.json({ received: true, accounted: false, reason: 'stale_pi' })
       }
 
@@ -361,12 +383,25 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
       return NextResponse.json({ received: true, matched: false })
     }
     if (order.paymentStatus === 'paid') {
-      return NextResponse.json({ received: true, noop: true }) // replay — idempotent
+      // M2-04 — HEAL-ON-REPLAY : un crash entre paymentStatus='paid' et le
+      // reveal laissait la commande payée mais JAMAIS révélée (awaiting_payment,
+      // invisible du resto) — le retry Stripe prenait cette sortie noop AVANT le
+      // reveal. On rejoue l'updateMany de reveal (idempotent par construction :
+      // 0 ligne touchée sur une commande déjà révélée) avant de répondre noop.
+      const healed = await prisma.order.updateMany({
+        where: { id: order.id, status: 'awaiting_payment' },
+        data:  { status: 'received' },
+      })
+      if (healed.count > 0) console.warn(`[stripe webhook] heal-on-replay: order ${order.id} revealed on retry (was paid+awaiting_payment)`)
+      return NextResponse.json({ received: true, noop: true, ...(healed.count > 0 ? { healed: true } : {}) }) // replay — idempotent
     }
 
     // Anti-replay / stale-PI guard: only the CURRENT PI confirms the order.
     if (order.stripePaymentIntentId && order.stripePaymentIntentId !== pi.id) {
       console.error(`[stripe webhook] MONEY REVIEW: succeeded PI ${pi.id} is not order ${order.id}'s current PI (${order.stripePaymentIntentId}) — NOT confirmed`)
+      // M2-03/M6-01 — argent réel capturé sur un PI périmé : alerte admin
+      // idempotente (best-effort) — le client a pu payer DEUX fois.
+      await sendAdminStalePiAlert({ kind: 'order', entityId: order.id, paymentIntentId: pi.id, currentPiId: order.stripePaymentIntentId, amountCents: pi.amount_received ?? pi.amount ?? 0 })
       return NextResponse.json({ received: true, accounted: false, reason: 'stale_pi' })
     }
 
