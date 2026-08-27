@@ -509,16 +509,15 @@ describe('P1 — GET /api/orders/[id] (suivi client)', () => {
     expect((await track()).status).toBe(404)
   })
 
-  // AUDIT: driverLocation is FABRICATED server-side (mockDriverLocation — fixed
-  // Paris coords at 'delivered', Math.random around them at 'picked_up'): Uber
-  // Direct is not wired. It is served even for a PICKUP order, where no courier
-  // ever existed (the UI merely ignores it thanks to fulfillmentType). After the
-  // real courier feed lands, INVERT/rewrite this test.
-  it("[FAIL-ATTENDU: driverLocation = mock aléatoire (Uber Direct non branché), servie même en pickup] pickup 'delivered' expose des coordonnées livreur factices", async () => {
+  // [CORRIGÉ LOT 6] driverLocation n'est PLUS fabriquée : le mock (coordonnées
+  // Paris fixes/aléatoires servies comme réelles, même en pickup) est retiré —
+  // le payload sert null tant qu'aucun rail livreur réel n'alimente la position
+  // (le rail courier-position flag-gaté reste la seule source légitime).
+  it("[CORRIGÉ LOT 6] pickup 'delivered' → driverLocation null, plus jamais de coordonnées factices", async () => {
     db.order.findUnique.mockResolvedValue(trackedOrder({ status: 'delivered' }))
     const { order } = await (await track()).json()
     expect(order.fulfillmentType).toBe('pickup')
-    expect(order.driverLocation).toEqual({ lat: 48.8566, lng: 2.3522, bearing: 0 })
+    expect(order.driverLocation).toBeNull()
   })
 })
 

@@ -70,6 +70,15 @@ describe('guards — no Stripe call on any rejected path', () => {
   it('403 not the owner', async () => { getToken.mockResolvedValue({ sub: 'other' }); expect((await pay()).status).toBe(403); expect(stripe.createTicketPayment).not.toHaveBeenCalled() })
   it('409 already paid', async () => { db.order.findUnique.mockResolvedValue({ ...ORDER, paymentStatus: 'paid' }); expect((await pay()).status).toBe(409) })
   it('400 cancelled', async () => { db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'cancelled' }); expect((await pay()).status).toBe(400) })
+  // LOT 6 — une commande expirée (lazy expiry) n'est PLUS payable : la source de
+  // la file 'reconcile_manual' est fermée AVANT tout appel Stripe.
+  it("409 order_expired — une commande 'expired' n'est plus payable, aucun appel Stripe", async () => {
+    db.order.findUnique.mockResolvedValue({ ...ORDER, status: 'expired' })
+    const res = await pay()
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('order_expired')
+    expect(stripe.createTicketPayment).not.toHaveBeenCalled()
+  })
   it('400 amount below Stripe minimum', async () => { db.order.findUnique.mockResolvedValue({ ...ORDER, total: 0.3 }); expect((await pay()).status).toBe(400) })
   // P0-29 (vague 2 — Q2/Q8): the card rail refuses any NON-CARD order — closes the
   // legacy double-collection door (cash rows created before P0-02 were card-payable).

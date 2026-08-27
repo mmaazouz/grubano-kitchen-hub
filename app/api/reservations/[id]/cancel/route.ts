@@ -27,13 +27,13 @@ import type { NextRequest } from 'next/server'
 //   409  code 'not_cancellable'  — status isn't 'confirmed' (arrived/cancelled/…)
 //   409  code 'window_closed'    — now > (start − cancellationWindowHours)
 //
-// Success path: release the empreinte via the EXISTING lib/deposit.releaseHold
-// (called, never modified — same best-effort contract as the closures route: a
-// release hiccup never blocks the guest's right to cancel, the hold expires on
-// its own and the error is surfaced), then status='cancelled' +
-// cancelledBy='consumer', then the TWO prepared transactional emails
-// (confirmation to the guest + information to the owner's account email) —
-// post-success, best-effort, never from the webhook.
+// Success path: FIRST the guarded status flip (updateMany conditioned on
+// status:'confirmed' — a concurrent 'arrived' between the read and the write
+// yields 409 'not_cancellable' instead of cancelling a live session), THEN the
+// empreinte release via the EXISTING lib/deposit.releaseHold (called, never
+// modified — best-effort: a release hiccup never blocks the guest's right to
+// cancel, the hold expires on its own and the error is surfaced), then the TWO
+// prepared transactional emails (guest + owner) — post-success, best-effort.
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -98,13 +98,31 @@ export async function POST(
       )
     }
 
+    // ── Bascule de statut GARDÉE contre la concurrence ───────────────────────
+    // L'ancien flux lisait le statut puis faisait un update inconditionnel : une
+    // course fine avec le passage 'arrived' côté restaurant pouvait annuler une
+    // session déjà démarrée (et libérer son empreinte). updateMany conditionné
+    // sur status:'confirmed' — 0 ligne touchée ⇒ l'état a bougé entre-temps ⇒
+    // même 409 'not_cancellable' que le pré-check. L'empreinte n'est libérée
+    // qu'APRÈS une annulation effectivement acquise.
+    const flipped = await prisma.reservation.updateMany({
+      where: { id: reservation.id, status: 'confirmed' },
+      data:  { status: 'cancelled', cancelledBy: 'consumer' },
+    })
+    if (flipped.count === 0) {
+      return NextResponse.json(
+        { error: 'Cette réservation ne peut plus être annulée en ligne.', code: 'not_cancellable' },
+        { status: 409 },
+      )
+    }
+    const updated = { id: reservation.id, status: 'cancelled' as const, date: reservation.date }
+
     // ── Empreinte release — EXISTING lib, called only. Same best-effort rule
     // as the closures mass-cancel: a Stripe hiccup never blocks the guest's
     // cancellation right (the uncaptured hold expires on its own); the error
     // is surfaced so the operator can settle it manually if needed.
     let depositReleased = false
     let depositError: string | null = null
-    let depositStatusUpdate: string | null = null
     if (
       reservation.stripePaymentIntentId &&
       reservation.depositStatus !== 'released' &&
@@ -113,8 +131,20 @@ export async function POST(
       try {
         const settle = await releaseHold(reservation.stripePaymentIntentId)
         if (settle.ok) {
-          depositStatusUpdate = settle.depositStatus ?? 'released'
+          const depositStatusUpdate = settle.depositStatus ?? 'released'
           depositReleased = true
+          // Tolerant second write: the cancellation is already durable; a failed
+          // depositStatus stamp only loses the label, never the cancellation.
+          try {
+            await prisma.reservation.update({
+              where: { id: reservation.id },
+              data:  { depositStatus: depositStatusUpdate },
+              select: { id: true },
+            })
+          } catch (stampErr) {
+            console.error('[reservations cancel] depositStatus stamp failed (cancellation kept):',
+              stampErr instanceof Error ? stampErr.message : stampErr)
+          }
         } else {
           depositError = settle.error
         }
@@ -122,16 +152,6 @@ export async function POST(
         depositError = e instanceof Error ? e.message : 'release failed'
       }
     }
-
-    const updated = await prisma.reservation.update({
-      where: { id: reservation.id },
-      data: {
-        status:      'cancelled',
-        cancelledBy: 'consumer',
-        ...(depositStatusUpdate ? { depositStatus: depositStatusUpdate } : {}),
-      },
-      select: { id: true, status: true, date: true },
-    })
 
     // ── Transactional emails — POST-success, BEST-EFFORT (never throw).
     // Guest confirmation: reservation email OR the linked ACCOUNT's email
