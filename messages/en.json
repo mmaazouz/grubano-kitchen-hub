@@ -3051,7 +3051,7 @@
       "promoTitleFixed": "{amount} off",
       "promoSubtitle": "{count, plural, =1 {1 live offer, applied at checkout.} other {# live offers, applied at checkout.}}",
       "promoWelcomeTitle": "Hungry? We've got you.",
-      "promoWelcomeSubtitle": "The best spots near you, delivered in minutes.",
+      "promoWelcomeSubtitle": "The best spots near you.",
       "promoCta": "See the offers",
       "iaTitle": "For you tonight",
       "iaSoon": "AI — soon",
@@ -3410,6 +3410,7 @@
       "awaitingCta": "Finish the payment",
       "expiredTitle": "Order expired",
       "expiredDesc": "The payment was never completed — this order was not sent to the restaurant. Nothing was charged.",
+      "expiredPaidDesc": "This order expired, but a payment was recorded. Our team will contact you to sort it out — no new preparation will be started.",
       "modeDelivery": "Delivery",
       "articlesCount": "{count} item{count, plural, one {} other {s}}",
       "stepConfirmed": "Order confirmed",
@@ -3502,7 +3503,7 @@
       "rowDietarySub": "Allergens, diets",
       "groupHelp": "Help & about",
       "rowHelpCenter": "Help center",
-      "rowTerms": "Terms & privacy",
+      "rowTerms": "Privacy",
       "rowBecomePartner": "Become a Grubano partner",
       "version": "Grubano · v1.0.0"
     },
@@ -3542,7 +3543,7 @@
       "joinTitle": "Join the table. Earn as you eat.",
       "joinBenefit": "Earn points on every order, save your favourites, and track every delivery.",
       "welcomeBack": "Welcome back",
-      "legal": "By continuing you agree to Grubano’s Terms & Privacy Policy.",
+      "legal": "By continuing you agree to Grubano’s Privacy Policy.",
       "welcomeBadge": "Welcome bonus on sign-up",
       "or": "or",
       "continueWith": "Continue with {provider}",
@@ -3803,7 +3804,7 @@
       "applePayHint": "Touch ID / Face ID",
       "addCard": "Add a card",
       "summaryTitle": "Your order",
-      "reassure": "Encrypted payment · free cancellation within 2 min",
+      "reassure": "Encrypted payment",
       "payCtaBare": "Pay"
     },
     "checkoutAuth": {
@@ -8250,7 +8251,7 @@
       "title": "Help & support",
       "center": "Help center",
       "contact": "Contact support",
-      "terms": "Terms and conditions",
+      "terms": "Legal notice",
       "privacy": "Privacy policy"
     }
   },

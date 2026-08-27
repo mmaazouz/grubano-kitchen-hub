@@ -88,19 +88,20 @@ describe("P6 — page d'aide /eat/order/[orderId]/help (caractérisation source)
     expect(src.length).toBeGreaterThan(0)
   })
 
-  it("[FAIL-ATTENDU: chat support scripté simulant un humain] les bulles de conversation sont des clés i18n statiques (chatAgent1/chatMe1/chatAgent2)", () => {
-    // AUDIT: the "support chat" view renders a PRE-WRITTEN agent dialogue from static
-    // translation keys — no message is ever sent or received. After fix (real chat
-    // backend), invert: the scripted bubbles must be GONE, replaced by live messages.
-    expect(src).toContain("t('chatAgent1'")
-    expect(src).toContain("t('chatMe1')")
-    expect(src).toContain("t('chatAgent2')")
+  it("[CORRIGÉ LOT 4: chat scripté retiré] les bulles pré-écrites (chatAgent1/chatMe1/chatAgent2) ne sont plus rendues", () => {
+    // FIX (closed-beta LOT 4): the pre-written agent dialogue is GONE from the page.
+    // The « Support » view is now an honest e-mail contact (no fabricated conversation).
+    // The i18n keys themselves remain in messages/* (no-key-deletion rule) but are unused.
+    expect(src).not.toContain("t('chatAgent1'")
+    expect(src).not.toContain("t('chatMe1')")
+    expect(src).not.toContain("t('chatAgent2')")
   })
 
-  it("[FAIL-ATTENDU: composer chat désactivé — aucun envoi possible] l'input d'envoi du chat est `disabled`", () => {
-    // AUDIT: the chat composer is hard-disabled in JSX — the user can never type or
-    // send anything. After fix: invert (composer enabled + wired to a send handler).
-    expect(src).toMatch(/aria-label=\{t\('chatPlaceholder'\)\}\s+disabled\s*\/>/)
+  it("[CORRIGÉ LOT 4: composer retiré] plus aucun composer de chat (même désactivé) — aucune saisie fantôme", () => {
+    // FIX (closed-beta LOT 4): the hard-disabled composer is GONE entirely — no dead
+    // input pretending a chat exists. (No real chat backend was added.)
+    expect(src).not.toMatch(/aria-label=\{t\('chatPlaceholder'\)\}\s+disabled\s*\/>/)
+    expect(src).not.toContain("t('chatPlaceholder')")
   })
 
   it("[FAIL-ATTENDU: aucun appel réseau support] la page ne fetch QUE /api/orders/[id] et /api/claims — aucun endpoint support/help", () => {
@@ -114,18 +115,19 @@ describe("P6 — page d'aide /eat/order/[orderId]/help (caractérisation source)
     expect(src).not.toMatch(/\/api\/(support|help)/)
   })
 
-  it("[FAIL-ATTENDU: contact e-mail décoratif] le bouton « E-mail » n'a ni onClick ni mailto:", () => {
-    // AUDIT: the E-mail contact card is a <button> with no handler and the page has no
-    // mailto: link — clicking it does nothing. After fix: invert (handler or mailto).
-    expect(src).toMatch(/<button type="button" className="cbtn">\s*<span className="ms" aria-hidden="true">mail<\/span>/)
-    expect(src).not.toContain('mailto:')
+  it("[CORRIGÉ LOT 4: contact e-mail réel] le contact « E-mail » est un vrai lien mailto:contact@grubano.com", () => {
+    // FIX (closed-beta LOT 4): the decorative <button> became a real <a href="mailto:">
+    // to the product's ONLY real support channel (same address as the dine-in receipt).
+    expect(src).not.toMatch(/<button type="button" className="cbtn">\s*<span className="ms" aria-hidden="true">mail<\/span>/)
+    expect(src).toContain('mailto:contact@grubano.com')
   })
 
-  it("[FAIL-ATTENDU: présence simulée] le badge « En ligne » est affiché en dur, sans aucune donnée de présence", () => {
-    // AUDIT: the chat header shows an "online" badge driven by a hardcoded JSX prop
-    // (<Header ... online />), not by any presence signal. After fix: invert.
-    expect(src).toContain('<Header titleKey="supportTitle" online />')
-    expect(src).toContain('online && <span className="online">')
+  it("[CORRIGÉ LOT 4: présence simulée retirée] plus aucun badge « En ligne » en dur", () => {
+    // FIX (closed-beta LOT 4): the hardcoded presence badge is GONE — no presence is
+    // claimed anywhere on the help screen (no presence signal exists).
+    expect(src).not.toContain('<Header titleKey="supportTitle" online />')
+    expect(src).not.toContain("t('online')")
+    expect(src).not.toContain('className="online"')
   })
 })
 

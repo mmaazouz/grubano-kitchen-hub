@@ -3051,7 +3051,7 @@
       "promoTitleFixed": "{amount} de descuento",
       "promoSubtitle": "{count, plural, =1 {1 oferta activa, aplicada al pagar.} other {# ofertas activas, aplicadas al pagar.}}",
       "promoWelcomeTitle": "¿Con hambre? Te cubrimos.",
-      "promoWelcomeSubtitle": "Los mejores sitios cerca de ti, en minutos.",
+      "promoWelcomeSubtitle": "Los mejores sitios cerca de ti.",
       "promoCta": "Ver las ofertas",
       "iaTitle": "Para ti esta noche",
       "iaSoon": "IA — pronto",
@@ -3410,6 +3410,7 @@
       "awaitingCta": "Finalizar el pago",
       "expiredTitle": "Pedido expirado",
       "expiredDesc": "El pago no se completó — este pedido no se envió al restaurante. No se cobró nada.",
+      "expiredPaidDesc": "Este pedido expiró, pero se registró un pago. Nuestro equipo se pondrá en contacto contigo para regularizarlo — no se iniciará ninguna nueva preparación.",
       "modeDelivery": "Entrega",
       "articlesCount": "{count} artículo{count, plural, one {} other {s}}",
       "stepConfirmed": "Pedido confirmado",
@@ -3502,7 +3503,7 @@
       "rowDietarySub": "Alérgenos, dietas",
       "groupHelp": "Ayuda y acerca de",
       "rowHelpCenter": "Centro de ayuda",
-      "rowTerms": "Términos y privacidad",
+      "rowTerms": "Privacidad",
       "rowBecomePartner": "Conviértete en socio Grubano",
       "version": "Grubano · v1.0.0"
     },
@@ -3542,7 +3543,7 @@
       "joinTitle": "Únete a la mesa. Gana mientras comes.",
       "joinBenefit": "Gana puntos en cada pedido, guarda tus favoritos y sigue cada entrega.",
       "welcomeBack": "Bienvenido de nuevo",
-      "legal": "Al continuar, aceptas los Términos y la Política de privacidad de Grubano.",
+      "legal": "Al continuar, aceptas la Política de privacidad de Grubano.",
       "welcomeBadge": "Bono de bienvenida al registrarte",
       "or": "o",
       "continueWith": "Continuar con {provider}",
@@ -3803,7 +3804,7 @@
       "applePayHint": "Touch ID / Face ID",
       "addCard": "Añadir una tarjeta",
       "summaryTitle": "Tu pedido",
-      "reassure": "Pago cifrado · cancelación gratuita en 2 min",
+      "reassure": "Pago cifrado",
       "payCtaBare": "Pagar"
     },
     "checkoutAuth": {
@@ -8250,7 +8251,7 @@
       "title": "Ayuda y soporte",
       "center": "Centro de ayuda",
       "contact": "Contactar con soporte",
-      "terms": "Condiciones generales",
+      "terms": "Aviso legal",
       "privacy": "Política de privacidad"
     }
   },

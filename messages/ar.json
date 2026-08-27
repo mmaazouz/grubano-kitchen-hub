@@ -3051,7 +3051,7 @@
       "promoTitleFixed": "خصم {amount}",
       "promoSubtitle": "{count, plural, other {# عروض جارية، تُطبَّق عند الدفع.}}",
       "promoWelcomeTitle": "جائع؟ نحن هنا.",
-      "promoWelcomeSubtitle": "أفضل المطاعم القريبة منك، تصلك في دقائق.",
+      "promoWelcomeSubtitle": "أفضل المطاعم القريبة منك.",
       "promoCta": "عرض العروض",
       "iaTitle": "لك الليلة",
       "iaSoon": "ذكاء — قريبًا",
@@ -3410,6 +3410,7 @@
       "awaitingCta": "إتمام الدفع",
       "expiredTitle": "انتهت صلاحية الطلب",
       "expiredDesc": "لم يُستكمل الدفع — لم يُرسل هذا الطلب إلى المطعم. لم يُخصم أي مبلغ.",
+      "expiredPaidDesc": "انتهت صلاحية هذا الطلب، لكن تم تسجيل دفعة. سيتواصل معك فريقنا لتسوية الأمر — ولن يتم بدء أي تحضير جديد.",
       "modeDelivery": "توصيل",
       "articlesCount": "{count} منتج",
       "stepConfirmed": "تم تأكيد الطلب",
@@ -3502,7 +3503,7 @@
       "rowDietarySub": "مسببات الحساسية والأنظمة الغذائية",
       "groupHelp": "المساعدة وحول",
       "rowHelpCenter": "مركز المساعدة",
-      "rowTerms": "الشروط والخصوصية",
+      "rowTerms": "الخصوصية",
       "rowBecomePartner": "كن شريك غروبانو",
       "version": "Grubano · v1.0.0"
     },
@@ -3542,7 +3543,7 @@
       "joinTitle": "انضم إلى الطاولة. اكسب وأنت تأكل.",
       "joinBenefit": "اكسب نقاطًا مع كل طلب، واحفظ مفضّلاتك، وتابع كل توصيل.",
       "welcomeBack": "مرحبًا بعودتك",
-      "legal": "بالمتابعة، أنت توافق على شروط Grubano وسياسة الخصوصية.",
+      "legal": "بالمتابعة، أنت توافق على سياسة الخصوصية الخاصة بـ Grubano.",
       "welcomeBadge": "مكافأة ترحيبية عند التسجيل",
       "or": "أو",
       "continueWith": "المتابعة باستخدام {provider}",
@@ -3803,7 +3804,7 @@
       "applePayHint": "Touch ID / Face ID",
       "addCard": "إضافة بطاقة",
       "summaryTitle": "طلبك",
-      "reassure": "دفع مشفّر · إلغاء مجاني خلال دقيقتين",
+      "reassure": "دفع مشفّر",
       "payCtaBare": "ادفع"
     },
     "checkoutAuth": {
@@ -8250,7 +8251,7 @@
       "title": "المساعدة والدعم",
       "center": "مركز المساعدة",
       "contact": "التواصل مع الدعم",
-      "terms": "الشروط العامة",
+      "terms": "الإشعار القانوني",
       "privacy": "سياسة الخصوصية"
     }
   },

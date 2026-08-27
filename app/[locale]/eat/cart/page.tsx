@@ -847,18 +847,10 @@ export default function CartScreen() {
             <aside className="summary">
               <div className="summary__h">{t('summary')}</div>
               <div className="summary__b">
-                {/* Payment-method row — INERT placeholder (no Stripe saved-cards
-                    backend); the «•••• 4521» line is decorative. P0-30 : le
-                    toggle espèces est RETIRÉ (Q2 — hors pilote) ; la carte est le
-                    seul mode proposé, aucun chemin d'interface ne mène au refus
-                    serveur P0-02. */}
-                <div className="pay">
-                  <span className="ms" aria-hidden="true">credit_card</span>
-                  <div className="pay__txt">
-                    <b>{t('paymentMethod')}</b>
-                    <span>{'•••• •••• •••• 4521'}</span>
-                  </div>
-                </div>
+                {/* LOT 4 : la rangée « moyen de paiement » factice («•••• 4521»,
+                    donnée fabriquée sans backend Stripe saved-cards) est RETIRÉE.
+                    P0-30 reste acquis : le toggle espèces est RETIRÉ (Q2 — hors
+                    pilote) ; la carte est le seul mode, payé au checkout Stripe. */}
 
                 {/* P1-PROMO — promo-code input (gb-foundation styled). The preview
                     is server-validated; the real discount is applied at checkout. */}

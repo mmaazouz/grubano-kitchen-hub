@@ -248,11 +248,12 @@ export default function ProfileScreen() {
       {/* ─── Aide & à propos ─── */}
       <p className="glabel">{t('groupHelp')}</p>
       <div className="ac-group">
-        <button type="button" className="ac-row" onClick={() => showToast(t('comingSoon'))}>
+        {/* LOT 4 : plus de toast « Bientôt » — le seul canal support réel est l'e-mail. */}
+        <a className="ac-row" href="mailto:contact@grubano.com">
           <span className="ic gray"><span className="ms" aria-hidden="true">help</span></span>
-          <div className="main"><b>{t('rowHelpCenter')}</b></div>
+          <div className="main"><b>{t('rowHelpCenter')}</b><span>contact@grubano.com</span></div>
           <span className="ms go" aria-hidden="true">chevron_right</span>
-        </button>
+        </a>
         <button type="button" className="ac-row" onClick={() => router.push('/legal/confidentialite')}>
           <span className="ic gray"><span className="ms" aria-hidden="true">description</span></span>
           <div className="main"><b>{t('rowTerms')}</b></div>

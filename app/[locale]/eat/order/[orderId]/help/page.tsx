@@ -36,11 +36,17 @@ import '@/app/gb-foundation/gb-components.css'
 //    claim) drives the submit. If not eligible we surface the reason and disable submit;
 //    if an existing claim exists we show its status. On submit we POST a real claim.
 //
-// INERT (no live backend — see report):
-//  • Support chat is inert (no support-chat backend); composer + send are disabled,
-//    « Réponses suggérées par l'IA — bientôt » pill is non-interactive.
-//  • « Retard » routes to the EXISTING /eat/track; « Annuler » is inert (no cancel API).
-//  • Help topics + e-mail/chat contact are inert placeholders (no help-article backend).
+// LOT 4 (closed beta — support honnête, plus de mise en scène) :
+//  • The scripted chat (fake agent bubbles, « ● En ligne » badge, disabled composer)
+//    and the fabricated « ~2 min » / « < 24 h » contact ETAs were REMOVED — no
+//    support-chat backend exists. The « Support » view is now an honest e-mail
+//    contact: mailto:contact@grubano.com (the product's ONLY real support channel,
+//    same address as the dine-in receipt + PartnerShell).
+//  • « Annuler la commande » was REMOVED — no cancel API exists.
+//  • The refund estimate line only renders when claimsEnabled === true.
+// STILL INERT (no live backend — see report):
+//  • « Retard » routes to the EXISTING /eat/track.
+//  • Help topics are inert placeholders (no help-article backend).
 //  • The refund PHOTO button stays INERT — the photo is OPTIONAL per /api/claims; we do
 //    NOT wire the moderated upload here (future nicety, noted in report).
 //  • `reason` is fixed to 'missing_item' (this entry = « article manquant / erroné »); a
@@ -254,13 +260,12 @@ export default function OrderHelpScreen() {
   }
 
   // ════════════════════════════ VIEW HEADER (shared) ════════════════════════
-  const Header = ({ titleKey, online }: { titleKey: string; online?: boolean }) => (
+  const Header = ({ titleKey }: { titleKey: string }) => (
     <div className="bar">
       <button type="button" className="back" onClick={goBack} aria-label={t('back')}>
         <span className="ms ms-flip" aria-hidden="true">arrow_back</span>
       </button>
       <h1>{t(titleKey)}</h1>
-      {online && <span className="online">{t('online')}</span>}
     </div>
   )
 
@@ -346,14 +351,18 @@ export default function OrderHelpScreen() {
             </div>
           )}
 
-          <div className="refund-note">
-            <span className="ms" aria-hidden="true">verified_user</span>
-            <p>
-              {anySelected
-                ? t.rich('refundEstimate', { amount: formatAmount(estimate, locale), b: (c) => <b><bdi>{c} €</bdi></b> })
-                : t('refundPickToEstimate')}
-            </p>
-          </div>
+          {/* LOT 4 — the « Remboursement estimé … sous 3–5 jours » promise only renders
+              when the claims feature is LIVE (claimsEnabled). Flag OFF → no promise. */}
+          {claimsEnabled && (
+            <div className="refund-note">
+              <span className="ms" aria-hidden="true">verified_user</span>
+              <p>
+                {anySelected
+                  ? t.rich('refundEstimate', { amount: formatAmount(estimate, locale), b: (c) => <b><bdi>{c} €</bdi></b> })
+                  : t('refundPickToEstimate')}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="foot">
@@ -388,32 +397,20 @@ export default function OrderHelpScreen() {
     )
   }
 
-  // ════════════════════════════ C) SUPPORT CHAT VIEW ════════════════════════
+  // ═══════════════ C) SUPPORT VIEW — honest e-mail contact (LOT 4) ══════════
+  // The scripted chat was REMOVED (no support-chat backend). This view is a
+  // minimal honest state: the ONLY real support channel, a real mailto.
   if (view === 'chat') {
     return (
       <div className="gb gb-help">
-        <Header titleKey="supportTitle" online />
-        <div className="body chat">
-          <div className="chat-date">{t('chatToday')}</div>
-          <div className="msg-agent">
-            <span className="av"><span className="ms" aria-hidden="true">support_agent</span></span>
-            <div className="bub">{t('chatAgent1', { ref: refOf(orderId) })}</div>
-          </div>
-          <div className="msg-me">{t('chatMe1')}</div>
-          <div className="msg-agent">
-            <span className="av"><span className="ms" aria-hidden="true">support_agent</span></span>
-            <div className="bub">{t('chatAgent2')}</div>
-          </div>
-          {/* « Réponses suggérées par l'IA — bientôt » — inert, no support/AI backend. */}
-          <div className="ai-soon">
-            <span className="ms" aria-hidden="true">auto_awesome</span>{t('chatAiSuggest')}
-            <span className="pill">{t('soonBadge')}</span>
-          </div>
-        </div>
-        <div className="foot">
-          <div className="composer">
-            <input placeholder={t('chatPlaceholder')} aria-label={t('chatPlaceholder')} disabled />
-            <span className="ms" aria-hidden="true">send</span>
+        <Header titleKey="supportTitle" />
+        <div className="body">
+          <p className="lbl">{t('contactLabel')}</p>
+          <div className="contact">
+            <a className="cbtn" href="mailto:contact@grubano.com">
+              <span className="ms" aria-hidden="true">mail</span>
+              <b>{t('contactEmail')}</b><span>contact@grubano.com</span>
+            </a>
           </div>
         </div>
       </div>
@@ -457,11 +454,9 @@ export default function OrderHelpScreen() {
             <div className="t"><b>{t('optLateTitle')}</b><span>{t('optLateSub')}</span></div>
             <span className="ms ms-flip" aria-hidden="true">chevron_right</span>
           </button>
-          <button type="button" className="opt neutral" onClick={() => setView('chat')}>
-            <span className="ic"><span className="ms" aria-hidden="true">cancel</span></span>
-            <div className="t"><b>{t('optCancelTitle')}</b><span>{t('optCancelSub')}</span></div>
-            <span className="ms ms-flip" aria-hidden="true">chevron_right</span>
-          </button>
+          {/* LOT 4 : l'option « Annuler la commande — Possible avant la préparation »
+              est RETIRÉE — aucune API d'annulation n'existe ; elle routait vers un
+              faux chat. */}
         </div>
 
         <p className="lbl">{t('topicsLabel')}</p>
@@ -484,15 +479,17 @@ export default function OrderHelpScreen() {
         </div>
 
         <p className="lbl">{t('contactLabel')}</p>
+        {/* LOT 4 : ETA fabriquées (« ~2 min », « < 24 h ») RETIRÉES ; l'e-mail est un
+            vrai mailto (le seul canal support réel du produit). */}
         <div className="contact">
           <button type="button" className="cbtn" onClick={() => setView('chat')}>
-            <span className="ms" aria-hidden="true">chat</span>
-            <b>{t('contactChat')}</b><span>{t('contactChatEta')}</span>
+            <span className="ms" aria-hidden="true">support_agent</span>
+            <b>{t('supportTitle')}</b>
           </button>
-          <button type="button" className="cbtn">
+          <a className="cbtn" href="mailto:contact@grubano.com">
             <span className="ms" aria-hidden="true">mail</span>
-            <b>{t('contactEmail')}</b><span>{t('contactEmailEta')}</span>
-          </button>
+            <b>{t('contactEmail')}</b><span>contact@grubano.com</span>
+          </a>
         </div>
       </div>
     </div>
