@@ -7057,10 +7057,17 @@
       "durOneYear": "1 year",
       "durThirtyDays": "30 days",
       "durNinetyDays": "90 days",
+      "durOneDay": "24 hours",
+      "durSession": "Browser session (deleted when the browser closes)",
+      "durStripe": "1 year (__stripe_mid) / 30 minutes (__stripe_sid)",
       "purposeLocale": "Remembers the chosen display language.",
       "purposeSession": "Keeps you signed in.",
       "purposeEstab": "Remembers the selected establishment in the dashboard.",
       "purposeRef": "Attributes a visit to the creator who referred you (referral).",
+      "purposeChef": "Attributes your visit to a chef page to your order (creator contribution metric).",
+      "purposeCsrf": "Protects authentication against CSRF attacks (NextAuth).",
+      "purposeCallback": "Remembers the return URL after sign-in (NextAuth).",
+      "purposeStripe": "Fraud prevention — set by js.stripe.com only when a payment module is displayed.",
       "manageTitle": "Managing cookies",
       "manageBody": "Strictly necessary cookies cannot be disabled without preventing the site from working. You can, however, configure your browser to block or delete them."
     }

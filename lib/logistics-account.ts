@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { maskEmail } from '@/lib/log-privacy'
 import { addRoleToOperator } from '@/lib/operator-roles'
 import type { BusinessVerificationResult } from '@/lib/business-verification'
 
@@ -173,7 +174,7 @@ export async function ensureLogisticsOperator(
 
     return { ok: true, created, activated, roleAdded }
   } catch (err) {
-    console.error('[ensureLogisticsOperator] non-fatal:', email, err instanceof Error ? err.message : err)
+    console.error('[ensureLogisticsOperator] non-fatal:', maskEmail(email), err instanceof Error ? err.message : err)
     return { ok: false, reason: 'error' }
   }
 }

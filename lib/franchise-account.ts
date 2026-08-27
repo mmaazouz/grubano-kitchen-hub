@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { maskEmail } from '@/lib/log-privacy'
 import { addRoleToOperator } from '@/lib/operator-roles'
 
 // ── Franchise auth bridge (B1.3-A, Agent 30) ──────────────────────────────────
@@ -89,7 +90,7 @@ export async function ensureFranchiseOperator(
 
     return { ok: true, operatorId, created, activated }
   } catch (err) {
-    console.error('[ensureFranchiseOperator] error:', normEmail, err instanceof Error ? err.message : err)
+    console.error('[ensureFranchiseOperator] error:', maskEmail(normEmail), err instanceof Error ? err.message : err)
     return { ok: false, reason: 'error' }
   }
 }

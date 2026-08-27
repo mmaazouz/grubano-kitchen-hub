@@ -72,6 +72,22 @@ export async function issueEmailOtp(emailRaw: string, purpose: OtpPurpose): Prom
   const recent = await prisma.emailOtp.count({ where: { email, purpose, createdAt: { gte: since } } })
   if (recent >= OTP_MAX_REQUESTS) return { ok: false, reason: 'throttled' }
 
+  // Purge en bande (Lot 7 privacy) — BEST-EFFORT : les lignes de CET email déjà
+  // expirées, ou consommées depuis plus de 24 h, sont effacées à l'émission d'un
+  // nouveau code, pour que la table ne devienne jamais un journal de connexions
+  // par email. Sans effet sur le throttle : TTL == fenêtre, donc toute ligne
+  // expirée (createdAt < now − TTL) est déjà hors fenêtre, et une ligne consommée
+  // il y a > 24 h l'est a fortiori. try/catch avalé : une purge qui échoue (table
+  // non migrée, hiccup DB) ne bloque JAMAIS l'émission.
+  try {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    await prisma.emailOtp.deleteMany({
+      where: { email, OR: [{ expiresAt: { lt: new Date() } }, { consumedAt: { lt: dayAgo } }] },
+    })
+  } catch {
+    /* best-effort — jamais bloquant */
+  }
+
   const code = generateCode()
   // Supersede prior live codes (so only the newest is verifiable).
   await prisma.emailOtp.updateMany({

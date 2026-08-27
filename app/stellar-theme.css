@@ -8,10 +8,10 @@
  * components/stellar/* primitives, which only ever render inside a `.grubano-v2` subtree.
  * NO money, NO data, NO migration — pure CSS.
  *
- * Fonts: Plus Jakarta Sans (display) + JetBrains Mono (mono) are added here; Inter (body)
- * is already loaded by globals.css. @import stays at the top of the file (CSS requirement).
+ * Fonts: Plus Jakarta Sans (display) + JetBrains Mono (mono) fall back to the system
+ * stacks below; Inter (body) is self-hosted (public/fonts). The former Google Fonts
+ * @import was PROVEN dead (bundled mid-chunk, ignored by browsers) — removed (Lot 7).
  */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
 .grubano-v2 {
   /* Typography */

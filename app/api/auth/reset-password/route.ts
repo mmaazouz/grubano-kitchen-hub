@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { sha256 } from '@/lib/partner-verification'
 import { sendPasswordChangedEmail } from '@/lib/transactional-emails'
 import { rateLimit } from '@/lib/rate-limit'
 
@@ -9,7 +10,9 @@ import { rateLimit } from '@/lib/rate-limit'
 //
 // PUBLIC (under /api/auth). Body { email, token, password }. Verifies the
 // pwreset token issued by /forgot-password (identifier 'pwreset:<email>',
-// expiry 1 h), then:
+// expiry 1 h). Lot 7 (P1 sécurité) : la table stocke le SHA-256 du token (même
+// convention que lib/magic-link) — la vérification compare sha256(token reçu)
+// au hash stocké. Then:
 //   - bcryptjs cost 12 (app-wide convention — mirrors registration),
 //   - CONSUMES the token: every token of the identifier is deleted (single
 //     use; a re-POST with the same link → 400 invalid),
@@ -43,8 +46,12 @@ export async function POST(req: Request) {
     const email = parsed.data.email.trim().toLowerCase()
     const identifier = `pwreset:${email}`
 
+    // The URL carries the CLEAR token; the table holds only its SHA-256. A clear
+    // token stored by the pre-hash code can no longer match — it dies by its own
+    // 1 h TTL (deliberate retro-compat by natural expiry). Error paths and shapes
+    // below are UNCHANGED (anti-enumeration preserved).
     const row = await prisma.verificationToken.findFirst({
-      where: { identifier, token: parsed.data.token },
+      where: { identifier, token: sha256(parsed.data.token) },
     })
     if (!row || row.expires.getTime() < Date.now()) {
       // Expired rows are purged on the way out so the table never accumulates.

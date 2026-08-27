@@ -55,6 +55,9 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
   const locale = useLocale()
   const t = useTranslations('eat.nav')
   const ta = useTranslations('eat.account')
+  // Lot 7 (legal + privacy) — discreet legal links in the desktop rail, reachable
+  // WITHOUT an account. Labels reuse the existing legal.nav namespace (no new keys).
+  const tl = useTranslations('legal.nav')
   const { data: session, status } = useSession()
   const authed = status === 'authenticated'
 
@@ -193,6 +196,15 @@ export default function EatShell({ children }: { children: React.ReactNode }) {
         <div className="rail__user">
           <span className="av">{initials}</span>
           <div className="who"><b>{name}</b><span>{authed ? tierLabel : t('guest')}</span></div>
+        </div>
+        {/* Lot 7 — anonymous access to the legal pages (desktop rail; the mobile
+            counterpart lives in the /eat/auth footer). Sober, shell-styled row. */}
+        <div className="rail__legal">
+          <Link href="/legal/mentions-legales">{tl('mentions')}</Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/legal/confidentialite">{tl('confidentialite')}</Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/legal/cookies">{tl('cookies')}</Link>
         </div>
       </aside>
 

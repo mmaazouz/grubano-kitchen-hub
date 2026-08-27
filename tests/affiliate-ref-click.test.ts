@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 // ── GET /api/ref/[code] — affiliate click (Brique C) + cookie loop (Brique B2) ────────
 // Brique C added best-effort, flag-gated, privacy-safe affiliate CLICK recording.
@@ -37,6 +37,11 @@ const call = (code: string, cookie?: string) => GET(req(code, cookie), { params:
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Lot 7 — the attribution cookie drop is now gated by ATTRIBUTION_COOKIES_ENABLED
+  // (default OFF for the whole beta). These tests pin the ATTRIBUTION semantics
+  // (first-touch, canonical code, creator-vs-affiliate resolution), so they run with
+  // the flag armed. The OFF path is pinned by tests/attribution-cookies-flag.test.ts.
+  process.env.ATTRIBUTION_COOKIES_ENABLED = 'true'
   enabledMock.mockReturnValue(true)
   recordMock.mockResolvedValue(true)
   // Default: the code is a CREATOR code (the affiliate lookup returns nothing).
@@ -44,6 +49,12 @@ beforeEach(() => {
   db.affiliate.findFirst.mockResolvedValue(null)
   db.referralConfig.findFirst.mockResolvedValue({ durationDays: 90 })
   rolesMock.mockResolvedValue({ isInfluencer: true })
+})
+
+afterEach(() => {
+  // pool 'forks' still runs several FILES sequentially in one worker process —
+  // never leak the armed flag into a neighbouring file (P0-38 class).
+  delete process.env.ATTRIBUTION_COOKIES_ENABLED
 })
 
 describe('click tracking (Brique C) preserved', () => {

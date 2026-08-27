@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { maskEmail } from '@/lib/log-privacy'
 import { addRoleToOperator } from '@/lib/operator-roles'
 
 // ── Creator auth bridge (Phase 0 → Phase 3, Agent 14) ─────────────────────────
@@ -74,7 +75,7 @@ export async function ensureCreatorOperator(
 
     return { ok: true, created, activated, roleAdded }
   } catch (err) {
-    console.error('[ensureCreatorOperator] non-fatal:', email, err instanceof Error ? err.message : err)
+    console.error('[ensureCreatorOperator] non-fatal:', maskEmail(email), err instanceof Error ? err.message : err)
     return { ok: false, reason: 'error' }
   }
 }

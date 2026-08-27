@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { maskEmail } from '@/lib/log-privacy'
 import { getOperatorCompanyIdentity, setVerifiedCompanyIdentity } from '@/lib/operator-identity'
 
 // ── "Collect once" — propagate a verified entity identity to the account anchor ──
@@ -87,7 +88,7 @@ export async function propagateVerifiedCompanyIdentity(
     return { propagated: true }
   } catch (err) {
     // Best-effort: never break the approval/activation flow this is grafted into.
-    console.error('[identity-propagation] non-fatal:', entity.email, err instanceof Error ? err.message : err)
+    console.error('[identity-propagation] non-fatal:', maskEmail(entity.email), err instanceof Error ? err.message : err)
     return { propagated: false, reason: 'error' }
   }
 }

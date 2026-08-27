@@ -30,6 +30,14 @@ const transporter = nodemailer.createTransport({
 
 const FROM = '"Grubano" <contact@grubano.com>'
 
+/** CTA base URL — the DEPLOYMENT's own origin, so a staging beta-tester clicking a
+ *  CTA lands on staging, never on production. Same convention as
+ *  /api/auth/forgot-password: NEXTAUTH_URL (trailing slash trimmed), production
+ *  fallback only when the env is missing. Read per-call (never frozen at import). */
+function baseUrl(): string {
+  return (process.env.NEXTAUTH_URL || 'https://grubano.com').replace(/\/$/, '')
+}
+
 /** fr-FR date+time label pinned to the establishment timezone (Europe/Paris),
  *  server-TZ independent — "mercredi 11 juin à 19:30". */
 export function formatDateFr(d: Date): string {
@@ -563,7 +571,7 @@ export async function sendReservationCancelledByOwner(p: {
       ${why}
       <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle est libérée sans frais — aucun débit.</p>
       <p style="text-align:center;margin:24px 0">
-        <a href="https://grubano.com/eat" style="background:#F97316;color:#fff;text-decoration:none;
+        <a href="${baseUrl()}/eat" style="background:#F97316;color:#fff;text-decoration:none;
            padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
            Réserver un autre créneau
         </a>
@@ -599,7 +607,7 @@ export async function sendReservationCancelledByClosure(p: {
       ${why}
       <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle est libérée sans frais — aucun débit.</p>
       <p style="text-align:center;margin:24px 0">
-        <a href="https://grubano.com/eat" style="background:#F97316;color:#fff;text-decoration:none;
+        <a href="${baseUrl()}/eat" style="background:#F97316;color:#fff;text-decoration:none;
            padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
            Réserver un autre créneau
         </a>
@@ -705,7 +713,7 @@ export async function sendOrderConfirmation(p: {
       ${table(row('Commande', esc(p.orderRef)) + lines + row('Montant payé', eurosFromCents(p.paidCents)))}
       <p style="font-size:13px;color:#6b7280">${mode}</p>
       <p style="text-align:center;margin:24px 0">
-        <a href="https://grubano.com/eat/account" style="background:#F97316;color:#fff;text-decoration:none;
+        <a href="${baseUrl()}/eat/account" style="background:#F97316;color:#fff;text-decoration:none;
            padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
            Suivre ma commande
         </a>
@@ -742,7 +750,7 @@ export async function sendDishAdoptedToCreator(p: {
          <strong>${esc(p.dishName)}</strong> au prix de <strong>${price} €</strong>.</p>
       <p style="font-size:13px;color:#6b7280">Vos royalties de <strong>${pct}%</strong> s’appliquent sur chaque vente de cette recette.</p>
       <p style="text-align:center;margin:24px 0">
-        <a href="https://grubano.com/creators/dashboard" style="background:#F97316;color:#fff;text-decoration:none;
+        <a href="${baseUrl()}/creators/dashboard" style="background:#F97316;color:#fff;text-decoration:none;
            padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
            Voir mon studio
         </a>
@@ -771,7 +779,7 @@ export async function sendWaitlistOfferToRestaurant(p: {
          <strong>${esc(p.restaurantName)}</strong> est le prochain sur la liste d’attente.</p>
       <p style="font-size:13px;color:#6b7280">Vous avez <strong>${p.hours} h</strong> pour l’adopter avant que l’offre ne passe au restaurant suivant.</p>
       <p style="text-align:center;margin:24px 0">
-        <a href="https://grubano.com/menu" style="background:#F97316;color:#fff;text-decoration:none;
+        <a href="${baseUrl()}/menu" style="background:#F97316;color:#fff;text-decoration:none;
            padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
            Adopter la recette
         </a>

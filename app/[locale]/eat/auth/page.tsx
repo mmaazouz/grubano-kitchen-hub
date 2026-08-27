@@ -45,6 +45,10 @@ function strengthScore(pw: string): number {
 
 export default function AuthScreen() {
   const t = useTranslations('eat.auth')
+  // Lot 7 (legal + privacy) — anonymous access to the legal pages: the auth screen
+  // is the guaranteed logged-out surface (mobile AND desktop), so its footer carries
+  // the 3 legal links. Labels reuse the existing legal.nav namespace (no new keys).
+  const tl = useTranslations('legal.nav')
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('login')
   const [name, setName] = useState('')
@@ -267,6 +271,13 @@ export default function AuthScreen() {
             </form>
 
             <p className="legal"><Link href="/legal/confidentialite">{t('legal')}</Link></p>
+            <p className="legal">
+              <Link href="/legal/mentions-legales">{tl('mentions')}</Link>
+              {' · '}
+              <Link href="/legal/confidentialite">{tl('confidentialite')}</Link>
+              {' · '}
+              <Link href="/legal/cookies">{tl('cookies')}</Link>
+            </p>
           </div>
         </section>
       </main>
@@ -396,6 +407,13 @@ export default function AuthScreen() {
           </form>
 
           <p className="legal"><Link href="/legal/confidentialite">{t('legal')}</Link></p>
+          <p className="legal">
+            <Link href="/legal/mentions-legales">{tl('mentions')}</Link>
+            {' · '}
+            <Link href="/legal/confidentialite">{tl('confidentialite')}</Link>
+            {' · '}
+            <Link href="/legal/cookies">{tl('cookies')}</Link>
+          </p>
         </div>
       </div>
 

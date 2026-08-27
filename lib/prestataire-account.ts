@@ -1,5 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
+import { maskEmail } from '@/lib/log-privacy'
 import { authOptions } from '@/lib/auth'
 import { addRoleToOperator } from '@/lib/operator-roles'
 import type { BusinessVerificationResult } from '@/lib/business-verification'
@@ -171,7 +172,7 @@ export async function ensurePrestataireOperator(
 
     return { ok: true, created, activated, roleAdded }
   } catch (err) {
-    console.error('[ensurePrestataireOperator] non-fatal:', email, err instanceof Error ? err.message : err)
+    console.error('[ensurePrestataireOperator] non-fatal:', maskEmail(email), err instanceof Error ? err.message : err)
     return { ok: false, reason: 'error' }
   }
 }

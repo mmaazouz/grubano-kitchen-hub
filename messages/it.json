@@ -7057,10 +7057,17 @@
       "durOneYear": "1 anno",
       "durThirtyDays": "30 giorni",
       "durNinetyDays": "90 giorni",
+      "durOneDay": "24 ore",
+      "durSession": "Sessione di navigazione (eliminato alla chiusura del browser)",
+      "durStripe": "1 anno (__stripe_mid) / 30 minuti (__stripe_sid)",
       "purposeLocale": "Memorizza la lingua di visualizzazione scelta.",
       "purposeSession": "Mantiene la tua sessione di accesso.",
       "purposeEstab": "Memorizza lo stabilimento selezionato nella dashboard.",
       "purposeRef": "Attribuisce una visita al creator che ti ha segnalato (referral).",
+      "purposeChef": "Attribuisce la tua visita a una pagina chef al tuo ordine (misura del contributo del creator).",
+      "purposeCsrf": "Protegge l’autenticazione dagli attacchi CSRF (NextAuth).",
+      "purposeCallback": "Memorizza l’URL di ritorno dopo l’accesso (NextAuth).",
+      "purposeStripe": "Prevenzione delle frodi — depositati da js.stripe.com solo quando viene visualizzato un modulo di pagamento.",
       "manageTitle": "Gestire i cookie",
       "manageBody": "I cookie strettamente necessari non possono essere disattivati senza impedire il funzionamento del sito. Puoi comunque configurare il browser per bloccarli o eliminarli."
     }

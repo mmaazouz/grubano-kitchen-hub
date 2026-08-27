@@ -42,6 +42,7 @@ import { prisma } from '@/lib/prisma'
 import { readCreatorRoles } from '@/lib/creator-roles'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { recordAffiliateClick } from '@/lib/affiliate-clicks'
+import { isAttributionCookiesEnabled } from '@/lib/attribution-cookies'
 import { locales, defaultLocale } from '@/i18n'
 
 const COOKIE_NAME = 'grubano_ref'
@@ -133,15 +134,21 @@ async function applyFirstTouchCookie(
   }
 
   const res = redirectRelative(homePath)
-  res.cookies.set({
-    name:     COOKIE_NAME,
-    value:    code, // stored canonical, e.g. "DEMO20"
-    maxAge:   durationDays * 24 * 60 * 60,
-    path:     '/',
-    httpOnly: true,
-    sameSite: 'lax',
-    secure:   process.env.NODE_ENV === 'production',
-  })
+  // Lot 7 closed beta — attribution cookies are gated OFF by default
+  // (ATTRIBUTION_COOKIES_ENABLED, règle « tracker non essentiel → OFF plutôt que
+  // CMP »). ONLY the Set-Cookie is gated: the redirect, the code validation, the
+  // affiliate click tracking and the first-touch semantics above stay byte-identical.
+  if (isAttributionCookiesEnabled()) {
+    res.cookies.set({
+      name:     COOKIE_NAME,
+      value:    code, // stored canonical, e.g. "DEMO20"
+      maxAge:   durationDays * 24 * 60 * 60,
+      path:     '/',
+      httpOnly: true,
+      sameSite: 'lax',
+      secure:   process.env.NODE_ENV === 'production',
+    })
+  }
   return res
 }
 

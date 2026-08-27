@@ -12,6 +12,7 @@ import {
 } from '@/lib/onboarding-nudge'
 import { sendTransactional } from '@/lib/transactional-emails'
 import { rateLimit } from '@/lib/rate-limit'
+import { maskEmail } from '@/lib/log-privacy'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
 
@@ -273,7 +274,7 @@ export async function POST(req: Request) {
         if (r === 'sent') sent++; else skipped++
       } catch (err) {
         skipped++
-        console.error('[onboarding-nudge] creator failed', cr.email, err instanceof Error ? err.message : err)
+        console.error('[onboarding-nudge] creator failed', maskEmail(cr.email), err instanceof Error ? err.message : err)
       }
     }
 
@@ -315,7 +316,7 @@ export async function POST(req: Request) {
         if (r === 'sent') sent++; else skipped++
       } catch (err) {
         skipped++
-        console.error('[onboarding-nudge] supplier failed', sp.email, err instanceof Error ? err.message : err)
+        console.error('[onboarding-nudge] supplier failed', maskEmail(sp.email), err instanceof Error ? err.message : err)
       }
     }
 
@@ -356,7 +357,7 @@ export async function POST(req: Request) {
         if (r === 'sent') sent++; else skipped++
       } catch (err) {
         skipped++
-        console.error('[onboarding-nudge] prestataire failed', pr.email, err instanceof Error ? err.message : err)
+        console.error('[onboarding-nudge] prestataire failed', maskEmail(pr.email), err instanceof Error ? err.message : err)
       }
     }
 

@@ -106,6 +106,16 @@ export const LEGAL_SUBPROCESSORS: LegalSubprocessor[] = [
 // Noms techniques = constantes (pas des placeholders). Durée + finalité affichées
 // via i18n (legal.cookies.dur_<durationKey> / legal.cookies.purpose_<purposeKey>).
 // AUCUN cookie publicitaire / analytics tiers (aucun CMP dans l'app à ce jour).
+// Inventaire complété (Lot 7 closed beta) : cookies NextAuth de production
+// (__Secure-/__Host- prefixes), grubano_chef (attribution page chef, 24 h) et les
+// cookies Stripe (__stripe_mid/__stripe_sid — posés par js.stripe.com uniquement
+// lors de l'affichage d'un module de paiement, prévention de la fraude).
+// ⚠️ CAVEAT catégorisation : les nouvelles entrées reprennent la catégorie
+// 'necessary' des entrées existantes par COHÉRENCE d'affichage — la qualification
+// juridique finale (nécessaire vs mesure/attribution) revient au conseil
+// juridique avant la sortie de bêta. Les cookies d'attribution (grubano_ref /
+// grubano_chef) sont par ailleurs gatés OFF pendant la bêta
+// (ATTRIBUTION_COOKIES_ENABLED, cf. lib/attribution-cookies.ts).
 export interface LegalCookie {
   name: string
   durationKey: string
@@ -115,15 +125,20 @@ export interface LegalCookie {
 }
 
 export const LEGAL_COOKIES: LegalCookie[] = [
-  { name: 'NEXT_LOCALE',            durationKey: 'oneYear',    purposeKey: 'locale',  categoryKey: 'necessary' },
-  { name: 'next-auth.session-token', durationKey: 'thirtyDays', purposeKey: 'session', categoryKey: 'necessary' },
-  { name: 'grubano_estab',          durationKey: 'oneYear',    purposeKey: 'estab',   categoryKey: 'necessary' },
-  { name: 'grubano_ref',            durationKey: 'ninetyDays', purposeKey: 'ref',     categoryKey: 'necessary' },
+  { name: 'NEXT_LOCALE',                        durationKey: 'oneYear',    purposeKey: 'locale',   categoryKey: 'necessary' },
+  { name: '__Secure-next-auth.session-token',   durationKey: 'thirtyDays', purposeKey: 'session',  categoryKey: 'necessary' },
+  { name: '__Host-next-auth.csrf-token',        durationKey: 'session',    purposeKey: 'csrf',     categoryKey: 'necessary' },
+  { name: '__Secure-next-auth.callback-url',    durationKey: 'session',    purposeKey: 'callback', categoryKey: 'necessary' },
+  { name: 'grubano_estab',                      durationKey: 'oneYear',    purposeKey: 'estab',    categoryKey: 'necessary' },
+  { name: 'grubano_ref',                        durationKey: 'ninetyDays', purposeKey: 'ref',      categoryKey: 'necessary' },
+  { name: 'grubano_chef',                       durationKey: 'oneDay',     purposeKey: 'chef',     categoryKey: 'necessary' },
+  { name: '__stripe_mid / __stripe_sid',        durationKey: 'stripe',     purposeKey: 'stripe',   categoryKey: 'necessary' },
 ]
 
-// ── LES VALEURS — toutes en placeholder jusqu'à la prod ──────────────────────
-// Indice (NON contraignant) : l'app tourne sur o2switch — mais NE PAS présumer
-// l'hébergeur ici ; Mohammed confirmera et remplira les coordonnées exactes.
+// ── LES VALEURS — placeholders jusqu'à la prod (sauf faits confirmés) ─────────
+// Hébergeur : FAIT CONFIRMÉ (fourni par l'orchestrateur closed beta) — o2switch,
+// 222-224 Boulevard Gustave Flaubert, 63000 Clermont-Ferrand. Seul host.contact
+// reste en placeholder : Mohammed doit confirmer le canal de contact à publier.
 export const LEGAL_INFO: LegalInfo = {
   editor: {
     raisonSociale:        '[[À COMPLÉTER — raison sociale de la société]]',
@@ -139,8 +154,8 @@ export const LEGAL_INFO: LegalInfo = {
     directeurPublication: '[[À COMPLÉTER — directeur/directrice de la publication]]',
   },
   host: {
-    nom:     '[[À COMPLÉTER — nom de l’hébergeur]]',
-    adresse: '[[À COMPLÉTER — adresse de l’hébergeur]]',
+    nom:     'o2switch',
+    adresse: '222-224 Boulevard Gustave Flaubert, 63000 Clermont-Ferrand',
     contact: '[[À COMPLÉTER — contact de l’hébergeur]]',
   },
   mediation: {

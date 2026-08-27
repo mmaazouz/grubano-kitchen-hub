@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { issueEmailOtp, isMoneyStepUpEnabled, type OtpPurpose } from '@/lib/email-otp'
+import { maskEmail } from '@/lib/log-privacy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
     if (process.env.SMTP_PASS) {
       await sendStepUpEmail(email, issued.code, purpose)
     } else {
-      console.error('[step-up] SMTP_PASS missing — code NOT emailed for', email)
+      console.error('[step-up] SMTP_PASS missing — code NOT emailed for', maskEmail(email))
     }
     return NextResponse.json({ ok: true })
   } catch (err) {

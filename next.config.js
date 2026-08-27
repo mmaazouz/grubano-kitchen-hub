@@ -7,8 +7,9 @@ const withNextIntl = createNextIntlPlugin('./i18n.ts')
 // switch this to enforce (`Content-Security-Policy`, a LATER deliberate decision) connect-src /
 // img-src / font-src are locked down without breaking the app. Violations are POSTed to the
 // self-hosted /api/csp-report collector (no external host). Documented legitimate sources:
-//   • self-hosted Material Symbols woff2 → font-src 'self' (the icon font is now local)
-//   • remaining Google text fonts → style-src fonts.googleapis.com (CSS) + font-src fonts.gstatic.com
+//   • self-hosted fonts (Material Symbols + text fonts, public/fonts) → font-src 'self'
+//     (Lot 7 : les @import fonts.googleapis.com morts ont été supprimés → plus AUCUNE
+//     source Google Fonts dans la CSP)
 //   • Stripe payments → script-src/frame-src js.stripe.com + connect-src api.stripe.com
 //   • images → 'self' + /images mirror; data:/blob: (upload previews); images.unsplash.com (fallback)
 // EXPECTED report-only violations to review before enforce: any inline <script> without
@@ -22,9 +23,9 @@ const CSP_REPORT_ONLY = [
   "frame-ancestors 'self'",
   "form-action 'self'",
   "script-src 'self' 'unsafe-inline' https://js.stripe.com",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://images.unsplash.com",
-  "font-src 'self' https://fonts.gstatic.com",
+  "font-src 'self'",
   "connect-src 'self' https://api.stripe.com",
   "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
   "worker-src 'self' blob:",
