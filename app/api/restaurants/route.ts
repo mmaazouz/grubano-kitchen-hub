@@ -367,14 +367,33 @@ export async function POST(req: Request) {
     //     future schema change that re-introduced `isActive` could not lift
     //     the restaurant on a create call.
     //   - Activation is operator-side via the existing PATCH route.
-    const restaurant = await prisma.restaurant.create({
-      data: {
-        ...input,
-        operatorId: operator.id,
-        lat:        coords?.latitude  ?? null,
-        lng:        coords?.longitude ?? null,
-        isActive:   false, // ← FORCED. PATCH /api/restaurants/:id flips later.
-      },
+    // ── Rattachement des marques orphelines (P0 golden path) ─────────────────
+    // The onboarding wizard creates the Brand BEFORE the Restaurant exists, so
+    // POST /api/brands stores it with restaurantId:null — and the consumer menu
+    // (GET /api/restaurants/[id]) only reads brands ATTACHED to the restaurant.
+    // Without this step a fully-onboarded partner ends up with an EMPTY public
+    // menu, hence zero possible orders. On the FIRST establishment (the wizard
+    // path — `additional` is never set there) we attach every orphan brand of
+    // this operator to the newly created restaurant, in the SAME transaction:
+    // either the restaurant exists with its brands wired, or nothing happened.
+    // A deliberate `additional:true` create never re-routes existing orphans.
+    const restaurant = await prisma.$transaction(async (tx) => {
+      const created = await tx.restaurant.create({
+        data: {
+          ...input,
+          operatorId: operator.id,
+          lat:        coords?.latitude  ?? null,
+          lng:        coords?.longitude ?? null,
+          isActive:   false, // ← FORCED. PATCH /api/restaurants/:id flips later.
+        },
+      })
+      if (!additional) {
+        await tx.brand.updateMany({
+          where: { operatorId: operator.id, restaurantId: null },
+          data:  { restaurantId: created.id },
+        })
+      }
+      return created
     })
 
     // geocodeStatus lets the client warn ONLY on a genuine not_found (typo),

@@ -16,6 +16,8 @@ const { db } = vi.hoisted(() => ({
   db: {
     operator:   { findUnique: vi.fn() },
     restaurant: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    brand:      { updateMany: vi.fn() },
+    $transaction: vi.fn(),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -60,6 +62,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   db.restaurant.update.mockResolvedValue({ id: 'r1' })
   db.restaurant.create.mockResolvedValue({ id: 'r1' })
+  db.brand.updateMany.mockResolvedValue({ count: 0 })
+  // Interactive transaction (brand-attach) → replay the callback on the same mock client.
+  db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db))
 })
 
 describe('SEC1 — PATCH /api/restaurants/[id] (publication is admin-only)', () => {
