@@ -3,14 +3,16 @@ import { AlertTriangle } from 'lucide-react'
 import { getTranslations, setRequestLocale } from 'next-intl/server'
 import { LEGAL_COOKIES, isLegalInfoComplete } from '@/lib/legal-info'
 
-// ── /legal/cookies — cookie inventory (Agent 35) ──────────────────────────────
+// ── /legal/cookies — cookie inventory (Agent 35, complété Lot 7) ──────────────
 // Lists the cookies the app ACTUALLY sets (from lib/legal-info.ts LEGAL_COOKIES):
-// NEXT_LOCALE (language), next-auth.session-token (session), grubano_estab
-// (selected establishment), grubano_ref (referral). All strictly necessary — no
-// advertising / third-party analytics cookies, and no consent banner/CMP exists
-// (so none is described here). Same public chrome + shared finalisation banner +
-// noindex while isLegalInfoComplete() is false, for coherence with the other
-// legal pages.
+// NEXT_LOCALE (language), the NextAuth production cookies (__Secure-…session-token,
+// __Host-…csrf-token, __Secure-…callback-url), grubano_estab (selected
+// establishment), grubano_ref (referral), grubano_chef (chef-page visit) and the
+// Stripe fraud-prevention cookies (__stripe_mid/__stripe_sid, set by js.stripe.com
+// only when a payment module is displayed). No advertising / third-party analytics
+// cookies, and no consent banner/CMP exists (so none is described here). Same
+// public chrome + shared finalisation banner + noindex while isLegalInfoComplete()
+// is false, for coherence with the other legal pages.
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
@@ -28,12 +30,19 @@ export default async function CookiesPage(props: { params: { locale: string } })
     oneYear:    t('cookies.durOneYear'),
     thirtyDays: t('cookies.durThirtyDays'),
     ninetyDays: t('cookies.durNinetyDays'),
+    oneDay:     t('cookies.durOneDay'),
+    session:    t('cookies.durSession'),
+    stripe:     t('cookies.durStripe'),
   }
   const purpose: Record<string, string> = {
-    locale:  t('cookies.purposeLocale'),
-    session: t('cookies.purposeSession'),
-    estab:   t('cookies.purposeEstab'),
-    ref:     t('cookies.purposeRef'),
+    locale:   t('cookies.purposeLocale'),
+    session:  t('cookies.purposeSession'),
+    estab:    t('cookies.purposeEstab'),
+    ref:      t('cookies.purposeRef'),
+    chef:     t('cookies.purposeChef'),
+    csrf:     t('cookies.purposeCsrf'),
+    callback: t('cookies.purposeCallback'),
+    stripe:   t('cookies.purposeStripe'),
   }
   const cat: Record<string, string> = {
     necessary: t('cookies.catNecessary'),

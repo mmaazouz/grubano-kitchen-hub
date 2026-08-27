@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import nodemailer from 'nodemailer'
 import { z } from 'zod'
 import { rateLimit } from '@/lib/rate-limit'
+import { maskEmail } from '@/lib/log-privacy'
 
 // nodemailer needs the Node runtime (it is the default for app routes, made
 // explicit here like /api/partners/register).
@@ -124,13 +125,13 @@ export async function POST(req: NextRequest) {
     try {
       if (!process.env.SMTP_PASS) {
         emailStatus = 'skipped'
-        console.error('[POST /api/auth/register] SMTP_PASS missing — welcome email SKIPPED for', data.email)
+        console.error('[POST /api/auth/register] SMTP_PASS missing — welcome email SKIPPED for', maskEmail(data.email))
       } else {
         await sendWelcomeEmail(data.email, data.name)
       }
     } catch (mailErr) {
       emailStatus = 'failed'
-      console.error('[POST /api/auth/register] welcome email FAILED for', data.email,
+      console.error('[POST /api/auth/register] welcome email FAILED for', maskEmail(data.email),
         mailErr instanceof Error ? mailErr.message : mailErr)
     }
     try {

@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { issueEmailOtp } from '@/lib/email-otp'
 import { isEmailChangeEnabled, checkEmailChangeEligibility } from '@/lib/email-change'
+import { maskEmail } from '@/lib/log-privacy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -59,7 +60,7 @@ export async function POST() {
     if (process.env.SMTP_PASS) {
       await sendCode(elig.email, issued.code)
     } else {
-      console.error('[email-change/request-code] SMTP_PASS missing — code NOT emailed for', elig.email)
+      console.error('[email-change/request-code] SMTP_PASS missing — code NOT emailed for', maskEmail(elig.email))
     }
     return NextResponse.json({ ok: true })
   } catch (err) {

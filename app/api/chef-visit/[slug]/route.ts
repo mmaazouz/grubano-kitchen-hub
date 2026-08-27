@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isAttributionCookiesEnabled } from '@/lib/attribution-cookies'
 
 // ── GET /api/chef-visit/[slug] — chef CONTRIBUTION tracking (Mission 1) ───────
 //
@@ -84,15 +85,20 @@ export async function GET(
     }
 
     const res = redirectRelative(target)
-    res.cookies.set({
-      name:     COOKIE_NAME,
-      value:    creator.referralLinkSlug, // canonical slug
-      maxAge:   COOKIE_MAX_AGE,
-      path:     '/',
-      httpOnly: true,
-      sameSite: 'lax',
-      secure:   process.env.NODE_ENV === 'production',
-    })
+    // Lot 7 closed beta — attribution cookies gated OFF by default
+    // (ATTRIBUTION_COOKIES_ENABLED). ONLY the Set-Cookie is gated: the slug
+    // validation and the redirect stay byte-identical.
+    if (isAttributionCookiesEnabled()) {
+      res.cookies.set({
+        name:     COOKIE_NAME,
+        value:    creator.referralLinkSlug, // canonical slug
+        maxAge:   COOKIE_MAX_AGE,
+        path:     '/',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure:   process.env.NODE_ENV === 'production',
+      })
+    }
     return res
   } catch (err) {
     console.error('[GET /api/chef-visit/:slug]', err instanceof Error ? err.message : err)

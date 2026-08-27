@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { maskEmail } from '@/lib/log-privacy'
 import { isAffiliateEnabled, ensureAffiliateOperator, type EnsureAffiliateResult } from '@/lib/affiliate-account'
 
 // ── Affiliate PRE-LOGIN signup bridge (Agent 118 — unification "recommander" incr. 1/3) ──
@@ -56,7 +57,7 @@ export async function ensureAffiliateApplicant(email: string, name: string): Pro
       operatorId = op.id
     }
   } catch (err) {
-    console.error('[ensureAffiliateApplicant] provisioning non-fatal:', email, err instanceof Error ? err.message : err)
+    console.error('[ensureAffiliateApplicant] provisioning non-fatal:', maskEmail(email), err instanceof Error ? err.message : err)
     return { ok: false, reason: 'error' }
   }
 

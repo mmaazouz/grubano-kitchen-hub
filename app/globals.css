@@ -2,8 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Google Fonts — Space Grotesk (headings) + Inter (body) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+/* Fonts (Inter / Space Grotesk) : SELF-HOSTÉES (public/fonts). L'ancien @import
+   fonts.googleapis.com était PROUVÉ mort (bundlé mi-chunk, ignoré par les
+   navigateurs) — supprimé (Lot 7), CSP allégée en conséquence (next.config.js). */
 
 /* ── Design tokens (portage des CSS variables Lovable → Tailwind v3) ────── */
 :root {

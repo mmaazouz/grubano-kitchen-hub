@@ -17,6 +17,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `ADMIN_AUDIT_ENABLED` | `lib/admin-audit.ts` | Journal d'audit des actions admin |
 | `AFFILIATE_ENABLED` | `lib/affiliate-account.ts` | Surface affilié entière (404 OFF) |
 | `AFFILIATE_CONNECT_ENABLED` | `lib/creator-payout.ts` | Onboarding Stripe Connect affilié |
+| `ATTRIBUTION_COOKIES_ENABLED` | `lib/attribution-cookies.ts` | Pose des cookies d'ATTRIBUTION `grubano_ref` (/api/ref/[code]) et `grubano_chef` (/api/chef-visit/[slug]) — défaut OFF **toute la bêta** (règle « tracker non essentiel → OFF plutôt que CMP »). Seul le Set-Cookie est gaté : redirection, validation du code et click-tracking affilié restent byte-identical |
 | `AUTH_EMAIL_CHANGE_ENABLED` | `lib/email-change.ts` | Changement d'email de compte (3 routes confirm) |
 | `AUTH_EMAIL_OTP_ENABLED` | `lib/email-otp.ts` | OTP email au login |
 | `AUTH_MONEY_STEPUP_ENABLED` | `lib/email-otp.ts` | Step-up OTP sur actions argent |

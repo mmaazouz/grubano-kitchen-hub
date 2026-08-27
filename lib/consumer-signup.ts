@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { maskEmail } from '@/lib/log-privacy'
 
 // ── Consumer PRE-LOGIN provisioning (Agent 132 — account-AT-payment, brick 2c) ──────
 //
@@ -51,7 +52,7 @@ export async function ensureConsumerByEmail(emailRaw: string): Promise<EnsureCon
       const found = await prisma.operator.findUnique({ where: { email }, select: { id: true } })
       if (found) return { ok: true }
     } catch { /* fall through to error */ }
-    console.error('[ensureConsumerByEmail] provisioning non-fatal:', email, err instanceof Error ? err.message : err)
+    console.error('[ensureConsumerByEmail] provisioning non-fatal:', maskEmail(email), err instanceof Error ? err.message : err)
     return { ok: false, reason: 'error' }
   }
 }

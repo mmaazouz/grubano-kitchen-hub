@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { sha256 } from '@/lib/partner-verification'
 import { sendPasswordResetEmail } from '@/lib/transactional-emails'
 import { rateLimit } from '@/lib/rate-limit'
 
@@ -11,10 +12,14 @@ import { rateLimit } from '@/lib/rate-limit'
 // ALWAYS answers 200 { ok:true } — whether the account exists or not (no user
 // enumeration). When the account exists AND has a password (SSO-only accounts
 // have nothing to reset):
-//   - a SINGLE-USE random token (crypto, 64 hex chars) valid 1 HOUR is stored
-//     in the EXISTING VerificationToken table (identifier 'pwreset:<email>' —
-//     namespaced, the table is unused by any other flow; previous tokens for
-//     the identifier are deleted → one active token at a time),
+//   - a SINGLE-USE random token (crypto, 64 hex chars) valid 1 HOUR is minted;
+//     ONLY ITS SHA-256 is stored in the EXISTING VerificationToken table
+//     (identifier 'pwreset:<email>' — namespaced, the table is unused by any
+//     other flow; previous tokens for the identifier are deleted → one active
+//     token at a time). Lot 7 (P1 sécurité) : même convention que le magic-link
+//     (lib/magic-link) — un dump de la table ne donne plus de lien de reset
+//     utilisable. Rétro-compatible par expiration naturelle (TTL 1 h : un token
+//     en clair émis avant le déploiement ne matche plus, il expire seul),
 //   - the reset email (best-effort, EmailLog trigger password_reset_request)
 //     carries {NEXTAUTH_URL}/fr/eat/reset-password?token=…&email=…&space=…
 //     (the page is PUBLIC via the /eat tree — middleware untouched; `space`
@@ -56,9 +61,17 @@ export async function POST(req: Request) {
     if (operator?.password) {
       const identifier = `pwreset:${email}`
       const token = randomBytes(32).toString('hex')
+      // Purge en bande (best-effort) : les tokens EXPIRÉS de cet identifier ne
+      // doivent jamais s'accumuler. La suppression inconditionnelle qui suit la
+      // recouvre ici, mais elle, n'est PAS best-effort (elle garantit « un seul
+      // token actif ») — la purge reste correcte si cette règle évolue.
+      await prisma.verificationToken.deleteMany({
+        where: { identifier, expires: { lt: new Date() } },
+      }).catch(() => {})
       await prisma.verificationToken.deleteMany({ where: { identifier } })
+      // Store ONLY the hash — the clear token exists in the emailed URL alone.
       await prisma.verificationToken.create({
-        data: { identifier, token, expires: new Date(Date.now() + TOKEN_TTL_MS) },
+        data: { identifier, token: sha256(token), expires: new Date(Date.now() + TOKEN_TTL_MS) },
       })
 
       const base = process.env.NEXTAUTH_URL || 'https://grubano.com'

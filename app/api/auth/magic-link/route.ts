@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { createMagicLinkToken } from '@/lib/magic-link'
 import { issueEmailOtp, isEmailOtpEnabled } from '@/lib/email-otp'
 import { rateLimit } from '@/lib/rate-limit'
+import { maskEmail } from '@/lib/log-privacy'
 import { locales, defaultLocale } from '@/i18n'
 
 export const runtime = 'nodejs'
@@ -163,7 +164,7 @@ export async function POST(req: NextRequest) {
           await sendMagicEmail(operator.name, email, link, otpCode)
         } else {
           // No SMTP secret (e.g. staging) → log the link so a dev can still test.
-          console.error('[magic-link] SMTP_PASS missing — link NOT emailed for', email)
+          console.error('[magic-link] SMTP_PASS missing — link NOT emailed for', maskEmail(email))
         }
       } catch (e) {
         // Unmigrated column / mail failure → stay generic, never 500.
