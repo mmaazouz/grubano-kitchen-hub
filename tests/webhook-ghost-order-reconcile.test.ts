@@ -26,7 +26,7 @@ const { db, stripe, refund, emails } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('@/lib/stripe', () => ({ getStripe: stripe.getStripe, retrieveChargeFacts: stripe.retrieveChargeFacts, mapAccountStatus: stripe.mapAccountStatus }))
 vi.mock('@/lib/refund', () => ({ isRefundsEnabled: refund.isRefundsEnabled, isGhostOrderAutoRefundEnabled: refund.isGhostOrderAutoRefundEnabled, executeRefund: refund.executeRefund }))
-vi.mock('@/lib/admin-alerts', () => ({ sendAdminGhostOrderAlert: emails.sendAdminGhostOrderAlert }))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminGhostOrderAlert: emails.sendAdminGhostOrderAlert, sendAdminStalePiAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
 import { POST } from '@/app/api/webhooks/stripe/route'
 

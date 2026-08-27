@@ -73,8 +73,18 @@ export async function POST(
             clientSecret: existing.client_secret, publishableKey, amount: amountCents, currency,
           })
         }
-      } catch {
-        // fall through and create a fresh PaymentIntent
+      } catch (err) {
+        // M1-02 — une erreur TRANSITOIRE (réseau/Stripe) sur la lecture du PI
+        // stocké ne doit PAS retomber dans la création : cela empilait un 2e
+        // hold de 10 € pendant que le 1er restait vivant (deux autorisations
+        // simultanées sur la carte). On ne crée un nouveau PI que sur un statut
+        // LU 'canceled' — sinon : 502, le client réessaie.
+        console.error('[reservations deposit] retrieveIntent failed — not falling through to a fresh hold:',
+          err instanceof Error ? err.message : err)
+        return NextResponse.json(
+          { error: 'Vérification du dépôt momentanément indisponible — réessayez.' },
+          { status: 502 },
+        )
       }
     }
 

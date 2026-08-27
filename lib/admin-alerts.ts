@@ -48,6 +48,40 @@ export async function sendAdminGhostOrderAlert(p: {
 }
 
 /**
+ * M2-03 / M6-01 (money flow) — a SUCCEEDED PaymentIntent that is NOT the
+ * current PI of its order/ticket was captured (orphan from a cancel+recreate
+ * whose cancelIntent failed, or a lost /pay race). The immutable ledger line IS
+ * written (ledger-first) but the confirmation is refused (stale_pi) — real
+ * money captured with only a console.error as signal until now. ONE idempotent
+ * alert per orphan PI (trigger `admin_stale_pi`, dedupeKey `pi:<id>`); the
+ * refund of the orphan is a manual admin decision (dashboard Stripe or rails).
+ */
+export async function sendAdminStalePiAlert(p: {
+  kind:            'order' | 'ticket'
+  entityId:        string
+  paymentIntentId: string
+  currentPiId:     string | null
+  amountCents:     number
+}): Promise<{ status: SendStatus }> {
+  try {
+    const to = (process.env.ALERT_EMAIL || '').trim()
+    if (!to) return { status: 'skipped' }
+    const euros = (p.amountCents / 100).toFixed(2)
+    const subject = '[Grubano] Paiement capturé sur un PaymentIntent périmé — réconciliation requise'
+    const html =
+      `<div style="font-family:system-ui,Arial,sans-serif;color:#111827;max-width:520px">`
+      + `<h2 style="font-size:17px">Encaissement sur PI périmé (${p.kind === 'order' ? 'commande' : 'addition'})</h2>`
+      + `<p>Un PaymentIntent <b>qui n'est plus le PI courant</b> a été encaissé. La ligne ledger est écrite, mais la ${p.kind === 'order' ? 'commande' : 'session'} n'a PAS été confirmée par cet encaissement — le client a pu payer deux fois.</p>`
+      + `<p style="font-size:14px">${p.kind === 'order' ? 'Commande' : 'Addition'} : <b>${escHtml(p.entityId)}</b><br>PI encaissé (périmé) : <b>${escHtml(p.paymentIntentId)}</b><br>PI courant : <b>${escHtml(p.currentPiId ?? '(aucun)')}</b><br>Montant : <b>${euros} €</b></p>`
+      + `<p style="font-size:13px;color:#6b7280">Vérifier dans le dashboard Stripe si les DEUX PIs sont encaissés ; rembourser l'orphelin le cas échéant (rail admin refund par PI, ou dashboard).</p>`
+      + `</div>`
+    return await sendOnce('admin_stale_pi', `pi:${p.paymentIntentId}`, { to, subject, html })
+  } catch {
+    return { status: 'failed' }
+  }
+}
+
+/**
  * P0-39 (vague 3) — a claim has been AWAITING the restaurant's answer past its
  * response deadline. The 24h auto-approval (the circuit's relief valve) was
  * removed by P0-07/P0-25 per Q3 with nothing replacing it — without this alert
