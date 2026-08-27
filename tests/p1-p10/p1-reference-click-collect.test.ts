@@ -28,6 +28,7 @@ vi.mock('next-auth/jwt', () => ({ getToken: getTokenMock }))
 const { db } = vi.hoisted(() => ({
   db: {
     restaurant:         { findFirst: vi.fn(), findUnique: vi.fn() },
+    menuItem:           { findMany: vi.fn() },
     creator:            { findFirst: vi.fn() },
     referralConfig:     { findFirst: vi.fn() },
     referral:           { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -94,6 +95,17 @@ const patchTo = (status: string) => patchStatus(statusReq(status), { params: { i
 const trackReq = () => new NextRequest('https://app.grubano.com/api/orders/order1')
 const track    = () => getOrder(trackReq(), { params: { id: 'order1' } })
 
+// Re-pricing serveur (P0 closed beta): POST /api/orders resolves every line
+// against MenuItem and OVERWRITES the client price/name with the DB values. The
+// DB rows mirror the request bodies so the CHARACTERIZED economics stay
+// identical. Default = the orderBody() line (i1 'Gnocchi' @ 20 €); the
+// below-minimum test re-arms with its own 5 € price.
+const armMenu = (rows: Array<{ id: string; name: string; price: number }>) =>
+  db.menuItem.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in
+      .map((id) => rows.find((r) => r.id === id) ?? null)
+      .filter((r): r is { id: string; name: string; price: number } => r !== null))
+
 // A pickup order row as stored between transitions (fed to order.findUnique).
 const pickupOrder = (over: Record<string, unknown> = {}) => ({
   id: 'order1', consumerId: 'cust1', restaurantId: 'rest1',
@@ -130,6 +142,7 @@ beforeEach(() => {
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
   db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
+  armMenu([{ id: 'i1', name: 'Gnocchi', price: 20 }])
   db.openingHour.findMany.mockResolvedValue([])       // hours not configured → no gate
   db.closureException.findMany.mockResolvedValue([])
   db.creator.findFirst.mockResolvedValue(null)        // no referral code / chef cookie
@@ -203,6 +216,7 @@ describe('P1 — POST /api/orders (création click & collect, carte)', () => {
   })
 
   it('[PASS-ACTUEL] sous le minimum de commande → 400 (contrôlé sur le subtotal AVANT remises)', async () => {
+    armMenu([{ id: 'i1', name: 'Gnocchi', price: 5 }]) // DB mirrors this test's 5 € line
     const res = await createOrder(orderReq(orderBody({
       items: [{ itemId: 'i1', name: 'Gnocchi', qty: 1, price: 5, options: [] }], // 5 € < minOrder 10 €
     })))

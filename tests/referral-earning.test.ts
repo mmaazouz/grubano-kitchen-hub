@@ -24,6 +24,7 @@ const { db } = vi.hoisted(() => ({
     // archivedAt:null). The row now also carries the A1 commission fields
     // (null = platform defaults) read by lib/commission.
     restaurant:     { findFirst: vi.fn() },
+    menuItem:       { findMany: vi.fn() },
     creator:        { findFirst: vi.fn() },
     referralConfig: { findFirst: vi.fn() },
     referral:       { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -66,6 +67,16 @@ const orderBody = (over: Record<string, unknown> = {}) => ({
 
 const referralOrderArg = () => (db.referralOrder.create.mock.calls[0]?.[0] as any)?.data
 
+// Re-pricing serveur (P0 closed beta): the route resolves every line against
+// MenuItem and OVERWRITES the client price/name with the DB values. The DB rows
+// mirror the request bodies so the tests' economics stay identical. Default =
+// the orderBody() line (i1 'Dish' @ 100 €); the cent-rounding test re-arms.
+const armMenu = (rows: Array<{ id: string; name: string; price: number }>) =>
+  db.menuItem.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in
+      .map((id) => rows.find((r) => r.id === id) ?? null)
+      .filter((r): r is { id: string; name: string; price: number } => r !== null))
+
 beforeEach(() => {
   // P0-01: ces tests exercent le contrat LIVRAISON (post-pilote) -> flag ON explicitement.
   process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
@@ -77,6 +88,7 @@ beforeEach(() => {
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
+  armMenu([{ id: 'i1', name: 'Dish', price: 100 }])
   db.openingHour.findMany.mockResolvedValue([])      // not configured → order not gated
   db.closureException.findMany.mockResolvedValue([])
   db.creator.findFirst.mockResolvedValue({ id: 'creatorA', email: 'creator@example.com', referralCode: 'CHEF1' })
@@ -159,6 +171,7 @@ describe('POST /api/orders — B0 referral payout (CAS 1)', () => {
     // subtotal 47.50 delivery 1.99 → gross feeCents = round(4750 × 0.12) = 570 →
     // 5.70 € (frozen grubanoFee). net = 570 − stripe(round(4949×0.029)+25=169) =
     // 401c → creatorEarning = round2(4.01 × 0.30) = 1.20.
+    armMenu([{ id: 'i1', name: 'D', price: 23.75 }]) // DB mirrors this test's body
     const res = await POST(makeReq(orderBody({ items: [{ itemId: 'i1', name: 'D', qty: 2, price: 23.75, options: [] }] })))
     expect(res.status).toBe(201)
     expect(referralOrderArg()).toMatchObject({ grubanoFee: 5.7, creatorEarning: 1.2 })

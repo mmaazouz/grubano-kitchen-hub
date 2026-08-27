@@ -13,6 +13,7 @@ vi.mock('next-auth/jwt', () => ({ getToken: getTokenMock }))
 const { db } = vi.hoisted(() => ({
   db: {
     restaurant:     { findFirst: vi.fn(), findUnique: vi.fn() },
+    menuItem:       { findMany: vi.fn() },
     creator:        { findFirst: vi.fn() },
     referralConfig: { findFirst: vi.fn() },
     referral:       { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -51,6 +52,13 @@ const ON  = () => { process.env.FRANCHISE_POS_TAGGING_ENABLED = 'true' }
 const OFF = () => { delete process.env.FRANCHISE_POS_TAGGING_ENABLED }
 const createdData = () => (db.order.create.mock.calls[0]?.[0] as { data: Record<string, unknown> })?.data
 
+// Re-pricing serveur (P0 closed beta): the route now resolves every line against
+// MenuItem — mirror the request bodies so the tests' economics stay identical.
+const MENU: Record<string, { name: string; price: number }> = { i1: { name: 'Dish', price: 20 } }
+const armMenu = () =>
+  db.menuItem.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in.map((id) => (MENU[id] ? { id, ...MENU[id] } : null)).filter(Boolean))
+
 beforeEach(() => {
   vi.clearAllMocks()
   OFF()
@@ -61,6 +69,7 @@ beforeEach(() => {
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
+  armMenu()
   db.openingHour.findMany.mockResolvedValue([])
   db.closureException.findMany.mockResolvedValue([])
   db.creator.findFirst.mockResolvedValue(null)
@@ -120,6 +129,7 @@ describe('B5 — Order.pointOfSaleId tagging (FRANCHISE_POS_TAGGING_ENABLED)', (
     // re-arm the mocks consumed above
     getTokenMock.mockResolvedValue({ sub: 'cust1', email: 'buyer@example.com', role: 'restaurant' })
     db.restaurant.findFirst.mockResolvedValue({ deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: 'pos1', commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null })
+    armMenu()
     db.openingHour.findMany.mockResolvedValue([]); db.closureException.findMany.mockResolvedValue([])
     db.creator.findFirst.mockResolvedValue(null); db.promotion.findMany.mockResolvedValue([]); db.dishAdoption.findMany.mockResolvedValue([])
     db.order.create.mockResolvedValue({ id: 'order1' }); db.order.update.mockResolvedValue({ id: 'order1', total: 20, status: 'received' }); db.order.updateMany.mockResolvedValue({ count: 1 })

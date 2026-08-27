@@ -14,6 +14,7 @@ vi.mock('next-auth/jwt', () => ({ getToken: getTokenMock }))
 const { db } = vi.hoisted(() => ({
   db: {
     restaurant:     { findFirst: vi.fn(), findUnique: vi.fn() },
+    menuItem:       { findMany: vi.fn() },
     creator:        { findFirst: vi.fn() },
     affiliate:      { findFirst: vi.fn() },
     referralConfig: { findFirst: vi.fn() },
@@ -60,6 +61,11 @@ function arm() {
     deliveryEnabled: true, pickupEnabled: true, id: 'rest1', isActive: true, deliveryFee: 0, minOrder: 5, pointOfSaleId: null,
     commissionRateDineIn: null, commissionRatePickup: null, commissionRateDelivery: null, commissionFreeUntil: null,
   })
+  // Re-pricing serveur (P0 closed beta): mirror the orderBody() line (i1 'Dish'
+  // @ 20 €) in DB so the test economics are unchanged.
+  const MENU: Record<string, { name: string; price: number }> = { i1: { name: 'Dish', price: 20 } }
+  db.menuItem.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in.map((id) => (MENU[id] ? { id, ...MENU[id] } : null)).filter(Boolean))
   db.openingHour.findMany.mockResolvedValue([])
   db.closureException.findMany.mockResolvedValue([])
   db.creator.findFirst.mockResolvedValue(null)
