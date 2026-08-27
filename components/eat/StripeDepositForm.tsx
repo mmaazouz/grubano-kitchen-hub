@@ -126,6 +126,10 @@ export default function StripeDepositForm({ reservationId, onAuthorized }: Props
     >
       <DepositInnerForm
         amountLabel={amountLabel}
+        // LOT D (P-4) — auto-extinctive test-card tip: the « 4242… » line renders
+        // ONLY on a TEST publishable key, so it disappears by itself at LIVE
+        // switch-over (the key comes from the SAME endpoint as the clientSecret).
+        isTestMode={init.publishableKey.startsWith('pk_test_')}
         onAuthorized={onAuthorized}
       />
     </Elements>
@@ -133,9 +137,10 @@ export default function StripeDepositForm({ reservationId, onAuthorized }: Props
 }
 
 function DepositInnerForm({
-  amountLabel, onAuthorized,
+  amountLabel, isTestMode, onAuthorized,
 }: {
   amountLabel:  string
+  isTestMode:   boolean
   onAuthorized: (status: string) => void
 }) {
   const t       = useTranslations('eat.reservation')
@@ -200,7 +205,13 @@ function DepositInnerForm({
       {/* PaymentElement = Stripe-managed inputs (card, supported methods). */}
       <PaymentElement options={{ layout: 'tabs' }} />
 
+      {/* LOT D (P-4/D2) — depositHint now words the TEMPORARY AUTHORISATION (not a
+          payment, no penalty during the beta) and renders ALWAYS; the test-card tip
+          is a separate line, rendered only in Stripe TEST mode (pk_test_). */}
       <p className="text-[10px] text-muted-foreground">{t('depositHint')}</p>
+      {isTestMode && (
+        <p className="text-[10px] text-muted-foreground">{t('testCardHint')}</p>
+      )}
 
       {error && (
         <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">

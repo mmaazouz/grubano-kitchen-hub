@@ -3004,7 +3004,9 @@
       "chatAiSuggest": "Respuestas sugeridas por la IA",
       "chatPlaceholder": "Tu mensaje…",
       "signInTitle": "Inicia sesión para obtener ayuda con este pedido",
-      "signInCta": "Iniciar sesión"
+      "signInCta": "Iniciar sesión",
+      "refundOffTitle": "Reembolsos — soporte humano",
+      "refundOffBody": "Durante la beta, las solicitudes de reembolso las gestiona nuestro equipo. Escríbenos a contact@grubano.com indicando tu número de pedido — te responderemos personalmente."
     },
     "home": {
       "seeAll": "Ver todo",
@@ -3224,8 +3226,8 @@
       "resPast": "Pasada",
       "resCancelled": "Anulada",
       "resNoShow": "No presentado",
-      "resDepositAuthorized": "Retención de {amount} preautorizada — no se cobra nada; se libera a su llegada.",
-      "resDepositReleased": "La retención de {amount} ha sido liberada — no se ha cobrado nada. La preautorización desaparece de su extracto en unos días.",
+      "resDepositAuthorized": "Retención de {amount} preautorizada — no se cobra nada; permanece activa hasta el pago de la cuenta y se libera automáticamente.",
+      "resDepositReleased": "La retención de {amount} ha sido liberada — no se ha cobrado nada. El plazo para que desaparezca de su extracto depende de su banco.",
       "resNoShowReleased": "No presentado — la retención de {amount} ha sido liberada, no se ha cobrado nada.",
       "resDepositCaptured": "{amount} cobrados de la retención.",
       "resCancel": "Anular la reserva",
@@ -3716,7 +3718,8 @@
       "submitWithDeposit": "Continuar con la huella",
       "depositTitle": "Huella bancaria",
       "depositIntro": "Huella de {amount} — permanece activa hasta el pago de la cuenta y se libera automáticamente al pagar.",
-      "depositHint": "Tarjeta de prueba: 4242 4242 4242 4242, fecha futura, CVC libre.",
+      "depositHint": "Autorización bancaria temporal — no es un pago: hoy no se cobra nada y no se aplica ninguna penalización durante esta beta.",
+      "testCardHint": "Modo de prueba: usa la tarjeta 4242 4242 4242 4242, fecha futura, CVC libre.",
       "depositSubmit": "Confirmar la huella",
       "depositProcessing": "Confirmando…",
       "depositSkipped": "Este restaurante no pide huella. Tu reserva está confirmada.",
@@ -3737,7 +3740,7 @@
       "summaryTitle": "Tu reserva",
       "ccTitle": "Click & Collect",
       "knowTitle": "Conviene saber",
-      "knowNoPrepay": "Sin prepago",
+      "knowNoPrepay": "Sin prepago — puede solicitarse una retención en tarjeta",
       "ccKnowCounter": "Muestra el código en el mostrador",
       "ccKnowCode": "Listo en ~20 min",
       "modeReserve": "Reservar",
@@ -3797,7 +3800,6 @@
       "tipOther": "Otra",
       "tipNote": "El 100 % de la propina es para tu repartidor.",
       "paymentTitle": "Método de pago",
-      "cardVisa": "Visa •••• 4242",
       "cardMc": "Mastercard •••• 8801",
       "cardExpires": "Caduca {date}",
       "applePay": "Apple Pay",
@@ -5273,7 +5275,6 @@
       "actionReleasing": "Liberando…",
       "actionCapturing": "Cobrando…",
       "actionDoneArrived": "Huella liberada",
-      "actionDoneNoshow": "Penalización cobrada",
       "actionErrorGeneric": "Acción fallida — reintenta.",
       "actionError409": "Estado incompatible (ya cobrada o liberada)."
     },
@@ -6873,7 +6874,9 @@
       "franchiseEmptyBody": "Todas las solicitudes han sido gestionadas.",
       "approveFranchise": "Aprobar",
       "actionError": "La acción falló. Inténtalo de nuevo.",
-      "networkError": "No se pudo conectar. Comprueba tu red."
+      "networkError": "No se pudo conectar. Comprueba tu red.",
+      "connectReady": "Cobros activos",
+      "connectMissing": "Cobros NO activos — el restaurante no podrá recibir pedidos de pago (gate Connect)"
     },
     "influencerVerif": {
       "title": "Verificaciones de audiencia",

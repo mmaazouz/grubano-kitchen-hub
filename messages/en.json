@@ -3004,7 +3004,9 @@
       "chatAiSuggest": "AI-suggested replies",
       "chatPlaceholder": "Your message…",
       "signInTitle": "Sign in to get help with this order",
-      "signInCta": "Sign in"
+      "signInCta": "Sign in",
+      "refundOffTitle": "Refunds — human support",
+      "refundOffBody": "During the beta, refund requests are handled by our team. Email us at contact@grubano.com with your order number — we will reply personally."
     },
     "home": {
       "seeAll": "See all",
@@ -3224,8 +3226,8 @@
       "resPast": "Past",
       "resCancelled": "Cancelled",
       "resNoShow": "No-show",
-      "resDepositAuthorized": "A {amount} hold is pre-authorised — nothing is charged; it is released when you arrive.",
-      "resDepositReleased": "The {amount} hold has been released — nothing was charged. The pre-authorisation disappears from your statement within a few days.",
+      "resDepositAuthorized": "A {amount} hold is pre-authorised — nothing is charged; it stays active until the bill is settled and is then released automatically.",
+      "resDepositReleased": "The {amount} hold has been released — nothing was charged. How quickly it clears from your statement depends on your bank.",
       "resNoShowReleased": "No-show — the {amount} hold has been released, nothing was charged.",
       "resDepositCaptured": "{amount} charged from the hold.",
       "resCancel": "Cancel reservation",
@@ -3716,7 +3718,8 @@
       "submitWithDeposit": "Continue to the hold",
       "depositTitle": "Card hold",
       "depositIntro": "Hold of {amount} — it stays active until the bill is paid and is released automatically at payment.",
-      "depositHint": "Test card: 4242 4242 4242 4242, future date, any CVC.",
+      "depositHint": "Temporary card authorisation — this is not a payment: nothing is charged today, and no penalty is taken during this beta.",
+      "testCardHint": "Test mode: use card 4242 4242 4242 4242, any future date, any CVC.",
       "depositSubmit": "Confirm the hold",
       "depositProcessing": "Confirming…",
       "depositSkipped": "This restaurant does not require a hold. Your reservation is confirmed.",
@@ -3737,7 +3740,7 @@
       "summaryTitle": "Your reservation",
       "ccTitle": "Click & Collect",
       "knowTitle": "Good to know",
-      "knowNoPrepay": "No prepayment",
+      "knowNoPrepay": "No prepayment — a card hold may be requested",
       "ccKnowCounter": "Show the code at the counter",
       "ccKnowCode": "Ready in ~20 min",
       "modeReserve": "Reserve",
@@ -3797,7 +3800,6 @@
       "tipOther": "Other",
       "tipNote": "100% of the tip goes to your courier.",
       "paymentTitle": "Payment method",
-      "cardVisa": "Visa •••• 4242",
       "cardMc": "Mastercard •••• 8801",
       "cardExpires": "Expires {date}",
       "applePay": "Apple Pay",
@@ -5273,7 +5275,6 @@
       "actionReleasing": "Releasing…",
       "actionCapturing": "Capturing…",
       "actionDoneArrived": "Hold released",
-      "actionDoneNoshow": "Penalty captured",
       "actionErrorGeneric": "Action failed — please retry.",
       "actionError409": "Incompatible status (already captured or released)."
     },
@@ -6873,7 +6874,9 @@
       "franchiseEmptyBody": "Every application has been handled.",
       "approveFranchise": "Approve",
       "actionError": "The action failed. Please try again.",
-      "networkError": "Could not connect. Check your network."
+      "networkError": "Could not connect. Check your network.",
+      "connectReady": "Payments active",
+      "connectMissing": "Payments NOT active — the restaurant will not be able to receive paid orders (Connect gate)"
     },
     "influencerVerif": {
       "title": "Audience verifications",

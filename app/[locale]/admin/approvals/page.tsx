@@ -40,6 +40,10 @@ export default async function AdminApprovalsPage(props: { params: { locale: stri
       orderBy: { createdAt: 'asc' },
       select:  {
         id: true, name: true, city: true, createdAt: true,
+        // LOT D (advisory admin) — Connect status surfaced on each pending card:
+        // a restaurant approved WITHOUT an active connected account cannot cash
+        // in a paid order (gate D5). Advisory ONLY — approval is NOT blocked.
+        stripeAccountId: true, stripeAccountStatus: true,
         operator: { select: { email: true } },
       },
     }),
@@ -89,6 +93,14 @@ export default async function AdminApprovalsPage(props: { params: { locale: stri
                         <span><span className="ms" aria-hidden="true">place</span>{r.city}</span>
                         <span className="brk"><span className="ms" aria-hidden="true">mail</span>{r.operator.email}</span>
                         <span><span className="ms" aria-hidden="true">schedule</span>{fmtDate(r.createdAt)}</span>
+                        {/* LOT D — indicateur ADVISORY Connect (gate D5) : n'empêche pas l'approbation. */}
+                        {r.stripeAccountId && r.stripeAccountStatus === 'active' ? (
+                          <span><span className="ms" aria-hidden="true">check_circle</span>{t('connectReady')}</span>
+                        ) : (
+                          <span className="brk" style={{ color: '#b45309' }}>
+                            <span className="ms" aria-hidden="true">warning</span>{t('connectMissing')}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

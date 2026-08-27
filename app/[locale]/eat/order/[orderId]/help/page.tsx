@@ -28,10 +28,10 @@ import '@/app/gb-foundation/gb-components.css'
 // REFUND SUBMIT (B) — now wired to the REAL /api/claims (P2-CLAIMS), but ONLY when the
 // feature is live. On entering the refund view (when authenticated) we GET
 // /api/claims?orderId= which returns { enabled, eligibility }:
-//  • enabled === false  → CLAIMS_ENABLED is OFF. We keep the EXACT prior inert behaviour:
-//    the `.soon` banner + a submit that only sets `submitted` and shows « bientôt ». This
-//    path is BYTE-IDENTICAL to before — no fetch result mutates the inert UI, and the
-//    GET itself only flips `claimsEnabled` to false (its default), so nothing changes.
+//  • enabled === false  → CLAIMS_ENABLED is OFF (FINAL for the beta — founder D4).
+//    LOT D (P-2): the inert refund form is MASKED entirely — the view renders ONLY the
+//    human-support panel (mailto:contact@grubano.com with the order number in the
+//    subject). No inert items/textarea/photo/« bientôt » banner/dead submit is shown.
 //  • enabled === true   → real flow. Eligibility (owner + paid + within window + no active
 //    claim) drives the submit. If not eligible we surface the reason and disable submit;
 //    if an existing claim exists we show its status. On submit we POST a real claim.
@@ -271,6 +271,34 @@ export default function OrderHelpScreen() {
 
   // ════════════════════════════ B) REFUND VIEW ══════════════════════════════
   if (view === 'refund') {
+    // LOT D (P-2, décision fondateur D4) — CLAIMS_ENABLED=false est FINAL pour la
+    // bêta : la vue « Remboursement » inerte (items/textarea/photo/bannière
+    // « bientôt »/submit mort) est MASQUÉE au profit du seul canal réel, le
+    // support humain (même adresse que toutes les autres surfaces support).
+    // `claimsEnabled` défaute à false → un GET lent/échoué atterrit TOUJOURS ici,
+    // jamais sur un formulaire à moitié câblé. Le flux flag-ON ci-dessous reste
+    // STRICTEMENT intouché (ses branches !claimsEnabled sont désormais
+    // inatteignables — conservées telles quelles pour ne pas toucher au flux ON).
+    if (!claimsEnabled) {
+      const refundMailto = `mailto:contact@grubano.com?subject=${encodeURIComponent(`Remboursement — commande ${refOf(orderId)}`)}`
+      return (
+        <div className="gb gb-help">
+          <Header titleKey="refundTitle" />
+          <div className="body">
+            <p className="lbl">{t('refundOffTitle')}</p>
+            <div className="rcard" style={{ fontSize: 12.5, color: 'var(--gb-muted)', lineHeight: 1.55 }}>
+              {t('refundOffBody')}
+            </div>
+            <div className="contact">
+              <a className="cbtn" href={refundMailto}>
+                <span className="ms" aria-hidden="true">mail</span>
+                <b>{t('contactEmail')}</b><span>contact@grubano.com</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="gb gb-help">
         <Header titleKey="refundTitle" />

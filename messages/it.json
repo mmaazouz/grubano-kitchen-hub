@@ -3004,7 +3004,9 @@
       "chatAiSuggest": "Risposte suggerite dall'IA",
       "chatPlaceholder": "Il tuo messaggio…",
       "signInTitle": "Accedi per ricevere assistenza su questo ordine",
-      "signInCta": "Accedi"
+      "signInCta": "Accedi",
+      "refundOffTitle": "Rimborsi — assistenza umana",
+      "refundOffBody": "Durante la beta, le richieste di rimborso sono gestite dal nostro team. Scrivici a contact@grubano.com indicando il numero d'ordine — Le risponderemo personalmente."
     },
     "home": {
       "seeAll": "Vedi tutto",
@@ -3224,8 +3226,8 @@
       "resPast": "Passata",
       "resCancelled": "Annullata",
       "resNoShow": "No-show",
-      "resDepositAuthorized": "Pre-autorizzazione di {amount} — non viene addebitato nulla; viene svincolata al Suo arrivo.",
-      "resDepositReleased": "La pre-autorizzazione di {amount} è stata svincolata — non è stato addebitato nulla. Scompare dall'estratto conto entro pochi giorni.",
+      "resDepositAuthorized": "Pre-autorizzazione di {amount} — non viene addebitato nulla; resta attiva fino al saldo del conto e viene poi svincolata automaticamente.",
+      "resDepositReleased": "La pre-autorizzazione di {amount} è stata svincolata — non è stato addebitato nulla. I tempi di scomparsa dall'estratto conto dipendono dalla Sua banca.",
       "resNoShowReleased": "Mancata presentazione — la pre-autorizzazione di {amount} è stata svincolata, non è stato addebitato nulla.",
       "resDepositCaptured": "{amount} addebitati dalla pre-autorizzazione.",
       "resCancel": "Annulla la prenotazione",
@@ -3716,7 +3718,8 @@
       "submitWithDeposit": "Continua con l’impronta",
       "depositTitle": "Impronta bancaria",
       "depositIntro": "Impronta di {amount} — resta attiva fino al pagamento del conto e viene rilasciata automaticamente al pagamento.",
-      "depositHint": "Carta di test: 4242 4242 4242 4242, data futura, CVC libero.",
+      "depositHint": "Autorizzazione bancaria temporanea — non è un pagamento: oggi non viene addebitato nulla e nessuna penale viene applicata durante questa beta.",
+      "testCardHint": "Modalità test: usi la carta 4242 4242 4242 4242, data futura, CVC libero.",
       "depositSubmit": "Conferma l’impronta",
       "depositProcessing": "Conferma…",
       "depositSkipped": "Questo ristorante non richiede impronta. La prenotazione è confermata.",
@@ -3737,7 +3740,7 @@
       "summaryTitle": "La tua prenotazione",
       "ccTitle": "Click & Collect",
       "knowTitle": "Buono a sapersi",
-      "knowNoPrepay": "Senza prepagamento",
+      "knowNoPrepay": "Senza prepagamento — può essere richiesta una pre-autorizzazione",
       "ccKnowCounter": "Mostra il codice al banco",
       "ccKnowCode": "Pronto in ~20 min",
       "modeReserve": "Prenota",
@@ -3797,7 +3800,6 @@
       "tipOther": "Altro",
       "tipNote": "Il 100% della mancia va al tuo corriere.",
       "paymentTitle": "Metodo di pagamento",
-      "cardVisa": "Visa •••• 4242",
       "cardMc": "Mastercard •••• 8801",
       "cardExpires": "Scade {date}",
       "applePay": "Apple Pay",
@@ -5273,7 +5275,6 @@
       "actionReleasing": "Rilascio…",
       "actionCapturing": "Addebito…",
       "actionDoneArrived": "Impronta rilasciata",
-      "actionDoneNoshow": "Penale addebitata",
       "actionErrorGeneric": "Azione fallita — riprova.",
       "actionError409": "Stato incompatibile (già addebitata o rilasciata)."
     },
@@ -6873,7 +6874,9 @@
       "franchiseEmptyBody": "Tutte le candidature sono state gestite.",
       "approveFranchise": "Approva",
       "actionError": "L’azione non è riuscita. Riprova.",
-      "networkError": "Impossibile connettersi. Controlla la rete."
+      "networkError": "Impossibile connettersi. Controlla la rete.",
+      "connectReady": "Incassi attivi",
+      "connectMissing": "Incassi NON attivi — il ristorante non potrà ricevere ordini a pagamento (gate Connect)"
     },
     "influencerVerif": {
       "title": "Verifiche del pubblico",

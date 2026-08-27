@@ -3004,7 +3004,9 @@
       "chatAiSuggest": "ردود مقترحة بالذكاء الاصطناعي",
       "chatPlaceholder": "رسالتك…",
       "signInTitle": "سجّل الدخول للحصول على مساعدة بشأن هذا الطلب",
-      "signInCta": "تسجيل الدخول"
+      "signInCta": "تسجيل الدخول",
+      "refundOffTitle": "المبالغ المستردة — دعم بشري",
+      "refundOffBody": "خلال النسخة التجريبية، يعالج فريقنا طلبات الاسترداد. راسلنا على contact@grubano.com مع ذكر رقم طلبك — وسنرد عليك شخصيًا."
     },
     "home": {
       "seeAll": "عرض الكل",
@@ -3224,8 +3226,8 @@
       "resPast": "منتهٍ",
       "resCancelled": "ملغى",
       "resNoShow": "عدم حضور",
-      "resDepositAuthorized": "تم حجز مبلغ {amount} مسبقًا كتأمين — لن يُخصم أي شيء، ويُحرَّر عند وصولك.",
-      "resDepositReleased": "تم تحرير مبلغ التأمين {amount} — لم يُخصم أي شيء. تختفي عملية الحجز المسبق من كشف حسابك خلال أيام قليلة.",
+      "resDepositAuthorized": "تم حجز مبلغ {amount} مسبقًا كتأمين — لن يُخصم أي شيء؛ يبقى نشطًا حتى تسوية الحساب ثم يُحرَّر تلقائيًا.",
+      "resDepositReleased": "تم تحرير مبلغ التأمين {amount} — لم يُخصم أي شيء. تعتمد مدة اختفائه من كشف حسابك على بنكك.",
       "resNoShowReleased": "عدم حضور — تم تحرير مبلغ التأمين {amount} ولم يُخصم أي شيء.",
       "resDepositCaptured": "تم خصم {amount} من مبلغ التأمين.",
       "resCancel": "إلغاء الحجز",
@@ -3716,7 +3718,8 @@
       "submitWithDeposit": "متابعة إلى الضمان",
       "depositTitle": "ضمان بطاقة",
       "depositIntro": "ضمان بقيمة {amount} — يبقى نشطًا حتى دفع الفاتورة ويُحرَّر تلقائيًا عند الدفع.",
-      "depositHint": "بطاقة اختبار: 4242 4242 4242 4242، تاريخ مستقبلي، CVC حر.",
+      "depositHint": "تفويض مصرفي مؤقت — هذا ليس دفعًا: لن يُخصم أي شيء اليوم، ولا تُفرض أي غرامة خلال هذه النسخة التجريبية.",
+      "testCardHint": "وضع الاختبار: استخدم البطاقة 4242 4242 4242 4242، تاريخ مستقبلي، وأي CVC.",
       "depositSubmit": "تأكيد الضمان",
       "depositProcessing": "جارٍ التأكيد…",
       "depositSkipped": "لا يطلب هذا المطعم ضمانًا. تم تأكيد حجزك.",
@@ -3737,7 +3740,7 @@
       "summaryTitle": "حجزك",
       "ccTitle": "الطلب والاستلام",
       "knowTitle": "معلومة مفيدة",
-      "knowNoPrepay": "بدون دفع مسبق",
+      "knowNoPrepay": "بدون دفع مسبق — قد يُطلب حجز تأمين على البطاقة",
       "ccKnowCounter": "أظهر الرمز عند الكاونتر",
       "ccKnowCode": "جاهز خلال ~20 دقيقة",
       "modeReserve": "حجز",
@@ -3797,7 +3800,6 @@
       "tipOther": "أخرى",
       "tipNote": "100% من الإكرامية تذهب لعامل التوصيل.",
       "paymentTitle": "طريقة الدفع",
-      "cardVisa": "Visa •••• 4242",
       "cardMc": "Mastercard •••• 8801",
       "cardExpires": "تنتهي {date}",
       "applePay": "Apple Pay",
@@ -5273,7 +5275,6 @@
       "actionReleasing": "تحرير…",
       "actionCapturing": "خصم…",
       "actionDoneArrived": "تم تحرير الضمان",
-      "actionDoneNoshow": "تم خصم الغرامة",
       "actionErrorGeneric": "فشل الإجراء — أعد المحاولة.",
       "actionError409": "حالة غير متوافقة (تم الخصم أو التحرير)."
     },
@@ -6873,7 +6874,9 @@
       "franchiseEmptyBody": "تمت معالجة جميع الطلبات.",
       "approveFranchise": "الموافقة",
       "actionError": "فشل الإجراء. حاول مرة أخرى.",
-      "networkError": "تعذّر الاتصال. تحقّق من شبكتك."
+      "networkError": "تعذّر الاتصال. تحقّق من شبكتك.",
+      "connectReady": "التحصيل مفعّل",
+      "connectMissing": "التحصيل غير مفعّل — لن يتمكن المطعم من استلام طلبات مدفوعة (بوابة Connect)"
     },
     "influencerVerif": {
       "title": "عمليات التحقّق من الجمهور",

@@ -288,6 +288,8 @@ describe('V4-1 — aucun texte client/opérateur n’annonce une pénalité non 
     const src = readFileSync(join(root, 'lib', 'transactional-emails.ts'), 'utf8')
     expect(src).not.toContain('Vous ne serez débité')
     // La description de la GARANTIE reste (l'empreinte est annoncée, pas la sanction).
-    expect(src).toContain('est associée à cette réservation')
+    // LOT D (P-6) : wording passé au conditionnel — l'email part À LA CRÉATION,
+    // avant l'autorisation carte (« peut être demandée », autorisation temporaire).
+    expect(src).toContain('peut être demandée pour cette réservation')
   })
 })

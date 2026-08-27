@@ -3004,7 +3004,9 @@
       "chatAiSuggest": "Réponses suggérées par l'IA",
       "chatPlaceholder": "Votre message…",
       "signInTitle": "Connectez-vous pour obtenir de l'aide sur cette commande",
-      "signInCta": "Se connecter"
+      "signInCta": "Se connecter",
+      "refundOffTitle": "Remboursements — support humain",
+      "refundOffBody": "Pendant la bêta, les demandes de remboursement sont traitées par notre équipe. Écrivez-nous à contact@grubano.com en précisant votre n° de commande — nous vous répondrons personnellement."
     },
     "home": {
       "seeAll": "Voir tout",
@@ -3224,8 +3226,8 @@
       "resPast": "Passée",
       "resCancelled": "Annulée",
       "resNoShow": "Non-présentation",
-      "resDepositAuthorized": "Empreinte de {amount} pré-autorisée — rien n'est débité, elle est libérée à votre arrivée.",
-      "resDepositReleased": "Empreinte de {amount} libérée — rien n'a été débité. La pré-autorisation disparaît de votre relevé sous quelques jours.",
+      "resDepositAuthorized": "Empreinte de {amount} pré-autorisée — rien n'est débité ; elle reste active jusqu'au paiement de l'addition et est libérée automatiquement.",
+      "resDepositReleased": "Empreinte de {amount} libérée — rien n'a été débité. Le délai d'effacement de la pré-autorisation sur votre relevé dépend de votre banque.",
       "resNoShowReleased": "Non-présentation — l'empreinte de {amount} a été libérée, rien n'a été débité.",
       "resDepositCaptured": "{amount} débités sur l'empreinte.",
       "resCancel": "Annuler la réservation",
@@ -3716,7 +3718,8 @@
       "submitWithDeposit": "Continuer vers l’empreinte",
       "depositTitle": "Empreinte bancaire",
       "depositIntro": "Empreinte de {amount} — elle reste active jusqu’au paiement de l’addition et est libérée automatiquement au paiement.",
-      "depositHint": "Carte de test : 4242 4242 4242 4242, date future, CVC libre.",
+      "depositHint": "Autorisation bancaire temporaire — ce n'est pas un paiement : rien n'est débité aujourd'hui, et aucune pénalité n'est prélevée pendant cette bêta.",
+      "testCardHint": "Mode test : utilisez la carte 4242 4242 4242 4242, date future, CVC libre.",
       "depositSubmit": "Confirmer l’empreinte",
       "depositProcessing": "Confirmation…",
       "depositSkipped": "Cet établissement ne demande pas d’empreinte. Votre réservation est confirmée.",
@@ -3737,7 +3740,7 @@
       "summaryTitle": "Votre réservation",
       "ccTitle": "Click & collect",
       "knowTitle": "Bon à savoir",
-      "knowNoPrepay": "Sans prépaiement",
+      "knowNoPrepay": "Sans prépaiement — une empreinte bancaire peut être demandée",
       "ccKnowCounter": "Montrez le code au comptoir",
       "ccKnowCode": "Prêt en ~20 min",
       "modeReserve": "Réserver",
@@ -3797,7 +3800,6 @@
       "tipOther": "Autre",
       "tipNote": "100 % du pourboire revient à votre livreur.",
       "paymentTitle": "Moyen de paiement",
-      "cardVisa": "Visa •••• 4242",
       "cardMc": "Mastercard •••• 8801",
       "cardExpires": "Expire {date}",
       "applePay": "Apple Pay",
@@ -5273,7 +5275,6 @@
       "actionReleasing": "Libération…",
       "actionCapturing": "Capture…",
       "actionDoneArrived": "Empreinte libérée",
-      "actionDoneNoshow": "Pénalité capturée",
       "actionErrorGeneric": "Action impossible — réessayez.",
       "actionError409": "Statut incompatible (déjà capturée ou libérée)."
     },
@@ -6873,7 +6874,9 @@
       "franchiseEmptyBody": "Toutes les candidatures ont été traitées.",
       "approveFranchise": "Approuver",
       "actionError": "L’action a échoué. Réessayez.",
-      "networkError": "Connexion impossible. Vérifiez votre réseau."
+      "networkError": "Connexion impossible. Vérifiez votre réseau.",
+      "connectReady": "Encaissements actifs",
+      "connectMissing": "Encaissements NON actifs — le restaurant ne pourra pas recevoir de commande payante (gate Connect)"
     },
     "influencerVerif": {
       "title": "Vérifications d'audience",
