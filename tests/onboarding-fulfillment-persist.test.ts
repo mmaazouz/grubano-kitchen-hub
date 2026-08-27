@@ -14,6 +14,7 @@ const { db, geo } = vi.hoisted(() => ({
     operator:   { findUnique: vi.fn() },
     restaurant: { findFirst: vi.fn(), create: vi.fn() },
     brand:      { findFirst: vi.fn(), updateMany: vi.fn() },
+    $transaction: vi.fn(),
   },
   geo: {
     geocodeAddressDetailed: vi.fn(async () => ({ status: 'ok', latitude: 1, longitude: 2 })),
@@ -41,6 +42,9 @@ beforeEach(() => {
   db.restaurant.findFirst.mockResolvedValue(null)
   db.restaurant.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: 'r1', ...data }))
   db.brand.findFirst.mockResolvedValue(null)
+  db.brand.updateMany.mockResolvedValue({ count: 0 })
+  // Interactive transaction → replay the callback against the same mock client.
+  db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db))
 })
 
 const createdData = () => db.restaurant.create.mock.calls[0][0].data as Record<string, unknown>
