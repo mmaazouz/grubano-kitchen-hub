@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
-import { formatEuros, formatAmount } from '@/lib/format-money'
+import { formatEuros } from '@/lib/format-money'
 import { formatCuisineList } from '@/lib/categories'
 import FoodImage from '@/components/eat/FoodImage'
 import CreatorBadge from '@/components/eat/CreatorBadge'
@@ -30,6 +30,9 @@ interface MenuItem {
   comparePrice?: number
   category: string
   photos: string[]
+  /** Allergen labels ENTERED by the restaurateur (Json → string[]; may be absent).
+   *  Normalised client-side by normalizeAllergens — displayed verbatim, never invented. */
+  allergens?: string[]
   isPopular: boolean
   /** Present only on adopted creator recipes (4-bis A) — drives the badge. */
   creator?: {
@@ -106,21 +109,19 @@ const MODES = ['delivery', 'takeaway', 'dinein'] as const
 type Mode = (typeof MODES)[number]
 const MODE_ICON: Record<Mode, string> = { delivery: 'two_wheeler', takeaway: 'storefront', dinein: 'table_restaurant' }
 
-const SIZE_OPTIONS = [
-  { label: 'Petite', premium: 0 },
-  { label: 'Moyenne', premium: 2 },
-  { label: 'Grande', premium: 4 },
-] as const
+// LOT 2 « carte honnête » — the hardcoded SIZE/SUPPLEMENT/EXCLUSION option lists
+// (fictional, shown on EVERY dish of EVERY restaurant and actually billed) were
+// REMOVED: the unit price is now exactly dish.price. Only the free-form note
+// remains as a per-line customisation. signatureOf/lineKeyFor/summariseOptions
+// keep their contract (EatCartItemOptions is untouched) so old cart lines that
+// still carry size/supplements/exclusions render and group unchanged.
 
-const SUPPLEMENT_OPTIONS = [
-  { name: 'Fromage', price: 1 },
-  { name: 'Bacon', price: 1.5 },
-  { name: 'Œuf', price: 1 },
-  { name: 'Champignons', price: 1 },
-  { name: 'Avocat', price: 1.5 },
-] as const
-
-const EXCLUSION_OPTIONS = ['Sans oignon', 'Sans gluten', 'Sans lactose', 'Sans gras']
+/** MenuItem.allergens arrives as raw Json — keep only non-empty strings (never invent). */
+function normalizeAllergens(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((a): a is string => typeof a === 'string' && a.trim() !== '').map((a) => a.trim())
+    : []
+}
 
 /** Stable signature for grouping cart lines by their customisation. */
 function signatureOf(opts?: EatCartItemOptions): string {
@@ -201,7 +202,16 @@ export default function RestaurantScreen() {
         setRestaurant(d.restaurant)
         // Defensive: hours{} is additive — missing/odd payload = not configured.
         setHours(d.hours && d.hours.hoursConfigured === true ? (d.hours as PublicHoursInfo) : null)
-        setMenu(d.menu ?? [])
+        // LOT 2 — keep the per-item `allergens` the API already serves (Json →
+        // string[]; tolerant of null/undefined/odd shapes, values shown verbatim).
+        const rawMenu: MenuCategory[] = Array.isArray(d.menu) ? d.menu : []
+        setMenu(rawMenu.map((c) => ({
+          ...c,
+          items: (Array.isArray(c.items) ? c.items : []).map((it) => ({
+            ...it,
+            allergens: normalizeAllergens((it as { allergens?: unknown }).allergens),
+          })),
+        })))
         setPromotions(Array.isArray(d.promotions) ? d.promotions : [])
         setItemPromo(d.itemPromo && typeof d.itemPromo === 'object' ? d.itemPromo : {})
         // V5-2 — tolerant: absent/odd payload ⇒ delivery stays hidden (safe).
@@ -244,9 +254,9 @@ export default function RestaurantScreen() {
       ? { ...opts, parentDishId: dish.id }
       : undefined
     const lineId = lineKeyFor(dish.id, fullOpts)
-    const sizePremium = SIZE_OPTIONS.find((s) => s.label === opts?.size)?.premium ?? 0
-    const supplementsTotal = (opts?.supplements ?? []).reduce((s, x) => s + x.price, 0)
-    const unitPrice = dish.price + sizePremium + supplementsTotal
+    // LOT 2 « carte honnête » — no fictional premiums: the unit price is the
+    // restaurateur's price, exactly as served by the API.
+    const unitPrice = dish.price
     const summary = summariseOptions(fullOpts)
     const displayName = summary ? `${dish.name} (${summary})` : dish.name
 
@@ -717,7 +727,8 @@ export default function RestaurantScreen() {
         </button>
       )}
 
-      {/* Customisation Modal — UNCHANGED (Wave 2). « + » on a dish opens it. */}
+      {/* Dish modal — « + » on a dish opens it. LOT 2: real allergens + note only
+          (the fictional size/supplement/exclusion options were removed). */}
       {modalDish && (
         <DishCustomizationModal
           dish={modalDish}
@@ -748,22 +759,15 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
   const tcr = useTranslations('eat.chefRecipe')
   const locale = useLocale()
   const router = useRouter()
-  const [size, setSize] = useState<string>('Petite')
-  const [supplements, setSupplements] = useState<string[]>([])
-  const [exclusions, setExclusions] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [qty, setQty] = useState(1)
   const [liked, setLiked] = useState(false)
 
-  const sizePremium = SIZE_OPTIONS.find((s) => s.label === size)?.premium ?? 0
-  const supplementsList = SUPPLEMENT_OPTIONS.filter((s) => supplements.includes(s.name))
-  const supplementsTotal = supplementsList.reduce((s, x) => s + x.price, 0)
-  const total = (dish.price + sizePremium + supplementsTotal) * qty
+  // LOT 2 « carte honnête » — the fictional size/supplement/exclusion options and
+  // their premiums are gone: the total is exactly the restaurateur's price × qty.
+  const total = dish.price * qty
+  const allergens = dish.allergens ?? []
 
-  function toggle(list: string[], setList: (n: string[]) => void, value: string) {
-    setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
-  }
-  const key = (fn: () => void) => (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn() } }
   const iconBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0 }
 
   return (
@@ -777,7 +781,8 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
           </div>
           <div className="dish__body">
             <h1 className="dish__title">{dish.name}</h1>
-            <div className="dish__price">{t('fromPrice', { price: formatEuros(dish.price, locale) })}</div>
+            {/* LOT 2 — exact price (no « à partir de » : sizes/premiums no longer exist). */}
+            <div className="dish__price">{formatEuros(dish.price, locale)}</div>
             {dish.description && <p className="dish__desc">{dish.description}</p>}
 
             {/* « Encart Recette du chef » (CD 81c4) — INERT/decorative. Shown ONLY
@@ -830,45 +835,16 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
               </div>
             )}
 
+            {/* LOT 2 « carte honnête » — REAL allergens block (replaces the inert
+                « Vérifier les allergènes… IA — bientôt » line). Shows the values the
+                RESTAURATEUR entered, verbatim; empty ⇒ honest « non renseignée »
+                notice. No AI promise, no « bientôt ». */}
             <div className="grp">
-              <div className="grp__head"><b>{t('chooseSize')}</b><span className="grp__req required">{t('requiredTag')}</span></div>
-              {SIZE_OPTIONS.map((opt) => {
-                const on = size === opt.label
-                return (
-                  <div key={opt.label} className={`opt${on ? ' on' : ''}`} role="radio" aria-checked={on} tabIndex={0} onClick={() => setSize(opt.label)} onKeyDown={key(() => setSize(opt.label))}>
-                    <span className="opt__sel"><span className="ms" aria-hidden="true">check</span></span>
-                    <span className="opt__main">{opt.label}</span>
-                    <span className={`opt__price${opt.premium === 0 ? ' free' : ''}`}>{opt.premium > 0 ? t('plusPrice', { price: formatAmount(opt.premium, locale) }) : t('included')}</span>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="grp">
-              <div className="grp__head"><b>{t('addExtras')}</b><span className="grp__req optional">{t('optionalTag')}</span></div>
-              {SUPPLEMENT_OPTIONS.map((opt) => {
-                const on = supplements.includes(opt.name)
-                return (
-                  <div key={opt.name} className={`opt${on ? ' on' : ''}`} role="checkbox" aria-checked={on} tabIndex={0} onClick={() => toggle(supplements, setSupplements, opt.name)} onKeyDown={key(() => toggle(supplements, setSupplements, opt.name))}>
-                    <span className="opt__sel box"><span className="ms" aria-hidden="true">check</span></span>
-                    <span className="opt__main">{opt.name}</span>
-                    <span className="opt__price">{t('plusPrice', { price: formatAmount(opt.price, locale) })}</span>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="grp">
-              <div className="grp__head"><b>{t('sectionWithout')}</b><span className="grp__req optional">{t('optionalTag')}</span></div>
-              {EXCLUSION_OPTIONS.map((opt) => {
-                const on = exclusions.includes(opt)
-                return (
-                  <div key={opt} className={`opt${on ? ' on' : ''}`} role="checkbox" aria-checked={on} tabIndex={0} onClick={() => toggle(exclusions, setExclusions, opt)} onKeyDown={key(() => toggle(exclusions, setExclusions, opt))}>
-                    <span className="opt__sel box"><span className="ms" aria-hidden="true">check</span></span>
-                    <span className="opt__main">{opt}</span>
-                  </div>
-                )
-              })}
+              <div className="grp__head"><b>{t('allergensTitle')}</b></div>
+              <div className="aller-line">
+                <span className="ms" aria-hidden="true">info</span>
+                <span>{allergens.length > 0 ? allergens.join(', ') : t('allergensNone')}</span>
+              </div>
             </div>
 
             <div className="note-field">
@@ -876,7 +852,6 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
               <div className="note-control"><span className="ms" aria-hidden="true">edit_note</span>
                 <textarea id="dish-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('notePlaceholder')} />
               </div>
-              <div className="aller-line"><span className="ms" aria-hidden="true">auto_awesome</span><span>{t('checkAllergens')}</span><span className="d-ai-soon">{t('aiSoon')}</span></div>
             </div>
           </div>
           <div className="dish__foot">
@@ -885,7 +860,7 @@ function DishCustomizationModal({ dish, photo, onClose, onConfirm }: ModalProps)
               <b>{qty}</b>
               <button type="button" className="ms" style={iconBtn} onClick={() => setQty((q) => q + 1)} aria-label={t('increase')}>add</button>
             </div>
-            <button type="button" className="add-btn" onClick={() => onConfirm({ size, supplements: supplementsList, exclusions, note }, qty)}>
+            <button type="button" className="add-btn" onClick={() => onConfirm({ note }, qty)}>
               <span>{t('addToCart')}</span><b>{formatEuros(total, locale)}</b>
             </button>
           </div>

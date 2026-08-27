@@ -42,6 +42,9 @@ interface MenuLine {
   category:    string
   /** Real labels Json (e.g. ["Sans gluten"]) — drives the .nf badge (else omitted). */
   label:       string | null
+  /** Allergens ENTERED by the restaurateur (Json → string[]; may be empty).
+   *  LOT 2 « carte honnête » — displayed verbatim, never invented. */
+  allergens:   string[]
   /** First real photo URL if any (else the deterministic food-image tile). */
   photo:       string | null
 }
@@ -57,6 +60,8 @@ export default function TableMenuClient({ tableId, restaurantId, establishmentNa
   const t      = useTranslations('eat.tableMenu')
   const tTable = useTranslations('eat.table')
   const tOrder = useTranslations('premium.order')
+  // LOT 2 — allergens copy shared with the /eat/r/[id] dish modal (same keys).
+  const tResto = useTranslations('eat.restaurant')
   const locale = useLocale()
   const router = useRouter()
 
@@ -94,6 +99,11 @@ export default function TableMenuClient({ tableId, restaurantId, establishmentNa
             if (it?.id && it?.name && typeof it?.price === 'number') {
               const labels = Array.isArray(it.labels) ? it.labels.filter((l: unknown) => typeof l === 'string' && l.trim()) : []
               const photos = Array.isArray(it.photos) ? it.photos.filter((p: unknown) => typeof p === 'string' && p) : []
+              // LOT 2 — keep the per-item allergens the API already serves (Json →
+              // string[]; tolerant of null/odd shapes, values shown verbatim).
+              const allergens = Array.isArray(it.allergens)
+                ? it.allergens.filter((a: unknown): a is string => typeof a === 'string' && a.trim() !== '').map((a: string) => a.trim())
+                : []
               flat.push({
                 id:          it.id,
                 name:        it.name,
@@ -101,6 +111,7 @@ export default function TableMenuClient({ tableId, restaurantId, establishmentNa
                 price:       it.price,
                 category:    typeof it.category === 'string' ? it.category : cat,
                 label:       labels[0] ?? null,
+                allergens,
                 photo:       photos[0] ?? null,
               })
             }
@@ -257,6 +268,14 @@ export default function TableMenuClient({ tableId, restaurantId, establishmentNa
                 <div className="t">
                   <b>{dish.name}</b>
                   {dish.description && <p>{dish.description}</p>}
+                  {/* LOT 2 « carte honnête » — REAL allergens line (same keys as the
+                      /eat/r/[id] dish modal): restaurateur-entered values verbatim,
+                      or the honest « non renseignée » notice. No AI, no « bientôt ». */}
+                  <p>
+                    {tResto('allergensTitle')}
+                    {' : '}
+                    {dish.allergens.length > 0 ? dish.allergens.join(', ') : tResto('allergensNone')}
+                  </p>
                   <div className="pr">
                     <span className="price">{formatEuros(dish.price, locale)}</span>
                     {/* .nf badge — ONLY a REAL label (no fabricated « Sans noix » claim) */}

@@ -3631,6 +3631,8 @@
       "addNote": "Add a note",
       "checkAllergens": "Check allergens & suggest safe swaps",
       "aiSoon": "AI — soon",
+      "allergensTitle": "Allergens",
+      "allergensNone": "Not provided by the restaurant — contact them if you have an allergy.",
       "addToCart": "Add to cart",
       "decrease": "Decrease",
       "increase": "Increase",
