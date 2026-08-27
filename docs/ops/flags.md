@@ -18,6 +18,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `AFFILIATE_ENABLED` | `lib/affiliate-account.ts` | Surface affilié entière (404 OFF) |
 | `AFFILIATE_CONNECT_ENABLED` | `lib/creator-payout.ts` | Onboarding Stripe Connect affilié |
 | `ATTRIBUTION_COOKIES_ENABLED` | `lib/attribution-cookies.ts` | Pose des cookies d'ATTRIBUTION `grubano_ref` (/api/ref/[code]) et `grubano_chef` (/api/chef-visit/[slug]) — défaut OFF **toute la bêta** (règle « tracker non essentiel → OFF plutôt que CMP »). Seul le Set-Cookie est gaté : redirection, validation du code et click-tracking affilié restent byte-identical |
+| `ALLOW_PLATFORM_FALLBACK` | `lib/connect-gate.ts` | ⚠️ **DANGER-FLAG D'OUVERTURE (D5)** — défaut ABSENT = BLOQUANT : les routes de paiement (`/api/orders/[id]/pay`, `/api/tickets/[id]/pay`) et la création de commande carte REFUSENT (`409 restaurant_not_payable`) tout restaurant sans compte Connect ACTIF — le fallback plateforme encaisserait l'argent du resto sans AUCUN rail de reversement. `true` restaure le comportement historique (PI nu plateforme) : **QA/harnais UNIQUEMENT, JAMAIS en production**. |
 | `AUTH_EMAIL_CHANGE_ENABLED` | `lib/email-change.ts` | Changement d'email de compte (3 routes confirm) |
 | `AUTH_EMAIL_OTP_ENABLED` | `lib/email-otp.ts` | OTP email au login |
 | `AUTH_MONEY_STEPUP_ENABLED` | `lib/email-otp.ts` | Step-up OTP sur actions argent |

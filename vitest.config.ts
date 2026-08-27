@@ -19,6 +19,13 @@ export default defineConfig({
     // signalé en vague 1 (webhook-ghost-order-reconcile : vert en isolation,
     // rouge en parallèle). Avec forks, l'env est par processus → classe éteinte.
     pool: 'forks',
+    // D5 (closed beta) — le CONNECT-READY GATE refuse toute commande/paiement
+    // vers un resto sans Connect actif. Les harnais historiques (fixtures sans
+    // stripeAccountId) exercent le comportement plateforme : on ouvre le
+    // danger-flag QA par défaut pour TOUTE la suite — les tests dédiés du gate
+    // (tests/connect-gate.test.ts, orders-pay-route D5) le suppriment
+    // explicitement pour prouver le refus par défaut.
+    env: { ALLOW_PLATFORM_FALLBACK: 'true' },
     environment: 'node',
     globals: true,
     include: ['tests/**/*.test.ts'],

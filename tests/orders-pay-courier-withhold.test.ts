@@ -90,13 +90,15 @@ describe('byte-identity — case A / flag OFF (the money-safety gate)', () => {
   })
 })
 
-describe('case B — platform fallback (no active Connect) → no split', () => {
+describe('case B — platform fallback (QA : ALLOW_PLATFORM_FALLBACK) → no split', () => {
   it('grubano_courier + inactive Connect → no connect object, whole charge on Grubano', async () => {
+    process.env.ALLOW_PLATFORM_FALLBACK = 'true'
     process.env.LOGISTICS_COURIER_ACCRUAL_ENABLED = 'true'
     db.order.findUnique.mockResolvedValue({ ...ORDER, deliveryMode: 'grubano_courier' })
     db.restaurant.findUnique.mockResolvedValue({ ...ROUTED, stripeAccountId: null })
     await pay()
     expect(opts().connect).toBeUndefined()
+    delete process.env.ALLOW_PLATFORM_FALLBACK
   })
 })
 

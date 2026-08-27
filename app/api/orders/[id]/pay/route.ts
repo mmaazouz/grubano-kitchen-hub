@@ -12,6 +12,7 @@ import { computeFranchiseRoyalty, recordFranchiseRoyalty } from '@/lib/franchise
 import { isTipsEnabled } from '@/lib/tips'
 import { recordCourierTipLedgerEntry } from '@/lib/ledger'
 import { isLogisticsCourierAccrualEnabled } from '@/lib/courier-accrual'
+import { isPlatformFallbackAllowed } from '@/lib/connect-gate'
 
 // ── POST /api/orders/[id]/pay ─────────────────────────────────────────────────
 // Chantier checkout C1 (décision C0: pickup AND delivery are paid IMMEDIATELY at
@@ -198,6 +199,21 @@ export async function POST(
     const promoDiscountCents = Math.max(0, totalDiscountCents - loyaltyCreditCents)
     const baseCents = commissionBaseCents(subtotalCents, promoDiscountCents, commissionBaseMode())
     const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
+    // ── D5 (closed beta) — CONNECT-READY GATE ────────────────────────────────
+    // !routed = le fallback plateforme encaisserait 100 % de l'argent (part
+    // restaurant comprise) sur le compte Grubano SANS rail de reversement.
+    // Refus AVANT tout appel Stripe. Couvre aussi la dégradation silencieuse
+    // active→restricted post-approbation (le reuse annulerait même un PI routé
+    // existant pour le recréer en PI nu). Voir lib/connect-gate.
+    if (!routed && !isPlatformFallbackAllowed()) {
+      return NextResponse.json(
+        {
+          error: 'Le paiement est momentanément indisponible pour ce restaurant — son compte d’encaissement est en cours d’activation. Réessayez plus tard.',
+          code:  'restaurant_not_payable',
+        },
+        { status: 409 },
+      )
+    }
     const grossFeeCents = routed ? computeApplicationFee(restaurant!, channel, baseCents) : 0
     // ── Franchise royalty (P4-Franchise-A) — HELD-BACK at the source ──────────────
     // ADDITIVE + flag-gated. computeFranchiseRoyalty returns 0 (and does NOT touch
