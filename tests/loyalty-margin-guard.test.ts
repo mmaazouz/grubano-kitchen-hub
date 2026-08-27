@@ -13,6 +13,7 @@ vi.mock('next-auth/jwt', () => ({ getToken: getTokenMock }))
 const { db } = vi.hoisted(() => ({
   db: {
     restaurant:      { findFirst: vi.fn(), findUnique: vi.fn() },
+    menuItem:        { findMany: vi.fn() },
     creator:         { findFirst: vi.fn() },
     referralConfig:  { findFirst: vi.fn() },
     referral:        { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -54,6 +55,17 @@ const body = (over: Record<string, unknown> = {}) => ({
 const COMMISSION_CENTS = 160
 const STRIPE_CENTS = Math.round(2000 * 0.029) + 25 // 83
 
+// Re-pricing serveur (P0 closed beta): the route resolves every line against
+// MenuItem and OVERWRITES the client price/name with the DB values. Each test's
+// DB row mirrors the request body it sends, so the economics stay identical.
+// Default = the body() default line (i1 'Plat' @ 20 €); tests using another
+// price re-arm db.menuItem.findMany themselves.
+const armMenu = (rows: Array<{ id: string; name: string; price: number }>) =>
+  db.menuItem.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in
+      .map((id) => rows.find((r) => r.id === id) ?? null)
+      .filter((r): r is { id: string; name: string; price: number } => r !== null))
+
 beforeEach(() => {
   // P0-01: ces tests exercent le contrat LIVRAISON (post-pilote) -> flag ON explicitement.
   process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
@@ -64,6 +76,7 @@ beforeEach(() => {
     commissionRateDineIn: null, commissionRatePickup: null,
     commissionRateDelivery: null, commissionFreeUntil: null,
   })
+  armMenu([{ id: 'i1', name: 'Plat', price: 20 }])
   db.openingHour.findMany.mockResolvedValue([])
   db.closureException.findMany.mockResolvedValue([])
   db.creator.findFirst.mockResolvedValue(null)
@@ -122,6 +135,7 @@ describe('POST /api/orders — small-order fee (V1.5)', () => {
   })
 
   it('BELOW threshold → flat 1 € fee applied to the total + the column written', async () => {
+    armMenu([{ id: 'i1', name: 'Snack', price: 11 }]) // DB mirrors this test's body
     const res = await createOrder(makeReq(body({
       items: [{ itemId: 'i1', name: 'Snack', qty: 1, price: 11, options: [] }],
       usePoints: false,
@@ -136,6 +150,7 @@ describe('POST /api/orders — small-order fee (V1.5)', () => {
   })
 
   it('AT/ABOVE threshold → no fee', async () => {
+    armMenu([{ id: 'i1', name: 'Plat', price: 15 }]) // DB mirrors this test's body
     const res = await createOrder(makeReq(body({
       items: [{ itemId: 'i1', name: 'Plat', qty: 1, price: 15, options: [] }],
       usePoints: false,
@@ -172,6 +187,7 @@ describe('POST /api/orders — affiliation on NET margin (V1.5 §4)', () => {
     ])
     db.referralOrder.findUnique.mockResolvedValue(null)
     db.referralOrder.create.mockResolvedValue({ id: 'ro1' })
+    armMenu([{ id: 'i1', name: 'Recette chef', price: 30 }]) // DB mirrors this test's body
 
     const res = await createOrder(makeReq(body({
       items: [{ itemId: 'i1', name: 'Recette chef', qty: 1, price: 30, options: [] }],

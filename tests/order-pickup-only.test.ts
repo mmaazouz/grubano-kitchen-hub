@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 const { db } = vi.hoisted(() => ({
   db: {
     restaurant:      { findFirst: vi.fn() },
+    menuItem:        { findMany: vi.fn() },
     order:           { create: vi.fn(), update: vi.fn(), count: vi.fn() },
     creator:         { findFirst: vi.fn() },
     affiliate:       { findFirst: vi.fn() },
@@ -66,6 +67,11 @@ beforeEach(() => {
   delete process.env.DELIVERY_FULFILLMENT_ENABLED
   tokenMock.mockResolvedValue({ sub: 'consumer-1', email: 'c@x.fr' })
   db.restaurant.findFirst.mockResolvedValue({ ...RESTO })
+  // Re-pricing serveur (P0 closed beta): mirror the BASE_BODY line (i1 'Gnocchi'
+  // @ 12 €) in DB so the test economics are unchanged.
+  const MENU: Record<string, { name: string; price: number }> = { i1: { name: 'Gnocchi', price: 12 } }
+  db.menuItem.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in.map((id) => (MENU[id] ? { id, ...MENU[id] } : null)).filter(Boolean))
   db.order.create.mockResolvedValue({ id: 'o1', status: 'awaiting_payment' })
   db.order.update.mockResolvedValue({ id: 'o1', status: 'awaiting_payment' })
   db.referral.findFirst.mockResolvedValue(null)

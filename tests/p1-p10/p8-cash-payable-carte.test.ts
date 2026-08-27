@@ -40,6 +40,7 @@ const {
   db: {
     order:           { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), count: vi.fn() },
     restaurant:      { findFirst: vi.fn(), findUnique: vi.fn() },
+    menuItem:        { findMany: vi.fn() },
     creator:         { findFirst: vi.fn() },
     affiliate:       { findFirst: vi.fn() },
     referral:        { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -168,6 +169,12 @@ beforeEach(() => {
   db.restaurant.findFirst.mockResolvedValue({
     deliveryEnabled: true, pickupEnabled: true, id: 'r1', isActive: true, archivedAt: null, deliveryFee: 1.99, minOrder: 10, pointOfSaleId: null,
   })
+  // Re-pricing serveur (P0 closed beta): mirror the cashBody() line (m1
+  // 'Gnocchi maison' @ 10 €) in DB so the CARD-contrast economics are unchanged
+  // (inert on the cash/wallet refusals, which fall before the re-pricing).
+  const MENU: Record<string, { name: string; price: number }> = { m1: { name: 'Gnocchi maison', price: 10 } }
+  db.menuItem.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) =>
+    where.id.in.map((id) => (MENU[id] ? { id, ...MENU[id] } : null)).filter(Boolean))
   db.dishAdoption.findMany.mockResolvedValue([])
   db.referral.findFirst.mockResolvedValue(null)
   db.order.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {

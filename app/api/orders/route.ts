@@ -29,7 +29,9 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 const orderItemSchema = z.object({
   itemId:   z.string(),
   name:     z.string(),
-  qty:      z.number().int().min(1),
+  // Upper bound: the cart stepper never exceeds double digits — an absurd qty is
+  // a forged payload (and would only produce an unpayable PaymentIntent).
+  qty:      z.number().int().min(1).max(99),
   price:    z.number().positive(),
   options:  z.array(z.record(z.unknown())).default([]),
 })
@@ -174,6 +176,62 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         )
       }
+    }
+
+    // ── Re-pricing serveur (P0 closed beta) ────────────────────────────────────
+    // Until now the unit `price` of each line came from the CLIENT (sessionStorage
+    // cart) and was summed as-is — a tampered cart could buy at any price, and the
+    // (since removed) hardcoded size/supplement premiums were billed without the
+    // restaurant ever defining them. From here on the server is the only pricing
+    // authority: every line is resolved against a MenuItem that (a) exists,
+    // (b) is available, and (c) belongs to a brand ATTACHED to THIS restaurant;
+    // its DB price and name overwrite whatever the client sent. Composite line
+    // ids (`dishId::sig`) reduce through options[0].parentDishId exactly like the
+    // promo/DishSale blocks below. Priced customisations (size / supplements) are
+    // refused outright: no UI can produce them any more, so their presence means
+    // a stale or forged cart — never silently bill something else than shown.
+    // Free-text `exclusions` / `note` ride along unchanged (no price impact).
+    const rawIdOf = (item: (typeof data.items)[number]): string => {
+      const parent = item.options?.[0]?.parentDishId
+      return typeof parent === 'string' && parent.length > 0
+        ? parent
+        : item.itemId.split('::')[0]
+    }
+    for (const item of data.items) {
+      const opts = item.options?.[0] as Record<string, unknown> | undefined
+      const hasSize        = typeof opts?.size === 'string' && (opts.size as string).length > 0
+      const hasSupplements = Array.isArray(opts?.supplements) && (opts!.supplements as unknown[]).length > 0
+      if (hasSize || hasSupplements) {
+        return NextResponse.json(
+          {
+            error: 'Ce panier contient des options qui ne sont plus proposées. Retirez le plat puis ajoutez-le à nouveau.',
+            code:  'options_not_supported',
+          },
+          { status: 400 },
+        )
+      }
+    }
+    const rawIds    = Array.from(new Set(data.items.map(rawIdOf)))
+    const menuRows  = await prisma.menuItem.findMany({
+      where:  { id: { in: rawIds }, available: true, brand: { restaurantId: data.restaurantId } },
+      select: { id: true, name: true, price: true },
+    })
+    const menuById = new Map(menuRows.map((m) => [m.id, m]))
+    for (const item of data.items) {
+      const row = menuById.get(rawIdOf(item))
+      if (!row) {
+        return NextResponse.json(
+          {
+            error: 'Un article de votre panier n’est plus disponible dans ce restaurant. Retirez-le puis recommencez.',
+            code:  'item_unavailable',
+          },
+          { status: 400 },
+        )
+      }
+      // Server authority: DB price and name replace the client's values for the
+      // rest of the pipeline (subtotal, promos, storage, restaurant display).
+      item.price = row.price
+      item.name  = row.name
     }
 
     // Calculate totals. minOrder is enforced on the PRE-discount subtotal: the
