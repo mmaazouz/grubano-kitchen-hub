@@ -3631,6 +3631,8 @@
       "addNote": "Aggiungi una nota",
       "checkAllergens": "Controlla gli allergeni e suggerisci alternative",
       "aiSoon": "IA — presto",
+      "allergensTitle": "Allergeni",
+      "allergensNone": "Informazione non fornita dal ristorante — contattalo in caso di allergia.",
       "addToCart": "Aggiungi al carrello",
       "decrease": "Diminuisci",
       "increase": "Aumenta",

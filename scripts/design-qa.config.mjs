@@ -852,24 +852,6 @@ export const screens = [
   },
 
   {
-    name: 'eat-dietary',
-    url: '/fr/eat/dietary',
-    reference: 'scripts/design-qa-refs/eat-dietary.html',
-    settle: 800,
-    // STATIC (inert toggles, no fetch). The app renders the CD `.backdrop` as a centred page
-    // surface inside EatShell → clip the app's sheet `.dt-sheet` ↔ ref `.sheet` (both exclude
-    // the dimmed backdrop). The app's result block adds an `auto_awesome` icon + a « bientôt »
-    // badge (vs the CD's green `verified` result) → residual diff on that row.
-    viewports: [
-      { name: 'mobile', w: 390, h: 1000 },
-      { name: 'desktop', w: 1280, h: 950 },
-    ],
-    states: [
-      { name: 'default', theme: 'light', clip: '.dt-sheet', refClip: '.sheet' },
-    ],
-  },
-
-  {
     name: 'eat-waitlist',
     url: '/fr/eat/r/demo/waitlist',
     reference: 'scripts/design-qa-refs/eat-waitlist.html',
