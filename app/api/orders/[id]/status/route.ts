@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
 import { createSystemClaim, isClaimsEnabled } from '@/lib/claims'
-import { sendOrderCancelledPaidEmail } from '@/lib/claim-emails'
+import { sendOrderCancelledPaidEmail, sendOrderCancelledPaidOffEmail } from '@/lib/claim-emails'
+import { sendAdminPaidCancellationAlert } from '@/lib/admin-alerts'
 import { z } from 'zod'
 
 // ── Valid status machine ──────────────────────────────────────────────────────
@@ -99,8 +100,12 @@ export async function PATCH(
     // absente = config CASSÉE (contrat docs/ops/flags.md : CLAIMS_ENABLED exige
     // la table) ⇒ échec BRUYANT voulu (rollback + 500), jamais silencieux.
     const claimAmountCents = Math.max(0, Math.round(order.total * 100))
-    const paidCancellation =
-      newStatus === 'cancelled' && order.paymentStatus === 'paid' && isClaimsEnabled() && claimAmountCents > 0
+    // LOT C — le fait « une commande PAYÉE est annulée » est découplé du flag
+    // claims : il gouverne l'alerte admin et le CHOIX d'email ci-dessous, que la
+    // branche demande-système (gatée isClaimsEnabled, inchangée) tourne ou non.
+    const claimsOn = isClaimsEnabled()
+    const paidCancelled = newStatus === 'cancelled' && order.paymentStatus === 'paid'
+    const paidCancellation = paidCancelled && claimsOn && claimAmountCents > 0
     let systemClaim: Awaited<ReturnType<typeof createSystemClaim>> | null = null
     let updated
     if (paidCancellation) {
@@ -205,6 +210,20 @@ export async function PATCH(
           // vérité : la réclamation EN COURS porte la question du remboursement.
           existingClaim:  systemClaim != null && !(systemClaim as Awaited<ReturnType<typeof createSystemClaim>>).created,
         })
+      } else if (paidCancelled && !claimsOn) {
+        // LOT C (P-1 M7) — annulation PAYÉE avec CLAIMS OFF (réglage bêta D4) :
+        // AUCUNE demande système n'existe (branche gatée), donc l'email flag-ON
+        // ci-dessus MENTIRAIT (« demande transmise ») et le générique ci-dessous
+        // est muet sur l'argent (« contactez directement le restaurant »). La
+        // variante honnête flag-OFF dit la vérité : commande payée annulée,
+        // remboursement instruit par le support (humain, bêta). Même trigger
+        // order_cancelled + dedupeKey order:<id> → une seule notification
+        // d'annulation par commande, quel que soit le chemin.
+        await sendOrderCancelledPaidOffEmail({
+          orderId:        order.id,
+          consumerId:     order.consumerId,
+          restaurantName: resto?.name ?? 'votre restaurant',
+        })
       } else if (consumer?.email) {
         await sendOrderStatusEmail({
           orderId:         order.id,
@@ -219,6 +238,28 @@ export async function PATCH(
     } catch (e) {
       console.error('[EMAIL MISS] [PATCH /api/orders/:id/status] status email failed (non-fatal):',
         order.id, e instanceof Error ? e.message : e)
+    }
+
+    // LOT C — alerte admin, POST-update, BEST-EFFORT, INDÉPENDANTE du flag claims :
+    // une commande PAYÉE vient d'être annulée → l'argent encaissé doit être
+    // instruit (file /admin/reconciliation « Annulées payées » + outil refunds/run).
+    // sendOnce idempotent (trigger admin_paid_cancellation, dedupeKey order:<id>) ;
+    // ALERT_EMAIL absent → skipped ; un échec ne bloque JAMAIS la transition.
+    if (paidCancelled) {
+      try {
+        const restoName = (await prisma.restaurant.findUnique({
+          where: { id: order.restaurantId }, select: { name: true },
+        }))?.name ?? null
+        await sendAdminPaidCancellationAlert({
+          orderId:         order.id,
+          paymentIntentId: order.stripePaymentIntentId ?? null,
+          amountCents:     claimAmountCents,
+          restaurantName:  restoName,
+        })
+      } catch (e) {
+        console.error('[ALERT MISS] [PATCH /api/orders/:id/status] paid-cancellation alert failed (non-fatal):',
+          order.id, e instanceof Error ? e.message : e)
+      }
     }
 
     return NextResponse.json({

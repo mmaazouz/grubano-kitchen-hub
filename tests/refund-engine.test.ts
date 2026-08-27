@@ -240,4 +240,27 @@ describe('guards', () => {
     expect(res.status).toBe(409)
     expect(stripeMock.paymentIntents.retrieve).not.toHaveBeenCalled()
   })
+
+  // LOT C — garde ÉLARGIE : la file manuelle ghost-order (paymentStatus
+  // 'reconcile_manual' = argent RÉELLEMENT encaissé) est désormais drainable par
+  // le moteur — avant, le rail censé la vider la refusait en 409.
+  it('[LOT C] reconcile_manual (ghost order encaissé) → ACCEPTÉ, refund exécuté normalement', async () => {
+    db.order.findUnique.mockResolvedValue({ ...paidOrder, paymentStatus: 'reconcile_manual' })
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.amountCents).toBe(5000)
+    // Le refundable reste re-vérifié LIVE côté Stripe (PI succeeded + cumul).
+    expect(stripeMock.paymentIntents.retrieve).toHaveBeenCalledWith('pi_1', { expand: ['latest_charge'] })
+    expect(stripeMock.refunds.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('[LOT C] la garde élargie ne rembourse toujours PAS un statut non encaissé (null) → 409', async () => {
+    db.order.findUnique.mockResolvedValue({ ...paidOrder, paymentStatus: null })
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.status).toBe(409)
+    expect(stripeMock.paymentIntents.retrieve).not.toHaveBeenCalled()
+  })
 })

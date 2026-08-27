@@ -6346,7 +6346,14 @@
     "tabEmpty": "Ningún pedido en esta categoría en el periodo.",
     "allClearTitle": "Nada que conciliar",
     "allClearBody": "No hay ningún pedido cobrado tras la expiración pendiente. Todo está al día — es el estado normal.",
-    "cappedNote": "Mostrando los 200 pedidos más recientes."
+    "cappedNote": "Mostrando los 200 pedidos más recientes.",
+    "cancelledPaidTitle": "Pedidos cancelados y pagados — reembolso por tramitar",
+    "cancelledPaidInfo": "Pedidos cancelados cuyo pago fue cobrado — el reembolso se tramita con la herramienta de administración.",
+    "cancelledPaidEmpty": "Ningún pedido cancelado y pagado en espera.",
+    "colPaid": "Pagado",
+    "colRefunded": "Ya reembolsado",
+    "colPi": "PaymentIntent",
+    "chipCancelledPaid": "Cancelado y pagado"
   },
   "adminEstablishments": {
     "title": "Establecimientos",
@@ -8540,6 +8547,11 @@
       "body": "{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Se ha transmitido una solicitud de reembolso a Grubano.",
       "next": "Será examinada por un miembro del equipo de Grubano — le informaremos de la decisión por correo electrónico.",
       "bodyExisting": "{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Su reclamación en curso sobre este pedido ya recoge la cuestión del reembolso — sigue su circuito normal."
+    },
+    "orderCancelledPaidOff": {
+      "subject": "Pedido {ref} cancelado — sobre su pago",
+      "body": "{resto} ha cancelado su pedido {ref}, que ya estaba pagado. Para el reembolso del importe pagado, contacte con nuestro soporte: contact@grubano.com (o responda a este correo) — cada solicitud la gestiona una persona del equipo durante la beta.",
+      "next": "Indique la referencia {ref}."
     }
   }
 }

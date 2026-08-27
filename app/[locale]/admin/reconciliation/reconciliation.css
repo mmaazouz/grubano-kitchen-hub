@@ -53,3 +53,15 @@
   .gb-op .rec-actions{justify-content:flex-start}
 }
 @container gbop (max-width: 880px){ .gb-op .rec-period{margin-inline-start:0;width:100%} }
+
+/* ── LOT C — « Annulées payées — remboursement à instruire » (read-only calque).
+   Same rec-thead/rec-row primitives, a dedicated 6-column template (order / date /
+   restaurant / paid / refunded / PaymentIntent) + a mono PI cell. The .cp variant
+   is MORE specific than the base selectors, so the narrow-container collapse is
+   restated for it below. ─────────────────────────────────────────────────────── */
+.gb-op .rec-thead.cp,.gb-op .rec-row.cp{grid-template-columns:110px 120px 1.2fr 110px 140px 220px}
+.gb-op .rec-row.cp .pi{font-family:var(--op-font-mono);font-size:11px;color:var(--op-muted);word-break:break-all;direction:ltr;unicode-bidi:isolate}
+@container gbop (max-width: 1040px){
+  .gb-op .rec-thead.cp{display:none}
+  .gb-op .rec-row.cp{grid-template-columns:1fr}
+}

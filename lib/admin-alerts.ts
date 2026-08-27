@@ -82,6 +82,41 @@ export async function sendAdminStalePiAlert(p: {
 }
 
 /**
+ * LOT C — a PAID order was CANCELLED by the restaurant (or admin). With
+ * CLAIMS_ENABLED=false (founder decision D4, whole beta) NO system claim is
+ * created: the captured money would sit invisible with nobody alerted. One
+ * idempotent admin alert per order (sendOnce trigger `admin_paid_cancellation`,
+ * dedupeKey `order:<id>`), raised INDEPENDENTLY of the claims flag — the admin
+ * instructs the refund via /api/admin/refunds/run and the /admin/reconciliation
+ * « Annulées payées » queue. READ-ONLY signal: no automatic money action (Q3).
+ */
+export async function sendAdminPaidCancellationAlert(p: {
+  orderId:         string
+  paymentIntentId: string | null
+  amountCents:     number
+  restaurantName:  string | null
+}): Promise<{ status: SendStatus }> {
+  // FULLY internally try/catch'd (best-effort): an alert failure must NEVER
+  // throw into the status route — it can never block nor fail the cancellation.
+  try {
+    const to = (process.env.ALERT_EMAIL || '').trim()
+    if (!to) return { status: 'skipped' } // ALERT_EMAIL not configured → clean no-op
+    const euros = (p.amountCents / 100).toFixed(2)
+    const subject = '[Grubano] Commande payée annulée — remboursement à instruire'
+    const html =
+      `<div style="font-family:system-ui,Arial,sans-serif;color:#111827;max-width:520px">`
+      + `<h2 style="font-size:17px">Commande payée annulée</h2>`
+      + `<p>Une commande <b>payée</b> vient d'être annulée. Aucun remboursement automatique n'a été déclenché (aucune automatisation d'argent sans humain) — le remboursement est à instruire via l'outil admin.</p>`
+      + `<p style="font-size:14px">Commande : <b>${escHtml(p.orderId)}</b><br>Restaurant : <b>${escHtml(p.restaurantName ?? '—')}</b><br>PaymentIntent : <b>${escHtml(p.paymentIntentId ?? '—')}</b><br>Montant payé : <b>${euros} €</b></p>`
+      + `<p style="font-size:13px;color:#6b7280">File dédiée : /admin/reconciliation, section « Annulées payées — remboursement à instruire ».</p>`
+      + `</div>`
+    return await sendOnce('admin_paid_cancellation', `order:${p.orderId}`, { to, subject, html })
+  } catch {
+    return { status: 'failed' } // never throws — the cancellation proceeds regardless
+  }
+}
+
+/**
  * P0-39 (vague 3) — a claim has been AWAITING the restaurant's answer past its
  * response deadline. The 24h auto-approval (the circuit's relief valve) was
  * removed by P0-07/P0-25 per Q3 with nothing replacing it — without this alert

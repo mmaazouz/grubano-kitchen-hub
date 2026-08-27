@@ -6346,7 +6346,14 @@
     "tabEmpty": "Nessun ordine in questa categoria nel periodo.",
     "allClearTitle": "Niente da riconciliare",
     "allClearBody": "Nessun ordine incassato dopo la scadenza è in sospeso. Tutto è aggiornato — è lo stato normale.",
-    "cappedNote": "Visualizzazione dei 200 ordini più recenti."
+    "cappedNote": "Visualizzazione dei 200 ordini più recenti.",
+    "cancelledPaidTitle": "Ordini annullati e pagati — rimborso da istruire",
+    "cancelledPaidInfo": "Ordini annullati il cui pagamento è stato incassato — il rimborso si istruisce con lo strumento admin.",
+    "cancelledPaidEmpty": "Nessun ordine annullato e pagato in attesa.",
+    "colPaid": "Pagato",
+    "colRefunded": "Già rimborsato",
+    "colPi": "PaymentIntent",
+    "chipCancelledPaid": "Annullato, pagato"
   },
   "adminEstablishments": {
     "title": "Stabilimenti",
@@ -8540,6 +8547,11 @@
       "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Una richiesta di rimborso è stata trasmessa a Grubano.",
       "next": "Sarà esaminata da un membro del team Grubano — sarà informato della decisione via email.",
       "bodyExisting": "{resto} ha annullato il Suo ordine {ref}, già pagato. Il Suo reclamo in corso su questo ordine copre già la questione del rimborso — segue il suo iter normale."
+    },
+    "orderCancelledPaidOff": {
+      "subject": "Ordine {ref} annullato — riguardo al Suo pagamento",
+      "body": "{resto} ha annullato il Suo ordine {ref}, già pagato. Per il rimborso dell’importo pagato, contatti il nostro supporto: contact@grubano.com (o risponda a questa email) — ogni richiesta è gestita da un membro del team durante la beta.",
+      "next": "Indichi il riferimento {ref}."
     }
   }
 }

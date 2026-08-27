@@ -159,6 +159,54 @@ export async function sendOrderCancelledPaidEmail(p: {
   }
 }
 
+// ── (1-ter) LOT C (P-1 M7) — annulation d'une commande PAYÉE, CLAIMS OFF ───────
+// Réglage bêta (décision fondateur D4) : CLAIMS_ENABLED=false → l'annulation
+// d'une commande payée ne crée AUCUNE demande système. L'email (1-bis) ci-dessus
+// MENTIRAIT (« demande transmise ») et le générique de lib/transactional-emails
+// est muet sur l'argent (« contactez directement le restaurant »). Cette variante
+// dit la vérité opérationnelle : commande payée annulée, remboursement instruit
+// par le SUPPORT (traitement humain pendant la bêta) — AUCUNE promesse de
+// remboursement déjà effectué, AUCUN délai. MÊME trigger `order_cancelled` +
+// dedupeKey `order:<id>` que les deux emails qu'elle remplace → UNE seule
+// notification d'annulation par commande, quel que soit le chemin emprunté.
+export async function sendOrderCancelledPaidOffEmail(p: {
+  orderId:        string
+  consumerId:     string
+  restaurantName: string
+}): Promise<{ status: SendStatus }> {
+  try {
+    const consumer = await resolveConsumer(p.consumerId)
+    if (!consumer) {
+      await traceMiss('order_cancelled', p.orderId, 'no_recipient')
+      return { status: 'skipped' }
+    }
+    const t = await getTranslations({ locale: consumer.locale, namespace: 'claimEmails' })
+    const ref = orderRef(p.orderId)
+    return await sendTransactional({
+      to:        consumer.to,
+      subject:   t('orderCancelledPaidOff.subject', { ref }),
+      trigger:   'order_cancelled',
+      dedupeKey: `order:${p.orderId}`,
+      html: claimShell({
+        rtl:    consumer.locale === 'ar',
+        // Le titre du gabarit réutilise la clé existante « Commande annulée »
+        // (orderCancelledPaid.title, déjà traduite ×5) — le sujet porte l'angle argent.
+        title:  t('orderCancelledPaid.title'),
+        footer: t('footer'),
+        bodyHtml:
+          (consumer.name ? `<p>${esc(t('greeting', { name: consumer.name }))}</p>` : '')
+          + `<p>${esc(t('orderCancelledPaidOff.body', { ref, resto: p.restaurantName }))}</p>`
+          + `<p style="font-size:13px;color:#6b7280">${esc(t('orderCancelledPaidOff.next', { ref }))}</p>`,
+      }),
+    })
+  } catch (e) {
+    console.error('[EMAIL MISS] [claim-emails] cancelled-paid-off failed (non-fatal):',
+      p.orderId, e instanceof Error ? e.message : e)
+    await traceMiss('order_cancelled', p.orderId, 'sender_error')
+    return { status: 'failed' }
+  }
+}
+
 // ── (2) Notification de DÉCISION au client ─────────────────────────────────────
 export type ClaimDecisionKind =
   | 'accepted'       // le RESTAURANT accepte → transmise à Grubano (P0-24)

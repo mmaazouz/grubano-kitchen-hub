@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkFlagCoupling, COUPLING_RULES } from '../scripts/check-flags.mjs'
+import { checkFlagCoupling, checkFlagWarnings, COUPLING_RULES } from '../scripts/check-flags.mjs'
 
 // ── WP-GUARD-01 — flag-coupling guard ─────────────────────────────────────────
 // A CI/deploy-time guard (zero app-runtime effect) that FAILs on incoherent
@@ -123,5 +123,34 @@ describe('checkFlagCoupling', () => {
 
   it('COUPLING_RULES documents the 21 known couplings (courier ÉTAPE 6 + scission P0-04 + auto-approve P0-25 + auto-resolve P0-27 + 11 racines de rôle P0-06)', () => {
     expect(COUPLING_RULES).toHaveLength(21)
+  })
+})
+
+// ── LOT C — WARNINGS (non bloquants : le check reste exit 0, mais signale) ──────
+describe('checkFlagWarnings — LOT C', () => {
+  it('all flags OFF (default) → zéro warning', () => {
+    expect(checkFlagWarnings({})).toEqual([])
+  })
+
+  it('REFUNDS_ENABLED sans ADMIN_AUDIT_ENABLED → WARNING « refunds sans trace d\'audit » (mais couplage OK)', () => {
+    const env = { REFUNDS_ENABLED: 'true' }
+    expect(checkFlagCoupling(env).ok).toBe(true) // légal — jamais un exit 1
+    const warnings = checkFlagWarnings(env)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('refunds sans trace d\'audit')
+  })
+
+  it('REFUNDS_ENABLED + ADMIN_AUDIT_ENABLED → zéro warning (set bêta D3 complet)', () => {
+    expect(checkFlagWarnings({ REFUNDS_ENABLED: 'true', ADMIN_AUDIT_ENABLED: 'true' })).toEqual([])
+  })
+
+  it('ALLOW_PLATFORM_FALLBACK=true → WARNING rouge « QA uniquement — JAMAIS en production »', () => {
+    const warnings = checkFlagWarnings({ ALLOW_PLATFORM_FALLBACK: 'true' })
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('QA uniquement — JAMAIS en production')
+  })
+
+  it('only exact "true" triggers a warning (not "1" / "TRUE")', () => {
+    expect(checkFlagWarnings({ ALLOW_PLATFORM_FALLBACK: 'TRUE', REFUNDS_ENABLED: '1' })).toEqual([])
   })
 })

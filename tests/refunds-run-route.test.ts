@@ -12,8 +12,19 @@ const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
 vi.mock('next-auth', () => ({ getServerSession: sessionMock }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 
-const { db } = vi.hoisted(() => ({ db: { operator: { findUnique: vi.fn() } } }))
+const { db } = vi.hoisted(() => ({
+  db: {
+    operator:   { findUnique: vi.fn() },
+    // LOT C — the post-success customer-email block loads the order + resto.
+    order:      { findUnique: vi.fn() },
+    restaurant: { findUnique: vi.fn() },
+  },
+}))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
+
+// LOT C — customer confirmation email, best-effort after a successful refund.
+const { emailMock } = vi.hoisted(() => ({ emailMock: vi.fn() }))
+vi.mock('@/lib/transactional-emails', () => ({ sendRefundConfirmation: emailMock }))
 
 import { POST } from '@/app/api/admin/refunds/run/route'
 
@@ -35,6 +46,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   flagMock.mockReturnValue(true)
   execMock.mockResolvedValue(okResult)
+  // LOT C — email-context lookups: no order/consumer by default → email skipped
+  // cleanly (the pre-existing tests are unaffected by the additive email block).
+  db.order.findUnique.mockResolvedValue(null)
+  db.restaurant.findUnique.mockResolvedValue(null)
+  emailMock.mockResolvedValue(undefined)
   process.env.INTERNAL_CRON_TOKEN = 'secret-cron'
 })
 afterEach(() => { delete process.env.INTERNAL_CRON_TOKEN })
@@ -99,5 +115,68 @@ describe('POST /api/admin/refunds/run — body + pass-through', () => {
     const res = await post({ token: 'secret-cron' })
     expect(res.status).toBe(409)
     expect((await res.json()).error).toMatch('déjà en cours')
+  })
+})
+
+// ── LOT C — customer email after a successful engine refund (best-effort) ─────────
+// Asymmetry closed: POST /api/orders/[id]/refund already confirmed to the customer,
+// this route (the royalty-aware engine) sent NOTHING. Same pattern, same dedupeKey
+// `order:<id>:<cents of THIS refund>` — a resume re-driving the same amount lands
+// on the same key (duplicate), never two emails for one money movement.
+describe('POST /api/admin/refunds/run — LOT C email client best-effort', () => {
+  const withEmailContext = () => {
+    db.order.findUnique.mockResolvedValue({ consumerId: 'c1', restaurantId: 'r1' })
+    db.operator.findUnique.mockResolvedValue({ email: 'lea@x.fr', name: 'Léa' })
+    db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
+  }
+
+  it('refund OK → sendRefundConfirmation part (pattern orders/[id]/refund : dedupeKey order:<id>:<cents>)', async () => {
+    withEmailContext()
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).toBe(200)
+    expect(emailMock).toHaveBeenCalledTimes(1)
+    expect(emailMock).toHaveBeenCalledWith({
+      to:             'lea@x.fr',
+      customerName:   'Léa',
+      restaurantName: 'Gnocchi Bar',
+      refundedCents:  2500,
+      partial:        true,               // remainingRefundableCents 2500 > 0
+      dedupeKey:      'order:o1:2500',
+    })
+  })
+
+  it('échec de l\'email → JAMAIS bloquant : le refund reste un 200 complet', async () => {
+    withEmailContext()
+    emailMock.mockRejectedValue(new Error('smtp down'))
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).toBe(200)
+    expect((await res.json()).ok).toBe(true)
+  })
+
+  it('échec du MOTEUR → aucun email (rien à confirmer)', async () => {
+    withEmailContext()
+    execMock.mockResolvedValue({ ok: false, status: 409, error: 'Paiement déjà intégralement remboursé.' })
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).toBe(409)
+    expect(emailMock).not.toHaveBeenCalled()
+  })
+
+  it('consommateur sans email → skip propre, toujours 200', async () => {
+    db.order.findUnique.mockResolvedValue({ consumerId: 'c1', restaurantId: 'r1' })
+    db.operator.findUnique.mockResolvedValue({ email: null, name: 'Léa' })
+    db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).toBe(200)
+    expect(emailMock).not.toHaveBeenCalled()
+  })
+
+  it('remboursement TOTAL (remaining 0) → partial:false', async () => {
+    withEmailContext()
+    execMock.mockResolvedValue({ ...okResult, amountCents: 5000, remainingRefundableCents: 0 })
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).toBe(200)
+    expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({
+      refundedCents: 5000, partial: false, dedupeKey: 'order:o1:5000',
+    }))
   })
 })

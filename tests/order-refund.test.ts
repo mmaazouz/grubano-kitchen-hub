@@ -145,6 +145,21 @@ describe('POST /api/orders/[id]/refund — guards', () => {
     expect(refundMock).not.toHaveBeenCalled()
   })
 
+  // LOT C — garde ÉLARGIE (miroir executeRefund) : 'reconcile_manual' (ghost order
+  // encaissé, file manuelle) est de l'argent encaissé — la route admin l'accepte.
+  it('[LOT C] 200 pour une commande reconcile_manual — la file manuelle est remboursable', async () => {
+    db.order.findUnique.mockResolvedValue({ ...paidOrder, paymentStatus: 'reconcile_manual' })
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(refundMock).toHaveBeenCalledWith({ paymentIntentId: 'pi_order_1', amountCents: undefined })
+  })
+
+  it('[LOT C] la garde élargie refuse toujours un paymentStatus null (jamais encaissé) → 409', async () => {
+    db.order.findUnique.mockResolvedValue({ ...paidOrder, paymentStatus: null })
+    expect((await call()).status).toBe(409)
+    expect(refundMock).not.toHaveBeenCalled()
+  })
+
   it('400 on an invalid amount', async () => {
     expect((await call({ amountCents: -5 })).status).toBe(400)
     expect(refundMock).not.toHaveBeenCalled()

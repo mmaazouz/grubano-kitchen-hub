@@ -6346,7 +6346,14 @@
     "tabEmpty": "Aucune commande dans cette catégorie sur la période.",
     "allClearTitle": "Rien à réconcilier",
     "allClearBody": "Aucune commande encaissée après expiration n'est en attente. Tout est à jour — c'est l'état normal.",
-    "cappedNote": "Affichage des 200 commandes les plus récentes."
+    "cappedNote": "Affichage des 200 commandes les plus récentes.",
+    "cancelledPaidTitle": "Annulées payées — remboursement à instruire",
+    "cancelledPaidInfo": "Commandes annulées dont le paiement a été encaissé — le remboursement s'instruit via l'outil admin.",
+    "cancelledPaidEmpty": "Aucune commande annulée payée en attente.",
+    "colPaid": "Payé",
+    "colRefunded": "Déjà remboursé",
+    "colPi": "PaymentIntent",
+    "chipCancelledPaid": "Annulée payée"
   },
   "adminEstablishments": {
     "title": "Établissements",
@@ -8540,6 +8547,11 @@
       "body": "{resto} a annulé votre commande {ref}, qui avait été payée. Une demande de remboursement a été transmise à Grubano.",
       "next": "Elle sera examinée par un membre de l’équipe Grubano — vous serez informé(e) par email de la décision.",
       "bodyExisting": "{resto} a annulé votre commande {ref}, qui avait été payée. Votre réclamation en cours sur cette commande porte déjà la question du remboursement — elle suit son circuit normal."
+    },
+    "orderCancelledPaidOff": {
+      "subject": "Commande {ref} annulée — au sujet de votre paiement",
+      "body": "{resto} a annulé votre commande {ref}, qui avait été payée. Pour le remboursement du montant payé, contactez notre support : contact@grubano.com (ou répondez simplement à cet e-mail) — chaque demande est traitée par un membre de l’équipe pendant la bêta.",
+      "next": "Indiquez la référence {ref} dans votre message."
     }
   }
 }

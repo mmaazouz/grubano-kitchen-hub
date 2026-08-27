@@ -23,7 +23,7 @@ import { NextRequest } from 'next/server'
 
 const hasStripe = !!process.env.STRIPE_SECRET_KEY // presence only — value never shown
 
-const { db, getToken, resolveScope, sendEmail, cancelledPaidEmail, refundPayment, executeRefund } = vi.hoisted(() => ({
+const { db, getToken, resolveScope, sendEmail, cancelledPaidEmail, cancelledPaidOffEmail, paidCancellationAlert, refundPayment, executeRefund } = vi.hoisted(() => ({
   db: {
     order:              { findUnique: vi.fn(), update: vi.fn() },
     claim:              { create: vi.fn() }, // P0-08 — la demande système (lib/claims RÉELLE)
@@ -36,7 +36,9 @@ const { db, getToken, resolveScope, sendEmail, cancelledPaidEmail, refundPayment
   getToken:      vi.fn(),
   resolveScope:  vi.fn(),
   sendEmail:     vi.fn(),
-  cancelledPaidEmail: vi.fn(), // P0-08 — l'email honnête des annulations PAYÉES
+  cancelledPaidEmail: vi.fn(), // P0-08 — l'email honnête des annulations PAYÉES (flag-ON)
+  cancelledPaidOffEmail: vi.fn(), // LOT C — la variante honnête flag-OFF (CLAIMS désactivé)
+  paidCancellationAlert: vi.fn(), // LOT C — l'alerte admin, INDÉPENDANTE du flag claims
   refundPayment: vi.fn(), // spy on '@/lib/refunds' — must stay UNCALLED (Q3: request, never a refund)
   executeRefund: vi.fn(), // spy on '@/lib/refund'  — idem
 }))
@@ -44,7 +46,11 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 vi.mock('next-auth/jwt', () => ({ getToken }))
 vi.mock('@/lib/establishment-scope', () => ({ resolveEstablishmentScope: resolveScope }))
 vi.mock('@/lib/transactional-emails', () => ({ sendOrderStatusEmail: sendEmail }))
-vi.mock('@/lib/claim-emails', () => ({ sendOrderCancelledPaidEmail: cancelledPaidEmail }))
+vi.mock('@/lib/claim-emails', () => ({
+  sendOrderCancelledPaidEmail:    cancelledPaidEmail,
+  sendOrderCancelledPaidOffEmail: cancelledPaidOffEmail,
+}))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminPaidCancellationAlert: paidCancellationAlert }))
 // Both refund libs are mocked so that ANY (even transitive — lib/claims réelle
 // les importe) call would be captured. The spies must NEVER fire from a cancel.
 vi.mock('@/lib/refunds', () => ({ refundPayment }))
@@ -91,6 +97,8 @@ beforeEach(() => {
   db.restaurant.findUnique.mockResolvedValue(null)
   sendEmail.mockResolvedValue({ status: 'sent' })
   cancelledPaidEmail.mockResolvedValue({ status: 'sent' })
+  cancelledPaidOffEmail.mockResolvedValue({ status: 'sent' })
+  paidCancellationAlert.mockResolvedValue({ status: 'sent' })
   // P0-08 — $transaction interactive : exécute le callback avec tx = db (fidèle
   // au contrat Prisma pour ces spies) ; la forme tableau reste supportée.
   db.claim.create.mockResolvedValue({ id: 'clsys1' })
@@ -200,15 +208,51 @@ describe('P3 — annulation resto d’une commande PAYÉE (PATCH /api/orders/[id
     warnSpy.mockRestore()
   })
 
-  it('[PASS-ACTUEL P0-08] CLAIMS_ENABLED OFF → chemin HISTORIQUE byte-identique (pas de demande, email générique) — la demande serait invisible et intranchable', async () => {
+  it('[CORRIGÉ LOT C] CLAIMS_ENABLED OFF → pas de demande (inchangé), mais l\'email est la variante OFF HONNÊTE (support instruit le remboursement) + alerte admin — plus JAMAIS le générique muet sur l\'argent', async () => {
+    // Sprint 0 photographiait le flag-OFF en « email générique » ([PASS-ACTUEL
+    // P0-08]) — c'était le réglage bêta RÉEL (D4 : CLAIMS OFF toute la bêta) : le
+    // client payé lisait « contactez directement le restaurant », muet sur
+    // l'argent. LOT C (P-1 M7) découple le CHOIX d'email du flag claims : la
+    // création de demande reste ABSENTE flag-OFF (byte-identique), mais la
+    // variante honnête part (remboursement instruit par le support), et l'alerte
+    // admin signale l'argent encaissé à instruire.
     vi.stubEnv('CLAIMS_ENABLED', '')
     db.operator.findUnique.mockResolvedValue({ email: 'lea@x.fr', name: 'Léa' })
+    db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
     const res = await patch('o1', { status: 'cancelled' })
     expect(res.status).toBe(200)
+    // La branche demande-système reste gatée : AUCUNE demande flag-OFF (inchangé).
     expect(db.claim.create).not.toHaveBeenCalled()
     expect(db.$transaction).not.toHaveBeenCalled()
+    // Aucun remboursement machine, toujours (Q3).
+    expect(refundPayment).not.toHaveBeenCalled()
+    expect(executeRefund).not.toHaveBeenCalled()
+    // L'email flag-ON (« demande transmise ») ne part PAS — la demande n'existe pas.
     expect(cancelledPaidEmail).not.toHaveBeenCalled()
-    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled' }))
+    // Le générique muet sur l'argent ne part PLUS — la variante OFF honnête le remplace.
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(cancelledPaidOffEmail).toHaveBeenCalledTimes(1)
+    expect(cancelledPaidOffEmail).toHaveBeenCalledWith({
+      orderId: 'o1', consumerId: 'c1', restaurantName: 'Gnocchi Bar',
+    })
+    // L'alerte admin part INDÉPENDAMMENT du flag claims.
+    expect(paidCancellationAlert).toHaveBeenCalledTimes(1)
+    expect(paidCancellationAlert).toHaveBeenCalledWith({
+      orderId: 'o1', paymentIntentId: null, amountCents: 4250, restaurantName: 'Gnocchi Bar',
+    })
+  })
+
+  it('[LOT C] l\'alerte admin part AUSSI flag-ON (indépendante du flag claims), et son échec ne bloque jamais l\'annulation', async () => {
+    db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
+    let res = await patch('o1', { status: 'cancelled' })
+    expect(res.status).toBe(200)
+    expect(paidCancellationAlert).toHaveBeenCalledWith({
+      orderId: 'o1', paymentIntentId: null, amountCents: 4250, restaurantName: 'Gnocchi Bar',
+    })
+    // Best-effort : une panne d'alerte n'affecte pas la transition.
+    paidCancellationAlert.mockRejectedValue(new Error('smtp down'))
+    res = await patch('o1', { status: 'cancelled' })
+    expect(res.status).toBe(200)
   })
 
   it('[PASS-ACTUEL P0-08] ATOMICITÉ : une panne (non-P2002) de la création de demande fait échouer l’annulation AUSSI (500, les deux ensemble)', async () => {

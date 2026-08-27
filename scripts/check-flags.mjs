@@ -65,6 +65,25 @@ export function checkFlagCoupling(env) {
   return { ok: errors.length === 0, errors }
 }
 
+// ── LOT C — WARNINGS (jamais bloquants : combos LÉGAUX mais à signaler) ────────
+// Contrairement aux COUPLING_RULES (exit 1), un WARNING laisse le check passer
+// (exit 0) : il signale un réglage risqué que le go-live doit voir en face.
+export const WARNING_RULES = [
+  // (a) Le moteur de remboursement actif sans la trace d'audit admin : chaque
+  // remboursement admin devrait laisser sa ligne AdminAuditLog ('refund.run').
+  { when: (env) => on(env, 'REFUNDS_ENABLED') && !on(env, 'ADMIN_AUDIT_ENABLED'),
+    msg:  'REFUNDS_ENABLED=true sans ADMIN_AUDIT_ENABLED=true — refunds sans trace d\'audit (aucune ligne AdminAuditLog pour les remboursements admin)' },
+  // (b) Escape-hatch QA : encaisser sur le compte plateforme quand la destination
+  // Connect manque. Toléré UNIQUEMENT pour la QA — jamais avec de l'argent réel.
+  { when: (env) => on(env, 'ALLOW_PLATFORM_FALLBACK'),
+    msg:  '🔴 ALLOW_PLATFORM_FALLBACK=true — QA uniquement — JAMAIS en production' },
+]
+
+/** Pure — returns warnings[] (possibly empty) for a given env map. */
+export function checkFlagWarnings(env) {
+  return WARNING_RULES.filter((r) => r.when(env)).map((r) => r.msg)
+}
+
 // CLI runner — guarded so an `import` (tests) never triggers process.exit.
 if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('scripts/check-flags.mjs')) {
   const { ok, errors } = checkFlagCoupling(process.env)
@@ -73,5 +92,7 @@ if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('scripts/che
     for (const e of errors) console.error('  - ' + e)
     process.exit(1)
   }
-  console.log('✅ Couplage de feature-flags cohérent.')
+  const warnings = checkFlagWarnings(process.env)
+  for (const w of warnings) console.warn('⚠️  ' + w)
+  console.log('✅ Couplage de feature-flags cohérent.' + (warnings.length ? ` (${warnings.length} avertissement(s) ci-dessus)` : ''))
 }

@@ -6346,7 +6346,14 @@
     "tabEmpty": "No order in this category over the period.",
     "allClearTitle": "Nothing to reconcile",
     "allClearBody": "No order captured after expiry is pending. Everything is up to date — this is the normal state.",
-    "cappedNote": "Showing the 200 most recent orders."
+    "cappedNote": "Showing the 200 most recent orders.",
+    "cancelledPaidTitle": "Cancelled but paid — refund to be processed",
+    "cancelledPaidInfo": "Cancelled orders whose payment was captured — the refund is processed through the admin tool.",
+    "cancelledPaidEmpty": "No cancelled paid order pending.",
+    "colPaid": "Paid",
+    "colRefunded": "Already refunded",
+    "colPi": "PaymentIntent",
+    "chipCancelledPaid": "Cancelled, paid"
   },
   "adminEstablishments": {
     "title": "Establishments",
@@ -8540,6 +8547,11 @@
       "body": "{resto} cancelled your order {ref}, which had been paid. A refund request has been submitted to Grubano.",
       "next": "It will be reviewed by a member of the Grubano team — you will be notified of the decision by email.",
       "bodyExisting": "{resto} cancelled your order {ref}, which had been paid. Your existing claim on this order already carries the refund question — it follows its normal process."
+    },
+    "orderCancelledPaidOff": {
+      "subject": "Order {ref} cancelled — about your payment",
+      "body": "{resto} cancelled your order {ref}, which had been paid. To get the amount you paid refunded, contact our support: contact@grubano.com (or simply reply to this email) — every request is handled by a team member during the beta.",
+      "next": "Please include reference {ref}."
     }
   }
 }
