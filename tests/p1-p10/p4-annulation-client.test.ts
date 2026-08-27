@@ -124,17 +124,16 @@ describe('P4 — PATCH /api/orders/[id]/status : scoping restaurant/admin unique
 })
 
 describe('P4 — promesse checkout « annulation 2 min »', () => {
-  it("[FAIL-ATTENDU: promesse « annulation 2 min » non tenue] eat.checkout.reassure affiche « annulation gratuite sous 2 min » alors qu'aucun handler client n'existe", () => {
-    // AUDIT: the checkout page (app/[locale]/eat/checkout/[orderId]/page.tsx,
-    // t('reassure') on the eat.checkout namespace) promises a free 2-minute
-    // cancellation window — with NO backing endpoint. Once the fix ships either
-    // the handler (invert the existsSync half) or the copy changes (update the
-    // toContain half); this test pins the current broken-promise pair.
+  it("[CORRIGÉ LOT 4: promesse retirée] eat.checkout.reassure ne promet plus d'annulation — copie honnête (« Paiement chiffré »), toujours aucune route cancel", () => {
+    // FIX (closed-beta LOT 4): the copy changed — the fabricated « annulation
+    // gratuite sous 2 min » promise is GONE (no cancel endpoint ever existed).
+    // The test now pins the HONEST pair: no promise made, no handler present.
     const fr = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', 'fr.json'), 'utf-8'))
     const reassure: string = fr.eat.checkout.reassure
-    expect(reassure).toContain('annulation gratuite sous 2 min')
+    expect(reassure).toBe('Paiement chiffré')
+    expect(reassure).not.toMatch(/annulation/i)
     const cancelRoute = path.join(ROOT, 'app', 'api', 'orders', '[id]', 'cancel', 'route.ts')
-    expect(fs.existsSync(cancelRoute)).toBe(false) // promise made, handler absent
+    expect(fs.existsSync(cancelRoute)).toBe(false) // still no cancel API — and no promise about one either
   })
 
   it.todo("[NON-TESTABLE: UI navigateur] le bouton « Annuler » de /eat/order/[orderId]/help est inerte (commentaire source : « Annuler » is inert (no cancel API)) — où meurt l'option affichée, à vérifier au navigateur")

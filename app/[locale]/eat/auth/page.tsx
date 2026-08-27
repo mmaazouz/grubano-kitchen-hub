@@ -2,7 +2,7 @@
 
 import './auth.css'
 import { useState, useEffect } from 'react'
-import { useRouter } from '@/navigation'
+import { Link, useRouter } from '@/navigation'
 import { signIn } from 'next-auth/react'
 import { showToast } from '@/lib/eat-cart'
 import { useTranslations } from 'next-intl'
@@ -153,7 +153,9 @@ export default function AuthScreen() {
             <span><span className="ms" style={{ fontSize: '17px', color: '#41BD78' }}>verified_user</span>{t('metaSecure')}</span>
             <span><span className="ms" style={{ fontSize: '17px', color: '#FF9A4D' }}>bolt</span>{t('metaPasswordless')}</span>
           </div>
-          <div className="auth__badge show-signup"><span className="ms" style={{ fontSize: '17px' }}>redeem</span>{t('welcomeBadge')}</div>
+          {/* LOT 4 : badge « Bonus de bienvenue offert » RETIRÉ — l'inscription crée le
+              compte fidélité à 0 point (le bonus 10 pts est réservé à l'opt-in
+              /api/loyalty/register) ; la promesse était fausse ici. */}
         </aside>
 
         <section className="auth__panel">
@@ -264,7 +266,7 @@ export default function AuthScreen() {
               </button>
             </form>
 
-            <p className="legal">{t('legal')}</p>
+            <p className="legal"><Link href="/legal/confidentialite">{t('legal')}</Link></p>
           </div>
         </section>
       </main>
@@ -393,7 +395,7 @@ export default function AuthScreen() {
             </button>
           </form>
 
-          <p className="legal">{t('legal')}</p>
+          <p className="legal"><Link href="/legal/confidentialite">{t('legal')}</Link></p>
         </div>
       </div>
 

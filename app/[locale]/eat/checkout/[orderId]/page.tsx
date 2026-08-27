@@ -32,12 +32,10 @@ import '@/app/gb-foundation/gb-components.css'
 //   total by the time this page loads. The « Payer » CTA still calls startPayment →
 //   POST /api/orders/[id]/pay and Stripe/Wallet still confirm the SERVER amount
 //   (payInit.amount). NONE of that math changed. The CD mock adds an address / slot /
-//   tip / saved-card UI: those are POST-creation and CANNOT alter what is charged, so
-//   they are bound to REAL data where a backend exists (saved addresses, real totals)
-//   and rendered as INERT placeholders where it does not (tip selector + saved cards →
-//   no tip backend, no Stripe SetupIntent backend; per the run-1 CD note « aucune
-//   carte Stripe sauvegardée n'existe encore »). The tip selector defaults to « Aucun »
-//   and never adds to order.total, so the displayed Total === the charged amount.
+//   tip / saved-card UI: the address selector is bound to REAL saved addresses; the
+//   INERT placeholders (slot chips, tip selector, fabricated saved cards « Visa ••••
+//   4242 » / Apple Pay) were REMOVED for the closed beta (LOT 4 — no fabricated data,
+//   no dead controls). Only the REAL Stripe Elements / Wallet module remains.
 
 interface OrderItem { itemId?: string; name: string; qty: number; price: number }
 interface OrderInfo {
@@ -99,15 +97,6 @@ export default function CheckoutPage() {
   // display-only (the order's delivery details were frozen at creation).
   const [addresses, setAddresses] = useState<EatAddress[]>([])
   const [addrId, setAddrId]       = useState<string>('')
-  // Delivery slot — inert CD chips («Au plus vite» default). Display-only.
-  const [slot, setSlot]           = useState<string>('asap')
-  // Tip selector — INERT placeholder (no tip backend). Default «Aucun» (0) so the
-  // displayed Total stays === order.total === the charged amount. NEVER added to
-  // any charged sum.
-  const [tipKey, setTipKey]       = useState<string>('none')
-  // Payment-method radio — INERT placeholder (no saved-card backend). The real
-  // payment happens via Stripe Elements / Wallet in the 'pay' stage.
-  const [pmKey, setPmKey]         = useState<string>('visa')
 
   // ── Load the recap ──────────────────────────────────────────────────────────
   const loadOrder = useCallback(async () => {
@@ -239,23 +228,6 @@ export default function CheckoutPage() {
   // label, fall back to the order's frozen delivery address string.
   const confAddr = selAddr?.label || (order?.deliveryAddress ?? '')
 
-  // Inert delivery-slot chips (visual only). «Au plus vite» + a few fixed times.
-  const SLOTS = useMemo(() => ([
-    { key: 'asap', label: t('slotAsap'), now: true },
-    { key: '19:30', label: '19:30', now: false },
-    { key: '20:00', label: '20:00', now: false },
-    { key: '20:30', label: '20:30', now: false },
-    { key: '21:00', label: '21:00', now: false },
-  ]), [t])
-  // Inert tip chips (visual only — NO money impact, see header note).
-  const TIPS = useMemo(() => ([
-    { key: 'none', label: t('tipNone') },
-    { key: '10',   label: '10 %' },
-    { key: '15',   label: '15 %' },
-    { key: '20',   label: '20 %' },
-    { key: 'other', label: t('tipOther') },
-  ]), [t])
-
   // ── The pay CTA — review = start payment; pay = the wallet + Stripe Elements
   //    card (real payment). Money handlers BYTE-IDENTICAL. ──────────────────────
   const PayCta = ({ id }: { id: string }) => (
@@ -321,7 +293,7 @@ export default function CheckoutPage() {
           </div>
 
           <div className="layout">
-            {/* LEFT column — address / slot / tip / payment method */}
+            {/* LEFT column — address / payment (LOT 4 : slot + tip retirés) */}
             <div>
               {/* Address (delivery only) — REAL saved addresses (visual selector) */}
               {!isPickup && (
@@ -355,74 +327,13 @@ export default function CheckoutPage() {
                 </section>
               )}
 
-              {/* Delivery / pickup slot — inert CD chips (visual only) */}
-              <section className="sec">
-                <div className="sec__h">
-                  <span className="ms" aria-hidden="true">schedule</span>
-                  <b>{isPickup ? t('pickupSlotTitle') : t('slotTitle')}</b>
-                </div>
-                <div className="chiprow">
-                  {SLOTS.map((s) => (
-                    <button
-                      key={s.key}
-                      type="button"
-                      className={`tchip${s.now ? ' now' : ''}${s.key === slot ? ' sel' : ''}`}
-                      onClick={() => setSlot(s.key)}
-                      aria-pressed={s.key === slot}
-                    >
-                      {s.now && <span className="ms" aria-hidden="true">bolt</span>}{s.label}
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              {/* Tip — INERT placeholder (no money impact, no tip backend) */}
-              {!isPickup && (
-                <section className="sec">
-                  <div className="sec__h">
-                    <span className="ms" aria-hidden="true">volunteer_activism</span>
-                    <b>{t('tipTitle')}</b>
-                  </div>
-                  <div className="tiprow">
-                    {TIPS.map((tp) => (
-                      <button
-                        key={tp.key}
-                        type="button"
-                        className={`tipopt${tp.key === tipKey ? ' sel' : ''}`}
-                        onClick={() => setTipKey(tp.key)}
-                        aria-pressed={tp.key === tipKey}
-                      >
-                        {tp.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="tipnote"><span className="ms" aria-hidden="true">favorite</span>{t('tipNote')}</p>
-                </section>
-              )}
-
-              {/* Payment method — INERT placeholder radios (no saved-card backend) */}
+              {/* Payment — the REAL Stripe module only (LOT 4 : the fabricated
+                  saved-card radios, slot chips and tip selector were REMOVED). */}
               <section className="sec">
                 <div className="sec__h">
                   <span className="ms" aria-hidden="true">credit_card</span>
                   <b>{t('paymentTitle')}</b>
                 </div>
-                <button type="button" className={`pm${pmKey === 'visa' ? ' sel' : ''}`} onClick={() => setPmKey('visa')} aria-pressed={pmKey === 'visa'}>
-                  <span className="brand visa">VISA</span>
-                  <div className="main"><b>{t('cardVisa')}</b><span>{t('cardExpires', { date: '08/27' })}</span></div>
-                  <span className="radio" />
-                </button>
-                <button type="button" className={`pm${pmKey === 'mc' ? ' sel' : ''}`} onClick={() => setPmKey('mc')} aria-pressed={pmKey === 'mc'}>
-                  <span className="brand mc"><span className="ms" aria-hidden="true">credit_card</span></span>
-                  <div className="main"><b>{t('cardMc')}</b><span>{t('cardExpires', { date: '02/26' })}</span></div>
-                  <span className="radio" />
-                </button>
-                <button type="button" className={`pm${pmKey === 'apple' ? ' sel' : ''}`} onClick={() => setPmKey('apple')} aria-pressed={pmKey === 'apple'}>
-                  <span className="brand apple"><span className="ms" aria-hidden="true">apple</span></span>
-                  <div className="main"><b>{t('applePay')}</b><span>{t('applePayHint')}</span></div>
-                  <span className="radio" />
-                </button>
-                <button type="button" className="addpay"><span className="ms" aria-hidden="true">add</span>{t('addCard')}</button>
-
                 {/* REAL payment lives here once the user taps « Payer » (stage 'pay').
                     Wallet + Stripe Elements are left BYTE-IDENTICAL — only re-skinned
                     around. They confirm the SAME PaymentIntent / server amount. */}

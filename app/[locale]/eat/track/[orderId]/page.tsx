@@ -31,6 +31,9 @@ interface OrderItem { name: string; qty: number; price: number }
 interface Order {
   id: string
   status: string
+  // Served by GET /api/orders/[id] — LOT 4 : drives the honest « expirée mais
+  // payée » message (a payment can land AFTER expiry: 'paid'/'reconcile_manual').
+  paymentStatus?: string | null
   fulfillmentType?: 'delivery' | 'pickup' | string
   subtotal?: number
   deliveryFee?: number
@@ -150,6 +153,10 @@ export default function OrderTrackingScreen() {
   // ── Awaiting-payment / expired — dedicated states (kept, re-skinned) ─────────
   if (order.status === 'awaiting_payment' || order.status === 'expired') {
     const awaiting = order.status === 'awaiting_payment'
+    // LOT 4 — a payment can land AFTER expiry (webhook race / manual reconcile).
+    // « Rien n'a été débité » would then be FALSE → honest dedicated message.
+    const expiredButPaid = !awaiting
+      && (order.paymentStatus === 'paid' || order.paymentStatus === 'reconcile_manual')
     return (
       <div className="gb gb-track gb-track--single" data-theme="light">
         <div className="state">
@@ -160,7 +167,7 @@ export default function OrderTrackingScreen() {
           <div className={`state__box${awaiting ? '' : ' warn'}`}>
             <div className="ico">{awaiting ? '💳' : '⌛'}</div>
             <h2>{awaiting ? t('awaitingTitle') : t('expiredTitle')}</h2>
-            <p>{awaiting ? t('awaitingDesc') : t('expiredDesc')}</p>
+            <p>{awaiting ? t('awaitingDesc') : expiredButPaid ? t('expiredPaidDesc') : t('expiredDesc')}</p>
             {awaiting && (
               <button className="state__cta" onClick={() => router.push(`/eat/checkout/${order.id}`)}>
                 <span className="ms">payments</span>{t('awaitingCta')}
@@ -314,7 +321,8 @@ export default function OrderTrackingScreen() {
           <span>{t('totalPaid')}</span>
           <b>{formatEuros(order.total, locale)}</b>
         </div>
-        <button className="help" onClick={() => router.push('/eat')}>
+        {/* LOT 4 — routes to the REAL per-order help screen (was a dead push to /eat). */}
+        <button className="help" onClick={() => router.push(`/eat/order/${order.id}/help`)}>
           <span className="ms">support_agent</span>{t('needHelp')}
         </button>
       </div>

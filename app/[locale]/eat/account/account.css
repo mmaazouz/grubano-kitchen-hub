@@ -47,6 +47,8 @@
 .gb-account .ac-group{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden;margin-bottom:16px}
 .gb-account .ac-row{display:flex;align-items:center;gap:14px;padding:15px 18px;border-bottom:1px solid var(--gb-border);cursor:pointer;width:100%;text-align:left;background:none;border-left:none;border-right:none;border-top:none;font-family:inherit;color:var(--gb-text)}
 .gb-account .ac-row:last-child{border-bottom:none}
+/* LOT 4 — « Centre d'aide » is now a real <a mailto>: same look as the button rows */
+.gb-account a.ac-row{text-decoration:none}
 .gb-account .ac-row.static{cursor:default}
 .gb-account .ac-row .ic{width:38px;height:38px;border-radius:var(--gb-r-md);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .gb-account .ac-row .ic .ms{font-size:21px}

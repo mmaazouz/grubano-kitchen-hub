@@ -3051,7 +3051,7 @@
       "promoTitleFixed": "{amount} offerts",
       "promoSubtitle": "{count, plural, =1 {1 offre en cours, appliquée au paiement.} other {# offres en cours, appliquées au paiement.}}",
       "promoWelcomeTitle": "Faim ? On s'occupe de tout.",
-      "promoWelcomeSubtitle": "Les meilleurs restos près de chez vous, livrés en quelques minutes.",
+      "promoWelcomeSubtitle": "Les meilleurs restos près de chez vous.",
       "promoCta": "Voir les offres",
       "iaTitle": "Pour vous ce soir",
       "iaSoon": "IA — bientôt",
@@ -3410,6 +3410,7 @@
       "awaitingCta": "Finaliser le paiement",
       "expiredTitle": "Commande expirée",
       "expiredDesc": "Le paiement n’a pas été finalisé — cette commande n’a pas été transmise au restaurant. Rien n’a été débité.",
+      "expiredPaidDesc": "Cette commande a expiré, mais un paiement a été enregistré. Notre équipe vous recontacte pour le régulariser — aucune nouvelle préparation ne sera lancée.",
       "modeDelivery": "Livraison",
       "articlesCount": "{count} article{count, plural, one {} other {s}}",
       "stepConfirmed": "Commande confirmée",
@@ -3502,7 +3503,7 @@
       "rowDietarySub": "Allergènes, régimes",
       "groupHelp": "Aide & à propos",
       "rowHelpCenter": "Centre d'aide",
-      "rowTerms": "Conditions & confidentialité",
+      "rowTerms": "Confidentialité",
       "rowBecomePartner": "Devenir partenaire Grubano",
       "version": "Grubano · v1.0.0"
     },
@@ -3542,7 +3543,7 @@
       "joinTitle": "Rejoignez la table. Gagnez en mangeant.",
       "joinBenefit": "Cumulez des points à chaque commande, enregistrez vos favoris et suivez chaque livraison.",
       "welcomeBack": "Bon retour",
-      "legal": "En continuant, vous acceptez les Conditions et la Politique de confidentialité de Grubano.",
+      "legal": "En continuant, vous acceptez la Politique de confidentialité de Grubano.",
       "welcomeBadge": "Bonus de bienvenue offert",
       "or": "ou",
       "continueWith": "Continuer avec {provider}",
@@ -3803,7 +3804,7 @@
       "applePayHint": "Touch ID / Face ID",
       "addCard": "Ajouter une carte",
       "summaryTitle": "Votre commande",
-      "reassure": "Paiement chiffré · annulation gratuite sous 2 min",
+      "reassure": "Paiement chiffré",
       "payCtaBare": "Payer"
     },
     "checkoutAuth": {
@@ -8250,7 +8251,7 @@
       "title": "Aide & support",
       "center": "Centre d'aide",
       "contact": "Contacter le support",
-      "terms": "Conditions générales",
+      "terms": "Mentions légales",
       "privacy": "Politique de confidentialité"
     }
   },

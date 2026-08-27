@@ -71,6 +71,8 @@
 /* ── contact buttons ── */
 .gb-help .contact{display:flex;gap:10px;margin-bottom:18px}
 .gb-help .cbtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-md);padding:14px 10px;cursor:pointer;font-family:inherit;color:var(--gb-text)}
+/* LOT 4 — the e-mail contact is now a real <a mailto>: same look as the button variant */
+.gb-help a.cbtn{text-decoration:none}
 .gb-help .cbtn .ms{font-size:23px;color:var(--gb-zest-600)}
 [data-theme="dark"] .gb-help .cbtn .ms{color:var(--gb-zest)}
 .gb-help .cbtn b{font-size:12.5px;font-weight:700}
