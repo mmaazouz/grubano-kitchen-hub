@@ -112,7 +112,36 @@ describe('ROUTED (Connect active) — destination charge + fee on the food base'
   })
 })
 
-describe('PLATFORM fallback (Connect not active) — no split, whole charge on platform', () => {
+describe('D5 — CONNECT-READY GATE : sans Connect actif, /pay REFUSE avant tout appel Stripe', () => {
+  // Le harnais global ouvre ALLOW_PLATFORM_FALLBACK (vitest.config env) — ici
+  // on prouve le comportement PAR DÉFAUT (var absente = refus).
+  beforeEach(() => { delete process.env.ALLOW_PLATFORM_FALLBACK })
+  afterEach(() => { process.env.ALLOW_PLATFORM_FALLBACK = 'true' })
+  it('409 restaurant_not_payable quand stripeAccountStatus nest pas active — aucun PI créé', async () => {
+    db.restaurant.findUnique.mockResolvedValue(PLATFORM)
+    const res = await pay()
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('restaurant_not_payable')
+    expect(stripe.createTicketPayment).not.toHaveBeenCalled()
+  })
+  it('409 aussi quand stripeAccountId est null même avec status active', async () => {
+    db.restaurant.findUnique.mockResolvedValue({ ...ROUTED, stripeAccountId: null })
+    const res = await pay()
+    expect(res.status).toBe(409)
+    expect(stripe.createTicketPayment).not.toHaveBeenCalled()
+  })
+  it("la clé d'ouverture doit être STRICTEMENT 'true' — '1' reste bloquant", async () => {
+    process.env.ALLOW_PLATFORM_FALLBACK = '1'
+    db.restaurant.findUnique.mockResolvedValue(PLATFORM)
+    const res = await pay()
+    expect(res.status).toBe(409)
+    delete process.env.ALLOW_PLATFORM_FALLBACK
+  })
+})
+
+describe('PLATFORM fallback (Connect not active) — QA uniquement via ALLOW_PLATFORM_FALLBACK', () => {
+  beforeEach(() => { process.env.ALLOW_PLATFORM_FALLBACK = 'true' })
+  afterEach(() => { delete process.env.ALLOW_PLATFORM_FALLBACK })
   it('no transfer_data / no application_fee when stripeAccountStatus !== active', async () => {
     db.restaurant.findUnique.mockResolvedValue(PLATFORM)
     const res = await pay()

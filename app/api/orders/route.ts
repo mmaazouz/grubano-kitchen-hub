@@ -11,6 +11,7 @@ import { isTipsEnabled, sanitizeTipCents } from '@/lib/tips'
 import { isFranchisePosTaggingEnabled } from '@/lib/franchise-pos-tagging'
 import { isDeliveryZoneEnforcementEnabled, checkDeliveryZone } from '@/lib/delivery-zone'
 import { refuseForbiddenFulfillment } from '@/lib/fulfillment'
+import { isConnectReady, isPlatformFallbackAllowed } from '@/lib/connect-gate'
 import { isLogisticsDistanceFeeEnabled, resolveDistanceDeliveryFee } from '@/lib/logistics-fee'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import { isInfluencerEnabled, isAffiliateVerified } from '@/lib/influencer-verification'
@@ -134,6 +135,21 @@ export async function POST(req: NextRequest) {
     // pricing/write so a refused order writes strictly nothing.
     const fulfillmentRefusal = refuseForbiddenFulfillment(data.fulfillmentType, restaurant)
     if (fulfillmentRefusal) return fulfillmentRefusal
+
+    // ── D5 (closed beta) — CONNECT-READY GATE préventif ────────────────────────
+    // La commande est CARTE (les autres modes sont refusés plus haut) : sans
+    // compte Connect actif, /pay refuserait de toute façon (restaurant_not_payable)
+    // — refuser dès la CRÉATION évite de fabriquer des commandes impayables
+    // coincées en awaiting_payment. Même danger-flag QA que le /pay.
+    if (!isConnectReady(restaurant) && !isPlatformFallbackAllowed()) {
+      return NextResponse.json(
+        {
+          error: 'Ce restaurant ne peut pas encore recevoir de commandes en ligne — son compte d’encaissement est en cours d’activation.',
+          code:  'restaurant_not_payable',
+        },
+        { status: 409 },
+      )
+    }
 
     // Opening hours (Chantier horaires): a delivery/pickup order is placed for
     // NOW, so it is blocked while the establishment is closed — with the next

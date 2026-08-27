@@ -6,6 +6,7 @@ import {
   updateIntentAmount, cancelIntent, type ConnectRouting,
 } from '@/lib/stripe'
 import { computeApplicationFee, resolveCommissionRate } from '@/lib/commission'
+import { isPlatformFallbackAllowed } from '@/lib/connect-gate'
 import { isDineInServiceEnabled, dineInServiceCents } from '@/lib/dinein-service'
 
 // Stripe SDK → Node runtime, never static.
@@ -166,6 +167,18 @@ export async function POST(
       },
     })
     const routed = !!(restaurant?.stripeAccountId && restaurant.stripeAccountStatus === 'active')
+    // ── D5 (closed beta) — CONNECT-READY GATE — même refus que POST /api/orders/[id]/pay :
+    // un fallback plateforme encaisserait l'addition sans rail de reversement.
+    // Refus AVANT tout appel Stripe ; danger-flag ALLOW_PLATFORM_FALLBACK (QA).
+    if (!routed && !isPlatformFallbackAllowed()) {
+      return NextResponse.json(
+        {
+          error: 'Le paiement en ligne est momentanément indisponible pour ce restaurant — réglez auprès de l’équipe.',
+          code:  'restaurant_not_payable',
+        },
+        { status: 409 },
+      )
+    }
     const feeCents = routed ? computeApplicationFee(restaurant!, 'dinein', foodDueCents) : 0
     const rate     = routed ? resolveCommissionRate(restaurant!, 'dinein') : 0
     const connect: ConnectRouting | undefined =
