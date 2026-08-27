@@ -54,12 +54,16 @@ import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 
 /** Kill-switch — default OFF. Only the exact string 'true' enables the rail
  *  (mirrors isFranchiseRoyaltyEnabled / isCreatorPayoutEnabled).
- *  P0-04 (vague 1) : ce flag gouverne l'outil admin /api/admin/refunds/run ET
- *  les rails claims (lib/claims.ts:199,325) / dispute. Il ne gouverne PLUS
- *  l'auto-remboursement ghost-order du webhook (flag séparé ci-dessous).
- *  ⚠️ Il ne suffit donc PAS à garantir « aucun remboursement sans admin » :
- *  un accept de réclamation par le RESTAURATEUR rembourse encore via ce flag
- *  (chemin signalé hors périmètre P0-03/P0-04 — cf. docs/ops/flags.md, note Q3). */
+ *  P0-04 (vague 1) : ce flag gouverne l'outil admin /api/admin/refunds/run,
+ *  la route admin /api/orders/[id]/refund (P0-26) et les rails claims/dispute.
+ *  Il ne gouverne PLUS l'auto-remboursement ghost-order du webhook (flag
+ *  séparé ci-dessous).
+ *  LOT C (mise à jour du périmètre réel) : depuis P0-24, l'ACCEPT d'une
+ *  réclamation par le RESTAURATEUR ne rembourse PLUS RIEN — lib/claims route
+ *  l'accept vers 'arbitration' sans mouvement d'argent ; seul l'ADMIN déclenche
+ *  un remboursement (arbitrage ou outils ci-dessus). Avec CLAIMS_ENABLED=false
+ *  (décision fondateur D4, toute la bêta), ce flag ne gouverne donc QUE les
+ *  rails admin — l'allumer (D3) n'ouvre aucun chemin restaurateur/machine. */
 export function isRefundsEnabled(): boolean {
   return process.env.REFUNDS_ENABLED === 'true'
 }
@@ -401,7 +405,14 @@ export async function executeRefund(input: {
     select: { id: true, restaurantId: true, paymentStatus: true, stripePaymentIntentId: true },
   })
   if (!order) return { ok: false, status: 404, error: 'Commande introuvable.' }
-  if (order.paymentStatus !== 'paid' || !order.stripePaymentIntentId) {
+  // LOT C — garde ÉLARGIE : 'reconcile_manual' (ghost order encaissé, mis en file
+  // manuelle par le webhook) EST de l'argent encaissé — c'est précisément la file
+  // que ce rail doit pouvoir drainer (avant, le moteur la REFUSAIT en 409). Sans
+  // risque de faux remboursement : le refundable est re-vérifié LIVE côté Stripe
+  // ci-dessous (pi.status === 'succeeded' + amount_refunded) avant tout mouvement.
+  const isRefundablePaymentStatus =
+    order.paymentStatus === 'paid' || order.paymentStatus === 'reconcile_manual'
+  if (!isRefundablePaymentStatus || !order.stripePaymentIntentId) {
     return { ok: false, status: 409, error: 'Commande non payée — rien à rembourser.' }
   }
   const orderRef: OrderRef = { id: order.id, restaurantId: order.restaurantId, stripePaymentIntentId: order.stripePaymentIntentId }

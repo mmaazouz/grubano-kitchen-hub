@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { setRequestLocale } from 'next-intl/server'
 import { resolveAdmin } from '@/lib/admin-guard'
 import { buildAdminIdentity } from '@/lib/admin-identity'
-import { listGhostOrders } from '@/lib/admin-reconciliation'
+import { listGhostOrders, listCancelledPaidOrders } from '@/lib/admin-reconciliation'
 import { isInfluencerEnabled } from '@/lib/influencer-verification'
 import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { isCourierActivationEnabled } from '@/lib/logistics-account'
@@ -31,11 +31,14 @@ export default async function AdminReconciliationPage(props: { params: { locale:
     prestataire: isPrestataireEnabled(),
     logistics: isCourierActivationEnabled(),
   }
-  const data = await listGhostOrders()
+  // LOT C — the cancelled-but-paid queue renders on the same page, below the ghost
+  // queue (read-only calque): a restaurant cancelling a PAID order flag-OFF keeps
+  // the money with no admin surface — this section IS that surface.
+  const [data, cancelledPaid] = await Promise.all([listGhostOrders(), listCancelledPaidOrders()])
 
   return (
     <AdminShell identity={identity} flags={flags}>
-      <ReconciliationClient data={data} />
+      <ReconciliationClient data={data} cancelledPaid={cancelledPaid} />
     </AdminShell>
   )
 }

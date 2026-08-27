@@ -3,17 +3,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { formatEuros } from '@/lib/format-money'
-import type { GhostOrderList, GhostCategory } from '@/lib/admin-reconciliation'
+import type { GhostOrderList, GhostCategory, CancelledPaidOrderList } from '@/lib/admin-reconciliation'
 
 // ── Reconciliation queue — 2 real tabs + period filter (CD ADM3). ────────────────
 // CLIENT half of /admin/reconciliation. READ-ONLY: the « Résoudre » control is a
 // disabled « bientôt » (POST-resolve deferred, D5). The two tabs are the REAL
 // paymentStatus split (reconcile_manual → « À réconcilier », paid → « Anomalie »).
 // Mount-gated so the date/period rendering can't hydrate-mismatch.
+// LOT C — a second READ-ONLY section below (exact calque of the queue rendering):
+// « Annulées payées — remboursement à instruire » = cancelled orders whose payment
+// was captured, with paid / already-refunded / PI / date per line (no action).
 
 const PERIOD_DAYS: Record<string, number> = { '7': 7, '30': 30, '90': 90 }
 
-export default function ReconciliationClient({ data }: { data: GhostOrderList }) {
+export default function ReconciliationClient({ data, cancelledPaid }: {
+  data: GhostOrderList
+  cancelledPaid: CancelledPaidOrderList
+}) {
   const t = useTranslations('adminReconciliation')
   const locale = useLocale()
   const [mounted, setMounted] = useState(false)
@@ -53,6 +59,47 @@ export default function ReconciliationClient({ data }: { data: GhostOrderList })
     )
   }
 
+  // ── LOT C — « Annulées payées » section (read-only calque of the ghost queue). ──
+  const cancelledPaidSection = (
+    <>
+      <div className="op-dash__head" style={{ marginTop: 32 }}>
+        <div>
+          <h2 className="op-dash__title" style={{ fontSize: 20 }}>{t('cancelledPaidTitle')}</h2>
+          <p className="op-dash__sub">{t('cancelledPaidInfo')}</p>
+        </div>
+      </div>
+      <div className="op-card">
+        <div className="rec-thead cp">
+          <span>{t('colOrder')}</span><span>{t('colDate')}</span><span>{t('colWho')}</span>
+          <span style={{ textAlign: 'end' }}>{t('colPaid')}</span>
+          <span style={{ textAlign: 'end' }}>{t('colRefunded')}</span>
+          <span>{t('colPi')}</span>
+        </div>
+        {cancelledPaid.rows.length === 0 ? (
+          <div className="rec-tabempty">{t('cancelledPaidEmpty')}</div>
+        ) : (
+          cancelledPaid.rows.map((r) => (
+            <div className="rec-row cp" key={r.id}>
+              <span className="num">{shortRef(r.id)}</span>
+              <span className="dt">{dt(r.createdAt)}</span>
+              <div className="who">
+                <b>{r.restaurantName ?? t('unknownRestaurant')}</b>
+                <span className="rec-origin">
+                  <span className="ms" aria-hidden="true">block</span>
+                  {r.paymentStatus === 'reconcile_manual' ? t('chipReconcile') : t('chipCancelledPaid')}
+                </span>
+              </div>
+              <span className="amt">{formatEuros(r.amountEuros, locale)}</span>
+              <span className="amt" style={{ fontWeight: 600 }}>{formatEuros(r.refundedCents / 100, locale)}</span>
+              <span className="pi">{r.stripePaymentIntentId ?? '—'}</span>
+            </div>
+          ))
+        )}
+      </div>
+      {cancelledPaid.capped && <p className="op-dash__sub" style={{ marginTop: 12 }}>{t('cappedNote')}</p>}
+    </>
+  )
+
   // ── nothing at all to reconcile — the normal, healthy state ──────────────────
   if (data.rows.length === 0) {
     return (
@@ -62,6 +109,7 @@ export default function ReconciliationClient({ data }: { data: GhostOrderList })
           <span className="ic"><span className="ms" aria-hidden="true">task_alt</span></span>
           <b>{t('allClearTitle')}</b><span>{t('allClearBody')}</span>
         </div></div>
+        {cancelledPaidSection}
       </section>
     )
   }
@@ -128,6 +176,8 @@ export default function ReconciliationClient({ data }: { data: GhostOrderList })
       </div>
 
       {data.capped && <p className="op-dash__sub" style={{ marginTop: 12 }}>{t('cappedNote')}</p>}
+
+      {cancelledPaidSection}
     </section>
   )
 }

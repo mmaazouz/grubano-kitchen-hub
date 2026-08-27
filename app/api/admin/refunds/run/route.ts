@@ -7,6 +7,7 @@ import { isRefundsEnabled, executeRefund } from '@/lib/refund'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
+import { sendRefundConfirmation } from '@/lib/transactional-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -93,6 +94,43 @@ export async function POST(req: Request) {
       metadata:   { amountCents: result.amountCents, resumed: result.resumed, refundId: result.refundId },
       req,
     })
+
+    // ── LOT C — transactional email, POST-success, BEST-EFFORT (never throws). ──
+    // Symétrie avec POST /api/orders/[id]/refund : le client était informé quand
+    // l'admin remboursait par CETTE route-là mais PAS par le moteur royalty-aware —
+    // même pattern, même dedupeKey `order:<id>:<cents de CE remboursement>` (un
+    // resume qui re-drive le même montant retombe sur la même clé → duplicate,
+    // jamais deux emails pour un seul mouvement). Un échec ne bloque JAMAIS la
+    // réponse : le remboursement a déjà eu lieu.
+    try {
+      const order = await prisma.order.findUnique({
+        where:  { id: parsed.data.orderId },
+        select: { consumerId: true, restaurantId: true },
+      })
+      if (order) {
+        const [consumer, resto] = await Promise.all([
+          prisma.operator.findUnique({
+            where:  { id: order.consumerId },
+            select: { email: true, name: true },
+          }),
+          prisma.restaurant.findUnique({ where: { id: order.restaurantId }, select: { name: true } }),
+        ])
+        if (consumer?.email) {
+          await sendRefundConfirmation({
+            to:             consumer.email,
+            customerName:   consumer.name ?? consumer.email,
+            restaurantName: resto?.name ?? 'votre restaurant',
+            refundedCents:  result.amountCents,
+            partial:        result.remainingRefundableCents > 0,
+            dedupeKey:      `order:${parsed.data.orderId}:${result.amountCents}`,
+          })
+        }
+      }
+    } catch (e) {
+      console.error('[EMAIL MISS] [POST /api/admin/refunds/run] refund confirmation failed (non-fatal)',
+        JSON.stringify({ orderId: parsed.data.orderId, refundId: result.refundId }),
+        e instanceof Error ? e.message : e)
+    }
 
     return NextResponse.json({
       ok:                        true,

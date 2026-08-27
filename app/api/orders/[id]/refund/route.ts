@@ -59,7 +59,13 @@ export async function POST(
       },
     })
     if (!order) return NextResponse.json({ error: 'Commande introuvable' }, { status: 404 })
-    if (order.paymentStatus !== 'paid' || !order.stripePaymentIntentId) {
+    // LOT C — garde ÉLARGIE (miroir lib/refund.executeRefund) : 'reconcile_manual'
+    // (ghost order encaissé, file manuelle) est de l'argent RÉELLEMENT encaissé —
+    // le rail admin doit pouvoir le rendre. lib/refunds re-vérifie de toute façon
+    // le refundable LIVE côté Stripe avant tout mouvement.
+    const isRefundablePaymentStatus =
+      order.paymentStatus === 'paid' || order.paymentStatus === 'reconcile_manual'
+    if (!isRefundablePaymentStatus || !order.stripePaymentIntentId) {
       return NextResponse.json({ error: 'Commande non payée — rien à rembourser.' }, { status: 409 })
     }
 
