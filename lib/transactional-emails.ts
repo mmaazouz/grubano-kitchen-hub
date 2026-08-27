@@ -493,9 +493,16 @@ export async function sendReservationConfirmation(p: {
   // aucune capture punitive n'existe flag OFF (promesse inversée sinon). À la
   // réactivation de PUNITIVE_CAPTURE_ENABLED, RESTAURER l'annonce : une capture
   // non annoncée au client serait pire juridiquement que l'absence de capture.
+  // CHECKLIST DE RÉACTIVATION (M1-07, LOT D) : l'email sendNoShowPenaltyCharged
+  // (plus bas dans ce fichier) fait aussi partie de la checklist — relire son
+  // wording (conditions annoncées, contestation via le support Grubano) AVANT
+  // tout retour de PUNITIVE_CAPTURE_ENABLED.
+  // LOT D (P-6, D1/D2) : cet email part À LA CRÉATION de la réservation, AVANT
+  // que l'autorisation carte soit confirmée → conditionnel obligatoire (« peut
+  // être demandée »), wording = autorisation temporaire, jamais une pénalité.
   const deposit = p.depositEur > 0
-    ? `<p style="font-size:13px;color:#6b7280">Une empreinte de ${p.depositEur.toFixed(2).replace('.', ',')} € est associée à cette réservation —
-       elle reste active jusqu’au paiement de l’addition et est libérée automatiquement au paiement.</p>`
+    ? `<p style="font-size:13px;color:#6b7280">Une empreinte bancaire temporaire de ${p.depositEur.toFixed(2).replace('.', ',')} € peut être demandée pour cette réservation —
+       ce n’est pas un paiement : rien n’est débité ; elle reste active jusqu’au paiement de l’addition et est libérée automatiquement.</p>`
     : ''
   await sendTransactional({
     to:      p.to,
@@ -525,7 +532,7 @@ export async function sendReservationCancelledByClientToClient(p: {
     html: shell('Annulation confirmée', `
       <p>Bonjour ${esc(p.customerName)}, votre réservation chez <strong>${esc(p.restaurantName)}</strong>
          du ${formatDateFr(p.date)} est bien annulée.</p>
-      <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle est libérée — aucun débit.</p>`),
+      <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle sera libérée — aucun débit.</p>`),
   })
 }
 
@@ -569,7 +576,7 @@ export async function sendReservationCancelledByOwner(p: {
       <p>Bonjour ${esc(p.customerName)}, nous sommes désolés : <strong>${esc(p.restaurantName)}</strong>
          a dû annuler votre réservation du ${formatDateFr(p.date)}.</p>
       ${why}
-      <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle est libérée sans frais — aucun débit.</p>
+      <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle sera libérée sans frais — aucun débit.</p>
       <p style="text-align:center;margin:24px 0">
         <a href="${baseUrl()}/eat" style="background:#F97316;color:#fff;text-decoration:none;
            padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
@@ -605,7 +612,7 @@ export async function sendReservationCancelledByClosure(p: {
          <strong>${esc(p.restaurantName)}</strong> sera exceptionnellement fermé et a dû annuler
          votre réservation du ${formatDateFr(p.date)}.</p>
       ${why}
-      <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle est libérée sans frais — aucun débit.</p>
+      <p style="font-size:13px;color:#6b7280">Si une empreinte était associée, elle sera libérée sans frais — aucun débit.</p>
       <p style="text-align:center;margin:24px 0">
         <a href="${baseUrl()}/eat" style="background:#F97316;color:#fff;text-decoration:none;
            padding:12px 24px;border-radius:12px;font-weight:600;display:inline-block">
@@ -788,6 +795,9 @@ export async function sendWaitlistOfferToRestaurant(p: {
 }
 
 // ── 4) No-show penalty charged ───────────────────────────────────────────────────
+// M1-07 (LOT D) — INATTEIGNABLE flag OFF (le no-show libère l'empreinte, aucune
+// capture punitive n'existe) ; fait partie de la CHECKLIST DE RÉACTIVATION de
+// PUNITIVE_CAPTURE_ENABLED (voir le commentaire V4-1 de sendReservationConfirmation).
 
 export async function sendNoShowPenaltyCharged(p: {
   dedupeKey?:     string  // Email B0 — at-most-once when set (e.g. `resv:<id>`)
@@ -808,8 +818,8 @@ export async function sendNoShowPenaltyCharged(p: {
       <p>Bonjour ${esc(p.customerName)}, votre réservation chez <strong>${esc(p.restaurantName)}</strong>
          du ${formatDateFr(p.date)} n’a pas été honorée.</p>
       ${table(row('Montant débité', eurosFromCents(p.capturedCents)) + row('Réservation', formatDateFr(p.date)))}
-      <p style="font-size:13px;color:#6b7280">Conformément aux conditions de réservation, l’empreinte de garantie a été débitée.</p>
-      <p style="font-size:13px;color:#6b7280"><strong>Vous souhaitez contester ?</strong> Contactez directement le restaurant :
-         une contestation est recevable pendant 30 jours, et le restaurant peut vous rembourser intégralement depuis son espace.</p>`),
+      <p style="font-size:13px;color:#6b7280">Conformément aux conditions annoncées lors de la réservation, l’empreinte de garantie a été débitée.</p>
+      <p style="font-size:13px;color:#6b7280"><strong>Vous souhaitez contester ?</strong> Une contestation est recevable pendant 30 jours :
+         pour toute contestation, contactez le restaurant ou notre support (contact@grubano.com) — le remboursement est instruit par l’équipe Grubano.</p>`),
   })
 }

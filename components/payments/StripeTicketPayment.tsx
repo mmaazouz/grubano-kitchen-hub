@@ -77,6 +77,9 @@ export default function StripeTicketPayment({
     >
       <TicketInnerForm
         amountLabel={amountLabel}
+        // LOT D (P-4) — auto-extinctive test-card tip: only rendered on a TEST
+        // publishable key, so it disappears by itself at LIVE switch-over.
+        isTestMode={publishableKey.startsWith('pk_test_')}
         onPaid={onPaid}
       />
     </Elements>
@@ -84,9 +87,10 @@ export default function StripeTicketPayment({
 }
 
 function TicketInnerForm({
-  amountLabel, onPaid,
+  amountLabel, isTestMode, onPaid,
 }: {
   amountLabel: string
+  isTestMode:  boolean
   onPaid:      () => void
 }) {
   const t        = useTranslations('bill')
@@ -145,7 +149,10 @@ function TicketInnerForm({
 
       <PaymentElement options={{ layout: 'tabs' }} />
 
-      <p className="text-[10px] text-muted-foreground">{t('testCardHint')}</p>
+      {/* LOT D (P-4) — the test-card tip renders only in Stripe TEST mode (pk_test_). */}
+      {isTestMode && (
+        <p className="text-[10px] text-muted-foreground">{t('testCardHint')}</p>
+      )}
 
       {error && (
         <p className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
