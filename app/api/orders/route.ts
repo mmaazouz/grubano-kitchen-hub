@@ -73,17 +73,13 @@ const createOrderSchema = z.object({
   tipCents:        z.number().int().min(0).max(50000).optional(),
 })
 
-// ── Uber Direct mock ──────────────────────────────────────────────────────────
-// Replace with real Uber Direct API call when credentials are available.
-
-async function mockUberDirectDispatch(orderId: string) {
-  await new Promise(r => setTimeout(r, 50)) // simulate API latency
-  return {
-    trackingUrl:   `https://track.grubano.com/order/${orderId}`,
-    estimatedTime: 25 + Math.floor(Math.random() * 15), // 25–40 min
-    driverId:      `DRV-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-  }
-}
+// ── Dispatch info (honest) ────────────────────────────────────────────────────
+// The old Uber Direct mock fabricated a trackingUrl on a sub-domain that does
+// not exist and a RANDOM 25-40 min ETA, both persisted and shown to the customer
+// after a REAL payment. Until a real courier rail is wired, the only honest
+// values are: no tracking URL at all, and the restaurant's own configured
+// preparation/delivery time as the estimate (the same figure the cart already
+// shows as « Prêt vers HH:MM »).
 
 // ── POST /api/orders ──────────────────────────────────────────────────────────
 
@@ -614,8 +610,12 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Dispatch to Uber Direct (mocked)
-    const dispatch = await mockUberDirectDispatch(order.id)
+    // Honest dispatch values (no courier rail yet): the restaurant's configured
+    // time, and NO fabricated tracking URL (column is nullable).
+    const dispatch = {
+      trackingUrl:   null as string | null,
+      estimatedTime: restaurant.deliveryTime ?? 30,
+    }
 
     // Update order with tracking info + estimated time
     const updated = await prisma.order.update({

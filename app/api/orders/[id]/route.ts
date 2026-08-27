@@ -3,15 +3,10 @@ import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 
-// ── Mock driver location (replace with real Uber Direct polling) ──────────────
-
-function mockDriverLocation(status: string) {
-  const locations: Record<string, { lat: number; lng: number; bearing: number }> = {
-    picked_up: { lat: 48.8566 + (Math.random() - 0.5) * 0.02, lng: 2.3522 + (Math.random() - 0.5) * 0.02, bearing: 45  },
-    delivered: { lat: 48.8566,  lng: 2.3522,  bearing: 0  },
-  }
-  return locations[status] ?? null
-}
+// La « position livreur » mockée (coordonnées ALÉATOIRES dans Paris, servies
+// comme réelles sur picked_up) est retirée : aucun rail livreur n'est actif.
+// La position réelle, quand elle existera, passe par le rail courier-position
+// (flag-gated, coarsened côté client) — ce payload sert null en attendant.
 
 // ── GET /api/orders/:id ───────────────────────────────────────────────────────
 
@@ -122,7 +117,7 @@ export async function GET(
         createdAt:       order.createdAt,
         updatedAt:       order.updatedAt,
         restaurant:      order.restaurant,
-        driverLocation:  mockDriverLocation(order.status),
+        driverLocation:  null,
       },
     })
   } catch (err) {

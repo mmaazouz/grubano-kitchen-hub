@@ -84,6 +84,17 @@ export async function POST(
     if (order.status === 'cancelled') {
       return NextResponse.json({ error: 'Commande annulée.' }, { status: 400 })
     }
+    // Une commande EXPIRÉE (lazy expiry > 24 h, jamais révélée au restaurant)
+    // était encore payable : le PaymentIntent n'est pas annulé à l'expiration,
+    // et payer une commande morte envoie l'argent tout droit dans la file
+    // 'reconcile_manual' (WP-MONEY-01) pendant que l'écran de suivi affichait
+    // « rien n'a été débité ». On ferme la source : refus AVANT tout appel Stripe.
+    if (order.status === 'expired') {
+      return NextResponse.json(
+        { error: 'Commande expirée — elle ne peut plus être payée. Repassez commande.', code: 'order_expired' },
+        { status: 409 },
+      )
+    }
     // ── P0-29 (vague 2 — Q2/Q8 fondateur) : le rail carte est réservé aux
     // commandes CARTE. P0-02 a fermé la CRÉATION cash/wallet ; ce garde ferme le
     // PAIEMENT PAR LIEN (/eat/checkout/[orderId]) des lignes HÉRITÉES — c'était
