@@ -26,7 +26,7 @@ import './home.css'
 // → Recommander (recent orders, reorder) → Populaires (grid 3→2→1).
 //
 // REAL DATA (never hardcoded):
-//   • promo  = GET /api/eat/promos summary — zero active promo → a generic welcome
+//   • promo  = hero fixe « bienvenue » (D2 closed beta : le résumé -X % retiré)
 //     banner with NO fabricated %/€ (the home never promises what doesn't exist).
 //   • cuisines = the app's real fixed taxonomy (CUISINES), → /eat/search?cuisine=…
 //   • Recommander = the consumer's real recent orders (GET /api/eat/orders, past +
@@ -36,7 +36,6 @@ import './home.css'
 //     on. Hearts = REAL favorites (lib/eat-cart toggleFav/readFavs).
 //   • IA card « Pour vous ce soir » = INERT (« bientôt » badge, decorative button).
 
-type PromoSummary = { totalPromos: number; maxPercent: number; bestFixed: number }
 
 // Real fixed taxonomy → rendered in the CD cuisine-tile style (Material icon in a
 // tinted rounded square). `q` is the real /eat/search?cuisine slug.
@@ -87,7 +86,6 @@ export default function HomeScreen() {
   const [recent, setRecent] = useState<RecentOrder[]>([])
   const [favs, setFavs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
-  const [promoSummary, setPromoSummary] = useState<PromoSummary | null>(null)
 
   // First visit of the session → play the splash once (real wiring, kept).
   useEffect(() => {
@@ -157,23 +155,6 @@ export default function HomeScreen() {
     return () => { alive = false }
   }, [])
 
-  // Real active-promo summary (display only) — kept wiring.
-  useEffect(() => {
-    let alive = true
-    fetch('/api/eat/promos')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (alive && d && typeof d.totalPromos === 'number') {
-          setPromoSummary({
-            totalPromos: d.totalPromos,
-            maxPercent: typeof d.maxPercent === 'number' ? d.maxPercent : 0,
-            bestFixed: typeof d.bestFixed === 'number' ? d.bestFixed : 0,
-          })
-        }
-      })
-      .catch(() => {})
-    return () => { alive = false }
-  }, [])
 
   const cuisineWithMeta = useCallback(
     (r: Restaurant) => {
@@ -237,24 +218,12 @@ export default function HomeScreen() {
       {/* ════ HERO — promo Sunrise (real) + IA card (INERT « bientôt ») ════ */}
       <div className="hm-hero">
         <div className="hm-promo">
-          {promoSummary && promoSummary.totalPromos > 0 ? (
-            <>
-              <h2>
-                {promoSummary.maxPercent > 0
-                  ? t('promoTitlePercent', { percent: promoSummary.maxPercent })
-                  : t('promoTitleFixed', { amount: formatEuros(promoSummary.bestFixed, locale) })}
-              </h2>
-              <p>{t('promoSubtitle', { count: promoSummary.totalPromos })}</p>
-            </>
-          ) : (
-            <>
-              <h2>{t('promoWelcomeTitle')}</h2>
-              <p>{t('promoWelcomeSubtitle')}</p>
-            </>
-          )}
-          <button type="button" className="b" onClick={() => router.push('/eat/search')}>
-            {t('promoCta')}
-          </button>
+          {/* D2 (closed beta) — la variante « −X % offerts · appliquée au paiement »
+              et son CTA « Voir les offres » (destination sans liste d'offres) sont RETIRÉS :
+              une promo d'UN restaurant s'affichait comme claim GLOBAL du home. Le moteur
+              promotionnel serveur (best-of au paiement) reste intact. */}
+          <h2>{t('promoWelcomeTitle')}</h2>
+          <p>{t('promoWelcomeSubtitle')}</p>
         </div>
 
         <div className="hm-foryou">

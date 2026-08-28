@@ -41,8 +41,12 @@
 .gb-reserver .pg-top .back{display:inline-flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;background:none;border:none;color:var(--gb-text);padding:0;line-height:1}
 .gb-reserver .pg-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em;color:var(--gb-text)}
 
-.gb-reserver .grid{display:grid;grid-template-columns:330px 1fr;gap:22px;align-items:start}
-@media (max-width:760px){ .gb-reserver .grid{grid-template-columns:1fr} }
+/* C2 (smoke mobile) — meme racine que le panier : min-width:auto des grid-items
+   laissait le min-content du formulaire gonfler la piste 1fr (977px a 390, et ca
+   debordait AUSSI a 768/1440). Puppeteer : 977→390 avec minmax(0,1fr)+min-width:0. */
+.gb-reserver .grid{display:grid;grid-template-columns:330px minmax(0,1fr);gap:22px;align-items:start}
+.gb-reserver .grid>*{min-width:0}
+@media (max-width:760px){ .gb-reserver .grid{grid-template-columns:minmax(0,1fr)} }
 
 /* recap card */
 .gb-reserver .rs-rcard{background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-xl);box-shadow:var(--gb-shadow-card);overflow:hidden;position:sticky;top:20px}
