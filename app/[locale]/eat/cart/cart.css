@@ -18,8 +18,13 @@
 .gb-cart .cart-top h1{flex:1;margin:0;font-family:var(--gb-font-display);font-weight:800;font-size:clamp(22px,3.2vw,28px);letter-spacing:-.025em;color:var(--gb-text)}
 .gb-cart .cart-top .clear{font-size:13px;font-weight:700;color:var(--gb-muted);background:none;border:none;cursor:pointer}
 
-.gb-cart .layout{display:grid;grid-template-columns:1fr 360px;gap:22px;align-items:start}
-@media (max-width:820px){ .gb-cart .layout{grid-template-columns:1fr} }
+/* C2 (smoke mobile) — minmax(0,1fr) + min-width:0 : un grid-item garde min-width:auto
+   par defaut, donc le min-content d'un enfant (ligne adresse/heure du recap) gonflait la
+   piste 1fr a ~439px et debordait a 390px (bouton « Changer » hors ecran, CTA coupe).
+   Prouve au banc Puppeteer : 455→390 apres ce seul changement. */
+.gb-cart .layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:start}
+.gb-cart .layout>*{min-width:0}
+@media (max-width:820px){ .gb-cart .layout{grid-template-columns:minmax(0,1fr)} }
 
 /* resto banner */
 .gb-cart .resto{display:flex;align-items:center;gap:12px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:14px 16px;margin-bottom:14px;box-shadow:var(--gb-shadow-card)}
