@@ -9,6 +9,7 @@ import { Link, useRouter } from '@/navigation'
 import { Card, Button, Input } from '@/components/design-system'
 import PartnerChrome from '@/components/business/PartnerChrome'
 import { postLoginPath } from '@/lib/post-login-redirect'
+import { requestMagicLink, type MagicLinkFailure } from '@/lib/magic-link-client'
 
 // ── /auth/magic — passwordless sign-in (Phase 0 auth bridge, Agent 14) ────────
 //
@@ -32,6 +33,9 @@ function MagicInner() {
   const [phase, setPhase] = useState<'request' | 'verifying' | 'error' | 'sent'>(token ? 'verifying' : 'request')
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // Échec de TRANSPORT du mint (429 / 5xx / réseau) — affiché honnêtement sur le
+  // formulaire au lieu du faux écran « envoyé » (reality check 2026-08-29).
+  const [sendError, setSendError] = useState<MagicLinkFailure | null>(null)
   // Phase 3 (Agent 88) — login email-code fallback. The magic-link response reports
   // whether the global OTP flag is ON (a config boolean, no enumeration leak); when so,
   // the "sent" screen also offers a 6-digit code box → same session as the link.
@@ -73,17 +77,17 @@ function MagicInner() {
     e.preventDefault()
     if (!email || submitting) return
     setSubmitting(true)
+    setSendError(null)
     try {
-      const res = await fetch('/api/auth/magic-link', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ email, locale }),
-      })
-      const data = await res.json().catch(() => null)
-      setOtpEnabled(!!(data as { otpEnabled?: boolean } | null)?.otpEnabled)
+      // 2xx reste générique (anti-énumération) ; 429/5xx/réseau = échec de TRANSPORT
+      // → message honnête, on reste sur le formulaire (fini le faux « envoyé »).
+      const res = await requestMagicLink(email, { locale })
+      if (!res.ok) {
+        setSendError(res.reason)
+        return
+      }
+      setOtpEnabled(res.otpEnabled)
       setPhase('sent')
-    } catch {
-      setPhase('sent') // generic by design — never reveal account state
     } finally {
       setSubmitting(false)
     }
@@ -168,6 +172,12 @@ function MagicInner() {
                 <p role="alert" className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">
                   <XCircle size={15} className="mt-0.5 shrink-0" />
                   <span>{t('errorMsg')}</span>
+                </p>
+              )}
+              {sendError && (
+                <p role="alert" className="flex items-start gap-2 rounded-grubano-lg border border-grubano-danger/30 bg-grubano-danger-tint px-3 py-2.5 text-sm text-grubano-danger">
+                  <XCircle size={15} className="mt-0.5 shrink-0" />
+                  <span>{t(sendError === 'rate_limited' ? 'sendErrorRate' : 'sendErrorDown')}</span>
                 </p>
               )}
               <Input

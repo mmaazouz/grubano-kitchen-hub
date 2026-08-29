@@ -30,6 +30,10 @@ export async function GET(
             logo:         true,
             address:      true,
             city:         true,
+            // WAVE 1 — coords pour le lien « Voir l'itinéraire » du pass de retrait
+            // (destination précise si le resto est géocodé ; repli adresse texte sinon).
+            lat:          true,
+            lng:          true,
             deliveryTime: true,
           },
         },

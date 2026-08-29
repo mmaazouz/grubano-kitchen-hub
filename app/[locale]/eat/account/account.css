@@ -24,7 +24,8 @@
 
 /* identity card — Sunrise gradient */
 .gb-account .idcard{position:relative;overflow:hidden;border-radius:var(--gb-r-lg);background:var(--gb-grad-sunrise);padding:22px;margin-bottom:14px;display:flex;align-items:center;gap:16px}
-.gb-account .idcard::after{content:"";position:absolute;right:-30px;bottom:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.14)}
+/* pointer-events:none obligatoire : ce disque recouvre le bouton .edit et absorbait le clic (dead control) */
+.gb-account .idcard::after{content:"";position:absolute;right:-30px;bottom:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.14);pointer-events:none}
 .gb-account .idcard .av{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-family:var(--gb-font-display);font-weight:800;font-size:24px;color:#fff;flex-shrink:0}
 .gb-account .idcard .who{flex:1;min-width:0;position:relative;color:#fff}
 .gb-account .idcard .who b{font-family:var(--gb-font-display);font-weight:800;font-size:20px;letter-spacing:-.02em;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

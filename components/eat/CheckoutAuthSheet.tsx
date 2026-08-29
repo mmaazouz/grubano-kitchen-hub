@@ -5,6 +5,7 @@ import { signIn } from 'next-auth/react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { Mail, X, Loader2, AlertCircle, Sparkles } from 'lucide-react'
+import { requestMagicLink } from '@/lib/magic-link-client'
 
 // ── <CheckoutAuthSheet /> — passwordless account-AT-payment for the LIVE /eat checkout (Agent 138) ──
 //
@@ -56,16 +57,15 @@ export default function CheckoutAuthSheet({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: addr }),
       }).catch(() => {})
-      // 2) The UNCHANGED mint emails the 6-digit code (+ link) and tells us whether OTP is enabled.
-      const res = await fetch('/api/auth/magic-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: addr, locale }),
-      })
-      const data = await res.json().catch(() => null)
-      setStep((data as { otpEnabled?: boolean } | null)?.otpEnabled ? 'code' : 'linkSent')
-    } catch {
-      setStep('linkSent')
+      // 2) The UNCHANGED mint emails the 6-digit code (+ link) and tells us whether OTP is
+      //    enabled. 429/5xx/network = échec de TRANSPORT → message honnête, on reste sur
+      //    l'étape email (plus jamais de faux « envoyé » — reality check 2026-08-29).
+      const res = await requestMagicLink(addr, { locale })
+      if (!res.ok) {
+        setError(t(res.reason === 'rate_limited' ? 'sendErrorRate' : 'sendErrorDown'))
+        return
+      }
+      setStep(res.otpEnabled ? 'code' : 'linkSent')
     } finally {
       setSending(false)
     }

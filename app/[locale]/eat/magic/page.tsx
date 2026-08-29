@@ -5,12 +5,13 @@ import './magic.css'
 // (.gb-brand, .hero, .btn--primary/.btn--white, .tip, .spin, .dots, .hero-ico). `.gb`-scoped.
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
-import { Suspense, useEffect, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { postLoginPath } from '@/lib/post-login-redirect'
+import { requestMagicLink, type MagicLinkFailure } from '@/lib/magic-link-client'
 
 // ── /eat/magic — CONSUMER passwordless magic-link screens (gated /eat) ─────────
 //
@@ -35,21 +36,29 @@ function MagicInner() {
 
   const [phase, setPhase] = useState<'verifying' | 'sent' | 'error'>(token ? 'verifying' : 'sent')
   const [email, setEmail] = useState('')
+  // Échec de TRANSPORT du mint (429 / 5xx / réseau) : l'écran « vérifiez votre boîte »
+  // devient un état honnête + Réessayer (fini le faux « envoyé » — reality check 2026-08-29).
+  const [sendFail, setSendFail] = useState<MagicLinkFailure | null>(null)
+  const [resending, setResending] = useState(false)
+
+  const fireSend = useCallback(async (addr: string) => {
+    setResending(true)
+    // 2xx reste générique (anti-énumération) ; seuls les échecs de transport sont montrés.
+    const res = await requestMagicLink(addr, { locale, space: 'eat' })
+    setSendFail(res.ok ? null : res.reason)
+    setResending(false)
+  }, [locale])
 
   // No token → "Check your email": take the email from /eat/auth (sessionStorage), fire the
-  // link with space:'eat' (anti-enumeration: the result is ignored), then show the screen.
+  // link with space:'eat', then show the screen (or the honest failure state).
   // No email in context (direct navigation) → back to /eat/auth.
   useEffect(() => {
     if (token) return
     const stored = typeof window !== 'undefined' ? sessionStorage.getItem(EMAIL_KEY) : null
     if (!stored) { router.replace('/eat/auth'); return }
     setEmail(stored)
-    fetch('/api/auth/magic-link', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: stored, locale, space: 'eat' }),
-    }).catch(() => { /* generic by design — never reveal account state */ })
-  }, [token, locale, router])
+    void fireSend(stored)
+  }, [token, router, fireSend])
 
   // Token present → verify, then route by role (consumer → /eat).
   useEffect(() => {
@@ -93,7 +102,7 @@ function MagicInner() {
           </div>
           <div className="gb-brand__pitch">
             <h2 style={{ color: '#fff' }}>{phase === 'verifying' ? t('magicBrandVerifyingTitle') : t('panelTitle')}</h2>
-            <p>{phase === 'verifying' ? t('magicBrandVerifyingBody') : t('magicBrandSentBody')}</p>
+            <p>{phase === 'verifying' ? t('magicBrandVerifyingBody') : sendFail ? t(sendFail === 'rate_limited' ? 'magicSendFailRate' : 'magicSendFailDown') : t('magicBrandSentBody')}</p>
           </div>
           <div className="gb-brand__meta">
             {phase === 'verifying' ? (
@@ -124,6 +133,19 @@ function MagicInner() {
               <p className="sub">{t('magicErrorBody')}</p>
               <button className="btn btn--primary" type="button" onClick={goBack}>{t('magicErrorCta')}</button>
             </div>
+          ) : sendFail ? (
+            <div className="eat-magic__card" role="alert">
+              <div className="hero"><span className="ms" aria-hidden="true">error</span></div>
+              <h1 className="title">{t('magicSendFailTitle')}</h1>
+              <p className="sub">{t(sendFail === 'rate_limited' ? 'magicSendFailRate' : 'magicSendFailDown')}</p>
+              <button className="btn btn--primary" type="button" disabled={resending} onClick={() => { if (email) void fireSend(email) }}>
+                <span className="ms" style={{ fontSize: '19px' }} aria-hidden="true">refresh</span>{t('magicSendFailRetry')}
+              </button>
+              <p className="linkback">{t('magicWrongAddress')}{' '}
+                {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
+                <a href="#" onClick={(e) => { e.preventDefault(); goBack() }}>{t('magicGoBack')}</a>
+              </p>
+            </div>
           ) : (
             <div className="eat-magic__card">
               <div className="hero"><span className="ms" aria-hidden="true">mark_email_unread</span></div>
@@ -138,7 +160,7 @@ function MagicInner() {
               </p>
             </div>
           )}
-          {phase === 'sent' && (
+          {phase === 'sent' && !sendFail && (
             <div className="tip">
               <span className="ms" aria-hidden="true">auto_awesome</span>
               <span>{t('magicSmartTip')}</span>
@@ -165,6 +187,20 @@ function MagicInner() {
             <h1 className="title">{t('magicErrorTitle')}</h1>
             <p className="sub">{t('magicErrorBody')}</p>
             <button className="btn btn--primary" type="button" onClick={goBack}>{t('magicErrorCta')}</button>
+          </div>
+        ) : sendFail ? (
+          <div className="screen__body center" role="alert">
+            <div className="spacer" />
+            <div className="hero-ico"><span className="ms" aria-hidden="true">error</span></div>
+            <h1 className="title">{t('magicSendFailTitle')}</h1>
+            <p className="sub">{t(sendFail === 'rate_limited' ? 'magicSendFailRate' : 'magicSendFailDown')}</p>
+            <button className="btn btn--primary" type="button" disabled={resending} onClick={() => { if (email) void fireSend(email) }} style={{ marginBottom: '10px' }}>
+              <span className="ms" style={{ fontSize: '18px' }} aria-hidden="true">refresh</span>{t('magicSendFailRetry')}
+            </button>
+            <p className="resend">{t('magicWrongAddress')}{' '}
+              <b onClick={goBack} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goBack() } }}>{t('magicGoBack')}</b>
+            </p>
+            <div className="spacer" />
           </div>
         ) : (
           <div className="screen__body center">

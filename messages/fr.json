@@ -3432,6 +3432,7 @@
       "serviceFee": "Frais de service",
       "deliveryService": "Livraison + service",
       "needHelp": "Besoin d'aide ?",
+      "viewPickupPass": "Afficher mon pass de retrait",
       "etaMinutes": "≈ {min} min",
       "approxPosition": "Position approximative du livreur"
     },
@@ -3570,7 +3571,11 @@
       "magicErrorCta": "Retour à la connexion",
       "magicModalBody": "Entrez votre email — nous vous envoyons un lien de connexion, sans mot de passe.",
       "magicModalSend": "Envoyer le lien",
-      "magicModalClose": "Fermer"
+      "magicModalClose": "Fermer",
+      "magicSendFailTitle": "L'e-mail n'a pas pu partir",
+      "magicSendFailRate": "Trop de tentatives. Réessayez dans quelques instants.",
+      "magicSendFailDown": "Impossible d'envoyer l'e-mail pour le moment. Réessayez plus tard.",
+      "magicSendFailRetry": "Réessayer"
     },
     "rewards": {
       "title": "Récompenses",
@@ -3826,7 +3831,9 @@
       "changeEmail": "Changer d'email",
       "usePassword": "Se connecter avec un mot de passe",
       "close": "Fermer",
-      "passwordNudge": "Créez un mot de passe plus tard pour enregistrer vos infos et cumuler des points."
+      "passwordNudge": "Créez un mot de passe plus tard pour enregistrer vos infos et cumuler des points.",
+      "sendErrorRate": "Trop de tentatives. Réessayez dans quelques instants.",
+      "sendErrorDown": "Impossible d'envoyer l'e-mail pour le moment. Réessayez plus tard."
     },
     "geoloc": {
       "title": "Livrer à",
@@ -6688,6 +6695,8 @@
     "otpLabel": "Code à 6 chiffres",
     "otpSubmit": "Valider le code",
     "otpSubmitting": "Vérification…",
+    "sendErrorRate": "Trop de tentatives. Réessayez dans quelques instants.",
+    "sendErrorDown": "Impossible d'envoyer l'e-mail pour le moment. Réessayez plus tard.",
     "otpError": "Code invalide ou expiré. Vérifiez-le ou demandez un nouveau lien."
   },
   "activation": {

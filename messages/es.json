@@ -3432,6 +3432,7 @@
       "serviceFee": "Gastos de servicio",
       "deliveryService": "Entrega + servicio",
       "needHelp": "¿Necesitas ayuda?",
+      "viewPickupPass": "Mostrar mi pase de recogida",
       "etaMinutes": "≈ {min} min",
       "approxPosition": "Ubicación aproximada del repartidor"
     },
@@ -3570,7 +3571,11 @@
       "magicErrorCta": "Volver a iniciar sesión",
       "magicModalBody": "Ingresa tu email — te enviaremos un enlace de acceso sin contraseña.",
       "magicModalSend": "Enviar el enlace",
-      "magicModalClose": "Cerrar"
+      "magicModalClose": "Cerrar",
+      "magicSendFailTitle": "No se pudo enviar el correo",
+      "magicSendFailRate": "Demasiados intentos. Vuelve a intentarlo en unos instantes.",
+      "magicSendFailDown": "No podemos enviar el correo ahora mismo. Inténtalo de nuevo más tarde.",
+      "magicSendFailRetry": "Reintentar"
     },
     "rewards": {
       "title": "Recompensas",
@@ -3826,7 +3831,9 @@
       "changeEmail": "Cambiar de email",
       "usePassword": "Iniciar sesión con contraseña",
       "close": "Cerrar",
-      "passwordNudge": "Crea una contraseña más tarde para guardar tus datos y ganar puntos."
+      "passwordNudge": "Crea una contraseña más tarde para guardar tus datos y ganar puntos.",
+      "sendErrorRate": "Demasiados intentos. Vuelve a intentarlo en unos instantes.",
+      "sendErrorDown": "No podemos enviar el correo ahora mismo. Inténtalo de nuevo más tarde."
     },
     "geoloc": {
       "title": "Entregar en",
@@ -6688,6 +6695,8 @@
     "otpLabel": "Código de 6 dígitos",
     "otpSubmit": "Validar el código",
     "otpSubmitting": "Verificando…",
+    "sendErrorRate": "Demasiados intentos. Vuelve a intentarlo en unos instantes.",
+    "sendErrorDown": "No podemos enviar el correo ahora mismo. Inténtalo de nuevo más tarde.",
     "otpError": "Código no válido o caducado. Compruébelo o solicite un nuevo enlace."
   },
   "activation": {

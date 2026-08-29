@@ -113,12 +113,23 @@ describe('(2) session model — signIn → cookie → POST /api/orders passes (n
     expect(/getSession/.test(sheet)).toBe(false)
   })
 
-  it('the sheet calls provision then the UNCHANGED mint, and reads otpEnabled (fallback magic-link)', () => {
+  it('the sheet calls provision then the UNCHANGED mint (via requestMagicLink), and reads otpEnabled', () => {
+    // WAVE 1 (2026-08-29) — le mint passe désormais par lib/magic-link-client
+    // (requestMagicLink) qui distingue les échecs de TRANSPORT (429/5xx/réseau)
+    // du 2xx générique anti-énumération : fini le faux « e-mail envoyé ».
     const sheet = stripComments(read(SHEET))
     expect(/\/api\/eat\/consumer-provision/.test(sheet)).toBe(true)
-    expect(/\/api\/auth\/magic-link/.test(sheet)).toBe(true)
+    expect(/requestMagicLink/.test(sheet)).toBe(true)
     expect(/otpEnabled/.test(sheet)).toBe(true)
     expect(/linkSent/.test(sheet)).toBe(true) // OFF → fallback message
+    // le faux succès est mort : un échec transport affiche une erreur, ne « sent » pas
+    expect(/sendErrorRate/.test(sheet)).toBe(true)
+    expect(/sendErrorDown/.test(sheet)).toBe(true)
+    const client = stripComments(read('lib/magic-link-client.ts'))
+    expect(/\/api\/auth\/magic-link/.test(client)).toBe(true)
+    expect(/status === 429/.test(client)).toBe(true)
+    expect(/rate_limited/.test(client)).toBe(true)
+    expect(/unavailable/.test(client)).toBe(true)
   })
 })
 

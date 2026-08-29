@@ -291,7 +291,9 @@ export default function OrdersPage() {
       <div className="o-card__foot">
         <div className="total"><small>{c.kind === 'dinein' ? t('totalCurrent') : t('total')}</small><b>{formatEuros(c.total, locale)}</b></div>
         {c.kind === 'delivery' && <Link href={`/eat/track/${c.trackingId}`} className="act"><span className="ms" aria-hidden="true">location_on</span>{t('actTrack')}</Link>}
-        {c.kind === 'pickup' && <Link href={`/eat/track/${c.trackingId}`} className="act act--line"><span className="ms" aria-hidden="true">qr_code_2</span>{t('actViewCode')}</Link>}
+        {/* WAVE 1 — « voir le code » mène désormais au VRAI pass de retrait (QR + adresse
+            + itinéraire), plus au simple suivi. */}
+        {c.kind === 'pickup' && <Link href={`/eat/order/${c.trackingId}/pickup`} className="act act--line"><span className="ms" aria-hidden="true">qr_code_2</span>{t('actViewCode')}</Link>}
         {c.kind === 'dinein' && <Link href={`/t/${c.tableId}`} className="act act--green"><span className="ms" aria-hidden="true">receipt_long</span>{t('actPayBill')}</Link>}
       </div>
     </article>

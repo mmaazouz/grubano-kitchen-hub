@@ -3432,6 +3432,7 @@
       "serviceFee": "Service fee",
       "deliveryService": "Delivery + service",
       "needHelp": "Need help?",
+      "viewPickupPass": "Show my pickup pass",
       "etaMinutes": "≈ {min} min",
       "approxPosition": "Courier's approximate location"
     },
@@ -3570,7 +3571,11 @@
       "magicErrorCta": "Back to sign in",
       "magicModalBody": "Enter your email — we'll send you a passwordless sign-in link.",
       "magicModalSend": "Send the link",
-      "magicModalClose": "Close"
+      "magicModalClose": "Close",
+      "magicSendFailTitle": "The email could not be sent",
+      "magicSendFailRate": "Too many attempts. Try again in a few moments.",
+      "magicSendFailDown": "We can't send the email right now. Try again later.",
+      "magicSendFailRetry": "Try again"
     },
     "rewards": {
       "title": "Rewards",
@@ -3826,7 +3831,9 @@
       "changeEmail": "Change email",
       "usePassword": "Sign in with a password",
       "close": "Close",
-      "passwordNudge": "Create a password later to save your details & earn points."
+      "passwordNudge": "Create a password later to save your details & earn points.",
+      "sendErrorRate": "Too many attempts. Try again in a few moments.",
+      "sendErrorDown": "We can't send the email right now. Try again later."
     },
     "geoloc": {
       "title": "Deliver to",
@@ -6688,6 +6695,8 @@
     "otpLabel": "6-digit code",
     "otpSubmit": "Verify code",
     "otpSubmitting": "Verifying…",
+    "sendErrorRate": "Too many attempts. Try again in a few moments.",
+    "sendErrorDown": "We can't send the email right now. Try again later.",
     "otpError": "Invalid or expired code. Check it or request a new link."
   },
   "activation": {
