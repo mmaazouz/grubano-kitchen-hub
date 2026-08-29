@@ -155,8 +155,9 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
 
   const headBack = step === 'map' ? () => setStep('search') : step === 'search' ? () => setStep('perm') : null
   // The geo-status sub-line: a precise "activée" hint when on, a manual-entry hint when off.
-  // We don't fabricate a city/precision from coords (no reverse-geocode), so the on-state
-  // sub-line is a neutral "position détectée" message.
+  // WAVE 2 — quand le reverse-geocode (lib/geocode reverseGeocode via /api/geo/reverse) a
+  // résolu la position, la sous-ligne affiche l'adresse RÉELLE ; sinon on garde le message
+  // neutre « position détectée » (on n'invente jamais une adresse).
 
   return (
     <div
@@ -206,7 +207,9 @@ export default function GeolocSheet({ open, onClose }: { open: boolean; onClose:
                     <span className="geo-off-txt">{t('statusOff')}</span>
                   </b>
                   <span>
-                    <span className="geo-on-txt">{t('statusOnSub')}</span>
+                    {/* WAVE 2 — adresse LISIBLE via reverse-geocode (BAN/IGN) quand
+                        disponible ; sinon le libellé neutre honnête d'origine. */}
+                    <span className="geo-on-txt">{coords?.label || t('statusOnSub')}</span>
                     <span className="geo-off-txt">{t('statusOffSub')}</span>
                   </span>
                 </div>

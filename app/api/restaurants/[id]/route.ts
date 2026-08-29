@@ -365,7 +365,7 @@ export async function PATCH(
 
     const current = await prisma.restaurant.findUnique({
       where:  { id: params.id },
-      select: { operatorId: true, address: true, city: true, isActive: true, approvedAt: true },
+      select: { operatorId: true, address: true, city: true, isActive: true, approvedAt: true, lat: true, lng: true },
     })
     if (!current) {
       return NextResponse.json({ error: 'Restaurant introuvable' }, { status: 404 })
@@ -430,11 +430,24 @@ export async function PATCH(
       const nextAddress = input.address ?? current.address
       const nextCity    = input.city    ?? current.city
       const geo         = await geocodeAddressDetailed(nextAddress, nextCity, postalCode)
-      const coords      = geo.status === 'ok' ? geo.coords : null
-      data.lat = coords?.latitude  ?? null
-      data.lng = coords?.longitude ?? null
-      geocoded = coords !== null
       geocodeStatus = geo.status
+      if (geo.status === 'ok') {
+        data.lat = geo.coords.latitude
+        data.lng = geo.coords.longitude
+        geocoded = true
+      } else if (geo.status === 'not_found') {
+        // Adresse introuvable → les anciennes coords ne correspondent plus : on les
+        // efface (état « géo incomplet » détectable via lat IS NULL).
+        data.lat = null
+        data.lng = null
+        geocoded = false
+      } else {
+        // WAVE 2 — 'unavailable' = PANNE DU TIERS (BAN/IGN), pas la faute de
+        // l'adresse : on CONSERVE les coords existantes au lieu de les écraser à
+        // null (un resto sain qui corrigeait une coquille pendant une panne
+        // perdait sa géolocalisation et disparaissait du tri conso).
+        geocoded = current.lat != null && current.lng != null
+      }
     }
 
     const restaurant = await prisma.restaurant.update({

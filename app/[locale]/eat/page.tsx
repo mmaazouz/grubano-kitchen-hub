@@ -83,6 +83,8 @@ export default function HomeScreen() {
   const { coords, status, request, clear } = useGeolocation()
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
+  // WAVE 2 — distance du resto géocodé le plus proche (message honnête « rien tout près »)
+  const [nearestKm, setNearestKm] = useState<number | null>(null)
   const [recent, setRecent] = useState<RecentOrder[]>([])
   const [favs, setFavs] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -123,7 +125,12 @@ export default function HomeScreen() {
     }
     fetch(`/api/restaurants?${sp}`)
       .then((r) => r.json())
-      .then((d) => setRestaurants(d.restaurants ?? []))
+      .then((d) => {
+        setRestaurants(d.restaurants ?? [])
+        // WAVE 2 — méta honnêteté géo : distance du plus proche (message « rien
+        // tout près ») ; les restos sans coords arrivent déjà appendus par l'API.
+        setNearestKm(typeof d.nearestKm === 'number' ? d.nearestKm : null)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [coords])
@@ -208,7 +215,15 @@ export default function HomeScreen() {
       ) : (
         <div className="geo geo--on">
           <span className="ms" aria-hidden="true">near_me</span>
-          <div className="gtxt"><b>{t('geoActive')}</b></div>
+          <div className="gtxt">
+            <b>{t('geoActive')}</b>
+            {/* WAVE 2 — localisation LISIBLE (reverse BAN/IGN) : la promesse design.
+                Reverse indisponible → on n'invente RIEN (titre seul, honnête). */}
+            {coords?.label && <span>{coords.label}</span>}
+            {typeof nearestKm === 'number' && nearestKm > 25 && (
+              <span>{t('geoFarNotice')}</span>
+            )}
+          </div>
           <button type="button" className="gclose" onClick={clear} aria-label={t('geoDisable')}>
             <span className="ms" aria-hidden="true">close</span>
           </button>

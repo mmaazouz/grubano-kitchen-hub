@@ -16,6 +16,11 @@ export interface GeoCoords {
   lng: number
   /** Wall-clock at the time the fix was captured (ms since epoch). */
   capturedAt: number
+  /** WAVE 2 — localisation lisible via /api/geo/reverse (BAN/IGN). null = reverse
+   *  indisponible : l'UI reste sur un état « position active » honnête. */
+  label?: string | null
+  city?: string | null
+  postcode?: string | null
 }
 
 export type GeoStatus = 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'
@@ -91,6 +96,18 @@ export function useGeolocation(): UseGeolocation {
         setCoords(next)
         setStatus('granted')
         persist(next)
+        // WAVE 2 — reverse-geocode best-effort (proxy serveur → IGN) : enrichit la
+        // position d'une adresse LISIBLE. Échec du tiers = silencieux (les coords
+        // restent pleinement utilisables pour le tri).
+        fetch(`/api/geo/reverse?lat=${next.lat}&lng=${next.lng}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d: { status?: string; label?: string; city?: string | null; postcode?: string | null } | null) => {
+            if (!d || d.status !== 'ok' || !d.label) return
+            const enriched: GeoCoords = { ...next, label: d.label, city: d.city ?? null, postcode: d.postcode ?? null }
+            setCoords(enriched)
+            persist(enriched)
+          })
+          .catch(() => { /* best-effort */ })
       },
       (err) => {
         // PERMISSION_DENIED = 1, POSITION_UNAVAILABLE = 2, TIMEOUT = 3.

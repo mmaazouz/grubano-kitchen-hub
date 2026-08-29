@@ -1,22 +1,29 @@
 /**
  * Geocoding helper backed by the French Base Adresse Nationale (BAN).
  *
- *   https://api-adresse.data.gouv.fr/search/?q=...
+ * WAVE 2 (2026-08-29) — MIGRATION Géoplateforme IGN : l'API historique
+ * api-adresse.data.gouv.fr est officiellement décommissionnée depuis fin
+ * janvier 2026 (transfert à l'IGN) ; elle répond encore via un proxy, mais
+ * sans engagement. Endpoints courants (vérifiés en live, réponses identiques) :
  *
- * BAN is free, has no auth, and is rate-limited around 50 req/s. We add a
- * tiny `wait()` helper so batch scripts (e.g. scripts/geocode-restaurants.js)
- * can stay politely under that ceiling.
+ *   forward : https://data.geopf.fr/geocodage/search/?q=...
+ *   reverse : https://data.geopf.fr/geocodage/reverse/?lat=..&lon=..   (⚠ `lon`)
  *
- * Returns { latitude, longitude } on a hit, or `null` when:
- *   - the address can't be resolved
- *   - the API is unreachable
- *   - the response is malformed
+ * Gratuit, sans clé, licence etalab-2.0, rate-limit officiel 50 req/s/IP
+ * (dépassement → 429 + blocage 5 s). Le `wait()` ci-dessous garde les scripts
+ * batch poliment sous ce plafond.
  *
- * Callers must treat `null` as a soft failure: save the entity anyway with
+ * DONNÉES ENVOYÉES au service (IGN / Géoplateforme) : forward = l'adresse
+ * texte à résoudre ; reverse = un couple lat/lng (position utilisateur au
+ * moment où il ACTIVE la géoloc — finalité : afficher une localisation lisible
+ * et trier par proximité). À tracer dans le runbook privacy.
+ *
+ * Callers must treat misses as soft failures: save the entity anyway with
  * null coords, then re-geocode later via the backfill script.
  */
 
-const BAN_BASE = 'https://api-adresse.data.gouv.fr/search/'
+const GEOCODE_BASE = 'https://data.geopf.fr/geocodage'
+const BAN_BASE = `${GEOCODE_BASE}/search/`
 
 export interface GeoCoords {
   latitude:  number
@@ -110,6 +117,50 @@ export async function geocodeAddressDetailed(
     return { status: 'ok', coords: { latitude: lat, longitude: lng } }
   } catch {
     // Abort / network error → service unreachable, not the user's fault.
+    return { status: 'unavailable' }
+  }
+}
+
+/**
+ * Reverse geocoding — coords → localisation LISIBLE (WAVE 2).
+ *
+ * Utilisé pour afficher au consommateur où sa position a été comprise
+ * (« 8 Place de l'Hôtel de Ville 75004 Paris » / « Paris 4e »). Mêmes
+ * conventions d'échec que le forward : 'not_found' = réponse propre sans
+ * résultat ; 'unavailable' = panne/timeout/réponse malformée (ne jamais
+ * bloquer l'UX là-dessus — la position reste utilisable pour le tri).
+ */
+export type ReverseGeocodeResult =
+  | { status: 'ok'; label: string; city: string | null; postcode: string | null; district: string | null }
+  | { status: 'not_found' }
+  | { status: 'unavailable' }
+
+export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { status: 'not_found' }
+  // ⚠ l'API attend `lon`, pas `lng`
+  const url = `${GEOCODE_BASE}/reverse/?lat=${lat}&lon=${lng}&limit=1`
+  try {
+    const ctrl = new AbortController()
+    const timeout = setTimeout(() => ctrl.abort(), 6_000)
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { 'User-Agent': 'grubano-geocoder/1.0' },
+    }).finally(() => clearTimeout(timeout))
+    if (!res.ok) return { status: 'unavailable' }
+    const json = await res.json().catch(() => null) as
+      | { features?: Array<{ properties?: { label?: string; city?: string; postcode?: string; district?: string } }> }
+      | null
+    if (!json || !Array.isArray(json.features)) return { status: 'unavailable' }
+    const props = json.features[0]?.properties
+    if (!props || typeof props.label !== 'string' || !props.label) return { status: 'not_found' }
+    return {
+      status: 'ok',
+      label: props.label,
+      city: typeof props.city === 'string' ? props.city : null,
+      postcode: typeof props.postcode === 'string' ? props.postcode : null,
+      district: typeof props.district === 'string' ? props.district : null,
+    }
+  } catch {
     return { status: 'unavailable' }
   }
 }
