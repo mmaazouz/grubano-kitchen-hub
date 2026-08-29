@@ -449,7 +449,27 @@ export default function RestaurantScreen() {
             )}
           </div>
           <div className="tb-actions">
-            <button type="button" className="tb-btn" aria-label={t('share')}>
+            {/* P1 PRE-CLEAN (2026-08-29) — le bouton Partager était VISIBLE mais sans
+                handler (dead control du reality check). Minimal : navigator.share si
+                dispo (annulation utilisateur = silence), sinon copie du lien + toast. */}
+            <button
+              type="button"
+              className="tb-btn"
+              aria-label={t('share')}
+              onClick={async () => {
+                const url = window.location.href
+                if (typeof navigator.share === 'function') {
+                  try { await navigator.share({ title: restaurant.name, url }) } catch { /* annulé par l'utilisateur */ }
+                  return
+                }
+                try {
+                  await navigator.clipboard.writeText(url)
+                  showToast(t('shareCopied'))
+                } catch {
+                  showToast(t('shareError'))
+                }
+              }}
+            >
               <span className="ms" aria-hidden="true">ios_share</span>
             </button>
             <button
