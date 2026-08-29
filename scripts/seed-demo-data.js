@@ -67,7 +67,38 @@ console.log(`  Target database : ${maskedTarget(process.env.DATABASE_URL)}`)
 console.log('  ⚠️  Make ABSOLUTELY sure the line above is your STAGING DB.')
 console.log('============================================================')
 
-// ── 3. Hard confirmation gate ──────────────────────────────────────────────────
+// ── 3a. GARDE BÊTA FAIL-CLOSED (décision produit DÉFINITIVE, 2026-08-29) ───────
+//     app.grubano.com est la CLOSED BETA à données réelles : le seed démo y est
+//     INTERDIT, sans aucun contournement. Le seed n'est autorisé que lorsque
+//     NEXTAUTH_URL désigne EXPLICITEMENT un environnement local (localhost/127.*).
+//     NEXTAUTH_URL absent (ex. checkout CI nu) = REFUS — fail-closed par défaut.
+//     Ce test s'exécute AVANT toute connexion base (zéro écriture possible).
+{
+  const target = process.env.NEXTAUTH_URL || ''
+  const isLocal = /^https?:\/\/(localhost|127\.)/.test(target)
+  if (!isLocal) {
+    console.error('')
+    console.error('[seed-demo-data] ⛔ REFUS — le seed démo est réservé aux environnements LOCAUX.')
+    console.error(`  NEXTAUTH_URL détecté : ${target || '(absent)'} — attendu : http://localhost:… ou http://127.…`)
+    console.error('  La bêta (app.grubano.com) contient des données réelles : le seed démo y est')
+    console.error('  DÉFINITIVEMENT interdit (aucune variable de contournement n\'existe).')
+    console.error('')
+    process.exit(1)
+  }
+}
+
+// ── 3b. Mot de passe des comptes démo : injecté par l'ENVIRONNEMENT uniquement ─
+//     Les anciens littéraux versionnés (Test1234!/Demo1234!) sont des credentials
+//     COMPROMIS À JAMAIS (historique git public) — plus aucun mot de passe en dur.
+if (!process.env.SEED_DEMO_PASSWORD || process.env.SEED_DEMO_PASSWORD.length < 8) {
+  console.error('')
+  console.error('[seed-demo-data] SEED_DEMO_PASSWORD manquant ou trop court (min. 8).')
+  console.error('  Exemple : SEED_DEMO_PASSWORD=... SEED_DEMO_CONFIRM=yes node scripts/seed-demo-data.js')
+  console.error('')
+  process.exit(1)
+}
+
+// ── 3c. Hard confirmation gate ─────────────────────────────────────────────────
 if (process.env.SEED_DEMO_CONFIRM !== 'yes') {
   console.error('')
   console.error('[seed-demo-data] Refusing to run without explicit confirmation.')
@@ -102,7 +133,7 @@ const DAY  = 24 * HOUR
 const NOW  = Date.now()
 
 // ── Static demo content pools ──────────────────────────────────────────────────
-const DEMO_PASSWORD = 'Demo1234!' // for the franchise + creator demo logins
+const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD // injecté par l'env (garde 3b) — jamais versionné
 
 // Coherent dish catalogue (name, unit price). Used to build order line items.
 const DISHES = [
@@ -294,9 +325,9 @@ async function main() {
   console.log(`\n[1/8] ReferralConfig: ${Math.round(COMMISSION_PCT * 100)}% of fee, ${DURATION_DAYS}-day window.`)
 
   // ── Consumers ────────────────────────────────────────────────────────────────
-  // The pre-existing demo login (prisma/seed-test-user.js). Create it if missing
-  // so the script is self-sufficient, but keep its real password if it exists.
-  const testHash = await bcrypt.hash('Test1234!', 12)
+  // Compte conso de démo — mot de passe injecté par l'env (l'ancien littéral
+  // Test1234! est compromis à jamais : historique git public, commit fcbbfd0).
+  const testHash = await bcrypt.hash(DEMO_PASSWORD, 12)
   const testUser = await prisma.operator.upsert({
     where:  { email: 'test@grubano.com' },
     update: { status: 'active' },
@@ -405,16 +436,16 @@ async function main() {
   console.log(`[4b/8] Franchise franchise@grubano.com + ${posRows.length} points of sale (linked to brandId ${primaryBrandId}).`)
 
   // ── Dedicated TEST restaurateur with its OWN adoptable brand ────────────────────
-  // A reliable, documented login (resto@grubano.com / Test1234!) that owns
-  // demo-brand-test so creator-recipe adoption can be tested end-to-end. The
+  // A reliable, documented login (resto@grubano.com, mdp = SEED_DEMO_PASSWORD)
+  // that owns demo-brand-test so creator-recipe adoption can be tested. The
   // admin/Mohammed account owns no brand of its own, and the demo brands above
   // belong to the franchisors. This account deliberately has NO pre-existing
   // adoption, so Marco's 3 creator recipes all show up as "à adopter" on /menu.
   //
-  // Password handling: explicit bcrypt hash of 'Test1234!' at CREATE (same pattern
-  // as test@grubano.com) so the login never depends on DEMO_PASSWORD. On UPDATE we
-  // never clobber an existing password/role — an admin may have configured it.
-  const restoTestHash = await bcrypt.hash('Test1234!', 12)
+  // Password handling: explicit bcrypt hash at CREATE (same pattern).
+  // On UPDATE we never clobber an existing password/role — an admin may have
+  // configured it. Mot de passe injecté par l'env (plus aucun littéral versionné).
+  const restoTestHash = await bcrypt.hash(DEMO_PASSWORD, 12)
   const restoTest = await prisma.operator.upsert({
     where:  { email: 'resto@grubano.com' },
     update: { name: 'Resto Test', status: 'active' },
@@ -462,7 +493,7 @@ async function main() {
   // the SAME city (Orange) so city-exclusivity / the waitlist (levier 3) can be
   // exercised: this account tries to adopt a recipe already taken by Resto Test in
   // Orange → must be blocked → can then join the waitlist. It owns NO adoption.
-  // Reuses restoTestHash (bcrypt of 'Test1234!') so the login is identical.
+  // Reuses restoTestHash so the login is identical.
   const restoTest2 = await prisma.operator.upsert({
     where:  { email: 'resto2@grubano.com' },
     update: { name: 'Resto Test 2', status: 'active' },
@@ -774,12 +805,12 @@ async function main() {
   console.log('\n============================================================')
   console.log('  ✅ Demo data seeded successfully (idempotent).')
   console.log('------------------------------------------------------------')
-  console.log('  Demo logins (password for franchise + creator: Demo1234!):')
-  console.log('    Restaurateur : test@grubano.com / Test1234! (consumer)')
-  console.log('    Franchise    : franchise@grubano.com / Demo1234!')
-  console.log('    Créateur     : createur@grubano.com / Demo1234!  (code DEMO20)')
-  console.log("    RESTO DE TEST → resto@grubano.com / Test1234! (role restaurant, marque 'Resto Test')")
-  console.log('    RESTO DE TEST 2 → resto2@grubano.com / Test1234! (Orange)')
+  console.log('  Demo logins (mot de passe = valeur de SEED_DEMO_PASSWORD, jamais loggée) :')
+  console.log('    Consommateur : test@grubano.com')
+  console.log('    Franchise    : franchise@grubano.com')
+  console.log('    Créateur     : createur@grubano.com  (code DEMO20)')
+  console.log("    RESTO DE TEST → resto@grubano.com (role restaurant, marque 'Resto Test')")
+  console.log('    RESTO DE TEST 2 → resto2@grubano.com (Orange)')
   console.log('  Re-running this script refreshes the same demo-* rows — no dupes.')
   console.log('============================================================')
 }

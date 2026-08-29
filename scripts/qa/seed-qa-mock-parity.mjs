@@ -889,8 +889,12 @@ function requireStaging() {
   if (!process.env.DATABASE_URL) { console.error('❌ Refused: DATABASE_URL is empty.'); process.exit(1) }
   const testish = email.includes('+qa') || email.includes('qa+') || email.endsWith('.test') || email.endsWith('.qa')
   if (!testish) { console.error(`❌ Refused: QA_EMAIL "${email}" is not test-ish.`); process.exit(1) }
-  if (nextauthUrl === 'https://grubano.com' && process.env.FORCE !== '1') {
-    console.error('❌ Refused: NEXTAUTH_URL is the PROD url.')
+  if (/grubano\.com/i.test(nextauthUrl) && process.env.FORCE !== '1') {
+    console.error(`❌ Refused: NEXTAUTH_URL (${nextauthUrl}) désigne un environnement grubano.com (bêta/prod = données réelles — seeds QA réservés au LOCAL).`)
+    process.exit(1)
+  }
+  if (!process.env.QA_PASSWORD || process.env.QA_PASSWORD.length < 8) {
+    console.error('❌ Refused: QA_PASSWORD manquant ou trop court (min. 8) — plus aucun mot de passe versionné.')
     process.exit(1)
   }
   const host = (() => { try { return new URL(process.env.DATABASE_URL).hostname } catch { return '?' } })()
@@ -939,7 +943,9 @@ async function main() {
 
     // 4) Clients consommateurs nommés (comptes de test .test).
     const consumerByName = {}
-    const hash = await bcrypt.hash('LocalQA-2026!', 12)
+    // Mot de passe injecté par l'env (l'ancien littéral LocalQA-2026! est compromis
+    // à jamais — historique git public). Contrôlé au pre-flight (requireStaging).
+    const hash = await bcrypt.hash(process.env.QA_PASSWORD, 12)
     for (const c of DATA.consumers) {
       const row = await prisma.operator.upsert({
         where: { email: c.email },
