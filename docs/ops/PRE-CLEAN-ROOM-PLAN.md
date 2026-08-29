@@ -48,3 +48,13 @@ Consigner les DEUX adresses jetables + la date/heure de la répétition dans le 
 
 ## Règles absolues
 UNKNOWN = DO NOT DELETE · REAL = DO NOT DELETE · SYSTEM = DO NOT DELETE · PERMANENT ADMIN = DO NOT DELETE. Jamais de TRUNCATE ; suppressions par identifiants explicites uniquement ; le script de lecture (`scripts/server/staging-classification-read.js`) se rejoue APRÈS nettoyage pour vérifier `TEST PROVED: 0`.
+
+## KIT DE RÉPÉTITION (R1 — prêt, à exécuter APRÈS neutralisation + flags + zero-to-order local + classification UNKNOWN)
+Checklist d'exécution (une session, ~45 min) :
+1. **Deux adresses jetables RÉELLES** créées par le fondateur (partenaire + conso) — un alias réellement reçu est acceptable ; noter les deux adresses + l'heure de début.
+2. Partenaire : `/fr/business/register` → e-mail de vérification RÉEL reçu → vérifier → onboarding (adresse réelle → vérifier lat/lng ≠ null au dossier admin) → pickup ON → menu + produit + **allergènes remplis** → Connect TEST → `/admin/approvals` (permanent admin) → approuver → publier.
+3. Conso : géoloc → l'établissement apparaît trié → recherche → panier → auth (2ᵉ jetable) → checkout pickup (« Retrait chez X + adresse ») → carte TEST 4242 → commande.
+4. Restaurateur : reçoit → prépare → prête → conso : pass QR (adresse + « Voir l'itinéraire ») → remise → fidélité créditée.
+5. Remboursement : 2ᵉ commande payée → refus restaurateur → rail refund admin → `re_` TEST → e-mail → réconciliation ; re-tenter le refund → refus (idempotence).
+6. Clôture : re-jouer `staging-classification-read.js` → les données de répétition apparaissent (UNKNOWN avec e-mail jetable) → les consigner comme lot « REHEARSAL » du Clean Room. Vérifier `PUBLIC CREDENTIAL ACTIVE WITH PASSWORD = 0` toujours vrai.
+Corrélation cleanup : tout part de l'e-mail jetable → `Operator.id` → Restaurant/Brand/MenuItem/Order/LedgerEntry/Refund/EmailLog (requêtes du script d'évidence). AUCUN champ ajouté au schéma.
