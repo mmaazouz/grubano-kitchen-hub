@@ -47,7 +47,7 @@ interface OrderInfo {
   deliveryFee:     number
   total:           number
   paymentStatus?:  string | null
-  restaurant?:     { id: string; name: string } | null
+  restaurant?:     { id: string; name: string; address?: string | null; city?: string | null } | null
   // Chantier P2 (additive GET fields) — the SERVER-resolved discount and its
   // promotion display name. No client computation, ever.
   discount?:       number
@@ -295,6 +295,25 @@ export default function CheckoutPage() {
           <div className="layout">
             {/* LEFT column — address / payment (LOT 4 : slot + tip retirés) */}
             <div>
+              {/* P1 PRE-CLEAN (2026-08-29) — PICKUP : le sélecteur d'adresse CONSOMMATEUR
+                  n'a aucune fonction transactionnelle en retrait → à la place, le POINT
+                  DE RETRAIT réel (nom + adresse du restaurant). Aucune distance, aucun
+                  ETA, aucune promesse de délai. */}
+              {isPickup && (
+                <section className="sec">
+                  <div className="sec__h">
+                    <span className="ms" aria-hidden="true">storefront</span>
+                    <b>{t('pickupTitle')}</b>
+                  </div>
+                  <div className="opt sel" data-testid="pickup-point">
+                    <span className="ico"><span className="ms" aria-hidden="true">storefront</span></span>
+                    <div className="main">
+                      <b>{t('pickupAt', { name: order.restaurant?.name ?? '' })}</b>
+                      <span>{[order.restaurant?.address, order.restaurant?.city].filter(Boolean).join(', ')}</span>
+                    </div>
+                  </div>
+                </section>
+              )}
               {/* Address (delivery only) — REAL saved addresses (visual selector) */}
               {!isPickup && (
                 <section className="sec">
