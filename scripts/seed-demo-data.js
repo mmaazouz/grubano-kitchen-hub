@@ -44,6 +44,24 @@ const path = require('path')
   }
 }
 
+// ── GARDE BÊTA FAIL-CLOSED — TOUJOURS EN PREMIER (avant même DATABASE_URL) ─────
+//     Décision produit DÉFINITIVE (2026-08-29) : app.grubano.com = closed beta à
+//     données réelles → seed démo INTERDIT. Autorisé UNIQUEMENT si NEXTAUTH_URL
+//     désigne explicitement un environnement local. Absent/inconnu = REFUS.
+{
+  const target = process.env.NEXTAUTH_URL || ''
+  const isLocal = /^https?:\/\/(localhost|127\.)/.test(target)
+  if (!isLocal) {
+    console.error('')
+    console.error('[seed-demo-data] ⛔ REFUS — le seed démo est réservé aux environnements LOCAUX.')
+    console.error(`  NEXTAUTH_URL détecté : ${target || '(absent)'} — attendu : http://localhost:… ou http://127.…`)
+    console.error('  La bêta (app.grubano.com) contient des données réelles : le seed démo y est')
+    console.error('  DÉFINITIVEMENT interdit (aucune variable de contournement n\'existe).')
+    console.error('')
+    process.exit(1)
+  }
+}
+
 if (!process.env.DATABASE_URL) {
   console.error('[seed-demo-data] DATABASE_URL not set (checked env + .env.local). Aborting.')
   process.exit(1)
@@ -66,26 +84,6 @@ console.log('============================================================')
 console.log(`  Target database : ${maskedTarget(process.env.DATABASE_URL)}`)
 console.log('  ⚠️  Make ABSOLUTELY sure the line above is your STAGING DB.')
 console.log('============================================================')
-
-// ── 3a. GARDE BÊTA FAIL-CLOSED (décision produit DÉFINITIVE, 2026-08-29) ───────
-//     app.grubano.com est la CLOSED BETA à données réelles : le seed démo y est
-//     INTERDIT, sans aucun contournement. Le seed n'est autorisé que lorsque
-//     NEXTAUTH_URL désigne EXPLICITEMENT un environnement local (localhost/127.*).
-//     NEXTAUTH_URL absent (ex. checkout CI nu) = REFUS — fail-closed par défaut.
-//     Ce test s'exécute AVANT toute connexion base (zéro écriture possible).
-{
-  const target = process.env.NEXTAUTH_URL || ''
-  const isLocal = /^https?:\/\/(localhost|127\.)/.test(target)
-  if (!isLocal) {
-    console.error('')
-    console.error('[seed-demo-data] ⛔ REFUS — le seed démo est réservé aux environnements LOCAUX.')
-    console.error(`  NEXTAUTH_URL détecté : ${target || '(absent)'} — attendu : http://localhost:… ou http://127.…`)
-    console.error('  La bêta (app.grubano.com) contient des données réelles : le seed démo y est')
-    console.error('  DÉFINITIVEMENT interdit (aucune variable de contournement n\'existe).')
-    console.error('')
-    process.exit(1)
-  }
-}
 
 // ── 3b. Mot de passe des comptes démo : injecté par l'ENVIRONNEMENT uniquement ─
 //     Les anciens littéraux versionnés (Test1234!/Demo1234!) sont des credentials

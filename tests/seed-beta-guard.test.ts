@@ -11,7 +11,9 @@ const SCRIPT = path.join(process.cwd(), 'scripts', 'seed-demo-data.js')
 
 function runSeed(env: Record<string, string>) {
   const r = spawnSync(process.execPath, [SCRIPT], {
-    env: { ...process.env, ...env },
+    // DATABASE_URL factice : les gardes doivent TOUTES tomber AVANT le moindre
+    // require('@prisma/client') — déterministe en local COMME en CI (sans .env.local).
+    env: { ...process.env, DATABASE_URL: 'mysql://guard:guard@localhost:3306/guard_never_connected', ...env },
     encoding: 'utf8',
     timeout: 30_000,
   })
