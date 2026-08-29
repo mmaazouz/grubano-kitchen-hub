@@ -63,9 +63,11 @@ function requireStaging() {
     console.error(`❌ Refused: QA_EMAIL "${email}" is not test-ish. Require a '+qa' tag, or a '.test' / '.qa' TLD.`)
     process.exit(1)
   }
-  // 4) Never the known prod URL (unless the operator opts in via FORCE=1 — documented as dangerous).
-  if (nextauthUrl === 'https://grubano.com' && !force) {
-    console.error('❌ Refused: NEXTAUTH_URL is the PROD url (https://grubano.com). Set FORCE=1 only if you REALLY mean it (dangerous).')
+  // 4) Never a grubano.com host — la BÊTA (app.grubano.com) contient désormais des
+  //    données réelles : les seeds QA sont réservés au LOCAL. (FORCE=1 = bypass
+  //    documenté dangereux, conservé pour un éventuel env de test isolé.)
+  if (/grubano\.com/i.test(nextauthUrl) && !force) {
+    console.error(`❌ Refused: NEXTAUTH_URL (${nextauthUrl}) désigne un environnement grubano.com (bêta/prod = données réelles). Set FORCE=1 only if you REALLY mean it (dangerous).`)
     process.exit(1)
   }
 

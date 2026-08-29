@@ -7,7 +7,7 @@
   "reglesGlobales": [
     {
       "regle": "mot de passe des comptes consommateurs de test",
-      "valeur": "LocalQA-2026! (bcrypt cout 12)",
+      "valeur": "fourni via QA_PASSWORD (env), jamais versionné",
       "type": "convention QA — absent des maquettes"
     },
     {

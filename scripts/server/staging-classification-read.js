@@ -50,42 +50,9 @@ if (process.env.NEXTAUTH_URL === 'https://grubano.com') {
 const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-const CUID_RE = /^c[a-z0-9]{24}$/
-const mask = (v) => { if (!v) return null; const i = v.indexOf('_'); return i > 0 ? `${v.slice(0, i + 1)}***${v.slice(-4)}` : '***' + String(v).slice(-4) }
-const maskEmail = (e) => { if (!e) return null; const [l, d] = String(e).split('@'); return `${l.slice(0, 2)}***@${d || '?'}` }
-const shortId = (id) => String(id).slice(0, 8) + '…'
-const d = (x) => (x ? new Date(x).toISOString().slice(0, 10) : '—')
-
-// Provenance TEST — versionnée dans le repo (preuves : scripts/seed-demo-data.js,
-// scripts/qa/*, commit fcbbfd0 « seed à identifiants versionnés »)
-const COMPROMISED_EMAILS = new Set([
-  'test@grubano.com', 'resto@grubano.com', 'resto2@grubano.com',
-  'franchise@grubano.com', 'createur@grubano.com',
-  'demo-franchiseur1@grubano.com', 'demo-franchiseur2@grubano.com',
-])
-const QA_NAMES = new Set(['QA Bistro', 'QA Trattoria', 'QA Metro Fournisseur', 'QA Loyal', 'QA Operator', 'QA Beta Trattoria'])
-const isQaEmail = (e) => !!e && (e.endsWith('@grubano.test') || e.includes('+qa'))
-const isDemoId = (id) => String(id).startsWith('demo-')
-const isCuid = (id) => CUID_RE.test(String(id))
-
-// classes : 'ADMIN' | 'TEST_PROVED' | 'TEST_HIGH' | 'UNKNOWN'
-function classifyOperator(op, roleSet) {
-  if (roleSet.has('admin') || op.role === 'admin') return 'ADMIN'
-  if (COMPROMISED_EMAILS.has(op.email)) return 'TEST_PROVED'
-  if (isDemoId(op.id)) return 'TEST_PROVED'
-  if (isQaEmail(op.email)) return 'TEST_PROVED'
-  if (!isCuid(op.id)) return 'TEST_HIGH'
-  return 'UNKNOWN'
-}
-function classifyRestaurant(r, ownerClass) {
-  if (isDemoId(r.id)) return 'TEST_PROVED'
-  if (QA_NAMES.has(r.name)) return 'TEST_PROVED'
-  if (ownerClass === 'TEST_PROVED') return 'TEST_PROVED'
-  if (!isCuid(r.id)) return 'TEST_HIGH'
-  if (ownerClass === 'TEST_HIGH') return 'TEST_HIGH'
-  return 'UNKNOWN'
-}
+// ── Helpers + règles de provenance : lib PARTAGÉE (numérotation stable inter-
+//    scripts — unknown-evidence-read.js affiche les mêmes USER#N/RESTAURANT#N) ──
+const { mask, maskEmail, shortId, d, COMPROMISED_EMAILS, isQaEmail, numberEntities, stableSort } = require('./classification-lib')
 
 const H = (t) => console.log(`\n=== ${t} ===`)
 const note = (t) => console.log('    ' + t)
@@ -122,14 +89,12 @@ async function main() {
   const roleSets = new Map()
   for (const r of roleRows) { if (!roleSets.has(r.operatorId)) roleSets.set(r.operatorId, new Set()); roleSets.get(r.operatorId).add(r.role) }
 
-  const opClass = new Map(), opPseudo = new Map()
-  const counters = { ADMIN: 0, TEST_PROVED: 0, TEST_HIGH: 0, UNKNOWN: 0 }
-  for (const op of ops) {
-    const c = classifyOperator(op, roleSets.get(op.id) || new Set())
-    opClass.set(op.id, c)
-    counters[c]++
-    opPseudo.set(op.id, (c === 'ADMIN' ? 'ADMIN#' : c === 'UNKNOWN' ? 'USER#' : 'TESTUSER#') + counters[c])
-  }
+  // restaurants chargés AVANT la numérotation (la lib numérote tout d'un bloc,
+  // tri stable createdAt/id → mêmes pseudonymes à chaque exécution)
+  const restos = await prisma.restaurant.findMany({ select: { id: true, operatorId: true, name: true, city: true, isActive: true, approvedAt: true, archivedAt: true, lat: true, lng: true, stripeAccountId: true, stripeAccountStatus: true, pickupEnabled: true, deliveryEnabled: true, createdAt: true } })
+  const { opClass, opPseudo, counters, restoClass, restoPseudo } = numberEntities(ops, roleSets, restos)
+  const opsSorted = stableSort(ops)
+  const restosSorted = stableSort(restos)
 
   // sonde notifPrefs (lignes illisibles) — lecture seule, par id, plafonnée
   let notifBroken = 0
@@ -143,7 +108,7 @@ async function main() {
     H('ADMIN / SYSTEM')
     note('Signification : comptes à rôle admin (accès /admin/*) + traces système.')
     note('À vérifier : lequel est LE VÔTRE (permanent). NE PAS SUPPRIMER cette section.')
-    const admins = ops.filter(o => opClass.get(o.id) === 'ADMIN')
+    const admins = opsSorted.filter(o => opClass.get(o.id) === 'ADMIN')
     if (!admins.length) console.log('  (aucun compte admin)')
     for (const a of admins) {
       const prov = await prisma.adminAuditLog.findFirst({ where: { action: 'admin.provision', OR: [{ targetId: a.id }, { actorEmail: a.email }, { metadata: { path: '$.email', equals: a.email } }] }, select: { createdAt: true, actorId: true } }).catch(() => null)
@@ -170,14 +135,6 @@ async function main() {
   })
 
   // ═══ 2. RESTAURANTS / MARQUES / MENUS ═══
-  const restos = await prisma.restaurant.findMany({ select: { id: true, operatorId: true, name: true, city: true, isActive: true, approvedAt: true, archivedAt: true, lat: true, lng: true, stripeAccountId: true, stripeAccountStatus: true, pickupEnabled: true, deliveryEnabled: true, createdAt: true } })
-  const restoClass = new Map(), restoPseudo = new Map()
-  const rc = { TEST_PROVED: 0, TEST_HIGH: 0, UNKNOWN: 0 }
-  for (const r of restos) {
-    const c = classifyRestaurant(r, opClass.get(r.operatorId) || 'UNKNOWN')
-    restoClass.set(r.id, c); rc[c] = (rc[c] || 0) + 1
-    restoPseudo.set(r.id, 'RESTAURANT#' + (rc.TEST_PROVED + rc.TEST_HIGH + rc.UNKNOWN))
-  }
   const orderAgg = await prisma.order.groupBy({ by: ['restaurantId'], _count: { _all: true } }).catch(() => [])
   const paidAgg = await prisma.order.groupBy({ by: ['restaurantId'], where: { paymentStatus: 'paid' }, _count: { _all: true } }).catch(() => [])
   const ordersByResto = new Map(orderAgg.map(x => [x.restaurantId, x._count._all]))
@@ -196,9 +153,9 @@ async function main() {
     note('Signification : provenance test PROUVÉE par le dépôt. Candidats à la suppression au clean room.')
     note('À vérifier : rien — sauf si vous reconnaissez une donnée réelle par erreur (dites-le).')
     console.log(`  Opérateurs : ${counters.TEST_PROVED}`)
-    for (const o of ops.filter(x => opClass.get(x.id) === 'TEST_PROVED')) console.log(`    ${opPseudo.get(o.id)}  ${o.email}  role=${o.role} status=${o.status} créé=${d(o.createdAt)}`)
-    console.log(`  Restaurants : ${restos.filter(r => restoClass.get(r.id) === 'TEST_PROVED').length}`)
-    restos.filter(r => restoClass.get(r.id) === 'TEST_PROVED').forEach(printResto)
+    for (const o of opsSorted.filter(x => opClass.get(x.id) === 'TEST_PROVED')) console.log(`    ${opPseudo.get(o.id)}  ${o.email}  role=${o.role} status=${o.status} créé=${d(o.createdAt)}`)
+    console.log(`  Restaurants : ${restosSorted.filter(r => restoClass.get(r.id) === 'TEST_PROVED').length}`)
+    restosSorted.filter(r => restoClass.get(r.id) === 'TEST_PROVED').forEach(printResto)
   })
 
   await section('TEST HIGH CONFIDENCE', async () => {
@@ -206,9 +163,9 @@ async function main() {
     note('Signification : fixtures d\'une génération antérieure (ex. rest_001…). L\'app ne génère QUE des cuid.')
     note('À vérifier : confirmez que vous ne reconnaissez aucun établissement réel ici, puis traitez comme TEST.')
     console.log(`  Opérateurs : ${counters.TEST_HIGH}`)
-    for (const o of ops.filter(x => opClass.get(x.id) === 'TEST_HIGH')) console.log(`    ${opPseudo.get(o.id)}  id=${shortId(o.id)}  ${maskEmail(o.email)}  role=${o.role} créé=${d(o.createdAt)}`)
-    console.log(`  Restaurants : ${restos.filter(r => restoClass.get(r.id) === 'TEST_HIGH').length}`)
-    restos.filter(r => restoClass.get(r.id) === 'TEST_HIGH').forEach(printResto)
+    for (const o of opsSorted.filter(x => opClass.get(x.id) === 'TEST_HIGH')) console.log(`    ${opPseudo.get(o.id)}  id=${shortId(o.id)}  ${maskEmail(o.email)}  role=${o.role} créé=${d(o.createdAt)}`)
+    console.log(`  Restaurants : ${restosSorted.filter(r => restoClass.get(r.id) === 'TEST_HIGH').length}`)
+    restosSorted.filter(r => restoClass.get(r.id) === 'TEST_HIGH').forEach(printResto)
   })
 
   await section('UNKNOWN', async () => {
@@ -216,14 +173,14 @@ async function main() {
     note('Signification : cuid réels sans marqueur test. Peut contenir de VRAIES personnes (ou vos propres essais).')
     note('À faire : identifiez chaque ligne (votre essai ? un vrai ? inconnu ?) et renvoyez-moi la liste annotée.')
     console.log(`  Opérateurs : ${counters.UNKNOWN}`)
-    for (const o of ops.filter(x => opClass.get(x.id) === 'UNKNOWN')) {
+    for (const o of opsSorted.filter(x => opClass.get(x.id) === 'UNKNOWN')) {
       const indices = []
       if (o.emailVerifiedAt) indices.push('email-vérifié')
       if (o.siren) indices.push('SIREN renseigné')
       if (o.kybStatus === 'verified') indices.push('KYB✓')
       console.log(`    ${opPseudo.get(o.id)}  ${maskEmail(o.email)}  role=${o.role} status=${o.status} créé=${d(o.createdAt)} ${indices.length ? '⚑ ' + indices.join(',') : ''}`)
     }
-    const unkR = restos.filter(r => restoClass.get(r.id) === 'UNKNOWN')
+    const unkR = restosSorted.filter(r => restoClass.get(r.id) === 'UNKNOWN')
     console.log(`  Restaurants : ${unkR.length}`)
     unkR.forEach(r => { printResto(r); if ((typeof r.lat === 'number') && r.stripeAccountStatus === 'active') note('  ⚑ indices de PILOTE RÉEL possible (géocodé + Connect actif) — à confirmer par vous') })
     summary.realPilot = unkR.some(r => typeof r.lat === 'number') ? 'NON ÉTABLI (candidat(s) UNKNOWN à confirmer)' : 'NO'
@@ -255,7 +212,7 @@ async function main() {
     note('Signification : comptes/paiements Stripe TEST rattachés aux données. TEST HISTORICAL = propriétaire test ;')
     note('REAL PILOT = propriétaire réel confirmé par vous ; le reste = UNKNOWN. Aucune clé, aucun secret affiché.')
     let n = 0
-    for (const r of restos.filter(r => r.stripeAccountId)) {
+    for (const r of restosSorted.filter(r => r.stripeAccountId)) {
       n++
       const cls = restoClass.get(r.id)
       console.log(`  Restaurant ${restoPseudo.get(r.id)} « ${r.name} » → ${mask(r.stripeAccountId)} status=${r.stripeAccountStatus || '?'} provenance=${cls === 'UNKNOWN' ? 'UNKNOWN (à confirmer)' : 'TEST HISTORICAL'}`)
@@ -267,7 +224,7 @@ async function main() {
       ['PrestataireProfile', await prisma.prestataireProfile.findMany({ where: { stripeAccountId: { not: null } }, select: { email: true, stripeAccountId: true, payoutStatus: true } }).catch(() => [])],
     ]
     for (const [label, rows] of profs) for (const p of rows) { n++; console.log(`  ${label} ${isQaEmail(p.email) || COMPROMISED_EMAILS.has(p.email) ? '(TEST)' : maskEmail(p.email)} → ${mask(p.stripeAccountId)} payout=${p.payoutStatus || '—'}`) }
-    for (const o of ops.filter(o => o.franchiseStripeAccountId || o.affiliateStripeAccountId)) {
+    for (const o of opsSorted.filter(o => o.franchiseStripeAccountId || o.affiliateStripeAccountId)) {
       if (o.franchiseStripeAccountId) { n++; console.log(`  Operator ${opPseudo.get(o.id)} (franchise) → ${mask(o.franchiseStripeAccountId)}`) }
       if (o.affiliateStripeAccountId) { n++; console.log(`  Operator ${opPseudo.get(o.id)} (affilié) → ${mask(o.affiliateStripeAccountId)}`) }
     }
@@ -297,7 +254,7 @@ async function main() {
     note('FK bloquantes : Restaurant→(Order, TableTicket, OpeningHour, ClosureException) ; Operator→(Brand, Restaurant, PointOfSale) ; Order→ReferralOrder.')
     note('Références SANS FK (orphelins après suppression) : LedgerEntry.restaurantId, Refund.orderId, Order.consumerId, Claim, FranchiseRoyalty…')
     let blockers = 0
-    for (const r of restos.filter(r => restoClass.get(r.id) !== 'UNKNOWN')) {
+    for (const r of restosSorted.filter(r => restoClass.get(r.id) !== 'UNKNOWN')) {
       const oc = ordersByResto.get(r.id) || 0
       const led = await prisma.ledgerEntry.count({ where: { restaurantId: r.id } }).catch(() => 0)
       const oh = await prisma.openingHour.count({ where: { restaurantId: r.id } }).catch(() => 0)
@@ -329,8 +286,8 @@ async function main() {
   await section('CLEANUP CANDIDATES', async () => {
     H('CLEANUP CANDIDATES — résumé des cibles (SUPPRESSION UNIQUEMENT AU CLEAN ROOM, avec votre GO ligne à ligne)')
     console.log(`  · ${counters.TEST_PROVED} opérateurs TEST PROVED + leurs données rattachées (marques, menus, commandes, résas, fidélité).`)
-    console.log(`  · ${restos.filter(r => restoClass.get(r.id) === 'TEST_PROVED').length} restaurants TEST PROVED.`)
-    console.log(`  · ${counters.TEST_HIGH} opérateurs + ${restos.filter(r => restoClass.get(r.id) === 'TEST_HIGH').length} restaurants TEST HIGH CONFIDENCE (après votre confirmation).`)
+    console.log(`  · ${restosSorted.filter(r => restoClass.get(r.id) === 'TEST_PROVED').length} restaurants TEST PROVED.`)
+    console.log(`  · ${counters.TEST_HIGH} opérateurs + ${restosSorted.filter(r => restoClass.get(r.id) === 'TEST_HIGH').length} restaurants TEST HIGH CONFIDENCE (après votre confirmation).`)
     console.log(`  · ${summary.compromised || 0} comptes à credentials publics (suppression OU suspension+rotation immédiate).`)
     note('L\'ordre et les exclusions sont dans docs/ops/PRE-CLEAN-ROOM-PLAN.md.')
   })
@@ -346,9 +303,9 @@ async function main() {
   const protectedN = counters.ADMIN + counters.UNKNOWN
   console.log('\n══════════════════════ RÉSUMÉ ══════════════════════')
   console.log(`PROTECTED ENTITIES: ${protectedN} (admins=${counters.ADMIN}, unknown=${counters.UNKNOWN})`)
-  console.log(`TEST PROVED: ${counters.TEST_PROVED} opérateurs · ${restos.filter(r => restoClass.get(r.id) === 'TEST_PROVED').length} restaurants`)
-  console.log(`TEST HIGH CONFIDENCE: ${counters.TEST_HIGH} opérateurs · ${restos.filter(r => restoClass.get(r.id) === 'TEST_HIGH').length} restaurants`)
-  console.log(`UNKNOWN: ${counters.UNKNOWN} opérateurs · ${restos.filter(r => restoClass.get(r.id) === 'UNKNOWN').length} restaurants`)
+  console.log(`TEST PROVED: ${counters.TEST_PROVED} opérateurs · ${restosSorted.filter(r => restoClass.get(r.id) === 'TEST_PROVED').length} restaurants`)
+  console.log(`TEST HIGH CONFIDENCE: ${counters.TEST_HIGH} opérateurs · ${restosSorted.filter(r => restoClass.get(r.id) === 'TEST_HIGH').length} restaurants`)
+  console.log(`UNKNOWN: ${counters.UNKNOWN} opérateurs · ${restosSorted.filter(r => restoClass.get(r.id) === 'UNKNOWN').length} restaurants`)
   console.log(`CONNECT TEST REFERENCES: ${summary.connectRefs || 0}`)
   console.log(`RELATIONAL BLOCKERS: ${summary.blockers || 0}`)
   console.log(`CLEANUP READY: ${counters.UNKNOWN === 0 ? 'YES' : 'NO (identifier les UNKNOWN d\'abord)'}`)
