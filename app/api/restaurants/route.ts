@@ -63,10 +63,21 @@ export async function GET(req: Request) {
 
     // ── Branch 1 — geo-aware Discovery v1 ────────────────────────────────
     if (geoValid) {
-      // Fetch ALL active restaurants with coords. We accept restaurants
-      // without coords later in the fallback.
+      // WAVE 2 — `q` et `city` s'appliquent AUSSI en branche géo (bug prouvé au
+      // reality check : un utilisateur géolocalisé qui tapait « sushi » recevait
+      // tous les restos proches, requête ignorée). Sémantique : le texte FILTRE,
+      // la géo CLASSE.
+      const geoWhere: Prisma.RestaurantWhereInput = { isActive: true, archivedAt: null }
+      if (city) geoWhere.city = { contains: city }
+      if (q) {
+        geoWhere.OR = [
+          { name:        { contains: q } },
+          { description: { contains: q } },
+          { city:        { contains: q } },
+        ]
+      }
       const all = await prisma.restaurant.findMany({
-        where: { isActive: true, archivedAt: null },
+        where: geoWhere,
         select: {
           id:           true,
           name:         true,
@@ -140,16 +151,26 @@ export async function GET(req: Request) {
         radiusUsedKm = null
       }
 
+      // Step 5 (WAVE 2) — un resto APPROUVÉ sans coords ne disparaît plus en
+      // silence : les lignes lat/lng NULL (mêmes filtres q/city/catégorie) sont
+      // APPENDUES après les restos triés par distance, sans étiquette de
+      // distance. `ungeocodedCount` permet aux clients d'être honnêtes.
+      const basePool = categoryHadNoMatch ? withDistance : categoryFiltered
+      const ungeocoded = basePool.filter(r => r.distanceKm === null)
+      const combined = [...chosen, ...ungeocoded]
+
       // V4-2 : gate d'honnêteté — note servie SEULEMENT si des avis réels
       // existent, compteur servi = compteur réel (le tri géo, lui, est déjà
       // honnête : distance uniquement).
-      const shown  = chosen.slice(0, limit)
+      const shown  = combined.slice(0, limit)
       const counts = await realReviewCounts(shown.map(r => r.id))
       return NextResponse.json({
         restaurants: shown.map(r => honestRating(r, counts.get(r.id) ?? 0)),
-        total:        chosen.length,
+        total:        combined.length,
         radiusUsedKm,                         // null = no radius cap (Infinity)
         categoryHadNoMatch,                   // true = we widened past category
+        ungeocodedCount: ungeocoded.length,   // WAVE 2 — restos sans coords, appendus en fin
+        nearestKm: chosen.length ? chosen[0].distanceKm : null, // WAVE 2 — pour le message « rien tout près »
         userLocation: { lat: userLat, lng: userLng },
       })
     }

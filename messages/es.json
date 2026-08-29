@@ -3041,6 +3041,7 @@
       "geoEnable": "Activar",
       "geoActive": "Ubicación activada — resultados ordenados por proximidad.",
       "geoDisable": "Desactivar ubicación",
+      "geoFarNotice": "No hay restaurantes muy cerca de ti — aquí tienes los disponibles más cercanos.",
       "bannerRealTag": "Ofertas activas",
       "bannerRealTitle": "{count, plural, =1 {1 oferta real cerca de ti} other {# ofertas reales cerca de ti}}",
       "cuiPizza": "Pizza",
@@ -4555,6 +4556,7 @@
       "finish": "Finalizar",
       "doneTitle": "Tu espacio está listo ✅",
       "doneBody": "Tu restaurante está en revisión por nuestro equipo antes de activarse. Ya puedes preparar tu menú desde el panel — se hará visible al aprobarlo.",
+      "geoWarnNotFound": "No hemos podido localizar esta dirección en el mapa. Compruébala en tus ajustes: sin ubicación, tu establecimiento no aparece en la ordenación por proximidad.",
       "doneCta": "Ir al panel",
       "errBrandName": "El nombre de la marca es obligatorio.",
       "errBrandFailed": "No se pudo crear la marca. Inténtalo de nuevo.",
@@ -6876,7 +6878,8 @@
       "actionError": "La acción falló. Inténtalo de nuevo.",
       "networkError": "No se pudo conectar. Comprueba tu red.",
       "connectReady": "Cobros activos",
-      "connectMissing": "Cobros NO activos — el restaurante no podrá recibir pedidos de pago (gate Connect)"
+      "connectMissing": "Cobros NO activos — el restaurante no podrá recibir pedidos de pago (gate Connect)",
+      "geoMissing": "Dirección sin geolocalizar — invisible en la ordenación por proximidad"
     },
     "influencerVerif": {
       "title": "Verificaciones de audiencia",

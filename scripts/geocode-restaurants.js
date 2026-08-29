@@ -40,10 +40,13 @@ const DRY_RUN = process.argv.includes('--dry-run')
 const FORCE   = process.argv.includes('--force')
 
 // ── BAN call (inline so the script has zero TS dependency) ─────────────────
-async function geocode(address, city) {
-  const q = [address, city].filter(Boolean).join(' ').trim()
-  if (!q) return null
-  const url = 'https://api-adresse.data.gouv.fr/search/?q=' +
+// WAVE 2 — postalCode transmis (alignement avec POST /api/restaurants), endpoint
+// Géoplateforme IGN courant (api-adresse legacy décommissionné janv. 2026), et
+// statuts distincts : 'unavailable' (panne du SERVICE) ≠ 'not_found' (adresse).
+async function geocode(address, city, postalCode) {
+  const q = [address, postalCode, city].filter(Boolean).join(' ').trim()
+  if (!q) return { status: 'not_found' }
+  const url = 'https://data.geopf.fr/geocodage/search/?q=' +
               encodeURIComponent(q) + '&limit=1'
   try {
     const ctrl    = new AbortController()
@@ -52,18 +55,19 @@ async function geocode(address, city) {
       signal:  ctrl.signal,
       headers: { 'User-Agent': 'grubano-geocoder/1.0' },
     }).finally(() => clearTimeout(timeout))
-    if (!res.ok) return null
+    if (!res.ok) return { status: 'unavailable' } // panne/429 du SERVICE ≠ adresse invalide
     const json   = await res.json().catch(() => null)
-    const coords = json && json.features && json.features[0]
+    if (!json || !Array.isArray(json.features)) return { status: 'unavailable' }
+    const coords = json.features[0]
                    && json.features[0].geometry
                    && json.features[0].geometry.coordinates
-    if (!Array.isArray(coords) || coords.length !== 2) return null
+    if (!Array.isArray(coords) || coords.length !== 2) return { status: 'not_found' }
     const [lng, lat] = coords
-    if (typeof lat !== 'number' || typeof lng !== 'number') return null
-    if (!Number.isFinite(lat) || !Number.isFinite(lng))    return null
-    return { lat, lng }
+    if (typeof lat !== 'number' || typeof lng !== 'number') return { status: 'not_found' }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng))    return { status: 'not_found' }
+    return { status: 'ok', lat, lng }
   } catch (err) {
-    return null
+    return { status: 'unavailable' }
   }
 }
 
@@ -74,7 +78,7 @@ async function main() {
   const where = FORCE ? {} : { OR: [{ lat: null }, { lng: null }] }
   const restaurants = await prisma.restaurant.findMany({
     where,
-    select: { id: true, name: true, address: true, city: true, lat: true, lng: true },
+    select: { id: true, name: true, address: true, city: true, postalCode: true, lat: true, lng: true },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -82,15 +86,19 @@ async function main() {
               (FORCE ? ' (--force)' : ' (NULL coords only)') +
               (DRY_RUN ? ' [DRY RUN]' : '') + '\n')
 
-  let hits = 0, misses = 0
+  let hits = 0, misses = 0, outages = 0
 
   for (const r of restaurants) {
     const tag = `[${r.id}] ${r.name} — ${r.address}, ${r.city}`
-    const coords = await geocode(r.address, r.city)
-    if (!coords) {
+    const geo = await geocode(r.address, r.city, r.postalCode)
+    if (geo.status === 'unavailable') {
+      outages++
+      console.log(`  ⚠ ${tag}  (service géocodage INDISPONIBLE — pas une adresse invalide)`)
+    } else if (geo.status === 'not_found') {
       misses++
       console.log(`  ✗ ${tag}  (no match)`)
     } else {
+      const coords = geo
       hits++
       console.log(`  ✓ ${tag}  → ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`)
       if (!DRY_RUN) {
@@ -103,7 +111,8 @@ async function main() {
     await wait(250)
   }
 
-  console.log(`\n  Done. ${hits} hit, ${misses} miss${DRY_RUN ? ' (no writes)' : ''}.\n`)
+  console.log(`\n  Done. ${hits} hit, ${misses} miss, ${outages} indisponible(s)${DRY_RUN ? ' (no writes)' : ''}.\n`)
+  if (outages > 0) console.log('  ⚠ Des appels ont échoué côté SERVICE — relancer plus tard avant de conclure à des adresses invalides.\n')
 }
 
 main()

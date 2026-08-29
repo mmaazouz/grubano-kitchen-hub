@@ -3041,6 +3041,7 @@
       "geoEnable": "Enable",
       "geoActive": "Location enabled — results sorted by proximity.",
       "geoDisable": "Disable location",
+      "geoFarNotice": "No restaurants right nearby — here are the closest available ones.",
       "bannerRealTag": "Live offers",
       "bannerRealTitle": "{count, plural, =1 {1 real offer near you} other {# real offers near you}}",
       "cuiPizza": "Pizza",
@@ -4555,6 +4556,7 @@
       "finish": "Finish",
       "doneTitle": "Your space is ready ✅",
       "doneBody": "Your restaurant is being reviewed by our team before going live. You can already prepare your menu from the dashboard — it will become visible upon approval.",
+      "geoWarnNotFound": "We could not locate this address on the map. Check it in your settings: without a location, your establishment does not appear in proximity sorting.",
       "doneCta": "Go to dashboard",
       "errBrandName": "Brand name is required.",
       "errBrandFailed": "Could not create the brand. Please try again.",
@@ -6876,7 +6878,8 @@
       "actionError": "The action failed. Please try again.",
       "networkError": "Could not connect. Check your network.",
       "connectReady": "Payments active",
-      "connectMissing": "Payments NOT active — the restaurant will not be able to receive paid orders (Connect gate)"
+      "connectMissing": "Payments NOT active — the restaurant will not be able to receive paid orders (Connect gate)",
+      "geoMissing": "Address not geolocated — invisible in proximity sorting"
     },
     "influencerVerif": {
       "title": "Audience verifications",

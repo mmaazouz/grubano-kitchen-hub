@@ -71,15 +71,42 @@ describe('GET /api/restaurants — radius expansion', () => {
     expect(data.total).toBe(3)
   })
 
-  it('excludes restaurants without coordinates from the geo results', async () => {
+  // WAVE 2 (2026-08-29) — CHANGEMENT DE CONTRAT assumé : un resto APPROUVÉ sans
+  // coords ne disparaît plus en silence (sur staging, 9/10 restos sans coords →
+  // activer la géo vidait le catalogue). Les lignes lat/lng NULL sont APPENDUES
+  // après les restos triés par distance, sans distanceKm, avec ungeocodedCount.
+  it('appends restaurants without coordinates AFTER the distance-sorted ones (no silent disappearance)', async () => {
     findMany.mockResolvedValue([
-      at(3),
       { ...at(5), id: 'no-coords', lat: null, lng: null },
+      at(3),
     ])
     const data = await callGeo()
     const ids = data.restaurants.map((r: any) => r.id)
-    expect(ids).not.toContain('no-coords')
-    expect(ids).toContain('r3')
+    expect(ids).toEqual(['r3', 'no-coords'])           // triés d'abord, appendus ensuite
+    expect(data.restaurants[1].distanceKm).toBeNull()  // jamais de distance inventée
+    expect(data.ungeocodedCount).toBe(1)
+    expect(data.total).toBe(2)
+  })
+
+  it('reports nearestKm so clients can show an honest « nothing right nearby » notice', async () => {
+    findMany.mockResolvedValue([at(40), at(80)])
+    const data = await callGeo()
+    expect(data.nearestKm).toBe(40)
+  })
+
+  // WAVE 2 — bug prouvé au reality check : q/city étaient IGNORÉS en branche géo
+  // (recherche textuelle inopérante dès que la géoloc était active). Le texte
+  // FILTRE (via le where Prisma), la géo CLASSE.
+  it('passes q and city into the Prisma where of the geo branch', async () => {
+    findMany.mockResolvedValue([at(2)])
+    await callGeo('&q=mama&city=Orange')
+    const where = findMany.mock.calls[0][0].where
+    expect(where.city).toEqual({ contains: 'Orange' })
+    expect(where.OR).toEqual([
+      { name:        { contains: 'mama' } },
+      { description: { contains: 'mama' } },
+      { city:        { contains: 'mama' } },
+    ])
   })
 })
 

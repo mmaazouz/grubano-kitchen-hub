@@ -44,6 +44,9 @@ export default async function AdminApprovalsPage(props: { params: { locale: stri
         // a restaurant approved WITHOUT an active connected account cannot cash
         // in a paid order (gate D5). Advisory ONLY — approval is NOT blocked.
         stripeAccountId: true, stripeAccountStatus: true,
+        // WAVE 2 (advisory géo) — un resto approuvé SANS lat/lng est invisible du
+        // tri par proximité conso. Advisory seulement, n'empêche pas l'approbation.
+        lat: true, lng: true,
         operator: { select: { email: true } },
       },
     }),
@@ -99,6 +102,13 @@ export default async function AdminApprovalsPage(props: { params: { locale: stri
                         ) : (
                           <span className="brk" style={{ color: '#b45309' }}>
                             <span className="ms" aria-hidden="true">warning</span>{t('connectMissing')}
+                          </span>
+                        )}
+                        {/* WAVE 2 — advisory géocodage : sans coords, l'établissement est
+                            invisible du tri par proximité conso. N'empêche pas d'approuver. */}
+                        {(r.lat == null || r.lng == null) && (
+                          <span className="brk" style={{ color: '#b45309' }}>
+                            <span className="ms" aria-hidden="true">location_off</span>{t('geoMissing')}
                           </span>
                         )}
                       </div>

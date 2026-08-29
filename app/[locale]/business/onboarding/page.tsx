@@ -65,6 +65,8 @@ export default function PartnerOnboardingPage() {
   const [step, setStep] = useState<Step>('brand')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // WAVE 2 — geocodeStatus 'not_found' du POST : adresse probablement mal saisie
+  const [geoWarn, setGeoWarn] = useState(false)
 
   // Brand fields
   const [brandName, setBrandName] = useState('')
@@ -241,6 +243,13 @@ export default function PartnerOnboardingPage() {
       // NOTE: Restaurant.isActive is forced to false server-side for partners
       // (POST /api/restaurants). It WILL NOT appear on /eat until an admin
       // approves it. The "done" screen below tells the partner that explicitly.
+      //
+      // WAVE 2 — le serveur renvoie geocodeStatus ('ok' | 'not_found' | 'unavailable') ;
+      // il était JETÉ (échec de géocodage 100 % silencieux : le resto naissait sans
+      // coords et disparaissait du tri géo conso). 'not_found' = adresse probablement
+      // mal saisie → avertissement sur l'écran done ; 'unavailable' = panne du tiers,
+      // pas la faute du partenaire → silencieux (backfill/PATCH rattrapera).
+      if (data && data.geocodeStatus === 'not_found') setGeoWarn(true)
       setStep('done')
     } catch {
       setError(t('errNetwork'))
@@ -270,6 +279,14 @@ export default function PartnerOnboardingPage() {
           <p className="mt-3 whitespace-pre-line text-grubano-sm leading-relaxed text-grubano-ink-muted">
             {t('doneBody')}
           </p>
+          {/* WAVE 2 — avertissement honnête quand l'adresse n'a PAS été géolocalisée
+              (not_found) : sans coords, l'établissement est invisible du tri par
+              proximité côté client. Corrigeable dans Réglages ; l'admin le voit aussi. */}
+          {geoWarn && (
+            <p role="alert" className="mt-3 rounded-grubano-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-left text-grubano-sm text-amber-800">
+              {t('geoWarnNotFound')}
+            </p>
+          )}
           <div className="mt-6">
             <Button
               variant="primary"
