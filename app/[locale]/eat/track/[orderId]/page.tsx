@@ -321,6 +321,13 @@ export default function OrderTrackingScreen() {
           <span>{t('totalPaid')}</span>
           <b>{formatEuros(order.total, locale)}</b>
         </div>
+        {/* WAVE 1 — pass de retrait réel (QR scannable + adresse + itinéraire), câblé au
+            parcours pickup : jusqu'ici l'écran existait mais aucun lien n'y menait. */}
+        {isPickup && !isCancelled && order.status !== 'awaiting_payment' && (
+          <button className="help" onClick={() => router.push(`/eat/order/${order.id}/pickup`)}>
+            <span className="ms">qr_code_2</span>{t('viewPickupPass')}
+          </button>
+        )}
         {/* LOT 4 — routes to the REAL per-order help screen (was a dead push to /eat). */}
         <button className="help" onClick={() => router.push(`/eat/order/${order.id}/help`)}>
           <span className="ms">support_agent</span>{t('needHelp')}

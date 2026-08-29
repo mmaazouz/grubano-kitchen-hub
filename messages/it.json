@@ -3432,6 +3432,7 @@
       "serviceFee": "Costi di servizio",
       "deliveryService": "Consegna + servizio",
       "needHelp": "Hai bisogno di aiuto?",
+      "viewPickupPass": "Mostra il mio pass di ritiro",
       "etaMinutes": "≈ {min} min",
       "approxPosition": "Posizione approssimativa del corriere"
     },
@@ -3570,7 +3571,11 @@
       "magicErrorCta": "Torna all'accesso",
       "magicModalBody": "Inserisci la tua email — ti invieremo un link di accesso senza password.",
       "magicModalSend": "Invia il link",
-      "magicModalClose": "Chiudi"
+      "magicModalClose": "Chiudi",
+      "magicSendFailTitle": "Impossibile inviare l'e-mail",
+      "magicSendFailRate": "Troppi tentativi. Riprovi tra qualche istante.",
+      "magicSendFailDown": "Impossibile inviare l'e-mail al momento. Riprovi più tardi.",
+      "magicSendFailRetry": "Riprova"
     },
     "rewards": {
       "title": "Premi",
@@ -3826,7 +3831,9 @@
       "changeEmail": "Cambia email",
       "usePassword": "Accedi con password",
       "close": "Chiudi",
-      "passwordNudge": "Crea una password più tardi per salvare i tuoi dati e accumulare punti."
+      "passwordNudge": "Crea una password più tardi per salvare i tuoi dati e accumulare punti.",
+      "sendErrorRate": "Troppi tentativi. Riprovi tra qualche istante.",
+      "sendErrorDown": "Impossibile inviare l'e-mail al momento. Riprovi più tardi."
     },
     "geoloc": {
       "title": "Consegna a",
@@ -6688,6 +6695,8 @@
     "otpLabel": "Codice a 6 cifre",
     "otpSubmit": "Convalidare il codice",
     "otpSubmitting": "Verifica…",
+    "sendErrorRate": "Troppi tentativi. Riprovi tra qualche istante.",
+    "sendErrorDown": "Impossibile inviare l'e-mail al momento. Riprovi più tardi.",
     "otpError": "Codice non valido o scaduto. Lo verifichi o richieda un nuovo link."
   },
   "activation": {

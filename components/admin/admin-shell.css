@@ -56,7 +56,9 @@
 .gb-op{display:flex;min-height:100vh;background:var(--op-canvas);color:var(--op-text);overflow:hidden;font-family:var(--op-font-ui);-webkit-font-smoothing:antialiased;container-type:inline-size;container-name:gbop}
 
 /* ── sidebar ── */
-.gb-op .op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:relative}
+/* z-index 6 : garantit que le bouton replier (moitié débordante) passe AU-DESSUS du
+   header .op-top (z:5) — même correctif que le shell opérateur. */
+.gb-op .op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:relative;z-index:6}
 .gb-op[data-sidebar="collapsed"] .op-side{width:76px}
 .gb-op .op-side__brand{display:flex;align-items:center;gap:10px;padding:16px 18px 18px}
 .gb-op .op-side__brand img{height:28px;width:auto;flex-shrink:0}
@@ -78,7 +80,8 @@
 .gb-op .op-nav-item.is-soon{cursor:default;opacity:.5}
 .gb-op .op-nav-item.is-soon:hover{background:none;color:var(--op-chrome-text-dim)}
 .gb-op .op-nav-item .soon{margin-inline-start:auto;font-size:8.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--op-chrome-text-dim2);border:1px solid var(--op-chrome-border);border-radius:999px;padding:1px 6px}
-.gb-op .op-side__collapse{position:absolute;top:22px;inset-inline-end:-12px;width:24px;height:24px;border-radius:50%;background:var(--op-chrome-1);border:1px solid var(--op-chrome-border);color:var(--op-chrome-text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+/* z-index 6 > .op-top (5) : même obstruction que le shell opérateur (moitié débordante sous le header) */
+.gb-op .op-side__collapse{position:absolute;top:22px;inset-inline-end:-12px;width:24px;height:24px;border-radius:50%;background:var(--op-chrome-1);border:1px solid var(--op-chrome-border);color:var(--op-chrome-text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6}
 .gb-op .op-side__collapse .ms{font-size:15px}
 
 /* ── top bar ── */

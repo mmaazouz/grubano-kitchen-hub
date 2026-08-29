@@ -7,6 +7,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { formatEuros } from '@/lib/format-money'
 import { formatTime } from '@/lib/format'
+import { QRCodeSVG } from 'qrcode.react'
 import './pickup.css'
 // gb-* design FOUNDATION (Agent 168) — tokens + Material `.ms` font. The page wraps in
 // `.gb` so the foundation tokens/font resolve; all component CSS lives in pickup.css.
@@ -32,10 +33,14 @@ import '@/app/gb-foundation/gb-components.css'
 //        received / preparing   → « En préparation » (hero animé + stepper + QR dim)
 //  • « Prête à » heure = real estimatedTime applied to createdAt (same as /eat/track).
 //
-// The QR is a STYLED visual placeholder (qr_code_2 glyph) — a visual representation of
-// the real ref, NOT a scannable payload (no invented barcode data). Itinéraire / J'arrive
-// / Me prévenir are INERT (no real geolocation/notify backend — C&C backend = chantier
-// après Wave 5); they are non-mutating placeholders. NEVER fabricates a code/amount.
+// WAVE 1 (2026-08-29) — le pass est désormais CÂBLÉ au parcours réel (/eat/orders et
+// /eat/track y mènent pour les commandes pickup) :
+//  • QR = VRAI code scannable (qrcode.react, déjà en dépendance) encodant la réf réelle.
+//  • ADRESSE complète du lieu de retrait visible sur le pass (exigence fondateur).
+//  • « Voir l'itinéraire » = lien cartographique réel (coords du resto si géocodé, sinon
+//    l'adresse texte). Grubano ne calcule NI trajet NI ETA — l'app de cartes s'en charge.
+//  • « J'arrive » / « Me prévenir » (boutons INERTES) ont été RETIRÉS — aucun backend.
+//  • Aucune distance Haversine affichée comme distance de trajet (décision bêta).
 
 interface OrderItem { name: string; qty: number; price: number }
 interface Order {
@@ -45,7 +50,7 @@ interface Order {
   total: number
   estimatedTime: number
   items: OrderItem[]
-  restaurant?: { name?: string; address?: string; city?: string } | null
+  restaurant?: { name?: string; address?: string; city?: string; lat?: number | null; lng?: number | null } | null
   createdAt: string
 }
 
@@ -74,6 +79,19 @@ export default function PickupPassScreen() {
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [authStatus, orderId])
+
+  // GARDE MÉTIER (WAVE 1) : le pass n'existe que pour une commande PICKUP dont l'état
+  // permet réellement le retrait. Delivery, impayée (awaiting_payment) ou annulée →
+  // retour au suivi, jamais un pass. (L'ownership est déjà appliqué serveur : 404
+  // cross-tenant sur GET /api/orders/[id].)
+  const passless = order && (
+    order.fulfillmentType !== 'pickup' ||
+    order.status === 'awaiting_payment' ||
+    order.status === 'cancelled'
+  )
+  useEffect(() => {
+    if (passless) router.replace(`/eat/track/${orderId}`)
+  }, [passless, router, orderId])
 
   const items = useMemo<OrderItem[]>(() => (Array.isArray(order?.items) ? order!.items : []), [order])
 
@@ -146,11 +164,23 @@ export default function PickupPassScreen() {
     )
   }
 
+  // Redirection en cours (delivery / impayée / annulée) → rien à peindre.
+  if (passless) return null
+
   // Real status → the 2 CD states. ready/picked_up = « Prête » ; otherwise « En préparation ».
   const ready = order.status === 'ready' || order.status === 'picked_up'
   const code = refOf(orderId)
   const restaurantName = order.restaurant?.name ?? '—'
   const restaurantAddress = [order.restaurant?.address, order.restaurant?.city].filter(Boolean).join(', ') || '—'
+  // « Voir l'itinéraire » : Grubano TRANSMET l'adresse réelle du resto à l'app de cartes
+  // (coords si géocodé, sinon texte) — trajet/temps calculés par la carte, jamais ici.
+  const hasCoords = typeof order.restaurant?.lat === 'number' && typeof order.restaurant?.lng === 'number'
+  const mapsDest = hasCoords
+    ? `${order.restaurant?.lat},${order.restaurant?.lng}`
+    : [order.restaurant?.address, order.restaurant?.city].filter(Boolean).join(', ')
+  const mapsUrl = mapsDest
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapsDest)}`
+    : null
 
   return (
     <div className="gb gb-pickup">
@@ -187,10 +217,10 @@ export default function PickupPassScreen() {
           </>
         )}
 
-        {/* GRAND code + QR — the QR is a styled visual of the real ref (not a scannable
-            payload). Dimmed (.dim) while still preparing. */}
+        {/* GRAND code + QR — VRAI QR scannable (qrcode.react) encodant la réf réelle, la
+            même que le restaurateur voit sur /orders. Dimmed (.dim) while preparing. */}
         <div className={`pk-code big${ready ? '' : ' dim'}`}>
-          <span className="qr"><span className="ms" aria-hidden="true">qr_code_2</span></span>
+          <span className="qr"><QRCodeSVG value={code} size={124} level="M" marginSize={0} /></span>
           <small>{t('codeLabel')}</small>
           <b><bdi>{code}</bdi></b>
           <span className="hint">
@@ -222,24 +252,18 @@ export default function PickupPassScreen() {
         </div>
       </div>
 
-      {/* actions — INERT placeholders (no real geoloc/notify backend; C&C backend after
-          Wave 5). Itinéraire + J'arrive (ready) / Me prévenir (preparing). */}
+      {/* action — « Voir l'itinéraire » RÉEL : ouvre l'app de cartes sur l'adresse du
+          restaurant (trajet/temps calculés par la carte, jamais par Grubano).
+          « J'arrive » / « Me prévenir » RETIRÉS : aucun backend — un bouton inerte ment. */}
       <div className="foot">
         <div className="inner">
-          <div className="pk-acts">
-            <button type="button" className="w">
-              <span className="ms" aria-hidden="true">directions</span>{t('actRoute')}
-            </button>
-            {ready ? (
-              <button type="button" className="o">
-                <span className="ms" aria-hidden="true">directions_walk</span>{t('actArriving')}
-              </button>
-            ) : (
-              <button type="button" className="o">
-                <span className="ms" aria-hidden="true">notifications_active</span>{t('actNotify')}
-              </button>
-            )}
-          </div>
+          {mapsUrl && (
+            <div className="pk-acts">
+              <a className="w" href={mapsUrl} target="_blank" rel="noopener noreferrer">
+                <span className="ms" aria-hidden="true">directions</span>{t('actRoute')}
+              </a>
+            </div>
+          )}
           <small>{t('footNote')}</small>
         </div>
       </div>

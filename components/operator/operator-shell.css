@@ -60,7 +60,10 @@
 .gb-op{display:flex;min-height:100vh;min-height:100dvh;background:var(--op-canvas);color:var(--op-text);font-family:var(--op-font-ui);-webkit-font-smoothing:antialiased;overflow:hidden}
 
 /* left sidebar (navy, collapsible) */
-.gb-op .op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:sticky;top:0;height:100vh;height:100dvh}
+/* z-index 6 : position:sticky crée TOUJOURS un stacking context → sans z-index propre,
+   la moitié débordante du bouton .op-side__collapse restait peinte SOUS .op-top (z:5)
+   et le clic était absorbé par le header (dead control prouvé au reality check). */
+.gb-op .op-side{width:256px;flex-shrink:0;background:linear-gradient(185deg,var(--op-chrome-1),var(--op-chrome-1) 70%,var(--op-chrome-2));display:flex;flex-direction:column;padding:8px 0 12px;position:sticky;top:0;height:100vh;height:100dvh;z-index:6}
 .gb-op[data-sidebar="collapsed"] .op-side{width:76px}
 .gb-op .op-side__brand{display:flex;align-items:center;gap:10px;padding:16px 18px 18px}
 .gb-op .op-side__brand img{height:28px;width:auto;flex-shrink:0}
@@ -84,7 +87,8 @@
 .gb-op .op-nav-item.disabled{opacity:.35;pointer-events:none}
 .gb-op[data-scale="none"] .op-nav-item[data-requires-estab]{opacity:.35;pointer-events:none}
 .gb-op[data-scale="none"] .op-nav-item--ai{opacity:.35;pointer-events:none}
-.gb-op .op-side__collapse{position:absolute;top:22px;inset-inline-end:-12px;width:24px;height:24px;border-radius:50%;background:var(--op-chrome-1);border:1px solid var(--op-chrome-border);color:var(--op-chrome-text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+/* z-index 6 > .op-top (5) : la moitié débordante (-12px) du bouton passait SOUS le header sticky qui absorbait le clic */
+.gb-op .op-side__collapse{position:absolute;top:22px;inset-inline-end:-12px;width:24px;height:24px;border-radius:50%;background:var(--op-chrome-1);border:1px solid var(--op-chrome-border);color:var(--op-chrome-text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6}
 .gb-op .op-side__collapse .ms{font-size:15px}
 
 /* main column */
