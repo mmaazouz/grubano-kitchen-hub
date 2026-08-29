@@ -403,7 +403,7 @@ export async function sendPartnerStatusEmail(p: {
 // / create-if-absent) so a fixed key = once. Influencer re-application (a rejected request
 // resets to pending) CAN legitimately re-alert → the caller passes an `occurrence`
 // discriminant (day-bucket), mirroring B4's repeatable-status discipline.
-export type AdminPartnerRole = 'restaurant' | 'supplier' | 'influencer'
+export type AdminPartnerRole = 'restaurant' | 'supplier' | 'influencer' | 'logistics'
 
 export async function sendAdminNewPartnerEmail(p: {
   role:        AdminPartnerRole
@@ -419,6 +419,7 @@ export async function sendAdminNewPartnerEmail(p: {
   const label =
     p.role === 'restaurant' ? 'restaurant'
     : p.role === 'supplier' ? 'fournisseur'
+    : p.role === 'logistics' ? 'livreur'
     :                         'influenceur'
   const name = esc(p.partnerName)
   const dedupeKey = p.occurrence ? `${p.dedupeScope}:${p.occurrence}` : p.dedupeScope
@@ -429,6 +430,29 @@ export async function sendAdminNewPartnerEmail(p: {
     + table(row('Type', label) + row('Partenaire', name))
     + `<p style="font-size:13px;color:#6b7280">Ouvrez la console d'administration pour examiner et valider ce dossier.</p>`
   return sendOnce('admin_partner_pending', dedupeKey, { to, subject, html: shell('Nouveau dossier à valider', body) })
+}
+
+// ── WAVE 3 (2026-08-29) — confirmation LISTE D'ATTENTE livreur ─────────────────
+// Envoyée au CANDIDAT après une inscription fraîche réussie (DB commitée) — jamais
+// sur le chemin honeypot/doublon (anti-énumération). HONNÊTE : aucune promesse de
+// date, de délai, de revenu ni d'activation automatique — le service n'est pas
+// encore ouvert, la demande est enregistrée, on recontactera. Best-effort via le
+// rail B0 sendOnce (dedupeKey = `logistics:<profileId>` → une seule confirmation).
+export async function sendCourierWaitlistConfirmation(p: {
+  to: string
+  contactName: string
+  dedupeKey: string
+}): Promise<{ status: SendStatus }> {
+  const name = esc(p.contactName)
+  const subject = 'Votre demande Grubano Livreur est bien enregistrée'
+  const body =
+    `<p>Bonjour ${name},</p>`
+    + `<p>Merci pour votre intérêt. Le service Grubano Livreur n'est pas encore ouvert : `
+    + `votre demande a bien été <strong>enregistrée sur la liste d'attente</strong>.</p>`
+    + `<p>Nous vous recontacterons à cette adresse lorsque l'ouverture sera possible dans votre zone. `
+    + `Aucune action n'est requise de votre part d'ici là.</p>`
+    + `<p style="font-size:13px;color:#6b7280">Aucun compte actif n'a été créé — vous ne pouvez pas encore vous connecter.</p>`
+  return sendOnce('courier_waitlist_confirmation', p.dedupeKey, { to: p.to, subject, html: shell('Demande enregistrée', body) })
 }
 
 // ── Account email change (Agent 147) ───────────────────────────────────────────

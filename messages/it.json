@@ -4665,6 +4665,8 @@
       "partnerTypeCompany": "Società",
       "fieldSiren": "SIREN o SIRET della tua azienda",
       "fieldSirenHint": "Il tuo numero ufficiale: SIREN (9 cifre) o SIRET (14). Verifica ufficiale e gratuita.",
+      "fieldSirenOptional": "facoltativo",
+      "fieldSirenOptionalHint": "Facoltativo in questa fase: potrà fornirlo al momento dell'attivazione. Se lo ha, accelera la verifica.",
       "fieldSirenError": "Inserisci un SIREN (9 cifre) o un SIRET (14 cifre).",
       "fieldMissionTypes": "Tipi di missione",
       "missionRepas": "Consegna pasti",

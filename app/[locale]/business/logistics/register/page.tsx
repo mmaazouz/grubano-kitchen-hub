@@ -105,9 +105,13 @@ export default function LogisticsRegisterPage() {
 
   // Inline SIREN/SIRET format check (9 or 14 digits, spaces tolerated) — UX only;
   // the server re-validates and is the source of truth.
+  // WAVE 3 — le SIREN devient OPTIONNEL pour un indépendant au stade liste
+  // d'attente (« informations minimales, pas de KYC ») ; requis pour une société.
   const sirenDigits    = siren.replace(/\s+/g, '')
-  const sirenValid     = /^\d{9}$/.test(sirenDigits) || /^\d{14}$/.test(sirenDigits)
-  const showSirenError = siren.trim().length > 0 && !sirenValid
+  const sirenFormatOk  = /^\d{9}$/.test(sirenDigits) || /^\d{14}$/.test(sirenDigits)
+  const sirenRequired  = partnerType === 'company'
+  const sirenValid     = sirenRequired ? sirenFormatOk : (sirenDigits === '' || sirenFormatOk)
+  const showSirenError = siren.trim().length > 0 && !sirenFormatOk
 
   function toggle(list: string[], setList: (v: string[]) => void, v: string) {
     setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
@@ -130,7 +134,8 @@ export default function LogisticsRegisterPage() {
           contactName,
           contactEmail,
           contactPhone: contactPhone || undefined,
-          siren,
+          // WAVE 3 — omis quand vide (indépendant en liste d'attente, sans KYC)
+          siren: sirenDigits || undefined,
           missionTypes,
           vehicleTypes,
           zones: zones.split(',').map((z) => z.trim()).filter(Boolean),
@@ -406,12 +411,13 @@ export default function LogisticsRegisterPage() {
               </div>
 
               <div className="fld">
-                <label htmlFor="lo-siren">{t('fieldSiren')}</label>
+                {/* WAVE 3 — optionnel pour un indépendant (liste d'attente) ; requis société */}
+                <label htmlFor="lo-siren">{t('fieldSiren')}{!sirenRequired && ` — ${t('fieldSirenOptional')}`}</label>
                 <input
                   id="lo-siren"
                   className="inp mono"
                   type="text"
-                  required
+                  required={sirenRequired}
                   inputMode="numeric"
                   placeholder="123 456 789"
                   value={siren}
@@ -419,7 +425,7 @@ export default function LogisticsRegisterPage() {
                 />
                 <div className={`hint${showSirenError ? ' fld-err' : ''}`}>
                   <span className="ms">{showSirenError ? 'error' : 'info'}</span>
-                  <span>{showSirenError ? t('fieldSirenError') : t('fieldSirenHint')}</span>
+                  <span>{showSirenError ? t('fieldSirenError') : sirenRequired ? t('fieldSirenHint') : t('fieldSirenOptionalHint')}</span>
                 </div>
                 <div className="hint"><span className="ms">verified_user</span><span>{tU('justificatifsHint')}</span></div>
               </div>

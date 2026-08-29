@@ -41,7 +41,8 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `LOGISTICS_COURIER_ACCRUAL_ENABLED` | `lib/courier-accrual.ts` | Accrual course livreur (cas B) |
 | `LOGISTICS_COURIER_ACTIVATION_ENABLED` | `lib/logistics-account.ts` | Activation des comptes livreurs |
 | `LOGISTICS_DISTANCE_FEE_ENABLED` | `lib/logistics-fee.ts` | Frais de livraison à la distance |
-| `LOGISTICS_ENABLED` | `lib/logistics-account.ts` | P0-06 (Q8) : rôle LIVREUR entier — 17 routes 404 OFF. EXCLUSIONS voulues : fee-preview (surface panier conso), positions/sweep (purge RGPD cron), my-position-data (art. 15/17), tracking-consent (retrait du consentement) |
+| `LOGISTICS_ENABLED` | `lib/logistics-account.ts` | P0-06 (Q8) : rôle LIVREUR OPÉRATIONNEL — 17 routes 404 OFF (dashboards, missions, earnings…). EXCLUSIONS voulues : fee-preview (surface panier conso), positions/sweep (purge RGPD cron), my-position-data (art. 15/17), tracking-consent (retrait du consentement). Depuis WAVE 3, ne gate PLUS l'inscription (voir `LOGISTICS_SIGNUP_ENABLED`) |
+| `LOGISTICS_SIGNUP_ENABLED` | `lib/logistics-account.ts` | WAVE 3 (2026-08-29) : INSCRIPTION livreur seule — landing `/business/logistics` + formulaire LO5 + `POST /api/logistics/register` (waitlist réelle : LogisticsProfile `pending` + Operator non-connectable + emails de confirmation honnêtes). N'ouvre RIEN d'opérationnel : `LOGISTICS_COURIER_ACTIVATION_ENABLED` (OFF) reste le verrou d'activation. Implique : activer `RATE_LIMIT_ENABLED` en même temps (endpoint public). `LOGISTICS_ENABLED=true` implique signup ouvert (non-régression) |
 | `LOGISTICS_MISSIONS_ENABLED` | `lib/missions.ts` | Missions livreur (404 OFF) |
 | `LOGISTICS_PAYOUT_ENABLED` | `lib/creator-payout.ts` | Versements livreurs |
 | `LOGISTICS_TRACKING_ENABLED` | `lib/logistics-tracking.ts` | Géoloc livreur (capture + affichage + purge) |

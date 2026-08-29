@@ -10,6 +10,10 @@ const { db, la, biz, idp } = vi.hoisted(() => ({
   db: { logisticsProfile: { findUnique: vi.fn(), create: vi.fn() } },
   la: {
     isLogisticsEnabled: () => process.env.LOGISTICS_ENABLED === 'true',
+    // WAVE 3 — la route gate désormais sur le flag INSCRIPTION (miroir du vrai
+    // isLogisticsSignupEnabled : signup OU rôle complet). Complétion de harnais
+    // uniquement — aucune assertion modifiée.
+    isLogisticsSignupEnabled: () => process.env.LOGISTICS_SIGNUP_ENABLED === 'true' || process.env.LOGISTICS_ENABLED === 'true',
     ensureLogisticsOperator: vi.fn(),
     decideLogisticsOutcome: vi.fn(),
     applyCourierActivationGate: vi.fn(),

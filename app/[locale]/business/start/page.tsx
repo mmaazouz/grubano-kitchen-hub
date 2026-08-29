@@ -5,7 +5,7 @@ import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { isCreatorEnabled } from '@/lib/creator-account'
 import { isSupplierEnabled } from '@/lib/supplier-account'
 import { isFranchiseEnabled } from '@/lib/franchise-account'
-import { isLogisticsEnabled } from '@/lib/logistics-account'
+import { isLogisticsSignupEnabled } from '@/lib/logistics-account'
 import { isAffiliateEnabled } from '@/lib/affiliate-account'
 import './start.css'
 
@@ -70,7 +70,7 @@ export default async function BusinessStartPage({ params }: { params: { locale: 
   // affilié : un lien de navigation vers une capacité masquée est une promesse
   // fantôme (échec constaté par le fondateur). Rôles gelés → cartes ABSENTES.
   const ROLE_FLAG_OF: Record<string, () => boolean> = {
-    fournisseur: isSupplierEnabled, creator: isCreatorEnabled, logistique: isLogisticsEnabled,
+    fournisseur: isSupplierEnabled, creator: isCreatorEnabled, logistique: isLogisticsSignupEnabled, // WAVE 3 : la carte livreur suit l'INSCRIPTION (waitlist), pas l'opérationnel
   }
   const partners: Partner[] = BASE_PARTNERS.filter((p) => ROLE_FLAG_OF[p.key]?.() ?? true)
   if (isPrestataireEnabled()) partners.push(PRESTATAIRE_PARTNER)
