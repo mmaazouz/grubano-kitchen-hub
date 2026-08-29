@@ -4663,6 +4663,8 @@
       "partnerTypeCompany": "Empresa",
       "fieldSiren": "SIREN o SIRET de tu empresa",
       "fieldSirenHint": "Tu número oficial: SIREN (9 dígitos) o SIRET (14). Verificación oficial y gratuita.",
+      "fieldSirenOptional": "opcional",
+      "fieldSirenOptionalHint": "Opcional en esta etapa: podrás facilitarlo en el momento de la activación. Si lo tienes, acelera la verificación.",
       "fieldSirenError": "Introduce un SIREN (9 dígitos) o un SIRET (14 dígitos).",
       "fieldMissionTypes": "Tipos de misión",
       "missionRepas": "Entrega de comidas",

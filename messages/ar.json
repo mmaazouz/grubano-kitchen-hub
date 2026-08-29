@@ -4663,6 +4663,8 @@
       "partnerTypeCompany": "شركة",
       "fieldSiren": "رقم SIREN أو SIRET لشركتك",
       "fieldSirenHint": "رقمك الرسمي: SIREN (9 أرقام) أو SIRET (14). تحقق رسمي ومجاني.",
+      "fieldSirenOptional": "اختياري",
+      "fieldSirenOptionalHint": "اختياري في هذه المرحلة: يمكنك تقديمه عند التفعيل. إن كان لديك، فسيُسرّع عملية التحقق.",
       "fieldSirenError": "أدخل رقم SIREN (9 أرقام) أو SIRET (14 رقمًا).",
       "fieldMissionTypes": "أنواع المهام",
       "missionRepas": "توصيل الوجبات",

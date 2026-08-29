@@ -11,7 +11,7 @@ import { isPrestataireEnabled } from '@/lib/prestataire-account'
 import { isCreatorEnabled } from '@/lib/creator-account'
 import { isSupplierEnabled } from '@/lib/supplier-account'
 import { isFranchiseEnabled } from '@/lib/franchise-account'
-import { isLogisticsEnabled } from '@/lib/logistics-account'
+import { isLogisticsSignupEnabled } from '@/lib/logistics-account'
 import { addableActivities, activityHref, activityMode, type AddableActivity } from '@/lib/add-activity'
 import PartnerChrome from '@/components/business/PartnerChrome'
 import './add-activity.css'
@@ -73,7 +73,7 @@ export default async function AddActivityPage({ params }: { params: { locale: st
     enabledPartnerActivities: {
       supplier:  isSupplierEnabled(),
       creator:   isCreatorEnabled(),
-      logistics: isLogisticsEnabled(),
+      logistics: isLogisticsSignupEnabled(), // WAVE 3 : inscription/waitlist
       franchise: isFranchiseEnabled(),
     },
   })

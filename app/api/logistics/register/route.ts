@@ -5,7 +5,8 @@ import { ensureLogisticsOperator, decideLogisticsOutcome, applyCourierActivation
 import { verifyBusiness } from '@/lib/business-verification'
 import { propagateVerifiedCompanyIdentity } from '@/lib/identity-propagation'
 import { rateLimit } from '@/lib/rate-limit'
-import { isLogisticsEnabled } from '@/lib/logistics-account'
+import { isLogisticsSignupEnabled } from '@/lib/logistics-account'
+import { sendCourierWaitlistConfirmation, sendAdminNewPartnerEmail } from '@/lib/transactional-emails'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,9 +31,14 @@ const registerSchema = z.object({
   contactEmail: z.string().email('Email invalide'),
   contactPhone: z.string().max(40).optional(),
   // SIREN (9) or SIRET (14) — spaces tolerated; verified against the official registry.
+  // WAVE 3 — OPTIONNEL pour un 'independent' au stade LISTE D'ATTENTE (décision
+  // fondateur : « informations minimales, pas de KYC ») ; toujours REQUIS pour une
+  // 'company' (superRefine ci-dessous). Sans SIREN : AUCUN appel verifyBusiness
+  // (tiers payant) — le profil part directement en 'pending'.
   siren:        z.string()
                   .transform((s) => s.replace(/\s+/g, ''))
-                  .refine((s) => /^\d{9}$/.test(s) || /^\d{14}$/.test(s), 'SIREN (9 chiffres) ou SIRET (14 chiffres) requis'),
+                  .refine((s) => s === '' || /^\d{9}$/.test(s) || /^\d{14}$/.test(s), 'SIREN (9 chiffres) ou SIRET (14 chiffres) invalide')
+                  .optional(),
   missionTypes: z.array(z.enum(MISSION_TYPES)).min(1, 'Choisissez au moins un type de mission').max(MISSION_TYPES.length),
   vehicleTypes: z.array(z.enum(VEHICLE_TYPES)).min(1, 'Choisissez au moins un véhicule').max(VEHICLE_TYPES.length),
   zones:        z.array(z.string().min(1).max(80)).max(50).default([]),
@@ -41,6 +47,12 @@ const registerSchema = z.object({
   // impossibly fast submit → silent generic OK (no signal to the bot).
   website:       z.string().optional(),
   formStartedAt: z.number().int().optional(),
+}).superRefine((d, ctx) => {
+  // WAVE 3 — une société doit fournir son SIREN ; un indépendant peut s'inscrire
+  // en liste d'attente sans (vérification d'identité reportée à l'activation).
+  if (d.partnerType === 'company' && (!d.siren || d.siren === '')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['siren'], message: 'SIREN (9 chiffres) ou SIRET (14 chiffres) requis pour une société' })
+  }
 })
 
 // Uniform success shape `{ ok, outcome }` for EVERY accepted submission so a bot or
@@ -68,8 +80,10 @@ function ok(outcome: Outcome, officialName?: string | null, waitlist = false) {
 
 export async function POST(req: Request) {
   // P0-06 — rôle masqué (doctrine Q8) : indisponible côté serveur. 404 en PREMIÈRE
-  // ligne — AVANT toute lecture de secret, session, body ou écriture (patron PRESTATAIRE_ENABLED).
-  if (!isLogisticsEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // ligne — AVANT toute lecture de secret, session, body ou écriture.
+  // WAVE 3 — gate INSCRIPTION (LOGISTICS_SIGNUP_ENABLED) : la waitlist s'ouvre sans
+  // rien rouvrir d'opérationnel (second verrou d'activation intact).
+  if (!isLogisticsSignupEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // S2 (abuse/cost) — this PUBLIC endpoint triggers a paid verifyBusiness call (LLM + official
   // registry) on a fresh SIREN, so throttle it per-IP (in addition to the honeypot + 2 s delay
@@ -116,25 +130,31 @@ export async function POST(req: Request) {
       return ok('pending', null, waitlist)
     }
 
-    // FRESH registration → AUTOMATIC BUSINESS-IDENTITY verification (REUSED, UNMODIFIED).
-    // The official registry decides existence + active state; the LLM only fuzzy-matches
-    // the name. decideLogisticsOutcome then applies NAME-TOLERANT gating: a name-only
-    // mismatch (registry confirmed the company) ACTIVATES; only not-found / ceased
-    // rejects; any incident (registry/LLM down) → 'pending' (FAIL-SAFE, never auto-reject).
-    const siren = data.siren.slice(0, 9) // SIREN = first 9 digits of a SIREN or SIRET
-    const verification = await verifyBusiness({
-      siren,
-      declaredName: data.contactName,
-      categories:   data.missionTypes,
-    })
-    // Apply the ACTIVATION GATE: while courier activation is OFF (default), a would-be
-    // 'active' outcome (incl. the name-tolerant auto-activation) is demoted to the
-    // non-active 'pending' WAITLIST. The registry verification fact (verificationStatus /
-    // officialName) is preserved; only the activation status moves.
-    const decision = applyCourierActivationGate(decideLogisticsOutcome(verification), activationEnabled)
+    // FRESH registration → AUTOMATIC BUSINESS-IDENTITY verification (REUSED, UNMODIFIED)
+    // quand un SIREN est fourni. WAVE 3 : SANS SIREN (indépendant, stade intérêt),
+    // AUCUN appel verifyBusiness (tiers PAYANT) — le profil part directement en
+    // 'pending' waitlist ; la vérification d'identité se fera à l'ACTIVATION.
+    const siren = data.siren ? data.siren.slice(0, 9) : null // SIREN = first 9 digits of a SIREN or SIRET
+    let officialName: string | null = null
+    let decision: { status: 'active' | 'pending' | 'rejected'; verificationStatus: string | null; reason: string | null }
+    if (siren) {
+      const verification = await verifyBusiness({
+        siren,
+        declaredName: data.contactName,
+        categories:   data.missionTypes,
+      })
+      officialName = verification.officialName ?? null
+      // Apply the ACTIVATION GATE: while courier activation is OFF (default), a would-be
+      // 'active' outcome (incl. the name-tolerant auto-activation) is demoted to the
+      // non-active 'pending' WAITLIST. The registry verification fact (verificationStatus /
+      // officialName) is preserved; only the activation status moves.
+      decision = applyCourierActivationGate(decideLogisticsOutcome(verification), activationEnabled)
+    } else {
+      decision = { status: 'pending', verificationStatus: null, reason: 'Intérêt enregistré sans SIREN — identité à vérifier avant activation' }
+    }
     const status = decision.status
 
-    await prisma.logisticsProfile.create({
+    const profile = await prisma.logisticsProfile.create({
       data: {
         email,
         partnerType:        data.partnerType,
@@ -145,13 +165,22 @@ export async function POST(req: Request) {
         zones:              data.zones,
         status,
         siren,
-        officialName:       verification.officialName,
+        officialName,
         verificationStatus: decision.verificationStatus,
         verifiedAt:         status === 'active' ? new Date() : null,
         vettingReason:      decision.reason,
         vettingAt:          new Date(),
       },
+      select: { id: true },
     })
+
+    // WAVE 3 — confirmations HONNÊTES, best-effort et idempotentes (sendOnce), sur le
+    // chemin FRESH uniquement (jamais sur honeypot/doublon : anti-énumération intacte).
+    // L'UI a DÉJÀ répondu vrai (écriture DB réussie) — un échec SMTP ne perd rien.
+    if (status !== 'rejected') {
+      await sendCourierWaitlistConfirmation({ to: email, contactName: data.contactName, dedupeKey: `logistics:${profile.id}` })
+      await sendAdminNewPartnerEmail({ role: 'logistics', partnerName: data.contactName, dedupeScope: `logistics:${profile.id}` })
+    }
 
     // Provision the passwordless login. ACTIVATE (+ graft the 'logistics' role) ONLY
     // when auto-verified; a 'pending' account is created un-activated (review activates
@@ -162,15 +191,17 @@ export async function POST(req: Request) {
       // B1.3-B "collect once": copy the VERIFIED company identity to the shared
       // account anchor (best-effort; no-op unless verificationStatus==='verified').
       // Reads the just-computed result only — verification logic is untouched.
-      await propagateVerifiedCompanyIdentity({
-        email,
-        siren,
-        officialName:       verification.officialName,
-        verificationStatus: decision.verificationStatus,
-      })
+      if (siren) {
+        await propagateVerifiedCompanyIdentity({
+          email,
+          siren,
+          officialName,
+          verificationStatus: decision.verificationStatus,
+        })
+      }
     }
 
-    return ok(status, verification.officialName, waitlist)
+    return ok(status, officialName, waitlist)
   } catch (err) {
     console.error('[POST /api/logistics/register]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

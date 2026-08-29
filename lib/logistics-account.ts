@@ -194,3 +194,20 @@ export async function ensureLogisticsOperator(
 export function isLogisticsEnabled(): boolean {
   return process.env.LOGISTICS_ENABLED === 'true'
 }
+
+// ── WAVE 3 (2026-08-29) — INSCRIPTION livreur séparée de l'OPÉRATIONNEL ────────
+// Le reality check a établi que LOGISTICS_ENABLED gattait PAR ERREUR l'inscription
+// (landing + formulaire + POST register) en plus des 17 rails opérationnels : le
+// métier livreur était invisible ET injoignable. Décision fondateur : un livreur
+// doit pouvoir manifester son intérêt et être enregistré en LISTE D'ATTENTE, sans
+// rien activer d'opérationnel.
+//
+// Ce flag n'ouvre QUE : la landing /business/logistics, le formulaire LO5 et le
+// POST /api/logistics/register. La sûreté « waitlist only » est garantie par le
+// SECOND verrou indépendant LOGISTICS_COURIER_ACTIVATION_ENABLED (OFF) : même
+// inscrit, aucun compte ne devient 'active', aucun rôle 'logistics' n'entre dans
+// le role SET, dashboards et APIs opérationnelles restent 404.
+// (le `|| isLogisticsEnabled()` garde la non-régression le jour où le rôle ouvre.)
+export function isLogisticsSignupEnabled(): boolean {
+  return process.env.LOGISTICS_SIGNUP_ENABLED === 'true' || isLogisticsEnabled()
+}
