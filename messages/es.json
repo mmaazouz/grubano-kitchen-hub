@@ -626,7 +626,9 @@
     },
     "status": {
       "open": "Abierto",
-      "closed": "Cerrado"
+      "closed": "Cerrado",
+      "published": "Publicado",
+      "unpublished": "No publicado"
     },
     "dash": {
       "title": "Panel",
@@ -1177,6 +1179,16 @@
       "navPromotions": "Promociones"
     },
     "hub": {
+      "addr": {
+        "title": "Dirección del establecimiento",
+        "desc": "Corrige aquí la dirección introducida al registrarte. Determina la posición de tu establecimiento en el mapa y en la ordenación por proximidad.",
+        "save": "Guardar la dirección",
+        "saved": "Dirección guardada.",
+        "errRequired": "La dirección, el código postal y la ciudad son obligatorios.",
+        "errPostalCode": "Código postal no válido — se esperan 5 dígitos (ej. 30210).",
+        "errCity": "Ciudad no válida — introduce un nombre de ciudad (ej. Fournès), no un código postal.",
+        "errSaveFailed": "No se pudo guardar la dirección. Inténtalo de nuevo."
+      },
       "bcRoot": "Mis establecimientos",
       "bcMenu": "Menú",
       "online": "En línea",
@@ -4512,7 +4524,7 @@
     },
     "verified": {
       "successTitle": "Email verificado ✅",
-      "successBody": "Tu cuenta de socio está siendo revisada por nuestro equipo antes de activarse. Te avisaremos por email en cuanto esté lista.",
+      "successBody": "Tu email está verificado y tu cuenta de socio está activa: inicia sesión con un enlace mágico para crear tu establecimiento. Una vez configurado, la puesta en línea de tu restaurante será validada por nuestro equipo.",
       "successCta": "Ir al inicio de sesión",
       "expiredTitle": "Enlace caducado",
       "expiredBody": "Este enlace de verificación ha caducado. Vuelve a iniciar sesión para solicitar un nuevo email.",
@@ -8242,7 +8254,7 @@
   },
   "more": {
     "title": "Ajustes",
-    "subtitle": "Gestiona tu cuenta, tu facturación y tu información legal",
+    "subtitle": "Gestiona tu cuenta y tu información legal",
     "soon": "Próximamente",
     "logout": "Cerrar sesión",
     "loggingOut": "Cerrando sesión…",

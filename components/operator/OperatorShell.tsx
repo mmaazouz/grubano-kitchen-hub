@@ -13,9 +13,11 @@ import './operator-shell.css'
 //
 // 🔒 Presentation-only re-skin of the legacy Sidebar/MobileHeader/BottomNav. Routing,
 // session, the establishment switcher (cookie) + the longest-href-wins active rule are
-// PRESERVED from the old shell. No money/auth/data logic. The Open/Closed toggle is a
-// local visual state (no backend yet → honest). Cuisine → /prep (mockup); Équipe +
-// Copilote have no route yet → rendered inert « bientôt ».
+// PRESERVED from the old shell. No money/auth/data logic. The former "Open/Closed"
+// toggle was REMOVED (dead local state with no backend — it lied to operators); a real
+// order-pause control is a separate post-beta ticket. The establishment badge shows the
+// PUBLICATION state (isActive, admin-controlled) with honest wording: Publié/Non publié.
+// Cuisine → /prep (mockup); Équipe + Copilote have no route yet → rendered inert « bientôt ».
 
 const ESTABLISHMENT_COOKIE = 'grubano_estab'
 
@@ -66,7 +68,6 @@ export default function OperatorShell({ children }: { children: React.ReactNode 
   const [collapsed, setCollapsed] = useState(false)
   const [drawer, setDrawer] = useState(false)
   const [estabOpen, setEstabOpen] = useState(false)
-  const [isOpen, setIsOpen] = useState(true) // Open/Closed toggle — local visual state
   const [establishments, setEstablishments] = useState<Establishment[]>([])
   const [currentId, setCurrentId] = useState<string | null>(null)
 
@@ -178,7 +179,7 @@ export default function OperatorShell({ children }: { children: React.ReactNode 
             <div className="op-estab__t">
               <b>{scale === 'none' ? t('estab.none') : current?.name}</b>
               {scale !== 'none' && current && (
-                <span>{current.isActive && <i className="dot" />}{[current.city, current.isActive ? t('status.open') : t('status.closed')].filter(Boolean).join(' · ')}</span>
+                <span>{current.isActive && <i className="dot" />}{[current.city, current.isActive ? t('status.published') : t('status.unpublished')].filter(Boolean).join(' · ')}</span>
               )}
             </div>
             {scale === 'multi' && <span className="ms op-estab__chev" aria-hidden="true">expand_more</span>}
@@ -188,7 +189,7 @@ export default function OperatorShell({ children }: { children: React.ReactNode 
               {establishments.map((e) => (
                 <button key={e.id} type="button" className={`op-estab__opt${e.id === current?.id ? ' sel' : ''}`} onClick={() => switchEstablishment(e.id)}>
                   <span className="op-estab__mini">{initial(e.name)}</span>
-                  <div><b>{e.name}</b><span>{[e.city, e.isActive ? t('status.open') : t('status.closed')].filter(Boolean).join(' · ')}</span></div>
+                  <div><b>{e.name}</b><span>{[e.city, e.isActive ? t('status.published') : t('status.unpublished')].filter(Boolean).join(' · ')}</span></div>
                   {e.id === current?.id && <span className="ms check" aria-hidden="true">check</span>}
                 </button>
               ))}
@@ -198,11 +199,6 @@ export default function OperatorShell({ children }: { children: React.ReactNode 
 
           <div className="op-top__date"><span className="ms" aria-hidden="true">calendar_today</span>{dateLabel}</div>
           <div className="op-top__spacer" />
-
-          {/* Open/Closed toggle — local visual state (no backend → honest) */}
-          <button type="button" className={`op-openclosed${isOpen ? ' is-open' : ''}`} onClick={() => setIsOpen((o) => !o)}>
-            <i className="dot" />{isOpen ? t('status.open') : t('status.closed')}<span className="ms" aria-hidden="true">expand_more</span>
-          </button>
 
           <Link href="/notifications" className="op-icon-btn" aria-label={t('nav.notifications')}>
             <span className="ms" aria-hidden="true">notifications</span>

@@ -626,7 +626,9 @@
     },
     "status": {
       "open": "Open",
-      "closed": "Closed"
+      "closed": "Closed",
+      "published": "Published",
+      "unpublished": "Not published"
     },
     "dash": {
       "title": "Dashboard",
@@ -1177,6 +1179,16 @@
       "navPromotions": "Promotions"
     },
     "hub": {
+      "addr": {
+        "title": "Establishment address",
+        "desc": "Correct here the address entered at signup. It determines your establishment's position on the map and in proximity sorting.",
+        "save": "Save address",
+        "saved": "Address saved.",
+        "errRequired": "Address, postcode and city are required.",
+        "errPostalCode": "Invalid postcode — 5 digits expected (e.g. 30210).",
+        "errCity": "Invalid city — enter a city name (e.g. Fournès), not a postcode.",
+        "errSaveFailed": "Could not save the address. Try again."
+      },
       "bcRoot": "My locations",
       "bcMenu": "Menu",
       "online": "Online",
@@ -4512,7 +4524,7 @@
     },
     "verified": {
       "successTitle": "Email verified ✅",
-      "successBody": "Your partner account is being reviewed by our team before going live. We’ll email you as soon as it is activated.",
+      "successBody": "Your email is verified and your partner account is active: sign in with a magic link to create your establishment. Once configured, your restaurant's go-live will be validated by our team.",
       "successCta": "Go to sign-in",
       "expiredTitle": "Link expired",
       "expiredBody": "This verification link has expired. Sign in again to request a new email.",
@@ -8242,7 +8254,7 @@
   },
   "more": {
     "title": "Settings",
-    "subtitle": "Manage your account, billing and legal information",
+    "subtitle": "Manage your account and legal information",
     "soon": "Soon",
     "logout": "Log out",
     "loggingOut": "Logging out…",

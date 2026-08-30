@@ -13,13 +13,12 @@
  * with NO invented declaration logic. The TVA + DAC7 sub-forms (VatNumberForm /
  * Dac7FiscalForm) are embedded BYTE-IDENTICAL (their real POST endpoints untouched).
  *
- * ⚠️ ARGENT : ZERO money on this screen. « Facturation & abonnement » rows are simple
- * LINKS to the real pages (/finance, /premium) — no amount, no payment here.
+ * ⚠️ ARGENT : ZERO money on this screen. The former « Facturation & abonnement »
+ * block (hardcoded « Premium » badge, dead billing links) was REMOVED — beta truth.
  *
  * 🌐 HONEST DE-MOCK : rows with no real destination yet (Profil, Sécurité & mot de
  * passe, Langue, Centre d'aide) are rendered inert with a « bientôt » pill — never a
- * fake flow. Rows with a real page (Notifications, Facturation, CGU, Confidentialité)
- * link to it.
+ * fake flow. Rows with a real page (Notifications, CGU, Confidentialité) link to it.
  *
  * Self-sufficient: recopies the shared content components used here (op-dash__head,
  * op-card, op-btn-primary, op-error, op-sk, op-center) + this screen's unique classes
@@ -77,8 +76,6 @@
 .gb-op .set-badge.ok{background:var(--op-success-bg);color:var(--op-success)}
 .gb-op .set-badge.warn{background:var(--op-warning-bg);color:var(--op-warning)}
 .gb-op .set-badge.muted{background:var(--op-surface-2);color:var(--op-muted);border:1px solid var(--op-border)}
-.gb-op .set-badge.premium{background:var(--op-ai-bg);color:var(--op-ai-text);border:1px solid var(--op-ai-bd)}
-[data-theme="dark"] .gb-op .set-badge.premium{color:var(--op-ai-2)}
 .gb-op .set-logout{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:none;border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);padding:13px;font-size:13.5px;font-weight:700;color:var(--op-danger);cursor:pointer;margin-top:6px;font-family:inherit}
 .gb-op .set-logout:hover{background:var(--op-danger-bg)}
 .gb-op .set-logout:disabled{opacity:.6;cursor:default}

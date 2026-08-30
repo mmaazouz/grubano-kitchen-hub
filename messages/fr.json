@@ -626,7 +626,9 @@
     },
     "status": {
       "open": "Ouvert",
-      "closed": "Fermé"
+      "closed": "Fermé",
+      "published": "Publié",
+      "unpublished": "Non publié"
     },
     "dash": {
       "title": "Dashboard",
@@ -1177,6 +1179,16 @@
       "navPromotions": "Promotions"
     },
     "hub": {
+      "addr": {
+        "title": "Adresse de l'établissement",
+        "desc": "Corrigez ici l'adresse saisie à l'inscription. Elle détermine la position de votre établissement sur la carte et dans le tri par proximité.",
+        "save": "Enregistrer l'adresse",
+        "saved": "Adresse enregistrée.",
+        "errRequired": "Adresse, code postal et ville sont obligatoires.",
+        "errPostalCode": "Code postal invalide — 5 chiffres attendus (ex. 30210).",
+        "errCity": "Ville invalide — saisissez un nom de ville (ex. Fournès), pas un code postal.",
+        "errSaveFailed": "Impossible d'enregistrer l'adresse. Réessayez."
+      },
       "bcRoot": "Mes établissements",
       "bcMenu": "Menu",
       "online": "En ligne",
@@ -4512,7 +4524,7 @@
     },
     "verified": {
       "successTitle": "Email vérifié ✅",
-      "successBody": "Votre compte partenaire est en cours de validation par notre équipe avant la mise en ligne. Vous recevrez un email dès qu’il sera activé.",
+      "successBody": "Votre email est vérifié et votre compte partenaire est actif : connectez-vous par lien magique pour créer votre établissement. La mise en ligne de votre restaurant sera validée par notre équipe une fois configuré.",
       "successCta": "Aller à la connexion",
       "expiredTitle": "Lien expiré",
       "expiredBody": "Ce lien de vérification a expiré. Reconnectez-vous pour demander un nouvel email.",
@@ -8242,7 +8254,7 @@
   },
   "more": {
     "title": "Réglages",
-    "subtitle": "Gérez votre compte, votre facturation et vos informations légales",
+    "subtitle": "Gérez votre compte et vos informations légales",
     "soon": "Bientôt",
     "logout": "Se déconnecter",
     "loggingOut": "Déconnexion…",

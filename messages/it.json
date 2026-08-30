@@ -626,7 +626,9 @@
     },
     "status": {
       "open": "Aperto",
-      "closed": "Chiuso"
+      "closed": "Chiuso",
+      "published": "Pubblicato",
+      "unpublished": "Non pubblicato"
     },
     "dash": {
       "title": "Dashboard",
@@ -1177,6 +1179,16 @@
       "navPromotions": "Promozioni"
     },
     "hub": {
+      "addr": {
+        "title": "Indirizzo del locale",
+        "desc": "Corregga qui l'indirizzo inserito alla registrazione. Determina la posizione del Suo locale sulla mappa e nell'ordinamento per prossimità.",
+        "save": "Salva l'indirizzo",
+        "saved": "Indirizzo salvato.",
+        "errRequired": "Indirizzo, codice postale e città sono obbligatori.",
+        "errPostalCode": "Codice postale non valido — sono attese 5 cifre (es. 30210).",
+        "errCity": "Città non valida — inserisca il nome di una città (es. Fournès), non un codice postale.",
+        "errSaveFailed": "Impossibile salvare l'indirizzo. Riprovi."
+      },
       "bcRoot": "I miei locali",
       "bcMenu": "Menù",
       "online": "Online",
@@ -4512,7 +4524,7 @@
     },
     "verified": {
       "successTitle": "Email verificata ✅",
-      "successBody": "Il tuo account partner è in fase di revisione da parte del nostro team prima dell’attivazione. Ti scriveremo non appena sarà attivo.",
+      "successBody": "La Sua email è verificata e il Suo account partner è attivo: acceda tramite link magico per creare il Suo locale. La messa online del Suo ristorante sarà convalidata dal nostro team una volta configurato.",
       "successCta": "Vai all’accesso",
       "expiredTitle": "Link scaduto",
       "expiredBody": "Questo link di verifica è scaduto. Accedi di nuovo per richiedere un nuovo email.",
@@ -8242,7 +8254,7 @@
   },
   "more": {
     "title": "Impostazioni",
-    "subtitle": "Gestisci il tuo account, la fatturazione e le informazioni legali",
+    "subtitle": "Gestisca il Suo account e le Sue informazioni legali",
     "soon": "Presto",
     "logout": "Esci",
     "loggingOut": "Disconnessione…",

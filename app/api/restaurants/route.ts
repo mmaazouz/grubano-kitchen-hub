@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { geocodeAddressDetailed, isPlausibleAddress, haversineKm } from '@/lib/geocode'
+import { isNumericOnly, normalizeFrenchPostalCode, ADDRESS_FIELD_ERRORS } from '@/lib/address-validation'
 import { realReviewCounts, honestRating } from '@/lib/review-stats'
 
 // ── GET /api/restaurants ──────────────────────────────────────────────────────
@@ -329,9 +330,19 @@ export async function POST(req: Request) {
       'italien', 'asiatique', 'burger', 'healthy', 'sushi',
       'desserts', 'wraps', 'pasta', 'autre',
     ])
+    // Beta-truth train: the exact human-rehearsal trap (city="30210" — a postal
+    // code typed in the city field) was still CREATABLE here while the PATCH
+    // edit route refused it. Same gate as PATCH /api/restaurants/[id], via the
+    // shared lib/address-validation helper (Unicode-aware digits).
+    if (isNumericOnly(cityNorm)) {
+      return NextResponse.json(
+        { error: ADDRESS_FIELD_ERRORS.invalidCityNumeric, reason: 'invalid_city' },
+        { status: 400 },
+      )
+    }
     if (cityNorm.length < 2 || CUISINE_WORDS.has(cityNorm)) {
       return NextResponse.json(
-        { error: 'Ville invalide — saisis le nom d’une vraie ville.', reason: 'invalid_city' },
+        { error: ADDRESS_FIELD_ERRORS.invalidCity, reason: 'invalid_city' },
         { status: 400 },
       )
     }
@@ -343,9 +354,26 @@ export async function POST(req: Request) {
     // which only WARNS (never blocks) so a BAN outage can't stop a legit create.
     if (!isPlausibleAddress(input.address)) {
       return NextResponse.json(
-        { error: 'Adresse invalide — saisis une adresse complète (numéro et rue).', reason: 'invalid_address' },
+        { error: ADDRESS_FIELD_ERRORS.invalidAddress, reason: 'invalid_address' },
         { status: 400 },
       )
+    }
+
+    // ── Postal code gate (beta-truth train — same rule as the PATCH route) ───
+    // When a CP is provided it must be a valid French one (EXACTLY 5 digits,
+    // NFKC-normalized). Prevention mirror of the PATCH repair path: an inverted
+    // postalCode="Fournès" is refused at CREATION, not just at edit time. The
+    // CP is not persisted — it only sharpens the BAN geocode below.
+    let cleanPostal: string | undefined
+    if (postalCode !== undefined) {
+      const normalized = normalizeFrenchPostalCode(postalCode)
+      if (normalized === null) {
+        return NextResponse.json(
+          { error: ADDRESS_FIELD_ERRORS.invalidPostalCode, reason: 'invalid_postal_code' },
+          { status: 400 },
+        )
+      }
+      cleanPostal = normalized
     }
 
     // Reject accidental duplicate from the onboarding wizard. Option B (step 4):
@@ -370,7 +398,7 @@ export async function POST(req: Request) {
     // we can tell the client whether the address was genuinely not found (→ warn,
     // likely a typo) or BAN was simply unavailable (→ stay silent, don't penalise
     // a legit create for a third-party outage).
-    const geo    = await geocodeAddressDetailed(input.address, input.city, postalCode)
+    const geo    = await geocodeAddressDetailed(input.address, input.city, cleanPostal)
     const coords = geo.status === 'ok' ? geo.coords : null
 
     // ── 🔒 Safety gate: created restaurants are ALWAYS INVISIBLE on /eat ───
