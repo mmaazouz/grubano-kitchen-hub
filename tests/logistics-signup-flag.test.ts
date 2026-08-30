@@ -40,6 +40,23 @@ describe('isLogisticsSignupEnabled — séparation inscription / opérationnel',
   })
 })
 
+describe('layout /business/logistics — gate évalué au RUNTIME, jamais figé au build', () => {
+  // Preuve staging 2026-08-30 : le sous-arbre était prérendu STATIQUEMENT (●) →
+  // la CI (sans flag) figeait notFound() dans le build, et .env.local+restart ne
+  // pouvaient JAMAIS ouvrir l'inscription. Le layout doit forcer le rendu
+  // dynamique pour que LOGISTICS_SIGNUP_ENABLED soit un vrai interrupteur runtime.
+  const fs = require('fs') as typeof import('fs')
+  const layout = fs.readFileSync('app/[locale]/business/logistics/layout.tsx', 'utf8')
+
+  it("exporte dynamic='force-dynamic' (le 404 ne doit jamais être figé au build)", () => {
+    expect(/export const dynamic = 'force-dynamic'/.test(layout)).toBe(true)
+  })
+
+  it('le gate lit bien isLogisticsSignupEnabled et 404 sans redirection', () => {
+    expect(/isLogisticsSignupEnabled\(\)\) notFound\(\)/.test(layout)).toBe(true)
+  })
+})
+
 describe('POST /api/logistics/register — gate signup (statique)', () => {
   // Le comportement runtime OFF=404 est déjà épinglé par tests/role-locks.test.ts
   // (LOGISTICS_ENABLED off ⇒ tous les verbes 404 — toujours vrai flags OFF).
