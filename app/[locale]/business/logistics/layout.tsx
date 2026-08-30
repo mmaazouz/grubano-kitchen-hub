@@ -15,6 +15,14 @@ import { isLogisticsSignupEnabled } from '@/lib/logistics-account'
 // pas l'opérationnel : il s'ouvre avec LOGISTICS_SIGNUP_ENABLED (waitlist réelle).
 // L'espace /logistics/dashboard et les 17 APIs opérationnelles restent gatés par
 // LOGISTICS_ENABLED, inchangé.
+// The gate reads process.env with no dynamic API in the tree, so Next would
+// STATICALLY prerender this subtree at BUILD time — and CI builds run without
+// LOGISTICS_SIGNUP_ENABLED, baking notFound() into the deploy forever (the
+// runtime .env.local + restart can never revive it; proven on staging
+// 2026-08-30: flag exactly `true` in env, restart done, page still 404).
+// force-dynamic makes the flag a real RUNTIME switch, as intended.
+export const dynamic = 'force-dynamic'
+
 export default function GateLayout({ children }: { children: ReactNode }) {
   if (!isLogisticsSignupEnabled()) notFound()
   return <>{children}</>

@@ -27,15 +27,17 @@
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 // ── Garde d'entrée AVANT toute connexion (et avant même le chargement d'env) ───
-const SUBCOMMANDS = ['baseline', 'partner', 'order', 'final']
+const SUBCOMMANDS = ['baseline', 'partner', 'order', 'final', 'ledger']
 const SUB = process.argv[2]
 if (!SUB || !SUBCOMMANDS.includes(SUB)) {
-  console.error('Usage : node scripts/server/rehearsal-verify.js <baseline|partner|order|final>')
+  console.error('Usage : node scripts/server/rehearsal-verify.js <baseline|partner|order|final|ledger>')
   console.error('')
   console.error('  baseline  compteurs globaux (photo AVANT la répétition)')
   console.error('  partner   état corrélé à pilote-resto@grubano.com')
   console.error('  order     commande(s) + ledger + fidélité de pilote-client@grubano.com')
   console.error('  final     inventaire complet des lignes pilote (pré-clean-room)')
+  console.error('  ledger [depuisISO]  lignes de ledger depuis une date (défaut 2026-08-28)')
+  console.error('                      — audit d\'un delta de compteurs, lecture seule')
   console.error('')
   console.error('Script en LECTURE SEULE — aucune écriture, aucun mode destructif.')
   process.exit(1)
@@ -456,11 +458,62 @@ async function cmdFinal() {
   note('(document légal). Rien n\'a été écrit par ce script.')
 }
 
+/* ═══ ledger [depuisISO] — audit d'un delta de compteurs ledger (lecture seule) ══
+   Liste chaque LedgerEntry depuis la date donnée (défaut 2026-08-28) avec le nom
+   du restaurant, le canal et les montants — pour établir l'ORIGINE exacte d'un
+   delta constaté entre deux lectures (ex. +6 lignes / +58,00 € entre le 29 et le
+   30 août). Aucun secret : PI/charge tronqués (mask), aucune donnée client. */
+async function cmdLedger() {
+  const sinceArg = process.argv[3]
+  let since = new Date('2026-08-28T00:00:00Z')
+  if (sinceArg) {
+    const parsed = new Date(sinceArg)
+    if (Number.isNaN(parsed.getTime())) {
+      console.error(`  ⚠ date « ${sinceArg} » illisible — défaut 2026-08-28 conservé.`)
+    } else { since = parsed }
+  }
+  printHeader(`LEDGER depuis ${since.toISOString().slice(0, 10)}`)
+
+  const rows = await prisma.ledgerEntry.findMany({
+    where: { createdAt: { gte: since } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: {
+      id: true, createdAt: true, type: true, channel: true,
+      grossAmount: true, applicationFeeAmount: true, netToRestaurant: true,
+      restaurantId: true, stripePaymentIntentId: true,
+      reservationId: true, ticketId: true, routed: true,
+    },
+  })
+  const restoIds = [...new Set(rows.map((r) => r.restaurantId))]
+  const restos = restoIds.length
+    ? await prisma.restaurant.findMany({ where: { id: { in: restoIds } }, select: { id: true, name: true, city: true } }).catch(tolerant([]))
+    : []
+  const restoName = new Map(restos.map((r) => [r.id, `${r.name} (${r.city})`]))
+
+  H(`${rows.length} LIGNE(S) DEPUIS ${since.toISOString()}`)
+  for (const r of rows) {
+    const src = r.reservationId ? 'résa-empreinte' : r.ticketId ? 'addition-table' : 'commande'
+    console.log(
+      `  ${r.createdAt.toISOString()} · ${r.type}/${r.channel || '—'} · ${src}` +
+      ` · brut ${cents(r.grossAmount)} · com ${cents(r.applicationFeeAmount)} · net ${cents(r.netToRestaurant)}` +
+      `\n      resto : ${restoName.get(r.restaurantId) || shortId(r.restaurantId) + ' (⚠ resto introuvable)'} · PI ${r.stripePaymentIntentId ? mask(r.stripePaymentIntentId) : '—'} · routé=${yn(r.routed)}`
+    )
+  }
+  const sum = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0)
+  H('TOTAL DE LA FENÊTRE')
+  console.log(`  ${rows.length} ligne(s) · brut ${cents(sum('grossAmount'))} · com ${cents(sum('applicationFeeAmount'))} · net ${cents(sum('netToRestaurant'))}`)
+  const all = await prisma.ledgerEntry.aggregate({ _count: true, _sum: { grossAmount: true } })
+  console.log(`  Rappel GLOBAL table : ${all._count} ligne(s) · brut ${cents(all._sum.grossAmount)}`)
+  note('Croiser chaque ligne avec vos propres essais (date/heure, resto, montant) :')
+  note('un delta expliqué = TEST confirmé ; une ligne inexpliquée = STOP CLEAN ROOM.')
+}
+
 async function main() {
   if (SUB === 'baseline') await cmdBaseline()
   else if (SUB === 'partner') await cmdPartner()
   else if (SUB === 'order') await cmdOrder()
   else if (SUB === 'final') await cmdFinal()
+  else if (SUB === 'ledger') await cmdLedger()
   console.log('\nAUCUNE ÉCRITURE N\'A ÉTÉ FAITE (script en lecture seule).')
 }
 
