@@ -16,8 +16,13 @@
 // HONEST DE-MOCK:
 //   • Rows with no real destination yet (Profil, Sécurité & mot de passe, Langue, Centre
 //     d'aide) render inert with a « bientôt » pill — never a fake flow.
-//   • Rows with a real page (Notifications, Facturation → /finance, Formule → /pricing,
-//     CGU / Confidentialité → /legal/*) link to it. ⚠️ ZERO money/amount on this screen.
+//   • Rows with a real page (Notifications, CGU / Confidentialité → /legal/*) link to it.
+//     ⚠️ ZERO money/amount on this screen.
+//   • BETA TRUTH: the former « Facturation & abonnement » block was REMOVED entirely —
+//     it claimed a hardcoded « Formule actuelle : Premium » (no subscription model, no
+//     billing backend exists) and linked « Moyens de paiement » / « Historique de
+//     facturation » to /finance, which manages neither. No operator subscription is
+//     offered today, so the screen no longer asserts one.
 
 import { useState } from 'react'
 import { signOut, useSession } from 'next-auth/react'
@@ -79,20 +84,12 @@ export default function MoreClient({ kyb }: { kyb: KybIdentity }) {
   )
 
   // ── real link row (→ existing page) ──
-  const LinkRow = ({ icon, label, sub, href, badge }: {
+  const LinkRow = ({ icon, label, sub, href }: {
     icon: string; label: string; sub?: string; href: string
-    badge?: { tone: BadgeTone | 'premium'; label: string; icon?: string }
   }) => (
     <Link href={href} className="set-row">
       <span className="set-row__ic"><span className="ms" aria-hidden="true">{icon}</span></span>
       <div className="set-row__m"><b>{label}</b>{sub && <span className="hide-mobile">{sub}</span>}</div>
-      {badge && (
-        <span className={`set-badge ${badge.tone}`}>
-          {badge.icon && <span className="ms" aria-hidden="true" style={{ fontSize: 13 }}>{badge.icon}</span>}
-          {badge.tone !== 'premium' && <i className="dot" />}
-          {badge.label}
-        </span>
-      )}
       <span className="ms set-row__chev flip-rtl" aria-hidden="true">chevron_right</span>
     </Link>
   )
@@ -125,17 +122,6 @@ export default function MoreClient({ kyb }: { kyb: KybIdentity }) {
           <InertRow icon="translate" label={t('account.language')} sub={undefined} />
           {/* Notifications — REAL page */}
           <LinkRow icon="notifications" label={t('account.notifications')} sub={t('account.notificationsSub')} href="/notifications" />
-        </div>
-      </div>
-
-      {/* ── Facturation & abonnement — LINKS only, NO amount, NO payment ── */}
-      <div className="set-block">
-        <div className="set-block__head">{t('billing.title')}</div>
-        <div className="op-card">
-          <LinkRow icon="workspace_premium" label={t('billing.plan')} href="/pricing"
-            badge={{ tone: 'premium', label: t('billing.premium'), icon: 'star' }} />
-          <LinkRow icon="credit_card" label={t('billing.methods')} sub={t('billing.methodsSub')} href="/finance" />
-          <LinkRow icon="receipt" label={t('billing.history')} sub={t('billing.historySub')} href="/finance" />
         </div>
       </div>
 

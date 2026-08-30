@@ -197,7 +197,9 @@ export default function EstablishmentsManager(props: {
     }
   }
 
-  const openCount = establishments.filter((e) => e.isActive).length
+  // isActive is the admin-gated PUBLICATION state (visible on /eat), NOT an
+  // open/closed-for-orders state — same truth the OperatorShell badge tells (B2).
+  const publishedCount = establishments.filter((e) => e.isActive).length
 
   return (
     <section className="op-est-list">
@@ -218,9 +220,13 @@ export default function EstablishmentsManager(props: {
           <span className="lbl">{t('label')}s</span>
           <b>{establishments.length}</b>
         </div>
+        {/* Publication truth (B2 follow-up): this counts PUBLISHED establishments
+            (admin-gated isActive), not "open now" — the old « Ouverts maintenant »
+            label was the same lie the shell badge dropped. Reuses the shell's
+            operator status key so no new translation is needed. */}
         <div className="stat">
-          <span className="lbl">{t('statOpenNow')}</span>
-          <b>{openCount}</b>
+          <span className="lbl">{to('status.published')}</span>
+          <b>{publishedCount}</b>
         </div>
       </div>
 
@@ -271,9 +277,12 @@ export default function EstablishmentsManager(props: {
                       {t('selectedChip')}
                     </span>
                   )}
+                  {/* isActive = admin-gated PUBLICATION, not opening hours: label it
+                      like the OperatorShell badge (B2) — « Publié / Non publié »,
+                      never « Ouvert / Fermé ». Chip classes kept (cosmetic only). */}
                   <span className={`estab-openclosed ${e.isActive ? 'open' : 'closed'}`}>
                     <i className="dot" />
-                    {e.isActive ? to('status.open') : to('status.closed')}
+                    {e.isActive ? to('status.published') : to('status.unpublished')}
                   </span>
                 </div>
                 {/* "Gérer" — opens the hub too (settings icon, distinct click). */}

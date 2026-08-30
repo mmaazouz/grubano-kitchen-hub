@@ -6,6 +6,7 @@ import { Link } from '@/navigation'
 import OpeningHoursSection from '@/components/hours/OpeningHoursSection'
 import ConnectCard from '@/components/connect/ConnectCard'
 import SitePrefillImport from '@/components/restaurant/SitePrefillImport'
+import AddressSection from '@/components/restaurant/AddressSection'
 import LogoPrefillImport from '@/components/restaurant/LogoPrefillImport'
 import OnboardingGuide from '@/components/onboarding/OnboardingGuide'
 import OnboardingChat from '@/components/onboarding/OnboardingChat'
@@ -103,6 +104,14 @@ export default function EstablishmentHub({
   // ── Live isActive (pause) — seeded from the server prop, flipped on success ──
   const [isActive, setIsActive] = useState(establishment.isActive)
 
+  // ── Live address view (B3 address edit) — seeded from the server prop and
+  //    refreshed when the AddressSection saves, so the header stays honest
+  //    without a full reload. ─────────────────────────────────────────────────
+  const [addrView, setAddrView] = useState({
+    city:    establishment.city,
+    address: establishment.address,
+  })
+
   // ── Edit modal state ────────────────────────────────────────────────────────
   const [editForm, setEditForm]         = useState<BrandEdit | null>(null)
   const [editLoading, setEditLoading]   = useState(false)
@@ -170,7 +179,7 @@ export default function EstablishmentHub({
     ? brands.filter((b) => b.restaurantId === establishment.id)
     : brands
 
-  const location = [establishment.city, establishment.address].filter(Boolean).join(' · ')
+  const location = [addrView.city, addrView.address].filter(Boolean).join(' · ')
 
   // ── Edit-brand modal handlers ───────────────────────────────────────────────
   async function openEdit(b: BrandSummary) {
@@ -450,6 +459,19 @@ export default function EstablishmentHub({
           Owner CRUD over Agent 2's endpoints — scoped to THIS establishment. */}
       <div className="est-embedded-section">
         <OpeningHoursSection restaurantId={establishment.id} />
+      </div>
+
+      {/* ── Adresse de l'établissement (B3 — post-onboarding address edit).
+          Owner PATCH over the existing /api/restaurants/[id] route: strict-FR
+          validation + mandatory re-geocode are server-side; a geocode miss is
+          surfaced honestly (saved without coords → out of proximity sort). */}
+      <div className="est-embedded-section">
+        <AddressSection
+          restaurantId={establishment.id}
+          initialAddress={establishment.address}
+          initialCity={establishment.city}
+          onSaved={(next) => setAddrView(next)}
+        />
       </div>
 
       {/* ── Encaissements / Compte Stripe (rail financier A1). Défensif : GET en

@@ -120,10 +120,6 @@
 .gb-op .op-top__date{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--op-chrome-text-dim);padding-inline-start:8px;border-inline-start:1px solid var(--op-chrome-border);white-space:nowrap}
 .gb-op .op-top__date .ms{font-size:16px}
 .gb-op .op-top__spacer{flex:1}
-.gb-op .op-openclosed{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.06);border:1px solid var(--op-chrome-border);border-radius:var(--op-r-pill);padding:7px 12px;cursor:pointer;color:#fff;font-size:12.5px;font-weight:700;flex-shrink:0}
-.gb-op .op-openclosed .dot{width:8px;height:8px;border-radius:50%;background:var(--op-muted-2)}
-.gb-op .op-openclosed.is-open .dot{background:var(--op-success);box-shadow:0 0 0 3px rgba(65,189,120,.25)}
-.gb-op .op-openclosed .ms{font-size:16px;color:var(--op-chrome-text-dim)}
 .gb-op .op-icon-btn{position:relative;width:36px;height:36px;border-radius:var(--op-r-md);background:rgba(255,255,255,.06);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
 .gb-op .op-icon-btn .ms{font-size:20px}
 .gb-op .op-icon-btn .badge{position:absolute;top:-3px;inset-inline-end:-3px;min-width:16px;height:16px;border-radius:8px;background:var(--op-zest-600);color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--op-chrome-1)}
@@ -190,5 +186,4 @@
 .gb-op .op-side__word span,
 .gb-op .op-estab__logo,
 .gb-op .op-estab__mini,
-.gb-op .op-profile__av,
-.gb-op .op-openclosed{line-height:1}
+.gb-op .op-profile__av{line-height:1}

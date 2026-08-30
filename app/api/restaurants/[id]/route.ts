@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { decidePublication } from '@/lib/publication-rule'
 import { geocodeAddressDetailed, isPlausibleAddress, type GeocodeStatus } from '@/lib/geocode'
+import { isNumericOnly, normalizeFrenchPostalCode, ADDRESS_FIELD_ERRORS } from '@/lib/address-validation'
 import { publicHoursSummary, type PublicHours } from '@/lib/opening-hours'
 import { fetchActivePromotions, evaluatePromotion, round2 } from '@/lib/promotions'
 import { smallOrderFeeConfigCents, smallOrderThresholdCents } from '@/lib/pricing'
@@ -386,22 +387,69 @@ export async function PATCH(
     }
     const { postalCode, isActive: isActiveInput, ...input } = parsed.data
 
-    // Address sanity check (vague 1 fix): when an address is supplied, reject an
-    // implausible one (empty / too short / "gogo") before touching the DB.
-    if (input.address !== undefined && !isPlausibleAddress(input.address)) {
-      return NextResponse.json(
-        { error: 'Adresse invalide — saisis une adresse complète (numéro et rue).', reason: 'invalid_address' },
-        { status: 400 },
-      )
+    // ── Strict FRANCE validation on the address-bearing fields (B3) ───────────
+    // Applied ONLY when the field is present in the payload, so unrelated PATCH
+    // callers (logo/site prefill, pause…) are untouched. Locks the real human
+    // rehearsal case: an operator who swapped the fields at onboarding
+    // (city="30210" / postalCode="Fournès") was silently accepted and then
+    // LOCKED IN — both shapes are now refused with a clear French message.
+    if (input.address !== undefined) {
+      input.address = input.address.trim()
+      // Address sanity check (vague 1 fix): reject an implausible address
+      // (empty / too short / "gogo") before touching the DB.
+      if (!isPlausibleAddress(input.address)) {
+        return NextResponse.json(
+          { error: ADDRESS_FIELD_ERRORS.invalidAddress, reason: 'invalid_address' },
+          { status: 400 },
+        )
+      }
+    }
+    if (input.city !== undefined) {
+      input.city = input.city.trim()
+      // A city must be a NAME — a purely numeric "city" is a postal code typed
+      // in the wrong field (the exact inversion seen in the human test).
+      // Unicode-aware (lib/address-validation): fullwidth "３０２１０" or
+      // Arabic-Indic "٣٠٢١٠" digits are numbers too, not city names.
+      if (!input.city || isNumericOnly(input.city)) {
+        return NextResponse.json(
+          { error: ADDRESS_FIELD_ERRORS.invalidCityNumeric, reason: 'invalid_city' },
+          { status: 400 },
+        )
+      }
+    }
+    let cleanPostal: string | undefined
+    if (postalCode !== undefined) {
+      // French postal code: EXACTLY 5 digits (NFKC-normalized, so fullwidth
+      // IME digits are accepted as their ASCII value). No international rules.
+      const normalized = normalizeFrenchPostalCode(postalCode)
+      if (normalized === null) {
+        return NextResponse.json(
+          { error: ADDRESS_FIELD_ERRORS.invalidPostalCode, reason: 'invalid_postal_code' },
+          { status: 400 },
+        )
+      }
+      cleanPostal = normalized
     }
 
-    // Re-geocode only if the address-bearing fields actually changed.
+    // Re-geocode when an address-bearing field actually changed. postalCode has
+    // no stored column (it only sharpens BAN matching) → a payload that carries
+    // one is treated as an address-form save and re-geocodes too, so fixing ONLY
+    // the CP still refreshes the coords (idempotent when nothing changed).
     const addressChanged =
+      (input.address !== undefined && input.address !== current.address) ||
+      (input.city    !== undefined && input.city    !== current.city) ||
+      cleanPostal !== undefined
+
+    // Did the persisted address TEXT actually change? A CP-only (or no-op)
+    // re-save keeps textChanged=false: the stored coords still describe the
+    // exact same street+city, which drives the keep-on-outage rule below.
+    const textChanged =
       (input.address !== undefined && input.address !== current.address) ||
       (input.city    !== undefined && input.city    !== current.city)
 
     let geocoded: boolean | null = null
     let geocodeStatus: GeocodeStatus | null = null
+    let coordsKept = false
     const data: Record<string, unknown> = { ...input }
 
     // ── 🔒 SEC1/SEC2 — Publication rule (approvedAt) ──────────────────────────
@@ -429,24 +477,37 @@ export async function PATCH(
     if (addressChanged) {
       const nextAddress = input.address ?? current.address
       const nextCity    = input.city    ?? current.city
-      const geo         = await geocodeAddressDetailed(nextAddress, nextCity, postalCode)
+      const geo         = await geocodeAddressDetailed(nextAddress, nextCity, cleanPostal)
       geocodeStatus = geo.status
       if (geo.status === 'ok') {
         data.lat = geo.coords.latitude
         data.lng = geo.coords.longitude
         geocoded = true
-      } else if (geo.status === 'not_found') {
-        // Adresse introuvable → les anciennes coords ne correspondent plus : on les
-        // efface (état « géo incomplet » détectable via lat IS NULL).
+      } else if (textChanged || geo.status === 'not_found') {
+        // B3 (beta-truth, refined post-review) — the coords are cleared, in the
+        // SAME write as the new address, when either:
+        //   • the address/city TEXT changed: the old coords describe the OLD
+        //     address — keeping them shows the restaurant at a WRONG location
+        //     (an obsolete-coords lie), regardless of WHY the geocode missed;
+        //   • BAN positively answered 'not_found': even with unchanged text, a
+        //     contradicting CP is a USER signal that something is off.
+        // Null coords are proven safe: the restaurant stays visible, just
+        // outside the proximity sort, and the backfill script / a later save
+        // recovers the coords. The caller gets geocodeStatus back to show an
+        // honest warning.
         data.lat = null
         data.lng = null
         geocoded = false
       } else {
-        // WAVE 2 — 'unavailable' = PANNE DU TIERS (BAN/IGN), pas la faute de
-        // l'adresse : on CONSERVE les coords existantes au lieu de les écraser à
-        // null (un resto sain qui corrigeait une coquille pendant une panne
-        // perdait sa géolocalisation et disparaissait du tri conso).
-        geocoded = current.lat != null && current.lng != null
+        // Address/city byte-identical to the stored row (the CP alone triggered
+        // this re-geocode) AND the geocoder was merely UNAVAILABLE (third-party
+        // outage, not the operator's fault): the existing coords still describe
+        // this exact address — keep them. This preserves the WAVE 2
+        // keep-on-outage rule for the no-text-change case: a transient IGN/BAN
+        // outage must never knock an unchanged address out of the proximity
+        // sort. `coordsKept` tells the client no warning is needed.
+        geocoded = false
+        coordsKept = true
       }
     }
 
@@ -455,7 +516,10 @@ export async function PATCH(
       data,
     })
 
-    return NextResponse.json({ restaurant, geocoded, geocodeStatus })
+    // `coordsKept` (additive): true ONLY when a geocode outage hit an UNCHANGED
+    // address and the existing coords were preserved — the client can then skip
+    // the "no map position" warning, which would be a lie in that case.
+    return NextResponse.json({ restaurant, geocoded, geocodeStatus, coordsKept })
   } catch (err) {
     console.error('[PATCH /api/restaurants/:id]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
