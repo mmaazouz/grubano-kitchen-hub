@@ -2147,6 +2147,17 @@ function DishEditor({
               role="button"
               tabIndex={0}
               onClick={() => photoFileRef.current?.click()}
+              // role=button + tabIndex put the tile in the tab order, but a <div>
+              // never synthesises a click from Enter/Space: without this the tile
+              // announces itself as actionable and does nothing, and the <input
+              // type=file> is display:none so there is no other keyboard path to
+              // the picker (WCAG 2.1.1). Same target as onClick — no new state.
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  photoFileRef.current?.click()
+                }
+              }}
             >
               {photoSrc && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -2225,7 +2236,10 @@ function DishEditor({
             </div>
           </div>
 
-          {/* ⑤ Labels — 4 tiles; icons kept from the product (EXPLICITLY ACCEPTED, contract §8) */}
+          {/* ⑤ Labels — 4 tiles; icons kept from the product (EXPLICITLY ACCEPTED, contract §8).
+              Checked state carries the `✓ ` text channel like the chips (§8: "texte ✓ + fond",
+              never colour alone). The reference never renders a tile ON in any of its four
+              states, so this adds no pixel divergence to the captured compositions. */}
           <div className="de-sec">
             <label>{t('fLabels')}</label>
             <div className="de-tiles">
@@ -2236,7 +2250,7 @@ function DishEditor({
                     onClick={() => setD({ ...d, labels: on ? d.labels.filter(x => x !== l.name) : [...d.labels, l.name] })}
                     className={`de-tile${on ? ' is-on' : ''}`}>
                     <span className="ms" aria-hidden="true">{l.icon}</span>
-                    <span>{l.name}</span>
+                    <span>{on && '✓ '}{l.name}</span>
                   </button>
                 )
               })}

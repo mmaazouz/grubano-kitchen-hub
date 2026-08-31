@@ -236,7 +236,11 @@
 .gb-op .op-callout.warn{background:var(--op-warning-bg);border:1px solid var(--op-warning-bd);color:var(--op-text)}
 .gb-op .op-callout.warn .ms{color:var(--op-warning)}
 
-/* photo upload tile in the dish modal */
+/* ⚰️ DEAD since D2.1 — INTENTIONALLY RETAINED, do not restyle.
+ * The dish editor's photo tile was the only consumer; it now uses `.de-photo`
+ * and `grep -rn "photo-upload"` matches nothing outside this block. Kept so the
+ * D2.1 diff stays strictly additive (0 lines removed); slated for deletion in
+ * the clean-up lot that follows D2.1 validation, after one last control grep. */
 .gb-op .photo-upload{width:100%;height:150px;border-radius:var(--op-r-md);border:1px dashed var(--op-border-strong);position:relative;overflow:hidden;background:repeating-linear-gradient(135deg,var(--op-surface-2) 0 12px,var(--op-border) 12px 24px);cursor:pointer}
 .gb-op .photo-upload img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .gb-op .photo-upload .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;background:rgba(15,39,66,.5);color:#fff}
@@ -306,10 +310,12 @@
  *
  * 🔒 Presentation only — a DEDICATED class family. Every shared `op-*` primitive
  * (.op-field / .op-chips / .op-chip.allergen / .op-labels / .op-label-tile /
- * .op-callout / .op-modal* / .photo-upload / .avail-row) is left byte-identical:
- * they still serve the Scan IA result step, the Category + Delete modals of this
- * same page and supplier/catalog. Restyling one of them would be an out-of-scope
- * regression.
+ * .op-callout / .op-modal* / .avail-row) is left byte-identical: they still
+ * serve the Scan IA result step, the Category + Delete modals of this same page
+ * and supplier/catalog. Restyling one of them would be an out-of-scope regression.
+ * The ONE exception is `.photo-upload` (l. ~240): the dish editor was its only
+ * consumer, so it is now dead — retained unstyled-but-orphaned rather than
+ * deleted, see the note there.
  *
  * The reference's preview harness is NOT reproduced: no `.demo` bar, no `.stage`,
  * and above all NO container query. The modal is position:fixed (no container
@@ -333,6 +339,10 @@
    * for the zest border of active allergens / labels, with a dark counterpart
    * (the reference ships no dark theme). */
   --de-zest-bd:#F8D3BC;
+  /* Empty-photo hatch — the reference's literal pair, so the light theme is
+   * byte-exact; `--op-surface-2`/`--op-border` were close but visibly more
+   * contrasty. Dark counterpart below (the reference ships no dark theme). */
+  --de-hatch-a:#EDF0F4; --de-hatch-b:#E5E9EF;
   position:relative;width:720px;max-width:100%;
   background:var(--op-surface);color:var(--op-text);font-family:var(--op-font-ui);
   border-radius:var(--op-r-xl);box-shadow:0 32px 80px -24px rgba(4,10,20,.6);
@@ -343,7 +353,7 @@
   max-height:min(820px, calc(100vh - 40px));
   max-height:min(820px, calc(100dvh - 40px))
 }
-[data-theme="dark"] .gb-op .de-modal{--de-zest-bd:rgba(255,124,57,.32)}
+[data-theme="dark"] .gb-op .de-modal{--de-zest-bd:rgba(255,124,57,.32);--de-hatch-a:var(--op-surface-2);--de-hatch-b:var(--op-border)}
 .gb-op .de-modal__head{flex-shrink:0;display:flex;align-items:center;gap:12px;padding:18px var(--de-pad);border-bottom:1px solid var(--op-border)}
 .gb-op .de-modal__title{margin:0;flex:1;min-width:0;font-family:var(--op-font-display);font-weight:800;font-size:19px;letter-spacing:-.01em}
 .gb-op .de-modal__close{margin-inline-start:auto;width:36px;height:36px;border-radius:var(--op-r-md);border:none;background:var(--op-surface-2);color:var(--op-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
@@ -359,14 +369,20 @@
 
 /* ── ① identity : photo + name/description ── */
 .gb-op .de-id{display:grid;grid-template-columns:240px 1fr;gap:var(--de-field-gap);margin-bottom:var(--de-section-gap)}
-.gb-op .de-photo{position:relative;overflow:hidden;aspect-ratio:4/3;border-radius:var(--op-r-lg);border:2px dashed var(--op-border-strong);background:repeating-linear-gradient(135deg,var(--op-surface-2) 0 14px,var(--op-border) 14px 28px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:8px;text-align:center;color:var(--op-muted);cursor:pointer}
+/* `padding` + `text-align` are DECLARED additions: the reference is a French-only
+ * mock, the product renders these labels in 5 locales (ar/en/es/fr/it) and must
+ * keep them off the dashed edge when they wrap. Everything else is reference. */
+.gb-op .de-photo{position:relative;overflow:hidden;aspect-ratio:4/3;border-radius:var(--op-r-lg);border:2px dashed var(--op-border-strong);background:repeating-linear-gradient(135deg,var(--de-hatch-a) 0 14px,var(--de-hatch-b) 14px 28px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:8px;text-align:center;color:var(--op-muted);cursor:pointer}
 .gb-op .de-photo>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .gb-op .de-photo>.ms{position:relative;z-index:1;font-size:30px;color:var(--op-muted-2)}
 .gb-op .de-photo>b{position:relative;z-index:1;font-size:13px;font-weight:700;color:var(--op-text)}
 .gb-op .de-photo>span{position:relative;z-index:1;font-size:11px;color:var(--op-muted-2)}
 .gb-op .de-photo:focus-visible{outline:none;box-shadow:var(--op-focus)}
-/* a photo is present → scrim so the labels stay legible (the reference only
- * draws the empty tile; this keeps the product's existing treatment) */
+/* DECLARED: the reference never draws a FILLED tile, so this state has no
+ * reference pixel to match. Scrim + white labels are ported verbatim from the
+ * product's previous `.photo-upload .overlay`, without which "Changer la photo"
+ * is illegible over an arbitrary dish photo. The dashed drop-zone border is kept
+ * around the filled tile too — pending a design ruling, not a match/mismatch. */
 .gb-op .de-photo.has-photo::after{content:'';position:absolute;inset:0;background:rgba(15,39,66,.5)}
 .gb-op .de-photo.has-photo>.ms,.gb-op .de-photo.has-photo>b,.gb-op .de-photo.has-photo>span{color:#fff}
 .gb-op .de-id__f{display:flex;flex-direction:column;gap:var(--de-field-gap);min-width:0}
@@ -375,12 +391,19 @@
 .gb-op .de-fld{min-width:0}
 .gb-op .de-fld label{display:block;font-size:12.5px;font-weight:700;color:var(--op-text);margin-bottom:6px}
 .gb-op .de-inp{width:100%;box-sizing:border-box;height:var(--de-input-h);border:1px solid var(--op-border-strong);border-radius:var(--op-r-md);background:var(--op-surface);padding:0 13px;font-family:var(--op-font-ui);font-size:14.5px;color:var(--op-text)}
-.gb-op .de-inp.mono{font-family:var(--op-font-mono);font-weight:700;direction:ltr;unicode-bidi:isolate}
+/* no `font-weight` here: the reference's `.inp.mono` (and the shell's shared
+ * `.gb-op .mono`) only swap the family — an authored 700 bolded Prix + Calories. */
+.gb-op .de-inp.mono{font-family:var(--op-font-mono);direction:ltr;unicode-bidi:isolate}
 .gb-op .de-inp::placeholder{color:var(--op-muted-2)}
-.gb-op .de-inp:focus{outline:none;border-color:var(--op-zest-600);box-shadow:var(--op-focus)}
+.gb-op .de-inp:focus{outline:none;border-color:var(--op-zest);box-shadow:var(--op-focus)}
 .gb-op textarea.de-inp{height:auto;min-height:84px;padding:11px 13px;resize:vertical;line-height:1.5}
-.gb-op .de-fld__help{margin-top:5px;display:flex;align-items:center;gap:4px;font-size:11.5px;line-height:1.45;color:var(--op-muted-2)}
+/* no `line-height` either: the reference inherits 1.5 from the page, and an
+ * authored 1.45 pulled `.de-row2` off the reference's 91px at every width. */
+.gb-op .de-fld__help{margin-top:5px;display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--op-muted-2)}
 .gb-op .de-fld__help .ms{font-size:14px;flex-shrink:0}
+/* wrapped help (allergens) — `flex-start` keeps the icon on the FIRST line
+ * instead of centring it against a 2-line block. DECLARED deviation from the
+ * reference's `.fld__help{align-items:center}`; only visible once it wraps. */
 .gb-op .de-help--block{margin-top:8px;align-items:flex-start}
 .gb-op .de-help--block .ms{margin-top:1px}
 
@@ -394,15 +417,28 @@
 /* chips — category (mono) = solid ink + ✓ · allergens (multi) = zest tint + ✓ */
 .gb-op .de-chips{display:flex;flex-wrap:wrap;gap:8px}
 .gb-op .de-chip{height:var(--de-chip-h);display:inline-flex;align-items:center;gap:6px;padding:0 14px;border-radius:var(--op-r-pill);border:1px solid var(--op-border-strong);background:var(--op-surface);font-family:inherit;font-size:13px;font-weight:600;color:var(--op-text);cursor:pointer;white-space:nowrap}
+/* DECLARED addition — the reference is a static mock with no hover state; this
+ * is the operator app's house hover, verbatim from `.op-brand-chip:hover`,
+ * `.op-menu__quick button:hover`, `.op-preview-link:hover`, `.op-promo__tile:hover`.
+ * Invisible in the four captured (hover-less) compositions. */
 .gb-op .de-chip:hover{border-color:var(--op-zest-600)}
 .gb-op .de-chip:focus-visible{outline:none;box-shadow:var(--op-focus)}
 /* --op-chrome-1 (#0F2742) is the shell's permanent navy in BOTH themes — the
  * reference's --op-ink; --op-text would turn light in dark mode and kill it. */
 .gb-op .de-chip.is-cat-on{background:var(--op-chrome-1);border-color:var(--op-chrome-1);color:#fff;font-weight:700}
+/* …but in dark mode that navy lands on --op-surface #101B2D: fill-vs-surface is
+ * 1.14:1 and the border, being the same colour, disappears — the selected chip
+ * loses BOTH visual channels and only the `✓ ` glyph survives. The fill stays
+ * ink (contract §6 "encre pleine"); the edge is re-drawn in zest, 6.7:1 against
+ * the dark surface and stronger than the neighbours' --op-border-strong. */
+[data-theme="dark"] .gb-op .de-chip.is-cat-on{border-color:var(--op-zest)}
 .gb-op .de-chip--allergen.is-on{background:var(--op-zest-bg);border-color:var(--de-zest-bd);color:var(--op-zest-600);font-weight:700}
 [data-theme="dark"] .gb-op .de-chip--allergen.is-on{background:rgba(255,124,57,.14);color:var(--op-zest)}
 
-/* label tiles */
+/* label tiles — `padding:0 6px` RESTORES Chrome's UA `button{padding:1px 6px}`,
+ * which the reference relies on and Tailwind's preflight zeroes; measured tile
+ * widths then match the reference exactly at 1440 and 768. The 1px vertical is
+ * inert under `height:56px`. `text-align:center` is a declared i18n guard. */
 .gb-op .de-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .gb-op .de-tile{height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0 6px;border-radius:var(--op-r-lg);border:1px solid var(--op-border-strong);background:var(--op-surface);font-family:inherit;font-size:12px;font-weight:700;color:var(--op-text);text-align:center;cursor:pointer}
 .gb-op .de-tile .ms{font-size:19px;color:var(--op-muted)}
@@ -457,21 +493,40 @@
  * share `.op-modal-backdrop` on the same page. */
 @media (max-width:560px){
   .gb-op .op-modal-backdrop.de-backdrop{padding:0}
-  .gb-op .de-modal{--de-pad:16px;width:100%;max-width:100%;height:100dvh;max-height:none;border-radius:0}
+  /* `height:100%`, NOT `100dvh`: the parent `.op-modal-backdrop` is
+   * position:fixed;inset:0 (layout viewport) with align-items:center. Sizing the
+   * sheet from the DYNAMIC viewport instead would, on a mobile browser with a
+   * retractable toolbar, leave the "feuille plein écran" centred between two dim
+   * bands and lift the sticky foot off the true bottom edge. 100% always matches
+   * the painted dim area exactly. Both coincide in the headless harness. */
+  .gb-op .de-modal{--de-pad:16px;width:100%;max-width:100%;height:100%;max-height:none;border-radius:0}
   .gb-op .de-modal__head{padding:14px 16px}
   .gb-op .de-photo{aspect-ratio:16/8}
   .gb-op .de-row2{grid-template-columns:1fr 1fr}
   .gb-op .de-tiles{grid-template-columns:repeat(2,1fr)}
   .gb-op .de-chip{height:40px}
   .gb-op .de-modal__foot{gap:10px}
+  /* `min-width:0` on the primary is the reference's own mobile rule (`.btn--save
+   * {min-width:0}`), without which the 150px floor breaks the equal halves of
+   * contract §4 below ~340px. `padding:0 12px` is a DECLARED deviation from the
+   * reference's `0 20px`: at 390 each half is 174px, and the SAVING label
+   * ("⟳ Enregistrement…", ~141px of content) overflows its own button with 40px
+   * of horizontal padding. Inert on the drawn geometry — both halves stay
+   * 174x48 either way. */
   .gb-op .de-modal__foot .de-btn{flex:1;min-width:0;height:48px;padding:0 12px}
-  .gb-op .de-del button{padding:12px 2px;min-height:44px}
+  .gb-op .de-modal__foot .de-btn--save{min-width:0}
   /* ≥44px touch targets (contract §8) WITHOUT changing the drawn metrics:
    * the hit area is extended by an invisible pseudo-element. */
   .gb-op .de-chip{position:relative}
   .gb-op .de-chip::after{content:'';position:absolute;inset:-2px 0}
   .gb-op .de-modal__close{position:relative}
   .gb-op .de-modal__close::after{content:'';position:absolute;inset:-4px}
+  /* delete row: same treatment. It keeps the reference's `padding:10px 2px`
+   * (drawn height 37px) and grows only its hit area to 45px — an authored
+   * `padding:12px 2px;min-height:44px` would have redrawn the row. The 4px of
+   * bleed stays inside the scroll container's 16px bottom padding. */
+  .gb-op .de-del button{position:relative}
+  .gb-op .de-del button::after{content:'';position:absolute;inset:-4px 0}
   /* the switch track stays drawn at 44x25 (reference); only its hit area grows
    * — the pseudo-element belongs to the <label>, so a tap still toggles it.
    * `::after` is the knob, hence `::before` here. Vertical only: no horizontal
