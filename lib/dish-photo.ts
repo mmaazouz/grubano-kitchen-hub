@@ -42,18 +42,30 @@ const MODERATION_PROMPT =
 /**
  * Run Claude vision on the image. Throws on call/parse failure so the caller can
  * fail CLOSED (never store an unverified image).
+ *
+ * `operatorId` — COST GOVERNANCE, not authorisation. `dish_moderation` is a SONNET
+ * vision task (lib/llm/index.ts TASKS), i.e. the same unit cost as `dish_scan`, and
+ * lib/llm/index.ts only runs the per-partner quota `if (input.operatorId && …)`.
+ * Passing it through means the call is BOTH quota-checked before spending and
+ * attributed in LlmUsage (which is what `lib/llm/quota.ts` aggregates); omitting it
+ * makes the spend invisible to the operator's own counter.
+ * OPTIONAL on purpose: the parameter is additive so the call sites outside this
+ * train's perimeter keep their EXACT current behaviour (undefined → no quota, as
+ * today) instead of being silently repointed. See the note on processDishImage.
  */
 export async function moderateDishImage(
   imageBase64: string,
   mediaType: DishImageType,
+  operatorId?: string | null,
 ): Promise<Moderation> {
   const content: LlmContent = [
     { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
     { type: 'text',  text: MODERATION_PROMPT },
   ]
   // Throws on failure (no internal catch) so the caller fails CLOSED — never stores
-  // an unverified image. The gateway also throws on the kill-switch, same effect.
-  const { text: raw } = await llmComplete({ task: 'dish_moderation', content })
+  // an unverified image. The gateway also throws on the kill-switch, same effect,
+  // and on LlmQuotaError when this call is attributed to an over-budget operator.
+  const { text: raw } = await llmComplete({ task: 'dish_moderation', content, operatorId })
   const clean = raw.replace(/```json\n?|\n?```/g, '').trim()
   const parsed = JSON.parse(clean) as { allowed?: unknown; reason?: unknown; warnings?: unknown }
   return {
@@ -120,17 +132,29 @@ export async function uploadDishImage(imageBase64: string, mediaType: DishImageT
 
 export type DishPhotoResult =
   | { ok: true;  url: string; warnings: string[]; moderation: Moderation }
-  | { ok: false; status: 400 | 422 | 500 | 502 | 503; error: string; moderation?: Moderation }
+  | { ok: false; status: 400 | 422 | 429 | 500 | 502 | 503; error: string; moderation?: Moderation }
 
 /**
  * Validate → moderate → upload. NEVER throws and NEVER swallows an error
  * silently: every failure maps to a concrete {ok:false, status, error} the route
  * returns verbatim, so the UI always knows what happened (a dish is never created
  * with a silently-missing photo). On success returns the SQUARE Cloudinary URL.
+ *
+ * `operatorId` (optional) — forwarded to the moderation call for the per-partner LLM
+ * quota + usage attribution. WHO PASSES IT TODAY, stated honestly:
+ *   • POST /api/menu ....................... YES (this train's perimeter)
+ *   • POST /api/menu/photo ................. no — has `operator.id` in hand, next train
+ *   • POST /api/creators/dishes/photo ...... no — next train
+ *   • POST /api/claims ..................... no — consumer `token.sub`, next train
+ * Those three remain exactly as they are today (unattributed, unquota'd); the
+ * parameter being optional is what guarantees they are byte-identical. Do NOT read
+ * this as "the quota now covers every LLM photo path" — it covers the dish-creation
+ * path only, until the remaining call sites are wired the same way.
  */
 export async function processDishImage(
   imageBase64: string,
   mediaType: DishImageType,
+  operatorId?: string | null,
 ): Promise<DishPhotoResult> {
   // Size / emptiness (real byte size — base64 is ~33 % larger).
   const buffer = Buffer.from(imageBase64, 'base64')
@@ -144,8 +168,15 @@ export async function processDishImage(
   // Moderation BEFORE upload — a rejected image never reaches Cloudinary.
   let moderation: Moderation
   try {
-    moderation = await moderateDishImage(imageBase64, mediaType)
+    moderation = await moderateDishImage(imageBase64, mediaType, operatorId)
   } catch (err) {
+    // An over-budget operator is NOT an outage: "réessayez dans un instant" would be
+    // a lie for a MONTHLY cap. Same contract as POST /api/menu/scan-dish (429 + the
+    // same French message). Matched by `name` rather than `instanceof` so this module
+    // needs no extra import from the gateway (and stays inert in suites that mock it).
+    if (err instanceof Error && err.name === 'LlmQuotaError') {
+      return { ok: false, status: 429, error: 'Limite IA atteinte, réessaie plus tard.' }
+    }
     console.error('[dish-photo] moderation failed', err)
     return { ok: false, status: 503, error: 'Modération indisponible, réessayez dans un instant.' }
   }
