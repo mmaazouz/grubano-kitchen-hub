@@ -1,190 +1,282 @@
 /* ─────────────────────────────────────────────────────────────────────────────
- * /eat/r/[id] — Restaurant + menu — VERBATIM reproduction of the FROZEN CD ref v2
- * « Restaurant + menu (barre haut + panier pleine hauteur) » (Notion 390fd2c9-…-6f64),
- * which SUPERSEDES the v1 headcard-overlap (81f5). Rendered INSIDE the EatShell, which
- * provides the left rail (desktop) + bottom-nav (mobile) via the `is-framed` mode. This
- * page OWNS: a resto top bar (back · name · ★ | share · ♥), a clean hero, an info line,
- * the 3-mode segmented control, category chips, dish cards, and a FULL-HEIGHT sticky
- * cart column on the right (→ a « view cart » bar on mobile <1080).
+ * /eat/r/[id] — CONSUMER S1.1 « Fiche restaurant + menu ».
+ * Reproduction of the FOUNDER-APPROVED reference
+ * docs/design/handoffs/S1.1-ref/restaurant-menu.html + CONTRACT.md (20 sections).
+ * Rendered INSIDE EatShell (`is-framed`): the shell provides the left rail (≥901)
+ * and the bottom-nav (≤900); this page owns its own 60px header, hero, service
+ * modes, sticky category nav, dish grid, About block, sticky cart panel (desktop)
+ * / bottom cart bar (mobile) and the dish modal (dish-detail.css).
  *
- * 🔒 MONEY: presentation only. The cart handlers (steppers, subtotal, add, checkout
- * route) live in page.tsx and are BYTE-IDENTICAL. Tokens = gb-foundation. No search
- * bar + no Menu/À propos/Galerie/Avis tabs (removed per CD v2); « À propos » is a
- * collapsed <details>, « Avis » lives on the ★ (→ /eat/r/[id]/reviews route).
+ * 🔒 TRUTH RULES (contract §3) — enforced in page.tsx, mirrored here:
+ *   1. NO ETA anywhere on this surface (no minutes, no delay, no prep estimate).
+ *   2. Delivery OFF ⇒ no fee, no two-wheeler glyph, no delivery mode. The cart
+ *      footer carries « À régler au retrait. Aucun frais ajouté. » instead.
+ *   3. Distance = « à env. X km » + `near_me` — never routed, never a duration.
+ * 🔒 CONDITIONAL RENDERING (contract §10): an empty field has NO block, NO
+ *    placeholder, NO reserved space — nothing here draws an empty container.
+ * 🔒 MONEY: presentation only. Cart handlers (add, stepper, persistence, checkout
+ *    route) live in page.tsx and are byte-identical.
+ *
+ * TOKENS — the reference reuses 8 `--gb-*` names with DIFFERENT values than the
+ * consumer foundation (r-lg 18≠16, r-xl 26≠20, muted, muted-2, surface-2,
+ * basil-600, focus, sunrise). Redefining them on `.gb` would break every consumer
+ * screen, so they live here as fresh `--s1-*` names scoped to `.gb-resto`, each
+ * with a dark declension (the reference is light-only; the app is theme-aware).
+ * Precedent: eat/order/[orderId]/pickup/pickup.css, eat/dietary/dietary.css.
+ * NO container query (the preview harness is not the product): viewport media
+ * queries at the reference breakpoints 1080 / 900 / 560.
  * ───────────────────────────────────────────────────────────────────────────── */
 
-/* ═══════════ ROOT — 2-col grid inside the shell (main | full-height cart) ═══════════ */
+/* ═══════════ TOKENS (scoped — never leak to `.gb`) ═══════════ */
 .gb-resto{
-  --gb-star:#F0A63A;
-  --gb-cart-w:360px;
-  display:grid;
-  grid-template-columns:1fr var(--gb-cart-w);
-  min-height:100vh;min-height:100dvh;
-  background:var(--gb-bg);
-  color:var(--gb-text);
-  font-family:var(--gb-font-ui);
+  --s1-max:1200px; --s1-cart:352px; --s1-gap:28px;
+  --s1-r-lg:18px; --s1-r-xl:26px;
+  --s1-muted:#5A6672; --s1-muted-2:#6B7682;
+  --s1-surface-2:#F5EFE6; --s1-surface-3:#FAF6F0;
+  --s1-border-2:#E0D6C4;
+  --s1-basil-600:#1E8A4A; --s1-basil-bg:#E8F6EE; --s1-basil-bd:#C9E9D6;
+  --s1-zest-bg:#FFF1E7; --s1-zest-bd:#F8D3BC;
+  --s1-sunrise:linear-gradient(140deg,#FFB020,#FF6A1F 55%,#F2570E);
+  --s1-sh-1:0 1px 2px rgba(15,39,66,.04),0 2px 8px rgba(15,39,66,.05);
+  --s1-sh-2:0 2px 8px rgba(15,39,66,.06),0 14px 34px -16px rgba(15,39,66,.16);
+  --s1-sh-pop:0 32px 80px -24px rgba(4,10,20,.55);
+  --s1-sh-add:0 4px 12px -4px rgba(242,87,14,.6);
+  --s1-sh-cta:0 8px 22px -10px rgba(242,87,14,.55);
+  --s1-focus:0 0 0 3px rgba(255,106,31,.2);
+  --s1-tile-a:#EFE7DA; --s1-tile-b:#E8DFCF; --s1-tile-fg:#C7B9A2;
+  --s1-veil:linear-gradient(180deg,rgba(15,39,66,0) 38%,rgba(15,39,66,.72) 100%);
+  --s1-overlay:rgba(15,39,66,.55);
+  --s1-chrome:rgba(251,248,243,.9);
+  --s1-star:#F0A63A;
 }
-[data-theme="dark"] .gb-resto{--gb-star:#F0B249}
+[data-theme="dark"] .gb-resto{
+  --s1-muted:#93A3B5; --s1-muted-2:#7E8FA3;
+  --s1-surface-2:#1B2C42; --s1-surface-3:#101F31;
+  --s1-border-2:#233247;
+  --s1-basil-600:#41BD78; --s1-basil-bg:rgba(65,189,120,.16); --s1-basil-bd:#2C5C40;
+  --s1-zest-bg:rgba(255,124,57,.16); --s1-zest-bd:rgba(255,124,57,.38);
+  --s1-sh-1:0 1px 2px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.26);
+  --s1-sh-2:0 2px 8px rgba(0,0,0,.32),0 14px 34px -16px rgba(0,0,0,.50);
+  --s1-sh-pop:0 32px 80px -24px rgba(0,0,0,.70);
+  --s1-focus:0 0 0 3px rgba(255,124,57,.22);
+  --s1-tile-a:#22344A; --s1-tile-b:#1A2A3D; --s1-tile-fg:#4E637C;
+  --s1-overlay:rgba(4,10,20,.66);
+  --s1-chrome:rgba(12,24,38,.9);
+  --s1-star:#F0B249;
+}
 
-/* ═══════════ MAIN column ═══════════ */
-.gb-resto .rmain{min-width:0;background:var(--gb-bg)}
+/* ═══════════ PAGE SHELL ═══════════ */
+.gb-resto{
+  display:flex;flex-direction:column;
+  min-height:100vh;min-height:100dvh;
+  background:var(--gb-bg);color:var(--gb-text);font-family:var(--gb-font-ui);
+}
+.gb-resto h1,.gb-resto h2,.gb-resto h3{margin:0;font-family:var(--gb-font-display);letter-spacing:-.02em;line-height:1.12}
+.gb-resto p{margin:0}
+.gb-resto button{font-family:inherit}
+.gb-resto button:focus-visible,.gb-resto a:focus-visible,.gb-resto textarea:focus-visible{outline:none;box-shadow:var(--s1-focus)}
 
-/* resto top bar (sticky) — back · name · ★ | share · ♥
-   ⚠️ scoped `.gb.gb-resto .topbar` (0,3,0) to BEAT the shell's `.eat-nav .topbar`
-   (0,2,0) — which is `display:none` on mobile and would otherwise HIDE this bar. */
-.gb.gb-resto .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:14px;padding:17px 28px;background:var(--gb-surface);border-bottom:1px solid var(--gb-border)}
-.gb-resto .tb-name{display:flex;align-items:center;gap:10px;min-width:0}
-.gb-resto .tb-back{flex-shrink:0;display:flex;background:none;border:none;padding:0;cursor:pointer}
-.gb-resto .tb-back .ms{font-size:23px;color:var(--gb-text)}
-.gb-resto .tb-title{font-family:var(--gb-font-display);font-weight:800;font-size:18px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gb-text)}
-.gb-resto .tb-rate{display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:14.5px;flex-shrink:0;background:none;border:none;padding:0;cursor:pointer;color:var(--gb-text);font-family:inherit}
-.gb-resto .tb-rate .ms{font-size:18px;color:var(--gb-star);font-variation-settings:'FILL' 1}
-.gb-resto .tb-actions{margin-left:auto;display:flex;gap:10px;flex-shrink:0}
-.gb-resto .tb-btn{width:40px;height:40px;border-radius:var(--gb-r-md);background:var(--gb-surface-2);border:1px solid var(--gb-border-strong);display:flex;align-items:center;justify-content:center;cursor:pointer}
-.gb-resto .tb-btn .ms{font-size:19px;color:var(--gb-text)}
-.gb-resto .tb-btn.fav{border-color:#F5C2A0}
-.gb-resto .tb-btn.fav .ms{color:var(--gb-zest-600);font-variation-settings:'FILL' 1}
-[data-theme="dark"] .gb-resto .tb-btn.fav{border-color:rgba(255,124,57,.4)}
-[data-theme="dark"] .gb-resto .tb-btn.fav .ms{color:var(--gb-zest)}
+/* ═══════════ §4 HEADER — 60px, sticky, blurred ═══════════ */
+.gb-resto .hd{position:sticky;top:0;z-index:40;height:60px;flex-shrink:0;background:var(--s1-chrome);backdrop-filter:blur(12px);border-bottom:1px solid var(--gb-border)}
+.gb-resto .hd__in{max-width:var(--s1-max);height:100%;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:14px}
+.gb-resto .hd__back,.gb-resto .hd__ic{width:38px;height:38px;padding:0;border-radius:var(--gb-r-md);border:1px solid var(--s1-border-2);background:var(--gb-surface);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.gb-resto .hd__back{color:var(--gb-text)}
+.gb-resto .hd__ic{color:var(--s1-muted)}
+.gb-resto .hd__back .ms,.gb-resto .hd__ic .ms{font-size:20px}
+.gb-resto .hd__t{flex:0 1 auto;min-width:0;font-family:var(--gb-font-display);font-weight:800;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--gb-text)}
+/* ★ real rating → /reviews. Rendered ONLY when rating != null (real reviews). */
+.gb-resto .hd__rate{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;height:38px;padding:0 4px;background:none;border:none;cursor:pointer;font-weight:700;font-size:14.5px;color:var(--gb-text)}
+.gb-resto .hd__rate .ms{font-size:18px;color:var(--s1-star);font-variation-settings:'FILL' 1}
+.gb-resto .hd__act{margin-inline-start:auto;display:flex;gap:8px;flex-shrink:0}
+.gb-resto .hd__ic.is-fav{border-color:var(--s1-zest-bd);color:var(--gb-zest-600)}
+.gb-resto .hd__ic.is-fav .ms{font-variation-settings:'FILL' 1}
+[data-theme="dark"] .gb-resto .hd__ic.is-fav{color:var(--gb-zest)}
 
-.gb-resto .content-pad{max-width:900px;padding:22px 28px 60px}
+/* ═══════════ BODY GRID — menu | cart, About below the menu ═══════════ */
+.gb-resto .body{flex:1;width:100%;max-width:var(--s1-max);margin:0 auto;padding:24px 24px 96px;display:grid;grid-template-columns:1fr var(--s1-cart);gap:var(--s1-gap);align-items:start}
+.gb-resto .col{grid-column:1;min-width:0}
 
-/* clean hero — rectangular ROUNDED banner, nothing overlaid.
-   ⚠️ scoped `.gb.gb-resto .hero` (0,3,0) to BEAT the foundation's circular `.gb .hero`
-   (a 104px icon, border-radius:50%) — same collision the v1 ellipse bug had. */
-.gb.gb-resto .hero{position:relative;display:block;width:100%;height:230px;border-radius:var(--gb-r-xl);overflow:hidden;background:repeating-linear-gradient(135deg,#FFD9C2 0 18px,#FFE9D6 18px 36px)}
-[data-theme="dark"] .gb.gb-resto .hero{background:repeating-linear-gradient(135deg,#3A2C22 0 18px,#2C2118 18px 36px)}
-/* neutralise the foundation `.gb .hero` circle-icon leftovers (width:104px + a pulsing
-   ::after halo) that bleed onto this reused class name. */
+/* ═══════════ §5 HERO — image 21:8 (16:9 mobile) + veil + identity ═══════════
+   ⚠️ `.gb.gb-resto` (0,3,0) beats the foundation's circular `.gb .hero` (0,2,0). */
+.gb.gb-resto .hero{position:relative;display:block;width:100%;height:auto;border-radius:var(--s1-r-xl);overflow:hidden;background:var(--s1-surface-2);box-shadow:var(--s1-sh-2);margin-bottom:20px}
 .gb.gb-resto .hero::after{content:none}
-.gb.gb-resto .hero__img{position:absolute;inset:0;width:100%;height:100%;display:block}
-.gb.gb-resto .hero__img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+/* No photo ⇒ neutral diagonal weave (never a stock photo of another dish). */
+.gb.gb-resto .hero__img{display:block;width:100%;aspect-ratio:21/8;object-fit:cover;border:0;background:repeating-linear-gradient(135deg,var(--s1-tile-a) 0 16px,var(--s1-tile-b) 16px 32px)}
+.gb-resto .hero__veil{position:absolute;inset:0;background:var(--s1-veil)}
+.gb-resto .hero__id{position:absolute;inset-inline:0;bottom:0;padding:22px 24px;display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.gb-resto .hero__nm{flex:1;min-width:0}
+.gb-resto .hero__nm h1{font-size:32px;font-weight:800;color:#fff;letter-spacing:-.025em}
+.gb-resto .hero__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.gb-resto .hero__meta .it{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:rgba(255,255,255,.92)}
+.gb-resto .hero__meta .it .ms{font-size:16px}
+.gb-resto .hero__meta .sep{width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.5)}
+.gb-resto .badge-open{display:inline-flex;align-items:center;gap:6px;background:var(--gb-basil);color:#fff;border-radius:var(--gb-r-pill);padding:5px 12px;font-size:12.5px;font-weight:800}
+.gb-resto .badge-open i{width:7px;height:7px;border-radius:50%;background:#fff;flex-shrink:0}
+/* Closed / « ouvre à … » — real server state, double channel (dot + text). */
+.gb-resto .badge-open.is-closed{background:rgba(255,255,255,.92);color:#0F2742}
+.gb-resto .badge-open.is-closed i{background:#8A94A2}
+.gb-resto .closure{margin-top:-8px;margin-bottom:14px;font-size:12px;color:var(--s1-muted)}
 
-/* info line — cuisine · hours · free delivery (plain text row) */
-.gb-resto .il{display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:13.5px;color:var(--gb-muted);margin-top:18px}
-.gb-resto .il .ok{display:inline-flex;align-items:center;gap:5px;color:var(--gb-basil-600);font-weight:600}
-.gb-resto .il .ok.closed{color:var(--gb-muted)}
-.gb-resto .il .ok .ms{font-size:16px}
-.gb-resto .closure{margin:8px 0 0;font-size:12px;color:var(--gb-muted)}
-
-/* promo strip (KEPT feature) — slim single line */
-.gb-resto .promo-strip{display:flex;align-items:center;flex-wrap:wrap;gap:7px 12px;margin-top:14px;font-size:12.5px;color:var(--gb-muted)}
-.gb-resto .promo__main{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--gb-zest-600);margin:0}
+/* ── Promotions (REAL, server-computed) — kept feature, slim line under the hero ── */
+.gb-resto .promo-strip{display:flex;align-items:center;flex-wrap:wrap;gap:7px 12px;margin:-6px 0 16px;font-size:12.5px;color:var(--s1-muted)}
+.gb-resto .promo__main{display:inline-flex;align-items:center;gap:7px;font-weight:700;color:var(--gb-zest-600)}
 [data-theme="dark"] .gb-resto .promo__main{color:var(--gb-zest)}
 .gb-resto .promo__main .ms{font-size:16px}
-.gb-resto .promo__flash{display:inline-flex;align-items:center;gap:4px;border-radius:var(--gb-r-pill);background:var(--gb-grad);color:#fff;font-size:10px;font-weight:700;padding:3px 9px}
+.gb-resto .promo__flash{display:inline-flex;align-items:center;gap:4px;border-radius:var(--gb-r-pill);background:var(--s1-sunrise);color:#fff;font-size:10px;font-weight:700;padding:3px 9px}
 .gb-resto .promo__flash .ms{font-size:12px}
-.gb-resto .promo__name{color:var(--gb-muted)}
-.gb-resto .promo__more{color:var(--gb-muted-2)}
+.gb-resto .promo__name{color:var(--s1-muted)}
+.gb-resto .promo__more{color:var(--s1-muted-2)}
 
-/* 3-mode segmented control */
-.gb-resto .modes{display:inline-flex;background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);padding:4px;gap:3px;margin-top:16px}
-.gb-resto .modes button{display:inline-flex;align-items:center;gap:6px;font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-muted);background:none;border:none;border-radius:var(--gb-r-sm);padding:10px 20px;cursor:pointer}
-.gb-resto .modes button .ms{font-size:17px}
-.gb-resto .modes button[aria-selected="true"]{color:#fff;background:var(--gb-grad)}
+/* ═══════════ §6 SERVICE MODES — cards, active = border + zest + ✓ ═══════════ */
+.gb-resto .modes{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+.gb-resto .mode{flex:1;min-width:150px;display:flex;align-items:center;gap:11px;padding:13px 16px;border-radius:var(--s1-r-lg);border:1.5px solid var(--s1-border-2);background:var(--gb-surface);color:var(--gb-text);cursor:pointer;text-align:start}
+.gb-resto .mode .ms{font-size:22px;color:var(--s1-muted);flex-shrink:0}
+.gb-resto .mode b{display:block;font-size:14px;font-weight:700}
+.gb-resto .mode__sub{display:block;font-size:12px;font-weight:400;color:var(--s1-muted)}
+.gb-resto .mode.is-on{border-color:var(--gb-zest);background:var(--s1-zest-bg)}
+.gb-resto .mode.is-on .ms{color:var(--gb-zest-600)}
+.gb-resto .mode.is-on b::after{content:" ✓";color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-resto .mode.is-on .ms,[data-theme="dark"] .gb-resto .mode.is-on b::after{color:var(--gb-zest)}
 
-/* category chips */
-.gb-resto .chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}
-.gb-resto .chip{font-family:var(--gb-font-ui);font-weight:700;font-size:13.5px;color:var(--gb-text);background:var(--gb-surface);border:1px solid var(--gb-border-strong);border-radius:var(--gb-r-sm);padding:9px 17px;cursor:pointer}
-.gb-resto .chip.on{color:#fff;background:var(--gb-ink);border-color:transparent}
-[data-theme="dark"] .gb-resto .chip.on{background:var(--gb-zest);color:#0C1826}
+/* ═══════════ §7 CATEGORY NAV — sticky under the header ═══════════ */
+.gb-resto .cats{position:sticky;top:60px;z-index:30;display:flex;gap:8px;padding:12px 0;margin-bottom:6px;background:linear-gradient(180deg,var(--gb-bg) 70%,transparent);overflow-x:auto;scrollbar-width:none}
+.gb-resto .cats::-webkit-scrollbar{display:none}
+.gb-resto .cat{height:38px;display:inline-flex;align-items:center;padding:0 16px;border-radius:var(--gb-r-pill);border:1px solid var(--s1-border-2);background:var(--gb-surface);font-size:13.5px;font-weight:700;color:var(--gb-text);cursor:pointer;white-space:nowrap;flex-shrink:0}
+.gb-resto .cat.is-on{background:var(--gb-ink);border-color:var(--gb-ink);color:#fff}
+[data-theme="dark"] .gb-resto .cat.is-on{background:var(--gb-zest);border-color:var(--gb-zest);color:#0C1826}
 
-/* sections + dish cards */
-.gb-resto .catsec{scroll-margin-top:76px}
-.gb-resto .catsec h2{font-family:var(--gb-font-display);font-weight:800;font-size:19px;letter-spacing:-.02em;margin:24px 0 14px;color:var(--gb-text)}
+.gb-resto .catsec{scroll-margin-top:110px}
+.gb-resto .sec-h{display:flex;align-items:baseline;gap:10px;margin:20px 0 12px}
+.gb-resto .sec-h h2{font-size:21px;font-weight:800;color:var(--gb-text)}
+.gb-resto .sec-h span{font-size:13px;font-weight:600;color:var(--s1-muted-2)}
+
+/* ═══════════ §8 DISH CARDS — name · allergen pill · price · thumb ═══════════ */
 .gb-resto .dishes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.gb-resto .dish{display:flex;gap:13px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);padding:13px;box-shadow:var(--gb-shadow-card);cursor:pointer;text-align:start;width:100%;font:inherit;color:inherit}
-.gb-resto .dish__b{flex:1;min-width:0}
-.gb-resto .dish__b b{font-family:var(--gb-font-display);font-weight:700;font-size:15px;line-height:1.3;display:block;color:var(--gb-text)}
-.gb-resto .dish__b p{margin:5px 0 9px;font-size:12px;line-height:1.45;color:var(--gb-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.gb-resto .dish__b .pr{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.gb-resto .dish__b .pr .price{font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:var(--gb-text)}
-.gb-resto .dish__b .pr .price.was{font-weight:600;font-size:13px;color:var(--gb-muted);text-decoration:line-through}
-.gb-resto .dish__b .pr .tag{font-size:10px;font-weight:600;color:var(--gb-basil-600);background:var(--gb-basil-bg);border:1px solid var(--gb-basil-bd);padding:3px 8px;border-radius:6px}
-.gb-resto .dish__b .pr .tag.promo{color:var(--gb-zest-600);background:var(--gb-surface-2);border-color:var(--gb-border)}
-[data-theme="dark"] .gb-resto .dish__b .pr .tag.promo{color:var(--gb-zest)}
-.gb-resto .dish__img{position:relative;width:96px;height:96px;border-radius:var(--gb-r-md);flex-shrink:0;overflow:visible}
-.gb-resto .dish__img .gb-resto-thumb{position:absolute;inset:0;border-radius:var(--gb-r-md);overflow:hidden}
-.gb-resto .dish__qty{position:absolute;top:-7px;left:-7px;min-width:24px;height:24px;padding:0 7px;border-radius:var(--gb-r-pill);background:var(--gb-ink);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;z-index:2}
+.gb-resto .dish{display:flex;gap:14px;padding:14px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-1);cursor:pointer;text-align:start;color:inherit;transition:border-color .15s,transform .15s}
+.gb-resto .dish:hover{border-color:var(--s1-zest-bd);transform:translateY(-1px)}
+.gb-resto .dish__m{flex:1;min-width:0;display:flex;flex-direction:column}
+.gb-resto .dish__m h3{font-size:16px;font-weight:800;color:var(--gb-text)}
+/* §11 — allergen REMINDER on the card (icon + text, never colour alone). */
+.gb-resto .dish__al{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:11.5px;font-weight:700;color:var(--s1-muted);background:var(--s1-surface-2);border-radius:var(--gb-r-pill);padding:3px 9px;width:fit-content;text-align:start}
+.gb-resto .dish__al .ms{font-size:14px;flex-shrink:0}
+.gb-resto .dish__p{margin-top:auto;padding-top:10px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.gb-resto .dish__p .price{font-family:var(--gb-font-display);font-weight:800;font-size:17px;color:var(--gb-text)}
+.gb-resto .dish__p .price.was{font-weight:600;font-size:13px;color:var(--s1-muted);text-decoration:line-through}
+.gb-resto .dish__p .tag.promo{font-size:10px;font-weight:700;color:var(--gb-zest-600);background:var(--s1-zest-bg);border:1px solid var(--s1-zest-bd);padding:3px 8px;border-radius:6px}
+[data-theme="dark"] .gb-resto .dish__p .tag.promo{color:var(--gb-zest)}
+.gb-resto .dish__ph{position:relative;width:104px;height:104px;border-radius:var(--gb-r-md);flex-shrink:0;overflow:hidden;background:repeating-linear-gradient(135deg,var(--s1-tile-a) 0 12px,var(--s1-tile-b) 12px 24px)}
+.gb-resto .dish__ph img{width:100%;height:100%;object-fit:cover;display:block}
+.gb-resto .dish__ph .fb{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--s1-tile-fg)}
+.gb-resto .dish__ph .fb .ms{font-size:32px}
+.gb-resto .dish__add{position:absolute;inset-block-end:6px;inset-inline-end:6px;width:32px;height:32px;border-radius:50%;background:var(--s1-sunrise);color:#fff;border:2px solid var(--gb-surface);display:flex;align-items:center;justify-content:center;box-shadow:var(--s1-sh-add)}
+.gb-resto .dish__add .ms{font-size:18px}
+/* Honest state feedback: how many of THIS dish are already in the cart. */
+.gb-resto .dish__qty{position:absolute;inset-block-start:6px;inset-inline-start:6px;min-width:24px;height:24px;padding:0 7px;border-radius:var(--gb-r-pill);background:var(--gb-ink);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
 [data-theme="dark"] .gb-resto .dish__qty{background:var(--gb-zest);color:#0C1826}
-.gb-resto .dish__add{position:absolute;bottom:-8px;right:-7px;width:32px;height:32px;border-radius:10px;background:var(--gb-grad);display:flex;align-items:center;justify-content:center;box-shadow:var(--gb-shadow-btn);border:none;cursor:pointer;z-index:2}
-.gb-resto .dish__add .ms{font-size:18px;color:#fff}
 
-/* ── « À propos » — relocated as a COLLAPSED section (no tabs on this page) ── */
-.gb-resto .about{margin-top:26px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--gb-r-lg);box-shadow:var(--gb-shadow-card);overflow:hidden}
-.gb-resto .about>summary{list-style:none;cursor:pointer;display:flex;align-items:center;padding:16px 18px;font-family:var(--gb-font-display);font-weight:800;font-size:16px;color:var(--gb-text)}
-.gb-resto .about>summary::-webkit-details-marker{display:none}
-.gb-resto .about>summary .ms{margin-left:auto;font-size:20px;color:var(--gb-muted);transition:transform .2s}
-.gb-resto .about[open]>summary .ms{transform:rotate(180deg)}
-.gb-resto .about__body{padding:0 18px 18px}
-.gb-resto .about__body p{font-size:13.5px;line-height:1.55;color:var(--gb-muted);margin:0 0 12px}
-.gb-resto .info-row{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--gb-muted);margin-top:10px}
-.gb-resto .info-row .ms{font-size:17px;color:var(--gb-zest-600)}
-[data-theme="dark"] .gb-resto .info-row .ms{color:var(--gb-zest)}
-.gb-resto .hours-list{list-style:none;margin:10px 0 0;padding:0}
-.gb-resto .hours-list li{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:13.5px;padding:5px 0;border-bottom:1px solid var(--gb-border)}
-.gb-resto .hours-list li:last-child{border-bottom:none}
-.gb-resto .hours-list .day{text-transform:capitalize;color:var(--gb-muted)}
-.gb-resto .hours-list .ranges{text-align:end;font-weight:600;color:var(--gb-text)}
-.gb-resto .hours-list .ranges span{display:block}
+/* ═══════════ §12 ABOUT — description/address | opening hours ═══════════ */
+.gb-resto .about{grid-column:1;margin-top:28px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-1);overflow:hidden}
+.gb-resto .about__h{width:100%;display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--gb-border);background:none;border-inline:0;border-block-start:0;cursor:pointer;text-align:start}
+.gb-resto .about__h h2{font-size:17px;font-weight:800;color:var(--gb-text)}
+.gb-resto .about__h .ms{font-size:20px;color:var(--s1-muted-2);margin-inline-start:auto}
+.gb-resto .about__b{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.gb-resto .about__desc{font-size:14.5px;line-height:1.6;color:var(--s1-muted)}
+.gb-resto .about__addr{display:flex;align-items:flex-start;gap:9px;margin-top:14px;font-size:14px;font-weight:600;color:var(--gb-text)}
+.gb-resto .about__addr .ms{font-size:19px;color:var(--gb-zest-600);flex-shrink:0}
+.gb-resto .about__map{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:13px;font-weight:700;color:var(--gb-zest-600);text-decoration:none}
+.gb-resto .about__map .ms{font-size:17px}
+[data-theme="dark"] .gb-resto .about__addr .ms,[data-theme="dark"] .gb-resto .about__map{color:var(--gb-zest)}
+.gb-resto .hours{border:1px solid var(--gb-border);border-radius:var(--gb-r-md);overflow:hidden;align-self:start}
+.gb-resto .hours__now{display:flex;align-items:center;gap:9px;padding:11px 14px;background:var(--s1-basil-bg);border-bottom:1px solid var(--s1-basil-bd);font-size:13.5px;font-weight:700;color:var(--s1-basil-600)}
+.gb-resto .hours__now .ms{font-size:18px}
+.gb-resto .hours__now.is-closed{background:var(--s1-surface-3);border-bottom-color:var(--gb-border);color:var(--s1-muted)}
+.gb-resto .hrow{display:flex;justify-content:space-between;gap:12px;padding:8px 14px;font-size:13px;border-bottom:1px solid var(--gb-border)}
+.gb-resto .hrow:last-child{border-bottom:none}
+.gb-resto .hrow.today{background:var(--s1-surface-3);font-weight:700}
+.gb-resto .hrow .d{color:var(--s1-muted);text-transform:capitalize}
+.gb-resto .hrow.today .d{color:var(--gb-text)}
+.gb-resto .hrow .h{font-variant-numeric:tabular-nums;text-align:end;color:var(--gb-text)}
+.gb-resto .hrow .h span{display:block}
 
-/* ═══════════ CART column — full height, sticky, starts at top ═══════════ */
-.gb-resto .cartcol{position:sticky;top:0;height:100vh;height:100dvh;background:var(--gb-surface);border-left:1px solid var(--gb-border);display:flex;flex-direction:column}
-.gb-resto .cc-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:20px 22px;border-bottom:1px solid var(--gb-border);flex-shrink:0}
-.gb-resto .cc-head b{font-family:var(--gb-font-display);font-weight:800;font-size:17px;color:var(--gb-text)}
-.gb-resto .cc-head span{font-size:12px;color:var(--gb-muted);white-space:nowrap}
-.gb-resto .cc-items{padding:18px 22px;display:flex;flex-direction:column;gap:18px;overflow-y:auto;flex:1}
-.gb-resto .cc-item{display:flex;gap:12px;align-items:flex-start}
-.gb-resto .cc-item .im{width:52px;height:52px;border-radius:var(--gb-r-md);flex-shrink:0;overflow:hidden}
-.gb-resto .cc-item .main{flex:1;min-width:0}
-.gb-resto .cc-item .main b{font-size:14px;font-weight:700;display:block;margin-bottom:8px;color:var(--gb-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gb-resto .cc-item .step{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--gb-border-strong);border-radius:8px;padding:4px 10px}
-.gb-resto .cc-item .step .ms{font-size:15px;color:var(--gb-zest-600);cursor:pointer}
-[data-theme="dark"] .gb-resto .cc-item .step .ms{color:var(--gb-zest)}
-.gb-resto .cc-item .step b{font-size:12.5px;font-weight:700;color:var(--gb-text)}
-.gb-resto .cc-item .price{font-family:var(--gb-font-display);font-weight:700;font-size:14px;white-space:nowrap;flex-shrink:0;color:var(--gb-text)}
-.gb-resto .cc-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px 22px;gap:14px}
-.gb-resto .cc-empty .emoji{font-size:34px}
-.gb-resto .cc-empty p{font-size:13.5px;color:var(--gb-muted);margin:0}
-.gb-resto .cc-foot{flex-shrink:0;padding:16px 22px calc(18px + env(safe-area-inset-bottom));border-top:1px solid var(--gb-border)}
-.gb-resto .cc-row{display:flex;justify-content:space-between;font-size:13.5px;color:var(--gb-muted);margin-bottom:8px}
-.gb-resto .cc-row b{color:var(--gb-text);font-weight:700}
-.gb-resto .cc-row.promo,.gb-resto .cc-row.promo b{color:var(--gb-basil-600)}
-.gb-resto .cc-checkout{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:space-between;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:15px 20px;cursor:pointer;box-shadow:var(--gb-shadow-btn)}
-.gb-resto .cc-checkout span{font-size:14.5px;font-weight:700;color:#fff}
-.gb-resto .cc-checkout b{font-family:var(--gb-font-display);font-weight:800;font-size:15.5px;color:#fff}
-.gb-resto .cc-checkout.ghost{background:var(--gb-surface-2);border:1px solid var(--gb-border);box-shadow:none;justify-content:center}
-.gb-resto .cc-checkout.ghost span{color:var(--gb-text)}
+/* ═══════════ §9 CART PANEL — sticky card, right column ═══════════ */
+.gb-resto .cart{grid-column:2;grid-row:1 / span 2;align-self:start;position:sticky;top:84px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-2);overflow:hidden;display:flex;flex-direction:column}
+.gb-resto .cart__h{display:flex;align-items:center;gap:8px;padding:16px 18px;border-bottom:1px solid var(--gb-border)}
+.gb-resto .cart__h h2{font-size:16px;font-weight:800;color:var(--gb-text)}
+.gb-resto .cart__h .n{margin-inline-start:auto;font-size:12.5px;font-weight:700;color:var(--s1-muted)}
+.gb-resto .cart__mode{display:flex;align-items:center;gap:7px;padding:10px 18px;background:var(--s1-zest-bg);border-bottom:1px solid var(--s1-zest-bd);font-size:12.5px;font-weight:700;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-resto .cart__mode{color:var(--gb-zest)}
+.gb-resto .cart__mode .ms{font-size:17px;flex-shrink:0}
+.gb-resto .cart__b{padding:16px 18px;min-height:190px;display:flex;flex-direction:column;gap:16px}
+.gb-resto .cart__empty{text-align:center;padding:26px 4px}
+.gb-resto .cart__empty .ms{font-size:38px;color:var(--s1-border-2)}
+.gb-resto .cart__empty b{display:block;font-family:var(--gb-font-display);font-weight:800;font-size:15.5px;margin-top:10px;color:var(--gb-text)}
+.gb-resto .cart__empty p{font-size:13px;color:var(--s1-muted);margin-top:5px}
+.gb-resto .ci{display:flex;gap:12px;align-items:flex-start}
+.gb-resto .ci__ph{position:relative;width:52px;height:52px;border-radius:var(--gb-r-sm);flex-shrink:0;overflow:hidden;background:repeating-linear-gradient(135deg,var(--s1-tile-a) 0 10px,var(--s1-tile-b) 10px 20px)}
+.gb-resto .ci__ph img{width:100%;height:100%;object-fit:cover;display:block}
+.gb-resto .ci__m{flex:1;min-width:0}
+.gb-resto .ci__m b{display:block;font-size:14px;font-weight:700;color:var(--gb-text)}
+.gb-resto .ci__m .pr{font-family:var(--gb-font-display);font-weight:800;font-size:13.5px;margin-top:2px;color:var(--gb-text)}
+.gb-resto .cart__f{border-top:1px solid var(--gb-border);padding:16px 18px;background:var(--s1-surface-3)}
+.gb-resto .tot{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;font-weight:700;color:var(--gb-text)}
+.gb-resto .tot .v{font-family:var(--gb-font-display);font-weight:800;font-size:19px}
+.gb-resto .tot__note{font-size:11.5px;color:var(--s1-muted-2);margin-top:6px}
+/* The only remaining entry point to the booking funnel besides the « Sur place »
+   card — must never be removed without another entry (see report, D2). */
+.gb-resto .cart__reserve{margin-top:10px;width:100%;height:44px;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--gb-r-md);border:1px solid var(--s1-border-2);background:var(--gb-surface);color:var(--gb-text);font-size:13.5px;font-weight:700;cursor:pointer}
+.gb-resto .cart__reserve .ms{font-size:18px;color:var(--gb-zest-600)}
+[data-theme="dark"] .gb-resto .cart__reserve .ms{color:var(--gb-zest)}
 
-/* thumbnails fill (FoodImage img inside .gb-resto-thumb / .cc-item .im) */
-.gb-resto .gb-resto-thumb img,.gb-resto .cc-item .im img{width:100%;height:100%;object-fit:cover;display:block}
+/* ═══════════ SHARED PRIMITIVES — stepper + primary CTA ═══════════ */
+.gb-resto .qty{display:inline-flex;align-items:center;gap:2px;margin-top:9px;border:1px solid var(--s1-border-2);border-radius:var(--gb-r-pill);background:var(--gb-surface);padding:2px}
+.gb-resto .qty button{width:30px;height:30px;padding:0;border-radius:50%;border:none;background:none;color:var(--gb-zest-600);cursor:pointer;display:flex;align-items:center;justify-content:center}
+[data-theme="dark"] .gb-resto .qty button{color:var(--gb-zest)}
+.gb-resto .qty button .ms{font-size:18px}
+.gb-resto .qty span{min-width:26px;text-align:center;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--gb-text)}
+.gb-resto .btn-go{margin-top:14px;width:100%;height:50px;border:none;border-radius:var(--gb-r-md);background:var(--s1-sunrise);color:#fff;font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:var(--s1-sh-cta)}
+.gb-resto .btn-go[disabled]{background:var(--s1-border-2);color:var(--s1-muted);box-shadow:none;cursor:not-allowed}
+.gb-resto .btn-go .ms{font-size:19px}
 
-/* mobile « view cart » sticky bar (shown <1080; hidden on desktop) */
-.gb-resto .mcartbar{display:none}
+/* ═══════════ §9 MOBILE CART BAR — always rendered, disabled when empty ═══════════ */
+.gb-resto .mbar{display:none;position:sticky;bottom:74px;z-index:45;padding:12px 16px;background:var(--s1-chrome);backdrop-filter:blur(12px);border-top:1px solid var(--gb-border)}
+.gb-resto .mbar .btn-go{margin:0;justify-content:space-between;padding:0 18px}
 
-/* loading skeleton + empty */
-.gb-resto .sk{background:var(--gb-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);animation:gb-pulse 1.4s ease-in-out infinite}
-.gb-resto .empty{text-align:center;color:var(--gb-muted);font-size:14px;padding:44px 20px}
+/* ═══════════ LOADING / EMPTY ═══════════ */
+.gb-resto .sk{background:var(--s1-surface-2);border:1px solid var(--gb-border);border-radius:var(--gb-r-md);animation:gb-pulse 1.4s ease-in-out infinite}
+.gb-resto .empty{text-align:center;color:var(--s1-muted);font-size:14px;padding:44px 20px}
 .gb-resto .empty .emoji{font-size:34px;display:block;margin-bottom:10px}
+.gb-resto .empty .btn-go{width:auto;margin:14px auto 0;padding:0 22px}
 
-/* ═══════════ RESPONSIVE — cart column collapses at 1080 (viewport) ═══════════ */
+/* ═══════════ RESPONSIVE — reference breakpoints 1080 / 900 / 560 ═══════════
+   The reference uses container queries on a harness wrapper; the product uses
+   VIEWPORT media queries at the same thresholds. Verified equivalent at the 3
+   contractual widths (the shell rail is hidden below 900). */
 @media (max-width:1080px){
-  .gb-resto{grid-template-columns:1fr}
-  .gb-resto .cartcol{display:none}
-  .gb.gb-resto .topbar{padding:14px 16px}
-  .gb-resto .content-pad{max-width:100%;padding:18px 16px 132px}
-  .gb.gb-resto .hero{height:190px;border-radius:var(--gb-r-lg)}
   .gb-resto .dishes{grid-template-columns:1fr}
-  .gb-resto .chips{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
-  .gb-resto .chips::-webkit-scrollbar{display:none}
-  .gb-resto .chip{flex-shrink:0}
-  /* sticky « view cart » bar — replaces the cart column */
-  .gb-resto .mcartbar{display:flex;position:fixed;left:12px;right:12px;bottom:16px;z-index:21;align-items:center;justify-content:space-between;background:var(--gb-grad);border:none;border-radius:var(--gb-r-md);padding:13px 18px;box-shadow:var(--gb-shadow-btn);cursor:pointer}
-  .gb-resto .mcartbar .l{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;color:#fff}
-  .gb-resto .mcartbar .l .ms{font-size:20px}
-  .gb-resto .mcartbar b{font-family:var(--gb-font-display);font-weight:800;font-size:15px;color:#fff}
 }
-/* below 900 the shell's bottom-nav appears → lift the « view cart » bar above it */
 @media (max-width:900px){
-  .gb-resto .mcartbar{bottom:74px}
+  .gb-resto{padding-bottom:76px} /* room for the shell's fixed bottom-nav */
+  .gb-resto .body{grid-template-columns:1fr;padding-bottom:24px}
+  .gb-resto .col{order:1}
+  .gb-resto .cart{grid-column:auto;grid-row:auto;position:static;order:2}
+  .gb-resto .about{grid-column:auto;order:3}
+  .gb-resto .hero__nm h1{font-size:26px}
+  .gb-resto .about__b{grid-template-columns:1fr;gap:18px}
+}
+@media (max-width:560px){
+  .gb-resto .hd__in,.gb-resto .body{padding-inline:16px}
+  .gb-resto .body{padding-top:16px;padding-bottom:8px}
+  .gb.gb-resto .hero{border-radius:var(--s1-r-lg);margin-bottom:16px}
+  .gb.gb-resto .hero__img{aspect-ratio:16/9}
+  .gb-resto .hero__id{padding:16px}
+  .gb-resto .hero__nm h1{font-size:23px}
+  /* CONTRACT §6 « Mobile : sous-titres masqués » — only the SUBTITLE hides; the
+     icon and the label stay (the reference's `.mode span{display:none}` blanks
+     the whole card: reference bug, not reproduced). */
+  .gb-resto .mode{min-width:0;padding:11px 13px}
+  .gb-resto .mode__sub{display:none}
+  .gb-resto .dish__ph{width:88px;height:88px}
+  .gb-resto .cart{display:none}
+  .gb-resto .mbar{display:block;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  .gb-resto .hd__back,.gb-resto .hd__ic{width:44px;height:44px} /* §19 — 44px mobile targets */
 }
