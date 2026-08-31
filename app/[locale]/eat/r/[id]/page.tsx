@@ -487,7 +487,9 @@ export default function RestaurantScreen() {
     return close !== '24:00' && m(close) < m(open)
   }
   const todayDow = new Date().getDay()
-  const todayRanges = hours?.weeklyHours.find((w) => w.dayOfWeek === todayDow)?.ranges ?? []
+  // Defensive: weeklyHours is an additive API block — an odd payload must never throw.
+  const weeklyHours = Array.isArray(hours?.weeklyHours) ? hours!.weeklyHours : []
+  const todayRanges = weeklyHours.find((w) => w.dayOfWeek === todayDow)?.ranges ?? []
   const todayRangeText = todayRanges.map((r) => `${r.open} – ${r.close}`).join(' · ')
   const hoursNowLabel = !hoursBadge
     ? null
@@ -498,7 +500,10 @@ export default function RestaurantScreen() {
   // ── §5/§12 — every value below is REAL or absent. No stock cover photo, no
   // « Restaurant partenaire Grubano. » filler description, no invented hours.
   const heroCover = restaurant.coverPhoto || null
-  const cuisineLabel = formatCuisineList(restaurant.cuisine.slice(0, 1), locale, '')
+  // Defensive: `cuisine` is a MySQL Json column — tolerate a non-array payload.
+  const cuisineLabel = formatCuisineList(
+    Array.isArray(restaurant.cuisine) ? restaurant.cuisine.slice(0, 1) : [], locale, '',
+  )
   const description = (restaurant.description ?? '').trim()
   const addressLine = [restaurant.address, restaurant.city].filter(Boolean).join(', ')
   // « Ouvrir dans Plans » — hands the REAL address (or coordinates) to the map
@@ -507,7 +512,7 @@ export default function RestaurantScreen() {
     ? `${restaurant.lat},${restaurant.lng}`
     : addressLine
   const mapsUrl = mapsDest ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsDest)}` : null
-  const hasHours = !!hours && hours.weeklyHours.length > 0
+  const hasHours = weeklyHours.length > 0
   const hasAbout = !!description || !!addressLine || hasHours
 
   return (
@@ -822,7 +827,7 @@ export default function RestaurantScreen() {
                     )}
                   </div>
                 )}
-                {hasHours && hours && (
+                {hasHours && (
                   <div className="hours">
                     {hoursNowLabel && (
                       <div className={`hours__now${hoursBadge?.open ? '' : ' is-closed'}`}>
@@ -830,7 +835,7 @@ export default function RestaurantScreen() {
                       </div>
                     )}
                     {[1, 2, 3, 4, 5, 6, 0].map((d) => {
-                      const day = hours.weeklyHours.find((w) => w.dayOfWeek === d)
+                      const day = weeklyHours.find((w) => w.dayOfWeek === d)
                       const ranges = day?.ranges ?? []
                       const dayName = new Intl.DateTimeFormat(locale, { weekday: 'long' })
                         .format(new Date(Date.UTC(2024, 0, 7 + d, 12)))
