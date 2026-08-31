@@ -3709,6 +3709,8 @@
       "cartModeLine": "{mode} · {restaurant}",
       "cartEmptyHint": "أضف طبقاً من القائمة للبدء.",
       "pickupNoFeeNote": "الدفع عند الاستلام. لا رسوم إضافية.",
+      "dineInNoFeeNote": "الدفع في المطعم. لا رسوم إضافية.",
+      "dineInReserveAria": "{mode} — حجز طاولة",
       "cartBarEmpty": "السلة فارغة",
       "caloriesValue": "{count} سعرة حرارية",
       "allergensNotice": "معلومات مقدَّمة من المطعم. في حال الشك، يُرجى طلب التأكيد في المكان.",

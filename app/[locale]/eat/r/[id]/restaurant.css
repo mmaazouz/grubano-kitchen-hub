@@ -31,7 +31,11 @@
 .gb-resto{
   --s1-max:1200px; --s1-cart:352px; --s1-gap:28px;
   --s1-r-lg:18px; --s1-r-xl:26px;
-  --s1-muted:#5A6672; --s1-muted-2:#6B7682;
+  /* §19 contrast — muted-2 darkened one step from the reference's #6B7682, which
+     failed 4.5:1 on the two light surfaces it is actually used on: `.tot__note`
+     (the §3 rule-2 « Aucun frais ajouté. » line) on --s1-surface-3 = 4.30:1 and
+     `.sec-h span` on --gb-bg = 4.37:1. #666F7B → 4.73 / 4.81 / 5.09 (on white). */
+  --s1-muted:#5A6672; --s1-muted-2:#666F7B;
   --s1-surface-2:#F5EFE6; --s1-surface-3:#FAF6F0;
   --s1-border-2:#E0D6C4;
   --s1-basil-600:#1E8A4A; --s1-basil-bg:#E8F6EE; --s1-basil-bd:#C9E9D6;
@@ -229,7 +233,8 @@
 
 /* ═══════════ SHARED PRIMITIVES — stepper + primary CTA ═══════════ */
 .gb-resto .qty{display:inline-flex;align-items:center;gap:2px;margin-top:9px;border:1px solid var(--s1-border-2);border-radius:var(--gb-r-pill);background:var(--gb-surface);padding:2px}
-.gb-resto .qty button{width:30px;height:30px;padding:0;border-radius:50%;border:none;background:none;color:var(--gb-zest-600);cursor:pointer;display:flex;align-items:center;justify-content:center}
+/* §19 — 38px minimum desktop target (the reference's 30px pill fails its own rule). */
+.gb-resto .qty button{width:38px;height:38px;padding:0;border-radius:50%;border:none;background:none;color:var(--gb-zest-600);cursor:pointer;display:flex;align-items:center;justify-content:center}
 [data-theme="dark"] .gb-resto .qty button{color:var(--gb-zest)}
 .gb-resto .qty button .ms{font-size:18px}
 .gb-resto .qty span{min-width:26px;text-align:center;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--gb-text)}
@@ -247,15 +252,33 @@
 .gb-resto .empty .emoji{font-size:34px;display:block;margin-bottom:10px}
 .gb-resto .empty .btn-go{width:auto;margin:14px auto 0;padding:0 22px}
 
-/* ═══════════ RESPONSIVE — reference breakpoints 1080 / 900 / 560 ═══════════
-   The reference uses container queries on a harness wrapper; the product uses
-   VIEWPORT media queries at the same thresholds. Verified equivalent at the 3
-   contractual widths (the shell rail is hidden below 900). */
-@media (max-width:1080px){
+/* ═══════════ RESPONSIVE — reference thresholds 1080 / 900 / 560 ═══════════
+   The reference drives its breakpoints from `@container s1` on a harness wrapper
+   whose inline size IS the simulated page width. The product renders inside
+   `.eat-nav.is-framed .content`, a grid track inset by the left rail
+   (`--gb-nav-w:236px`, gb-tokens.css:81) at ≥901px — so CONTAINER width ≠
+   VIEWPORT width and a 1:1 port of the numbers fires every desktop threshold
+   236px too early.
+
+   Container queries are NOT usable here: `container-type:inline-size` implies
+   `contain:layout`, which (a) makes `.gb-resto` the containing block of the
+   `position:fixed` modal overlay `.ov` (dish-detail.css) — the dish sheet would
+   size/position against the page box instead of the viewport — and (b) opens a
+   stacking context that would flatten `.hd` (z-40) and `.mbar` (z-45) under the
+   shell's fixed `.botnav` (z-20). So: VIEWPORT media queries, thresholds SHIFTED
+   by the rail, which is exact and continuous in both bands:
+     container ≤1080 ⟺ viewport ≤1316  (>900: 1316−236=1080 · ≤900: rail hidden,
+                                        viewport ≤900 ≤1080 — already inside)
+     container  ≤900 ⟺ viewport ≤1136  (>900: 1136−236=900  · ≤900: identical)
+     container  ≤560 ⟺ viewport  ≤560  (rail already hidden — 1:1, unshifted)
+   Contractual widths land as specified: 1440 (2-col dishes, cart 352/gap 28),
+   768 (single column, cart 312/gap 20 tokens, modal 560), 390 (sheet + bar). */
+@media (max-width:1316px){          /* reference @container s1 (max-width:1080px) */
+  /* §18 token declension — the reference re-declares both on this threshold. */
+  .gb-resto{--s1-cart:312px;--s1-gap:20px}
   .gb-resto .dishes{grid-template-columns:1fr}
 }
-@media (max-width:900px){
-  .gb-resto{padding-bottom:76px} /* room for the shell's fixed bottom-nav */
+@media (max-width:1136px){          /* reference @container s1 (max-width:900px) */
   .gb-resto .body{grid-template-columns:1fr;padding-bottom:24px}
   .gb-resto .col{order:1}
   .gb-resto .cart{grid-column:auto;grid-row:auto;position:static;order:2}
@@ -263,7 +286,14 @@
   .gb-resto .hero__nm h1{font-size:26px}
   .gb-resto .about__b{grid-template-columns:1fr;gap:18px}
 }
-@media (max-width:560px){
+/* NOT a reference threshold — the SHELL's own breakpoint. `.eat-nav .botnav` is
+   `position:fixed` and only exists at ≤900px, so the room reserved for it must
+   stay pinned to 900 and must NOT ride the +236 shift above (it would open 76px
+   of dead space at the foot of the page on every 901-1136 viewport). */
+@media (max-width:900px){
+  .gb-resto{padding-bottom:76px}
+}
+@media (max-width:560px){           /* reference @container s1 (max-width:560px) */
   .gb-resto .hd__in,.gb-resto .body{padding-inline:16px}
   .gb-resto .body{padding-top:16px;padding-bottom:8px}
   .gb.gb-resto .hero{border-radius:var(--s1-r-lg);margin-bottom:16px}
@@ -278,5 +308,10 @@
   .gb-resto .dish__ph{width:88px;height:88px}
   .gb-resto .cart{display:none}
   .gb-resto .mbar{display:block;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
-  .gb-resto .hd__back,.gb-resto .hd__ic{width:44px;height:44px} /* §19 — 44px mobile targets */
+  /* §19 — « cibles ≥ 38 px desktop, 44 px mobile ». The reference keeps 30px
+     stepper buttons and 38px chips at every width, contradicting its own §19;
+     the glyph stays 18px, only the hit area grows. */
+  .gb-resto .hd__back,.gb-resto .hd__ic{width:44px;height:44px}
+  .gb-resto .qty button{width:44px;height:44px}
+  .gb-resto .cat{height:44px}
 }

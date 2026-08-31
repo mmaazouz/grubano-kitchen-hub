@@ -633,11 +633,20 @@ export default function RestaurantScreen() {
               // naturally — when the restaurant CAN take a reservation (has
               // tables), tapping it OPENS the real booking flow (mobile AND
               // desktop). Not reservable ⇒ plain visual toggle, no dead end.
+              //
+              // §6/§19 — ONE semantic per control. A card that navigates must not
+              // claim to be a toggle: in the reservable case it drops
+              // `aria-pressed` (which could never become `true`: the click leaves
+              // the page) and takes a name that says where it goes. It keeps the
+              // navigation because the cart panel's « Réserver une table » — the
+              // only other entry — is `display:none` below 560px, so removing it
+              // would leave mobile with no way into the booking funnel at all.
               <button
                 key={m}
                 type="button"
                 className={`mode${mode === m ? ' is-on' : ''}`}
-                aria-pressed={mode === m}
+                aria-pressed={m === 'dinein' && reservable ? undefined : mode === m}
+                aria-label={m === 'dinein' && reservable ? t('dineInReserveAria', { mode: modeLabel(m) }) : undefined}
                 onClick={() =>
                   m === 'dinein' && reservable ? router.push(`/eat/r/${id}/reserver`) : setMode(m)
                 }
@@ -780,7 +789,17 @@ export default function RestaurantScreen() {
               fabricates one — and never a delivery fee (contract §3 rule 2). */}
           <div className="cart__f">
             <div className="tot"><span>{t('subtotal')}</span><span className="v">{formatEuros(cartTotal, locale)}</span></div>
-            {mode === 'takeaway' && <div className="tot__note">{t('pickupNoFeeNote')}</div>}
+            {/* §9 lists the « aucun frais ajouté » note as a fixed part of the panel
+                and §3 rule 2 makes it the standing replacement for the removed
+                delivery fee — so it is NOT conditional on the takeaway card: each
+                fee-free mode carries its own true wording (« au retrait » /
+                « sur place »). Delivery is the one mode that gets NO note: with
+                DELIVERY_FULFILLMENT_ENABLED on, a delivery order DOES carry a fee,
+                and claiming « aucun frais ajouté » there would be the very false
+                statement §3 rule 2 exists to forbid. */}
+            {mode !== 'delivery' && (
+              <div className="tot__note">{t(mode === 'dinein' ? 'dineInNoFeeNote' : 'pickupNoFeeNote')}</div>
+            )}
             <button type="button" className="btn-go" disabled={cartCount === 0} onClick={() => router.push('/eat/cart')}>
               <span className="ms" aria-hidden="true">arrow_forward</span>{t('viewCart')}
             </button>
@@ -980,10 +999,20 @@ function DishDetailModal({ dish, onClose, onConfirm }: ModalProps) {
             </div>
           )}
 
+          {/* NOTE — real, free-form; never presented as a guaranteed customisation. */}
+          <div className="note-f">
+            <label htmlFor="dish-note">{t('addNote')}</label>
+            <textarea id="dish-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('notePlaceholder')} />
+          </div>
+
           {/* « Encart Recette du chef » (CD 81c4) — INERT/decorative, out of S1.1
               scope. Shown ONLY when the dish is an ADOPTED creator recipe (real
               `dish.creator`): real chef name + real verified pastille + real
-              /chef/{slug} link. « Suivre » and the AI-pairings block are inert. */}
+              /chef/{slug} link. « Suivre » and the AI-pairings block are inert.
+              §10 — this insert is NOT one of the contract's blocks, so it sits
+              AFTER the imposed sequence (photo → nom+prix → description → labels
+              → calories → allergènes → note), never inside it. It used to split
+              allergens from the note. Declared in CONTRACT.md §21. */}
           {dish.creator && (
             <div className="cr">
               <div className="cr__head">
@@ -998,7 +1027,18 @@ function DishDetailModal({ dish, onClose, onConfirm }: ModalProps) {
                   <b><bdi>{dish.creator.name}</bdi></b>
                   <span>{tcr('attribution')}</span>
                 </div>
-                <button type="button" className="cr__follow" disabled aria-disabled="true" title={tcr('soon')}>
+                {/* Inert by design (CD ref): `disabled` + the unavailability
+                    reason carried by the ACCESSIBLE NAME, not only by a `title`
+                    tooltip a touch user can never open. Visible label « Suivre »
+                    stays inside the name (WCAG 2.5.3). */}
+                <button
+                  type="button"
+                  className="cr__follow"
+                  disabled
+                  aria-disabled="true"
+                  title={tcr('soon')}
+                  aria-label={`${tcr('follow')} — ${tcr('soon')}`}
+                >
                   {tcr('follow')}
                 </button>
               </div>
@@ -1028,12 +1068,6 @@ function DishDetailModal({ dish, onClose, onConfirm }: ModalProps) {
               )}
             </div>
           )}
-
-          {/* NOTE — real, free-form; never presented as a guaranteed customisation. */}
-          <div className="note-f">
-            <label htmlFor="dish-note">{t('addNote')}</label>
-            <textarea id="dish-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('notePlaceholder')} />
-          </div>
         </div>
         <div className="pm__f">
           <div className="qty">

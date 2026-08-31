@@ -65,11 +65,16 @@
 .gb-resto .pm__f .qty{margin:0;flex-shrink:0}
 .gb-resto .pm__f .btn-go{margin:0;flex:1;justify-content:space-between;padding:0 18px}
 
-/* ═══════════ MOBILE — rising sheet, scrolling body, fixed foot (§10) ═══════════ */
-@media (max-width:900px){
+/* ═══════════ MOBILE — rising sheet, scrolling body, fixed foot (§10) ═══════════
+   Thresholds shifted by the shell rail exactly as restaurant.css (long note
+   there): the reference's `@container s1 (max-width:900px)` is viewport ≤1136 in
+   the product, so the §14 « modale 560 » composition starts on the same page
+   width as the single-column body it belongs to. `.pm` keeps `max-width:100%`,
+   so the 560 sheet can never overflow a narrower viewport. */
+@media (max-width:1136px){          /* reference @container s1 (max-width:900px) */
   .gb-resto .pm{width:560px}
 }
-@media (max-width:560px){
+@media (max-width:560px){           /* reference @container s1 (max-width:560px) */
   .gb-resto .ov{padding:0;align-items:flex-end}
   .gb-resto .pm{width:100%;max-height:94vh;border-radius:var(--s1-r-xl) var(--s1-r-xl) 0 0}
   .gb-resto .pm__b{padding:18px 16px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}

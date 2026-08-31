@@ -3709,6 +3709,8 @@
       "cartModeLine": "{mode} · {restaurant}",
       "cartEmptyHint": "Ajoutez un plat du menu pour commencer.",
       "pickupNoFeeNote": "À régler au retrait. Aucun frais ajouté.",
+      "dineInNoFeeNote": "À régler sur place. Aucun frais ajouté.",
+      "dineInReserveAria": "{mode} — réserver une table",
       "cartBarEmpty": "Panier vide",
       "caloriesValue": "{count} kcal",
       "allergensNotice": "Renseignés par le restaurant. En cas de doute, demandez confirmation sur place.",

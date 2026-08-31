@@ -3709,6 +3709,8 @@
       "cartModeLine": "{mode} · {restaurant}",
       "cartEmptyHint": "Add a dish from the menu to get started.",
       "pickupNoFeeNote": "Pay when you collect. No added fees.",
+      "dineInNoFeeNote": "Pay at the restaurant. No added fees.",
+      "dineInReserveAria": "{mode} — reserve a table",
       "cartBarEmpty": "Cart empty",
       "caloriesValue": "{count} kcal",
       "allergensNotice": "Provided by the restaurant. If in doubt, ask for confirmation on site.",

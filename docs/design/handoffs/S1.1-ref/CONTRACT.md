@@ -81,3 +81,43 @@ Il sert uniquement de référence visuelle pour le **rendu conditionnel** de `Di
 
 ## 20 · Implementation contract
 Respecter l'ordre des sections §2, les compositions §13-15, les états §16, le wording ci-dessus. **Interdits absolus** : afficher un champ vide ou un placeholder de champ vide · implémenter les valeurs de `product-full` comme données réelles · ETA sous toute forme · frais/mode/icône de livraison quand delivery OFF · distance présentée comme routière ou en durée · calories/labels/variantes/tailles/suppléments pour ce plat (données absentes) · frais fictifs dans le panier. Comparaison Puppeteer contre `restaurant-menu.html` à 390/768/1440 × **3 états contractuels** (`empty`, `cart`, `product`) — `product-full` est une démo de composant, hors comparaison d'états runtime ; toute déviation FIXED ou EXPLICITLY ACCEPTED. **Hors périmètre** : home `/eat`, géoloc, recherche, checkout, QR, rewards, profil.
+
+---
+
+## 21 · Additions et déviations — ADDENDUM D'IMPLÉMENTATION
+
+> ⚠️ Section **ajoutée par l'implémentation**, elle ne fait pas partie du handoff Claude Design (§1-§20 sont livrés verbatim, commit `20038d7`). Elle existe pour satisfaire §20 : « toute déviation FIXED ou EXPLICITLY ACCEPTED ». Elle donne à la comparaison Puppeteer une base déclarée : ce qui suit est attendu à l'écran en plus de la référence.
+
+### 21.1 · Additions ACCEPTÉES — blocs rendus en plus de §2/§17
+
+Chaque bloc affiche une donnée **réelle, calculée serveur**, et disparaît quand sa condition n'est pas remplie. Aucun n'invente de chiffre.
+
+| Bloc | Position §2 | Condition de rendu |
+| --- | --- | --- |
+| `.hd__rate` — note ★ cliquable → `/reviews` | header, après le nom | `restaurant.rating != null` (gaté serveur, `api/restaurants/[id]`) |
+| `.closure` — fermeture exceptionnelle annoncée | entre hero et modes | `hours.currentClosure` présent |
+| `.promo-strip` — promotions actives | entre hero et modes | `promotions[]` non vide (`evaluatePromotion`, serveur) |
+| `.dish__qty` — pastille « déjà N au panier » | vignette de la carte plat | `qty > 0` pour ce plat |
+| `.cart__reserve` — « Réserver une table » | pied du panneau panier | `reservable === true` |
+| `.cr` — encart « Recette du chef » (CD 81c4) | **modale, APRÈS la note**, hors séquence §10 | `dish.creator` présent (recette adoptée réelle) |
+
+L'encart `.cr` était intercalé entre allergènes et note : **corrigé**, il est désormais rendu après la note, la séquence imposée §10 (photo → nom+prix → description → labels → calories → allergènes → note) n'est plus coupée.
+
+### 21.2 · Déviations EXPLICITLY ACCEPTED
+
+1. **`.alg__h` — contraste 3,09:1.** Le titre ALLERGÈNES est `--gb-zest-600` #F2570E sur #FFF1E7. Accepté : §11 est satisfait par le **double canal icône + texte**, §19 ne nomme que `--gb-muted`, et l'accent vif est une décision fondateur documentée (override WCAG sur l'accent `/eat`). Un durcissement à #C2410C donnerait 4,68:1 — **décision fondateur, une ligne CSS**.
+2. **`.cr__follow` et `.cr__ai` inertes.** Reproduction verbatim d'une seconde référence CD gelée. Motif d'acceptation : indisponibilité **déclarée** (bouton `disabled` + `aria-disabled`, raison portée par le nom accessible ; pastille « bientôt » sur le bloc IA) — le motif « Bientôt » est le pattern honnête déjà en vigueur dans le produit. Aucun chiffre non opéré n'est affiché (§1).
+3. **`cartModeLine` — rappel de mode non porté par les données.** §9 impose « rappel mode + restaurant » ; le panier (`lib/eat-cart`) ne persiste aucun mode, le choix réel est fait au checkout. Le rappel est donc **visuel**, pas contractuel côté données. Porter le mode dans le payload panier est HORS PÉRIMÈTRE S1.1.
+4. **Carte « Sur place » = navigation quand le restaurant a des tables.** Elle ouvre le tunnel de réservation au lieu de basculer le mode ; elle a donc perdu `aria-pressed` et porte un nom accessible de navigation. Motif : le panneau panier (seule autre entrée) est `display:none` sous 560 px — la retirer supprimerait toute entrée mobile vers la réservation. Conséquence assumée : sur un restaurant réservable, le mode `dinein` n'est jamais sélectionné, la ligne de mode du panier reste « Click & collect ».
+
+### 21.3 · Portage des seuils §13-15
+
+La référence pilote ses ruptures par `@container s1` sur un wrapper de banc dont la largeur EST la largeur de page. Le produit rend la fiche dans `.eat-nav.is-framed .content`, décalé du rail gauche (`--gb-nav-w:236px`) au-dessus de 900 px. Les requêtes conteneur sont **inutilisables** ici (`container-type:inline-size` ⇒ `contain:layout` ⇒ l'overlay `position:fixed` de la modale se recalerait sur la page, et le contexte d'empilement passerait le header sous la bottom-nav du shell). Portage retenu, exact et continu :
+
+| Référence | Produit | Vérification |
+| --- | --- | --- |
+| `@container s1 (max-width:1080px)` | `@media (max-width:1316px)` | 1316 − 236 = 1080 ; sous 900, rail masqué, déjà inclus |
+| `@container s1 (max-width:900px)` | `@media (max-width:1136px)` | 1136 − 236 = 900 ; sous 900, identité |
+| `@container s1 (max-width:560px)` | `@media (max-width:560px)` | rail déjà masqué — 1:1 |
+
+Les tokens `--s1-cart:312px` / `--s1-gap:20px` (§18) sont déclinés dans le bloc 1316, comme la référence les décline dans son bloc 1080.

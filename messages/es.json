@@ -3709,6 +3709,8 @@
       "cartModeLine": "{mode} · {restaurant}",
       "cartEmptyHint": "Añade un plato del menú para empezar.",
       "pickupNoFeeNote": "A pagar al recoger. Sin cargos adicionales.",
+      "dineInNoFeeNote": "A pagar en el local. Sin cargos adicionales.",
+      "dineInReserveAria": "{mode} — reservar mesa",
       "cartBarEmpty": "Carrito vacío",
       "caloriesValue": "{count} kcal",
       "allergensNotice": "Indicados por el restaurante. En caso de duda, pide confirmación en el local.",
