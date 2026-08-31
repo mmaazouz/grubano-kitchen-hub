@@ -2147,11 +2147,20 @@ function DishEditor({
               role="button"
               tabIndex={0}
               onClick={() => photoFileRef.current?.click()}
-              // role=button + tabIndex put the tile in the tab order, but a <div>
-              // never synthesises a click from Enter/Space: without this the tile
-              // announces itself as actionable and does nothing, and the <input
-              // type=file> is display:none so there is no other keyboard path to
-              // the picker (WCAG 2.1.1). Same target as onClick — no new state.
+              // EXPLICITLY ACCEPTED deviation (contract §10) — overrides SPEC risk
+              // R6, which reserves this call for the parent. Ruled: KEEP.
+              // `role=button` + `tabIndex` come verbatim from the reference
+              // (dish-editor.html:178) and put the tile in the tab order, but a
+              // <div> never synthesises a click from Enter/Space and the reference
+              // ships no keydown listener at all. Reproduced literally, the tile
+              // would be announced as a button, take focus, draw the contract §8
+              // 3px ring — and do nothing (WCAG 2.1.1). That is a defect D2.1
+              // would INTRODUCE: the previous `.photo-upload` was a bare <div
+              // onClick> with neither role nor tabIndex, so it never claimed to be
+              // actionable. The <input type=file> is display:none, so no other
+              // keyboard path to the picker exists. Zero pixels, zero product
+              // behaviour: same target as onClick, no new state, no validation,
+              // no network call. Revert = delete this handler only.
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
@@ -2237,9 +2246,14 @@ function DishEditor({
           </div>
 
           {/* ⑤ Labels — 4 tiles; icons kept from the product (EXPLICITLY ACCEPTED, contract §8).
-              Checked state carries the `✓ ` text channel like the chips (§8: "texte ✓ + fond",
-              never colour alone). The reference never renders a tile ON in any of its four
-              states, so this adds no pixel divergence to the captured compositions. */}
+              The `✓ ` on a checked tile is a SECOND explicitly accepted deviation: contract §8
+              requires "état coché = texte ✓ + fond (double canal)" without exempting tiles,
+              while SPEC §1's DOM tree — transcribed from the reference — shows `span.ms` + name
+              only. The reference itself is inconsistent here: its script writes `✓ ` onto both
+              chip families (dish-editor.html:318,321-322) but only toggles a class on tiles
+              (:324), which would leave them signalled by colour alone (WCAG 1.4.1). Contract
+              wins. Cost-free against the captures: `fill()` never touches `.tile`, so no tile
+              renders ON in any of ?state=create|edit|error|saving. Revert = drop `{on && '✓ '}`. */}
           <div className="de-sec">
             <label>{t('fLabels')}</label>
             <div className="de-tiles">

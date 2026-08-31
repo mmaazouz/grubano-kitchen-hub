@@ -259,7 +259,15 @@
 .gb-op .op-label-tile.is-on{border-color:var(--op-zest-600);background:var(--op-zest-bg);color:var(--op-zest-600)}
 [data-theme="dark"] .gb-op .op-label-tile.is-on{color:var(--op-zest)}
 
-/* availability row */
+/* ⚰️ DEAD since D2.1 — INTENTIONALLY RETAINED, do not restyle.
+ * Second orphan of this lot, alongside `.photo-upload` above. The dish editor's
+ * best-seller row was the only consumer on this route; it now uses
+ * `.de-switchrow`, and `avail-row` no longer appears in this page.tsx.
+ * supplier/catalog LOOKS like a surviving consumer but is not: it ships its own
+ * `.gb-op .sup-cat .avail-row` rules (identical declarations, higher
+ * specificity) and its markup has no `.m` wrapper, so the two child rules below
+ * match nothing anywhere. Kept so the D2.1 diff removes 0 declarations; delete
+ * with `.photo-upload` in the clean-up lot, after one last control grep. */
 .gb-op .avail-row{display:flex;align-items:center;justify-content:space-between;background:var(--op-surface-2);border-radius:var(--op-r-md);padding:12px 14px}
 .gb-op .avail-row .m b{display:block;font-size:12.5px;font-weight:700}
 .gb-op .avail-row .m span{font-size:11px;color:var(--op-muted)}
@@ -308,14 +316,18 @@
  * D2.1 — DISH EDITOR modal (`de-*`) — reference docs/design/handoffs/D2.1-ref/
  * dish-editor.html + CLAUDE-DESIGN-D2.1-DISH-EDITOR-CONTRACT.md.
  *
- * 🔒 Presentation only — a DEDICATED class family. Every shared `op-*` primitive
- * (.op-field / .op-chips / .op-chip.allergen / .op-labels / .op-label-tile /
- * .op-callout / .op-modal* / .avail-row) is left byte-identical: they still
- * serve the Scan IA result step, the Category + Delete modals of this same page
- * and supplier/catalog. Restyling one of them would be an out-of-scope regression.
- * The ONE exception is `.photo-upload` (l. ~240): the dish editor was its only
- * consumer, so it is now dead — retained unstyled-but-orphaned rather than
- * deleted, see the note there.
+ * 🔒 Presentation only — a DEDICATED class family. The shared `op-*` primitives
+ * that are still LIVE (.op-field / .op-field-row / .op-chips / .op-chip.allergen
+ * / .op-labels / .op-label-tile / .op-callout / .op-modal*) are left
+ * byte-identical: they still serve the Scan IA result step and the Category +
+ * Delete modals of this same page. Restyling one would be an out-of-scope
+ * regression.
+ * TWO primitives lost their last consumer in this lot and are now DEAD-but-
+ * retained, each carrying its own ⚰️ marker for the clean-up lot:
+ * `.photo-upload` (l. ~244 → `.de-photo`) and `.avail-row` (l. ~271 →
+ * `.de-switchrow`). supplier/catalog is NOT a surviving consumer of the latter
+ * — see the note there. Neither is deleted here, so this lot removes 0 CSS
+ * declarations.
  *
  * The reference's preview harness is NOT reproduced: no `.demo` bar, no `.stage`,
  * and above all NO container query. The modal is position:fixed (no container
@@ -378,11 +390,16 @@
 .gb-op .de-photo>b{position:relative;z-index:1;font-size:13px;font-weight:700;color:var(--op-text)}
 .gb-op .de-photo>span{position:relative;z-index:1;font-size:11px;color:var(--op-muted-2)}
 .gb-op .de-photo:focus-visible{outline:none;box-shadow:var(--op-focus)}
-/* DECLARED: the reference never draws a FILLED tile, so this state has no
- * reference pixel to match. Scrim + white labels are ported verbatim from the
- * product's previous `.photo-upload .overlay`, without which "Changer la photo"
- * is illegible over an arbitrary dish photo. The dashed drop-zone border is kept
- * around the filled tile too — pending a design ruling, not a match/mismatch. */
+/* 📮 ROUTED to Claude Design — UNRULED state, not a match/mismatch.
+ * The reference only ever draws the EMPTY drop-zone, so the filled tile has no
+ * reference pixel at any of the three widths, yet it is what operators see on
+ * every EDIT of a dish that has a photo. Interim treatment: scrim + white labels
+ * ported verbatim from the product's previous `.photo-upload .overlay`, without
+ * which "Changer la photo" is illegible over an arbitrary dish photo; the 2px
+ * dashed drop-zone border of `.de-photo` is inherited as-is around the filled
+ * tile. Two open questions for the ruling: does the dashed border stay once the
+ * tile holds an image, and is the scrim permanent or hover/focus only?
+ * Replace this comment with the ruling. */
 .gb-op .de-photo.has-photo::after{content:'';position:absolute;inset:0;background:rgba(15,39,66,.5)}
 .gb-op .de-photo.has-photo>.ms,.gb-op .de-photo.has-photo>b,.gb-op .de-photo.has-photo>span{color:#fff}
 .gb-op .de-id__f{display:flex;flex-direction:column;gap:var(--de-field-gap);min-width:0}
