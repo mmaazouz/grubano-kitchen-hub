@@ -10,7 +10,8 @@
  * 🔒 TRUTH RULES (contract §3) — enforced in page.tsx, mirrored here:
  *   1. NO ETA anywhere on this surface (no minutes, no delay, no prep estimate).
  *   2. Delivery OFF ⇒ no fee, no two-wheeler glyph, no delivery mode. The cart
- *      footer carries « À régler au retrait. Aucun frais ajouté. » instead.
+ *      footer states the one thing that is verifiable — no DELIVERY fee — and
+ *      switches to the real small-order nudge under the threshold (page.tsx).
  *   3. Distance = « à env. X km » + `near_me` — never routed, never a duration.
  * 🔒 CONDITIONAL RENDERING (contract §10): an empty field has NO block, NO
  *    placeholder, NO reserved space — nothing here draws an empty container.
@@ -156,10 +157,22 @@
 
 /* ═══════════ §8 DISH CARDS — name · allergen pill · price · thumb ═══════════ */
 .gb-resto .dishes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.gb-resto .dish{display:flex;gap:14px;padding:14px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-1);cursor:pointer;text-align:start;color:inherit;transition:border-color .15s,transform .15s}
+.gb-resto .dish{position:relative;display:flex;gap:14px;padding:14px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-1);cursor:pointer;text-align:start;color:inherit;transition:border-color .15s,transform .15s}
 .gb-resto .dish:hover{border-color:var(--s1-zest-bd);transform:translateY(-1px)}
 .gb-resto .dish__m{flex:1;min-width:0;display:flex;flex-direction:column}
 .gb-resto .dish__m h3{font-size:16px;font-weight:800;color:var(--gb-text)}
+/* §8 « toute la carte ouvre la modale » — the whole-card target is a STRETCHED
+   button (its ::after covers the card) sitting INSIDE the <h3>, so the dish name
+   stays a real heading: a heading nested in a <button> is flattened into that
+   button's accessible name and disappears from heading navigation (§19). The
+   overlay carries the focus ring, so it still draws around the whole card. */
+.gb-resto .dish__hit{padding:0;border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;text-align:start;cursor:pointer}
+.gb-resto .dish__hit::after{content:'';position:absolute;inset:0;border-radius:var(--s1-r-lg);z-index:1}
+.gb-resto .dish__hit:focus-visible{box-shadow:none}
+.gb-resto .dish__hit:focus-visible::after{box-shadow:var(--s1-focus)}
+/* The one REAL nested control (creator attribution → /chef/{slug}) has to stay
+   above the card-wide overlay, or the stretched button swallows its clicks. */
+.gb-resto .dish__p a{position:relative;z-index:2}
 /* §11 — allergen REMINDER on the card (icon + text, never colour alone). */
 .gb-resto .dish__al{display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:11.5px;font-weight:700;color:var(--s1-muted);background:var(--s1-surface-2);border-radius:var(--gb-r-pill);padding:3px 9px;width:fit-content;text-align:start}
 .gb-resto .dish__al .ms{font-size:14px;flex-shrink:0}
@@ -178,12 +191,23 @@
 .gb-resto .dish__qty{position:absolute;inset-block-start:6px;inset-inline-start:6px;min-width:24px;height:24px;padding:0 7px;border-radius:var(--gb-r-pill);background:var(--gb-ink);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
 [data-theme="dark"] .gb-resto .dish__qty{background:var(--gb-zest);color:#0C1826}
 
-/* ═══════════ §12 ABOUT — description/address | opening hours ═══════════ */
-.gb-resto .about{grid-column:1;margin-top:28px;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-1);overflow:hidden}
-.gb-resto .about__h{width:100%;display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--gb-border);background:none;border-inline:0;border-block-start:0;cursor:pointer;text-align:start}
-.gb-resto .about__h h2{font-size:17px;font-weight:800;color:var(--gb-text)}
+/* ═══════════ §12 ABOUT — description/address | opening hours ═══════════
+   `.about` is an ITEM of the `.body` grid here (the reference nests it in the
+   left column instead — see CONTRACT.md §21.2), so the grid's own row gap
+   already provides the reference's 28px: NO `margin-top`, or the two would add
+   up and open 56px between the dish grid and this card. */
+.gb-resto .about{grid-column:1;background:var(--gb-surface);border:1px solid var(--gb-border);border-radius:var(--s1-r-lg);box-shadow:var(--s1-sh-1);overflow:hidden}
+/* §19 — the section heading is a REAL <h2> and the disclosure control lives
+   INSIDE it: a heading nested in a <button> is flattened into that button's
+   accessible name and drops out of heading navigation altogether. */
+.gb-resto .about__h{font-size:17px;font-weight:800;color:var(--gb-text);border-bottom:1px solid var(--gb-border)}
+.gb-resto .about__h-btn{width:100%;display:flex;align-items:center;gap:10px;padding:16px 20px;background:none;border:0;color:inherit;font:inherit;letter-spacing:inherit;cursor:pointer;text-align:start}
 .gb-resto .about__h .ms{font-size:20px;color:var(--s1-muted-2);margin-inline-start:auto}
 .gb-resto .about__b{padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:24px}
+/* §10 — an absent field reserves NO space: with only one of the two blocks
+   (no configured hours, or no description/address) the grid drops to one
+   track instead of leaving half the card empty. */
+.gb-resto .about__b.is-single{grid-template-columns:1fr}
 .gb-resto .about__desc{font-size:14.5px;line-height:1.6;color:var(--s1-muted)}
 .gb-resto .about__addr{display:flex;align-items:flex-start;gap:9px;margin-top:14px;font-size:14px;font-weight:600;color:var(--gb-text)}
 .gb-resto .about__addr .ms{font-size:19px;color:var(--gb-zest-600);flex-shrink:0}
@@ -272,10 +296,18 @@
      container  ≤900 ⟺ viewport ≤1136  (>900: 1136−236=900  · ≤900: identical)
      container  ≤560 ⟺ viewport  ≤560  (rail already hidden — 1:1, unshifted)
    Contractual widths land as specified: 1440 (2-col dishes, cart 352/gap 28),
-   768 (single column, cart 312/gap 20 tokens, modal 560), 390 (sheet + bar). */
+   768 (single column, cart 352 full-width/gap 28 — the reference's own rendered
+   values, see the 1316 block), 390 (sheet + bar). */
 @media (max-width:1316px){          /* reference @container s1 (max-width:1080px) */
-  /* §18 token declension — the reference re-declares both on this threshold. */
-  .gb-resto{--s1-cart:312px;--s1-gap:20px}
+  /* §18 declines `--s1-cart:312px` / `--s1-gap:20px` on this threshold, and the
+     reference SOURCE carries them — but inside `@container s1 (…){ :root{…} }`,
+     where they are DEAD: `:root` is an ANCESTOR of the `.wrap` container, and a
+     container query only ever matches its container's DESCENDANTS. Measured on
+     the reference RENDERED at 768 and at 390: `--s1-cart` = 352px, `--s1-gap` =
+     28px, `.body` row-gap = column-gap = 28px — unchanged from 1440. §20 makes
+     the RENDERED reference the comparison target, so the tokens stay 352/28 at
+     every width and only the dish grid collapses here. §18's 312/20 is an intent
+     the reference CSS never reaches — declared in CONTRACT.md §21.3. */
   .gb-resto .dishes{grid-template-columns:1fr}
 }
 @media (max-width:1136px){          /* reference @container s1 (max-width:900px) */

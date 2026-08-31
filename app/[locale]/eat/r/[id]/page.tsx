@@ -4,10 +4,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import { useTranslations, useLocale } from 'next-intl'
-import { formatEuros } from '@/lib/format-money'
+import { formatEuros, formatAmount } from '@/lib/format-money'
 import { formatDistance } from '@/lib/format'
 import { formatCuisineList } from '@/lib/categories'
 import { useGeolocation } from '@/lib/use-geolocation'
+import CreatorBadge from '@/components/eat/CreatorBadge'
 import {
   readCart,
   writeCart,
@@ -196,6 +197,10 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
 export default function RestaurantScreen() {
   const t = useTranslations('eat.restaurant')
   const tc = useTranslations('common')
+  // The small-order-fee wording belongs to the CART vocabulary and already exists
+  // in all 5 locales — reused verbatim so this panel and /eat/cart say the same
+  // thing about the same fee (see the note block in the cart footer below).
+  const tcart = useTranslations('eat.cart')
   const locale = useLocale()
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -222,6 +227,11 @@ export default function RestaurantScreen() {
   // Chantier P2 — server-computed promo display data (never computed here).
   const [promotions, setPromotions] = useState<PublicPromo[]>([])
   const [itemPromo, setItemPromo] = useState<Record<string, ItemPromo>>({})
+  // V1.5 small-order-fee CONFIG in cents, echoed by the SAME endpoint this page
+  // already fetches (app/api/restaurants/[id]/route.ts). DISPLAY ONLY — the
+  // server recomputes and applies the fee at order time. Read here so the cart
+  // note can only claim « no fee » when that is actually true (see below).
+  const [smallOrderCfg, setSmallOrderCfg] = useState<{ feeCents: number; thresholdCents: number } | null>(null)
   // PASSIVE read of the cached position only — this page NEVER calls request()
   // (geolocation is out of S1.1 scope): no permission prompt, no network call.
   const { coords } = useGeolocation()
@@ -256,6 +266,11 @@ export default function RestaurantScreen() {
         })))
         setPromotions(Array.isArray(d.promotions) ? d.promotions : [])
         setItemPromo(d.itemPromo && typeof d.itemPromo === 'object' ? d.itemPromo : {})
+        // Defensive, same shape check as /eat/cart: an odd payload leaves the
+        // config null and the panel simply says nothing about a fee.
+        if (d.smallOrder && typeof d.smallOrder.feeCents === 'number' && typeof d.smallOrder.thresholdCents === 'number') {
+          setSmallOrderCfg({ feeCents: d.smallOrder.feeCents, thresholdCents: d.smallOrder.thresholdCents })
+        }
         // V5-2 — tolerant: absent/odd payload ⇒ delivery stays hidden (safe).
         if (d.fulfillment && d.fulfillment.delivery === true) setDeliveryAvailable(true)
         // V5-1b — tolerant: absent/odd payload ⇒ booking entry stays hidden.
@@ -354,6 +369,20 @@ export default function RestaurantScreen() {
 
   const cartCount = cart?.items.reduce((s, l) => s + l.qty, 0) ?? 0
   const cartTotal = cart?.items.reduce((s, l) => s + l.item.price * l.qty, 0) ?? 0
+
+  // ── §3 rule 2 — the fee note, made TRUE at render time ──────────────────────
+  // POST /api/orders adds a flat small-order fee with NO fulfilment gating
+  // (app/api/orders/route.ts → lib/pricing.smallOrderFeeCents) as soon as the
+  // ITEMS subtotal is under the threshold, and /eat/cart bills it on the very
+  // next screen. A blanket « aucun frais ajouté » here would therefore be the
+  // same class of false money claim as the « 1,99 € » that §3 rule 2 deleted, so
+  // below the threshold the panel shows the REAL nudge instead (same wording as
+  // /eat/cart). Above it, only the verifiable half is kept: no DELIVERY fee.
+  const cartTotalCents = Math.round(cartTotal * 100)
+  const smallFeeApplies = !!smallOrderCfg && cartTotal > 0 && cartTotalCents < smallOrderCfg.thresholdCents
+  const missingToThresholdEur = smallOrderCfg
+    ? Math.max(0, smallOrderCfg.thresholdCents - cartTotalCents) / 100
+    : 0
 
   // ── filtered menu items for current Menu tab state
   const filtered = useMemo(
@@ -704,9 +733,19 @@ export default function RestaurantScreen() {
                           : t('promoPillFixed', { eur: promo.discount })
                       : null
                     return (
-                      <button key={dish.id} type="button" className="dish" onClick={() => setModalDish(dish)}>
+                      // §8 « toute la carte ouvre la modale » — the card is a plain
+                      // <article> and the whole-card target is a STRETCHED button
+                      // nested in the <h3> (see .dish__hit::after). The dish name
+                      // therefore stays a real heading: a heading placed INSIDE a
+                      // <button> is folded into that button's accessible name and
+                      // vanishes from heading navigation (§19 reading order).
+                      <article key={dish.id} className="dish">
                         <div className="dish__m">
-                          <h3>{dish.name}</h3>
+                          <h3>
+                            <button type="button" className="dish__hit" onClick={() => setModalDish(dish)}>
+                              {dish.name}
+                            </button>
+                          </h3>
                           {/* §11 — allergen reminder, first of the two passes. Empty ⇒ absent. */}
                           {allergens.length > 0 && (
                             <span className="dish__al">
@@ -718,6 +757,13 @@ export default function RestaurantScreen() {
                             <span className="price">{formatEuros(shownPrice, locale)}</span>
                             {wasPrice != null && <span className="price was">{formatEuros(wasPrice, locale)}</span>}
                             {promoPill && <span className="tag promo">{promoPill}</span>}
+                            {/* Creator attribution (« recette signée … » → /chef/{slug}),
+                                lever 4-bis A1. REAL adopted-recipe data preloaded by
+                                GET /api/restaurants/[id]; absent creator ⇒ absent badge.
+                                Kept ON THE CARD, not only in the modal: the modal only
+                                opens once the dish is already chosen, which is after the
+                                discovery this badge exists for. Declared CONTRACT §21.1. */}
+                            {dish.creator && <CreatorBadge creator={dish.creator} />}
                           </div>
                         </div>
                         <div className="dish__ph">
@@ -730,7 +776,7 @@ export default function RestaurantScreen() {
                           {qty > 0 && <span className="dish__qty">{qty}</span>}
                           <span className="dish__add" aria-hidden="true"><span className="ms">add</span></span>
                         </div>
-                      </button>
+                      </article>
                     )
                   })}
                 </div>
@@ -789,16 +835,24 @@ export default function RestaurantScreen() {
               fabricates one — and never a delivery fee (contract §3 rule 2). */}
           <div className="cart__f">
             <div className="tot"><span>{t('subtotal')}</span><span className="v">{formatEuros(cartTotal, locale)}</span></div>
-            {/* §9 lists the « aucun frais ajouté » note as a fixed part of the panel
-                and §3 rule 2 makes it the standing replacement for the removed
-                delivery fee — so it is NOT conditional on the takeaway card: each
-                fee-free mode carries its own true wording (« au retrait » /
-                « sur place »). Delivery is the one mode that gets NO note: with
-                DELIVERY_FULFILLMENT_ENABLED on, a delivery order DOES carry a fee,
-                and claiming « aucun frais ajouté » there would be the very false
-                statement §3 rule 2 exists to forbid. */}
+            {/* §9 lists this note as a fixed part of the panel and §3 rule 2 makes
+                it the standing replacement for the removed delivery fee. Two of
+                the contract's literal claims are NOT true against the live server
+                and are therefore not rendered (declared CONTRACT §21.2):
+                  • « aucun frais ajouté » — the small-order fee is charged one tap
+                    later on any basket under the threshold, ungated by mode, so
+                    that clause only shows at/above the threshold;
+                  • « à régler au retrait / sur place » — cash is out of the pilot
+                    and refused server-side (/eat/cart hardcodes card), so no
+                    payment MOMENT is claimed at all.
+                Delivery is the one mode that gets NO note: with
+                DELIVERY_FULFILLMENT_ENABLED on, a delivery order DOES carry a fee. */}
             {mode !== 'delivery' && (
-              <div className="tot__note">{t(mode === 'dinein' ? 'dineInNoFeeNote' : 'pickupNoFeeNote')}</div>
+              <div className="tot__note">
+                {smallFeeApplies
+                  ? tcart('smallOrderNudge', { amount: formatAmount(missingToThresholdEur, locale) })
+                  : t('noDeliveryFeeNote')}
+              </div>
             )}
             <button type="button" className="btn-go" disabled={cartCount === 0} onClick={() => router.push('/eat/cart')}>
               <span className="ms" aria-hidden="true">arrow_forward</span>{t('viewCart')}
@@ -819,17 +873,25 @@ export default function RestaurantScreen() {
             (the fabricated « Lun–Dim : 10h00 – 23h00 » line is gone). ══ */}
         {hasAbout && (
           <section className="about">
-            <button
-              type="button"
-              className="about__h"
-              aria-expanded={aboutOpen}
-              onClick={() => setAboutOpen((v) => !v)}
-            >
-              <h2>{t('tabAbout')}</h2>
-              <span className="ms" aria-hidden="true">{aboutOpen ? 'expand_less' : 'expand_more'}</span>
-            </button>
+            {/* §19 — standard disclosure: the <h2> stays a heading and CONTAINS the
+                button. The reverse (heading inside the button) makes the section
+                title part of the button's accessible name, and « À propos » drops
+                out of the page's heading structure entirely. */}
+            <h2 className="about__h">
+              <button
+                type="button"
+                className="about__h-btn"
+                aria-expanded={aboutOpen}
+                onClick={() => setAboutOpen((v) => !v)}
+              >
+                {t('tabAbout')}
+                <span className="ms" aria-hidden="true">{aboutOpen ? 'expand_less' : 'expand_more'}</span>
+              </button>
+            </h2>
             {aboutOpen && (
-              <div className="about__b">
+              // §10 — one block only (no hours configured, or no description and
+              // no address) ⇒ ONE track: an absent field never reserves half the card.
+              <div className={`about__b${hasHours && (description || addressLine) ? '' : ' is-single'}`}>
                 {(description || addressLine) && (
                   <div>
                     {description && <p className="about__desc">{description}</p>}
