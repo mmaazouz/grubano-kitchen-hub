@@ -2099,17 +2099,33 @@ function DishEditor({
 
   const photoSrc = photoPayload?.preview ?? d.photos?.[0]
 
+  // ── D2.1 layout (docs/design/handoffs/D2.1-ref/dish-editor.html) ────────────
+  // Presentation only. Section order follows contract §2: identity → figures →
+  // category → allergens → labels → best-seller → delete → error slot → footer.
+  // The error banner leaves its old "under the photo" spot for a FIXED slot
+  // between the scroll area and the footer, so it is always on screen when the
+  // operator clicks Enregistrer. Its SOURCE (`photoError`) and its text are
+  // untouched — only the render position moves.
   return (
-    <div className="op-modal-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="op-modal wide">
-        <div className="op-modal__head">
-          <h3>{isNew ? t('modalNewTitle') : t('modalEditTitle')}</h3>
-          <button type="button" onClick={onClose} aria-label={t('close')} className="op-modal__close">
+    <div className="op-modal-backdrop de-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      {/* `data-state` is documentary (QA hook) — no CSS layout rule depends on it. */}
+      <div
+        className="de-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="de-modal-title"
+        data-state={isNew ? 'create' : 'edit'}
+      >
+        <header className="de-modal__head">
+          <h2 className="de-modal__title" id="de-modal-title">
+            {isNew ? t('modalNewTitle') : t('modalEditTitle')}
+          </h2>
+          <button type="button" onClick={onClose} aria-label={t('close')} className="de-modal__close">
             <span className="ms" aria-hidden="true">close</span>
           </button>
-        </div>
+        </header>
 
-        <div className="op-modal__body">
+        <div className="de-modal__scroll">
           {/* ── Photo (Manuel upload) ── */}
           <input
             ref={photoFileRef}
@@ -2123,86 +2139,102 @@ function DishEditor({
               e.target.value = ''
             }}
           />
-          <div className="photo-upload" onClick={() => photoFileRef.current?.click()}>
-            {photoSrc && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={photoSrc} alt={tPhoto('alt', { name: d.name || '—' })} />
-            )}
-            <div className="overlay">
-              <span className="ms" aria-hidden="true">add_a_photo</span>
-              <span>{d.photos?.[0] || photoPayload ? tPhoto('change') : tPhoto('pick')}</span>
+
+          {/* ① Identity — photo + name/description */}
+          <div className="de-id">
+            <div
+              className={`de-photo${photoSrc ? ' has-photo' : ''}`}
+              role="button"
+              tabIndex={0}
+              onClick={() => photoFileRef.current?.click()}
+            >
+              {photoSrc && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoSrc} alt={tPhoto('alt', { name: d.name || '—' })} />
+              )}
+              <span className="ms" aria-hidden="true">add_photo_alternate</span>
+              <b>{d.photos?.[0] || photoPayload ? tPhoto('change') : tPhoto('pick')}</b>
+              <span>{t('helpPhoto')}</span>
+            </div>
+            <div className="de-id__f">
+              <div className="de-fld">
+                <label htmlFor="de-f-name">{t('fName')}</label>
+                <input id="de-f-name" className="de-inp" type="text" value={d.name}
+                  onChange={e => setD({ ...d, name: e.target.value })}
+                  placeholder={t('fNamePlaceholder')} />
+              </div>
+              <div className="de-fld">
+                <label htmlFor="de-f-desc">{t('fDesc')}</label>
+                <textarea id="de-f-desc" className="de-inp" value={d.description ?? ''}
+                  onChange={e => setD({ ...d, description: e.target.value })}
+                  placeholder={t('fDesc')} rows={3} />
+              </div>
             </div>
           </div>
-          {photoError && (
-            <div className="op-callout danger">
-              <span className="ms" aria-hidden="true">error</span>
-              <p>{photoError}</p>
-            </div>
-          )}
 
-          <div className="op-field">
-            <label>{t('fName')}</label>
-            <input className="op-input" value={d.name} onChange={e => setD({ ...d, name: e.target.value })}
-              placeholder={t('fNamePlaceholder')} />
-          </div>
-
-          <div className="op-field">
-            <label>{t('fDesc')}</label>
-            <textarea className="op-textarea" value={d.description ?? ''}
-              onChange={e => setD({ ...d, description: e.target.value })}
-              placeholder={t('fDesc')} rows={3} />
-          </div>
-
-          <div className="op-field-row">
-            <div className="op-field">
-              <label>{t('fPrice')}</label>
-              <input className="op-input mono" type="number" step="0.1" min="0" value={d.price}
+          {/* ② Figures — price + calories, two columns at every width */}
+          <div className="de-row2">
+            <div className="de-fld">
+              <label htmlFor="de-f-price">{t('fPrice')}</label>
+              <input id="de-f-price" className="de-inp mono" type="number" step="0.1" min="0" value={d.price}
                 onChange={e => setD({ ...d, price: Number(e.target.value) })} />
+              {/* Passive help — the server rejects 0; NO client validation added. */}
+              <div className="de-fld__help"><span className="ms" aria-hidden="true">info</span>{t('helpPrice')}</div>
             </div>
-            <div className="op-field">
-              <label>{t('fCalories')}</label>
-              <input className="op-input" type="number" min="0" value={d.calories ?? ''}
+            <div className="de-fld">
+              <label htmlFor="de-f-cal">{t('fCalories')}</label>
+              <input id="de-f-cal" className="de-inp mono" type="number" min="0" value={d.calories ?? ''}
                 onChange={e => setD({ ...d, calories: e.target.value ? Number(e.target.value) : null })} />
+              <div className="de-fld__help"><span className="ms" aria-hidden="true">info</span>{t('helpCalories')}</div>
             </div>
           </div>
 
-          <div className="op-field">
+          {/* ③ Category — mono-select, active = solid ink + ✓ (never colour alone) */}
+          <div className="de-sec">
             <label>{t('fCategory')}</label>
-            <div className="op-chips">
-              {allCats.map(c => (
-                <button key={c} type="button" onClick={() => setD({ ...d, category: c })}
-                  className={`op-chip${d.category === c ? ' is-on' : ''}`}>
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="op-field">
-            <label>{t('fAllergens')}</label>
-            <div className="op-chips">
-              {ALL_EU.map(a => {
-                const on = d.allergens.includes(a)
+            <div className="de-chips">
+              {allCats.map(c => {
+                const on = d.category === c
                 return (
-                  <button key={a} type="button"
-                    onClick={() => setD({ ...d, allergens: on ? d.allergens.filter(x => x !== a) : [...d.allergens, a] })}
-                    className={`op-chip allergen${on ? ' is-on' : ''}`}>
-                    {on && '✓ '}{a}
+                  <button key={c} type="button" onClick={() => setD({ ...d, category: c })}
+                    className={`de-chip${on ? ' is-cat-on' : ''}`}>
+                    {on && '✓ '}{c}
                   </button>
                 )
               })}
             </div>
           </div>
 
-          <div className="op-field">
+          {/* ④ Allergens (EU 14) — multi-select, active = ✓ + zest tint */}
+          <div className="de-sec">
+            <label>{t('fAllergens')}</label>
+            <div className="de-chips">
+              {ALL_EU.map(a => {
+                const on = d.allergens.includes(a)
+                return (
+                  <button key={a} type="button"
+                    onClick={() => setD({ ...d, allergens: on ? d.allergens.filter(x => x !== a) : [...d.allergens, a] })}
+                    className={`de-chip de-chip--allergen${on ? ' is-on' : ''}`}>
+                    {on && '✓ '}{a}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="de-fld__help de-help--block">
+              <span className="ms" aria-hidden="true">info</span>{t('helpAllergens')}
+            </div>
+          </div>
+
+          {/* ⑤ Labels — 4 tiles; icons kept from the product (EXPLICITLY ACCEPTED, contract §8) */}
+          <div className="de-sec">
             <label>{t('fLabels')}</label>
-            <div className="op-labels">
+            <div className="de-tiles">
               {ALL_LABELS.map(l => {
                 const on = d.labels.includes(l.name)
                 return (
                   <button key={l.name} type="button"
                     onClick={() => setD({ ...d, labels: on ? d.labels.filter(x => x !== l.name) : [...d.labels, l.name] })}
-                    className={`op-label-tile${on ? ' is-on' : ''}`}>
+                    className={`de-tile${on ? ' is-on' : ''}`}>
                     <span className="ms" aria-hidden="true">{l.icon}</span>
                     <span>{l.name}</span>
                   </button>
@@ -2211,31 +2243,44 @@ function DishEditor({
             </div>
           </div>
 
-          <div className="avail-row">
-            <div className="m"><b>{t('fBest')}</b><span>{t('fBestSub')}</span></div>
-            <label className="op-switch" title={t('fBest')}>
-              <input type="checkbox" checked={d.isPopular} onChange={() => setD({ ...d, isPopular: !d.isPopular })} />
-              <span className="track" />
-            </label>
+          {/* ⑥ Best-seller */}
+          <div className="de-sec">
+            <div className="de-switchrow">
+              <div className="m"><b>{t('fBest')}</b><span>{t('fBestSub')}</span></div>
+              <label className="op-switch" title={t('fBest')}>
+                <input type="checkbox" checked={d.isPopular} onChange={() => setD({ ...d, isPopular: !d.isPopular })} />
+                <span className="track" />
+              </label>
+            </div>
           </div>
 
+          {/* ⑦ Delete — EDIT only, last child of the scroll: never next to Enregistrer */}
           {!isNew && (
-            <button type="button" onClick={() => onDelete(item.id)} className="op-btn-ghost"
-              style={{ color: 'var(--op-danger)', borderColor: 'var(--op-danger-bd)', display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-              <span className="ms" aria-hidden="true">delete</span>{t('deleteThisDish')}
-            </button>
+            <div className="de-del">
+              <button type="button" onClick={() => onDelete(item.id)}>
+                <span className="ms" aria-hidden="true">delete</span>{t('deleteThisDish')}
+              </button>
+            </div>
           )}
         </div>
 
-        <div className="op-modal__foot">
-          <button type="button" onClick={onClose} className="op-btn-ghost">{t('cancel')}</button>
-          <button type="button" onClick={handleSave} disabled={saving || !d.name} className="op-btn-primary">
+        {/* Server error — fixed slot, outside the scroll, verbatim text */}
+        {photoError && (
+          <div className="de-modal__err" role="alert">
+            <span className="ms" aria-hidden="true">error</span>
+            <span>{photoError}</span>
+          </div>
+        )}
+
+        <footer className="de-modal__foot">
+          <button type="button" onClick={onClose} className="de-btn de-btn--cancel">{t('cancel')}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !d.name} className="de-btn de-btn--save">
             {saving
-              ? <span className="ms" aria-hidden="true" style={{ animation: 'op-scan-spin 1s linear infinite' }}>progress_activity</span>
+              ? <span className="ms de-spin" aria-hidden="true">progress_activity</span>
               : <span className="ms" aria-hidden="true">check</span>}
             {saving ? t('saving') : t('save')}
           </button>
-        </div>
+        </footer>
       </div>
     </div>
   )
