@@ -3692,7 +3692,7 @@
       "modeTakeaway": "Click & collect",
       "modeDineIn": "Sur place",
       "fulfilmentMode": "Mode de commande",
-      "itemCountShort": "{count, plural, =1 {# article} other {# articles}}",
+      "itemCountShort": "{count, plural, =0 {# article} =1 {# article} other {# articles}}",
       "subtotal": "Sous-total",
       "cartEmpty": "Votre panier est vide",
       "viewCartCount": "Voir le panier · {count, plural, =1 {# article} other {# articles}}",
