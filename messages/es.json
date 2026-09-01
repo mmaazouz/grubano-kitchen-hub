@@ -4166,7 +4166,7 @@
       "helpPhoto": "JPG, PNG o WebP · 8 MB máx.",
       "helpPrice": "Superior a 0 €",
       "helpCalories": "Opcional — número entero",
-      "helpAllergens": "Sin selección, el cliente verá «Información no facilitada por el restaurante».",
+      "helpAllergens": "Sin selección, el cliente verá «Información sobre alérgenos no facilitada por el restaurante».",
       "scanAddError": "Error al añadir, inténtalo de nuevo.",
       "scanAdd": "Añadir al menú",
       "scanSaving": "Guardando…",

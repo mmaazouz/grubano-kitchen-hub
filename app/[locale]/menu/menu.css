@@ -390,16 +390,20 @@
 .gb-op .de-photo>b{position:relative;z-index:1;font-size:13px;font-weight:700;color:var(--op-text)}
 .gb-op .de-photo>span{position:relative;z-index:1;font-size:11px;color:var(--op-muted-2)}
 .gb-op .de-photo:focus-visible{outline:none;box-shadow:var(--op-focus)}
-/* 📮 ROUTED to Claude Design — UNRULED state, not a match/mismatch.
+/* ✅ EXPLICITLY ACCEPTED — CURRENT PRODUCT BEHAVIOR (founder ruling 2026-09-01).
  * The reference only ever draws the EMPTY drop-zone, so the filled tile has no
  * reference pixel at any of the three widths, yet it is what operators see on
- * every EDIT of a dish that has a photo. Interim treatment: scrim + white labels
- * ported verbatim from the product's previous `.photo-upload .overlay`, without
- * which "Changer la photo" is illegible over an arbitrary dish photo; the 2px
- * dashed drop-zone border of `.de-photo` is inherited as-is around the filled
- * tile. Two open questions for the ruling: does the dashed border stay once the
- * tile holds an image, and is the scrim permanent or hover/focus only?
- * Replace this comment with the ruling. */
+ * every EDIT of a dish that has a photo. RULING: keep the product's existing
+ * treatment; do NOT invent a Design treatment for an unreferenced state, and do
+ * NOT block D2.1 on the missing reference. What is kept: scrim + white labels
+ * ported verbatim from the product's previous `.photo-upload .overlay` (without
+ * which "Changer la photo" is illegible over an arbitrary dish photo), and the
+ * 2px dashed drop-zone border of `.de-photo` inherited as-is around the filled
+ * tile. The two questions raised here (dashed border once filled? scrim
+ * permanent or hover/focus only?) are ANSWERED BY THIS RULING: current behavior
+ * stands until Claude Design issues reference pixels for this state.
+ * The empty/fallback tile and every contractually referenced state remain under
+ * the normal Design comparison (contract §10). */
 .gb-op .de-photo.has-photo::after{content:'';position:absolute;inset:0;background:rgba(15,39,66,.5)}
 .gb-op .de-photo.has-photo>.ms,.gb-op .de-photo.has-photo>b,.gb-op .de-photo.has-photo>span{color:#fff}
 .gb-op .de-id__f{display:flex;flex-direction:column;gap:var(--de-field-gap);min-width:0}
