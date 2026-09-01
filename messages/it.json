@@ -3870,7 +3870,7 @@
       "continue": "Continui",
       "laterEnterAddress": "Più tardi — inserisca un indirizzo",
       "searchPlaceholder": "Indirizzo o città…",
-      "clear": "Cancelli",
+      "clear": "Cancelli la ricerca",
       "useMyPosition": "Usi la mia posizione attuale",
       "acSoon": "Suggerimenti — in arrivo",
       "acSoonHint": "Ricerca indirizzi in arrivo",
@@ -3931,7 +3931,7 @@
     "errors": {
       "offline": {
         "pill": "Nessuna connessione",
-        "title": "È offline",
+        "title": "Lei è offline",
         "body": "Impossibile raggiungere Grubano. Controlli il Wi-Fi o i dati mobili, poi riprovi.",
         "retry": "Riprovi",
         "orders": "Veda i miei ordini offline"
@@ -4063,7 +4063,7 @@
       "emailErrUnavail": "Il cambio di e-mail non è disponibile per questo account.",
       "emailErrCode": "Codice non valido o scaduto.",
       "emailDoneTitle": "Controlli la Sua nuova casella di posta",
-      "emailDoneBody": "Se tutto è corretto, un'e-mail di conferma è appena stata inviata al Suo nuovo indirizzo. Clicchi il link che contiene per finalizzare il cambio. Finché non lo fa, resta connesso con il Suo indirizzo attuale.",
+      "emailDoneBody": "Se tutto è corretto, un'e-mail di conferma è appena stata inviata al Suo nuovo indirizzo. Clicchi il link che contiene per finalizzare il cambio. Finché non lo fa, resterà connesso con il Suo indirizzo attuale.",
       "emailDoneCta": "Torni al profilo",
       "confirmWorking": "Convalida in corso…",
       "confirmOkTitle": "E-mail aggiornata",
