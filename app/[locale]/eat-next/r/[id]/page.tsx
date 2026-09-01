@@ -27,8 +27,12 @@ export default async function EatNextRestaurant({ params }: { params: { id: stri
 
         {/* Bataille 2 — transparency banner, up front. */}
         <StellarCard elevation="soft" padding="md" className="flex flex-wrap gap-x-4 gap-y-1 bg-stellar-primary-soft text-sm text-stellar-accent-fg">
-          <span>🛵 {t('delivery')}&nbsp;: <b>{r.deliveryFeeEur === 0 ? t('deliveryFree') : <StellarPriceTag amountEur={r.deliveryFeeEur} size="sm" />}</b></span>
-          <span>⏱ {t('eta')}&nbsp;: <b>{t('etaValue', { min: r.etaMin })}</b></span>
+          {/* LOT VÉRACITÉ : « Livraison : 1,99 € » sortait pour des restos SANS
+              livraison (défaut de schéma), et « Délai : 30 min » était le
+              deliveryTime qu'aucune UI ne saisit — retirés/conditionnés. */}
+          {r.deliveryEnabled && (
+            <span>🛵 {t('delivery')}&nbsp;: <b>{r.deliveryFeeEur === 0 ? t('deliveryFree') : <StellarPriceTag amountEur={r.deliveryFeeEur} size="sm" />}</b></span>
+          )}
           <span>🧺 {t('minimum')}&nbsp;: <b><StellarPriceTag amountEur={r.minOrderEur} size="sm" /></b></span>
         </StellarCard>
 

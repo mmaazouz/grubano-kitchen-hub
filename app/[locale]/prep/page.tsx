@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 /**
  * /prep — operator CUISINE (KDS) — real-time kitchen display (Phase 3, wired).
@@ -182,7 +183,7 @@ export default function PrepPage() {
                       return (
                         <div key={o.id} className={`kt-card ${stateCls}`} data-status={o.status}>
                           <div className="kt-top">
-                            <span className="kt-num">#{o.id.slice(-5).toUpperCase()}</span>
+                            <span className="kt-num">{orderRef(o.id)}</span>
                             <span className={`kt-channel ${ch}`}>
                               <span className="ms" aria-hidden="true">{CHANNEL_ICON[ch]}</span>
                               {t(`kitchen.channel.${ch}`)}

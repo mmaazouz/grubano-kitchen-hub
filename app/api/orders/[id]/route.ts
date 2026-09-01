@@ -35,6 +35,10 @@ export async function GET(
             lat:          true,
             lng:          true,
             deliveryTime: true,
+            // Lot véracité : durée de préparation SAISIE par le restaurateur
+            // (/dashboard/fulfillment) — la seule donnée temps honnête du pass.
+            pickupPrepTime: true,
+            deliveryPrepTime: true,
           },
         },
       },

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { orderRef } from '@/lib/order-ref'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
@@ -230,7 +231,7 @@ export async function PATCH(
           to:              consumer.email,
           customerName:    consumer.name ?? consumer.email,
           restaurantName:  resto?.name ?? 'votre restaurant',
-          orderRef:        `#${order.id.slice(-6).toUpperCase()}`,
+          orderRef:        orderRef(order.id),
           status:          newStatus,
           fulfillmentType: order.fulfillmentType,
         })

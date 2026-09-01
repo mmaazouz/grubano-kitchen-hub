@@ -1,3 +1,4 @@
+import { orderRef } from '@/lib/order-ref'
 import { NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
@@ -21,8 +22,6 @@ import type { NextRequest } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Customer-facing short order ref — same derivation as the checkout UI. */
-const orderRef = (id: string) => `#${id.slice(-6).toUpperCase()}`
 
 export async function POST(
   req: NextRequest,

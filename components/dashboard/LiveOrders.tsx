@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 /**
  * LiveOrders — operator-facing live order queue with contextual status actions.
@@ -84,7 +85,7 @@ function LiveOrdersInner({ orders }: { orders: LiveOrder[] }) {
                     </span>
                   )}
                   <span className="text-xs font-bold text-grubano-ink">
-                    #{o.id.slice(-6).toUpperCase()}
+                    {orderRef(o.id)}
                   </span>
                   <Badge tone={statusTone(o.status)} size="sm">{statusLabel(o.status, o.fulfillmentType)}</Badge>
                   <Badge

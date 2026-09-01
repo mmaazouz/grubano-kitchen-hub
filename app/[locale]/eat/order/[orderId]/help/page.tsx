@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -82,7 +83,7 @@ interface ClaimEligibility {
 type SubmitState = 'idle' | 'sending' | 'done' | 'error'
 
 // Short, human-friendly reference derived from the real id (matches /api/eat/orders).
-const refOf = (id: string) => 'GR-' + id.slice(-5).toUpperCase()
+const refOf = orderRef
 
 export default function OrderHelpScreen() {
   const t = useTranslations('eat.help')
@@ -477,11 +478,17 @@ export default function OrderHelpScreen() {
             <div className="t"><b>{t('optMissingTitle')}</b><span>{t('optMissingSub')}</span></div>
             <span className="ms ms-flip" aria-hidden="true">chevron_right</span>
           </button>
-          <button type="button" className="opt info" onClick={() => router.push(`/eat/track/${orderId}`)}>
-            <span className="ic"><span className="ms" aria-hidden="true">schedule</span></span>
-            <div className="t"><b>{t('optLateTitle')}</b><span>{t('optLateSub')}</span></div>
-            <span className="ms ms-flip" aria-hidden="true">chevron_right</span>
-          </button>
+          {/* Lot véracité : « Voir où en est le livreur » est du vocabulaire de
+              LIVRAISON — sur un retrait il promettait un livreur qui n'existe pas
+              (constat humain de la répétition). Le motif n'apparaît que pour une
+              commande livrée ; le retrait garde son propre chemin (pass + statut). */}
+          {!isPickupOrder && (
+            <button type="button" className="opt info" onClick={() => router.push(`/eat/track/${orderId}`)}>
+              <span className="ic"><span className="ms" aria-hidden="true">schedule</span></span>
+              <div className="t"><b>{t('optLateTitle')}</b><span>{t('optLateSub')}</span></div>
+              <span className="ms ms-flip" aria-hidden="true">chevron_right</span>
+            </button>
+          )}
           {/* LOT 4 : l'option « Annuler la commande — Possible avant la préparation »
               est RETIRÉE — aucune API d'annulation n'existe ; elle routait vers un
               faux chat. */}

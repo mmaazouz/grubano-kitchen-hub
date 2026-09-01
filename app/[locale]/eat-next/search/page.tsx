@@ -114,8 +114,8 @@ export default function EatNextSearch() {
                   cuisine={Array.isArray(r.cuisine) && typeof r.cuisine[0] === 'string' ? r.cuisine[0] : ''}
                   rating={r.rating}
                   deliveryFeeEur={r.deliveryFee}
-                  etaMin={r.deliveryTime}
-                  tag={r.deliveryFee === 0 ? t('freeDelivery') : undefined}
+                  deliveryEnabled={r.deliveryEnabled === true}
+                  tag={r.deliveryEnabled === true && r.deliveryFee === 0 ? t('freeDelivery') : undefined}
                 />
               </Link>
             </li>

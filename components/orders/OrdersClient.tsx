@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 /**
  * OrdersClient — full operator Orders page (client island). VERBATIM CD v1 re-skin
@@ -483,7 +484,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
                 onClick={() => setDetailId(o.id)}
               >
                 <div className="oc-top">
-                  <span className="oc-num">#{o.id.slice(-6).toUpperCase()}</span>
+                  <span className="oc-num">{orderRef(o.id)}</span>
                   <span className={'channel-badge ' + (isPickup ? 'pickup' : 'delivery')}>
                     <span className="ms">{isPickup ? 'shopping_bag' : 'moped'}</span>
                     {isPickup ? ts('typePickup') : ts('typeDelivery')}
@@ -530,7 +531,7 @@ function OrdersInner({ restaurant, establishments, orders, brands, menuItems, ca
           <div className="op-modal">
             <div className="op-modal__head">
               <div className="op-modal__headtext">
-                <h3>{t('detail.title', { ref: `#${detailOrder.id.slice(-6).toUpperCase()}` })}</h3>
+                <h3>{t('detail.title', { ref: orderRef(detailOrder.id) })}</h3>
                 <span className="sub">
                   {(detailOrder.fulfillmentType === 'pickup' ? ts('typePickup') : ts('typeDelivery'))}
                   {' · '}{detailOrder.dateLabel} · {detailOrder.timeLabel}

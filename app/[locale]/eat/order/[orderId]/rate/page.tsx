@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -102,7 +103,7 @@ export default function PostDeliveryScreen() {
   // Submit = INERT. No review write, no tip charge — just reveal the « Merci » view.
   function submit() { setDone(true) }
 
-  const shortRef = order ? `GR-${order.id.slice(-4).toUpperCase()}` : ''
+  const shortRef = order ? orderRef(order.id) : ''
 
   // ── not found ────────────────────────────────────────────────────────────────
   if (notFound) {

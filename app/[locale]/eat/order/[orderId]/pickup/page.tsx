@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -6,7 +7,6 @@ import { useSession } from 'next-auth/react'
 import { useTranslations, useLocale } from 'next-intl'
 import { useRouter } from '@/navigation'
 import { formatEuros } from '@/lib/format-money'
-import { formatTime } from '@/lib/format'
 import { QRCodeSVG } from 'qrcode.react'
 import './pickup.css'
 // gb-* design FOUNDATION (Agent 168) — tokens + Material `.ms` font. The page wraps in
@@ -23,15 +23,23 @@ import '@/app/gb-foundation/gb-components.css'
 // rail kept; top-bar + mobile chrome dropped) → the page provides its OWN back/header.
 //
 // REAL DATA (read-only) via GET /api/orders/[orderId]:
-//  • PICKUP CODE   = the REAL order ref (refOf = 'GR-' + id.slice(-5)). This project has
+//  • PICKUP CODE   = the REAL order ref (orderRef — 'GR-' + id.slice(-6)). This project has
 //    NO separate pickup-code field — the orders page already shows the order ref AS the
 //    pickup code (see /eat/orders). NEVER fabricated.
 //  • RESTAURANT    = real name + address + city.
 //  • RÉCAP         = real items (name/qty/price) + real total paid.
-//  • STATUS        = real → drives the 2 CD states:
-//        ready / picked_up      → « Prête »          (hero ✅ + active QR)
+//  • STATUS        = real → drives the 3 states (lot véracité 2026-09-01) :
+//        ready                  → « Prête »          (hero ✅ + active QR)
+//        picked_up / delivered  → « Récupérée »      (terminal : QR RETIRÉ, marqué utilisé)
 //        received / preparing   → « En préparation » (hero animé + stepper + QR dim)
-//  • « Prête à » heure = real estimatedTime applied to createdAt (same as /eat/track).
+//    Le retrait termine la commande en 'delivered' (state machine pickup) : avant ce lot
+//    ce statut retombait dans « En préparation » — pass mensonger après remise, prouvé
+//    par la répétition humaine.
+//  • TEMPS : AUCUNE heure promise. « Prête vers HH:MM » (createdAt + estimatedTime,
+//    c.-à-d. le deliveryTime jamais saisi, défaut 30) est RETIRÉ. À la place, la seule
+//    donnée que le restaurateur SAISIT réellement (/dashboard/fulfillment) : son temps
+//    de préparation indicatif (pickupPrepTime), affiché comme DURÉE attribuée
+//    (« Préparation indicative ~N min »), jamais comme promesse horaire.
 //
 // WAVE 1 (2026-08-29) — le pass est désormais CÂBLÉ au parcours réel (/eat/orders et
 // /eat/track y mènent pour les commandes pickup) :
@@ -50,13 +58,13 @@ interface Order {
   total: number
   estimatedTime: number
   items: OrderItem[]
-  restaurant?: { name?: string; address?: string; city?: string; lat?: number | null; lng?: number | null } | null
+  restaurant?: { name?: string; address?: string; city?: string; lat?: number | null; lng?: number | null; pickupPrepTime?: number | null } | null
   createdAt: string
 }
 
 // Short, human-friendly reference derived from the real id (matches /api/eat/orders +
 // /eat/order/[orderId]/help). This IS the pickup code — never fabricated.
-const refOf = (id: string) => 'GR-' + id.slice(-5).toUpperCase()
+const refOf = orderRef
 
 export default function PickupPassScreen() {
   const t = useTranslations('eat.pickup')
@@ -95,21 +103,23 @@ export default function PickupPassScreen() {
 
   const items = useMemo<OrderItem[]>(() => (Array.isArray(order?.items) ? order!.items : []), [order])
 
-  // Real « Prête à » time = createdAt + estimatedTime (same derivation as /eat/track).
-  const readyAt = useMemo(() => {
-    if (!order) return '—'
-    const eta = Number(order.estimatedTime)
-    if (!Number.isFinite(eta) || eta <= 0) return '—'
-    return formatTime(new Date(new Date(order.createdAt).getTime() + eta * 60_000), locale)
-  }, [order, locale])
+  // LOT VÉRACITÉ — plus AUCUNE heure promise. La seule donnée exposée est la durée de
+  // préparation que le restaurateur saisit lui-même (pickupPrepTime, /dashboard/
+  // fulfillment). Absente/invalide ⇒ on n'affiche RIEN plutôt qu'un chiffre inventé.
+  const prepMins = useMemo(() => {
+    const v = Number(order?.restaurant?.pickupPrepTime)
+    return Number.isFinite(v) && v > 0 ? Math.round(v) : null
+  }, [order])
 
-  const Header = ({ ready }: { ready: boolean }) => (
+  const Header = ({ state }: { state: 'ready' | 'prep' | 'collected' }) => (
     <div className="h2bar">
       <button type="button" className="back" onClick={() => router.back()} aria-label={t('back')}>
         <span className="ms ms-flip" aria-hidden="true">arrow_back</span>
       </button>
       <h2>{t('title')}</h2>
-      <span className="badge">{ready ? t('badgeReady') : t('badgePreparing')}</span>
+      <span className="badge">
+        {state === 'collected' ? t('badgeCollected') : state === 'ready' ? t('badgeReady') : t('badgePreparing')}
+      </span>
     </div>
   )
 
@@ -117,7 +127,7 @@ export default function PickupPassScreen() {
   if (authStatus === 'unauthenticated') {
     return (
       <div className="gb gb-pickup">
-        <Header ready />
+        <Header state="ready" />
         <div className="state">
           <div className="ico"><span className="ms" aria-hidden="true">lock</span></div>
           <h2>{t('signInTitle')}</h2>
@@ -134,7 +144,7 @@ export default function PickupPassScreen() {
   if (loading) {
     return (
       <div className="gb gb-pickup">
-        <Header ready />
+        <Header state="ready" />
         <div className="body">
           <div className="sk sk-hero" />
           <div className="sk sk-line lg" style={{ width: '70%', margin: '0 auto 8px' }} />
@@ -151,7 +161,7 @@ export default function PickupPassScreen() {
   if (!order) {
     return (
       <div className="gb gb-pickup">
-        <Header ready />
+        <Header state="ready" />
         <div className="state">
           <div className="ico"><span className="ms" aria-hidden="true">receipt_long</span></div>
           <h2>{t('notFoundTitle')}</h2>
@@ -167,8 +177,10 @@ export default function PickupPassScreen() {
   // Redirection en cours (delivery / impayée / annulée) → rien à peindre.
   if (passless) return null
 
-  // Real status → the 2 CD states. ready/picked_up = « Prête » ; otherwise « En préparation ».
-  const ready = order.status === 'ready' || order.status === 'picked_up'
+  // Real status → 3 states. 'delivered' est le statut TERMINAL d'un retrait (bouton
+  // opérateur « Remise au client » : ready→delivered) ; 'picked_up' est traité pareil.
+  const collected = order.status === 'picked_up' || order.status === 'delivered'
+  const ready = order.status === 'ready'
   const code = refOf(orderId)
   const restaurantName = order.restaurant?.name ?? '—'
   const restaurantAddress = [order.restaurant?.address, order.restaurant?.city].filter(Boolean).join(', ') || '—'
@@ -184,11 +196,17 @@ export default function PickupPassScreen() {
 
   return (
     <div className="gb gb-pickup">
-      <Header ready={ready} />
+      <Header state={collected ? 'collected' : ready ? 'ready' : 'prep'} />
 
       <div className="body">
-        {/* status hero — real state */}
-        {ready ? (
+        {/* status hero — real state (3 branches, l'état terminal ne ment plus) */}
+        {collected ? (
+          <div className="pk-status ready">
+            <span className="ic"><span className="ms" aria-hidden="true">check_circle</span></span>
+            <h1>{t('collectedTitle')}</h1>
+            <p>{t.rich('collectedBody', { name: restaurantName, b: (c) => <b>{c}</b> })}</p>
+          </div>
+        ) : ready ? (
           <div className="pk-status ready">
             <span className="ic"><span className="ms" aria-hidden="true">shopping_bag</span></span>
             <h1>{t('readyTitle')}</h1>
@@ -198,12 +216,14 @@ export default function PickupPassScreen() {
           <div className="pk-status prep">
             <span className="ic"><span className="ms" aria-hidden="true">cooking</span></span>
             <h1>{t('prepTitle')}</h1>
-            <p>{t.rich('prepBody', { time: readyAt, b: (c) => <b><bdi>{c}</bdi></b> })}</p>
+            <p>{prepMins != null
+              ? t.rich('prepBodyMins', { mins: prepMins, b: (c) => <b><bdi>{c}</bdi></b> })
+              : t('prepBodyNoTime')}</p>
           </div>
         )}
 
         {/* mini-stepper — only in « En préparation » */}
-        {!ready && (
+        {!ready && !collected && (
           <>
             <div className="pk-step">
               <span className="d done"><span className="ms" aria-hidden="true">check</span></span><span className="s done" />
@@ -218,22 +238,42 @@ export default function PickupPassScreen() {
         )}
 
         {/* GRAND code + QR — VRAI QR scannable (qrcode.react) encodant la réf réelle, la
-            même que le restaurateur voit sur /orders. Dimmed (.dim) while preparing. */}
-        <div className={`pk-code big${ready ? '' : ' dim'}`}>
-          <span className="qr"><QRCodeSVG value={code} size={124} level="M" marginSize={0} /></span>
-          <small>{t('codeLabel')}</small>
-          <b><bdi>{code}</bdi></b>
-          <span className="hint">
-            <span className="ms" aria-hidden="true">storefront</span>
-            {ready ? t('codeHintReady') : t('codeHintPrep')}
-          </span>
-        </div>
+            même que le restaurateur voit sur /orders. Dimmed (.dim) while preparing.
+            Après remise (collected) : le QR N'EST PLUS RENDU — un code encore présenté
+            comme actif après retrait invitait à réclamer un second sac (constat humain).
+            NB : le QR n'entre dans aucune API (validation purement visuelle au comptoir)
+            et la state machine refuse déjà toute re-terminaison (422) — l'invalidation
+            ajoutée ici est celle qui manquait : la PRÉSENTATION. */}
+        {collected ? (
+          <div className="pk-code big used">
+            <span className="usedic"><span className="ms" aria-hidden="true">verified</span></span>
+            <small>{t('codeLabel')}</small>
+            <b><bdi>{code}</bdi></b>
+            <span className="hint">
+              <span className="ms" aria-hidden="true">check_circle</span>
+              {t('codeUsed')}
+            </span>
+          </div>
+        ) : (
+          <div className={`pk-code big${ready ? '' : ' dim'}`}>
+            <span className="qr"><QRCodeSVG value={code} size={124} level="M" marginSize={0} /></span>
+            <small>{t('codeLabel')}</small>
+            <b><bdi>{code}</bdi></b>
+            <span className="hint">
+              <span className="ms" aria-hidden="true">storefront</span>
+              {ready ? t('codeHintReady') : t('codeHintPrep')}
+            </span>
+          </div>
+        )}
 
         {/* resto + adresse + heure « Prête à » (real) */}
         <div className="pk-rrow">
           <span className="ic"><span className="ms" aria-hidden="true">storefront</span></span>
           <div className="m"><b>{restaurantName}</b><span>{restaurantAddress}</span></div>
-          <div className="when"><small>{t('readyAtLabel')}</small><b><bdi>{readyAt}</bdi></b></div>
+          {/* Durée indicative SAISIE par le restaurateur — jamais une heure promise. */}
+          {!collected && !ready && prepMins != null && (
+            <div className="when"><small>{t('prepLabel')}</small><b><bdi>{t('prepMinsValue', { mins: prepMins })}</bdi></b></div>
+          )}
         </div>
 
         {/* récap — real items + total payé */}
@@ -257,14 +297,14 @@ export default function PickupPassScreen() {
           « J'arrive » / « Me prévenir » RETIRÉS : aucun backend — un bouton inerte ment. */}
       <div className="foot">
         <div className="inner">
-          {mapsUrl && (
+          {!collected && mapsUrl && (
             <div className="pk-acts">
               <a className="w" href={mapsUrl} target="_blank" rel="noopener noreferrer">
                 <span className="ms" aria-hidden="true">directions</span>{t('actRoute')}
               </a>
             </div>
           )}
-          <small>{t('footNote')}</small>
+          <small>{collected ? t('collectedFoot') : t('footNote')}</small>
         </div>
       </div>
     </div>

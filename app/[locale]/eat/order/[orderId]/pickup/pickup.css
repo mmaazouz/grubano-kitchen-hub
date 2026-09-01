@@ -77,6 +77,14 @@
 .gb-pickup .pk-code.big .qr svg{display:block}
 .gb-pickup .pk-code.big small{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--gb-pickup);margin-top:13px}
 .gb-pickup .pk-code.big b{font-family:var(--gb-font-display);font-weight:800;font-size:30px;letter-spacing:.16em;color:var(--gb-pickup);line-height:1.1}
+/* Etat RECUPEREE (lot veracite) : le QR n'est plus rendu du tout — le bloc devient
+ * un recu neutre : reference en texte + mention « deja utilise ». Gris, pas vert :
+ * aucun canal « actif » ne doit subsister apres la remise. */
+.gb-pickup .pk-code.big.used{background:var(--gb-surface-2,#f1f3f6);border:1px dashed var(--gb-border,#d7dce3)}
+.gb-pickup .pk-code.big.used .usedic .ms{font-size:56px;color:var(--gb-muted);line-height:1}
+.gb-pickup .pk-code.big.used small{color:var(--gb-muted)}
+.gb-pickup .pk-code.big.used b{color:var(--gb-muted);text-decoration:line-through;text-decoration-thickness:2px}
+.gb-pickup .pk-code.big.used .hint{color:var(--gb-muted)}
 .gb-pickup .pk-code.big .hint{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--gb-pickup);margin-top:4px}
 .gb-pickup .pk-code.big .hint .ms{font-size:15px}
 .gb-pickup .pk-code.big.dim{opacity:.5}

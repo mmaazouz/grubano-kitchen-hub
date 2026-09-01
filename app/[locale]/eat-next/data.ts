@@ -20,7 +20,7 @@ export interface EatNextRestaurant {
   rating: number
   reviewCount: number
   deliveryFeeEur: number // Restaurant.deliveryFee — stored in EUROS
-  etaMin: number // Restaurant.deliveryTime — minutes
+  deliveryEnabled: boolean // lot véracité : sans lui, le fee s'affichait pour des restos SANS livraison
   minOrderEur: number // Restaurant.minOrder — stored in EUROS
 }
 
@@ -55,7 +55,7 @@ export async function listRestaurants(): Promise<EatNextRestaurant[]> {
     take: 30,
     select: {
       id: true, name: true, cuisine: true, rating: true, reviewCount: true,
-      deliveryTime: true, minOrder: true, deliveryFee: true,
+      minOrder: true, deliveryFee: true, deliveryEnabled: true,
     },
   })
   return rows.map((r) => ({
@@ -65,7 +65,7 @@ export async function listRestaurants(): Promise<EatNextRestaurant[]> {
     rating: r.rating,
     reviewCount: r.reviewCount,
     deliveryFeeEur: r.deliveryFee,
-    etaMin: r.deliveryTime,
+    deliveryEnabled: r.deliveryEnabled,
     minOrderEur: r.minOrder,
   }))
 }
@@ -77,7 +77,7 @@ export async function getRestaurant(id: string): Promise<EatNextRestaurantDetail
     where: { id, archivedAt: null },
     select: {
       id: true, name: true, description: true, cuisine: true, rating: true,
-      reviewCount: true, deliveryTime: true, minOrder: true, deliveryFee: true,
+      reviewCount: true, minOrder: true, deliveryFee: true, deliveryEnabled: true,
       brands: {
         select: {
           menuItems: {
@@ -108,7 +108,7 @@ export async function getRestaurant(id: string): Promise<EatNextRestaurantDetail
     rating: r.rating,
     reviewCount: r.reviewCount,
     deliveryFeeEur: r.deliveryFee,
-    etaMin: r.deliveryTime,
+    deliveryEnabled: r.deliveryEnabled,
     minOrderEur: r.minOrder,
     menu,
   }

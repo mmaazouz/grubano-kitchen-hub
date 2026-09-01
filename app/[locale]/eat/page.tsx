@@ -60,6 +60,7 @@ interface Restaurant {
   deliveryTime: number
   minOrder: number
   deliveryFee: number
+  deliveryEnabled?: boolean
   coverPhoto?: string
   logo?: string
   city: string
@@ -78,6 +79,8 @@ interface RecentOrder {
 export default function HomeScreen() {
   const t = useTranslations('eat.home')
   const tc = useTranslations('common')
+  // « à env. {distance} » — même clé que la fiche restaurant (S1.1), une seule source.
+  const tr = useTranslations('eat.restaurant')
   const locale = useLocale()
   const router = useRouter()
   const { coords, status, request, clear } = useGeolocation()
@@ -167,19 +170,22 @@ export default function HomeScreen() {
     (r: Restaurant) => {
       const base = formatCuisineList(r.cuisine, locale, t('cuisineVaried'))
       if (typeof r.distanceKm === 'number') {
-        return `${base} · ${formatDistance(r.distanceKm, locale, tc('km'))}`
+        // Haversine à vol d'oiseau — toujours annoncée comme approximative (lot
+        // véracité), jamais nue, jamais accolée à une durée.
+        return `${base} · ${tr('distanceApprox', { distance: formatDistance(r.distanceKm, locale, tc('km')) })}`
       }
       return base
     },
-    [locale, t, tc],
+    [locale, t, tc, tr],
   )
 
   const geoActive = status === 'granted' && !!coords
   const popular = restaurants.slice(0, 6)
   const popularTitle = geoActive ? t('nearYou') : t('popular')
 
-  // ETA window label e.g. "20–30 min" (real deliveryTime ± the CD ~10-min window).
-  const etaWindow = (mins: number) => `${Math.max(5, mins - 5)}–${mins + 5} min`
+  // LOT VÉRACITÉ : le badge « 20–30 min » (etaWindow sur deliveryTime, un champ
+  // qu'AUCUNE UI ne saisit — défaut de schéma 30) est retiré : c'était une
+  // promesse de livraison fabriquée, affichée même pour un resto sans livraison.
 
   const onHeart = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
@@ -339,7 +345,6 @@ export default function HomeScreen() {
                     className={`hm-card__img ${TINTS[i % TINTS.length]}`}
                     style={cover ? { backgroundImage: `url(${cover})` } : undefined}
                   >
-                    <span className="hm-card__time">{etaWindow(r.deliveryTime)}</span>
                     <button
                       type="button"
                       className={`hm-card__heart${on ? ' on' : ''}`}
@@ -359,7 +364,9 @@ export default function HomeScreen() {
                     </div>
                     <div className="hm-card__meta">{cuisineWithMeta(r)}</div>
                     <div className="hm-card__tags">
-                      {r.deliveryFee === 0 && <span className="hm-tag hm-tag--free">{tc('free')}</span>}
+                      {/* « Gratuit » = frais de LIVRAISON offerts : n'a de sens que si la
+                          livraison est réellement activée pour ce restaurant. */}
+                      {r.deliveryEnabled === true && r.deliveryFee === 0 && <span className="hm-tag hm-tag--free">{tc('free')}</span>}
                       {r.rating != null && r.rating >= 4.7 && <span className="hm-tag hm-tag--pop">{t('tagPopular')}</span>}
                     </div>
                   </div>

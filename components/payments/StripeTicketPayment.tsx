@@ -142,11 +142,14 @@ function TicketInnerForm({
 
   return (
     <form onSubmit={submit} className="space-y-3">
-      <p className="rounded-xl border border-border bg-card px-3 py-2 text-[11px] text-muted-foreground">
-        {t('payIntro', { amount: amountLabel })}
-      </p>
-      <p className="text-[10px] font-semibold text-destructive">{t('payRealDebitNote')}</p>
-
+      {/* LOT VÉRACITÉ (2026-09-01, décision fondateur) : les deux phrases
+          « …empreinte de garantie de votre réservation libérée automatiquement »
+          (payIntro) et « vrai débit…, pas une empreinte » (payRealDebitNote, en
+          ROUGE) sortaient ENSEMBLE sur toute commande — y compris un retrait sans
+          réservation (prouvé en répétition, PI capture automatique). La première
+          décrit un mécanisme d'un autre rail, la seconde la contredit, et le rouge
+          fait lire une information comme une erreur. RETRAIT DES DEUX. Le montant
+          exact reste affiché sur le bouton payer et le récapitulatif. */}
       <PaymentElement options={{ layout: 'tabs' }} />
 
       {/* LOT D (P-4) — the test-card tip renders only in Stripe TEST mode (pk_test_). */}

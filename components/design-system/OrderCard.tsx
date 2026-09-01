@@ -1,5 +1,6 @@
 'use client'
 
+import { orderRef } from '@/lib/order-ref'
 import * as React from 'react'
 import { useLocale } from 'next-intl'
 import { Clock, MapPin, ChevronRight } from 'lucide-react'
@@ -109,7 +110,7 @@ export const OrderCard = React.forwardRef<HTMLDivElement, OrderCardProps>(functi
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-xs text-gb-content-muted">#{orderId.slice(-6).toUpperCase()}</span>
+            <span className="font-mono text-xs text-gb-content-muted">{orderRef(orderId)}</span>
             <Badge tone={meta.tone} size="sm" dot>
               {meta.label}
             </Badge>

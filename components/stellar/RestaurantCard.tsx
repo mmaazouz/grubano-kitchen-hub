@@ -15,13 +15,16 @@ export interface StellarRestaurantCardProps {
    *  masquée dans ce cas (jamais de .toFixed sur une note absente). */
   rating: number | null
   deliveryFeeEur: number
-  etaMin: number
+  /** Lot véracité : false ⇒ pas de livraison ⇒ la ligne 🛵 fee est un mensonge, masquée. */
+  deliveryEnabled?: boolean
+  /** Lot véracité : optionnel — aucune valeur ⇒ AUCUNE minute affichée (jamais de défaut). */
+  etaMin?: number
   tag?: string
   className?: string
 }
 
 export function StellarRestaurantCard({
-  name, cuisine, rating, deliveryFeeEur, etaMin, tag, className,
+  name, cuisine, rating, deliveryFeeEur, deliveryEnabled, etaMin, tag, className,
 }: StellarRestaurantCardProps) {
   return (
     <div className={cn('overflow-hidden rounded-stellar-2xl border border-stellar-border bg-stellar-card shadow-stellar-soft', className)}>
@@ -38,13 +41,20 @@ export function StellarRestaurantCard({
             <span className="shrink-0 text-sm font-semibold text-stellar-fg">★ {rating.toFixed(1)}</span>
           )}
         </div>
-        {/* Transparency: fee + ETA on the card (bataille 2). */}
-        <div className="mt-2 flex items-center gap-3 text-xs text-stellar-muted-fg">
-          <span className="inline-flex items-center gap-1">
-            🛵 {deliveryFeeEur === 0 ? 'Offerte' : <StellarPriceTag amountEur={deliveryFeeEur} size="sm" muted />}
-          </span>
-          <span>⏱ {etaMin} min</span>
-        </div>
+        {/* Transparency (bataille 2) — LOT VÉRACITÉ : le fee ne s'affiche que si la
+            livraison est réellement activée (deliveryFee garde son défaut de schéma
+            1,99 même pour un resto retrait seul), et les minutes ne s'affichent que
+            si un appelant en fournit — plus jamais le deliveryTime défaut 30. */}
+        {(deliveryEnabled !== false || typeof etaMin === 'number') && (
+          <div className="mt-2 flex items-center gap-3 text-xs text-stellar-muted-fg">
+            {deliveryEnabled !== false && (
+              <span className="inline-flex items-center gap-1">
+                🛵 {deliveryFeeEur === 0 ? 'Offerte' : <StellarPriceTag amountEur={deliveryFeeEur} size="sm" muted />}
+              </span>
+            )}
+            {typeof etaMin === 'number' && <span>⏱ {etaMin} min</span>}
+          </div>
+        )}
       </div>
     </div>
   )
