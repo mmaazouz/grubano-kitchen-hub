@@ -27,7 +27,8 @@
       "modalHasLabels": false,
       "modalHasCalories": true,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 390,
@@ -40,7 +41,7 @@
       "barPresent": true,
       "barVisible": true,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": false,
       "modalW": null,
       "modalRole": null,
@@ -54,7 +55,8 @@
       "modalHasLabels": null,
       "modalHasCalories": null,
       "modalHasAllergens": null,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -85,7 +87,8 @@
       "modalHasLabels": false,
       "modalHasCalories": true,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 390,
@@ -98,7 +101,7 @@
       "barPresent": true,
       "barVisible": true,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": false,
       "modalW": null,
       "modalRole": null,
@@ -112,7 +115,8 @@
       "modalHasLabels": null,
       "modalHasCalories": null,
       "modalHasAllergens": null,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -143,7 +147,8 @@
       "modalHasLabels": false,
       "modalHasCalories": false,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 390,
@@ -156,7 +161,7 @@
       "barPresent": true,
       "barVisible": true,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": true,
       "modalW": 390,
       "modalRole": "dialog",
@@ -170,7 +175,8 @@
       "modalHasLabels": false,
       "modalHasCalories": false,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -201,7 +207,8 @@
       "modalHasLabels": false,
       "modalHasCalories": true,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 768,
@@ -214,7 +221,7 @@
       "barPresent": true,
       "barVisible": false,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": false,
       "modalW": null,
       "modalRole": null,
@@ -228,7 +235,8 @@
       "modalHasLabels": null,
       "modalHasCalories": null,
       "modalHasAllergens": null,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -259,7 +267,8 @@
       "modalHasLabels": false,
       "modalHasCalories": true,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 768,
@@ -272,7 +281,7 @@
       "barPresent": true,
       "barVisible": false,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": false,
       "modalW": null,
       "modalRole": null,
@@ -286,7 +295,8 @@
       "modalHasLabels": null,
       "modalHasCalories": null,
       "modalHasAllergens": null,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -317,7 +327,8 @@
       "modalHasLabels": false,
       "modalHasCalories": false,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 768,
@@ -330,7 +341,7 @@
       "barPresent": true,
       "barVisible": false,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": true,
       "modalW": 560,
       "modalRole": "dialog",
@@ -344,7 +355,8 @@
       "modalHasLabels": false,
       "modalHasCalories": false,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -375,7 +387,8 @@
       "modalHasLabels": false,
       "modalHasCalories": true,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 1204,
@@ -388,7 +401,7 @@
       "barPresent": true,
       "barVisible": false,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": false,
       "modalW": null,
       "modalRole": null,
@@ -402,7 +415,8 @@
       "modalHasLabels": null,
       "modalHasCalories": null,
       "modalHasAllergens": null,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -433,7 +447,8 @@
       "modalHasLabels": false,
       "modalHasCalories": true,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 1204,
@@ -446,7 +461,7 @@
       "barPresent": true,
       "barVisible": false,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": false,
       "modalW": null,
       "modalRole": null,
@@ -460,7 +475,8 @@
       "modalHasLabels": null,
       "modalHasCalories": null,
       "modalHasAllergens": null,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   },
   {
@@ -491,7 +507,8 @@
       "modalHasLabels": false,
       "modalHasCalories": false,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     },
     "prod": {
       "contentW": 1204,
@@ -504,7 +521,7 @@
       "barPresent": true,
       "barVisible": false,
       "catsPos": "sticky",
-      "dishCards": 3,
+      "dishCards": 4,
       "modalPresent": true,
       "modalW": 520,
       "modalRole": "dialog",
@@ -518,7 +535,8 @@
       "modalHasLabels": false,
       "modalHasCalories": false,
       "modalHasAllergens": true,
-      "overflowX": 0
+      "overflowX": 0,
+      "rawKeys": []
     }
   }
 ]

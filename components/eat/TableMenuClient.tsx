@@ -270,11 +270,16 @@ export default function TableMenuClient({ tableId, restaurantId, establishmentNa
                   {dish.description && <p>{dish.description}</p>}
                   {/* LOT 2 « carte honnête » — REAL allergens line (same keys as the
                       /eat/r/[id] dish modal): restaurateur-entered values verbatim,
-                      or the honest « non renseignée » notice. No AI, no « bientôt ». */}
+                      or the honest « non renseignée » notice. No AI, no « bientôt ».
+                      The two branches are now WHOLE sentences: `allergensNone` is a
+                      full warning, so prefixing it with « Allergènes : » would read
+                      as a label followed by its own restatement. `allergensOnCard`
+                      also carries the per-locale colon spacing the hardcoded ' : '
+                      got wrong outside French. */}
                   <p>
-                    {tResto('allergensTitle')}
-                    {' : '}
-                    {dish.allergens.length > 0 ? dish.allergens.join(', ') : tResto('allergensNone')}
+                    {dish.allergens.length > 0
+                      ? tResto('allergensOnCard', { list: dish.allergens.join(', ') })
+                      : tResto('allergensNone')}
                   </p>
                   <div className="pr">
                     <span className="price">{formatEuros(dish.price, locale)}</span>

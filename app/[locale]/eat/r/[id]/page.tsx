@@ -1048,18 +1048,29 @@ function DishDetailModal({ dish, onClose, onConfirm }: ModalProps) {
 
           {/* §11 ALLERGENS — attention block, icon + text. Values entered by the
               restaurateur, shown VERBATIM (never re-accented, never completed).
-              Empty list ⇒ the block disappears: no reassuring false statement. */}
-          {allergens.length > 0 && (
-            <div className="alg">
-              <div className="alg__h"><span className="ms" aria-hidden="true">warning</span>{t('allergensTitle')}</div>
-              <div className="alg__l">
-                {allergens.map((a) => (
-                  <span key={a} className="alg__i"><span className="ms" aria-hidden="true">check_circle</span>{a}</span>
-                ))}
-              </div>
-              <p className="alg__n">{t('allergensNotice')}</p>
-            </div>
-          )}
+              FOUNDER ARBITRATION (2026-09-01): an EMPTY list does NOT remove the
+              block. It swaps it for an explicit « not provided » warning, because
+              the partner editor (D2.1) promises the restaurateur exactly that
+              screen when no allergen is selected — partner promise = consumer
+              reality. Silence would let a customer infer « no allergen », which
+              is the one thing this block must never suggest. */}
+          <div className={allergens.length > 0 ? 'alg' : 'alg alg--none'}>
+            <div className="alg__h"><span className="ms" aria-hidden="true">warning</span>{t('allergensTitle')}</div>
+            {allergens.length > 0 ? (
+              <>
+                <div className="alg__l">
+                  {allergens.map((a) => (
+                    <span key={a} className="alg__i"><span className="ms" aria-hidden="true">check_circle</span>{a}</span>
+                  ))}
+                </div>
+                <p className="alg__n">{t('allergensNotice')}</p>
+              </>
+            ) : (
+              /* No chip list, no green/neutral « none » pill: an ABSENCE of data is
+                 never rendered as an absence of allergens. */
+              <p className="alg__w">{t('allergensNone')}</p>
+            )}
+          </div>
 
           {/* NOTE — real, free-form; never presented as a guaranteed customisation. */}
           <div className="note-f">

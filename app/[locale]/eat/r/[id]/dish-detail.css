@@ -44,7 +44,9 @@
 .gb-resto .pm__kcal .ms{font-size:16px}
 
 /* ALLERGENS (§11) — framed attention block, icon + text (never colour alone).
-   Empty list ⇒ the whole block is absent (no reassuring false statement). */
+   Empty list ⇒ SAME frame, but the chip list is replaced by an explicit
+   « not provided » warning (.alg--none / .alg__w). The block is never absent
+   and never reassuring: silence would read as « no allergen ». */
 .gb-resto .alg{margin-top:18px;border:1px solid var(--s1-zest-bd);background:var(--s1-zest-bg);border-radius:var(--gb-r-md);padding:14px 16px}
 .gb-resto .alg__h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;color:var(--gb-zest-600);text-transform:uppercase;letter-spacing:.05em}
 [data-theme="dark"] .gb-resto .alg__h{color:var(--gb-zest)}
@@ -54,6 +56,10 @@
 .gb-resto .alg__i .ms{font-size:15px;color:var(--gb-zest-600)}
 [data-theme="dark"] .gb-resto .alg__i .ms{color:var(--gb-zest)}
 .gb-resto .alg__n{margin-top:9px;font-size:11.5px;color:var(--s1-muted)}
+/* Empty state: the sentence IS the content, so it takes the block's body size
+   and full text colour — a safety warning must not be set as fine print. */
+.gb-resto .alg--none{border-style:dashed}
+.gb-resto .alg__w{margin-top:10px;font-size:13.5px;line-height:1.45;font-weight:600;color:var(--gb-text)}
 
 /* NOTE — real per-line customisation, never sold as a guaranteed option */
 .gb-resto .note-f{margin-top:18px}

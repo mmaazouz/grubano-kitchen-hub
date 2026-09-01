@@ -43,7 +43,7 @@ Ordre : **photo 16:9** → **nom + prix** → **description** → **labels** →
 | **Description** | **DISPLAY IF NONEMPTY** | paragraphe 14,5/1.6 muted sous le prix ; vide ⇒ **bloc absent**, aucun placeholder |
 | **Labels** | **DISPLAY IF LENGTH > 0** | pastilles basil (Veggie · Halal · Sans gluten · Épicé — les 4 existants, aucun nouveau) ; secondaires ; vide ⇒ absent |
 | **Calories** | **DISPLAY IF NONNULL** | ligne discrète « 650 kcal » + icône ; null ⇒ absente |
-| **Allergènes** | **DISPLAY ACCORDING TO REAL PRODUCT DATA** | bloc d'attention zest **inchangé et prioritaire** (§11) ; liste vide ⇒ bloc absent |
+| **Allergènes** | **DISPLAY ACCORDING TO REAL PRODUCT DATA** | bloc d'attention zest **inchangé et prioritaire** (§11) ; liste vide ⇒ **avertissement explicite « non renseignées »** (arbitrage fondateur 2026-09-01, voir §11) |
 | Note client | toujours (fonction réelle) | « Ajouter une note » — jamais présentée comme personnalisation garantie |
 | Quantité · CTA | toujours | stepper + « Ajouter au panier · prix » |
 
@@ -53,7 +53,7 @@ Ordre : **photo 16:9** → **nom + prix** → **description** → **labels** →
 **Hiérarchie de visibilité imposée** : les allergènes restent plus saillants que labels et calories (bloc encadré vs pastilles/ligne de texte). Aucun de ces trois blocs ne peut précéder le prix.
 
 ## 11 · Allergènes
-Bloc d'attention en zest : titre **ALLERGÈNES** + icône `warning`, puis une pastille par allergène avec `check_circle` (**icône + texte**, jamais couleur seule), puis « Renseignés par le restaurant. En cas de doute, demandez confirmation sur place. » Présent **deux fois** dans le parcours : rappel sur la carte plat, détail complet en modale — lisible avant tout ajout. Si liste vide : le bloc disparaît (aucune fausse mention rassurante).
+Bloc d'attention en zest : titre **ALLERGÈNES** + icône `warning`, puis une pastille par allergène avec `check_circle` (**icône + texte**, jamais couleur seule), puis « Renseignés par le restaurant. En cas de doute, demandez confirmation sur place. » Présent **deux fois** dans le parcours : rappel sur la carte plat, détail complet en modale — lisible avant tout ajout. Si liste vide : ~~le bloc disparaît~~ → **SURCHARGÉ PAR ARBITRAGE FONDATEUR (2026-09-01)**. Le bloc **reste**, avec le même cadre d'attention et le même titre, mais la liste de pastilles est remplacée par l'avertissement explicite « **Informations allergènes non renseignées par le restaurant. En cas d'allergie, contactez l'établissement avant de commander.** » (clé `eat.restaurant.allergensNone`). Motif : l'éditeur de plat partenaire (D2.1 §9) **promet cet écran au restaurateur** quand aucun allergène n'est coché — faire disparaître le bloc créerait une fausse promesse entre l'interface partenaire et l'interface consommateur, et le silence laisserait déduire « aucun allergène ». L'intention de §11 est préservée : aucune mention rassurante, aucun état vert, aucun espace vide. L'état **renseigné est inchangé**.
 
 ## 12 · À propos / adresse / horaires
 Deux colonnes desktop, empilées ensuite. Gauche : description, adresse avec `place`, lien « Ouvrir dans Plans ». Droite : bandeau **« Ouvert aujourd'hui · 00:00 – 23:50 »** puis les 7 jours compacts (8 px de padding, jour surligné) — l'information reste entière sans occuper une demi-page.

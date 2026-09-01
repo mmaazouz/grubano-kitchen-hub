@@ -139,7 +139,7 @@ Convention : `LITTÉRAL` = texte figé (i18n) · `DONNÉE` = champ réel, jamais
         │   │     span.pm__lab ×N : <span class="ms">{icône du label}</span> DONNÉE label
         │   ├── span.pm__kcal    SI calories non null
         │   │     <span class="ms">local_fire_department</span> DONNÉE « {n} kcal »
-        │   ├── div.alg          SI allergens.length > 0          ← bloc PRIORITAIRE §11
+        │   ├── div.alg          TOUJOURS (vide ⇒ .alg--none)     ← bloc PRIORITAIRE §11
         │   │   ├── div.alg__h   <span class="ms">warning</span> « Allergènes » (uppercase CSS)
         │   │   ├── div.alg__l   span.alg__i ×N : ms check_circle + DONNÉE allergène (verbatim)
         │   │   └── p.alg__n     LITTÉRAL « Renseignés par le restaurant. En cas de doute,
@@ -660,7 +660,7 @@ largeur du rail (1316 / 1136 / 560). ⇒ **Arbitrage D12**.
 | **D7** | Badge quantité `.dish__qty` sur la carte (`page.tsx:619`) | Retour d'état honnête, absent de la référence ⇒ diff pixel dans l'état `cart`. | **CONSERVER** (déviation acceptée) ou retirer — à trancher, impact pixel réel |
 | **D8** | Cible du lien « Ouvrir dans Plans » | La référence a `href="#"` (inerte) ⇒ **non spécifié**. Lien sortant vers un tiers. | Lien `https` de cartographie construit sur l'adresse réelle, `target="_blank" rel="noopener noreferrer"` — à valider (fuite de l'adresse du restaurant vers un tiers) |
 | **D9** | Encart « Recette du chef » de la modale (`page.tsx:813-856`) | Rendu **uniquement si `dish.creator`** ⇒ absent des 3 états comparés. **Mais** il affiche une citation d'exemple (`tcr('quotePlaceholder')`) et deux blocs inertes « bientôt » — proche des interdits §20. | Conserver hors périmètre S1.1, **signaler la citation placeholder** au train qui l'a produit |
-| **D10** | Allergènes vides dans la modale (`page.tsx:866`, `t('allergensNone')`) | Aujourd'hui : « Information non renseignée par le restaurant — contactez-le en cas d'allergie. » §11 impose la **disparition du bloc** si la liste est vide (« aucune fausse mention rassurante »). | **Supprimer le bloc** quand vide (conforme §11). Attention : c'est une **perte d'information de sécurité** — à confirmer explicitement par le fondateur |
+| **D10** | Allergènes vides dans la modale (`page.tsx:866`, `t('allergensNone')`) | Aujourd'hui : « Information non renseignée par le restaurant — contactez-le en cas d'allergie. » §11 impose la **disparition du bloc** si la liste est vide (« aucune fausse mention rassurante »). | **TRANCHÉ 2026-09-01 — le bloc est CONSERVÉ.** Le fondateur a refusé la perte d'information de sécurité : liste vide ⇒ bloc maintenu, pastilles remplacées par « Informations allergènes non renseignées par le restaurant. En cas d'allergie, contactez l'établissement avant de commander. ». Motif : D2.1 §9 promet cet écran au restaurateur ; §11 est respecté sur le fond (aucune mention rassurante, aucun état vert) |
 | **D11** | Largeur du panier à 768 | Contrat : 312 px. Référence rendue : **720 px** (règle `:root` morte, §6.1). | Suivre la **référence rendue** (pleine largeur), la comparaison Puppeteer étant faite contre elle ; noter l'écart au contrat |
 | **D12** | Seuils responsive | 1080/900/560 (identiques à la référence et au CSS actuel) vs 1316/1136/560 (compensant le rail). | **1080/900/560** — résultat identique aux 3 largeurs contractuelles, aucune régression |
 
