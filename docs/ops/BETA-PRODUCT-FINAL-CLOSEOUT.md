@@ -12,8 +12,8 @@
 
 | Phase | Objet | Statut | Branche | Livrable |
 | --- | --- | --- | --- | --- |
-| **0** | Inventaire factuel (read-only) | **EN COURS** | `a1/beta-closeout` (docs) | `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md` |
-| **1** | Modèle financier fidélité (sûr sous refund) | À FAIRE | — | `LOYALTY-REFUND-CONTRACT.md` |
+| **0** | Inventaire factuel (read-only) | **PASS** ✅ | `a1/beta-closeout` (docs) | `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md` ✅ |
+| **1** | Modèle financier fidélité (sûr sous refund) | **BLOCKED** 🔴 (politique fondateur) | — | `LOYALTY-REFUND-CONTRACT.md` |
 | **2** | Rail financier de remboursement | À FAIRE | — | `REFUND-FINANCIAL-CONTRACT.md` |
 | **3** | Claims : domaine / sécurité / admin | À FAIRE | — | (revue sécurité adversariale) |
 | **4** | Claims : UX consommateur | À FAIRE | — | pack Claude Design si visuellement faible |
@@ -36,17 +36,35 @@ Train de fusion précédent, une fusion à la fois, CI verte + healthcheck au SH
 
 ---
 
-## PHASE 0 — INVENTAIRE FACTUEL (read-only)
+## PHASE 0 — INVENTAIRE FACTUEL (read-only) — **PASS** ✅
 
-**Statut : EN COURS.** Agents forensiques parallèles (refund / loyalty / claims / stripe-ledger / cookies-legal) + critique de complétude adversariale. Livrable : `docs/ops/BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md`.
+**Livrable** : [`docs/ops/BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md`](BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md) (5 agents forensiques isolés + critique adversarial, `inventory_sufficient = PASS`). Aucun code modifié.
 
-*(Faits, verdict PASS/INCOMPLETE et dépendances d'ordre reportés ici à la clôture de la phase.)*
+**Faits saillants** :
+- Rail de remboursement **bâti, testé, cent-exact** (moteur `executeRefund` royalty-aware ; split prorata prouvé par `tests/refund-split.test.ts` + `tests/refund-engine.test.ts`). L'invariant fondateur (full → fee 100 % ; partial → prorata) est **déjà satisfait par le moteur**.
+- Cycle **Claims complet** mais gaté OFF (byte-identical) ; trou majeur : **resto qui ignore une claim** la bloque indéfiniment (admin ne peut pas agir).
+- **Fidélité sous refund = 3 défauts** : (A) points gagnés jamais repris, (B) re-crédit 100 % des points dépensés sur refund partiel, (C) solde négatif possible + idempotence non-DB.
+- **Légal-tech sain** : **COOKIE CONSENT REQUIRED = NON** prouvé (0 tracker tiers) → pas de bannière ; mais **aucune CGV ni preuve d'acceptation**, libellé `/eat/cart` ambigu.
+
+**Découverte structurante (critique)** : le webhook `charge.refunded` **n'est pas gaté** → le rail fidélité-refund est **LIVE aujourd'hui via un remboursement Dashboard Stripe**, indépendamment des flags. → **impose l'ordre 1 → 2 → 3** ; les correctifs fidélité ne peuvent pas attendre un flip de flag.
+
+**Dépendances d'ordre confirmées** : Phase 1 (loyalty sûre) **DOIT** précéder Phase 2 (rail refund) **DOIT** précéder Phase 3 (claims avec argent). Phase 1 requiert un `prisma db push` (`@@unique([orderId,type])`) avec **dé-duplication préalable en base** → **accès serveur requis** (o2switch injoignable en local).
+
+**PHASE 0 = PASS.**
 
 ---
 
-## PHASE 1..6 — à ouvrir séquentiellement
+## PHASE 1 — MODÈLE FINANCIER FIDÉLITÉ — **BLOCKED** 🔴
 
-*(Chaque phase : faits · décisions · fichiers · commits · tests · contrôles négatifs · risques ouverts · état de fusion — remplis à sa clôture.)*
+Bloquée sur **décisions de politique fondateur** (cf. inventaire §7) : (1) points gagnés au refund = repris/prorata/conservés ? (2) re-crédit des points dépensés sur refund partiel = intégral/prorata ? (3) autorisation dé-dup + `db push` staging. Conforme à l'addendum (« If BLOCKED on a genuine founder policy issue: STOP »).
+
+Correctifs techniques prêts à spécifier dès arbitrage : garde solde ≥ 0, `@@unique([orderId,type])` + `upsert`, earn-clawback selon (1), proportionnalité re-crédit selon (2), log si `charge.metadata.orderId` absent.
+
+---
+
+## PHASE 2..6 — à ouvrir séquentiellement après déblocage Phase 1
+
+*(Chaque phase : faits · décisions · fichiers · commits · tests · contrôles négatifs · risques ouverts · état de fusion — remplis à sa clôture. Correctifs par phase pré-listés dans l'inventaire §8.)*
 
 ---
 
