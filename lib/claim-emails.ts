@@ -27,7 +27,6 @@
 //   claim_decision_approved      claim:<id>   Grubano tranche, remboursement pas encore émis
 //   claim_decision_refused_final claim:<id>   Grubano confirme le refus (définitif)
 
-import
 import { orderRef } from '@/lib/order-ref'
 import { getTranslations } from 'next-intl/server'
 import { prisma } from '@/lib/prisma'

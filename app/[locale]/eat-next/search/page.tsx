@@ -20,6 +20,7 @@ interface ApiRestaurant {
   deliveryTime: number
   minOrder: number
   deliveryFee: number
+  deliveryEnabled?: boolean
 }
 
 const INTENTION_KEYS = ['comfort', 'light', 'share', 'glutenFree', 'cheapest', 'fast'] as const
