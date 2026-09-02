@@ -45,7 +45,7 @@ const { db, getToken, getServerSession, resolveScope, sendEmail, accrual, positi
     // PATCH /api/orders/[id]/status surface
     order:              { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn() },
-    loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn() },
+    loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn() , findUnique: vi.fn() },
     operator:           { findUnique: vi.fn() },
     restaurant:         { findUnique: vi.fn() },
     $transaction:       vi.fn(),
@@ -188,7 +188,9 @@ describe('P7 — machine d’états PATCH /api/orders/[id]/status pour une comma
     db.order.findUnique.mockResolvedValue(deliveryOrder({ status: 'picked_up' }))
     db.operator.findUnique.mockResolvedValue({ email: 'lea@x.fr', name: 'Léa' })
     db.loyaltyCustomer.upsert.mockResolvedValue({ id: 'lc1' })
-    db.$transaction.mockResolvedValue([])
+  db.loyaltyCustomer.findUnique.mockResolvedValue({ recoveryOffsetPoints: 0 })
+      db.$transaction.mockImplementation(async (arg: unknown) =>
+    typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(db) : Promise.all(arg as Promise<unknown>[]))
     const res = await patchStatus('o1', { status: 'delivered' })
     expect(res.status).toBe(200)
     expect(db.loyaltyTransaction.findFirst).toHaveBeenCalledWith({
@@ -196,7 +198,7 @@ describe('P7 — machine d’états PATCH /api/orders/[id]/status pour une comma
     })
     expect(db.loyaltyCustomer.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { email: 'lea@x.fr' } }))
     expect(db.loyaltyCustomer.update).toHaveBeenCalledWith({
-      where: { id: 'lc1' }, data: { pointsBalance: { increment: 8 } },
+      where: { id: 'lc1' }, data: expect.objectContaining({ pointsBalance: { increment: 8 } }),
     })
     expect(db.loyaltyTransaction.create).toHaveBeenCalledWith({
       data: { customerId: 'lc1', orderId: 'o1', type: 'earn', points: 8 },
