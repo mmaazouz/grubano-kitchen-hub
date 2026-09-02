@@ -13,7 +13,7 @@
 | Phase | Objet | Statut | Branche | Livrable |
 | --- | --- | --- | --- | --- |
 | **0** | Inventaire factuel (read-only) | **PASS** ✅ | `a1/beta-closeout` (docs) | `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md` ✅ |
-| **1** | Modèle financier fidélité (sûr sous refund) | **BLOCKED** 🔴 (politique fondateur) | — | `LOYALTY-REFUND-CONTRACT.md` |
+| **1** | Modèle financier fidélité (sûr sous refund) | **IMPLÉMENTÉ** ✅ (attend migration staging fondateur) | `a1/loyalty-refund` | `LOYALTY-REFUND-CONTRACT.md` ✅ |
 | **2** | Rail financier de remboursement | À FAIRE | — | `REFUND-FINANCIAL-CONTRACT.md` |
 | **3** | Claims : domaine / sécurité / admin | À FAIRE | — | (revue sécurité adversariale) |
 | **4** | Claims : UX consommateur | À FAIRE | — | pack Claude Design si visuellement faible |
@@ -54,11 +54,23 @@ Train de fusion précédent, une fusion à la fois, CI verte + healthcheck au SH
 
 ---
 
-## PHASE 1 — MODÈLE FINANCIER FIDÉLITÉ — **BLOCKED** 🔴
+## PHASE 1 — MODÈLE FINANCIER FIDÉLITÉ — **IMPLÉMENTÉ** ✅ (attend migration staging fondateur)
 
-Bloquée sur **décisions de politique fondateur** (cf. inventaire §7) : (1) points gagnés au refund = repris/prorata/conservés ? (2) re-crédit des points dépensés sur refund partiel = intégral/prorata ? (3) autorisation dé-dup + `db push` staging. Conforme à l'addendum (« If BLOCKED on a genuine founder policy issue: STOP »).
+Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore spent prorata, D3 offset interne, funding GRUBANO, cash-cap ≤ Stripe). Implémenté sur `a1/loyalty-refund` (worktree isolé), banké, **non mergé** (le merge suit la migration staging exécutée par le fondateur, gate order).
 
-Correctifs techniques prêts à spécifier dès arbitrage : garde solde ≥ 0, `@@unique([orderId,type])` + `upsert`, earn-clawback selon (1), proportionnalité re-crédit selon (2), log si `charge.metadata.orderId` absent.
+**Faits** :
+- Cash-cap **structurel** (order.total = charge.amount) → Phase 1 = points-only. Prorata sur `charge.amount` (jamais foodTotal). Modèle cible-cumulatif télescopant comme `computeRefundSplit`.
+- Idempotence = `LoyaltyTransaction.sourceEventId` (re_… Stripe) + `@@unique([sourceEventId,type])` ; `@@unique([orderId,type])` REJETÉ. Schéma **purement additif** ; **rehearsal local disposable PASS** (no --accept-data-loss, no dedup, multi-NULL, zéro drift).
+- Webhook `charge.refunded` = point UNIQUE de reconciliation, NON gaté (reconcilie la vérité Stripe quelle que soit l'origine) ; `executeRefund` ne touche pas la fidélité (un seul propriétaire).
+- **Revue adversariale (E financier / F migration)** : 4 défauts corrigés — grandfather des commandes legacy-remboursées, `FOR UPDATE` + deltas relatifs (concurrence), guard earn-sur-commande-remboursée, waiver key scopée client. E confirme : points-only, funding, arrondi cumulatif, replay tiennent.
+
+**Livrables** : `LOYALTY-REFUND-CONTRACT.md` (23 §), `prisma/manual-migrations/phase1-loyalty-refund.sql` (artefact reviewable), `PHASE1-STAGING-PROCEDURE.md` (backup+migrate+verify+rollback fondateur, 0 secret).
+
+**Gates** : suites Phase 1 (math 25 + apply 8 + waiver 5) + full vitest + cold build — verts (voir verdict). tsc baseline 37 (0 erreur produit Phase 1). `main`/prod/Stripe LIVE jamais touchés ; **freeze remboursement staging ACTIF**.
+
+**Blocage Phase 2 enregistré** (non touché) : `orders/[id]/refund` non royalty-aware → double-versement franchise ; `REFUNDS_ENABLED` reste OFF jusqu'à Phase 2.
+
+**Suite** : le fondateur exécute la migration staging (procédure), répond « migration appliquée et vérifiée » → merge + deploy + healthcheck SHA exact + check post-deploy → seulement alors, envisager la levée du freeze → Phase 2.
 
 ---
 
