@@ -128,17 +128,23 @@ export async function GET(req: NextRequest) {
 
     const tierInfo = TIER_THRESHOLDS.find(t => t.tier === customer.tier) ?? TIER_THRESHOLDS[0]
 
+    // D3 (Phase 1) — the VISIBLE spendable balance floors at 0. The Phase 1 refund
+    // clawback never pushes pointsBalance below 0 (it spills into recoveryOffsetPoints
+    // instead), so this is defence-in-depth for any legacy negative row: the customer
+    // is never shown a negative loyalty balance.
+    const visibleBalance = Math.max(0, customer.pointsBalance)
+
     return NextResponse.json({
-      points_balance:  customer.pointsBalance,
+      points_balance:  visibleBalance,
       // camelCase alias — /eat/account and the cart loyalty toggle read this.
-      pointsBalance:   customer.pointsBalance,
+      pointsBalance:   visibleBalance,
       // Loyalty conversion scale (cents per point) for the consumer UI (L1).
       centsPerPoint:   centsPerPoint(),
       // ── L2 — the € CREDIT view (replaces the named-reward catalogue) ─────────
       // The balance converted to euros (server rate, never client) + a readable
       // points→€ scale. « Tu as 240 pts = 12 € de crédit ».
-      balanceCents:    pointsToCents(customer.pointsBalance),
-      balanceEuros:    pointsToCents(customer.pointsBalance) / 100,
+      balanceCents:    pointsToCents(visibleBalance),
+      balanceEuros:    pointsToCents(visibleBalance) / 100,
       creditScale:     creditScale(),
       tier:            customer.tier,
       next_tier:       tierInfo.next,

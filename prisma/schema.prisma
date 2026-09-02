@@ -11,19 +11,19 @@ datasource db {
 // ── Core ──────────────────────────────────────────────────────────────────────
 
 model Operator {
-  id        String    @id @default(cuid())
-  name      String
-  email     String    @unique
-  password  String?                              // bcrypt hash — null for SSO / seed accounts
-  phone     String?
-  city      String?
-  status    String    @default("active")   // active | pending | pending_review | suspended
+  id                         String            @id @default(cuid())
+  name                       String
+  email                      String            @unique
+  password                   String? // bcrypt hash — null for SSO / seed accounts
+  phone                      String?
+  city                       String?
+  status                     String            @default("active") // active | pending | pending_review | suspended
   // Optional human-readable reason for a suspension / refusal — shown to the
   // partner and kept for audit. ADDITIVE + REVERSIBLE: nullable, no backfill,
   // existing rows stay valid and dropping it leaves the model intact.
-  statusReason String?
-  role       String     @default("restaurant")   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate | prestataire
-  createdAt  DateTime   @default(now())
+  statusReason               String?
+  role                       String            @default("restaurant") // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate | prestataire
+  createdAt                  DateTime          @default(now())
   // ── Partner email verification + RGPD consent (Agent 12, brique 1) ───────────
   // ADDITIVE + REVERSIBLE: every field is nullable, so existing rows (consumers,
   // operators, seed accounts) stay valid with zero backfill and dropping these
@@ -33,10 +33,10 @@ model Operator {
   // the account to 'active' and stamps emailVerifiedAt. Login is refused
   // while status='pending'. consentAt records the explicit, timestamped RGPD
   // consent given at registration.
-  emailVerifiedAt   DateTime?
-  verifyTokenHash   String?
-  verifyTokenExpiry DateTime?
-  consentAt         DateTime?
+  emailVerifiedAt            DateTime?
+  verifyTokenHash            String?
+  verifyTokenExpiry          DateTime?
+  consentAt                  DateTime?
   // ── Passwordless magic-link sign-in (Phase 0 auth bridge, Agent 14) ──────────
   // ADDITIVE + REVERSIBLE: both nullable, no backfill, dropping them is safe.
   // A SEPARATE pair from verifyToken* (partner email verification) so the two
@@ -44,8 +44,8 @@ model Operator {
   // (15 min). Single-use: cleared on a successful magic-link sign-in. Lets a
   // passwordless account (e.g. a creator) sign in by email link, ALONGSIDE the
   // existing password CredentialsProvider (which is untouched).
-  magicLinkTokenHash   String?
-  magicLinkTokenExpiry DateTime?
+  magicLinkTokenHash         String?
+  magicLinkTokenExpiry       DateTime?
   // ── Pending account email change (Agent 147) — ADDITIVE · REVERSIBLE ─────────
   // Flag-gated (AUTH_EMAIL_CHANGE_ENABLED). A logged-in user requests a change to a
   // NEW email; after proving CURRENT identity (email OTP, purpose 'stepup:email_change')
@@ -55,46 +55,46 @@ model Operator {
   // NEW address. All THREE nullable, no default, no backfill; dropping them leaves the
   // model intact. ⭐ Login keys on `email` (UNCHANGED until confirmation) → an abandoned
   // change never locks anyone out. A SEPARATE pair from verifyToken*/magicLinkToken*.
-  pendingEmail            String?
-  pendingEmailTokenHash   String?
-  pendingEmailTokenExpiry DateTime?
-  brands       Brand[]
-  accounts     Account[]
-  sessions     Session[]
+  pendingEmail               String?
+  pendingEmailTokenHash      String?
+  pendingEmailTokenExpiry    DateTime?
+  brands                     Brand[]
+  accounts                   Account[]
+  sessions                   Session[]
   // Option B (step 4): an operator can own several establishments. The UI is still
   // mono-establishment (reads restaurants[0]); multi-establishment is a later step.
-  restaurants  Restaurant[]
+  restaurants                Restaurant[]
   // Franchise (role=franchise) owns one or more points of sale. Empty for
   // non-franchise operators — the relation list is nullable by virtue of
   // being a list (Prisma returns []).
-  pointsOfSale PointOfSale[]
+  pointsOfSale               PointOfSale[]
   // ── Multi-role account (Phase 1 refonte, Agent 14) — ADDITIVE ───────────────
   // The single `role` column above is KEPT (it stays the PRIMARY role + a
   // rollback source). This relation is the full role SET. Access gating reads the
   // SET (middleware); redirects still use the primary `role`. Backfilled 1:1 from
   // `role` at migration. Reversible: drop the OperatorRole table, the model is
   // unchanged.
-  operatorRoles OperatorRole[]
+  operatorRoles              OperatorRole[]
   // Slice 2 — B2B supply orders this operator (as a restaurateur) placed to
   // marketplace suppliers. Additive inverse relation; reversible.
-  supplyOrders  SupplyOrder[]
+  supplyOrders               SupplyOrder[]
   // P3 (Agent 76) — service quote/mission requests this operator (as a restaurateur)
   // sent to prestataires. Additive inverse relation; reversible. NO money.
-  serviceMissions ServiceMission[]
+  serviceMissions            ServiceMission[]
   // P5 (Agent 78) — reviews this operator (as a restaurateur) left on prestataires.
   // Additive inverse relation; reversible. NO money.
-  serviceReviews  ServiceReview[]
+  serviceReviews             ServiceReview[]
   // Inverse side of Review.operator (P0-DATA-2) — consumer reviews this user wrote.
-  reviews         Review[]
+  reviews                    Review[]
   // Inverse side of CreatorFollow.operator (P1-CHEF-FOLLOW) — creators this user follows.
-  creatorFollows  CreatorFollow[]
+  creatorFollows             CreatorFollow[]
   // Inverse side of Waitlist.operator (P2-WAITLIST) — restaurant waitlist entries.
-  waitlistEntries Waitlist[]
+  waitlistEntries            Waitlist[]
   // Inverse side of PromoRedemption.operator (P1-PROMO) — promo codes this user redeemed.
-  promoRedemptions PromoRedemption[]
+  promoRedemptions           PromoRedemption[]
   // P6 (Agent 79) — service-mission invoices billed to this operator (as a restaurateur).
   // Additive inverse relation; reversible. DOCUMENT only — NO money movement.
-  serviceInvoices ServiceInvoice[]
+  serviceInvoices            ServiceInvoice[]
   // ── Company identity anchor (B1.1, Agent 29) — ADDITIVE · REVERSIBLE · INERT ──
   // Future "collect once" home for BUSINESS identity at the ACCOUNT level. Today
   // company identity is siloed per-entity (SupplierProfile / LogisticsProfile,
@@ -107,11 +107,11 @@ model Operator {
   // whitelists). `kybStatus` is named distinctly from the per-entity
   // `verificationStatus` on purpose: it is the ACCOUNT-level Know-Your-Business
   // state, not a duplicate of the entity-scoped field.
-  siren         String?   // FR 9-digit business number (mirrors SupplierProfile.siren)
-  officialName  String?   // legal / registered company name (mirrors SupplierProfile.officialName)
-  legalForm     String?   // legal entity type — free string, no enum yet (e.g. auto_entrepreneur | sarl | sas)
-  kybStatus     String?   // account-level KYB state — free string, no enum yet (e.g. none | pending | verified | rejected)
-  kybVerifiedAt DateTime? // when account-level KYB was confirmed
+  siren                      String? // FR 9-digit business number (mirrors SupplierProfile.siren)
+  officialName               String? // legal / registered company name (mirrors SupplierProfile.officialName)
+  legalForm                  String? // legal entity type — free string, no enum yet (e.g. auto_entrepreneur | sarl | sas)
+  kybStatus                  String? // account-level KYB state — free string, no enum yet (e.g. none | pending | verified | rejected)
+  kybVerifiedAt              DateTime? // when account-level KYB was confirmed
   // ── P4.4-A — invoice fiscal content (Agent 54, ADDITIVE) ─────────────────────
   // vatNumber: the PARTNER's own VAT id, shown on Grubano's commission invoice to
   // them. Nullable, USER-set (owner-scoped POST /api/operator/vat-number) — blank
@@ -119,8 +119,8 @@ model Operator {
   // invoice (lib/tax.resolveVatRate); @default("FR") ⇒ every existing operator is
   // France → 0.20 → byte-identical, and no non-FR establishment is active. Neither
   // field touches any money charged (invoice accounting/display only).
-  vatNumber     String?   // partner's intra-community VAT number (display on their invoice)
-  country       String    @default("FR") // ISO alpha-2; VAT-rate country for their invoice
+  vatNumber                  String? // partner's intra-community VAT number (display on their invoice)
+  country                    String            @default("FR") // ISO alpha-2; VAT-rate country for their invoice
   // ── P4.4-C — DAC7 seller data (Agent 56, ADDITIVE) ───────────────────────────
   // Self-declared seller identity fields the DAC7 platform-operator report needs and
   // that aren't already captured (siren/officialName/vatNumber/country above + the
@@ -128,11 +128,11 @@ model Operator {
   // lives at Stripe). All NULLABLE / no default / NO backfill → existing rows stay
   // valid and the DAC7 aggregation flags any still-missing field. Set ONLY by the
   // owner (POST /api/operator/dac7, zod-whitelisted) — never read on any money path.
-  registeredAddress String?   // registered/seat address (DAC7 seller address)
-  taxId             String?   // TIN — tax identification number
-  taxIdCountry      String?   // ISO alpha-2 issuing country of the TIN
-  dateOfBirth       DateTime? // for INDIVIDUAL sellers (DAC7 requires DOB for natural persons)
-  sellerType        String?   // entity | individual (when not derivable from legalForm)
+  registeredAddress          String? // registered/seat address (DAC7 seller address)
+  taxId                      String? // TIN — tax identification number
+  taxIdCountry               String? // ISO alpha-2 issuing country of the TIN
+  dateOfBirth                DateTime? // for INDIVIDUAL sellers (DAC7 requires DOB for natural persons)
+  sellerType                 String? // entity | individual (when not derivable from legalForm)
   // ── P4.1 — Stripe Connect (Express) onboarding for the FRANCHISE payout flow
   // (TEST mode; gated by FRANCHISE_CONNECT_ENABLED). Prefixed `franchise*` because
   // Operator is multi-purpose: this is the connected account for the 'franchise'
@@ -141,9 +141,9 @@ model Operator {
   // REVERSIBLE: all nullable, NO default / NO constraint / NO backfill. NO charge /
   // payout here (= P4.3) — only tracks the connected account + onboarding state.
   // Status synced ON-DEMAND (no webhook in P4.1).
-  franchiseStripeAccountId   String?    // acct_… (Express, FR)
-  franchisePayoutStatus      String?    // none | pending | active | restricted (null = none)
-  franchiseStripeOnboardedAt DateTime?  // first time the franchise account became 'active'
+  franchiseStripeAccountId   String? // acct_… (Express, FR)
+  franchisePayoutStatus      String? // none | pending | active | restricted (null = none)
+  franchiseStripeOnboardedAt DateTime? // first time the franchise account became 'active'
   // ── Affiliate payout Connect (Phase 6 Brique D1, Agent 63) — top-level affiliate ──
   // The affiliate is 1:1 with this Operator (model Affiliate). Its payout Connect
   // account lives HERE, kept DISTINCT from the franchise* account above (the same
@@ -151,9 +151,9 @@ model Operator {
   // constraint / backfill. NO charge/payout in the schema — it tracks the connected
   // account + onboarding state; the transfer is payPartner('affiliate') (gated by
   // AFFILIATE_CONNECT_ENABLED). Status synced ON-DEMAND (mirror of franchise*).
-  affiliateStripeAccountId   String?    // acct_… (Express, FR, business_type=individual)
-  affiliatePayoutStatus      String?    // none | pending | active | restricted (null = none)
-  affiliateStripeOnboardedAt DateTime?  // first time the affiliate account became 'active'
+  affiliateStripeAccountId   String? // acct_… (Express, FR, business_type=individual)
+  affiliatePayoutStatus      String? // none | pending | active | restricted (null = none)
+  affiliateStripeOnboardedAt DateTime? // first time the affiliate account became 'active'
   // ── Onboarding nudge emails (anti-abandon cron, Agent 95) — ADDITIVE · REVERSIBLE ──
   // `locale` = the operator's preferred EMAIL/UI language (fr|en|es|it|ar); NULL falls back
   // to 'fr' (lib/onboarding-nudge.resolveNudgeLocale). `onboardingNudgeUnsub` = the
@@ -161,21 +161,21 @@ model Operator {
   // nudge cron skips this account forever. Both nullable/defaulted, NO backfill, dropping
   // them leaves the model intact. The per-LEVEL send log + its idempotence guard live in the
   // standalone OnboardingNudge table below (NOT here) so a re-run never double-sends.
-  locale               String?  // fr | en | es | it | ar (preferred email language; null ⇒ fr)
-  onboardingNudgeUnsub Boolean  @default(false)
+  locale                     String? // fr | en | es | it | ar (preferred email language; null ⇒ fr)
+  onboardingNudgeUnsub       Boolean           @default(false)
   // ── Consumer notification preferences (P1-NOTIFPREF) — ADDITIVE · REVERSIBLE ──
   // The /eat/account/notifications toggles (channels push/email/sms + per-type rows +
   // quiet hours) persisted as a JSON blob. @default("{}") → existing rows valid with no
   // backfill; dropping it is safe. Notification DELIVERY (sending) is Wave 5 — this only
   // stores the user's CHOICES. NO money.
-  notifPrefs Json @default("{}")
+  notifPrefs                 Json              @default("{}")
   // ── Consumer delivery addresses (P0-DATA-1) — ADDITIVE · REVERSIBLE ──────────
   // A consumer's saved delivery addresses (the « Livrer à » picker source). The
   // server copy of what used to live only in localStorage (lib/eat-addresses).
   // Inverse list relation → NO column on Operator; dropping the Address table leaves
   // the model intact. The Order still stores the FORMATTED address STRING
   // (placeOrder byte-identical) — this table is only the user's reusable address book.
-  addresses  Address[]
+  addresses                  Address[]
 }
 
 // ── Address (P0-DATA-1, consumer delivery address book) — ADDITIVE · REVERSIBLE ───
@@ -189,17 +189,18 @@ model Address {
   id         String   @id @default(cuid())
   operator   Operator @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId     String
-  label      String                      // free label (« Domicile », « Bureau »…)
-  kind       String   @default("other")  // home | work | other (drives the icon)
-  street     String                      // street & number
-  complement String?                     // floor / apt / intercom (optional)
+  label      String // free label (« Domicile », « Bureau »…)
+  kind       String   @default("other") // home | work | other (drives the icon)
+  street     String // street & number
+  complement String? // floor / apt / intercom (optional)
   postalCode String
   city       String
   country    String   @default("France")
-  note       String?                     // driver instructions (optional)
+  note       String? // driver instructions (optional)
   isDefault  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
   @@index([userId])
 }
 
@@ -219,7 +220,7 @@ model OnboardingNudge {
   // [operatorId, role, level] never conflicts with the data created under the old
   // [operatorId, level] key. The claim-before-send guard becomes per (operator, role, level).
   role       String   @default("restaurant") // restaurant | affiliate | creator
-  level      Int      // 1 | 2 | 3
+  level      Int // 1 | 2 | 3
   sentAt     DateTime @default(now())
 
   @@unique([operatorId, role, level])
@@ -233,7 +234,7 @@ model OperatorRole {
   id         String   @id @default(cuid())
   operatorId String
   operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  role       String   // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate | prestataire
+  role       String // restaurant | franchise | creator | consumer | admin | supplier | logistics | affiliate | prestataire
   createdAt  DateTime @default(now())
 
   @@unique([operatorId, role])
@@ -241,47 +242,47 @@ model OperatorRole {
 }
 
 model Brand {
-  id         String         @id @default(cuid())
-  operatorId String
-  operator   Operator       @relation(fields: [operatorId], references: [id])
+  id                String             @id @default(cuid())
+  operatorId        String
+  operator          Operator           @relation(fields: [operatorId], references: [id])
   // ── Establishment link (Option B, additive step 1) ──────────────────────────
   // ADDITIVE + REVERSIBLE: a Brand belongs to one Restaurant (establishment).
   // Nullable so every existing row stays valid with no backfill, and dropping the
   // column again is non-destructive. Backfill (step 2), read switch (step 3) and
   // the Operator→restaurants cardinality flip (step 4) come in later commits.
   // Nothing reads restaurantId yet, so runtime behaviour is unchanged.
-  restaurantId String?
-  restaurant   Restaurant?    @relation(fields: [restaurantId], references: [id])
-  name       String
-  emoji      String         @default("🍴")
-  platform   String         @default("ubereats")
-  status     String         @default("active")
+  restaurantId      String?
+  restaurant        Restaurant?        @relation(fields: [restaurantId], references: [id])
+  name              String
+  emoji             String             @default("🍴")
+  platform          String             @default("ubereats")
+  status            String             @default("active")
   // ── Franchise (brique 2A) ───────────────────────────────────────────────────
   // ADDITIVE + REVERSIBLE: a Brand can be opened to franchising and reused as a
   // "franchisable brand". Every field below is optional or has a safe default,
   // so existing Brand rows stay valid with no backfill. Dropping these columns
   // again is non-destructive to the rest of the model.
-  openToFranchise   Boolean @default(false)  // is this brand open to franchising
-  royaltyPct        Float?                    // royalty % of revenue paid to the franchisor (e.g. 0.06)
-  setupFee          Float?                    // one-off installation fee in €
-  franchiseZones    Json    @default("[]")    // allowed cities/zones (array of strings)
-  tagline           String?                   // short pitch shown on the discovery page
-  cuisineType       String?                   // e.g. "Italien", "Asiatique"
-  avgMonthlyRevenue Float?                     // indicative showcase revenue
-  franchiseStatus   String  @default("none")  // none | open | full (drives the "Complet" badge)
-  createdAt  DateTime       @default(now())
-  orders     LoyaltyOrder[]
-  menuItems  MenuItem[]
-  promotions Promotion[]
-  stockItems StockItem[]
+  openToFranchise   Boolean            @default(false) // is this brand open to franchising
+  royaltyPct        Float? // royalty % of revenue paid to the franchisor (e.g. 0.06)
+  setupFee          Float? // one-off installation fee in €
+  franchiseZones    Json               @default("[]") // allowed cities/zones (array of strings)
+  tagline           String? // short pitch shown on the discovery page
+  cuisineType       String? // e.g. "Italien", "Asiatique"
+  avgMonthlyRevenue Float? // indicative showcase revenue
+  franchiseStatus   String             @default("none") // none | open | full (drives the "Complet" badge)
+  createdAt         DateTime           @default(now())
+  orders            LoyaltyOrder[]
+  menuItems         MenuItem[]
+  promotions        Promotion[]
+  stockItems        StockItem[]
   // Inverse side of PointOfSale.brand_ref (brique 2A).
-  pointsOfSale PointOfSale[]
+  pointsOfSale      PointOfSale[]
   // Inverse side of DishAdoption.brand (brique 3A) — creator recipes this brand adopted.
-  dishAdoptions DishAdoption[]
+  dishAdoptions     DishAdoption[]
   // Inverse side of AdoptionWaitlist.brand (levier 3A) — city-exclusivity queue.
-  waitlist      AdoptionWaitlist[]
+  waitlist          AdoptionWaitlist[]
   // Inverse side of Category.brand — this brand's CUSTOM menu categories.
-  categories    Category[]
+  categories        Category[]
 
   @@index([restaurantId])
 }
@@ -311,32 +312,55 @@ model Category {
 // ── Loyalty ───────────────────────────────────────────────────────────────────
 
 model LoyaltyCustomer {
-  id            String         @id @default(cuid())
-  name          String
-  email         String         @unique
-  phone         String?
-  pointsBalance Int            @default(10)
-  tier          String         @default("bronze")
-  referralCode  String         @unique @default(cuid())
-  referredBy    String?
-  createdAt     DateTime       @default(now())
-  orders        LoyaltyOrder[]
-  rewards       Reward[]
+  id                   String         @id @default(cuid())
+  name                 String
+  email                String         @unique
+  phone                String?
+  pointsBalance        Int            @default(10)
+  // D3 (Phase 1) — INTERNAL recovery offset (debt), in POINTS. When an earned-point
+  // clawback on a refund would push pointsBalance below 0 (the points were already
+  // spent elsewhere), the visible balance floors at 0 and the unrecovered remainder
+  // lands here. FUTURE earnings repay this offset before becoming spendable. An admin
+  // may waive it (AdminAuditLog action 'loyalty.waiver' + a signed LoyaltyTransaction).
+  // ADDITIVE: every existing row → 0, no backfill. pointsBalance stays the visible cache.
+  recoveryOffsetPoints Int            @default(0)
+  tier                 String         @default("bronze")
+  referralCode         String         @unique @default(cuid())
+  referredBy           String?
+  createdAt            DateTime       @default(now())
+  orders               LoyaltyOrder[]
+  rewards              Reward[]
 }
 
-// ── Loyalty ledger (chantier fidélité L1) ─────────────────────────────────────
+// ── Loyalty ledger (chantier fidélité L1 + Phase 1 refund reconciliation) ──────
 // Points are a currency → every movement is TRACED here (like DishSale /
-// ReferralOrder), pointsBalance stays the cache. Signed `points`: +earned (at a
-// delivered order), −spent (redeemed at a confirmed payment), +re-credited (on a
-// refund). Idempotence is enforced per [orderId, type] by the callers. Additive.
+// ReferralOrder), pointsBalance stays the cache. Signed `points`.
+// Types: earn (+, at delivered) | redeem (−, at confirmed payment) |
+//        refund (+, spent-point restoration on a refund, now PRORATED) |
+//        earn_reversal (−, earned-point clawback on a refund) |
+//        offset_repay (0-on-balance bookkeeping: a future earn repaying the
+//                      recovery offset — traced for audit) |
+//        offset_waiver (±, admin goodwill waiver of the recovery offset).
+// `type` is a free String, so new types need NO migration.
+// IDEMPOTENCE (Phase 1): every refund-driven movement carries sourceEventId = the
+// immutable Stripe Refund id (re_…). @@unique([sourceEventId, type]) makes a
+// replayed refund a no-op (P2002) while allowing DISTINCT partial refunds (distinct
+// re_… ids) to each apply exactly once — the coarse [orderId,type] was REJECTED
+// (partial refunds share it). sourceEventId is NULLABLE → all pre-Phase-1 rows stay
+// NULL; MySQL/InnoDB allows many NULLs in a UNIQUE index, so the index needs NO
+// dedup and the migration is purely additive (precedent: Payout.idempotencyKey).
+// actorId records the admin behind an offset_waiver (the movement's who).
 model LoyaltyTransaction {
-  id         String   @id @default(cuid())
-  customerId String   // LoyaltyCustomer.id
-  orderId    String?  // the consumer Order this movement relates to (null = manual/other)
-  type       String   // earn | redeem | refund
-  points     Int      // signed: +earned / −spent / +re-credited
-  createdAt  DateTime @default(now())
+  id            String   @id @default(cuid())
+  customerId    String // LoyaltyCustomer.id
+  orderId       String? // the consumer Order this movement relates to (null = manual/other)
+  type          String // earn | redeem | refund | earn_reversal | offset_repay | offset_waiver
+  points        Int // signed
+  sourceEventId String? // Phase 1: the Stripe Refund re_… (refund movements) or a stable op key (waiver). NULL for legacy/earn/redeem.
+  actorId       String? // Phase 1: Operator.id of the admin, for offset_waiver movements
+  createdAt     DateTime @default(now())
 
+  @@unique([sourceEventId, type])
   @@index([customerId])
   @@index([orderId])
 }
@@ -366,49 +390,49 @@ model Reward {
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
 model MenuItem {
-  id            String   @id @default(cuid())
+  id            String         @id @default(cuid())
   brandId       String
-  brand         Brand    @relation(fields: [brandId], references: [id])
+  brand         Brand          @relation(fields: [brandId], references: [id])
   name          String
-  description   String?  @db.Text
+  description   String?        @db.Text
   price         Float
   comparePrice  Float?
   category      String
   calories      Int?
-  allergens     Json     @default("[]")
-  labels        Json     @default("[]")
-  photos        Json     @default("[]")
-  options       Json     @default("[]")
-  available     Boolean  @default(true)
-  isPopular     Boolean  @default(false)
+  allergens     Json           @default("[]")
+  labels        Json           @default("[]")
+  photos        Json           @default("[]")
+  options       Json           @default("[]")
+  available     Boolean        @default(true)
+  isPopular     Boolean        @default(false)
   prepTime      Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   // Inverse side of DishAdoption.menuItem (brique 3A) — the menu entries created
   // when a brand adopted a creator recipe.
   dishAdoptions DishAdoption[]
 }
 
 model Promotion {
-  id         String   @id @default(cuid())
-  brandId    String
-  brand      Brand    @relation(fields: [brandId], references: [id])
-  name       String
-  type       String   // percent | fixed | second_item | threshold_reward
-  discount   Float
-  code       String?  @unique   // P1-PROMO — when set, a CODE promo (customer-entered, never auto-applied)
-  conditions Json     @default("{}")
-  startDate  DateTime
-  endDate    DateTime
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id          String            @id @default(cuid())
+  brandId     String
+  brand       Brand             @relation(fields: [brandId], references: [id])
+  name        String
+  type        String // percent | fixed | second_item | threshold_reward
+  discount    Float
+  code        String?           @unique // P1-PROMO — when set, a CODE promo (customer-entered, never auto-applied)
+  conditions  Json              @default("{}")
+  startDate   DateTime
+  endDate     DateTime
+  active      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
   // ── Promo V2 Slice 2 (CreatorCampaign opt-in, ADDITIVE + nullable) ──────────
   // Set when this Promotion was created by a restaurateur OPTING IN to a chef's
   // campaign. The promo is a STANDARD resto-financed Promotion (same engine,
   // same guards) — campaignId only LINKS it back for display. Nullable so every
   // existing promo stays valid and the column is column-tolerant before db push.
-  campaignId String?
-  campaign   CreatorCampaign? @relation(fields: [campaignId], references: [id])
+  campaignId  String?
+  campaign    CreatorCampaign?  @relation(fields: [campaignId], references: [id])
   // Inverse side of PromoRedemption.promotion (P1-PROMO) — per-user code redemptions.
   redemptions PromoRedemption[]
 
@@ -445,7 +469,7 @@ model CreatorCampaign {
   creatorDish          CreatorDish @relation(fields: [creatorDishId], references: [id])
   creatorId            String
   creator              Creator     @relation(fields: [creatorId], references: [id])
-  suggestedDiscountPct Int         // 1..90 — the chef's SUGGESTION (the resto adjusts)
+  suggestedDiscountPct Int // 1..90 — the chef's SUGGESTION (the resto adjusts)
   message              String      @db.Text
   startDate            DateTime
   endDate              DateTime
@@ -475,19 +499,19 @@ model StockItem {
 // ── Suppliers ─────────────────────────────────────────────────────────────────
 
 model Supplier {
-  id        String            @id @default(cuid())
-  name      String
-  specialty String?
-  zone      String?
-  leadTime  String            @default("24h")
-  minOrder  Float             @default(0)
-  rating    Float             @default(5.0)
-  apiEnabled Boolean          @default(false)
-  phone     String?
-  email     String?
-  createdAt DateTime          @default(now())
-  products  SupplierProduct[]
-  orders    SupplierOrder[]
+  id         String            @id @default(cuid())
+  name       String
+  specialty  String?
+  zone       String?
+  leadTime   String            @default("24h")
+  minOrder   Float             @default(0)
+  rating     Float             @default(5.0)
+  apiEnabled Boolean           @default(false)
+  phone      String?
+  email      String?
+  createdAt  DateTime          @default(now())
+  products   SupplierProduct[]
+  orders     SupplierOrder[]
 }
 
 model SupplierProduct {
@@ -502,13 +526,13 @@ model SupplierProduct {
 }
 
 model SupplierOrder {
-  id         String   @id @default(cuid())
-  supplierId String
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
-  items      Json
-  total      Float
-  status     String   @default("pending") // pending | sent | confirmed | delivered
-  sentAt     DateTime @default(now())
+  id          String    @id @default(cuid())
+  supplierId  String
+  supplier    Supplier  @relation(fields: [supplierId], references: [id])
+  items       Json
+  total       Float
+  status      String    @default("pending") // pending | sent | confirmed | delivered
+  sentAt      DateTime  @default(now())
   deliveredAt DateTime?
 }
 
@@ -538,9 +562,9 @@ model RestaurantTable {
 }
 
 model Reservation {
-  id           String          @id @default(cuid())
-  tableId      String
-  table        RestaurantTable @relation(fields: [tableId], references: [id])
+  id                    String          @id @default(cuid())
+  tableId               String
+  table                 RestaurantTable @relation(fields: [tableId], references: [id])
   // ── Establishment link (Chantier 2, additive step 1) ────────────────────────
   // ADDITIVE + REVERSIBLE: a reservation is made AT one establishment. It COULD be
   // derived from the table (table.restaurantId), but a DIRECT, indexed field lets
@@ -548,56 +572,56 @@ model Reservation {
   // join) and FREEZES the establishment at booking time, so the row stays correct
   // even if the table is later reassigned or removed. Same denormalised pattern as
   // Order.restaurantId. Nullable until backfilled.
-  restaurantId String?
-  restaurant   Restaurant?     @relation(fields: [restaurantId], references: [id])
+  restaurantId          String?
+  restaurant            Restaurant?     @relation(fields: [restaurantId], references: [id])
   // ── Account link (Sécurité addition, additive) ──────────────────────────────
   // The connected consumer's account id (= session.user.id = Operator.id) when the
   // reservation was made while logged in; null for anonymous / walk-in / legacy
   // rows. Gates the APP/ACCOUNT pay+order channel (only the linked client, once
   // status='arrived'). The QR walk-in channel ignores this — it stays open. Plain
   // indexed String (no strict FK — the NextAuth identity model is ambiguous).
-  userId       String?
+  userId                String?
   // ── Booking source (masquage PII /eat, additive) ─────────────────────────────
   // 'staff' = typed by the restaurant team (direct book — full contact stays
   // visible to the team that typed it) · 'eat' = consumer booking via the public
   // /eat flow (POST /api/reservations/public) → the operator sees a MASKED name
   // and NO phone/email (founder hybrid model). Default 'staff' so legacy rows
   // stay unmasked; legacy consumer rows are still caught by userId != null.
-  source       String          @default("staff")
-  customerName String
-  phone        String?
-  email        String?
-  guests       Int
-  date         DateTime
-  endTime      DateTime
-  type         String          @default("standard") // quick | standard | full
-  status       String          @default("confirmed") // confirmed | arrived | overrun | cancelled | noshow
-  allergies    Json            @default("[]")
-  preOrder     Json            @default("[]")
-  depositAmount Float          @default(0)
-  depositPaid  Boolean         @default(false)
-  noShowPenalty Float          @default(0)
+  source                String          @default("staff")
+  customerName          String
+  phone                 String?
+  email                 String?
+  guests                Int
+  date                  DateTime
+  endTime               DateTime
+  type                  String          @default("standard") // quick | standard | full
+  status                String          @default("confirmed") // confirmed | arrived | overrun | cancelled | noshow
+  allergies             Json            @default("[]")
+  preOrder              Json            @default("[]")
+  depositAmount         Float           @default(0)
+  depositPaid           Boolean         @default(false)
+  noShowPenalty         Float           @default(0)
   // ── Stripe deposit hold (Paiement V1, additive — TEST mode) ─────────────────
   // ADDITIVE + REVERSIBLE: a TheFork-style guarantee held by a manual-capture
   // Stripe PaymentIntent (pre-authorisation). On arrival → cancel (nothing
   // charged); on no-show → capture the penalty. depositPaid is KEPT for
   // back-compat; depositStatus is the finer lifecycle. All nullable / defaulted,
   // so existing rows stay valid with no backfill.
-  stripePaymentIntentId String?              // the PaymentIntent id (pi_...)
-  depositStatus String          @default("none") // none | authorized | captured | released
-  depositCurrency String        @default("eur")
+  stripePaymentIntentId String? // the PaymentIntent id (pi_...)
+  depositStatus         String          @default("none") // none | authorized | captured | released
+  depositCurrency       String          @default("eur")
   // ── Cancellation trace (Chantier horaires, additive) ────────────────────────
   // WHY a reservation was cancelled. 'closure' = auto-cancelled because the
   // restaurant declared an exceptional closure over its slot (empreinte released,
   // nothing charged). Nullable → existing rows untouched; manual cancels may
   // leave it null.
-  cancelReason String?
+  cancelReason          String?
   // WHO cancelled — 'consumer' (self-cancel within the window via
   // POST /api/reservations/[id]/cancel) | 'operator' (dashboard PATCH).
   // Nullable → existing rows untouched (closure cancels may leave it null).
-  cancelledBy  String?
-  notes        String?         @db.Text
-  createdAt    DateTime        @default(now())
+  cancelledBy           String?
+  notes                 String?         @db.Text
+  createdAt             DateTime        @default(now())
 
   @@index([userId])
 }
@@ -670,16 +694,16 @@ model EmailDispatch {
 // ── Creator economy ───────────────────────────────────────────────────────────
 
 model Creator {
-  id            String        @id @default(cuid())
-  name          String
-  email         String        @unique
-  bio           String?       @db.Text
-  instagram     String?
-  tiktok        String?
-  youtube       String?
-  followers     Int           @default(0)
-  verified      Boolean       @default(false)
-  totalEarnings Float         @default(0)
+  id                String            @id @default(cuid())
+  name              String
+  email             String            @unique
+  bio               String?           @db.Text
+  instagram         String?
+  tiktok            String?
+  youtube           String?
+  followers         Int               @default(0)
+  verified          Boolean           @default(false)
+  totalEarnings     Float             @default(0)
   // ── Role split (Mission 2 Creator Studio, ADDITIVE) ─────────────────────────
   // Two DISTINCT and CUMULABLE roles (pivot 12 juin):
   //   isChef       → royalties model (2 % of adopted-recipe sales, /chef page)
@@ -688,43 +712,43 @@ model Creator {
   // (zero regression by decision). The separation is expressed by CHOICE
   // (wizard + self-service toggles). No referralCode is ever destroyed —
   // masked/disabled by the flag only.
-  isChef        Boolean       @default(true)
-  isInfluencer  Boolean       @default(true)
+  isChef            Boolean           @default(true)
+  isInfluencer      Boolean           @default(true)
   // Inverse side of CreatorCampaign.creator (Promo V2 Slice 2).
-  campaigns     CreatorCampaign[]
+  campaigns         CreatorCampaign[]
   // Referral programme — nullable so existing creators keep working until
   // they are granted a code / slug from the back office.
-  referralCode     String?    @unique           // e.g. "MARCO20"
-  referralLinkSlug String?    @unique           // used in /r/{slug}
-  referrals        Referral[]
-  dishes        CreatorDish[]
+  referralCode      String?           @unique // e.g. "MARCO20"
+  referralLinkSlug  String?           @unique // used in /r/{slug}
+  referrals         Referral[]
+  dishes            CreatorDish[]
   // Inverse side of CreatorFollow.creator (P1-CHEF-FOLLOW) — this creator's followers.
-  followedBy    CreatorFollow[]
+  followedBy        CreatorFollow[]
   // ── P4.1 — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
   // CREATOR_CONNECT_ENABLED). ADDITIVE + REVERSIBLE: all nullable, NO default / NO
   // constraint / NO backfill. Names mirror SupplierProfile. NO charge/payout here
   // (= P4.3) — only tracks the connected account + onboarding state. Status is
   // synced ON-DEMAND (no webhook in P4.1).
-  stripeAccountId   String?    // acct_… (Express, FR)
-  payoutStatus      String?    // none | pending | active | restricted (null = none)
-  stripeOnboardedAt DateTime?  // first time the account became 'active'
-  createdAt     DateTime      @default(now())
+  stripeAccountId   String? // acct_… (Express, FR)
+  payoutStatus      String? // none | pending | active | restricted (null = none)
+  stripeOnboardedAt DateTime? // first time the account became 'active'
+  createdAt         DateTime          @default(now())
 }
 
 model CreatorDish {
-  id             String   @id @default(cuid())
+  id             String             @id @default(cuid())
   creatorId      String
-  creator        Creator  @relation(fields: [creatorId], references: [id])
+  creator        Creator            @relation(fields: [creatorId], references: [id])
   name           String
-  description    String   @db.Text
+  description    String             @db.Text
   photo          String?
   ingredients    Json
   suggestedPrice Float
   cuisineType    String
-  status         String   @default("pending")   // pending | approved | rejected
-  adoptedBy      Json     @default("[]")
-  commission     Float    @default(0.04)
-  totalSales     Int      @default(0)
+  status         String             @default("pending") // pending | approved | rejected
+  adoptedBy      Json               @default("[]")
+  commission     Float              @default(0.04)
+  totalSales     Int                @default(0)
   // ── Fiche recette de chef (Mission 6, ADDITIVE) ─────────────────────────────
   // The LICENSED ASSET: technical sheet (quantified ingredients, ordered steps,
   // timings, allergens, plating, story, cost) — shape = lib/dish-sheet.DishSheet.
@@ -733,7 +757,7 @@ model CreatorDish {
   // NEVER served publicly — only to restos with a DishAdoption of the recipe,
   // the creator, or an admin (D1, enforced by /api/dishes/[id]/sheet).
   sheet          Json?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime           @default(now())
   // Inverse side of DishAdoption.creatorDish (brique 3A) — restaurateurs who
   // adopted this recipe. KEEP adoptedBy + totalSales above for back-compat.
   adoptions      DishAdoption[]
@@ -746,25 +770,25 @@ model CreatorDish {
 // ── Franchise applications ────────────────────────────────────────────────────
 
 model FranchiseApplication {
-  id          String   @id @default(cuid())
-  operatorId  String?
-  name        String
+  id         String   @id @default(cuid())
+  operatorId String?
+  name       String
   // Agent 115 — lean signup: city + phone DEFERRED to the dashboard (edited later on the Operator
   // account via PATCH /api/franchise/profile). RELAX of a NOT NULL constraint → nullable (NON-
   // destructive: existing rows keep their values; new lean applications leave them null). They are
   // NOT inputs to the admin approval (/api/franchise/approve reads only email/name/siret), so the
   // approval gate is byte-identical. ⚠️ This migration MUST be pushed for the lean signup to work
   // (the apply create omits city/phone → NOT NULL would reject them).
-  city        String?
-  phone       String?
-  email       String
-  siret       String?
-  rib         String?
-  hasKitchen  Boolean  @default(false)
-  brandName   String
-  motivation  String   @db.Text
-  status      String   @default("pending")  // pending | approved | rejected
-  createdAt   DateTime @default(now())
+  city       String?
+  phone      String?
+  email      String
+  siret      String?
+  rib        String?
+  hasKitchen Boolean  @default(false)
+  brandName  String
+  motivation String   @db.Text
+  status     String   @default("pending") // pending | approved | rejected
+  createdAt  DateTime @default(now())
 }
 
 model CreatorApplication {
@@ -797,16 +821,16 @@ model CreatorApplication {
 // so there can never be two live candidacies for the same pair.
 model FranchiseeApplication {
   id                  String    @id @default(cuid())
-  restaurantId        String              // the applicant's restaurant to enrol
-  brandId             String              // the open brand being joined
-  applicantOperatorId String              // = Restaurant.operatorId (the candidate)
+  restaurantId        String // the applicant's restaurant to enrol
+  brandId             String // the open brand being joined
+  applicantOperatorId String // = Restaurant.operatorId (the candidate)
   status              String    @default("pending") // pending | approved | rejected
-  message             String?   @db.Text  // optional note to the franchisor
-  pointOfSaleId       String?             // the POS created on approval (the link result)
-  decidedAt           DateTime?           // when approved / rejected
+  message             String?   @db.Text // optional note to the franchisor
+  pointOfSaleId       String? // the POS created on approval (the link result)
+  decidedAt           DateTime? // when approved / rejected
   createdAt           DateTime  @default(now())
 
-  @@unique([restaurantId, brandId])       // one candidacy per (restaurant, brand)
+  @@unique([restaurantId, brandId]) // one candidacy per (restaurant, brand)
   @@index([brandId, status])
   @@index([applicantOperatorId])
   @@index([restaurantId])
@@ -823,19 +847,19 @@ model FranchiseeApplication {
 // catalogue / pricing here (those are Slice 1+). MySQL has no native array type →
 // multi-value fields are Json @default("[]").
 model SupplierProfile {
-  id                String   @id @default(cuid())
-  email             String   @unique          // shared-email link to the Operator account
-  companyName       String                    // commercial / trading name
-  contactName       String
-  phone             String?
-  city              String?
+  id                          String                @id @default(cuid())
+  email                       String                @unique // shared-email link to the Operator account
+  companyName                 String // commercial / trading name
+  contactName                 String
+  phone                       String?
+  city                        String?
   // Supply terms (profile only — Slice 0; NO catalogue/prices yet)
-  categories        Json     @default("[]")    // string[] — fresh|meat|fish|dairy|drinks|grocery|packaging
-  deliveryZones     Json     @default("[]")    // string[] — cities / postal areas served
-  minimumOrderCents Int      @default(0)       // minimum order (cents) — displayed via lib/format-money
-  leadTimeDays      Int      @default(1)       // delivery lead time (days)
-  paymentTerms      String?  @db.Text          // free text for now (Slice 5 formalizes the economics)
-  status            String   @default("pending")   // pending | active | suspended | rejected (business state)
+  categories                  Json                  @default("[]") // string[] — fresh|meat|fish|dairy|drinks|grocery|packaging
+  deliveryZones               Json                  @default("[]") // string[] — cities / postal areas served
+  minimumOrderCents           Int                   @default(0) // minimum order (cents) — displayed via lib/format-money
+  leadTimeDays                Int                   @default(1) // delivery lead time (days)
+  paymentTerms                String?               @db.Text // free text for now (Slice 5 formalizes the economics)
+  status                      String                @default("pending") // pending | active | suspended | rejected (business state)
   // Marketplace COHERENCE gate (Agent 111 — lean signup étape 2). ADDITIVE + REVERSIBLE.
   // Decouples "visible to restaurants" from `status='active'`: a SIREN-verified supplier
   // is created status='active' (can log in + build its catalogue) but starts
@@ -845,34 +869,34 @@ model SupplierProfile {
   // (and all legacy rows) stay VISIBLE with no backfill. The marketplace reader gates on
   // status='active' AND marketplaceCoherencePending=false. Gates VISIBILITY only — never
   // money, never login/catalogue (those stay on `status`).
-  marketplaceCoherencePending Boolean @default(false)
+  marketplaceCoherencePending Boolean               @default(false)
   // Auto-onboarding LLM vetting (Agent 14): the verdict that DECIDED `status` at
   // registration. ADDITIVE + REVERSIBLE. Gates VISIBILITY/catalogue ONLY — never
   // money (Stripe Connect KYB stays the independent hard gate for payouts).
-  vettingVerdict    String?                          // legit | doubt | bad (null = legacy / not auto-vetted)
-  vettingReason     String?  @db.Text                // short FR reason from the vetting/verification step
-  vettingAt         DateTime?                         // when the auto-vetting ran
+  vettingVerdict              String? // legit | doubt | bad (null = legacy / not auto-vetted)
+  vettingReason               String?               @db.Text // short FR reason from the vetting/verification step
+  vettingAt                   DateTime? // when the auto-vetting ran
   // Automatic BUSINESS-IDENTITY verification (Agent 14): the SIREN/SIRET is checked
   // against the free official French registry (recherche-entreprises.api.gouv.fr),
   // the LLM only fuzzy-matches the declared vs official name. ADDITIVE + REVERSIBLE.
   // Gates VISIBILITY/activation ONLY — money stays gated by Stripe Connect KYB.
-  siren             String?                          // 9-digit SIREN (derived from a SIREN or SIRET input)
-  officialName      String?                          // dénomination from the official registry (when verified)
-  verificationStatus String?                         // verified | rejected | review (null = legacy / not auto-verified)
-  verifiedAt        DateTime?                         // when the registry verification passed
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  siren                       String? // 9-digit SIREN (derived from a SIREN or SIRET input)
+  officialName                String? // dénomination from the official registry (when verified)
+  verificationStatus          String? // verified | rejected | review (null = legacy / not auto-verified)
+  verifiedAt                  DateTime? // when the registry verification passed
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
   // Slice 5b — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
   // SUPPLIER_CONNECT_ENABLED). ADDITIVE + REVERSIBLE. NO charge/payout here (= 5c) —
   // this only tracks the connected account + KYB onboarding state. Mirrors the B2C
   // Restaurant.stripeAccountId pattern but on a SEPARATE B2B path.
-  stripeAccountId   String?  @unique             // acct_… (Express, FR)
-  payoutStatus      String   @default("none")    // none | pending | active | restricted
-  stripeOnboardedAt DateTime?                     // first time the account became 'active'
+  stripeAccountId             String?               @unique // acct_… (Express, FR)
+  payoutStatus                String                @default("none") // none | pending | active | restricted
+  stripeOnboardedAt           DateTime? // first time the account became 'active'
   // Slice 1 — the supplier's own product catalogue (additive inverse relation).
-  catalogItems      SupplierCatalogItem[]
+  catalogItems                SupplierCatalogItem[]
   // Slice 2 — incoming B2B supply orders placed BY restaurateurs to this supplier.
-  supplyOrders      SupplyOrder[]
+  supplyOrders                SupplyOrder[]
 }
 
 // ── LogisticsProfile (courier / delivery partner onboarding — Slice 1, Agent 15) ─
@@ -885,61 +909,61 @@ model SupplierProfile {
 // to the Operator only by shared `email` (no FK), so dropping it leaves every
 // existing table untouched.
 model LogisticsProfile {
-  id                 String   @id @default(cuid())
-  email              String   @unique          // shared-email link to the Operator account (= contact email)
-  partnerType        String   @default("independent") // independent | company
-  contactName        String                    // human contact / display name
-  contactPhone       String?
+  id                       String            @id @default(cuid())
+  email                    String            @unique // shared-email link to the Operator account (= contact email)
+  partnerType              String            @default("independent") // independent | company
+  contactName              String // human contact / display name
+  contactPhone             String?
   // Operations (profile only — Slice 1; NO mission dispatch / pricing yet)
-  missionTypes       Json     @default("[]")    // string[] — repas|produits_fournisseurs|b2b|froid
-  vehicleTypes       Json     @default("[]")    // string[] — velo|scooter|voiture|camionnette|frigorifique
-  zones              Json     @default("[]")    // string[] — cities / postal codes served
-  status             String   @default("pending")   // pending | active | suspended | rejected (business state)
+  missionTypes             Json              @default("[]") // string[] — repas|produits_fournisseurs|b2b|froid
+  vehicleTypes             Json              @default("[]") // string[] — velo|scooter|voiture|camionnette|frigorifique
+  zones                    Json              @default("[]") // string[] — cities / postal codes served
+  status                   String            @default("pending") // pending | active | suspended | rejected (business state)
   // Automatic BUSINESS-IDENTITY verification (reuses lib/business-verification). The
   // SIREN/SIRET is checked against the official registry; gating is NAME-TOLERANT —
   // the declared contact name is a display name, never a rejection criterion (a
   // courier whose declared name differs from the registry is NOT rejected). Gates
   // VISIBILITY/activation ONLY — money stays out of this slice entirely.
-  siren              String?                          // 9-digit SIREN (derived from a SIREN or SIRET input)
-  officialName       String?                          // dénomination from the official registry (when verified)
-  verificationStatus String?                          // verified | rejected | review (null = legacy / not auto-verified)
-  verifiedAt         DateTime?                         // when the registry verification passed
-  vettingReason      String?  @db.Text                // short FR reason from the verification step
-  vettingAt          DateTime?                         // when the auto-verification ran
+  siren                    String? // 9-digit SIREN (derived from a SIREN or SIRET input)
+  officialName             String? // dénomination from the official registry (when verified)
+  verificationStatus       String? // verified | rejected | review (null = legacy / not auto-verified)
+  verifiedAt               DateTime? // when the registry verification passed
+  vettingReason            String?           @db.Text // short FR reason from the verification step
+  vettingAt                DateTime? // when the auto-verification ran
   // ── P4.1 — Stripe Connect (Express) onboarding for payouts (TEST mode; gated by
   // LOGISTICS_CONNECT_ENABLED). ADDITIVE + REVERSIBLE: all nullable, NO default / NO
   // constraint / NO backfill. Names mirror SupplierProfile. NO charge/payout here
   // (= P4.3) — only tracks the connected account + onboarding state. Status synced
   // ON-DEMAND (no webhook in P4.1).
-  stripeAccountId    String?                           // acct_… (Express, FR)
-  payoutStatus       String?                           // none | pending | active | restricted (null = none)
-  stripeOnboardedAt  DateTime?                         // first time the account became 'active'
+  stripeAccountId          String? // acct_… (Express, FR)
+  payoutStatus             String? // none | pending | active | restricted (null = none)
+  stripeOnboardedAt        DateTime? // first time the account became 'active'
   // ── Compliance justificatifs (Agent 125, ADDITIVE) — courier-declared insurance + RC Pro
   // (SIRET already collected at signup). Structured DECLARATION only (no file storage in this
   // brick). justificatifsStatus drives the dashboard + the admin activation queue. ⚠️ These do
   // NOT activate anything by themselves: activation stays gated by LOGISTICS_COURIER_ACTIVATION_
   // ENABLED (Agent 72 waitlist) — an admin can only flip status→active when that flag is ON. NO
   // money. All nullable / @default → additive, reversible, inert until db-pushed.
-  insuranceInsurer      String?                        // assureur (responsabilité civile véhicule / activité)
-  insurancePolicyNumber String?                        // n° de police d'assurance
-  insuranceExpiry       String?                        // date d'expiration déclarée (YYYY-MM-DD, déclaration)
-  rcProInsurer          String?                        // assureur RC Pro
-  rcProPolicyNumber     String?                        // n° de police RC Pro
-  justificatifsStatus   String   @default("none")      // none | submitted | verified
-  justificatifsSubmittedAt DateTime?                   // when the courier submitted the declaration
-  justificatifsVerifiedAt  DateTime?                   // when an admin verified it (human supervision, §8)
+  insuranceInsurer         String? // assureur (responsabilité civile véhicule / activité)
+  insurancePolicyNumber    String? // n° de police d'assurance
+  insuranceExpiry          String? // date d'expiration déclarée (YYYY-MM-DD, déclaration)
+  rcProInsurer             String? // assureur RC Pro
+  rcProPolicyNumber        String? // n° de police RC Pro
+  justificatifsStatus      String            @default("none") // none | submitted | verified
+  justificatifsSubmittedAt DateTime? // when the courier submitted the declaration
+  justificatifsVerifiedAt  DateTime? // when an admin verified it (human supervision, §8)
   // ── Brique 1 logistique (Agent 122, ADDITIVE) — missions ACCEPTED by this courier.
   // Inverse side of Mission.courier; gated LOGISTICS_MISSIONS_ENABLED. Nullable list →
   // ZERO impact on the existing profile / waitlist / Connect behaviour.
-  missions           Mission[]
+  missions                 Mission[]
   // ── Brique 2 logistique (Agent 123, ADDITIVE) — missions this courier PASSED ON. Inverse
   // side of MissionDecline.courier. ONLY used to stop re-offering — NEVER a penalty/score on
   // the courier (refusal without penalty, doc §8). Virtual list → no column on the profile.
-  declines           MissionDecline[]
+  declines                 MissionDecline[]
   // ── Rail de paie P4.3 ÉTAPE 2 (ADDITIVE) — this courier's earnings source. Inverse side of
   // CourierEarning.courier; virtual list → NO column on the profile (byte-identical). Empty
   // until ÉTAPE 3 feeds it; the rail is gated OFF (LOGISTICS_PAYOUT_ENABLED).
-  courierEarnings    CourierEarning[]
+  courierEarnings          CourierEarning[]
   // ── Availability (Géoloc ÉTAPE 1 — statut EN LIGNE, additive, ZÉRO géolocalisation) ────────
   // A simple ON/OFF boolean: is the courier available to RECEIVE offers right now? NO position,
   // NO GPS, NO tracking — just a switch. lastSeenAt is a lightweight heartbeat (stamped on each
@@ -947,8 +971,8 @@ model LogisticsProfile {
   // these columns and the offer pool is byte-identical (every 'active' courier is offered); ON →
   // only couriers with isOnline=true receive offers. ADDITIVE + REVERSIBLE: nullable/defaulted,
   // no backfill; dropping them leaves the profile byte-identical.
-  isOnline           Boolean  @default(false)
-  lastSeenAt         DateTime?
+  isOnline                 Boolean           @default(false)
+  lastSeenAt               DateTime?
   // ── Position tracking opt-in (Géoloc ÉTAPE 2 — fondations INERTES, RGPD-sensible) ───────────
   // EXPLICIT + revocable courier consent to live position tracking DURING a course. Default false
   // → NOTHING is tracked until the courier opts in (minimization). trackingConsentAt = RGPD
@@ -956,13 +980,13 @@ model LogisticsProfile {
   // OFF → the POST /api/logistics/position receiver refuses WITHOUT writing and these columns + the
   // CourierPosition table are NEVER touched (deploy-before-migration is safe). ADDITIVE +
   // REVERSIBLE (nullable/defaulted, no backfill). NO geolocation here — Étape 3 = courier capture.
-  trackingConsent    Boolean  @default(false)
-  trackingConsentAt  DateTime?
+  trackingConsent          Boolean           @default(false)
+  trackingConsentAt        DateTime?
   // Inverse side of CourierPosition.courier — the courier's SINGLE current point per active mission
   // (last-point-only, deleted at delivered/cancelled). Virtual list → no column on the profile.
-  positions          CourierPosition[]
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  positions                CourierPosition[]
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
 }
 
 // ── Mission (logistics delivery to perform — Brique 1/4, Agent 122) ────────────
@@ -981,17 +1005,17 @@ model LogisticsProfile {
 // with declined | expired | cancelled as NEUTRAL terminals (NO penalty/score is ever
 // stored — courier autonomy, doc §8). Gated by LOGISTICS_MISSIONS_ENABLED (default OFF).
 model Mission {
-  id             String   @id @default(cuid())
+  id             String            @id @default(cuid())
   // (a) optional link to a consumer Order (B2C). NULL for an autonomous B2B mission.
   orderId        String?
-  order          Order?   @relation(fields: [orderId], references: [id])
+  order          Order?            @relation(fields: [orderId], references: [id])
   // The courier who ACCEPTED (brique 2, FREE acceptance). NULL until accepted — no
   // forced assignment. FK → LogisticsProfile (the courier's business profile).
   courierId      String?
   courier        LogisticsProfile? @relation(fields: [courierId], references: [id])
   // Mission kind — mirrors the LogisticsProfile.missionTypes taxonomy. This is the
   // WHAT-is-carried axis; the WHO-PAYS axis is the separate payerType below.
-  type           String   @default("repas")  // repas | produits_fournisseurs | b2b | froid
+  type           String            @default("repas") // repas | produits_fournisseurs | b2b | froid
   // ── Payer discriminant (P4.3 ÉTAPE 1 — fondations, additive + INERT) ────────────
   // WHO finances THIS mission — the supply/procurement (approvisionnement) axis, reserved
   // now so the future rail can key off it. RESERVED STRUCTURE ONLY: no reader anywhere, no
@@ -1006,27 +1030,27 @@ model Mission {
   //                         the payer context — SupplyOrder→Mission is NOT wired here (later).
   // DEFAULT = "restaurant" → every existing + new mission is statu quo. ADDITIVE + REVERSIBLE:
   // drop the column and Mission is byte-identical.
-  payerType      String   @default("restaurant")
+  payerType      String            @default("restaurant")
   pickupAddress  String
   dropoffAddress String
   zone           String?
   // Lifecycle state (String — codebase convention, no native enum). Transitions are
   // validated by the PURE helpers in lib/missions.ts.
-  status         String   @default("offered") // offered|accepted|picked_up|delivered|declined|expired|cancelled
+  status         String            @default("offered") // offered|accepted|picked_up|delivered|declined|expired|cancelled
   // Proposed price in CENTS — INERT DATA ONLY. NO money logic / commission / ledger /
   // payout in this brick (payment rail = HELD). Snapshot = stable offer context (JSON).
-  priceCents     Int      @default(0)
-  snapshot       Json     @default("{}")
+  priceCents     Int               @default(0)
+  snapshot       Json              @default("{}")
   // Lifecycle timestamps (nullable; stamped as the mission moves through its states).
-  offeredAt      DateTime @default(now())
+  offeredAt      DateTime          @default(now())
   acceptedAt     DateTime?
   pickedUpAt     DateTime?
   deliveredAt    DateTime?
   declinedAt     DateTime?
   expiredAt      DateTime?
   cancelledAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
   // ── Brick 2 (Agent 123, ADDITIVE) — per-courier declines of THIS mission. Inverse side of
   // MissionDecline.mission. Exists ONLY to stop re-offering a mission a courier passed on —
   // it is NEVER a counter/score/penalty (courier autonomy, doc §8). Virtual list → no column.
@@ -1074,24 +1098,24 @@ model MissionDecline {
 // + coverageZones + modality + an optional free-text indicativeRate replace the supply
 // fields. The Stripe Connect columns are INERT in P1 (no charge/payout is wired here).
 model PrestataireProfile {
-  id                 String   @id @default(cuid())
-  email              String   @unique          // shared-email link to the Operator account
-  companyName        String                    // commercial / trading name
-  contactName        String
-  phone              String?
-  city               String?
+  id                          String                      @id @default(cuid())
+  email                       String                      @unique // shared-email link to the Operator account
+  companyName                 String // commercial / trading name
+  contactName                 String
+  phone                       String?
+  city                        String?
   // SERVICES (P1) — a prestataire OFFERS services; NO fixed-price catalogue / stock
   // (unlike a supplier). Quotes / missions / calendar / invoicing = LATER bricks (P2+).
-  serviceCategories  Json     @default("[]")    // string[] — electricity|plumbing|haccp|cleaning|pest_control|fridge|kitchen|accounting|training|other
-  coverageZones      Json     @default("[]")    // string[] — cities / postal areas served
-  modality           String   @default("on_site") // on_site | remote | both
-  indicativeRate     String?  @db.Text          // free text (« sur devis », « dès 80€/h ») — NOT a fixed price
+  serviceCategories           Json                        @default("[]") // string[] — electricity|plumbing|haccp|cleaning|pest_control|fridge|kitchen|accounting|training|other
+  coverageZones               Json                        @default("[]") // string[] — cities / postal areas served
+  modality                    String                      @default("on_site") // on_site | remote | both
+  indicativeRate              String?                     @db.Text // free text (« sur devis », « dès 80€/h ») — NOT a fixed price
   // P4 (Agent 77) — SIMPLE DECLARATIVE availability. NO bookable slots / NO appointment
   // booking / NO conflict detection (a future maybe, per Mohammed) — just a declaration.
   // Additive + reversible. Leave/holiday periods live in PrestataireUnavailability. NO money.
-  availableWeekdays  Json     @default("[]")    // string[] — mon|tue|wed|thu|fri|sat|sun (declared working days)
-  availabilityNote   String?  @db.Text          // free-text availability note (« 8h-18h, urgences 24/7 »)
-  status             String   @default("pending")   // pending | active | suspended | rejected (business state)
+  availableWeekdays           Json                        @default("[]") // string[] — mon|tue|wed|thu|fri|sat|sun (declared working days)
+  availabilityNote            String?                     @db.Text // free-text availability note (« 8h-18h, urgences 24/7 »)
+  status                      String                      @default("pending") // pending | active | suspended | rejected (business state)
   // Marketplace COHERENCE gate (Agent 112 — lean signup, calque of SupplierProfile Agent 111).
   // ADDITIVE + REVERSIBLE. Decouples "visible to restaurants" from status='active': a SIREN-
   // verified prestataire is created status='active' (can log in + list its services) but starts
@@ -1100,37 +1124,37 @@ model PrestataireProfile {
   // clears it. INVERSE flag: @default(false) so EXISTING active prestataires (and all legacy rows)
   // stay VISIBLE with no backfill. The marketplace reader gates on status='active' AND
   // marketplaceCoherencePending=false. Gates VISIBILITY only — never money, never login/services.
-  marketplaceCoherencePending Boolean @default(false)
+  marketplaceCoherencePending Boolean                     @default(false)
   // Auto-onboarding LLM vetting (clone of SupplierProfile). Gates VISIBILITY only —
   // never money (any future payout stays independently hard-gated by Stripe Connect KYB).
-  vettingVerdict     String?                          // legit | doubt | bad (null = legacy / not auto-vetted)
-  vettingReason      String?  @db.Text                // short FR reason from the vetting/verification step
-  vettingAt          DateTime?                         // when the auto-vetting ran
+  vettingVerdict              String? // legit | doubt | bad (null = legacy / not auto-vetted)
+  vettingReason               String?                     @db.Text // short FR reason from the vetting/verification step
+  vettingAt                   DateTime? // when the auto-vetting ran
   // Automatic BUSINESS-IDENTITY verification (reuses lib/business-verification, SIREN
   // registry). Gates VISIBILITY/activation ONLY — money stays out of this brick entirely.
-  siren              String?                          // 9-digit SIREN (derived from a SIREN or SIRET input)
-  officialName       String?                          // dénomination from the official registry (when verified)
-  verificationStatus String?                          // verified | rejected | review (null = legacy / not auto-verified)
-  verifiedAt         DateTime?                         // when the registry verification passed
+  siren                       String? // 9-digit SIREN (derived from a SIREN or SIRET input)
+  officialName                String? // dénomination from the official registry (when verified)
+  verificationStatus          String? // verified | rejected | review (null = legacy / not auto-verified)
+  verifiedAt                  DateTime? // when the registry verification passed
   // Stripe Connect (Express) payout columns — INERT in P1: NO charge / payout / Connect
   // is wired to a prestataire yet (the services payment rail is a LATER money brick).
   // Nullable, no default money flow. Names mirror SupplierProfile / LogisticsProfile.
-  stripeAccountId    String?  @unique                 // acct_… (Express, FR) — unused in P1
-  payoutStatus       String?                          // none | pending | active | restricted (null = none)
-  stripeOnboardedAt  DateTime?                         // first time the account became 'active'
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  stripeAccountId             String?                     @unique // acct_… (Express, FR) — unused in P1
+  payoutStatus                String? // none | pending | active | restricted (null = none)
+  stripeOnboardedAt           DateTime? // first time the account became 'active'
+  createdAt                   DateTime                    @default(now())
+  updatedAt                   DateTime                    @updatedAt
   // P2 (Agent 75) — the services this prestataire lists (1-N). Additive BACK-relation:
   // no column is added to PrestataireProfile, the FK lives on ServiceOffering. NO money.
-  serviceOfferings   ServiceOffering[]
+  serviceOfferings            ServiceOffering[]
   // P3 (Agent 76) — quote/mission requests this prestataire received. Additive BACK-relation.
-  serviceMissions    ServiceMission[]
+  serviceMissions             ServiceMission[]
   // P4 (Agent 77) — declared leave/holiday periods (simple availability). Additive BACK-relation.
-  unavailabilities   PrestataireUnavailability[]
+  unavailabilities            PrestataireUnavailability[]
   // P5 (Agent 78) — reviews left on this prestataire by restaurants. Additive BACK-relation.
-  serviceReviews     ServiceReview[]
+  serviceReviews              ServiceReview[]
   // P6 (Agent 79) — service-mission invoices issued by this prestataire. Additive BACK-relation.
-  serviceInvoices    ServiceInvoice[]
+  serviceInvoices             ServiceInvoice[]
 }
 
 // ── PrestataireUnavailability (SERVICES — P4 simple declarative calendar, Agent 77) ──
@@ -1144,9 +1168,9 @@ model PrestataireUnavailability {
   id                   String             @id @default(cuid())
   prestataireProfileId String
   prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
-  startDate            DateTime                                // declared period start (date)
-  endDate              DateTime                                // declared period end (date)
-  reason               String?            @db.Text            // optional free-text reason (« congés »)
+  startDate            DateTime // declared period start (date)
+  endDate              DateTime // declared period end (date)
+  reason               String?            @db.Text // optional free-text reason (« congés »)
   createdAt            DateTime           @default(now())
 
   @@index([prestataireProfileId])
@@ -1167,16 +1191,16 @@ model ServiceOffering {
   id                   String             @id @default(cuid())
   prestataireProfileId String
   prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
-  title                String                                  // e.g. « Dépannage frigorifique 24/7 »
-  description          String?            @db.Text             // free-text details (no fixed price)
-  category             String             @default("other")    // service family: electricity|plumbing|haccp|cleaning|pest_control|fridge_repair|kitchen_maintenance|accounting|training|other
-  modality             String             @default("on_site")  // on_site | remote | both
-  indicativeRate       String?            @db.Text             // free text « sur devis », « dès 80 €/h » — NOT a fixed price
+  title                String // e.g. « Dépannage frigorifique 24/7 »
+  description          String?            @db.Text // free-text details (no fixed price)
+  category             String             @default("other") // service family: electricity|plumbing|haccp|cleaning|pest_control|fridge_repair|kitchen_maintenance|accounting|training|other
+  modality             String             @default("on_site") // on_site | remote | both
+  indicativeRate       String?            @db.Text // free text « sur devis », « dès 80 €/h » — NOT a fixed price
   // P8b (Agent 82) — FORFAIT: an optional FIXED price in CENTS. null = « sur devis » (the default,
   // priced per quote, P3); when SET, the offering is a forfait the resto can order + pay UPFRONT
   // (P8b). ADDITIVE + nullable → no backfill. The charged amount derives from THIS (server-only).
   fixedPriceCents      Int?
-  active               Boolean            @default(true)       // false = hidden from discovery (« masqué »)
+  active               Boolean            @default(true) // false = hidden from discovery (« masqué »)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   // P3 (Agent 76) — missions/quotes that reference this offering (optional soft link). Additive.
@@ -1203,43 +1227,43 @@ model ServiceOffering {
 // parents; the offering link is a SOFT nullable audit FK (SetNull). The real calendar is
 // P4 — scheduledDate is just an agreed date posed at acceptance.
 model ServiceMission {
-  id                   String             @id @default(cuid())
-  restaurantOperatorId String                                  // buyer — the restaurateur (from the session)
-  restaurantOperator   Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
-  prestataireProfileId String                                  // seller — the prestataire
-  prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
-  serviceOfferingId    String?                                 // optional soft link to the offering (SetNull on delete)
-  serviceOffering      ServiceOffering?   @relation(fields: [serviceOfferingId], references: [id], onDelete: SetNull)
-  requestDetails       String             @db.Text             // the resto's description of the need
+  id                           String             @id @default(cuid())
+  restaurantOperatorId         String // buyer — the restaurateur (from the session)
+  restaurantOperator           Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
+  prestataireProfileId         String // seller — the prestataire
+  prestataireProfile           PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
+  serviceOfferingId            String? // optional soft link to the offering (SetNull on delete)
+  serviceOffering              ServiceOffering?   @relation(fields: [serviceOfferingId], references: [id], onDelete: SetNull)
+  requestDetails               String             @db.Text // the resto's description of the need
   // ── Quote (DEVIS) — DATA ONLY. Displayed, NEVER charged in P3 (payment = P6). ──
-  quoteAmountCents     Int?                                    // quoted amount in CENTS (pure data; no money moves)
-  quoteDescription     String?            @db.Text             // what the quote covers (set with the quote)
-  proposedDate         DateTime?                               // date the prestataire proposes in the quote
-  scheduledDate        DateTime?                               // agreed date, posed when the resto accepts (real calendar = P4)
-  status               String             @default("requested") // requested|quoted|accepted|declined|cancelled|done
+  quoteAmountCents             Int? // quoted amount in CENTS (pure data; no money moves)
+  quoteDescription             String?            @db.Text // what the quote covers (set with the quote)
+  proposedDate                 DateTime? // date the prestataire proposes in the quote
+  scheduledDate                DateTime? // agreed date, posed when the resto accepts (real calendar = P4)
+  status                       String             @default("requested") // requested|quoted|accepted|declined|cancelled|done
   // P8b (Agent 82) — when is this mission paid? 'on_completion' = the P3/P8 devis flow (the resto
   // pays the invoice once the mission is 'done'); 'upfront' = a FORFAIT ordered + paid at order
   // time, then executed. ADDITIVE with @default → existing rows become 'on_completion' (= the P8
   // behaviour, byte-identical), no backfill. Purely descriptive: the money still flows through the
   // SAME ServiceInvoice + lib/service-payment; the timing differs.
-  paymentTiming        String             @default("on_completion")
+  paymentTiming                String             @default("on_completion")
   // P8c (Agent 83) — optional DEPOSIT (acompte). The prestataire may attach a deposit % to a quote;
   // the resto then pays the deposit at ACCEPTANCE and the BALANCE at completion. ADDITIVE with
   // @default/nullable → existing rows are neutral (depositPct=0 ⇒ no deposit ⇒ the P8 full charge at
   // completion, byte-identical). All amounts are SERVER-derived (lib/service-deposit.computeDepositSplit
   // on quoteAmountCents × depositPct); nothing money-bearing is trusted from the client. The
   // ServiceInvoice only flips to 'paid' after the BALANCE — the deposit is a partial sub-state here.
-  depositPct                   Int       @default(0)  // 0..100 — % of the quote paid up front (0 = no deposit = P8)
-  depositStatus                String?                // null = none/not started | 'pending' (checkout created) | 'paid'
-  depositPaidCents             Int       @default(0)  // the deposit amount (= computeDepositSplit.depositCents) once charged
-  depositStripeSessionId       String?                // the deposit Checkout session (TEST)
-  depositStripePaymentIntentId String?                // the deposit PaymentIntent (destination charge)
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  depositPct                   Int                @default(0) // 0..100 — % of the quote paid up front (0 = no deposit = P8)
+  depositStatus                String? // null = none/not started | 'pending' (checkout created) | 'paid'
+  depositPaidCents             Int                @default(0) // the deposit amount (= computeDepositSplit.depositCents) once charged
+  depositStripeSessionId       String? // the deposit Checkout session (TEST)
+  depositStripePaymentIntentId String? // the deposit PaymentIntent (destination charge)
+  createdAt                    DateTime           @default(now())
+  updatedAt                    DateTime           @updatedAt
   // P5 (Agent 78) — the optional single review for this mission (1:1; created only when 'done'). Additive.
-  review               ServiceReview?
+  review                       ServiceReview?
   // P6 (Agent 79) — the optional single invoice for this mission (1:1; lazily issued when 'done'). Additive.
-  invoice              ServiceInvoice?
+  invoice                      ServiceInvoice?
 
   @@index([restaurantOperatorId])
   @@index([prestataireProfileId])
@@ -1261,12 +1285,12 @@ model ServiceReview {
   id                   String             @id @default(cuid())
   serviceMissionId     String             @unique
   serviceMission       ServiceMission     @relation(fields: [serviceMissionId], references: [id], onDelete: Cascade)
-  restaurantOperatorId String                                  // author — the resto that owned the 'done' mission
+  restaurantOperatorId String // author — the resto that owned the 'done' mission
   restaurantOperator   Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
-  prestataireProfileId String                                  // the rated prestataire
+  prestataireProfileId String // the rated prestataire
   prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
-  rating               Int                                     // 1..5 (validated in lib/service-review + Zod)
-  comment              String?            @db.Text             // optional free-text comment
+  rating               Int // 1..5 (validated in lib/service-review + Zod)
+  comment              String?            @db.Text // optional free-text comment
   createdAt            DateTime           @default(now())
 
   @@index([prestataireProfileId])
@@ -1287,24 +1311,24 @@ model ServiceReview {
 // the resto gapless MECHANISM but in a SEPARATE series, so the resto GRB-… counter/Invoice
 // stay byte-identical. Cascade-deleted with the mission / operator / prestataire.
 model ServiceInvoice {
-  id                   String             @id @default(cuid())
-  serviceMissionId     String             @unique
-  serviceMission       ServiceMission     @relation(fields: [serviceMissionId], references: [id], onDelete: Cascade)
-  restaurantOperatorId String                                  // the billed restaurant
-  restaurantOperator   Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
-  prestataireProfileId String                                  // the issuing prestataire
-  prestataireProfile   PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
-  number               String             @unique              // gapless PRS-YYYY-NNNNN (dedicated series)
-  amountCents          Int                                     // = the agreed quote amount (the charged amount; server-only)
-  status               String             @default("issued")   // issued | paid (set by the P8 payment webhook, atomically)
-  issuedAt             DateTime           @default(now())
-  createdAt            DateTime           @default(now())
+  id                      String             @id @default(cuid())
+  serviceMissionId        String             @unique
+  serviceMission          ServiceMission     @relation(fields: [serviceMissionId], references: [id], onDelete: Cascade)
+  restaurantOperatorId    String // the billed restaurant
+  restaurantOperator      Operator           @relation(fields: [restaurantOperatorId], references: [id], onDelete: Cascade)
+  prestataireProfileId    String // the issuing prestataire
+  prestataireProfile      PrestataireProfile @relation(fields: [prestataireProfileId], references: [id], onDelete: Cascade)
+  number                  String             @unique // gapless PRS-YYYY-NNNNN (dedicated series)
+  amountCents             Int // = the agreed quote amount (the charged amount; server-only)
+  status                  String             @default("issued") // issued | paid (set by the P8 payment webhook, atomically)
+  issuedAt                DateTime           @default(now())
+  createdAt               DateTime           @default(now())
   // P8 (Agent 81) — REAL payment of the invoice (resto → prestataire via a Stripe destination-
   // charge; Grubano keeps 5% as the application_fee). ADDITIVE + nullable → no backfill. The
   // charged amount is ALWAYS amountCents (server-derived); nothing money-bearing is added here.
-  paidAt                  DateTime?                            // set once, when the payment webhook marks it paid
-  stripeCheckoutSessionId String?                             // the Checkout session that charges the resto (TEST)
-  stripePaymentIntentId   String?                             // the resulting PaymentIntent (destination charge)
+  paidAt                  DateTime? // set once, when the payment webhook marks it paid
+  stripeCheckoutSessionId String? // the Checkout session that charges the resto (TEST)
+  stripePaymentIntentId   String? // the resulting PaymentIntent (destination charge)
 
   @@index([restaurantOperatorId])
   @@index([prestataireProfileId])
@@ -1328,25 +1352,25 @@ model ServiceInvoiceCounter {
 // (lib/dish-sheet.INCO_ALLERGENS) and are OPTIONAL. MySQL has no native array type
 // → multi-value fields are Json @default("[]").
 model SupplierCatalogItem {
-  id                String          @id @default(cuid())
+  id                String            @id @default(cuid())
   supplierProfileId String
-  supplierProfile   SupplierProfile @relation(fields: [supplierProfileId], references: [id], onDelete: Cascade)
+  supplierProfile   SupplierProfile   @relation(fields: [supplierProfileId], references: [id], onDelete: Cascade)
   name              String
-  description       String?         @db.Text
-  category          String          @default("autre")   // free-text family (viande, crémerie…)
-  priceCents        Int             @default(0)          // unit price in CENTS
-  unit              String          @default("piece")    // kg | g | L | cl | piece | box | pack
-  packSize          String?                              // conditioning / lot size, e.g. "carton de 6"
-  available         Boolean         @default(true)       // false = out of stock
-  allergens         Json            @default("[]")       // AllergenChoice[] (INCO ids) — optional
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  description       String?           @db.Text
+  category          String            @default("autre") // free-text family (viande, crémerie…)
+  priceCents        Int               @default(0) // unit price in CENTS
+  unit              String            @default("piece") // kg | g | L | cl | piece | box | pack
+  packSize          String? // conditioning / lot size, e.g. "carton de 6"
+  available         Boolean           @default(true) // false = out of stock
+  allergens         Json              @default("[]") // AllergenChoice[] (INCO ids) — optional
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  // Slice 2 — order lines snapshotting this item (soft audit FK; SetNull on delete).
+  orderLines        SupplyOrderLine[]
 
   @@unique([supplierProfileId, name])
   @@index([supplierProfileId])
   @@index([category])
-  // Slice 2 — order lines snapshotting this item (soft audit FK; SetNull on delete).
-  orderLines        SupplyOrderLine[]
 }
 
 // ── SupplyOrder (B2B supply marketplace — Slice 2 order, Agent 14) ────────────
@@ -1357,32 +1381,32 @@ model SupplierCatalogItem {
 // snapshot sum of its lines at order time. Buyer = Operator (resto, session-scoped);
 // seller = SupplierProfile. Status flow beyond "placed" is Slice 3.
 model SupplyOrder {
-  id                String          @id @default(cuid())
-  operatorId        String          // buyer — the restaurateur (from the session)
-  operator          Operator        @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  supplierProfileId String          // seller — the marketplace supplier
+  id                      String            @id @default(cuid())
+  operatorId              String // buyer — the restaurateur (from the session)
+  operator                Operator          @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  supplierProfileId       String // seller — the marketplace supplier
   // Restrict on delete: a supplier with order history can't be removed (preserves
   // the orders). supplierProfileId is required, so SetNull is not applicable here.
-  supplierProfile   SupplierProfile @relation(fields: [supplierProfileId], references: [id], onDelete: Restrict)
-  status            String          @default("placed")   // placed (Slice 3 adds confirm/prepare/deliver)
-  totalCents        Int             @default(0)          // snapshot sum of lines at order time
-  notes             String?         @db.Text             // optional message to the supplier
-  desiredDate       DateTime?                            // requested delivery date (optional)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  lines             SupplyOrderLine[]
+  supplierProfile         SupplierProfile   @relation(fields: [supplierProfileId], references: [id], onDelete: Restrict)
+  status                  String            @default("placed") // placed (Slice 3 adds confirm/prepare/deliver)
+  totalCents              Int               @default(0) // snapshot sum of lines at order time
+  notes                   String?           @db.Text // optional message to the supplier
+  desiredDate             DateTime? // requested delivery date (optional)
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  lines                   SupplyOrderLine[]
   // ── Payment (B2B Slice 5c — Stripe Checkout destination charge, TEST; gated) ──
   // ADDITIVE + REVERSIBLE: all nullable / defaulted. The resto pays `chargedCents`
   // (= computeSupplyEconomics.restoPaysCents), the supplier nets supplierPayoutCents,
   // Grubano keeps grubanoMarginCents (the application_fee) — ALL from lib/supply-pricing.
   // No money moves until 5c gating passes; status flips on the B2B webhook.
-  paymentStatus           String   @default("unpaid")  // unpaid | pending | paid | failed
-  stripeCheckoutSessionId String?                       // cs_… (the Checkout session)
-  stripePaymentIntentId   String?                       // pi_… (set on payment success)
-  chargedCents            Int      @default(0)          // restoPaysCents at pay time (5a)
-  supplierPayoutCents     Int      @default(0)          // supplierPayoutCents (5a)
-  grubanoMarginCents      Int      @default(0)          // application_fee (5a)
-  paidAt                  DateTime?                      // when the payment succeeded
+  paymentStatus           String            @default("unpaid") // unpaid | pending | paid | failed
+  stripeCheckoutSessionId String? // cs_… (the Checkout session)
+  stripePaymentIntentId   String? // pi_… (set on payment success)
+  chargedCents            Int               @default(0) // restoPaysCents at pay time (5a)
+  supplierPayoutCents     Int               @default(0) // supplierPayoutCents (5a)
+  grubanoMarginCents      Int               @default(0) // application_fee (5a)
+  paidAt                  DateTime? // when the payment succeeded
 
   @@index([operatorId])
   @@index([supplierProfileId])
@@ -1394,17 +1418,17 @@ model SupplyOrder {
 // deletes the catalogue item. The catalogItem FK is a SOFT audit link (nullable,
 // SetNull on delete) — never re-read for pricing.
 model SupplyOrderLine {
-  id              String   @id @default(cuid())
-  supplyOrderId   String
-  supplyOrder     SupplyOrder @relation(fields: [supplyOrderId], references: [id], onDelete: Cascade)
-  catalogItemId   String?                              // soft audit FK (SetNull on item delete)
-  catalogItem     SupplierCatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
-  nameSnapshot    String                               // catalogue item name at order time
-  unitSnapshot    String                               // catalogue item unit at order time
-  quantity        Int      @default(1)
-  unitPriceCents  Int      @default(0)                 // price snapshot (cents)
-  lineTotalCents  Int      @default(0)                 // quantity × unitPriceCents
-  createdAt       DateTime @default(now())
+  id             String               @id @default(cuid())
+  supplyOrderId  String
+  supplyOrder    SupplyOrder          @relation(fields: [supplyOrderId], references: [id], onDelete: Cascade)
+  catalogItemId  String? // soft audit FK (SetNull on item delete)
+  catalogItem    SupplierCatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  nameSnapshot   String // catalogue item name at order time
+  unitSnapshot   String // catalogue item unit at order time
+  quantity       Int                  @default(1)
+  unitPriceCents Int                  @default(0) // price snapshot (cents)
+  lineTotalCents Int                  @default(0) // quantity × unitPriceCents
+  createdAt      DateTime             @default(now())
 
   @@index([supplyOrderId])
   @@index([catalogItemId])
@@ -1413,28 +1437,28 @@ model SupplyOrderLine {
 // ── Consumer app ──────────────────────────────────────────────────────────────
 
 model Restaurant {
-  id           String   @id @default(cuid())
+  id                            String             @id @default(cuid())
   // Option B (step 4): operatorId is NO LONGER unique — an operator can have
   // several establishments. Dropping this unique index is non-destructive on the
   // data. Indexed (not unique) so per-operator lookups stay fast.
-  operatorId   String
-  operator     Operator @relation(fields: [operatorId], references: [id])
-  name         String
-  description  String?  @db.Text
-  coverPhoto   String?
-  logo         String?
+  operatorId                    String
+  operator                      Operator           @relation(fields: [operatorId], references: [id])
+  name                          String
+  description                   String?            @db.Text
+  coverPhoto                    String?
+  logo                          String?
   // MySQL has no native array type → store as JSON array of strings
-  cuisine      Json     @default("[]")
-  rating       Float    @default(0)
-  reviewCount  Int      @default(0)
-  deliveryTime Int      @default(30)
-  minOrder     Float    @default(0)
-  deliveryFee  Float    @default(1.99)
-  city         String
-  address      String
-  lat          Float?
-  lng          Float?
-  isActive     Boolean  @default(true)
+  cuisine                       Json               @default("[]")
+  rating                        Float              @default(0)
+  reviewCount                   Int                @default(0)
+  deliveryTime                  Int                @default(30)
+  minOrder                      Float              @default(0)
+  deliveryFee                   Float              @default(1.99)
+  city                          String
+  address                       String
+  lat                           Float?
+  lng                           Float?
+  isActive                      Boolean            @default(true)
   // ── Soft delete (Suppression etablissement, additive) ───────────────────────
   // ADDITIVE + REVERSIBLE: when an establishment WITH order history is "deleted"
   // it is ARCHIVED (archivedAt set) instead of hard-deleted, so the sales history
@@ -1442,30 +1466,30 @@ model Restaurant {
   // Nullable → every existing row stays valid with no backfill; dropping the
   // column is non-destructive. ALL operator/consumer listings filter archivedAt
   // = null, so an archived establishment never reappears in the UI or aggregates.
-  archivedAt   DateTime?
+  archivedAt                    DateTime?
   // ── Establishment lifecycle (B1.1, Agent 29) — ADDITIVE · REVERSIBLE · INERT ──
   // Prepares SEC2 / B2.4 (admin approval lifecycle). NULLABLE, no default, NO
   // backfill → existing rows stay valid (NULL) and dropping is safe. INERT here:
   // NOTHING reads these at runtime. The publication / visibility barrier remains
   // isActive ONLY (SEC1, admin-gated) — `status` does NOT gate visibility. B2.4
   // will define the lifecycle values + stamp approvedAt on admin approval.
-  status       String?   // establishment lifecycle state — free string, no enum yet (set by B2.4)
-  approvedAt   DateTime? // when an admin approved / published this establishment (B2.4)
+  status                        String? // establishment lifecycle state — free string, no enum yet (set by B2.4)
+  approvedAt                    DateTime? // when an admin approved / published this establishment (B2.4)
   // ── Fulfillment settings (operator-controlled) ──
   // Booleans toggle which fulfillment channels this restaurant offers.
   // All defaults preserve current behaviour: delivery on, pickup/reservation off.
-  deliveryEnabled    Boolean @default(true)
-  pickupEnabled      Boolean @default(false)
-  reservationEnabled Boolean @default(false)
-  deliveryRadius     Int     @default(5)    // km
-  pickupPrepTime     Int     @default(15)   // minutes
-  deliveryPrepTime   Int     @default(30)   // minutes
+  deliveryEnabled               Boolean            @default(true)
+  pickupEnabled                 Boolean            @default(false)
+  reservationEnabled            Boolean            @default(false)
+  deliveryRadius                Int                @default(5) // km
+  pickupPrepTime                Int                @default(15) // minutes
+  deliveryPrepTime              Int                @default(30) // minutes
   // ── Reservation default duration (Finitions Tables, additive) ───────────────
   // ADDITIVE + non-destructive: how long a table is held by default, in minutes.
   // NOT NULL @default(60) → `db push` (ADD COLUMN ... NOT NULL DEFAULT 60)
   // backfills every existing row to 60. A reservation can still override it; the
   // POST /api/reservations uses sent duration → this establishment default → 60.
-  defaultReservationDurationMin Int @default(60)
+  defaultReservationDurationMin Int                @default(60)
   // ── Reservation deposit empreinte amount (Finitions empreinte, additive) ─────
   // ADDITIVE + non-destructive: the guarantee deposit (empreinte) charged per
   // reservation for THIS establishment, in EUR. NOT NULL @default(10) → `db push`
@@ -1473,21 +1497,21 @@ model Restaurant {
   // /api/reservations/public reads this to set the reservation's depositAmount
   // (was a hardcoded 10). Mohammed's decision: ONE configurable amount per resto,
   // and the no-show penalty = 100 % of it (no separate penalty field). Reversible.
-  defaultDepositAmount Float @default(10)
+  defaultDepositAmount          Float              @default(10)
   // ── Consumer cancellation window (Annulation client, additive) ───────────────
   // ADDITIVE + non-destructive: how long BEFORE the reservation start the guest
   // can self-cancel online, in hours (A0 decision: « annulation libre jusqu'à
   // 2h avant, paramétrable »). NOT NULL @default(2) → `db push` backfills every
   // existing row to 2. No settings UI yet — per-resto knob reserved for later.
-  cancellationWindowHours Int @default(2)
+  cancellationWindowHours       Int                @default(2)
   // ── Stripe Connect — rail financier A1 (additive, TEST mode) ────────────────
   // ADDITIVE + REVERSIBLE: the establishment's Stripe Express connected account
   // (KYC onboarding). All nullable → existing rows stay valid, no backfill. A
   // restaurant WITHOUT an active connected account keeps today's exact behaviour
   // (payments stay on the platform account — routing is A2, not wired yet).
-  stripeAccountId     String?   @unique  // acct_... (Express, country FR)
-  stripeAccountStatus String?            // pending | active | restricted
-  stripeOnboardedAt   DateTime?          // first time the account became 'active'
+  stripeAccountId               String?            @unique // acct_... (Express, country FR)
+  stripeAccountStatus           String? // pending | active | restricted
+  stripeOnboardedAt             DateTime? // first time the account became 'active'
   // ── Commission overrides — WIRED (read by lib/commission.resolveCommissionRate) ─
   // Per-establishment override of the platform defaults (A0 decisions: 5 %
   // dine-in/table, 8 % pickup, 12 % delivery — Stripe fees included). null =
@@ -1496,25 +1520,25 @@ model Restaurant {
   // lib/commission.resolveCommissionRate + computeApplicationFee, used by the
   // orders/tickets/reservations pay routes + finance/summary. (Corrected by Agent
   // 37: the previous "NOT USED YET" note was stale.)
-  commissionRateDineIn   Float?
-  commissionRatePickup   Float?
-  commissionRateDelivery Float?
-  commissionFreeUntil    DateTime?
+  commissionRateDineIn          Float?
+  commissionRatePickup          Float?
+  commissionRateDelivery        Float?
+  commissionFreeUntil           DateTime?
   // ── G1 — Dine-in SERVICE CHARGE rate (resto-bound, mirrors the delivery fee) ──
   // ADDITIVE + nullable, @default(0) = NO service → byte-identical to pre-G1. e.g.
   // 0.10 = 10%. Added to the dine-in bill TOTAL (subtotal + service) and flows to the
   // resto net (amount − fee) — NEVER in the commission base (the 5% dine-in commission
   // stays on the food subtotal only). Gated by DINEIN_SERVICE_ENABLED; derived at
   // read/charge time (subtotal × rate), NEVER stored as a ticket item.
-  dineInServiceRatePct   Float?    @default(0)
-  pickupAddress      String?
-  pickupInstructions String? @db.Text
+  dineInServiceRatePct          Float?             @default(0)
+  pickupAddress                 String?
+  pickupInstructions            String?            @db.Text
   // ── Opening hours (Option B, additive step 1) ───────────────────────────────
   // ADDITIVE + REVERSIBLE: the establishment's opening hours, shared by all its
   // brands (same physical kitchen). Nullable JSON — no @default to keep the MySQL
   // push trivial; the application default is handled later (UI step / brique 4B).
   // Nothing reads this field yet, so runtime behaviour is unchanged.
-  openingHours Json?
+  openingHours                  Json?
   // ── Franchise link (B2, additive) — Restaurant ↔ PointOfSale 1:1 ─────────────
   // ADDITIVE + REVERSIBLE: a FRANCHISED restaurant maps to exactly ONE PointOfSale
   // (the franchisor's tracked location). Nullable → existing rows stay valid, NO
@@ -1523,27 +1547,27 @@ model Restaurant {
   // the franchisor POS CRUD (/api/franchise/pos, owner-scoped). INERT until the
   // order-tagging brick (B5) reads it — nothing reads it yet, so runtime behaviour
   // (orders, payment, my-dashboard, royalties) is BYTE-IDENTICAL.
-  pointOfSaleId String?      @unique
-  pointOfSale   PointOfSale? @relation("RestaurantPointOfSale", fields: [pointOfSaleId], references: [id])
-  createdAt    DateTime @default(now())
-  orders       Order[]
+  pointOfSaleId                 String?            @unique
+  pointOfSale                   PointOfSale?       @relation("RestaurantPointOfSale", fields: [pointOfSaleId], references: [id])
+  createdAt                     DateTime           @default(now())
+  orders                        Order[]
   // Inverse side of Brand.restaurant (Option B, additive step 1) — the brands
   // (concepts) served from this establishment. Zero extra column.
-  brands       Brand[]
+  brands                        Brand[]
   // Inverse side of RestaurantTable.restaurant / Reservation.restaurant
   // (Chantier 2, additive step 1) — the dining room of this establishment. Zero
   // extra column on Restaurant.
-  tables       RestaurantTable[]
-  reservations Reservation[]
+  tables                        RestaurantTable[]
+  reservations                  Reservation[]
   // Inverse side of TableTicket.restaurant (Addition brique 1) — the table bills.
-  tickets      TableTicket[]
+  tickets                       TableTicket[]
   // Inverse side of OpeningHour / ClosureException (Chantier horaires étape 1).
-  weeklyHours  OpeningHour[]
-  closures     ClosureException[]
+  weeklyHours                   OpeningHour[]
+  closures                      ClosureException[]
   // Inverse side of Review.restaurant (P0-DATA-2) — consumer reviews of this resto.
-  reviews      Review[]
+  reviews                       Review[]
   // Inverse side of Waitlist.restaurant (P2-WAITLIST) — this resto's waitlist queue.
-  waitlist     Waitlist[]
+  waitlist                      Waitlist[]
 
   // Option B (step 4): operatorId is no longer unique; keep a plain index so the
   // frequent findFirst/findMany({ where: { operatorId } }) lookups stay fast.
@@ -1565,15 +1589,15 @@ model Review {
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   userId       String
   operator     Operator   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  orderId      String?                          // soft link to the order reviewed (optional)
-  rating       Int                              // 1..5
+  orderId      String? // soft link to the order reviewed (optional)
+  rating       Int // 1..5
   text         String?    @db.Text
-  tags         Json       @default("[]")        // liked-tags: taste|service|speed|value|ambiance
+  tags         Json       @default("[]") // liked-tags: taste|service|speed|value|ambiance
   status       String     @default("published") // published | pending | hidden (moderation)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  @@unique([userId, restaurantId])              // one (editable) review per restaurant per user
+  @@unique([userId, restaurantId]) // one (editable) review per restaurant per user
   @@index([restaurantId])
 }
 
@@ -1634,9 +1658,9 @@ model OpeningHour {
   id           String     @id @default(cuid())
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
-  dayOfWeek    Int        // 0=dimanche … 6=samedi (JS Date.getDay() convention)
-  openTime     String     // "HH:mm" local Europe/Paris
-  closeTime    String     // "HH:mm" ("24:00" allowed); < openTime → ends next day
+  dayOfWeek    Int // 0=dimanche … 6=samedi (JS Date.getDay() convention)
+  openTime     String // "HH:mm" local Europe/Paris
+  closeTime    String // "HH:mm" ("24:00" allowed); < openTime → ends next day
   channel      String     @default("all") // V1: always 'all' (future per-channel)
   createdAt    DateTime   @default(now())
 
@@ -1657,11 +1681,11 @@ model ClosureException {
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
   type         String     @default("closed") // 'special_hours' reserved (future)
-  dateStart    DateTime   // first covered day (date-only, stored T00:00Z)
-  dateEnd      DateTime   // last covered day, INCLUSIVE (date-only, T00:00Z)
-  startTime    String?    // "HH:mm" — partial closure window start (with endTime)
-  endTime      String?    // "HH:mm" — partial closure window end
-  reason       String?    // ≤140 chars, PUBLIC (consumer-facing)
+  dateStart    DateTime // first covered day (date-only, stored T00:00Z)
+  dateEnd      DateTime // last covered day, INCLUSIVE (date-only, T00:00Z)
+  startTime    String? // "HH:mm" — partial closure window start (with endTime)
+  endTime      String? // "HH:mm" — partial closure window end
+  reason       String? // ≤140 chars, PUBLIC (consumer-facing)
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId])
@@ -1675,19 +1699,19 @@ model ClosureException {
 // every write. Brand-new tables with no non-nullable FK back into existing rows →
 // `db push` creates them with zero backfill; dropping them is non-destructive.
 model TableTicket {
-  id                String          @id @default(cuid())
-  restaurantId      String
-  restaurant        Restaurant      @relation(fields: [restaurantId], references: [id])
-  restaurantTableId String
-  restaurantTable   RestaurantTable @relation(fields: [restaurantTableId], references: [id])
+  id                    String          @id @default(cuid())
+  restaurantId          String
+  restaurant            Restaurant      @relation(fields: [restaurantId], references: [id])
+  restaurantTableId     String
+  restaurantTable       RestaurantTable @relation(fields: [restaurantTableId], references: [id])
   // Optional link to the table's active reservation (best-effort) so brique 2 can
   // find the deposit empreinte to release at payment. Nullable → no impact.
-  reservationId     String?
-  status            String          @default("open")  // open | paid | void
-  currency          String          @default("eur")
-  subtotal          Float           @default(0)        // Σ(unitPrice * quantity), recomputed
-  openedAt          DateTime        @default(now())
-  paidAt            DateTime?
+  reservationId         String?
+  status                String          @default("open") // open | paid | void
+  currency              String          @default("eur")
+  subtotal              Float           @default(0) // Σ(unitPrice * quantity), recomputed
+  openedAt              DateTime        @default(now())
+  paidAt                DateTime?
   // ── Closure trace (Chantier table premium étape 1, additive) ────────────────
   // ADDITIVE + REVERSIBLE: the WHY + WHEN a ticket left the 'open' state, so a
   // closed bill is never silently lost (decision T1/T5: keep the trace, never
@@ -1698,23 +1722,23 @@ model TableTicket {
   //   • 'void_unpaid' — client left without paying (status='void', items KEPT as proof)
   //   • 'void_empty'  — empty addition released to free the table (status='void')
   //   • 'void_manual' — operator cancelled the addition (status='void')
-  closedReason      String?
-  closedAt          DateTime?
+  closedReason          String?
+  closedAt              DateTime?
   // ── Bill payment (Brique 2, additive — TEST mode) ───────────────────────────
   // ADDITIVE + REVERSIBLE: the bill is paid with an AUTOMATIC-capture PaymentIntent
   // (a REAL charge, unlike the manual-capture reservation empreinte). All nullable
   // / defaulted, so existing tickets stay valid with no backfill.
-  stripePaymentIntentId String?                        // the bill PaymentIntent id (pi_...)
-  amountPaid        Float?                             // amount actually charged (set on payment success)
+  stripePaymentIntentId String? // the bill PaymentIntent id (pi_...)
+  amountPaid            Float? // amount actually charged (set on payment success)
   // Grubano commission on the bill. 0 during TEST (decision: hold the rail first,
   // monetise later with Connect). The column exists now so the fee can be turned
   // on without a migration the day Connect lands.
-  platformFeeAmount Float           @default(0)
+  platformFeeAmount     Float           @default(0)
   // Tip (brique pourboire — not collected yet, 0 here). Reserved, additive.
-  tipAmount         Float           @default(0)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  items             TicketItem[]
+  tipAmount             Float           @default(0)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  items                 TicketItem[]
 
   @@index([restaurantId])
   @@index([restaurantTableId])
@@ -1737,19 +1761,19 @@ model TableTicket {
 model LedgerEntry {
   id                    String   @id @default(cuid())
   createdAt             DateTime @default(now())
-  type                  String   // payment | deposit_capture | refund | adjustment
+  type                  String // payment | deposit_capture | refund | adjustment
   restaurantId          String
   ticketId              String?
   reservationId         String?
   stripePaymentIntentId String?
   stripeChargeId        String?
   stripeTransferId      String?
-  grossAmount           Int                 // cents debited from the client
+  grossAmount           Int // cents debited from the client
   applicationFeeAmount  Int      @default(0) // Grubano commission (cents)
-  stripeFeeAmount       Int?                // REAL Stripe processing fee (balance transaction)
-  netToRestaurant       Int                 // gross − applicationFee (cents)
+  stripeFeeAmount       Int? // REAL Stripe processing fee (balance transaction)
+  netToRestaurant       Int // gross − applicationFee (cents)
   routed                Boolean  @default(false) // destination charge vs legacy platform flow
-  destinationAccountId  String?             // acct_... when routed
+  destinationAccountId  String? // acct_... when routed
   currency              String   @default("eur")
   // ── Channel (chantier checkout C1, additive) ────────────────────────────────
   // dinein | pickup | delivery | reservation — written by the webhook from the
@@ -1757,7 +1781,7 @@ model LedgerEntry {
   // stay valid until the one-shot backfill fills them. Lets invoices and the
   // finance dashboard detail by REAL channel instead of deriving from type.
   channel               String?
-  sourceEventId         String              // deterministic anti-double-count key
+  sourceEventId         String // deterministic anti-double-count key
 
   @@unique([sourceEventId, type])
   @@index([restaurantId, createdAt])
@@ -1779,18 +1803,18 @@ model LedgerEntry {
 // Restaurant (they remain untouched). All amounts in integer CENTS.
 model Payout {
   id                 String    @id @default(cuid())
-  role               String    // creator | supplier | logistics | franchise | restaurant | affiliate
+  role               String // creator | supplier | logistics | franchise | restaurant | affiliate
   // Beneficiary reference — exactly one set, per `role` (no FK relation by design):
-  creatorId          String?   // role = creator
-  supplierProfileId  String?   // role = supplier
-  logisticsProfileId String?   // role = logistics
-  operatorId         String?   // role = franchise OR affiliate (the Operator holding that role; Brique D1)
-  restaurantId       String?   // role = restaurant
-  amountCents        Int                          // disbursed amount (cents)
+  creatorId          String? // role = creator
+  supplierProfileId  String? // role = supplier
+  logisticsProfileId String? // role = logistics
+  operatorId         String? // role = franchise OR affiliate (the Operator holding that role; Brique D1)
+  restaurantId       String? // role = restaurant
+  amountCents        Int // disbursed amount (cents)
   currency           String    @default("eur")
   status             String    @default("pending") // pending | paid | failed
-  paidAt             DateTime?                     // when the transfer settled
-  stripeTransferId   String?                       // tr_… (set by P4.3 when executed)
+  paidAt             DateTime? // when the transfer settled
+  stripeTransferId   String? // tr_… (set by P4.3 when executed)
   // ── P4.3 anti-double-payment lock (Agent 39) — ADDITIVE, nullable @unique ────
   // Deterministic per-cursor key (e.g. "creator:<id>:earned:<earnedCents>"): the
   // @unique makes a concurrent/re-run create for the SAME earnings cursor fail
@@ -1827,33 +1851,33 @@ model Payout {
 // backfill. The Payout side needs NO migration — Payout.logisticsProfileId + role
 // 'logistics' were already provisioned.
 model CourierEarning {
-  id           String           @id @default(cuid())
+  id         String           @id @default(cuid())
   // The courier who earned this — FK → LogisticsProfile.id (owner scope for the balance).
-  courierId    String
-  courier      LogisticsProfile @relation(fields: [courierId], references: [id])
+  courierId  String
+  courier    LogisticsProfile @relation(fields: [courierId], references: [id])
   // Source references. A 'course' earning links the delivery Mission (and usually its
   // consumer Order); a 'tip' earning links the Order (and its Mission when known). Both
   // nullable so a row is robust to either source; the ÉTAPE 3 writer sets what it has.
-  missionId    String?
-  orderId      String?
+  missionId  String?
+  orderId    String?
   // What this obligation is. 'course' = the courier's share of a case-B delivery fee;
   // 'tip' = the held courier_tip reversed to the courier. String (codebase convention).
-  type         String           // 'course' | 'tip'
+  type       String // 'course' | 'tip'
   // Money in integer CENTS (never Float). gross = the amount the source yields the courier
   // BEFORE Grubano's commission; fee = the Grubano commission on the course (a tip carries
   // fee 0 by policy — settled at ÉTAPE 3); net = gross − fee = what the courier is OWED and
   // what the balance sums. The ÉTAPE 3 writer guarantees net = gross − fee.
-  grossCents   Int
-  feeCents     Int              @default(0)
-  netCents     Int
+  grossCents Int
+  feeCents   Int              @default(0)
+  netCents   Int
   // Lifecycle (String state machine, calque creator earnings): pending → matured (after a
   // configurable window, lib/courier-earnings) → paid (set at payout time in a later step —
   // the B-2 reporting fix; the balance's anti-double-pay does NOT depend on it, it nets the
   // Payout sum exactly like creator/affiliate).
-  status       String           @default("pending") // pending | matured | paid
-  maturesAt    DateTime?        // when a 'pending' row becomes eligible (stamped at creation, ÉTAPE 3)
-  paidAt       DateTime?        // when a Payout settled this earning (reporting only)
-  createdAt    DateTime         @default(now())
+  status     String           @default("pending") // pending | matured | paid
+  maturesAt  DateTime? // when a 'pending' row becomes eligible (stamped at creation, ÉTAPE 3)
+  paidAt     DateTime? // when a Payout settled this earning (reporting only)
+  createdAt  DateTime         @default(now())
 
   // ── Idempotency (P4.3 ÉTAPE 3) — one earning per (mission, type). The delivery accrual
   // does create-catch-P2002, so a re-delivered / retried mission never double-accrues its
@@ -1883,23 +1907,23 @@ model CourierEarning {
 // REVERSIBLE: onDelete Cascade so a courier's points die with the profile; loose missionId (no
 // Mission FK, mirrors CourierEarning) → dropping the table leaves every existing model intact.
 model CourierPosition {
-  id         String           @id @default(cuid())
+  id        String           @id @default(cuid())
   // The courier this point belongs to — FK → LogisticsProfile.id (owner scope). Cascade so the
   // ephemeral points are cleaned with the profile (never block a deletion, never outlive it).
-  courierId  String
-  courier    LogisticsProfile @relation(fields: [courierId], references: [id], onDelete: Cascade)
+  courierId String
+  courier   LogisticsProfile @relation(fields: [courierId], references: [id], onDelete: Cascade)
   // The in-progress mission this point is for (loose id, no Mission FK — mirrors CourierEarning).
-  missionId  String
+  missionId String
   // Last known coordinates (Float, like Order.deliveryLat/lng). accuracy = optional GPS accuracy
   // in metres. NO trail, NO history — only the current point (the upsert target below).
-  lat        Float
-  lng        Float
-  accuracy   Float?
-  updatedAt  DateTime         @updatedAt   // stamped on each upsert (the point's freshness)
-  createdAt  DateTime         @default(now())
+  lat       Float
+  lng       Float
+  accuracy  Float?
+  updatedAt DateTime         @updatedAt // stamped on each upsert (the point's freshness)
+  createdAt DateTime         @default(now())
 
-  @@unique([courierId, missionId])  // ONE current point per courier/mission — the upsert key (no breadcrumb)
-  @@index([missionId])              // deletion at delivered/cancelled targets missionId
+  @@unique([courierId, missionId]) // ONE current point per courier/mission — the upsert key (no breadcrumb)
+  @@index([missionId]) // deletion at delivered/cancelled targets missionId
 }
 
 // ── EmailOtp (Phase 3 auth hardening — Agent 88) — email one-time codes ───────────
@@ -1914,12 +1938,12 @@ model CourierPosition {
 // every flow byte-identical).
 model EmailOtp {
   id         String    @id @default(cuid())
-  email      String                  // lowercased account email the code is bound to
-  purpose    String                  // 'login' | 'stepup:withdraw' | 'stepup:bank' | 'stepup:email_change'
-  codeHash   String                  // sha256(pepper:purpose:email:code) — never the clear code
+  email      String // lowercased account email the code is bound to
+  purpose    String // 'login' | 'stepup:withdraw' | 'stepup:bank' | 'stepup:email_change'
+  codeHash   String // sha256(pepper:purpose:email:code) — never the clear code
   expiresAt  DateTime
-  attempts   Int       @default(0)   // failed verify attempts; >= max → invalid
-  consumedAt DateTime?               // set on success OR when superseded — single-use
+  attempts   Int       @default(0) // failed verify attempts; >= max → invalid
+  consumedAt DateTime? // set on success OR when superseded — single-use
   createdAt  DateTime  @default(now())
 
   @@index([email, purpose])
@@ -1942,16 +1966,16 @@ model EmailOtp {
 // accrual idempotent and STABLE across PI recreation (unlike paymentIntentId, which
 // changes when orders/pay cancels + recreates a stale intent → would double-accrue).
 model FranchiseRoyalty {
-  id                   String   @id @default(cuid())
-  orderId              String   @unique // idempotency key — one royalty per order
-  paymentIntentId      String?           // pi_… at accrual time (recoverable from Stripe)
-  franchisorOperatorId String            // = PointOfSale.franchiseId (the franchisor Operator)
-  restaurantId         String            // the franchised resto that collected the sale
-  pointOfSaleId        String            // the franchise POS the order was attached to
-  channel              String            // pickup | delivery (revenue channel)
-  baseRevenueCents     Int               // = order.subtotal in cents (consistent w/ my-dashboard)
-  royaltyCents         Int               // = round(baseRevenueCents * rate) — the held-back amount
-  rate                 Float             // royalty rate snapshot at accrual (0.06)
+  id                   String    @id @default(cuid())
+  orderId              String    @unique // idempotency key — one royalty per order
+  paymentIntentId      String? // pi_… at accrual time (recoverable from Stripe)
+  franchisorOperatorId String // = PointOfSale.franchiseId (the franchisor Operator)
+  restaurantId         String // the franchised resto that collected the sale
+  pointOfSaleId        String // the franchise POS the order was attached to
+  channel              String // pickup | delivery (revenue channel)
+  baseRevenueCents     Int // = order.subtotal in cents (consistent w/ my-dashboard)
+  royaltyCents         Int // = round(baseRevenueCents * rate) — the held-back amount
+  rate                 Float // royalty rate snapshot at accrual (0.06)
   // ── P4.5-A refund-awareness (Agent 49, ADDITIVE) ────────────────────────────
   // Cumulative royalty CENTS given back to the customer across all (partial)
   // refunds of this order — the absolute, self-healing prorata target
@@ -1960,9 +1984,9 @@ model FranchiseRoyalty {
   // refundedCents); a refund AFTER settlement claws the delta back from the
   // franchisor. @default(0) ⇒ every existing row stays valid with NO backfill, and
   // the settlement is BYTE-IDENTICAL while no row has refundedCents > 0.
-  refundedCents        Int      @default(0)
-  status               String   @default("pending") // pending | settling | settled
-  createdAt            DateTime @default(now())
+  refundedCents        Int       @default(0)
+  status               String    @default("pending") // pending | settling | settled
+  createdAt            DateTime  @default(now())
   // ── P4-Franchise-B settlement (Agent 42, ADDITIVE) ──────────────────────────
   // The settlement run CLAIMS pending lines atomically into a batch: 'pending' ->
   // 'settling' + settlementId (one UPDATE), transfers the batch sum to the
@@ -1970,8 +1994,8 @@ model FranchiseRoyalty {
   // settlementId is the idempotency anchor (Stripe key = franchise:<op>:<settlementId>);
   // a line is NEVER reverted out of 'settling', so an interrupted run resumes the
   // SAME batch with the SAME key (Stripe dedupes) — never a second transfer.
-  settlementId         String?  // batch id that claimed this line (set at 'settling')
-  payoutId             String?  // the Payout row that disbursed this line (set at 'settled')
+  settlementId         String? // batch id that claimed this line (set at 'settling')
+  payoutId             String? // the Payout row that disbursed this line (set at 'settled')
   settledAt            DateTime?
 
   @@index([franchisorOperatorId, status])
@@ -2002,21 +2026,21 @@ model FranchiseRoyalty {
 // 'pending' row (Stripe refund issued but DB finalize failed) is RESUMED before any
 // new refund. All amounts integer CENTS.
 model Refund {
-  id                        String   @id @default(cuid())
+  id                        String    @id @default(cuid())
   orderId                   String
   restaurantId              String
   stripePaymentIntentId     String?
-  stripeRefundId            String?  // re_… — set once Stripe accepted the refund
-  idempotencyKey            String   @unique // refund:<orderId>:<alreadyRefundedCents>
-  amountCents               Int               // refunded to the customer (this refund)
-  restaurantReverseCents    Int      @default(0) // pulled back from the resto (reverse_transfer)
-  applicationFeeRefundCents Int      @default(0) // came back from Grubano's fee (commission + royalty)
-  royaltyRefundCents        Int      @default(0) // franchise-royalty slice inside the fee refund
-  royaltyClawbackCents      Int      @default(0) // royalty actually reversed FROM the franchisor (settled case)
-  franchiseRoyaltyStatus    String?           // snapshot of the royalty status at refund time (pending|settling|settled)
+  stripeRefundId            String? // re_… — set once Stripe accepted the refund
+  idempotencyKey            String    @unique // refund:<orderId>:<alreadyRefundedCents>
+  amountCents               Int // refunded to the customer (this refund)
+  restaurantReverseCents    Int       @default(0) // pulled back from the resto (reverse_transfer)
+  applicationFeeRefundCents Int       @default(0) // came back from Grubano's fee (commission + royalty)
+  royaltyRefundCents        Int       @default(0) // franchise-royalty slice inside the fee refund
+  royaltyClawbackCents      Int       @default(0) // royalty actually reversed FROM the franchisor (settled case)
+  franchiseRoyaltyStatus    String? // snapshot of the royalty status at refund time (pending|settling|settled)
   reason                    String?
-  status                    String   @default("pending") // pending | succeeded | failed
-  createdAt                 DateTime @default(now())
+  status                    String    @default("pending") // pending | succeeded | failed
+  createdAt                 DateTime  @default(now())
   settledAt                 DateTime?
 
   @@index([orderId])
@@ -2046,26 +2070,26 @@ model Refund {
 // EXACTLY once) + deterministic Stripe keys (dispute-reverse:<id>, dispute-claw:<id>
 // → Stripe dedupes even on a concurrent double-fire). All amounts integer CENTS.
 model Dispute {
-  id                   String   @id @default(cuid())
-  stripeDisputeId      String   @unique // dp_…
-  stripeChargeId       String?           // ch_…
-  paymentIntentId      String?           // pi_…
+  id                   String    @id @default(cuid())
+  stripeDisputeId      String    @unique // dp_…
+  stripeChargeId       String? // ch_…
+  paymentIntentId      String? // pi_…
   orderId              String?
   restaurantId         String?
-  amountCents          Int      @default(0) // the DISPUTED amount (dispute.amount)
-  feeCents             Int      @default(0) // the dispute fee Φ borne by Grubano (audit)
-  currency             String   @default("eur")
-  reason               String?            // Stripe dispute.reason
-  status               String   @default("open")  // open | won | lost
-  outcome              String?            // raw Stripe dispute.status snapshot
-  fundsWithdrawn       Boolean  @default(false)   // Stripe provisionally pulled funds
+  amountCents          Int       @default(0) // the DISPUTED amount (dispute.amount)
+  feeCents             Int       @default(0) // the dispute fee Φ borne by Grubano (audit)
+  currency             String    @default("eur")
+  reason               String? // Stripe dispute.reason
+  status               String    @default("open") // open | won | lost
+  outcome              String? // raw Stripe dispute.status snapshot
+  fundsWithdrawn       Boolean   @default(false) // Stripe provisionally pulled funds
   // ── Loss reversal (set ONCE, when the dispute is closed LOST) ────────────────
-  splitReversed        Boolean  @default(false)   // the unwind ran exactly once
-  reverseTransferCents Int      @default(0)        // resto NET pulled back (reverse_transfer)
-  royaltyClawbackCents Int      @default(0)        // royalty reversed FROM the franchisor (settled case)
-  royaltyRefundedCents Int      @default(0)        // royalty slice removed from the franchise obligation
-  stripeReversalId     String?            // trr_… of the resto-net reversal (audit)
-  createdAt            DateTime @default(now())
+  splitReversed        Boolean   @default(false) // the unwind ran exactly once
+  reverseTransferCents Int       @default(0) // resto NET pulled back (reverse_transfer)
+  royaltyClawbackCents Int       @default(0) // royalty reversed FROM the franchisor (settled case)
+  royaltyRefundedCents Int       @default(0) // royalty slice removed from the franchise obligation
+  stripeReversalId     String? // trr_… of the resto-net reversal (audit)
+  createdAt            DateTime  @default(now())
   resolvedAt           DateTime?
 
   @@index([orderId])
@@ -2099,42 +2123,42 @@ model Dispute {
 // while active, null when terminal) is @unique → at most ONE active claim per order
 // (race-safe; a terminal claim frees the order for a future C2 re-claim). CENTS = ints.
 model Claim {
-  id                       String   @id @default(cuid())
+  id                       String    @id @default(cuid())
   orderId                  String
-  consumerId               String           // Operator.id (role consumer) — the claimant
-  restaurantId             String           // the owning restaurant (resolved from the order)
-  reason                   String           // missing_item | wrong_order | quality | not_delivered | other
-  description              String?  @db.Text // optional free-text detail
-  requestedAmountCents     Int              // claimed amount (server-validated: 1 ≤ x ≤ order total cents)
-  photoUrl                 String?          // optional evidence (Cloudinary, via processDishImage)
+  consumerId               String // Operator.id (role consumer) — the claimant
+  restaurantId             String // the owning restaurant (resolved from the order)
+  reason                   String // missing_item | wrong_order | quality | not_delivered | other
+  description              String?   @db.Text // optional free-text detail
+  requestedAmountCents     Int // claimed amount (server-validated: 1 ≤ x ≤ order total cents)
+  photoUrl                 String? // optional evidence (Cloudinary, via processDishImage)
   // C1: restaurant_review | approved | refunding | refunded | refused
   // C2 (P4.5-C2, Agent 53, additive string values — NO enum migration):
   //   + arbitration   (a refused claim CONTESTED by the client, awaiting an admin)
   //   + refused_final (admin confirmed the refusal — terminal)
-  status                   String   @default("restaurant_review")
-  restaurantResponse       String?          // accepted | refused (what the resto chose; null if auto/none)
-  restaurantResponseReason String?  @db.Text // refusal motive
-  responseDeadlineAt       DateTime         // createdAt + CLAIM_RESPONSE_HOURS → auto-approve after
-  decidedBy                String?          // restaurant | auto_timeout | auto_small | admin
-  refundAttempted          Boolean  @default(false) // executeRefund called at most once (idempotence guard)
-  refundId                 String?          // → Refund.id (set when the engine refund succeeds)
-  refundError              String?  @db.Text // last refund failure (audit; refund still pending)
+  status                   String    @default("restaurant_review")
+  restaurantResponse       String? // accepted | refused (what the resto chose; null if auto/none)
+  restaurantResponseReason String?   @db.Text // refusal motive
+  responseDeadlineAt       DateTime // createdAt + CLAIM_RESPONSE_HOURS → auto-approve after
+  decidedBy                String? // restaurant | auto_timeout | auto_small | admin
+  refundAttempted          Boolean   @default(false) // executeRefund called at most once (idempotence guard)
+  refundId                 String? // → Refund.id (set when the engine refund succeeds)
+  refundError              String?   @db.Text // last refund failure (audit; refund still pending)
   // = orderId WHILE the claim is active (restaurant_review|approved|refunding|arbitration);
   // null on a terminal status (refunded|refused|refused_final). @unique ⇒ one ACTIVE claim
   // per order, race-safe (MySQL allows many NULLs), without blocking a future re-claim.
-  activeOrderKey           String?  @unique
-  createdAt                DateTime @default(now())
+  activeOrderKey           String?   @unique
+  createdAt                DateTime  @default(now())
   decidedAt                DateTime?
   // ── P4.5-C2 — contest → admin arbitration (Agent 53, additive nullable) ──────
   // A REFUSED claim can be contested by the CLIENT within CLAIM_CONTEST_HOURS →
   // 'arbitration'; a NEUTRAL admin then approves (→ refund) or confirms the refusal
   // ('refused_final'). The admin is NEVER an interested party (not the resto, not the
   // client). All nullable / no default change → every existing row stays valid, no backfill.
-  contestedAt              DateTime?        // when the client contested
-  contestReason            String?  @db.Text // the client's contest justification
-  arbitratedBy             String?          // Operator.id of the deciding admin
-  arbitrationDecision      String?          // approved | refused_final
-  arbitrationReason        String?  @db.Text // the admin's motive
+  contestedAt              DateTime? // when the client contested
+  contestReason            String?   @db.Text // the client's contest justification
+  arbitratedBy             String? // Operator.id of the deciding admin
+  arbitrationDecision      String? // approved | refused_final
+  arbitrationReason        String?   @db.Text // the admin's motive
   arbitratedAt             DateTime?
 
   @@index([consumerId, createdAt])
@@ -2157,10 +2181,10 @@ model Invoice {
   // InvoiceCounter inside the SAME transaction as this row — a failure rolls
   // back the counter, so numbers are never burned and never duplicated.
   number       String   @unique
-  totalTtc     Int      // cents — what was actually levied over the period
-  totalHt      Int      // cents — round(ttc / 1.2)
-  totalTva     Int      // cents — ttc − ht (always adds back exactly)
-  entriesCount Int      // ledger lines covered
+  totalTtc     Int // cents — what was actually levied over the period
+  totalHt      Int // cents — round(ttc / 1.2)
+  totalTva     Int // cents — ttc − ht (always adds back exactly)
+  entriesCount Int // ledger lines covered
   status       String   @default("issued")
   issuedAt     DateTime @default(now())
   createdAt    DateTime @default(now())
@@ -2177,16 +2201,16 @@ model InvoiceCounter {
 }
 
 model TicketItem {
-  id         String      @id @default(cuid())
-  ticketId   String
-  ticket     TableTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  id          String      @id @default(cuid())
+  ticketId    String
+  ticket      TableTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   // Optional reference to the source dish (null for a free line). name + unitPrice
   // are FROZEN copies taken at add time — the billed line never changes if the
   // menu price changes later.
-  menuItemId String?
-  name       String
-  unitPrice  Float
-  quantity   Int         @default(1)
+  menuItemId  String?
+  name        String
+  unitPrice   Float
+  quantity    Int         @default(1)
   // ── Premium table experience (Chantier étape 1, additive) ───────────────────
   // ADDITIVE + REVERSIBLE: all defaulted / nullable, so every existing line stays
   // valid with no backfill.
@@ -2202,29 +2226,29 @@ model TicketItem {
   //     it 'cancelled' (kept for the trace/history) and recomputeSubtotal excludes it,
   //     instead of a hard delete (decision T3/T5: keep the trace).
   //   • cancelledAt — WHEN the line was cancelled (trace; null while active).
-  addedBy    String      @default("staff")
-  options    String?     @db.Text
-  notes      String?
-  allergies  String?
-  status     String      @default("active")
+  addedBy     String      @default("staff")
+  options     String?     @db.Text
+  notes       String?
+  allergies   String?
+  status      String      @default("active")
   cancelledAt DateTime?
-  createdAt  DateTime    @default(now())
+  createdAt   DateTime    @default(now())
 
   @@index([ticketId])
 }
 
 model Order {
-  id              String     @id @default(cuid())
-  consumerId      String                          // Operator.id with role=consumer
-  restaurantId    String
-  restaurant      Restaurant @relation(fields: [restaurantId], references: [id])
-  items           Json                            // [{ itemId, name, qty, price, options }]
-  subtotal        Float
-  deliveryFee     Float      @default(1.99)
-  total           Float
-  status          String     @default("received") // received|preparing|ready|picked_up|delivered|cancelled
-  fulfillmentType String     @default("delivery") // delivery|pickup
-  deliveryAddress String
+  id                    String         @id @default(cuid())
+  consumerId            String // Operator.id with role=consumer
+  restaurantId          String
+  restaurant            Restaurant     @relation(fields: [restaurantId], references: [id])
+  items                 Json // [{ itemId, name, qty, price, options }]
+  subtotal              Float
+  deliveryFee           Float          @default(1.99)
+  total                 Float
+  status                String         @default("received") // received|preparing|ready|picked_up|delivered|cancelled
+  fulfillmentType       String         @default("delivery") // delivery|pickup
+  deliveryAddress       String
   // ── Geocoded delivery position (P4.3 ÉTAPE 4 — distance-based fee, additive) ─────
   // PERSONAL DATA (the customer's delivery/home position). DATA MINIMISATION: only the
   // two coordinates — the INPUTS to the haversine distance — are stored; nothing else
@@ -2233,45 +2257,45 @@ model Order {
   // address geocodes → in prod (flag OFF) these stay NULL and the Order is byte-identical.
   // Used solely to compute the distance delivery fee (and a later courier ETA). ADDITIVE +
   // REVERSIBLE: dropping the columns leaves every existing order untouched.
-  deliveryLat     Float?
-  deliveryLng     Float?
-  paymentMethod   String     @default("card")
+  deliveryLat           Float?
+  deliveryLng           Float?
+  paymentMethod         String         @default("card")
   // ── Checkout payment (chantier C1, additive — TEST mode) ────────────────────
   // ADDITIVE + REVERSIBLE: pickup/delivery orders are now REALLY charged (C0:
   // immediate payment at order). The PI is an automatic-capture destination
   // charge when the resto's Connect account is active (commission on the PRODUCT
   // subtotal, delivery fee 100 % to the resto). paymentStatus: null = legacy /
   // not initiated, 'pending' = PI created, 'paid' = webhook-confirmed.
-  stripePaymentIntentId String? @unique
-  paymentStatus   String?
-  pointsEarned    Int        @default(0)
-  estimatedTime   Int        @default(30)
-  trackingUrl     String?
+  stripePaymentIntentId String?        @unique
+  paymentStatus         String?
+  pointsEarned          Int            @default(0)
+  estimatedTime         Int            @default(30)
+  trackingUrl           String?
   // Optional location attribution (set when a franchise operator's POS
   // generated the order — used for consolidated multi-location reporting).
-  pointOfSaleId   String?
-  pointOfSale     PointOfSale? @relation(fields: [pointOfSaleId], references: [id])
+  pointOfSaleId         String?
+  pointOfSale           PointOfSale?   @relation(fields: [pointOfSaleId], references: [id])
   // Referral code captured at checkout (cookie or manual entry). Plain string
   // — kept independent of the Referral row so reporting still works even if
   // the Referral expires before this row is touched. The matching
   // ReferralOrder row (if any) is created server-side at order time.
-  referralCode    String?
+  referralCode          String?
   // ── Promotions restaurateur (P1, additive) ──────────────────────────────────
   // The promo APPLIED to this order (server-resolved at checkout, D4 — the
   // client never sends a discount) and the discount amount in EUR. The resto
   // finances its promo (D1): the customer pays total = subtotal − discount +
   // fee, and the commission base follows COMMISSION_BASE (D2). Both written
   // BEST-EFFORT post-create (column-tolerant until the db push).
-  promotionId     String?
-  discount        Float      @default(0)
+  promotionId           String?
+  discount              Float          @default(0)
   // ── Loyalty redemption (chantier fidélité L1, additive) ─────────────────────
   // Points spent on this order + the EUR credit applied, in CENTS. Grubano
   // FINANCES the credit (D1): it reduces the NET application_fee, never the
   // resto's net nor the commission base. Debited at the confirmed payment
   // (webhook, D6) and re-credited on refund. Written BEST-EFFORT post-create
   // (column-tolerant until the db push → loyalty is inert before the push).
-  pointsRedeemed     Int  @default(0)
-  loyaltyCreditCents Int  @default(0)
+  pointsRedeemed        Int            @default(0)
+  loyaltyCreditCents    Int            @default(0)
   // ── Small-order fee (V1.5, additive) ────────────────────────────────────────
   // Flat fee added when the items subtotal is BELOW a threshold (env
   // SMALL_ORDER_FEE_CENTS / SMALL_ORDER_THRESHOLD_CENTS). Paid by the CLIENT,
@@ -2279,12 +2303,12 @@ model Order {
   // resto, the commission base, the chef royalty, the loyalty credit or promos.
   // In CENTS. Written BEST-EFFORT post-create (column-tolerant until the db push
   // → the fee is inert before the push).
-  smallOrderFeeCents Int  @default(0)
+  smallOrderFeeCents    Int            @default(0)
   // ── Courier tip (P2-TIP, additive) — tip in CENTS picked at checkout, paid by the
   // CLIENT, HELD by the PLATFORM (added to the application_fee) — NEVER resto revenue,
   // NEVER in the commission base, NEVER earns loyalty points. Written BEST-EFFORT
   // post-create (column-tolerant → inert before the db push). Gated by TIPS_ENABLED.
-  tipCents           Int  @default(0)
+  tipCents              Int            @default(0)
   // ── Delivery-mode discriminant (P4.3 ÉTAPE 1 — fondations, additive + INERT) ────
   // WHO fulfils/finances the delivery of THIS consumer order. RESERVED STRUCTURE ONLY:
   // no reader anywhere (no money routing, no distance calc, no payout keys off it yet —
@@ -2300,24 +2324,24 @@ model Order {
   // DEFAULT = "restaurant" → every existing row + every new order is statu quo (order.create
   // omits this field, Prisma applies the default). ADDITIVE + REVERSIBLE: drop the column and
   // the Order flow is byte-identical.
-  deliveryMode       String @default("restaurant")
-  referralOrder   ReferralOrder?
+  deliveryMode          String         @default("restaurant")
+  referralOrder         ReferralOrder?
   // Inverse side of DishSale.order (brique 3A, ADDITIVE) — creator-recipe sales
   // attributed to this order. Nullable list, no impact on existing orders.
-  dishSales       DishSale[]
+  dishSales             DishSale[]
   // ── Chef contribution tracking (Mission 1 Creator Studio, ADDITIVE) ─────────
   // The creator (chef) page slug the buyer came through (grubano_chef cookie,
   // 24 h last-touch). A pure STAT — no financial impact, never feeds the
   // affiliation rail (that's grubano_ref / ReferralOrder, influencer role).
   // Nullable → zero backfill, existing rows untouched.
-  chefSlug        String?
+  chefSlug              String?
   // ── Brique 1 logistique (Agent 122, ADDITIVE) — delivery missions for this consumer
   // order. Inverse side of Mission.order; gated LOGISTICS_MISSIONS_ENABLED. Nullable list
   // → ZERO impact on Order behaviour (no money, no flow change). A B2C delivery order may
   // have 0..n missions (re-offer on decline/expiry); a B2B mission carries no orderId.
-  deliveryMissions Mission[]
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  deliveryMissions      Mission[]
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
   @@index([pointOfSaleId])
   @@index([referralCode])
@@ -2332,9 +2356,9 @@ model Order {
 // in orders + analytics. Coordinates are geocoded via lib/geocode.ts (BAN)
 // at create/update time, same pattern as Restaurant.
 model PointOfSale {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   franchiseId String
-  franchise   Operator @relation(fields: [franchiseId], references: [id])
+  franchise   Operator    @relation(fields: [franchiseId], references: [id])
   name        String
   address     String?
   city        String?
@@ -2343,17 +2367,17 @@ model PointOfSale {
   // Legacy free-text brand label — KEPT for backward compatibility (brique 2A).
   // The real link is brandId/brand_ref below; this text column will be removed
   // in a later brique (2C) once all rows are migrated.
-  brand       String?  // which Grubano brand this POS operates (free-form, legacy)
+  brand       String? // which Grubano brand this POS operates (free-form, legacy)
   // ── Real link to a franchisable Brand (brique 2A, ADDITIVE) ──────────────────
   // Nullable so existing PointOfSale rows stay valid until they are linked.
   brandId     String?
-  brand_ref   Brand?   @relation(fields: [brandId], references: [id])
-  isActive    Boolean  @default(true)
+  brand_ref   Brand?      @relation(fields: [brandId], references: [id])
+  isActive    Boolean     @default(true)
   orders      Order[]
   // Inverse side of Restaurant.pointOfSale (B2) — the franchised restaurant this POS
   // maps to (1:1). Zero extra column on PointOfSale.
   restaurant  Restaurant? @relation("RestaurantPointOfSale")
-  createdAt   DateTime @default(now())
+  createdAt   DateTime    @default(now())
 
   @@index([franchiseId])
   @@index([brandId])
@@ -2365,11 +2389,11 @@ model PointOfSale {
 // without a code change. Defaults match the values Mohammed approved at
 // programme launch.
 model ReferralConfig {
-  id                        String  @id @default(cuid())
+  id                        String   @id @default(cuid())
   // Creator's cut of GRUBANO'S commission on a referred order (NOT of basket).
   // B0 (11 June 2026): 30 % of Grubano's REAL fee — the creator is paid from
   // Grubano's share, never a surcharge on the resto.
-  commissionPctOfGrubanoFee Float   @default(0.30)
+  commissionPctOfGrubanoFee Float    @default(0.30)
   // INF-3 (Phase 6, 19 June 2026): a VERIFIED affiliate (influencer tier —
   // Affiliate.audienceVerified) earns a HIGHER share of the SAME pot. Read at
   // order time ONLY when INFLUENCER_ENABLED is ON and the order's affiliate
@@ -2377,18 +2401,18 @@ model ReferralConfig {
   // NON-retroactive: the resolved rate is frozen per ReferralOrder at write time.
   // The amount charged to the customer and Grubano's commission are unchanged —
   // only the affiliate's reversed share moves from 30 % to 40 % of the same pot.
-  influencerCommissionPct   Float   @default(0.40)
+  influencerCommissionPct   Float    @default(0.40)
   // B0-quater (11 June, evening): the creator is paid in PERCENTAGES ONLY — the
   // fixed 5 € acquisition bonus is REMOVED. 0 = no bonus is ever written (the
   // default); Mohammed can re-activate a bonus by setting an amount here.
-  newCustomerBonusAmount    Float   @default(0)
+  newCustomerBonusAmount    Float    @default(0)
   // How long the creator earns on a referred customer's orders, from
   // the referral start date.
-  durationDays              Int     @default(90)
+  durationDays              Int      @default(90)
   // Welcome discount on the referred customer's first order.
-  customerDiscountPct       Float   @default(0.10)
-  customerDiscountCapEur    Float   @default(5)
-  active                    Boolean @default(true)
+  customerDiscountPct       Float    @default(0.10)
+  customerDiscountCapEur    Float    @default(5)
+  active                    Boolean  @default(true)
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 }
@@ -2398,25 +2422,25 @@ model ReferralConfig {
 // than recomputing from config on read, so future config tweaks never
 // retroactively shorten an existing referral window.
 model Referral {
-  id         String         @id @default(cuid())
+  id          String          @id @default(cuid())
   // ── Brique B (Agent 59) — creatorId RELAXED to nullable ──────────────────────
   // A Referral now binds a customer to a creator XOR a top-level affiliate. For an
   // AFFILIATE binding, creatorId is null and `affiliateId` carries the referrer. For
   // a CREATOR binding (the existing rail), creatorId is set and affiliateId is null —
   // EXACTLY one referrer per binding. Relaxing NOT NULL → nullable is additive + safe:
   // every existing row keeps its creatorId, no backfill. (db push: MODIFY ... NULL.)
-  creatorId  String?
-  creator    Creator?       @relation(fields: [creatorId], references: [id])
+  creatorId   String?
+  creator     Creator?        @relation(fields: [creatorId], references: [id])
   // customerId is an Operator.id with role=consumer. Kept as a plain string
   // (same convention as Order.consumerId) to avoid a second relation back
   // into Operator and keep this migration purely additive on existing models.
-  customerId String
-  codeUsed   String
-  startedAt  DateTime       @default(now())
-  expiresAt  DateTime
-  active     Boolean        @default(true)
-  orders     ReferralOrder[]
-  createdAt  DateTime       @default(now())
+  customerId  String
+  codeUsed    String
+  startedAt   DateTime        @default(now())
+  expiresAt   DateTime
+  active      Boolean         @default(true)
+  orders      ReferralOrder[]
+  createdAt   DateTime        @default(now())
   // ── Top-level affiliate referrer (Brique A seam, WIRED in Brique B, Agent 59) ──
   // The AFFILIATE this binding credits — identified by the affiliate's OPERATOR id
   // (Affiliate is 1:1 with Operator; operator-keyed so self-referral / balance /
@@ -2434,31 +2458,31 @@ model Referral {
 // is FROZEN at order time (commissionPctOfGrubanoFee × grubanoFee) so future
 // config changes can't retroactively rewrite past payouts.
 model ReferralOrder {
-  id             String   @id @default(cuid())
-  referralId     String
-  referral       Referral @relation(fields: [referralId], references: [id])
-  orderId        String   @unique
-  order          Order    @relation(fields: [orderId], references: [id])
-  grubanoFee     Float    // Grubano's REAL commission on this order (lib/commission), captured at order time
-  creatorEarning Float    // grubanoFee × commissionPctOfGrubanoFee (B0: 30 %) — FROZEN
+  id               String    @id @default(cuid())
+  referralId       String
+  referral         Referral  @relation(fields: [referralId], references: [id])
+  orderId          String    @unique
+  order            Order     @relation(fields: [orderId], references: [id])
+  grubanoFee       Float // Grubano's REAL commission on this order (lib/commission), captured at order time
+  creatorEarning   Float // grubanoFee × commissionPctOfGrubanoFee (B0: 30 %) — FROZEN
   // Acquisition bonus trace (B0-quater: amount comes from ReferralConfig.
   // newCustomerBonusAmount, default 0 = never written). Separate column so the
   // trace stays auditable (earning = flow share, bonus = acquisition).
-  newCustomerBonus Float  @default(0)
+  newCustomerBonus Float     @default(0)
   // ── Earnings engine (B2a, additive) ─────────────────────────────────────────
   // pending → matured (7 days after the ORDER + order paid + not fully refunded
   // + not self-referral) → paid (B2b payouts). cancelled = never-paid order /
   // fully refunded / self-referral, with the reason logged by the maturation
   // run. ADD COLUMN NOT NULL DEFAULT 'pending' backfills existing rows.
-  status         String   @default("pending") // pending | matured | cancelled | paid
-  maturedAt      DateTime?
-  createdAt      DateTime @default(now())
+  status           String    @default("pending") // pending | matured | cancelled | paid
+  maturedAt        DateTime?
+  createdAt        DateTime  @default(now())
   // ── Affiliate referrer (Brique A seam, WIRED in Brique B, Agent 59) ──────────
   // The AFFILIATE credited by this accrual row — identified by the affiliate's OPERATOR
   // id (Affiliate is 1:1 with Operator; operator-keyed so balance + payout (Brique D)
   // are lookup-free). null = creator rail (the creator is linked via referral.creatorId,
   // unchanged). EXACTLY one referrer per row: creatorId-binding XOR affiliateId.
-  affiliateId    String?
+  affiliateId      String?
 
   @@index([referralId])
   @@index([affiliateId])
@@ -2476,12 +2500,12 @@ model ReferralOrder {
 // ability to share a link; the credit (attribution) = Brique B, the withdrawal+KYC =
 // Brique D. `status` is reserved (A only ever writes 'active').
 model Affiliate {
-  id               String   @id @default(cuid())
-  operatorId       String   @unique // the login Operator that is this affiliate (1:1)
-  referralCode     String   @unique // instant-minted at signup, e.g. "ALEX9F2K"
-  referralLinkSlug String   @unique // public /ref/<slug> alias (= code.toLowerCase())
-  status           String   @default("active") // active | suspended (reserved)
-  createdAt        DateTime @default(now())
+  id                 String    @id @default(cuid())
+  operatorId         String    @unique // the login Operator that is this affiliate (1:1)
+  referralCode       String    @unique // instant-minted at signup, e.g. "ALEX9F2K"
+  referralLinkSlug   String    @unique // public /ref/<slug> alias (= code.toLowerCase())
+  status             String    @default("active") // active | suspended (reserved)
+  createdAt          DateTime  @default(now())
   // ── Influencer tier (Phase 6 INF-1, Agent 66) — AUDIENCE verification state ────────
   // ADDITIVE + nullable/default: an "influencer" is an affiliate whose AUDIENCE is
   // VERIFIED (audienceVerified === true), set ONLY by an admin approval of an
@@ -2492,9 +2516,9 @@ model Affiliate {
   // approved request (display only).
   audienceVerified   Boolean   @default(false)
   audienceVerifiedAt DateTime?
-  primaryPlatform    String?   // youtube | instagram | tiktok | other (snapshot)
-  declaredFollowers  Int?      // snapshot at verification (declarative)
-  handle             String?   // social handle snapshot
+  primaryPlatform    String? // youtube | instagram | tiktok | other (snapshot)
+  declaredFollowers  Int? // snapshot at verification (declarative)
+  handle             String? // social handle snapshot
 }
 
 // ── AudienceVerificationRequest (Phase 6 INF-1, Agent 66) — influencer verification ───
@@ -2508,12 +2532,12 @@ model Affiliate {
 model AudienceVerificationRequest {
   id                String    @id @default(cuid())
   operatorId        String    @unique // the affiliate's OPERATOR id (1 request per affiliate)
-  platform          String              // youtube | instagram | tiktok | other
-  handle            String              // social handle / channel
+  platform          String // youtube | instagram | tiktok | other
+  handle            String // social handle / channel
   declaredFollowers Int       @default(0) // self-declared audience size
-  proofUrl          String?             // optional link the admin can inspect (read-only aid)
+  proofUrl          String? // optional link the admin can inspect (read-only aid)
   status            String    @default("pending") // pending | approved | rejected
-  reviewedBy        String?             // admin operator id (audit) — set on decision
+  reviewedBy        String? // admin operator id (audit) — set on decision
   reviewedAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -2531,8 +2555,8 @@ model AudienceVerificationRequest {
 // a pure per-affiliate click COUNTER feeding the clicks→conversion funnel.
 model ReferralClick {
   id          String   @id @default(cuid())
-  affiliateId String   // the affiliate's OPERATOR id (same convention as ReferralOrder.affiliateId)
-  code        String   // the referral code clicked (uppercase canonical) — traceability only
+  affiliateId String // the affiliate's OPERATOR id (same convention as ReferralOrder.affiliateId)
+  code        String // the referral code clicked (uppercase canonical) — traceability only
   createdAt   DateTime @default(now())
 
   @@index([affiliateId, createdAt])
@@ -2570,7 +2594,7 @@ model DishAdoption {
   sellingPrice        Float
   status              String      @default("active") // active | ended
   endedAt             DateTime?
-  earlyExitSettlement Float?      // settlement owed if ended before commitment
+  earlyExitSettlement Float? // settlement owed if ended before commitment
   createdAt           DateTime    @default(now())
   sales               DishSale[]
 
@@ -2607,9 +2631,9 @@ model DishSale {
   // sale can be recorded from POS/aggregate flows without an Order row).
   orderId        String?
   order          Order?       @relation(fields: [orderId], references: [id])
-  amount         Float        // sale amount in €
-  creatorEarning Float        // FROZEN = amount × rateApplied
-  grubanoCut     Float        // FROZEN = creatorEarning × grubanoCutPct (0.20)
+  amount         Float // sale amount in €
+  creatorEarning Float // FROZEN = amount × rateApplied
+  grubanoCut     Float // FROZEN = creatorEarning × grubanoCutPct (0.20)
   // Levier 1: the creator commission rate actually used for this sale, frozen at
   // order time (0.04 = recipe creator's own traffic, 0.01 = organic/other).
   // Nullable so legacy rows written before levier 1 stay valid.
@@ -2624,24 +2648,24 @@ model DishSale {
 }
 
 model AdoptionConfig {
-  id                   String   @id @default(cuid())
-  minCommitmentDays    Int      @default(60)
-  successThresholdEur  Float    @default(300)
+  id                           String   @id @default(cuid())
+  minCommitmentDays            Int      @default(60)
+  successThresholdEur          Float    @default(300)
   // LEGACY, NON LU (hygiène pré-live) — plus aucun lecteur dans le code ;
   // conservé au schema (migration destructive interdite). La config vivante est
   // creatorCommissionPctReferred/Organic ci-dessous.
-  creatorCommissionPct Float    @default(0.04)
+  creatorCommissionPct         Float    @default(0.04)
   // ── B0 (11 June 2026): adopted-recipe royalty = FLAT 2 % of the dish price,
   // paid FROM Grubano's share (no Grubano cut on it, no two-tier traffic split).
   // The levier-1 two-rate plumbing is KEPT (parameterisable) — B0 simply sets
   // both tiers to 0.02 and the cut to 0. Existing rows: UPDATE in the C1 db
   // push sequence.
-  creatorCommissionPctReferred Float @default(0.02)
-  creatorCommissionPctOrganic  Float @default(0.02)
-  grubanoCutPct        Float    @default(0)
-  active               Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  creatorCommissionPctReferred Float    @default(0.02)
+  creatorCommissionPctOrganic  Float    @default(0.02)
+  grubanoCutPct                Float    @default(0)
+  active                       Boolean  @default(true)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
 }
 
 // ── LlmUsage (LLM cost-governance metering — gateway step 1, Agent 14) ─────────
@@ -2654,12 +2678,12 @@ model AdoptionConfig {
 // thread it everywhere; no FK so a metering row never blocks/owns an Operator.
 model LlmUsage {
   id                 String   @id @default(cuid())
-  task               String                  // LlmTask (creator_vetting, dish_scan, …)
-  model              String                  // resolved model id (claude-haiku-4-5, …)
+  task               String // LlmTask (creator_vetting, dish_scan, …)
+  model              String // resolved model id (claude-haiku-4-5, …)
   inputTokens        Int      @default(0)
   outputTokens       Int      @default(0)
-  estimatedCostCents Float    @default(0)     // estimate via configurable placeholder rates
-  operatorId         String?                  // optional attribution (nullable; no FK)
+  estimatedCostCents Float    @default(0) // estimate via configurable placeholder rates
+  operatorId         String? // optional attribution (nullable; no FK)
   createdAt          DateTime @default(now())
 
   @@index([task])
@@ -2678,12 +2702,12 @@ model LlmUsage {
 // by Mohammed via `./node_modules/.bin/prisma db push`.
 model AdminAuditLog {
   id         String   @id @default(cuid())
-  actorId    String                    // Operator.id of the admin, or 'system:cron'
-  actorEmail String?                   // denormalised for readability if the admin is later removed
-  action     String                    // refund.run | creator_payout.run | supplier.status | restaurant.approve | …
-  targetType String?                   // order | supplier | prestataire | restaurant | claim | franchise | courier | affiliate | invoice
+  actorId    String // Operator.id of the admin, or 'system:cron'
+  actorEmail String? // denormalised for readability if the admin is later removed
+  action     String // refund.run | creator_payout.run | supplier.status | restaurant.approve | …
+  targetType String? // order | supplier | prestataire | restaurant | claim | franchise | courier | affiliate | invoice
   targetId   String?
-  metadata   Json     @default("{}")   // action-specific context (status, amountCents, batch size, …)
+  metadata   Json     @default("{}") // action-specific context (status, amountCents, batch size, …)
   ip         String?
   createdAt  DateTime @default(now())
 

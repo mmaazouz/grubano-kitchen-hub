@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { orderRef } from '@/lib/order-ref'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { applyEarnWithOffsetRepay } from '@/lib/loyalty-refund'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
 import { createSystemClaim, isClaimsEnabled } from '@/lib/claims'
@@ -171,10 +172,28 @@ export async function PATCH(
               create: { name: operator.name ?? operator.email, email: operator.email, pointsBalance: 0 },
               select: { id: true },
             })
-            await prisma.$transaction([
-              prisma.loyaltyCustomer.update({ where: { id: lc.id }, data: { pointsBalance: { increment: order.pointsEarned } } }),
-              prisma.loyaltyTransaction.create({ data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned } }),
-            ])
+            // D3 (Phase 1) — a future earning first REPAYS the recovery offset (a debt
+            // left by an earlier refund whose earned points were already spent); only
+            // the remainder becomes spendable balance. The 'earn' row records the FULL
+            // earning; the split between offset repayment and spendable balance is on
+            // the customer row (pointsBalance rises by the remainder, recoveryOffset
+            // falls by what was repaid). Interactive tx = the offset read + both writes
+            // are atomic. Idempotent via the [orderId,'earn'] guard above.
+            await prisma.$transaction(async (tx) => {
+              const cust = await tx.loyaltyCustomer.findUnique({
+                where: { id: lc.id }, select: { recoveryOffsetPoints: true },
+              })
+              const { spendableIncrement, newOffset } = applyEarnWithOffsetRepay(
+                order.pointsEarned, cust?.recoveryOffsetPoints ?? 0,
+              )
+              await tx.loyaltyCustomer.update({
+                where: { id: lc.id },
+                data:  { pointsBalance: { increment: spendableIncrement }, recoveryOffsetPoints: newOffset },
+              })
+              await tx.loyaltyTransaction.create({
+                data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned },
+              })
+            })
           }
         }
       } catch (e) {
