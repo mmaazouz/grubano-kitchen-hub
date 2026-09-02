@@ -25,7 +25,8 @@ function makeDb(seed: {
   const uniqueHit = (sourceEventId: string | null, type: string) =>
     sourceEventId != null && state.txns.some((t) => t.sourceEventId === sourceEventId && t.type === type)
 
-  const model = {
+  // Explicit annotation breaks the self-reference cycle ($transaction closes over `model`).
+  const model: Record<string, { findUnique?: unknown; findFirst?: unknown; create?: unknown; update?: unknown }> & { $transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> } = {
     order: { findUnique: async () => (seed.order ? { ...seed.order } : null) },
     operator: { findUnique: async () => (seed.operatorEmail ? { email: seed.operatorEmail } : null) },
     loyaltyCustomer: {
