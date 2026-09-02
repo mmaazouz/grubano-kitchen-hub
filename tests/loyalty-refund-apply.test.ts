@@ -14,6 +14,7 @@ function makeDb(seed: {
   operatorEmail?: string | null
   customer?: { id: string; pointsBalance: number; recoveryOffsetPoints: number } | null
   earnTx?: boolean
+  legacyRefund?: boolean
 }) {
   const state = {
     txns: [] as Tx[],
@@ -22,11 +23,15 @@ function makeDb(seed: {
   if (seed.earnTx && state.customer && seed.order) {
     state.txns.push({ customerId: state.customer.id, orderId: 'o1', type: 'earn', points: seed.order.pointsEarned, sourceEventId: null })
   }
+  if (seed.legacyRefund && state.customer) {
+    // A pre-Phase-1 full re-credit row: type 'refund', sourceEventId NULL.
+    state.txns.push({ customerId: state.customer.id, orderId: 'o1', type: 'refund', points: 8, sourceEventId: null })
+  }
   const uniqueHit = (sourceEventId: string | null, type: string) =>
     sourceEventId != null && state.txns.some((t) => t.sourceEventId === sourceEventId && t.type === type)
 
   // Explicit annotation breaks the self-reference cycle ($transaction closes over `model`).
-  const model: Record<string, { findUnique?: unknown; findFirst?: unknown; create?: unknown; update?: unknown }> & { $transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> } = {
+  const model: Record<string, { findUnique?: unknown; findFirst?: unknown; create?: unknown; update?: unknown }> & { $transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>; $queryRawUnsafe: (sql: string, ...a: unknown[]) => Promise<unknown> } = {
     order: { findUnique: async () => (seed.order ? { ...seed.order } : null) },
     operator: { findUnique: async () => (seed.operatorEmail ? { email: seed.operatorEmail } : null) },
     loyaltyCustomer: {
@@ -42,7 +47,9 @@ function makeDb(seed: {
       },
     },
     loyaltyTransaction: {
-      findFirst: async ({ where }: { where: { type: string } }) => state.txns.find((t) => t.type === where.type) ?? null,
+      findFirst: async ({ where }: { where: { type?: string; sourceEventId?: unknown } }) =>
+        state.txns.find((t) => (where.type == null || t.type === where.type)
+          && (!('sourceEventId' in where) || t.sourceEventId === (where.sourceEventId as string | null))) ?? null,
       create: async ({ data }: { data: Tx }) => {
         if (uniqueHit(data.sourceEventId, data.type)) {
           const err = new Error('Unique constraint failed') as Error & { code: string }
@@ -53,6 +60,8 @@ function makeDb(seed: {
         return { ...data }
       },
     },
+    // FOR UPDATE lock read — returns the current locked balance (no real concurrency in-test).
+    $queryRawUnsafe: async (_sql: string) => (state.customer ? [{ pointsBalance: state.customer.pointsBalance }] : []),
     // Interactive transaction with snapshot rollback on throw (faithful to Prisma).
     $transaction: async (fn: (tx: typeof model) => Promise<unknown>) => {
       const snapTxns = state.txns.map((t) => ({ ...t }))
@@ -122,6 +131,18 @@ describe('reconcileLoyaltyOnRefund — D3 offset (L)', () => {
     expect(state.customer!.pointsBalance).toBe(8)              // 6 −6 (floored) +8 restored, never negative
     expect(state.customer!.recoveryOffsetPoints).toBe(8)      // 14 − 6 recovered = 8 debt
     expect(r.offsetAdded).toBe(8)
+  })
+})
+
+describe('reconcileLoyaltyOnRefund — grandfather (E-P1a/F-P1)', () => {
+  it('an order with a legacy (NULL,refund) row is left untouched — no double credit/clawback', async () => {
+    const { db, state } = makeDb({ order: ORDER, operatorEmail: 'c@x.fr', customer: { ...CUST }, earnTx: true, legacyRefund: true })
+    const r = await reconcileLoyaltyOnRefund(db, { orderId: 'o1', chargeAmountCents: 1410, refunds: [re('re_new', 1410)] })
+    expect(r.grandfathered).toBe(true)
+    expect(r.applied).toBe(0)
+    expect(state.customer!.pointsBalance).toBe(100) // untouched — legacy loyalty stands
+    expect(state.txns.filter((t) => t.type === 'earn_reversal')).toHaveLength(0)
+    expect(state.txns.filter((t) => t.sourceEventId === 're_new')).toHaveLength(0)
   })
 })
 

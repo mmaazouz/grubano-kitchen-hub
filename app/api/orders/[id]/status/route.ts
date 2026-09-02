@@ -160,7 +160,14 @@ export async function PATCH(
         const already = await prisma.loyaltyTransaction.findFirst({
           where: { orderId: order.id, type: 'earn' }, select: { id: true },
         })
-        if (!already) {
+        // Adversarial review E-P2d — never CREDIT earned points on an order whose
+        // loyalty was already reconciled by a refund (a refund before delivery, then
+        // a later 'delivered'). A 'refund' or 'earn_reversal' row for the order is the
+        // marker; if present, skip the earn (the refund already unwound this order).
+        const refundedMarker = await prisma.loyaltyTransaction.findFirst({
+          where: { orderId: order.id, type: { in: ['refund', 'earn_reversal'] } }, select: { id: true },
+        })
+        if (!already && !refundedMarker) {
           const operator = await prisma.operator.findUnique({
             where: { id: order.consumerId }, select: { email: true, name: true },
           })
@@ -180,15 +187,19 @@ export async function PATCH(
             // falls by what was repaid). Interactive tx = the offset read + both writes
             // are atomic. Idempotent via the [orderId,'earn'] guard above.
             await prisma.$transaction(async (tx) => {
-              const cust = await tx.loyaltyCustomer.findUnique({
-                where: { id: lc.id }, select: { recoveryOffsetPoints: true },
-              })
-              const { spendableIncrement, newOffset } = applyEarnWithOffsetRepay(
-                order.pointsEarned, cust?.recoveryOffsetPoints ?? 0,
+              // LOCK the customer row (SELECT … FOR UPDATE) so a concurrent refund
+              // clawback (which also locks it) cannot lost-update the offset: an
+              // absolute `recoveryOffsetPoints = newOffset` write racing a clawback's
+              // `{increment}` would drop the clawback's debt (review E-P2c). Under the
+              // lock we read the true offset and apply RELATIVE deltas only.
+              const rows = await tx.$queryRawUnsafe<{ recoveryOffsetPoints: number }[]>(
+                'SELECT recoveryOffsetPoints FROM LoyaltyCustomer WHERE id = ? FOR UPDATE', lc.id,
               )
+              const off = Number(rows?.[0]?.recoveryOffsetPoints ?? 0)
+              const { spendableIncrement, offsetRepaid } = applyEarnWithOffsetRepay(order.pointsEarned, off)
               await tx.loyaltyCustomer.update({
                 where: { id: lc.id },
-                data:  { pointsBalance: { increment: spendableIncrement }, recoveryOffsetPoints: newOffset },
+                data:  { pointsBalance: { increment: spendableIncrement }, recoveryOffsetPoints: { decrement: offsetRepaid } },
               })
               await tx.loyaltyTransaction.create({
                 data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned },

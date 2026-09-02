@@ -49,6 +49,7 @@ const { db, getToken, getServerSession, resolveScope, sendEmail, accrual, positi
     operator:           { findUnique: vi.fn() },
     restaurant:         { findUnique: vi.fn() },
     $transaction:       vi.fn(),
+    $queryRawUnsafe:     vi.fn(),
     // Courier deliver surface (step-handler + REAL advanceMissionByCourier)
     logisticsProfile:   { findUnique: vi.fn() },
     mission:            { findUnique: vi.fn(), updateMany: vi.fn() },
@@ -191,6 +192,7 @@ describe('P7 — machine d’états PATCH /api/orders/[id]/status pour une comma
   db.loyaltyCustomer.findUnique.mockResolvedValue({ recoveryOffsetPoints: 0 })
       db.$transaction.mockImplementation(async (arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(db) : Promise.all(arg as Promise<unknown>[]))
+  db.$queryRawUnsafe.mockResolvedValue([{ recoveryOffsetPoints: 0 }])
     const res = await patchStatus('o1', { status: 'delivered' })
     expect(res.status).toBe(200)
     expect(db.loyaltyTransaction.findFirst).toHaveBeenCalledWith({

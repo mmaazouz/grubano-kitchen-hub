@@ -63,10 +63,13 @@ export async function POST(req: Request) {
         where: { id: lc.id }, select: { recoveryOffsetPoints: true },
       })
       waived = Math.min(Math.max(0, amountPoints), Math.max(0, cur?.recoveryOffsetPoints ?? 0))
+      // The idempotency key is SCOPED BY CUSTOMER (review F-P2): a caller reusing
+      // the same idempotencyKey across two different customers must NOT collide on
+      // the global unique index and silently no-op the second customer's waiver.
       await tx.loyaltyTransaction.create({
         data: {
           customerId: lc.id, orderId: null, type: 'offset_waiver',
-          points: waived, sourceEventId: idempotencyKey, actorId: user.id,
+          points: waived, sourceEventId: `waiver:${lc.id}:${idempotencyKey}`, actorId: user.id,
         },
       })
       if (waived > 0) {

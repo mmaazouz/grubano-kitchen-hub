@@ -45,6 +45,7 @@ const { db } = vi.hoisted(() => ({
     loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
     loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn() },
     $transaction:       vi.fn(),
+    $queryRawUnsafe:     vi.fn(),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -159,6 +160,7 @@ beforeEach(() => {
   db.loyaltyTransaction.create.mockResolvedValue({ id: 'tx1' })
     db.$transaction.mockImplementation(async (arg: unknown) =>
     typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(db) : Promise.all(arg as Promise<unknown>[]))
+  db.$queryRawUnsafe.mockResolvedValue([{ recoveryOffsetPoints: 0 }])
   emailMock.mockResolvedValue({ status: 'sent' })
 })
 

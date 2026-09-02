@@ -50,7 +50,7 @@ A future earning **repays the offset first**; only the remainder becomes spendab
 `POST /api/admin/loyalty/waiver` — admin-only. Forgives `min(amountPoints, offset)`; reduces the debt, **does not** credit spendable balance. Audited in `AdminAuditLog` (`loyalty.waiver`: actor, reason, amount, timestamp) + a signed `offset_waiver` `LoyaltyTransaction` (`actorId`). Idempotent via a caller-supplied `idempotencyKey` (unique `(sourceEventId,'offset_waiver')`). [app/api/admin/loyalty/waiver/route.ts](app/api/admin/loyalty/waiver/route.ts).
 
 ## 16 · Idempotency source
-**One loyalty effect per immutable refund source event = the Stripe Refund id `re_…`.** Stored as `LoyaltyTransaction.sourceEventId` with `@@unique([sourceEventId, type])`. Replay of a refund → P2002 → no-op; a distinct partial refund (distinct `re_…`) → applies once. `[orderId, type]` was **REJECTED** by the critic (partial refunds share it). Waivers use the caller's `idempotencyKey` as the `sourceEventId`. Mirrors the ledger's proven `@@unique([sourceEventId,type])` — [schema:1762](prisma/schema.prisma:1762).
+**One loyalty effect per immutable refund source event = the Stripe Refund id `re_…`.** Stored as `LoyaltyTransaction.sourceEventId` with `@@unique([sourceEventId, type])`. Replay of a refund → P2002 → no-op; a distinct partial refund (distinct `re_…`) → applies once. `[orderId, type]` was **REJECTED** by the critic (partial refunds share it). Waivers use `waiver:<customerId>:<caller idempotencyKey>` as the `sourceEventId` (customer-scoped, so two customers cannot collide on a reused key — review F-P2). Mirrors the ledger's proven `@@unique([sourceEventId,type])` — [schema:1762](prisma/schema.prisma:1762).
 
 ## 17 · Webhook reconciliation semantics
 `charge.refunded` is the **single reconciliation point** and is **NOT gated by `REFUNDS_ENABLED`** (deliberately — per founder: `REFUNDS_ENABLED` gates who may *initiate*; it must not suppress reconciling an *established* Stripe refund). A refund initiated by the admin rail OR externally on the Stripe Dashboard reconciles identically, keyed on `re_…`. `executeRefund` does **not** separately touch loyalty (it creates the Stripe refund; the resulting webhook reconciles) — one owner, no double effect.
@@ -62,7 +62,7 @@ A future earning **repays the offset first**; only the remainder becomes spendab
 **No dedup, no `--accept-data-loss`**: all existing rows get `sourceEventId = NULL`, and MySQL/InnoDB permits many NULLs in a UNIQUE index (precedent in-repo: `Payout.idempotencyKey String? @unique`, [schema:1800](prisma/schema.prisma:1800)). `prisma validate` = OK; client regenerated with the fields.
 
 ## 19 · Migration plan
-The repo has **no `prisma/migrations`** (schema managed by `db push`; deploy scripts use `--accept-data-loss` — forbidden here). Because the change is additive, apply with **`prisma db push` WITHOUT `--accept-data-loss`** (`scripts/server/prisma-push.sh` already runs it flagless). Sequence (founder-executed, §20–21): fresh backup → baseline → `db push` → integrity check → merge → deploy → healthcheck → post-deploy loyalty check → only then consider lifting the freeze. **Local disposable rehearsal proves the push is additive before staging** (§21 evidence).
+The repo has **no `prisma/migrations`** (schema managed by `db push`; deploy scripts use `--accept-data-loss` — forbidden here). **Correction (rehearsal-proven):** `prisma db push` FLAGLESS **refuses** the unique-index step — it demands `--accept-data-loss` for ANY unique index (it cannot statically prove no duplicates), even though the actual `CREATE UNIQUE INDEX` on the all-NULL column loses nothing. That refusal is exactly why we ship the reviewable SQL artifact and apply IT first. The founder applies `phase1-loyalty-refund.sql` **before** the post-merge deploy; the deploy's own `db push --accept-data-loss` (in `deploy-staging.sh`) then finds the schema **already in sync** and does nothing (flag is a no-op with no pending change). So `--accept-data-loss` never actually acts on this migration. Sequence (founder-executed, §20–21): fresh backup → baseline → `db push` → integrity check → merge → deploy → healthcheck → post-deploy loyalty check → only then consider lifting the freeze. **Local disposable rehearsal proves the push is additive before staging** (§21 evidence).
 
 ## 20 · Backup procedure (founder-executed, no secrets shared)
 Before any staging schema change, in cPanel Terminal (see `docs/ops/PHASE1-STAGING-PROCEDURE.md` for the exact copy-paste):
@@ -83,6 +83,14 @@ Both backups (pre-rehearsal + pre-migration current) must exist before the push.
 - Old 100 %-restore-on-10 %-partial is wrong (8 vs the correct 1).
 - A reversal without the offset would push the balance to −8 — the floor keeps it at 0.
 - Waiver replay would double-forgive (20−8−8) — the key forgives exactly once (12).
+
+## 23 · Hardening from adversarial review + known residuals
+- **Concurrency (E-P1b / E-P2c):** the clawback and the earn-repay both `SELECT … FOR UPDATE` the customer row and apply RELATIVE deltas → no negative balance, no lost offset under concurrent distinct-event webhooks.
+- **Legacy grandfather (E-P1a / F-P1):** an order carrying a pre-Phase-1 `(NULL,'refund')` loyalty row is left untouched (`grandfathered`) — never double-restored, never retro-clawed. New orders reconcile normally.
+- **Earn on a refunded order (E-P2d):** the `delivered` earn skips crediting when a `refund`/`earn_reversal` row already exists for the order.
+- **Residual (documented, safe direction):** an order refunded BEFORE delivery that spent NO points has no loyalty marker; a later refund event applies the D1 clawback (reduces balance, the founder-intended direction) — never an over-credit. Staging population ≈ empty (the refund freeze prevented any completed refund).
+- **Bound (NIT):** the telescoping needs the full refund prefix; if a charge ever has > 100 refunds AND the Stripe list refetch fails, an early frozen delta could be wrong. Test/beta volumes never approach this; the webhook already refetches on `has_more`.
+- **DDL:** the SQL artifact uses `ADD COLUMN IF NOT EXISTS` (MariaDB — o2switch is MariaDB 12.3, confirmed). A true MySQL 8 target would need the guarded form.
 
 ---
 
