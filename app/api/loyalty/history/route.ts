@@ -1,3 +1,4 @@
+import { orderRef } from '@/lib/order-ref'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
@@ -22,7 +23,6 @@ import { centsPerPoint, pointsToCents } from '@/lib/loyalty'
 export const dynamic = 'force-dynamic'
 
 const MAX_TAKE = 30
-const orderRef = (id: string) => `#${id.slice(-6).toUpperCase()}`
 
 export async function GET(req: NextRequest) {
   try {

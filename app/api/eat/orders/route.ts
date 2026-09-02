@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { orderRef } from '@/lib/order-ref'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
 
@@ -47,7 +48,8 @@ const ACTIVE_ORDER = ['received', 'preparing', 'ready', 'picked_up']
 const PAST_ORDER = ['delivered', 'cancelled']
 
 // Short, human-friendly reference derived from the real id (no fabricated codes).
-const refOf = (id: string) => 'GR-' + id.slice(-5).toUpperCase()
+// ONE formula for every surface (client, operator, kitchen, emails): lib/order-ref.
+const refOf = orderRef
 
 export async function GET(req: NextRequest) {
   try {

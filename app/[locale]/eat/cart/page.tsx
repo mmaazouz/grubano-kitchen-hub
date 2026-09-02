@@ -453,11 +453,9 @@ export default function CartScreen() {
       : t('rewardPctShort', { pct: next.rewardPct ?? next.discount })
     return { missing: Math.round((next.thresholdEur! - subtotal) * 100) / 100, reward }
   }, [promos, subtotal, t])
-  const readyAt = useMemo(() => {
-    const minutes = cart?.restaurant.deliveryTime ?? 20
-    const d = new Date(Date.now() + minutes * 60_000)
-    return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-  }, [cart])
+  // LOT VÉRACITÉ : « Prêt vers HH:MM (~N min) » était un 3e calcul d'heure, CLIENT
+  // (Date.now() + deliveryTime ?? 20 EN DUR) — retiré : aucun moteur ne calcule
+  // d'heure, et deliveryTime n'est saisi par aucune UI.
 
   async function placeOrder() {
     if (!cart) return
@@ -616,10 +614,7 @@ export default function CartScreen() {
                 <div className="main">
                   <b>{cart.restaurant.name}</b>
                   <span>
-                    {[
-                      cart.restaurant.city,
-                      cart.restaurant.deliveryTime ? `~${cart.restaurant.deliveryTime} min` : null,
-                    ].filter(Boolean).join(' · ')}
+                    {cart.restaurant.city ?? ''}
                   </span>
                 </div>
                 {cart.restaurantId && (
@@ -754,7 +749,7 @@ export default function CartScreen() {
                       {cart.restaurant.address ? ` — ${cart.restaurant.address}` : ''}
                       {cart.restaurant.city ? `, ${cart.restaurant.city}` : ''}
                     </div>
-                    <div className="ready">{t('readyAround', { time: readyAt, minutes: cart.restaurant.deliveryTime ?? 20 })}</div>
+                    <div className="ready">{t('pickupReadyNote')}</div>
                   </div>
                 </div>
               )}

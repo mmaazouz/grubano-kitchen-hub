@@ -90,6 +90,9 @@ export async function GET(req: Request) {
           deliveryTime: true,
           minOrder:     true,
           deliveryFee:  true,
+          // Lot véracité : sans ce booléen, les cartes conso ne peuvent PAS savoir
+          // si « Gratuit » (livraison offerte) a un sens pour ce restaurant.
+          deliveryEnabled: true,
           city:         true,
           address:      true,
           isActive:     true,
@@ -221,6 +224,9 @@ export async function GET(req: Request) {
           deliveryTime: true,
           minOrder:     true,
           deliveryFee:  true,
+          // Lot véracité : sans ce booléen, les cartes conso ne peuvent PAS savoir
+          // si « Gratuit » (livraison offerte) a un sens pour ce restaurant.
+          deliveryEnabled: true,
           city:         true,
           address:      true,
           isActive:     true,

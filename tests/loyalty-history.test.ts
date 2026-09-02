@@ -95,7 +95,7 @@ describe('the ledger', () => {
 
   it('builds a short order ref from orderId (#last6 upper) and null when no order', async () => {
     const body = await (await call()).json()
-    expect(body.transactions[0].orderRef).toBe('#123DEF')  // last 6 of order_abc123def → '123def'
+    expect(body.transactions[0].orderRef).toBe('GR-123DEF')  // ref unifiee lib/order-ref : 'GR-' + last6
     expect(body.transactions[2].orderRef).toBeNull()       // refund had no orderId
   })
 

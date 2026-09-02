@@ -53,8 +53,8 @@ export default async function EatNextHome() {
                   cuisine={r.cuisine}
                   rating={r.rating}
                   deliveryFeeEur={r.deliveryFeeEur}
-                  etaMin={r.etaMin}
-                  tag={r.deliveryFeeEur === 0 ? t('freeDelivery') : undefined}
+                  deliveryEnabled={r.deliveryEnabled}
+                  tag={r.deliveryEnabled && r.deliveryFeeEur === 0 ? t('freeDelivery') : undefined}
                 />
                 {/* Bataille 2 — minimum order also shown up front. */}
                 <p className="mt-1 px-1 text-xs text-stellar-muted-fg">

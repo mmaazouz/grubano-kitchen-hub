@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -8,7 +9,6 @@ import { useTranslations, useLocale } from 'next-intl'
 import StripeTicketPayment from '@/components/payments/StripeTicketPayment'
 import WalletPaymentButton from '@/components/eat/WalletPaymentButton'
 import { readAddresses, formatAddress, type EatAddress } from '@/lib/eat-addresses'
-import { formatTime } from '@/lib/format'
 import './checkout.css'
 import './confirmed.css'
 import '@/app/gb-foundation/gb-tokens.css'
@@ -47,7 +47,7 @@ interface OrderInfo {
   deliveryFee:     number
   total:           number
   paymentStatus?:  string | null
-  restaurant?:     { id: string; name: string; address?: string | null; city?: string | null } | null
+  restaurant?:     { id: string; name: string; address?: string | null; city?: string | null; pickupPrepTime?: number | null; deliveryPrepTime?: number | null } | null
   // Chantier P2 (additive GET fields) — the SERVER-resolved discount and its
   // promotion display name. No client computation, ever.
   discount?:       number
@@ -73,7 +73,7 @@ interface PayInit {
 
 type Stage = 'loading' | 'review' | 'pay' | 'paid' | 'already-paid' | 'error'
 
-const orderRefOf = (id: string) => `#${id.slice(-6).toUpperCase()}`
+const orderRefOf = orderRef
 const ADDR_ICON: Record<EatAddress['kind'], string> = { home: 'home', work: 'work', other: 'location_on' }
 
 export default function CheckoutPage() {
@@ -214,19 +214,18 @@ export default function CheckoutPage() {
   // The customer first name for the greeting (« Merci Sofia ! ») — from the real
   // session; falls back to a generic greeting when anonymous.
   const firstName = ((session?.user?.name as string | undefined) ?? '').trim().split(/\s+/)[0] || ''
-  // ETA window — from the REAL estimatedTime (minutes) anchored on the REAL
-  // createdAt. We render a tight window [eta, eta+15min] (the CD shows a 15-min
-  // band) + a « dans ~N min » relative line from now. No money, purely display;
-  // degrades to em-dash when the order has no ETA.
-  const hasEta = order ? Number.isFinite(order.estimatedTime) && (order.estimatedTime ?? 0) > 0 : false
-  const createdMs = order?.createdAt ? new Date(order.createdAt).getTime() : Date.now()
-  const etaStart = new Date(createdMs + (order?.estimatedTime ?? 0) * 60_000)
-  const etaEnd   = new Date(etaStart.getTime() + 15 * 60_000)
-  const etaWindow = hasEta ? `${formatTime(etaStart, locale)} – ${formatTime(etaEnd, locale)}` : '—'
-  const etaMinsFromNow = hasEta ? Math.max(1, Math.round((etaStart.getTime() - Date.now()) / 60_000)) : 0
-  // The address shown in the ETA sub-line: prefer the real saved default address
-  // label, fall back to the order's frozen delivery address string.
-  const confAddr = selAddr?.label || (order?.deliveryAddress ?? '')
+  // LOT VÉRACITÉ (2026-09-01) — l'« ARRIVÉE ESTIMÉE HH:MM–HH:MM · Dans ~N min »
+  // était dérivée d'Order.estimatedTime = Restaurant.deliveryTime, un champ que
+  // AUCUNE UI ne permet de saisir (défaut de schéma 30) — et « arrivée » est du
+  // vocabulaire de livraison, affiché tel quel sur un RETRAIT (prouvé par la
+  // répétition humaine). Aucun moteur ne calcule d'heure ⇒ aucune heure promise.
+  // La seule donnée temps que le restaurateur SAISIT réellement (/dashboard/
+  // fulfillment) est sa durée de préparation : exposée comme durée ATTRIBUÉE,
+  // jamais comme promesse horaire ; absente ⇒ pas de carte du tout.
+  const prepMins = (() => {
+    const v = Number(isPickup ? order?.restaurant?.pickupPrepTime : order?.restaurant?.deliveryPrepTime)
+    return Number.isFinite(v) && v > 0 ? Math.round(v) : null
+  })()
 
   // ── The pay CTA — review = start payment; pay = the wallet + Stripe Elements
   //    card (real payment). Money handlers BYTE-IDENTICAL. ──────────────────────
@@ -447,7 +446,7 @@ export default function CheckoutPage() {
 
       {/* ── « Commande confirmée » 🎉 (post-paiement) — VERBATIM CD 38efd2c9-…-81f8.
            Re-skins the previous 'paid' panel in place; payment/order flow untouched.
-           REAL data: order ref, ETA window (estimatedTime+createdAt), mode (fulfill-
+           REAL data: order ref, prep duration (restaurateur-entered), mode (fulfill-
            mentType), items + Total payé (frozen order.total), restaurant name, address.
            « Suivre » → /eat/track ; « Voir le reçu » INERT (no receipt route yet). ─── */}
       {stage === 'paid' && order && (
@@ -462,18 +461,18 @@ export default function CheckoutPage() {
               <b>{order.restaurant?.name ?? ''}</b> {tc('preparing')}
             </p>
 
-            {/* ETA card — real estimated arrival window */}
-            <div className="eta">
-              <span className="ic"><span className="ms" aria-hidden="true">schedule</span></span>
-              <div className="m">
-                <small>{tc('etaLabel')}</small>
-                <b><bdi>{etaWindow}</bdi></b>
-                <span>
-                  {hasEta ? tc('etaIn', { mins: etaMinsFromNow }) : tc('etaSoon')}
-                  {!isPickup && confAddr ? ` · ${tc('etaAddress', { address: confAddr })}` : ''}
-                </span>
+            {/* Durée de préparation SAISIE par le restaurateur — pas d'heure promise,
+                pas de « fenêtre d'arrivée ». Donnée absente ⇒ carte absente. */}
+            {prepMins != null && (
+              <div className="eta">
+                <span className="ic"><span className="ms" aria-hidden="true">schedule</span></span>
+                <div className="m">
+                  <small>{tc('prepLabel')}</small>
+                  <b><bdi>{tc('prepMins', { mins: prepMins })}</bdi></b>
+                  <span>{tc('prepNote')}</span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* meta — order number + mode */}
             <div className="cf-meta">

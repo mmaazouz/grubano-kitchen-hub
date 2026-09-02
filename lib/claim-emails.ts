@@ -27,6 +27,7 @@
 //   claim_decision_approved      claim:<id>   Grubano tranche, remboursement pas encore émis
 //   claim_decision_refused_final claim:<id>   Grubano confirme le refus (définitif)
 
+import { orderRef } from '@/lib/order-ref'
 import { getTranslations } from 'next-intl/server'
 import { prisma } from '@/lib/prisma'
 import { sendTransactional, logEmailSkipped, type SendStatus } from '@/lib/transactional-emails'
@@ -35,8 +36,6 @@ import { resolveNudgeLocale } from '@/lib/onboarding-nudge'
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-/** Même dérivation de référence courte que le checkout / les emails commande. */
-const orderRef = (id: string) => `#${id.slice(-6).toUpperCase()}`
 
 /** Montant en euros dans la LOCALE du destinataire (revue : .toFixed(2) mettait
  *  un point décimal dans les emails FR/ES/IT). Les 5 codes sont des tags BCP-47. */

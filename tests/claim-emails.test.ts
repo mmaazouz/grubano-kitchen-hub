@@ -73,7 +73,7 @@ describe('sendClaimAckEmail — accusé de réception (claim_ack / claim:<id>)',
     expect(call.dedupeKey).toBe('claim:cl1')
     expect(call.to).toBe('lea@x.fr')
     expect(call.subject).toContain('ack.subject')
-    expect(call.subject).toContain('#123ABC')          // même dérivation de ref que le checkout
+    expect(call.subject).toContain('GR-123ABC')        // ref unifiee lib/order-ref (lot veracite)
     expect(call.html).toContain('ack.body')
     expect(call.html).toContain('12,50')               // euros dans la LOCALE (fr → virgule)
   })

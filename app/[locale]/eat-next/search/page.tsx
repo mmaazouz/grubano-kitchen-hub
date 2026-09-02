@@ -20,6 +20,7 @@ interface ApiRestaurant {
   deliveryTime: number
   minOrder: number
   deliveryFee: number
+  deliveryEnabled?: boolean
 }
 
 const INTENTION_KEYS = ['comfort', 'light', 'share', 'glutenFree', 'cheapest', 'fast'] as const
@@ -114,8 +115,8 @@ export default function EatNextSearch() {
                   cuisine={Array.isArray(r.cuisine) && typeof r.cuisine[0] === 'string' ? r.cuisine[0] : ''}
                   rating={r.rating}
                   deliveryFeeEur={r.deliveryFee}
-                  etaMin={r.deliveryTime}
-                  tag={r.deliveryFee === 0 ? t('freeDelivery') : undefined}
+                  deliveryEnabled={r.deliveryEnabled === true}
+                  tag={r.deliveryEnabled === true && r.deliveryFee === 0 ? t('freeDelivery') : undefined}
                 />
               </Link>
             </li>

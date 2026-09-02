@@ -70,6 +70,7 @@ interface Restaurant {
   deliveryTime: number
   minOrder: number
   deliveryFee: number
+  deliveryEnabled?: boolean
   coverPhoto?: string
   city: string
   address: string
@@ -140,6 +141,7 @@ const CARD_TINTS = ['t1', 't4', 't3', 't2']
 function SearchContent() {
   const t = useTranslations('eat.search')
   const tc = useTranslations('common')
+  const tr = useTranslations('eat.restaurant')
   const locale = useLocale()
   const params = useSearchParams()
   const router = useRouter()
@@ -232,11 +234,12 @@ function SearchContent() {
     (r: Restaurant) => {
       const base = formatCuisineList(r.cuisine, locale, t('cuisineVaried'))
       if (typeof r.distanceKm === 'number') {
-        return `${base} · ${formatDistance(r.distanceKm, locale, tc('km'))}`
+        // Haversine à vol d'oiseau — annoncée comme approximative (lot véracité).
+        return `${base} · ${tr('distanceApprox', { distance: formatDistance(r.distanceKm, locale, tc('km')) })}`
       }
       return base
     },
-    [locale, t, tc],
+    [locale, t, tc, tr],
   )
 
   const favCount = useMemo(() => results.filter((r) => favs.includes(r.id)).length, [results, favs])
@@ -466,7 +469,6 @@ function SearchContent() {
                         className={`card__img ${CARD_TINTS[i % CARD_TINTS.length]}`}
                         style={cover ? { backgroundImage: `url(${cover})` } : undefined}
                       >
-                        <span className="card__time">{r.deliveryTime} {t('minUnit')}</span>
                         <button
                           type="button"
                           className={`card__fav${fav ? ' on' : ''}`}
@@ -490,7 +492,7 @@ function SearchContent() {
                         <div className="card__meta">{meta(r)}</div>
                         {/* REAL tag: free delivery. Other CD tags (veg/popular) have no
                             backing data → omitted (decorative-only in the CD mock). */}
-                        {r.deliveryFee === 0 && (
+                        {r.deliveryEnabled === true && r.deliveryFee === 0 && (
                           <div className="card__tags">
                             <span className="tag tag--free">{tc('free')}</span>
                           </div>

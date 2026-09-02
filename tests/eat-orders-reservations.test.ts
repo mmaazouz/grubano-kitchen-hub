@@ -130,7 +130,7 @@ describe('GET /api/eat/orders — cartes réservation (V5-1)', () => {
     expect(j.current[0]).toEqual({
       id: 'ord1', kind: 'pickup', phase: 'current', restaurantName: 'Chez Test',
       itemsCount: 2, total: 24.5, status: 'preparing',
-      createdAt: new Date(now - 1 * H).toISOString(), ref: 'GR-' + 'ord1'.slice(-5).toUpperCase(),
+      createdAt: new Date(now - 1 * H).toISOString(), ref: 'GR-' + 'ord1'.slice(-6).toUpperCase(), // formule unique lib/order-ref (lot veracite)
       restaurantId: 'r1', eta: 20, trackingId: 'ord1',
     })
   })

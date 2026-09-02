@@ -20,6 +20,7 @@ Header collant → Hero (image + nom + type/ville/distance + Ouvert) → Modes d
 Image 21:8 (16:9 mobile), voile dégradé bas, nom 32 px blanc (23 px mobile), méta en une ligne (type · ville · distance), pastille **Ouvert** basil avec point + texte. **Fallback sans photo** : trame diagonale neutre — la lisibilité du nom ne dépend pas de l'image.
 
 ## 6 · Modes de service
+> **SURCHARGE FONDATEUR (2026-09-02, lot véracité)** : la carte « Sur place » n'est rendue que si le restaurant est **réservable** (≥ 1 table active). Non réservable, elle n'était qu'un bascule visuel sans mode de commande réel derrière (Fulfillment serveur = delivery | pickup) — masquée plutôt que promise. Réservable, elle reste l'entrée du tunnel /reserver.
 Deux cartes seulement : **Click & collect** (actif, `storefront`) et **Sur place** (`table_restaurant`). Actif = bord + fond zest **+ ✓ après le libellé** (jamais couleur seule), `aria-pressed`. Mobile : sous-titres masqués.
 
 ## 7 · Menu

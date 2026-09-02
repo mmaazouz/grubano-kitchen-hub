@@ -279,9 +279,9 @@ export default function OrdersPage() {
         </div>
       </div>
       <Stepper c={c} />
-      {c.kind === 'delivery' && (
-        <div className="statusline"><span className="ms" style={{ color: 'var(--gb-delivery)' }} aria-hidden="true">schedule</span>{t('etaLabel')} <b style={{ marginLeft: 3 }}>{t('etaMin', { min: c.eta ?? 30 })}</b></div>
-      )}
+      {/* LOT VÉRACITÉ : la ligne « Arrivée estimée ~N min » (Order.estimatedTime =
+          deliveryTime jamais saisi, repli 30 EN DUR) est retirée — aucun moteur ne
+          calcule d'heure d'arrivée. Le stepper d'état au-dessus dit déjà le vrai. */}
       {c.kind === 'pickup' && (
         <div className="statusline"><span className="ms" style={{ color: 'var(--gb-pickup)' }} aria-hidden="true">qr_code_2</span>{t('pickupCode')} <span className="pickup-code" style={{ marginLeft: 4 }}>{c.ref}</span></div>
       )}

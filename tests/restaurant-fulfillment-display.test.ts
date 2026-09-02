@@ -107,9 +107,11 @@ describe('V5-2 — gardes source : les 2 surfaces UI gatent leur chip livraison'
     expect(src).not.toMatch(/useState<Fulfillment>\('delivery'\)/)
   })
 
-  it('la fiche publique filtre le chip delivery de MODES sur deliveryAvailable', () => {
+  it('la fiche publique filtre le chip delivery sur deliveryAvailable ET la carte Sur place sur reservable', () => {
     const src = fs.readFileSync(path.join(ROOT, 'app/[locale]/eat/r/[id]/page.tsx'), 'utf8')
-    expect(src).toMatch(/MODES\.filter\(\(m\) => m !== 'delivery' \|\| deliveryAvailable\)/)
+    // Lot veracite : le filtre gate desormais AUSSI « Sur place » sur `reservable`
+    // (aucun mode dine-in payable n'existe hors tunnel /reserver).
+    expect(src).toMatch(/MODES\.filter\(\(m\) =>[\s\S]{0,120}?m !== 'delivery' \|\| deliveryAvailable[\s\S]{0,120}?m !== 'dinein' \|\| reservable/)
     expect(src).not.toMatch(/useState<Mode>\('delivery'\)/)
   })
 })

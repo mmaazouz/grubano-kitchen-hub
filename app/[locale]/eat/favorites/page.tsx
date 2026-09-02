@@ -32,6 +32,7 @@ interface Restaurant {
   reviewCount: number
   deliveryTime: number
   deliveryFee: number
+  deliveryEnabled?: boolean
   coverPhoto?: string
   city: string
   distanceKm?: number | null
@@ -42,6 +43,7 @@ const TINTS = ['t1', 't2', 't3', 't4', 't5', 't6']
 export default function FavoritesScreen() {
   const t = useTranslations('eat.favorites')
   const tc = useTranslations('common')
+  const tr = useTranslations('eat.restaurant')
   const locale = useLocale()
   const router = useRouter()
 
@@ -117,7 +119,7 @@ export default function FavoritesScreen() {
           {loading
             ? [0, 1, 2].map((i) => <div key={i} className="fav-skel" />)
             : favRestaurants.map((r, i) => {
-                const dist = typeof r.distanceKm === 'number' ? formatDistance(r.distanceKm, locale, tc('km')) : ''
+                const dist = typeof r.distanceKm === 'number' ? tr('distanceApprox', { distance: formatDistance(r.distanceKm, locale, tc('km')) }) : ''
                 const meta = [formatCuisineList(r.cuisine, locale, t('cuisineVaried')), dist].filter(Boolean).join(' · ')
                 const cover = r.coverPhoto || getRestaurantCover(r.id)
                 return (
@@ -133,7 +135,6 @@ export default function FavoritesScreen() {
                       className={`card__img ${TINTS[i % TINTS.length]}`}
                       style={cover ? { backgroundImage: `url(${cover})` } : undefined}
                     >
-                      <span className="card__time">{t('deliveryMin', { min: r.deliveryTime })}</span>
                       <button
                         type="button"
                         className="card__heart"
@@ -157,7 +158,7 @@ export default function FavoritesScreen() {
                         )}
                       </div>
                       <div className="card__meta">{meta}</div>
-                      {r.deliveryFee === 0 && (
+                      {r.deliveryEnabled === true && r.deliveryFee === 0 && (
                         <div className="card__tags">
                           <span className="fav-tag fav-tag--free">{tc('free')}</span>
                         </div>

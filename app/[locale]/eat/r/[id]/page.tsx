@@ -656,8 +656,15 @@ export default function RestaurantScreen() {
               CONSEQUENCE of the server gate (V5-2), never hardcoded: the delivery
               card (and its two-wheeler glyph) only exists if the server would
               accept a delivery order. ══ */}
+          {/* ARBITRAGE FONDATEUR (2026-09-02, lot véracité §4) : « Sur place »
+              n'apparaît QUE si le restaurant est réservable (vraies tables actives).
+              Non réservable, la carte n'était qu'un bascule visuel : aucun panier
+              dine-in payable n'existe (Fulfillment = delivery|pickup) — elle
+              PROMETTAIT un mode de commande inexistant. Réservable, elle garde sa
+              vraie fonction : l'entrée du tunnel /reserver. Surcharge déclarée du
+              §6 S1.1 (2 cartes hors livraison → 1 seule si non réservable). */}
           <div className="modes" role="group" aria-label={t('serviceModeAria')}>
-            {MODES.filter((m) => m !== 'delivery' || deliveryAvailable).map((m) => (
+            {MODES.filter((m) => (m !== 'delivery' || deliveryAvailable) && (m !== 'dinein' || reservable)).map((m) => (
               // V5-1b: the « Sur place » card is the entry point clients try
               // naturally — when the restaurant CAN take a reservation (has
               // tables), tapping it OPENS the real booking flow (mobile AND

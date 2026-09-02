@@ -1,4 +1,5 @@
 'use client'
+import { orderRef } from '@/lib/order-ref'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
@@ -7,7 +8,6 @@ import { useParams } from 'next/navigation'
 import { useRouter } from '@/navigation'
 import ClaimSection from '@/components/claims/ClaimSection'
 import CourierMap from '@/components/CourierMap'
-import { formatTime } from '@/lib/format'
 import '../track.css'
 import '@/app/gb-foundation/gb-tokens.css'
 import '@/app/gb-foundation/gb-components.css'
@@ -40,7 +40,7 @@ interface Order {
   total: number
   estimatedTime: number
   items: OrderItem[]
-  restaurant: { name: string; address: string; city?: string; logo?: string }
+  restaurant: { name: string; address: string; city?: string; logo?: string; pickupPrepTime?: number | null; deliveryPrepTime?: number | null }
   pointsEarned: number
   createdAt: string
   deliveryAddress: string
@@ -186,12 +186,18 @@ export default function OrderTrackingScreen() {
   const isDelivered = order.status === 'delivered' || (isPickup && order.status === 'picked_up')
   const currentStep = STATUS_TO_STEP[order.status] ?? 0
 
-  // Short order ref + real ETA / status label
-  const shortRef = `#GR-${order.id.slice(-4).toUpperCase()}`
-  const created = new Date(order.createdAt).getTime()
-  const etaDate = new Date(created + order.estimatedTime * 60_000)
-  const hasEta = Number.isFinite(order.estimatedTime) && order.estimatedTime > 0
-  const etaTime = hasEta ? formatTime(etaDate, locale) : '—'
+  // Short order ref. LOT VÉRACITÉ (2026-09-01) : l'« heure d'arrivée estimée »
+  // (createdAt + estimatedTime, où estimatedTime = Restaurant.deliveryTime qu'aucune
+  // UI ne saisit — défaut 30) est RETIRÉE : aucun moteur ne calcule d'heure, et le
+  // libellé « arrivée » sortait tel quel sur des RETRAITS (prouvé en répétition).
+  // Seule durée exposée : la préparation saisie par le restaurateur, pendant la
+  // préparation uniquement.
+  const shortRef = orderRef(order.id)
+  const prepMins = (() => {
+    const v = Number(isPickup ? order.restaurant?.pickupPrepTime : order.restaurant?.deliveryPrepTime)
+    return Number.isFinite(v) && v > 0 ? Math.round(v) : null
+  })()
+  const preparing = order.status === 'received' || order.status === 'preparing'
 
   // CD's 5 steps, label + sub-line keys + dot icon. `picked_up` for a pickup order
   // means "récupérée par le client" (terminal) — but the CD 5-step delivery journey is
@@ -212,11 +218,13 @@ export default function OrderTrackingScreen() {
   const itemsCount = order.items.reduce((n, it) => n + it.qty, 0)
   const modeLabel = isPickup ? t('pickupMode') : t('modeDelivery')
 
-  // Recap fee line: prefer the real delivery fee; fall back to total − items subtotal.
+  // Recap fee lines — VÉRACITÉ : seul le frais réellement stocké (Order.deliveryFee)
+  // porte le libellé « frais » ; l'écart résiduel du total (frais petite commande,
+  // pourboire — non détaillés sur la ligne Order) est nommé pour ce qu'il est,
+  // jamais déguisé en « Frais de service ».
   const itemsSubtotal = order.items.reduce((s, it) => s + it.price * it.qty, 0)
-  const feeAmount = typeof order.deliveryFee === 'number'
-    ? order.deliveryFee
-    : Math.max(0, order.total - itemsSubtotal)
+  const feeAmount = typeof order.deliveryFee === 'number' ? order.deliveryFee : 0
+  const otherAmount = Math.max(0, Math.round((order.total - itemsSubtotal - feeAmount) * 100) / 100)
 
   // ── The CD vertical stepper (5 steps), real status drives done/cur/todo ──────
   const Stepper = (
@@ -227,10 +235,7 @@ export default function OrderTrackingScreen() {
         const allDone = !isCancelled && isDelivered
         const klass = allDone || done ? 'done' : cur ? 'cur' : 'todo'
         // sub-line: real time on the active step; em-dash otherwise
-        const sub =
-          klass === 'cur' && hasEta ? t('etaApprox', { time: etaTime })
-          : klass === 'cur' ? t('inProgress')
-          : ''
+        const sub = klass === 'cur' ? t('inProgress') : ''
         const dotIcon = klass === 'done' ? 'check'
           : i === 3 ? (isPickup ? 'storefront' : 'two_wheeler')
           : 'check'
@@ -317,6 +322,12 @@ export default function OrderTrackingScreen() {
             <b>{formatEuros(feeAmount, locale)}</b>
           </div>
         )}
+        {otherAmount > 0.009 && (
+          <div className="row">
+            <span>{t('otherCharges')}</span>
+            <b>{formatEuros(otherAmount, locale)}</b>
+          </div>
+        )}
         <div className="row tot">
           <span>{t('totalPaid')}</span>
           <b>{formatEuros(order.total, locale)}</b>
@@ -354,8 +365,17 @@ export default function OrderTrackingScreen() {
       <span className="driver"><span className="ms">{isPickup ? 'storefront' : 'two_wheeler'}</span></span>
       <span className="home"><span className="ms">home_pin</span></span>
       <div className="eta">
-        <small>{isDelivered ? t('arrived') : t('estimatedArrival')}</small>
-        <b>{isDelivered ? '✓' : etaTime}</b>
+        {isDelivered ? (
+          <>
+            <small>{t('arrived')}</small>
+            <b>{'✓'}</b>
+          </>
+        ) : preparing && prepMins != null ? (
+          <>
+            <small>{t('prepLabel')}</small>
+            <b><bdi>{t('prepMinsValue', { mins: prepMins })}</bdi></b>
+          </>
+        ) : null}
         <span className="live">
           <i />
           {isCancelled ? t('statusCancelled')

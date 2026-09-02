@@ -26,11 +26,10 @@
 // composition est volontairement dupliquée ici À L'IDENTIQUE ; toute divergence
 // est inoffensive côté doublons (même dedupeKey) et épinglée par les tests.
 
+import { orderRef } from '@/lib/order-ref'
 import { prisma } from '@/lib/prisma'
 import { sendOrderConfirmation, sendRestaurantNewOrderEmail } from '@/lib/transactional-emails'
 
-/** Customer-facing short order ref — same derivation as /confirm + the checkout UI. */
-const orderRef = (id: string) => `#${id.slice(-6).toUpperCase()}`
 
 const DEFAULT_WINDOW_HOURS = 48
 const DEFAULT_TAKE         = 100
