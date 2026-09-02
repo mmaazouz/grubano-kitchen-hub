@@ -1,0 +1,66 @@
+# BETA-PRODUCT-FINAL-CLOSEOUT — état vivant (checkpoint de reprise)
+
+> Document de reprise imposé par l'ADDENDUM FONDATEUR (§5). Toute intervention Claude Code qui atteint sa capacité **doit** pouvoir reprendre depuis ce document sans re-découvrir le travail fait. Mis à jour à la fin de **chaque** phase.
+>
+> **Modèle d'exécution** : LEAD/orchestrateur + agents spécialisés + relecteurs adversariaux indépendants. Branches isolées, worktrees isolés, aucune worktree mutable partagée, aucune opération git destructive. Investigation/test/revue parallélisés ; changements de code **sérialisés** dès qu'une dépendance argent/schéma se recouvre.
+>
+> **Portée absolue** : jamais `main`, jamais production, jamais Stripe LIVE. Fusion `develop` + déploiement staging autorisés par le fondateur **seulement si** toutes les portes requises PASS, invariants financiers PASS, sécurité PASS, aucun P0, design approuvé là où requis.
+
+---
+
+## HARD PHASE GATES — tableau de bord
+
+| Phase | Objet | Statut | Branche | Livrable |
+| --- | --- | --- | --- | --- |
+| **0** | Inventaire factuel (read-only) | **EN COURS** | `a1/beta-closeout` (docs) | `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md` |
+| **1** | Modèle financier fidélité (sûr sous refund) | À FAIRE | — | `LOYALTY-REFUND-CONTRACT.md` |
+| **2** | Rail financier de remboursement | À FAIRE | — | `REFUND-FINANCIAL-CONTRACT.md` |
+| **3** | Claims : domaine / sécurité / admin | À FAIRE | — | (revue sécurité adversariale) |
+| **4** | Claims : UX consommateur | À FAIRE | — | pack Claude Design si visuellement faible |
+| **5** | Nettoyage produit | À FAIRE | — | — |
+| **6** | Hooks légaux techniques | À FAIRE | — | `CHECKOUT-CONTRACT-FORMATION-FACTS.md` |
+
+Règle d'or : **une phase doit être indépendamment complète avant de commencer la suivante.** Une phase antérieure terminée vaut mieux que six domaines à moitié faits.
+
+---
+
+## PRÉ-REQUIS DÉJÀ EN LIGNE (staging `ec3891f`, `main` intouché)
+
+Train de fusion précédent, une fusion à la fois, CI verte + healthcheck au SHA exact à chaque étape :
+
+- **Sécurité** `148b28c` — auth `/api/menu` + `/api/menu/scan-dish`.
+- **S1.1** `c855673` — fiche restaurant + menu conso. **FINAL VISUAL PASS = PASS** (inspection fondateur staging réel, 1440/768/390 × empty/cart/product). Déviations acceptées consignées dans `docs/design/handoffs/S1.1-ref/CONTRACT.md` §22, dont **Sur place `EXPLICITLY ACCEPTED — SUR PLACE OUT OF BETA`**. **Ne pas rouvrir sans régression prouvée.**
+- **D2.1** `8107ca9` — éditeur de plat pixel-fidèle (arbitrages photo/allergènes consignés).
+- **Italien** `216699d` — bloc `eat` au registre formel (Lei), convergence 55→0.
+- **Lot véracité** `ec3891f` — temps promis retirés (durée de préparation saisie exposée à la place), référence de commande unifiée `lib/order-ref` (`GR-`+6, 15 sites), pass de retrait à état terminal « Récupérée » (QR retiré après remise), carte « Sur place » masquée si non réservable, frais/distance honnêtes, phrases empreinte contradictoires retirées au checkout.
+
+---
+
+## PHASE 0 — INVENTAIRE FACTUEL (read-only)
+
+**Statut : EN COURS.** Agents forensiques parallèles (refund / loyalty / claims / stripe-ledger / cookies-legal) + critique de complétude adversariale. Livrable : `docs/ops/BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md`.
+
+*(Faits, verdict PASS/INCOMPLETE et dépendances d'ordre reportés ici à la clôture de la phase.)*
+
+---
+
+## PHASE 1..6 — à ouvrir séquentiellement
+
+*(Chaque phase : faits · décisions · fichiers · commits · tests · contrôles négatifs · risques ouverts · état de fusion — remplis à sa clôture.)*
+
+---
+
+## POLITIQUES FONDATEUR EN ATTENTE (bloquantes potentielles)
+
+- **Fidélité au remboursement** : les points GAGNÉS sont-ils repris au refund ? (comportement actuel = conservés — à confirmer/changer ; probable BLOCAGE Phase 1).
+- **Sur place / réservation** : hors bêta fermée (arbitré) — réintroduction = train dédié plus tard.
+- **Claims** : `CLAIMS_ENABLED` reste FALSE jusqu'à Phase 4 + inspection fondateur staging.
+
+---
+
+## ACCÈS & OUTILLAGE (pour reprise)
+
+- Rail refund admin : `POST /api/admin/refunds/run {orderId, amountCents?}` — session admin **ou** header `X-Internal-Token = INTERNAL_CRON_TOKEN`. `POST /api/orders/[id]/refund` — session role `admin` uniquement. **`INTERNAL_CRON_TOKEN` de staging non détenu par l'agent** (le `CRON_SECRET` local ≠ ce token — sonde 401). Un compte Operator `admin` staging ou le token est requis pour exécuter le scénario ⑥.
+- Commande payée de répétition : `cmtj52ewh000320fboagbze1x` (PI `pi_***xQDiB9` succeeded 14,50 €, fee 116, destination `acct_***byyYMY`, charge `ch_***Y41DeO`).
+- Stripe TEST lisible localement (clé `sk_test` en `.env.local`) — lecture seule.
+- Base staging **non joignable** directement (SSH 22 filtré) ; champs DB-only via `node scripts/server/rehearsal-verify.js <sub>` en cPanel Terminal.

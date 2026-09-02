@@ -144,3 +144,27 @@ La référence pilote ses ruptures par `@container s1` sur un wrapper de banc do
 **Tokens `--s1-cart` / `--s1-gap` — ils ne sont PAS déclinés.** §18 prévoit 312/20 sous le premier seuil et la référence porte bien `:root{--s1-cart:312px;--s1-gap:20px}` dans son bloc `@container s1 (max-width:1080px)` — mais cette déclaration est **morte** : `:root` est un ANCÊTRE du conteneur `.wrap`, et une requête conteneur ne s'applique jamais qu'aux DESCENDANTS de son conteneur. Mesure sur la référence RENDUE, à 768 comme à 390 : `--s1-cart` = 352px, `--s1-gap` = 28px, `.body` row-gap = column-gap = 28px — identiques à 1440. §20 fixe la comparaison sur la référence **rendue** : le produit garde donc 352/28 à toutes les largeurs et le bloc 1316 ne collapse que la grille de plats. Les 312/20 du §18 restent une intention que le CSS de la référence n'atteint pas.
 
 *(Même famille de règles inertes dans la référence, pour mémoire : `.about{order:3}` du bloc 900 — voir §21.2 item 5 — et, à l'inverse, `.mode span{display:none}` du bloc 560, qui lui est bien actif mais blanchit toute la carte de mode : reproduit en n'y masquant que le sous-titre, conformément à la prose §6.)*
+
+---
+
+## 22 · ACCEPTATION FINALE FONDATEUR (2026-09-02)
+
+Le fondateur a mené l'inspection visuelle sur le **staging réellement déployé** (`app.grubano.com`, fiche restaurant à `c855673` puis intégrée à `ec3891f`), aux trois largeurs × trois états.
+
+| Porte | Verdict |
+| --- | --- |
+| **REFERENCE DESIGN GATE** (maquette HTML Claude Design) | **PASS** |
+| **REAL STAGING FOUNDER GATE** (1440/768/390 × empty/cart/product) | **PASS** |
+| **FINAL VISUAL PASS** | **PASS** |
+
+### 22.1 · Déviations EXPLICITEMENT ACCEPTÉES (ne rouvrent pas S1.1)
+
+- **Carte « Sur place » — `EXPLICITLY ACCEPTED — SUR PLACE OUT OF BETA`.** La référence Claude Design S1.1 contient **Click & collect** *et* **Sur place**. La bêta fermée est **Click & collect uniquement** (arbitrage fondateur final 2026-09-02). La bêta **masque intentionnellement** « Sur place » (rendue seulement si le restaurant est réservable — cf. §6 surcharge). **Ce n'est PAS** une régression, PAS un échec de comparaison pixel, PAS un composant manquant par accident. Tout outil de comparaison visuelle / toute revue **ne doit JAMAIS** faire échouer S1.1 au motif que « Sur place » est absent tant que le périmètre bêta l'exclut. Quand « Sur place » sera réintroduit comme **vraie** fonction dine-in, il aura **son propre** train d'acceptation produit/design — il ne sera **pas** restauré juste pour coller à la référence.
+- **La modale plat ne pré-remplit PAS le panier** avant une action « Ajouter » explicite (comportement produit réel, supérieur à la maquette).
+- **La note plat/client réelle est préservée** (champ libre, jamais vendu comme option garantie).
+- **Le wording de service mobile est préservé** là où il est supérieur au harnais de la référence.
+- **Allergènes liste vide** → avertissement explicite (arbitrage 2026-09-01, §11 surchargé) — inchangé.
+
+### 22.2 · Règle de non-réouverture
+
+S1.1 **ne doit pas être rouvert** pendant le MASTER de clôture bêta, **sauf régression réellement prouvée** (par un bench de conformité ou une inspection fondateur, pas par la seule absence d'un composant hors périmètre).
