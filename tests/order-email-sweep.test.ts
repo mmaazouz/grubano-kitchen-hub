@@ -49,11 +49,11 @@ describe('lib/order-email-sweep — le chemin « onglet fermé » (aucun dispatc
     expect(r).toMatchObject({ scanned: 1, consumerSent: 1, restoSent: 1, alreadyDone: 0, errors: 0 })
     expect(restoMock).toHaveBeenCalledWith(expect.objectContaining({
       orderId: 'ord123abc', to: 'resto@x.fr', restaurantName: 'Gnocchi Bar',
-      orderRef: '#123ABC', fulfillmentType: 'delivery',
+      orderRef: 'GR-123ABC', fulfillmentType: 'delivery',
       items: [{ name: 'Gnocchi maison', qty: 2 }], totalCents: 2199,
     }))
     expect(consumerMock).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'lea@x.fr', customerName: 'Léa', orderRef: '#123ABC',
+      to: 'lea@x.fr', customerName: 'Léa', orderRef: 'GR-123ABC',
       paidCents: 2199, dedupeKey: 'order:ord123abc',
     }))
   })
