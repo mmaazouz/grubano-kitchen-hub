@@ -61,7 +61,7 @@ function makeDb(seed: {
       },
     },
     // FOR UPDATE lock read — returns the current locked balance (no real concurrency in-test).
-    $queryRawUnsafe: async (_sql: string) => (state.customer ? [{ pointsBalance: state.customer.pointsBalance }] : []),
+    $queryRawUnsafe: async (_sql: string, ..._a: unknown[]) => (state.customer ? [{ pointsBalance: state.customer.pointsBalance }] : []),
     // Interactive transaction with snapshot rollback on throw (faithful to Prisma).
     $transaction: async (fn: (tx: typeof model) => Promise<unknown>) => {
       const snapTxns = state.txns.map((t) => ({ ...t }))
