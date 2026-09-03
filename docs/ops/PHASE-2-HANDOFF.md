@@ -1,12 +1,14 @@
 # PHASE-2-HANDOFF — Refund financial rail / royalty (fresh session)
 
-> **Self-contained** handoff for a new Claude Code session. Phase 1 is OPERATIONALLY COMPLETE on staging; Phase 2 opens with a known **financial P0 blocker** that must be closed before `REFUNDS_ENABLED` can ever be TRUE. Read this whole file, then `BETA-PRODUCT-FINAL-CLOSEOUT.md`, then `LOYALTY-REFUND-CONTRACT.md`, then `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md`. Use `scripts/notion-sync.js read` at start (CLAUDE.md sync protocol).
+> **Self-contained** handoff for a new Claude Code session. Phase 1 is **COMPLETE** on staging (migrated DB, merged code, **regenerated server Prisma client**, runtime proven, 2026-09-03); Phase 2 opens with a known **financial P0 blocker** that must be closed before `REFUNDS_ENABLED` can ever be TRUE. Read this whole file, then `BETA-PRODUCT-FINAL-CLOSEOUT.md`, then `LOYALTY-REFUND-CONTRACT.md`, then `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md`. Use `scripts/notion-sync.js read` at start (CLAUDE.md sync protocol).
 
 ---
 
 ## 0 · State you inherit (facts, 2026-09-03)
 
 - **Staging** (`app.grubano.com` + `business.grubano.com`) serves develop with **Phase 1 merged** (`e244275` + docs) on a **migrated DB** (additive: `LoyaltyTransaction.sourceEventId?`, `actorId?`, `@@unique([sourceEventId,type])`, `LoyaltyCustomer.recoveryOffsetPoints Int @default(0)`). Backup `staging-pre-phase1-2026-09-03-13-21-22.sql.gz` (63.2 KB, 44 INSERTs) in `~/grubano-backups/`; 30/08 backup preserved.
+- **Server Prisma client = REGENERATED** (2026-09-03, founder-run `scripts/server/phase1-regen-client.js` → PASS: `recoveryOffsetPoints`, `sourceEventId`, `actorId` proven in `node_modules/.prisma/client/index.d.ts`; Passenger restarted; runtime verified). **Trap (3/3 deploys):** the FTP deploy never delivers/regenerates `.prisma/client` (`node_modules/**` excluded, nodevenv symlink) and the SSH post-deploy `prisma generate` step is `continue-on-error` and timed out on `49cea68`, `6545489`, `90472db` → **after ANY deploy that changes `prisma/schema.prisma`, read the raw SSH step log; if `Generated Prisma Client` is absent, ship/run a regen operator (pattern `phase1-regen-client.js`, `PHASE1_VERIFY_FIELDS=<new fields>`) before declaring the deploy PASS.** The regenerated client persists across deploys (FTP never touches `node_modules`). Pre-production infra blockers recorded in the closeout: deterministic Prisma client delivery, SIGTERM handling, Tiger Protect compatibility.
+- **Final Phase 1 deployed SHA** = the closeout docs commit at the head of develop (verify `/version.json` on BOTH domains at session start; Phase 1 code `e244275`, regen operator `90472db`; exact final SHA banked in the Notion closeout report).
 - **`main` / production / Stripe LIVE: never touched.** Stripe TEST only.
 - **`REFUNDS_ENABLED = FALSE`. `CLAIMS_ENABLED = FALSE`. REFUND INITIATION FREEZE = ACTIVE.** Forbidden until Phase 2 PASS: Stripe Dashboard refund, Grubano admin refund UI, `POST /api/admin/refunds/run`, manual `executeRefund`, raw Stripe refund API, any staging op initiating a refund.
 - Rehearsal order `cmtj52ewh000320fboagbze1x` (PI `pi_***xQDiB9` succeeded 14,50 €, `application_fee` 116, destination `acct_***byyYMY`, **0 refunds**) remains the disposable candidate for the eventual human refund rehearsal (AFTER Phase 2 PASS).
@@ -64,7 +66,8 @@ GRUBANO CLOSED BETA FINAL PRODUCT CLOSEOUT — fresh session.
 START: run `node scripts/notion-sync.js read` (CLAUDE.md sync protocol), then read in order:
 docs/ops/PHASE-2-HANDOFF.md → docs/ops/BETA-PRODUCT-FINAL-CLOSEOUT.md →
 docs/ops/LOYALTY-REFUND-CONTRACT.md → docs/ops/BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md.
-Staging = develop (Phase 1 merged, DB migrated). main/production/Stripe LIVE: NEVER.
+Staging = develop (Phase 1 merged, DB migrated, server Prisma client REGENERATED — a
+deploy does NOT regenerate it: see handoff §0 trap). main/production/Stripe LIVE: NEVER.
 
 FROZEN STATE (do not change): REFUNDS_ENABLED=FALSE, CLAIMS_ENABLED=FALSE, refund
 initiation freeze ACTIVE (no Dashboard/admin/API/manual refund on staging until this
@@ -98,6 +101,9 @@ GATES before any merge: targeted → full vitest → cold build exit 0 → tsc (
 /version.json == exact SHA on app.grubano.com AND business.grubano.com → healthchecks.
 If a staging DB step is ever needed: fail-closed .js operator in scripts/server/
 (pattern phase1-staging-migrate.js), founder runs ONE command, script decides PASS/FAIL.
+If a merge changes prisma/schema.prisma: additive SQL operator first, then after the
+deploy read the RAW SSH step log; no `Generated Prisma Client` there → regen operator
+(pattern phase1-regen-client.js) before declaring the deploy PASS.
 Never ask the founder for secrets or multi-step DB work. Do not invent access.
 
 ONLY after all financial P0 tests PASS: report REFUNDS_ENABLED readiness for founder

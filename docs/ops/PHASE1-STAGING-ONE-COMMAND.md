@@ -80,4 +80,6 @@ SAFE TO CONTINUE: YES
 
 **Échec :** `RESULT: FAIL / FAILED STEP: […]` → colle le bloc, ne relance rien.
 
+**Exécuté sur staging le 2026-09-03 → PASS** (route (a) CLI local pinned présent dans l'arbre nodevenv, 3 champs vérifiés dans `index.d.ts`, `tmp/restart.txt` touché, runtime vérifié ensuite — Phase 1 clôturée).
+
 Prouvé en local avant remise : PASS réel (génération + vérification des champs), 3 contrôles négatifs FAIL fermés (champ inexistant → FAIL étape 4 ; racine sans schéma → FAIL étape 1 ; schéma pré-Phase-1 → FAIL « schema lacks Phase 1 fields » au lieu d'un faux PASS). Idempotent (relance = régénère + re-prouve).

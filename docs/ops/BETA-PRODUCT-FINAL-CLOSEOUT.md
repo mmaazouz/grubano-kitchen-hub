@@ -13,7 +13,7 @@
 | Phase | Objet | Statut | Branche | Livrable |
 | --- | --- | --- | --- | --- |
 | **0** | Inventaire factuel (read-only) | **PASS** ✅ | `a1/beta-closeout` (docs) | `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md` ✅ |
-| **1** | Modèle financier fidélité (sûr sous refund) | **OPÉRATIONNELLEMENT COMPLET** ✅ (migré + mergé `e244275` + déployé) | `a1/loyalty-refund` → develop | `LOYALTY-REFUND-CONTRACT.md` ✅ · `PHASE-2-HANDOFF.md` ✅ |
+| **1** | Modèle financier fidélité (sûr sous refund) | **COMPLET** ✅ (migré + mergé `e244275` + déployé + client Prisma régénéré + runtime prouvé, 2026-09-03) | `a1/loyalty-refund` → develop | `LOYALTY-REFUND-CONTRACT.md` ✅ · `PHASE-2-HANDOFF.md` ✅ |
 | **2** | Rail financier de remboursement | À FAIRE | — | `REFUND-FINANCIAL-CONTRACT.md` |
 | **3** | Claims : domaine / sécurité / admin | À FAIRE | — | (revue sécurité adversariale) |
 | **4** | Claims : UX consommateur | À FAIRE | — | pack Claude Design si visuellement faible |
@@ -54,9 +54,9 @@ Train de fusion précédent, une fusion à la fois, CI verte + healthcheck au SH
 
 ---
 
-## PHASE 1 — MODÈLE FINANCIER FIDÉLITÉ — **OPÉRATIONNELLEMENT COMPLET** ✅
+## PHASE 1 — MODÈLE FINANCIER FIDÉLITÉ — **COMPLET** ✅ (clôturé 2026-09-03)
 
-Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore spent prorata, D3 offset interne, funding GRUBANO, cash-cap ≤ Stripe). Implémenté sur `a1/loyalty-refund` (worktree isolé), banké, **non mergé** (le merge suit la migration staging exécutée par le fondateur, gate order).
+Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore spent prorata, D3 offset interne, funding GRUBANO, cash-cap ≤ Stripe). Implémenté sur `a1/loyalty-refund` (worktree isolé), banké, puis **mergé `e244275`** après la migration staging (gate order respecté).
 
 **Faits** :
 - Cash-cap **structurel** (order.total = charge.amount) → Phase 1 = points-only. Prorata sur `charge.amount` (jamais foodTotal). Modèle cible-cumulatif télescopant comme `computeRefundSplit`.
@@ -88,6 +88,14 @@ Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore
 - Docs clôture mergées (`6545489`, **diff code vide** vs `e244275` — code déployé byte-identique à l'arbre gaté). Push → CI **success** → **app.grubano.com = business.grubano.com = `6545489`** (SHA MATCH). Healthchecks PASS : `/version.json`, `/fr/eat`, `/api/restaurants`, fiche rehearsal (lecture DB réelle), `/fr/menu` 307 (auth), `/fr/eat/auth`, business. Webhook `charge.refunded` **vivant** (POST non signé → 400, zéro effet). Code Phase 1 **présent au SHA déployé** (import + appel `reconcileLoyaltyOnRefund`, schéma `sourceEventId`/`recoveryOffsetPoints`/`@@unique`, `FOR UPDATE` ×2, guard earn). **Stripe TEST : 0 refund** sur le PI rehearsal, 0 refund plateforme sur 4 h → freeze intact, aucun refund initié.
 - 🔴 **Constat honnête (STEP 5) — client Prisma serveur PÉRIMÉ** : le log brut de l'étape SSH post-déploiement se termine par `dial tcp 109.234.165.222:22: i/o timeout` (idem sur `49cea68`) ; l'étape est verte par `continue-on-error`, mais `npx prisma@5.22.0 generate` **n'a pas tourné** et le FTP exclut `node_modules/.prisma`. Passenger a redémarré via le fallback FTPS. → le code Phase 1 tourne contre un client qui ignore les nouveaux champs : reconciliation fidélité + crédit earn **inertes** (catch best-effort), argent intouché, lectures existantes OK. **STEP 5 = FAIL tant que le client n'est pas régénéré.** Remédiation (canal automatisé SSH prouvé indisponible 2/2) : opérateur fail-closed `scripts/server/phase1-regen-client.js` (prouvé en local : PASS réel + 3 contrôles négatifs), shippé par ce push, **UNE commande fondateur** (voir `PHASE1-STAGING-ONE-COMMAND.md` Étape 2). L'intégrité post-déploiement **L** n'est déclarée qu'après son PASS.
 
+**CLÔTURE FINALE (2026-09-03, après la commande fondateur unique) :**
+- ✅ **Régénération du client Prisma serveur — PASS** (sortie verbatim de `phase1-regen-client.js`) : `PRISMA GENERATE: OK (local CLI node_modules/prisma/build/index.js, marker present)` · `CLIENT FIELDS: VERIFIED (recoveryOffsetPoints, sourceEventId, actorId present in node_modules/.prisma/client/index.d.ts)` · `PASSENGER RESTART: TOUCHED tmp/restart.txt`. Fait utile : le CLI pinned 5.22.0 existe dans l'arbre nodevenv du serveur (route (a) de l'opérateur, pas besoin de `npx`).
+- ✅ **Runtime après restart** (17:08–17:09 UTC, 3 échantillons sur 47 s) : `/version.json` 200 = `90472db` sur les DEUX domaines · `/fr/eat` 200 (421 KB, zéro marqueur d'erreur Prisma / 500) · business `/fr/login` 307 (gate auth attendu) · `/api/restaurants?take=3` 200 données réelles (« Rehearsal Beta Grubano ») · fiche `/api/restaurants/<rehearsal>` 200 (menu réel). Latences 0,13–0,41 s stables, aucune 5xx, aucune boucle de restart.
+- ✅ **Item L — compatibilité code + schéma + client** : chaîne de preuves (1) le client régénéré sur disque porte les 3 champs (opérateur, côté serveur) ; (2) le FTP exclut `node_modules/**` (symlink nodevenv) → le client régénéré **persiste** à tout déploiement ultérieur ; (3) recyclage du processus observé (Passenger `restart.txt` + déploiement docs suivant : nouveau build servi ⇒ nouveau processus qui charge `.prisma/client` depuis le disque) ; (4) lectures DB réelles servies par ce processus via ce client (un client mal généré / mauvais binaryTarget = 500 sur toute route DB). **Limite dite explicitement** : aucune route read-only ne SELECT les nouveaux champs sans session staging (non détenue, non demandée) → l'exercice runtime champ-par-champ est le **premier test Phase 2** (webhook `charge.refunded`, Stripe TEST). L = **PASS** sur cette chaîne, pas sur la seule sortie de génération.
+- ✅ **Données existantes** : baseline migration préservée côté serveur (order 66 · loyaltyTransaction 21 · loyaltyCustomer 4 · refund 3 · ledgerEntry 72 · Σpoints 370 ; offset = 0 partout) ; **aucun chemin de mutation fidélité au déploiement/restart** (aucun hook de migration, 0 cron fidélité dans `scripts/cron`, `server.js` sans effet de bord). Lectures `Order` / `LoyaltyCustomer` par API exigent une session (401) → non exercées ici, prouvées côté serveur par l'opérateur de migration.
+- ✅ **Stripe TEST / gel** : 0 refund sur les 6 dernières heures, dernier refund du compte TEST = 29/08 (Z1 `re_…WF7p`, 14,50 €) → **aucun refund initié pendant la clôture**, `REFUNDS_ENABLED=FALSE`, freeze ACTIF, `refund = 3` inchangé.
+- **PHASE 1 OPÉRATIONNELLE = COMPLÈTE.** SHA final déployé = ce commit de clôture sur develop (vérifié `/version.json` ×2 domaines dans le rapport Notion de clôture) ; code Phase 1 = `e244275`, opérateur regen = `90472db`.
+
 **Suite** : Phase 2 = **session dédiée** (`docs/ops/PHASE-2-HANDOFF.md` + prompt copy-paste). Ne pas démarrer Phase 2 dans cette session (capacité déclarée NON).
 
 ---
@@ -110,9 +118,19 @@ Claude Code possède : investigation repo, code, tests, scripts DB, automatisati
 
 ## POLITIQUES FONDATEUR EN ATTENTE (bloquantes potentielles)
 
-- **Fidélité au remboursement** : les points GAGNÉS sont-ils repris au refund ? (comportement actuel = conservés — à confirmer/changer ; probable BLOCAGE Phase 1).
+- ~~**Fidélité au remboursement**~~ — **TRANCHÉ** (D1/D2/D3, Phase 1 COMPLÈTE) : points gagnés repris au prorata, points dépensés restitués au prorata, offset interne + waiver admin.
 - **Sur place / réservation** : hors bêta fermée (arbitré) — réintroduction = train dédié plus tard.
 - **Claims** : `CLAIMS_ENABLED` reste FALSE jusqu'à Phase 4 + inspection fondateur staging.
+
+---
+
+## 🔴 BLOQUANTS INFRA PRÉ-PRODUCTION (enregistrés 2026-09-03 — à fermer AVANT production ; NE PAS redesigner le pipeline maintenant)
+
+1. **Livraison déterministe du client Prisma.** Constat : le déploiement FTP ne livre ni ne régénère `node_modules/.prisma/client` (le FTP exclut `node_modules/**`, symlink nodevenv) et l'étape SSH `prisma generate` est `continue-on-error` — elle a expiré **3/3** (`49cea68`, `6545489`, `90472db`, `dial tcp 109.234.165.222:22: i/o timeout`). Staging a tourné **nouveau schéma + nouveau code + client PÉRIMÉ** jusqu'à la régénération manuelle (`phase1-regen-client.js`, 1 commande fondateur). Acceptable pour ce staging, **inacceptable comme modèle de déploiement production**. Invariant cible : révision de code exacte + schéma Prisma correspondant + client généré correspondant + migration DB contrôlée + restart Passenger + healthcheck post-déploiement — **zéro fenêtre de client périmé**. Ne PAS exécuter automatiquement les migrations de schéma à chaque déploiement ordinaire sans mission d'architecture explicite.
+2. **Gestion SIGTERM** (arrêt propre Passenger/Node : requêtes en vol, transactions Prisma `FOR UPDATE`, webhooks Stripe en cours) — backlog.
+3. **Compatibilité Tiger Protect / sécurité hébergeur** (filtrage SSH :22 depuis le runner GitHub = cause probable des timeouts ; WAF / rate-limit o2switch vs webhooks Stripe et crons) — backlog.
+
+**Règle transitoire (jusqu'à la fermeture du point 1)** : après **chaque** déploiement staging qui modifie `prisma/schema.prisma`, lire le **log brut** de l'étape SSH « Post-deploy server tasks » ; si `Generated Prisma Client` n'y figure pas dans les lignes de cette étape, exécuter l'opérateur de régénération (pattern `phase1-regen-client.js`, `PHASE1_VERIFY_FIELDS=<nouveaux champs>`) **avant** de déclarer le déploiement PASS. Un job vert ne prouve rien côté serveur.
 
 ---
 
