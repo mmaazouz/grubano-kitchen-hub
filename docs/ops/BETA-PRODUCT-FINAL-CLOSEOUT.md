@@ -13,7 +13,7 @@
 | Phase | Objet | Statut | Branche | Livrable |
 | --- | --- | --- | --- | --- |
 | **0** | Inventaire factuel (read-only) | **PASS** ✅ | `a1/beta-closeout` (docs) | `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md` ✅ |
-| **1** | Modèle financier fidélité (sûr sous refund) | **IMPLÉMENTÉ** ✅ (attend migration staging fondateur) | `a1/loyalty-refund` | `LOYALTY-REFUND-CONTRACT.md` ✅ |
+| **1** | Modèle financier fidélité (sûr sous refund) | **OPÉRATIONNELLEMENT COMPLET** ✅ (migré + mergé `e244275` + déployé) | `a1/loyalty-refund` → develop | `LOYALTY-REFUND-CONTRACT.md` ✅ · `PHASE-2-HANDOFF.md` ✅ |
 | **2** | Rail financier de remboursement | À FAIRE | — | `REFUND-FINANCIAL-CONTRACT.md` |
 | **3** | Claims : domaine / sécurité / admin | À FAIRE | — | (revue sécurité adversariale) |
 | **4** | Claims : UX consommateur | À FAIRE | — | pack Claude Design si visuellement faible |
@@ -54,7 +54,7 @@ Train de fusion précédent, une fusion à la fois, CI verte + healthcheck au SH
 
 ---
 
-## PHASE 1 — MODÈLE FINANCIER FIDÉLITÉ — **IMPLÉMENTÉ** ✅ (attend migration staging fondateur)
+## PHASE 1 — MODÈLE FINANCIER FIDÉLITÉ — **OPÉRATIONNELLEMENT COMPLET** ✅
 
 Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore spent prorata, D3 offset interne, funding GRUBANO, cash-cap ≤ Stripe). Implémenté sur `a1/loyalty-refund` (worktree isolé), banké, **non mergé** (le merge suit la migration staging exécutée par le fondateur, gate order).
 
@@ -76,7 +76,14 @@ Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore
 - **Méthode retenue = ONE-SHOT FOUNDER EXECUTION** : `scripts/server/phase1-staging-migrate.js` (`.js` → shippé auto), **fail-closed, idempotent, 0 secret**, décide PASS/FAIL seul. Shippé sur develop `49cea68` (merge ops-only `a1/phase1-migrate-operator`, aucun code applicatif). **Testé en répétition locale** : PASS end-to-end (doublons `orderId,type` survivent = multi-NULL), 2ᵉ run `ALREADY_APPLIED_AND_VERIFIED`, **6 contrôles négatifs FAIL fermés** (base prod, URL prod, tables absentes, dump 0-INSERT, état partiel `PARTIAL`, mysqldump cassé `DATABASE CHANGED: NO`).
 - **Commande unique fondateur** (cPanel Terminal) : `~/nodevenv/app.grubano.com/24/bin/node ~/app.grubano.com/scripts/server/phase1-staging-migrate.js` → coller le bloc PASS/FAIL dans le chat. Doc : `docs/ops/PHASE1-STAGING-ONE-COMMAND.md`.
 
-**Suite** : PASS du script → Claude reprend : merge `a1/loyalty-refund` (merge-tree propre) → deploy → healthcheck SHA exact app+business → check fidélité post-deploy (sans refund) → closeout → STOP. Levée du freeze envisagée seulement après ; Phase 2 = session dédiée (double-versement franchise rail A à fermer avant tout `REFUNDS_ENABLED=true`).
+**CLÔTURE STAGING PHASE 1 — preuves (2026-09-03) :**
+- **Migration staging = PASS** (opérateur one-shot, exécuté par le fondateur en UNE commande, sortie authoritative) : backup **VÉRIFIÉ** `staging-pre-phase1-2026-09-03-13-21-22.sql.gz` (63.2 KB, 44 INSERTs, « Dump completed », gzip OK) dans `~/grubano-backups/`, 30/08 préservé. **Baseline** capturée et **conservée** après migration : order=66 · loyaltyTransaction=21 · loyaltyCustomer=4 · refund=3 · ledgerEntry=72 · Σpoints=370. Migration appliquée : `+sourceEventId +actorId +recoveryOffsetPoints +LoyaltyTransaction_sourceEventId_type_key`. Intégrité post-migration PASS.
+- **Vérification indépendante pré-merge (limites honnêtes)** : pas de canal DB/shell depuis l'environnement Claude → la vérification colonnes/index/counts est celle exécutée **sur le serveur** par l'opérateur fail-closed ; en plus, prouvé à distance : l'app pré-Phase-1 (`49cea68`) lit la base migrée (public `/api/restaurants` 200, fiche rehearsal charge name+1 item, `/fr/eat` 200 = compatibilité additive live) et **Stripe TEST : 0 refund** sur le PI rehearsal (freeze intact, aucun refund initié).
+- **Merge** : `a1/loyalty-refund` → develop = **`e244275`** (merge-tree propre sur `49cea68`, les 7 commits `7d4344b 013a089 83a7384 446e750 22f4cd5 f585fe3 4f0dd87` prouvés ancêtres). `main` intouché.
+- **Gates frais sur l'arbre mergé / déploiement / SHA / healthcheck / intégrité post-deploy** : voir le bloc « CLÔTURE — RÉSULTATS DÉPLOIEMENT » ci-dessous (rempli à la fin de l'opération).
+- **Gel remboursement : ACTIF. `REFUNDS_ENABLED=FALSE`.** Le PASS migration n'autorise aucun refund. Blocage Phase 2 (double-versement franchise `orders/[id]/refund`) reste à fermer avant toute activation.
+
+**Suite** : Phase 2 = **session dédiée** (`docs/ops/PHASE-2-HANDOFF.md` + prompt copy-paste). Ne pas démarrer Phase 2 dans cette session (capacité déclarée NON).
 
 ---
 
@@ -85,6 +92,16 @@ Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore
 *(Chaque phase : faits · décisions · fichiers · commits · tests · contrôles négatifs · risques ouverts · état de fusion — remplis à sa clôture. Correctifs par phase pré-listés dans l'inventaire §8.)*
 
 ---
+
+## FEUILLE DE ROUTE LONGUE (authoritative — préserver)
+
+Phase 2 rail refund/royalty (session fraîche) → Phase 3 Claims domaine/sécurité/admin → Phase 4 Claims UX conso (+ porte Claude Design) → Phase 5 nettoyage produit (état terminal retrait, réf canonique `GR-XXXXXX`, CTA mobile dupliqué, français formel, véracité bornée) → Phase 6 hooks légaux techniques (faits formation contrat, preuve d'acceptation CGV, audit cookies — aucun texte légal inventé) → **RÉPÉTITION HUMAINE STAGING FINALE** → **CLEAN ROOM** → **INVENTAIRE FACTUEL EMAILS + TRAIN DESIGN EMAILS** → FONDATION LÉGALE → OPÉRATEUR LÉGAL GRUBANO → Stripe plateforme/Connect/webhook LIVE → LIVE SMOKE → PRODUCTION.
+
+### 🔴 Chantier EMAILS — exigence enregistrée, NE PAS OUBLIER, NE PAS DÉMARRER MAINTENANT
+Claude Design a **arrêté** la refonte emails faute de faits et a demandé un pack factuel. Il ne démarre **qu'après** stabilisation du comportement bêta qui génère les notifications (Claims/Refunds encore mouvants). Claude Code (jamais le fondateur) produit `EMAIL-FACTUAL-PACK/` : `EMAIL-MANIFEST.md`, `EMAIL-TRIGGER-MAP.md`, `EMAIL-COPY-VERBATIM.md`, `EMAIL-DATA-CONTRACTS.md`, `EMAIL-INFRASTRUCTURE.md`, `EMAIL-AUTH-FACTS.md`, `EMAIL-CLAIMS-REFUNDS-FACTS.md`, `EMAIL-CURRENT-VISUALS.md`, `CLAUDE-DESIGN-EMAIL-HANDOFF.md`. Taxonomie obligatoire par candidat : **A** LIVE_CODE_CONFIRMED_SEND / **B** CODE_EXISTS_NOT_SEND_PROVEN / **C** CURRENT_BETA_TRAIN_CONFIRMED / **D** DEAD_OR_ORPHANED / **E** NOT_CONFIRMED — un template n'est pas « réel » parce qu'un fichier existe : le chemin d'envoi atteignable doit être prouvé. Familles : AUTH/COMPTE, COMMANDE CONSO, PARTENAIRE, CLAIMS/SAV, REMBOURSEMENTS, SÉCURITÉ/ALLERGÈNE, ADMIN — transactionnel/opérationnel uniquement (0 newsletter/marketing). Puis Claude Design bâtit le système d'emails Grubano (email-safe 600–640 px, tables, CSS inline, images-off, ZEST/INK/BASIL, langage de statut jamais couleur seule, `GR-XXXXXX` cohérent, Claim ≠ Refund, jamais « remboursement effectué » avant succès Stripe, alerte allergène prioritaire sans ton marketing) → **porte fondateur** sur `email-gallery.html` → implémentation seulement après PASS visuel.
+
+### Politique d'intervention fondateur (jusqu'à la clôture bêta)
+Claude Code possède : investigation repo, code, tests, scripts DB, automatisation de migration, deploy, healthchecks, vérification technique/financière/sécurité, inventaire emails, handoffs. Le fondateur possède **uniquement** : décisions de politique produit, approbation visuelle Claude Design, décisions légales/business, répétition humaine réelle, actions compte/KYC externes. Toute action fondateur inévitable = expliquer exactement pourquoi, la réduire à l'action minimale, jamais en faire un opérateur technique.
 
 ## POLITIQUES FONDATEUR EN ATTENTE (bloquantes potentielles)
 
