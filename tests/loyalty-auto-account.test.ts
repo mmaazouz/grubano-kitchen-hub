@@ -14,9 +14,10 @@ const { db } = vi.hoisted(() => ({
   db: {
     order:              { findUnique: vi.fn(), update: vi.fn() },
     operator:           { findUnique: vi.fn() },
-    loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn() },
+    loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn() , findUnique: vi.fn() },
     loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn() },
     $transaction:       vi.fn(),
+    $queryRawUnsafe:     vi.fn(),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -49,9 +50,12 @@ beforeEach(() => {
   db.order.update.mockResolvedValue({ id: 'order1', status: 'delivered', updatedAt: new Date(0) })
   db.operator.findUnique.mockResolvedValue({ email: 'buyer@example.com', name: 'Buyer' })
   db.loyaltyCustomer.upsert.mockResolvedValue({ id: 'lc1' })
+  db.loyaltyCustomer.findUnique.mockResolvedValue({ recoveryOffsetPoints: 0 })
   db.loyaltyCustomer.update.mockResolvedValue({ id: 'lc1' })
   db.loyaltyTransaction.create.mockResolvedValue({ id: 'tx1' })
-  db.$transaction.mockResolvedValue([])
+    db.$transaction.mockImplementation(async (arg: unknown) =>
+    typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(db) : Promise.all(arg as Promise<unknown>[]))
+  db.$queryRawUnsafe.mockResolvedValue([{ recoveryOffsetPoints: 0 }])
 })
 
 describe('PATCH delivered — earn credits even WITHOUT a pre-existing account', () => {
@@ -70,7 +74,7 @@ describe('PATCH delivered — earn credits even WITHOUT a pre-existing account',
 
     // Balance credited by exactly pointsEarned, and a signed 'earn' row written.
     expect(db.loyaltyCustomer.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'lc1' }, data: { pointsBalance: { increment: 12 } } }),
+      expect.objectContaining({ where: { id: 'lc1' }, data: expect.objectContaining({ pointsBalance: { increment: 12 } }) }),
     )
     expect(db.loyaltyTransaction.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ customerId: 'lc1', orderId: 'order1', type: 'earn', points: 12 }) }),

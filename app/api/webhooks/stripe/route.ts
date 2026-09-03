@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getStripe, mapAccountStatus, retrieveChargeFacts, type DepositStatus } from '@/lib/stripe'
 import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
+import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, executeRefund } from '@/lib/refund'
 import { clawbackCourierTip } from '@/lib/courier-accrual'
@@ -706,39 +707,26 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       }
     }
 
-    // ── Loyalty RE-CREDIT on refund (chantier fidélité L1, D6 mirror) ───────────
-    // If the refunded ORDER spent points, give them back ONCE (idempotent per
-    // [orderId,'refund']). V1: the FULL pointsRedeemed are re-credited on ANY
-    // refund (partial included) — the points were a Grubano-financed perk capped
-    // at the commission, so returning them fully is customer-friendly and safe.
-    // Best-effort + tolerant: never fails the webhook.
+    // ── Loyalty RECONCILIATION on refund (Phase 1 — D1/D2/D3) ───────────────────
+    // Reconciles the loyalty ledger to the CUMULATIVE refund state (the single
+    // reconciliation point, whatever the refund's origin — admin rail or Dashboard):
+    //   D1 earned points are CLAWED BACK proportionally to the refunded value;
+    //   D2 spent points are RESTORED proportionally (no longer 100 % on a partial);
+    //   D3 a clawback that would go below 0 floors the balance and spills the
+    //      remainder into the customer's recovery offset (repaid by future earnings).
+    // Idempotent per (sourceEventId = refund re_…, type); POINTS ONLY, never cash.
+    // Best-effort + tolerant: a loyalty hiccup never fails the webhook (money is done).
     try {
       const orderId = charge.metadata?.orderId || null
       if (orderId) {
-        const o = await prisma.order.findUnique({
-          where:  { id: orderId },
-          select: { pointsRedeemed: true, consumerId: true },
+        await reconcileLoyaltyOnRefund(prisma, {
+          orderId,
+          chargeAmountCents: charge.amount,
+          refunds: refunds.map(r => ({ id: r.id, amountCents: r.amount, createdUnix: r.created })),
         })
-        if (o && o.pointsRedeemed > 0) {
-          const already = await prisma.loyaltyTransaction.findFirst({
-            where: { orderId, type: 'refund' }, select: { id: true },
-          })
-          if (!already) {
-            const operator = await prisma.operator.findUnique({ where: { id: o.consumerId }, select: { email: true } })
-            const lc = operator?.email
-              ? await prisma.loyaltyCustomer.findUnique({ where: { email: operator.email }, select: { id: true } })
-              : null
-            if (lc) {
-              await prisma.$transaction([
-                prisma.loyaltyCustomer.update({ where: { id: lc.id }, data: { pointsBalance: { increment: o.pointsRedeemed } } }),
-                prisma.loyaltyTransaction.create({ data: { customerId: lc.id, orderId, type: 'refund', points: o.pointsRedeemed } }),
-              ])
-            }
-          }
-        }
       }
     } catch (e) {
-      console.error('[LOYALTY MISS] refund re-credit failed:', e instanceof Error ? e.message : e)
+      console.error('[LOYALTY MISS] refund reconciliation failed:', e instanceof Error ? e.message : e)
     }
 
     // ── Courier TIP clawback on a TOTAL refund (P4.3 ÉTAPE 6) ──────────────────

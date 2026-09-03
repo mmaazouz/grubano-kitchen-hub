@@ -45,6 +45,7 @@ const { db } = vi.hoisted(() => ({
     loyaltyCustomer:    { upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
     loyaltyTransaction: { findFirst: vi.fn(), create: vi.fn() },
     $transaction:       vi.fn(),
+    $queryRawUnsafe:     vi.fn(),
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -154,9 +155,12 @@ beforeEach(() => {
   db.operator.findUnique.mockResolvedValue({ email: 'buyer@example.com', name: 'Buyer' })
   db.loyaltyTransaction.findFirst.mockResolvedValue(null)
   db.loyaltyCustomer.upsert.mockResolvedValue({ id: 'lc1' })
+  db.loyaltyCustomer.findUnique.mockResolvedValue({ recoveryOffsetPoints: 0 })
   db.loyaltyCustomer.update.mockResolvedValue({ id: 'lc1' })
   db.loyaltyTransaction.create.mockResolvedValue({ id: 'tx1' })
-  db.$transaction.mockResolvedValue([])
+    db.$transaction.mockImplementation(async (arg: unknown) =>
+    typeof arg === 'function' ? (arg as (tx: unknown) => Promise<unknown>)(db) : Promise.all(arg as Promise<unknown>[]))
+  db.$queryRawUnsafe.mockResolvedValue([{ recoveryOffsetPoints: 0 }])
   emailMock.mockResolvedValue({ status: 'sent' })
 })
 
@@ -363,7 +367,7 @@ describe("P1 — points fidélité au passage 'delivered'", () => {
     expect(upsertArg.create.pointsBalance).toBe(0)
     // Credit = EXACTLY Order.pointsEarned, atomically with the signed 'earn' row.
     expect(db.loyaltyCustomer.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'lc1' }, data: { pointsBalance: { increment: 20 } } }),
+      expect.objectContaining({ where: { id: 'lc1' }, data: expect.objectContaining({ pointsBalance: { increment: 20 } }) }),
     )
     expect(db.loyaltyTransaction.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ customerId: 'lc1', orderId: 'order1', type: 'earn', points: 20 }) }),
@@ -379,7 +383,7 @@ describe("P1 — points fidélité au passage 'delivered'", () => {
 
     expect((await patchTo('delivered')).status).toBe(200)
     expect(db.loyaltyCustomer.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { pointsBalance: { increment: 20 } } }),
+      expect.objectContaining({ data: expect.objectContaining({ pointsBalance: { increment: 20 } }) }),
     )
   })
 

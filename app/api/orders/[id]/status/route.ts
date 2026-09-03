@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { orderRef } from '@/lib/order-ref'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { applyEarnWithOffsetRepay } from '@/lib/loyalty-refund'
 import { resolveEstablishmentScope } from '@/lib/establishment-scope'
 import { sendOrderStatusEmail } from '@/lib/transactional-emails'
 import { createSystemClaim, isClaimsEnabled } from '@/lib/claims'
@@ -159,7 +160,14 @@ export async function PATCH(
         const already = await prisma.loyaltyTransaction.findFirst({
           where: { orderId: order.id, type: 'earn' }, select: { id: true },
         })
-        if (!already) {
+        // Adversarial review E-P2d — never CREDIT earned points on an order whose
+        // loyalty was already reconciled by a refund (a refund before delivery, then
+        // a later 'delivered'). A 'refund' or 'earn_reversal' row for the order is the
+        // marker; if present, skip the earn (the refund already unwound this order).
+        const refundedMarker = await prisma.loyaltyTransaction.findFirst({
+          where: { orderId: order.id, type: { in: ['refund', 'earn_reversal'] } }, select: { id: true },
+        })
+        if (!already && !refundedMarker) {
           const operator = await prisma.operator.findUnique({
             where: { id: order.consumerId }, select: { email: true, name: true },
           })
@@ -171,10 +179,32 @@ export async function PATCH(
               create: { name: operator.name ?? operator.email, email: operator.email, pointsBalance: 0 },
               select: { id: true },
             })
-            await prisma.$transaction([
-              prisma.loyaltyCustomer.update({ where: { id: lc.id }, data: { pointsBalance: { increment: order.pointsEarned } } }),
-              prisma.loyaltyTransaction.create({ data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned } }),
-            ])
+            // D3 (Phase 1) — a future earning first REPAYS the recovery offset (a debt
+            // left by an earlier refund whose earned points were already spent); only
+            // the remainder becomes spendable balance. The 'earn' row records the FULL
+            // earning; the split between offset repayment and spendable balance is on
+            // the customer row (pointsBalance rises by the remainder, recoveryOffset
+            // falls by what was repaid). Interactive tx = the offset read + both writes
+            // are atomic. Idempotent via the [orderId,'earn'] guard above.
+            await prisma.$transaction(async (tx) => {
+              // LOCK the customer row (SELECT … FOR UPDATE) so a concurrent refund
+              // clawback (which also locks it) cannot lost-update the offset: an
+              // absolute `recoveryOffsetPoints = newOffset` write racing a clawback's
+              // `{increment}` would drop the clawback's debt (review E-P2c). Under the
+              // lock we read the true offset and apply RELATIVE deltas only.
+              const rows = await tx.$queryRawUnsafe<{ recoveryOffsetPoints: number }[]>(
+                'SELECT recoveryOffsetPoints FROM LoyaltyCustomer WHERE id = ? FOR UPDATE', lc.id,
+              )
+              const off = Number(rows?.[0]?.recoveryOffsetPoints ?? 0)
+              const { spendableIncrement, offsetRepaid } = applyEarnWithOffsetRepay(order.pointsEarned, off)
+              await tx.loyaltyCustomer.update({
+                where: { id: lc.id },
+                data:  { pointsBalance: { increment: spendableIncrement }, recoveryOffsetPoints: { decrement: offsetRepaid } },
+              })
+              await tx.loyaltyTransaction.create({
+                data: { customerId: lc.id, orderId: order.id, type: 'earn', points: order.pointsEarned },
+              })
+            })
           }
         }
       } catch (e) {
