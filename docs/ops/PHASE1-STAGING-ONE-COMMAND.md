@@ -55,3 +55,29 @@ ALTER TABLE `LoyaltyTransaction` DROP COLUMN `sourceEventId`, DROP COLUMN `actor
 ALTER TABLE `LoyaltyCustomer` DROP COLUMN `recoveryOffsetPoints`;
 ```
 Ou restauration complète depuis le `.sql.gz` frais. La procédure détaillée d'origine (`PHASE1-STAGING-PROCEDURE.md`, branche `a1/loyalty-refund`) reste la référence longue.
+
+
+---
+
+# Étape 2 (après le déploiement du code Phase 1) — régénération du client Prisma : UNE seule commande
+
+> **Pourquoi** : le déploiement FTPS exclut volontairement `node_modules/.prisma` ; le client Prisma doit être régénéré **sur le serveur** par l'étape SSH post-déploiement. Sur les deux derniers déploiements (`49cea68`, `6545489`) cette étape s'est terminée en `dial tcp …:22: i/o timeout` (étape verte par `continue-on-error`, rien exécuté). Le code Phase 1 tourne donc contre un client **périmé** qui ignore `sourceEventId` / `actorId` / `recoveryOffsetPoints` → la reconciliation fidélité et le crédit de points ne s'exécutent pas (catch best-effort). Cet opérateur ferme l'écart. Il ne touche **ni** base **ni** argent.
+
+```bash
+~/nodevenv/app.grubano.com/24/bin/node ~/app.grubano.com/scripts/server/phase1-regen-client.js
+```
+
+**Succès :**
+```
+GRUBANO PHASE 1 CLIENT REGENERATION
+RESULT: PASS
+PRISMA GENERATE: OK (...)
+CLIENT FIELDS: VERIFIED (recoveryOffsetPoints, sourceEventId, actorId present in ...)
+PASSENGER RESTART: TOUCHED tmp/restart.txt
+SAFE TO CONTINUE: YES
+```
+→ colle ce bloc dans le chat. Je vérifie et je clos Phase 1.
+
+**Échec :** `RESULT: FAIL / FAILED STEP: […]` → colle le bloc, ne relance rien.
+
+Prouvé en local avant remise : PASS réel (génération + vérification des champs), 3 contrôles négatifs FAIL fermés (champ inexistant → FAIL étape 4 ; racine sans schéma → FAIL étape 1 ; schéma pré-Phase-1 → FAIL « schema lacks Phase 1 fields » au lieu d'un faux PASS). Idempotent (relance = régénère + re-prouve).
