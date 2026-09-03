@@ -70,7 +70,13 @@ Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore
 
 **Blocage Phase 2 enregistré** (non touché) : `orders/[id]/refund` non royalty-aware → double-versement franchise ; `REFUNDS_ENABLED` reste OFF jusqu'à Phase 2.
 
-**Suite** : le fondateur exécute la migration staging (procédure), répond « migration appliquée et vérifiée » → merge + deploy + healthcheck SHA exact + check post-deploy → seulement alors, envisager la levée du freeze → Phase 2.
+**OPÉRATION STAGING — méthode établie (addendum « remote execution discovery ») :**
+- **Transport de déploiement réel = FTPS** (GitHub Actions, `SamKirkland/FTP-Deploy-Action`, `deploy-temp/` → `/app.grubano.com/`). Le payload shippe `scripts/server/*.js` **automatiquement** — mais **pas les `.sh`** ni `prisma/manual-migrations/*.sql` (exclus explicitement, `deploy-staging.yml:117-130`).
+- **Shell distant depuis l'environnement Claude = NON PROUVÉ** : SSH direct vers `109.234.165.222:22` → timeout (testé IP + hostname). L'`appleboy/ssh-action` du runner GHA existe mais est `continue-on-error` et documentée comme **intermittemment firewallée** — pas fiable pour porter une migration financière. → **Pas d'exécution directe par Claude** (aucun accès inventé).
+- **Méthode retenue = ONE-SHOT FOUNDER EXECUTION** : `scripts/server/phase1-staging-migrate.js` (`.js` → shippé auto), **fail-closed, idempotent, 0 secret**, décide PASS/FAIL seul. Shippé sur develop `49cea68` (merge ops-only `a1/phase1-migrate-operator`, aucun code applicatif). **Testé en répétition locale** : PASS end-to-end (doublons `orderId,type` survivent = multi-NULL), 2ᵉ run `ALREADY_APPLIED_AND_VERIFIED`, **6 contrôles négatifs FAIL fermés** (base prod, URL prod, tables absentes, dump 0-INSERT, état partiel `PARTIAL`, mysqldump cassé `DATABASE CHANGED: NO`).
+- **Commande unique fondateur** (cPanel Terminal) : `~/nodevenv/app.grubano.com/24/bin/node ~/app.grubano.com/scripts/server/phase1-staging-migrate.js` → coller le bloc PASS/FAIL dans le chat. Doc : `docs/ops/PHASE1-STAGING-ONE-COMMAND.md`.
+
+**Suite** : PASS du script → Claude reprend : merge `a1/loyalty-refund` (merge-tree propre) → deploy → healthcheck SHA exact app+business → check fidélité post-deploy (sans refund) → closeout → STOP. Levée du freeze envisagée seulement après ; Phase 2 = session dédiée (double-versement franchise rail A à fermer avant tout `REFUNDS_ENABLED=true`).
 
 ---
 
