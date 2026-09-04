@@ -1,19 +1,21 @@
-// ── P4.5-A — Refund money mechanics (the sensitive part) — Agent 49 ──────────────
+// ── P4.5-A — Refund money mechanics (the sensitive part) — Agent 49 · PHASE 2 (2026-09) ──
 //
-// ⚠️ TWO REFUND LIBS EXIST — DO NOT MERGE THEM (see the C-2 gate report, 2026-07-03).
-// THIS FILE, lib/refund.ts (SINGULAR) = the royalty-aware refund ENGINE: GATED by
-// REFUNDS_ENABLED (default OFF), keyed by orderId, does the prorata split + franchise
-// royalty clawback + eager ledger + Refund DB row. Callers: /api/admin/refunds/run,
-// the ghost-order webhook branch, lib/claims, lib/dispute (all gated OFF today).
-// The OTHER file, lib/refunds.ts (PLURAL), is the SIMPLE owner-initiated path: UNGATED,
-// LIVE, keyed by paymentIntentId (orders/tickets/deposits). Do NOT route the owner
-// refund routes through executeRefund — audited & REJECTED (tickets have no Order row;
-// it would take the live path dark; 10 behavioural divergences). Unification = a
-// post-go-live DESIGN project (P3), never an in-place refactor. Keep them separate.
+// THIS FILE, lib/refund.ts (SINGULAR) = the royalty-aware refund ENGINE, keyed by
+// orderId: prorata split + franchise royalty clawback + eager ledger (Stripe truth) +
+// Refund DB row + STATUS TRUTH. Since PHASE 2 (REFUND-FINANCIAL-CONTRACT.md) it is the
+// ONLY engine on the ORDER path: /api/orders/[id]/refund, /api/admin/refunds/run,
+// lib/claims, the ghost-order webhook branch, and the refund.updated webhook finalize.
+// The OTHER file, lib/refunds.ts (PLURAL), is the PI-keyed path for payments WITHOUT an
+// Order row (tickets, reservation deposits — no royalty can exist). Never route an
+// Order refund through it (it would return the royalty slice to the customer without
+// reducing FranchiseRoyalty.refundedCents → the settlement pays it twice).
+// All routes are GATED by REFUNDS_ENABLED (default OFF) → byte-identical when OFF.
 //
 // Executes a TOTAL or PARTIAL refund of a paid order AT PRORATA: each party gives
 // back the SAME fraction f = refundAmount / chargeTotal of ITS share —
-//   • the restaurant returns f of its net          (Stripe reverse_transfer);
+//   • the restaurant returns f of its NET         (Stripe reverse_transfer reverses the
+//     GROSS amount from the connected account and the fee refund credits it back —
+//     two balance transactions, net = amount − feeRefund);
 //   • Grubano returns f of its commission           (Stripe refund_application_fee);
 //   • the franchise royalty is reduced by f          (refundedCents) — or, if the
 //     royalty was ALREADY settled to the franchisor, that slice is CLAWED BACK
@@ -22,11 +24,14 @@
 // cent; the royalty slice nests inside the fee refund) and CUMULATIVE across
 // multiple partial refunds (never more than the order total).
 //
-// THIS IS A NEW PATH (lib + endpoint) that REVERSES after the fact. It does NOT
-// touch the encaissement: the charge creation, application_fee, on_behalf_of,
-// lib/commission and the franchise accrual (computeFranchiseRoyalty) are all
-// byte-identical. Gated by REFUNDS_ENABLED (default OFF) at the endpoint → no refund
-// path is active and everything is byte-identical when OFF.
+// STATUS TRUTH (Phase 2, §8): a Refund row is 'succeeded' — and the eager ledger line
+// is written, and the customer may be told « effectué » — ONLY when Stripe says the
+// refund `status === 'succeeded'`. A `pending` Stripe refund leaves the row 'pending'
+// (stripeRefundId recorded) and the outcome is a NON-ok `pending` variant; the row is
+// finalized later by RESUME-FIRST or by the refund.updated webhook. A `failed`/`canceled`
+// Stripe refund → row 'failed', the cumul cursor is released, and the order is LOCKED
+// fail-closed (Stripe does NOT restore the reversed transfer on a failed refund → a
+// blind retry with reverse_transfer would debit the restaurant twice).
 //
 // ANTI-DOUBLE-REFUND (the payout/settlement pattern):
 //   • Refund.idempotencyKey @unique = `refund:<orderId>:<alreadyRefunded>` — the
@@ -36,11 +41,13 @@
 //   • The SAME key is the Stripe refund idempotency key → a retry within ~24h
 //     returns the SAME refund (no second money movement).
 //   • RESUME-FIRST: a 'pending' Refund row (Stripe refund issued but DB finalize
-//     failed) is re-driven BEFORE any new refund — re-using the recorded refund id,
-//     else adopting a refund tagged with the row id (the >24h backstop), else
-//     re-creating under the dedupe key.
-//   • The cumul ceiling is enforced against the LIVE Stripe refundable amount, so a
-//     refund can never exceed what is actually still refundable on the charge.
+//     failed, or refund still pending at Stripe) is re-driven BEFORE any new refund —
+//     re-using the recorded refund id, else adopting a refund tagged with the row id
+//     (the >24h backstop). If that adoption LIST is unavailable the resume FAILS CLOSED
+//     (502, retry later) — it never creates (a pruned key + a lost response = double).
+//   • The royalty clawback has the same >24h backstop: an existing reversal tagged
+//     with the row id is ADOPTED, never re-created.
+//   • The cumul ceiling is enforced against the LIVE Stripe refundable amount.
 //
 // All split amounts are DERIVED SERVER-SIDE from the live Stripe charge + the order
 // (chargeTotal, application_fee, the held-back royalty) — NEVER a client input.
@@ -51,6 +58,9 @@ import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { recordRefundLedgerEntry } from '@/lib/ledger'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
+import { recoveredRoyaltyClawbackCents, capClawback } from '@/lib/royalty-recovered'
+import { matchFeeRefunds } from '@/lib/refund-fee-truth'
+import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 
 /** Kill-switch — default OFF. Only the exact string 'true' enables the rail
  *  (mirrors isFranchiseRoyaltyEnabled / isCreatorPayoutEnabled).
@@ -63,7 +73,9 @@ import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
  *  l'accept vers 'arbitration' sans mouvement d'argent ; seul l'ADMIN déclenche
  *  un remboursement (arbitrage ou outils ci-dessus). Avec CLAIMS_ENABLED=false
  *  (décision fondateur D4, toute la bêta), ce flag ne gouverne donc QUE les
- *  rails admin — l'allumer (D3) n'ouvre aucun chemin restaurateur/machine. */
+ *  rails admin — l'allumer (D3) n'ouvre aucun chemin restaurateur/machine.
+ *  Il ne gouverne PAS la RÉCONCILIATION du webhook charge.refunded / refund.*
+ *  (règle fondateur : le flag gate qui INITIE, jamais la vérité Stripe établie). */
 export function isRefundsEnabled(): boolean {
   return process.env.REFUNDS_ENABLED === 'true'
 }
@@ -166,8 +178,24 @@ export type RefundOutcome =
       cumulativeRefundedCents: number   // total refunded on the order (Stripe, after this)
       remainingRefundableCents: number
       routed: boolean
+      /** PHASE 2: the caller's amountCents was IGNORED because an interrupted refund was
+       *  re-driven first (RESUME-FIRST). The admin must re-issue the intended amount. */
+      resumedIgnoredAmount?: boolean
     }
-  | { ok: false; status: 404 | 400 | 409 | 500 | 502; error: string }
+  | {
+      /** PHASE 2 (§8): Stripe accepted the refund but it is NOT yet succeeded — money
+       *  has NOT moved to the customer. NOT ok on purpose: no ledger line, no email, no
+       *  « effectué ». Finalized later by RESUME-FIRST or the refund.updated webhook. */
+      ok: false
+      status: 202
+      pending: true
+      refundId: string
+      stripeRefundId: string
+      amountCents: number
+      stripeStatus: string
+      error: string
+    }
+  | { ok: false; status: 404 | 400 | 409 | 500 | 502; error: string; pending?: false }
 
 type RoyaltyRow = {
   id: string
@@ -201,9 +229,19 @@ const REFUND_SELECT = {
   stripeRefundId: true,
 } as const
 
+/** Thrown when a RESUME cannot consult Stripe's list to adopt an existing refund /
+ *  reversal — we must NOT create blindly (a pruned key + a lost response = a double). */
+class ResumeListUnavailable extends Error {
+  constructor(what: string) { super(`resume_list_unavailable:${what}`) }
+}
+
 function fatal(err: unknown): RefundOutcome {
   if (err instanceof Error && err.message === 'stripe_not_configured') {
     return { ok: false, status: 500, error: 'Paiement non configuré.' }
+  }
+  if (err instanceof ResumeListUnavailable) {
+    console.error('[refund] resume blocked — Stripe list unavailable, nothing created:', err.message)
+    return { ok: false, status: 502, error: 'Reprise impossible pour l’instant (liste Stripe indisponible) — réessayez.' }
   }
   console.error('[refund] stripe error', err instanceof Error ? err.message : err)
   return { ok: false, status: 502, error: 'Erreur paiement, réessayez.' }
@@ -217,26 +255,33 @@ const destOf = (charge: Stripe.Charge): string | null =>
     ? charge.transfer_data.destination
     : (charge.transfer_data?.destination as { id?: string } | null | undefined)?.id ?? null
 
+const FAILED_STATUSES = new Set(['failed', 'canceled'])
+
 /**
  * Drive the Stripe refund for a row IDEMPOTENTLY. On RESUME, reconcile first:
  *   1. row already carries the refund id → retrieve it (no new call);
  *   2. a refund tagged with our row id already exists → adopt it (>24h backstop,
- *      survives idempotency-key expiry).
+ *      survives idempotency-key expiry). If that LIST is unavailable → FAIL CLOSED
+ *      (ResumeListUnavailable): never create on a resume without the list (§16 B2).
  * Then (or on the FRESH path, which can have no prior refund — like the settlement's
  * fresh path skipping its reconcile LIST) create it — the @unique cursor key dedupes
  * within ~24h, so a fresh retry never doubles.
  */
-async function driveRefund(row: RefundRow, pi: Stripe.PaymentIntent, routed: boolean, fresh: boolean): Promise<Stripe.Refund> {
+async function driveRefund(row: RefundRow, pi: Stripe.PaymentIntent, routed: boolean, fresh: boolean, adoptOnly = false): Promise<Stripe.Refund> {
   const stripe = getStripe()
   if (!fresh) {
     if (row.stripeRefundId) return stripe.refunds.retrieve(row.stripeRefundId)
+    let list: Stripe.ApiList<Stripe.Refund>
     try {
-      const list = await stripe.refunds.list({ payment_intent: pi.id, limit: 100 })
-      const existing = list.data.find((r) => r.metadata?.grubano_refund_row === row.id)
-      if (existing) return existing
+      list = await stripe.refunds.list({ payment_intent: pi.id, limit: 100 })
     } catch {
-      // listing unavailable → fall through to create (the key still dedupes ≤24h)
+      throw new ResumeListUnavailable('refunds')
     }
+    const existing = list.data.find((r) => r.metadata?.grubano_refund_row === row.id)
+    if (existing) return existing
+    // WEBHOOK path (security review P2-a): the event proves a refund EXISTS — a finalize
+    // triggered by Stripe must never CREATE one. Not found → retryable, nothing moved.
+    if (adoptOnly) throw new ResumeListUnavailable('refund_not_found_adopt_only')
   }
   return stripe.refunds.create(
     {
@@ -251,7 +296,9 @@ async function driveRefund(row: RefundRow, pi: Stripe.PaymentIntent, routed: boo
 
 /** Locate the Stripe transfer that disbursed a settled/settling royalty, to reverse
  *  a clawback against it: the recorded Payout transfer first, else the live
- *  transfer_group (the same anchor the settlement uses). null = not transferred yet. */
+ *  transfer_group (the same anchor the settlement uses). null = not transferred yet.
+ *  A list failure is treated as "not found" — DELIBERATE fail-safe (§17 R4-5): the
+ *  clawback is skipped and lands on the settlement over-transfer alert (human path). */
 async function locateSettlementTransfer(royalty: RoyaltyRow): Promise<string | null> {
   if (royalty.payoutId) {
     const p = await prisma.payout.findUnique({ where: { id: royalty.payoutId }, select: { stripeTransferId: true } })
@@ -269,15 +316,99 @@ async function locateSettlementTransfer(royalty: RoyaltyRow): Promise<string | n
 }
 
 /**
- * Finalize a refund whose Stripe refund already succeeded (fresh or resumed):
+ * PHASE 2 (§8) — Stripe TRUTH for the eager ledger line: re-list the charge's SUCCEEDED
+ * refunds and the fee's refunds, attribute with the SAME rule as the webhook
+ * (lib/refund-fee-truth). Returns null when the truth cannot be resolved unambiguously
+ * (the eager line is then SKIPPED and the charge.refunded webhook backstop writes it —
+ * the ledger never freezes a predicted cent). Also yields Σ succeeded for the royalty
+ * target. Best-effort: any Stripe error → null.
+ */
+async function resolveFeeTruth(pi: Stripe.PaymentIntent, charge: Stripe.Charge, stripeRefundId: string): Promise<{
+  feeBackCents: number | null
+  succeededTotalCents: number | null
+}> {
+  try {
+    const stripe = getStripe()
+    const list = await stripe.refunds.list({ payment_intent: pi.id, limit: 100 })
+    if (list.has_more) return { feeBackCents: null, succeededTotalCents: null }
+    const succeeded = list.data.filter((r) => r.status === 'succeeded')
+    const succeededTotalCents = succeeded.reduce((s, r) => s + r.amount, 0)
+    if (!succeeded.some((r) => r.id === stripeRefundId)) return { feeBackCents: null, succeededTotalCents }
+    const appFeeId = typeof charge.application_fee === 'string' ? charge.application_fee : charge.application_fee?.id ?? null
+    const totalFee = charge.application_fee_amount ?? 0
+    if (!appFeeId || totalFee <= 0) {
+      // No application fee on the charge → nothing was taken back: truth is 0.
+      return { feeBackCents: 0, succeededTotalCents }
+    }
+    const fees = await stripe.applicationFees.listRefunds(appFeeId, { limit: 100 })
+    const match = matchFeeRefunds(
+      succeeded.map((r) => ({ id: r.id, amount: r.amount, created: r.created })),
+      fees.data.map((f) => ({ amount: f.amount, created: f.created })),
+      totalFee, charge.amount,
+    )
+    if (match.mode !== 'stripe') return { feeBackCents: null, succeededTotalCents }
+    return { feeBackCents: match.byRefundId.get(stripeRefundId) ?? null, succeededTotalCents }
+  } catch {
+    return { feeBackCents: null, succeededTotalCents: null }
+  }
+}
+
+/**
+ * PHASE 2 (§8 / §15 A3 / A11) — a Stripe refund FAILED or was CANCELED: make the row
+ * truthful ('failed', stripeRefundId written so the fail-closed lock engages), release
+ * the cumul cursor (Stripe did not move amount_refunded), MONEY REVIEW + admin alert.
+ * No ledger line (none was written for a non-succeeded refund), loyalty untouched.
+ * Idempotent (a second call finds the row already 'failed').
+ */
+export async function markRefundRowFailed(rowId: string, stripeRefund: Stripe.Refund): Promise<{ ok: false; status: 409; error: string }> {
+  const row = await prisma.refund.findUnique({
+    where:  { id: rowId },
+    select: { id: true, orderId: true, idempotencyKey: true, amountCents: true, status: true, stripeRefundId: true },
+  })
+  const error = 'Remboursement Stripe en échec — reprise manuelle requise (le transfert inversé n’est pas restauré par Stripe : re-transférer le net au restaurant, puis rembourser sans reverse_transfer).'
+  if (!row) return { ok: false, status: 409, error }
+  // Security review P2-c: never let a mismatched Stripe refund re-label / lock a row that
+  // already carries a DIFFERENT refund id (the event does not belong to this row).
+  if (row.stripeRefundId && row.stripeRefundId !== stripeRefund.id) {
+    console.error(`[MONEY REVIEW] [refund_row_mismatch] row ${row.id} holds ${row.stripeRefundId}, event refund ${stripeRefund.id} — row NOT marked failed`)
+    return { ok: false, status: 409, error }
+  }
+  if (row.status !== 'failed') {
+    const suffix = `:failed:${stripeRefund.id}`
+    await prisma.refund.update({
+      where: { id: row.id },
+      data:  {
+        status:         'failed',
+        stripeRefundId: stripeRefund.id,
+        idempotencyKey: row.idempotencyKey.endsWith(suffix) ? row.idempotencyKey : `${row.idempotencyKey}${suffix}`,
+      },
+    })
+    try {
+      await sendAdminMoneyReviewAlert({
+        kind:      'refund_failed',
+        dedupeKey: `refund:${stripeRefund.id}`,
+        title:     'Remboursement Stripe en échec — commande verrouillée',
+        facts:     { orderId: row.orderId, refundRow: row.id, stripeRefundId: stripeRefund.id, amountCents: row.amountCents, stripeStatus: stripeRefund.status ?? null, failureReason: stripeRefund.failure_reason ?? null, action: 'humain : re-transférer le net au restaurant puis rembourser sans reverse_transfer (Dashboard Stripe). Le moteur refuse tout nouveau remboursement sur cette commande.' },
+      })
+    } catch { /* best-effort */ }
+  }
+  return { ok: false, status: 409, error }
+}
+
+/**
+ * Finalize a refund whose Stripe refund object we hold (fresh or resumed):
+ *   (0) STATUS TRUTH — failed/canceled → row 'failed' + lock; not yet succeeded →
+ *       row stays 'pending' (stripeRefundId recorded) and the NON-ok pending variant;
  *   (a) royalty CLAWBACK from the franchisor when the royalty was already settled
- *       (or settling with a live transfer) — idempotent on `refund-claw:<rowId>`;
- *   (b) the compensating refund LEDGER line (best-effort, idempotent with the
- *       charge.refunded webhook via @@unique on the refund id);
+ *       (or settling with a live transfer) — capped at the royalty NOT YET RECOVERED
+ *       (never at refundedCents — §10.B D-H v2), adopting an existing tagged reversal on
+ *       a resume (>24h backstop, §15 A1), idempotent on `refund-claw:<rowId>`;
+ *   (b) the compensating refund LEDGER line with Stripe's REAL fee refund (skipped when
+ *       the truth is ambiguous — the webhook backstop writes it), idempotent on re_…;
  *   (c) mark the Refund row 'succeeded';
- *   (d) refund-aware accrual: FranchiseRoyalty.refundedCents = Σ royalty slices of
- *       this order's SUCCEEDED refunds (capped at royaltyCents) → the settlement
- *       pays only the non-refunded part.
+ *   (d) refund-aware accrual: FranchiseRoyalty.refundedCents = cross-rail cumulative
+ *       (Σ rows ∨ Stripe target) capped at royaltyCents → the settlement pays only the
+ *       non-refunded part.
  * On a clawback failure the row stays 'pending' (recoverable) → a later call resumes
  * it; the Stripe refund and the reversal keys guarantee NO double movement.
  */
@@ -290,58 +421,106 @@ async function finalizeRefund(
   stripeRefund: Stripe.Refund,
   routed: boolean,
   resumed: boolean,
+  resumedIgnoredAmount = false,
 ): Promise<RefundOutcome> {
+  // (0) STATUS TRUTH (§8, §16 B4: anything ∉ {succeeded, failed, canceled} = pending).
+  const stripeStatus = stripeRefund.status ?? 'pending'
+  if (FAILED_STATUSES.has(stripeStatus)) {
+    return markRefundRowFailed(row.id, stripeRefund)
+  }
+  if (stripeStatus !== 'succeeded') {
+    if (row.stripeRefundId !== stripeRefund.id) {
+      await prisma.refund.update({ where: { id: row.id }, data: { stripeRefundId: stripeRefund.id } })
+    }
+    return {
+      ok: false, status: 202, pending: true,
+      refundId: row.id, stripeRefundId: stripeRefund.id, amountCents: row.amountCents, stripeStatus,
+      error: 'Remboursement en attente côté Stripe — aucun montant n’a encore été restitué au client.',
+    }
+  }
+
   // (a) Royalty clawback from the franchisor — ONLY for already-committed royalty.
   let royaltyClawbackCents = 0
   if (royalty && row.royaltyRefundCents > 0 && (royalty.status === 'settled' || royalty.status === 'settling')) {
     const transferId = await locateSettlementTransfer(royalty)
     if (transferId) {
-      const amount = Math.min(row.royaltyRefundCents, royalty.royaltyCents)
-      try {
-        await getStripe().transfers.createReversal(
-          transferId,
-          { amount, metadata: { orderId: order.id, refundId: row.id, kind: 'royalty_refund_clawback' } },
-          { idempotencyKey: `refund-claw:${row.id}` },
-        )
-        royaltyClawbackCents = amount
-      } catch (err) {
-        // Refund succeeded for the customer, but recovering the royalty from the
-        // franchisor failed → leave the row 'pending' so the next call resumes the
-        // clawback (idempotent key → no double). Surface as a retryable error.
-        console.error(
-          `[refund] royalty clawback reversal failed for order ${order.id} (refund row ${row.id}): ` +
-          (err instanceof Error ? err.message : String(err)),
-        )
-        return { ok: false, status: 502, error: 'Remboursement émis, reprise de la royalty franchisé en échec — réessayez.' }
+      const recovered = await recoveredRoyaltyClawbackCents({ orderId: order.id, excludeRefundRowId: row.id })
+      const amount = capClawback(row.royaltyRefundCents, royalty.royaltyCents, recovered)
+      if (amount > 0) {
+        try {
+          let adopted: Stripe.TransferReversal | null = null
+          if (resumed) {
+            // >24h backstop: adopt a reversal already tagged with this row (never re-create).
+            let reversals: Stripe.ApiList<Stripe.TransferReversal>
+            try {
+              reversals = await getStripe().transfers.listReversals(transferId, { limit: 100 })
+            } catch {
+              throw new ResumeListUnavailable('reversals')
+            }
+            adopted = reversals.data.find((rv) => rv.metadata?.refundId === row.id) ?? null
+          }
+          if (adopted) {
+            royaltyClawbackCents = adopted.amount
+          } else {
+            await getStripe().transfers.createReversal(
+              transferId,
+              { amount, metadata: { orderId: order.id, refundId: row.id, kind: 'royalty_refund_clawback' } },
+              { idempotencyKey: `refund-claw:${row.id}` },
+            )
+            royaltyClawbackCents = amount
+          }
+        } catch (err) {
+          if (err instanceof ResumeListUnavailable) return fatal(err)
+          // Refund succeeded for the customer, but recovering the royalty from the
+          // franchisor failed → leave the row 'pending' so the next call resumes the
+          // clawback (idempotent key → no double). Surface as a retryable error.
+          console.error(
+            `[refund] royalty clawback reversal failed for order ${order.id} (refund row ${row.id}): ` +
+            (err instanceof Error ? err.message : String(err)),
+          )
+          return { ok: false, status: 502, error: 'Remboursement émis, reprise de la royalty franchisé en échec — réessayez.' }
+        }
+      } else {
+        console.warn(`[refund] royalty for order ${order.id}: slice ${row.royaltyRefundCents}c already recovered (${recovered}c of ${royalty.royaltyCents}c) — no further clawback`)
       }
     } else {
       // Settling but not yet transferred → no money with the franchisor to reverse;
-      // refundedCents below reduces what the settlement will pay. Logged for review.
+      // refundedCents below reduces what the settlement will pay. If the settlement
+      // already froze its batch, its post-transfer re-read raises the over-transfer
+      // alert (§10.A D-G v2). Logged for review.
       console.warn(
         `[refund] royalty for order ${order.id} is '${royalty.status}' with no locatable settlement transfer — ` +
-        'clawback deferred to settlement reconciliation (settlement settles royaltyCents − refundedCents)',
+        'clawback deferred to settlement reconciliation (settlement settles royaltyCents − refundedCents; over-transfer is alerted)',
       )
     }
   }
 
-  // (b) Compensating refund ledger line — best-effort, idempotent with the webhook.
-  try {
-    await recordRefundLedgerEntry({
-      refundId:                  stripeRefund.id,
-      restaurantId:              order.restaurantId,
-      refundedCents:             row.amountCents,
-      applicationFeeRefundCents: row.applicationFeeRefundCents,
-      stripePaymentIntentId:     pi.id,
-      stripeChargeId:            charge.id,
-      routed,
-      destinationAccountId:      destOf(charge),
-      channel:                   charge.metadata?.grubano_channel ?? null,
-      currency:                  stripeRefund.currency || charge.currency || 'eur',
-      createdAt:                 stripeRefund.created ? new Date(stripeRefund.created * 1000) : undefined,
-    })
-  } catch (e) {
-    console.error('[refund] [LEDGER MISS] refund line write failed (webhook backstop will heal):',
-      order.id, e instanceof Error ? e.message : e)
+  // (b) Compensating refund ledger line — Stripe TRUTH only, idempotent with the webhook.
+  const truth = await resolveFeeTruth(pi, charge, stripeRefund.id)
+  if (truth.feeBackCents !== null) {
+    if (truth.feeBackCents !== row.applicationFeeRefundCents) {
+      console.error(`[MONEY REVIEW] [fee_prediction_mismatch] order ${order.id} refund ${stripeRefund.id}: predicted fee refund ${row.applicationFeeRefundCents}c, Stripe real ${truth.feeBackCents}c — ledger uses Stripe`)
+    }
+    try {
+      await recordRefundLedgerEntry({
+        refundId:                  stripeRefund.id,
+        restaurantId:              order.restaurantId,
+        refundedCents:             row.amountCents,
+        applicationFeeRefundCents: truth.feeBackCents,
+        stripePaymentIntentId:     pi.id,
+        stripeChargeId:            charge.id,
+        routed,
+        destinationAccountId:      destOf(charge),
+        channel:                   charge.metadata?.grubano_channel ?? null,
+        currency:                  stripeRefund.currency || charge.currency || 'eur',
+        createdAt:                 stripeRefund.created ? new Date(stripeRefund.created * 1000) : undefined,
+      })
+    } catch (e) {
+      console.error('[refund] [LEDGER MISS] refund line write failed (webhook backstop will heal):',
+        order.id, e instanceof Error ? e.message : e)
+    }
+  } else {
+    console.warn(`[refund] eager ledger line skipped for ${stripeRefund.id} (fee truth unresolved) — charge.refunded webhook writes it`)
   }
 
   // (c) Mark the row succeeded (idempotent — a resume re-writes the same values).
@@ -351,17 +530,32 @@ async function finalizeRefund(
   })
 
   // (d) Refund-aware settlement accrual: the royalty's cumulative refunded across BOTH
-  //     rails (refunds + lost disputes), capped at royaltyCents, monotone. This refund's
-  //     Refund row is already 'succeeded' (step c) → counted by the aggregate. CROSS-RAIL
-  //     (P4.5-B): includes lost-dispute slices so a refund can NEVER erase a chargeback's
-  //     clawback. Byte-identical for refund-only orders (no disputes → the old value).
+  //     rails (refunds + lost disputes) ∨ the Stripe-truth target, capped at royaltyCents,
+  //     monotone. This refund's Refund row is already 'succeeded' (step c) → counted.
   if (royalty) {
-    const cum = await recomputeRoyaltyRefundedCents({
-      orderId:               order.id,
-      royaltyCents:          royalty.royaltyCents,
-      existingRefundedCents: royalty.refundedCents,
-    })
-    await prisma.franchiseRoyalty.update({ where: { orderId: order.id }, data: { refundedCents: cum } })
+    const stripeTargetCents = truth.succeededTotalCents !== null
+      ? computeRefundSplit({
+          chargeTotalCents:     charge.amount,
+          applicationFeeCents:  charge.application_fee_amount ?? 0,
+          royaltyChargedCents:  royalty.royaltyCents,
+          alreadyRefundedCents: 0,
+          refundAmountCents:    truth.succeededTotalCents,
+        }).cumulativeRoyaltyRefundedCents
+      : undefined
+    // Financial review F3: a DB blip here must NOT mask a COMPLETED refund as a 500 (the
+    // admin would re-issue and create a second refund). The D-B webhook target heals
+    // refundedCents on the next charge.refunded / refund.updated delivery — log MONEY REVIEW.
+    try {
+      const cum = await recomputeRoyaltyRefundedCents({
+        orderId:               order.id,
+        royaltyCents:          royalty.royaltyCents,
+        existingRefundedCents: royalty.refundedCents,
+        stripeTargetCents,
+      })
+      await prisma.franchiseRoyalty.update({ where: { orderId: order.id }, data: { refundedCents: cum } })
+    } catch (e) {
+      console.error(`[MONEY REVIEW] [royalty_refunded_write_failed] order ${order.id} refund ${stripeRefund.id}: refundedCents not updated (webhook D-B target heals it) —`, e instanceof Error ? e.message : e)
+    }
   }
 
   // Post-refund cumulative from the charge we already hold (no extra Stripe call):
@@ -386,7 +580,42 @@ async function finalizeRefund(
     cumulativeRefundedCents,
     remainingRefundableCents:  Math.max(0, chargeTotal - cumulativeRefundedCents),
     routed,
+    ...(resumedIgnoredAmount ? { resumedIgnoredAmount: true } : {}),
   }
+}
+
+/**
+ * PHASE 2 (§16 B1) — finalize a 'pending' Refund row from the refund.updated webhook once
+ * Stripe reports the refund succeeded (or make it 'failed'). Same code path as RESUME-FIRST.
+ */
+export async function finalizeRefundRowFromStripe(rowId: string): Promise<RefundOutcome> {
+  const row = await prisma.refund.findUnique({ where: { id: rowId }, select: { ...REFUND_SELECT, status: true } })
+  if (!row) return { ok: false, status: 404, error: 'Ligne de remboursement introuvable.' }
+  if (row.status === 'succeeded') return { ok: false, status: 409, error: 'Déjà finalisé.' }
+  if (row.status === 'failed') return { ok: false, status: 409, error: 'Remboursement en échec — reprise manuelle requise.' }
+  const order = await prisma.order.findUnique({
+    where:  { id: row.orderId },
+    select: { id: true, restaurantId: true, stripePaymentIntentId: true },
+  })
+  if (!order?.stripePaymentIntentId) return { ok: false, status: 404, error: 'Commande introuvable.' }
+  const orderRef: OrderRef = { id: order.id, restaurantId: order.restaurantId, stripePaymentIntentId: order.stripePaymentIntentId }
+  let pi: Stripe.PaymentIntent
+  try {
+    pi = await getStripe().paymentIntents.retrieve(order.stripePaymentIntentId, { expand: ['latest_charge'] })
+  } catch (err) {
+    return fatal(err)
+  }
+  const charge = chargeOf(pi)
+  if (!charge) return { ok: false, status: 502, error: 'Charge introuvable sur le paiement.' }
+  const routed  = !!pi.transfer_data
+  const royalty = await prisma.franchiseRoyalty.findUnique({ where: { orderId: order.id }, select: ROYALTY_SELECT })
+  let stripeRefund: Stripe.Refund
+  try {
+    stripeRefund = await driveRefund(row, pi, routed, false, /* adoptOnly */ true)
+  } catch (err) {
+    return fatal(err)
+  }
+  return finalizeRefund(row, orderRef, royalty, pi, charge, stripeRefund, routed, true)
 }
 
 /**
@@ -417,6 +646,17 @@ export async function executeRefund(input: {
   }
   const orderRef: OrderRef = { id: order.id, restaurantId: order.restaurantId, stripePaymentIntentId: order.stripePaymentIntentId }
 
+  // PHASE 2 (§8 fail-closed, §16 B5 — BEFORE resume): a FAILED Stripe refund on this order
+  // locks it. Stripe does not restore the reversed transfer on a failed refund → a new
+  // refund with reverse_transfer would debit the restaurant a second time. Human path only.
+  const failed = await prisma.refund.findFirst({
+    where:  { orderId: order.id, status: 'failed', stripeRefundId: { not: null } },
+    select: { id: true, stripeRefundId: true },
+  })
+  if (failed) {
+    return { ok: false, status: 409, error: 'Remboursement précédent en échec sur cette commande — reprise manuelle requise (Dashboard Stripe : re-transférer le net au restaurant, puis rembourser sans reverse_transfer).' }
+  }
+
   // Load the live PaymentIntent + charge (the authoritative decomposition source).
   let pi: Stripe.PaymentIntent
   try {
@@ -443,7 +683,8 @@ export async function executeRefund(input: {
     } catch (err) {
       return fatal(err)
     }
-    return finalizeRefund(pending, orderRef, royalty, pi, charge, stripeRefund, routed, true)
+    const ignored = input.amountCents !== undefined && input.amountCents !== pending.amountCents
+    return finalizeRefund(pending, orderRef, royalty, pi, charge, stripeRefund, routed, true, ignored)
   }
 
   // Cumul ceiling against the LIVE refundable amount (true cross-path total).

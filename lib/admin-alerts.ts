@@ -9,7 +9,7 @@
 import { sendOnce, type SendStatus } from '@/lib/transactional-emails'
 
 const escHtml = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 
 /**
  * WP-MONEY-01 — a card order lazily expired (>24h) but its payment landed AFTER
@@ -173,6 +173,46 @@ export async function sendAdminReconcileDigest(p: {
       + `<p style="font-size:13px;color:#6b7280">Échantillon : ${sample || '—'}</p>`
       + `</div>`
     return await sendOnce('admin_reconcile_digest', `reconcile:${p.dayKey}`, { to, subject, html })
+  } catch {
+    return { status: 'failed' }
+  }
+}
+
+// ── PHASE 2 — MONEY REVIEW alerts (REFUND-FINANCIAL-CONTRACT §13.3 / §15 A6) ─────────
+// Every residual the refund rail deliberately does NOT automate is DETECTED and
+// surfaced here — never silent: the full payload is written to console.error BEFORE
+// the e-mail attempt, so a missing ALERT_EMAIL (→ 'skipped') still leaves the log line.
+// Read-only signal; no money action. Idempotent per (kind, dedupeKey). Never throws.
+export type MoneyReviewKind =
+  | 'external_refund_settled_royalty'   // Dashboard refund on a settled/settling royalty → human clawback owed
+  | 'refund_failed'                     // Stripe refund failed → restaurant debited, customer not refunded → human re-transfer
+  | 'settlement_over_transfer'          // franchisor transferred more than the live net owed → human clawback owed
+  | 'settlement_amount_drift'           // resume: frozen payout ≠ live lines, no transfer made → human decision
+  | 'refund_reconciliation_incomplete'  // webhook could not list the charge's refunds → reconciliation deferred
+
+export async function sendAdminMoneyReviewAlert(p: {
+  kind:      MoneyReviewKind
+  dedupeKey: string
+  title:     string
+  facts:     Record<string, string | number | boolean | null | undefined>
+}): Promise<{ status: SendStatus }> {
+  // The log line is the primary channel (survives a skipped/failed send).
+  console.error(`[MONEY REVIEW] [${p.kind}] ${p.title} ${JSON.stringify(p.facts)}`)
+  try {
+    const to = (process.env.ALERT_EMAIL || '').trim()
+    if (!to) return { status: 'skipped' }
+    const rows = Object.entries(p.facts)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => `<tr><td style="padding:2px 8px 2px 0;color:#6b7280">${escHtml(k)}</td><td><b>${escHtml(String(v))}</b></td></tr>`)
+      .join('')
+    const subject = `[Grubano] MONEY REVIEW — ${p.title}`
+    const html =
+      `<div style="font-family:system-ui,Arial,sans-serif;color:#111827;max-width:560px">`
+      + `<h2 style="font-size:17px">Revue argent requise — ${escHtml(p.title)}</h2>`
+      + `<p style="font-size:13px">Aucune action automatique n'a été prise. Décision humaine requise (contrat Phase 2, §13.3).</p>`
+      + `<table style="font-size:13px;border-collapse:collapse">${rows}</table>`
+      + `</div>`
+    return await sendOnce(`admin_money_review_${p.kind}`, p.dedupeKey, { to, subject, html })
   } catch {
     return { status: 'failed' }
   }

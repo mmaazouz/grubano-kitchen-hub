@@ -1,14 +1,15 @@
-// ⚠️ TWO REFUND LIBS EXIST — DO NOT MERGE THEM (see the C-2 gate report, 2026-07-03).
-// THIS FILE, lib/refunds.ts (PLURAL) = the SIMPLE owner-initiated refund path:
-// UNGATED, LIVE today, keyed by paymentIntentId, owner-scoped at the route, ledger
-// written by the charge.refunded webhook. Used by /api/orders/[id]/refund,
-// /api/tickets/[id]/refund and the reservation deposit routes (tickets have NO Order
-// row). The OTHER file, lib/refund.ts (SINGULAR), is the royalty-aware ENGINE, GATED
-// by REFUNDS_ENABLED and keyed by orderId (admin/claims/dispute/webhook rails).
-// Routing these routes through the engine was audited and REJECTED (10 divergences +
-// a data-model wall for tickets + it would take the live owner-refund path dark).
-// Consolidation, if ever wanted, is a post-go-live DESIGN project (P3) — never an
-// in-place refactor. Keep them separate.
+// ⚠️ TWO REFUND LIBS EXIST — scope settled by PHASE 2 (REFUND-FINANCIAL-CONTRACT §0/§4).
+// THIS FILE, lib/refunds.ts (PLURAL) = the SIMPLE PI-keyed refund path for payments
+// that have NO Order row and therefore NO franchise royalty: /api/tickets/[id]/refund
+// (dine-in bills) and /api/reservations/[id]/refund-deposit. Both routes are ADMIN-only
+// and GATED by REFUNDS_ENABLED at the route (P0-26) — this lib is NOT "ungated / live":
+// no HTTP path reaches it while the flag is OFF. The ledger line is written by the
+// charge.refunded webhook. The OTHER file, lib/refund.ts (SINGULAR), is the royalty-aware
+// ENGINE keyed by orderId — since Phase 2 it is the ONLY engine on the ORDER path
+// (/api/orders/[id]/refund, /api/admin/refunds/run, claims, ghost-order): an order
+// refunded here would return the franchise royalty slice to the customer WITHOUT
+// reducing FranchiseRoyalty.refundedCents → the settlement pays it again (double).
+// NEVER route an Order refund through this file.
 //
 // Refunds (rail financier A5). A0 decision: refunding a payment TAKES BACK
 // Grubano's commission PRO-RATA (refund_application_fee) and, on a routed

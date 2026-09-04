@@ -14,7 +14,7 @@
 | --- | --- | --- | --- | --- |
 | **0** | Inventaire factuel (read-only) | **PASS** ✅ | `a1/beta-closeout` (docs) | `BETA-CLAIMS-REFUND-FACTUAL-INVENTORY.md` ✅ |
 | **1** | Modèle financier fidélité (sûr sous refund) | **COMPLET** ✅ (migré + mergé `e244275` + déployé + client Prisma régénéré + runtime prouvé, 2026-09-03) | `a1/loyalty-refund` → develop | `LOYALTY-REFUND-CONTRACT.md` ✅ · `PHASE-2-HANDOFF.md` ✅ |
-| **2** | Rail financier de remboursement | À FAIRE | — | `REFUND-FINANCIAL-CONTRACT.md` |
+| **2** | Rail financier de remboursement / royalty | **IMPLÉMENTÉ + GATES PASS** ✅ (contrat critiqué 4 rounds → PASS ; revues financière + sécurité indépendantes PASS ; fusion/déploiement : voir bloc « CLÔTURE PHASE 2 ») — `REFUNDS_ENABLED` reste **FALSE** (décision fondateur, readiness §13) | `a1/refund-rail` → develop | `REFUND-FINANCIAL-CONTRACT.md` ✅ |
 | **3** | Claims : domaine / sécurité / admin | À FAIRE | — | (revue sécurité adversariale) |
 | **4** | Claims : UX consommateur | À FAIRE | — | pack Claude Design si visuellement faible |
 | **5** | Nettoyage produit | À FAIRE | — | — |
@@ -100,7 +100,37 @@ Décisions fondateur reçues et LOCKÉES (D1 reversal earned prorata, D2 restore
 
 ---
 
-## PHASE 2..6 — à ouvrir séquentiellement après déblocage Phase 1
+## PHASE 2 — RAIL FINANCIER DE REMBOURSEMENT / ROYALTY — **IMPLÉMENTÉ, GATES PASS** (2026-09-04, branche `a1/refund-rail`)
+
+**Livrable** : [`docs/ops/REFUND-FINANCIAL-CONTRACT.md`](REFUND-FINANCIAL-CONTRACT.md) (18 §) — Phase 0 read-only (lead + 2 agents forensiques : sémantique Stripe sur docs officiels, interplay repo `file:ligne`) + **critique adversarial en 4 rounds** (INCOMPLETE ×3 → **PASS**, 1 P0 + 15 P1 de conception fermés AVANT toute ligne de code) → implémentation (propriétaire unique, worktree isolé) → **revue financière indépendante PASS** (0 P0/P1, 8 P2 dont 6 implémentés) + **revue sécurité indépendante PASS** (0 P0/P1, 3 P2 implémentés).
+
+**Le P0 (double-versement franchise) avait DEUX portes, fermées toutes deux** :
+- Porte A `POST /api/orders/[id]/refund` → passait par `lib/refunds.ts` (royalty-UNAWARE) → désormais **UN SEUL moteur sur le chemin commande** : `lib/refund.executeRefund` (D-A). `lib/refunds.ts` ne sert plus qu'aux tickets/empreintes (pas de ligne `Order`, pas de royalty possible). Contrôle négatif : le rail A n'est JAMAIS appelé depuis la route commande.
+- Porte W (webhook `charge.refunded`, NON gaté = remboursement Dashboard) → ne touchait pas `FranchiseRoyalty.refundedCents` → désormais **point unique de réconciliation royalty** (D-B) : cible cumulative `royCum(Σ remboursements SUCCEEDED)` (jamais `amount_refunded`), monotone, cross-rail (lignes Refund ∨ cible Stripe + litiges), identité télescopique ⇒ même cible qu'un remboursement moteur → jamais double, jamais sous-compté. **Aucun mouvement d'argent depuis le webhook** ; royalty déjà réglée + remboursement EXTERNE → alerte MONEY REVIEW (reprise humaine).
+- Preuve numérique (revue financière) : T=5000/F=900/R=300, externe 2500 puis moteur 2500 (et l'inverse) → `refundedCents = 300`, settlement paie 0, cas réglé : 150 clawback moteur + 150 flaggé humain = R.
+
+**Autres décisions (contrat §6–§8, §15–§17)** :
+- **Vérité de statut (§8)** : ligne `Refund` `succeeded`, ligne ledger et email « effectué » **uniquement si Stripe `status === 'succeeded'`** ; `pending` → variante NON-ok 202 (routes : 202 `{status:'pending'}` + audit `pending:true`, pas d'email ; claims : reste `refunding` ; ghost → `reconcile_manual`) ; `failed/canceled` → ligne `failed`, curseur libéré, **verrou fail-closed permanent** (Stripe ne restaure pas le transfert inversé → un retry aveugle débiterait le resto deux fois), MONEY REVIEW. Oracle = `refund.updated`/`refund.failed` (nouvelle branche webhook, re-joue la réconciliation complète puis finalise la ligne, adopt-only) + RESUME-FIRST.
+- **Ledger = vérité Stripe** : règle d'attribution unique `lib/refund-fee-truth.ts` (webhook + ligne eager du moteur) ; ambiguïté ou prédiction → MONEY REVIEW ; le moteur SAUTE sa ligne eager plutôt que figer un centime prédit.
+- **Clawback royalty (D-H v2)** plafonné sur l'argent **réellement récupéré** (`lib/royalty-recovered.ts`), jamais sur `refundedCents` (une course webhook l'aurait mis à 0) ; adoption d'une reversal déjà taguée (>24 h) ; liste indisponible en reprise → 502 fail-closed, jamais de création.
+- **Fee Stripe (D-D)** : jamais restitué par Stripe (FACT docs) → mouvement zéro, coût irrécouvrable Grubano, explicité dans `computeRefundExposure`. **Pourboire (D-E, défaut fondateur-modifiable)** : partiel → le livreur garde tout, Grubano absorbe la tranche rendue ; total → clawback des tips non payés (prédicat sur Σ succeeded) ; garde d'accrual : jamais de tip sur une commande intégralement remboursée (ledger, fail-closed `ledger_unknown`).
+- **Identité de conservation tripartite (§7)** : `client + resto + Grubano + franchiseur + livreur + Stripe = 0` à chaque événement et en cumul, STANDARD/FRANCHISE/livreur-B × 5 séquences à centimes impairs ; contrôles négatifs réels (split arrondi par plancher passe la tautologie mais casse Σfee=F / Σroyalty=R / resto=T−F).
+- **Settlement (D-G v2)** : pas de re-plan du montant (clé d'idempotence partagée = seul garde-fou anti-double sous concurrence, `Payout` sans `updatedAt` → pas de mutex sûr sans schéma) → **détection** post-transfert + branches d'adoption (sur-versement → alerte au centime) ; `amount_mismatch` → `amount_drift` + alerte (jamais silencieux). Résiduel enregistré : fenêtre ~1 s claim→transfer détectée, non auto-corrigée.
+- En-têtes « UNGATED / REJECTED » stale corrigés (`lib/refund.ts`, `lib/refunds.ts`).
+
+**Fichiers** : `lib/refund.ts` (réécrit), `lib/refunds.ts` (en-tête), `lib/royalty-refunded.ts` (+`stripeTargetCents`), **new** `lib/royalty-recovered.ts`, `lib/refund-fee-truth.ts`, `lib/refund-exposure.ts` ; `lib/admin-alerts.ts` (+`sendAdminMoneyReviewAlert`, `escHtml` `'`), `lib/franchise-settlement.ts`, `lib/courier-accrual.ts`, `lib/claims.ts` ; `app/api/webhooks/stripe/route.ts`, `app/api/orders/[id]/refund/route.ts`, `app/api/admin/refunds/run/route.ts`. **Aucun changement de schéma.** `REFUNDS_ENABLED` jamais touché.
+
+**Tests** : +3 suites nouvelles (`refund-conservation` 21, `refund-fee-truth` 8, `webhook-refund-reconciliation` 23 — première couverture comportementale de `handleChargeRefunded`, Phase 0 en avait trouvé ZÉRO) ; suites étendues `refund-engine` 36, `order-refund` 22, `franchise-settlement-refund` 8, `courier-tip` 14, `refunds-run-route` +2, `claims` +1, `p5-refund-humain` réécrit sur le vrai moteur. Flips attendus tous inventoriés au contrat (§11) et re-photographiés.
+
+**Limites dites** : matrice prouvée au harnais (Stripe/DB mockés) — **aucun refund Stripe TEST déclenché** (freeze respecté, Stripe TEST : 0 refund 24 h / total 14 inchangé au début ET à la fin de session) ; la répétition humaine sur la commande jetable est l'exercice live. Résiduels enregistrés (contrat §18) : F2 phantom fee sur refund externe sans `refund_application_fee` (ledger seul, surfacé), F5 `ledger_unknown` sur commandes pré-ledger, F8 reprise moteur crée sur liste vide disponible (correct), fenêtre D-G, clawback royalty réglée sur refund externe = humain.
+
+**Gates / fusion / déploiement** : voir le bloc « CLÔTURE PHASE 2 — RÉSULTATS » ci-dessous (rempli à la fin de l'opération).
+
+**READINESS `REFUNDS_ENABLED` (décision fondateur, jamais flippé par l'agent)** — contrat §13 + A13 + B8 : (1) **REQUIS** : abonner `refund.updated` + `refund.failed` sur l'endpoint Stripe TEST `we_…7ueK` (Dashboard → Webhooks → endpoint → événements) AVANT toute répétition Dashboard (porte W) ; (2) `ALERT_EMAIL` posé sur staging + alerte de test reçue ; (3) `GHOST_ORDER_AUTO_REFUND_ENABLED` et `CLAIMS_AUTO_APPROVE_ENABLED` restent OFF ; (4) décision D-E (livreur garde le tip sur partiel) ; (5) settlement franchise = `workflow_dispatch` seulement sur staging (cron `main`, mensuel) ; (6) `ledger-check` manuel après chaque refund de répétition (cron `main` seulement) ; (7) solde disponible du compte Connect TEST du resto ≥ `reverse_transfer` de la répétition (sinon la requête de refund échoue, fail-safe) ; (8) actions humaines jamais automatisées : clawback royalty réglée sur refund externe, sur-versement settlement détecté, re-transfert après refund `failed`.
+
+---
+
+## PHASE 3..6 — à ouvrir séquentiellement après clôture Phase 2
 
 *(Chaque phase : faits · décisions · fichiers · commits · tests · contrôles négatifs · risques ouverts · état de fusion — remplis à sa clôture. Correctifs par phase pré-listés dans l'inventaire §8.)*
 

@@ -140,6 +140,21 @@ describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)
     expect(execMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 5000, reason: 'claim:cl1' })
   })
 
+  it("[PHASE 2 §15 A7] moteur → variante PENDING (Stripe pas encore succeeded) : la réclamation reste 'refunding' avec refundId, AUCUN refundError, AUCUN retour à 'approved'", async () => {
+    execMock.mockResolvedValue({ ok: false, status: 202, pending: true, refundId: 'rf1', stripeRefundId: 're_p', amountCents: 5000, stripeStatus: 'pending', error: 'en attente' })
+    db.claim.findUnique
+      .mockResolvedValueOnce({ id: 'cl1', status: 'arbitration', refundAttempted: false })
+      .mockResolvedValueOnce({ orderId: 'o1', requestedAmountCents: 5000 })
+      .mockResolvedValue({ id: 'cl1', status: 'refunding', refundId: 'rf1' })
+    const res = await arbitrateClaim({ claimId: 'cl1', adminId: 'adm1', decision: 'approve' })
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.refund).toEqual({ state: 'pending', reason: 'stripe_pending', refundId: 'rf1' })
+    const updates = db.claim.update.mock.calls.map((c) => c[0].data)
+    expect(updates).toContainEqual({ refundId: 'rf1', refundError: null })
+    expect(updates.some((d) => d.status === 'approved' || d.refundError)).toBe(false)
+    expect(updates.some((d) => d.status === 'refunded')).toBe(false)
+  })
+
   it('HÉRITAGE pré-P0-24 : approved + refundAttempted=false → arbitrable (approve → refund idempotent)', async () => {
     db.claim.findUnique
       .mockResolvedValueOnce({ id: 'cl9', status: 'approved', refundAttempted: false })

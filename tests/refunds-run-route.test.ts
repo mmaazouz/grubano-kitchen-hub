@@ -180,3 +180,26 @@ describe('POST /api/admin/refunds/run — LOT C email client best-effort', () =>
     }))
   })
 })
+
+// ── PHASE 2 §8 / §15 A4 — status truth on the admin engine route ─────────────────────
+describe('POST /api/admin/refunds/run — PHASE 2 pending variant (Stripe refund not yet succeeded)', () => {
+  const PENDING = {
+    ok: false, status: 202, pending: true, refundId: 'rf1', stripeRefundId: 're_p', amountCents: 2500, stripeStatus: 'pending',
+    error: 'Remboursement en attente côté Stripe — aucun montant n’a encore été restitué au client.',
+  }
+  it('pending → 202 {status:"pending"}, audited refund.run with pending:true, NO « effectué » email', async () => {
+    execMock.mockResolvedValue(PENDING)
+    db.order.findUnique.mockResolvedValue({ consumerId: 'c1', restaurantId: 'r1' })
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).toBe(202)
+    const body = await res.json()
+    expect(body).toMatchObject({ ok: false, status: 'pending', refundId: 'rf1', stripeRefundId: 're_p', amountCents: 2500 })
+    expect(body.error).toBeUndefined()
+    expect(emailMock).not.toHaveBeenCalled()
+  })
+  it('[negative control] the old « 200 + email » on a pending refund FAILS', async () => {
+    execMock.mockResolvedValue(PENDING)
+    const res = await post({ token: 'secret-cron' })
+    expect(res.status).not.toBe(200)
+  })
+})

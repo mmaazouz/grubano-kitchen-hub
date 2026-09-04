@@ -157,11 +157,35 @@ export async function accrueCourierTipEarning(
   // The HELD tip on the linked order (integer cents; > 0 only if TIPS_ENABLED was on at /pay).
   const order = await prisma.order.findUnique({
     where:  { id: mission.orderId },
-    select: { tipCents: true },
+    select: { tipCents: true, stripePaymentIntentId: true },
   })
   if (!order) return { status: 'skipped', reason: 'order_not_found' }
   const tipCents = order.tipCents ?? 0
   if (tipCents <= 0) return { status: 'skipped', reason: 'no_tip' }
+
+  // PHASE 2 (REFUND-FINANCIAL-CONTRACT §12 / §15 A12) — a tip must NEVER accrue on money the
+  // customer already got back: the ledger (written by the charge.refunded webhook for EVERY
+  // refund origin, and only for SUCCEEDED refunds) is the truth. Fully refunded ⇔
+  // Σ(−gross of 'refund' lines) ≥ gross of the 'payment' line, integer cents. FAIL-CLOSED
+  // when the payment line is unknown: the tip stays HELD (no loss for anyone) and is logged.
+  if (!order.stripePaymentIntentId) {
+    console.warn(`[courier tip accrual] order ${mission.orderId}: no PaymentIntent on the order — tip kept HELD (ledger_unknown)`)
+    return { status: 'skipped', reason: 'ledger_unknown' }
+  }
+  const ledger = await prisma.ledgerEntry.findMany({
+    where:  { stripePaymentIntentId: order.stripePaymentIntentId, type: { in: ['payment', 'refund'] } },
+    select: { type: true, grossAmount: true },
+  })
+  const paymentLine = ledger.find((l) => l.type === 'payment')
+  if (!paymentLine) {
+    console.warn(`[courier tip accrual] order ${mission.orderId}: no 'payment' ledger line for ${order.stripePaymentIntentId} — tip kept HELD (ledger_unknown)`)
+    return { status: 'skipped', reason: 'ledger_unknown' }
+  }
+  const refundedCents = ledger.filter((l) => l.type === 'refund').reduce((s, l) => s + Math.max(0, -l.grossAmount), 0)
+  if (refundedCents >= paymentLine.grossAmount) {
+    console.warn(`[courier tip accrual] order ${mission.orderId}: fully refunded (${refundedCents}c ≥ ${paymentLine.grossAmount}c) — tip NOT accrued`)
+    return { status: 'skipped', reason: 'refunded' }
+  }
 
   // 100 % to the courier — NO commission on a tip (decided). gross = net = tip, fee = 0.
   const grossCents = tipCents

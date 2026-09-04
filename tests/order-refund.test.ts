@@ -1,14 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// ── P0-03 + P0-26 (vague 1) — POST /api/orders/[id]/refund ────────────────────
+// ── P0-03 + P0-26 (vague 1) + PHASE 2 (D-A) — POST /api/orders/[id]/refund ─────────
 // Route-level spec. Q3 fondateur : the route is ADMIN GRUBANO ONLY (it used to be
 // owner-scoped) — a restaurateur session is 403, no session is 401, both attempts
 // AUDITED ('refund.denied'); an accepted refund is audited ('refund.run').
 // P0-26 : même régime que /api/admin/refunds/run — rate-limit → kill-switch
 // REFUNDS_ENABLED (défaut OFF → 403 « Remboursements indisponibles », AVANT toute
-// auth/DB/Stripe) → garde admin. The A5 mechanics are unchanged: pass-through to
-// lib/refunds (Stripe pro-rata + reverse_transfer + idempotency), 409s surfaced
-// verbatim, paymentStatus NEVER mutated (ledger = truth).
+// auth/DB/Stripe) → garde admin.
+// PHASE 2 (REFUND-FINANCIAL-CONTRACT §4, decision D-A): the mechanics are now the
+// royalty-aware ENGINE lib/refund.executeRefund — ONE engine on the order path. The
+// old pass-through to lib/refunds (royalty-UNAWARE → franchise double-return) is GONE;
+// the public response shape is preserved (refundId = re_…, refundedCents,
+// remainingCents, routed). Status truth (§8): a Stripe-`pending` refund → 202
+// {status:'pending'}, audited pending:true, NO « effectué » email.
 const { db } = vi.hoisted(() => ({
   db: {
     order:      { findUnique: vi.fn(), update: vi.fn() },
@@ -25,12 +29,14 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }))
 const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
 
-const { refundMock } = vi.hoisted(() => ({ refundMock: vi.fn() }))
-vi.mock('@/lib/refunds', () => ({ refundPayment: refundMock }))
-
-// P0-26 — kill-switch + rate-limit du même régime que refunds/run.
-const { flagMock, limitMock } = vi.hoisted(() => ({ flagMock: vi.fn(), limitMock: vi.fn() }))
-vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock }))
+// PHASE 2 — the engine is the ONLY refund mechanics on this route. lib/refunds (the
+// PI-keyed, royalty-unaware lib for tickets/deposits) must NEVER be reached from here:
+// it is mocked with a spy that the negative control asserts is never called.
+const { engineMock, flagMock, limitMock, legacyRefundMock } = vi.hoisted(() => ({
+  engineMock: vi.fn(), flagMock: vi.fn(), limitMock: vi.fn(), legacyRefundMock: vi.fn(),
+}))
+vi.mock('@/lib/refund', () => ({ isRefundsEnabled: flagMock, executeRefund: engineMock }))
+vi.mock('@/lib/refunds', () => ({ refundPayment: legacyRefundMock }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: limitMock }))
 
 const { emailMock } = vi.hoisted(() => ({ emailMock: vi.fn() }))
@@ -53,6 +59,11 @@ const paidOrder = {
   id: 'o1', restaurantId: 'rest1', consumerId: 'cust1',
   paymentStatus: 'paid', stripePaymentIntentId: 'pi_order_1',
 }
+const OK_OUTCOME = {
+  ok: true, resumed: false, refundId: 'rf1', stripeRefundId: 're_1', amountCents: 1000,
+  restaurantReverseCents: 880, applicationFeeRefundCents: 120, royaltyRefundCents: 0, royaltyClawbackCents: 0,
+  cumulativeRefundedCents: 1000, remainingRefundableCents: 1500, routed: true,
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -63,9 +74,7 @@ beforeEach(() => {
   db.order.findUnique.mockResolvedValue(paidOrder)
   db.operator.findUnique.mockResolvedValue({ email: 'client@example.com', name: 'Client' })
   db.restaurant.findUnique.mockResolvedValue({ name: 'Resto Test' })
-  refundMock.mockResolvedValue({
-    ok: true, refund: { id: 're_1' }, refundedCents: 1000, remainingCents: 1500, routed: true,
-  })
+  engineMock.mockResolvedValue(OK_OUTCOME)
   emailMock.mockResolvedValue(undefined)
 })
 
@@ -75,7 +84,7 @@ describe('POST /api/orders/[id]/refund — P0-26 kill-switch + rate-limit (régi
     const res = await call()
     expect(res.status).toBe(403)
     expect(await res.json()).toMatchObject({ error: 'Remboursements indisponibles', gated: true })
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
     expect(sessionMock).not.toHaveBeenCalled()      // gate AVANT la garde admin
     expect(db.order.findUnique).not.toHaveBeenCalled()
   })
@@ -87,7 +96,7 @@ describe('POST /api/orders/[id]/refund — P0-26 kill-switch + rate-limit (régi
     expect(res.status).toBe(429)
     expect(limitMock).toHaveBeenCalledWith(expect.anything(), 'order_refund', { limitDefault: 20, windowDefault: 60 })
     expect(flagMock).not.toHaveBeenCalled()
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
   })
 
   it('flag ON + admin → accès normal conservé (200)', async () => {
@@ -99,7 +108,7 @@ describe('POST /api/orders/[id]/refund — P0-03 admin gate + audit', () => {
   it('401 without a session — attempt audited refund.denied (unauthenticated)', async () => {
     sessionMock.mockResolvedValue(null)
     expect((await call()).status).toBe(401)
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
     expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
       action: 'refund.denied', actorId: 'anonymous',
       metadata: expect.objectContaining({ reason: 'unauthenticated' }),
@@ -110,19 +119,19 @@ describe('POST /api/orders/[id]/refund — P0-03 admin gate + audit', () => {
     sessionMock.mockResolvedValue(RESTO)
     const res = await call()
     expect(res.status).toBe(403)
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
     expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
       action: 'refund.denied', actorId: 'op1', targetType: 'order', targetId: 'o1',
       metadata: expect.objectContaining({ reason: 'not_admin', role: 'restaurant' }),
     }))
   })
 
-  it('200 for an ADMIN session — accepted refund audited refund.run', async () => {
+  it('200 for an ADMIN session — accepted refund audited refund.run (Stripe re_ id + engine row)', async () => {
     const res = await call()
     expect(res.status).toBe(200)
     expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
       action: 'refund.run', actorId: 'adm1', targetType: 'order', targetId: 'o1',
-      metadata: expect.objectContaining({ refundId: 're_1', refundedCents: 1000 }),
+      metadata: expect.objectContaining({ refundId: 're_1', refundRow: 'rf1', refundedCents: 1000, remainingCents: 1500 }),
     }))
   })
 
@@ -136,13 +145,13 @@ describe('POST /api/orders/[id]/refund — guards', () => {
   it('404 when the order does not exist', async () => {
     db.order.findUnique.mockResolvedValue(null)
     expect((await call()).status).toBe(404)
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
   })
 
   it('409 when the order is not paid (nothing to refund)', async () => {
     db.order.findUnique.mockResolvedValue({ ...paidOrder, paymentStatus: 'pending' })
     expect((await call()).status).toBe(409)
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
   })
 
   // LOT C — garde ÉLARGIE (miroir executeRefund) : 'reconcile_manual' (ghost order
@@ -151,41 +160,60 @@ describe('POST /api/orders/[id]/refund — guards', () => {
     db.order.findUnique.mockResolvedValue({ ...paidOrder, paymentStatus: 'reconcile_manual' })
     const res = await call()
     expect(res.status).toBe(200)
-    expect(refundMock).toHaveBeenCalledWith({ paymentIntentId: 'pi_order_1', amountCents: undefined })
+    expect(engineMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: undefined, reason: 'admin:orders/[id]/refund' })
   })
 
   it('[LOT C] la garde élargie refuse toujours un paymentStatus null (jamais encaissé) → 409', async () => {
     db.order.findUnique.mockResolvedValue({ ...paidOrder, paymentStatus: null })
     expect((await call()).status).toBe(409)
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
   })
 
   it('400 on an invalid amount', async () => {
     expect((await call({ amountCents: -5 })).status).toBe(400)
-    expect(refundMock).not.toHaveBeenCalled()
+    expect(engineMock).not.toHaveBeenCalled()
   })
 })
 
-describe('POST /api/orders/[id]/refund — pass-through to lib/refunds (A5 mechanics)', () => {
-  it('full refund: omitted amount is passed through as undefined (lib refunds the remainder)', async () => {
+describe('POST /api/orders/[id]/refund — PHASE 2 D-A: ONE engine on the order path (lib/refund.executeRefund)', () => {
+  it('full refund: omitted amount → engine refunds the remainder; public shape preserved (refundId = re_…)', async () => {
     const res = await call()
     expect(res.status).toBe(200)
-    expect(refundMock).toHaveBeenCalledWith({ paymentIntentId: 'pi_order_1', amountCents: undefined })
+    expect(engineMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: undefined, reason: 'admin:orders/[id]/refund' })
     expect(await res.json()).toMatchObject({
       refundId: 're_1', refundedCents: 1000, remainingCents: 1500, routed: true,
     })
   })
 
-  it('partial refund: amountCents is passed through verbatim', async () => {
+  it('partial refund: amountCents is passed to the engine verbatim (keyed by orderId, never by PI)', async () => {
     await call({ amountCents: 750 })
-    expect(refundMock).toHaveBeenCalledWith({ paymentIntentId: 'pi_order_1', amountCents: 750 })
+    expect(engineMock).toHaveBeenCalledWith({ orderId: 'o1', amountCents: 750, reason: 'admin:orders/[id]/refund' })
   })
 
-  it('surfaces lib/refunds 409 verbatim (already fully refunded / over-amount)', async () => {
-    refundMock.mockResolvedValue({ ok: false, status: 409, error: 'Paiement déjà intégralement remboursé.' })
+  it('⭐ [negative control of the P0] the royalty-UNAWARE lib/refunds.refundPayment is NEVER called from the order path', async () => {
+    await call()
+    await call({ amountCents: 300 })
+    expect(legacyRefundMock).not.toHaveBeenCalled()
+    expect(engineMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('surfaces the engine 409 verbatim (already fully refunded / over-amount / fail-closed lock)', async () => {
+    engineMock.mockResolvedValue({ ok: false, status: 409, error: 'Paiement déjà intégralement remboursé.' })
     const res = await call()
     expect(res.status).toBe(409)
     expect((await res.json()).error).toMatch('intégralement')
+    expect(emailMock).not.toHaveBeenCalled()
+    expect(auditMock).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'refund.run' }))
+  })
+
+  it('RESUME-FIRST: an interrupted refund re-driven instead of the requested amount → response SAYS so (resumedIgnoredAmount) + audited', async () => {
+    engineMock.mockResolvedValue({ ...OK_OUTCOME, resumed: true, resumedIgnoredAmount: true, amountCents: 2500, remainingRefundableCents: 0 })
+    const res = await call({ amountCents: 300 })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ resumed: true, resumedIgnoredAmount: true, refundedCents: 2500, remainingCents: 0 })
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'refund.run', metadata: expect.objectContaining({ resumed: true, resumedIgnoredAmount: true, requestedCents: 300 }),
+    }))
   })
 
   it('NEVER mutates paymentStatus (the ledger is the truth of give-backs)', async () => {
@@ -193,9 +221,43 @@ describe('POST /api/orders/[id]/refund — pass-through to lib/refunds (A5 mecha
     expect(db.order.update).not.toHaveBeenCalled()
   })
 
-  it('sends the customer email best-effort and never fails the refund on email error', async () => {
+  it('sends the customer email best-effort (Stripe succeeded only) and never fails the refund on email error', async () => {
     emailMock.mockRejectedValue(new Error('smtp down'))
     const res = await call()
     expect(res.status).toBe(200) // refund succeeded despite the email failure
+    expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({ refundedCents: 1000, partial: true, dedupeKey: 'order:o1:1000' }))
+  })
+})
+
+describe('POST /api/orders/[id]/refund — PHASE 2 §8 status truth (pending variant)', () => {
+  const PENDING = {
+    ok: false, status: 202, pending: true, refundId: 'rf1', stripeRefundId: 're_p', amountCents: 1000, stripeStatus: 'pending',
+    error: 'Remboursement en attente côté Stripe — aucun montant n’a encore été restitué au client.',
+  }
+
+  it('Stripe-pending refund → 202 {status:"pending"}, NO error key, NO « effectué » email', async () => {
+    engineMock.mockResolvedValue(PENDING)
+    const res = await call()
+    expect(res.status).toBe(202)
+    const body = await res.json()
+    expect(body).toMatchObject({ status: 'pending', refundId: 're_p', refundRow: 'rf1', refundedCents: 1000 })
+    expect(body.error).toBeUndefined()
+    expect(emailMock).not.toHaveBeenCalled()
+  })
+
+  it('[§15 A4] the pending refund IS audited (an admin created a live Stripe refund) with pending:true', async () => {
+    engineMock.mockResolvedValue(PENDING)
+    await call()
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'refund.run', actorId: 'adm1', targetId: 'o1',
+      metadata: expect.objectContaining({ pending: true, refundId: 're_p', refundRow: 'rf1', stripeStatus: 'pending' }),
+    }))
+  })
+
+  it('[negative control] asserting the old « 200 + email » on a pending refund FAILS', async () => {
+    engineMock.mockResolvedValue(PENDING)
+    const res = await call()
+    expect(res.status).not.toBe(200)
+    expect(emailMock).not.toHaveBeenCalled()
   })
 })

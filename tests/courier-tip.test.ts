@@ -7,7 +7,11 @@ import { Prisma } from '@prisma/client'
 // NEVER the course. Prisma + payout-flag mocked; eurosToCents/courierMaturesAt real-ish.
 
 const { db, pay } = vi.hoisted(() => ({
-  db:  { mission: { findUnique: vi.fn() }, order: { findUnique: vi.fn() }, courierEarning: { create: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() } },
+  db:  {
+    mission: { findUnique: vi.fn() }, order: { findUnique: vi.fn() },
+    courierEarning: { create: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+    ledgerEntry: { findMany: vi.fn() }, // PHASE 2 §15 A12 — refund guard reads the ledger truth
+  },
   pay: { isLogisticsPayoutEnabled: vi.fn() },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -19,12 +23,14 @@ import { accrueCourierTipEarning, clawbackCourierTip } from '@/lib/courier-accru
 
 const NOW = new Date('2026-07-06T00:00:00.000Z')
 const MISSION = { id: 'm1', status: 'delivered', courierId: 'cP', orderId: 'o1' }
+const PAYMENT_LINE = { type: 'payment', grossAmount: 5000 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   pay.isLogisticsPayoutEnabled.mockReturnValue(true)
   db.mission.findUnique.mockResolvedValue(MISSION)
-  db.order.findUnique.mockResolvedValue({ tipCents: 300 })
+  db.order.findUnique.mockResolvedValue({ tipCents: 300, stripePaymentIntentId: 'pi_o1' })
+  db.ledgerEntry.findMany.mockResolvedValue([PAYMENT_LINE])
   db.courierEarning.create.mockResolvedValue({ id: 'ce_tip1' })
   db.courierEarning.findMany.mockResolvedValue([])
   db.courierEarning.updateMany.mockResolvedValue({ count: 1 })
@@ -45,7 +51,7 @@ describe('accrueCourierTipEarning — 100 % tip, gated by the reversal rail', ()
     expect(db.courierEarning.create).not.toHaveBeenCalled()
   })
   it('no tip (tipCents 0) → no_tip, no create', async () => {
-    db.order.findUnique.mockResolvedValue({ tipCents: 0 })
+    db.order.findUnique.mockResolvedValue({ tipCents: 0, stripePaymentIntentId: 'pi_o1' })
     expect(await accrueCourierTipEarning('m1', 'cP', NOW)).toEqual({ status: 'skipped', reason: 'no_tip' })
     expect(db.courierEarning.create).not.toHaveBeenCalled()
   })
@@ -61,9 +67,30 @@ describe('accrueCourierTipEarning — 100 % tip, gated by the reversal rail', ()
     db.courierEarning.create.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }))
     expect(await accrueCourierTipEarning('m1', 'cP', NOW)).toEqual({ status: 'skipped', reason: 'already_accrued' })
   })
-  it('tip is INDEPENDENT of deliveryMode (reads only tipCents, not the case-A/B routing)', async () => {
+  it('tip is INDEPENDENT of deliveryMode (reads tipCents + the PI for the refund guard, not the case-A/B routing)', async () => {
     await accrueCourierTipEarning('m1', 'cP', NOW)
-    expect(db.order.findUnique.mock.calls[0][0].select).toEqual({ tipCents: true })
+    expect(db.order.findUnique.mock.calls[0][0].select).toEqual({ tipCents: true, stripePaymentIntentId: true })
+  })
+
+  // ── PHASE 2 (REFUND-FINANCIAL-CONTRACT §12 / §15 A12) — never accrue a tip on refunded money ──
+  it('[Phase 2] order FULLY refunded per the ledger (Σ −refund gross ≥ payment gross) → skipped:refunded, NO create', async () => {
+    db.ledgerEntry.findMany.mockResolvedValue([PAYMENT_LINE, { type: 'refund', grossAmount: -3000 }, { type: 'refund', grossAmount: -2000 }])
+    expect(await accrueCourierTipEarning('m1', 'cP', NOW)).toEqual({ status: 'skipped', reason: 'refunded' })
+    expect(db.courierEarning.create).not.toHaveBeenCalled()
+    expect(db.ledgerEntry.findMany.mock.calls[0][0].where).toMatchObject({ stripePaymentIntentId: 'pi_o1', type: { in: ['payment', 'refund'] } })
+  })
+  it('[Phase 2] PARTIAL refund → the courier keeps the whole tip (D-E): accrued normally', async () => {
+    db.ledgerEntry.findMany.mockResolvedValue([PAYMENT_LINE, { type: 'refund', grossAmount: -2500 }])
+    expect(await accrueCourierTipEarning('m1', 'cP', NOW)).toMatchObject({ status: 'created', grossCents: 300 })
+  })
+  it('[Phase 2] payment ledger line UNKNOWN → fail-closed skipped:ledger_unknown (tip stays HELD, no loss)', async () => {
+    db.ledgerEntry.findMany.mockResolvedValue([])
+    expect(await accrueCourierTipEarning('m1', 'cP', NOW)).toEqual({ status: 'skipped', reason: 'ledger_unknown' })
+    expect(db.courierEarning.create).not.toHaveBeenCalled()
+  })
+  it('[Phase 2] order without a PaymentIntent → fail-closed skipped:ledger_unknown', async () => {
+    db.order.findUnique.mockResolvedValue({ tipCents: 300, stripePaymentIntentId: null })
+    expect(await accrueCourierTipEarning('m1', 'cP', NOW)).toEqual({ status: 'skipped', reason: 'ledger_unknown' })
   })
 })
 

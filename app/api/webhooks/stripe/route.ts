@@ -7,9 +7,11 @@ import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
-import { isGhostOrderAutoRefundEnabled, executeRefund } from '@/lib/refund'
+import { isGhostOrderAutoRefundEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
+import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
+import { matchFeeRefunds } from '@/lib/refund-fee-truth'
 import { clawbackCourierTip } from '@/lib/courier-accrual'
-import { sendAdminGhostOrderAlert, sendAdminStalePiAlert } from '@/lib/admin-alerts'
+import { sendAdminGhostOrderAlert, sendAdminStalePiAlert, sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 
 // ── POST /api/webhooks/stripe ─────────────────────────────────────────────────
 // Stripe pushes PaymentIntent lifecycle events here so payment state is synced
@@ -103,6 +105,17 @@ export async function POST(req: Request) {
   //        payload lacks the charge context.
   if (event.type === 'charge.refunded') {
     return handleChargeRefunded(event.data.object as Stripe.Charge)
+  }
+
+  // 3-refund-status) PHASE 2 (REFUND-FINANCIAL-CONTRACT §8 / §16 B1) — refund.updated /
+  //        refund.failed carry a Refund: the STATUS ORACLE. charge.refunded fires at refund
+  //        CREATION and never re-fires, so a refund that is `pending` at creation and
+  //        succeeds later is reconciled HERE (full charge.refunded reconciliation re-run,
+  //        idempotent by construction), and a refund that FAILS is made truthful (Refund
+  //        row 'failed', cursor released, MONEY REVIEW). charge.refund.updated is the
+  //        deprecated alias — accepted for safety.
+  if (event.type === 'refund.updated' || event.type === 'refund.failed' || event.type === 'charge.refund.updated') {
+    return handleRefundStatusEvent(event.data.object as Stripe.Refund)
   }
 
   // 3-dispute) CHARGEBACK / DISPUTE branch (rail P4.5-B, Agent 51) — charge.dispute.*
@@ -623,7 +636,20 @@ async function recordSucceededPaymentLedger(pi: Stripe.PaymentIntent) {
 async function handleChargeRefunded(charge: Stripe.Charge) {
   try {
     const piId         = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id ?? null
-    const restaurantId = charge.metadata?.restaurantId
+    let restaurantId   = charge.metadata?.restaurantId
+    let orderIdMeta    = charge.metadata?.orderId || null
+    // PHASE 2 (contract §17 R4-2): a Charge retrieved outside the charge.refunded event
+    // may omit inherited metadata — fall back to the PaymentIntent's metadata before
+    // giving up (the PI is what /pay stamps with restaurantId + orderId).
+    if (!restaurantId && piId) {
+      try {
+        const pi = await getStripe().paymentIntents.retrieve(piId)
+        restaurantId = pi.metadata?.restaurantId
+        orderIdMeta  = orderIdMeta || pi.metadata?.orderId || null
+      } catch {
+        // fall through to the LEDGER MISS below
+      }
+    }
     if (!restaurantId) {
       console.error(`[LEDGER MISS] charge.refunded ${charge.id} carries no metadata.restaurantId — refund line(s) NOT recorded`)
       return NextResponse.json({ received: true, matched: false })
@@ -632,22 +658,42 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     // The charge's refunds (chronological). The embedded list covers the 10 most
     // recent — beyond that, fetch the full list (test volumes never hit this).
     let refunds: Stripe.Refund[] = charge.refunds?.data ? [...charge.refunds.data] : []
+    let listFailed = false
     if (!refunds.length || charge.refunds?.has_more) {
       try {
         refunds = await getStripe().refunds
           .list({ payment_intent: piId ?? undefined, charge: piId ? undefined : charge.id, limit: 100 })
           .autoPagingToArray({ limit: 100 })
       } catch {
-        // keep whatever the payload carried
+        listFailed = true // keep whatever the payload carried
+      }
+    }
+    // PHASE 2 (contract §16 B3 / §17 R4-3): an EMPTY list after a failed re-list would be a
+    // silent no-op (tip / loyalty / royalty never reconciled) → MONEY REVIEW + 5xx so Stripe
+    // retries. A PARTIAL payload (has_more + list failure) proceeds fail-safe, logged.
+    if (listFailed) {
+      try {
+        await sendAdminMoneyReviewAlert({
+          kind:      'refund_reconciliation_incomplete',
+          dedupeKey: `charge:${charge.id}:${charge.amount_refunded ?? 0}`,
+          title:     'Liste des remboursements Stripe indisponible',
+          facts:     { chargeId: charge.id, paymentIntent: piId, embedded: refunds.length, amountRefunded: charge.amount_refunded ?? 0, retried: refunds.length === 0 },
+        })
+      } catch { /* alert is best-effort */ }
+      if (refunds.length === 0) {
+        return NextResponse.json({ error: 'refund list unavailable — retry' }, { status: 503 })
       }
     }
     refunds.sort((a, b) => a.created - b.created)
-    // Only money that actually went back.
+    // Only money that actually went back. (charge.refunded fires at refund CREATION and
+    // may carry a still-`pending` refund — contract §9.4 — so EVERY downstream decision
+    // below is taken on the SUCCEEDED set, never on charge.amount_refunded / charge.refunded.)
     refunds = refunds.filter(r => r.status === 'succeeded')
+    const succeededTotalCents = refunds.reduce((s, r) => s + r.amount, 0)
 
-    // Stripe's REAL fee refunds (commission taken back), same chronological
-    // order — our flow creates exactly one per refund (refund_application_fee),
-    // so index-matching is exact; a count mismatch falls back to pro-rata.
+    // Stripe's REAL fee refunds (commission taken back). Attribution to refunds = ONE
+    // shared rule (lib/refund-fee-truth, also used by the engine's eager line):
+    // Stripe truth when unambiguous, else pro-rata prediction (logged).
     const appFeeId = typeof charge.application_fee === 'string'
       ? charge.application_fee
       : charge.application_fee?.id ?? null
@@ -656,12 +702,22 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       try {
         const list = await getStripe().applicationFees.listRefunds(appFeeId, { limit: 100 })
         feeRefunds = list.data.map(fr => ({ amount: fr.amount, created: fr.created }))
-          .sort((a, b) => a.created - b.created)
       } catch {
         // fee refunds unknown → pro-rata fallback below
       }
     }
     const totalFee = charge.application_fee_amount ?? 0
+    const feeMatch = matchFeeRefunds(
+      refunds.map(r => ({ id: r.id, amount: r.amount, created: r.created })),
+      feeRefunds, totalFee, charge.amount,
+    )
+    if (appFeeId && refunds.length > 0 && feeMatch.mode !== 'stripe') {
+      // Both fallbacks freeze a PREDICTED fee cent in the ledger (contract §8) → MONEY REVIEW.
+      // `prorata` also covers an EXTERNAL refund issued WITHOUT refund_application_fee (no
+      // fr_ exists): the predicted fee-back is then a phantom — ledger truth only, no money
+      // moves (financial review F2, recorded residual).
+      console.error(`[MONEY REVIEW] [fee_attribution_${feeMatch.mode}] charge ${charge.id}: fee refunds (${feeRefunds.length}) vs succeeded refunds (${refunds.length}) → pro-rata prediction used for the ledger`)
+    }
 
     const dest = typeof charge.transfer_data?.destination === 'string'
       ? charge.transfer_data.destination
@@ -670,14 +726,7 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     let recorded = 0
     for (let i = 0; i < refunds.length; i++) {
       const r = refunds[i]
-      // Commission taken back for THIS refund: Stripe's real fee refund when the
-      // counts line up (our controlled flow), else the pro-rata Stripe applies.
-      const feeBack = feeRefunds.length === refunds.length
-        ? feeRefunds[i].amount
-        : (totalFee > 0 && charge.amount > 0 ? Math.round(totalFee * (r.amount / charge.amount)) : 0)
-      if (appFeeId && feeRefunds.length !== refunds.length) {
-        console.warn(`[stripe webhook] refund ${r.id}: fee refunds (${feeRefunds.length}) ≠ refunds (${refunds.length}) — pro-rata fallback used`)
-      }
+      const feeBack = feeMatch.byRefundId.get(r.id) ?? 0
 
       const res = await recordLedgerEntry({
         type:                  'refund',
@@ -717,7 +766,7 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     // Idempotent per (sourceEventId = refund re_…, type); POINTS ONLY, never cash.
     // Best-effort + tolerant: a loyalty hiccup never fails the webhook (money is done).
     try {
-      const orderId = charge.metadata?.orderId || null
+      const orderId = orderIdMeta
       if (orderId) {
         await reconcileLoyaltyOnRefund(prisma, {
           orderId,
@@ -729,15 +778,66 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       console.error('[LOYALTY MISS] refund reconciliation failed:', e instanceof Error ? e.message : e)
     }
 
+    // ── FRANCHISE ROYALTY reconciliation (PHASE 2 — contract §5, D-B) ──────────────
+    // The single reconciliation point for the royalty ACCOUNTING too: whatever the
+    // refund's origin (engine rail OR an EXTERNAL Stripe Dashboard refund with no
+    // Refund row), FranchiseRoyalty.refundedCents is raised to the cumulative target
+    // royCum(Σ succeeded refunds) — monotone, cross-rail (refund rows + lost disputes),
+    // capped at royaltyCents — so the settlement pays royaltyCents − refundedCents and
+    // the royalty slice returned to the customer is NEVER paid to the franchisor too.
+    // NO money moves here. A settled/settling royalty hit by an EXTERNAL refund (no
+    // metadata.grubano_refund_row) is flagged for a HUMAN clawback (never automated).
+    // Best-effort + tolerant: a royalty hiccup never fails the webhook.
+    try {
+      const orderId = orderIdMeta
+      if (orderId) {
+        const royalty = await prisma.franchiseRoyalty.findUnique({
+          where:  { orderId },
+          select: { royaltyCents: true, refundedCents: true, status: true },
+        })
+        if (royalty && royalty.royaltyCents > 0) {
+          const target = computeRefundSplit({
+            chargeTotalCents:     charge.amount,
+            applicationFeeCents:  totalFee,
+            royaltyChargedCents:  royalty.royaltyCents,
+            alreadyRefundedCents: 0,
+            refundAmountCents:    succeededTotalCents,
+          }).cumulativeRoyaltyRefundedCents
+          const cum = await recomputeRoyaltyRefundedCents({
+            orderId,
+            royaltyCents:          royalty.royaltyCents,
+            existingRefundedCents: royalty.refundedCents,
+            stripeTargetCents:     target,
+          })
+          if (cum !== royalty.refundedCents) {
+            await prisma.franchiseRoyalty.update({ where: { orderId }, data: { refundedCents: cum } })
+          }
+          const externalIds = refunds.filter(r => !r.metadata?.grubano_refund_row).map(r => r.id)
+          if (externalIds.length > 0 && target > 0 && (royalty.status === 'settled' || royalty.status === 'settling')) {
+            await sendAdminMoneyReviewAlert({
+              kind:      'external_refund_settled_royalty',
+              dedupeKey: `order:${orderId}:${succeededTotalCents}`,
+              title:     'Remboursement externe sur royalty franchise déjà réglée',
+              facts:     { orderId, royaltyStatus: royalty.status, royaltyCents: royalty.royaltyCents, royaltyRefundedTargetCents: target, succeededRefundedCents: succeededTotalCents, externalRefundIds: externalIds.join(','), action: 'reprise humaine de la royalty auprès du franchiseur (transfer reversal) — aucune action automatique' },
+            })
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[ROYALTY MISS] refund reconciliation failed:', e instanceof Error ? e.message : e)
+    }
+
     // ── Courier TIP clawback on a TOTAL refund (P4.3 ÉTAPE 6) ──────────────────
     // When the WHOLE order is refunded, claw back the courier's TIP earning if it is
-    // not yet paid (the COURSE stays acquired — decided). Only on a TOTAL refund
-    // (charge.refunded / amount_refunded ≥ amount); a partial refund leaves the tip.
+    // not yet paid (the COURSE stays acquired — decided). Only on a TOTAL refund —
+    // PHASE 2 (§15 A2): total = Σ SUCCEEDED refunds ≥ charge.amount, never
+    // charge.refunded / amount_refunded (a pending refund that later fails would have
+    // cancelled the courier's tip for nothing). A partial refund leaves the tip (D-E).
     // Best-effort + tolerant + idempotent (no-op when nothing accrued / flags OFF) —
     // NEVER fails the webhook. Mirrors the loyalty re-credit block above.
     try {
-      const orderId = charge.metadata?.orderId || null
-      const isTotalRefund = charge.refunded === true || (charge.amount_refunded ?? 0) >= charge.amount
+      const orderId = orderIdMeta
+      const isTotalRefund = succeededTotalCents >= charge.amount && charge.amount > 0
       if (orderId && isTotalRefund) {
         const claw = await clawbackCourierTip(orderId)
         if (claw.status === 'clawed') {
@@ -751,6 +851,120 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     return NextResponse.json({ received: true, refunds: refunds.length, recorded })
   } catch (err) {
     console.error('[stripe webhook] charge.refunded handler error:', err instanceof Error ? err.message : err)
+    return NextResponse.json({ error: 'Handler error' }, { status: 500 })
+  }
+}
+
+// ── PHASE 2 — refund.updated / refund.failed: the refund STATUS ORACLE ─────────────
+// (REFUND-FINANCIAL-CONTRACT §8, §15 A3/A11, §16 B1, §17 R4-1/R4-4)
+//   • succeeded → re-run the FULL charge.refunded reconciliation from the live charge
+//     (ledger / loyalty / royalty / tip — every sink is idempotent: unique keys, monotone
+//     target, guarded updateMany), THEN finalize our matching 'pending' Refund row if any
+//     (same code path as RESUME-FIRST). A non-ok finalize answers 5xx so Stripe retries.
+//   • failed / canceled → our matching row becomes 'failed' (cursor released, fail-closed
+//     lock, MONEY REVIEW). An EXTERNAL failed refund (no row) is MONEY REVIEW only.
+//   • anything else (pending, requires_action, null) → acknowledged, nothing to do.
+// Row matching: metadata.grubano_refund_row first, stripeRefundId second.
+// The Refund's `charge` may be a string, an object or null → the charge is derived from
+// the PaymentIntent (expanded latest_charge), whose metadata the handlers rely on.
+async function handleRefundStatusEvent(refund: Stripe.Refund) {
+  try {
+    const status = refund.status ?? 'pending'
+    const piId = typeof refund.payment_intent === 'string' ? refund.payment_intent : refund.payment_intent?.id ?? null
+
+    const rowId = refund.metadata?.grubano_refund_row || null
+    let row = rowId
+      ? await prisma.refund.findUnique({ where: { id: rowId }, select: { id: true, status: true, orderId: true } })
+      : null
+    if (!row) {
+      row = await prisma.refund.findFirst({ where: { stripeRefundId: refund.id }, select: { id: true, status: true, orderId: true } })
+    }
+    // Security review P2-c: a row named by Stripe metadata must belong to THIS event's
+    // PaymentIntent — otherwise it is treated as unrelated (external) and never touched.
+    if (row && piId) {
+      const rowOrder = await prisma.order.findUnique({ where: { id: row.orderId }, select: { stripePaymentIntentId: true } })
+      if (rowOrder?.stripePaymentIntentId && rowOrder.stripePaymentIntentId !== piId) {
+        console.error(`[MONEY REVIEW] [refund_row_mismatch] refund ${refund.id} (pi ${piId}) names row ${row.id} of order ${row.orderId} (pi ${rowOrder.stripePaymentIntentId}) — row ignored`)
+        row = null
+      }
+    }
+
+    if (status === 'succeeded') {
+      let charge: Stripe.Charge | null = null
+      try {
+        if (piId) {
+          const pi = await getStripe().paymentIntents.retrieve(piId, { expand: ['latest_charge'] })
+          charge = pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null
+        } else if (typeof refund.charge === 'string') {
+          charge = await getStripe().charges.retrieve(refund.charge)
+        } else if (refund.charge && typeof refund.charge === 'object') {
+          charge = refund.charge
+        }
+      } catch (e) {
+        console.error(`[stripe webhook] refund.updated ${refund.id}: charge retrieval failed —`, e instanceof Error ? e.message : e)
+      }
+      if (!charge) {
+        return NextResponse.json({ error: 'charge unavailable — retry' }, { status: 503 })
+      }
+      // B1 — full reconciliation from the Stripe truth (idempotent by construction).
+      const rec = await handleChargeRefunded(charge)
+      if (rec.status >= 500) return rec
+
+      let finalized: string | null = null
+      if (row && row.status === 'pending') {
+        const out = await finalizeRefundRowFromStripe(row.id)
+        if (!out.ok) {
+          if (out.pending) {
+            // Stripe says succeeded but our retrieve still saw pending — retry later.
+            return NextResponse.json({ error: 'refund not yet finalizable — retry' }, { status: 503 })
+          }
+          if (out.status >= 500) return NextResponse.json({ error: out.error }, { status: 503 })
+          // 4xx (already finalized / locked) is terminal — acknowledge.
+          finalized = `noop:${out.status}`
+        } else {
+          finalized = out.refundId
+        }
+      }
+      return NextResponse.json({ received: true, refund: refund.id, status, finalized })
+    }
+
+    if (status === 'failed' || status === 'canceled') {
+      if (row) {
+        // Financial review F4: only a PENDING row can become failed. A (rare) Stripe
+        // succeeded→failed transition on an already-finalized row is a human matter
+        // (ledger line + refundedCents already booked) → MONEY REVIEW, row untouched.
+        if (row.status === 'pending') {
+          await markRefundRowFailed(row.id, refund)
+          return NextResponse.json({ received: true, refund: refund.id, status, row: row.id, locked: true })
+        }
+        if (row.status === 'succeeded') {
+          try {
+            await sendAdminMoneyReviewAlert({
+              kind:      'refund_failed',
+              dedupeKey: `refund:${refund.id}`,
+              title:     'Remboursement Stripe passé en échec APRÈS finalisation',
+              facts:     { orderId: row.orderId, refundRow: row.id, stripeRefundId: refund.id, amountCents: refund.amount, stripeStatus: status, failureReason: refund.failure_reason ?? null, action: 'ligne ledger + refundedCents déjà comptabilisés — révision humaine requise, aucune action automatique' },
+            })
+          } catch { /* best-effort */ }
+        }
+        return NextResponse.json({ received: true, refund: refund.id, status, row: row.id, locked: row.status === 'failed' })
+      }
+      // External failed refund: no row, no cursor — but on a destination charge the
+      // reversed transfer is NOT restored by Stripe → human review.
+      try {
+        await sendAdminMoneyReviewAlert({
+          kind:      'refund_failed',
+          dedupeKey: `refund:${refund.id}`,
+          title:     'Remboursement externe Stripe en échec',
+          facts:     { stripeRefundId: refund.id, paymentIntent: piId, amountCents: refund.amount, stripeStatus: status, failureReason: refund.failure_reason ?? null, action: 'vérifier le transfert inversé côté restaurant (non restauré par Stripe) — aucune action automatique' },
+        })
+      } catch { /* best-effort */ }
+      return NextResponse.json({ received: true, refund: refund.id, status, row: null })
+    }
+
+    return NextResponse.json({ received: true, refund: refund.id, status, ignored: true })
+  } catch (err) {
+    console.error('[stripe webhook] refund status handler error:', err instanceof Error ? err.message : err)
     return NextResponse.json({ error: 'Handler error' }, { status: 500 })
   }
 }

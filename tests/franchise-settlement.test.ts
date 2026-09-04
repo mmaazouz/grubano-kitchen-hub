@@ -166,11 +166,11 @@ describe('settleFranchisor — idempotence / NO double settlement (the core)', (
     expect(stripeMock.transfers.create).toHaveBeenCalledTimes(1)
   })
 
-  it('amount-mismatch on resume (lines diverge from stored Payout) → FAIL, NO transfer', async () => {
+  it('amount-drift on resume (lines diverge from stored Payout) → FAIL, NO transfer (Phase 2 D-G v2: detected + alerted, never re-planned)', async () => {
     fx.settling = [{ id: 'l1', royaltyCents: 200, settlementId: 'SIDM' }] // sum 200
     db.payout.findUnique.mockResolvedValue({ id: 'po6', amountCents: 300, currency: 'eur', status: 'pending', stripeTransferId: null }) // stored 300
     const out = await settleFranchisor('op1')
-    expect(out).toEqual({ status: 'failed', operatorId: 'op1', reason: 'amount_mismatch' })
+    expect(out).toEqual({ status: 'failed', operatorId: 'op1', reason: 'amount_drift' })
     // reconcile runs first (finds no prior transfer), THEN the amount check blocks a NEW transfer
     expect(stripeMock.transfers.list).toHaveBeenCalledTimes(1)
     expect(stripeMock.transfers.create).not.toHaveBeenCalled()

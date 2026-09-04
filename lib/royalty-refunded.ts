@@ -26,6 +26,13 @@ export async function recomputeRoyaltyRefundedCents(input: {
   royaltyCents: number
   existingRefundedCents: number
   inFlightCents?: number
+  /** PHASE 2 (D-B) — the refund-side target derived from the STRIPE TRUTH of the charge:
+   *  royCum(Σ succeeded refund amounts) = computeRefundSplit({alreadyRefunded:0, amount:Σ})
+   *  .cumulativeRoyaltyRefundedCents. Covers EXTERNAL (Dashboard) refunds that have no
+   *  Refund row. By the telescoping identity Σ engine slices == royCum(cumul) for the same
+   *  (T,F,R), so `max(Σ rows, target)` never double-counts an engine refund and never
+   *  under-counts an external one. Omit (webhook-less callers) → Σ rows only (byte-identical). */
+  stripeTargetCents?: number
 }): Promise<number> {
   const [refundAgg, disputeAgg] = await Promise.all([
     prisma.refund.aggregate({
@@ -37,8 +44,9 @@ export async function recomputeRoyaltyRefundedCents(input: {
       _sum:  { royaltyRefundedCents: true },
     }),
   ])
+  const refundSide = Math.max(refundAgg._sum.royaltyRefundCents ?? 0, Math.max(0, Math.trunc(input.stripeTargetCents ?? 0)))
   const total =
-    (refundAgg._sum.royaltyRefundCents ?? 0) +
+    refundSide +
     (disputeAgg._sum.royaltyRefundedCents ?? 0) +
     (input.inFlightCents ?? 0)
   // Cap at the accrued royalty; never below what was already recorded (monotone).

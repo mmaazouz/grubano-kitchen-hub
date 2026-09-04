@@ -92,6 +92,10 @@ export type ClaimActionResult =
 export type RefundTriggerResult =
   | { state: 'refunded'; refundId: string }
   | { state: 'pending'; reason: 'refunds_disabled' }
+  /** PHASE 2 (§15 A7): Stripe accepted the refund but it is not succeeded yet — the claim
+   *  stays 'refunding' with the Refund row id; NO refundError, NO revert to 'approved'.
+   *  Moving refunding → refunded when Stripe succeeds is a recorded Phase 3 item. */
+  | { state: 'pending'; reason: 'stripe_pending'; refundId: string }
   | { state: 'failed'; error: string }
   | { state: 'already_handled' }
 
@@ -249,6 +253,17 @@ async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult>
       data:  { status: 'refunded', refundId: result.refundId, refundError: null, activeOrderKey: null },
     })
     return { state: 'refunded', refundId: result.refundId }
+  }
+  // PHASE 2 (§15 A7) — Stripe accepted the refund but it is NOT succeeded yet: money has
+  // not reached the customer. Keep the claim 'refunding' (truthful), record the Refund row,
+  // write NO refundError and do NOT revert to 'approved' (that would make the claim
+  // permanently un-retriable while a live Stripe refund exists).
+  if (result.pending) {
+    await prisma.claim.update({
+      where: { id: claimId },
+      data:  { refundId: result.refundId, refundError: null },
+    })
+    return { state: 'pending', reason: 'stripe_pending', refundId: result.refundId }
   }
   // Engine failed AFTER the attempt flag — do NOT auto-retry (the cursor may have moved;
   // a blind re-call could double-refund). Revert to 'approved' for visibility + record.

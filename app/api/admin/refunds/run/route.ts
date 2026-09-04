@@ -82,6 +82,27 @@ export async function POST(req: Request) {
       reason:      parsed.data.reason,
     })
     if (!result.ok) {
+      if (result.pending) {
+        // PHASE 2 (§8 / §15 A4) — Stripe accepted the refund but it is NOT succeeded yet:
+        // money has NOT reached the customer. Truthful 202, NO « effectué » email, but an
+        // admin-created Stripe refund always leaves an audit trail (pending:true).
+        await recordAdminAudit({
+          actorId, actorEmail,
+          action:     'refund.run',
+          targetType: 'order',
+          targetId:   parsed.data.orderId,
+          metadata:   { amountCents: result.amountCents, refundId: result.refundId, stripeRefundId: result.stripeRefundId, pending: true, stripeStatus: result.stripeStatus },
+          req,
+        })
+        return NextResponse.json({
+          ok:             false,
+          status:         'pending',
+          refundId:       result.refundId,
+          stripeRefundId: result.stripeRefundId,
+          amountCents:    result.amountCents,
+          message:        result.error,
+        }, { status: 202 })
+      }
       return NextResponse.json({ error: result.error }, { status: result.status })
     }
 
@@ -91,7 +112,7 @@ export async function POST(req: Request) {
       action:     'refund.run',
       targetType: 'order',
       targetId:   parsed.data.orderId,
-      metadata:   { amountCents: result.amountCents, resumed: result.resumed, refundId: result.refundId },
+      metadata:   { amountCents: result.amountCents, resumed: result.resumed, refundId: result.refundId, ...(result.resumedIgnoredAmount ? { resumedIgnoredAmount: true, requestedCents: parsed.data.amountCents ?? null } : {}) },
       req,
     })
 

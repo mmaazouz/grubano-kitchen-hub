@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { recordPartnerTransferLedgerEntry } from '@/lib/ledger'
+import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 
 // ── Franchise royalty SETTLEMENT (rail financier P4-Franchise-B, Agent 42) ───────
 //
@@ -193,6 +194,7 @@ async function finalizeBatch(
   if (p.status === 'paid') {
     await markLinesSettled(settlementId, p.id)
     await recordFranchisePayoutTrace(p, ref, p.stripeTransferId) // best-effort, idempotent (recovery on resume)
+    await detectOverTransfer(ref.id, settlementId, p.amountCents, p.stripeTransferId) // D-G v2 (§15 A5)
     return { status: 'settled', operatorId: ref.id, amountCents: p.amountCents, lineCount: lines.length, stripeTransferId: p.stripeTransferId ?? '', settlementId, resumed }
   }
 
@@ -208,14 +210,28 @@ async function finalizeBatch(
     if (existing.data.length > 0) {
       await finalizePaid(p.id, existing.data[0].id, settlementId)
       await recordFranchisePayoutTrace(p, ref, existing.data[0].id) // best-effort, after 'paid'
+      await detectOverTransfer(ref.id, settlementId, p.amountCents, existing.data[0].id) // D-G v2 (§15 A5)
       return { status: 'settled', operatorId: ref.id, amountCents: p.amountCents, lineCount: lines.length, stripeTransferId: existing.data[0].id, settlementId, resumed }
     }
     // No prior transfer → we are about to create one: the disbursed amount is the FROZEN
-    // Payout.amountCents; if the re-summed claimed lines no longer match it, a downstream
-    // invariant broke — fail loudly WITHOUT moving money rather than transfer a wrong amount.
+    // Payout.amountCents; if the re-summed claimed lines no longer match it, a refund (or a
+    // lost dispute) landed on a claimed line — fail WITHOUT moving money. PHASE 2 (D-G v2,
+    // REFUND-FINANCIAL-CONTRACT §10.A): the amount is NOT re-planned (the shared Stripe
+    // idempotency key is the only guard against a concurrent run transferring the frozen
+    // amount; re-keying would re-open a double transfer) and the batch is NOT reverted
+    // (unsafe while a concurrent run may still transfer) — it is DETECTED and ALERTED
+    // (`amount_drift`, MONEY REVIEW) for a human decision, never silent.
     if (amount !== p.amountCents) {
-      console.error(`[franchise settlement] amount mismatch for ${idempotencyKey}: lines=${amount} payout=${p.amountCents} — NOT transferring`)
-      return { status: 'failed', operatorId: ref.id, reason: 'amount_mismatch' }
+      console.error(`[franchise settlement] amount drift for ${idempotencyKey}: lines=${amount} payout=${p.amountCents} — NOT transferring`)
+      try {
+        await sendAdminMoneyReviewAlert({
+          kind:      'settlement_amount_drift',
+          dedupeKey: `settlement:${settlementId}:${amount}`,
+          title:     'Règlement franchise bloqué — montant figé ≠ lignes vivantes',
+          facts:     { franchisorOperatorId: ref.id, settlementId, payoutId: p.id, frozenPayoutCents: p.amountCents, liveOwedCents: amount, deltaCents: p.amountCents - amount, action: 'aucun transfert effectué ; lot laissé en « settling » — décision humaine requise' },
+        })
+      } catch { /* best-effort */ }
+      return { status: 'failed', operatorId: ref.id, reason: 'amount_drift' }
     }
   }
 
@@ -234,7 +250,41 @@ async function finalizeBatch(
   )
   await finalizePaid(p.id, transfer.id, settlementId)
   await recordFranchisePayoutTrace(p, ref, transfer.id) // best-effort, after 'paid'
+  // PHASE 2 (D-G v2, §10.A / §16 B7): AFTER the money moved and the batch is finalized,
+  // re-read the batch lines — a refundedCents bump that landed between the claim and the
+  // transfer means the franchisor was over-paid by that slice. Detected + alerted (human
+  // clawback), never silent, never throws.
+  await detectOverTransfer(ref.id, settlementId, p.amountCents, transfer.id)
   return { status: 'settled', operatorId: ref.id, amountCents: p.amountCents, lineCount: lines.length, stripeTransferId: transfer.id, settlementId, resumed }
+}
+
+/**
+ * PHASE 2 — D-G v2 detection (REFUND-FINANCIAL-CONTRACT §10.A, §15 A5). Re-read EVERY line
+ * of the batch by settlementId regardless of status (settled/settling — `markLinesSettled`
+ * only flips status; only the pre-payout below-threshold rollback nulls settlementId) and
+ * compare the live Σ netOwed with what was transferred. `refundedCents` is monotone, so
+ * live ≤ transferred; a strict `<` is exactly an over-transfer caused by a refund (or lost
+ * dispute) that landed after the claim → MONEY REVIEW + admin alert with the exact delta.
+ * Read-only, best-effort, NEVER throws (the settlement outcome is already final).
+ */
+async function detectOverTransfer(operatorId: string, settlementId: string, transferredCents: number, stripeTransferId: string | null): Promise<void> {
+  try {
+    const live = await prisma.franchiseRoyalty.findMany({
+      where:  { settlementId },
+      select: { id: true, royaltyCents: true, refundedCents: true },
+    })
+    const liveOwedCents = live.reduce((s, l) => s + netOwedCents(l), 0)
+    if (liveOwedCents < transferredCents) {
+      await sendAdminMoneyReviewAlert({
+        kind:      'settlement_over_transfer',
+        dedupeKey: `settlement:${settlementId}:${liveOwedCents}`,
+        title:     'Franchiseur sur-payé — remboursement arrivé pendant le règlement',
+        facts:     { franchisorOperatorId: operatorId, settlementId, stripeTransferId, transferredCents, liveOwedCents, deltaCents: transferredCents - liveOwedCents, lines: live.length, action: 'reprise humaine du delta auprès du franchiseur (transfer reversal) — aucune action automatique' },
+      })
+    }
+  } catch (e) {
+    console.error('[franchise settlement] [MONEY REVIEW] over-transfer detection failed (settlement unaffected):', settlementId, e instanceof Error ? e.message : e)
+  }
 }
 
 /**

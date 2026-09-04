@@ -35,9 +35,17 @@ const { db } = vi.hoisted(() => ({
     order:      { findUnique: vi.fn(), update: vi.fn() },
     operator:   { findUnique: vi.fn() },
     restaurant: { findUnique: vi.fn() },
+    // PHASE 2 (D-A): the route now drives the REAL royalty-aware engine (lib/refund), which
+    // records a Refund row and reads the franchise royalty / dispute aggregates.
+    refund:           { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), aggregate: vi.fn() },
+    dispute:          { aggregate: vi.fn() },
+    franchiseRoyalty: { findUnique: vi.fn(), update: vi.fn() },
+    payout:           { findUnique: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
+vi.mock('@/lib/ledger', () => ({ recordRefundLedgerEntry: vi.fn(async () => ({ ok: true })) }))
+vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn(async () => ({ status: 'sent' })) }))
 
 // P0-03: the route is admin-gated by session (owner scope removed).
 const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
@@ -87,9 +95,20 @@ beforeEach(() => {
   // Platform-flow charge (no transfer_data) → plain refund, routed: false.
   stripe.paymentIntents.retrieve.mockResolvedValue({
     id: 'pi_p5', status: 'succeeded', transfer_data: null,
-    latest_charge: { amount: 2500, amount_refunded: 0 },
+    latest_charge: { id: 'ch_p5', amount: 2500, amount_refunded: 0, currency: 'eur', metadata: {} },
   })
-  stripe.refunds.create.mockResolvedValue({ id: 're_p5' })
+  // PHASE 2 §8 — the engine reads the Stripe refund STATUS: `succeeded` = money moved.
+  stripe.refunds.create.mockResolvedValue({ id: 're_p5', status: 'succeeded', amount: 2500, currency: 'eur', created: 1_700_000_000 })
+  // PHASE 2 (D-A) — the REAL engine's DB touches: no failed lock, no interrupted refund,
+  // not franchised, Refund row created 'pending' then finalized.
+  db.refund.findFirst.mockResolvedValue(null)
+  db.refund.findUnique.mockResolvedValue(null)
+  db.refund.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'rf_p5', stripeRefundId: null, ...data }))
+  db.refund.update.mockResolvedValue({})
+  db.refund.aggregate.mockResolvedValue({ _sum: { royaltyRefundCents: 0, royaltyClawbackCents: 0 } })
+  db.dispute.aggregate.mockResolvedValue({ _sum: { royaltyRefundedCents: 0, royaltyClawbackCents: 0 } })
+  db.franchiseRoyalty.findUnique.mockResolvedValue(null)
+  db.payout.findUnique.mockResolvedValue(null)
   emailMock.mockResolvedValue(undefined)
 })
 
@@ -140,7 +159,7 @@ describe('P5 — Rail POST /api/orders/[id]/refund : rail ADMIN (P0-03) + kill-s
     expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled()
   })
 
-  it('[PASS-ACTUEL] flag ON + admin : le rail rembourse réellement — 200 + refund Stripe créé (clé idempotente état-dépendante)', async () => {
+  it('[PASS-ACTUEL · PHASE 2 D-A] flag ON + admin : le rail rembourse réellement via le MOTEUR royalty-aware — 200 + refund Stripe créé (curseur cumul `refund:<orderId>:<déjà remboursé>`)', async () => {
     vi.stubEnv('REFUNDS_ENABLED', 'true')
     const res = await call() // empty body = full refund of the remainder
     expect(res.status).toBe(200)
@@ -148,10 +167,15 @@ describe('P5 — Rail POST /api/orders/[id]/refund : rail ADMIN (P0-03) + kill-s
       refundId: 're_p5', refundedCents: 2500, remainingCents: 0, routed: false,
     })
     expect(stripe.refunds.create).toHaveBeenCalledTimes(1)
+    // Phase 2 : la clé est le curseur cumul du moteur (anti-double cross-rail), plus la clé
+    // état-dépendante de l'ancien rail A ; le refund est tagué avec la ligne Refund + la commande.
     expect(stripe.refunds.create).toHaveBeenCalledWith(
-      { payment_intent: 'pi_p5', amount: 2500 },
-      { idempotencyKey: 'refund-pi_p5-2500-0' },
+      { payment_intent: 'pi_p5', amount: 2500, metadata: { grubano_refund_row: 'rf_p5', orderId: 'o1' } },
+      { idempotencyKey: 'refund:o1:0' },
     )
+    // Une ligne Refund est écrite (audit + curseur) puis finalisée 'succeeded' (statut Stripe vérifié).
+    expect(db.refund.create).toHaveBeenCalledTimes(1)
+    expect(db.refund.update.mock.calls.some((c) => c[0]?.data?.status === 'succeeded')).toBe(true)
   })
 
   it('[PASS-ACTUEL] le rail ne mute jamais paymentStatus (le ledger webhook est la vérité)', async () => {
