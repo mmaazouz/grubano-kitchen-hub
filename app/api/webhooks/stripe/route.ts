@@ -9,7 +9,7 @@ import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
-import { matchFeeRefunds } from '@/lib/refund-fee-truth'
+import { matchFeeRefunds, predictFeeRefund, refundLedgerLine } from '@/lib/refund-fee-truth'
 import { clawbackCourierTip } from '@/lib/courier-accrual'
 import { sendAdminGhostOrderAlert, sendAdminStalePiAlert, sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 
@@ -657,16 +657,17 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 
     // The charge's refunds (chronological). The embedded list covers the 10 most
     // recent — beyond that, fetch the full list (test volumes never hit this).
-    let refunds: Stripe.Refund[] = charge.refunds?.data ? [...charge.refunds.data] : []
+    // F2 (final hardening): ALWAYS re-list with `transfer_reversal` expanded — the embedded
+    // payload carries only ids, and the ledger must book the ACTUAL reversal amount.
+    let refunds: Stripe.Refund[] = []
     let listFailed = false
-    if (!refunds.length || charge.refunds?.has_more) {
-      try {
-        refunds = await getStripe().refunds
-          .list({ payment_intent: piId ?? undefined, charge: piId ? undefined : charge.id, limit: 100 })
-          .autoPagingToArray({ limit: 100 })
-      } catch {
-        listFailed = true // keep whatever the payload carried
-      }
+    try {
+      refunds = await getStripe().refunds
+        .list({ payment_intent: piId ?? undefined, charge: piId ? undefined : charge.id, limit: 100, expand: ['data.transfer_reversal'] })
+        .autoPagingToArray({ limit: 100 })
+    } catch {
+      listFailed = true
+      refunds = charge.refunds?.data ? [...charge.refunds.data] : [] // keep whatever the payload carried
     }
     // PHASE 2 (contract §16 B3 / §17 R4-3): an EMPTY list after a failed re-list would be a
     // silent no-op (tip / loyalty / royalty never reconciled) → MONEY REVIEW + 5xx so Stripe
@@ -698,25 +699,39 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
       ? charge.application_fee
       : charge.application_fee?.id ?? null
     let feeRefunds: Array<{ amount: number; created: number }> = []
-    if (appFeeId) {
+    if (appFeeId && refunds.length > 0) {
       try {
         const list = await getStripe().applicationFees.listRefunds(appFeeId, { limit: 100 })
+        if (list.has_more) throw new Error('fee_refund_list_truncated')
         feeRefunds = list.data.map(fr => ({ amount: fr.amount, created: fr.created }))
-      } catch {
-        // fee refunds unknown → pro-rata fallback below
+      } catch (e) {
+        // F2 (review #10): an UNKNOWN fee-refund list is not "Stripe refunded no fee" — booking 0
+        // would freeze a guess. Fail closed: MONEY REVIEW + 503 so Stripe redelivers.
+        try {
+          await sendAdminMoneyReviewAlert({
+            kind:      'refund_reconciliation_incomplete',
+            dedupeKey: `charge:${charge.id}:fees:${succeededTotalCents}`,
+            title:     'Liste des remboursements de commission Stripe indisponible',
+            facts:     { chargeId: charge.id, applicationFee: appFeeId, succeededRefunds: refunds.length, reason: String(e instanceof Error ? e.message : e).slice(0, 120) },
+          })
+        } catch { /* alert is best-effort */ }
+        return NextResponse.json({ error: 'fee refund list unavailable — retry' }, { status: 503 })
       }
     }
     const totalFee = charge.application_fee_amount ?? 0
+    // F2 (final hardening): the ledger books ONLY Stripe's ACTUAL movements. A refund issued
+    // without `refund_application_fee` has NO fee refund → 0 fee-back (never a prediction);
+    // a refund issued without `reverse_transfer` reversed NOTHING from the restaurant → the
+    // platform bore it all. Attribution rule = lib/refund-fee-truth (Σ == Stripe Σ always).
+    // The prediction survives only as an EXPECTATION in the MONEY REVIEW log below.
     const feeMatch = matchFeeRefunds(
       refunds.map(r => ({ id: r.id, amount: r.amount, created: r.created })),
       feeRefunds, totalFee, charge.amount,
     )
-    if (appFeeId && refunds.length > 0 && feeMatch.mode !== 'stripe') {
-      // Both fallbacks freeze a PREDICTED fee cent in the ledger (contract §8) → MONEY REVIEW.
-      // `prorata` also covers an EXTERNAL refund issued WITHOUT refund_application_fee (no
-      // fr_ exists): the predicted fee-back is then a phantom — ledger truth only, no money
-      // moves (financial review F2, recorded residual).
-      console.error(`[MONEY REVIEW] [fee_attribution_${feeMatch.mode}] charge ${charge.id}: fee refunds (${feeRefunds.length}) vs succeeded refunds (${refunds.length}) → pro-rata prediction used for the ledger`)
+    if (refunds.length > 0 && feeMatch.mode !== 'stripe') {
+      const expected = refunds.map(r => `${r.id}:${predictFeeRefund(totalFee, charge.amount, r.amount)}`).join(',')
+      const actual   = refunds.map(r => `${r.id}:${feeMatch.byRefundId.get(r.id) ?? 0}`).join(',')
+      console.error(`[MONEY REVIEW] [fee_attribution_${feeMatch.mode}] charge ${charge.id}: fee refunds ${feeRefunds.length} vs succeeded refunds ${refunds.length} — ACTUAL booked {${actual}} · EXPECTED (proration, not booked) {${expected}}${feeMatch.residualCents ? ` · residual ${feeMatch.residualCents}c` : ''}`)
     }
 
     const dest = typeof charge.transfer_data?.destination === 'string'
@@ -727,6 +742,21 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     for (let i = 0; i < refunds.length; i++) {
       const r = refunds[i]
       const feeBack = feeMatch.byRefundId.get(r.id) ?? 0
+      // ACTUAL transfer reversal for THIS refund: the expanded object carries the amount;
+      // an unexpanded id means a reversal exists (Stripe reverses proportionally = the
+      // refund amount on a full-amount destination transfer); null = nothing reversed.
+      const rev = r.transfer_reversal
+      const reversalCents = rev == null ? 0 : (typeof rev === 'object' && typeof rev.amount === 'number' ? rev.amount : r.amount)
+      if (typeof rev === 'string') {
+        // Unexpanded id (payload fallback): the amount is INFERRED from Stripe's proportional
+        // rule on a full-amount destination transfer (transfer_data[amount] is never used in
+        // this codebase) — exact here, but visible as an inference (review #3).
+        console.error(`[MONEY REVIEW] [reversal_unexpanded] charge ${charge.id} refund ${r.id}: transfer_reversal ${rev} not expanded — reversal inferred = refund amount ${r.amount}c`)
+      }
+      if (dest && rev == null) {
+        console.error(`[MONEY REVIEW] [refund_without_reverse_transfer] charge ${charge.id} refund ${r.id}: ${r.amount}c refunded to the customer with NO transfer reversal — the platform bore it; restaurant give-back booked 0`)
+      }
+      const line = refundLedgerLine({ amountCents: r.amount, reversalCents, feeRefundCents: feeBack })
 
       const res = await recordLedgerEntry({
         type:                  'refund',
@@ -735,10 +765,10 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
         reservationId:         charge.metadata?.reservationId || null,
         stripePaymentIntentId: piId,
         stripeChargeId:        charge.id,
-        grossAmount:           -r.amount,
-        applicationFeeAmount:  -feeBack,
+        grossAmount:           line.grossAmount,
+        applicationFeeAmount:  line.applicationFeeAmount,
         stripeFeeAmount:       0, // Stripe keeps its processing fee on refunds — zero movement, affirmed
-        netToRestaurant:       -r.amount + feeBack, // gross − fee, with negatives
+        netToRestaurant:       line.netToRestaurant, // −(reversal − feeRefund): gross = fee + net holds
         routed:                !!dest,
         destinationAccountId:  dest,
         currency:              r.currency || charge.currency || 'eur',

@@ -49,15 +49,20 @@ const makePI = (chargeOverrides = {}) => ({
   latest_charge: makeCharge(chargeOverrides),
 })
 const paidOrder = { id: 'o1', restaurantId: 'rest1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' }
+// F8 (final hardening): rows carry createdAt — a RESUME may re-send the create ONLY while
+// Stripe still holds the original idempotency key (20 h window). Fresh by default.
 const refundRow = (o: Partial<Record<string, unknown>> = {}) => ({
   id: 'rf1', orderId: 'o1', restaurantId: 'rest1', idempotencyKey: 'refund:o1:0',
   amountCents: 5000, restaurantReverseCents: 4400, applicationFeeRefundCents: 600,
-  royaltyRefundCents: 0, stripeRefundId: null, status: 'pending', ...o,
+  royaltyRefundCents: 0, stripeRefundId: null, status: 'pending', createdAt: new Date(), ...o,
 })
+const HOURS = 3600 * 1000
 // Stripe Refund objects now carry `status` — PHASE 2 §8 reads it (a fixture WITHOUT status
 // is treated as `pending`: that flip is itself the negative control of the status truth).
+// They also carry the EXPANDED transfer_reversal (F2): engine refunds reverse the full amount.
 const stripeRefund = (o: Partial<Record<string, unknown>> = {}) =>
-  ({ id: 're_1', status: 'succeeded', amount: 5000, currency: 'eur', created: 1_700_000_000, metadata: { grubano_refund_row: 'rf1' }, ...o })
+  ({ id: 're_1', status: 'succeeded', amount: 5000, currency: 'eur', created: 1_700_000_000, metadata: { grubano_refund_row: 'rf1' },
+     transfer_reversal: { id: 'trr_re_1', amount: (o.amount as number | undefined) ?? 5000 }, ...o })
 /** Make the Stripe TRUTH resolvable for a single succeeded refund (eager ledger path). */
 const truthFor = (amount: number, feeBack: number, id = 're_1') => {
   stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [stripeRefund({ id, amount })] })
@@ -353,6 +358,147 @@ describe('(e) idempotence / resume', () => {
     if (res.ok) return
     expect(res.status).toBe(502)
     expect(stripeMock.transfers.createReversal).not.toHaveBeenCalled()
+  })
+})
+
+// ── F8 CLOSED (final hardening): ONE intended refund action ⇒ AT MOST ONE Stripe refund ──
+// The resume path re-sends the create ONLY inside Stripe's idempotency window (same key ⇒
+// the SAME refund, even if the list omitted it); after the window it NEVER creates again.
+describe('(e-bis) F8 — one intended action, at most one Stripe economic effect', () => {
+  const pendingNoId = (age = 0) => refundRow({ stripeRefundId: null, createdAt: new Date(Date.now() - age) })
+
+  it('lost response / crash after Stripe accepted, retry BEFORE the window: list has the tagged refund → ADOPTED, no create', async () => {
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(2 * HOURS))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [stripeRefund({ id: 're_lost', metadata: { grubano_refund_row: 'rf1' } })] })
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(true)
+    expect(stripeMock.refunds.create).not.toHaveBeenCalled()
+  })
+
+  it('Stripe list OMISSION + retry BEFORE the window → create re-sent under the SAME key (Stripe returns the same refund) — exactly one key ever used', async () => {
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(2 * HOURS))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [] })
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(true)
+    expect(stripeMock.refunds.create).toHaveBeenCalledTimes(1)
+    expect(stripeMock.refunds.create.mock.calls[0][1]).toEqual({ idempotencyKey: 'refund:o1:0' }) // the ORIGINAL key, never a new one
+  })
+
+  it('network timeout on the ORIGINAL create (row pending, nothing at Stripe), retry within the window → one create, same key', async () => {
+    stripeMock.refunds.create.mockRejectedValueOnce(new Error('ETIMEDOUT'))
+    const first = await executeRefund({ orderId: 'o1' })
+    expect(first.ok).toBe(false)
+    if (first.ok) return
+    expect(first.status).toBe(502)
+    // Retry: the row is now pending (no stripeRefundId); Stripe has nothing tagged.
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(60 * 1000))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [] })
+    const second = await executeRefund({ orderId: 'o1' })
+    expect(second.ok).toBe(true)
+    const keys = stripeMock.refunds.create.mock.calls.map((c) => c[1].idempotencyKey)
+    expect(new Set(keys).size).toBe(1) // both attempts under ONE key ⇒ Stripe dedupes to ONE refund
+  })
+
+  it('Stripe list OMISSION + retry AFTER the window (key pruned) → 409 fail-closed, NOTHING created, MONEY REVIEW', async () => {
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(26 * HOURS))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [] })
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.status).toBe(409)
+    expect(res.error).toMatch(/idempotence/)
+    expect(stripeMock.refunds.create).not.toHaveBeenCalled()
+    expect(err.mock.calls.some((c) => String(c[0]).includes('[resume_idempotency_expired]'))).toBe(true)
+    err.mockRestore()
+  })
+
+  it('retry AFTER the window but the list HAS the tagged refund → ADOPTED (no create, no lock)', async () => {
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(48 * HOURS))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [stripeRefund({ id: 're_old', metadata: { grubano_refund_row: 'rf1' } })] })
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.stripeRefundId).toBe('re_old')
+    expect(stripeMock.refunds.create).not.toHaveBeenCalled()
+  })
+
+  it('TRUNCATED list (has_more) on resume → fail-closed 502, nothing created', async () => {
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(1 * HOURS))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: true, data: [] })
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.status).toBe(502)
+    expect(stripeMock.refunds.create).not.toHaveBeenCalled()
+  })
+
+  it('same admin action replayed (double click) while the row is pending with a refund id → re-driven, ONE Stripe refund, zero creates', async () => {
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(refundRow({ stripeRefundId: 're_1' }))
+      .mockResolvedValueOnce(null).mockResolvedValueOnce(refundRow({ stripeRefundId: 're_1' }))
+    const a = await executeRefund({ orderId: 'o1' })
+    const b = await executeRefund({ orderId: 'o1' })
+    expect(a.ok && b.ok).toBe(true)
+    expect(stripeMock.refunds.create).not.toHaveBeenCalled()
+    expect(stripeMock.refunds.retrieve).toHaveBeenCalledTimes(2)
+  })
+
+  it('remaining partial headroom does NOT license a second create after the window (the ceiling is not idempotency)', async () => {
+    stripeMock.paymentIntents.retrieve.mockResolvedValue(makePI({ amount_refunded: 1000 })) // 4000 headroom
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(30 * HOURS))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [] })
+    const res = await executeRefund({ orderId: 'o1', amountCents: 500 })
+    expect(res.ok).toBe(false)
+    expect(stripeMock.refunds.create).not.toHaveBeenCalled()
+  })
+
+  it('two DIFFERENT legitimate partial refunds (distinct cumul cursors) → each created exactly once under its own key', async () => {
+    stripeMock.refunds.create.mockResolvedValueOnce(stripeRefund({ id: 're_a', amount: 1000 }))
+    const a = await executeRefund({ orderId: 'o1', amountCents: 1000 })
+    expect(a.ok).toBe(true)
+    stripeMock.paymentIntents.retrieve.mockResolvedValue(makePI({ amount_refunded: 1000 }))
+    stripeMock.refunds.create.mockResolvedValueOnce(stripeRefund({ id: 're_b', amount: 500 }))
+    const b = await executeRefund({ orderId: 'o1', amountCents: 500 })
+    expect(b.ok).toBe(true)
+    const keys = stripeMock.refunds.create.mock.calls.map((c) => c[1].idempotencyKey)
+    expect(keys).toEqual(['refund:o1:0', 'refund:o1:1000'])
+  })
+
+  it('[review #12] clawback RESUME on a SETTLED royalty: TRUNCATED reversal list → 502, NO reversal created', async () => {
+    stripeMock.paymentIntents.retrieve.mockResolvedValue(makePI({ application_fee_amount: 900 }))
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(refundRow({ stripeRefundId: 're_1', royaltyRefundCents: 300, createdAt: new Date(Date.now() - 1 * HOURS) }))
+    db.franchiseRoyalty.findUnique.mockResolvedValue({ id: 'fr_o1', royaltyCents: 300, refundedCents: 0, status: 'settled', payoutId: 'po1', settlementId: 'SID', franchisorOperatorId: 'opF' })
+    db.payout.findUnique.mockResolvedValue({ stripeTransferId: 'tr_set' })
+    stripeMock.transfers.listReversals.mockResolvedValue({ has_more: true, data: [] })
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.status).toBe(502)
+    expect(stripeMock.transfers.createReversal).not.toHaveBeenCalled()
+  })
+
+  it('[review #12] clawback RESUME AFTER the idempotency window with no adoptable reversal → 409 fail-closed, NO reversal created (franchisor never debited twice)', async () => {
+    stripeMock.paymentIntents.retrieve.mockResolvedValue(makePI({ application_fee_amount: 900 }))
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(refundRow({ stripeRefundId: 're_1', royaltyRefundCents: 300, createdAt: new Date(Date.now() - 30 * HOURS) }))
+    db.franchiseRoyalty.findUnique.mockResolvedValue({ id: 'fr_o1', royaltyCents: 300, refundedCents: 0, status: 'settled', payoutId: 'po1', settlementId: 'SID', franchisorOperatorId: 'opF' })
+    db.payout.findUnique.mockResolvedValue({ stripeTransferId: 'tr_set' })
+    stripeMock.transfers.listReversals.mockResolvedValue({ has_more: false, data: [] })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await executeRefund({ orderId: 'o1' })
+    expect(res.ok).toBe(false)
+    if (res.ok) return
+    expect(res.status).toBe(409)
+    expect(stripeMock.transfers.createReversal).not.toHaveBeenCalled()
+    vi.restoreAllMocks()
+  })
+
+  it('[negative control] the pre-hardening resume (create regardless of age) is REJECTED: an old pending row + empty list must not create', async () => {
+    db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce(pendingNoId(25 * HOURS))
+    stripeMock.refunds.list.mockResolvedValue({ has_more: false, data: [] })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await executeRefund({ orderId: 'o1' })
+    expect(stripeMock.refunds.create).toHaveBeenCalledTimes(0)
+    vi.restoreAllMocks()
   })
 })
 

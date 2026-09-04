@@ -68,9 +68,13 @@ const fire = (type: string, obj: Record<string, unknown>) => {
   return POST(new Request('http://x/api/webhooks/stripe', { method: 'POST', body: 'raw', headers: { 'stripe-signature': 'sig' } }))
 }
 
-type R = { id: string; amount: number; created: number; status: string; metadata?: Record<string, string> }
-const re = (id: string, amount: number, created: number, status = 'succeeded', metadata?: Record<string, string>): R =>
-  ({ id, amount, created, status, ...(metadata ? { metadata } : {}), currency: 'eur' } as R)
+type R = { id: string; amount: number; created: number; status: string; metadata?: Record<string, string>; transfer_reversal?: { id: string; amount: number } | null }
+// Refund fixtures carry the EXPANDED transfer_reversal object (F2: the ledger books the ACTUAL
+// reversal). Engine/Dashboard-with-reverse_transfer refunds reverse the full amount by default;
+// pass `reversal: 0` for an EXTERNAL refund issued WITHOUT reverse_transfer.
+const re = (id: string, amount: number, created: number, status = 'succeeded', metadata?: Record<string, string>, reversal: number | null = amount): R =>
+  ({ id, amount, created, status, ...(metadata ? { metadata } : {}), currency: 'eur',
+     transfer_reversal: reversal === 0 || reversal === null ? null : { id: `trr_${id}`, amount: reversal } } as R)
 const fee = (amount: number, created: number) => ({ amount, created })
 
 const T = 5000
@@ -154,13 +158,73 @@ describe('charge.refunded — STANDARD restaurant (no royalty)', () => {
     expect(feeSum).toBe(-900)
   })
 
-  it('fee refunds unavailable (count mismatch) → prorata prediction used, MONEY REVIEW logged (a predicted cent is frozen — §8), still one line per refund', async () => {
-    fx.refunds = [re('re_1', 2500, 10)]; fx.feeRefunds = []
+  // ── F2 CLOSED (final hardening): the ledger books ONLY Stripe's ACTUAL movements ──────
+  it('[F2] EXTERNAL refund WITHOUT refund_application_fee (no fr_) but WITH reverse_transfer → fee-back 0 (never a prediction), restaurant −2500, MONEY REVIEW with the expectation', async () => {
+    fx.refunds = [re('re_x', 2500, 10)]; fx.feeRefunds = []
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     await fire('charge.refunded', CHARGE({ amount_refunded: 2500 }))
-    expect(ledgerData()[0]).toMatchObject({ applicationFeeAmount: -450 })
-    expect(err.mock.calls.some((c) => String(c[0]).includes('[MONEY REVIEW] [fee_attribution_prorata]'))).toBe(true)
+    expect(ledgerData()[0]).toMatchObject({ grossAmount: -2500, applicationFeeAmount: 0, netToRestaurant: -2500 })
+    expect(err.mock.calls.some((c) => String(c[0]).includes('[MONEY REVIEW] [fee_attribution_none]') && String(c[0]).includes('EXPECTED (proration, not booked) {re_x:450}'))).toBe(true)
     err.mockRestore()
+  })
+
+  it('[F2] EXTERNAL refund WITHOUT reverse_transfer AND WITHOUT fee refund → restaurant 0, platform bore 2500, MONEY REVIEW', async () => {
+    fx.refunds = [re('re_x', 2500, 10, 'succeeded', undefined, 0)]; fx.feeRefunds = []
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await fire('charge.refunded', CHARGE({ amount_refunded: 2500 }))
+    expect(ledgerData()[0]).toMatchObject({ grossAmount: -2500, applicationFeeAmount: -2500, netToRestaurant: 0 })
+    expect(err.mock.calls.some((c) => String(c[0]).includes('[refund_without_reverse_transfer]'))).toBe(true)
+    err.mockRestore()
+  })
+
+  it('[F2] EXTERNAL refund WITH an actual fee refund of a non-prorata amount (manual 100 c) → exactly 100 booked', async () => {
+    fx.refunds = [re('re_x', 2500, 10)]; fx.feeRefunds = [fee(100, 10)]
+    await fire('charge.refunded', CHARGE({ amount_refunded: 2500 }))
+    expect(ledgerData()[0]).toMatchObject({ grossAmount: -2500, applicationFeeAmount: -100, netToRestaurant: -2400 })
+  })
+
+  it('[F2] engine refund WITH fee refund + external refund WITHOUT → 450 and 0, Σ fee == Stripe Σ, Σ gross exact', async () => {
+    fx.refunds = [re('re_eng', 2500, 10, 'succeeded', { grubano_refund_row: 'rf1' }), re('re_ext', 1000, 20)]
+    fx.feeRefunds = [fee(450, 10)]
+    await fire('charge.refunded', CHARGE({ amount_refunded: 3500 }))
+    const lines = ledgerData()
+    const eng = lines.find((l) => l.sourceEventId === 're_eng'), ext = lines.find((l) => l.sourceEventId === 're_ext')
+    expect(eng).toMatchObject({ applicationFeeAmount: -450, netToRestaurant: -2050 })
+    expect(ext).toMatchObject({ applicationFeeAmount: 0, netToRestaurant: -1000 })
+    expect(lines.reduce((s, l) => s + (l.applicationFeeAmount as number), 0)).toBe(-450)
+    expect(lines.reduce((s, l) => s + (l.grossAmount as number), 0)).toBe(-3500)
+  })
+
+  it('[F2] PARTIAL external refund with a partial actual reversal (877 on 1000) → exact actual cents', async () => {
+    fx.refunds = [re('re_x', 1000, 10, 'succeeded', undefined, 877)]; fx.feeRefunds = [fee(60, 10)]
+    await fire('charge.refunded', CHARGE({ amount_refunded: 1000 }))
+    expect(ledgerData()[0]).toMatchObject({ grossAmount: -1000, applicationFeeAmount: -183, netToRestaurant: -817 })
+  })
+
+  it('[F2] late refund.updated after a charge.refunded that already booked the truth → convergence: same line, no duplicate, no re-booking', async () => {
+    fx.refunds = [re('re_x', 2500, 10)]; fx.feeRefunds = []
+    await fire('charge.refunded', CHARGE({ amount_refunded: 2500 }))
+    stripe.paymentIntents.retrieve.mockResolvedValue({ id: 'pi_1', status: 'succeeded', transfer_data: { destination: 'acct_r' }, latest_charge: CHARGE({ amount_refunded: 2500 }) })
+    const res = await fire('refund.updated', { id: 're_x', object: 'refund', status: 'succeeded', amount: 2500, payment_intent: 'pi_1', charge: 'ch_1', metadata: {} })
+    expect(res.status).toBe(200)
+    expect(ledgerStore.size).toBe(1)
+    expect(ledgerData().every((l) => l.applicationFeeAmount === 0)).toBe(true)
+  })
+
+  it('[F2 / review #10] fee-refund list UNAVAILABLE → 503 (Stripe retries) + MONEY REVIEW, NOTHING booked (an unknown list is not "no fee")', async () => {
+    fx.refunds = [re('re_1', 2500, 10)]
+    stripe.applicationFees.listRefunds.mockRejectedValue(new Error('stripe down'))
+    const res = await fire('charge.refunded', CHARGE({ amount_refunded: 2500 }))
+    expect(res.status).toBe(503)
+    expect(ledgerData().length).toBe(0)
+    expect(loyaltyMock).not.toHaveBeenCalled()
+    expect(alerts.sendAdminMoneyReviewAlert).toHaveBeenCalledWith(expect.objectContaining({ kind: 'refund_reconciliation_incomplete', dedupeKey: 'charge:ch_1:fees:2500' }))
+  })
+
+  it('[F2 negative control] the pre-hardening behaviour (450 predicted fee-back on a refund with no fee refund) is REJECTED', async () => {
+    fx.refunds = [re('re_x', 2500, 10)]; fx.feeRefunds = []
+    await fire('charge.refunded', CHARGE({ amount_refunded: 2500 }))
+    expect(ledgerData()[0].applicationFeeAmount).not.toBe(-450)
   })
 
   it('[§9.4 / A2] a PENDING refund carried by charge.refunded → NO ledger, NO tip clawback, loyalty sees ZERO succeeded refunds', async () => {

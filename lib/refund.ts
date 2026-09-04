@@ -217,6 +217,8 @@ type RefundRow = {
   applicationFeeRefundCents: number
   royaltyRefundCents: number
   stripeRefundId: string | null
+  /** Row creation time = the moment the Stripe idempotency key was first used (F8 window). */
+  createdAt: Date | string
 }
 
 const ROYALTY_SELECT = {
@@ -226,7 +228,7 @@ const ROYALTY_SELECT = {
 const REFUND_SELECT = {
   id: true, orderId: true, restaurantId: true, idempotencyKey: true, amountCents: true,
   restaurantReverseCents: true, applicationFeeRefundCents: true, royaltyRefundCents: true,
-  stripeRefundId: true,
+  stripeRefundId: true, createdAt: true,
 } as const
 
 /** Thrown when a RESUME cannot consult Stripe's list to adopt an existing refund /
@@ -242,6 +244,11 @@ function fatal(err: unknown): RefundOutcome {
   if (err instanceof ResumeListUnavailable) {
     console.error('[refund] resume blocked — Stripe list unavailable, nothing created:', err.message)
     return { ok: false, status: 502, error: 'Reprise impossible pour l’instant (liste Stripe indisponible) — réessayez.' }
+  }
+  if (err instanceof ResumeIdempotencyExpired) {
+    // F8: never a second Stripe refund for one intended action. Human reconciliation.
+    console.error(`[MONEY REVIEW] [resume_idempotency_expired] ${err.message}: pending row older than the Stripe idempotency window with no adoptable refund — NOT created (human reconciliation: check the Stripe Dashboard for a refund of this order; if none, cancel the row)`)
+    return { ok: false, status: 409, error: 'Reprise impossible : la fenêtre d’idempotence Stripe du remboursement initial a expiré et aucun remboursement n’est retrouvé — réconciliation manuelle requise (aucun second remboursement créé).' }
   }
   console.error('[refund] stripe error', err instanceof Error ? err.message : err)
   return { ok: false, status: 502, error: 'Erreur paiement, réessayez.' }
@@ -267,6 +274,19 @@ const FAILED_STATUSES = new Set(['failed', 'canceled'])
  * fresh path skipping its reconcile LIST) create it — the @unique cursor key dedupes
  * within ~24h, so a fresh retry never doubles.
  */
+/** Stripe prunes idempotency keys "after they are at least 24 hours old" (contract §9.8).
+ *  Inside this window a re-sent create with the SAME key returns the SAME refund — one
+ *  intended action ⇒ at most one economic effect. Past it, a create would be a NEW
+ *  request: the resume path therefore NEVER creates after the window (F8, final
+ *  hardening). Conservative margin: 20 h. */
+export const RESUME_CREATE_WINDOW_MS = 20 * 60 * 60 * 1000
+
+/** Thrown when a RESUME finds no refund to adopt AND the Stripe idempotency window of the
+ *  original create has expired — creating again could double the customer's cash. */
+class ResumeIdempotencyExpired extends Error {
+  constructor(rowId: string) { super(`resume_idempotency_expired:${rowId}`) }
+}
+
 async function driveRefund(row: RefundRow, pi: Stripe.PaymentIntent, routed: boolean, fresh: boolean, adoptOnly = false): Promise<Stripe.Refund> {
   const stripe = getStripe()
   if (!fresh) {
@@ -277,11 +297,18 @@ async function driveRefund(row: RefundRow, pi: Stripe.PaymentIntent, routed: boo
     } catch {
       throw new ResumeListUnavailable('refunds')
     }
+    // F8: a truncated list cannot prove absence — fail closed rather than create.
+    if (list.has_more) throw new ResumeListUnavailable('refunds_truncated')
     const existing = list.data.find((r) => r.metadata?.grubano_refund_row === row.id)
     if (existing) return existing
     // WEBHOOK path (security review P2-a): the event proves a refund EXISTS — a finalize
     // triggered by Stripe must never CREATE one. Not found → retryable, nothing moved.
     if (adoptOnly) throw new ResumeListUnavailable('refund_not_found_adopt_only')
+    // F8 (final hardening): re-sending the create is safe ONLY while Stripe still holds the
+    // original idempotency key (same key ⇒ same refund, even if the list omitted it).
+    // After the window a create would be a NEW refund → never; human reconciliation.
+    const ageMs = Date.now() - new Date(row.createdAt).getTime()
+    if (!(ageMs >= 0 && ageMs < RESUME_CREATE_WINDOW_MS)) throw new ResumeIdempotencyExpired(row.id)
   }
   return stripe.refunds.create(
     {
@@ -325,20 +352,25 @@ async function locateSettlementTransfer(royalty: RoyaltyRow): Promise<string | n
  */
 async function resolveFeeTruth(pi: Stripe.PaymentIntent, charge: Stripe.Charge, stripeRefundId: string): Promise<{
   feeBackCents: number | null
+  reversalCents: number | null
   succeededTotalCents: number | null
 }> {
   try {
     const stripe = getStripe()
-    const list = await stripe.refunds.list({ payment_intent: pi.id, limit: 100 })
-    if (list.has_more) return { feeBackCents: null, succeededTotalCents: null }
+    const list = await stripe.refunds.list({ payment_intent: pi.id, limit: 100, expand: ['data.transfer_reversal'] })
+    if (list.has_more) return { feeBackCents: null, reversalCents: null, succeededTotalCents: null }
     const succeeded = list.data.filter((r) => r.status === 'succeeded')
     const succeededTotalCents = succeeded.reduce((s, r) => s + r.amount, 0)
-    if (!succeeded.some((r) => r.id === stripeRefundId)) return { feeBackCents: null, succeededTotalCents }
+    const mine = succeeded.find((r) => r.id === stripeRefundId)
+    if (!mine) return { feeBackCents: null, reversalCents: null, succeededTotalCents }
+    // F2: the ACTUAL transfer reversal of THIS refund (expanded object → exact amount).
+    const rev = mine.transfer_reversal
+    const reversalCents = rev == null ? 0 : (typeof rev === 'object' && typeof rev.amount === 'number' ? rev.amount : mine.amount)
     const appFeeId = typeof charge.application_fee === 'string' ? charge.application_fee : charge.application_fee?.id ?? null
     const totalFee = charge.application_fee_amount ?? 0
     if (!appFeeId || totalFee <= 0) {
       // No application fee on the charge → nothing was taken back: truth is 0.
-      return { feeBackCents: 0, succeededTotalCents }
+      return { feeBackCents: 0, reversalCents, succeededTotalCents }
     }
     const fees = await stripe.applicationFees.listRefunds(appFeeId, { limit: 100 })
     const match = matchFeeRefunds(
@@ -346,10 +378,16 @@ async function resolveFeeTruth(pi: Stripe.PaymentIntent, charge: Stripe.Charge, 
       fees.data.map((f) => ({ amount: f.amount, created: f.created })),
       totalFee, charge.amount,
     )
-    if (match.mode !== 'stripe') return { feeBackCents: null, succeededTotalCents }
-    return { feeBackCents: match.byRefundId.get(stripeRefundId) ?? null, succeededTotalCents }
+    // Eager line only on EXACT truth ('stripe' index match, or 'none' = nothing taken back);
+    // 'matched'/'residual' attribution is left to the webhook (which logs MONEY REVIEW).
+    // Review #11: the engine's OWN routed refund was created with refund_application_fee:true
+    // and the charge carries a fee → a 'none' list is a read lag/omission, not a truth of 0.
+    // Defer to the webhook (which fails closed on an unavailable fee list).
+    if (match.mode === 'none') return { feeBackCents: null, reversalCents, succeededTotalCents }
+    if (match.mode !== 'stripe') return { feeBackCents: null, reversalCents, succeededTotalCents }
+    return { feeBackCents: match.byRefundId.get(stripeRefundId) ?? null, reversalCents, succeededTotalCents }
   } catch {
-    return { feeBackCents: null, succeededTotalCents: null }
+    return { feeBackCents: null, reversalCents: null, succeededTotalCents: null }
   }
 }
 
@@ -457,7 +495,15 @@ async function finalizeRefund(
             } catch {
               throw new ResumeListUnavailable('reversals')
             }
+            // F8 (review #12): the same discipline as the refund create — a truncated list
+            // cannot prove absence, and past the idempotency window a re-sent reversal would
+            // be a NEW reversal (the franchisor debited twice). Fail closed, human path.
+            if (reversals.has_more) throw new ResumeListUnavailable('reversals_truncated')
             adopted = reversals.data.find((rv) => rv.metadata?.refundId === row.id) ?? null
+            if (!adopted) {
+              const ageMs = Date.now() - new Date(row.createdAt).getTime()
+              if (!(ageMs >= 0 && ageMs < RESUME_CREATE_WINDOW_MS)) throw new ResumeIdempotencyExpired(row.id + ':clawback')
+            }
           }
           if (adopted) {
             royaltyClawbackCents = adopted.amount
@@ -470,7 +516,7 @@ async function finalizeRefund(
             royaltyClawbackCents = amount
           }
         } catch (err) {
-          if (err instanceof ResumeListUnavailable) return fatal(err)
+          if (err instanceof ResumeListUnavailable || err instanceof ResumeIdempotencyExpired) return fatal(err)
           // Refund succeeded for the customer, but recovering the royalty from the
           // franchisor failed → leave the row 'pending' so the next call resumes the
           // clawback (idempotent key → no double). Surface as a retryable error.
@@ -497,9 +543,12 @@ async function finalizeRefund(
 
   // (b) Compensating refund ledger line — Stripe TRUTH only, idempotent with the webhook.
   const truth = await resolveFeeTruth(pi, charge, stripeRefund.id)
-  if (truth.feeBackCents !== null) {
+  if (truth.feeBackCents !== null && truth.reversalCents !== null) {
     if (truth.feeBackCents !== row.applicationFeeRefundCents) {
       console.error(`[MONEY REVIEW] [fee_prediction_mismatch] order ${order.id} refund ${stripeRefund.id}: predicted fee refund ${row.applicationFeeRefundCents}c, Stripe real ${truth.feeBackCents}c — ledger uses Stripe`)
+    }
+    if (routed && truth.reversalCents === 0) {
+      console.error(`[MONEY REVIEW] [refund_without_reverse_transfer] order ${order.id} refund ${stripeRefund.id}: no transfer reversal on a routed charge — restaurant give-back booked 0`)
     }
     try {
       await recordRefundLedgerEntry({
@@ -507,6 +556,7 @@ async function finalizeRefund(
         restaurantId:              order.restaurantId,
         refundedCents:             row.amountCents,
         applicationFeeRefundCents: truth.feeBackCents,
+        reversalCents:             truth.reversalCents, // F2: ACTUAL transfer reversal (0 when none)
         stripePaymentIntentId:     pi.id,
         stripeChargeId:            charge.id,
         routed,

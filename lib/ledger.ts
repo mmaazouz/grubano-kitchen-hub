@@ -62,17 +62,26 @@ export async function recordRefundLedgerEntry(input: {
   channel?:                  string | null
   currency?:                 string
   createdAt?:                Date
+  /** PHASE 2 F2 — ACTUAL transfer reversal for this refund (cents). Omitted = the pre-F2
+   *  assumption that the whole refund was reversed from the restaurant (reversal = amount). */
+  reversalCents?:            number
 }): Promise<LedgerWriteResult> {
+  const reversal = input.reversalCents ?? input.refundedCents
+  // Restaurant net give-back = reversal − feeRefund (the fee refund is credited back to
+  // the connected account); Grubano bears the rest; gross = fee + net with negatives.
+  const netToRestaurant      = -(reversal - input.applicationFeeRefundCents)
+  const applicationFeeAmount = -(input.refundedCents - reversal + input.applicationFeeRefundCents)
+  const z = (n: number) => (n === 0 ? 0 : n)
   return recordLedgerEntry({
     type:                  'refund',
     restaurantId:          input.restaurantId,
     stripePaymentIntentId: input.stripePaymentIntentId ?? null,
     stripeChargeId:        input.stripeChargeId ?? null,
     stripeTransferId:      input.stripeTransferId ?? null,
-    grossAmount:           -input.refundedCents,
-    applicationFeeAmount:  -input.applicationFeeRefundCents,
+    grossAmount:           z(-input.refundedCents),
+    applicationFeeAmount:  z(applicationFeeAmount),
     stripeFeeAmount:       0,
-    netToRestaurant:       -input.refundedCents + input.applicationFeeRefundCents, // gross − fee
+    netToRestaurant:       z(netToRestaurant), // gross − fee
     routed:                input.routed,
     destinationAccountId:  input.destinationAccountId ?? null,
     currency:              input.currency ?? 'eur',

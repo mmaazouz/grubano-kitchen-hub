@@ -13,7 +13,8 @@ import Stripe from 'stripe'
 // Prisma + Stripe API calls are mocked; NO staging, NO money.
 
 const SECRET = 'whsec_test_phase2_gate'
-const real = new Stripe('sk_test_dummy_key_for_signature_only', { apiVersion: '2024-06-20' as Stripe.LatestApiVersion })
+type StripeOpts = NonNullable<ConstructorParameters<typeof Stripe>[1]>
+const real = new Stripe('sk_test_dummy_key_for_signature_only', { apiVersion: '2024-06-20' } as unknown as StripeOpts)
 
 const { db, api, ledgerStore } = vi.hoisted(() => {
   const ledgerStore = new Set<string>()
@@ -86,7 +87,7 @@ beforeEach(() => {
     ledgerStore.add(k)
     return Promise.resolve({ id: `le_${ledgerStore.size}` })
   })
-  api.refunds.list.mockImplementation(() => ({ autoPagingToArray: async () => [{ id: 're_1', amount: 500, created: 10, status: 'succeeded', currency: 'eur' }] }))
+  api.refunds.list.mockImplementation(() => ({ autoPagingToArray: async () => [{ id: 're_1', amount: 500, created: 10, status: 'succeeded', currency: 'eur', transfer_reversal: { id: 'trr_1', amount: 500 } }] }))
   api.applicationFees.listRefunds.mockResolvedValue({ data: [{ amount: 27, created: 10 }] })
   db.franchiseRoyalty.findUnique.mockResolvedValue(null)
   db.refund.findUnique.mockResolvedValue(null)
@@ -150,7 +151,7 @@ describe('refund.failed — routed, locked, idempotent', () => {
     expect((await deliver(payload, sig)).status).toBe(200)
     expect((await deliver(payload, sig)).status).toBe(200)
     expect(db.refund.update).toHaveBeenCalledTimes(1)
-    const keys = alerts.sendAdminMoneyReviewAlert.mock.calls.map((c) => (c[0] as { dedupeKey: string }).dedupeKey)
+    const keys = (alerts.sendAdminMoneyReviewAlert.mock.calls as unknown as Array<[{ dedupeKey: string }]>).map((c) => c[0].dedupeKey)
     expect(new Set(keys).size).toBe(1) // one dedupe key → sendOnce collapses any second email
   })
 
