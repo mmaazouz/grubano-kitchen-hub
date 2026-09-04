@@ -248,7 +248,15 @@ jobs:
       # PUBLIC repo, re-arming them on every deploy. Never reintroduce an
       # automatic account seed here; account provisioning goes through the
       # gated MANUAL seeds only.
+      # [no-restart] (Phase 2 preflight corrective pass, 2026-09-04): a push whose head
+      # commit message contains `[no-restart]` deploys the FILES only and does NOT bump
+      # tmp/restart.txt (all three restart steps below are skipped). Used when the
+      # server's .env.local is known to hold a value the running process must NOT load
+      # yet (e.g. LOGISTICS_SIGNUP_ENABLED=false written by the v2 operator) and the
+      # founder's one-command operator restores the env and restarts itself. Default
+      # (no marker, or workflow_dispatch) = unchanged behaviour.
       - name: Post-deploy server tasks
+        if: ${{ !contains(github.event.head_commit.message, '[no-restart]') }}
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
@@ -267,6 +275,7 @@ jobs:
       # ── SSH: chmod + Passenger restart ────────────────────────────────────────
       # node_modules is bundled in the standalone output — no npm ci needed.
       - name: Fix permissions and restart
+        if: ${{ !contains(github.event.head_commit.message, '[no-restart]') }}
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
@@ -319,7 +328,7 @@ jobs:
       # only until two consecutive deploys confirm the FTPS step finishes with
       # exit 0 (no more exit 60) AND CSS lands without manual cPanel `touch`.
       - name: Trigger Passenger restart via FTPS (independent of SSH)
-        if: success()
+        if: ${{ success() && !contains(github.event.head_commit.message, '[no-restart]') }}
         continue-on-error: true
         run: |
           STAMP="restart from run ${{ github.run_id }} at $(date -u +%FT%TZ) sha ${{ github.sha }}"
