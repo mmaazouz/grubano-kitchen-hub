@@ -8,6 +8,13 @@ name: Grubano — Internal token probe (staging, read-only, status only)
 #   workflow can never touch production.
 on:
   workflow_dispatch:
+  # GitHub only registers a workflow that has run at least once or that lives on the default
+  # branch; cron.yml/this file are develop-only (main = production, untouched). A push that
+  # touches THIS file registers it (and runs the probe once — read-only, status only) so that
+  # later manual dispatches on --ref develop work.
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/internal-token-probe.yml']
 
 permissions: {}
 
