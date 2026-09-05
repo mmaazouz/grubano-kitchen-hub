@@ -85,3 +85,12 @@ Vérification après écriture : les HEAD ci-dessus doivent rendre 404/403 ; `/f
 ## 6 · Note runbook répétition (revue sécurité F10)
 
 Tant que la provenance du token n'est pas résolue, **deux identifiants** de provenance différente ouvrent `POST /api/admin/refunds/run` dès que `REFUNDS_ENABLED=true` (session admin **ou** header interne). Règle : la répétition TEST se fait **avec la session admin uniquement**, `REFUNDS_ENABLED=true` pendant la fenêtre la plus courte possible, jamais avant la décision §2. Aujourd'hui `REFUNDS_ENABLED=false` (mesuré) ⇒ le kill-switch précède l'auth ⇒ aucune exposition.
+
+
+## 7 · MESURE GitHub ↔ runtime (2026-09-05, `internal-token-probe.yml` run 33961506645, statut seul)
+
+`GET /api/admin/ledger/check` avec `secrets.INTERNAL_CRON_TOKEN` (GitHub, repo-level, maj 2026-07-03) → **HTTP 200** ⇒ **GITHUB SECRET == STAGING RUNTIME TOKEN = YES**.
+
+Combiné à la mesure v3 (401 avec la ligne canonique de `.env.local`) : **la valeur que le processus staging compare est celle du secret GitHub, et elle diffère de `.env.local`.** Donc la source runtime effective de `INTERNAL_CRON_TOKEN` n'est **pas** `.env.local` — soit une injection hébergeur (cPanel Node.js « variables d'environnement » / Passenger), soit un fichier `.env.production.local`/`.env` ombrant ; l'opérateur v4 tranche entre les deux (`presentBeforeEnvLoad`, `definedIn`). Conséquences : (1) la CI (`cron.yml`, inactif) parlerait au staging ; (2) le **probe cPanel quotidien** (qui lit `../../.env.local`) est **aveugle** (401) — `~/logs` à lire ; (3) une rotation faite dans `.env.local` seul serait sans effet.
+
+**Décision recommandée (mise à jour §2)** : rendre `.env.local` autoritaire en y écrivant la valeur **effective** (celle qui répond 200) — l'opérateur peut le faire **sans afficher** la valeur uniquement si elle est lisible côté serveur (fichier ombrant : copie ; injection hébergeur : la valeur est dans `process.env` du processus, pas de l'opérateur → le fondateur retire la variable côté cPanel et met à jour GitHub, ou l'inverse). Tant que ce n'est pas fait : `INTERNAL LEDGER HTTP AUTH = FAIL (401 depuis le fichier)` reste **P1 pré-prod**, non bloquant pour la réconciliation directe.
