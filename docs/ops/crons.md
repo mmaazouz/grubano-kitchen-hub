@@ -98,3 +98,19 @@ c'est une **décision volontaire**, pas un effet de bord.
 - **Jobs argent en bêta.** `creator-payouts/run`, `franchise-settlements/run`, `claims/*`, `refunds/run` : tous **gatés par flag OFF** (403 `{gated:true}` avant toute écriture) et, sauf `creator-earnings/mature` + `ledger-check-probe` + `monthly-invoices` (crontab cPanel), **aucun scheduler actif**. `refunds/run` n'a **aucun** scheduler nulle part.
 - **Doublon au go-live** (inchangé) : la mise de `cron.yml` sur `main` doublerait les 3 jobs cPanel → couper l'un des deux schedulers (décision fondateur).
 - **Token.** Le 401 du ledger-check (préflight v3) frappe aussi le probe cPanel quotidien s'il vise `app.grubano.com` → alerte e-mail `[LEDGER PROBE] HTTP 401` attendue dans `~/logs` (à lire, pas à supposer). Contrat cible : `RUNTIME-SECRET-SOURCE-MATRIX.md`.
+
+## 5. P0 OPÉRATIONNEL 2026-09-05 — notification restaurant « nouvelle commande » SANS navigateur ✅
+
+Constat : `order_confirmation` + `resto_order_received` ne partaient que via le POLL du navigateur client
+(`POST /api/orders/[id]/confirm`) ; le rattrapage serveur `confirm-sweep` n'avait AUCUN scheduler actif
+(`cron.yml` inerte : la branche par défaut distante `main` = arbre Lovable sans workflows ; crontab cPanel sans
+job commande ; un cron HTTP tomberait sur la divergence `INTERNAL_CRON_TOKEN` fichier ≠ runtime, 401 mesuré v3).
+
+Correctif : **scheduler IN-PROCESS** (`lib/order-notification-scheduler.ts`, démarré par `instrumentation.ts` →
+`register()` à chaque démarrage de processus Next, `experimental.instrumentationHook`) qui appelle
+`sweepUnconfirmedPaidOrders()` directement (sans HTTP, sans token) 10 s après le démarrage puis toutes les 60 s.
+Production seulement ; kill-switch `ORDER_NOTIFY_SWEEP_DISABLED=true` ; idempotence = claim `EmailDispatch @@unique` ;
+retry borné (backoff 1→2→5→10→20→30 min, abandon après 8 échecs + marqueur durable + 1 alerte admin
+`admin_email_giveup`) ; battement `~/.grubano/order-notify-heartbeat.json`. Contrat complet :
+`docs/ops/ORDER-NOTIFICATION-RELIABILITY.md`. Le job `sweep-order-emails` de `cron.yml` et la route admin restent
+utilisables (redondance idempotente) mais ne sont plus le mécanisme de fiabilité.

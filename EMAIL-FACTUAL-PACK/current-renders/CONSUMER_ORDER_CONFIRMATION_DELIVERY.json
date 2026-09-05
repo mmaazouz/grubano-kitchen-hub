@@ -5,5 +5,7 @@
   "subject": "Commande GR-ABC123 confirmée — Gnocchi Bar",
   "hasText": false,
   "hasImages": false,
-  "hasTable": true
+  "hasTable": true,
+  "outOfBeta": true,
+  "requiresFlag": "DELIVERY_FULFILLMENT_ENABLED"
 }

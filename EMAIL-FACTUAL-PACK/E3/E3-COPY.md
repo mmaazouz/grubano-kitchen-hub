@@ -333,7 +333,7 @@ Vous y êtes presque
 ### OPERATOR_SUPPLIER_PURCHASE_ORDER
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** commandes@primeurs.example.invalid
-- **Subject:** `Bon de commande Grubano — 05/09/2026`
+- **Subject:** `Bon de commande Grubano — 06/09/2026`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
 - **Headline:** Bon de commande

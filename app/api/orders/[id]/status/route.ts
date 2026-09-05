@@ -83,6 +83,21 @@ export async function PATCH(
         { status: 422 },
       )
     }
+    // ── P0 TRUTHFULNESS T1 (2026-09-05) — `picked_up` is the COURIER hand-off. For a
+    // Click & collect order the customer collects at the restaurant: ready → delivered
+    // (« Remise au client ») is the only terminal hand-off. Allowing picked_up on a pickup
+    // order produced the consumer email « en route — elle arrive bientôt » (P0 T1). The
+    // fulfillment guard lives HERE (domain), and lib/transactional-emails additionally
+    // refuses the en-route wording for any non-delivery order (defence in depth).
+    if (newStatus === 'picked_up' && order.fulfillmentType !== 'delivery') {
+      return NextResponse.json(
+        {
+          error:   `Transition invalide pour une commande à retirer : ${order.status} → picked_up (utilisez « delivered » pour la remise au client)`,
+          allowed: allowed.filter((s) => s !== 'picked_up'),
+        },
+        { status: 422 },
+      )
+    }
 
     // ── P0-08 (vague 4) — annuler une commande PAYÉE crée une demande de
     // remboursement SYSTÈME qui entre DIRECTEMENT dans la file d'arbitrage admin,

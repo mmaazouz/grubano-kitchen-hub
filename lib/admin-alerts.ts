@@ -217,3 +217,36 @@ export async function sendAdminMoneyReviewAlert(p: {
     return { status: 'failed' }
   }
 }
+
+/**
+ * P0 OPERATIONAL (2026-09-05) — a transactional email for an order (restaurant new-order
+ * or consumer confirmation) FAILED MAX_ATTEMPTS times in the sweep's bounded retry
+ * schedule and was abandoned. The order stays PAID and ACTIONABLE in the dashboard; only
+ * the email channel gave up. ONE alert per (trigger, order) — sendOnce
+ * `admin_email_giveup` / `<trigger>:order:<id>`. Read-only signal, never throws; the
+ * [EMAIL GIVE-UP] log line + the durable `<trigger>:gave_up` EmailDispatch marker
+ * (written by the sweep) are the primary channels when SMTP itself is the failure.
+ */
+export async function sendAdminEmailGiveUpAlert(p: {
+  trigger:  string
+  orderId:  string
+  orderRef: string
+  attempts: number
+}): Promise<{ status: SendStatus }> {
+  try {
+    const to = (process.env.ALERT_EMAIL || '').trim()
+    if (!to) return { status: 'skipped' }
+    const label = p.trigger === 'resto_order_received' ? 'notification restaurant « nouvelle commande »' : `email « ${p.trigger} »`
+    const subject = `[Grubano] Email non délivré après ${p.attempts} tentatives — commande ${p.orderRef}`
+    const html =
+      `<div style="font-family:system-ui,Arial,sans-serif;color:#111827;max-width:520px">`
+      + `<h2 style="font-size:17px">Email abandonné — action manuelle</h2>`
+      + `<p>La ${escHtml(label)} pour la commande <b>${escHtml(p.orderRef)}</b> a échoué <b>${p.attempts}</b> fois (SMTP) et ne sera plus retentée automatiquement.</p>`
+      + `<p style="font-size:14px">Commande : <b>${escHtml(p.orderId)}</b><br>Référence : <b>${escHtml(p.orderRef)}</b><br>Déclencheur : <b>${escHtml(p.trigger)}</b></p>`
+      + `<p style="font-size:13px;color:#6b7280">La commande reste payée et visible dans le tableau de bord du restaurant — prévenir le restaurant par un autre canal si nécessaire, puis vérifier le transport SMTP.</p>`
+      + `</div>`
+    return await sendOnce('admin_email_giveup', `${p.trigger}:order:${p.orderId}`, { to, subject, html })
+  } catch {
+    return { status: 'failed' }
+  }
+}

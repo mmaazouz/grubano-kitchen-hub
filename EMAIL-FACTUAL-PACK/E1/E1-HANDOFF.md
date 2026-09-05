@@ -1,4 +1,6 @@
-# E1-HANDOFF — Claude Design tranche 1: GLOBAL EMAIL DESIGN SYSTEM + AUTH + CONSUMER ORDER LIFECYCLE + PARTNER CORE ORDER
+# E1-HANDOFF — ⚠️ SUPERSEDED AS A SINGLE SESSION (2026-09-05): E1 is split into E1-A (system + 3 representatives, start there) → E1-B / E1-C / E1-D after founder approval. This file remains the family-level reference.
+
+# (original) Claude Design tranche 1: GLOBAL EMAIL DESIGN SYSTEM + AUTH + CONSUMER ORDER LIFECYCLE + PARTNER CORE ORDER
 
 > Self-contained. Load with `../EMAIL-DESIGN-SYSTEM-FACTS.md` (short, binding). Everything else in this folder is optional depth: `E1-MANIFEST.md` (13 emails, status + trigger + recipient), `E1-COPY.md` (current copy verbatim), `E1-DATA-CONTRACTS.md` (fields), `E1-CURRENT-VISUALS.md` (16 fossils + PNGs), `E1-DESIGN-BRIEF.md` (what to produce). Source facts are file:line-anchored in the core pack if you need to verify one.
 >

@@ -71,10 +71,11 @@ describe('sendOrderStatusEmail — status → email via sendOnce(order_<status>,
     expect(sendMail).not.toHaveBeenCalled()
   })
 
-  it('fulfillment-aware wording: pickup vs delivery for ready / picked_up / delivered', async () => {
+  it('fulfillment-aware wording: pickup vs delivery for ready / picked_up / delivered (delivery wording needs the pilot switch ON — P0 T2)', async () => {
     await sendOrderStatusEmail({ ...base, status: 'ready', fulfillmentType: 'pickup' })
     expect(sendMail.mock.calls[0][0].html).toContain('récupérer')
 
+    process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
     sendMail.mockClear()
     await sendOrderStatusEmail({ ...base, status: 'picked_up', fulfillmentType: 'delivery' })
     expect(sendMail.mock.calls[0][0].subject).toContain('en route')
@@ -86,6 +87,37 @@ describe('sendOrderStatusEmail — status → email via sendOnce(order_<status>,
     sendMail.mockClear()
     await sendOrderStatusEmail({ ...base, status: 'delivered', fulfillmentType: 'delivery' })
     expect(sendMail.mock.calls[0][0].subject).toContain('livrée')
+    delete process.env.DELIVERY_FULFILLMENT_ENABLED
+  })
+
+  // ── P0 TRUTHFULNESS T1 / T2 (2026-09-05) ─────────────────────────────────────────────
+  it('⭐ T1 — picked_up on a PICKUP order → NO email at all (never « en route » for Click & collect)', async () => {
+    const r = await sendOrderStatusEmail({ ...base, status: 'picked_up', fulfillmentType: 'pickup' })
+    expect(r.status).toBe('skipped')
+    expect(dispatchCreate).not.toHaveBeenCalled()
+    expect(sendMail).not.toHaveBeenCalled()
+  })
+
+  it('⭐ T2 — delivery wording is UNREACHABLE while DELIVERY_FULFILLMENT_ENABLED is OFF (legacy delivery row → Click & collect wording, picked_up skipped)', async () => {
+    delete process.env.DELIVERY_FULFILLMENT_ENABLED
+    await sendOrderStatusEmail({ ...base, status: 'ready', fulfillmentType: 'delivery' })
+    expect(sendMail.mock.calls[0][0].html).toContain('récupérer')
+    expect(/livraison|en route|livrée/i.test(sendMail.mock.calls[0][0].html)).toBe(false)
+
+    sendMail.mockClear()
+    const r = await sendOrderStatusEmail({ ...base, status: 'picked_up', fulfillmentType: 'delivery' })
+    expect(r.status).toBe('skipped')
+    expect(sendMail).not.toHaveBeenCalled()
+
+    await sendOrderStatusEmail({ ...base, status: 'delivered', fulfillmentType: 'delivery' })
+    expect(sendMail.mock.calls[0][0].subject).toContain('récupérée')
+  })
+
+  it('⭐ negative control — with the switch ON a delivery order DOES get delivery wording (the gate is the switch, not a deleted template)', async () => {
+    process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
+    await sendOrderStatusEmail({ ...base, status: 'ready', fulfillmentType: 'delivery' })
+    expect(sendMail.mock.calls[0][0].html).toContain('livraison')
+    delete process.env.DELIVERY_FULFILLMENT_ENABLED
   })
 
   it('shows NO price/amount (status-only email)', async () => {

@@ -123,15 +123,24 @@ describe('render — transactional-emails', () => {
     const T = await import('@/lib/transactional-emails')
     await T.sendOrderConfirmation({ ...CONSUMER, customerName: CONSUMER.name, restaurantName: RESTO, orderRef: 'GR-ABC123', fulfillmentType: 'pickup', items: ITEMS, paidCents: 2550, dedupeKey: 'order:x' })
     take('CONSUMER_ORDER_CONFIRMATION_PICKUP')
+    process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
     await T.sendOrderConfirmation({ ...CONSUMER, customerName: CONSUMER.name, restaurantName: RESTO, orderRef: 'GR-ABC123', fulfillmentType: 'delivery', items: ITEMS, paidCents: 2850, dedupeKey: 'order:x' })
-    take('CONSUMER_ORDER_CONFIRMATION_DELIVERY')
+    take('CONSUMER_ORDER_CONFIRMATION_DELIVERY', { outOfBeta: true, requiresFlag: 'DELIVERY_FULFILLMENT_ENABLED' })
+    delete process.env.DELIVERY_FULFILLMENT_ENABLED
     const base = { orderId: ORDER.id, to: CONSUMER.to, customerName: CONSUMER.name, restaurantName: RESTO, orderRef: 'GR-ABC123' }
     await T.sendOrderStatusEmail({ ...base, status: 'preparing', fulfillmentType: 'pickup' }); take('CONSUMER_ORDER_ACCEPTED')
     await T.sendOrderStatusEmail({ ...base, status: 'ready', fulfillmentType: 'pickup' }); take('CONSUMER_ORDER_READY_PICKUP')
-    await T.sendOrderStatusEmail({ ...base, status: 'ready', fulfillmentType: 'delivery' }); take('CONSUMER_ORDER_READY_DELIVERY')
-    await T.sendOrderStatusEmail({ ...base, status: 'picked_up', fulfillmentType: 'delivery' }); take('CONSUMER_ORDER_ENROUTE')
+    // P0 T1/T2 (2026-09-05): delivery wording is double-gated → the delivery variants are
+    // rendered with the pilot switch ON and are OUT-OF-BETA dormant states; picked_up on a
+    // pickup order yields NO email (asserted below).
+    process.env.DELIVERY_FULFILLMENT_ENABLED = 'true'
+    await T.sendOrderStatusEmail({ ...base, status: 'ready', fulfillmentType: 'delivery' }); take('CONSUMER_ORDER_READY_DELIVERY', { outOfBeta: true, requiresFlag: 'DELIVERY_FULFILLMENT_ENABLED' })
+    await T.sendOrderStatusEmail({ ...base, status: 'picked_up', fulfillmentType: 'delivery' }); take('CONSUMER_ORDER_ENROUTE', { outOfBeta: true, requiresFlag: 'DELIVERY_FULFILLMENT_ENABLED' })
+    await T.sendOrderStatusEmail({ ...base, status: 'delivered', fulfillmentType: 'delivery' }); take('CONSUMER_ORDER_DELIVERED', { outOfBeta: true, requiresFlag: 'DELIVERY_FULFILLMENT_ENABLED' })
+    delete process.env.DELIVERY_FULFILLMENT_ENABLED
+    const noMail = await T.sendOrderStatusEmail({ ...base, status: 'picked_up', fulfillmentType: 'pickup' })
+    expect(noMail.status).toBe('skipped') // T1: never « en route » for Click & collect
     await T.sendOrderStatusEmail({ ...base, status: 'delivered', fulfillmentType: 'pickup' }); take('CONSUMER_ORDER_COMPLETED_PICKUP')
-    await T.sendOrderStatusEmail({ ...base, status: 'delivered', fulfillmentType: 'delivery' }); take('CONSUMER_ORDER_DELIVERED')
     await T.sendOrderStatusEmail({ ...base, status: 'cancelled', fulfillmentType: 'pickup' }); take('CONSUMER_ORDER_CANCELLED_GENERIC')
     await T.sendRestaurantNewOrderEmail({ orderId: ORDER.id, to: OWNER, restaurantName: RESTO, orderRef: 'GR-ABC123', fulfillmentType: 'pickup', items: ITEMS, totalCents: 2550 })
     take('PARTNER_NEW_ORDER')

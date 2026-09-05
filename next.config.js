@@ -39,11 +39,32 @@ const nextConfig = {
 
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client'],
+    // P0 OPERATIONAL (2026-09-05): enables instrumentation.ts → register(), which starts
+    // the in-process order-notification scheduler (lib/order-notification-scheduler.ts)
+    // once per server process. Production-only + kill-switch inside the module.
+    instrumentationHook: true,
     // NOTE: outputFileTracingRoot is intentionally NOT set here.
     // Setting it to a Linux path on a Windows build machine causes Next.js
     // to skip generating .next/standalone entirely.
     // Instead, scripts/fix-server.js patches the Windows path in server.js
     // after `npm run build` completes.
+  },
+
+  // P0 OPERATIONAL (2026-09-05): instrumentation.ts is compiled for BOTH runtimes and
+  // webpack resolves the import chain even inside the dead `NEXT_RUNTIME === 'nodejs'`
+  // branch — the real scheduler reaches Nodemailer → Node builtins that the EDGE bundle
+  // cannot resolve ("Can't resolve 'crypto'", observed on the cold build). For the edge
+  // runtime only, swap the scheduler for its no-op stub; the nodejs runtime is untouched.
+  webpack(config, { nextRuntime, webpack }) {
+    if (nextRuntime === 'edge') {
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /[\\/]lib[\\/]order-notification-scheduler$/,
+          require('path').resolve(__dirname, 'lib/order-notification-scheduler.edge.ts'),
+        ),
+      )
+    }
+    return config
   },
 
   assetPrefix: '',

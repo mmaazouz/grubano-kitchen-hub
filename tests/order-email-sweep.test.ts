@@ -14,7 +14,8 @@ const { db } = vi.hoisted(() => ({
   db: {
     order:         { findMany: vi.fn(), findUnique: vi.fn() },
     operator:      { findUnique: vi.fn() },
-    emailDispatch: { findMany: vi.fn() },
+    emailDispatch: { findMany: vi.fn(), create: vi.fn() },
+    emailLog:      { findMany: vi.fn() }, // P0 2026-09-05: bounded-retry read (best-effort)
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -38,6 +39,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   db.order.findMany.mockResolvedValue([paidOrder('ord123abc')])
   db.emailDispatch.findMany.mockResolvedValue([])
+  db.emailLog.findMany.mockResolvedValue([])       // no prior failure → every attempt allowed
   db.operator.findUnique.mockResolvedValue({ email: 'lea@x.fr', name: 'Léa' })
   consumerMock.mockResolvedValue({ status: 'sent' })
   restoMock.mockResolvedValue({ status: 'sent' })
@@ -65,7 +67,9 @@ describe('lib/order-email-sweep — le chemin « onglet fermé » (aucun dispatc
     // Revue P0-42 : une commande FANTÔME (status 'expired') transitoirement
     // 'paid' pendant le traitement webhook ne doit JAMAIS recevoir de
     // « commande confirmée ».
-    expect(q.where.status).toEqual({ not: 'expired' })
+    // P0 2026-09-05 (TEST 10 contract): expired (ghost) AND cancelled are NOT actionable —
+    // a restaurant must never receive « nouvelle commande à accepter » for a cancelled order.
+    expect(q.where.status).toEqual({ notIn: ['expired', 'cancelled'] })
     expect(q.where.updatedAt.gte).toBeInstanceOf(Date)
     expect(q.take).toBeLessThanOrEqual(500)
   })

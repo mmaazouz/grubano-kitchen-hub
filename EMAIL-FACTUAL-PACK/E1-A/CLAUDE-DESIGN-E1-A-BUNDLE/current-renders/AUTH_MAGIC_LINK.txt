@@ -1,0 +1,8 @@
+Bonjour Léa Martin,
+
+Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :
+
+https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
+
+Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois.
+Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.

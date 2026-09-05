@@ -29,10 +29,30 @@
 import { orderRef } from '@/lib/order-ref'
 import { prisma } from '@/lib/prisma'
 import { sendOrderConfirmation, sendRestaurantNewOrderEmail } from '@/lib/transactional-emails'
+import { sendAdminEmailGiveUpAlert } from '@/lib/admin-alerts'
 
+// ── P0 OPERATIONAL (2026-09-05) — the sweep is now the RELIABILITY mechanism ─────
+// It is driven server-side by lib/order-notification-scheduler (in-process timer, every
+// 60 s per Next.js process) in addition to the admin route. Two hardening rules:
+//   • NON-ACTIONABLE orders are excluded: 'expired' (ghost order, see P0-42 review) AND
+//     'cancelled' — a restaurant must never receive « nouvelle commande à accepter » for an
+//     order that no longer exists; the consumer already receives the cancellation email
+//     (order_cancelled, same dedupeKey family) from the status route.
+//   • BOUNDED RETRY / BACKOFF per (trigger, order): every failed attempt leaves an EmailLog
+//     row (status 'failed', subject carries the GR- reference). Before retrying we read the
+//     failed rows of the window: n ≥ MAX_ATTEMPTS ⇒ GIVE UP (durable marker in EmailDispatch
+//     `<trigger>:gave_up` so no further attempt ever happens + ONE best-effort admin alert +
+//     an [EMAIL GIVE-UP] log line); otherwise the next attempt is allowed only after
+//     BACKOFF_MS[n] since the last failure (1 → 2 → 5 → 10 → 20 → 30 → 30 min). Reads are
+//     best-effort: if EmailLog is unreadable we retry (never block a legitimate send).
 
 const DEFAULT_WINDOW_HOURS = 48
 const DEFAULT_TAKE         = 100
+/** Attempts after which a (trigger, order) is abandoned with an admin alert. */
+export const MAX_ATTEMPTS  = 8
+/** Minimum spacing (ms) before attempt n+1 given n prior failures (index = n, capped). */
+export const BACKOFF_MS: readonly number[] = [0, 60_000, 120_000, 300_000, 600_000, 1_200_000, 1_800_000, 1_800_000]
+const NON_ACTIONABLE_STATUSES = ['expired', 'cancelled'] as const
 
 export type SweepResult = {
   scanned:       number
@@ -41,6 +61,42 @@ export type SweepResult = {
   alreadyDone:   number
   skippedNoEmail: number
   errors:        number
+  /** Attempts deferred by the backoff schedule (will retry later). */
+  backoffSkipped: number
+  /** (trigger, order) pairs abandoned after MAX_ATTEMPTS — admin alerted once. */
+  gaveUp:        number
+}
+
+/** Pure: given n prior failures (most recent at lastFailedAt), may we try again at `now`? */
+export function retryDecision(n: number, lastFailedAt: Date | null, now: Date): 'try' | 'wait' | 'give_up' {
+  if (n >= MAX_ATTEMPTS) return 'give_up'
+  if (n === 0 || !lastFailedAt) return 'try'
+  const wait = BACKOFF_MS[Math.min(n, BACKOFF_MS.length - 1)]
+  return now.getTime() - lastFailedAt.getTime() >= wait ? 'try' : 'wait'
+}
+
+/** Best-effort read of prior failures for (trigger, GR-ref) inside the window. */
+async function priorFailures(trigger: string, ref: string, since: Date): Promise<{ n: number; last: Date | null }> {
+  try {
+    const rows = await prisma.emailLog.findMany({
+      where:   { trigger, status: 'failed', subject: { contains: ref }, sentAt: { gte: since } },
+      select:  { sentAt: true },
+      orderBy: { sentAt: 'desc' },
+      take:    MAX_ATTEMPTS,
+    })
+    return { n: rows.length, last: rows[0]?.sentAt ?? null }
+  } catch {
+    return { n: 0, last: null } // unreadable audit log ⇒ never block a legitimate retry
+  }
+}
+
+/** Durable give-up: claim `<trigger>:gave_up` / order:<id> (idempotent), alert admin ONCE. */
+async function giveUp(trigger: string, orderId: string, ref: string, attempts: number): Promise<void> {
+  console.error(`[EMAIL GIVE-UP] [${trigger}] ${attempts} failed attempts — abandoning`, JSON.stringify({ orderId, ref }))
+  try {
+    await prisma.emailDispatch.create({ data: { trigger: `${trigger}:gave_up`, dedupeKey: `order:${orderId}` } })
+  } catch { /* P2002 = already marked (or store hiccup) — both fine */ }
+  try { await sendAdminEmailGiveUpAlert({ trigger, orderId, orderRef: ref, attempts }) } catch { /* best-effort */ }
 }
 
 /** Balaye les commandes PAYÉES récentes et émet les confirmations manquantes.
@@ -61,7 +117,7 @@ export async function sweepUnconfirmedPaidOrders(opts?: {
   // fenêtre (ou après une mort du process entre les deux writes) enverrait
   // « commande confirmée » pour une commande jamais servie.
   const orders = await prisma.order.findMany({
-    where:   { paymentStatus: 'paid', status: { not: 'expired' }, updatedAt: { gte: since } },
+    where:   { paymentStatus: 'paid', status: { notIn: [...NON_ACTIONABLE_STATUSES] }, updatedAt: { gte: since } },
     select:  {
       id: true, consumerId: true, total: true, fulfillmentType: true, items: true,
       restaurant: { select: { name: true, operator: { select: { email: true } } } },
@@ -72,7 +128,7 @@ export async function sweepUnconfirmedPaidOrders(opts?: {
 
   const result: SweepResult = {
     scanned: orders.length, consumerSent: 0, restoSent: 0,
-    alreadyDone: 0, skippedNoEmail: 0, errors: 0,
+    alreadyDone: 0, skippedNoEmail: 0, errors: 0, backoffSkipped: 0, gaveUp: 0,
   }
   if (orders.length === 0) return result
 
@@ -80,7 +136,7 @@ export async function sweepUnconfirmedPaidOrders(opts?: {
   // confort : la CORRECTION vient de l'INSERT @@unique dans sendOnce, pas d'ici).
   const keys = orders.map((o) => `order:${o.id}`)
   const dispatches = await prisma.emailDispatch.findMany({
-    where:  { dedupeKey: { in: keys }, trigger: { in: ['order_confirmation', 'resto_order_received'] } },
+    where:  { dedupeKey: { in: keys }, trigger: { in: ['order_confirmation', 'resto_order_received', 'order_confirmation:gave_up', 'resto_order_received:gave_up'] } },
     select: { trigger: true, dedupeKey: true },
   })
   const done = new Set(dispatches.map((d) => `${d.trigger}|${d.dedupeKey}`))
@@ -91,14 +147,19 @@ export async function sweepUnconfirmedPaidOrders(opts?: {
     const items = (Array.isArray(order.items) ? (order.items as Array<Record<string, unknown>>) : [])
       .filter((it) => typeof it?.name === 'string')
       .map((it) => ({ name: String(it.name), qty: Number(it.qty) || 1 }))
-    const needsConsumer = !done.has(`order_confirmation|${key}`)
-    const needsResto    = !done.has(`resto_order_received|${key}`)
+    const needsConsumer = !done.has(`order_confirmation|${key}`)   && !done.has(`order_confirmation:gave_up|${key}`)
+    const needsResto    = !done.has(`resto_order_received|${key}`) && !done.has(`resto_order_received:gave_up|${key}`)
     if (!needsConsumer && !needsResto) { result.alreadyDone++; continue }
+    const now = new Date()
 
     // Restaurant d'abord (même ordre que /confirm) — best-effort par commande :
     // un échec est compté + tracé, ne bloque jamais le reste du lot.
     if (needsResto) {
-      try {
+      const prior = await priorFailures('resto_order_received', ref, since)
+      const decision = retryDecision(prior.n, prior.last, now)
+      if (decision === 'give_up') { result.gaveUp++; await giveUp('resto_order_received', order.id, ref, prior.n) }
+      else if (decision === 'wait') { result.backoffSkipped++ }
+      else try {
         const ownerEmail = order.restaurant?.operator?.email
         if (ownerEmail) {
           await sendRestaurantNewOrderEmail({
@@ -123,7 +184,11 @@ export async function sweepUnconfirmedPaidOrders(opts?: {
     }
 
     if (needsConsumer) {
-      try {
+      const prior = await priorFailures('order_confirmation', ref, since)
+      const decision = retryDecision(prior.n, prior.last, now)
+      if (decision === 'give_up') { result.gaveUp++; await giveUp('order_confirmation', order.id, ref, prior.n) }
+      else if (decision === 'wait') { result.backoffSkipped++ }
+      else try {
         const consumer = await prisma.operator.findUnique({
           where:  { id: order.consumerId },
           select: { email: true, name: true },

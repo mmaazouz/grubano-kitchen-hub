@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
+import { isDeliveryFulfillmentEnabled } from '@/lib/fulfillment'
 
 // ── Transactional emails v1 (Agent 13) ─────────────────────────────────────────
 //
@@ -205,6 +206,19 @@ export async function sendOnce(
 // wording adapts to pickup vs delivery; a non-notifiable status (e.g. 'received') is skipped.
 type OrderStatusForEmail = 'preparing' | 'ready' | 'picked_up' | 'delivered' | 'cancelled'
 
+// ── P0 TRUTHFULNESS T1/T2 (2026-09-05) — delivery wording is a DOUBLE-gated state ─────
+// Delivery-specific wording (« livraison », « en route », « livrée ») may appear ONLY when
+// the order IS a delivery order AND the pilot switch DELIVERY_FULFILLMENT_ENABLED is on
+// (lib/fulfillment — the same switch that makes POST /api/orders refuse 'delivery').
+// Everything else is worded as Click & collect: 'pickup' (the only mode sold in the
+// closed beta), an unknown/legacy type, or a legacy 'delivery' row while the switch is
+// OFF (nothing can be delivered ⇒ never promise a courier). The courier hand-off status
+// `picked_up` has NO consumer meaning for a non-delivery order ⇒ no email at all (the
+// status route also refuses that transition for non-delivery orders).
+export function isDeliveryWording(fulfillmentType: string): boolean {
+  return fulfillmentType === 'delivery' && isDeliveryFulfillmentEnabled()
+}
+
 export async function sendOrderStatusEmail(p: {
   orderId:         string
   to:              string
@@ -220,7 +234,8 @@ export async function sendOrderStatusEmail(p: {
   const name   = esc(p.customerName)
   const resto  = esc(p.restaurantName)
   const refRow = table(row('Commande', esc(p.orderRef)))
-  const pickup = p.fulfillmentType === 'pickup'
+  const delivery = isDeliveryWording(p.fulfillmentType)
+  const pickup   = !delivery
 
   let trigger: string
   let subject: string
@@ -243,6 +258,8 @@ export async function sendOrderStatusEmail(p: {
         : `<p>Bonjour ${name}, votre commande chez <strong>${resto}</strong> est prête et part bientôt en livraison.</p>${refRow}`
       break
     case 'picked_up':
+      // T1: « en route » is a courier state — never for a Click & collect order.
+      if (!delivery) return { status: 'skipped' }
       trigger = 'order_enroute'
       subject = `Commande ${p.orderRef} en route — ${p.restaurantName}`
       title   = 'Commande en route'
@@ -288,7 +305,7 @@ export async function sendRestaurantNewOrderEmail(p: {
   totalCents:      number
 }): Promise<{ status: SendStatus }> {
   const lines = p.items.map((it) => row(`${it.qty}×`, esc(it.name))).join('')
-  const mode  = p.fulfillmentType === 'pickup' ? 'Click & collect' : 'Livraison'
+  const mode  = isDeliveryWording(p.fulfillmentType) ? 'Livraison' : 'Click & collect' // T2 double gate
   return sendOnce('resto_order_received', `order:${p.orderId}`, {
     to:      p.to,
     subject: `Nouvelle commande ${p.orderRef} — ${p.restaurantName}`,
@@ -729,9 +746,10 @@ export async function sendOrderConfirmation(p: {
   const lines = p.items
     .map((it) => row(`${it.qty}×`, esc(it.name)))
     .join('')
-  const mode = p.fulfillmentType === 'pickup'
-    ? 'Click & collect — votre commande sera à retirer au restaurant.'
-    : 'Livraison — votre commande arrive chez vous.'
+  // T2: delivery wording only when the order is a delivery AND the pilot switch is on.
+  const mode = isDeliveryWording(p.fulfillmentType)
+    ? 'Livraison — votre commande arrive chez vous.'
+    : 'Click & collect — votre commande sera à retirer au restaurant.'
   await sendTransactional({
     to:      p.to,
     subject: `Commande ${p.orderRef} confirmée — ${p.restaurantName}`,

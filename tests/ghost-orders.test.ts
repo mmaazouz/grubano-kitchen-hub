@@ -117,7 +117,9 @@ describe('PATCH /api/orders/[id]/status — pickup hand-off skips the courier st
   })
 
   it('ready → picked_up stays valid (delivery courier flow untouched)', async () => {
-    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'ready', restaurantId: 'rest1', pointsEarned: 0, consumerId: 'cust1' })
+    // P0 T1 (2026-09-05): picked_up is the COURIER hand-off → the fixture is a DELIVERY order
+    // (a pickup order is now refused 422 — see tests/order-status-pickup-guard.test.ts).
+    db.order.findUnique.mockResolvedValue({ id: 'order1', status: 'ready', restaurantId: 'rest1', pointsEarned: 0, consumerId: 'cust1', fulfillmentType: 'delivery' })
     db.order.update.mockResolvedValue({ id: 'order1', status: 'picked_up', updatedAt: new Date() })
     const res = await patchStatus(statusReq('picked_up'), { params: { id: 'order1' } })
     expect(res.status).toBe(200)
