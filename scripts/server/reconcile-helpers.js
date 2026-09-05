@@ -90,13 +90,13 @@ function createStripeReadOnlyClient(secretKey, opts) {
   const doFetch = o.fetch || fetch
   const maxRetries = o.maxRetries == null ? 2 : o.maxRetries
   const calls = []
-  async function get(pathname, params) {
+  async function get(pathname, params, extraHeaders) {
     const qs = encodeParams(params)
     const url = apiBase + pathname + (qs ? '?' + qs : '')
     let lastErr = null
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const res = await doFetch(url, { method: 'GET', headers: { Authorization: 'Bearer ' + secretKey, 'Stripe-Version': '2024-06-20', 'User-Agent': 'grubano-phase2-preflight-readonly/5' } })
+        const res = await doFetch(url, { method: 'GET', headers: Object.assign({ Authorization: 'Bearer ' + secretKey, 'Stripe-Version': '2024-06-20', 'User-Agent': 'grubano-phase2-preflight-readonly/5' }, extraHeaders || {}) })
         let body = null, parseFailed = false
         try { body = await res.json() } catch { parseFailed = true }
         if (res.status >= 500 && attempt < maxRetries) { lastErr = new Error('stripe ' + res.status); continue }
@@ -130,8 +130,15 @@ function createStripeReadOnlyClient(secretKey, opts) {
     kind: 'rest-readonly',
     origin: u.origin,
     calls,
-    paymentIntents: { list: (params) => listAll('/v1/payment_intents', params), retrieve: (id) => get('/v1/payment_intents/' + encodeURIComponent(id)) },
+    paymentIntents: { list: (params) => listAll('/v1/payment_intents', params), retrieve: (id, params) => get('/v1/payment_intents/' + encodeURIComponent(id), params) },
     refunds: { list: (params) => listAll('/v1/refunds', params), retrieve: (id) => get('/v1/refunds/' + encodeURIComponent(id)) },
+    // Extra READ-ONLY getters for the rehearsal precheck (whitelisted kinds; GET only).
+    retrieveAny: (kind, id, params) => {
+      if (!['payment_intents', 'charges', 'transfers', 'application_fees', 'accounts', 'refunds'].includes(kind)) throw new Error('stripe-readonly: kind not allowed ' + kind)
+      return get('/v1/' + kind + '/' + encodeURIComponent(id), params)
+    },
+    balanceFor: (connectedAccountId) => get('/v1/balance', undefined, { 'Stripe-Account': String(connectedAccountId) }),
+    listWebhookEndpoints: async () => (await get('/v1/webhook_endpoints', { limit: 10 })).data || [],
   }
 }
 

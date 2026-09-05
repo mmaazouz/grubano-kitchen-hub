@@ -1,0 +1,85 @@
+name: Grubano — Refund rehearsal (staging, Stripe TEST, ONE authorised partial refund)
+
+# PHASE 2 REFUND REHEARSAL — PREPARED, NOT EXECUTED (2026-09-05).
+#
+# Executes exactly ONE admin refund through the existing, reviewed route
+# POST /api/admin/refunds/run on STAGING (URL fixed — this workflow can never target
+# production), authenticated with the GitHub secret INTERNAL_CRON_TOKEN (measured equal to
+# the staging runtime token: HTTP 200 on the ledger route, run 33961506645).
+#
+# It can only do anything when ALL of the following hold at once:
+#   1. a human dispatches it (workflow_dispatch) — a push run is a no-op (job skipped);
+#   2. the `confirm` input is EXACTLY the founder's sentence;
+#   3. the staging process has REFUNDS_ENABLED=true at that moment — i.e. the fail-closed
+#      window opened by `scripts/server/phase2-refund-gate.js window` (which re-freezes
+#      automatically). Outside the window the route answers 403 {gated:true} and nothing moves.
+#   4. order_id / amount_cents are given explicitly (no defaults that could refund the wrong order).
+# Output: HTTP status + the route's non-secret JSON fields (refund id, split cents). The body
+# never contains a secret; the token is masked by GitHub Actions and never printed.
+on:
+  workflow_dispatch:
+    inputs:
+      order_id:
+        description: Order DB id (e.g. cmtju919h0001h7t6bkn5tsm0 = GR-N5TSM0)
+        required: true
+        type: string
+      amount_cents:
+        description: Stripe CASH to refund, integer cents (e.g. 500)
+        required: true
+        type: string
+      confirm:
+        description: Type exactly — I AUTHORIZE THE STAGING REFUND REHEARSAL
+        required: true
+        type: string
+  # Registration only (GitHub registers a workflow when a push touches it) — the job below is
+  # skipped on push, so nothing runs.
+  push:
+    branches: [develop]
+    paths: ['.github/workflows/refund-rehearsal.yml']
+
+permissions: {}
+
+jobs:
+  refund:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm == 'I AUTHORIZE THE STAGING REFUND REHEARSAL' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs (fail closed)
+        env:
+          ORDER_ID: ${{ inputs.order_id }}
+          AMOUNT: ${{ inputs.amount_cents }}
+        run: |
+          set -u
+          [[ "$ORDER_ID" =~ ^c[a-z0-9]{20,30}$ ]] || { echo "invalid order_id"; exit 1; }
+          [[ "$AMOUNT" =~ ^[1-9][0-9]{0,5}$ ]] || { echo "invalid amount_cents"; exit 1; }
+          echo "TARGET = https://app.grubano.com (staging, fixed)"
+          echo "ORDER  = …${ORDER_ID: -6}"
+          echo "AMOUNT = ${AMOUNT} cents"
+      - name: Gate must be OPEN (unauthenticated probe → 401 = REFUNDS_ENABLED true ; 403 gated = frozen → abort)
+        run: |
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST -H 'Content-Type: application/json' --data '{}' https://app.grubano.com/api/admin/refunds/run)
+          echo "GATE PROBE HTTP = ${CODE}"
+          if [ "${CODE}" != "401" ]; then echo "refund gate is not open (expected 401, got ${CODE}) — ABORT, nothing executed"; exit 1; fi
+      - name: Execute exactly ONE refund (route enforces kill-switch, auth, resume-first idempotency, F8)
+        env:
+          TOK: ${{ secrets.INTERNAL_CRON_TOKEN }}
+          ORDER_ID: ${{ inputs.order_id }}
+          AMOUNT: ${{ inputs.amount_cents }}
+        run: |
+          set -u
+          [ -n "${TOK}" ] || { echo "GITHUB SECRET INTERNAL_CRON_TOKEN = ABSENT — ABORT"; exit 1; }
+          BODY=$(mktemp)
+          CODE=$(curl -s -o "$BODY" -w '%{http_code}' --max-time 120 -X POST \
+            -H 'Content-Type: application/json' -H "X-Internal-Token: ${TOK}" -H 'User-Agent: grubano-refund-rehearsal/1' \
+            --data "{\"orderId\":\"${ORDER_ID}\",\"amountCents\":${AMOUNT},\"reason\":\"phase2 rehearsal (founder-authorised, TEST)\"}" \
+            https://app.grubano.com/api/admin/refunds/run)
+          echo "HTTP STATUS = ${CODE}"
+          # The route body carries only ids and integer cents (no secret): print it verbatim.
+          echo "ROUTE BODY = $(cat "$BODY" | head -c 2000)"
+          case "${CODE}" in
+            200) echo "REFUND = SUCCEEDED (Stripe terminal truth) — verify Stripe/DB/ledger/loyalty with the read-only operators" ;;
+            202) echo "REFUND = PENDING at Stripe — NOT a success; wait for refund.updated / refund.failed (webhook)" ;;
+            409) echo "REFUND = REFUSED by the engine (fail-closed: failed-row lock / resume window / conflict) — NO second attempt" ;;
+            403) echo "REFUND = GATED (REFUNDS_ENABLED false) — nothing executed" ;;
+            *)   echo "REFUND = NOT EXECUTED / UNKNOWN (status ${CODE}) — do NOT retry blindly; run the read-only precheck" ;;
+          esac

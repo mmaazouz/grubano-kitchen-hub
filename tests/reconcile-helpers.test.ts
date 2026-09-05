@@ -116,6 +116,24 @@ describe('READ-ONLY Stripe REST client', () => {
     const r = await core.reconcileLedger({ prisma, stripe: c, from, to })
     expect(r.ok).toBe(true); expect([r.ledgerCount, r.stripeCount, r.ledgerSum, r.stripeSum]).toEqual([2, 2, 2860, 2860]); expect(r.refunds.checked).toBe(true)
   })
+  it('rehearsal getters: retrieveAny is whitelisted GET, balanceFor sends Stripe-Account header, listWebhookEndpoints returns data', async () => {
+    const seen: { url: string; headers: Record<string, string> }[] = []
+    const f = async (url: string, init: { headers: Record<string, string> }) => {
+      seen.push({ url, headers: init.headers })
+      const u = new URL(url)
+      if (u.pathname === '/v1/balance') return { status: 200, json: async () => ({ available: [{ currency: 'eur', amount: 0 }], pending: [{ currency: 'eur', amount: 2668 }] }) }
+      if (u.pathname === '/v1/webhook_endpoints') return { status: 200, json: async () => ({ data: [{ id: 'we_1', enabled_events: ['charge.refunded'] }] }) }
+      if (u.pathname === '/v1/accounts/acct_x') return { status: 200, json: async () => ({ id: 'acct_x', settings: { payouts: { schedule: { interval: 'manual' } } } }) }
+      return { status: 404, json: async () => ({ error: { type: 'invalid_request_error' } }) }
+    }
+    const c = H.createStripeReadOnlyClient('sk_test_k', { fetch: f })
+    const bal = await c.balanceFor('acct_x')
+    expect(bal.pending[0].amount).toBe(2668)
+    expect(seen[0].headers['Stripe-Account']).toBe('acct_x')
+    expect((await c.listWebhookEndpoints())[0].id).toBe('we_1')
+    expect((await c.retrieveAny('accounts', 'acct_x')).settings.payouts.schedule.interval).toBe('manual')
+    expect(() => c.retrieveAny('customers', 'cus_x')).toThrow(/kind not allowed/)
+  })
   it('non-2xx → throws stripe_http_<code> (never silently empty); 5xx retried', async () => {
     let n = 0
     const flaky = async () => { n++; return n === 1 ? { status: 500, json: async () => ({}) } : { status: 200, json: async () => ({ data: [], has_more: false }) } }

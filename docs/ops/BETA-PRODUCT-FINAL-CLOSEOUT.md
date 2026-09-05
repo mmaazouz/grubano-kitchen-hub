@@ -260,6 +260,24 @@ Claude Code possède : investigation repo, code, tests, scripts DB, automatisati
 **Verdicts séparés (règle §8).** `DIRECT FINANCIAL RECONCILIATION` = mesuré par l'opérateur v5 sur le serveur (fenêtres A = 7 j, B = depuis le 2026-08-28) ; `HTTP LEDGER AUTH` = KNOWN OPEN (401 avec le fichier ; 200 avec le secret GitHub) — P1 pré-prod, **document only** ; provenance token = documentée (`RUNTIME-SECRET-SOURCE-MATRIX.md`), non normalisée ici.
 
 **Gel** : `REFUNDS_ENABLED` runtime FALSE (403 gated) — intact ; aucun refund ; Stripe LIVE intact ; Claims non démarré ; livraison OUT ; tips FALSE ; waitlist IN.
+
+## PHASE 2 — PRÉPARATION DE LA RÉPÉTITION REFUND (lecture seule) — 2026-09-05/06 · FIRST REHEARSAL = WAIT
+
+**Gate financier Phase 2 = PASS** (réconciliation directe v5, fondateur : fenêtres A/B PASS, 0 écart, F2/F8 PASS, `REFUNDS_ENABLED` runtime false, 0 refund inattendu, GR-N5TSM0 vérifié, Stripe TEST). Cette préparation **n'a rien exécuté** : aucun refund, aucun flag, aucune écriture Stripe/DB/fidélité, payout schedule inchangé, Stripe LIVE intact.
+
+**Mesures Stripe TEST (2026-09-05T21:50Z, lecture seule — détail `docs/ops/REFUND-REHEARSAL-RUNBOOK.md §1`)** : GR-N5TSM0 PI `pi_3UB…CMfy` succeeded 1410/1410, charge captured 1410, **amount_refunded 0**, fee 76 (refunded 0), transfer 1410 (reversed 0) → **remaining refundable 1410 ≥ 500** ; **0 refund** sur le PI. Compte connecté `acct_1…yYMY` : **AVAILABLE 0 c · PENDING 2668 c** (1334 dispo 2026-09-08 + 1334 dispo 2026-09-09) ; **payout schedule `manual`** (delay 7 j), 0 payout ⇒ risque de balayage NONE. Webhook `we_1Tg…ygcg` enabled TEST avec `charge.refunded` + `refund.updated` + `refund.failed` ; `we_1Tg…Pv6n` = `account.updated` seul. GR-BZE1X : 1450, fee 116, 0 refund.
+
+**Vecteur du moteur ACTUEL (dry-run réel, `tests/rehearsal-vector-n5tsm0.test.ts` 7/7)** pour **500 c de cash Stripe** : cash 500 · fee reversal **27** · restaurant reversal **473** · royalty 0 · fee retenue 49 · spent restore **3 pts** · earned reverse **5 pts** (si ligne `earn`) · offset delta 0 si balance ≥ 5 · restauration client 515 c (cash + points restaurés) / 490 c net. **= attente historique.**
+
+**Porte dure** : REQUIRED TRANSFER REVERSAL **473 c** > AVAILABLE **0 c** ⇒ **FIRST REHEARSAL = WAIT** (première fenêtre possible ≥ 2026-09-08, à re-mesurer à l'exécution ; aucun fonds fabriqué ; `ALLOW_PLATFORM_FALLBACK` effectif false vérifié par le precheck).
+
+**Prechecks** : LOYALTY PASS (contrat Phase 1 ; balance/offset DB à re-mesurer) · IDEMPOTENCY F8 PASS (clé `refund:<orderId>:<alreadyRefunded>` créée avant Stripe, resume-first, fenêtre 20 h, verrou `failed`) · WEBHOOK PASS · OBSERVABILITÉ PASS sous réserve `ADMIN_AUDIT_ENABLED=true` (imprimé par le precheck) · POST-STRIPE RECOVERY PASS (adoption par tag / même clé ; webhook rejoue) · **E-MAIL : SAFE = NO** (`sendRefundConfirmation` : « effectué par {restaurant} » + « 5 à 10 jours ouvrés », P1 connus, non corrigés par le diff e-mail en attente) → **PLAN = SUPPRESS TEST EMAIL** (coupe-circuit additif `REFUND_CONFIRMATION_EMAIL_ENABLED=false` à poser avant la fenêtre, en coordination avec le chantier e-mail ; ou copie corrigée livrée avant). DB : v3/v5 cohérents ; re-mesure serveur = `phase2-refund-gate.js` (mode `precheck`, lecture seule).
+
+**Contrat `REFUNDS_ENABLED`** : les deux routes gatent avant l'auth ⇒ **TEMPORARY TRUE REQUIRED = YES**. Préparé (NON exécuté) : `scripts/server/phase2-refund-gate.js` — `precheck` (défaut, lecture seule : DB + Stripe REST + balance + payout + webhooks + vecteur attendu) et `window` (phrase fondateur exacte requise en env ; precheck fail-closed → `REFUNDS_ENABLED=true` canonique + backup → restart → porte OUVERTE prouvée (401) → attente d'exactement UN refund sur le PI ou délai 15 min → **re-gel inconditionnel** → restart → porte FERMÉE prouvée (403 gated)) ; `.github/workflows/refund-rehearsal.yml` (dispatch manuel uniquement, phrase exacte en input, cible fixe staging, sonde de porte 401 sinon abandon, secret GitHub = token runtime mesuré, sortie statut + corps non secret ; job **skipped** sur push). Harnais `nc6` 13/13 : precheck read-only (env intact, pas de restart, 0 écriture Stripe), WAIT/READY/BLOCKED, refus sans phrase, refus si WAIT, ouverture→refund observé→re-gel, re-gel sur délai. **AUTO-REFREEZE PLAN = READY.**
+
+**Second scénario GR-BZE1X (FULL 1450)** : READY côté Stripe (reversal requise 1334) ; attendra 2026-09-09 (disponible 2668 − 473 = 2195 ≥ 1334) et le PASS du partiel.
+
+**Hors périmètre (non touchés)** : web-root T-41, HTTP 401, normalisation hébergeur, Claims, e-mails (au-delà du plan), livraison, franchise, Stripe LIVE.
 ---
 
 ## ACCÈS & OUTILLAGE (pour reprise)
