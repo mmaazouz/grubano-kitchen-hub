@@ -94,3 +94,18 @@ Tant que la provenance du token n'est pas résolue, **deux identifiants** de pro
 Combiné à la mesure v3 (401 avec la ligne canonique de `.env.local`) : **la valeur que le processus staging compare est celle du secret GitHub, et elle diffère de `.env.local`.** Donc la source runtime effective de `INTERNAL_CRON_TOKEN` n'est **pas** `.env.local` — soit une injection hébergeur (cPanel Node.js « variables d'environnement » / Passenger), soit un fichier `.env.production.local`/`.env` ombrant ; l'opérateur v4 tranche entre les deux (`presentBeforeEnvLoad`, `definedIn`). Conséquences : (1) la CI (`cron.yml`, inactif) parlerait au staging ; (2) le **probe cPanel quotidien** (qui lit `../../.env.local`) est **aveugle** (401) — `~/logs` à lire ; (3) une rotation faite dans `.env.local` seul serait sans effet.
 
 **Décision recommandée (mise à jour §2)** : rendre `.env.local` autoritaire en y écrivant la valeur **effective** (celle qui répond 200) — l'opérateur peut le faire **sans afficher** la valeur uniquement si elle est lisible côté serveur (fichier ombrant : copie ; injection hébergeur : la valeur est dans `process.env` du processus, pas de l'opérateur → le fondateur retire la variable côté cPanel et met à jour GitHub, ou l'inverse). Tant que ce n'est pas fait : `INTERNAL LEDGER HTTP AUTH = FAIL (401 depuis le fichier)` reste **P1 pré-prod**, non bloquant pour la réconciliation directe.
+
+
+## 8 · Mesures v4 (opérateur fondateur, 2026-09-05) — provenance dans le VRAI processus (document only, aucune normalisation dans le train financier)
+
+| Clé | `presentBeforeEnvLoad` (processus Passenger) | Lecture |
+|---|---|---|
+| `INTERNAL_CRON_TOKEN` | **YES** | **hébergeur/processus autoritaire** ; valeur ≠ `.env.local` (401 avec le fichier) ; = secret GitHub (200, §7) |
+| `TIPS_ENABLED` | **YES** | injecté par l'hébergeur/processus avant le chargement des fichiers (runtime FALSE mesuré) |
+| `ALERT_EMAIL` | **YES** | injecté par l'hébergeur/processus avant le chargement des fichiers (runtime `m.maazouz@grubano.com` mesuré) |
+
+Conséquence pour la matrice §1 : pour ces trois clés, `ACTUAL SOURCE = process.env (hébergeur)`, `DUPLICATE SOURCES = YES` (fichier + hébergeur). Décision de normalisation (§2) = **train infra séparé**, après le gate financier ; aucune valeur, empreinte ou longueur n'est jamais écrite.
+
+## 9 · Opérateur v5 — plomberie corrigée (2026-09-05)
+
+v4 n'a pas mesuré la finance : Prisma sans `DATABASE_URL` (l'opérateur ne repeuplait plus `process.env`) et `stripe` absent du runtime standalone (bundlé par Next). v5 charge l'env via **`@next/env`** (le chargeur de l'app), passe l'URL à Prisma explicitement, et utilise un **client REST Stripe lecture seule** (GET, `api.stripe.com` épinglé) quand le SDK n'est pas résolvable — `scripts/server/reconcile-helpers.js`, testé. Le fichier de provenance reste hors racine (`~/.grubano/`). **`.htaccess` jamais touché.**

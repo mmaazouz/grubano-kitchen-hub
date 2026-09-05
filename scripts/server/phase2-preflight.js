@@ -1,7 +1,17 @@
 'use strict'
 /* ═══════════════════════════════════════════════════════════════════════════════
-   phase2-preflight.js — PHASE 2 FINAL PREFLIGHT (staging, one-shot, v4)
-   LEDGER RECONCILIATION (direct, Track A) + INTERNAL AUTH FORENSICS (Track B)
+   phase2-preflight.js — PHASE 2 FINAL FINANCIAL RECONCILIATION (staging, one-shot, v5)
+   LEDGER RECONCILIATION (direct, Track A) + INTERNAL AUTH FORENSICS (Track B, document only)
+
+   v5 (2026-09-05) — v4 did NOT find a financial mismatch: it broke its own execution
+   environment (Prisma without DATABASE_URL because v4 never populated process.env; `stripe`
+   not resolvable because Next bundles it into the route chunks — it is absent from the
+   standalone node_modules). v5 loads the env EXACTLY like the deployed app (@next/env, present
+   in the standalone runtime), hands Prisma the URL explicitly, and uses a READ-ONLY Stripe
+   REST client (GET only, api.stripe.com pinned) when the SDK is absent — see
+   scripts/server/reconcile-helpers.js (unit-tested). Every `not_in_stripe_window` ecart is
+   classified WINDOW_EDGE_ONLY (proven: same PI, succeeded, same amount, created before the
+   window) or TRUE_FINANCIAL_MISMATCH. Nothing in this operator touches .htaccess.
 
    Run ONCE on the staging server (cPanel Terminal), with the nodevenv node:
 
@@ -23,7 +33,7 @@
        within a file: `export K=`, leading spaces, `K = v`, quotes, `# comment` accepted;
        LAST occurrence wins.
      scripts/fix-server.js injects a preamble that snapshots process.env BEFORE Next loads
-     any file and writes tmp/env-provenance.json (booleans + file names only). This operator
+     any file and writes ~/.grubano/env-provenance.json (outside the docroot; booleans + file names only). This operator
      reads it → "INTERNAL_CRON_TOKEN PRESENT BEFORE ENV LOAD = YES/NO" and
      "hosting value == file value = YES/NO" without printing anything secret-derived.
      It also scans the hosting config files for the key NAME (presence only) and calls the
@@ -46,6 +56,7 @@ const { execSync } = require('child_process')
 const SHELL_HAS_TOKEN = typeof process.env.INTERNAL_CRON_TOKEN !== 'undefined'
 
 const prov = require(path.join(__dirname, 'env-provenance.js'))
+const H = require(path.join(__dirname, 'reconcile-helpers.js'))
 
 const APP_ROOT       = process.env.PHASE2_APP_ROOT || path.join(__dirname, '..', '..')
 const ORDER_ID       = process.env.PHASE2_ORDER_ID || 'cmtju919h0001h7t6bkn5tsm0'
@@ -91,7 +102,7 @@ let httpAuthVerdict = 'NOT MEASURED'
 
 function done(result, failedStep, action) {
   console.log('========================================')
-  console.log('GRUBANO PHASE 2 PREFLIGHT v4 (staging) — every value below is MEASURED on the server')
+  console.log('GRUBANO PHASE 2 PREFLIGHT v5 (staging) — every value below is MEASURED on the server')
   console.log('RESULT: ' + result)
   if (failedStep) console.log('FAILED STEP: ' + failedStep)
   console.log('FINANCIAL LEDGER RECONCILIATION: ' + financialVerdict)
@@ -179,7 +190,7 @@ async function httpJson(url, init) {
   return { status: res.status, body }
 }
 async function probeRuntime(base) {
-  const ua = { 'User-Agent': 'grubano-phase2-preflight/4' }
+  const ua = { 'User-Agent': 'grubano-phase2-preflight/5' }
   const out = { refundFlag: 'unknown', refundStatus: 0, eat: 0, restaurants: 0, restaurantId: null, tips: 'unknown', signupOpen: 'unknown', signupStatus: 0, errors: [] }
   try {
     const r = await httpJson(base + '/api/admin/refunds/run', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, ua), body: '{}' })
@@ -213,7 +224,7 @@ async function waitForReload(base, expect, deadlineMs, intervalMs) {
 }
 async function ledgerCheckHttp(base, token, from, to) {
   const url = base + '/api/admin/ledger/check?from=' + encodeURIComponent(from.toISOString()) + '&to=' + encodeURIComponent(to.toISOString())
-  const res = await fetch(url, { headers: { 'X-Internal-Token': token, 'User-Agent': 'grubano-phase2-preflight/4' }, redirect: 'manual' })
+  const res = await fetch(url, { headers: { 'X-Internal-Token': token, 'User-Agent': 'grubano-phase2-preflight/5' }, redirect: 'manual' })
   const body = await res.json().catch(() => ({}))
   return { status: res.status, body }
 }
@@ -340,6 +351,17 @@ async function main() {
   F('ENV FILES PRESENT (Next load order)', prov.NEXT_ENV_FILES.filter((f) => typeof texts[f] === 'string').join(', ') || 'none')
   F('DEPLOYED server.js KIND (measured)', fs.existsSync(serverJs) ? serverEntryKind(fs.readFileSync(serverJs, 'utf8')) : 'ABSENT')
   F('LEDGER CORE SHIPPED (lib/ledger-check-core.js)', fs.existsSync(corePath) ? 'YES' : 'NO')
+  // ── Operator env = the deployed app's env (@next/env from the standalone runtime). This is
+  //    what v4 lacked: it never populated process.env, so Prisma had no DATABASE_URL.
+  let envLoad = { loader: 'NOT LOADED', filesLoaded: [] }
+  try { envLoad = H.loadRuntimeEnv(APP_ROOT) } catch (e) { envLoad = { loader: 'FAILED: ' + scrub(e), filesLoaded: [] } }
+  const rtFacts = H.envFacts(process.env)
+  F('OPERATOR ENV LOADER', envLoad.loader + ' · files: ' + (envLoad.filesLoaded.join(', ') || 'none'))
+  F('DATABASE_URL AVAILABLE TO OPERATOR', rtFacts.databaseUrl ? 'YES' : 'NO')
+  F('STRIPE_SECRET_KEY AVAILABLE TO OPERATOR', rtFacts.stripeKey ? 'YES' : 'NO')
+  F('STRIPE SECRET MODE (operator process)', rtFacts.stripeMode)
+  if (rtFacts.stripeMode !== 'TEST') return fail('1 env: operator process Stripe key mode is ' + rtFacts.stripeMode, 'refusing — TEST only')
+  if (!rtFacts.databaseUrl) A('1 env: DATABASE_URL not available to the operator after the runtime env load — DB steps will be NOT MEASURED')
   F('SHELL PRE-LOAD: INTERNAL_CRON_TOKEN PRESENT IN THIS TERMINAL ENV (not Passenger)', SHELL_HAS_TOKEN ? 'YES' : 'NO')
   for (const k of WATCHED_KEYS) F('KEY ' + k, describeKey(k, texts))
   const hist = envHistory(APP_ROOT)
@@ -455,23 +477,39 @@ async function main() {
   // be served statically before Next is reached (measured 2026-09-05: server.js, package.json,
   // prisma/schema.prisma, tmp/restart.txt, scripts/server/*.js → 200 ; .env.local, .htaccess → 404).
   console.log('[6b/12] app-root web exposure (status only)')
+  // Two classes: SECRET-bearing names (any 200 = P0 SECURITY INCIDENT → hard FAIL, stop) and
+  // SOURCE/ops names (200 = P1 pre-production, recorded, fixed in a separate infra train).
+  const SECRET_PATHS = ['.env', '.env.local', '.env.production', '.env.production.local', '.env.local.bak', '.env.local.bak-before-beta-flags', '.htaccess', '.git/HEAD', '.git/config', 'deploy_key', 'backup.sql', 'dump.sql']
+  const SOURCE_PATHS = ['server.js', 'package.json', 'prisma/schema.prisma', 'tmp/restart.txt', 'scripts/server/phase2-preflight.js', 'lib/ledger-check-core.js']
   const exposure = []
-  for (const rel of ['.env.local', '.htaccess', 'server.js', 'package.json', 'prisma/schema.prisma', 'tmp/restart.txt', 'scripts/server/phase2-preflight.js', 'lib/ledger-check-core.js']) {
+  let secretLeak = false
+  for (const rel of [...SECRET_PATHS, ...SOURCE_PATHS]) {
     try {
-      const r = await fetch(base + '/' + rel, { method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': 'grubano-phase2-preflight/4' } })
+      const r = await fetch(base + '/' + rel, { method: 'HEAD', redirect: 'manual', headers: { 'User-Agent': 'grubano-phase2-preflight/5' } })
       exposure.push(rel + '=' + r.status)
-      if (r.status === 200) O('6b exposure: /' + rel + ' is served publicly (pre-existing hosting layout: DocumentRoot = app root) — remediation = server .htaccess deny rules (RUNTIME-SECRET-SOURCE-MATRIX.md §5), founder decision')
+      if (r.status === 200 && SECRET_PATHS.includes(rel)) { secretLeak = true; A('6b P0 SECURITY INCIDENT: /' + rel + ' is publicly readable (secret-bearing class) — STOP normal Phase 2 closure; establish exposure scope before any rotation') }
+      else if (r.status === 200) O('6b exposure: /' + rel + ' is served publicly (pre-existing hosting layout: DocumentRoot = app root) — P1 PRE-PRODUCTION, separate infra train (T-41), NOT fixed here')
     } catch { exposure.push(rel + '=err') }
   }
   F('APP-ROOT WEB EXPOSURE (HEAD status; 200 = served)', exposure.join(' · '))
+  F('CONFIRMED SECRET LEAK (secret-bearing classes)', secretLeak ? 'YES — P0' : 'NO')
 
   // ── 7–10. DB + DIRECT RECONCILIATION (READ-ONLY) ───────────────────────────────
-  let PrismaClient = null, Stripe = null, core = null
-  try { ({ PrismaClient } = require(require.resolve('@prisma/client', { paths: [APP_ROOT] }))) } catch { A('7 db: @prisma/client not resolvable from ' + APP_ROOT) }
-  try { Stripe = require(require.resolve('stripe', { paths: [APP_ROOT] })); Stripe = Stripe.default || Stripe } catch { A('7 stripe: stripe SDK not resolvable from ' + APP_ROOT) }
-  try { core = require(corePath) } catch (e) { A('7 core: lib/ledger-check-core.js not loadable (' + scrub(e) + ')') }
-  const prisma = PrismaClient ? new PrismaClient() : null
-  const stripe = Stripe ? new Stripe(stripeKey, { maxNetworkRetries: 2, timeout: 30000 }) : null
+  // ── Dependency resolution = the deployed app's layout (APP_ROOT/node_modules) ─────
+  let PrismaClient = null, core = null, stripe = null
+  const prismaRes = H.resolveFromApp('@prisma/client', APP_ROOT)
+  if (prismaRes.ok) { try { ({ PrismaClient } = require(prismaRes.path)) } catch (e) { A('7 db: @prisma/client found but not loadable (' + scrub(e) + ')') } } else A('7 db: @prisma/client not resolvable from ' + APP_ROOT + ' (' + prismaRes.error + ')')
+  F('PRISMA CLIENT RESOLUTION', PrismaClient ? 'PASS (' + path.relative(APP_ROOT, prismaRes.path).split(path.sep).join('/') + ')' : 'FAIL')
+  try { core = require(corePath); F('LEDGER CORE RESOLUTION', 'PASS (lib/ledger-check-core.js)') } catch (e) { F('LEDGER CORE RESOLUTION', 'FAIL'); A('7 core: lib/ledger-check-core.js not loadable (' + scrub(e) + ')') }
+  try {
+    const mk = H.makeStripeClient(process.env.STRIPE_SECRET_KEY || stripeKey, APP_ROOT, { apiBase: process.env.PHASE2_STRIPE_API_BASE, allowLoopback: process.env.PHASE2_ALLOW_LOOPBACK === '1' })
+    stripe = mk.client; F('STRIPE SDK RESOLUTION', mk.resolution)
+  } catch (e) { F('STRIPE SDK RESOLUTION', 'FAIL'); A('7 stripe: ' + scrub(e)) }
+  let prisma = null
+  if (PrismaClient && rtFacts.databaseUrl) {
+    // URL handed explicitly — nothing depends on ambient env any more (v4 regression).
+    try { prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } }) } catch (e) { A('7 db: PrismaClient construction failed (' + scrub(e) + ')') }
+  } else if (PrismaClient) A('7 db: DATABASE_URL unavailable → Prisma NOT constructed')
   if (prisma) {
     try {
       console.log('[7/12] no unexpected refund (window since ' + WINDOW_START.toISOString().slice(0, 10) + ')')
@@ -499,7 +537,7 @@ async function main() {
       F('FRANCHISE royalty rows / franchise operators / POS orders (DB)', royaltyCount + ' / ' + franchiseOps + ' / ' + ordersWithPos + ' · FRANCHISE_ENABLED ' + (flag('FRANCHISE_ENABLED') === 'true' ? 'ON' : 'OFF'))
 
       console.log('[10/12] DIRECT LEDGER RECONCILIATION (Track A — same core as the HTTP route, READ-ONLY)')
-      if (!core || !stripe) { A('10 direct: core or Stripe SDK unavailable — direct reconciliation NOT MEASURED'); financialVerdict = 'NOT MEASURED' }
+      if (!core || !stripe) { A('10 direct: ledger core or Stripe client unavailable — direct reconciliation NOT MEASURED'); financialVerdict = 'NOT MEASURED' }
       else {
         const now = new Date()
         // Second window starts one day BEFORE the true-flag window so the Z1 rehearsal day
@@ -511,16 +549,22 @@ async function main() {
         for (const [label, from, to] of windows) {
           const warns = []
           const r = await core.reconcileLedger({ prisma, stripe, from, to, warn: (m) => warns.push(m) })
+          F('DIRECT [' + label + '] window', from.toISOString() + ' → ' + to.toISOString())
           F('DIRECT [' + label + '] ok / internalOk / reconciliationOk / refundsOk', r.ok + ' / ' + r.internalOk + ' / ' + r.reconciliationOk + ' / ' + r.refundsOk)
-          F('DIRECT [' + label + '] LEDGER COUNT / STRIPE COUNT / LEDGER SUM / STRIPE SUM', r.ledgerCount + ' / ' + r.stripeCount + ' / ' + r.ledgerSum + ' / ' + r.stripeSum)
-          F('DIRECT [' + label + '] REFUND LEDGER COUNT / STRIPE REFUND COUNT / REFUND LEDGER SUM / STRIPE REFUND SUM / checked', r.refunds.ledgerCount + ' / ' + r.refunds.stripeCount + ' / ' + r.refunds.ledgerSum + ' / ' + r.refunds.stripeSum + ' / ' + r.refunds.checked)
+          F('DIRECT [' + label + '] LEDGER PAYMENT COUNT / STRIPE PAYMENT COUNT / LEDGER PAYMENT SUM / STRIPE PAYMENT SUM', r.ledgerCount + ' / ' + r.stripeCount + ' / ' + r.ledgerSum + ' / ' + r.stripeSum)
+          F('DIRECT [' + label + '] LEDGER REFUND COUNT / STRIPE REFUND COUNT / LEDGER REFUND SUM / STRIPE REFUND SUM / checked', r.refunds.ledgerCount + ' / ' + r.refunds.stripeCount + ' / ' + r.refunds.ledgerSum + ' / ' + r.refunds.stripeSum + ' / ' + r.refunds.checked)
           F('DIRECT [' + label + '] aggregates gross / fee / net', r.aggregates.gross + ' / ' + r.aggregates.applicationFee + ' / ' + r.aggregates.netToRestaurant)
           F('DIRECT [' + label + '] ECARTS', fmtEcarts(r.ecarts))
+          F('DIRECT [' + label + '] REFUND ECARTS', fmtEcarts(r.ecarts.filter((e) => e.kind === 'missing_refund_in_ledger')))
           if (warns.length) F('DIRECT [' + label + '] warnings', warns.map(scrub).join(' | ').slice(0, 200))
-          const onlyEdge = r.ecarts.length > 0 && r.ecarts.every((e) => e.kind === 'not_in_stripe_window')
-          if (onlyEdge) F('DIRECT [' + label + '] ECART CLASS', 'WINDOW EDGE ONLY (ledger line inside the window, its PI created before the window start) — not a money finding by itself; the PI exists at Stripe outside the listed range. Counted as FAIL for this window, never forced.')
-          if (!r.refunds.checked) { A('10 direct [' + label + ']: Stripe refunds listing unavailable → refund reconciliation NOT MEASURED'); allOk = false }
-          if (!r.ok) { A('10 direct [' + label + ']: ok=false — see ECARTS / sums' + (onlyEdge ? ' (window-edge class)' : '')); allOk = false }
+          // Window-edge classification: every not_in_stripe_window ecart is PROVEN (same PI at
+          // Stripe, succeeded, same amount, created before the window start) or stays a mismatch.
+          const classified = r.ecarts.length ? await H.classifyWindowEdges(r.ecarts, { prisma, stripe, from }) : []
+          F('DIRECT [' + label + '] WINDOW EDGE', classified.length ? classified.map((c) => c.cls + '{' + (c.ecart.ledgerId ? 'ledger ' + mask(c.ecart.ledgerId) : '') + (c.ecart.stripePaymentIntentId ? ' ' + mask(c.ecart.stripePaymentIntentId) : '') + (c.amount != null ? ' ' + c.amount + 'c' : '') + ': ' + c.reason + '}').join(' | ').slice(0, 600) : 'none')
+          const verdict = H.windowVerdict(r, classified)
+          F('DIRECT [' + label + '] WINDOW VERDICT', verdict)
+          if (!r.refunds.checked) A('10 direct [' + label + ']: Stripe refunds listing unavailable → refund reconciliation NOT MEASURED')
+          if (!verdict.startsWith('PASS')) { A('10 direct [' + label + ']: ' + verdict + ' — see ECARTS / WINDOW EDGE / sums'); allOk = false }
         }
         financialVerdict = allOk ? 'PASS' : 'FAIL'
         F('FINANCIAL MONEY MUTATION DURING CHECK', 'NO — by construction (core uses findMany + Stripe list only; no create/update/refund call exists in this operator)')
