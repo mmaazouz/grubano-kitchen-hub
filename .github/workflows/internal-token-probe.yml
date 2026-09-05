@@ -1,0 +1,35 @@
+name: Grubano — Internal token probe (staging, read-only, status only)
+
+# Phase 2 final preflight (2026-09-05) — answers ONE question without disclosing anything:
+#   does the GitHub Actions secret INTERNAL_CRON_TOKEN equal the token the STAGING runtime
+#   compares against?  The read-only GET /api/admin/ledger/check answers 200 when they are
+#   equal and 401 when they are not. Only the HTTP status is printed (never a body, never a
+#   header, never the secret — GitHub masks it anyway). Target is FIXED to staging: this
+#   workflow can never touch production.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /api/admin/ledger/check with the GitHub secret (status only)
+        env:
+          TOK: ${{ secrets.INTERNAL_CRON_TOKEN }}
+        run: |
+          set -u
+          if [ -z "${TOK}" ]; then echo "GITHUB SECRET INTERNAL_CRON_TOKEN = ABSENT"; exit 0; fi
+          FROM=$(date -u -d '7 days ago' +%FT%TZ); TO=$(date -u +%FT%TZ)
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 \
+            -H "X-Internal-Token: ${TOK}" -H 'User-Agent: grubano-internal-token-probe/1' \
+            "https://app.grubano.com/api/admin/ledger/check?from=${FROM}&to=${TO}")
+          CODE="${CODE:-000}"
+          echo "TARGET = https://app.grubano.com (staging, fixed)"
+          echo "HTTP STATUS = ${CODE}"
+          case "${CODE}" in
+            200) echo "GITHUB SECRET == STAGING RUNTIME TOKEN = YES" ;;
+            401) echo "GITHUB SECRET == STAGING RUNTIME TOKEN = NO" ;;
+            *)   echo "GITHUB SECRET == STAGING RUNTIME TOKEN = NOT MEASURED (status ${CODE})" ;;
+          esac

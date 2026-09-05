@@ -124,6 +124,13 @@ jobs:
           mkdir -p deploy-temp/scripts/server
           cp scripts/server/*.js deploy-temp/scripts/server/
 
+          # Shared PURE reconciliation core (Phase 2 final preflight): the same file the
+          # HTTP route bundles is shipped as-is so the server-side read-only operator
+          # (scripts/server/phase2-preflight.js) runs the IDENTICAL financial logic
+          # directly against DB + Stripe TEST. Plain CommonJS, no secret, no auth.
+          mkdir -p deploy-temp/lib
+          cp lib/ledger-check-core.js deploy-temp/lib/ledger-check-core.js
+
           # Cron probes (rail A6 gardiens — ledger check + monthly invoices,
           # called by cPanel cron). ONLY scripts/cron/ ships — never the whole
           # scripts/ folder (local tooling like notion-sync must NOT reach a

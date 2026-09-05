@@ -90,3 +90,11 @@ c'est une **décision volontaire**, pas un effet de bord.
 
 > Décision hors périmètre Sprint 0 : brancher un scheduler sur
 > `/api/admin/refunds/run` n'a de sens qu'après l'arbitrage REFUNDS.
+
+## 5. Note pré-production — préflight final Phase 2 (2026-09-05, faits)
+
+- **Où tourne quoi.** `cron.yml` n'existe **que sur `develop`** (`git diff origin/main develop -- .github/workflows/cron.yml` = +172 lignes) → aucun `schedule` GitHub ne tourne (les 3 runs listés sont des pushes `develop` sortis en no-op/failure 0 s par le garde). **Seul le crontab cPanel tourne** (relevé §2) : `ledger-check-probe.js` 07:00, `creator-earnings-mature.js` 06:30, `monthly-invoices.js` le 1er 08:00. Ces scripts chargent `../../.env.local` (lecteur **laxiste** maison : trim, dernière occurrence) et appellent `SITE_URL` (**défaut `https://www.grubano.com` = PRODUCTION** si `SITE_URL` n'est pas défini dans l'env de l'app d'où ils tournent) avec `X-Internal-Token`. → **NOT MEASURED** : depuis quel répertoire (`~/app.grubano.com` ou `~/grubano.com`) le crontab lance ces scripts et vers quelle base ; l'opérateur v4 lit la queue de `~/logs/*ledger*` (statuts seuls).
+- **Compatibilité develop/staging.** Les routes appelées existent sur develop et sur main ; le contrat d'auth (`X-Internal-Token` brut, comparaison constante, lecture `process.env` à la requête) est identique. Aucun code `main` n'est exécuté contre la base staging par ce préflight.
+- **Jobs argent en bêta.** `creator-payouts/run`, `franchise-settlements/run`, `claims/*`, `refunds/run` : tous **gatés par flag OFF** (403 `{gated:true}` avant toute écriture) et, sauf `creator-earnings/mature` + `ledger-check-probe` + `monthly-invoices` (crontab cPanel), **aucun scheduler actif**. `refunds/run` n'a **aucun** scheduler nulle part.
+- **Doublon au go-live** (inchangé) : la mise de `cron.yml` sur `main` doublerait les 3 jobs cPanel → couper l'un des deux schedulers (décision fondateur).
+- **Token.** Le 401 du ledger-check (préflight v3) frappe aussi le probe cPanel quotidien s'il vise `app.grubano.com` → alerte e-mail `[LEDGER PROBE] HTTP 401` attendue dans `~/logs` (à lire, pas à supposer). Contrat cible : `RUNTIME-SECRET-SOURCE-MATRIX.md`.
