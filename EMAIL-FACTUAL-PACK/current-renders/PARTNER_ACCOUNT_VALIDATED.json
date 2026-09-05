@@ -1,0 +1,9 @@
+{
+  "id": "PARTNER_ACCOUNT_VALIDATED",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Votre compte Grubano est validé",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

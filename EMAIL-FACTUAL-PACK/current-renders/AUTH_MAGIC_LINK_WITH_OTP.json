@@ -1,0 +1,9 @@
+{
+  "id": "AUTH_MAGIC_LINK_WITH_OTP",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Ton lien de connexion Grubano",
+  "hasText": true,
+  "hasImages": false,
+  "hasTable": false
+}

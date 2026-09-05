@@ -1,0 +1,9 @@
+{
+  "id": "CONSUMER_ORDER_CONFIRMATION_DELIVERY",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Commande GR-ABC123 confirmée — Gnocchi Bar",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}

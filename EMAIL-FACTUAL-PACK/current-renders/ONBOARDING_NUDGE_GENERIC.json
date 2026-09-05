@@ -1,0 +1,9 @@
+{
+  "id": "ONBOARDING_NUDGE_GENERIC",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Il vous reste 2 étapes pour finaliser votre inscription",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

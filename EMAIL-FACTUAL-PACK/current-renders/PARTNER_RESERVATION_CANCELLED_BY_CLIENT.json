@@ -1,0 +1,9 @@
+{
+  "id": "PARTNER_RESERVATION_CANCELLED_BY_CLIENT",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Réservation annulée par le client — samedi 12 septembre à 19:30",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}

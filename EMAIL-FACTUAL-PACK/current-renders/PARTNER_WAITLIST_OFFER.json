@@ -1,0 +1,9 @@
+{
+  "id": "PARTNER_WAITLIST_OFFER",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Exclusivité disponible — « Gnocchi au pesto rosso » à Lyon",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

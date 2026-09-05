@@ -1,0 +1,9 @@
+{
+  "id": "CLAIM_DECISION_REFUNDED__en",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Claim GR-ABC123: refund issued",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

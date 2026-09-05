@@ -1,0 +1,24 @@
+# E2-CURRENT-VISUALS — fossils for this tranche
+
+> Raw fragments `../current-renders/<ID>.html`, screenshots `../current-renders/png/<ID>@600.png` / `@390.png`. Gallery: `../current-gallery.html`. Zero images in every template; plain-text part only where marked. Shared observations in `../EMAIL-CURRENT-VISUALS.md`.
+
+| ID | Subject | To (fixture) | text part | 600 px | 390 px |
+|---|---|---|---|---|---|
+| CLAIM_RECEIVED | Votre réclamation GR-ABC123 est bien enregistrée | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_RECEIVED@600.png) | [png](../current-renders/png/CLAIM_RECEIVED@390.png) |
+| CLAIM_RECEIVED__ar | تم تسجيل شكواك GR-ABC123 | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_RECEIVED__ar@600.png) | [png](../current-renders/png/CLAIM_RECEIVED__ar@390.png) |
+| CLAIM_DECISION_ACCEPTED | Réclamation GR-ABC123 : acceptée par le restaurant | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_DECISION_ACCEPTED@600.png) | [png](../current-renders/png/CLAIM_DECISION_ACCEPTED@390.png) |
+| CLAIM_DECISION_REFUSED | Réclamation GR-ABC123 : refusée par le restaurant | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_DECISION_REFUSED@600.png) | [png](../current-renders/png/CLAIM_DECISION_REFUSED@390.png) |
+| CLAIM_DECISION_APPROVED | Réclamation GR-ABC123 : acceptée par Grubano | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_DECISION_APPROVED@600.png) | [png](../current-renders/png/CLAIM_DECISION_APPROVED@390.png) |
+| CLAIM_DECISION_REFUNDED | Réclamation GR-ABC123 : remboursement émis | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_DECISION_REFUNDED@600.png) | [png](../current-renders/png/CLAIM_DECISION_REFUNDED@390.png) |
+| CLAIM_DECISION_REFUNDED__en | Claim GR-ABC123: refund issued | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_DECISION_REFUNDED__en@600.png) | [png](../current-renders/png/CLAIM_DECISION_REFUNDED__en@390.png) |
+| CLAIM_DECISION_REFUSED_FINAL | Réclamation GR-ABC123 : décision finale de Grubano | lea.martin@example.invalid | no | [png](../current-renders/png/CLAIM_DECISION_REFUSED_FINAL@600.png) | [png](../current-renders/png/CLAIM_DECISION_REFUSED_FINAL@390.png) |
+| ADMIN_STALE_CLAIM | [Grubano] Réclamation sans réponse du restaurant — délai dépassé | admin-alerts@example.invalid | no | [png](../current-renders/png/ADMIN_STALE_CLAIM@600.png) | [png](../current-renders/png/ADMIN_STALE_CLAIM@390.png) |
+| CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON | Commande GR-ABC123 annulée — demande de remboursement transmise | lea.martin@example.invalid | no | [png](../current-renders/png/CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON@600.png) | [png](../current-renders/png/CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON@390.png) |
+| CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON_EXISTING | Commande GR-ABC123 annulée — demande de remboursement transmise | lea.martin@example.invalid | no | [png](../current-renders/png/CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON_EXISTING@600.png) | [png](../current-renders/png/CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_ON_EXISTING@390.png) |
+| REFUND_SUCCEEDED_FULL | Remboursement effectué — Gnocchi Bar | lea.martin@example.invalid | no | [png](../current-renders/png/REFUND_SUCCEEDED_FULL@600.png) | [png](../current-renders/png/REFUND_SUCCEEDED_FULL@390.png) |
+| REFUND_SUCCEEDED_PARTIAL | Remboursement partiel effectué — Gnocchi Bar | lea.martin@example.invalid | no | [png](../current-renders/png/REFUND_SUCCEEDED_PARTIAL@600.png) | [png](../current-renders/png/REFUND_SUCCEEDED_PARTIAL@390.png) |
+| ADMIN_PAID_CANCELLATION | [Grubano] Commande payée annulée — remboursement à instruire | admin-alerts@example.invalid | no | [png](../current-renders/png/ADMIN_PAID_CANCELLATION@600.png) | [png](../current-renders/png/ADMIN_PAID_CANCELLATION@390.png) |
+| ADMIN_GHOST_ORDER | [Grubano] Commande expirée encaissée — réconciliation requise | admin-alerts@example.invalid | no | [png](../current-renders/png/ADMIN_GHOST_ORDER@600.png) | [png](../current-renders/png/ADMIN_GHOST_ORDER@390.png) |
+| ADMIN_STALE_PI | [Grubano] Paiement capturé sur un PaymentIntent périmé — réconciliation requise | admin-alerts@example.invalid | no | [png](../current-renders/png/ADMIN_STALE_PI@600.png) | [png](../current-renders/png/ADMIN_STALE_PI@390.png) |
+| ADMIN_MONEY_REVIEW | [Grubano] MONEY REVIEW — Remboursement Stripe en échec — commande verrouillée | admin-alerts@example.invalid | no | [png](../current-renders/png/ADMIN_MONEY_REVIEW@600.png) | [png](../current-renders/png/ADMIN_MONEY_REVIEW@390.png) |
+| ADMIN_RECONCILE_DIGEST | [Grubano] 2 commande(s) à réconcilier | admin-alerts@example.invalid | no | [png](../current-renders/png/ADMIN_RECONCILE_DIGEST@600.png) | [png](../current-renders/png/ADMIN_RECONCILE_DIGEST@390.png) |

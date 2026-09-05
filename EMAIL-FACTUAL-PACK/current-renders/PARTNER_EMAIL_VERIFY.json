@@ -1,0 +1,9 @@
+{
+  "id": "PARTNER_EMAIL_VERIFY",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "marco@example.invalid",
+  "subject": "Confirme ton email — espace partenaire Grubano",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

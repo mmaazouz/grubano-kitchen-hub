@@ -1,0 +1,9 @@
+{
+  "id": "ADMIN_GHOST_ORDER",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "admin-alerts@example.invalid",
+  "subject": "[Grubano] Commande expirée encaissée — réconciliation requise",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

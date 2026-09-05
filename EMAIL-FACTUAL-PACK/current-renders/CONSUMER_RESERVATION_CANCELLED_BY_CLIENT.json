@@ -1,0 +1,9 @@
+{
+  "id": "CONSUMER_RESERVATION_CANCELLED_BY_CLIENT",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Annulation confirmée — Gnocchi Bar",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

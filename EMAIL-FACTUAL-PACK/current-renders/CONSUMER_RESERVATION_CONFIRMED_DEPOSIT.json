@@ -1,0 +1,9 @@
+{
+  "id": "CONSUMER_RESERVATION_CONFIRMED_DEPOSIT",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Réservation confirmée — Gnocchi Bar",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}

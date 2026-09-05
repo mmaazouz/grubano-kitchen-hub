@@ -1,0 +1,9 @@
+{
+  "id": "AUTH_STEPUP_CODE",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Votre code de confirmation Grubano",
+  "hasText": true,
+  "hasImages": false,
+  "hasTable": false
+}

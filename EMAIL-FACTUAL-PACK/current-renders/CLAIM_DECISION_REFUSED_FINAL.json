@@ -1,0 +1,9 @@
+{
+  "id": "CLAIM_DECISION_REFUSED_FINAL",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Réclamation GR-ABC123 : décision finale de Grubano",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

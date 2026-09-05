@@ -1,0 +1,9 @@
+{
+  "id": "ADMIN_RECONCILE_DIGEST",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "admin-alerts@example.invalid",
+  "subject": "[Grubano] 2 commande(s) à réconcilier",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

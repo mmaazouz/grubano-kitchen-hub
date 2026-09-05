@@ -1,0 +1,9 @@
+{
+  "id": "OPERATOR_SUPPLIER_PURCHASE_ORDER",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "commandes@primeurs.example.invalid",
+  "subject": "Bon de commande Grubano — 05/09/2026",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}

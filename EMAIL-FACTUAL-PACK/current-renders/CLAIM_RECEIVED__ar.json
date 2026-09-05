@@ -1,0 +1,9 @@
+{
+  "id": "CLAIM_RECEIVED__ar",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "تم تسجيل شكواك GR-ABC123",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

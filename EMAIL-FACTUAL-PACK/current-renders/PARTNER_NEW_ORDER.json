@@ -1,0 +1,9 @@
+{
+  "id": "PARTNER_NEW_ORDER",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "gnocchi.bar@example.invalid",
+  "subject": "Nouvelle commande GR-ABC123 — Gnocchi Bar",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": true
+}
