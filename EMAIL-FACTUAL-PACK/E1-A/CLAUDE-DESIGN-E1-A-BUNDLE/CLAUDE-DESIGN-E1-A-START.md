@@ -20,6 +20,8 @@ Design **only** the global system and these three emails (plus their explicitly 
 - Amounts come from the server (e.g. « 25,50 € »); never invent fees, delays or guarantees. Loyalty points are not surfaced today — an optional points line may be designed only as a conditional state flagged "requires data".
 - Magic link: valid **15 minutes**, single use; the optional code: valid **10 minutes** (say both correctly or say neither).
 - Support channel promised in copy: `contact@grubano.com`. Replies to emails land in that mailbox.
+- New paid-order restaurant notifications are **server-side reachable and do not require a browser tab to remain open** (CURRENT). PARTNER_NEW_ORDER is therefore a reliable operational alert; any older wording about "browser polling" is PRE-FIX / HISTORICAL.
+- Feature state for context only (never design around switches): refunds frozen, courier tips off, courier **waitlist** open (courier operations OUT), reservations (« sur place ») OUT.
 - Status must never be communicated by colour alone.
 
 ## DESIGN QUALITY

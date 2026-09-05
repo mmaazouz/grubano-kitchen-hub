@@ -19,7 +19,7 @@ One global email design system contract for Grubano, demonstrated on AUTH_MAGIC_
 ### PARTNER_NEW_ORDER (ACTION REQUIRED · URGENT tone, restaurant owner)
 - Dense operational hierarchy readable in 5 seconds on a phone: "Nouvelle commande payée à accepter" · `GR-ABC123` · items table (qty × name) · mode « Click & collect » · amount « 25,50 € » (server value) · CTA « Ouvrir le tableau de bord » (path `/orders` — flag "link not passed today", today the copy only says "Retrouvez-la dans votre tableau de bord").
 - Explain nothing about payment mechanics; no consumer name (privacy — not passed); no time promise.
-- This email is now **guaranteed server-side** (scheduler) — the design may state "commande payée" as a fact (it is: `paymentStatus='paid'` from Stripe).
+- Product truth (CURRENT): new paid-order restaurant notifications are **server-side reachable and do not require any browser tab to remain open** — the design may state « commande payée » as a fact (payment is confirmed server-side before this email exists).
 
 ## System components to settle (contract)
 1. Document shell (`<!doctype>`, `<html lang dir>`, `<title>`, hidden preheader, 600 px card on `#FBF8F3`, 320/390/600/desktop).

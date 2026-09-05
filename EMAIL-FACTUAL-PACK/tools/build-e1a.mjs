@@ -38,10 +38,10 @@ for (const id of IDS) {
 }
 md += [
   '',
-  '## Post-fix notes (2026-09-05)',
-  '- **CONSUMER_ORDER_READY**: delivery wording is now double-gated (order is a delivery **and** `DELIVERY_FULFILLMENT_ENABLED` on). In the closed beta only the **pickup** state is reachable: « votre commande … est prête — vous pouvez venir la récupérer ». The delivery state is OUT-OF-BETA (dormant). `picked_up` on a pickup order no longer produces any email (P0 T1 fixed at the route + the template).',
-  '- **PARTNER_NEW_ORDER**: now guaranteed **server-side** by an in-process scheduler (60 s cadence) in addition to the checkout poll — the restaurant is notified even if the customer closes the tab. Mode label = « Click & collect » in the beta. Cancelled/expired paid orders never receive it.',
-  '- **AUTH_MAGIC_LINK**: unchanged (link 15 min single-use). The optional OTP-code state is gated OFF and its copy says « 15 minutes » while the code lives 10 (register P1 T12) — design the code state with the correct value.',
+  '## Fact classification (2026-09-06) — CURRENT · DORMANT · OUT_OF_BETA · PRE-FIX / HISTORICAL',
+  '- **CONSUMER_ORDER_READY** (CURRENT = pickup state only): « votre commande … est prête — vous pouvez venir la récupérer ». The delivery state is DORMANT / OUT_OF_BETA (delivery is not sold in the closed beta). A pickup order can no longer receive any « en route » email.',
+  '- **PARTNER_NEW_ORDER** (CURRENT): reachable **server-side — no browser tab needs to stay open**; the checkout poll is only a fast path. Mode label = « Click & collect » in the beta. Cancelled/expired paid orders never receive it. Any "depends on the browser poll" wording is PRE-FIX / HISTORICAL.',
+  '- **AUTH_MAGIC_LINK** (CURRENT): link valid 15 min, single use. The optional 6-digit-code state is DORMANT (feature switch off); its current copy says « 15 minutes » while the code is valid 10 — design the code state with the correct value.',
   '',
 ].join('\n')
 writeFileSync(join(OUT, 'E1-A-MANIFEST.md'), md)

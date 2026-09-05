@@ -20,10 +20,10 @@
 | AUTH_PASSWORD_CHANGED | A | yes | security notice after reset |
 | CONSUMER_WELCOME | A | yes | account created & active (no verification step); CTA hardcoded to production; promises table reservation (OUT) |
 | CONSUMER_ORDER_CONFIRMATION | A | yes | paid order recap (items, total, mode), CTA « Suivre ma commande »; fired by the checkout poll, never by the webhook |
-| PARTNER_NEW_ORDER | A | yes (depends on the consumer's poll; server sweep unscheduled) | restaurant: new paid order, items, mode, amount |
+| PARTNER_NEW_ORDER | A | yes — server-side, no browser required (CURRENT since d25fc3b; PRE-FIX / HISTORICAL: depended on the consumer's poll) | restaurant: new paid order, items, mode, amount |
 | CONSUMER_ORDER_ACCEPTED | A | yes | restaurant accepted / preparing |
-| CONSUMER_ORDER_READY | A | yes | ready — pickup wording ("venir la récupérer"); delivery wording exists but delivery is OUT |
-| CONSUMER_ORDER_ENROUTE | A | reachable but **must not be designed as live** (delivery OUT; P0 truthfulness T1) | "en route" |
+| CONSUMER_ORDER_READY | A | yes | ready — pickup wording ("venir la récupérer"); delivery state DORMANT / OUT_OF_BETA |
+| CONSUMER_ORDER_ENROUTE | B (since d25fc3b) | NO in the closed beta — DORMANT / OUT_OF_BETA (PRE-FIX / HISTORICAL: was reachable on a pickup order, P0 T1 closed) | "en route" |
 | CONSUMER_ORDER_COMPLETED | A | yes | récupérée (pickup) / livrée (delivery OUT); invite to rate; loyalty points credited but not mentioned |
 | CONSUMER_ORDER_CANCELLED_GENERIC | A | yes (unpaid orders) | neutral cancellation, "contactez le restaurant" |
 | CONSUMER_ORDER_CANCELLED_PAID_CLAIMS_OFF | A | yes (**the live beta money-adjacent email**) | paid order cancelled → refund handled by support `contact@grubano.com`, quote `GR-…`; localized ×5 today |

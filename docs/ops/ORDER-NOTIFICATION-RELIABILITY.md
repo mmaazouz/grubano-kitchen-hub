@@ -86,3 +86,22 @@ Automated proof above is deterministic (mocked transport). On staging after depl
 - Latency without a browser = up to ~60 s (+10 s after a cold spawn). Acceptable for the closed beta; a cPanel cron every 2 min could complement it once the token provenance is fixed (optional).
 - If no request of any kind reaches the app after the webhook AND every tick within the idle window fails (SMTP down), the retry resumes at the next request — "eventually", not "within N minutes".
 - The 3 existing cPanel cron scripts read `INTERNAL_CRON_TOKEN` from `.env.local`, which differs from the runtime token (401 measured) — a separate ops finding, not addressed here.
+
+## 8 · Staging measurement (founder, 2026-09-05/06) — scheduler MEASURED running
+
+Two reads of `~/.grubano/order-notify-heartbeat.json` on staging after the `d25fc3b` deploy:
+
+| | first read | second read |
+|---|---|---|
+| pid | 1693378 | 1693378 (same process) |
+| startedAt | 2026-09-05T23:01:27.571Z | (same) |
+| lastTickAt | 2026-09-05T23:03:27.576Z | 2026-09-05T23:09:27.639Z |
+| ticks | 3 | 9 |
+| lastResult | scanned 0 · consumerSent 0 · restoSent 0 · alreadyDone 0 · skippedNoEmail 0 · errors 0 · backoffSkipped 0 · gaveUp 0 | idem |
+| lastError | null | null |
+
+**Measured conclusion:** SCHEDULER LIVE ON STAGING = YES · cadence ≈ 1 tick / minute (6 ticks in 6 min) · same PID survived the observed 6-minute idle interval · errors 0 · nothing was eligible to notify during the measurement (no paid order in the 48 h window). Do not overstate: this proves execution and short-idle survival only.
+
+**Bounded open observation — LONG-IDLE SURVIVAL = NOT YET PROVEN OVER MULTIPLE HOURS.** The timers are `unref`'d and Passenger may recycle idle processes over longer periods (`PassengerPoolIdleTime` default 300 s, `PassengerMaxRequests 1000`). Nominal path (Stripe webhook wakes/uses a process → near-term catch-up) is covered by the measurement above; the RETRY path (1 → 2 → 5 → 10 → 20 → 30 min) depends on a process being alive at the retry time — after a long idle gap the retry resumes at the next request of any kind, not at the scheduled minute. Severity: **PRE-PILOT OBSERVATION**, current pilot blocker: **NO**. No architecture change decided.
+
+**Pre-pilot check (founder, one read, no change):** after a long idle interval / next morning, `cat ~/.grubano/order-notify-heartbeat.json` → PASS if `lastTickAt` is fresh (≤ ~2 min old) under the same or a successor healthy PID with no unexplained multi-hour gap between `startedAt`/`lastTickAt` and the reads. If the heartbeat proves stale for hours → open a dedicated reliability fix then (not now).

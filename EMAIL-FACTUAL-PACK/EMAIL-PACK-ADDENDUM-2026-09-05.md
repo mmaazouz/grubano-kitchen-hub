@@ -12,6 +12,9 @@ This addendum records what changed in the product after the pack was established
 
 Manifest impact: `PARTNER_NEW_ORDER` and `CONSUMER_ORDER_CONFIRMATION` "Reachable" columns → **YES, server-guaranteed** (no browser dependency). Truthfulness T5 → **CLOSED**. Dead/orphan D7 (sweep without scheduler) → **CLOSED** (scheduler in-process; `cron.yml` job kept as idempotent redundancy). Contract + tests: `docs/ops/ORDER-NOTIFICATION-RELIABILITY.md`, `tests/order-notification-reliability.test.ts` (13), `tests/order-notification-scheduler.test.ts` (14).
 
+### 1.1 · Staging measurement (2026-09-05/06)
+SCHEDULER LIVE ON STAGING = **MEASURED YES** · HEARTBEAT TWO-POINT OBSERVATION = **PASS** (same PID 1693378; ticks 3 → 9; lastTickAt 23:03:27Z → 23:09:27Z; errors 0; nothing eligible to notify during the window) · LONG-IDLE / OVERNIGHT SURVIVAL = **NOT YET MEASURED** (pre-pilot observation, not a blocker) · pre-pilot check = read the heartbeat after a long idle interval / next morning (`docs/ops/ORDER-NOTIFICATION-RELIABILITY.md §8`). Design-facing product truth: new paid-order restaurant notifications are server-side reachable and do not require a browser tab to remain open. Any "depends on the browser poll" wording in the pack is PRE-FIX / HISTORICAL (core manifest rows updated 2026-09-06).
+
 ## 2 · P0 TRUTHFULNESS T1 / T2 — fixed
 
 | Finding | Fix | Where |

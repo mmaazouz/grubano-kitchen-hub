@@ -35,11 +35,12 @@ Legacy tokens still used by the **current** emails (to be replaced, not kept): `
 
 ## 5 · Product truth boundaries (closed beta, 2026-09)
 - **Delivery OUT** (`DELIVERY_FULFILLMENT_ENABLED` effective false; only pickup/Click & collect is sold). Delivery wording exists in code — do not design delivery states as live.
-- **Courier waitlist IN** (`LOGISTICS_SIGNUP_ENABLED` required true; measured false 2026-09-04 pending operator v3) · courier **operations OUT**.
+- **Courier waitlist IN** (`LOGISTICS_SIGNUP_ENABLED` = TRUE, founder-confirmed 2026-09-06) · courier **operations OUT**. Courier tips OFF (`TIPS_ENABLED` = FALSE).
 - **Franchise OUT** (`FRANCHISE_ENABLED` OFF; only admin MONEY REVIEW kinds mention it).
 - **Sur place / reservations OUT** (routes live, product out of beta).
-- **Claims OFF** whole beta (D4) → consumer claim emails are post-beta designs against the confirmed contract. **Refunds** engine frozen (`REFUNDS_ENABLED` false, measured) → REFUND_SUCCEEDED designed against the contract.
+- **Claims OFF** whole beta (D4) → consumer claim emails are post-beta designs against the confirmed contract. **Refunds** engine frozen (`REFUNDS_ENABLED` = FALSE, measured 2026-09-04 and 2026-09-06) → REFUND_SUCCEEDED designed against the contract.
 - Payments: **Stripe TEST only** on staging; never LIVE.
+- New paid-order emails (restaurant « nouvelle commande », consumer confirmation) are **server-side reachable — no browser tab needs to stay open** (CURRENT since 2026-09-06).
 - Cash / wallet payment refused server-side — card only.
 - Human support = `contact@grubano.com` (the only escalation channel promised in copy).
 
@@ -53,4 +54,4 @@ No ETA or "arrive bientôt" · no delivery while delivery OFF · no fee not read
 600–640 px max container; responsive at 320 / 390 / 600 / desktop; table-based layout where alignment matters; inline CSS (no `<style>` reliance), no JS, no web fonts required; system font stack; images optional with meaningful `alt` (images-off must still read); buttons as bulletproof `<a>` (VML for Outlook optional); `<html lang="fr" dir="ltr|rtl">` + `<title>` + hidden **preheader**; plain-text alternative for every email; contrast AA for body and CTA text; heading hierarchy (one h1); footer with sender identity, why-you-receive-this line, support contact; List-Unsubscribe + link **only** for the nudge/marketing-like family (transactional emails must not carry an unsubscribe that would suppress required notices).
 
 ## 9 · Idempotency & audience facts that shape conditional states
-One email per (trigger, entity) via `EmailDispatch`; distinct statuses of the same order are distinct emails → design **one shell, many states**, not one mega-email. Audiences: consumer (FR, later ×5) · restaurant owner (dashboard user) · admin (`ALERT_EMAIL`, dense operational, raw ids acceptable) · partner applicants (restaurant, supplier, influencer, courier) · external supplier contact (purchase order) · creator.
+Exactly one email per (event, order) — enforced server-side whatever the path; distinct statuses of the same order are distinct emails → design **one shell, many states**, not one mega-email. Audiences: consumer (FR, later ×5) · restaurant owner (dashboard user) · admin (`ALERT_EMAIL`, dense operational, raw ids acceptable) · partner applicants (restaurant, supplier, influencer, courier) · external supplier contact (purchase order) · creator.
