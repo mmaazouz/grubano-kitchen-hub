@@ -7,7 +7,7 @@
 | Provider | **Self-hosted SMTP of the o2switch shared hosting** (Exim). Banner: `220-muscadier.o2switch.net ESMTP Exim 4.99.5`. **Not** Brevo, Resend, SES, Postmark. | read-only EHLO probe 2026-09-05 11:45 CEST |
 | Brevo | `@getbrevo/brevo ^2.3.0` is in `package.json:24` but **imported nowhere** in `app/`, `lib/`, `scripts/` (grep: only `package.json`, i18n strings, lock files) → **dead dependency**; SMS never implemented. `CLAUDE.md §2` ("Email/SMS: Brevo") is inaccurate. | grep |
 | Library | `nodemailer ^7.0.13` (+ `@types/nodemailer ^8`). | `package.json:60` |
-| Host | `process.env.SMTP_HOST \|\| 'mail.grubano.com'` (DNS: `mail.grubano.com` → `109.234.165.222` = `muscadier.o2switch.net`). | every transport; DNS |
+| Host | `process.env.SMTP_HOST \|\| 'mail.grubano.com'` (DNS: `mail.grubano.com` → `109.234.165.222` = `muscadier.o2switch.net`). This is the **submission** host; external egress measured 2026-09-06 = o2switch relay `109.234.163.45` (see EMAIL-DELIVERABILITY §6). | every transport; DNS; Gmail original |
 | Port / TLS | **587 hardcoded**, `secure:false` ⇒ Nodemailer **opportunistic STARTTLS** (server advertises `STARTTLS`; `requireTLS` is not set, so a STARTTLS failure would fall back to plaintext). | all 7+3 transports; EHLO caps |
 | AUTH | `AUTH PLAIN LOGIN` advertised; user `process.env.SMTP_USER \|\| 'contact@grubano.com'`, pass `SMTP_PASS`. | EHLO; code |
 | EHLO identity | Client EHLO = Nodemailer default (`os.hostname()` of the app server) — not configured. Server greets as `muscadier.o2switch.net`. | code (no `name` option) |

@@ -23,7 +23,7 @@
 | I1 (E1) | auth + consumer order + partner new order on the new renderer | all E1 fixtures render (snapshot tests) · trigger tests unchanged · truthfulness tests (T1/T2: no delivery/en-route wording reachable for pickup; welcome CTA = `NEXTAUTH_URL`) |
 | I2 (E2) | claims + refunds + admin money family — **only after `EMAIL-CLAIMS-REFUNDS-FACTS.md` is refreshed** against final Claims/Refund code | refund email only on Stripe `succeeded` (existing tests) · actor = Grubano · amount = engine `amountCents` (fix T8) · pending/failed ⇒ no consumer email (unless the founder confirms a proposal) · flags stay OFF |
 | I3 (E3) | onboarding / partner lifecycle / secondary account / waitlist / reservations (OUT) / supplier PO / crons | idem + `refund-deposit` dedupeKey (D13) + supplier route best-effort (never 500 after order creation) |
-| I4 | deliverability: external test script, DMARC `rua` (founder DNS change), DKIM confirmation, staging send rehearsal | see §6 |
+| I4 | deliverability: external test script, DMARC `rua` (founder DNS change), staging send rehearsal — **DKIM confirmation + external Gmail proof DONE 2026-09-06 (PASS, see EMAIL-DELIVERABILITY §6)** | see §6 |
 
 ## 3 · Test matrix to add (vitest, `tests/email-*`)
 

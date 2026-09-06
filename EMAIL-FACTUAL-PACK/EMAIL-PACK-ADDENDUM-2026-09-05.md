@@ -54,6 +54,10 @@ E1 is split into capacity-safe sub-tranches: **E1-A** (global system + AUTH_MAGI
 
 Register status after the hotfix: T3, T4, T6, T7, T8, T12, T13, T22 → **CLOSED**. Remaining P1/P2: T9 (guard note), T10 (no-show, flag OFF), T11, T14–T21, T23, T24. Tests: `tests/email-truthfulness-hotfix.test.ts` (17). **Refund e-mail safe for the Phase 2 rehearsal: YES — SEND IF STRIPE SUCCEEDED** (see `docs/ops/EMAIL-TRUTHFULNESS-HOTFIX-2026-09-06.md`).
 
+## 4c · EXTERNAL DELIVERABILITY GATE — 2026-09-06 · PASS (EMAIL BETA GATE CLOSED)
+
+One QA message (`[QA Grubano] Test de délivrabilité pré-bêta`) sent 2026-09-06T02:11:36Z through the real transport (Exim `250 OK id=1x32MK-0000000A4Fd-0Kzx`) to the founder's Gmail. Gmail "Show original": **received · INBOX · spf=pass (client IP `109.234.163.45`, MAIL FROM `contact@grubano.com`) · dkim=pass (`d=grubano.com`, `s=default`) · dmarc=pass (p=none, via both) · Return-Path `contact@grubano.com` · TLS 1.3**. Factual correction: the egress IP is the o2switch relay `109.234.163.45` (PTR `prout.jabatus.fr`, authorized by `include:spf.jabatus.fr`), not the submission host `109.234.165.222`. No DNS, product state, Stripe or flag change. Details: `EMAIL-DELIVERABILITY.md` §6. Remaining should-fix (DNS, founder-authorized): DMARC `rua` + enforcement path.
+
 ## 5 · Unchanged (still open)
 
 Deliverability pre-production blocker (external proof, DKIM signing, DMARC `rua`) — open, founder gate for one external mailbox. P1/P2 register preserved (T3, T4, T6–T24). Cron scripts' `INTERNAL_CRON_TOKEN` provenance (401) — separate ops finding.
