@@ -70,6 +70,19 @@ export default function AuthScreen() {
       .catch(() => setProviders({}))
   }, [])
 
+  // P0 AUTH HYDRATION train (2026-09-06) — an ALREADY-AUTHENTICATED visitor is routed
+  // to their space (same routeByRole as after a login) instead of facing a login form
+  // that looks inert. Reads the existing NextAuth session endpoint only; a logged-out
+  // visitor sees exactly the same form as before. No auth mechanism is changed.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/auth/session', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((s) => { if (!cancelled && s?.user) void routeByRole(router) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [router])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')

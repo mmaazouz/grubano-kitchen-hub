@@ -255,15 +255,24 @@ jobs:
       # PUBLIC repo, re-arming them on every deploy. Never reintroduce an
       # automatic account seed here; account provisioning goes through the
       # gated MANUAL seeds only.
-      # [no-restart] (Phase 2 preflight corrective pass, 2026-09-04): a push whose head
-      # commit message contains `[no-restart]` deploys the FILES only and does NOT bump
-      # tmp/restart.txt (all three restart steps below are skipped). Used when the
-      # server's .env.local is known to hold a value the running process must NOT load
-      # yet (e.g. LOGISTICS_SIGNUP_ENABLED=false written by the v2 operator) and the
-      # founder's one-command operator restores the env and restarts itself. Default
-      # (no marker, or workflow_dispatch) = unchanged behaviour.
+      # ── P0 AUTH HYDRATION (2026-09-06) — the `[no-restart]` marker is GONE FOR GOOD ──
+      # From 2026-09-04 to 2026-09-06 a head commit containing `[no-restart]` deployed the
+      # files but skipped the three Passenger restart steps below. MEASURED consequence
+      # (run 34006442266 → fb994f6): the FTP sync REPLACES .next/static (new webpack
+      # runtime + page chunks uploaded, the previous build's files DELETED) while the
+      # Next.js standalone process spawned by the previous deploy keeps running. That
+      # process snapshots the .next/static file list at boot, so every freshly uploaded
+      # asset answered 404 (text/html) and every deleted one 400 — the browser could not
+      # load the webpack runtime, NO client JavaScript ran on ANY page, /fr/auth/magic
+      # stayed on its Suspense skeleton forever and /fr/eat/auth was inert on both
+      # app.grubano.com and business.grubano.com (same app root). /version.json is a
+      # static file and kept saying "deployed", so the health check stayed green.
+      # RULE: a deploy that ships a build ALWAYS restarts Passenger. Ops operators that
+      # need a live process untouched must be shipped by their own operator, never by
+      # a build deploy. The blocking "Client bundle integrity" step at the end of this
+      # job fails the run whenever the served HTML references an asset the server
+      # cannot serve — the exact signature of this incident.
       - name: Post-deploy server tasks
-        if: ${{ !contains(github.event.head_commit.message, '[no-restart]') }}
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
@@ -282,7 +291,6 @@ jobs:
       # ── SSH: chmod + Passenger restart ────────────────────────────────────────
       # node_modules is bundled in the standalone output — no npm ci needed.
       - name: Fix permissions and restart
-        if: ${{ !contains(github.event.head_commit.message, '[no-restart]') }}
         uses: appleboy/ssh-action@v1.0.0
         continue-on-error: true
         with:
@@ -335,7 +343,7 @@ jobs:
       # only until two consecutive deploys confirm the FTPS step finishes with
       # exit 0 (no more exit 60) AND CSS lands without manual cPanel `touch`.
       - name: Trigger Passenger restart via FTPS (independent of SSH)
-        if: ${{ success() && !contains(github.event.head_commit.message, '[no-restart]') }}
+        if: ${{ success() }}
         continue-on-error: true
         run: |
           STAMP="restart from run ${{ github.run_id }} at $(date -u +%FT%TZ) sha ${{ github.sha }}"
@@ -431,4 +439,57 @@ jobs:
           echo "  Piste : Passenger n'a pas repris le build. En cPanel Terminal :"
           echo "    touch ~/app.grubano.com/tmp/restart.txt"
           rm -f "$BODY_FILE"
+          exit 1
+
+      # ── P0 AUTH HYDRATION (2026-09-06) — CLIENT BUNDLE INTEGRITY, BLOQUANT ────────
+      # version.json is a static file: it proves the UPLOAD, never that the RUNNING
+      # process can serve the bundles its own HTML references. This step fetches the
+      # two authentication pages, extracts every /_next/static asset they reference
+      # (webpack runtime, page chunks, CSS) and requires HTTP 200 on each. A mismatch
+      # between the served HTML and the servable assets = zero client JavaScript =
+      # permanent Suspense skeleton / inert forms — the P0 of 2026-09-06. Retries
+      # cover the Passenger swap window; the final verdict is BLOCKING.
+      - name: Client bundle integrity (served HTML → every _next/static asset 200)
+        run: |
+          BASE="https://app.grubano.com"
+          PAGES="/fr/auth/magic /fr/eat/auth"
+          ATTEMPTS=6
+          DELAY=15
+          i=1
+          while [ "$i" -le "$ATTEMPTS" ]; do
+            FAIL=0
+            CHECKED=0
+            for P in $PAGES; do
+              HTML=$(curl -sS -L --max-time 30 "$BASE$P") || HTML=""
+              ASSETS=$(printf '%s' "$HTML" | grep -o '/_next/static/[^" <>\\]*\.\(js\|css\)' | sort -u)
+              if [ -z "$ASSETS" ]; then
+                echo "ERR $P references no /_next/static asset (empty or non-HTML response)"
+                FAIL=1
+                continue
+              fi
+              if ! printf '%s\n' "$ASSETS" | grep -q 'chunks/webpack-'; then
+                echo "ERR $P does not reference a webpack runtime chunk"
+                FAIL=1
+              fi
+              for A in $ASSETS; do
+                CODE=$(curl -sS -o /dev/null --max-time 30 -w '%{http_code}' "$BASE$A") || CODE="000"
+                CHECKED=$((CHECKED + 1))
+                if [ "$CODE" != "200" ]; then
+                  echo "ERR $A → HTTP $CODE (referenced by $P)"
+                  FAIL=1
+                fi
+              done
+            done
+            if [ "$FAIL" = "0" ]; then
+              echo "OK client bundle integrity — $CHECKED referenced assets served 200 for: $PAGES"
+              exit 0
+            fi
+            echo "attempt $i/$ATTEMPTS failed — Passenger may still be swapping processes; retry in ${DELAY}s"
+            i=$((i + 1))
+            if [ "$i" -le "$ATTEMPTS" ]; then sleep "$DELAY"; fi
+          done
+          echo "ERR CLIENT BUNDLE INTEGRITY FAILED — the served HTML references assets the server cannot serve."
+          echo "  Meaning: the running process and the files on disk belong to different builds"
+          echo "  (no client JavaScript → permanent auth skeleton / inert forms)."
+          echo "  Fix: cPanel Terminal →  touch ~/app.grubano.com/tmp/restart.txt  then re-run this job."
           exit 1
