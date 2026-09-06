@@ -30,5 +30,13 @@ False leads: RATE LIMIT = NOT CAUSE (no request ever left the browser) · MAGIC-
 
 No auth mechanism, TTL, email copy, rate limit, API contract, flag, DNS or Stripe change. The truthfulness hotfix `ca0e19a` is fully preserved.
 
+## Post-fix measurement (deploy `50d418e`, run 34010395629)
+- CI: test PASS · FTP · the three restart steps PASS · SHA health PASS · **Client bundle integrity PASS (44 referenced assets served 200 for /fr/auth/magic + /fr/eat/auth)**.
+- `scripts/qa/auth-hydration-smoke.mjs https://app.grubano.com` → **4/4 PASS** (magic + consumer auth, desktop + mobile: skeleton gone, email + submit visible/enabled, typing reflected, sign-up link, no pageerror, no hydration error, every asset < 400).
+- `business.grubano.com` (same app root, same build) in an interactive real Chrome: `/fr/eat/auth` loads 55/55 requests at 200 (webpack runtime `webpack-69a6c9e9…`, page chunk, CSS), React effects fire (`/api/auth/providers`, `/api/auth/session`), no skeleton; `/fr/auth/magic` see the session record.
+
+### Secondary finding — hosting WAF on business.grubano.com (NOT the P0 cause)
+The headless-Chrome smoke against `business.grubano.com` receives **HTTP 429 from the o2switch hosting layer** on the HTML page and on CSS/SVG assets (body marker `Security_Rule … HTTP_Code = "429" … faq.o2switch.fr/…/tiger-protect`, `Server: o2switch-PowerBoost-v3`). Deterministic per run, from the very first request, business domain only; `app.grubano.com` never throttled; curl bursts (12 parallel) and single requests with a HeadlessChrome user agent all 200; the app has no middleware rate limit and its API limiter never touches `_next/static`. Classification: **Tiger Protect (cPanel, per-domain) reacting to the automation-flagged browser** — hosting configuration, not code. The smoke now labels this case `HOST WAF 429 … hydration NOT MEASURABLE` instead of a false hydration FAIL. Founder-side knob if real testers ever see a 429 "Too many requests" page on business.grubano.com: cPanel → Tiger Protect sensitivity for that domain (NOT changed here).
+
 ## Rule going forward
 Never ship a build without a restart. An ops operator that must reach the server without a restart is delivered by its own operator, never by a build deploy. Post-deploy proof = the CI bundle-integrity gate **plus** `node scripts/qa/auth-hydration-smoke.mjs https://app.grubano.com https://business.grubano.com`.

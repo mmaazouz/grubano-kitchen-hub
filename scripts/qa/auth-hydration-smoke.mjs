@@ -83,7 +83,16 @@ async function runCheck(browser, base, pg, vp) {
   const badAssets = []
   page.on('pageerror', (e) => pageErrors.push(String(e && e.message || e)))
   page.on('console', (m) => { if (m.type() === 'error' || HYDRATION_RE.test(m.text())) consoleErrors.push(m.text()) })
-  page.on('response', (r) => { const u = r.url(); if (u.includes('/_next/') && r.status() >= 400) badAssets.push(`${r.status()} ${u}`) })
+  const throttled = []
+  page.on('response', (r) => {
+    const u = r.url()
+    if (u.includes('/_next/') && r.status() >= 400) badAssets.push(`${r.status()} ${u}`)
+    // Attribution of 429s (hosting WAF vs app): keep the response headers + a body snippet.
+    if (r.status() === 429 && throttled.length < 2) {
+      const h = r.headers()
+      r.text().then((body) => throttled.push({ url: u, server: h['server'], retryAfter: h['retry-after'], contentType: h['content-type'], body: String(body).replace(/\s+/g, ' ').slice(0, 300) })).catch(() => throttled.push({ url: u, server: h['server'] }))
+    }
+  })
   page.on('requestfailed', (r) => { const u = r.url(); if (u.includes('/_next/')) badAssets.push(`FAILED ${u} ${r.failure()?.errorText || ''}`) })
 
   const url = base + pg.path
@@ -132,6 +141,15 @@ async function runCheck(browser, base, pg, vp) {
     if (hyd.length) result.reasons.push(`hydration error: ${hyd.slice(0, 2).join(' | ')}`)
     if (badAssets.length) result.reasons.push(`asset failures: ${badAssets.slice(0, 5).join(' | ')}`)
     result.consoleErrors = consoleErrors.slice(0, 5)
+    if (throttled.length) result.throttled = throttled
+    // Hosting WAF (o2switch "Tiger Protect") answers 429 to automated-browser bursts on some
+    // domains (measured 2026-09-06 on business.grubano.com). That is a TRANSPORT verdict, not
+    // a hydration verdict: label it so a WAF block is never misread as a broken auth page.
+    const waf = throttled.some((t) => /tiger-protect|Security_Rule/i.test(t.body || '')) || (result.status === 429)
+    if (waf) {
+      result.throttledByHost = true
+      result.reasons = [`HOST WAF 429 (o2switch Tiger Protect) — hydration NOT MEASURABLE in this run; re-run later or verify in an interactive browser`]
+    }
   } catch (e) {
     result.reasons.push(`exception: ${String(e && e.message || e)}`)
   } finally {
