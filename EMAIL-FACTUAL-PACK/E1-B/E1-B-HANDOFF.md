@@ -1,6 +1,6 @@
-# E1-B-HANDOFF — AUTH FAMILY EXPANSION (future Claude Design session — NOT STARTED)
+# E1-B-HANDOFF — AUTH FAMILY EXPANSION — **AUTHORISED 2026-09-06** (founder approved the E1-A system; visual polish deferred; CTA reservation recorded)
 
-> **REQUIRES APPROVED E1-A SYSTEM CONTRACT** (`CLAUDE-DESIGN-GRUBANO-EMAIL-SYSTEM-CONTRACT.md`). No new visual language, button system or footer — family-specific adaptation only. Facts: `../EMAIL-MANIFEST.md §1`, copy `../EMAIL-COPY-VERBATIM.md §A`, contracts `../EMAIL-DATA-CONTRACTS.md §1/§4`, fossils `../current-renders/`, auth mechanics `../EMAIL-AUTH-FACTS.md`, rules `../EMAIL-DESIGN-SYSTEM-FACTS.md`.
+> Portable bundle: `CLAUDE-DESIGN-E1-B-BUNDLE.zip` (start file `CLAUDE-DESIGN-E1-B-START.md`). The approved E1-A outputs must be dropped into the bundle's `APPROVED-E1-A-SYSTEM/` folder by the founder before upload (they live only in the Claude Design E1-A session). **REQUIRES THE APPROVED E1-A SYSTEM CONTRACT** (`CLAUDE-DESIGN-GRUBANO-EMAIL-SYSTEM-CONTRACT.md`). No new visual language, button system or footer — family-specific adaptation only. Facts: `../EMAIL-MANIFEST.md §1`, copy `../EMAIL-COPY-VERBATIM.md §A`, contracts `../EMAIL-DATA-CONTRACTS.md §1/§4`, fossils `../current-renders/`, auth mechanics `../EMAIL-AUTH-FACTS.md`, rules `../EMAIL-DESIGN-SYSTEM-FACTS.md`.
 
 | ID | Status | Notes for the design |
 |---|---|---|

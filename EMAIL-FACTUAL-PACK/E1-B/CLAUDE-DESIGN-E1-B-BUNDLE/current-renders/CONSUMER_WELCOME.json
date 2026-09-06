@@ -1,0 +1,9 @@
+{
+  "id": "CONSUMER_WELCOME",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Bienvenue sur Grubano — ton compte est prêt",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

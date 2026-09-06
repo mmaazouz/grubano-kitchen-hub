@@ -21,7 +21,8 @@ Established 2026-09-05 (`develop @ d221008`), read-only on the product. Purpose:
 
 ## ⚠️ E1 is delivered in capacity-safe sub-tranches (2026-09-05)
 - `E1-A/` — **first Claude Design session**: global system + 3 representative emails. Portable bundle: `E1-A/CLAUDE-DESIGN-E1-A-BUNDLE.zip` (the only artefact to upload). Start file: `E1-A/CLAUDE-DESIGN-E1-A-START.md`.
-- `E1-B/` auth expansion · `E1-C/` consumer order expansion · `E1-D/` partner core expansion — handoffs prepared, **design not authorised until the founder approves the E1-A system contract**.
+- **E1-A APPROVED 2026-09-06** (`E1-A/FOUNDER-DECISION-2026-09-06.md`: polish deferred, CTA reservation recorded, do not reopen before beta).
+- `E1-B/` auth expansion — **AUTHORISED**, bundle `E1-B/CLAUDE-DESIGN-E1-B-BUNDLE.zip` (founder adds the E1-A outputs to `APPROVED-E1-A-SYSTEM/` before upload) · `E1-C/` consumer order · `E1-D/` partner core — **not started until their turn**.
 - `E1/` keeps the full-family facts (reference only — do not hand the whole E1 to one session).
 - Post-fix facts (P0 notification reliability, P0 T1/T2): `EMAIL-PACK-ADDENDUM-2026-09-05.md`.
 

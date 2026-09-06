@@ -1,0 +1,9 @@
+{
+  "id": "ACCOUNT_EMAIL_CHANGED_ALERT",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.martin@example.invalid",
+  "subject": "Sécurité : votre e-mail de connexion a été modifié — Grubano",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}

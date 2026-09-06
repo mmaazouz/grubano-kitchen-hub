@@ -1,0 +1,9 @@
+{
+  "id": "ACCOUNT_EMAIL_CHANGE_CONFIRM",
+  "from": "\"Grubano\" <contact@grubano.com>",
+  "to": "lea.new@example.invalid",
+  "subject": "Votre nouvelle adresse e-mail est active — Grubano",
+  "hasText": false,
+  "hasImages": false,
+  "hasTable": false
+}
