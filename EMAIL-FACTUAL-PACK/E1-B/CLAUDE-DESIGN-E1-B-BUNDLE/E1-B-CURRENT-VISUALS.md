@@ -4,10 +4,10 @@
 
 | ID | Subject | To (fixture) | text part | 600 px | 390 px |
 |---|---|---|---|---|---|
-| AUTH_MAGIC_LINK_WITH_OTP | Ton lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@390.png) |
+| AUTH_MAGIC_LINK_WITH_OTP | Votre lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@390.png) |
 | AUTH_PASSWORD_RESET | Réinitialisation de votre mot de passe Grubano | lea.martin@example.invalid | no | [png](current-renders/png/AUTH_PASSWORD_RESET@600.png) | [png](current-renders/png/AUTH_PASSWORD_RESET@390.png) |
 | AUTH_PASSWORD_CHANGED | Votre mot de passe Grubano a été changé | lea.martin@example.invalid | no | [png](current-renders/png/AUTH_PASSWORD_CHANGED@600.png) | [png](current-renders/png/AUTH_PASSWORD_CHANGED@390.png) |
-| CONSUMER_WELCOME | Bienvenue sur Grubano — ton compte est prêt | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_WELCOME@600.png) | [png](current-renders/png/CONSUMER_WELCOME@390.png) |
+| CONSUMER_WELCOME | Bienvenue sur Grubano — votre compte est prêt | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_WELCOME@600.png) | [png](current-renders/png/CONSUMER_WELCOME@390.png) |
 | AUTH_STEPUP_CODE | Votre code de confirmation Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_STEPUP_CODE@600.png) | [png](current-renders/png/AUTH_STEPUP_CODE@390.png) |
 | ACCOUNT_EMAIL_CHANGE_CODE | Votre code de confirmation Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/ACCOUNT_EMAIL_CHANGE_CODE@600.png) | [png](current-renders/png/ACCOUNT_EMAIL_CHANGE_CODE@390.png) |
 | ACCOUNT_EMAIL_CHANGE_LINK | Confirmez votre nouvelle adresse e-mail — Grubano | lea.new@example.invalid | no | [png](current-renders/png/ACCOUNT_EMAIL_CHANGE_LINK@600.png) | [png](current-renders/png/ACCOUNT_EMAIL_CHANGE_LINK@390.png) |

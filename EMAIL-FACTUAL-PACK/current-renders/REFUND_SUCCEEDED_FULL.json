@@ -2,7 +2,7 @@
   "id": "REFUND_SUCCEEDED_FULL",
   "from": "\"Grubano\" <contact@grubano.com>",
   "to": "lea.martin@example.invalid",
-  "subject": "Remboursement effectué — Gnocchi Bar",
+  "subject": "Votre remboursement est confirmé — Gnocchi Bar",
   "hasText": false,
   "hasImages": false,
   "hasTable": false

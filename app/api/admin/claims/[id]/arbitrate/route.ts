@@ -64,13 +64,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   {
     const c = result.claim as { id: string; consumerId: string; orderId: string; requestedAmountCents: number }
     const refunded = result.refund?.state === 'refunded'
+    // Email truthfulness hotfix (2026-09-06): the amount shown is the ENGINE's actual succeeded
+    // cash refund (result.refund.amountCents), never the claim's REQUESTED amount.
+    const refundedCents = result.refund?.state === 'refunded' ? result.refund.amountCents : null
     await sendClaimDecisionEmail({
       claimId:       c.id,
       consumerId:    c.consumerId,
       orderId:       c.orderId,
       decision:      parsed.data.decision === 'refuse_final' ? 'refused_final' : (refunded ? 'refunded' : 'approved'),
       reason:        parsed.data.reason ?? null,
-      refundedCents: refunded ? c.requestedAmountCents : null,
+      refundedCents,
     })
   }
 

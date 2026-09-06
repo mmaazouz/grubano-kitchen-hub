@@ -30,8 +30,10 @@ vi.mock('@/lib/transactional-emails', () => tx)
 vi.mock('@/lib/magic-link', () => ({
   createMagicLinkToken: vi.fn(async () => 'op.secret'),
   authorizeMagicLink:   vi.fn(async () => null),
+  MAGIC_TTL_MS: 15 * 60 * 1000, // truthfulness hotfix 2026-09-06 (lib/auth-email-copy)
 }))
 vi.mock('@/lib/email-otp', () => ({
+  OTP_TTL_MS:             10 * 60 * 1000, // truthfulness hotfix 2026-09-06 (lib/auth-email-copy)
   isEmailOtpEnabled:      () => false,
   issueEmailOtp:          vi.fn(),
   authorizeEmailOtpLogin: vi.fn(async () => null),
@@ -73,6 +75,7 @@ const ENV_KEYS = [
 ]
 
 beforeEach(() => {
+  process.env.SMTP_PASS = 'x' // truthfulness hotfix 2026-09-06: magic-link / forgot-password answer 503 without a transport secret (after the rate limit)
   __resetRateLimit()
   vi.clearAllMocks()
   db.operator.findUnique.mockResolvedValue(null)

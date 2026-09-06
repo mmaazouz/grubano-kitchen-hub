@@ -5,7 +5,7 @@
 ### AUTH_MAGIC_LINK
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Ton lien de connexion Grubano`
+- **Subject:** `Votre lien de connexion Grubano`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
 - **Headline:** Connexion à Grubano
@@ -13,11 +13,11 @@
 
 ```text
 Connexion à Grubano
- Bonjour Léa Martin, voici ton lien de connexion sécurisé :
+ Bonjour Léa Martin, voici votre lien de connexion sécurisé :
  Me connecter
- Le bouton ne s'affiche pas ? Copie-colle ce lien dans ton navigateur :
+ Le bouton ne s'affiche pas ? Copiez-collez ce lien dans votre navigateur :
  https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
- Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+ Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 - **CTA(s):** « Me connecter » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef` · « https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef`
 - **Footer:** none
@@ -26,12 +26,12 @@ Connexion à Grubano
 ```text
 Bonjour Léa Martin,
 
-Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :
+Voici votre lien de connexion sécurisé à Grubano. Cliquez dessus ou copiez-collez-le dans votre navigateur :
 
 https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
 
 Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois.
-Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 
 

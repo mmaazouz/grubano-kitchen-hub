@@ -33,6 +33,7 @@ const post = (path: string, body: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  process.env.SMTP_PASS = 'x' // truthfulness hotfix 2026-09-06: no transport ⇒ honest 503 before minting a token
   db.operator.findUnique.mockResolvedValue({ id: 'op1', name: 'Rita', email: EMAIL, password: '$2a$12$hash' })
   db.operator.update.mockResolvedValue({})
   db.verificationToken.deleteMany.mockResolvedValue({ count: 0 })

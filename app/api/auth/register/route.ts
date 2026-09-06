@@ -39,26 +39,40 @@ const transporter = nodemailer.createTransport({
   },
 })
 
+const WELCOME_SUBJECT = 'Bienvenue sur Grubano — votre compte est prêt'
+
+/** CTA base = the DEPLOYMENT's own origin (staging → staging), same convention as the
+ *  transactional rail and /api/auth/forgot-password; production fallback only when unset. */
+function welcomeBaseUrl(): string {
+  return (process.env.NEXTAUTH_URL || 'https://grubano.com').replace(/\/$/, '')
+}
+
+const escHtml = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// Email truthfulness hotfix (2026-09-06): formal French; NO « réserver une table » (sur place
+// is OUT of the closed beta — only Click & collect is sold); CTA on the deployment base
+// instead of a hard-coded production URL; name escaped.
 async function sendWelcomeEmail(to: string, name: string) {
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1a2e">
-      <h2 style="color:#F97316">Bienvenue sur Grubano, ${name} 👋</h2>
-      <p>Ton compte est créé et déjà actif. Tu peux commander, réserver une table
-         et suivre tes points fidélité depuis ton espace.</p>
+      <h2 style="color:#F97316">Bienvenue sur Grubano, ${escHtml(name)}</h2>
+      <p>Votre compte est créé et déjà actif. Vous pouvez commander en Click &amp; collect
+         et suivre vos points fidélité depuis votre espace.</p>
       <p style="text-align:center;margin:28px 0">
-        <a href="https://grubano.com/eat" style="background:#F97316;color:#fff;text-decoration:none;
+        <a href="${welcomeBaseUrl()}/eat" style="background:#F97316;color:#fff;text-decoration:none;
            padding:14px 28px;border-radius:12px;font-weight:600;display:inline-block">
            Découvrir les restaurants
         </a>
       </p>
-      <p style="font-size:13px;color:#6b7280">Si tu n'es pas à l'origine de cette
-         inscription, réponds simplement à cet email.</p>
+      <p style="font-size:13px;color:#6b7280">Si vous n'êtes pas à l'origine de cette
+         inscription, répondez simplement à cet e-mail.</p>
     </div>`
 
   await transporter.sendMail({
     from:    '"Grubano" <contact@grubano.com>',
     to,
-    subject: 'Bienvenue sur Grubano — ton compte est prêt',
+    subject: WELCOME_SUBJECT,
     html,
   })
 }
@@ -138,7 +152,7 @@ export async function POST(req: NextRequest) {
       await prisma.emailLog.create({
         data: {
           recipient: data.email,
-          subject:   'Bienvenue sur Grubano — ton compte est prêt',
+          subject:   WELCOME_SUBJECT,
           trigger:   'consumer_welcome',
           status:    emailStatus,
         },

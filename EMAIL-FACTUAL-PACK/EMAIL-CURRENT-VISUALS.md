@@ -29,8 +29,8 @@
 | ADMIN_RECONCILE_DIGEST | [Grubano] 2 commande(s) à réconcilier | admin-alerts@example.invalid | no | [png](current-renders/png/ADMIN_RECONCILE_DIGEST@600.png) | [png](current-renders/png/ADMIN_RECONCILE_DIGEST@390.png) |
 | ADMIN_STALE_CLAIM | [Grubano] Réclamation sans réponse du restaurant — délai dépassé | admin-alerts@example.invalid | no | [png](current-renders/png/ADMIN_STALE_CLAIM@600.png) | [png](current-renders/png/ADMIN_STALE_CLAIM@390.png) |
 | ADMIN_STALE_PI | [Grubano] Paiement capturé sur un PaymentIntent périmé — réconciliation requise | admin-alerts@example.invalid | no | [png](current-renders/png/ADMIN_STALE_PI@600.png) | [png](current-renders/png/ADMIN_STALE_PI@390.png) |
-| AUTH_MAGIC_LINK | Ton lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK@390.png) |
-| AUTH_MAGIC_LINK_WITH_OTP | Ton lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@390.png) |
+| AUTH_MAGIC_LINK | Votre lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK@390.png) |
+| AUTH_MAGIC_LINK_WITH_OTP | Votre lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK_WITH_OTP@390.png) |
 | AUTH_PASSWORD_CHANGED | Votre mot de passe Grubano a été changé | lea.martin@example.invalid | no | [png](current-renders/png/AUTH_PASSWORD_CHANGED@600.png) | [png](current-renders/png/AUTH_PASSWORD_CHANGED@390.png) |
 | AUTH_PASSWORD_RESET | Réinitialisation de votre mot de passe Grubano | lea.martin@example.invalid | no | [png](current-renders/png/AUTH_PASSWORD_RESET@600.png) | [png](current-renders/png/AUTH_PASSWORD_RESET@390.png) |
 | AUTH_STEPUP_CODE | Votre code de confirmation Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_STEPUP_CODE@600.png) | [png](current-renders/png/AUTH_STEPUP_CODE@390.png) |
@@ -60,7 +60,7 @@
 | CONSUMER_RESERVATION_CANCELLED_BY_OWNER | Votre réservation a été annulée — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_RESERVATION_CANCELLED_BY_OWNER@600.png) | [png](current-renders/png/CONSUMER_RESERVATION_CANCELLED_BY_OWNER@390.png) |
 | CONSUMER_RESERVATION_CONFIRMED | Réservation confirmée — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_RESERVATION_CONFIRMED@600.png) | [png](current-renders/png/CONSUMER_RESERVATION_CONFIRMED@390.png) |
 | CONSUMER_RESERVATION_CONFIRMED_DEPOSIT | Réservation confirmée — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_RESERVATION_CONFIRMED_DEPOSIT@600.png) | [png](current-renders/png/CONSUMER_RESERVATION_CONFIRMED_DEPOSIT@390.png) |
-| CONSUMER_WELCOME | Bienvenue sur Grubano — ton compte est prêt | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_WELCOME@600.png) | [png](current-renders/png/CONSUMER_WELCOME@390.png) |
+| CONSUMER_WELCOME | Bienvenue sur Grubano — votre compte est prêt | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_WELCOME@600.png) | [png](current-renders/png/CONSUMER_WELCOME@390.png) |
 | COURIER_WAITLIST_CONFIRMATION | Votre demande Grubano Livreur est bien enregistrée | sami.courier@example.invalid | no | [png](current-renders/png/COURIER_WAITLIST_CONFIRMATION@600.png) | [png](current-renders/png/COURIER_WAITLIST_CONFIRMATION@390.png) |
 | CREATOR_DISH_ADOPTED | Nouvelle adoption — Gnocchi Bar sert « Gnocchi au pesto rosso » | chef@example.invalid | no | [png](current-renders/png/CREATOR_DISH_ADOPTED@600.png) | [png](current-renders/png/CREATOR_DISH_ADOPTED@390.png) |
 | ONBOARDING_NUDGE_GENERIC | Il vous reste 2 étapes pour finaliser votre inscription | gnocchi.bar@example.invalid | no | [png](current-renders/png/ONBOARDING_NUDGE_GENERIC@600.png) | [png](current-renders/png/ONBOARDING_NUDGE_GENERIC@390.png) |
@@ -69,13 +69,13 @@
 | PARTNER_ACCOUNT_REJECTED | Votre demande Grubano n'a pas été validée | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_ACCOUNT_REJECTED@600.png) | [png](current-renders/png/PARTNER_ACCOUNT_REJECTED@390.png) |
 | PARTNER_ACCOUNT_VALIDATED | Votre compte Grubano est validé | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_ACCOUNT_VALIDATED@600.png) | [png](current-renders/png/PARTNER_ACCOUNT_VALIDATED@390.png) |
 | PARTNER_DOCS_NEEDED_UNWIRED | Documents à fournir — Grubano | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_DOCS_NEEDED_UNWIRED@600.png) | [png](current-renders/png/PARTNER_DOCS_NEEDED_UNWIRED@390.png) |
-| PARTNER_EMAIL_VERIFY | Confirme ton email — espace partenaire Grubano | marco@example.invalid | no | [png](current-renders/png/PARTNER_EMAIL_VERIFY@600.png) | [png](current-renders/png/PARTNER_EMAIL_VERIFY@390.png) |
+| PARTNER_EMAIL_VERIFY | Confirmez votre e-mail — espace partenaire Grubano | marco@example.invalid | no | [png](current-renders/png/PARTNER_EMAIL_VERIFY@600.png) | [png](current-renders/png/PARTNER_EMAIL_VERIFY@390.png) |
 | PARTNER_NEW_ORDER | Nouvelle commande GR-ABC123 — Gnocchi Bar | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_NEW_ORDER@600.png) | [png](current-renders/png/PARTNER_NEW_ORDER@390.png) |
 | PARTNER_NEW_RESERVATION | Nouvelle réservation — samedi 12 septembre à 19:30 | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_NEW_RESERVATION@600.png) | [png](current-renders/png/PARTNER_NEW_RESERVATION@390.png) |
 | PARTNER_RESERVATION_CANCELLED_BY_CLIENT | Réservation annulée par le client — samedi 12 septembre à 19:30 | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_RESERVATION_CANCELLED_BY_CLIENT@600.png) | [png](current-renders/png/PARTNER_RESERVATION_CANCELLED_BY_CLIENT@390.png) |
 | PARTNER_WAITLIST_OFFER | Exclusivité disponible — « Gnocchi au pesto rosso » à Lyon | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_WAITLIST_OFFER@600.png) | [png](current-renders/png/PARTNER_WAITLIST_OFFER@390.png) |
-| REFUND_SUCCEEDED_FULL | Remboursement effectué — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/REFUND_SUCCEEDED_FULL@600.png) | [png](current-renders/png/REFUND_SUCCEEDED_FULL@390.png) |
-| REFUND_SUCCEEDED_PARTIAL | Remboursement partiel effectué — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/REFUND_SUCCEEDED_PARTIAL@600.png) | [png](current-renders/png/REFUND_SUCCEEDED_PARTIAL@390.png) |
+| REFUND_SUCCEEDED_FULL | Votre remboursement est confirmé — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/REFUND_SUCCEEDED_FULL@600.png) | [png](current-renders/png/REFUND_SUCCEEDED_FULL@390.png) |
+| REFUND_SUCCEEDED_PARTIAL | Votre remboursement partiel est confirmé — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/REFUND_SUCCEEDED_PARTIAL@600.png) | [png](current-renders/png/REFUND_SUCCEEDED_PARTIAL@390.png) |
 
 ## Not renderable
 - EMAIL_AGENT_* (4): body generated by the LLM at runtime — no template to render (dead, unscheduled).

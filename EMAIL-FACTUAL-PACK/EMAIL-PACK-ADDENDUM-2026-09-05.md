@@ -38,6 +38,22 @@ Total candidates: **61** (A 35 · B 22 · D 4; `CONSUMER_ORDER_ENROUTE` A→B, `
 
 E1 is split into capacity-safe sub-tranches: **E1-A** (global system + AUTH_MAGIC_LINK + CONSUMER_ORDER_READY pickup + PARTNER_NEW_ORDER; portable bundle `E1-A/CLAUDE-DESIGN-E1-A-BUNDLE.zip`) → founder approval → E1-B (auth), E1-C (consumer order), E1-D (partner core). E2/E3 unchanged, not started.
 
+## 4b · EMAIL TRUTHFULNESS HOTFIX — 2026-09-06 (auth + refund, live code)
+
+| Finding (register) | Fix | Where |
+|---|---|---|
+| T22 tutoiement (magic link, welcome, partner verify) | formal French everywhere; subjects « Votre lien de connexion Grubano », « Bienvenue sur Grubano — votre compte est prêt », « Confirmez votre e-mail — espace partenaire Grubano » | `app/api/auth/magic-link`, `app/api/auth/register`, `app/api/partners/register` |
+| T12 code validity « 15 minutes » (code lives 10) | validity sentence derived from the code constants: link 15 min (`MAGIC_TTL_MS`), code 10 min (`OTP_TTL_MS`); combined state distinguishes both | `lib/auth-email-copy.ts` |
+| T3 welcome promises « réserver une table » | removed (sur place OUT); beta capabilities only (Click & collect, points fidélité) | `app/api/auth/register` |
+| T4 welcome CTA hard-coded to production | CTA on the deployment base (`NEXTAUTH_URL`) | idem |
+| T13 « lien envoyé » when SMTP is not configured | account-independent honest 503 (`mail_unavailable`) BEFORE any lookup on magic-link, forgot-password and partner register (no un-activatable pending account created) | `lib/mail-transport-config.ts` + the 3 routes |
+| T6 refund « effectué par {resto} » | neutral: « Votre remboursement (partiel) est confirmé … renvoyé sur le moyen de paiement utilisé pour votre commande chez {resto} » | `lib/transactional-emails.ts sendRefundConfirmation` |
+| T7 « 5 à 10 jours ouvrés » | removed; « Le délai d'apparition sur votre compte dépend de votre banque. » (no number) | idem |
+| T8 claim refunded amount = requested | engine actual amount carried on the refunded outcome (`RefundTriggerResult.amountCents`) and used by the arbitrate + auto-small paths | `lib/claims.ts`, `app/api/admin/claims/[id]/arbitrate`, `app/api/claims` |
+| NEW rail A status truth (tickets, refund-deposit) | rail A answered ok on Stripe *acceptance*; e-mail now only when `refund.status === 'succeeded'`, amount = Stripe `refund.amount`; deposit route gains the missing dedupe key | `app/api/tickets/[id]/refund`, `app/api/reservations/[id]/refund-deposit` |
+
+Register status after the hotfix: T3, T4, T6, T7, T8, T12, T13, T22 → **CLOSED**. Remaining P1/P2: T9 (guard note), T10 (no-show, flag OFF), T11, T14–T21, T23, T24. Tests: `tests/email-truthfulness-hotfix.test.ts` (17). **Refund e-mail safe for the Phase 2 rehearsal: YES — SEND IF STRIPE SUCCEEDED** (see `docs/ops/EMAIL-TRUTHFULNESS-HOTFIX-2026-09-06.md`).
+
 ## 5 · Unchanged (still open)
 
 Deliverability pre-production blocker (external proof, DKIM signing, DMARC `rua`) — open, founder gate for one external mailbox. P1/P2 register preserved (T3, T4, T6–T24). Cron scripts' `INTERNAL_CRON_TOKEN` provenance (401) — separate ops finding.

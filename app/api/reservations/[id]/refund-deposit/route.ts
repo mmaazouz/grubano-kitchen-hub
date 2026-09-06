@@ -66,7 +66,10 @@ export async function POST(
 
     // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws).
     // Typical case: a contested no-show penalty given back in full.
-    if (reservation.email) {
+    // Email truthfulness hotfix (2026-09-06): e-mail ONLY when the Stripe refund is `succeeded`
+    // (rail A answers ok on acceptance; pending/failed must never read « confirmé »), amount =
+    // the Stripe refund amount, and the B0 dedupe key this call site was missing.
+    if (reservation.email && result.refund.status === 'succeeded') {
       try {
         // Admin gate is global (no ownership) → restaurantId can be null here.
         const resto = reservation.restaurantId
@@ -78,8 +81,9 @@ export async function POST(
           to:             reservation.email,
           customerName:   reservation.customerName,
           restaurantName: resto?.name ?? 'votre restaurant',
-          refundedCents:  result.refundedCents,
+          refundedCents:  result.refund.amount,
           partial:        false,
+          dedupeKey:      `resv:${reservation.id}:${result.refund.amount}`,
         })
       } catch (e) {
         console.error('[EMAIL MISS] [POST /api/reservations/[id]/refund-deposit] context lookup failed',

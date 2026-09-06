@@ -1,0 +1,88 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>E1-A — Composants email Grubano</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#EDE7DE;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;color:#0F2742;line-height:1.5}
+header{background:#0F2742;color:#fff;padding:22px 24px}header h1{margin:0;font-size:20px}
+header p{margin:6px 0 0;font-size:13px;color:#9FB2C8;max-width:860px}
+main{max-width:1180px;margin:0 auto;padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.c{background:#fff;border:1px solid #DCD5C8;border-radius:14px;overflow:hidden}
+.c>h2{margin:0;padding:14px 18px;font-size:14px;border-bottom:1px solid #ECE5D8;background:#FBF8F3}
+.c>h2 small{display:block;font-size:11.5px;font-weight:400;color:#5A6672;margin-top:3px}
+.demo{padding:20px 18px;background:#FBF8F3}
+.full{grid-column:1/-1}
+.spec{padding:14px 18px;border-top:1px solid #ECE5D8;font-size:12px;color:#5A6672}
+.spec code{font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:11.5px;background:#F2F0EA;padding:1px 5px;border-radius:4px;color:#0F2742}
+table{border-collapse:collapse}
+.tok{width:100%;font-size:12.5px}
+.tok td{padding:7px 10px;border-bottom:1px solid #ECE5D8}
+.tok td:first-child{font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:11.5px;width:132px}
+.sw{display:inline-block;width:16px;height:16px;border-radius:4px;vertical-align:-3px;margin-right:6px;border:1px solid rgba(15,39,66,.12)}
+</style></head><body>
+<header><h1>E1-A — Planche de composants email</h1><p>Chaque composant est rendu ici dans le même HTML email-safe que les références. Tout statut porte un glyphe + un libellé texte + une couleur : jamais la couleur seule.</p></header>
+<main>
+
+<div class="c"><h2>En-tête<small>symbole PNG 32 px + nom en texte — aucun fichier wordmark n'existe</small></h2>
+<div class="demo"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #ECE5D8;border-radius:12px"><tr><td style="padding:20px 24px;border-bottom:1px solid #ECE5D8"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="32" style="width:32px"><img src="../assets/grubano-symbol.svg" width="32" height="32" alt="Grubano" style="display:block"></td><td style="padding-left:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#0F2742">Grubano</td></tr></table></td></tr></table></div>
+<div class="spec">Hauteur ≈ 72 px. Images bloquées : l'<code>alt="Grubano"</code> + le nom texte portent la marque. Ligne restaurant optionnelle sous le nom.</div></div>
+
+<div class="c"><h2>Boutons<small>bulletproof — table + a, jamais un input</small></h2>
+<div class="demo">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#FF6A1F" style="border-radius:10px"><a href="#" style="display:inline-block;padding:15px 30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#0F2742;text-decoration:none;min-width:180px;text-align:center">Action principale</a></td></tr></table>
+<div style="height:12px"></div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="border:1px solid #D2D8E1;border-radius:10px;background:#fff"><a href="#" style="display:inline-block;padding:13px 26px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#0F2742;text-decoration:none">Action secondaire</a></td></tr></table>
+</div>
+<div class="spec">Primaire : blanc sur <code>#FF6A1F</code> = <strong>5,00:1</strong> (AA). Jamais blanc sur <code>#FF6A1F</code> (2,9:1). Un seul primaire par email. Pleine largeur sous 620 px.</div></div>
+
+<div class="c full"><h2>Bandes de statut<small>les 5 sémantiques du système</small></h2>
+<div class="demo">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#EAF7EF;border:1px solid #CDEBD8;border-radius:12px;margin-bottom:10px"><tr><td style="padding:13px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><span style="font-size:13px;font-weight:700;color:#1B5E3A;letter-spacing:.3px;text-transform:uppercase">&#10003; SUCCESS</span><div style="margin-top:5px;font-size:15px;color:#0F2742;font-weight:600">Votre commande est prête</div></td></tr></table><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FCF0D9;border:1px solid #F0D9A8;border-radius:12px;margin-bottom:10px"><tr><td style="padding:13px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><span style="font-size:13px;font-weight:700;color:#8A5A00;letter-spacing:.3px;text-transform:uppercase">! ACTION REQUISE</span><div style="margin-top:5px;font-size:15px;color:#0F2742;font-weight:600">Une commande payée attend votre acceptation</div></td></tr></table><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F2F4F7;border:1px solid #E3E7EE;border-radius:12px;margin-bottom:10px"><tr><td style="padding:13px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><span style="font-size:13px;font-weight:700;color:#5A6672;letter-spacing:.3px;text-transform:uppercase">&bull; NEUTRE</span><div style="margin-top:5px;font-size:15px;color:#0F2742;font-weight:600">Votre demande a été enregistrée</div></td></tr></table><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FCF0D9;border:1px solid #F0D9A8;border-radius:12px;margin-bottom:10px"><tr><td style="padding:13px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><span style="font-size:13px;font-weight:700;color:#8A5A00;letter-spacing:.3px;text-transform:uppercase">! AVERTISSEMENT</span><div style="margin-top:5px;font-size:15px;color:#0F2742;font-weight:600">La commande a été annulée</div></td></tr></table><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FCEAE7;border:1px solid #F4CFC9;border-radius:12px;margin-bottom:10px"><tr><td style="padding:13px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><span style="font-size:13px;font-weight:700;color:#96271A;letter-spacing:.3px;text-transform:uppercase">! URGENT</span><div style="margin-top:5px;font-size:15px;color:#0F2742;font-weight:600">Signalement à instruire sans délai</div></td></tr></table>
+</div>
+<div class="spec">AVERTISSEMENT et ACTION REQUISE partagent la teinte ambre : ils se distinguent par le <strong>libellé</strong>, jamais par la couleur seule. URGENT réservé aux familles money-review / sécurité.</div></div>
+
+<div class="c"><h2>Bloc référence<small>GR-XXXXXX — jamais un id base ou Stripe</small></h2>
+<div class="demo"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #ECE5D8;border-radius:12px"><tr><td style="padding:14px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><div style="font-size:12px;font-weight:700;color:#5A6672;letter-spacing:.4px;text-transform:uppercase">Commande</div><div style="margin-top:3px;font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:20px;font-weight:700;color:#0F2742;letter-spacing:.5px">GR-ABC123</div></td></tr></table></div>
+<div class="spec">Mono pour la copie manuelle. Identique client / cuisine / QR / email.</div></div>
+
+<div class="c"><h2>Bloc restaurant<small>nom seul aujourd'hui ; adresse et horaires non transmis</small></h2>
+<div class="demo"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #ECE5D8;border-radius:12px"><tr><td style="padding:14px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><div style="font-size:12px;font-weight:700;color:#5A6672;letter-spacing:.4px;text-transform:uppercase">Restaurant</div><div style="margin-top:3px;font-size:17px;font-weight:700;color:#0F2742">Gnocchi Bar</div><div style="margin-top:8px;font-size:14px;color:#5A6672">Présentez votre référence de commande au comptoir.</div></td></tr></table></div>
+<div class="spec">Extensible : adresse et horaires s'insèrent sous le nom <strong>si un jour transmis</strong>. Aucun bloc vide, aucun « non renseigné ».</div></div>
+
+<div class="c full"><h2>Table articles + montant<small>quantité mono, nom flexible, total à droite</small></h2>
+<div class="demo"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #ECE5D8;border-radius:12px"><tr><td style="padding:16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td width="40" style="width:40px;padding:9px 0;border-bottom:1px solid #ECE5D8;font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:15px;font-weight:700">2&times;</td><td style="padding:9px 0;border-bottom:1px solid #ECE5D8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:15px">Gnocchi 4 fromages</td></tr>
+<tr><td width="40" style="width:40px;padding:9px 0;border-bottom:1px solid #ECE5D8;font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:15px;font-weight:700">1&times;</td><td style="padding:9px 0;border-bottom:1px solid #ECE5D8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:15px">Tiramisu maison</td></tr>
+<tr><td colspan="2" style="padding:12px 0 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:14px;color:#5A6672">Mode</td><td align="right" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:14px;font-weight:700">Click &amp; collect</td></tr><tr><td style="padding-top:6px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:16px;font-weight:700">Montant payé</td><td align="right" style="padding-top:6px;font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:20px;font-weight:700">25,50 €</td></tr></table></td></tr>
+</table></td></tr></table></div>
+<div class="spec">Noms longs : retour à la ligne, la colonne quantité reste fixe. Liste vide → la table entière disparaît, le montant reste. Aucun frais, aucune ligne inventée.</div></div>
+
+<div class="c"><h2>Bloc code<small>dormant — AUTH_EMAIL_OTP_ENABLED</small></h2>
+<div class="demo"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #ECE5D8;border-radius:12px"><tr><td align="center" style="padding:18px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif"><div style="font-size:12px;font-weight:700;color:#5A6672;letter-spacing:.4px;text-transform:uppercase">Ou saisissez ce code</div><div style="margin-top:8px;font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:32px;font-weight:700;letter-spacing:8px;color:#0F2742">482913</div><div style="margin-top:6px;font-size:13px;color:#5A6672">Valable 10 minutes</div></td></tr></table></div>
+<div class="spec">Sans espace dans le nombre : la sélection tactile copie les 6 chiffres. Reprise identique en texte brut.</div></div>
+
+<div class="c"><h2>URL copiable<small>repli obligatoire de tout bouton d'action</small></h2>
+<div class="demo"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #ECE5D8;border-radius:10px"><tr><td style="padding:12px 14px;font-family:'SFMono-Regular',Consolas,Menlo,monospace;font-size:12.5px;line-height:19px;color:#16395A;word-break:break-all"><a href="#" style="color:#16395A">https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef</a></td></tr></table></div>
+<div class="spec"><code>word-break:break-all</code> — aucun débordement à 320 px. Lien cliquable <em>et</em> lisible.</div></div>
+
+<div class="c full"><h2>Pied de page unifié<small>identité · pourquoi cet email · support</small></h2>
+<div class="demo"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fff;border:1px solid #ECE5D8;border-radius:12px"><tr><td style="padding:20px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#5A6672">Vous recevez cet email parce que vous avez passé une commande sur Grubano.<br>Une question ? Écrivez-nous à <a href="mailto:contact@grubano.com" style="color:#16395A">contact@grubano.com</a> — vous pouvez aussi répondre à cet email.<br>Grubano — cet email a été envoyé automatiquement.</td></tr></table></div>
+<div class="spec">Trois lignes, dans cet ordre : <strong>pourquoi</strong> (variable selon l'audience), <strong>support</strong>, <strong>identité</strong>. Aucun lien de désabonnement sur un email transactionnel. Aucun réseau social.</div></div>
+
+<div class="c full"><h2>Jetons du système</h2>
+<table class="tok">
+<tr><td><span class="sw" style="background:#FF6A1F"></span>#FF6A1F</td><td>Zest 600 — fond des boutons primaires (blanc dessus = 5,00:1)</td></tr>
+<tr><td><span class="sw" style="background:#FF6A1F"></span>#FF6A1F</td><td>Zest — accents non textuels uniquement (filets, points)</td></tr>
+<tr><td><span class="sw" style="background:#0F2742"></span>#0F2742</td><td>Ink — titres et corps (sur blanc : 14,3:1)</td></tr>
+<tr><td><span class="sw" style="background:#5A6672"></span>#5A6672</td><td>Muted — libellés, pied (sur blanc : 5,7:1 — remplace #6B7682)</td></tr>
+<tr><td><span class="sw" style="background:#FBF8F3;border-color:#DCD5C8"></span>#FBF8F3</td><td>Fond chaud de la page et des blocs internes</td></tr>
+<tr><td><span class="sw" style="background:#ECE5D8"></span>#ECE5D8</td><td>Bordures</td></tr>
+<tr><td><span class="sw" style="background:#EAF7EF;border-color:#CDEBD8"></span>#EAF7EF / #1B5E3A</td><td>Success — fond / texte (7,3:1)</td></tr>
+<tr><td><span class="sw" style="background:#FCF0D9;border-color:#F0D9A8"></span>#FCF0D9 / #8A5A00</td><td>Action requise &amp; avertissement (5,4:1)</td></tr>
+<tr><td><span class="sw" style="background:#FCEAE7;border-color:#F4CFC9"></span>#FCEAE7 / #96271A</td><td>Urgent / sécurité (6,8:1)</td></tr>
+<tr><td>largeur</td><td>600 px · carte 16 px de rayon · pleine largeur et rayon 0 sous 620 px</td></tr>
+<tr><td>rythme</td><td>padding 32 px (20 sous 620, 16 sous 360) · h1 27/34 · corps 16/25 · secondaire 13,5/21 · pied 12/19</td></tr>
+<tr><td>polices</td><td>pile système uniquement — Gabarito et Hanken Grotesk ne sont pas embarquables</td></tr>
+</table></div>
+
+</main></body></html>

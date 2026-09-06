@@ -88,7 +88,8 @@ export async function POST(req: NextRequest) {
         consumerId:    c.consumerId,
         orderId:       c.orderId,
         decision:      auto.state === 'refunded' ? 'refunded' : 'approved',
-        refundedCents: auto.state === 'refunded' ? c.requestedAmountCents : null,
+        // Email truthfulness hotfix (2026-09-06): ENGINE amount, never the requested amount.
+        refundedCents: auto.state === 'refunded' ? auto.amountCents : null,
       })
     }
   }

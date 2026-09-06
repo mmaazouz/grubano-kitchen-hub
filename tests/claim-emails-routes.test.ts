@@ -100,12 +100,13 @@ describe('POST /api/claims — accusé de réception à l’ouverture', () => {
 
   it("⭐ chemin MACHINE auto_small (revue) : auto-résolution 'refunded' → l'email de décision part AUSSI (ack + refunded), rien n'est re-déclenché", async () => {
     claims.createClaim.mockResolvedValue({ ok: true, claim: CLAIM })
-    claims.autoResolveSmallClaim.mockResolvedValue({ state: 'refunded', refundId: 'rf1' })
+    // truthfulness hotfix 2026-09-06: the engine's ACTUAL amount (1000) differs from the requested 1250 → the e-mail must carry 1000
+    claims.autoResolveSmallClaim.mockResolvedValue({ state: 'refunded', refundId: 'rf1', amountCents: 1000 })
     const res = await CREATE(jsonReq('http://x/api/claims', { orderId: 'ord123abc', reason: 'quality' }))
     expect(res.status).toBe(201)
     expect(ackMock).toHaveBeenCalledTimes(1)
     expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
-      claimId: 'cl1', decision: 'refunded', refundedCents: 1250,
+      claimId: 'cl1', decision: 'refunded', refundedCents: 1000,
     }))
     expect(claims.autoResolveSmallClaim).toHaveBeenCalledTimes(1) // pas de re-déclenchement
   })
@@ -162,13 +163,13 @@ describe('POST /api/claims/[id]/respond — décision du RESTAURANT', () => {
 describe('POST /api/admin/claims/[id]/arbitrate — décision de GRUBANO (bloc strictement additif)', () => {
   it("⭐ approve + remboursement ÉMIS → email 'refunded' avec le montant ; l'audit admin reste appelé AVANT", async () => {
     claims.arbitrateClaim.mockResolvedValue({
-      ok: true, claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1' },
+      ok: true, claim: CLAIM, refund: { state: 'refunded', refundId: 'rf1', amountCents: 1000 }, // engine amount ≠ requested 1250
     })
     const res = await ARBITRATE(jsonReq('http://x/api/admin/claims/cl1/arbitrate', { decision: 'approve' }), { params: { id: 'cl1' } })
     expect(res.status).toBe(200)
     expect(auditMock).toHaveBeenCalledTimes(1) // la route d'arbitrage n'est PAS modifiée dans sa logique
     expect(decisionMock).toHaveBeenCalledWith(expect.objectContaining({
-      decision: 'refunded', refundedCents: 1250,
+      decision: 'refunded', refundedCents: 1000,
     }))
   })
 

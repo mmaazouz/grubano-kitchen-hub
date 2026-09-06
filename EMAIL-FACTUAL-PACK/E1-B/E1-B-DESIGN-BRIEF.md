@@ -7,10 +7,10 @@ Security and account emails: calm, precise, one action, formal French. Every ema
 
 | Email | Band | Must show | Must not |
 |---|---|---|---|
-| AUTH_MAGIC_LINK_WITH_OTP (dormant) | ACTION REQUIRED | the E1-A magic link with the code block; « ce lien est valable 15 minutes, le code 10 minutes, chacun utilisable une seule fois » | a single validity sentence covering both |
+| AUTH_MAGIC_LINK_WITH_OTP (dormant) | ACTION REQUIRED | the E1-A magic link with the code block; live sentence (post-hotfix): « Ce lien est valable 15 minutes et ce code 10 minutes ; chacun ne fonctionne qu'une seule fois. » | a single validity sentence covering both |
 | AUTH_PASSWORD_RESET | ACTION REQUIRED | button « Choisir un nouveau mot de passe » + copyable URL; « valable 1 heure, utilisable une seule fois »; ignore-if-not-you; support line | email address echoed in the body |
 | AUTH_PASSWORD_CHANGED | WARNING (security) | what changed; « si ce n'est pas vous » → reset path (« Mot de passe oublié » on the login page) + support address | reassurance without a next step |
-| CONSUMER_WELCOME | SUCCESS (warm) | account active; what the beta offers: commander en Click & collect, points fidélité; CTA « Découvrir les restaurants » (deployment base URL); ignore-if-not-you | « réserver une table » (sur place OUT), delivery, tutoiement, hardcoded production URL |
+| CONSUMER_WELCOME | SUCCESS (warm) | account active; what the beta offers: commander en Click & collect, points fidélité; CTA « Découvrir les restaurants » (deployment base URL — live copy already does this since the 2026-09-06 hotfix); ignore-if-not-you | « réserver une table » (sur place OUT), delivery, tutoiement, hardcoded production URL |
 | AUTH_STEPUP_CODE (dormant) | ACTION REQUIRED | action label (confirmer un retrait / modifier vos informations bancaires / modifier l'e-mail), code block, « 10 minutes, une seule fois », ignore-if-not-you + check your account | any link (code only) |
 | ACCOUNT_EMAIL_CHANGE_CODE (dormant) | ACTION REQUIRED | same code component, fixed action « modifier l'e-mail de votre compte » | |
 | ACCOUNT_EMAIL_CHANGE_LINK (dormant) | ACTION REQUIRED | to the NEW address: button « Confirmer ma nouvelle adresse » + copyable URL; « 15 minutes, une seule fois »; « tant que vous ne cliquez pas, rien ne change » | |

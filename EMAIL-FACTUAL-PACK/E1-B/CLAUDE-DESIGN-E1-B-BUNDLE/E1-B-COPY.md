@@ -5,7 +5,7 @@
 ### AUTH_MAGIC_LINK_WITH_OTP
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Ton lien de connexion Grubano`
+- **Subject:** `Votre lien de connexion Grubano`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
 - **Headline:** Connexion à Grubano
@@ -13,13 +13,13 @@
 
 ```text
 Connexion à Grubano
- Bonjour Léa Martin, voici ton lien de connexion sécurisé :
+ Bonjour Léa Martin, voici votre lien de connexion sécurisé :
  Me connecter
- Le bouton ne s'affiche pas ? Copie-colle ce lien dans ton navigateur :
+ Le bouton ne s'affiche pas ? Copiez-collez ce lien dans votre navigateur :
  https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
- Le lien s'ouvre dans le mauvais navigateur ? Saisis plutôt ce code sur la page de connexion :
+ Le lien s'ouvre dans le mauvais navigateur ? Saisissez plutôt ce code sur la page de connexion :
  424242
- Ce lien et ce code sont valables 15 minutes et ne fonctionnent qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+ Ce lien est valable 15 minutes et ce code 10 minutes ; chacun ne fonctionne qu'une seule fois. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 - **CTA(s):** « Me connecter » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef` · « https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef`
 - **Footer:** none
@@ -28,14 +28,14 @@ Connexion à Grubano
 ```text
 Bonjour Léa Martin,
 
-Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :
+Voici votre lien de connexion sécurisé à Grubano. Cliquez dessus ou copiez-collez-le dans votre navigateur :
 
 https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
 
-Ou saisis ce code à 6 chiffres sur la page de connexion : 424242
+Ou saisissez ce code à 6 chiffres sur la page de connexion : 424242
 
-Ce lien et ce code sont valables 15 minutes et ne fonctionnent qu'une seule fois.
-Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+Ce lien est valable 15 minutes et ce code 10 minutes ; chacun ne fonctionne qu'une seule fois.
+Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 
 
@@ -85,21 +85,21 @@ Mot de passe changé
 ### CONSUMER_WELCOME
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Bienvenue sur Grubano — ton compte est prêt`
+- **Subject:** `Bienvenue sur Grubano — votre compte est prêt`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Bienvenue sur Grubano, Léa Martin 👋
+- **Headline:** Bienvenue sur Grubano, Léa Martin
 - **Body (text of the HTML):**
 
 ```text
-Bienvenue sur Grubano, Léa Martin 👋
- Ton compte est créé et déjà actif. Tu peux commander, réserver une table
- et suivre tes points fidélité depuis ton espace.
+Bienvenue sur Grubano, Léa Martin
+ Votre compte est créé et déjà actif. Vous pouvez commander en Click & collect
+ et suivre vos points fidélité depuis votre espace.
  Découvrir les restaurants
- Si tu n'es pas à l'origine de cette
- inscription, réponds simplement à cet email.
+ Si vous n'êtes pas à l'origine de cette
+ inscription, répondez simplement à cet e-mail.
 ```
-- **CTA(s):** « Découvrir les restaurants » → `https://grubano.com/eat`
+- **CTA(s):** « Découvrir les restaurants » → `https://app.grubano.com/eat`
 - **Footer:** none
 - **Plain-text part:** none (HTML only — client-synthesized)
 

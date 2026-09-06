@@ -2,7 +2,7 @@
   "id": "REFUND_SUCCEEDED_PARTIAL",
   "from": "\"Grubano\" <contact@grubano.com>",
   "to": "lea.martin@example.invalid",
-  "subject": "Remboursement partiel effectué — Gnocchi Bar",
+  "subject": "Votre remboursement partiel est confirmé — Gnocchi Bar",
   "hasText": false,
   "hasImages": false,
   "hasTable": false

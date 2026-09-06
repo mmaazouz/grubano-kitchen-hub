@@ -75,7 +75,11 @@ export async function POST(
     // ── Transactional email v1 — POST-success, BEST-EFFORT (never throws).
     // The client's email lives on the LINKED reservation; a walk-in ticket
     // (reservationId null) or a reservation without email → nothing to send.
-    if (ticket.reservationId) {
+    // Email truthfulness hotfix (2026-09-06): rail A returns ok as soon as Stripe ACCEPTED the
+    // refund; a refund can still be `pending` (or later fail). The customer e-mail says
+    // « confirmé » ⇒ send it ONLY when the Stripe refund object is `succeeded`, and show the
+    // Stripe refund amount (the actual cash movement), never a requested/estimated figure.
+    if (ticket.reservationId && result.refund.status === 'succeeded') {
       try {
         const [reservation, resto] = await Promise.all([
           prisma.reservation.findUnique({
@@ -89,9 +93,9 @@ export async function POST(
             to:             reservation.email,
             customerName:   reservation.customerName,
             restaurantName: resto?.name ?? 'votre restaurant',
-            refundedCents:  result.refundedCents,
+            refundedCents:  result.refund.amount,
             partial:        result.remainingCents > 0,
-            dedupeKey:      `ticket:${ticket.id}:${result.refundedCents}`,
+            dedupeKey:      `ticket:${ticket.id}:${result.refund.amount}`,
           })
         }
       } catch (e) {

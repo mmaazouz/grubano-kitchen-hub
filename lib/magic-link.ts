@@ -14,7 +14,7 @@ import { sha256, safeEqualHex, parseVerificationToken } from '@/lib/partner-veri
 // This powers a PASSWORDLESS sign-in that lives ALONGSIDE the existing password
 // CredentialsProvider — it adds a path, it replaces nothing.
 
-const MAGIC_TTL_MS = 15 * 60 * 1000 // 15 minutes — short-lived by design
+export const MAGIC_TTL_MS = 15 * 60 * 1000 // 15 minutes — short-lived by design
 const SECRET_BYTES = 32             // 256 bits of entropy
 
 /** Mint a fresh magic-link token: the clear token to email, the hash to store, the expiry. */

@@ -6,6 +6,8 @@ import { issueEmailOtp, isEmailOtpEnabled } from '@/lib/email-otp'
 import { rateLimit } from '@/lib/rate-limit'
 import { maskEmail } from '@/lib/log-privacy'
 import { locales, defaultLocale } from '@/i18n'
+import { isMailTransportConfigured, mailUnavailableResponse } from '@/lib/mail-transport-config'
+import { magicLinkValiditySentence } from '@/lib/auth-email-copy'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -69,8 +71,11 @@ function baseUrl(req: NextRequest): string {
 
 const GENERIC = {
   ok: true,
-  message: "Si un compte existe pour cet email, un lien de connexion vient d'être envoyé. Vérifie ta boîte de réception (et les spams).",
+  message: "Si un compte existe pour cet e-mail, un lien de connexion vient d'être envoyé. Vérifiez votre boîte de réception (et les spams).",
 }
+
+// Email truthfulness hotfix (2026-09-06): the validity sentence is derived from the code
+// contracts in lib/auth-email-copy (link 15 min · code 10 min — different lifetimes).
 
 async function sendMagicEmail(name: string, to: string, link: string, code?: string | null) {
   // Two ways to follow the link so it is ALWAYS actionable, whatever the client does
@@ -83,31 +88,31 @@ async function sendMagicEmail(name: string, to: string, link: string, code?: str
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1a2e">
       <h2 style="color:#F97316">Connexion à Grubano</h2>
-      <p>Bonjour${name ? ' ' + name : ''}, voici ton lien de connexion sécurisé :</p>
+      <p>Bonjour${name ? ' ' + name : ''}, voici votre lien de connexion sécurisé :</p>
       <p style="text-align:center;margin:28px 0">
         <a href="${link}" style="background:#F97316;color:#fff;text-decoration:none;padding:14px 28px;border-radius:12px;font-weight:600;display:inline-block">Me connecter</a>
       </p>
-      <p style="font-size:13px;color:#6b7280;margin:0 0 6px">Le bouton ne s'affiche pas ? Copie-colle ce lien dans ton navigateur :</p>
+      <p style="font-size:13px;color:#6b7280;margin:0 0 6px">Le bouton ne s'affiche pas ? Copiez-collez ce lien dans votre navigateur :</p>
       <p style="font-size:13px;margin:0 0 24px"><a href="${link}" style="color:#F97316;word-break:break-all">${link}</a></p>
-      ${code ? `<p style="font-size:13px;color:#6b7280;margin:0 0 6px">Le lien s'ouvre dans le mauvais navigateur ? Saisis plutôt ce code sur la page de connexion :</p>
+      ${code ? `<p style="font-size:13px;color:#6b7280;margin:0 0 6px">Le lien s'ouvre dans le mauvais navigateur ? Saisissez plutôt ce code sur la page de connexion :</p>
       <p style="text-align:center;margin:0 0 24px"><span style="display:inline-block;font-family:monospace;font-size:26px;font-weight:700;letter-spacing:6px;color:#1a1a2e;background:#f3f4f6;border-radius:10px;padding:10px 18px">${code}</span></p>` : ''}
-      <p style="font-size:13px;color:#6b7280">Ce lien${code ? ' et ce code sont valables' : ' est valable'} 15 minutes et ne fonctionne${code ? 'nt' : ''} qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.</p>
+      <p style="font-size:13px;color:#6b7280">${magicLinkValiditySentence(!!code)} Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.</p>
     </div>`
   const text = [
     `Bonjour${name ? ' ' + name : ''},`,
     '',
-    'Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :',
+    'Voici votre lien de connexion sécurisé à Grubano. Cliquez dessus ou copiez-collez-le dans votre navigateur :',
     '',
     link,
-    ...(code ? ['', `Ou saisis ce code à 6 chiffres sur la page de connexion : ${code}`] : []),
+    ...(code ? ['', `Ou saisissez ce code à 6 chiffres sur la page de connexion : ${code}`] : []),
     '',
-    `Ce lien${code ? ' et ce code sont valables' : ' est valable'} 15 minutes et ne fonctionne${code ? 'nt' : ''} qu'une seule fois.`,
-    "Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.",
+    magicLinkValiditySentence(!!code),
+    "Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.",
   ].join('\n')
   await transporter.sendMail({
     from:    '"Grubano" <contact@grubano.com>',
     to,
-    subject: 'Ton lien de connexion Grubano',
+    subject: 'Votre lien de connexion Grubano',
     html,
     text,
   })
@@ -121,6 +126,11 @@ export async function POST(req: NextRequest) {
   // generic response is preserved.
   const limited = rateLimit(req, 'auth_magic_link', { limitDefault: 5, windowDefault: 600 })
   if (limited) return limited
+
+  // Email truthfulness hotfix (2026-09-06): with no SMTP secret NOTHING can be sent, so the
+  // generic « un lien vient d'être envoyé » would be false for everyone. A GLOBAL config fact
+  // (checked BEFORE any account lookup) → honest 503, no enumeration signal.
+  if (!isMailTransportConfigured()) return mailUnavailableResponse()
 
   try {
     const body   = (await req.json().catch(() => null)) as { email?: unknown; locale?: unknown; space?: unknown } | null

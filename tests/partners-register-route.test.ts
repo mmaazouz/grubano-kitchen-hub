@@ -41,6 +41,7 @@ const VALID = { name: 'Marco Pizzeria', email: 'marco@grubano.com', consent: tru
 
 beforeEach(() => {
   vi.clearAllMocks()
+  process.env.SMTP_PASS = 'x' // truthfulness hotfix 2026-09-06: no transport ⇒ honest 503 before any account write
   makeToken.mockReturnValue({ token: 'tok.secret', hash: 'deadbeef', expiry: new Date(8.64e15) })
   db.operator.findUnique.mockResolvedValue(null) // fresh email
   db.operator.create.mockResolvedValue({ id: 'op1' })

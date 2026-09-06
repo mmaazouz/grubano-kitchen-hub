@@ -18,6 +18,7 @@ vi.mock('nodemailer', () => ({ default: { createTransport: () => ({ sendMail }) 
 vi.mock('@/i18n', () => ({ locales: ['fr', 'en', 'es', 'ar', 'it'], defaultLocale: 'fr' }))
 vi.mock('@/lib/magic-link', () => ({
   createMagicLinkToken: () => ({ token: 'op1.deadbeef', hash: 'h', expiry: new Date(Date.now() + 900_000) }),
+  MAGIC_TTL_MS: 15 * 60 * 1000, // truthfulness hotfix 2026-09-06: lib/auth-email-copy derives the validity sentence from it
 }))
 
 import { POST } from '@/app/api/auth/magic-link/route'
@@ -157,11 +158,13 @@ describe('multi-domain base — allow-listed request host wins, forged host igno
     expect(sendMail).not.toHaveBeenCalled()
   })
 
-  it('no SMTP secret → no send attempt, still generic OK (never 500s)', async () => {
+  it('no SMTP secret → honest 503 (mail_unavailable) for everyone BEFORE any lookup — never a false « lien envoyé » (truthfulness hotfix 2026-09-06)', async () => {
     delete process.env.SMTP_PASS
     db.operator.findUnique.mockResolvedValue({ id: 'op1', name: 'R', status: 'active' })
     const res = await post({ email: 'r@x.fr' })
-    expect((await res.json()).ok).toBe(true)
+    expect(res.status).toBe(503)
+    expect((await res.json())).toMatchObject({ ok: false, reason: 'mail_unavailable' })
+    expect(db.operator.findUnique).not.toHaveBeenCalled() // config-level, account-independent → no enumeration signal
     expect(sendMail).not.toHaveBeenCalled()
   })
 })

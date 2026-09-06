@@ -289,7 +289,7 @@ Vérifier dans le dashboard Stripe si les DEUX PIs sont encaissés ; rembourser 
 ### AUTH_MAGIC_LINK
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Ton lien de connexion Grubano`
+- **Subject:** `Votre lien de connexion Grubano`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
 - **Headline:** Connexion à Grubano
@@ -297,11 +297,11 @@ Vérifier dans le dashboard Stripe si les DEUX PIs sont encaissés ; rembourser 
 
 ```text
 Connexion à Grubano
- Bonjour Léa Martin, voici ton lien de connexion sécurisé :
+ Bonjour Léa Martin, voici votre lien de connexion sécurisé :
  Me connecter
- Le bouton ne s'affiche pas ? Copie-colle ce lien dans ton navigateur :
+ Le bouton ne s'affiche pas ? Copiez-collez ce lien dans votre navigateur :
  https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
- Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+ Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 - **CTA(s):** « Me connecter » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef` · « https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef`
 - **Footer:** none
@@ -310,18 +310,18 @@ Connexion à Grubano
 ```text
 Bonjour Léa Martin,
 
-Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :
+Voici votre lien de connexion sécurisé à Grubano. Cliquez dessus ou copiez-collez-le dans votre navigateur :
 
 https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
 
 Ce lien est valable 15 minutes et ne fonctionne qu'une seule fois.
-Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 
 ### AUTH_MAGIC_LINK_WITH_OTP
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Ton lien de connexion Grubano`
+- **Subject:** `Votre lien de connexion Grubano`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
 - **Headline:** Connexion à Grubano
@@ -329,13 +329,13 @@ Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
 
 ```text
 Connexion à Grubano
- Bonjour Léa Martin, voici ton lien de connexion sécurisé :
+ Bonjour Léa Martin, voici votre lien de connexion sécurisé :
  Me connecter
- Le bouton ne s'affiche pas ? Copie-colle ce lien dans ton navigateur :
+ Le bouton ne s'affiche pas ? Copiez-collez ce lien dans votre navigateur :
  https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
- Le lien s'ouvre dans le mauvais navigateur ? Saisis plutôt ce code sur la page de connexion :
+ Le lien s'ouvre dans le mauvais navigateur ? Saisissez plutôt ce code sur la page de connexion :
  424242
- Ce lien et ce code sont valables 15 minutes et ne fonctionnent qu'une seule fois. Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+ Ce lien est valable 15 minutes et ce code 10 minutes ; chacun ne fonctionne qu'une seule fois. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 - **CTA(s):** « Me connecter » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef` · « https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef » → `https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef`
 - **Footer:** none
@@ -344,14 +344,14 @@ Connexion à Grubano
 ```text
 Bonjour Léa Martin,
 
-Voici ton lien de connexion sécurisé à Grubano. Clique dessus ou copie-colle-le dans ton navigateur :
+Voici votre lien de connexion sécurisé à Grubano. Cliquez dessus ou copiez-collez-le dans votre navigateur :
 
 https://app.grubano.com/fr/eat/magic?token=op_fixture01.0123456789abcdef0123456789abcdef
 
-Ou saisis ce code à 6 chiffres sur la page de connexion : 424242
+Ou saisissez ce code à 6 chiffres sur la page de connexion : 424242
 
-Ce lien et ce code sont valables 15 minutes et ne fonctionnent qu'une seule fois.
-Si tu n'es pas à l'origine de cette demande, ignore simplement cet email.
+Ce lien est valable 15 minutes et ce code 10 minutes ; chacun ne fonctionne qu'une seule fois.
+Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 
 ### AUTH_PASSWORD_CHANGED
@@ -998,21 +998,21 @@ Réservation confirmée ✓
 ### CONSUMER_WELCOME
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Bienvenue sur Grubano — ton compte est prêt`
+- **Subject:** `Bienvenue sur Grubano — votre compte est prêt`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Bienvenue sur Grubano, Léa Martin 👋
+- **Headline:** Bienvenue sur Grubano, Léa Martin
 - **Body (text of the HTML):**
 
 ```text
-Bienvenue sur Grubano, Léa Martin 👋
- Ton compte est créé et déjà actif. Tu peux commander, réserver une table
- et suivre tes points fidélité depuis ton espace.
+Bienvenue sur Grubano, Léa Martin
+ Votre compte est créé et déjà actif. Vous pouvez commander en Click & collect
+ et suivre vos points fidélité depuis votre espace.
  Découvrir les restaurants
- Si tu n'es pas à l'origine de cette
- inscription, réponds simplement à cet email.
+ Si vous n'êtes pas à l'origine de cette
+ inscription, répondez simplement à cet e-mail.
 ```
-- **CTA(s):** « Découvrir les restaurants » → `https://grubano.com/eat`
+- **CTA(s):** « Découvrir les restaurants » → `https://app.grubano.com/eat`
 - **Footer:** none
 - **Plain-text part:** none (HTML only — client-synthesized)
 
@@ -1191,18 +1191,18 @@ Complétez votre dossier depuis votre espace pour débloquer la validation.
 ### PARTNER_EMAIL_VERIFY
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** marco@example.invalid
-- **Subject:** `Confirme ton email — espace partenaire Grubano`
+- **Subject:** `Confirmez votre e-mail — espace partenaire Grubano`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Bienvenue sur Grubano, Marco Pizzeria 👋
+- **Headline:** Bienvenue sur Grubano, Marco Pizzeria
 - **Body (text of the HTML):**
 
 ```text
-Bienvenue sur Grubano, Marco Pizzeria 👋
- Pour activer ton espace partenaire, confirme ton adresse email :
+Bienvenue sur Grubano, Marco Pizzeria
+ Pour activer votre espace partenaire, confirmez votre adresse e-mail :
  Vérifier mon email
- Ce lien expire dans 24 heures. Si tu n'es
- pas à l'origine de cette demande, ignore simplement cet email.
+ Ce lien expire dans 24 heures. Si vous n'êtes
+ pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 - **CTA(s):** « Vérifier mon email » → `https://business.grubano.com/api/partners/verify-email?token=op_fixture02.fedcba9876543210fedcba9876543210`
 - **Footer:** none
@@ -1320,18 +1320,18 @@ Une exclusivité s’est libérée
 ### REFUND_SUCCEEDED_FULL
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Remboursement effectué — Gnocchi Bar`
+- **Subject:** `Votre remboursement est confirmé — Gnocchi Bar`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Remboursement effectué
+- **Headline:** Remboursement confirmé
 - **Body (text of the HTML):**
 
 ```text
-Remboursement effectué
- Bonjour Léa Martin, un remboursement de
- 25,50 € vient d’être effectué par
- Gnocchi Bar sur votre moyen de paiement.
- Le délai bancaire est de 5 à 10 jours ouvrés selon votre banque.
+Remboursement confirmé
+ Bonjour Léa Martin, votre remboursement de
+ 25,50 € est confirmé : ce montant est renvoyé sur le
+ moyen de paiement utilisé pour votre commande chez Gnocchi Bar.
+ Le délai d’apparition sur votre compte dépend de votre banque.
  Grubano — cet email a été envoyé automatiquement, vous pouvez y répondre si besoin.
 ```
 - **CTA:** none
@@ -1341,18 +1341,18 @@ Remboursement effectué
 ### REFUND_SUCCEEDED_PARTIAL
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Remboursement partiel effectué — Gnocchi Bar`
+- **Subject:** `Votre remboursement partiel est confirmé — Gnocchi Bar`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Remboursement effectué
+- **Headline:** Remboursement confirmé
 - **Body (text of the HTML):**
 
 ```text
-Remboursement effectué
- Bonjour Léa Martin, un remboursement partiel de
- 5,00 € vient d’être effectué par
- Gnocchi Bar sur votre moyen de paiement.
- Le délai bancaire est de 5 à 10 jours ouvrés selon votre banque.
+Remboursement confirmé
+ Bonjour Léa Martin, votre remboursement partiel de
+ 5,00 € est confirmé : ce montant est renvoyé sur le
+ moyen de paiement utilisé pour votre commande chez Gnocchi Bar.
+ Le délai d’apparition sur votre compte dépend de votre banque.
  Grubano — cet email a été envoyé automatiquement, vous pouvez y répondre si besoin.
 ```
 - **CTA:** none

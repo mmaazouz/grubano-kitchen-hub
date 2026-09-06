@@ -233,18 +233,18 @@ Elle sera examinée par un membre de l’équipe Grubano — vous serez informé
 ### REFUND_SUCCEEDED_FULL
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Remboursement effectué — Gnocchi Bar`
+- **Subject:** `Votre remboursement est confirmé — Gnocchi Bar`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Remboursement effectué
+- **Headline:** Remboursement confirmé
 - **Body (text of the HTML):**
 
 ```text
-Remboursement effectué
- Bonjour Léa Martin, un remboursement de
- 25,50 € vient d’être effectué par
- Gnocchi Bar sur votre moyen de paiement.
- Le délai bancaire est de 5 à 10 jours ouvrés selon votre banque.
+Remboursement confirmé
+ Bonjour Léa Martin, votre remboursement de
+ 25,50 € est confirmé : ce montant est renvoyé sur le
+ moyen de paiement utilisé pour votre commande chez Gnocchi Bar.
+ Le délai d’apparition sur votre compte dépend de votre banque.
  Grubano — cet email a été envoyé automatiquement, vous pouvez y répondre si besoin.
 ```
 - **CTA:** none
@@ -255,18 +255,18 @@ Remboursement effectué
 ### REFUND_SUCCEEDED_PARTIAL
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** lea.martin@example.invalid
-- **Subject:** `Remboursement partiel effectué — Gnocchi Bar`
+- **Subject:** `Votre remboursement partiel est confirmé — Gnocchi Bar`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Remboursement effectué
+- **Headline:** Remboursement confirmé
 - **Body (text of the HTML):**
 
 ```text
-Remboursement effectué
- Bonjour Léa Martin, un remboursement partiel de
- 5,00 € vient d’être effectué par
- Gnocchi Bar sur votre moyen de paiement.
- Le délai bancaire est de 5 à 10 jours ouvrés selon votre banque.
+Remboursement confirmé
+ Bonjour Léa Martin, votre remboursement partiel de
+ 5,00 € est confirmé : ce montant est renvoyé sur le
+ moyen de paiement utilisé pour votre commande chez Gnocchi Bar.
+ Le délai d’apparition sur votre compte dépend de votre banque.
  Grubano — cet email a été envoyé automatiquement, vous pouvez y répondre si besoin.
 ```
 - **CTA:** none

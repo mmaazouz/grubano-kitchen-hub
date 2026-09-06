@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isMailTransportConfigured, mailUnavailableResponse } from '@/lib/mail-transport-config'
 import { randomBytes } from 'crypto'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
@@ -42,6 +43,10 @@ export async function POST(req: Request) {
   // the 429 depends on the caller's IP, never on the account's existence.
   const limited = rateLimit(req, 'auth_forgot_password', { limitDefault: 5, windowDefault: 600 })
   if (limited) return limited
+
+  // Email truthfulness hotfix (2026-09-06): no SMTP secret ⇒ no reset link can be sent ⇒ the
+  // always-200 « lien envoyé » contract would be false. Global config fact → honest 503.
+  if (!isMailTransportConfigured()) return mailUnavailableResponse()
 
   try {
     const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))

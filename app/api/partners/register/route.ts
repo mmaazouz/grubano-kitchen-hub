@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as dns } from 'dns'
 import nodemailer from 'nodemailer'
+import { isMailTransportConfigured, mailUnavailableResponse } from '@/lib/mail-transport-config'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { createVerificationToken } from '@/lib/partner-verification'
@@ -147,6 +148,8 @@ const transporter = nodemailer.createTransport({
   },
 })
 
+const PARTNER_VERIFY_SUBJECT = 'Confirmez votre e-mail — espace partenaire Grubano'
+
 function appBaseUrl(req: NextRequest): string {
   if (process.env.PARTNER_APP_URL) return process.env.PARTNER_APP_URL.replace(/\/$/, '')
   const proto = req.headers.get('x-forwarded-proto') ?? 'https'
@@ -158,22 +161,22 @@ async function sendVerificationEmail(req: NextRequest, to: string, name: string,
   const link = `${appBaseUrl(req)}/api/partners/verify-email?token=${encodeURIComponent(token)}`
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;max-width:480px;margin:0 auto;color:#1a1a2e">
-      <h2 style="color:#F97316">Bienvenue sur Grubano, ${name} 👋</h2>
-      <p>Pour activer ton espace partenaire, confirme ton adresse email :</p>
+      <h2 style="color:#F97316">Bienvenue sur Grubano, ${name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')}</h2>
+      <p>Pour activer votre espace partenaire, confirmez votre adresse e-mail :</p>
       <p style="text-align:center;margin:28px 0">
         <a href="${link}" style="background:#F97316;color:#fff;text-decoration:none;
            padding:14px 28px;border-radius:12px;font-weight:600;display:inline-block">
            Vérifier mon email
         </a>
       </p>
-      <p style="font-size:13px;color:#6b7280">Ce lien expire dans 24 heures. Si tu n'es
-         pas à l'origine de cette demande, ignore simplement cet email.</p>
+      <p style="font-size:13px;color:#6b7280">Ce lien expire dans 24 heures. Si vous n'êtes
+         pas à l'origine de cette demande, ignorez simplement cet e-mail.</p>
     </div>`
 
   await transporter.sendMail({
     from:    '"Grubano" <contact@grubano.com>',
     to,
-    subject: 'Confirme ton email — espace partenaire Grubano',
+    subject: PARTNER_VERIFY_SUBJECT,
     html,
   })
 }
@@ -188,10 +191,16 @@ export async function POST(req: NextRequest) {
   // 2. Rate limit per IP.
   if (rateLimited(clientIp(req))) {
     return NextResponse.json(
-      { error: 'Trop de tentatives. Réessaie dans une heure.' },
+      { error: 'Trop de tentatives. Réessayez dans une heure.' },
       { status: 429 },
     )
   }
+
+  // Email truthfulness hotfix (2026-09-06): a pending partner account can ONLY be activated
+  // through the verification e-mail. Without an SMTP secret nothing can be sent → refuse
+  // honestly (503) BEFORE creating an un-activatable account or claiming « e-mail envoyé ».
+  // Global config fact, checked before any lookup → no enumeration signal.
+  if (!isMailTransportConfigured()) return mailUnavailableResponse()
 
   try {
     const body = await req.json().catch(() => null)
@@ -276,7 +285,7 @@ export async function POST(req: NextRequest) {
       await prisma.emailLog.create({
         data: {
           recipient: email,
-          subject:   'Confirme ton email — espace partenaire Grubano',
+          subject:   PARTNER_VERIFY_SUBJECT,
           trigger:   'partner_verify',
           status:    emailStatus,
         },

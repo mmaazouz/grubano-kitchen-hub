@@ -40,11 +40,12 @@ for (const id of IDS) {
 }
 md += [
   '',
-  '## Fact classification (2026-09-06) — CURRENT · DORMANT',
+  '## Fact classification (2026-09-06, POST-HOTFIX) — CURRENT · DORMANT',
   '- CURRENT (A): AUTH_PASSWORD_RESET (password accounts only), AUTH_PASSWORD_CHANGED, CONSUMER_WELCOME.',
   '- DORMANT (B, feature switch OFF in the closed beta): AUTH_MAGIC_LINK_WITH_OTP (code state of the E1-A magic link), AUTH_STEPUP_CODE, ACCOUNT_EMAIL_CHANGE_CODE, ACCOUNT_EMAIL_CHANGE_LINK, ACCOUNT_EMAIL_CHANGED_ALERT, ACCOUNT_EMAIL_CHANGE_CONFIRM, ACCOUNT_EMAIL_ALREADY_USED.',
-  '- Validities (facts): magic link 15 min · reset link 1 h · email-change link 15 min · every 6-digit code 10 min · all single use. Current OTP copy says « 15 minutes » for the code — wrong, design with 10.',
-  '- Known copy defects to fix in the designed state: welcome promises « réserver une table » (sur place OUT) and links to a hardcoded production URL; three emails tutoient (welcome, magic link, partner verify); the changed-email alert names no contact channel.',
+  '- Validities (measured in code): magic link 15 min (`lib/magic-link.ts`) · 6-digit codes 10 min (`lib/email-otp.ts`) · reset link 1 h · email-change link 15 min · all single use. The live copy derives these from the constants (`lib/auth-email-copy.ts`); the combined link + code e-mail distinguishes 15 (lien) and 10 (code).',
+  '- TRUTHFULNESS HOTFIX APPLIED (2026-09-06, live code): formal French in every reachable auth e-mail (magic link, welcome, partner verify) · welcome no longer promises « réserver une table » (sur place OUT) and its CTA follows the deployment base URL · no auth route claims « lien envoyé » when the mail transport is not configured (honest 503) · the changed-email alert (DORMANT) still names no contact channel: the design adds `contact@grubano.com`.',
+  '- The renders in `current-renders/` are POST-HOTFIX fossils (regenerated 2026-09-06).',
   '',
 ].join('\n')
 writeFileSync(join(OUT, 'E1-B-MANIFEST.md'), md)
@@ -63,14 +64,14 @@ writeFileSync(join(OUT, 'E1-B-CURRENT-VISUALS.md'), v)
 writeFileSync(join(OUT, 'E1-B-DATA-CONTRACTS.md'), [
   '# E1-B-DATA-CONTRACTS — fields available to the auth / account emails',
   '',
-  'Base URL = deployment origin (staging `https://app.grubano.com`; the welcome email currently hardcodes production — implementation will fix). No order data in this family. All codes are 6 digits; all links are absolute and single use.',
+  'Base URL = deployment origin (staging `https://app.grubano.com`; the welcome CTA follows it since the 2026-09-06 hotfix). No order data in this family. All codes are 6 digits; all links are absolute and single use.',
   '',
   '| Email | Passed today | Conditional / nullable | Available but NOT passed (needs plumbing) |',
   '|---|---|---|---|',
   '| AUTH_MAGIC_LINK_WITH_OTP | `to`, `link`, `code` | `name` (empty → « Bonjour, ») | recipient locale |',
   '| AUTH_PASSWORD_RESET | `to`, `name`, `resetUrl` (absolute; today carries token + email + space in the query) | — | expiry timestamp (1 h constant) |',
   '| AUTH_PASSWORD_CHANGED | `to`, `name` | — | date/time, device, IP (not tracked) |',
-  '| CONSUMER_WELCOME | `to`, `name` | — | base URL variable (implementation), loyalty balance (0 at signup) |',
+  '| CONSUMER_WELCOME | `to`, `name` | — | loyalty balance (0 at signup) |',
   '| AUTH_STEPUP_CODE | `to`, `code`, `purpose` → label (confirmer un retrait / modifier vos informations bancaires / modifier l\'e-mail de votre compte; fallback « confirmer une action sensible ») | — | expiry timestamp (10 min constant) |',
   '| ACCOUNT_EMAIL_CHANGE_CODE | `to` (current address), `code` | — | — |',
   '| ACCOUNT_EMAIL_CHANGE_LINK | `to` (new address), `link` | — | expiry (15 min constant) |',
@@ -84,23 +85,20 @@ writeFileSync(join(OUT, 'E1-B-DATA-CONTRACTS.md'), [
   '',
 ].join('\n'))
 
-// ── APPROVED-E1-A-SYSTEM slot ────────────────────────────────────────────────
-writeFileSync(join(BUNDLE, 'APPROVED-E1-A-SYSTEM', 'README.md'), [
-  '# APPROVED-E1-A-SYSTEM — drop the approved E1-A outputs here before uploading',
-  '',
-  'The founder approved the E1-A global email design system on 2026-09-06 (see `../E1-A-FOUNDER-DECISION.md`). Its outputs were produced in the founder\'s Claude Design E1-A session and are **not** in the code repository, so Claude Code cannot include them automatically.',
-  '',
-  'Before uploading this bundle, add the E1-A session outputs to this folder:',
-  '',
-  '- `CLAUDE-DESIGN-GRUBANO-EMAIL-SYSTEM-CONTRACT.md` (mandatory — the visual authority)',
-  '- `E1-A-components.html` (mandatory)',
-  '- `E1-A-DESIGN-MANIFEST.md`',
-  '- `E1-A-email-gallery.html`',
-  '- the three E1-A HTML references (magic link, order ready pickup, partner new order)',
-  '',
-  'If the contract file is missing, Claude Design must stop and ask for it instead of inventing a system.',
-  '',
-].join('\n'))
+// ── APPROVED-E1-A-SYSTEM — founder-approved outputs, archived in-repo (EMAIL-FACTUAL-PACK/E1-A/APPROVED)
+//    since 2026-09-06 with the factual TTL patch (APPROVED/E1-A-FACTUAL-PATCH-2026-09-06.md) ─────────
+const APPROVED = join(PACK, 'E1-A', 'APPROVED')
+const copyTree = (from, to) => {
+  mkdirSync(to, { recursive: true })
+  for (const e of readdirSync(from, { withFileTypes: true })) {
+    if (e.isDirectory()) copyTree(join(from, e.name), join(to, e.name))
+    else copyFileSync(join(from, e.name), join(to, e.name))
+  }
+}
+for (const must of ['CLAUDE-DESIGN-GRUBANO-EMAIL-SYSTEM-CONTRACT.md', 'E1-A-components.html', 'E1-A-DESIGN-MANIFEST.md', 'E1-A-email-gallery.html', 'emails/auth-magic-link.html', 'emails/consumer-order-ready-pickup.html', 'emails/partner-new-order.html']) {
+  if (!existsSync(join(APPROVED, must))) { console.error('MISSING approved E1-A file:', must); process.exitCode = 1 }
+}
+copyTree(APPROVED, join(BUNDLE, 'APPROVED-E1-A-SYSTEM'))
 copyFileSync(join(PACK, 'E1-A', 'FOUNDER-DECISION-2026-09-06.md'), join(BUNDLE, 'APPROVED-E1-A-SYSTEM', 'E1-A-FOUNDER-DECISION.md'))
 
 // ── BUNDLE ───────────────────────────────────────────────────────────────────

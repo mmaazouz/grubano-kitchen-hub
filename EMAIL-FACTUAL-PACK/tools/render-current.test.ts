@@ -46,9 +46,11 @@ vi.mock('@/lib/email-otp', () => ({
   verifyEmailOtp: async () => true,
   isEmailOtpEnabled: () => process.env.AUTH_EMAIL_OTP_ENABLED === 'true',
   isMoneyStepUpEnabled: () => true,
+  OTP_TTL_MS: 10 * 60 * 1000,
 }))
 vi.mock('@/lib/magic-link', () => ({
   createMagicLinkToken: () => ({ token: 'op_fixture01.0123456789abcdef0123456789abcdef', hash: 'h', expiry: new Date('2026-09-12T17:45:00Z') }),
+  MAGIC_TTL_MS: 15 * 60 * 1000,
 }))
 vi.mock('@/lib/partner-verification', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

@@ -90,7 +90,9 @@ export type ClaimActionResult =
   | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string }
 
 export type RefundTriggerResult =
-  | { state: 'refunded'; refundId: string }
+  /** Email truthfulness hotfix (2026-09-06): `amountCents` = the ENGINE's actual succeeded cash
+   *  refund (executeRefund result), so the customer e-mail never shows the REQUESTED amount. */
+  | { state: 'refunded'; refundId: string; amountCents: number }
   | { state: 'pending'; reason: 'refunds_disabled' }
   /** PHASE 2 (§15 A7): Stripe accepted the refund but it is not succeeded yet — the claim
    *  stays 'refunding' with the Refund row id; NO refundError, NO revert to 'approved'.
@@ -252,7 +254,7 @@ async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult>
       where: { id: claimId },
       data:  { status: 'refunded', refundId: result.refundId, refundError: null, activeOrderKey: null },
     })
-    return { state: 'refunded', refundId: result.refundId }
+    return { state: 'refunded', refundId: result.refundId, amountCents: result.amountCents }
   }
   // PHASE 2 (§15 A7) — Stripe accepted the refund but it is NOT succeeded yet: money has
   // not reached the customer. Keep the claim 'refunding' (truthful), record the Refund row,

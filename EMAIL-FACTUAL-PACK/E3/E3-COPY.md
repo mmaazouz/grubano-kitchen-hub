@@ -138,18 +138,18 @@ Si c'était vous, connectez-vous directement avec cette adresse. Sinon, ignorez 
 ### PARTNER_EMAIL_VERIFY
 - **From:** "Grubano" <contact@grubano.com>
 - **To (fixture):** marco@example.invalid
-- **Subject:** `Confirme ton email — espace partenaire Grubano`
+- **Subject:** `Confirmez votre e-mail — espace partenaire Grubano`
 - **Preheader:** none
 - **Direction:** ltr (implicit)
-- **Headline:** Bienvenue sur Grubano, Marco Pizzeria 👋
+- **Headline:** Bienvenue sur Grubano, Marco Pizzeria
 - **Body (text of the HTML):**
 
 ```text
-Bienvenue sur Grubano, Marco Pizzeria 👋
- Pour activer ton espace partenaire, confirme ton adresse email :
+Bienvenue sur Grubano, Marco Pizzeria
+ Pour activer votre espace partenaire, confirmez votre adresse e-mail :
  Vérifier mon email
- Ce lien expire dans 24 heures. Si tu n'es
- pas à l'origine de cette demande, ignore simplement cet email.
+ Ce lien expire dans 24 heures. Si vous n'êtes
+ pas à l'origine de cette demande, ignorez simplement cet e-mail.
 ```
 - **CTA(s):** « Vérifier mon email » → `https://business.grubano.com/api/partners/verify-email?token=op_fixture02.fedcba9876543210fedcba9876543210`
 - **Footer:** none

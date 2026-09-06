@@ -4,7 +4,7 @@
 
 | ID | Subject | To (fixture) | text part | 600 px | 390 px |
 |---|---|---|---|---|---|
-| AUTH_MAGIC_LINK | Ton lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK@390.png) |
+| AUTH_MAGIC_LINK | Votre lien de connexion Grubano | lea.martin@example.invalid | yes | [png](current-renders/png/AUTH_MAGIC_LINK@600.png) | [png](current-renders/png/AUTH_MAGIC_LINK@390.png) |
 | CONSUMER_ORDER_READY_PICKUP | Commande GR-ABC123 prête — Gnocchi Bar | lea.martin@example.invalid | no | [png](current-renders/png/CONSUMER_ORDER_READY_PICKUP@600.png) | [png](current-renders/png/CONSUMER_ORDER_READY_PICKUP@390.png) |
 | PARTNER_NEW_ORDER | Nouvelle commande GR-ABC123 — Gnocchi Bar | gnocchi.bar@example.invalid | no | [png](current-renders/png/PARTNER_NEW_ORDER@600.png) | [png](current-renders/png/PARTNER_NEW_ORDER@390.png) |
 

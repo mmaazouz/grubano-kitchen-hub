@@ -715,16 +715,25 @@ export async function sendRefundConfirmation(p: {
   /** true when part of the payment remains (partial refund). */
   partial:        boolean
 }): Promise<void> {
+  // Email truthfulness hotfix (2026-09-06):
+  //   • ACTOR — refunds are instructed by Grubano's admin rail (Q3), never by the restaurant:
+  //     the old « effectué par {resto} » named the wrong actor. Neutral wording; the restaurant
+  //     name only identifies the order.
+  //   • TIMING — « 5 à 10 jours ouvrés » was an unsupported figure: no numeric bank delay.
+  //   • AMOUNT — `refundedCents` MUST be the ACTUAL succeeded Stripe cash refund (callers pass
+  //     the engine / Stripe refund amount, never a requested or estimated amount). The email
+  //     speaks of CASH only; loyalty restoration (points) is never presented as cash.
+  //   • STATE — callers send this ONLY after Stripe `succeeded` (pending/failed ⇒ no email).
   await sendTransactional({
     to:      p.to,
-    subject: `Remboursement ${p.partial ? 'partiel ' : ''}effectué — ${p.restaurantName}`,
+    subject: `Votre remboursement ${p.partial ? 'partiel ' : ''}est confirmé — ${p.restaurantName}`,
     trigger: 'refund_confirmation',
     dedupeKey: p.dedupeKey,
-    html: shell('Remboursement effectué', `
-      <p>Bonjour ${esc(p.customerName)}, un remboursement ${p.partial ? '<strong>partiel</strong> ' : ''}de
-         <strong>${eurosFromCents(p.refundedCents)}</strong> vient d’être effectué par
-         <strong>${esc(p.restaurantName)}</strong> sur votre moyen de paiement.</p>
-      <p style="font-size:13px;color:#6b7280">Le délai bancaire est de 5 à 10 jours ouvrés selon votre banque.</p>`),
+    html: shell('Remboursement confirmé', `
+      <p>Bonjour ${esc(p.customerName)}, votre remboursement ${p.partial ? '<strong>partiel</strong> ' : ''}de
+         <strong>${eurosFromCents(p.refundedCents)}</strong> est confirmé : ce montant est renvoyé sur le
+         moyen de paiement utilisé pour votre commande chez <strong>${esc(p.restaurantName)}</strong>.</p>
+      <p style="font-size:13px;color:#6b7280">Le délai d’apparition sur votre compte dépend de votre banque.</p>`),
   })
 }
 
