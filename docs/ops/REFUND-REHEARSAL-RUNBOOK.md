@@ -72,3 +72,18 @@ Les deux routes (`/api/admin/refunds/run`, `/api/orders/[id]/refund`) évaluent 
 
 ## 8 · Ce que ce train ne fait pas
 Aucun refund · `REFUNDS_ENABLED` inchangé (false, 403 gated mesuré) · payout schedule inchangé · aucun webhook modifié · Stripe LIVE intact · web-root T-41, HTTP 401, normalisation hébergeur, Claims, e-mails (hors plan), livraison, franchise : hors périmètre.
+
+## 1b · RECHECK LECTURE SEULE du 2026-09-07T00:09Z (porte pré-refund « September 8 »)
+
+| Mesure | Valeur | Verdict |
+|---|---|---|
+| Staging | `/version.json` = **15bb7db** (app + business) ; `/fr/eat` 200 · `/api/restaurants` 200 · waitlist 200 | ENV = STAGING |
+| Gel technique (processus) | `POST /api/admin/refunds/run {}` → **403 gated** · `POST /api/orders/[id]/refund {}` → 403 gated · `POST /api/admin/claims/auto-approve {}` → 403 gated (CLAIMS_ENABLED false) · `tipsEnabled:false` · `fulfillment.delivery:false` | REFUNDS_ENABLED runtime FALSE ; CLAIMS/TIPS/DELIVERY OFF ; GHOST_ORDER_AUTO_REFUND = fichier false (v5) — pas de sonde publique |
+| GR-N5TSM0 (Stripe) | PI `pi_3UB…CMfy` succeeded 1410/1410 · charge `ch_3UB…HBjy` captured 1410, **amount_refunded 0** · fee 76 (refunded 0) · transfer 1410 (reversed 0) · **0 refund** · remaining **1410** | TARGET STILL DISPOSABLE (Stripe) = YES |
+| Vecteur moteur ACTUEL (tests réels, 7/7 + engine 48/48) | 500 c → fee reversal **27**, restaurant reversal **473**, spent restore 3, earned reverse 5, offset 0 si balance ≥ 5 | CONFIRMS PREVIOUS VECTOR = YES |
+| Compte connecté `acct_1…yYMY` | **AVAILABLE EUR 0 c** · PENDING EUR 2668 c (`payment:1334` available_on 2026-09-08, `payment:1334` available_on 2026-09-09) · payout schedule **manual** (delay 7) · 0 payout | **CONNECT FUNDING GATE = WAIT** · SHORTFALL **473 c** · sweep risk NONE |
+| Webhooks TEST | `we_1Tg…ygcg` enabled : charge.refunded / refund.updated / refund.failed SUBSCRIBED | PASS |
+| E-mail refund (HEAD `ca0e19a`) | `sendRefundConfirmation` : formulation neutre (« votre remboursement … est confirmé »), aucun délai chiffré, montant = `result.amountCents` du refund **succeeded** (appel uniquement après `result.ok`, 202 pending ⇒ aucun e-mail), fidélité jamais présentée comme cash | REFUND EMAIL SAFE = **YES** (plan SUPPRESS levé) |
+| DB (order, Refund rows, ledger, loyalty balance/offset) | NOT MEASURED localement (base injoignable) ; dernières mesures v3/v5 cohérentes ; capture BEFORE = `phase2-refund-gate.js` (precheck, lecture seule) le jour J | — |
+
+Aucune mutation : 0 refund, 0 flag, 0 payout, 0 webhook, 0 e-mail, Stripe LIVE intact. Prochaine étape : re-mesurer le solde **disponible** (pas pending) ; les `available_on` Stripe sont des estimations, pas une preuve.
