@@ -154,7 +154,7 @@ async function main() {
   if (prismaRes.ok && rt.databaseUrl) { try { const { PrismaClient } = require(prismaRes.path); prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } }) } catch (e) { A('3 db: prisma construction failed (' + scrub(e) + ')') } }
   else A('3 db: prisma not available (' + (prismaRes.ok ? 'no DATABASE_URL' : prismaRes.error) + ') — DB facts NOT MEASURED')
 
-  let order = null, piId = null, consumerEmailDomain = 'NOT MEASURED', loyalty = null, refundRows = [], claims = 0, audits = 0, ledgerRefundLines = 0
+  let order = null, piId = null, consumerEmailDomain = 'NOT MEASURED', loyalty = null, refundRows = [], claims = 0, audits = 0, ledgerRefundLines = 0, preState = null
   if (prisma) try {
     order = await prisma.order.findUnique({ where: { id: ORDER_ID }, select: { id: true, status: true, paymentStatus: true, subtotal: true, total: true, pointsRedeemed: true, loyaltyCreditCents: true, pointsEarned: true, stripePaymentIntentId: true, pointOfSaleId: true, consumerId: true, restaurantId: true, fulfillmentType: true } })
     if (!order) return fail('3 db: order ' + ORDER_ID + ' not found')
@@ -179,6 +179,27 @@ async function main() {
     loyalty = { earnRow: !!earnRow, earnPoints: earnRow ? earnRow.points : 0, balance: lc ? lc.pointsBalance : null, offset: lc ? lc.recoveryOffsetPoints : null, custId: lc ? lc.id : custId }
     F('LOYALTY customer (DB)', lc ? 'pointsBalance ' + lc.pointsBalance + ' · recoveryOffsetPoints ' + lc.recoveryOffsetPoints : 'none')
     F('CONSUMER EMAIL DOMAIN (DB, masked)', consumerEmailDomain)
+    // ── BEFORE-STATE (evidence for the post-refund reconciliation; captured BEFORE any gate action) ──
+    const ledgerLines = piId ? await prisma.ledgerEntry.findMany({ where: { stripePaymentIntentId: piId }, select: { type: true, grossAmount: true, applicationFeeAmount: true, netToRestaurant: true, sourceEventId: true }, orderBy: { createdAt: 'asc' } }) : []
+    const sumL = (t) => ledgerLines.reduce((a, l) => a + (l[t] || 0), 0)
+    const redeemRow = lts.find((t) => t.type === 'redeem')
+    const priorRefundLoyalty = lts.filter((t) => t.type === 'refund' || t.type === 'earn_reversal')
+    const priorRefundLedger = ledgerLines.filter((l) => l.type === 'refund')
+    F('BEFORE · DB REFUND ROWS FOR ORDER', String(refundRows.length))
+    F('BEFORE · LEDGER LINES FOR PI (type{gross,fee,net})', ledgerLines.length ? ledgerLines.map((l) => l.type + '{' + l.grossAmount + ',' + l.applicationFeeAmount + ',' + l.netToRestaurant + '}').join(' ; ') : 'none')
+    F('BEFORE · LEDGER GROSS / FEE / NET (Σ all lines for PI)', sumL('grossAmount') + ' / ' + sumL('applicationFeeAmount') + ' / ' + sumL('netToRestaurant'))
+    F('BEFORE · CUSTOMER LOYALTY BALANCE', lc ? String(lc.pointsBalance) : 'NOT MEASURED')
+    F('BEFORE · RECOVERY OFFSET POINTS', lc ? String(lc.recoveryOffsetPoints) : 'NOT MEASURED')
+    F('BEFORE · ORDER LOYALTY REDEEMED', order.pointsRedeemed + ' points (' + order.loyaltyCreditCents + ' c)')
+    F('BEFORE · ORDER LOYALTY EARNED', order.pointsEarned + ' points')
+    F('BEFORE · EARN EVENT STATE', earnRow ? 'PRESENT (' + earnRow.points + ' pts)' : 'ABSENT (no earn row → earned reversal 0)')
+    F('BEFORE · REDEEM EVENT STATE', redeemRow ? 'PRESENT (' + redeemRow.points + ' pts)' : 'ABSENT')
+    F('BEFORE · PRIOR REFUND LOYALTY EVENT', priorRefundLoyalty.length ? 'YES (' + priorRefundLoyalty.map((t) => t.type + ':' + t.points).join(',') + ')' : 'NO')
+    F('BEFORE · PRIOR REFUND LEDGER ENTRY', priorRefundLedger.length ? 'YES (' + priorRefundLedger.length + ')' : 'NO')
+    preState = { refundRows: refundRows.length, ledgerLines: ledgerLines.length, lc: !!lc, earn: !!earnRow, redeem: !!redeemRow, priorRefundLoyalty: priorRefundLoyalty.length, priorRefundLedger: priorRefundLedger.length }
+    if (!ledgerLines.length) A('3 db: no ledger line for the PI — BEFORE-state incomplete')
+    if (!lc) A('3 db: loyalty customer not found — BEFORE-state incomplete')
+    if (priorRefundLoyalty.length || priorRefundLedger.length) A('3 db: prior refund loyalty/ledger evidence exists — not the first rehearsal')
     if (order.paymentStatus !== 'paid') A('3 db: paymentStatus ' + order.paymentStatus + ' ≠ paid')
     if (refundRows.some((r) => r.status === 'pending')) A('3 db: a PENDING refund row exists — unknown in-flight refund')
     if (refundRows.some((r) => r.status === 'failed')) A('3 db: a FAILED refund row exists — engine fail-closed lock active')
@@ -275,6 +296,10 @@ async function main() {
   console.log('[7] refund window')
   if (process.env.PHASE2_REFUND_WINDOW_CONFIRM !== CONFIRM_SENTENCE) return fail('7 window: confirm sentence missing — nothing changed')
   if (anomalies.length) return fail('7 window: precheck anomalies — window REFUSED, nothing changed')
+  // FAIL CLOSED: the BEFORE-state (DB refund rows, ledger, loyalty) must be fully captured
+  // before REFUNDS_ENABLED may ever be set to true.
+  if (!preState || !order || !loyalty || !preState.ledgerLines || !preState.lc) return fail('7 window: BEFORE-state incomplete (DB / ledger / loyalty) — window REFUSED, nothing changed')
+  F('WINDOW PRE-STATE CAPTURE', 'PASS (refund rows ' + preState.refundRows + ', ledger lines ' + preState.ledgerLines + ', loyalty customer YES, earn ' + (preState.earn ? 'PRESENT' : 'ABSENT') + ', redeem ' + (preState.redeem ? 'PRESENT' : 'ABSENT') + ', prior refund evidence NO)')
   if (!verdict.startsWith('READY')) return fail('7 window: precheck verdict ' + verdict + ' — window REFUSED, nothing changed')
   if (gate0 !== 'CLOSED') return fail('7 window: gate not CLOSED before opening — refusing')
   const stamp = new Date().toISOString()
