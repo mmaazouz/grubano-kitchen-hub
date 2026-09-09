@@ -40,7 +40,14 @@ vi.mock('@/lib/refunds', () => ({ refundPayment: legacyRefundMock }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: limitMock }))
 
 const { emailMock } = vi.hoisted(() => ({ emailMock: vi.fn() }))
-vi.mock('@/lib/transactional-emails', () => ({ sendRefundConfirmation: emailMock }))
+vi.mock('@/lib/transactional-emails', () => ({
+  sendRefundConfirmation: emailMock,
+  // T-47: the route now derives the e-mail identity from the refund, not the amount.
+  refundEmailDedupeKey: (r: { stripeRefundId?: string | null; refundId?: string | null }) => {
+    const id = (r.stripeRefundId || r.refundId || '').trim()
+    return id ? `refund:${id}` : undefined
+  },
+}))
 
 import { POST } from '@/app/api/orders/[id]/refund/route'
 
@@ -225,7 +232,7 @@ describe('POST /api/orders/[id]/refund — PHASE 2 D-A: ONE engine on the order 
     emailMock.mockRejectedValue(new Error('smtp down'))
     const res = await call()
     expect(res.status).toBe(200) // refund succeeded despite the email failure
-    expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({ refundedCents: 1000, partial: true, dedupeKey: 'order:o1:1000' }))
+    expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({ refundedCents: 1000, partial: true, dedupeKey: 'refund:re_1' }))
   })
 })
 

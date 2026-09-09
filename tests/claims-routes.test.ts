@@ -64,14 +64,22 @@ describe('POST /api/claims (client create)', () => {
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ consumerId: 'c1', orderId: 'o1', reason: 'quality', requestedAmountCents: 2500, photoUrl: null }))
   })
 
-  it('with photo → processDishImage uploaded, url passed; rejected photo → its status', async () => {
-    await CREATE(req({ orderId: 'o1', reason: 'quality', imageBase64: 'abc', mediaType: 'image/jpeg' }))
-    expect(photoMock).toHaveBeenCalledWith('abc', 'image/jpeg')
-    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ photoUrl: 'https://cdn/x.jpg' }))
+  // CONTRACT CHANGE (Claims batch 1): beta has NO photo requirement, and the upload +
+  // moderation chain used to run BEFORE the ownership check, so any authenticated user could
+  // burn Cloudinary + LLM budget on any orderId. The expensive path is REMOVED, not reordered.
+  it('a photo is NEVER uploaded or moderated in beta; the claim still succeeds and says so', async () => {
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality', imageBase64: 'abc', mediaType: 'image/jpeg' }))
+    expect(res.status).toBe(201)
+    expect(photoMock).not.toHaveBeenCalled()
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ photoUrl: null }))
+    expect(await res.json()).toMatchObject({ photoAccepted: false })
+  })
 
+  it('a photo that WOULD have been rejected no longer fails the claim (it is never processed)', async () => {
     photoMock.mockResolvedValue({ ok: false, status: 422, error: 'refusée' })
     const res = await CREATE(req({ orderId: 'o1', reason: 'quality', imageBase64: 'abc', mediaType: 'image/jpeg' }))
-    expect(res.status).toBe(422)
+    expect(res.status).toBe(201)
+    expect(photoMock).not.toHaveBeenCalled()
   })
 
   it('engine error status surfaced (e.g. 409 dup)', async () => {

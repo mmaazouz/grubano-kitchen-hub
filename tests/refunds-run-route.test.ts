@@ -24,7 +24,14 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 // LOT C — customer confirmation email, best-effort after a successful refund.
 const { emailMock } = vi.hoisted(() => ({ emailMock: vi.fn() }))
-vi.mock('@/lib/transactional-emails', () => ({ sendRefundConfirmation: emailMock }))
+vi.mock('@/lib/transactional-emails', () => ({
+  sendRefundConfirmation: emailMock,
+  // T-47: the route now derives the e-mail identity from the refund, not the amount.
+  refundEmailDedupeKey: (r: { stripeRefundId?: string | null; refundId?: string | null }) => {
+    const id = (r.stripeRefundId || r.refundId || '').trim()
+    return id ? `refund:${id}` : undefined
+  },
+}))
 
 import { POST } from '@/app/api/admin/refunds/run/route'
 
@@ -130,7 +137,7 @@ describe('POST /api/admin/refunds/run — LOT C email client best-effort', () =>
     db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
   }
 
-  it('refund OK → sendRefundConfirmation part (pattern orders/[id]/refund : dedupeKey order:<id>:<cents>)', async () => {
+  it('refund OK → sendRefundConfirmation part (pattern orders/[id]/refund : dedupeKey refund:<refund identity> — T-47)', async () => {
     withEmailContext()
     const res = await post({ token: 'secret-cron' })
     expect(res.status).toBe(200)
@@ -141,7 +148,7 @@ describe('POST /api/admin/refunds/run — LOT C email client best-effort', () =>
       restaurantName: 'Gnocchi Bar',
       refundedCents:  2500,
       partial:        true,               // remainingRefundableCents 2500 > 0
-      dedupeKey:      'order:o1:2500',
+      dedupeKey:      'refund:re_1', // T-47: identity, not amount
     })
   })
 
@@ -176,7 +183,7 @@ describe('POST /api/admin/refunds/run — LOT C email client best-effort', () =>
     const res = await post({ token: 'secret-cron' })
     expect(res.status).toBe(200)
     expect(emailMock).toHaveBeenCalledWith(expect.objectContaining({
-      refundedCents: 5000, partial: false, dedupeKey: 'order:o1:5000',
+      refundedCents: 5000, partial: false, dedupeKey: 'refund:re_1',
     }))
   })
 })

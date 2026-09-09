@@ -15,6 +15,9 @@ vi.mock('@/lib/claims', () => ({
   arbitrateClaim: arbitrateMock,
   listArbitrationQueue: queueMock,
   listPendingRestaurantClaims: pendingMock,
+  // Claims batch 1: the admin route now also reads the money list and the silence list.
+  listActionableRefundClaims: vi.fn(async () => []),
+  listSilenceExpiredClaims: vi.fn(async () => []),
 }))
 
 const { tokenMock } = vi.hoisted(() => ({ tokenMock: vi.fn() }))

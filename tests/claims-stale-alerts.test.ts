@@ -33,6 +33,9 @@ vi.mock('@/lib/claims', () => ({
   isClaimsEnabled:             claimsFlag,
   listArbitrationQueue:        arbQueueMock,
   listPendingRestaurantClaims: pendingMock,
+  // Claims batch 1: the admin route now also reads the money list and the silence list.
+  listActionableRefundClaims: vi.fn(async () => []),
+  listSilenceExpiredClaims: vi.fn(async () => []),
 }))
 
 import { GET as STALE } from '@/app/api/admin/claims/stale-alerts/route'

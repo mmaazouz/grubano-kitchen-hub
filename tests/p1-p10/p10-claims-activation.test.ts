@@ -40,6 +40,9 @@ const { db } = vi.hoisted(() => ({
       create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(),
       update: vi.fn(), updateMany: vi.fn(), count: vi.fn(),
     },
+    // Claims batch 1: the claim amount is now DERIVED server-side, which reads the order's
+    // succeeded refunds to compute the remaining ceiling.
+    refund: { aggregate: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -71,6 +74,7 @@ const hasStripe = !!process.env.STRIPE_SECRET_KEY
 beforeEach(() => {
   vi.clearAllMocks()
   tokenMock.mockResolvedValue({ sub: 'c1' })
+  db.refund.aggregate.mockResolvedValue({ _sum: { amountCents: 0 } })
   db.order.findUnique.mockResolvedValue(paidOrder())
   db.claim.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'cl1', ...data }))
   db.claim.findUnique.mockResolvedValue(null)
