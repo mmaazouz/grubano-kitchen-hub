@@ -127,6 +127,11 @@ async function main() {
   F('ALLOW_PLATFORM_FALLBACK (file, Next view)', merged.ALLOW_PLATFORM_FALLBACK === 'true' ? 'true — REFUSING (routine treasury advance forbidden)' : (merged.ALLOW_PLATFORM_FALLBACK === undefined ? 'ABSENT → effective false' : JSON.stringify(merged.ALLOW_PLATFORM_FALLBACK)))
   if (merged.ALLOW_PLATFORM_FALLBACK === 'true') return fail('1 env: ALLOW_PLATFORM_FALLBACK=true')
   F('ADMIN_AUDIT_ENABLED (file, Next view)', merged.ADMIN_AUDIT_ENABLED === 'true' ? 'true' : (merged.ADMIN_AUDIT_ENABLED === undefined ? 'ABSENT → false (audit rows would be SKIPPED)' : JSON.stringify(merged.ADMIN_AUDIT_ENABLED)))
+  for (const k of ['CLAIMS_ENABLED', 'CLAIMS_AUTO_APPROVE_ENABLED', 'CLAIM_AUTO_RESOLVE_ENABLED', 'GHOST_ORDER_AUTO_REFUND_ENABLED', 'TIPS_ENABLED', 'LOGISTICS_COURIER_ACTIVATION_ENABLED']) {
+    const v = merged[k]
+    F(k + ' (file, Next view)', v === undefined ? 'ABSENT → effective false' : JSON.stringify(v) + (v === 'true' ? ' — effective TRUE' : ' — effective false'))
+    if (v === 'true' && /^(CLAIMS_ENABLED|CLAIMS_AUTO_APPROVE_ENABLED|CLAIM_AUTO_RESOLVE_ENABLED|GHOST_ORDER_AUTO_REFUND_ENABLED)$/.test(k)) A('1 env: ' + k + ' is true in the env files — must be effective false for a refund rehearsal')
+  }
   const gate0 = await probeGate(base)
   F('REFUND GATE (live process, unauthenticated probe)', gate0 + ' (CLOSED = 403 gated = REFUNDS_ENABLED false in the process)')
   if (MODE === 'precheck' && gate0 !== 'CLOSED') A('1 gate: the live refund gate is not CLOSED — the technical freeze is not observed right now')
@@ -239,7 +244,10 @@ async function main() {
     const feeRefund = feeCum(C) - feeCum(Cprev)
     const reversal = AMOUNT_CENTS - feeRefund
     F('EXPECTED VECTOR (' + AMOUNT_CENTS + ' c cash; formula of computeRefundSplit with MEASURED inputs T=' + T + ' F=' + Fee + ' Cprev=' + Cprev + ')', 'fee refund ' + feeRefund + ' · restaurant reversal ' + reversal + ' · royalty 0 (standard)')
-    F('REQUIRED TRANSFER REVERSAL', String(reversal))
+    F('EXPECTED STRIPE OBJECTS', 'Transfer.amount_reversed +' + AMOUNT_CENTS + ' (GROSS = cash amount) · ApplicationFee.amount_refunded +' + feeRefund + ' (credited back to the connected account) · connected NET effect −' + reversal)
+    F('REQUIRED CONNECT FUNDING (GROSS transfer reversal — T-42)', String(AMOUNT_CENTS))
+    F('CONNECTED NET EFFECT (engine restaurantReverse)', String(reversal))
+    if (C === T) F('FULL REFUND EXPECTATION', 'remaining refundable 0 · charge.refunded true · Transfer.amount_reversed = ' + T + ' · ApplicationFee.amount_refunded = ' + Fee)
     if (order && loyalty) {
       const cum = (base, x) => Math.round((base * x) / T)
       const earnRev = loyalty.earnRow ? cum(order.pointsEarned, C) - cum(order.pointsEarned, Cprev) : 0
@@ -247,7 +255,7 @@ async function main() {
       const offsetDelta = loyalty.balance == null ? 'NOT MEASURED' : Math.max(0, earnRev - Math.max(0, loyalty.balance))
       F('EXPECTED LOYALTY (planLoyaltyRefund formula with MEASURED inputs)', 'earn reversal ' + earnRev + (loyalty.earnRow ? '' : ' (no earn row → 0)') + ' · spent restore ' + spentRestore + ' · recovery offset delta ' + offsetDelta)
     }
-    var requiredReversal = reversal
+    var requiredReversal = AMOUNT_CENTS // GROSS (T-42): Stripe needs the full cash amount available on the connected account
   } else { A('5 vector: inputs NOT MEASURED'); var requiredReversal = null }
 
   // ── Connected account balance + payout schedule (READ-ONLY) ─────────────────
@@ -268,8 +276,8 @@ async function main() {
     F('PAYOUT SCHEDULE (connected TEST account)', JSON.stringify(schedule) + ' · payouts_enabled ' + ac.payouts_enabled + ' · charges_enabled ' + ac.charges_enabled)
     if (!schedule || schedule.interval !== 'manual') A('5 payout: schedule is not manual — an automatic payout could sweep the funds (PAYOUT SCHEDULE RISK = OPEN); NOT changed by this script')
     if (requiredReversal != null) {
-      F('AVAILABLE BALANCE SUFFICIENT (available >= required reversal)', available >= requiredReversal ? 'YES' : 'NO (' + available + ' < ' + requiredReversal + ')')
-      if (available < requiredReversal) verdict = 'WAIT — connected AVAILABLE ' + available + ' c < required reversal ' + requiredReversal + ' c (pending ' + pending + ' c; no manufactured funds, no platform advance)'
+      F('AVAILABLE BALANCE SUFFICIENT (available >= GROSS transfer reversal)', available >= requiredReversal ? 'YES (margin ' + (available - requiredReversal) + ' c)' : 'NO (' + available + ' < ' + requiredReversal + ')')
+      if (available < requiredReversal) verdict = 'WAIT — connected AVAILABLE ' + available + ' c < GROSS transfer reversal ' + requiredReversal + ' c (pending ' + pending + ' c; no manufactured funds, no platform advance)'
     }
   } catch (e) { A('5 balance: ' + scrub(e)) }
   else A('5 balance: destination account unknown — NOT MEASURED')
