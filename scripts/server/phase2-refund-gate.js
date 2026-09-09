@@ -52,6 +52,18 @@ function done(result, failedStep) {
   console.log('GRUBANO PHASE 2 REFUND ' + (MODE === 'window' ? 'WINDOW' : 'REHEARSAL PRECHECK') + ' (staging) — every value below is MEASURED')
   console.log('RESULT: ' + result)
   if (failedStep) console.log('FAILED STEP: ' + failedStep)
+  // Wording only — never suppresses an anomaly, never changes the exit code. It prints ONLY when
+  // EVERY anomaly is one of the three that a completed, authorized rehearsal necessarily produces.
+  // A pending/failed refund row, a paymentStatus drift, a missing ledger/loyalty row, a non-manual
+  // payout schedule or any measurement failure is NOT in this set, so it can never be explained away.
+  const EXPECTED_AFTER_REHEARSAL = [
+    /^3 db: a refund already exists on the order/,
+    /^3 db: prior refund loyalty\/ledger evidence exists/,
+    /^4 stripe: remaining refundable < /,
+  ]
+  if (MODE === 'precheck' && result === 'FAIL' && anomalies.length && anomalies.every((m) => EXPECTED_AFTER_REHEARSAL.some((re) => re.test(m)))) {
+    console.log('NOTE: this RESULT answers "can a NEW refund of ' + AMOUNT_CENTS + ' c be executed on this order NOW?" — not "did the past refund work?". Every anomaly above is one an already-completed AUTHORIZED rehearsal necessarily produces (refund row present, prior loyalty/ledger evidence, remaining refundable below the amount), so this is EXPECTED GUARD BEHAVIOR of a post-rehearsal evidence run, NOT a failed transaction. The financial truth is established by phase2-preflight.js (direct DB ↔ Stripe reconciliation) and phase2-email-timeline.js.')
+  }
   console.log('FIRST REHEARSAL: ' + verdict)
   for (const l of facts) console.log(l)
   if (anomalies.length) { console.log('ANOMALIES (' + anomalies.length + '):'); for (const a of anomalies) console.log('  - ' + a) }
@@ -102,6 +114,37 @@ function writeFlag(envFile, key, value, stamp) {
   return { changed: true, backup: path.basename(backup) }
 }
 function touchRestart() { fs.mkdirSync(path.join(APP_ROOT, 'tmp'), { recursive: true }); fs.writeFileSync(path.join(APP_ROOT, 'tmp', 'restart.txt'), 'phase2-refund-gate ' + new Date().toISOString()) }
+
+/* ── EMERGENCY REFREEZE (audit 2026-09-09, BLOCKING) ───────────────────────────
+   The `finally` block below only runs when the process reaches it. A Ctrl-C, an SSH
+   hangup, a `kill`, or an uncaught throw would otherwise leave REFUNDS_ENABLED=true
+   in .env.local and the refund gate OPEN. `writeFlag` and `touchRestart` are fully
+   SYNCHRONOUS fs calls, so they are safe to run from a signal handler.
+   Armed the moment the flag is written to true, disarmed once the normal re-freeze
+   has written false. SIGKILL / a power cut cannot be caught — the printed banner
+   tells the operator exactly what to check in that case.                        */
+let armedRefreeze = null
+function emergencyRefreeze(reason) {
+  if (!armedRefreeze) return false
+  const { envFile, stamp } = armedRefreeze
+  armedRefreeze = null // once only
+  try {
+    const r = writeFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + '-emergency')
+    touchRestart()
+    console.log('  !! EMERGENCY REFREEZE (' + reason + '): REFUNDS_ENABLED=false written' + (r.changed ? ' (backup ' + r.backup + ')' : ' (was already false)') + ' and tmp/restart.txt touched.')
+    console.log('  !! VERIFY THE GATE MANUALLY: POST /api/admin/refunds/run {} must answer 403 {gated:true} within a few minutes.')
+    return true
+  } catch (e) {
+    console.log('  !! EMERGENCY REFREEZE FAILED (' + reason + '): ' + scrub(e))
+    console.log('  !! HUMAN ACTION REQUIRED NOW: set REFUNDS_ENABLED=false in ' + envFile + ' and touch tmp/restart.txt')
+    return false
+  }
+}
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK', 'SIGQUIT']) {
+  try { process.on(sig, () => { emergencyRefreeze(sig); process.exit(130) }) } catch { /* signal not supported on this platform */ }
+}
+process.on('uncaughtException', (e) => { emergencyRefreeze('uncaughtException'); console.log('  !! ' + scrub(e)); process.exit(1) })
+process.on('unhandledRejection', (e) => { emergencyRefreeze('unhandledRejection'); console.log('  !! ' + scrub(e)); process.exit(1) })
 
 async function main() {
   console.log('[1] identity + env (mode ' + MODE + ')')
@@ -314,8 +357,10 @@ async function main() {
   const refundsBefore = refunds.length
   let opened = null
   try {
+    armedRefreeze = { envFile, stamp } // ARM BEFORE the write: a signal between write and arm would else escape
     opened = writeFlag(envFile, 'REFUNDS_ENABLED', 'true', stamp)
     F('WINDOW OPEN WRITE', opened.changed ? 'REFUNDS_ENABLED=true (backup ' + opened.backup + ')' : 'no change')
+    F('EMERGENCY REFREEZE', 'ARMED (SIGINT/SIGTERM/SIGHUP/SIGQUIT/SIGBREAK + uncaught throw ⇒ REFUNDS_ENABLED=false is written synchronously before exit; SIGKILL cannot be caught)')
     touchRestart()
     const w1 = await waitGate(base, 'OPEN', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
     F('GATE AFTER OPEN', w1.last + ' after ' + Math.round(w1.elapsedMs / 1000) + ' s')
@@ -337,6 +382,7 @@ async function main() {
     // UNCONDITIONAL RE-FREEZE
     try {
       const closed = writeFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + 'Z')
+      armedRefreeze = null // disarm ONLY once false is actually on disk; a throw above keeps the handler armed
       F('WINDOW CLOSE WRITE', closed.changed ? 'REFUNDS_ENABLED=false (backup ' + closed.backup + ')' : 'no change')
       touchRestart()
       const w2 = await waitGate(base, 'CLOSED', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
@@ -347,4 +393,13 @@ async function main() {
   return done(anomalies.length ? 'FAIL' : 'PASS')
 }
 
-main().catch((e) => fail('unexpected: ' + scrub(e)))
+// Running the file executes the operator exactly as before; requiring it (tests) only exposes the
+// fail-closed primitives so the emergency re-freeze can be proven without delivering a real signal.
+if (require.main === module) main().catch((e) => fail('unexpected: ' + scrub(e)))
+
+module.exports = {
+  writeFlag,
+  emergencyRefreeze,
+  armRefreeze: (envFile, stamp) => { armedRefreeze = { envFile, stamp } },
+  isRefreezeArmed: () => armedRefreeze !== null,
+}

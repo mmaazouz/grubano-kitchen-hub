@@ -50,7 +50,7 @@ function done(result, failedStep) {
   if (anomalies.length) { console.log('ANOMALIES (' + anomalies.length + '):'); for (const a of anomalies) console.log('  - ' + a) }
   console.log('ACTION: PASTE THIS WHOLE OUTPUT TO CLAUDE CODE')
   console.log('========================================')
-  process.exitCode = result === 'PASS' ? 0 : 1
+  process.exitCode = result.startsWith('PASS') ? 0 : 1
   setTimeout(() => process.exit(process.exitCode), 1500).unref()
 }
 const fail = (step) => done('FAIL', step)
@@ -144,10 +144,14 @@ async function main() {
   if (gate !== '403') A('4 proof: live gate is not 403 gated')
   const left = fs.readdirSync(APP_ROOT).filter((n) => /^\.env\.local\.bak/.test(n)).filter((n) => { try { return effective(fs.readFileSync(path.join(APP_ROOT, n), 'utf8'), 'REFUNDS_ENABLED') === 'true' } catch { return true } })
   F('RESTORABLE TRUE-FLAG BACKUP IN ACTIVE APP AREA', left.length ? 'YES (' + left.join(', ') + ')' : 'NO')
-  if (left.length && !DRY) A('4 proof: dangerous backup(s) still present')
-  F('STALE TRUE-FLAG BACKUP REMEDIATED', DRY ? 'DRY RUN — nothing changed' : (dangerous.length ? (remediated.length === dangerous.length ? 'YES (' + remediated.length + ')' : 'PARTIAL') : 'NOT REQUIRED'))
-  F('BACKUP SAFETY', (!left.length && gate === '403' && !anomalies.length) ? 'PASS' : 'FAIL')
-  done(!left.length && gate === '403' && !anomalies.length && !DRY ? 'PASS' : (DRY && !anomalies.length ? 'PASS' : 'FAIL'))
+  // A restorable true-flag backup is an UNREMEDIATED RISK whether or not this was a dry run.
+  // (Audit 2026-09-09: the dry run used to print RESULT: PASS and exit 0 while the footgun was
+  // still in the app root — a report a reader would reasonably take as "nothing to do".)
+  if (left.length) A('4 proof: restorable true-flag backup(s) still present' + (DRY ? ' — DRY RUN made no change; re-run WITHOUT PHASE2_BACKUP_DRY_RUN to remediate' : ''))
+  F('STALE TRUE-FLAG BACKUP REMEDIATED', DRY ? 'NO — DRY RUN, nothing changed' : (dangerous.length ? (remediated.length === dangerous.length ? 'YES (' + remediated.length + ')' : 'PARTIAL (' + remediated.length + '/' + dangerous.length + ')') : 'NOT REQUIRED'))
+  const backupSafety = !left.length && gate === '403' && !anomalies.length
+  F('BACKUP SAFETY', backupSafety ? 'PASS' : 'FAIL')
+  done(backupSafety ? (DRY ? 'PASS (dry run — nothing needed remediation)' : 'PASS') : 'FAIL')
 }
 
 main().catch((e) => fail('unexpected: ' + scrub(e)))
