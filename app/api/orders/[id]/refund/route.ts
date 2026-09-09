@@ -5,7 +5,7 @@ import { requireRefundAdmin } from '@/lib/refund-route-guard'
 import { recordAdminAudit } from '@/lib/admin-audit'
 import { isRefundsEnabled, executeRefund } from '@/lib/refund'
 import { rateLimit } from '@/lib/rate-limit'
-import { sendRefundConfirmation } from '@/lib/transactional-emails'
+import { sendRefundConfirmation, refundEmailDedupeKey } from '@/lib/transactional-emails'
 
 // ── POST /api/orders/[id]/refund ──────────────────────────────────────────────
 // P0-03 (vague 1, Q3 fondateur) : refund an order — ADMIN GRUBANO ONLY. This
@@ -139,7 +139,12 @@ export async function POST(
           restaurantName: resto?.name ?? 'votre restaurant',
           refundedCents:  result.amountCents,
           partial:        remainingCents > 0,
-          dedupeKey:      `order:${order.id}:${result.amountCents}`,
+          // T-47 — the e-mail identity is the REFUND, not the amount. Two distinct legitimate
+          // refunds of the SAME amount on one order are two distinct customer e-mails; a REPLAY of
+          // the same refund identity is still at most one. Stripe id first (stable, external), our
+          // row id as the fallback. This touches e-mail idempotency only — the MONEY idempotency
+          // key (refund:<orderId>:<alreadyRefunded>) is untouched.
+          dedupeKey:      refundEmailDedupeKey(result),
         })
       }
     } catch (e) {

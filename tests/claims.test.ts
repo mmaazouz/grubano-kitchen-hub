@@ -13,6 +13,7 @@ const { db } = vi.hoisted(() => ({
   db: {
     order: { findUnique: vi.fn() },
     claim: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    refund: { aggregate: vi.fn(), findMany: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -31,6 +32,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   fx.updateManyCount = 1
   db.order.findUnique.mockResolvedValue(paidOrder())
+  // Claims batch 1: the claim amount is now DERIVED (order lines minus what is already refunded).
+  db.refund.aggregate.mockResolvedValue({ _sum: { amountCents: 0 } })
+  db.refund.findMany.mockResolvedValue([])
   db.claim.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'cl1', ...data }))
   db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', restaurantId: 'r1', status: 'restaurant_review', requestedAmountCents: 5000 })
   db.claim.findFirst.mockResolvedValue(null)
@@ -67,8 +71,21 @@ describe('createClaim — (a) owner + paid + window + amount', () => {
     expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality' })).toMatchObject({ ok: false, status: 409 })
   })
 
-  it('amount over the order total → 400', async () => {
-    expect(await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', requestedAmountCents: 6000 })).toMatchObject({ ok: false, status: 400 })
+  // Claims batch 1 — CONTRACT CHANGE (stricter): the client no longer sends an amount at
+  // all, so 'amount over the total' cannot even be expressed. The old test asserted that an
+  // over-cap amount was REJECTED. The new contract is stronger: a requested amount can only
+  // REDUCE the claim below the server-derived ceiling, and can never raise it.
+  it('a client amount ABOVE the ceiling is capped at the server value, not granted', async () => {
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', requestedAmountCents: 6000 })
+    expect(res.ok).toBe(true)
+    // 5000 = the server-derived whole-order authority, NOT the 6000 the client asked for
+    expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(5000)
+  })
+
+  it('a client amount BELOW the ceiling is honoured verbatim (a partial claim stays partial)', async () => {
+    const res = await createClaim({ consumerId: 'c1', orderId: 'o1', reason: 'quality', requestedAmountCents: 500 })
+    expect(res.ok).toBe(true)
+    expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(500)
   })
 
   it('invalid reason → 400', async () => {
@@ -175,12 +192,20 @@ describe("(e) P0-24 — l'ADMIN décide et déclenche (les deux rôles couverts)
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it("la file admin inclut 'arbitration' ET l'héritage approved non remboursé", async () => {
+  // Claims batch 1 — the queue KEEPS its two historic sources and gains a third:
+  // restaurant silence past the deadline (previously invisible for ever). The legacy
+  // source is additionally locked against a SECOND arbitration (arbitrationDecision null).
+  it("la file admin inclut 'arbitration', l'héritage approved non remboursé, ET le silence resto échu", async () => {
     db.claim.findMany.mockResolvedValue([])
     await listArbitrationQueue()
-    expect(db.claim.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { OR: [{ status: 'arbitration' }, { status: 'approved', refundAttempted: false }] },
-    }))
+    const where = db.claim.findMany.mock.calls[0][0].where as { OR: Array<Record<string, unknown>> }
+    expect(where.OR).toHaveLength(3)
+    expect(where.OR[0]).toEqual({ status: 'arbitration' })
+    // AUDIT FIX (P1): every UNPAID approval stays listed, decided or not. Filtering these on
+    // arbitrationDecision:null removed the beta's most common money-owed row from the queue.
+    expect(where.OR[1]).toEqual({ status: 'approved', refundAttempted: false })
+    expect(where.OR[2]).toMatchObject({ status: 'restaurant_review' })
+    expect(where.OR[2].responseDeadlineAt).toHaveProperty('lte')
   })
 })
 

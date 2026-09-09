@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { isClaimsEnabled, listArbitrationQueue, listPendingRestaurantClaims } from '@/lib/claims'
+import { isClaimsEnabled, listArbitrationQueue, listPendingRestaurantClaims, listActionableRefundClaims, listSilenceExpiredClaims } from '@/lib/claims'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,6 +22,27 @@ export async function GET() {
   // P0-39 (vague 3) — ADDITIF : la file d'arbitrage est inchangée ; `pending`
   // expose EN PLUS les réclamations en attente du restaurant (lecture seule,
   // aucune action possible dessus — l'admin VOIT, il ne se substitue pas).
-  const [claims, pending] = await Promise.all([listArbitrationQueue(), listPendingRestaurantClaims()])
-  return NextResponse.json({ enabled: true, claims, pending })
+  // Claims batch 1 — the queue now also carries the claims a restaurant never answered
+  // (silence past the deadline is admin-actionable, it no longer blocks for ever) and a
+  // MONEY list: refunds stuck pending, failed, or succeeded-but-unreconciled. The badge
+  // must count every actionable claim, not arbitration alone.
+  const [claims, pending, actionableRefunds, silenceExpired] = await Promise.all([
+    listArbitrationQueue(), listPendingRestaurantClaims(), listActionableRefundClaims(), listSilenceExpiredClaims(),
+  ])
+  const actionableCount = claims.length + actionableRefunds.length
+  return NextResponse.json({
+    enabled: true,
+    claims,
+    pending,
+    actionableRefunds,
+    silenceExpired,
+    counts: {
+      arbitration:       claims.filter((c) => c.status === 'arbitration').length,
+      silenceExpired:    silenceExpired.length,
+      legacyPendingMoney: claims.filter((c) => c.queueReason === 'legacy_pending_money_decision').length,
+      actionableRefunds: actionableRefunds.length,
+      /** What the admin badge must show. */
+      actionableTotal:   actionableCount,
+    },
+  })
 }

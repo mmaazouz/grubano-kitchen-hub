@@ -6,7 +6,8 @@ import {
   isClaimsEnabled, createClaim, listConsumerClaims, getClaimEligibility, CLAIM_REASONS,
   autoResolveSmallClaim,
 } from '@/lib/claims'
-import { processDishImage, ALLOWED_IMAGE_TYPES, type DishImageType } from '@/lib/dish-photo'
+import { ALLOWED_IMAGE_TYPES } from '@/lib/dish-photo'
+import { rateLimit } from '@/lib/rate-limit'
 import { sendClaimAckEmail, sendClaimDecisionEmail } from '@/lib/claim-emails'
 
 export const runtime = 'nodejs'
@@ -15,18 +16,24 @@ export const dynamic = 'force-dynamic'
 // ── /api/claims (P4.5-C1) ─────────────────────────────────────────────────────────
 // Consumer-facing. Gated by CLAIMS_ENABLED (OFF → 403 on POST; GET reports
 // enabled:false so the UI renders nothing → byte-identical, no UI exposed).
-// POST = file a claim on MY paid order (owner-scoped, window + amount validated, one
-// active claim per order). Optional photo reuses the moderated Cloudinary chain
-// (processDishImage) — food-tuned moderation, so non-food evidence may be refused; the
-// photo is OPTIONAL, the client can submit without it. GET = my claims, OR (with
-// ?orderId) the eligibility + existing claim for one order (drives the client button).
+// POST = file a claim on MY paid order (owner-scoped, window validated, one active claim
+// per order). The AMOUNT is derived server-side from the order's own line values — the
+// client sends at most a line SELECTION, never money. Beta accepts NO evidence photo:
+// nothing is uploaded, moderated or stored. GET = my claims, OR (with ?orderId) the
+// eligibility + server-derived scope for one order (drives the client button).
 
+// The request carries a DESCRIPTION of what happened and, optionally, a line SELECTION.
+// It carries NO money: `requestedAmountCents` is accepted by the parser for backward
+// compatibility and then DELIBERATELY IGNORED (see below) so an old client cannot widen
+// financial authority. `imageBase64` is likewise accepted and ignored — beta has no photo
+// requirement, and processing one before ownership was established was a real hole.
 const createSchema = z.object({
   orderId:              z.string().min(1),
   reason:              z.enum(CLAIM_REASONS),
   description:         z.string().max(1000).optional(),
-  requestedAmountCents: z.number().int().positive().optional(),
-  imageBase64:         z.string().min(1).optional(),
+  requestedAmountCents: z.number().int().positive().optional(), // IGNORED — see below
+  items:               z.array(z.object({ index: z.number().int(), qty: z.number().int() })).max(50).optional(),
+  imageBase64:         z.string().min(1).optional(),            // IGNORED in beta — see below
   mediaType:           z.enum(ALLOWED_IMAGE_TYPES).optional(),
 })
 
@@ -37,24 +44,35 @@ export async function POST(req: NextRequest) {
   const token = await getToken({ req })
   if (!token?.sub) return NextResponse.json({ error: 'Authentification requise' }, { status: 401 })
 
+  // ABUSE — throttle BEFORE any parsing or DB work. Fail-open by design (lib/rate-limit).
+  const limited = rateLimit(req, 'claims:create', { limitDefault: 5, windowDefault: 300 })
+  if (limited) return limited
+
   const parsed = createSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Requête invalide.' }, { status: 400 })
   const body = parsed.data
 
-  // Optional evidence photo — reuse the moderated Cloudinary chain. A photo failure is
-  // surfaced verbatim (the client can resubmit WITHOUT the photo; it is optional).
-  let photoUrl: string | null = null
-  if (body.imageBase64) {
-    const photo = await processDishImage(body.imageBase64, (body.mediaType ?? 'image/jpeg') as DishImageType)
-    if (!photo.ok) return NextResponse.json({ error: photo.error }, { status: photo.status })
-    photoUrl = photo.url
-  }
+  // ── AUTHORIZATION ORDER (Claims batch 1, baseline P1) ───────────────────────────
+  // The photo used to be uploaded to Cloudinary AND moderated by the LLM chain BEFORE
+  // createClaim ran its ownership check, so ANY authenticated user could burn upload +
+  // moderation budget on ANY orderId. In beta there is no photo requirement at all, so
+  // the expensive path is REMOVED rather than merely reordered: nothing is uploaded,
+  // moderated or stored, and the client is told so instead of silently believing its
+  // evidence was kept. Ownership is established inside createClaim before any write.
+  const photoAccepted = false
+  const photoUrl: string | null = null
 
   const result = await createClaim({
-    consumerId:           token.sub,
-    orderId:              body.orderId,
-    reason:               body.reason,
-    description:          body.description,
+    consumerId:  token.sub,
+    orderId:     body.orderId,
+    reason:      body.reason,
+    description: body.description,
+    // NOTE: body.requestedAmountCents is intentionally NOT forwarded. The amount is
+    // derived server-side from the order's own line values (lib/claim-scope).
+    items:       body.items,
+    // A requested amount is a REDUCTION REQUEST, never authority: the server ceiling still caps
+    // it. Dropping it entirely silently inflated every claim from the shipped client (which
+    // sends an amount and no selection) to the whole order — the P0 this batch's audit caught.
     requestedAmountCents: body.requestedAmountCents,
     photoUrl,
   })
@@ -94,7 +112,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ claim: result.claim }, { status: 201 })
+  // photoAccepted:false is EXPLICIT: beta stores no evidence photo, and the client must
+  // not be left believing one was kept.
+  return NextResponse.json({ claim: result.claim, photoAccepted }, { status: 201 })
 }
 
 export async function GET(req: NextRequest) {

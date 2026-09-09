@@ -7,7 +7,7 @@ import { isRefundsEnabled, executeRefund } from '@/lib/refund'
 import { rateLimit } from '@/lib/rate-limit'
 import { recordAdminAudit, CRON_ACTOR_ID } from '@/lib/admin-audit'
 import { safeEqual } from '@/lib/safe-compare'
-import { sendRefundConfirmation } from '@/lib/transactional-emails'
+import { sendRefundConfirmation, refundEmailDedupeKey } from '@/lib/transactional-emails'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -143,7 +143,12 @@ export async function POST(req: Request) {
             restaurantName: resto?.name ?? 'votre restaurant',
             refundedCents:  result.amountCents,
             partial:        result.remainingRefundableCents > 0,
-            dedupeKey:      `order:${parsed.data.orderId}:${result.amountCents}`,
+            // T-47 — the e-mail identity is the REFUND, not the amount. Two distinct legitimate
+            // refunds of the SAME amount on one order are two distinct customer e-mails; a REPLAY of
+            // the same refund identity is still at most one. Stripe id first (stable, external), our
+            // row id as the fallback. This touches e-mail idempotency only — the MONEY idempotency
+            // key (refund:<orderId>:<alreadyRefunded>) is untouched.
+            dedupeKey:      refundEmailDedupeKey(result),
           })
         }
       }

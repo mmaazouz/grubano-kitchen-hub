@@ -9,6 +9,7 @@ import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
 import { isGhostOrderAutoRefundEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
+import { reconcileClaimForRefund } from '@/lib/claims'
 import { matchFeeRefunds, predictFeeRefund, refundLedgerLine } from '@/lib/refund-fee-truth'
 import { clawbackCourierTip } from '@/lib/courier-accrual'
 import { sendAdminGhostOrderAlert, sendAdminStalePiAlert, sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
@@ -955,7 +956,18 @@ async function handleRefundStatusEvent(refund: Stripe.Refund) {
           finalized = out.refundId
         }
       }
-      return NextResponse.json({ received: true, refund: refund.id, status, finalized })
+      // CLAIMS batch 1 — reconcile the Claim bound to THIS refund identity. Deliberately
+      // NOT gated by CLAIMS_ENABLED: the money moved whatever the feature flag says, so a
+      // claim left in 'refunding' would be a lie. Creates no money, retries nothing.
+      let claimReconciled: unknown = null
+      if (row) {
+        try {
+          claimReconciled = await reconcileClaimForRefund({ refundRowId: row.id, status: 'succeeded', stripeRefundId: refund.id })
+        } catch (e) {
+          console.error('[stripe webhook] claim reconciliation (succeeded) failed —', e instanceof Error ? e.message : e)
+        }
+      }
+      return NextResponse.json({ received: true, refund: refund.id, status, finalized, claim: claimReconciled })
     }
 
     if (status === 'failed' || status === 'canceled') {
@@ -965,7 +977,15 @@ async function handleRefundStatusEvent(refund: Stripe.Refund) {
         // (ledger line + refundedCents already booked) → MONEY REVIEW, row untouched.
         if (row.status === 'pending') {
           await markRefundRowFailed(row.id, refund)
-          return NextResponse.json({ received: true, refund: refund.id, status, row: row.id, locked: true })
+          // Same ungated reconciliation on the failure edge: the customer did NOT get the
+          // money, so the Claim must stop showing "refund in progress". No blind retry.
+          let claimReconciled: unknown = null
+          try {
+            claimReconciled = await reconcileClaimForRefund({ refundRowId: row.id, status: 'failed', stripeRefundId: refund.id })
+          } catch (e) {
+            console.error('[stripe webhook] claim reconciliation (failed) failed —', e instanceof Error ? e.message : e)
+          }
+          return NextResponse.json({ received: true, refund: refund.id, status, row: row.id, locked: true, claim: claimReconciled })
         }
         if (row.status === 'succeeded') {
           try {

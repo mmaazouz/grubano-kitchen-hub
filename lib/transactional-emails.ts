@@ -705,6 +705,25 @@ export async function sendPasswordChangedEmail(p: {
 
 // ── 3) Refund confirmation (bill refund or captured-empreinte refund) ───────────
 
+/**
+ * T-47 — IDENTITY of a refund confirmation e-mail.
+ *
+ * The dedupe key used to be `order:<orderId>:<amountCents>`. Two DISTINCT legitimate
+ * refunds of the SAME amount on one order (perfectly reachable: the money idempotency key
+ * is `refund:<orderId>:<alreadyRefundedCents>`, so 500 c then another 500 c are two
+ * different keys) therefore collided, and the customer was refunded a second time WITHOUT
+ * being told. The identity is the REFUND, not the amount:
+ *   • two distinct refunds  → two distinct keys → two legitimate e-mails;
+ *   • a replay of the SAME refund → the same key → at most one e-mail.
+ * Stripe id first (stable and external), our Refund row id as the fallback.
+ * This is E-MAIL idempotency only — the MONEY idempotency key is untouched.
+ */
+export function refundEmailDedupeKey(refund: { stripeRefundId?: string | null; refundId?: string | null }): string | undefined {
+  const identity = (refund.stripeRefundId || refund.refundId || '').trim()
+  // No identity ⇒ NO key: sending un-deduplicated is safer than collapsing two distinct
+  // refunds onto one key and silently suppressing a customer notification.
+  return identity ? `refund:${identity}` : undefined
+}
 export async function sendRefundConfirmation(p: {
   dedupeKey?:     string  // Email B0 — at-most-once when set
   to:             string
