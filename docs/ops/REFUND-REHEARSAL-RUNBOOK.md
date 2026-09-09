@@ -21,6 +21,16 @@
 
 **Faits DB (source : opérateurs v3/v5 fondateur ; re-mesure serveur = `phase2-refund-gate.js` mode `precheck`)** : status delivered · paymentStatus paid · subtotal 14,50 € · total 14,10 € · pointsRedeemed 8 · loyaltyCreditCents 40 (5 c/pt) · pointsEarned 14 · 0 Refund row · POS null (standard) · franchise NO. Lignes `LoyaltyTransaction` (earn/redeem), `pointsBalance`, `recoveryOffsetPoints`, domaine e-mail du consommateur : **NOT MEASURED localement** (base injoignable) → imprimés par le precheck serveur.
 
+## 1c · FINAL BEFORE PRECHECK du 2026-09-09T08:16Z (lecture seule — bloc BEFORE côté Stripe/porte ; DB via la commande fondateur)
+
+- Staging = d698c25 (version.json) ; `POST /api/admin/refunds/run {}` et `POST /api/orders/<N5TSM0>/refund {}` non authentifiés → **403 gated** (REFUNDS_ENABLED false dans le process).
+- GR-N5TSM0 Stripe TEST : PI succeeded 1410/1410, charge amount_refunded **0**, refunds sur le PI **0**, app fee 76 refunded **0**, transfer 1410 reversed **0** → TARGET STILL DISPOSABLE = YES, remaining refundable 1410.
+- Compte connecté acct_1…yYMY : **AVAILABLE EUR 2668 c · PENDING 0 c** (les deux payments 1334 sont devenus disponibles) ; payout schedule `manual` / delay 7 inchangé ; 0 payout. Vecteur inchangé : fee reversal 27, reversal Connect requis 473 → **marge 2668 − 473 = 2195 c**.
+- DB (refund rows, ledger gross/fee/net, balance/offset fidélité, états earn/redeem, preuves refund antérieur) : **NOT MEASURED depuis le poste local** (DB o2switch injoignable, SSH port 22 timeout local ET CI) → obtenue par la commande precheck fondateur (lecture seule, mode par défaut, JAMAIS `window`) :
+  `~/nodevenv/app.grubano.com/24/bin/node ~/app.grubano.com/scripts/server/phase2-refund-gate.js`
+- Fail-safe fenêtre vide (prouvé harnais nc6, jamais sur staging) : deadline finie `PHASE2_REFUND_WINDOW_MS` (défaut 15 min) → `REFUND OBSERVED (Stripe) = NONE within the window — nothing executed` → `finally` inconditionnel : `REFUNDS_ENABLED=false` + restart + porte prouvée `CLOSED` (403 gated) ; 0 écriture Stripe ; aucune action humaine. Si la porte ne reprouve pas CLOSED : anomalie « HUMAN ATTENTION REQUIRED » (le fichier est déjà false).
+- Contrat de coordination le jour J : (A) phrase d'autorisation fondateur explicite → (B) CC prépare le dispatch et rend `REFUND DISPATCH READY = YES` + `WINDOW COMMAND MAY NOW BE RUN = YES` → (C) fondateur lance UNE commande `window` → (D) CC dispatch exactement UN refund 500 c via `refund-rehearsal.yml` pendant la fenêtre → (E) re-gel inconditionnel. Le fondateur n'ouvre JAMAIS la fenêtre avant (B).
+
 ## 2 · Vecteur du MOTEUR ACTUEL (dry-run avec les fonctions réelles — `tests/rehearsal-vector-n5tsm0.test.ts`, 7/7)
 
 Entrée : **500 c de cash Stripe**. `computeRefundSplit({T:1410, F:76, R:0, Cprev:0, amt:500})` :
