@@ -1,4 +1,6 @@
-# REFUND REHEARSAL RUNBOOK — première répétition Stripe TEST (GR-N5TSM0, partiel 500 c) — préparé le 2026-09-05, NON EXÉCUTÉ
+# REFUND REHEARSAL RUNBOOK — Stripe TEST — préparé le 2026-09-05, **LES DEUX RÉPÉTITIONS EXÉCUTÉES le 2026-09-09** (GR-N5TSM0 partiel 500 c · GR-GBZE1X complet 1450 c)
+
+> ⚠️ **LIRE §9 À §12 D'ABORD.** Les sections **§1 à §8 sont l'ÉTAT DE PRÉPARATION du 2026-09-05/07** et sont conservées comme archive du raisonnement. Plusieurs de leurs valeurs ont été **SUPERSÉDÉES** par les mesures du 2026-09-09 (porte de financement BRUT vs NET → T-42 ; solde disponible ; copie e-mail corrigée par `ca0e19a`). Chaque section concernée porte un encadré SUPERSÉDÉ. La vérité de clôture est en **§12**.
 
 > Préflight financier Phase 2 = **PASS** (réconciliation directe DB ↔ Stripe TEST, opérateur v5, fondateur). Ce document prépare la **première répétition intégrée** : UN remboursement partiel de **500 c de cash Stripe** sur GR-N5TSM0. **Rien n'est exécuté** sans la phrase fondateur exacte « I AUTHORIZE THE STAGING REFUND REHEARSAL ». Règle d'évidence : chaque fait porte sa source ; NOT MEASURED sinon.
 
@@ -47,7 +49,7 @@ Entrée : **500 c de cash Stripe**. `computeRefundSplit({T:1410, F:76, R:0, Cpre
 |---|---|---|
 | CUSTOMER STRIPE CASH REFUND | **500 c** | montant demandé (≤ 1410 restants) |
 | APPLICATION FEE REVERSAL | **27 c** | `round(76·500/1410) − round(76·0/1410)` = cible cumulée arrondie (télescopage) |
-| RESTAURANT TRANSFER REVERSAL | **473 c** | 500 − 27 (`reverse_transfer:true`) |
+| RESTAURANT TRANSFER REVERSAL (effet NET sur le compte connecté) | **473 c** | 500 − 27. ⚠️ **SUPERSÉDÉ (T-42)** : Stripe renverse le transfert du montant **BRUT 500** et re-crédite la fee 116/27 séparément — l'effet net est −473 mais la **disponibilité requise est le BRUT**. Mesuré le 2026-09-09. |
 | ROYALTY | 0 | standard |
 | GRUBANO RETAINED FEE AFTER REFUND | **49 c** | 76 − 27 |
 | LOYALTY SPENT POINTS RESTORE | **3 pts** | `round(8·500/1410)` (planLoyaltyRefund, prorata sur charge.amount) |
@@ -58,6 +60,8 @@ Entrée : **500 c de cash Stripe**. `computeRefundSplit({T:1410, F:76, R:0, Cpre
 **VECTOR MATCHES PREVIOUS EXPECTATION = YES** (500 / 27 / 473 / 3 / 5 / ≈515). Second partiel identique → fee cumulée 54 (27+27), loyalty 10/6 cumulés (télescopage prouvé). GR-BZE1X FULL : fee refund 116, reversal 1334.
 
 ## 3 · Porte dure : solde disponible
+
+> ⚠️ **SUPERSÉDÉ — instantané du 2026-09-05.** (1) Le verdict WAIT ci-dessous reflète un solde disponible de 0 c ce jour-là ; les deux répétitions ont été financées et exécutées le 2026-09-09 (§9, §11). (2) La règle de porte est désormais **AVAILABLE ≥ montant cash BRUT** (T-42), pas ≥ effet net. Voir §12.
 
 **REQUIRED TRANSFER REVERSAL = 473 c** · **CONNECTED AVAILABLE = 0 c** (mesuré) → **AVAILABLE BALANCE SUFFICIENT = NO** → **FIRST REHEARSAL = WAIT**. Ce n'est pas un échec. Aucun fonds fabriqué, aucune avance de trésorerie Grubano (`ALLOW_PLATFORM_FALLBACK` effectif false, vérifié par le precheck — FAIL s'il est `true`). Première fenêtre possible : **à partir du 2026-09-08** (1334 c deviennent disponibles) — **à re-mesurer au moment de l'exécution**, jamais sur le calendrier seul. Règle Stripe : la reversal exige un solde **disponible** ≥ montant, sinon la demande de refund échoue.
 
@@ -74,7 +78,9 @@ Entrée : **500 c de cash Stripe**. `computeRefundSplit({T:1410, F:76, R:0, Cpre
 | POST-STRIPE FAILURE RECOVERY | PASS | Stripe créé puis échec DB/webhook/ledger/loyalty/crash : la ligne `Refund` (pending, clé) existe déjà ; reprise = adoption par tag ou même clé d'idempotence (< 20 h) ; webhook `charge.refunded`/`refund.updated` re-joue la réconciliation complète (ledger vérité Stripe, loyalty par `re_…`) ; jamais de 2ᵉ création. Aucun gap trouvé (revues F2/F8 indépendantes PASS) |
 | E-MAIL | **NO — SAFE FOR REHEARSAL = NO** | `sendRefundConfirmation` (`lib/transactional-emails.ts:724-727`) envoyée post-succès par `POST /api/admin/refunds/run` au consommateur : copie « vient d'être effectué par {restaurant} » + « délai bancaire 5 à 10 jours ouvrés » = défauts P1 connus (audit e-mail) ; le diff en attente du chantier e-mail ne les corrige pas |
 
-**REHEARSAL EMAIL PLAN = SUPPRESS TEST EMAIL** : avant la fenêtre, ajouter un coupe-circuit additif dans `sendRefundConfirmation` (`REFUND_CONFIRMATION_EMAIL_ENABLED=false` ⇒ trace `EmailLog status=skipped`, aucun envoi ; défaut = comportement actuel) — 3 lignes, à coordonner avec le chantier e-mail (fichier avec modifications en attente) — **ou** option B si la copie corrigée est livrée avant. Aucun e-mail à un vrai client ; le destinataire = compte de test (domaine imprimé masqué par le precheck).
+> ⚠️ **SUPERSÉDÉ — la ligne E-MAIL ci-dessus et le plan ci-dessous décrivent HEAD au 2026-09-05.** La copie a été corrigée par **`ca0e19a`** (acteur neutre, aucun délai bancaire chiffré, montant = refund `succeeded`, fidélité jamais présentée comme du cash) : à HEAD ces deux défauts **n'existent plus**, `lib/transactional-emails.ts` ne contient à cet endroit que le commentaire qui acte leur suppression. Le coupe-circuit `REFUND_CONFIRMATION_EMAIL_ENABLED` **n'a jamais été implémenté et n'existe pas dans le code** ; les DEUX répétitions ont délibérément envoyé un e-mail réel, reçu et vérifié (§9, §11, §12.3). Conservé ci-dessous pour l'historique uniquement.
+
+**REHEARSAL EMAIL PLAN (2026-09-05, NON APPLIQUÉ) = SUPPRESS TEST EMAIL** : avant la fenêtre, ajouter un coupe-circuit additif dans `sendRefundConfirmation` (`REFUND_CONFIRMATION_EMAIL_ENABLED=false` ⇒ trace `EmailLog status=skipped`, aucun envoi ; défaut = comportement actuel) — 3 lignes, à coordonner avec le chantier e-mail (fichier avec modifications en attente) — **ou** option B si la copie corrigée est livrée avant. Aucun e-mail à un vrai client ; le destinataire = compte de test (domaine imprimé masqué par le precheck).
 
 ## 5 · Contrat `REFUNDS_ENABLED`
 
@@ -91,6 +97,8 @@ Fail-closed : Prisma indisponible, aucune ligne ledger pour le PI, client fidél
 1 Stripe TEST prouvé · 2 commande GR-N5TSM0 toujours disposable (DB) · 3 aucun refund antérieur/nouveau (DB + Stripe) · 4 solde connecté DISPONIBLE lu à l'instant · 5 disponible ≥ 473 · 6 payout `manual` (sinon risque OPEN → arrêt) · 7 vecteur 500 c recalculé (test pin + inputs mesurés) · 8 webhooks sains · 9 observabilité (`ADMIN_AUDIT_ENABLED`) · 10 fenêtre ouverte par l'opérateur (preuve 401) · 11 **dispatch** `refund-rehearsal.yml` (order_id, 500, phrase) → exactement UN refund · 12 id `re_…` capturé (corps de la route) · 13 état Stripe observé (opérateur) · 14 `202 pending` ⇒ **aucun succès annoncé** · 15 `succeeded` ⇒ vérifier le refund réel · 16 reversal réelle 473 (`transfer_reversal`) · 17 fee refund réelle 27 · 18 Refund row `succeeded` · 19 ledger `refund` gross −500 / fee −27 / net −473 (F2 vérité Stripe) · 20 restore 3 pts · 21 reversal 5 pts · 22 `recoveryOffsetPoints` · 23 état client · 24 politique e-mail (suppress) · 25 réconciliation DIRECTE v5 · 26 `REFUNDS_ENABLED=false` (auto) · 27 runtime false prouvé · 28 porte 403 gated prouvée · 29 rapport financier final.
 
 ## 7 · Second scénario — GR-BZE1X (FULL 1450 c)
+
+> ⚠️ **SUPERSÉDÉ — exécuté le 2026-09-09, voir §11.** Deux corrections : (1) la référence canonique est **GR-GBZE1X** (`'GR-' + 6 derniers caractères`, `lib/order-ref.ts`) — « GR-BZE1X » est l'ancien format à 5 caractères ; (2) le disponible requis est le **BRUT 1450 c**, pas 1334 c (T-42). Au moment de l'exécution le disponible était 2195 c → marge +745 c.
 
 Éligibilité **READY côté Stripe** (0 refund, 1450 restants, fee 116 → reversal 1334) ; DB NOT MEASURED ici ; solde disponible requis **1334 c** (attendu ≥ 2026-09-09 si le partiel n'a pas consommé le disponible : 1334 − 473 = 861 < 1334 → **GR-BZE1X attendra 2026-09-09** (2668 − 473 = 2195 ≥ 1334). Exécution uniquement après PASS du partiel GR-N5TSM0. Franchise reste OUT OF BETA.
 
@@ -130,3 +138,79 @@ Aucune mutation : 0 refund, 0 flag, 0 payout, 0 webhook, 0 e-mail, Stripe LIVE i
 - Fidélité : plan = `planLoyaltyRefund` prorata sur charge.amount (full ⇒ reverse 100 % des points gagnés de la commande, restauration 100 % des points dépensés) puis `applyReversalWithOffset(reverse, soldeVisible)` ; offset exercé seulement si solde visible < points à reverser (T-44). Pas de mutation artificielle.
 - Flags (process) 14:0xZ : refunds/run 403 gated · orders/<bze1x>/refund 403 gated · claims/auto-approve 403 gated ; fichier : imprimé par l'opérateur (CLAIMS_*, GHOST_*, TIPS, LOGISTICS_COURIER_ACTIVATION). Webhooks : we_…ygcg charge.refunded/refund.updated/refund.failed SUBSCRIBED ; 0 événement à livraison en attente sur 24 h.
 - E-mail full : `sendRefundConfirmation({partial:false})` → sujet « Votre remboursement est confirmé — <resto> », corps neutre (montant = `result.amountCents` du refund succeeded, aucun acteur restaurant, aucun délai chiffré, aucune fidélité-cash), envoyé uniquement après `result.ok`.
+
+## 11 · SECONDE RÉPÉTITION EXÉCUTÉE — 2026-09-09 (UN refund FULL 1450 c GR-GBZE1X)
+
+- Identité : canonique `GR-GBZE1X` = `'GR-' + 6 derniers caractères` (`lib/order-ref.ts`) ; « GR-BZE1X » = ancien format liste conso (5 caractères) documenté dans le même fichier ; même commande `cmtj52ewh000320fboagbze1x`, même PI (`metadata.orderId`). Le workflow/route/moteur ciblent le cuid complet.
+- Autorisation fondateur (phrase exacte) 17:4xZ → sonde token 200 sur dd0b03b (run 34384306774) → porte 401 à 17:44:38Z → dispatch `refund-rehearsal.yml` run 34384777955 (order_id cuid, amount 1450) → HTTP 200 `{ok:true, resumed:false, refundId cmtue1xh5…, stripeRefundId re_3UA…Xa5U, amountCents 1450, restaurantReverseCents 1334, applicationFeeRefundCents 116, cumulativeRefundedCents 1450, remainingRefundableCents 0}` → porte 403 gated à 17:46:00Z (re-gel inconditionnel).
+- Stripe TEST AFTER (17:45–17:46Z, lecture seule) : refund `created` 17:44:48Z succeeded 1450 ; events transfer.reversed 17:44:48Z, application_fee.refunded + refund.created + charge.refunded 17:44:49Z, refund.updated 17:44:50Z, tous `pending_webhooks 0` ; charge `amount_refunded 1450`, **`refunded true`**, remaining 0 ; app fee refunded **116/116** ; **Transfer.amount_reversed 1450 (brut)** ; balance connectée : payment_refund −1450 + adjustment +116 ⇒ net **−1334** (available 2195 → **861**, pending 0) ; payout manual/7, 0 payout. GR-N5TSM0 intact (1 refund 500).
+- DB / ledger / fidélité / e-mail / état commande AFTER : mesures fondateur (precheck BZE1X, `phase2-email-timeline.js`, `phase2-preflight.js`) — attendus : Refund row 1 succeeded 1450 ; ledger refund {−1450, −116, −1334} ; fidélité 18 → 4 (reverse 14, restore 0, offset 0) ; e-mail full « Votre remboursement est confirmé — Rehearsal Beta Grubano » 14,50 € après 17:44:48Z ; `Order.status`/`paymentStatus` attendus INCHANGÉS (delivered/paid) = constat modèle d'état (ticket T-45), pas un échec du refund.
+- Sauvegarde true-flag : `phase2-backup-neutralize.js` à relancer après la fenêtre (T-43).
+
+## 12 · CLÔTURE DU TRAIN REFUND — 2026-09-09 (les deux répétitions PASS)
+
+### 12.1 Résultat consolidé (mesures fondateur + Stripe lecture seule)
+
+| | Répétition 1 — PARTIEL GR-N5TSM0 | Répétition 2 — FULL GR-GBZE1X |
+|---|---|---|
+| Cash remboursé | 500 c | 1450 c |
+| Application fee refund | 27 c | 116 c (fee épuisée) |
+| Transfer reversal BRUT | 500 c | 1450 c |
+| Effet NET compte connecté | −473 c | −1334 c |
+| Remaining refundable après | 910 c | **0 c** |
+| `Charge.refunded` | false | **true** |
+| Refund rows DB | 1 succeeded 500 | 1 succeeded 1450 |
+| Ledger refund | {−500, −27, −473} | {−1450, −116, −1334} |
+| Fidélité | 20 → 18 (reverse 5, restore 3) | 18 → 4 (reverse 14, restore 0) |
+| `recoveryOffsetPoints` | 0 → 0 | 0 → 0 (jamais exercé — T-44) |
+| Statut / paiement après | delivered / paid | delivered / paid (T-45) |
+| Porte après | 403 gated | 403 gated |
+
+`LEDGER TOTAL APRÈS` pour GR-GBZE1X = 0 / 0 / 0 (payment {1450,116,1334} + refund {−1450,−116,−1334}).
+
+### 12.2 Réconciliation financière directe (opérateur v5, DB ↔ Stripe)
+
+- Fenêtre 7 jours : ledger 2 refunds / Stripe 2 refunds · somme −1950 / −1950 · ECARTS none · REFUND ECARTS none · WINDOW VERDICT PASS.
+- Fenêtre depuis 2026-08-28 : ledger 3 / Stripe 3 · somme −3400 / −3400 · ECARTS none · REFUND ECARTS none · WINDOW VERDICT PASS.
+- Le `RESULT: FAIL` global de `phase2-preflight.js` provient de sa garde historique « UNEXPECTED REFUND SINCE 2026-08-29 » : les deux refunds de septembre sont des **répétitions explicitement autorisées**. Idem pour le `FAIL` de `phase2-refund-gate.js` relancé APRÈS coup (refund existant, preuves loyalty/ledger antérieures, remaining 0, available 861 < 1450). Ces deux FAIL sont le **comportement de garde attendu**, jamais un écart financier. Les gardes ne sont pas affaiblies ; l'opérateur `phase2-refund-gate.js` imprime désormais une NOTE explicative en mode precheck lorsqu'il échoue sur ces motifs, sans toucher aux anomalies ni au code de sortie.
+
+### 12.3 Correction d'un DÉFAUT D'OPÉRATEUR DE PREUVE (pas un défaut produit)
+
+`scripts/server/phase2-email-timeline.js` a d'abord rendu un **FAUX NÉGATIF** sur la répétition FULL : il supposait « exactement UN e-mail de remboursement par consommateur en 48 h » et évaluait la ligne `EmailLog` **la plus ancienne** — donc l'e-mail PARTIEL de 10:09 au lieu de l'e-mail FULL de 17:44. La chronologie produit était correcte depuis le début :
+
+```
+Stripe refund succeeded  2026-09-09T17:44:48.000Z
+EmailDispatch claim      2026-09-09T17:44:50.429Z   (order:<GBZE1X>:1450)
+EmailLog sent            2026-09-09T17:44:50.786Z   « Votre remboursement est confirmé — Rehearsal Beta Grubano »
+→ EMAIL SENT AFTER STRIPE SUCCEEDED = YES (Δ 2,786 s)
+```
+
+Correction (aucune modification du comportement produit) : `EmailLog` ne porte **aucune clé étrangère** vers la commande ou le remboursement (schéma : recipient, subject, trigger, status, sentAt). L'opérateur corrèle donc par la relation déterministe la plus forte que le schéma permet :
+
+1. **`EmailDispatch.dedupeKey = order:<orderId>:<amountCents>`** — clé EXACTE par (commande, montant). `sendTransactional` réserve cette ligne AVANT l'envoi, donc `claim.createdAt ≤ sentAt` toujours : seules les lignes envoyées **à partir de** la réservation sont candidates (jamais une ligne plus ancienne).
+2. **Sujet attendu** reconstruit exactement comme `sendRefundConfirmation` (`Votre remboursement ${partiel }est confirmé — <resto>`), le drapeau partiel venant de la vérité Stripe (remaining après ce refund > 0).
+3. **Réservation suivante** (toutes commandes) comme borne haute, en simple départage — elle ne peut jamais vider un ensemble non vide.
+
+Limite documentée (corrigée après revue adversariale) : sans clé étrangère, deux remboursements **succeeded du MÊME montant sur la MÊME commande** ne peuvent pas être distingués. Ce cas **est atteignable** sur le rail — la clé d'idempotence argent est `refund:<orderId>:<alreadyRefundedCents>`, donc 500 c puis encore 500 c utilisent deux clés différentes. En revanche ces deux remboursements partagent **UNE seule** clé d'e-mail `order:<id>:500` : le second e-mail est **supprimé comme doublon** par conception, donc il n'y a pas de second e-mail à corréler. L'opérateur signale explicitement ce cas au lieu de rendre un verdict confiant (**ticket T-47**).
+
+Corrections issues de la revue adversariale du 2026-09-09 (sur cette même correction) : (a) le drapeau partiel/complet est désormais dérivé de la **vérité Stripe** (base `charge.amount`, cumul = remboursements Stripe de la charge) et non d'une somme de lignes `Refund` en base — une somme DB rate tout remboursement émis hors rail (Dashboard Stripe) et inversait le gabarit attendu ; (b) l'opérateur signale une divergence DB↔Stripe au lieu de la masquer ; (c) l'invariant « la réservation précède toujours l'envoi » est reformulé (il vaut *quand une réservation existe* ; si l'INSERT dégrade, le produit envoie sans réservation et l'opérateur rend NON CORRÉLABLE au lieu de deviner) ; (d) une fenêtre de recherche trop courte est signalée comme artefact de `PHASE2_EMAIL_LOOKBACK_HOURS`, jamais comme un e-mail manquant.
+
+Preuves : `tests/phase2-email-timeline-correlate.test.ts` 20/20 (fixtures = les DEUX e-mails réels du même consommateur, un partiel + un complet ; prouve que la ligne FULL est choisie et que la règle naïve « ligne la plus ancienne » aurait choisi la mauvaise) ; harnais local nc7 18/18 de bout en bout (faux staging + faux Stripe + faux Prisma), y compris les échecs légitimes qui doivent rester FAIL : aucun e-mail après la réservation, e-mail réservé avant le succès Stripe, mauvais gabarit.
+
+### 12.4 Sécurité des sauvegardes
+
+La fenêtre écrit une sauvegarde de `.env.local` avant CHAQUE écriture canonique ; celle prise juste avant le RE-GEL contient donc `REFUNDS_ENABLED=true` et serait restaurable. `scripts/server/phase2-backup-neutralize.js` (archive manifeste sha256 + copie neutralisée hors racine, supprime la copie restaurable, ne touche jamais `.env.local`) a été exécuté après les deux répétitions : **LIVE REFUNDS_ENABLED = false · PROCESS REFUND GATE = 403 · RESTORABLE TRUE-FLAG BACKUP IN ACTIVE APP AREA = NO · BACKUP SAFETY = PASS**.
+
+Correction issue de la revue adversariale : le mode **dry-run** imprimait `RESULT: PASS` et sortait en 0 alors qu'une sauvegarde restaurable était toujours en racine — un rapport qu'un lecteur aurait raisonnablement lu comme « rien à faire ». Une sauvegarde dangereuse encore présente rend désormais **FAIL** (dry-run inclus) et le message indique de relancer sans `PHASE2_BACKUP_DRY_RUN` ; un dry-run sans rien de dangereux rend `PASS (dry run)`.
+
+### 12.5 Verdict
+
+**PHASE 2 REFUND REHEARSAL = PASS** (partiel + complet). Aucune autre répétition financière n'est nécessaire **pour clore le rail refund**. À ne pas confondre avec T-44, qui reste ouvert : la branche `recoveryOffsetPoints` n'a jamais été exercée en conditions réelles et sa clôture pré-LIVE demandera un scénario NATUREL (jamais un historique fabriqué) — ce n'est pas une répétition du rail refund. Tickets ouverts hérités de ce train : **T-42** (financement Connect sur le BRUT), **T-44** (offset fidélité jamais exercé en staging réel), **T-45** (représentation conso après remboursement total). Aucun ne bloque la clôture du rail argent ; T-45 doit être tranché avant le GO bêta technique.
+
+### 12.6 Défaut BLOQUANT trouvé par la revue adversariale du closeout — corrigé
+
+La fenêtre de remboursement ne se re-gelait que si le processus **atteignait** son bloc `finally`. Un **Ctrl-C, une coupure SSH, un `kill`, ou une exception non capturée** laissaient donc `REFUNDS_ENABLED=true` dans `.env.local` et **la porte de remboursement OUVERTE** sur staging — exactement le risque que tout ce train cherche à éliminer. Aucune des deux répétitions n'a rencontré ce cas (les deux se sont terminées normalement, porte 403 remesurée), mais le trou était réel.
+
+Correctif (`scripts/server/phase2-refund-gate.js`) : un **re-gel d'urgence synchrone** est ARMÉ à l'instant précis où le drapeau passe à `true`, et DÉSARMÉ seulement une fois `false` réellement écrit sur disque. Il est déclenché par `SIGINT`, `SIGTERM`, `SIGHUP`, `SIGQUIT`, `SIGBREAK`, `uncaughtException` et `unhandledRejection` ; `writeFlag` et `touchRestart` sont des appels fs **synchrones**, donc sûrs depuis un gestionnaire de signal. Si l'écriture est impossible, l'opérateur imprime `HUMAN ACTION REQUIRED NOW` avec le chemin exact au lieu d'échouer en silence. `SIGKILL` et une coupure de courant restent non interceptables — la bannière imprimée dit quoi vérifier dans ce cas.
+
+Preuve : `tests/phase2-refund-gate-emergency-refreeze.test.ts` 7/7 — re-gel d'une fenêtre interrompue (drapeau `false`, `tmp/restart.txt` touché), aucun autre secret modifié, aucun secret imprimé, déclenchement unique, idempotence, et message `HUMAN ACTION REQUIRED` quand l'écriture échoue.
