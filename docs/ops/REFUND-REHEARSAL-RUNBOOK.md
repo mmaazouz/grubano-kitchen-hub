@@ -31,6 +31,14 @@
 - Fail-safe fenêtre vide (prouvé harnais nc6, jamais sur staging) : deadline finie `PHASE2_REFUND_WINDOW_MS` (défaut 15 min) → `REFUND OBSERVED (Stripe) = NONE within the window — nothing executed` → `finally` inconditionnel : `REFUNDS_ENABLED=false` + restart + porte prouvée `CLOSED` (403 gated) ; 0 écriture Stripe ; aucune action humaine. Si la porte ne reprouve pas CLOSED : anomalie « HUMAN ATTENTION REQUIRED » (le fichier est déjà false).
 - Contrat de coordination le jour J : (A) phrase d'autorisation fondateur explicite → (B) CC prépare le dispatch et rend `REFUND DISPATCH READY = YES` + `WINDOW COMMAND MAY NOW BE RUN = YES` → (C) fondateur lance UNE commande `window` → (D) CC dispatch exactement UN refund 500 c via `refund-rehearsal.yml` pendant la fenêtre → (E) re-gel inconditionnel. Le fondateur n'ouvre JAMAIS la fenêtre avant (B).
 
+## 1d · MÉCANISME DE DISPATCH prouvé (2026-09-09T08:58Z, sans refund)
+
+- Chemin : **GitHub Actions `refund-rehearsal.yml` (workflow_dispatch, runner GitHub) → HTTPS → `POST https://app.grubano.com/api/admin/refunds/run`** avec l'en-tête `X-Internal-Token` = secret dépôt `INTERNAL_CRON_TOKEN` (comparé côté route à `process.env.INTERNAL_CRON_TOKEN`, constant-time, fail-closed si vide). Aucun accès DB ni SSH n'est nécessaire : le moteur de refund s'exécute DANS le process Next de staging.
+- Parité prouvée par lecture du code : `app/api/admin/refunds/run/route.ts` et `app/api/admin/ledger/check/route.ts` portent le MÊME bloc d'auth (même en-tête, même variable, même `safeEqual`, même `trim`). Le kill-switch est évalué AVANT l'auth sur `refunds/run` (403 gated porte fermée), donc la preuve authentifiée passe par la route ledger.
+- Preuve authentifiée à la SHA courante : `internal-token-probe.yml` dispatché sur fc262a4 → run 34332020981 → **HTTP STATUS = 200**, `GITHUB SECRET == STAGING RUNTIME TOKEN = YES` (GET lecture seule, statut seul, aucune valeur). Les deux workflows sont `state=active` (API GitHub) ; `refund-rehearsal.yml` id 351188965, dernier run 33994784902 = push skipped (enregistrement).
+- Dispatch réel le jour J : `gh workflow run refund-rehearsal.yml --ref develop -f order_id=cmtju919h0001h7t6bkn5tsm0 -f amount_cents=500 -f confirm=<phrase fondateur>` ; le job sonde d'abord la porte (401 attendu, sinon ABORT sans POST), puis UN POST ; latence mesurée du probe : ~1 s après le démarrage du job (fenêtre 15 min largement suffisante).
+- Non exécuté ici : aucun dispatch de `refund-rehearsal.yml`, aucune phrase d'autorisation utilisée, porte 403 gated.
+
 ## 2 · Vecteur du MOTEUR ACTUEL (dry-run avec les fonctions réelles — `tests/rehearsal-vector-n5tsm0.test.ts`, 7/7)
 
 Entrée : **500 c de cash Stripe**. `computeRefundSplit({T:1410, F:76, R:0, Cprev:0, amt:500})` :
