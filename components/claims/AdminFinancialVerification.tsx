@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLocale } from 'next-intl'
 import { Button, Badge, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
+import { moneyLineFor } from '@/lib/claim-money-line'
 
 // ── T-49 — THE FINANCIAL VERIFICATION QUEUE (founder decision, 2026-09-10) ────────
 //
@@ -124,9 +125,15 @@ export default function AdminFinancialVerification() {
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Attribution refusée.'); return }
       const outcome = (body as { result?: { outcome?: string } }).result?.outcome
-      toast.success(outcome === 'refunded' ? 'Remboursement attribué : la réclamation reflète désormais ce remboursement réel.'
-        : outcome === 'refund_failed' ? 'Remboursement attribué : il avait ÉCHOUÉ. La réclamation redevient traitable.'
-        : 'Remboursement attribué : la ligne n’est pas encore terminale. Rien n’est clos.')
+      // ROUND-4 AUDIT FIX: the tone fix was applied to reconcile() only, so attributing a FAILED
+      // refund still announced itself with a green tick. Same rule on both handlers.
+      const text = outcome === 'refunded'
+        ? 'Remboursement attribué : la réclamation reflète désormais ce remboursement réel.'
+        : outcome === 'refund_failed'
+          ? 'Remboursement attribué : il avait ÉCHOUÉ. Aucun argent n’a atteint le client. La réclamation redevient traitable.'
+          : 'Remboursement attribué : la ligne n’est pas encore terminale. Rien n’est clos.'
+      if (outcome === 'refund_failed') toast.error(text)
+      else toast.success(text)
       await load()
     } catch {
       toast.error('Attribution refusée.')
@@ -167,10 +174,11 @@ export default function AdminFinancialVerification() {
         {/* RE-AUDIT FIX: this banner promised things that are only true of the AMBIGUOUS rows.
             The third bucket holds ordinary unsettled cases whose truth IS known and which the
             claims rail can still pay, so a blanket promise over all of them was false. */}
-        Toutes les réclamations dont l’argent n’est pas soldé, quelle qu’en soit la raison. Deux
-        catégories très différentes : celles dont la vérité argent est <strong>indéterminée</strong>
-        {' '}(le système ne dira ni « payé » ni « non payé » : il ne le sait pas, et la commande
-        reste verrouillée), et celles dont l’état est <strong>connu</strong> mais non soldé.
+        {/* ROUND-4 AUDIT FIX: the banner sorted the third bucket under « état connu » while the
+            row line on those same rows can say the opposite. It no longer promises a category. */}
+        Toutes les réclamations dont l’argent n’est pas soldé, quelle qu’en soit la raison. Ce qui
+        est établi, et ce qui ne l’est pas, est dit <strong>ligne par ligne</strong> : ne déduisez
+        rien de la présence d’une réclamation dans cette file, lisez la ligne « Argent ».
         {' '}
         <strong>
           Le rail de remboursement admin ne lit PAS la table des réclamations : un remboursement
@@ -207,14 +215,10 @@ export default function AdminFinancialVerification() {
                   "nothing was paid" about something it never looked at. */}
               <p>
                 <span className="font-semibold">Argent :</span>{' '}
-                {/* ROUND-3 AUDIT FIX: "état connu" was asserted over the whole bucket, including
-                    rows whose money truth is exactly what is NOT known. The claim is now made only
-                    where a bound refund row actually carries the answer. */}
-                {r.kind !== 'other_unsettled'
-                  ? 'INDÉTERMINÉ — à établir par preuve Stripe.'
-                  : r.refundId
-                    ? 'un remboursement est LIÉ à cette réclamation — son état fait foi, voir la file « Remboursements à traiter ».'
-                    : 'NON SOLDÉ, et aucun remboursement n’est lié — l’état argent n’est pas établi ici.'}
+                {/* ROUND-4 AUDIT FIX: the refundId branch was FALSE on exactly the rows where the
+                    engine refused to attribute the refund (resume_mismatch) — a bound refund that
+                    answers for somebody else. The decision is a pure, tested function now. */}
+                {moneyLineFor({ kind: r.kind, refundId: r.refundId, refundError: r.refundError }).text}
               </p>
               <p><span className="font-semibold">Réclamation :</span> <code>{r.id}</code></p>
               <p>
@@ -289,10 +293,9 @@ export default function AdminFinancialVerification() {
                 </ul>
               </div>
             )}
-            <p className="mt-1 text-[12px] text-grubano-ink-muted">
-              Lit Stripe et les lignes de remboursement existantes. Ne crée aucun remboursement,
-              ne relance rien, ne déplace aucun argent.
-            </p>
+            {/* ROUND-4 AUDIT FIX: scoping the button left its caption behind here, so it rendered
+                on EVERY card — twice on the ones that do have a button, and as a dangling promise
+                about an action on the ones that do not. The caption now lives with the button. */}
           </div>
         ))}
       </div>

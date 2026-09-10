@@ -188,3 +188,38 @@ bouton désactivé sur celles-là. Tests : garde d'attribution pilotée jusqu'au
 par le vrai producteur de marqueur, et contrôle négatif sur la fusion des deux issues d'absence.
 
 **Ces correctifs-là n'ont pas encore été audités.** Rond 4 en cours.
+
+---
+
+## 10. AUDIT ROND 4 (2026-09-10) — sur `9843e9f`
+
+4 auditeurs, 18 constats, **14 confirmés / 4 réfutés. P0 = 0, P1 = 1.**
+
+**Le P1 : mon test « aller-retour par le vrai producteur » n'atteignait jamais le producteur.** Il
+appelait une fonction qui n'écrit aucun marqueur, puis retombait sur une chaîne tapée à la main et
+vérifiait sa propre chaîne. C'est-à-dire précisément la tautologie qu'il était censé supprimer :
+une divergence écrivain/lecteur — exactement la regex inerte du rond 2 — serait passée une seconde
+fois. Corrigé en pilotant `runClaimAutoApproval → approveClaim → triggerClaimRefund`, le vrai
+producteur, et **prouvé par injection** : casser l'horodatage de l'écrivain fait ROUGIR la suite,
+le restaurer la remet au VERT, et le fichier source revient identique.
+
+**Les P2 convergents** : la nouvelle ligne « argent » utilisait `refundId` comme preuve qu'un
+remboursement répond pour la réclamation — faux précisément sur les lignes où le moteur a REFUSÉ
+l'attribution (`resume_mismatch`), c'est-à-dire là où un remboursement est lié mais répond pour
+quelqu'un d'autre. La correction de tonalité du rond 4 n'avait été appliquée qu'à un des deux
+gestionnaires. Et la légende du bouton était restée derrière lui : rendue deux fois sur les cartes
+qui ont le bouton, et en promesse orpheline sur celles qui ne l'ont plus.
+
+**Le constat le plus important pour la méthode** : *aucun* des cinq correctifs de composant du rond
+4 n'était épinglé par un test — les annuler laissait la suite verte. C'est exactement ainsi qu'un
+correctif rapporté comme fait, et jamais appliqué, a survécu à un rond entier.
+
+### Corrigé (rond 5)
+
+Décision de la ligne « argent » extraite dans `lib/claim-money-line.ts`, **fonction pure et
+testée**, qui teste le marqueur de mésattribution AVANT la liaison. Tonalité appliquée aux deux
+gestionnaires. Légende rendue une seule fois, avec son bouton. Bannière qui ne classe plus le
+troisième groupe dans une catégorie et renvoie à la ligne. Aller-retour de marqueur réel. Et sept
+épingles au niveau source pour que l'annulation d'un correctif de composant fasse rougir la suite.
+
+**Ces correctifs-là n'ont pas encore été audités.** Rond 5 en cours.

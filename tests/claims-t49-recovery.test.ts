@@ -32,7 +32,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import {
   reconcileClaimEvidence, enterFinancialVerification, listFinancialVerificationClaims,
-  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund, reconcileMarkerAge, RECONCILE_GRACE_MS,
+  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund, reconcileMarkerAge, RECONCILE_GRACE_MS, runClaimAutoApproval,
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
 } from '@/lib/claims'
 
@@ -509,27 +509,37 @@ describe('the double-attribution guard, exercised where it REFUSES', () => {
 // The audit noted the grace tests re-typed the marker by hand, so a writer/reader divergence —
 // exactly the bug that shipped — would go unseen. This drives the SHIPPED writer.
 describe('the marker the code WRITES is the marker the code can READ', () => {
-  it('round-trips: triggerClaimRefund writes it, reconcileMarkerAge parses it', async () => {
+  it('round-trips: the SHIPPED writer produces a marker the SHIPPED reader parses', async () => {
+    // ROUND-4 AUDIT FIX (P1). The previous version called reconcileClaimEvidence, which never
+    // writes a marker, then fell through to a hand-typed string — so it asserted its own literal
+    // and would NOT have caught the writer/reader divergence it was named after. That divergence
+    // is exactly what shipped in round 2 (the inert regex). This drives the real producer:
+    // runClaimAutoApproval -> approveClaim -> triggerClaimRefund, whose CAS writes the marker.
     refundsFlag.mockReturnValue(true)
-    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
+    fx.row = { status: 'restaurant_review', refundAttempted: false, refundId: null, refundError: null }
+    db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(where.status === 'restaurant_review' ? [{ id: 'cl1', reason: 'quality' }] : []))
     db.claim.findUnique.mockResolvedValue({ orderId: 'o1', requestedAmountCents: 500 })
     execMock.mockResolvedValue({ ok: false, status: 502, error: 'boom' })
-    db.refund.findMany.mockResolvedValue([])
-    await reconcileClaimEvidence({ claimId: 'cl1' }).catch(() => {})
+    await runClaimAutoApproval()
 
-    // The CAS payload is the real producer; feed exactly it to the real reader.
-    const written = db.claim.updateMany.mock.calls
-      .map((c) => (c[0].data as { refundError?: string }).refundError)
+    const markers = db.claim.updateMany.mock.calls
+      .map((c) => (c[0].data as { refundError?: unknown }).refundError)
       .filter((v): v is string => typeof v === 'string' && v.startsWith(RECONCILE_REQUIRED))
-    if (written.length) {
-      expect(reconcileMarkerAge(written[0])).not.toBeNull()
-    } else {
-      // The reconciler path did not produce one; assert the producer directly instead.
-      const marker = `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date().toISOString()} — identité du remboursement pas encore liée.`
-      expect(reconcileMarkerAge(marker)).not.toBeNull()
-    }
+    // If the producer stopped writing a marker at all, that is itself the regression: fail here
+    // rather than quietly substituting a literal, which is what the old version did.
+    expect(markers.length).toBeGreaterThan(0)
+    expect(reconcileMarkerAge(markers[0])).not.toBeNull()
+    expect(reconcileMarkerAge(markers[0])!).toBeLessThan(RECONCILE_GRACE_MS)
   })
 
+  it('NEGATIVE CONTROL — a writer emitting a non-ISO timestamp is caught by the round trip', () => {
+    // The exact divergence the round trip exists for: change the writer, keep the reader.
+    const badWriter = (now: Date) => `${RECONCILE_REQUIRED}: démarrée à ${now.toString()} — x`
+    expect(reconcileMarkerAge(badWriter(new Date()))).toBeNull() // ← would strand every attempt
+    const goodWriter = (now: Date) => `${RECONCILE_REQUIRED}: démarrée à ${now.toISOString()} — x`
+    expect(reconcileMarkerAge(goodWriter(new Date()))).not.toBeNull()
+  })
   it('a marker dated in the FUTURE is not read as healthy', () => {
     // ROUND-3 AUDIT FIX: clock skew gave a NEGATIVE age, which the grace filter read as "still in
     // flight" and hid the claim indefinitely. A future marker is not evidence of health.

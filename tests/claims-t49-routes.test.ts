@@ -165,3 +165,49 @@ describe('the page keeps the money queue mounted when the feature flag is off', 
     expect(page).not.toContain(oldShape)      // ← fixed
   })
 })
+
+// ══ ROUND-4 AUDIT FIX — THE COMPONENT FIXES ARE PINNED ══════════════════════════
+// The audit found that NONE of the round-4 component fixes was pinned by any test: reverting each
+// left the suite green — which is how a fix reported as applied, and never applied, survived a
+// whole round. The money-line decision is a tested pure function now (tests/claim-money-line);
+// these pin the rest at source level. Crude, but they fail when the code is reverted.
+describe('the money queue component keeps its audit fixes', () => {
+  const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8')
+
+  it('the reconcile button is scoped, not unconditional (the round-3 P1)', () => {
+    expect(src).toContain("{r.kind !== 'other_unsettled' ? (")
+    // and its caption lives WITH it, rather than trailing every card
+    expect(src.match(/Lit Stripe et les lignes/g) ?? []).toHaveLength(1)
+  })
+
+  it('the money line comes from the tested pure function, not an inline ternary', () => {
+    expect(src).toContain("import { moneyLineFor } from '@/lib/claim-money-line'")
+    expect(src).toContain('moneyLineFor({ kind: r.kind, refundId: r.refundId, refundError: r.refundError })')
+    expect(src).not.toContain('état connu mais NON SOLDÉ')
+  })
+
+  it('BOTH handlers pick their tone from the outcome — not just reconcile', () => {
+    // Round 4 fixed reconcile() and left attribute() green on a failed refund.
+    expect(src).toContain("if (needsAttention) toast.error(text)")
+    expect(src).toContain("if (outcome === 'refund_failed') toast.error(text)")
+  })
+
+  it('the rail-locked outcome reaches an operator-visible message', () => {
+    expect(src).toContain('no_refund_proven_rail_locked')
+    expect(src).toMatch(/verrouille cette commande/)
+  })
+
+  it('rows the attribution guard will refuse are flagged AND disabled', () => {
+    expect(src).toContain('alreadyBoundToAnotherClaim')
+    expect(src).toContain('disabled={busyId === r.id || c.alreadyBoundToAnotherClaim}')
+  })
+
+  it('a failed load is distinguishable from an empty queue', () => {
+    expect(src).toContain('loadError')
+    expect(src).toMatch(/ILLISIBLE/)
+  })
+
+  it('the banner no longer sorts the third bucket into a category', () => {
+    expect(src).toMatch(/ligne par ligne/)
+  })
+})
