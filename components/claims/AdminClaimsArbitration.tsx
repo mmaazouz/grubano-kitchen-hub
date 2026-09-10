@@ -85,8 +85,9 @@ export default function AdminClaimsArbitration() {
       if (!res.ok) { toast.error(data.error || t('admin.processing')); return }
       // AUDIT FIX (batch 2): this used to assert "remboursement déclenché" on EVERY approval —
       // including the ordinary case where the refund rail is closed and nothing moves, and the
-      // RESUME-FIRST case where money DID move but the engine reports 'failed'. The mapping is a
-      // pure function in lib/claim-approval-toast so it is tested, not re-derived here.
+      // RESUME-FIRST case where the engine ended on a refund that is not this claim's (money may
+      // have moved for somebody else, or may still be pending) but reports 'failed'. The mapping is
+      // a pure function in lib/claim-approval-toast so it is tested, not re-derived here.
       if (decision !== 'approve') {
         toast.success(t('admin.refusedFinalDone'))
       } else {
@@ -116,9 +117,14 @@ export default function AdminClaimsArbitration() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((data as { error?: string }).error || 'Échec de la clôture.'); return }
+      // ROUND-7 AUDIT FIX (P1): these said « client payé hors rail » and « Aucun argent n’a bougé »
+      // in the SYSTEM's voice. The route reads no Refund row and no Stripe object — it records an
+      // operator DECLARATION. The first is now attributed; the second is scoped to this action,
+      // because on a disowned-binding row that followed a Stripe SUCCESS the engine itself recorded
+      // that money moved (for somebody else) — this action cannot speak for the order.
       toast.success(resolution === 'settled_out_of_band'
-        ? 'Dossier clôturé : client payé hors rail. Aucun argent n’a bougé ici.'
-        : 'Dossier clôturé sans paiement. Aucun argent n’a bougé.')
+        ? 'Dossier clôturé sur votre déclaration (payé autrement, hors système). Cette action n’a déplacé aucun argent et n’a rien vérifié chez Stripe.'
+        : 'Dossier clôturé sans paiement, sur votre déclaration. Cette action n’a déplacé aucun argent ; elle ne dit rien des remboursements déjà présents sur la commande.')
       setStuckId(null); setStuckReason('')
       await load()
     } catch {
@@ -157,7 +163,9 @@ export default function AdminClaimsArbitration() {
     refund_error_recorded:                { text: 'Erreur de remboursement enregistrée — décision humaine requise', tone: 'danger' },
     approved_not_driven:                  { text: 'Approuvée mais jamais remboursée — en attente de traitement', tone: 'warning' },
     reconcile_required:                   { text: 'Vérification financière requise — l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
-    absence_proven_payable:               { text: 'Absence de remboursement PROUVÉE (lignes + Stripe) — approuvée, non payée ; sera versée par le rail quand il sera ouvert', tone: 'warning' },
+    // ROUND-7 AUDIT FIX (P1): « sera versée par le rail » promised a payment nothing performs —
+    // the auto-approve sweep is flag-gated OFF for the beta and its cron is gone. A human pays it.
+    absence_proven_payable:               { text: 'Absence de remboursement PROUVÉE (lignes + Stripe) — approuvée, non payée. Rien ne la paiera automatiquement : nouvelle approbation admin requise, réclamations et remboursements ouverts', tone: 'warning' },
   }
 
   return (
@@ -239,7 +247,11 @@ export default function AdminClaimsArbitration() {
                           for three of them, and the daily schedule is not even live: GitHub fires
                           `schedule` only from the default branch, and origin/main carries no
                           .github/ directory. Say per state what can actually reach the row. */}
-                      {r.refund
+                      {r.moneyState === 'absence_proven_payable'
+                        ? 'Rien à clôturer ici : réclamation saine, approuvée et non payée. Elle attend ' +
+                          'une nouvelle approbation admin, réclamations et remboursements ouverts. Aucun ' +
+                          'mouvement d’argent.'
+                        : r.refund
                         ? 'Aucune clôture manuelle sur cet état : un remboursement est lié et son sort ' +
                           'sera appliqué par la réconciliation (webhook Stripe, ou le balayage de ' +
                           'récupération lorsqu’il est déclenché). Aucun mouvement d’argent.'

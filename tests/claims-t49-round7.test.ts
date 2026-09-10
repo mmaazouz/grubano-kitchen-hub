@@ -8,7 +8,7 @@
 // T-49 suites use — never a where-blind `{ count: 1 }`.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { updateManyMock } from './support/prisma-where'
+import { updateManyMock, matchWhere } from './support/prisma-where'
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -122,9 +122,23 @@ describe('adoptStripeRefundForClaim — the exit for a Dashboard refund with no 
     // amount and status came from STRIPE, never from the operator: the input has no such fields
     expect(execMock).not.toHaveBeenCalled()
     expect(stripeMock.refunds.create).not.toHaveBeenCalled()
-    // the claim's fate came from the ROW's status through the audited tail
-    const wrote = db.claim.updateMany.mock.calls.map((c) => c[0].data)
-    expect(wrote.some((d) => d.status === 'refunded')).toBe(true)
+    // ROUND-7 AUDIT FIX (P1): "some write sets refunded" was satisfied by a direct write that
+    // bypassed the tail — the stamp guard, the one-row-two-claims guard, the FV compare-and-set
+    // and the row-status re-read. The tail is pinned by its SIGNATURE: the bind CAS keyed on
+    // FINANCIAL_VERIFICATION, then the reconcile CAS keyed on the bound identity, and BOTH audit
+    // records — the adoption's and the attribution's.
+    const calls = db.claim.updateMany.mock.calls.map((c) => c[0])
+    expect(calls[0]).toMatchObject({ where: { status: FINANCIAL_VERIFICATION }, data: { status: 'refunding', refundId: 'rf_ext' } })
+    expect(calls[1]).toMatchObject({ where: { refundId: 'rf_ext' }, data: { status: 'refunded' } })
+    expect(calls).toHaveLength(2)
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.adopt_stripe_refund', metadata: expect.objectContaining({ moneyMoved: false, anchoredCharge: 'ch_1', stripeRefundId: RE }) }))
+    expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.attribute_refund', metadata: expect.objectContaining({ refundRowId: 'rf_ext', moneyMoved: false }) }))
+  })
+
+  it('NEGATIVE CONTROL — a direct terminal write that skipped the tail would be caught by the signature', () => {
+    const bypass = [{ where: { id: 'cl1' }, data: { status: 'refunded', refundId: 'rf_ext' } }]
+    expect(bypass[0]).not.toMatchObject({ where: { status: FINANCIAL_VERIFICATION } })
+    expect(bypass).toHaveLength(1) // ← not 2: the reconcile CAS is missing
   })
 
   it('dryRun reads Stripe and returns the facts — and writes NOTHING', async () => {
@@ -193,20 +207,81 @@ describe('adoptStripeRefundForClaim — the exit for a Dashboard refund with no 
       expect(await adopt()).toMatchObject({ ok: false, status: 409 })
       expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
     })
+    // ROUND-7 AUDIT FIX (P3): these three used to be pinned by call ORDER (`mockResolvedValueOnce`
+    // twice), so the WHERE clauses — the actual guards — were never evaluated. The mock now answers
+    // from a row fixture through the same where-matcher the CAS mock uses.
+    const withRows = (rows: Array<Record<string, unknown>>) =>
+      db.refund.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => rows.find((r) => matchWhere(where, r)) ?? null)
+
     it('a Stripe id already recorded on ANOTHER order → 400, before any Stripe call', async () => {
-      db.refund.findFirst.mockResolvedValueOnce({ id: 'rfX', orderId: 'o_OTHER', status: 'succeeded', reason: null, idempotencyKey: 'refund:o_OTHER:0' })
+      withRows([{ id: 'rfX', orderId: 'o_OTHER', stripeRefundId: RE, status: 'succeeded', reason: null, idempotencyKey: 'refund:o_OTHER:0', amountCents: 500, stripePaymentIntentId: 'pi_X', settledAt: null }])
       expect(await adopt()).toMatchObject({ ok: false, status: 400 })
       expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
     })
     it('a Stripe id already recorded on THIS order by the engine → 409 pointing at the row path', async () => {
-      db.refund.findFirst.mockResolvedValueOnce({ id: 'rfX', orderId: 'o1', status: 'succeeded', reason: 'admin:x', idempotencyKey: 'refund:o1:0' })
+      withRows([{ id: 'rfX', orderId: 'o1', stripeRefundId: RE, status: 'succeeded', reason: 'admin:x', idempotencyKey: 'refund:o1:0', amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: null }])
+      const r = await adopt()
+      expect(r).toMatchObject({ ok: false, status: 409 })
+      expect(String((r as { error?: string }).error)).toContain('Attribuer')
+      expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
+    })
+    it('a Stripe id already recorded here but stamped for ANOTHER claim → 409 that names the claim, never « Attribuer »', async () => {
+      withRows([{ id: 'rfX', orderId: 'o1', stripeRefundId: RE, status: 'succeeded', reason: claimRefundReason('cl_OTHER'), idempotencyKey: 'refund:o1:0', amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: null }])
+      const r = await adopt()
+      expect(r).toMatchObject({ ok: false, status: 409 })
+      expect(String((r as { error?: string }).error)).toContain('cl_OTHER')
+      expect(String((r as { error?: string }).error)).not.toContain('Attribuer')
+    })
+    it('a row already stamped for this claim → 409 (multiple_candidate_refunds can never be manufactured)', async () => {
+      // NOT matched by stripeRefundId (different re_), matched by orderId + reason = our stamp.
+      withRows([{ id: 'rf_mine', orderId: 'o1', stripeRefundId: 're_other000000', status: 'succeeded', reason: claimRefundReason('cl1'), idempotencyKey: 'refund:o1:0', amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: null }])
       expect(await adopt()).toMatchObject({ ok: false, status: 409 })
       expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
     })
-    it('a row already stamped for this claim → 409 (multiple_candidate_refunds can never be manufactured)', async () => {
-      db.refund.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'rf_mine' })
+    it('NEGATIVE CONTROL — the stamped guard is keyed on the STAMP: a row on the order without it does not trip it', async () => {
+      withRows([{ id: 'rf_admin', orderId: 'o1', stripeRefundId: 're_other000000', status: 'succeeded', reason: 'admin:x', idempotencyKey: 'refund:o1:0', amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: null }])
+      stripeMock.refunds.retrieve.mockResolvedValue(stripeRefund({ status: 'pending' })) // refused later, for another reason
       expect(await adopt()).toMatchObject({ ok: false, status: 409 })
+      expect(stripeMock.refunds.retrieve).toHaveBeenCalled() // ← it got PAST the stamped guard
+    })
+    // ROUND-7 AUDIT FIX (P3): two of the three conjuncts of the crash-resume 'ours' predicate were
+    // pinned by nothing — deleting `status === 'succeeded'` stayed green.
+    it('an external row stamped for this claim whose status is no longer succeeded is NOT resumed → 409, no bind', async () => {
+      withRows([{ id: 'rf_ext', orderId: 'o1', stripeRefundId: RE, status: 'failed', reason: claimRefundReason('cl1'), idempotencyKey: EXTERNAL_REFUND_KEY_PREFIX + RE, amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: null }])
+      const r = await adopt()
+      expect(r).toMatchObject({ ok: false, status: 409 })
+      expect(String((r as { error?: string }).error)).toContain('failed')
       expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
+    })
+    it('an external row stamped for ANOTHER claim is NOT resumed → 409 naming that claim', async () => {
+      withRows([{ id: 'rf_ext', orderId: 'o1', stripeRefundId: RE, status: 'succeeded', reason: claimRefundReason('cl_OTHER'), idempotencyKey: EXTERNAL_REFUND_KEY_PREFIX + RE, amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: null }])
+      const r = await adopt()
+      expect(r).toMatchObject({ ok: false, status: 409 })
+      expect(String((r as { error?: string }).error)).toContain('cl_OTHER')
+    })
+  })
+
+  describe('CRASH-RESUME facts come from OUR row and say so (round-7 P2)', () => {
+    const resumeRow = { id: 'rf_ext', orderId: 'o1', stripeRefundId: RE, status: 'succeeded', reason: claimRefundReason('cl1'), idempotencyKey: EXTERNAL_REFUND_KEY_PREFIX + RE, amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: new Date('2026-09-10T10:00:00Z') }
+    // Braces on purpose: a beforeEach that RETURNS the mock hands vitest a "cleanup" function,
+    // which it then calls with no arguments.
+    beforeEach(() => {
+      db.refund.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => (matchWhere(where, resumeRow) ? resumeRow : null))
+    })
+
+    it('dryRun returns a REAL preview (wouldWrite false, source local_row) so « Lier » can enable — and writes nothing', async () => {
+      const r = await adoptStripeRefundForClaim({ claimId: 'cl1', stripeRefundId: RE, adminId: 'op1', dryRun: true })
+      expect(r).toMatchObject({ ok: true, outcome: 'preview', wouldWrite: false, facts: { stripeRefundId: RE, stripeStatus: 'succeeded', amountCents: 500, paymentIntentId: 'pi_1', source: 'local_row' } })
+      expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
+      expect(db.refund.create).not.toHaveBeenCalled()
+      expect(db.claim.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('the resumed success reports the row’s amount, never 0, and marks the source', async () => {
+      const r = await adoptStripeRefundForClaim({ claimId: 'cl1', stripeRefundId: RE, adminId: 'op1' })
+      expect(r).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf_ext', facts: { amountCents: 500, source: 'local_row' } })
+      expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
+      expect(db.refund.create).not.toHaveBeenCalled()
     })
   })
 
@@ -218,7 +293,7 @@ describe('adoptStripeRefundForClaim — the exit for a Dashboard refund with no 
   })
 
   it('CRASH-RESUME — the row was mirrored and the process died before binding: no second Stripe read, bound through the tail', async () => {
-    db.refund.findFirst.mockResolvedValueOnce({ id: 'rf_ext', orderId: 'o1', status: 'succeeded', reason: claimRefundReason('cl1'), idempotencyKey: EXTERNAL_REFUND_KEY_PREFIX + RE })
+    db.refund.findFirst.mockResolvedValueOnce({ id: 'rf_ext', orderId: 'o1', status: 'succeeded', reason: claimRefundReason('cl1'), idempotencyKey: EXTERNAL_REFUND_KEY_PREFIX + RE, amountCents: 500, stripePaymentIntentId: 'pi_1', settledAt: null })
     const r = await adoptStripeRefundForClaim({ claimId: 'cl1', stripeRefundId: RE, adminId: 'op1' })
     expect(r).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf_ext' })
     expect(stripeMock.refunds.retrieve).not.toHaveBeenCalled()
@@ -247,6 +322,67 @@ describe('adoptStripeRefundForClaim — the exit for a Dashboard refund with no 
 
   it('THE HATCH STAYS CLOSED — a parked claim is never closable by admin assertion', () => {
     expect(isStuckResolvable({ status: FINANCIAL_VERIFICATION, refundError: 'financial_verification:refund_moved_unattributed: …' })).toBe(false)
+  })
+})
+
+// ══ ROUND-7 FINDINGS, PINNED WHERE THE BEHAVIOUR LIVES ═════════════════════════════
+describe('round-7 P1/P2 fixes in the library', () => {
+  it('an ALREADY-parked claim gets its ambiguity REFRESHED when new evidence arrives (relabel, not a no-op)', async () => {
+    // Parked as stripe_unreadable; Stripe now reads fine and reports money moved on the order.
+    db.claim.findUnique.mockResolvedValue({ ...CLAIM, status: FINANCIAL_VERIFICATION })
+    fx.row = { status: FINANCIAL_VERIFICATION, refundId: null, refundError: 'financial_verification:stripe_unreadable: …' }
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 500 } })
+    const r = await reconcileClaimEvidence({ claimId: 'cl1' })
+    expect(r).toMatchObject({ outcome: 'financial_verification', reason: 'refund_moved_unattributed' })
+    expect((r as { reason?: string }).reason).not.toBe('already_parked_or_moved')
+    const writes = db.claim.updateMany.mock.calls.map((c) => c[0])
+    const relabel = writes.find((w) => w.where?.status === FINANCIAL_VERIFICATION && typeof w.data?.refundError === 'string')
+    expect(relabel).toBeDefined()
+    expect(String(relabel!.data.refundError)).toContain('financial_verification:refund_moved_unattributed')
+    expect(writes.some((w) => w.data?.status && w.data.status !== FINANCIAL_VERIFICATION)).toBe(false) // status untouched
+  })
+
+  it('…and a claim that really moved on (terminal) is still reported as already_parked_or_moved', async () => {
+    db.claim.findUnique.mockResolvedValue({ ...CLAIM, status: FINANCIAL_VERIFICATION })
+    fx.row = { status: 'refunded', refundId: null, refundError: null } // moved to terminal concurrently
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 500 } })
+    const r = await reconcileClaimEvidence({ claimId: 'cl1' })
+    expect(r).toMatchObject({ outcome: 'financial_verification', reason: 'already_parked_or_moved' })
+  })
+
+  it('the row path refuses an UNSTAMPED row while a row stamped for THIS claim exists on the order', async () => {
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: FINANCIAL_VERIFICATION })
+    const rows = [
+      { id: 'rf_mine', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_m', reason: claimRefundReason('cl1') },
+      { id: 'rf_admin', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_a', reason: 'admin:x' },
+    ]
+    db.refund.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => rows.find((x) => x.id === where.id) ?? null)
+    db.refund.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => rows.find((x) => matchWhere(where, x)) ?? null)
+    db.claim.findFirst.mockResolvedValue(null)
+    const refused = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_admin', adminId: 'op1' })
+    expect(refused).toMatchObject({ ok: false, status: 409 })
+    expect(String((refused as { error?: string }).error)).toContain('rf_mine')
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+    // the stamped row itself proceeds past that guard (it fails later only because this mock's
+    // findFirst returns null for reconcileClaimForRefund — the guard is what is under test)
+    fx.row = { status: FINANCIAL_VERIFICATION, refundId: null, refundError: 'financial_verification:x: …' }
+    const ok = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_mine', adminId: 'op1' })
+    expect(db.claim.updateMany).toHaveBeenCalled() // the bind CAS ran: the guard let the stamped row through
+    if (!ok.ok) expect(String((ok as { error?: string }).error)).not.toContain('porte déjà l’identité')
+  })
+
+  it('an engine failure is stored as engine_failed:<engine text> — with the truth that nothing re-drives it from here', async () => {
+    // Drive the real producer: an approved claim, the attempt CAS, the engine refusing.
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, requestedAmountCents: 500, refundId: null, refundError: null })
+    fx.row = { status: 'approved', refundAttempted: false, refundId: null, refundError: null }
+    refundsFlag.mockReturnValue(true)
+    execMock.mockResolvedValue({ ok: false, status: 502, error: 'Erreur paiement, réessayez.' })
+    const { triggerClaimRefund } = await import('@/lib/claims')
+    const r = await triggerClaimRefund('cl1')
+    expect(r).toMatchObject({ state: 'failed' })
+    const written = String(db.claim.update.mock.calls.at(-1)![0].data.refundError)
+    expect(written.startsWith('engine_failed: Erreur paiement, réessayez.')).toBe(true)
+    expect(written).toContain('aucune relance possible depuis les réclamations')
   })
 })
 
@@ -337,8 +473,7 @@ describe('listActionableRefundClaims after round 6', () => {
     expect(out[0].resolvable).toBe(true)
   })
 
-  it('NEGATIVE CONTROL — the round-6 rule (refundId as proxy) prints the disowned amount; the shipped rule does not', () => {
-    const roundSixRule = (r: { status: string; amountCents: number } | null) => r && r.status === 'succeeded' ? r.amountCents : null
-    expect(roundSixRule({ status: 'succeeded', amountCents: 1200 })).toBe(1200) // ← the defect
-  })
+  // (ROUND-7 AUDIT FIX, P3: a "negative control" that re-implemented the old rule as a local lambda
+  // lived here. It touched no shipped code and proved nothing; the first test in this block IS
+  // the differential — it reads the shipped classifier with the real marker.)
 })

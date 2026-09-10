@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { moneyLineFor, isResumeMismatch, RESUME_MISMATCH } from '@/lib/claim-money-line'
+import { RECONCILE_REQUIRED } from '@/lib/claims'
 
 // ROUND-5 AUDIT FIX: this fixture was a hand-typed string, so the module's contract was bound to
 // no shipped writer — the same tautology that let the inert regex through in round 2. The strings
@@ -22,15 +23,26 @@ const CLAIMS_SRC = readFileSync('lib/claims.ts', 'utf8')
 // whose NEXT `return {…}` carries `error: 'resume_mismatch'` is a mismatch writer; every other
 // refundError template literal is not. The predicate is then checked against BOTH sets — the
 // second half is what makes the first discriminating.
-const ALL_WRITERS = Array.from(CLAIMS_SRC.matchAll(/refundError:\s+`([^`]*)`/g)).map((m) => {
+// ROUND-7 AUDIT FIX (P3): the extractor only saw backtick literals directly after `refundError:`,
+// so the ternary-form writers (proof of absence, rail-locked) and the constant-form marker
+// (reconcile_required) never confronted the predicate, and the `>= 2` floor was the exact count of
+// what the regex happened to catch. Every refundError ASSIGNMENT is read now, every quoted or
+// backtick literal on that line is a writer (both arms of a ternary), the marker constants are
+// added from the module itself, and the floors are replaced by an explicit expected set.
+// The assignment runs to the first `,` that ends a line — a ternary spreads over three lines.
+const ALL_WRITERS = Array.from(CLAIMS_SRC.matchAll(/refundError:\s+([\s\S]*?),[ \t]*\r?\n/g)).flatMap((m) => {
   const after = CLAIMS_SRC.slice((m.index ?? 0) + m[0].length)
   const nextReturn = after.match(/return \{[^}]*\}/)
-  return { text: m[1], engineSaysMismatch: !!nextReturn && /error: 'resume_mismatch'/.test(nextReturn[0]) }
+  const engineSaysMismatch = !!nextReturn && /error: 'resume_mismatch'/.test(nextReturn[0])
+  const literals = Array.from(m[1].matchAll(/`([^`]*)`|'([^']*)'/g)).map((l) => l[1] ?? l[2]).filter((t) => t && t.length > 8)
+  return literals.map((text) => ({ text, engineSaysMismatch }))
 })
 /** Every refundError literal the engine writes for a mismatch, classified by the engine's return. */
 const SHIPPED_MISMATCH_WRITERS = ALL_WRITERS.filter((w) => w.engineSaysMismatch).map((w) => w.text)
 /** Every OTHER refundError literal — the predicate must say NO to each of these. */
 const SHIPPED_OTHER_WRITERS = ALL_WRITERS.filter((w) => !w.engineSaysMismatch).map((w) => w.text)
+/** The prefixes every writer family must start with. A family missing from the source is RED. */
+const EXPECTED_OTHER_PREFIXES = ['stripe_failed', '${FINANCIAL_VERIFICATION}', 'no_refund_proven_rail_locked', '${NO_REFUND_PROVEN}', 'engine_failed']
 const MISMATCH = SHIPPED_MISMATCH_WRITERS[0] ?? ''
 
 describe('the two ambiguous buckets never claim to know anything', () => {
@@ -175,8 +187,12 @@ describe('every mismatch string the engine actually writes is recognised', () =>
   it('…and says NO to every refundError literal the engine writes that is NOT a mismatch', () => {
     // The discriminating half. Without it, a predicate that returned true for everything would
     // pass "every mismatch writer is recognised".
-    expect(SHIPPED_OTHER_WRITERS.length).toBeGreaterThanOrEqual(2)
+    for (const p of EXPECTED_OTHER_PREFIXES) {
+      expect(SHIPPED_OTHER_WRITERS.some((w) => w.startsWith(p)), `writer family ${p} not found in lib/claims.ts`).toBe(true)
+    }
     for (const w of SHIPPED_OTHER_WRITERS) expect(isResumeMismatch(w), w.slice(0, 60)).toBe(false)
+    // and the constant-form crash marker, from the module itself
+    expect(isResumeMismatch(RECONCILE_REQUIRED + ': tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z')).toBe(false)
   })
 
   it('NEGATIVE CONTROL — a hand-typed fixture would not have caught a writer change', () => {

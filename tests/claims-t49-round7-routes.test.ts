@@ -54,11 +54,22 @@ describe('POST /attribute — the Stripe-anchored shape dispatches to the adopti
     expect(await res.json()).toMatchObject({ error: 'autre paiement', facts: { stripeStatus: 'succeeded' } })
   })
 
-  it('the body cannot carry an amount or an outcome — a malformed id is refused before any call', async () => {
-    const res = await post({ stripeRefundId: 'not-a-refund', amountCents: 500 })
+  it('a malformed id is refused before any call', async () => {
+    const res = await post({ stripeRefundId: 'not-a-refund' })
     expect(res.status).toBe(400)
     expect(adoptMock).not.toHaveBeenCalled()
     expect(attributeMock).not.toHaveBeenCalled()
+  })
+
+  it('the body cannot carry an amount or an outcome — extras are DROPPED before the library sees them', async () => {
+    // ROUND-7 AUDIT FIX (P3): the previous test refused on the malformed id, so the property in
+    // its title was never shown. A WELL-FORMED id with extras must reach the library WITHOUT them.
+    adoptMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf_ext', facts: { stripeRefundId: 're_dash12345678' } })
+    const res = await post({ stripeRefundId: 're_dash12345678', amountCents: 500, status: 'succeeded', refundId: 'rf_forged', outcome: 'refunded' })
+    expect(res.status).toBe(200)
+    const arg = adoptMock.mock.calls[0][0]
+    expect(arg).toMatchObject({ claimId: 'cl1', stripeRefundId: 're_dash12345678', dryRun: false })
+    for (const k of ['amountCents', 'status', 'refundId', 'outcome']) expect(arg).not.toHaveProperty(k)
   })
 
   it('still guarded: no admin → 403, nothing called', async () => {
@@ -72,19 +83,35 @@ describe('POST /attribute — the Stripe-anchored shape dispatches to the adopti
 const stripComments = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
 
+// ROUND-7 AUDIT FIX (P1): the pin covered four files and one shape; the approval toasts in
+// messages/*.json and lib/claim-approval-toast.ts shipped « de l’argent EST parti » and « aucun
+// argent n’est parti » past it, and the stuck-money hatch toasted « client payé hors rail » /
+// « Aucun argent n’a bougé » unqualified. The list now covers every file that writes or renders an
+// operator-visible money sentence, and the patterns cover the CLASS — an unqualified assertion
+// that money did / did not reach the customer, or did / did not move — in both apostrophes and in
+// the two languages the code and copy are written in.
 const FILES = [
   'lib/claims.ts',
   'lib/claim-money-line.ts',
+  'lib/claim-approval-toast.ts',
   'components/claims/AdminFinancialVerification.tsx',
   'components/claims/AdminClaimsArbitration.tsx',
+  'messages/fr.json',
+  'messages/en.json',
 ]
 const FORBIDDEN = [
   /aucun argent (n[’']a atteint|reçu par) le client/i,
   /rien n[’']a (encore )?atteint le client/i,
   /le client n[’']a rien reçu/i,
   /le client a été (remboursé|payé)/i,
+  /client payé/i,
+  /argent (EST|est|a) (parti|bougé)/,            // « de l’argent EST parti » — the round-7 toast
+  /(?<!qu[’']|que )aucun argent n[’']est parti/i, // « aucun argent n’est parti » asserted — not « ne prouve pas qu’aucun … »
+  /aucun argent n[’']a bougé\.(?!\s*ici)/i,     // unqualified; « … bougé ici » (this action) is allowed
   /nothing reached the customer/i,
   /money did NOT reach the customer/i,
+  /money DID leave/i,
+  /no money left/i,
 ]
 
 describe('no shipped money string asserts a CUSTOMER outcome from one row (comments excluded)', () => {
@@ -95,12 +122,21 @@ describe('no shipped money string asserts a CUSTOMER outcome from one row (comme
     })
   }
 
-  it('NEGATIVE CONTROL — the two sentences round 6 found would be caught', () => {
-    expect('… a ÉCHOUÉ — aucun argent reçu par le client.').toMatch(FORBIDDEN[0])
-    expect('Remboursement ÉCHOUÉ chez Stripe — le client n’a rien reçu').toMatch(FORBIDDEN[2])
-    // and the round-5 one, in either apostrophe
-    expect('Aucun argent n’a atteint le client').toMatch(FORBIDDEN[0])
-    expect("Aucun argent n'a atteint le client").toMatch(FORBIDDEN[0])
+  it('NEGATIVE CONTROL — the sentences rounds 6 and 7 found would be caught', () => {
+    const caught = (s: string) => FORBIDDEN.some((re) => re.test(s))
+    expect(caught('… a ÉCHOUÉ — aucun argent reçu par le client.')).toBe(true)
+    expect(caught('Remboursement ÉCHOUÉ chez Stripe — le client n’a rien reçu')).toBe(true)
+    expect(caught('Aucun argent n’a atteint le client')).toBe(true)
+    expect(caught("Aucun argent n'a atteint le client")).toBe(true)
+    // round 7
+    expect(caught('de cette commande : de l’argent EST parti, pour un autre montant.')).toBe(true)
+    expect(caught('le remboursement a ÉCHOUÉ : aucun argent n\'est parti.')).toBe(true)
+    expect(caught('Dossier clôturé : client payé hors rail. Aucun argent n’a bougé ici.')).toBe(true)
+    expect(caught('Dossier clôturé sans paiement. Aucun argent n’a bougé.')).toBe(true)
+    expect(caught('money DID leave, for a different amount')).toBe(true)
+    expect(caught('the refund FAILED: no money left.')).toBe(true)
+    // and the qualified form the shipped toast uses is NOT caught: the assertion is about THIS action
+    expect(caught('Cette action n’a déplacé aucun argent et n’a rien vérifié chez Stripe.')).toBe(false)
   })
 
   it('NEGATIVE CONTROL — the comment stripper does not hide a string that is NOT in a comment', () => {
@@ -117,11 +153,35 @@ describe('round-6 source pins — reverting a fix turns this red', () => {
   })
 
   it('the FV console offers the Stripe-id exit on EVERY parked row, not only when local candidates exist', () => {
+    // ROUND-7 AUDIT FIX (P1): the previous pin matched an UNRELATED block (the anchor occurs
+    // twice), so re-gating the panel on candidateRefurds — the exact regression that would make
+    // the exit unreachable for the population it was built for — stayed green. This pins the
+    // PLACEMENT: the gate that opens the « Lier » panel must not mention candidateRefunds.
     const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8')
-    expect(src).toContain("{r.kind === 'financial_verification' && (\n")
-    expect(src).toContain('Lier un remboursement fait depuis le Dashboard Stripe')
+    const panel = src.indexOf('Lier un remboursement fait depuis le Dashboard Stripe')
+    expect(panel).toBeGreaterThan(0)
+    const before = src.slice(0, panel)
+    const gate = before.lastIndexOf("{r.kind === 'financial_verification' &&")
+    expect(gate).toBeGreaterThan(0)
+    const gateLine = before.slice(gate, before.indexOf('\n', gate))
+    expect(gateLine).not.toContain('candidateRefunds')
+    expect(gateLine.trim()).toBe("{r.kind === 'financial_verification' && (")
     expect(src).toContain('adoptStripe(r.id, true)')   // read-only verify
     expect(src).toContain('adoptStripe(r.id, false)')  // the single write
+  })
+
+  it('NEGATIVE CONTROL — the round-6 regression (panel re-gated on candidates) would be caught', () => {
+    const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8')
+    const regressed = src.replace(
+      "{r.kind === 'financial_verification' && (\n              <div className=\"mt-3 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3\">\n                <p className=\"text-[13px] font-semibold text-grubano-ink\">\n                  Lier un remboursement",
+      "{r.kind === 'financial_verification' && (r.candidateRefunds?.length ?? 0) > 0 && (\n              <div className=\"mt-3 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3\">\n                <p className=\"text-[13px] font-semibold text-grubano-ink\">\n                  Lier un remboursement",
+    )
+    expect(regressed).not.toBe(src) // the replacement found the real opening
+    const panel = regressed.indexOf('Lier un remboursement fait depuis le Dashboard Stripe')
+    const before = regressed.slice(0, panel)
+    const gate = before.lastIndexOf("{r.kind === 'financial_verification' &&")
+    const gateLine = before.slice(gate, before.indexOf('\n', gate))
+    expect(gateLine).toContain('candidateRefunds') // ← the pin above would fail on this
   })
 
   it('the arbitration card distinguishes "nothing bound" from "bound but not succeeded" from "bound but not ours"', () => {

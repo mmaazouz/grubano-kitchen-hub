@@ -205,7 +205,9 @@ describe('the money queue component keeps its audit fixes', () => {
 
   it('rows the attribution guard will refuse are flagged AND disabled', () => {
     expect(src).toContain('alreadyBoundToAnotherClaim')
-    expect(src).toContain('disabled={busyId === r.id || c.alreadyBoundToAnotherClaim}')
+    // ROUND-7: the server refuses on the BINDING and on the STAMP (T-51), so the button must be
+    // disabled on both flags — the legend and the guard agree again.
+    expect(src).toContain('disabled={busyId === r.id || c.alreadyBoundToAnotherClaim || c.belongsToAnotherClaim}')
   })
 
   it('a failed load is distinguishable from an empty queue', () => {

@@ -453,7 +453,8 @@ async function refundRowBelongsToClaim(refundRowId: string, claimId: string): Pr
   }
 }
 
-async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult> {
+// Exported for the test that pins what an engine failure WRITES (round 7); no new caller.
+export async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult> {
   // REFUNDS gate: engine off → leave the claim 'approved', refund pending activation.
   if (!isRefundsEnabled()) return { state: 'pending', reason: 'refunds_disabled' }
 
@@ -552,9 +553,14 @@ async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult>
   }
   // Engine failed AFTER the attempt flag — do NOT auto-retry (the cursor may have moved;
   // a blind re-call could double-refund). Revert to 'approved' for visibility + record.
+  //
+  // ROUND-7 AUDIT FIX (P1): the engine's USER-FACING sentence (« Erreur paiement, réessayez. »,
+  // « … — réessayez. ») was persisted verbatim and rendered raw under « Détail : » on a card
+  // whose only controls close the case and whose header says no retry exists. The engine text is
+  // kept as evidence, wrapped in what is true from here: nothing re-drives it from Claims.
   await prisma.claim.update({
     where: { id: claimId },
-    data:  { status: 'approved', refundError: result.error },
+    data:  { status: 'approved', refundError: `engine_failed: ${result.error} — aucune relance possible depuis les réclamations ; décision humaine requise.` },
   })
   return { state: 'failed', error: result.error }
 }
@@ -1273,7 +1279,7 @@ export async function enterFinancialVerification(input: {
   detail:  string
   refundId?: string | null
   stripeRefundId?: string | null
-}): Promise<{ entered: boolean }> {
+}): Promise<{ entered: boolean; relabelled?: boolean }> {
   const moved = await prisma.claim.updateMany({
     where: { id: input.claimId, status: { in: ['refunding', 'approved'] } },
     data:  {
@@ -1283,7 +1289,22 @@ export async function enterFinancialVerification(input: {
       // money claim while the first transaction is unattributed (founder rule).
     },
   })
-  if (moved.count !== 1) return { entered: false }
+  if (moved.count !== 1) {
+    // ROUND-7 AUDIT FIX (P1): a claim ALREADY parked could never have its ambiguity refreshed —
+    // this CAS excluded FINANCIAL_VERIFICATION while the reconciler admits it, so a second
+    // reconcile that DID read Stripe and found money moved threw the fresh evidence away and the
+    // console kept saying « Stripe n'a pas pu être lue ». The reason/detail are REFRESHED in
+    // place; the status does not change, no alert is re-sent, and the caller is told it was a
+    // relabel, not a new park.
+    const relabelled = await prisma.claim.updateMany({
+      where: { id: input.claimId, status: FINANCIAL_VERIFICATION },
+      data:  {
+        refundError: `${FINANCIAL_VERIFICATION}:${input.reason}: ${input.detail}`,
+        ...(input.refundId ? { refundId: input.refundId } : {}),
+      },
+    })
+    return relabelled.count === 1 ? { entered: false, relabelled: true } : { entered: false }
+  }
 
   // Alert is BEST EFFORT and is never the liveness control — the queue is. A failed send
   // must never make the claim invisible, so this cannot throw into the caller.
@@ -1374,12 +1395,17 @@ export async function listFinancialVerificationClaims() {
     candidateRefunds: rows.filter((r) => r.orderId === c.orderId).map((r) => ({
       id: r.id, status: r.status, amountCents: r.amountCents,
       stripeRefundId: r.stripeRefundId, createdAt: r.createdAt,
-      /** Whether this row already carries ANOTHER claim's identity — shown, never hidden. */
+      /** Whether this row already carries ANOTHER claim's identity — shown, never hidden. Since
+       *  round 7 the server REFUSES these too (T-51: reason IS identity), so the console must
+       *  disable the button on them as well, not only badge them. */
       belongsToAnotherClaim: typeof r.reason === 'string' && r.reason.startsWith('claim:') && r.reason !== claimRefundReason(c.id),
+      /** The row the engine stamped for THIS claim — the one the row path prefers. */
+      belongsToThisClaim: r.reason === claimRefundReason(c.id),
       // AUDIT FIX (round 3): the warning above keys on the reason STAMP, but attributeClaimRefund
       // refuses on the BINDING — a row bound to another claim through the resume path carries an
       // admin or ghost reason and showed NO warning, so the console offered a button the server
-      // was always going to refuse. This is the condition the guard actually applies.
+      // was always going to refuse. ROUND-7: the guard now applies BOTH conditions (binding AND
+      // stamp), and the console disables on both.
       alreadyBoundToAnotherClaim: boundElsewhere.has(r.id),
     })),
   }))
@@ -1531,6 +1557,20 @@ export async function attributeClaimRefund(input: {
   if (typeof row.reason === 'string' && row.reason.startsWith('claim:') && row.reason !== claimRefundReason(claim.id)) {
     return { ok: false, status: 409, error: `Ce remboursement porte l’identité de la réclamation ${row.reason.slice('claim:'.length)} — attribution refusée.` }
   }
+  // ROUND-7 AUDIT FIX (P2): the Stripe-id exit refuses to act while a row stamped for THIS claim
+  // exists on the order; the row path did not. Binding an UNSTAMPED row (admin rail, ghost) while
+  // the engine's own row for this claim sits beside it would close the claim on somebody else's
+  // refund and leave the claim's real refund claim-less — its later webhook would land as
+  // `no_claim` and never be applied to anything. One identity, one row: use the stamped one.
+  if (row.reason !== claimRefundReason(claim.id)) {
+    const stamped = await prisma.refund.findFirst({
+      where:  { orderId: claim.orderId, reason: claimRefundReason(claim.id), id: { not: row.id } },
+      select: { id: true },
+    })
+    if (stamped) {
+      return { ok: false, status: 409, error: `Une ligne de remboursement porte déjà l’identité de cette réclamation (${stamped.id}) — attribuez celle-là, ou utilisez « Réconcilier d’après la preuve ».` }
+    }
+  }
   // RE-AUDIT FIX: without this, ONE refund could be attributed to TWO claims of the same order,
   // and both would report themselves settled by the same money. The row must be free.
   const alreadyBound = await prisma.claim.findFirst({
@@ -1617,9 +1657,13 @@ export type StripeRefundFacts = {
   paymentIntentId: string | null
   chargeId: string | null
   createdAt: string | null
+  /** ROUND-7 AUDIT FIX (P2): WHERE these values were read. 'stripe' = the Stripe object, just
+   *  now. 'local_row' = our own mirror row from an earlier adoption — Stripe was NOT re-read. */
+  source: 'stripe' | 'local_row'
 }
 export type ClaimStripeAdoptionOutcome =
-  | { ok: true; outcome: 'preview'; facts: StripeRefundFacts; wouldWrite: true }
+  /** `wouldWrite` false = the row already exists; « Lier » will only bind it. */
+  | { ok: true; outcome: 'preview'; facts: StripeRefundFacts; wouldWrite: boolean }
   | { ok: true; outcome: 'refunded'; refundId: string; facts: StripeRefundFacts }
   | { ok: false; status: 400 | 404 | 409 | 502; error: string; facts?: StripeRefundFacts }
 
@@ -1658,28 +1702,46 @@ export async function adoptStripeRefundForClaim(input: {
   // DB guards BEFORE any Stripe read — what our own rows already settle costs no network call.
   const existing = await prisma.refund.findFirst({
     where:  { stripeRefundId },
-    select: { id: true, orderId: true, status: true, reason: true, idempotencyKey: true },
+    select: { id: true, orderId: true, status: true, reason: true, idempotencyKey: true, amountCents: true, stripePaymentIntentId: true, settledAt: true },
   })
   if (existing) {
     if (existing.orderId !== claim.orderId) {
       return { ok: false, status: 400, error: 'Ce remboursement Stripe est déjà enregistré sur une AUTRE commande — liaison refusée.' }
+    }
+    // ROUND-7 AUDIT FIX (P1): this 409 pointed EVERY existing row at « Attribuer » — including a
+    // row stamped for ANOTHER claim, which the row path will refuse. Say which case it is.
+    const stampedFor = typeof existing.reason === 'string' && existing.reason.startsWith('claim:') ? existing.reason.slice('claim:'.length) : null
+    if (stampedFor && stampedFor !== claim.id) {
+      return { ok: false, status: 409, error: `Ce remboursement Stripe est déjà enregistré ici (ligne ${existing.id}) et porte l’identité de la réclamation ${stampedFor} — il ne peut pas solder cette réclamation.` }
     }
     // The crash-resume case: this exit already mirrored the row, then died before binding it.
     // Nothing to re-read at Stripe — the row IS the evidence; bind it through the audited tail.
     const ours = existing.idempotencyKey.startsWith(EXTERNAL_REFUND_KEY_PREFIX)
       && existing.reason === claimRefundReason(claim.id) && existing.status === 'succeeded'
     if (!ours) {
-      return { ok: false, status: 409, error: `Ce remboursement Stripe est déjà enregistré ici (ligne ${existing.id}) — utilisez « Attribuer » sur cette ligne.` }
+      return { ok: false, status: 409, error: `Ce remboursement Stripe est déjà enregistré ici (ligne ${existing.id}, statut ${existing.status}) — utilisez « Attribuer » sur cette ligne, ou « Réconcilier d’après la preuve ».` }
     }
-    if (input.dryRun) {
-      return { ok: false, status: 409, error: `Ce remboursement Stripe a déjà été enregistré pour cette réclamation (ligne ${existing.id}) — la liaison seule reste à faire : lancez « Lier » sans vérification.` }
+    // ROUND-7 AUDIT FIX (P2): the facts of THIS branch come from our own row, and say so. They
+    // used to be fabricated (amount 0, a row status relabelled as Stripe's), and the dryRun
+    // answer was a 409 that told the operator to press a button the console keeps disabled
+    // without a preview. dryRun now returns a real preview, marked local, so « Lier » enables.
+    const rowFacts: StripeRefundFacts = {
+      stripeRefundId, stripeStatus: existing.status, amountCents: existing.amountCents,
+      paymentIntentId: existing.stripePaymentIntentId, chargeId: null,
+      createdAt: existing.settledAt ? existing.settledAt.toISOString() : null, source: 'local_row',
     }
+    if (input.dryRun) return { ok: true, outcome: 'preview', facts: rowFacts, wouldWrite: false }
     const resumed = await attributeClaimRefund({ claimId: claim.id, refundRowId: existing.id, adminId: input.adminId, note: input.note })
-    if (!resumed.ok) return resumed
-    if (resumed.outcome !== 'refunded') return { ok: false, status: 409, error: 'La ligne enregistrée n’est plus aboutie — réconciliez d’après la preuve.' }
-    return { ok: true, outcome: 'refunded', refundId: existing.id, facts: { stripeRefundId, stripeStatus: 'succeeded', amountCents: 0, paymentIntentId: order.stripePaymentIntentId, chargeId: null, createdAt: null } }
+    if (!resumed.ok) return { ...resumed, facts: rowFacts }
+    if (resumed.outcome !== 'refunded') return { ok: false, status: 409, error: 'La ligne enregistrée n’est plus aboutie — réconciliez d’après la preuve.', facts: rowFacts }
+    return { ok: true, outcome: 'refunded', refundId: existing.id, facts: rowFacts }
   }
-  // Never manufacture 'multiple_candidate_refunds': one identity, one row.
+  // One identity, one row. ROUND-7 AUDIT NOTE (P3): this guard is check-then-act — the UNIQUE key
+  // is per Stripe refund, not per claim, so two operators adopting two DIFFERENT Dashboard refunds
+  // for the same claim at the same instant both pass it; the first binding wins the FV CAS, the
+  // second gets 409 from the tail, and its row stays as an orphan stamped for a terminal claim.
+  // Money stays correct (both refunds are real; every consumer sums or mins). Making it structural
+  // would need a schema change (a uniqueness on (orderId, reason)), which is out of scope here.
   const stamped = await prisma.refund.findFirst({
     where:  { orderId: claim.orderId, reason: claimRefundReason(claim.id) },
     select: { id: true },
@@ -1707,6 +1769,7 @@ export async function adoptStripeRefundForClaim(input: {
     paymentIntentId: refundPi,
     chargeId:        refundCharge,
     createdAt:       refund.created ? new Date(refund.created * 1000).toISOString() : null,
+    source:          'stripe',
   }
   // Engine provenance: our own refunds carry the row id in Stripe metadata (lib/refund.ts). They
   // are never "external": the row path owns them, whether or not the local row survived.
@@ -1826,7 +1889,7 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
     // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
     // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
     // false statement about a money case, so the caller is told what actually occurred.
-    if (!parked.entered) {
+    if (!parked.entered && !parked.relabelled) {
       return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
     }
     return { ok: true, outcome: 'financial_verification', reason: 'multiple_candidate_refunds', detail }
@@ -1857,7 +1920,7 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
         // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
         // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
         // false statement about a money case, so the caller is told what actually occurred.
-        if (!parked.entered) {
+        if (!parked.entered && !parked.relabelled) {
           return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
         }
         return { ok: true, outcome: 'financial_verification', reason: 'reconcile_not_applied', detail }
@@ -1886,7 +1949,7 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
   if (!order?.stripePaymentIntentId) {
     const detail = 'Cette commande n’a aucun paiement Stripe enregistré : aucune preuve Stripe ne peut exister pour elle. Aucune conclusion n’est tirée.'
     const parked = await enterFinancialVerification({ claimId: claim.id, reason: 'no_payment_intent', detail })
-    if (!parked.entered) {
+    if (!parked.entered && !parked.relabelled) {
       return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
     }
     return { ok: true, outcome: 'financial_verification', reason: 'no_payment_intent', detail }
@@ -1898,7 +1961,7 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
     // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
     // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
     // false statement about a money case, so the caller is told what actually occurred.
-    if (!parked.entered) {
+    if (!parked.entered && !parked.relabelled) {
       return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
     }
     return { ok: true, outcome: 'financial_verification', reason: 'stripe_unreadable', detail }
@@ -1931,7 +1994,7 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
           // ROUND-6 AUDIT FIX (P2): "payable par le rail normal" promised a payment the closed
           // rail will refuse. Say what is established: the state it returns to, and the one
           // thing that will pay it.
-          : `${NO_REFUND_PROVEN}: aucun remboursement n’a jamais déplacé d’argent sur cette commande et Stripe n’en rapporte aucun (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation repasse en « approuvée, non payée » ; elle ne sera versée que par le rail de remboursement, quand il sera ouvert.`,
+          : `${NO_REFUND_PROVEN}: aucun remboursement n’a jamais déplacé d’argent sur cette commande et Stripe n’en rapporte aucun (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts.`,
       },
     })
     return { ok: true, outcome: railLocked ? 'no_refund_proven_rail_locked' : 'no_refund_proven' }
@@ -1943,7 +2006,9 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
   // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
   // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
   // false statement about a money case, so the caller is told what actually occurred.
-  if (!parked.entered) {
+  // ROUND-7: an already-parked claim is RELABELLED with the fresh evidence instead — that is a
+  // real outcome, reported under the new reason.
+  if (!parked.entered && !parked.relabelled) {
     return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
   }
   return { ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail }

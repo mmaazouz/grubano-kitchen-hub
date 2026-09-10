@@ -314,3 +314,83 @@ byte-identique, la suite REVERDIT. Garde FAILED, montant désavoué, ancre Payme
 « succeeded seulement », writer `stripe_failed`, message `already_parked_or_moved`, résidu sur
 abandon, moitié discriminante du prédicat, garde de provenance moteur, `dryRun` sans écriture.
 Suite complète : 400 fichiers / 4249 tests verts ; typecheck 41 = base, 0 hors `tests/`.
+
+---
+
+## 13. AUDIT ROND 7 (2026-09-10/11) — sur `0321537`
+
+5 auditeurs, 25 constats, **24 confirmés / 1 réfuté. P0 = 0, P1 = 9, P2 = 10, P3 = 5.** (Le premier
+passage a perdu 26 réfutateurs sur la limite de session ; le run a été REPRIS depuis le cache —
+mêmes auditeurs, réfutateurs manquants rejoués — avant toute correction.)
+
+**Ce que le rond 7 a trouvé, en une phrase : la classe récurrente vivait aussi HORS des quatre
+fichiers épinglés.** Le toast d'approbation (`messages/*.json`, 5 locales) affirmait « de l'argent
+EST parti, pour un autre montant » sur les QUATRE écrivains `resume_mismatch` — deux sont sur le
+chemin PENDING (rien n'a bougé) et deux enregistrent un montant IDENTIQUE — et son test
+`toMatch(/EST parti/)` IMPOSAIT la phrase fausse ; son jumeau « aucun argent n'est parti » était
+affiché sur des refus moteur qui incluent « Paiement déjà intégralement remboursé ». L'échappatoire
+par assertion toastait « client payé hors rail » et « Aucun argent n'a bougé » à la voix du
+système. Le badge `absence_proven_payable` que j'avais ajouté au rond 7 promettait « sera versée
+par le rail » — aucun job joignable ne le fait (balayage auto-approbation gaté OFF toute la bêta,
+cron mort) : c'est une ré-approbation humaine. Les chaînes moteur « réessayez » étaient persistées
+brutes sous « Détail : » sur une carte sans aucune relance. Et mon durcissement du rond 7 (refus
+serveur des lignes estampillées pour une autre réclamation) avait recréé le défaut du rond 3 :
+bouton « Attribuer » ACTIF là où le serveur refuse.
+
+**Sur la nouvelle voie d'écriture** : le dryRun de reprise-après-crash répondait 409 « lancez
+Lier sans vérification » alors que la console garde « Lier » désactivé sans aperçu, et le succès
+de cette branche fabriquait des « faits Stripe » (montant 0, statut de la ligne relabellisé) sans
+avoir lu Stripe. Une réclamation DÉJÀ garée ne pouvait jamais voir sa cause rafraîchie (le CAS de
+garage excluait `financial_verification` alors que le réconciliateur l'admet) : preuve fraîche
+jetée, étiquette périmée. Le chemin par ligne n'avait pas la garde « une ligne porte déjà
+l'identité de cette réclamation » que la voie Stripe applique.
+
+**Sur l'instrument** : le test « miroir puis liaison par la queue auditée » ne pinçait pas la
+queue (une écriture terminale directe restait verte) ; l'épingle « sortie sur CHAQUE ligne garée »
+était satisfaite par un bloc JSX sans rapport (ancre présente deux fois) ; les gardes DB de
+l'adoption étaient pincées par l'ORDRE des appels, pas par leurs `where` ; deux conjonctions du
+prédicat de reprise n'étaient pincées par rien ; l'extracteur d'écrivains ne voyait que les
+gabarits backtick (ni ternaire, ni constante) ; deux tests vérifiaient leur propre fixture.
+
+### Corrigé (rond 8) — en audit
+
+Toasts d'approbation réécrits dans les 5 locales sur ce que les quatre écrivains établissent
+(remboursement PAS le nôtre ; rien de réglé ; aucune relance) et sur « aucun montant établi par
+cette action » ; test inversé. Toasts de clôture attribués à la DÉCLARATION de l'opérateur et
+bornés à l'action. Badge et toast de preuve d'absence : « rien ne la paiera automatiquement —
+nouvelle approbation admin, réclamations et remboursements ouverts ». Chaîne moteur enveloppée
+`engine_failed: <texte> — aucune relance possible depuis les réclamations`. Bouton désactivé sur
+`belongsToAnotherClaim` avec légende « sera refusé » ; 409 d'adoption qui NOMME la réclamation
+propriétaire au lieu de renvoyer vers un bouton refusé. Reprise-après-crash : dryRun = aperçu réel
+(`source: 'local_row'`, `wouldWrite: false`), faits lus sur NOTRE ligne et dits tels ; « Lier »
+armé uniquement sur l'identifiant vérifié. CAS de RELABEL sur une réclamation déjà garée (cause
+rafraîchie, statut inchangé, aucune alerte réémise, issue distincte d'`already_parked_or_moved`).
+Garde « ligne estampillée pour cette réclamation » ajoutée au chemin par ligne. Épingle de CLASSE
+étendue à `messages/fr|en.json` et `lib/claim-approval-toast.ts` avec les motifs de la classe
+(« argent EST parti », « aucun argent n'est parti » hors négation, « client payé », « n'a bougé »
+non borné) et contrôles négatifs sur chaque phrase trouvée. Signature de la queue pincée (CAS de
+liaison sur FV, CAS de réconciliation sur l'identité liée, DEUX écritures d'audit). Épingle de
+PLACEMENT du panneau Stripe avec contrôle négatif de la régression du rond 6. Gardes DB pincées
+par leurs `where` via `matchWhere`. Conjonctions du prédicat de reprise pincées. Extracteur lisant
+toute affectation `refundError` (ternaire, constante) avec un ensemble ATTENDU de familles au lieu
+d'un plancher. Tautologies supprimées ; « le corps ne porte ni montant ni issue » prouvé sur un
+identifiant VALIDE avec des extras rejetés. `triggerClaimRefund` exporté pour le test du wrapper.
+Garde « une identité, une ligne » documentée comme check-then-act (l'unicité est par `re_`, pas
+par réclamation ; la structure exigerait un schéma).
+
+**Vérification du rond 8, avant commit.** Contrôles négatifs différentiels : **12/12 PROUVÉS**
+(relabel, wrapper `engine_failed`, garde d'estampille du chemin par ligne, bouton désactivé,
+aperçu de reprise, toast d'approbation FR, toast de clôture, 409 nommant la réclamation,
+placement du panneau Stripe, queue auditée, conjonction `succeeded`, toast d'échec FR) ; empreinte
+du `git diff` identique avant/après (`448163c856037ef3`). Typecheck : 41 = base, 0 hors `tests/`.
+Suite complète : **400 fichiers / 4265 tests verts**, 0 échec.
+
+**Incident consigné (ne pas effacer).** Un premier passage complet a ÉCHOUÉ (1 test,
+`tests/punitive-capture.test.ts`, délai de 5 s dépassé) alors que la notification de la tâche
+de fond annonçait « exit 0 » : ce code était celui du `tail` final, pas de vitest — la même
+fausse réussite que la fiche mémoire « exits RÉELS » documente déjà, reproduite ici. Diagnostic
+avant toute conclusion : le test seul passe (12/12, 1,26 s), ni lui ni la route qu'il pilote
+n'importe un module modifié, et le passage avait duré 162 s contre ~87 s d'habitude (charge
+machine). La suite a néanmoins été relancée sur l'arbre final, code de sortie lu directement.
+Quatre commentaires qui énonçaient encore la croyance « la reprise a abouti, l'argent est parti »
+pour les quatre écrivains ont été corrigés — c'est d'eux que la phrase fausse renaissait.
