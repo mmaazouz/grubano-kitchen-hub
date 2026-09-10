@@ -36,7 +36,7 @@ client/à l'admin quelque chose de faux sur l'argent, ou un plafond d'autorité 
 | 2 | P2 | La page d'aide conso envoyait encore un montant au lieu de sa sélection existante. | Elle envoie `items` dérivé de son propre état `selected`. |
 | 4 | P2 | **`getClaimEligibility` ne consultait jamais Stripe** : le plafond **montré** au client était le plafond DB, donc un remboursement fait depuis le Dashboard Stripe était invisible. Le formulaire proposait de l'argent déjà remboursé, que le serveur refusait ensuite. | Le `stripePaymentIntentId` est transmis : la vue conso et l'application serveur utilisent **la même** vérité cumulative. Tests : `tests/claims-eligibility-stripe-truth.test.ts`. |
 | 6 | P2 | **Remboursements `pending` soustraits DEUX FOIS.** Le contrat du projet (`REFUND-FINANCIAL-CONTRACT.md` §66/§145/A9) dit que `charge.amount_refunded` **inclut déjà** un remboursement encore `pending` ; mon commentaire dans `lib/claims.ts` affirmait l'inverse. Effet : plafond **trop bas**, réclamations légitimes refusées. | `min(capturé−remboursé, capturé−max(remboursé,pending))`. Le terme `pending` reste un **plancher** pour le cas anormal où il serait rapporté hors `amount_refunded`. Commentaire faux corrigé. Contrôle négatif dans `tests/claim-scope.test.ts`. |
-| 7 | P2 | La route de récupération de réconciliation n'avait **aucun appelant planifié** : un webhook Stripe perdu laissait une réclamation en `refunding` indéfiniment. | Étape quotidienne dans `.github/workflows/cron.yml`. **Ne déplace aucun argent** : aucun appel moteur, aucune écriture Stripe — elle rejoue le même CAS idempotent que le webhook, à partir de la ligne `Refund` déjà existante. (À distinguer de l'étape P0-07 supprimée par le fondateur, qui **payait**.) |
+| 7 | P2 | La route de récupération de réconciliation n'avait **aucun appelant planifié** : un webhook Stripe perdu laissait une réclamation en `refunding` indéfiniment. | Étape ajoutée dans `.github/workflows/cron.yml`. ⚠️ **CORRECTION (2026-09-10)** : j'ai rapporté cette étape comme un « appelant quotidien ». C'était FAUX. GitHub ne déclenche `schedule` que depuis la branche PAR DÉFAUT, et `origin/main` ne contient AUCUN répertoire `.github/` (mesuré : 0 fichier). L'étape existe mais **ne s'exécute pas** aujourd'hui ; elle est joignable uniquement par `workflow_dispatch` manuel ou un curl à la main, et ne deviendra périodique qu'une fois `cron.yml` fusionné dans `main` au go-live. Le fichier le documente lui-même (`cron.yml:13-14`). Règle appliquée : ne jamais certifier du code inatteignable comme un contrôle opérationnel. **Ne déplace aucun argent** : aucun appel moteur, aucune écriture Stripe — elle rejoue le même CAS idempotent que le webhook, à partir de la ligne `Refund` déjà existante. (À distinguer de l'étape P0-07 supprimée par le fondateur, qui **payait**.) |
 | 8 | P1 | `resolveStuckClaim` existait **sans aucune route** : l'argent bloqué n'avait pas de sortie, et la réclamation gardait `activeOrderKey`, empêchant le client de re-déposer sur cette commande. | Route `POST /api/admin/claims/[id]/resolve-stuck`, rôle relu **en base** et non depuis le JWT, trace admin, **aucun mouvement d'argent**. |
 | 9 | P2 | **`allergen_safety` n'était pas exclu du chemin machine.** `autoResolveSmallClaim` pouvait approuver et rembourser sans humain ; les signalements sécurité étant souvent de **petits** montants, c'était le chemin le PLUS probable pour en clore un automatiquement. Le commentaire de `isSafetyReason` promettait déjà « aucun remboursement automatique » — le code ne l'appliquait pas. | Garde en **première** position dans `autoResolveSmallClaim`. Prouvé **non inerte** de bout en bout par la vraie route (`tests/claims-route-auth.test.ts`), avec un cas non-sécurité qui, lui, passe — sinon le test ne prouverait rien. |
 | 10 | P3 | Le tri sécurité n'existait que dans la liste **argent bloqué**, c'est-à-dire **après** l'échec d'un remboursement. Sur les listes où une réclamation **arrive**, une exposition allergène était indistinguable d'un accompagnement manquant. | `triageBySafety` appliqué à `listRestaurantClaims`, `listPendingRestaurantClaims`, `listSilenceExpiredClaims` + badge admin. **Visibilité et ordre seulement** : aucune autorité financière supplémentaire. |
@@ -118,3 +118,48 @@ n'est prétendue.
 | Schéma Prisma | **0 ligne modifiée** — la porte « STOP avant migration » n’a jamais été franchie |
 | Sondes runtime staging (avant push, lecture seule) | `POST /api/admin/refunds/run` → **403 `{gated:true}`** · `POST /api/claims` → **403 `{gated:true}`** |
 | Flags | Claims, Refunds, Clean Room : **inchangés, fermés** |
+
+---
+
+## 5. GATE T-49 (2026-09-10) — ce que l'analyse a trouvé DANS LE BATCH 2 LIVRÉ
+
+Analyse adversariale en lecture seule pour le gate de décision fondateur T-49 : 6 analystes
+indépendants, 46 verdicts de vérification hostile, **31 corrections**. Aucune décision produit
+n'a été prise, aucune sémantique argent modifiée, aucun flag ouvert. Ce qui suit corrige des
+affirmations FAUSSES que j'avais livrées.
+
+| Ce que j'avais affirmé | Réalité mesurée | Correctif |
+|---|---|---|
+| Ticket T-49 : « une réclamation en `refunding` **sans aucune ligne `Refund`** » et « **Aucun impact argent : rien ne bouge dans cet état** ». | **Les deux sont FAUX.** L'état est l'absence d'une **LIAISON**, pas d'une ligne. `executeRefund` crée la ligne `Refund` AVANT d'appeler Stripe et la liaison n'est écrite qu'APRÈS son retour : une ligne `pending` ou déjà `succeeded` existe couramment. Si l'interruption tombe dans `finalizeRefund` après un `succeeded` Stripe, **le client a été remboursé** sans aucune trace côté réclamation. | Ticket réécrit, **texte d'origine conservé en ligne séparée marquée RÉFUTÉ** (jamais effacé). Sévérité relevée P2 → **P1**. |
+| Rapport batch 2 : la route de récupération « obtient un appelant quotidien ». | **FAUX.** GitHub ne déclenche `schedule` que depuis la branche par défaut, et `origin/main` ne contient **aucun** répertoire `.github/` (mesuré : 0 fichier). L'étape existe mais ne s'exécute pas ; elle ne deviendra périodique qu'au go-live. | §2.1 ligne 7 corrigée. Règle appliquée : ne jamais certifier du code injoignable comme un contrôle opérationnel. |
+| Carte admin : « Montant réellement remboursé : **aucun (rien n'a encore atteint le client)** ». | **Affirmation sur l'argent que rien ne vérifiait.** Le classificateur résout les lignes `Refund` uniquement par `claim.refundId`, jamais par `orderId`, et n'appelle jamais Stripe. Un remboursement `succeeded` peut exister sur la commande et rester invisible ici. C'est exactement ainsi qu'un second paiement se déclenche. | La carte ne l'affirme plus : « non déterminé ici — aucun remboursement n'est LIÉ à cette réclamation », plus un avertissement explicite de vérifier Stripe avant d'agir. |
+| Carte admin : la réconciliation est « **rejouée chaque jour** ». | **Faux pour 3 des 5 états** où le paragraphe s'affichait, et le calendrier n'est de toute façon pas actif (voir ci-dessus). Le balayage exclut précisément T-49 (`refundId: { not: null }`). | Le texte dit désormais, par état, ce qui peut réellement atteindre la ligne — y compris « AUCUNE réconciliation automatique ne peut l'atteindre ». |
+| Mes « contrôles négatifs » de batch 2. | **La plupart sont des tautologies** : ils comparent une fonction pré-correctif réécrite localement à la vraie. Cela prouve que les deux diffèrent, **pas** que la suite rougit si le code livré régresse. | Voir §5.1. |
+
+### 5.1 Le harnais de test lui-même était aveugle
+
+Le mock `updateMany` sautait **toute** clause à valeur objet (`if (typeof v === 'object') continue`),
+c'est-à-dire exactement la forme des prédicats qui portent les invariants argent :
+`status: { in: [...] }`, `refundError: { not: null }`, `responseDeadlineAt: { lte }`.
+Un correctif qui cassait l'un d'eux restait **VERT**.
+
+Corrigé : les opérateurs de comparaison Prisma sont réellement évalués, et un opérateur non modélisé
+**lève une exception** au lieu de passer silencieusement — le harnais ne peut plus être discrètement
+aveugle à une forme de clause qu'il ne comprend pas.
+
+**Contrôle négatif RÉEL (différentiel, pas tautologique), exécuté :** en retirant la fenêtre
+`status: { in: ['refunding', 'approved'] }` du CAS livré de `reconcileClaimForRefund`, la suite passe
+**ROUGE** (1 échec sur 62) ; en la restaurant, **VERTE** (62/62). Le contrôle porte donc bien sur le
+code livré.
+
+### 5.2 Deux défauts NOUVEAUX, consignés, non corrigés
+
+- **T-51 (P1)** — RESUME-FIRST ne compare que des **montants** ; l'identité de la ligne reprise n'est
+  jamais vérifiée. Une réclamation peut être liée à un remboursement créé par une autre voie puis
+  rapportée `refunded`. Défaut d'**attribution** et de véracité, pas de montant : aucune sur-restitution.
+- **T-52 (P2)** — `Refund.reason` (`claim:<id>`) est écrit mais **lu par personne** (`REFUND_SELECT`
+  l'omet). Il identifie le CRÉATEUR d'une ligne, jamais celui qui l'a pilotée, et le `reason` du rail
+  admin est du texte libre non validé. À corroborer avant tout usage comme liaison.
+
+**Rien de ce qui touche à la sémantique argent T-49 n'a été implémenté.** La décision fondateur reste
+ouverte.

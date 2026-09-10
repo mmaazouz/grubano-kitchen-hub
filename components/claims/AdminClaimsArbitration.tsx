@@ -182,9 +182,21 @@ export default function AdminClaimsArbitration() {
                     <p>
                       <span className="font-semibold">Montant réellement remboursé :</span>{' '}
                       {r.actualRefundedCents === null
-                        ? 'aucun (rien n’a encore atteint le client)'
+                        ? 'non déterminé ici — aucun remboursement n’est LIÉ à cette réclamation'
                         : formatEuros(r.actualRefundedCents / 100, locale)}
                     </p>
+                    {r.actualRefundedCents === null && (
+                      // AUDIT FIX (gate T-49). This block used to read « aucun (rien n’a encore
+                      // atteint le client) » — a positive statement about cash that nothing in the
+                      // code had checked: the classifier resolves Refund rows ONLY by claim.refundId,
+                      // never by orderId, and never calls Stripe. On a claim whose binding was lost
+                      // mid-refund, a succeeded refund can exist on that order and be invisible here.
+                      // Telling an admin no money left is exactly how a second payment gets issued.
+                      <p className="text-amber-800">
+                        L’absence de lien ne prouve pas qu’aucun argent n’est parti. Vérifiez la
+                        commande dans Stripe avant toute action.
+                      </p>
+                    )}
                     {r.refund && (
                       <p><span className="font-semibold">Statut Stripe :</span> {r.refund.status}</p>
                     )}
@@ -201,9 +213,19 @@ export default function AdminClaimsArbitration() {
                     // The route refuses this row on purpose: a PENDING refund may still pay out,
                     // and a SUCCEEDED one already did. Offering a button here would be a lie.
                     <p className="mt-3 text-[13px] text-grubano-ink-muted">
-                      Aucune clôture manuelle possible sur cet état : soit le remboursement peut
-                      encore aboutir, soit il a déjà abouti et attend seulement sa réconciliation
-                      (rejouée chaque jour, sans mouvement d’argent).
+                      {/* AUDIT FIX (gate T-49). This paragraph promised « réconciliation rejouée
+                          chaque jour ». It rendered on FIVE of the six money states and was untrue
+                          for three of them, and the daily schedule is not even live: GitHub fires
+                          `schedule` only from the default branch, and origin/main carries no
+                          .github/ directory. Say per state what can actually reach the row. */}
+                      {r.refund
+                        ? 'Aucune clôture manuelle sur cet état : un remboursement est lié et son sort ' +
+                          'sera appliqué par la réconciliation (webhook Stripe, ou le balayage de ' +
+                          'récupération lorsqu’il est déclenché). Aucun mouvement d’argent.'
+                        : 'Aucune clôture manuelle sur cet état, et AUCUNE réconciliation automatique ' +
+                          'ne peut l’atteindre : aucun remboursement n’est lié à cette réclamation, or ' +
+                          'le webhook comme le balayage joignent par cette liaison. Elle restera ainsi ' +
+                          'jusqu’à une intervention humaine.'}
                     </p>
                   ) : stuckId === r.id ? (
                     <div className="mt-3 space-y-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted p-3">

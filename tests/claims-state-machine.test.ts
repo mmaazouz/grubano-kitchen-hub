@@ -34,14 +34,47 @@ beforeEach(() => {
   // regression — it is exactly why the first version of the unpaid-approval fix looked green
   // while the updateMany actually matched zero rows. This mock EVALUATES the where clause
   // against a simulated row, so a wrong CAS now fails the test.
+  //
+  // GATE T-49 FIX: the previous version skipped EVERY object-valued clause with
+  //   `if (typeof v === 'object') continue  // range clauses — not simulated`
+  // which silently exempted precisely the predicates that carry the money invariants:
+  //   status: { in: ['refunding', 'approved'] }   (reconcileClaimForRefund's CAS)
+  //   refundError: { not: null }                  (the stuck-money escape hatch)
+  //   responseDeadlineAt: { lte: now }            (restaurant silence)
+  // A fix that broke any of those stayed GREEN. Prisma's comparison operators are now
+  // evaluated for real; an unsupported operator THROWS instead of passing silently, so the
+  // suite can never again be quietly blind to a clause shape it does not understand.
+  const matchOp = (op: string, expected: unknown, actual: unknown): boolean => {
+    switch (op) {
+      case 'equals':  return actual === expected
+      case 'not':     return actual !== expected
+      case 'in':      return Array.isArray(expected) && expected.includes(actual as never)
+      case 'notIn':   return Array.isArray(expected) && !expected.includes(actual as never)
+      case 'lt':      return (actual as number) <  (expected as number)
+      case 'lte':     return (actual as number) <= (expected as number)
+      case 'gt':      return (actual as number) >  (expected as number)
+      case 'gte':     return (actual as number) >= (expected as number)
+      default: throw new Error(`prisma mock: unsupported operator '${op}' — extend matchOp instead of skipping it`)
+    }
+  }
+  const matchWhere = (where: Record<string, unknown>, row: Record<string, unknown>): boolean => {
+    for (const [k, v] of Object.entries(where)) {
+      if (k === 'id') continue // the id is the addressing, not the guard
+      const actual = row[k]
+      if (v !== null && typeof v === 'object' && !(v instanceof Date)) {
+        for (const [op, expected] of Object.entries(v as Record<string, unknown>)) {
+          if (!matchOp(op, expected, actual)) return false
+        }
+        continue
+      }
+      if (actual !== v) return false
+    }
+    return true
+  }
   db.claim.updateMany.mockImplementation(({ where }: { where: Record<string, unknown> }) => {
     const row = fx.row
     if (!row) return Promise.resolve({ count: fx.forcedCount ?? 1 })
-    for (const [k, v] of Object.entries(where)) {
-      if (k === 'id') continue
-      if (v !== null && typeof v === 'object') continue // range clauses (lte) — not simulated
-      if ((row as Record<string, unknown>)[k] !== v) return Promise.resolve({ count: 0 })
-    }
+    if (!matchWhere(where, row as Record<string, unknown>)) return Promise.resolve({ count: 0 })
     return Promise.resolve({ count: fx.forcedCount ?? 1 })
   })
   db.claim.update.mockResolvedValue({})
@@ -639,5 +672,48 @@ describe('RE-AUDIT FIX — the recovery sweep retires a row instead of re-reconc
       oldPredicate(c) && c.refundError === null
     expect(oldPredicate(reconciledFailure)).toBe(true)  // ← re-swept every day
     expect(newPredicate(reconciledFailure)).toBe(false) // ← fixed
+  })
+})
+
+// ── GATE T-49 — THE MOCK ITSELF IS NOW UNDER TEST ────────────────────────────────
+// The audit of this batch found that the compare-and-set mock skipped every object-valued
+// where clause, so `status: { in: [...] }`, `refundError: { not: null }` and `lte` deadlines
+// were exempt from verification: a fix that broke one stayed green. These are DIFFERENTIAL
+// controls — they drive SHIPPED code and assert an outcome that the old mock could not
+// produce, so they fail if either the mock or the shipped predicate regresses.
+describe('the CAS mock enforces comparison operators, not just scalar equality', () => {
+  it('an `in` clause is evaluated: a claim outside the CAS window is NOT reconciled', async () => {
+    // reconcileClaimForRefund guards on status: { in: ['refunding', 'approved'] }.
+    // 'restaurant_review' is neither terminal nor inside that window, so the CAS must miss.
+    // Under the previous mock the `in` clause was skipped and this returned reconciled:true.
+    db.claim.findFirst.mockResolvedValue({ id: 'c1', status: 'restaurant_review', refundError: null })
+    db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+    fx.row = { status: 'restaurant_review', refundId: 'rf1' }
+    const res = await reconcileClaimForRefund({ refundRowId: 'rf1', status: 'succeeded', stripeRefundId: 're_1' })
+    expect(res.reconciled).toBe(false)
+  })
+
+  it('…and a claim INSIDE the window still reconciles, so the guard is not a blanket refusal', async () => {
+    db.claim.findFirst.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
+    db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+    fx.row = { status: 'refunding', refundId: 'rf1' }
+    const res = await reconcileClaimForRefund({ refundRowId: 'rf1', status: 'succeeded', stripeRefundId: 're_1' })
+    expect(res.reconciled).toBe(true)
+  })
+
+  it('the refund IDENTITY is enforced: a CAS bound to another row matches nothing', async () => {
+    db.claim.findFirst.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
+    db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+    fx.row = { status: 'refunding', refundId: 'SOME-OTHER-ROW' }
+    const res = await reconcileClaimForRefund({ refundRowId: 'rf1', status: 'succeeded', stripeRefundId: 're_1' })
+    expect(res.reconciled).toBe(false)
+  })
+
+  it('an operator the mock does not model THROWS instead of silently passing', () => {
+    // The mock throws SYNCHRONOUSLY, before any promise exists — that is deliberate: a clause
+    // shape the harness cannot evaluate must stop the test, never be waved through.
+    fx.row = { status: 'approved' }
+    expect(() => db.claim.updateMany({ where: { id: 'c1', status: { startsWith: 'app' } }, data: {} }))
+      .toThrow(/unsupported operator/)
   })
 })
