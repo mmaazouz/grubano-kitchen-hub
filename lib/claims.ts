@@ -1317,7 +1317,11 @@ export const RECONCILE_GRACE_MS = 5 * 60 * 1000
 /** The instant a marker was written, or null when it cannot be read. */
 export function reconcileMarkerAge(refundError: string | null | undefined, nowMs = Date.now()): number | null {
   if (!isReconcileRequired(refundError)) return null
-  const m = /(d{4}-d{2}-d{2}T[d:.]+Z)/.exec(refundError as string)
+  // RE-AUDIT FIX: this shipped as /(d{4}-d{2}-d{2}T[d:.]+Z)/ — the backslashes were lost on the
+  // way in, so it never matched an ISO timestamp, reconcileMarkerAge always returned null, and
+  // the grace window was INERT: every marker, including a refund legitimately in flight one
+  // second earlier, was listed as stranded. A regex literal keeps the escapes visible.
+  const m = /(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/.exec(refundError as string)
   if (!m) return null
   const t = Date.parse(m[1])
   return Number.isFinite(t) ? nowMs - t : null
@@ -1417,6 +1421,15 @@ export async function attributeClaimRefund(input: {
   // THE anchor: a claim may only ever be attributed a refund of its OWN order.
   if (row.orderId !== claim.orderId) {
     return { ok: false, status: 400, error: 'Ce remboursement appartient à une autre commande — attribution refusée.' }
+  }
+  // RE-AUDIT FIX: without this, ONE refund could be attributed to TWO claims of the same order,
+  // and both would report themselves settled by the same money. The row must be free.
+  const alreadyBound = await prisma.claim.findFirst({
+    where:  { refundId: row.id, id: { not: claim.id } },
+    select: { id: true },
+  })
+  if (alreadyBound) {
+    return { ok: false, status: 409, error: `Ce remboursement est déjà lié à la réclamation ${alreadyBound.id} — une même somme ne peut pas solder deux réclamations.` }
   }
   if (row.status !== 'succeeded' && row.status !== 'failed' && row.status !== 'pending') {
     return { ok: false, status: 409, error: 'Statut de remboursement inexploitable.' }
@@ -1551,6 +1564,10 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
   // what matters, and Stripe is the authority on it: a row that never moved money cannot make
   // the proof ambiguous. A row that DID move money (succeeded) or still might (pending) does.
   const noRowEverMoved = !rows.some((r) => r.status === 'succeeded' || r.status === 'pending')
+  // RE-AUDIT FIX: `executeRefund` refuses EVERY later refund on an order that carries a FAILED
+  // row with a Stripe id (the fail-closed lock, lib/refund.ts) — so telling the operator the
+  // claim is 'payable again' would be a promise the engine will refuse. Say which it is.
+  const railLocked = rows.some((r) => r.status === 'failed' && !!r.stripeRefundId)
   if (nothingAtStripe && noRowEverMoved) {
     // POSITIVE PROOF OF ABSENCE: no Refund row exists on this order at all, and Stripe reports
     // zero refunded and zero pending. Nothing was created and no cash moved, so re-opening the
@@ -1562,7 +1579,9 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
         status:          'approved',
         refundAttempted: false,
         refundId:        null,
-        refundError:     'no_refund_proven: aucune ligne Refund sur cette commande et Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation est de nouveau payable par le rail normal.',
+        refundError:     railLocked
+          ? 'no_refund_proven_rail_locked: Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente) — rien n’est parti. MAIS un remboursement ÉCHOUÉ verrouille cette commande côté moteur : toute nouvelle tentative sera refusée tant que la reprise manuelle Stripe n’a pas été faite. Reprise humaine requise.'
+          : 'no_refund_proven: aucun remboursement n’a jamais déplacé d’argent sur cette commande et Stripe n’en rapporte aucun (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation est de nouveau payable par le rail normal.',
       },
     })
     return { ok: true, outcome: 'no_refund_proven' }

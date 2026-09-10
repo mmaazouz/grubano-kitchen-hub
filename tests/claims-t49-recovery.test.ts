@@ -32,7 +32,7 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import {
   reconcileClaimEvidence, enterFinancialVerification, listFinancialVerificationClaims,
-  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund,
+  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund, reconcileMarkerAge, RECONCILE_GRACE_MS,
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
 } from '@/lib/claims'
 
@@ -332,7 +332,11 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
   beforeEach(() => {
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: FINANCIAL_VERIFICATION })
     db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_9' })
-    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    // findFirst serves TWO callers here: the double-attribution guard (must find nothing) and
+    // reconcileClaimForRefund (must find this claim). Order matters, so drive it explicitly.
+    db.claim.findFirst
+      .mockResolvedValueOnce(null) // no OTHER claim already holds this refund
+      .mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
     fx.row = { status: FINANCIAL_VERIFICATION, refundId: 'rf9', refundError: null }
   })
 
@@ -350,7 +354,8 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
 
   it('the outcome follows the row: a FAILED row cannot be attributed as a success', async () => {
     db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_9' })
-    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    db.claim.findFirst.mockReset()
+    db.claim.findFirst.mockResolvedValueOnce(null).mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
     const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
     expect(r).toMatchObject({ ok: true, outcome: 'refund_failed' })
   })
@@ -370,7 +375,54 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
   it('NEGATIVE CONTROL — a park with no exit at all would be caught here', async () => {
     const absorbing = (status: string) => status === FINANCIAL_VERIFICATION // ← the defect: no way out
     expect(absorbing(FINANCIAL_VERIFICATION)).toBe(true)
+    db.claim.findFirst.mockReset()
+    db.claim.findFirst.mockResolvedValueOnce(null).mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
     const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
     expect(r.ok).toBe(true) // ← fixed: there is a way out
+  })
+})
+
+// ══ RE-AUDIT FIX — THE GRACE WINDOW MUST ACTUALLY PARSE A MARKER ════════════════
+// It shipped INERT: the regex lost its backslashes, so reconcileMarkerAge always returned null
+// and every marker — including a refund in flight one second earlier — was listed as stranded.
+// Three independent auditors found it. These tests make the parse itself the thing under test.
+describe('reconcileMarkerAge — the grace window is not decorative', () => {
+  const marker = (iso: string) => `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${iso} — identité pas encore liée.`
+
+  it('parses the timestamp out of a REAL marker (this is what was broken)', () => {
+    const iso = '2026-09-10T16:18:16.910Z'
+    const age = reconcileMarkerAge(marker(iso), Date.parse(iso) + 90_000)
+    expect(age).toBe(90_000)
+  })
+
+  it('a refund in flight one second ago is INSIDE the grace window', () => {
+    const age = reconcileMarkerAge(marker(new Date(Date.now() - 1000).toISOString()))
+    expect(age).not.toBeNull()
+    expect(age!).toBeLessThan(RECONCILE_GRACE_MS)
+  })
+
+  it('an attempt older than the grace window is outside it', () => {
+    const age = reconcileMarkerAge(marker(new Date(Date.now() - 10 * 60 * 1000).toISOString()))
+    expect(age!).toBeGreaterThan(RECONCILE_GRACE_MS)
+  })
+
+  it('a non-marker returns null, and so does a marker with no timestamp', () => {
+    expect(reconcileMarkerAge('stripe_failed: …')).toBeNull()
+    expect(reconcileMarkerAge(`${RECONCILE_REQUIRED}: pas d’horodatage`)).toBeNull()
+  })
+
+  it('NEGATIVE CONTROL — the shipped-inert regex would be caught here', () => {
+    const inert = /(d{4}-d{2}-d{2}T[d:.]+Z)/   // ← exactly what shipped
+    const iso = '2026-09-10T16:18:16.910Z'
+    expect(inert.exec(marker(iso))).toBeNull()          // ← never matched anything
+    expect(reconcileMarkerAge(marker(iso))).not.toBeNull() // ← fixed
+  })
+
+  it('an unreadable marker still fails VISIBLE: the claim is listed, not hidden', async () => {
+    db.claim.findMany.mockResolvedValue([
+      { id: 'x', orderId: 'o', reason: 'quality', requestedAmountCents: 1, refundId: null,
+        refundError: `${RECONCILE_REQUIRED}: pas d’horodatage`, createdAt: new Date(), restaurantId: 'r' },
+    ])
+    expect(await listReconcileRequiredClaims()).toHaveLength(1)
   })
 })

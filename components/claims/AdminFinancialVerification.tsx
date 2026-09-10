@@ -150,15 +150,18 @@ export default function AdminFinancialVerification() {
         Vérification financière requise ({rows.length})
       </h2>
       <p className="mb-3 text-[13px] text-grubano-ink-muted">
-        La vérité argent de ces réclamations n’est pas établie. Le système ne dira pas que le
-        client a été payé, ni qu’il ne l’a pas été : il ne le sait pas. Le RAIL RÉCLAMATIONS ne
-        lancera aucun nouveau remboursement, et la commande reste verrouillée contre une seconde
-        réclamation tant que la transaction existante n’est pas attribuée.
+        {/* RE-AUDIT FIX: this banner promised things that are only true of the AMBIGUOUS rows.
+            The third bucket holds ordinary unsettled cases whose truth IS known and which the
+            claims rail can still pay, so a blanket promise over all of them was false. */}
+        Toutes les réclamations dont l’argent n’est pas soldé, quelle qu’en soit la raison. Deux
+        catégories très différentes : celles dont la vérité argent est <strong>indéterminée</strong>
+        {' '}(le système ne dira ni « payé » ni « non payé » : il ne le sait pas, et la commande
+        reste verrouillée), et celles dont l’état est <strong>connu</strong> mais non soldé.
         {' '}
         <strong>
-          Attention : le rail de remboursement admin ne lit PAS la table des réclamations. Un
-          remboursement lancé depuis cet autre écran ne serait arrêté par rien de ce qui est
-          écrit ici. Vérifiez la commande dans Stripe avant tout paiement.
+          Le rail de remboursement admin ne lit PAS la table des réclamations : un remboursement
+          lancé depuis cet autre écran ne serait arrêté par rien de ce qui est écrit ici. Vérifiez
+          la commande dans Stripe avant tout paiement.
         </strong>
       </p>
 
@@ -184,8 +187,16 @@ export default function AdminFinancialVerification() {
             </div>
 
             <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
-              {/* Deliberately NOT a money statement: that is the open question. */}
-              <p><span className="font-semibold">Argent :</span> INDÉTERMINÉ — à établir par preuve Stripe.</p>
+              {/* RE-AUDIT FIX: "INDÉTERMINÉ" was printed on EVERY row, including ones whose money
+                  state is known (a succeeded refund awaiting reconciliation, for instance). Saying
+                  "unknown" about something the system knows is the same class of lie as saying
+                  "nothing was paid" about something it never looked at. */}
+              <p>
+                <span className="font-semibold">Argent :</span>{' '}
+                {r.kind === 'other_unsettled'
+                  ? 'état connu mais NON SOLDÉ — voir la file « Remboursements à traiter » pour le détail.'
+                  : 'INDÉTERMINÉ — à établir par preuve Stripe.'}
+              </p>
               <p><span className="font-semibold">Réclamation :</span> <code>{r.id}</code></p>
               <p>
                 <span className="font-semibold">Ouverte depuis :</span>{' '}

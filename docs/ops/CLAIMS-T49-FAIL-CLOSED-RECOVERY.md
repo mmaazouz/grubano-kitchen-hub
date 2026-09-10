@@ -126,3 +126,28 @@ ni à la page ; routes de sortie sans test ; préconditions de l'opérateur non 
 
 `RECONCILE_GRACE_MS` (5 min) est une heuristique : une tentative interrompue reste invisible dans la
 file pendant sa fenêtre de grâce. Elle apparaît ensuite. Aucun argent n'est en jeu pendant ce délai.
+
+---
+
+## 8. RE-AUDIT des correctifs (2026-09-10) — 4 auditeurs, 25 constats, **16 confirmés dont 4 P1**
+
+Discipline appliquée : les correctifs P1 du §7 ont été audités **à leur tour**, parce que l'audit qui
+les avait validés portait sur du code qui n'existait plus. Ce n'était pas une formalité — **trois
+fois dans ce chantier, un correctif a introduit le défaut suivant**.
+
+### Trouvé dans les correctifs eux-mêmes
+
+| Sév. | Constat | Correctif |
+|---|---|---|
+| **P1** | **La fenêtre de grâce était INERTE.** La regex d'horodatage avait perdu ses antislashs en passant par le shell : `/(d{4}-d{2}-d{2}T[d:.]+Z)/`. Elle ne pouvait matcher aucun ISO, `reconcileMarkerAge` renvoyait toujours `null`, et **chaque** marqueur — y compris un remboursement légitimement en vol une seconde plus tôt — était listé comme échoué. **Trois auditeurs indépendants l'ont trouvée.** | Littéral de regex (échappements visibles), plus un test qui vérifie **le parsing lui-même** et un contrôle négatif qui reproduit la regex inerte. |
+| **P1** | **`attributeClaimRefund` pouvait adopter un remboursement DÉJÀ lié à une autre réclamation de la même commande.** Une seule somme aurait soldé deux réclamations, et `reconcileClaimForRefund` retrouve la réclamation par `findFirst({refundId})` — une colonne sans contrainte d'unicité — donc la réconciliation atterrissait sur une réclamation arbitraire. Le client aurait vu « Réclamation remboursée » sans qu'un centime ne bouge pour elle. | La ligne doit être **libre** : refus si une autre réclamation la porte déjà. |
+| **P1** | **La preuve d'absence rouvrait la réclamation sur un rail VERROUILLÉ par la ligne échouée qu'elle venait d'ignorer.** `executeRefund` refuse tout remboursement ultérieur sur une commande portant une ligne `failed` avec un identifiant Stripe. Écrire « de nouveau payable par le rail normal » était une promesse que le moteur refusera. | Le verrou est détecté et **dit** : reprise manuelle Stripe requise. |
+| **P1** | **La file affirmait « Argent : INDÉTERMINÉ » sur des lignes dont l'état EST connu**, promettait qu'aucun remboursement ne serait lancé sur des lignes que le rail réclamations peut payer, et offrait le bouton « Réconcilier d'après la preuve » sur des réclamations approuvées ordinaires — où il n'y a rien à réconcilier et où il aurait estampillé une erreur sur un dossier sain. | Le message d'argent, la bannière et le bouton distinguent désormais les deux catégories. |
+
+### Ce que cela signifie pour l'autorisation
+
+**MODE A AUTHORIZATION SAFE = NON.** Les quatre P1 ci-dessus sont corrigés, mais **ces
+correctifs-là n'ont pas encore été audités**. La règle §24 est explicite : un P0/P1 dans le
+périmètre interdit de demander l'autorisation. Deux rondes consécutives ont trouvé des P1 dans les
+correctifs de la ronde précédente ; déclarer sûr le troisième jeu sur la foi du deuxième audit
+répéterait exactement le schéma que ces audits mettent au jour.
