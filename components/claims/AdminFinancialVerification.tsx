@@ -130,7 +130,11 @@ export default function AdminFinancialVerification() {
       const text = outcome === 'refunded'
         ? 'Remboursement attribué : la réclamation reflète désormais ce remboursement réel.'
         : outcome === 'refund_failed'
-          ? 'Remboursement attribué : il avait ÉCHOUÉ. Aucun argent n’a atteint le client. La réclamation redevient traitable.'
+          // ROUND-5 AUDIT FIX: I added "Aucun argent n'a atteint le client" here in the round-4
+          // pass — a blanket cash claim about the CUSTOMER derived from one ROW's status. The row
+          // failing means that refund paid nothing; it says nothing about other refunds on the
+          // order. Four rounds were spent removing exactly this shape and I reintroduced it.
+          ? 'Remboursement attribué : cette ligne de remboursement avait ÉCHOUÉ, elle n’a donc rien versé. La réclamation redevient traitable. (Cela ne dit rien des autres remboursements de la commande.)'
           : 'Remboursement attribué : la ligne n’est pas encore terminale. Rien n’est clos.'
       if (outcome === 'refund_failed') toast.error(text)
       else toast.success(text)

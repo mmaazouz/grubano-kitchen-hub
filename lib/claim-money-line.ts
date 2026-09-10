@@ -48,10 +48,16 @@ export function moneyLineFor(row: {
   }
   // Checked BEFORE the binding test: these rows have a refundId, and it is the wrong one.
   if (isResumeMismatch(row.refundError)) {
+    // ROUND-5 AUDIT FIX: this said "de l'argent a bougé pour quelqu'un d'autre". Two of the four
+    // writers of this marker sit on the PENDING path, where the engine only got the refund
+    // ACCEPTED — nothing has moved yet. Asserting movement was true for two writers and false for
+    // the other two, so it is not asserted at all. What IS established on every one of them is
+    // that the bound refund is not this claim's.
     return {
       certainty: 'bound_but_not_ours',
       text: 'un remboursement est lié, mais le moteur a établi qu’il n’appartient PAS à cette '
-        + 'réclamation : de l’argent a bougé pour quelqu’un d’autre, et son état ne règle RIEN ici.',
+        + 'réclamation : son état ne règle RIEN ici, et il ne dit rien de ce qui a été versé au '
+        + 'titre de cette réclamation.',
     }
   }
   if (row.refundId) {

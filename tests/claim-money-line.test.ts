@@ -9,9 +9,17 @@
 // The audit also found that NONE of the component fixes was pinned by any test: reverting each
 // left the suite green. The decision is a pure function now, so it can be.
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { moneyLineFor, isResumeMismatch, RESUME_MISMATCH } from '@/lib/claim-money-line'
 
-const MISMATCH = `${RESUME_MISMATCH}: le moteur a abouti sur un remboursement (rf9) qui n’appartient PAS à cette réclamation.`
+// ROUND-5 AUDIT FIX: this fixture was a hand-typed string, so the module's contract was bound to
+// no shipped writer — the same tautology that let the inert regex through in round 2. The strings
+// are now READ OUT OF lib/claims.ts, so a writer that stops emitting the marker fails this suite.
+const CLAIMS_SRC = readFileSync('lib/claims.ts', 'utf8')
+/** Every refundError literal the engine writes for a mismatch, taken from the source itself. */
+const SHIPPED_MISMATCH_WRITERS = (CLAIMS_SRC.match(/refundError: `resume_mismatch:[^`]*`/g) ?? [])
+  .map((m) => m.replace(/^refundError: `/, '').replace(/`$/, ''))
+const MISMATCH = SHIPPED_MISMATCH_WRITERS[0] ?? ''
 
 describe('the two ambiguous buckets never claim to know anything', () => {
   it('a claim parked in financial verification reads INDETERMINATE, bound or not', () => {
@@ -110,5 +118,41 @@ describe('negative control — the shipped-and-audited refundId proxy would be c
     expect(roundTwoRule()).toContain('état connu')                          // ← the defect
     expect(moneyLineFor({ kind: 'other_unsettled', refundId: null, refundError: null }).text)
       .not.toContain('état connu')                                          // ← fixed
+  })
+})
+
+// ══ ROUND-5 AUDIT FIX — THE CONTRACT IS BOUND TO THE SHIPPED WRITERS ════════════
+describe('every mismatch string the engine actually writes is recognised', () => {
+  it('the engine has mismatch writers at all (if this fails, the marker moved)', () => {
+    expect(SHIPPED_MISMATCH_WRITERS.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('EVERY one of them is recognised by the predicate', () => {
+    for (const w of SHIPPED_MISMATCH_WRITERS) expect(isResumeMismatch(w)).toBe(true)
+  })
+
+  it('EVERY one of them produces the not-ours line, pending path included', () => {
+    // Two of the writers sit on the PENDING path. They must get the same treatment: a bound
+    // refund that is not this claim's, with no assertion about what moved.
+    for (const w of SHIPPED_MISMATCH_WRITERS) {
+      const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: w })
+      expect(l.certainty).toBe('bound_but_not_ours')
+    }
+  })
+
+  it('the line never ASSERTS that money moved — two writers are only PENDING', () => {
+    // The check is on the assertion, not on vocabulary: the honest line legitimately contains the
+    // words "a été versé" inside a NEGATION ("it says nothing about what was paid"). A blunt
+    // keyword match would fail on the correct text and pass on a reworded wrong one.
+    const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH })
+    expect(l.text).not.toContain('de l’argent a bougé')       // the round-4 over-claim, verbatim
+    expect(l.text).not.toMatch(/^(?!.*ne dit rien).*a été versé/) // "was paid", outside a negation
+    expect(l.text).toContain('ne dit rien')                    // it explicitly declines to say
+  })
+
+  it('NEGATIVE CONTROL — a hand-typed fixture would not have caught a writer change', () => {
+    const handTyped = 'resume_mismatch: something I made up'
+    expect(isResumeMismatch(handTyped)).toBe(true)   // passes regardless of what ships
+    expect(SHIPPED_MISMATCH_WRITERS.every((w) => isResumeMismatch(w))).toBe(true) // ← bound to source
   })
 })

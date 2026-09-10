@@ -190,6 +190,9 @@ describe('the money queue component keeps its audit fixes', () => {
     // Round 4 fixed reconcile() and left attribute() green on a failed refund.
     expect(src).toContain("if (needsAttention) toast.error(text)")
     expect(src).toContain("if (outcome === 'refund_failed') toast.error(text)")
+    // ROUND-5: and neither handler may make a blanket cash claim about the CUSTOMER from one
+    // ROW's status — the assertion I added in round 4 and the audit removed in round 5.
+    expect(src).not.toContain('Aucun argent n’a atteint le client')
   })
 
   it('the rail-locked outcome reaches an operator-visible message', () => {

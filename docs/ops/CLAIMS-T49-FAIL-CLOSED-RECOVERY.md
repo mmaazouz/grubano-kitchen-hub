@@ -222,4 +222,38 @@ gestionnaires. Légende rendue une seule fois, avec son bouton. Bannière qui ne
 troisième groupe dans une catégorie et renvoie à la ligne. Aller-retour de marqueur réel. Et sept
 épingles au niveau source pour que l'annulation d'un correctif de composant fasse rougir la suite.
 
-**Ces correctifs-là n'ont pas encore été audités.** Rond 5 en cours.
+**Ces correctifs-là ont été audités au rond 5 — voir §11.**
+
+---
+
+## 11. AUDIT ROND 5 (2026-09-10) — sur `68998a8`
+
+4 auditeurs, 6 constats, **5 confirmés / 1 réfuté. P0 = 0, P1 = 1.**
+
+**Le P1 : j'ai réintroduit au rond 4 exactement la classe de défaut que trois ronds avaient
+retirée.** Le gestionnaire d'attribution disait à l'opérateur « Aucun argent n'a atteint le
+client » dès qu'une ligne de remboursement échouée était attribuée. C'est une affirmation sur le
+CLIENT dérivée du statut d'UNE ligne : cette ligne-là n'a rien versé, mais elle ne dit rien des
+autres remboursements de la commande — et l'attribution ne se déclenche justement que sur des
+commandes où Stripe a prouvé qu'un remboursement existe. Corrigé : la phrase porte désormais sur
+la ligne, pas sur le client, et le dit explicitement.
+
+**Les P2 convergents (deux auditeurs, même cible)** : la ligne « argent » de mésattribution
+affirmait « de l'argent a bougé pour quelqu'un d'autre ». Le marqueur `resume_mismatch` a **quatre
+écrivains** dans le moteur, et **deux d'entre eux sont sur le chemin PENDING** — là, le moteur n'a
+obtenu qu'une ACCEPTATION Stripe, rien n'a encore bougé. L'affirmation était vraie pour deux
+écrivains et fausse pour les deux autres, donc elle n'est plus faite du tout : ce qui est établi
+sur les quatre, c'est que le remboursement lié n'est pas celui de cette réclamation.
+
+**Le P3 de méthode** : le contrat du nouveau module était épinglé sur une chaîne tapée à la
+main — la tautologie du rond 2 sous une autre forme. Les chaînes de test sont maintenant **lues
+dans `lib/claims.ts`** (`SHIPPED_MISMATCH_WRITERS`) : si un écrivain cesse d'émettre le marqueur,
+la suite rougit. Un contrôle négatif dans le fichier montre que la fixture tapée à la main aurait
+passé quoi qu'il arrive.
+
+### Corrigé (rond 6 en audit)
+
+Affirmation « client » retirée du gestionnaire d'attribution et remplacée par un énoncé de portée
+« ligne ». Affirmation de mouvement retirée de la ligne de mésattribution. Contrat du module lié
+aux écrivains expédiés, plus une épingle source `not.toContain` sur la phrase retirée pour que sa
+réapparition fasse rougir la suite.
