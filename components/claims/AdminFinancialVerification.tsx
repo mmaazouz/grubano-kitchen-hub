@@ -28,7 +28,7 @@ type Row = {
   /** The refunds of THIS order, so the operator can attribute one without leaving the console. */
   candidateRefunds?: Array<{
     id: string; status: string; amountCents: number
-    stripeRefundId: string | null; createdAt: string; belongsToAnotherClaim: boolean
+    stripeRefundId: string | null; createdAt: string; belongsToAnotherClaim: boolean; alreadyBoundToAnotherClaim: boolean
   }>
 }
 
@@ -87,10 +87,24 @@ export default function AdminFinancialVerification() {
         // AUDIT FIX: this branch reads OUR row, not Stripe. Say that, rather than asserting a
         // Stripe state nobody consulted.
         still_pending:          'La ligne de remboursement liée n’est pas encore terminale (ni aboutie, ni échouée). Rien n’est clos, aucun second remboursement. Vérifiez Stripe pour l’état réel.',
-        no_refund_proven:       'Preuve d’absence : aucun remboursement n’existe et Stripe n’en rapporte aucun. La réclamation est de nouveau payable par le rail normal.',
+        no_refund_proven:       'Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun. La réclamation est de nouveau payable par le rail normal.',
+        // ROUND-3 AUDIT FIX: this case previously received the message above. Nothing moved, which
+        // is true — but a FAILED refund with a Stripe id locks the engine against every later
+        // refund on that order, so "payable again" was the opposite of what will happen. Three
+        // auditors flagged that the honest reason was written to a field no human reads.
+        no_refund_proven_rail_locked:
+          'Preuve d’absence : rien n’est parti. MAIS un remboursement ÉCHOUÉ verrouille cette commande côté moteur — toute nouvelle tentative sera REFUSÉE tant que la reprise manuelle Stripe n’a pas été faite. Reprise humaine requise.',
         financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
       }
-      toast.success(said[outcome ?? ''] ?? 'Réconciliation terminée.')
+      // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still
+      // indeterminate", "the refund FAILED" and "the rail is locked shut". A green tick on those
+      // is the tone telling the operator the opposite of the text.
+      const needsAttention = outcome === 'financial_verification'
+        || outcome === 'refund_failed'
+        || outcome === 'no_refund_proven_rail_locked'
+      const text = said[outcome ?? ''] ?? 'Réconciliation terminée.'
+      if (needsAttention) toast.error(text)
+      else toast.success(text)
       await load()
     } catch {
       toast.error('Échec de la réconciliation.')
@@ -193,9 +207,14 @@ export default function AdminFinancialVerification() {
                   "nothing was paid" about something it never looked at. */}
               <p>
                 <span className="font-semibold">Argent :</span>{' '}
-                {r.kind === 'other_unsettled'
-                  ? 'état connu mais NON SOLDÉ — voir la file « Remboursements à traiter » pour le détail.'
-                  : 'INDÉTERMINÉ — à établir par preuve Stripe.'}
+                {/* ROUND-3 AUDIT FIX: "état connu" was asserted over the whole bucket, including
+                    rows whose money truth is exactly what is NOT known. The claim is now made only
+                    where a bound refund row actually carries the answer. */}
+                {r.kind !== 'other_unsettled'
+                  ? 'INDÉTERMINÉ — à établir par preuve Stripe.'
+                  : r.refundId
+                    ? 'un remboursement est LIÉ à cette réclamation — son état fait foi, voir la file « Remboursements à traiter ».'
+                    : 'NON SOLDÉ, et aucun remboursement n’est lié — l’état argent n’est pas établi ici.'}
               </p>
               <p><span className="font-semibold">Réclamation :</span> <code>{r.id}</code></p>
               <p>
@@ -208,14 +227,32 @@ export default function AdminFinancialVerification() {
               <p><span className="font-semibold">Remboursement lié :</span> {r.refundId ? <code>{r.refundId}</code> : 'aucun'}</p>
             </dl>
 
-            <Button
-              size="sm"
-              className="mt-3"
-              disabled={busyId === r.id}
-              onClick={() => reconcile(r.id)}
-            >
-              Réconcilier d’après la preuve
-            </Button>
+            {/* ROUND-3 AUDIT FIX. I reported this button as scoped in the previous round; the
+                string replacement silently no-oped and it shipped unconditional. Offered on an
+                ordinary approved-but-unpaid claim it stamps a recovery error onto a healthy case
+                and reconciles nothing. It belongs to the states whose money truth is open. */}
+            {r.kind !== 'other_unsettled' ? (
+              <>
+                <Button
+                  size="sm"
+                  className="mt-3"
+                  disabled={busyId === r.id}
+                  onClick={() => reconcile(r.id)}
+                >
+                  Réconcilier d’après la preuve
+                </Button>
+                <p className="mt-1 text-[12px] text-grubano-ink-muted">
+                  Lit Stripe et les lignes de remboursement existantes. Ne crée aucun
+                  remboursement, ne relance rien, ne déplace aucun argent.
+                </p>
+              </>
+            ) : (
+              <p className="mt-3 text-[12px] text-grubano-ink-muted">
+                Listée ici pour qu’elle ne disparaisse pas quand les réclamations sont fermées.
+                Son traitement se fait dans la file « Remboursements à traiter » de la console
+                d’arbitrage, qui n’est visible que lorsque les réclamations sont ouvertes.
+              </p>
+            )}
 
             {r.kind === 'financial_verification' && (r.candidateRefunds?.length ?? 0) > 0 && (
               <div className="mt-3 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3">
@@ -236,10 +273,13 @@ export default function AdminFinancialVerification() {
                       {c.belongsToAnotherClaim && (
                         <Badge tone="danger">porte l’identité d’une AUTRE réclamation</Badge>
                       )}
+                      {c.alreadyBoundToAnotherClaim && (
+                        <Badge tone="danger">déjà LIÉ à une autre réclamation — sera refusé</Badge>
+                      )}
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={busyId === r.id}
+                        disabled={busyId === r.id || c.alreadyBoundToAnotherClaim}
                         onClick={() => attribute(r.id, c.id)}
                       >
                         Attribuer

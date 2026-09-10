@@ -124,8 +124,12 @@ ni à la page ; routes de sortie sans test ; préconditions de l'opérateur non 
 
 ### Reste ouvert, assumé
 
-`RECONCILE_GRACE_MS` (5 min) est une heuristique : une tentative interrompue reste invisible dans la
-file pendant sa fenêtre de grâce. Elle apparaît ensuite. Aucun argent n'est en jeu pendant ce délai.
+`RECONCILE_GRACE_MS` (5 min) est une heuristique, et cette phrase était INEXACTE : elle affirmait
+que la réclamation « reste invisible dans la file » pendant la fenêtre de grâce. C'est faux, et
+l'audit du rond 3 l'a relevé. La réclamation reste **listée** dans la file non gatée pendant toute
+la fenêtre, avec un libellé qui dit que l'état argent n'est pas établi ; la grâce retire seulement
+le bouton de réconciliation tant que la tentative peut être légitimement en vol. Aucun argent n'est
+en jeu pendant ce délai.
 
 ---
 
@@ -151,3 +155,36 @@ correctifs-là n'ont pas encore été audités**. La règle §24 est explicite :
 périmètre interdit de demander l'autorisation. Deux rondes consécutives ont trouvé des P1 dans les
 correctifs de la ronde précédente ; déclarer sûr le troisième jeu sur la foi du deuxième audit
 répéterait exactement le schéma que ces audits mettent au jour.
+
+---
+
+## 9. AUDIT ROND 3 (2026-09-10) — sur la révision DÉPLOYÉE `d94df77`
+
+5 auditeurs, 18 constats, **6 confirmés / 12 réfutés. P0 = 0, P1 = 1.**
+
+**Le P1 : un correctif que j'avais RAPPORTÉ COMME FAIT ne s'était pas appliqué.** Le remplacement
+de chaîne qui devait restreindre le bouton « Réconcilier d'après la preuve » aux seules lignes
+ambiguës n'a rien remplacé, silencieusement, et je ne l'ai pas vérifié. Le bouton a donc été livré
+inconditionnel — et sur une réclamation approuvée mais jamais payée, un clic la garait
+définitivement en `financial_verification`, donc structurellement impayable par le rail
+réclamations. **Le commit et ce document affirmaient tous deux le contraire.**
+
+Les cinq autres constats sont des variantes du même thème : une formulation qui affirme plus que
+ce que le code établit. La raison honnête du verrou de rail était écrite dans un champ qu'aucun
+humain ne lit ; « état connu » était affirmé sur des lignes dont l'état est précisément inconnu ;
+le message renvoyait vers une file que le drapeau produit retire de la page ; et les tests de la
+fenêtre de grâce retapaient le marqueur à la main au lieu de faire un aller-retour par le vrai
+producteur — exactement l'angle mort qui avait laissé passer la regex inerte.
+
+### Corrigé (rond 4)
+
+Bouton restreint **et vérifié dans le fichier** cette fois. Issue `no_refund_proven_rail_locked`
+distincte, qui remonte jusqu'au message opérateur. Ligne « argent » qui ne parle d'état connu que
+lorsqu'un remboursement est réellement lié. Tonalité du message : un rail verrouillé, un
+remboursement échoué et un cas toujours indéterminé ne s'affichent plus en vert. Forme héritée
+(sans marqueur) réintégrée dans la file ambiguë. Marqueur daté dans le futur traité comme
+illisible, donc visible. Avertissement sur les lignes que la garde d'attribution refusera, et
+bouton désactivé sur celles-là. Tests : garde d'attribution pilotée jusqu'au REFUS, aller-retour
+par le vrai producteur de marqueur, et contrôle négatif sur la fusion des deux issues d'absence.
+
+**Ces correctifs-là n'ont pas encore été audités.** Rond 4 en cours.

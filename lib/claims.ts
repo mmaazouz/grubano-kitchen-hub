@@ -1290,6 +1290,18 @@ export async function listFinancialVerificationClaims() {
         orderBy: { createdAt: 'asc' },
       })
     : []
+  // Which of those rows is ALREADY held by a DIFFERENT claim? That is exactly what the
+  // attribution guard refuses on, so the console must show it rather than discover it on a 409.
+  const parkedIds = new Set(claims.map((c) => c.id))
+  const boundElsewhere = new Set(
+    (rows.length
+      ? await prisma.claim.findMany({
+          where:  { refundId: { in: rows.map((r) => r.id) } },
+          select: { id: true, refundId: true },
+        })
+      : []
+    ).filter((k) => !parkedIds.has(k.id)).map((k) => k.refundId as string),
+  )
   return triageBySafety(claims).map((c) => ({
     ...c,
     /** Never states whether money moved: that is exactly what is unresolved. */
@@ -1301,6 +1313,11 @@ export async function listFinancialVerificationClaims() {
       stripeRefundId: r.stripeRefundId, createdAt: r.createdAt,
       /** Whether this row already carries ANOTHER claim's identity — shown, never hidden. */
       belongsToAnotherClaim: typeof r.reason === 'string' && r.reason.startsWith('claim:') && r.reason !== claimRefundReason(c.id),
+      // AUDIT FIX (round 3): the warning above keys on the reason STAMP, but attributeClaimRefund
+      // refuses on the BINDING — a row bound to another claim through the resume path carries an
+      // admin or ghost reason and showed NO warning, so the console offered a button the server
+      // was always going to refuse. This is the condition the guard actually applies.
+      alreadyBoundToAnotherClaim: boundElsewhere.has(r.id),
     })),
   }))
 }
@@ -1324,12 +1341,26 @@ export function reconcileMarkerAge(refundError: string | null | undefined, nowMs
   const m = /(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/.exec(refundError as string)
   if (!m) return null
   const t = Date.parse(m[1])
-  return Number.isFinite(t) ? nowMs - t : null
+  if (!Number.isFinite(t)) return null
+  // AUDIT FIX (round 3): clock skew can put a marker in the future, giving a NEGATIVE age that the
+  // grace filter read as 'still healthy' — hiding a stranded claim indefinitely. A future marker
+  // is not evidence of health; treat it as unreadable, which fails VISIBLE.
+  const age = nowMs - t
+  return age < 0 ? null : age
 }
 
 export async function listReconcileRequiredClaims() {
   const claims = await prisma.claim.findMany({
-    where:  { status: { in: ['refunding', 'approved'] }, refundError: { startsWith: RECONCILE_REQUIRED } },
+    // AUDIT FIX (round 3): the marker only exists on attempts made AFTER it shipped. A LEGACY
+    // stranded row — 'refunding' with no binding and no error — has no marker, so it fell out of
+    // this list, landed in the generic bucket that calls its state «known», and lost the reconcile
+    // button that is its only handle. Its money truth is precisely what is NOT known.
+    where: {
+      OR: [
+        { status: { in: ['refunding', 'approved'] }, refundError: { startsWith: RECONCILE_REQUIRED } },
+        { status: 'refunding', refundId: null, refundError: null },
+      ],
+    },
     select: {
       id: true, orderId: true, reason: true, requestedAmountCents: true, refundId: true,
       refundError: true, createdAt: true, restaurantId: true,
@@ -1369,6 +1400,10 @@ export type ClaimEvidenceOutcome =
   | { ok: true; outcome: 'refund_failed'; refundId: string }
   | { ok: true; outcome: 'still_pending'; refundId: string }
   | { ok: true; outcome: 'no_refund_proven' }
+  // AUDIT FIX (round 3): the honest rail-locked reason was written into refundError, where no
+  // human reads it, while the caller received the SAME outcome — so the console still told the
+  // operator the claim was payable again. The two cases are now distinguishable at the boundary.
+  | { ok: true; outcome: 'no_refund_proven_rail_locked' }
   | { ok: true; outcome: 'financial_verification'; reason: AmbiguityReason; detail: string }
   | { ok: false; status: 404 | 409 | 500; error: string }
 
@@ -1584,7 +1619,7 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
           : 'no_refund_proven: aucun remboursement n’a jamais déplacé d’argent sur cette commande et Stripe n’en rapporte aucun (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation est de nouveau payable par le rail normal.',
       },
     })
-    return { ok: true, outcome: 'no_refund_proven' }
+    return { ok: true, outcome: railLocked ? 'no_refund_proven_rail_locked' : 'no_refund_proven' }
   }
 
   // Money moved on this order, but nothing proves it moved FOR THIS CLAIM. Fail closed.
