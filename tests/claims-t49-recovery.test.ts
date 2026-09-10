@@ -8,6 +8,7 @@
 //   RECOVERY LIVENESS — the ambiguous claim lands in a durable queue that survives the feature
 //                     flag, raises an alert, and has a reachable evidence-based exit.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { updateManyMock } from './support/prisma-where'
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -31,9 +32,15 @@ vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import {
   reconcileClaimEvidence, enterFinancialVerification, listFinancialVerificationClaims,
-  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason,
+  listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund,
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
 } from '@/lib/claims'
+
+/** The simulated row the CAS clauses are evaluated against (tests/support/prisma-where). */
+const fx: { row: Record<string, unknown> | null; forcedCount: number | null; applyWrites: boolean } =
+  // applyWrites: the reconciler performs a CHAIN of CAS operations (bind, then reconcile), so the
+  // simulated row must carry the first write into the second guard, exactly as a real row would.
+  { row: null, forcedCount: null, applyWrites: true }
 
 const CLAIM = { id: 'cl1', orderId: 'o1', status: 'refunding', refundId: null, requestedAmountCents: 500 }
 const row = (o: Record<string, unknown> = {}) => ({
@@ -43,10 +50,19 @@ const row = (o: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The simulated row models the state AFTER the reconciler's binding write, because that write
+  // happens first in the flow and the CAS that follows keys on the bound identity. A row that
+  // did not model it would fail the second CAS and mask the outcome under test.
+  fx.row = { status: 'refunding', refundId: 'rf1', refundError: null }; fx.forcedCount = null
   db.claim.findUnique.mockResolvedValue({ ...CLAIM })
   // reconcileClaimForRefund resolves the bound claim by refundId.
   db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
-  db.claim.updateMany.mockResolvedValue({ count: 1 })
+  // AUDIT FIX (T-49 audit, P1). This suite reintroduced the exact defect the batch exists to
+  // remove: `mockResolvedValue({ count: 1 })` answers 1 for ANY where clause, so every CAS added
+  // by T-49 — enterFinancialVerification's status window, the binding update, the pending clear,
+  // the proof-of-absence release — was executed and never verified. The operator-aware mock
+  // evaluates the clause against a simulated row instead.
+  db.claim.updateMany.mockImplementation(updateManyMock(fx))
   db.claim.update.mockResolvedValue({})
   db.claim.findMany.mockResolvedValue([])
   db.refund.findMany.mockResolvedValue([])
@@ -262,5 +278,99 @@ describe('negative controls — every named regression is detectable here', () =
   it('the reconciler refuses a claim that is not awaiting reconciliation at all', async () => {
     db.claim.findUnique.mockResolvedValue({ ...CLAIM, status: 'refunded' })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: false, status: 409 })
+  })
+})
+
+// ══ AUDIT FIX — THE GUARDS ARE EXERCISED IN THEIR FAILING DIRECTION TOO ══════════
+// The audit noted the T-51 identity guard and the T-49 crash marker were only ever tested
+// where they pass, which proves nothing about what they refuse.
+describe('the identity guard and the crash marker, exercised where they REFUSE', () => {
+  it('a refund row belonging to ANOTHER claim is never adopted', async () => {
+    db.refund.findMany.mockResolvedValue([row({ reason: claimRefundReason('SOMEONE-ELSE') })])
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({
+      latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 500 },
+    })
+    const r = await reconcileClaimEvidence({ claimId: 'cl1' })
+    expect(r).toMatchObject({ outcome: 'financial_verification' })
+  })
+
+  it('a refund row with NO identity at all is never adopted', async () => {
+    db.refund.findMany.mockResolvedValue([row({ reason: null })])
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({
+      latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 500 },
+    })
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ outcome: 'financial_verification' })
+  })
+
+  it('the marker is NOT treated as a recorded failure by any reader', () => {
+    expect(isReconcileRequired('stripe_failed: la banque a refusé')).toBe(false)
+    expect(isReconcileRequired(null)).toBe(false)
+    expect(isReconcileRequired(undefined)).toBe(false)
+    expect(isStuckResolvable({ status: 'refunding', refundError: `${RECONCILE_REQUIRED}: x` })).toBe(false)
+  })
+
+  it('PROOF OF ABSENCE survives a stale FAILED row — it moved no money', async () => {
+    // AUDIT FIX: requiring zero rows let one long-dead failed refund park a claim for ever.
+    db.refund.findMany.mockResolvedValue([row({ status: 'failed', reason: 'admin:x' })])
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({
+      latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
+    })
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ outcome: 'no_refund_proven' })
+  })
+
+  it('…but a SUCCEEDED row of another rail still blocks that proof', async () => {
+    db.refund.findMany.mockResolvedValue([row({ status: 'succeeded', reason: 'admin:x' })])
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({
+      latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 500 },
+    })
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ outcome: 'financial_verification' })
+  })
+})
+
+// ══ AUDIT FIX — THE PARKED STATE HAS A REAL EXIT ════════════════════════════════
+describe('attributeClaimRefund — the escalation exit out of a permanent park', () => {
+  beforeEach(() => {
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: FINANCIAL_VERIFICATION })
+    db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'succeeded', amountCents: 500, stripeRefundId: 're_9' })
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    fx.row = { status: FINANCIAL_VERIFICATION, refundId: 'rf9', refundError: null }
+  })
+
+  it('an operator-supplied link is applied with the ROW’s truth, not the operator’s', async () => {
+    const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
+    expect(r).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf9' })
+    expect(execMock).not.toHaveBeenCalled() // still no money authority
+  })
+
+  it('a refund from ANOTHER order is refused outright', async () => {
+    db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'DIFFERENT', status: 'succeeded', amountCents: 500, stripeRefundId: null })
+    const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
+    expect(r).toMatchObject({ ok: false, status: 400 })
+  })
+
+  it('the outcome follows the row: a FAILED row cannot be attributed as a success', async () => {
+    db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'failed', amountCents: 500, stripeRefundId: 're_9' })
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
+    expect(r).toMatchObject({ ok: true, outcome: 'refund_failed' })
+  })
+
+  it('a PENDING row is attributed without any terminal verdict', async () => {
+    db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'pending', amountCents: 500, stripeRefundId: null })
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' }))
+      .toMatchObject({ ok: true, outcome: 'still_pending' })
+  })
+
+  it('it refuses a claim that is not parked, so it cannot be used as a general override', async () => {
+    db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', status: 'refunding' })
+    expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' }))
+      .toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('NEGATIVE CONTROL — a park with no exit at all would be caught here', async () => {
+    const absorbing = (status: string) => status === FINANCIAL_VERIFICATION // ← the defect: no way out
+    expect(absorbing(FINANCIAL_VERIFICATION)).toBe(true)
+    const r = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' })
+    expect(r.ok).toBe(true) // ← fixed: there is a way out
   })
 })

@@ -23,7 +23,7 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `AUTH_EMAIL_OTP_ENABLED` | `lib/email-otp.ts` | OTP email au login |
 | `AUTH_MONEY_STEPUP_ENABLED` | `lib/email-otp.ts` | Step-up OTP sur actions argent |
 | `CHARGEBACKS_ENABLED` | `lib/dispute.ts` | Cycle litiges/chargebacks |
-| `CLAIMS_ENABLED` | `lib/claims.ts` | Réclamations client (⚠️ exige la table `Claim` en base — cf. harnais P10) |
+| `CLAIMS_ENABLED` | `lib/claims.ts` | Réclamations client (⚠️ exige la table `Claim` en base — cf. harnais P10)  **T-53 (2026-09-10) : le drapeau seul n’autorise plus RIEN.** La surface réclamations exige AUSSI `CLAIMS_WINDOW_UNTIL` (ISO, futur, ≤ 60 min), revérifié par l’application à chaque appel : une fenêtre meurt de vieillesse même après un SIGKILL, un crash hôte ou un redémarrage. Ce bail n’accorde AUCUNE autorité de remboursement. |
 | `CLAIMS_AUTO_APPROVE_ENABLED` | `lib/claims.ts` | Route d'auto-approbation des réclamations (P0-25 — défaut OFF **toute la bêta** : le sweep `auto_timeout` rembourse sans humain ; OFF → 403 explicite tracé). **Claims batch 2 :** quel que soit ce flag, le sweep saute désormais les réclamations SÉCURITÉ/allergène — l’invariant « une machine ne clôt jamais un signalement sécurité » ne dépend plus d’un flag resté OFF. |
 | `CLAIM_AUTO_RESOLVE_ENABLED` | `lib/claims.ts` | Auto-résolution des PETITES réclamations `auto_small` (P0-27 — défaut OFF **toute la bêta** : elle remboursait sans humain dès 10 €). Verrou n°2 : `CLAIM_AUTO_APPROVE_MAX_CENTS` (plafond en centimes, **défaut 0 = désactivé**, valeur mal formée → 0 tracé, jamais permissif). **Claims batch 2 :** verrou n°0, évalué AVANT les deux autres — un motif SÉCURITÉ/allergène est refusé par le chemin machine, quel que soit le montant. |
 | `CONSUMER_REDESIGN_ENABLED` | `lib/consumer-redesign.ts` | Re-design conso |
@@ -72,7 +72,7 @@ Un flag ON dont le prérequis est OFF = danger argent/confiance. Vérifiés par
 
 | Si ce flag est ON… | …alors celui-ci DOIT l'être | Pourquoi |
 |---|---|---|
-| `CLAIMS_ENABLED` | `REFUNDS_ENABLED` | claim approuvée sans refund = approuvée-mais-non-remboursée |
+| ~~`CLAIMS_ENABLED`~~ | ~~`REFUNDS_ENABLED`~~ | **RÈGLE RESTREINTE le 2026-09-10 (gate §19) : passée d’ERREUR à AVERTISSEMENT.** Le motif d’origine (réclamation approuvée sans argent derrière) reposait sur l’INVISIBILITÉ de cet état ; il est désormais compté et visible. La règle interdisait par ailleurs la seule façon sûre de répéter le circuit réclamations (claims ouvert, remboursements fermés, aucun argent ne pouvant bouger). |
 | `GHOST_ORDER_AUTO_REFUND_ENABLED` | `REFUNDS_ENABLED` | l'auto-refund ghost-order réutilise le moteur admin (P0-04). L'inverse n'est PAS requis : `REFUNDS` seul n'allume PAS le chemin webhook |
 | `CLAIMS_AUTO_APPROVE_ENABLED` | `CLAIMS_ENABLED` | l'auto-approbation balaye des réclamations (P0-25) ; via `CLAIMS`⇒`REFUNDS` elle exige transitivement le moteur |
 | `CLAIM_AUTO_RESOLVE_ENABLED` | `CLAIMS_ENABLED` | l'auto-résolution `auto_small` rembourse sans validation humaine (P0-27) ; via `CLAIMS`⇒`REFUNDS` elle exige transitivement le moteur |

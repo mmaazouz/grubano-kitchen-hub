@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { listFinancialVerificationClaims, listReconcileRequiredClaims } from '@/lib/claims'
+import { listFinancialVerificationClaims, listReconcileRequiredClaims, listActionableRefundClaims } from '@/lib/claims'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -21,21 +21,33 @@ export async function GET() {
   const operator = await resolveAdmin()
   if (!operator) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
-  const [financialVerification, reconcileRequired] = await Promise.all([
+  // AUDIT FIX (T-49 audit, convergent finding). Returning only the parked and marked claims left
+  // a hole exactly where the reconciler is most useful: its own SUCCESS outcomes move a claim out
+  // of both lists — a still-pending refund, for instance, lands back in 'refunding' with the
+  // marker cleared — and `/api/admin/claims` is gated, so with CLAIMS_ENABLED off the case became
+  // invisible again. The same hole swallowed the LEGACY stranded rows that predate the marker.
+  // The ungated queue therefore carries EVERY claim whose money is unsettled.
+  const [financialVerification, reconcileRequired, actionableRefunds] = await Promise.all([
     listFinancialVerificationClaims(),
     listReconcileRequiredClaims(),
+    listActionableRefundClaims(),
   ])
+  // A claim can legitimately appear in more than one list; the operator should see it once.
+  const markedIds = new Set([...financialVerification, ...reconcileRequired].map((c) => c.id))
+  const otherUnsettled = actionableRefunds.filter((c) => !markedIds.has(c.id))
 
   return NextResponse.json({
     // Ungated on purpose — see above. `enabled` is reported for the console's information only;
     // it never suppresses the payload.
     financialVerification,
     reconcileRequired,
+    otherUnsettled,
     counts: {
       financialVerification: financialVerification.length,
       reconcileRequired:     reconcileRequired.length,
+      otherUnsettled:        otherUnsettled.length,
       /** What an operator badge must show: every claim whose money truth is open. */
-      total: financialVerification.length + reconcileRequired.length,
+      total: financialVerification.length + reconcileRequired.length + otherUnsettled.length,
     },
   })
 }

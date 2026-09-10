@@ -31,7 +31,12 @@ export const dynamic = 'force-dynamic'
 const bodySchema = z.object({
   orderId:     z.string().min(1),
   amountCents: z.number().int().positive().optional(),
-  reason:      z.string().max(500).optional(),
+  // T-52 / T-49 — `Refund.reason` is now ATTRIBUTION EVIDENCE: the claims reconciler binds a
+  // claim to a refund by matching `claim:<claimId>`. Free text from this rail could therefore
+  // forge that identity and make a claim adopt an unrelated refund. The namespace is reserved.
+  reason:      z.string().max(500).refine((v) => !v.trim().toLowerCase().startsWith('claim:'), {
+    message: 'Le préfixe « claim: » est réservé à l’identité des réclamations.',
+  }).optional(),
 })
 
 export async function POST(req: Request) {

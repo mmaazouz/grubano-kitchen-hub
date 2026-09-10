@@ -162,10 +162,13 @@ async function main() {
   if (sha256(fs.readFileSync(envFile)) !== liveSha) return fail('4 proof: .env.local changed during the run — this script never writes it; investigate')
   const mergedAfter = prov.mergeNextEnvFiles(prov.readNextEnvFiles(fs, path, APP_ROOT)).merged
   F('LIVE REFUNDS_ENABLED', mergedAfter.REFUNDS_ENABLED === undefined ? 'ABSENT→false' : mergedAfter.REFUNDS_ENABLED)
+  F('LIVE CLAIMS_ENABLED', mergedAfter.CLAIMS_ENABLED === undefined ? 'ABSENT→false' : mergedAfter.CLAIMS_ENABLED)
   const gate = await probeGate(base)
   F('PROCESS REFUND GATE', gate)
   if (gate !== '403') A('4 proof: live gate is not 403 gated')
-  const left = fs.readdirSync(APP_ROOT).filter((n) => /^\.env\.local\.bak/.test(n)).filter((n) => { try { return effective(fs.readFileSync(path.join(APP_ROOT, n), 'utf8'), 'REFUNDS_ENABLED') === 'true' } catch { return true } })
+  // AUDIT FIX (T-49 audit): the final proof still filtered on REFUNDS_ENABLED alone, so a
+  // claims-only true-flag backup was reported as 'no restorable backup'. Both flags now.
+  const left = fs.readdirSync(APP_ROOT).filter((n) => /^.env.local.bak/.test(n)).filter((n) => { try { return dangerousFlags(fs.readFileSync(path.join(APP_ROOT, n), 'utf8')).length > 0 } catch { return true } })
   F('RESTORABLE TRUE-FLAG BACKUP IN ACTIVE APP AREA', left.length ? 'YES (' + left.join(', ') + ')' : 'NO')
   // A restorable true-flag backup is an UNREMEDIATED RISK whether or not this was a dry run.
   // (Audit 2026-09-09: the dry run used to print RESULT: PASS and exit 0 while the footgun was

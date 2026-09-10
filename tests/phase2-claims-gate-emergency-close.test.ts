@@ -162,3 +162,55 @@ describe('negative control — an unarmed-but-writing close would be caught', ()
     expect(fs.readFileSync(envFile, 'utf8')).not.toBe(before) // ← what the defect would do
   })
 })
+
+// ══ AUDIT FIX — THE OPERATOR'S PRECONDITIONS ARE PINNED ═════════════════════════
+// The audit noted every precondition lives in an unexported main(), so the section claiming the
+// operator "still requires an explicit founder sentence" proved only that a constant exists.
+// These pin the guards themselves at source level: crude, but they fail if a guard is deleted.
+describe('the claims window operator refuses to open unless every precondition holds', () => {
+  const src = fs.readFileSync('scripts/server/phase2-claims-gate.js', 'utf8')
+
+  it('it refuses to become a money-moving rehearsal', () => {
+    expect(src).toContain("process.env.PHASE2_CLAIMS_WITH_REFUNDS === '1'")
+    expect(src).toMatch(/REFUSED BY DESIGN/)
+  })
+
+  it('it requires the founder sentence, and refuses on any precheck anomaly', () => {
+    expect(src).toContain('PHASE2_CLAIMS_WINDOW_CONFIRM !== CONFIRM_SENTENCE')
+    expect(src).toContain("if (anomalies.length) return fail('3 window: precheck anomalies")
+  })
+
+  it('it requires BOTH gates closed before opening — claims and refunds', () => {
+    expect(src).toContain("if (claimsGate0 !== 'CLOSED')")
+    expect(src).toContain("if (refundGate0 !== 'CLOSED')")
+  })
+
+  it('it writes the T-53 lease BEFORE the flag, and expires it FIRST on close', () => {
+    const openAt  = src.indexOf("writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', leaseUntil, stamp)")
+    const flagAt  = src.indexOf("const opened = writeFlag(envFile, 'CLAIMS_ENABLED', 'true', stamp)")
+    expect(openAt).toBeGreaterThan(-1)
+    expect(flagAt).toBeGreaterThan(openAt) // lease first: no instant where the flag stands alone
+    const closeLease = src.indexOf("writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + 'Z')")
+    const closeFlag  = src.indexOf("const closed = writeFlag(envFile, 'CLAIMS_ENABLED', 'false', stamp + 'Z')")
+    expect(closeLease).toBeGreaterThan(-1)
+    expect(closeFlag).toBeGreaterThan(closeLease) // expire first: belt before braces
+  })
+
+  it('it refuses a TTL its own lease could not cover', () => {
+    expect(src).toContain('if (TTL_MS + RELOAD_DEADLINE_MS + 120000 > 60 * 60 * 1000)')
+  })
+
+  it('it treats a claim already stuck, or parked in financial verification, as blocking', () => {
+    expect(src).toContain("prisma.claim.count({ where: { status: 'refunding' } })")
+    expect(src).toContain("prisma.claim.count({ where: { status: 'financial_verification' } })")
+  })
+
+  it('its active-status list mirrors the library, financial_verification included', () => {
+    expect(src).toContain("['restaurant_review', 'approved', 'refunding', 'arbitration', 'financial_verification']")
+  })
+
+  it('it reports residue on every exit path, and says NOT MEASURED rather than NONE when blind', () => {
+    expect(src).toContain('await reportResidue()')
+    expect(src).toMatch(/NOT MEASURED — the before-snapshot failed/)
+  })
+})

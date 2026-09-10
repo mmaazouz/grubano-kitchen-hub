@@ -24,6 +24,7 @@ import { buildClaimScope, resolveClaimAmount, publicClaimScope, type ClaimScope,
 import { getStripe } from '@/lib/stripe'
 import { canonicalReason, authorityScope, isSafetyReason } from '@/lib/claim-reasons'
 import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
+import { recordAdminAudit } from '@/lib/admin-audit'
 
 export type { ClaimSelection, StripeCashTruth } from '@/lib/claim-scope'
 // The canonical reason taxonomy and its authority scopes live in lib/claim-reasons and are
@@ -1203,6 +1204,7 @@ export type AmbiguityReason =
   | 'stripe_unreadable'          // Stripe truth could not be read at all
   | 'refund_moved_unattributed'  // money moved on the order, but not provably for THIS claim
   | 'multiple_candidate_refunds' // more than one row claims this identity
+  | 'already_parked_or_moved'   // the park CAS matched nothing: already parked, or moved on
 
 /**
  * Park a claim in FINANCIAL VERIFICATION and escalate. Moves NO money, ever.
@@ -1275,15 +1277,52 @@ export async function listFinancialVerificationClaims() {
     orderBy: { createdAt: 'asc' },
     take:    200,
   })
+  // AUDIT FIX (T-49 audit): the escalation exit needs the operator to name WHICH existing refund
+  // belongs to the claim, but no admin surface exposed an order's refund rows — so the exit was
+  // reachable in principle and unusable in practice. The candidates travel with the row. They are
+  // facts about refunds already made: no secret, no token, no customer data.
+  // Array.from rather than spread: the compile target predates iterable spread on Set.
+  const orderIds = Array.from(new Set(claims.map((c) => c.orderId)))
+  const rows = orderIds.length
+    ? await prisma.refund.findMany({
+        where:  { orderId: { in: orderIds } },
+        select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true, createdAt: true, reason: true },
+        orderBy: { createdAt: 'asc' },
+      })
+    : []
   return triageBySafety(claims).map((c) => ({
     ...c,
     /** Never states whether money moved: that is exactly what is unresolved. */
     moneyTruth: 'unresolved' as const,
     ambiguity:  (c.refundError ?? '').split(':')[1] ?? 'unknown',
+    /** The refunds of THIS order, so an operator can attribute one without leaving the console. */
+    candidateRefunds: rows.filter((r) => r.orderId === c.orderId).map((r) => ({
+      id: r.id, status: r.status, amountCents: r.amountCents,
+      stripeRefundId: r.stripeRefundId, createdAt: r.createdAt,
+      /** Whether this row already carries ANOTHER claim's identity — shown, never hidden. */
+      belongsToAnotherClaim: typeof r.reason === 'string' && r.reason.startsWith('claim:') && r.reason !== claimRefundReason(c.id),
+    })),
   }))
 }
 
 /** Claims whose refund attempt was interrupted before its identity was bound (T-49). */
+/**
+ * How long a refund attempt may legitimately be in flight before its marker means something is
+ * wrong. AUDIT FIX (T-49 audit): the marker is written at the START of every attempt, so without
+ * this a perfectly healthy refund appears in the operator queue as "interrupted" for the seconds
+ * it takes Stripe to answer — crying wolf on the one queue that must stay credible.
+ */
+export const RECONCILE_GRACE_MS = 5 * 60 * 1000
+
+/** The instant a marker was written, or null when it cannot be read. */
+export function reconcileMarkerAge(refundError: string | null | undefined, nowMs = Date.now()): number | null {
+  if (!isReconcileRequired(refundError)) return null
+  const m = /(d{4}-d{2}-d{2}T[d:.]+Z)/.exec(refundError as string)
+  if (!m) return null
+  const t = Date.parse(m[1])
+  return Number.isFinite(t) ? nowMs - t : null
+}
+
 export async function listReconcileRequiredClaims() {
   const claims = await prisma.claim.findMany({
     where:  { status: { in: ['refunding', 'approved'] }, refundError: { startsWith: RECONCILE_REQUIRED } },
@@ -1294,7 +1333,13 @@ export async function listReconcileRequiredClaims() {
     orderBy: { createdAt: 'asc' },
     take:    200,
   })
-  return triageBySafety(claims)
+  // An attempt still inside its grace window is HEALTHY, not stranded: leave it alone. An
+  // unreadable timestamp is treated as stranded — fail visible, never fail silent.
+  const stranded = claims.filter((c) => {
+    const age = reconcileMarkerAge(c.refundError)
+    return age === null || age >= RECONCILE_GRACE_MS
+  })
+  return triageBySafety(stranded)
 }
 
 /**
@@ -1325,6 +1370,90 @@ export type ClaimEvidenceOutcome =
 
 const RECONCILABLE_STATUSES = ['refunding', 'approved', FINANCIAL_VERIFICATION]
 
+/**
+ * T-49 — THE ESCALATION EXIT (audit fix, P1).
+ *
+ * The audit proved FINANCIAL VERIFICATION was an ABSORBING state: once a claim was parked with
+ * `refund_moved_unattributed`, no route could ever move it. The automatic branches could not
+ * fire again by construction (triggerClaimRefund CASes on approved + refundAttempted:false, so a
+ * row stamped for this claim can never be created afterwards, and nothing deletes Refund rows),
+ * so the claim, the order lock and the money-review row were permanent. The founder's own
+ * condition was explicit: FINANCIAL VERIFICATION is acceptable ONLY if a real recovery path
+ * exists. It did not. This is that path.
+ *
+ * It is NOT a guess about whether money moved — that is precisely what the policy forbids. The
+ * operator supplies the missing LINK (which existing refund belongs to this claim); the system
+ * then reads that row's OWN status and amount and applies it. The operator cannot state an
+ * outcome, cannot state an amount, and cannot create money:
+ *   • the refund row must already exist AND belong to the SAME order — a row from another order
+ *     is refused outright, so a claim can never be settled by an unrelated payment;
+ *   • the outcome comes from the row, never from the human;
+ *   • no engine call, no Stripe write, no retry.
+ */
+export type ClaimAttributionOutcome =
+  | { ok: true; outcome: 'refunded' | 'refund_failed' | 'still_pending'; refundId: string }
+  | { ok: false; status: 400 | 404 | 409; error: string }
+
+export async function attributeClaimRefund(input: {
+  claimId: string
+  /** The EXISTING Refund row the operator attributes to this claim. */
+  refundRowId: string
+  adminId: string
+  note?: string | null
+}): Promise<ClaimAttributionOutcome> {
+  const claim = await prisma.claim.findUnique({
+    where:  { id: input.claimId },
+    select: { id: true, orderId: true, status: true },
+  })
+  if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+  if (claim.status !== FINANCIAL_VERIFICATION) {
+    return { ok: false, status: 409, error: 'Cette réclamation n’est pas en vérification financière — utilisez la réconciliation par preuve.' }
+  }
+  const row = await prisma.refund.findUnique({
+    where:  { id: input.refundRowId },
+    select: { id: true, orderId: true, status: true, amountCents: true, stripeRefundId: true },
+  })
+  if (!row) return { ok: false, status: 404, error: 'Remboursement introuvable.' }
+  // THE anchor: a claim may only ever be attributed a refund of its OWN order.
+  if (row.orderId !== claim.orderId) {
+    return { ok: false, status: 400, error: 'Ce remboursement appartient à une autre commande — attribution refusée.' }
+  }
+  if (row.status !== 'succeeded' && row.status !== 'failed' && row.status !== 'pending') {
+    return { ok: false, status: 409, error: 'Statut de remboursement inexploitable.' }
+  }
+
+  // Bind, then let the row's own truth decide. The operator chose the LINK, not the OUTCOME.
+  const bound = await prisma.claim.updateMany({
+    where: { id: claim.id, status: FINANCIAL_VERIFICATION },
+    data:  { refundId: row.id, status: 'refunding', refundError: null },
+  })
+  if (bound.count !== 1) return { ok: false, status: 409, error: 'Cette réclamation a changé d’état entre-temps.' }
+
+  try {
+    await recordAdminAudit({
+      actorId:    input.adminId,
+      actorEmail: null,
+      action:     'claim.attribute_refund',
+      targetType: 'claim',
+      targetId:   claim.id,
+      metadata:   {
+        refundRowId: row.id, stripeRefundId: row.stripeRefundId, refundStatus: row.status,
+        orderId: claim.orderId, note: input.note ?? null,
+        moneyMoved: false, // this function never moves money; it records an existing link
+      },
+    })
+  } catch { /* audit is best-effort; it must never undo a completed attribution */ }
+
+  // AUDIT FIX: this branch reports 'still pending' from OUR row's status alone. That is what we
+  // know, and the wording downstream says exactly that — it does not claim Stripe was consulted.
+  // The row not being terminal is sufficient to refuse a terminal verdict here, which is the
+  // only decision this branch makes.
+  if (row.status === 'pending') return { ok: true, outcome: 'still_pending', refundId: row.id }
+  const applied = await reconcileClaimForRefund({ refundRowId: row.id, status: row.status, stripeRefundId: row.stripeRefundId })
+  if (!applied.reconciled) return { ok: false, status: 409, error: 'La réconciliation n’a pas pu être appliquée — réessayez.' }
+  return { ok: true, outcome: row.status === 'succeeded' ? 'refunded' : 'refund_failed', refundId: row.id }
+}
+
 export async function reconcileClaimEvidence(input: { claimId: string }): Promise<ClaimEvidenceOutcome> {
   const claim = await prisma.claim.findUnique({
     where:  { id: input.claimId },
@@ -1347,7 +1476,13 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
   // ── AMBIGUOUS: more than one row stamped with this claim's identity ────────────
   if (mine.length > 1) {
     const detail = `${mine.length} lignes Refund portent l'identité de cette réclamation (${mine.map((r) => r.id).join(', ')}). Attribution impossible sans décision humaine.`
-    await enterFinancialVerification({ claimId: claim.id, reason: 'multiple_candidate_refunds', detail })
+    const parked = await enterFinancialVerification({ claimId: claim.id, reason: 'multiple_candidate_refunds', detail })
+    // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
+    // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
+    // false statement about a money case, so the caller is told what actually occurred.
+    if (!parked.entered) {
+      return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
+    }
     return { ok: true, outcome: 'financial_verification', reason: 'multiple_candidate_refunds', detail }
   }
 
@@ -1362,7 +1497,22 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
     })
     if (row.status === 'succeeded' || row.status === 'failed') {
       // Reuse the already-audited reconciler: same CAS, same guards, no new money code.
-      await reconcileClaimForRefund({ refundRowId: row.id, status: row.status, stripeRefundId: row.stripeRefundId })
+      // AUDIT FIX: the verdict was discarded, so an outcome of 'refunded' could be reported when
+      // the CAS matched nothing (a concurrent webhook, a resume_mismatch guard, a row whose status
+      // had moved). Reporting a settlement that did not happen is exactly the class of lie this
+      // batch exists to remove: if the reconciler did not apply, say the truth is still open.
+      const applied = await reconcileClaimForRefund({ refundRowId: row.id, status: row.status, stripeRefundId: row.stripeRefundId })
+      if (!applied.reconciled) {
+        const detail = `La ligne Refund ${row.id} est ${row.status}, mais la réconciliation n'a pas pu être appliquée (${applied.reason}). L'état de la réclamation n'est pas établi.`
+        const parked = await enterFinancialVerification({ claimId: claim.id, reason: 'refund_moved_unattributed', detail, refundId: row.id, stripeRefundId: row.stripeRefundId })
+        // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
+        // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
+        // false statement about a money case, so the caller is told what actually occurred.
+        if (!parked.entered) {
+          return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
+        }
+        return { ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail }
+      }
       return row.status === 'succeeded'
         ? { ok: true, outcome: 'refunded', refundId: row.id, amountCents: row.amountCents }
         : { ok: true, outcome: 'refund_failed', refundId: row.id }
@@ -1384,12 +1534,24 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
   const truth = await stripeCashTruthForOrder(order?.stripePaymentIntentId)
   if (!truth) {
     const detail = 'La vérité Stripe n’a pas pu être lue pour cette commande. Aucune conclusion n’est tirée : ni remboursé, ni non remboursé.'
-    await enterFinancialVerification({ claimId: claim.id, reason: 'stripe_unreadable', detail })
+    const parked = await enterFinancialVerification({ claimId: claim.id, reason: 'stripe_unreadable', detail })
+    // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
+    // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
+    // false statement about a money case, so the caller is told what actually occurred.
+    if (!parked.entered) {
+      return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
+    }
     return { ok: true, outcome: 'financial_verification', reason: 'stripe_unreadable', detail }
   }
 
   const nothingAtStripe = (truth.refundedCents || 0) === 0 && (truth.pendingCents || 0) === 0
-  if (nothingAtStripe && rows.length === 0) {
+  // AUDIT FIX (T-49 audit, P1 liveness). This required rows.length === 0, so ONE stale row on the
+  // order — a refund that FAILED or was CANCELED months ago, and therefore moved nothing — parked
+  // the claim for ever even while Stripe positively proved that no cash left. Absence of cash is
+  // what matters, and Stripe is the authority on it: a row that never moved money cannot make
+  // the proof ambiguous. A row that DID move money (succeeded) or still might (pending) does.
+  const noRowEverMoved = !rows.some((r) => r.status === 'succeeded' || r.status === 'pending')
+  if (nothingAtStripe && noRowEverMoved) {
     // POSITIVE PROOF OF ABSENCE: no Refund row exists on this order at all, and Stripe reports
     // zero refunded and zero pending. Nothing was created and no cash moved, so re-opening the
     // attempt cannot double-pay anyone. This is the ONLY branch that resets refundAttempted,
@@ -1408,7 +1570,13 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
 
   // Money moved on this order, but nothing proves it moved FOR THIS CLAIM. Fail closed.
   const detail = `Des remboursements existent sur cette commande (Stripe : ${truth.refundedCents} c remboursés, ${truth.pendingCents} c en attente ; ${rows.length} ligne(s) Refund) mais aucune ne porte l'identité de cette réclamation. L'attribution ne peut pas être prouvée.`
-  await enterFinancialVerification({ claimId: claim.id, reason: 'refund_moved_unattributed', detail })
+  const parked = await enterFinancialVerification({ claimId: claim.id, reason: 'refund_moved_unattributed', detail })
+  // AUDIT FIX: the park CAS can legitimately match nothing (already parked, or moved on by a
+  // concurrent webhook). Reporting 'parked and escalated' when neither happened would be a
+  // false statement about a money case, so the caller is told what actually occurred.
+  if (!parked.entered) {
+    return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }
+  }
   return { ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail }
 }
 

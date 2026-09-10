@@ -113,6 +113,10 @@ function touchRestart() { fs.mkdirSync(path.join(APP_ROOT, 'tmp'), { recursive: 
    is non-financial while REFUNDS stays closed, so the residual risk here is a feature
    flag left on, not money movement. */
 let armedClose = null
+// NOTE: emergencyClose is deliberately SYNCHRONOUS — it must finish before the process exits, so
+// it cannot await a database read. Residue is reported by reportResidue() on the async exit paths;
+// under a hard kill the record is the operator's own log plus the census route.
+
 function emergencyClose(reason) {
   if (!armedClose) return false
   const { envFile, stamp } = armedClose
@@ -135,6 +139,26 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK', 'SIGQUIT']) {
 }
 process.on('uncaughtException', (e) => { emergencyClose('uncaughtException'); console.log('  !! ' + scrub(e)); process.exit(1) })
 process.on('unhandledRejection', (e) => { emergencyClose('unhandledRejection'); console.log('  !! ' + scrub(e)); process.exit(1) })
+
+// §20 — what this rehearsal left behind, reported on EVERY exit path.
+let residueBaseline = null
+let residuePrisma = null
+async function reportResidue() {
+  if (!residuePrisma) { A('4 residue: NOT MEASURED — no DB handle; a rehearsal must not be declared clean without this'); return }
+  if (!residueBaseline) { A('4 residue: NOT MEASURED — the before-snapshot failed, so nothing can be attributed to this window'); return }
+  try {
+    const TERMINAL = ['refunded', 'refused_final']
+    const after = await residuePrisma.claim.findMany({ select: { id: true, status: true, orderId: true } })
+    const created = after.filter((c) => !residueBaseline.has(c.id))
+    const residue = created.filter((c) => !TERMINAL.includes(c.status))
+    F('CLAIMS CREATED BY THIS REHEARSAL', created.length + (created.length ? ' - ' + created.map((c) => c.id + ':' + c.status).join(', ') : ''))
+    F('NON-TERMINAL RESIDUE', residue.length ? residue.length + ' - ' + residue.map((c) => c.id + ':' + c.status + ' (order ' + c.orderId + ')').join(', ') : 'NONE')
+    if (residue.length) A('4 residue: ' + residue.length + ' claim(s) left NON-TERMINAL by this rehearsal, listed above BY ID because closing CLAIMS_ENABLED hides some of these states from the arbitration console. Resolve them in a later window; do NOT reopen claims now just to tidy up.')
+    const stuck = await residuePrisma.claim.count({ where: { status: 'refunding' } })
+    const fv    = await residuePrisma.claim.count({ where: { status: 'financial_verification' } })
+    F('POST-CLOSE MONEY STATES', 'refunding ' + stuck + ' - financial_verification ' + fv)
+  } catch (e) { A('4 residue: ' + scrub(e)) }
+}
 
 async function main() {
   console.log('[1] identity + env (mode ' + MODE + ')')
@@ -202,6 +226,11 @@ async function main() {
       const byStatus = await prisma.claim.groupBy({ by: ['status'], _count: true }).catch(() => [])
       F('CLAIM TABLE (DB)', 'reachable · ' + total + ' row(s) · ' + (byStatus.length ? byStatus.map((g) => g.status + ':' + g._count).join(' ') : 'no rows'))
       const stuck = await prisma.claim.count({ where: { status: 'refunding' } })
+      // AUDIT FIX (T-49 audit): a claim parked in FINANCIAL VERIFICATION also holds activeOrderKey
+      // and is an OPEN MONEY CASE. Ignoring it declared a locked fixture READY and would have added
+      // rehearsal noise on top of an unresolved transaction.
+      const parked = await prisma.claim.count({ where: { status: 'financial_verification' } })
+      if (parked > 0) A('2 db: ' + parked + ' claim(s) in financial_verification (money truth unresolved) — resolve them BEFORE a rehearsal')
       const silence = await prisma.claim.count({ where: { status: 'restaurant_review', responseDeadlineAt: { lte: new Date() } } })
       F('CLAIMS NEEDING A HUMAN BEFORE THE REHEARSAL', 'refunding ' + stuck + ' · restaurant silence expired ' + silence)
       if (stuck > 0) A('2 db: ' + stuck + ' claim(s) already stuck in refunding — resolve them BEFORE adding rehearsal noise')
@@ -219,7 +248,10 @@ async function main() {
           F('TARGET REFUND ROWS (BEFORE)', refunds.length ? refunds.map((r) => r.status + ':' + r.amountCents).join(' | ') : 'none')
           F('TARGET CLAIM ROWS (BEFORE)', claims.length ? claims.map((c) => mask(c.id) + ':' + c.status + ':' + c.requestedAmountCents).join(' | ') : 'none')
           if (order.paymentStatus !== 'paid') A('2 db: target order is not paid — a claim would be refused')
-          if (claims.some((c) => ['restaurant_review', 'approved', 'refunding', 'arbitration'].includes(c.status))) {
+          // AUDIT FIX (T-49 audit): this list must mirror ACTIVE_STATUSES in lib/claims.ts, which gained
+          // 'financial_verification'. A parked money case still holds activeOrderKey, so omitting it
+          // declared a LOCKED fixture READY and would have added rehearsal noise on an open transaction.
+          if (claims.some((c) => ['restaurant_review', 'approved', 'refunding', 'arbitration', 'financial_verification'].includes(c.status))) {
             A('2 db: the target order already has an ACTIVE claim — a rehearsal claim would collide on activeOrderKey')
           } else targetOk = order.paymentStatus === 'paid'
         }
@@ -254,7 +286,7 @@ async function main() {
   // The operator must not outlive its own authorization: the lease is capped by the compiled
   // ceiling, so a TTL that needs more than the ceiling would leave this script polling and
   // printing WINDOW OPEN on a surface the application had already closed.
-  if (TTL_MS + 120000 > 60 * 60 * 1000) {
+  if (TTL_MS + RELOAD_DEADLINE_MS + 120000 > 60 * 60 * 1000) {
     return fail('3 window: PHASE2_CLAIMS_WINDOW_MS=' + Math.round(TTL_MS / 60000) + ' min exceeds what the T-53 lease can cover (lease = window + 2 min, ceiling 60 min). Set it to 58 min or less. Nothing changed.')
   }
 
@@ -265,10 +297,12 @@ async function main() {
   // and the difference is reported whatever the outcome.
   const idsBefore = new Set()
   if (prisma) {
-    try { (await prisma.claim.findMany({ select: { id: true } })).forEach((c) => idsBefore.add(c.id)) }
-    catch (e) { A('3 residue: could not snapshot claim ids before the window — ' + scrub(e)) }
+    residuePrisma = prisma
+    try {
+      ;(await prisma.claim.findMany({ select: { id: true } })).forEach((c) => idsBefore.add(c.id))
+      residueBaseline = idsBefore // set ONLY on success: a failed snapshot must not look like an empty one
+    } catch (e) { A('3 residue: could not snapshot claim ids before the window - ' + scrub(e)) }
   }
-  const TERMINAL = ['refunded', 'refused_final']
 
   const stamp = new Date().toISOString()
   try {
@@ -277,7 +311,11 @@ async function main() {
     // application re-checks on every call, so the window dies of old age through SIGKILL, a
     // host crash or a reboot, with nobody acting. Lease FIRST, flag second: the reverse order
     // would leave a brief instant where the flag is true with no deadline behind it.
-    const leaseUntil = new Date(Date.now() + Math.min(TTL_MS + 120000, 60 * 60 * 1000)).toISOString()
+    // AUDIT FIX (T-49 audit): the lease was anchored at the WRITE, but the TTL loop only starts
+    // after waiting for the process to reload the flag (up to RELOAD_DEADLINE_MS). A slow reload
+    // ate into the margin and the operator could outlive its own authorization — printing WINDOW
+    // OPEN on a surface the application had already closed. The reload budget is included.
+    const leaseUntil = new Date(Date.now() + Math.min(TTL_MS + RELOAD_DEADLINE_MS + 120000, 60 * 60 * 1000)).toISOString()
     writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', leaseUntil, stamp)
     F('T-53 CLAIMS AUTHORIZATION LEASE', 'CLAIMS_WINDOW_UNTIL=' + leaseUntil + ' — after this instant the claims surface is CLOSED by the application itself, with nobody acting (SIGKILL / host crash included). It grants NO refund authority.')
     const opened = writeFlag(envFile, 'CLAIMS_ENABLED', 'true', stamp)
@@ -315,24 +353,10 @@ async function main() {
       if (rg !== 'CLOSED') A('3 close: the REFUND gate is not CLOSED — HUMAN ATTENTION REQUIRED')
     } catch (e) { A('3 close: ' + scrub(e)) }
   }
-  console.log('[4] rehearsal residue (§20)')
-  if (!prisma) {
-    A('4 residue: NOT MEASURED — no DB handle; a rehearsal must not be declared clean without this')
-  } else {
-    try {
-      const after = await prisma.claim.findMany({ select: { id: true, status: true, orderId: true } })
-      const created = after.filter((c) => !idsBefore.has(c.id))
-      const residue = created.filter((c) => !TERMINAL.includes(c.status))
-      F('CLAIMS CREATED BY THIS REHEARSAL', created.length + (created.length ? ' — ' + created.map((c) => c.id + ':' + c.status).join(', ') : ''))
-      F('NON-TERMINAL RESIDUE', residue.length ? residue.length + ' — ' + residue.map((c) => c.id + ':' + c.status + ' (order ' + c.orderId + ')').join(', ') : 'NONE')
-      if (residue.length) {
-        A('4 residue: ' + residue.length + ' claim(s) left NON-TERMINAL by this rehearsal. Listed above BY ID because closing CLAIMS_ENABLED hides some of these states from the admin console. Resolve them in a later window; do NOT reopen claims now just to tidy up.')
-      }
-      const stuck = await prisma.claim.count({ where: { status: 'refunding' } })
-      const fv    = await prisma.claim.count({ where: { status: 'financial_verification' } })
-      F('POST-CLOSE MONEY STATES', 'refunding ' + stuck + ' · financial_verification ' + fv + ' (both stay visible with CLAIMS_ENABLED off — T-49)')
-    } catch (e) { A('4 residue: ' + scrub(e)) }
-  }
+  // AUDIT FIX (T-49 audit): the residue report sat on the happy path only, so aborting the
+  // rehearsal (a precheck anomaly, Ctrl-C, an uncaught throw) skipped it entirely — exactly
+  // when residue is most likely. It is a function now, and the abort paths call it too.
+  await reportResidue()
 
   return done(anomalies.length ? 'FAIL' : 'PASS')
 }

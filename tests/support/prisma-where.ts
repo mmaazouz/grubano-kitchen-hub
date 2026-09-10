@@ -66,11 +66,24 @@ export function matchWhere(where: Record<string, unknown>, row: Record<string, u
  * would. `fx.forcedCount` still overrides the matched count, for the concurrency cases that
  * need to simulate "another writer won".
  */
-export function updateManyMock(fx: { row: Record<string, unknown> | null; forcedCount?: number | null }) {
-  return ({ where }: { where: Record<string, unknown> }) => {
+export function updateManyMock(fx: {
+  row: Record<string, unknown> | null
+  forcedCount?: number | null
+  /**
+   * Apply the write to the simulated row on a match.
+   *
+   * Off by default so existing suites keep their exact behaviour. Turn it ON when the code under
+   * test performs a CHAIN of compare-and-sets, because a static row makes the second CAS fail for
+   * a reason that has nothing to do with the logic being tested — the first write simply never
+   * happened. With it on, the fixture behaves like a real row: guard, write, next guard.
+   */
+  applyWrites?: boolean
+}) {
+  return ({ where, data }: { where: Record<string, unknown>; data?: Record<string, unknown> }) => {
     const row = fx.row
     if (!row) return Promise.resolve({ count: fx.forcedCount ?? 1 })
     if (!matchWhere(where, row)) return Promise.resolve({ count: 0 })
+    if (fx.applyWrites && data) Object.assign(row, data)
     return Promise.resolve({ count: fx.forcedCount ?? 1 })
   }
 }

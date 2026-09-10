@@ -82,6 +82,12 @@ export function checkFlagCoupling(env) {
 // Contrairement aux COUPLING_RULES (exit 1), un WARNING laisse le check passer
 // (exit 0) : il signale un réglage risqué que le go-live doit voir en face.
 export const WARNING_RULES = [
+  // AUDIT FIX (T-49 audit): a lease BEYOND the compiled ceiling is REFUSED, not clamped — the one
+  // fail-closed reason an operator is most likely to misread as "open for longer". Say it.
+  { when: (env) => { const raw = String(env.CLAIMS_WINDOW_UNTIL || '').trim(); if (!on(env, 'CLAIMS_ENABLED') || !raw) return false; const t = Date.parse(raw); return Number.isFinite(t) && t - Date.now() > 60 * 60 * 1000 },
+    msg: 'CLAIMS_WINDOW_UNTIL depasse le plafond compile (60 min) : le bail est REFUSE, pas rogne — la porte reclamations est FERMEE.' },
+  { when: (env) => { const raw = String(env.REFUNDS_WINDOW_UNTIL || '').trim(); if (!on(env, 'REFUNDS_ENABLED') || !raw) return false; const t = Date.parse(raw); return Number.isFinite(t) && t - Date.now() > 30 * 60 * 1000 },
+    msg: 'REFUNDS_WINDOW_UNTIL depasse le plafond compile (30 min) : le bail est REFUSE, pas rogne — la porte remboursements est FERMEE.' },
   // (T-53) Same shape as T-48, for the claims surface: the flag alone is inert without a live
   // lease. Say it, or an operator will believe a window is open while every call is refused.
   { when: (env) => on(env, 'CLAIMS_ENABLED') && !String(env.CLAIMS_WINDOW_UNTIL || '').trim(),
