@@ -12,16 +12,26 @@ import { AlertCircle } from 'lucide-react'
 import { Button, Modal, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
 
-const REASONS = ['missing_item', 'wrong_order', 'quality', 'not_delivered', 'other'] as const
+// CLAIMS BATCH 2 — canonical taxonomy. The three ITEM_REQUIRED reasons name specific lines:
+// the server refuses a whole-order ceiling for them, so the form must let the customer say
+// WHICH article is concerned instead of silently claiming the entire order.
+const REASONS = [
+  'missing_item', 'wrong_item', 'wrong_quantity', 'quality', 'restaurant_closed',
+  'excessive_wait', 'not_received', 'payment_issue', 'allergen_safety', 'other',
+] as const
+const ITEM_REQUIRED_REASONS: readonly string[] = ['missing_item', 'wrong_item', 'wrong_quantity']
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp']
 
 type ExistingClaim = { id: string; status: string; canContest: boolean; restaurantResponseReason: string | null; arbitrationReason: string | null }
+/** Server-derived line scope. Values come from the stored order — never from this client. */
+type ScopeLine = { index: number; name: string; maxQty: number; unitCents: number; lineCents: number }
 type Eligibility = {
   canClaim: boolean
   reason?: string
   maxRefundableCents: number
   windowHours: number
   existingClaim: ExistingClaim | null
+  scope?: { maxAuthorityCents: number; alreadyRefundedCents: number; lines: ScopeLine[]; itemSelectionAvailable: boolean }
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -43,6 +53,8 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
   const [submitting, setSubmitting] = useState(false)
 
   const [reason, setReason] = useState<(typeof REASONS)[number]>('quality')
+  // index → quantity, pointing INTO the server-derived scope lines (never a price or a total)
+  const [picked, setPicked] = useState<Record<number, number>>({})
   const [wholeOrder, setWholeOrder] = useState(true)
   const [amountEuros, setAmountEuros] = useState('')
   const [description, setDescription] = useState('')
@@ -121,6 +133,17 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
 
   if (!el.canClaim) return null // not eligible (window expired / not paid) → no clutter
 
+  // Lines the customer may point at, straight from the server-derived scope.
+  const scopeLines: ScopeLine[] = el.scope?.lines ?? []
+  const needsItems = ITEM_REQUIRED_REASONS.includes(reason)
+  const itemSelection = Object.entries(picked)
+    .map(([index, qty]) => ({ index: Number(index), qty }))
+    .filter((x) => x.qty > 0)
+  // Indicative only: the SERVER prices the claim. Shown so the customer is not surprised.
+  const selectionEstimateCents = itemSelection.reduce((sum, sel) => {
+    const line = scopeLines.find((l) => l.index === sel.index)
+    return sum + (line ? line.unitCents * sel.qty : 0)
+  }, 0)
   async function submit() {
     setSubmitting(true)
     try {
@@ -134,19 +157,29 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
       const requestedAmountCents = wholeOrder
         ? undefined
         : Math.round(Number.parseFloat(amountEuros.replace(',', '.')) * 100)
-      if (!wholeOrder && (!requestedAmountCents || requestedAmountCents <= 0)) {
+      // An item-required reason must name at least one line — the server refuses it otherwise.
+      if (needsItems && itemSelection.length === 0) {
+        toast.error("Sélectionnez le ou les articles concernés."); setSubmitting(false); return
+      }
+      if (!needsItems && !wholeOrder && (!requestedAmountCents || requestedAmountCents <= 0)) {
         toast.error(t('client.errorGeneric')); setSubmitting(false); return
       }
       const res = await fetch('/api/claims', {
         method:  'POST',
         headers: { 'content-type': 'application/json' },
-        body:    JSON.stringify({ orderId, reason, description: description || undefined, requestedAmountCents, imageBase64, mediaType }),
+        body:    JSON.stringify({
+          orderId, reason, description: description || undefined,
+          // A SELECTION, never money: the server prices it from the stored order.
+          items: itemSelection.length ? itemSelection : undefined,
+          requestedAmountCents: itemSelection.length ? undefined : requestedAmountCents,
+          imageBase64, mediaType,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(data.error || t('client.errorGeneric')); return }
       toast.success(t('client.success'))
       setOpen(false)
-      setFile(null); setDescription(''); setAmountEuros(''); setWholeOrder(true)
+      setFile(null); setDescription(''); setAmountEuros(''); setWholeOrder(true); setPicked({})
       await load()
     } catch {
       toast.error(t('client.errorGeneric'))
@@ -175,7 +208,52 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
             </select>
           </div>
 
-          {/* Amount */}
+          {/* ── BATCH 2 — WHICH ARTICLE? ──────────────────────────────────────────────
+              For "article manquant", "mauvais article" and "mauvaise quantité" the server
+              refuses a whole-order ceiling, so the customer names the lines concerned. Only
+              an index and a quantity are sent: prices come from the stored order. */}
+          {needsItems && (
+            <div>
+              <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">Articles concernés</label>
+              {scopeLines.length === 0 ? (
+                <p className="text-[13px] text-[#888]">
+                  Le détail des articles de cette commande est indisponible : choisissez un autre motif
+                  ou contactez le support.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {scopeLines.map((line) => (
+                    <div key={line.index} className="flex items-center justify-between gap-3 rounded-grubano-lg border border-grubano-border px-3 py-2">
+                      <span className="text-[14px] text-[#1a1a1a]">
+                        {line.name}
+                        <span className="ml-1 text-xs text-[#888]">
+                          ({formatEuros(line.unitCents / 100, locale)} × {line.maxQty})
+                        </span>
+                      </span>
+                      <select
+                        aria-label={`Quantité concernée pour ${line.name}`}
+                        value={picked[line.index] ?? 0}
+                        onChange={(e) => setPicked((p) => ({ ...p, [line.index]: Number(e.target.value) }))}
+                        className="rounded-grubano-lg border border-grubano-border-strong bg-white px-2 py-1 text-[14px]"
+                      >
+                        {Array.from({ length: line.maxQty + 1 }, (_, q) => (
+                          <option key={q} value={q}>{q}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                  <p className="text-xs text-[#888]">
+                    {itemSelection.length === 0
+                      ? 'Sélectionnez au moins un article : ce motif ne permet pas de réclamer la commande entière.'
+                      : `Montant indicatif : ${formatEuros(selectionEstimateCents / 100, locale)} — le montant définitif est calculé par Grubano à partir de votre commande.`}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Amount — only for reasons where the whole order can legitimately be in scope. */}
+          {!needsItems && (
           <div>
             <label className="mb-1 block text-[13px] font-semibold text-[#1a1a1a]">{t('client.amountLabel')}</label>
             <p className="mb-2 text-xs text-[#888]">{t('client.maxRefundable', { amount: formatEuros(el.maxRefundableCents / 100, locale) })}</p>
@@ -196,6 +274,7 @@ export default function ClaimSection({ orderId }: { orderId: string }) {
               )}
             </div>
           </div>
+          )}
 
           {/* Description */}
           <div>

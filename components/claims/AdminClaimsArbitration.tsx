@@ -8,18 +8,36 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Button, Badge, EmptyState, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
+import { approvalToast } from '@/lib/claim-approval-toast'
 
 type Stats = { recent?: number; approvalRate?: number; flagged?: boolean; refused?: number; overturned?: number }
 type Claim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number
   description?: string | null; restaurantResponseReason?: string | null; contestReason?: string | null; photoUrl?: string | null
   consumerStats?: Stats; restaurantStats?: Stats
+  /** Server-side safety triage — this queue carries the decision buttons, so it says so here too. */
+  safety?: boolean
 }
 // P0-39 — réclamation EN ATTENTE du restaurant (lecture seule : l'admin VOIT,
 // aucune action possible — Q3 interdit de se substituer au restaurant).
 type PendingClaim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number
   description?: string | null; createdAt: string; responseDeadlineAt: string
+  /** Batch 2: the server triages safety reports to the top and says which they are. */
+  safety?: boolean
+}
+// CLAIMS BATCH 2 — money that needs a human. Batch 1 exposed this through the API but the
+// console never read it, so a stuck refund stayed invisible exactly where it matters.
+type MoneyState =
+  | 'stripe_pending' | 'stripe_failed' | 'stripe_succeeded_claim_unreconciled'
+  | 'stale_refunding_no_refund_row' | 'refund_error_recorded' | 'approved_not_driven'
+type ActionableRefundClaim = {
+  id: string; orderId: string; reason: string; requestedAmountCents: number; status: string
+  moneyState: MoneyState; safety?: boolean; refundError?: string | null
+  /** The server says whether the escape hatch would accept this row — never guessed here. */
+  resolvable?: boolean
+  actualRefundedCents: number | null
+  refund: { id: string; status: string; actualAmountCents: number; stripeRefundId: string | null } | null
 }
 
 export default function AdminClaimsArbitration() {
@@ -28,10 +46,14 @@ export default function AdminClaimsArbitration() {
   const toast = useToast()
   const [claims, setClaims] = useState<Claim[]>([])
   const [pending, setPending] = useState<PendingClaim[]>([])
+  const [actionableRefunds, setActionableRefunds] = useState<ActionableRefundClaim[]>([])
   const [loaded, setLoaded] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refusingId, setRefusingId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
+  // BATCH 2 — the stuck-money control. `resolveStuckClaim` existed with no door; this is it.
+  const [stuckId, setStuckId] = useState<string | null>(null)
+  const [stuckReason, setStuckReason] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +62,7 @@ export default function AdminClaimsArbitration() {
       const data = await res.json()
       setClaims(Array.isArray(data.claims) ? data.claims : [])
       setPending(Array.isArray(data.pending) ? data.pending : [])
+      setActionableRefunds(Array.isArray(data.actionableRefunds) ? data.actionableRefunds : [])
     } catch { /* ignore */ } finally { setLoaded(true) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -53,13 +76,48 @@ export default function AdminClaimsArbitration() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error(data.error || t('admin.processing')); return }
-      toast.success(decision === 'approve' ? t('admin.approved') : t('admin.refusedFinalDone'))
+      // AUDIT FIX (batch 2): this used to assert "remboursement déclenché" on EVERY approval —
+      // including the ordinary case where the refund rail is closed and nothing moves, and the
+      // RESUME-FIRST case where money DID move but the engine reports 'failed'. The mapping is a
+      // pure function in lib/claim-approval-toast so it is tested, not re-derived here.
+      if (decision !== 'approve') {
+        toast.success(t('admin.refusedFinalDone'))
+      } else {
+        const m = approvalToast((data as { refund?: { state?: string; amountCents?: number; error?: string } }).refund)
+        const text = m.key === 'approvedRefunded'
+          ? t('admin.approvedRefunded', { amount: formatEuros(m.amountCents / 100, locale) })
+          : t(`admin.${m.key}`)
+        if (m.tone === 'error') toast.error(text)
+        else toast.success(text)
+      }
       setRefusingId(null); setReason('')
       await load()
     } catch {
       toast.error(t('admin.processing'))
     } finally { setBusyId(null) }
   }, [load, t, toast])
+
+  // Closes a stuck money case by stating what is TRUE. It NEVER moves money and never retries:
+  // the engine's cumulative cursor may already have advanced, so a blind re-drive could
+  // double-refund. The route is deliberately NOT gated by CLAIMS_ENABLED.
+  const resolveStuck = useCallback(async (id: string, resolution: 'settled_out_of_band' | 'closed_no_payment') => {
+    setBusyId(id)
+    try {
+      const res = await fetch(`/api/admin/claims/${id}/resolve-stuck`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution, reason: stuckReason || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error((data as { error?: string }).error || 'Échec de la clôture.'); return }
+      toast.success(resolution === 'settled_out_of_band'
+        ? 'Dossier clôturé : client payé hors rail. Aucun argent n’a bougé ici.'
+        : 'Dossier clôturé sans paiement. Aucun argent n’a bougé.')
+      setStuckId(null); setStuckReason('')
+      await load()
+    } catch {
+      toast.error('Échec de la clôture.')
+    } finally { setBusyId(null) }
+  }, [load, stuckReason, toast])
 
   // V5-3 — une demande dont le reason porte le marqueur P0-08 'system_' a été
   // créée par le SYSTÈME (rail remboursement d'annulation), pas par le client :
@@ -74,12 +132,136 @@ export default function AdminClaimsArbitration() {
   }
   const isOverdue = (p: PendingClaim) => new Date(p.responseDeadlineAt).getTime() < Date.now()
 
-  if (loaded && claims.length === 0 && pending.length === 0) {
+  // CLAIMS BATCH 2 — a stuck refund is never "nothing to do": it must count here too, or the
+  // console shows an empty state while money is waiting on a human.
+  if (loaded && claims.length === 0 && pending.length === 0 && actionableRefunds.length === 0) {
     return <EmptyState emoji="⚖️" title={t('admin.empty')} />
+  }
+
+  // Truthful, distinct wording per money state. Pending is NEVER shown as succeeded, and a
+  // failed refund never reads as "in progress".
+  const MONEY_LABEL: Record<MoneyState, { text: string; tone: 'warning' | 'danger' | 'neutral' }> = {
+    stripe_pending:                       { text: 'Remboursement envoyé à la banque — en attente de confirmation Stripe', tone: 'warning' },
+    stripe_failed:                        { text: 'Remboursement ÉCHOUÉ chez Stripe — le client n’a rien reçu', tone: 'danger' },
+    stripe_succeeded_claim_unreconciled:  { text: 'Remboursement réussi chez Stripe — réclamation non réconciliée', tone: 'warning' },
+    stale_refunding_no_refund_row:        { text: 'En remboursement sans aucun remboursement Stripe associé', tone: 'danger' },
+    refund_error_recorded:                { text: 'Erreur de remboursement enregistrée — décision humaine requise', tone: 'danger' },
+    approved_not_driven:                  { text: 'Approuvée mais jamais remboursée — en attente de traitement', tone: 'warning' },
   }
 
   return (
     <div className="space-y-4">
+      {/* ── BATCH 2 — ARGENT BLOQUÉ : la seule liste où un remboursement en attente, échoué
+          ou non réconcilié devient visible ET actionnable. Aucune relance automatique. */}
+      {actionableRefunds.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-grubano-ink-muted">
+            Remboursements à traiter ({actionableRefunds.length})
+          </h2>
+          <p className="mb-3 text-[13px] text-grubano-ink-muted">
+            Ces réclamations attendent une décision humaine sur l’argent. Aucun nouvel essai n’est
+            déclenché automatiquement.
+          </p>
+          <div className="space-y-3">
+            {actionableRefunds.map((r) => {
+              const label = MONEY_LABEL[r.moneyState] ?? { text: r.moneyState, tone: 'neutral' as const }
+              return (
+                <div key={r.id} className="rounded-grubano-xl border border-grubano-border bg-grubano-surface p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-grubano-ink">{t('admin.order')} #{r.orderId.slice(-6)}</span>
+                    <span className="text-sm font-semibold text-grubano-primary">
+                      {formatEuros(r.requestedAmountCents / 100, locale)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {r.safety && <Badge tone="danger">Allergène / sécurité</Badge>}
+                    <Badge tone={label.tone}>{label.text}</Badge>
+                  </div>
+                  <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
+                    {/* The amount ACTUALLY refunded, which can differ from what was requested. */}
+                    <p>
+                      <span className="font-semibold">Montant réellement remboursé :</span>{' '}
+                      {r.actualRefundedCents === null
+                        ? 'aucun (rien n’a encore atteint le client)'
+                        : formatEuros(r.actualRefundedCents / 100, locale)}
+                    </p>
+                    {r.refund && (
+                      <p><span className="font-semibold">Statut Stripe :</span> {r.refund.status}</p>
+                    )}
+                    {r.refundError && (
+                      <p className="text-red-700"><span className="font-semibold">Détail :</span> {r.refundError}</p>
+                    )}
+                  </dl>
+                  {/* ── AUDIT FIX (batch 2) — THE MISSING DOOR. `resolveStuckClaim` shipped in
+                      batch 1 behind no route and no control, so this list could show stuck money
+                      and offer nothing to do about it — and the claim kept `activeOrderKey`,
+                      locking the customer out of ever re-filing on that order. Neither button
+                      moves money: they RECORD what is true and close the case. */}
+                  {!r.resolvable ? (
+                    // The route refuses this row on purpose: a PENDING refund may still pay out,
+                    // and a SUCCEEDED one already did. Offering a button here would be a lie.
+                    <p className="mt-3 text-[13px] text-grubano-ink-muted">
+                      Aucune clôture manuelle possible sur cet état : soit le remboursement peut
+                      encore aboutir, soit il a déjà abouti et attend seulement sa réconciliation
+                      (rejouée chaque jour, sans mouvement d’argent).
+                    </p>
+                  ) : stuckId === r.id ? (
+                    <div className="mt-3 space-y-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface-muted p-3">
+                      <p className="text-[13px] text-grubano-ink-muted">
+                        Aucune de ces actions ne rembourse ni ne relance quoi que ce soit. Elles
+                        enregistrent la réalité et libèrent la commande pour le client.
+                      </p>
+                      <textarea
+                        value={stuckReason}
+                        onChange={(e) => setStuckReason(e.target.value)}
+                        placeholder="Ce qui s’est réellement passé (facultatif)…"
+                        rows={2}
+                        className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface p-2 text-[13px]"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          disabled={busyId === r.id}
+                          onClick={() => resolveStuck(r.id, 'settled_out_of_band')}
+                        >
+                          Le client a été payé autrement
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busyId === r.id}
+                          onClick={() => resolveStuck(r.id, 'closed_no_payment')}
+                        >
+                          Clôturer sans paiement
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busyId === r.id}
+                          onClick={() => { setStuckId(null); setStuckReason('') }}
+                        >
+                          Annuler
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="mt-3"
+                      disabled={busyId === r.id}
+                      onClick={() => { setStuckId(r.id); setStuckReason('') }}
+                    >
+                      Clôturer ce dossier…
+                    </Button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       {/* ── P0-39 — EN ATTENTE DU RESTAURANT (lecture seule, distincte de l'arbitrage :
           fond ambré, ancienneté, badge « délai dépassé » — AUCUN bouton d'action). */}
       {pending.length > 0 && (
@@ -100,6 +282,7 @@ export default function AdminClaimsArbitration() {
                   {p.description && <p><span className="font-semibold">{t(isSystemClaim(p.reason) ? 'admin.systemDetails' : 'admin.clientDetails')}:</span> {p.description}</p>}
                 </dl>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {p.safety && <Badge tone="danger">Allergène / sécurité</Badge>}
                   <Badge tone="neutral">{ageOf(p.createdAt)}</Badge>
                   {isOverdue(p) && <Badge tone="warning">{t('admin.pendingOverdue')}</Badge>}
                 </div>
@@ -123,6 +306,12 @@ export default function AdminClaimsArbitration() {
               <span className="text-sm font-bold text-grubano-ink">{t('admin.order')} #{c.orderId.slice(-6)}</span>
               <span className="text-sm font-semibold text-grubano-primary">{formatEuros(c.requestedAmountCents / 100, locale)}</span>
             </div>
+
+            {c.safety && (
+              <div className="mt-2">
+                <Badge tone="danger">Allergène / sécurité</Badge>
+              </div>
+            )}
 
             <dl className="mt-2 space-y-1 text-[13px] text-grubano-ink-muted">
               <p><span className="font-semibold">{t(isSystemClaim(c.reason) ? 'admin.reasonSystem' : 'admin.reason')}:</span> {t(`reason.${c.reason}`)}</p>

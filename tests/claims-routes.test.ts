@@ -14,7 +14,10 @@ vi.mock('@/lib/claims', () => ({
   getClaimEligibility: eligMock,
   respondToClaim: respondMock,
   autoResolveSmallClaim: autoMock, // C2 — called by the create route post-create (no-op for non-small)
-  CLAIM_REASONS: ['missing_item', 'wrong_order', 'quality', 'not_delivered', 'other'],
+  // CLAIMS BATCH 2 — the route validates against the canonical taxonomy plus the two
+  // legacy aliases, so the mock must expose the list the route actually imports.
+  CLAIM_REASONS: ['missing_item', 'wrong_item', 'wrong_quantity', 'quality', 'restaurant_closed', 'excessive_wait', 'not_received', 'payment_issue', 'allergen_safety', 'other'],
+  ACCEPTED_REASONS: ['missing_item', 'wrong_item', 'wrong_quantity', 'quality', 'restaurant_closed', 'excessive_wait', 'not_received', 'payment_issue', 'allergen_safety', 'other', 'wrong_order', 'not_delivered'],
 }))
 
 const { photoMock } = vi.hoisted(() => ({ photoMock: vi.fn() }))

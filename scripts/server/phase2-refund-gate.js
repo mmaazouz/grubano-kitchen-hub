@@ -129,6 +129,7 @@ function emergencyRefreeze(reason) {
   const { envFile, stamp } = armedRefreeze
   armedRefreeze = null // once only
   try {
+    writeFlag(envFile, 'REFUNDS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + '-emergency')
     const r = writeFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + '-emergency')
     touchRestart()
     console.log('  !! EMERGENCY REFREEZE (' + reason + '): REFUNDS_ENABLED=false written' + (r.changed ? ' (backup ' + r.backup + ')' : ' (was already false)') + ' and tmp/restart.txt touched.')
@@ -353,12 +354,31 @@ async function main() {
   F('WINDOW PRE-STATE CAPTURE', 'PASS (refund rows ' + preState.refundRows + ', ledger lines ' + preState.ledgerLines + ', loyalty customer YES, earn ' + (preState.earn ? 'PRESENT' : 'ABSENT') + ', redeem ' + (preState.redeem ? 'PRESENT' : 'ABSENT') + ', prior refund evidence NO)')
   if (!verdict.startsWith('READY')) return fail('7 window: precheck verdict ' + verdict + ' — window REFUSED, nothing changed')
   if (gate0 !== 'CLOSED') return fail('7 window: gate not CLOSED before opening — refusing')
+  // AUDIT FIX (batch 2, P3 honesty) — THE OPERATOR MUST NOT OUTLIVE ITS OWN AUTHORIZATION.
+  // The T-48 lease is capped at the compiled 30-minute ceiling (lib/refund.ts REFUND_WINDOW_MAX_MS).
+  // With PHASE2_REFUND_WINDOW_MS above ~28 min the lease would clamp while this script kept
+  // polling and kept printing 'WINDOW OPEN' — the gate would already be CLOSED by the app and the
+  // human would be reading a false statement from an EVIDENCE operator. Money is never at risk in
+  // that direction (the gate fails closed), but a lying operator is exactly the defect class this
+  // train exists to remove. Refuse rather than silently shorten: the human picks a legal window.
+  if (WINDOW_DEADLINE_MS + 120000 > 30 * 60 * 1000) {
+    return fail('7 window: PHASE2_REFUND_WINDOW_MS=' + Math.round(WINDOW_DEADLINE_MS / 60000) +
+      ' min exceeds what the T-48 lease can cover (lease = window + 2 min, hard ceiling 30 min). ' +
+      'This script would keep reporting the window OPEN after the application had already closed it. ' +
+      'Set PHASE2_REFUND_WINDOW_MS to 28 min or less. Nothing changed.')
+  }
   const stamp = new Date().toISOString()
   const refundsBefore = refunds.length
   let opened = null
   try {
     armedRefreeze = { envFile, stamp } // ARM BEFORE the write: a signal between write and arm would else escape
+    // T-48: the flag alone authorizes NOTHING any more. The window also writes an ABSOLUTE
+    // expiry that the application re-checks on every refund call, so the authorization dies of
+    // old age even if this process is killed and never runs its cleanup.
+    const leaseUntil = new Date(Date.now() + Math.min(WINDOW_DEADLINE_MS + 120000, 30 * 60 * 1000)).toISOString()
+    writeFlag(envFile, 'REFUNDS_WINDOW_UNTIL', leaseUntil, stamp)
     opened = writeFlag(envFile, 'REFUNDS_ENABLED', 'true', stamp)
+    F('T-48 AUTHORIZATION LEASE', 'REFUNDS_WINDOW_UNTIL=' + leaseUntil + ' — after this instant the gate is CLOSED by the application itself, with nobody acting (SIGKILL / host crash included)')
     F('WINDOW OPEN WRITE', opened.changed ? 'REFUNDS_ENABLED=true (backup ' + opened.backup + ')' : 'no change')
     F('EMERGENCY REFREEZE', 'ARMED (SIGINT/SIGTERM/SIGHUP/SIGQUIT/SIGBREAK + uncaught throw ⇒ REFUNDS_ENABLED=false is written synchronously before exit; SIGKILL cannot be caught)')
     touchRestart()
@@ -381,6 +401,8 @@ async function main() {
   } catch (e) { A('7 window: ' + scrub(e)) } finally {
     // UNCONDITIONAL RE-FREEZE
     try {
+      // Expire the lease FIRST: even if the flag write below fails, the authorization is dead.
+      writeFlag(envFile, 'REFUNDS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + 'Z')
       const closed = writeFlag(envFile, 'REFUNDS_ENABLED', 'false', stamp + 'Z')
       armedRefreeze = null // disarm ONLY once false is actually on disk; a throw above keeps the handler armed
       F('WINDOW CLOSE WRITE', closed.changed ? 'REFUNDS_ENABLED=false (backup ' + closed.backup + ')' : 'no change')

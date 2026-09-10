@@ -361,7 +361,7 @@
       "title": "Clientes",
       "subtitle": "Programa de fidelidad activo",
       "searchPlaceholder": "Buscar un cliente…",
-      "statMembers": "Miembros fidelidad",
+      "statMembers": "Miembros de fidelidad",
       "statNew": "Nuevos este mes",
       "statActive": "Clientes activos",
       "statAvg": "Cesta media",
@@ -394,21 +394,14 @@
       "historyTitle": "Historial reciente",
       "historySoonTitle": "Historial próximamente disponible",
       "historySoonBody": "Los pedidos, reservas y recompensas por cliente se mostrarán aquí.",
-      "subtitle": "Programa de fidelidad activo",
       "listTitle": "Mejores clientes",
       "privacyListTitle": "Privacidad de clientes.",
       "privacyListBody": "Ves el historial, la fidelidad y las preferencias. Los datos de contacto (correo, teléfono, dirección) permanecen protegidos por Grubano.",
       "colOrders": "Pedidos",
       "colAvg": "Cesta media",
       "colTotal": "Total gastado",
-      "colPoints": "Puntos",
       "colLastVisit": "Última visita",
-      "viewProfile": "Ver ficha",
-      "statTotal": "Clientes en total",
-      "statNew": "Nuevos este mes",
-      "statMembers": "Miembros de fidelidad",
-      "statAvg": "Cesta media",
-      "filterAll": "Todos"
+      "statTotal": "Clientes en total"
     },
     "dinein": {
       "title": "Servicio en mesa",
@@ -2998,6 +2991,7 @@
       "refundAddPhoto": "Añadir una foto (opcional)",
       "refundEstimate": "Reembolso estimado: <b>{amount} €</b> en 3–5 días tras la verificación.",
       "refundPickToEstimate": "Selecciona los artículos afectados para estimar el reembolso.",
+      "refundEstimateCapped": "Este importe está limitado por lo que queda reembolsable en este pedido.",
       "refundSoon": "Las solicitudes de reembolso llegan pronto.",
       "refundSubmit": "Solicitar un reembolso",
       "refundSubmittedSoon": "Próximamente",
@@ -7145,7 +7139,14 @@
       "quality": "Problema de calidad",
       "not_delivered": "No entregado",
       "other": "Otro",
-      "system_order_cancelled": "Cancelación de un pedido pagado (sistema)"
+      "system_order_cancelled": "Cancelación de un pedido pagado (sistema)",
+      "wrong_item": "Wrong item",
+      "wrong_quantity": "Wrong quantity",
+      "restaurant_closed": "Restaurant closed",
+      "excessive_wait": "Excessive wait",
+      "not_received": "Marked collected but not received",
+      "payment_issue": "Payment issue",
+      "allergen_safety": "Allergen / safety"
     },
     "status": {
       "restaurant_review": "Esperando respuesta del restaurante",
@@ -7154,7 +7155,9 @@
       "refunded": "Reembolsada",
       "refused": "Rechazada",
       "arbitration": "En arbitraje de Grubano",
-      "refused_final": "Rechazo confirmado"
+      "refused_final": "Rechazo confirmado",
+      "refund_failed": "Reembolso fallido — nuestro equipo se encarga",
+      "refund_pending_stripe": "Reembolso enviado al banco — pendiente de confirmación"
     },
     "client": {
       "reportProblem": "Reportar un problema",
@@ -7223,6 +7226,10 @@
       "decisionReasonLabel": "Justificación (opcional)",
       "decisionReasonPlaceholder": "Explique su decisión…",
       "approved": "Reclamación aprobada, reembolso iniciado.",
+      "approvedRefunded": "Reclamación aprobada: reembolso de {amount} emitido en Stripe.",
+      "approvedNotSent": "Reclamación aprobada: esta acción no ha confirmado ningún reembolso. Compruébelo en «Reembolsos por tratar».",
+      "approvedFailed": "Reclamación aprobada, pero el reembolso ha FALLADO: no ha salido dinero. Trátelo en «Reembolsos por tratar».",
+      "approvedResumeMismatch": "Reclamación aprobada, PERO el motor ha reanudado un reembolso ANTERIOR de este pedido: sí ha salido dinero, por otro importe. No emita otro reembolso: abra «Reembolsos por tratar».",
       "refusedFinalDone": "Rechazo confirmado.",
       "processing": "Procesando…",
       "signalsTitle": "Señales",

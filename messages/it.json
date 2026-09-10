@@ -394,21 +394,14 @@
       "historyTitle": "Storico recente",
       "historySoonTitle": "Storico presto disponibile",
       "historySoonBody": "Ordini, prenotazioni e premi per cliente saranno mostrati qui.",
-      "subtitle": "Programma fedeltà attivo",
       "listTitle": "Migliori clienti",
       "privacyListTitle": "Privacy dei clienti.",
       "privacyListBody": "Vedi lo storico, la fedeltà e le preferenze. I recapiti (email, telefono, indirizzo) restano protetti da Grubano.",
       "colOrders": "Ordini",
       "colAvg": "Scontrino medio",
       "colTotal": "Totale speso",
-      "colPoints": "Punti",
       "colLastVisit": "Ultima visita",
-      "viewProfile": "Vedi scheda",
-      "statTotal": "Clienti totali",
-      "statNew": "Nuovi questo mese",
-      "statMembers": "Membri fedeltà",
-      "statAvg": "Scontrino medio",
-      "filterAll": "Tutti"
+      "statTotal": "Clienti totali"
     },
     "dinein": {
       "title": "Servizio al tavolo",
@@ -2998,6 +2991,7 @@
       "refundAddPhoto": "Aggiunga una foto (facoltativo)",
       "refundEstimate": "Rimborso stimato: <b>{amount} €</b> entro 3–5 giorni dopo la verifica.",
       "refundPickToEstimate": "Selezioni gli articoli interessati per stimare il rimborso.",
+      "refundEstimateCapped": "Questo importo è limitato da ciò che resta rimborsabile su quest’ordine.",
       "refundSoon": "Le richieste di rimborso arrivano presto.",
       "refundSubmit": "Richieda un rimborso",
       "refundSubmittedSoon": "Disponibile a breve",
@@ -7145,7 +7139,14 @@
       "quality": "Problema di qualità",
       "not_delivered": "Non consegnato",
       "other": "Altro",
-      "system_order_cancelled": "Annullamento di un ordine pagato (sistema)"
+      "system_order_cancelled": "Annullamento di un ordine pagato (sistema)",
+      "wrong_item": "Wrong item",
+      "wrong_quantity": "Wrong quantity",
+      "restaurant_closed": "Restaurant closed",
+      "excessive_wait": "Excessive wait",
+      "not_received": "Marked collected but not received",
+      "payment_issue": "Payment issue",
+      "allergen_safety": "Allergen / safety"
     },
     "status": {
       "restaurant_review": "In attesa di risposta del ristorante",
@@ -7154,7 +7155,9 @@
       "refunded": "Rimborsata",
       "refused": "Rifiutata",
       "arbitration": "In arbitrato Grubano",
-      "refused_final": "Rifiuto confermato"
+      "refused_final": "Rifiuto confermato",
+      "refund_failed": "Rimborso non riuscito — in carico al nostro team",
+      "refund_pending_stripe": "Rimborso inviato alla banca — in attesa di conferma"
     },
     "client": {
       "reportProblem": "Segnala un problema",
@@ -7223,6 +7226,10 @@
       "decisionReasonLabel": "Motivazione (facoltativo)",
       "decisionReasonPlaceholder": "Spieghi la sua decisione…",
       "approved": "Reclamo approvato, rimborso avviato.",
+      "approvedRefunded": "Reclamo approvato — rimborso di {amount} emesso su Stripe.",
+      "approvedNotSent": "Reclamo approvato — questa azione non ha confermato alcun rimborso. Da verificare in «Rimborsi da trattare».",
+      "approvedFailed": "Reclamo approvato, ma il rimborso è FALLITO: nessun denaro è partito. Lo tratti in «Rimborsi da trattare».",
+      "approvedResumeMismatch": "Reclamo approvato, MA il motore ha ripreso un rimborso PRECEDENTE di questo ordine: del denaro È partito, per un altro importo. Non emetta un altro rimborso — apra «Rimborsi da trattare».",
       "refusedFinalDone": "Rifiuto confermato.",
       "processing": "Elaborazione…",
       "signalsTitle": "Segnali",

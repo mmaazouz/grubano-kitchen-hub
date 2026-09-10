@@ -69,6 +69,15 @@ export function checkFlagCoupling(env) {
 // Contrairement aux COUPLING_RULES (exit 1), un WARNING laisse le check passer
 // (exit 0) : il signale un réglage risqué que le go-live doit voir en face.
 export const WARNING_RULES = [
+  // (T-48) Le drapeau seul n'autorise PLUS rien : une fenêtre de remboursement est un BAIL
+  // qui expire (REFUNDS_ENABLED=true ET REFUNDS_WINDOW_UNTIL valide, ≤ 30 min, revérifié par
+  // l'application à chaque appel). Un drapeau vrai sans bail est inerte — c'est le
+  // comportement fail-closed voulu, mais il faut le DIRE, sinon un opérateur croira la
+  // fenêtre ouverte alors qu'aucun remboursement ne peut passer.
+  { when: (env) => on(env, 'REFUNDS_ENABLED') && !String(env.REFUNDS_WINDOW_UNTIL || '').trim(),
+    msg:  'REFUNDS_ENABLED=true sans REFUNDS_WINDOW_UNTIL — (T-48) le drapeau seul n\'autorise AUCUN remboursement : la porte reste FERMÉE tant qu\'un bail valide n\'est pas écrit' },
+  { when: (env) => on(env, 'REFUNDS_ENABLED') && !!String(env.REFUNDS_WINDOW_UNTIL || '').trim() && !(Date.parse(String(env.REFUNDS_WINDOW_UNTIL)) > Date.now()),
+    msg:  'REFUNDS_ENABLED=true avec un REFUNDS_WINDOW_UNTIL expiré ou illisible — (T-48) porte FERMÉE ; nettoyer le drapeau' },
   // (a) Le moteur de remboursement actif sans la trace d'audit admin : chaque
   // remboursement admin devrait laisser sa ligne AdminAuditLog ('refund.run').
   { when: (env) => on(env, 'REFUNDS_ENABLED') && !on(env, 'ADMIN_AUDIT_ENABLED'),

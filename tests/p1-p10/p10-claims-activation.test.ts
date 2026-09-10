@@ -149,7 +149,7 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 5 })) // 500 cents — sous l'ANCIEN plafond
-    const res = await CREATE(req({ orderId: 'o1', reason: 'missing_item' }))
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
     // AUCUNE approbation machine : pas d'updateMany 'approved', moteur jamais appelé.
     const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.status === 'approved')
@@ -165,7 +165,7 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
     vi.stubEnv('CLAIM_AUTO_RESOLVE_ENABLED', 'true')
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // 800 cents ≤ 1000 ceiling
-    const res = await CREATE(req({ orderId: 'o1', reason: 'missing_item' }))
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
     // C2 kicked in post-create: restaurant_review → approved, decided by auto_small.
     const approved = db.claim.updateMany.mock.calls.find((c) => c[0]?.data?.status === 'approved')
@@ -211,7 +211,7 @@ describe("P10 — activation : le crash (aucune frontière d'erreur dans la rout
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 }))
     db.claim.count.mockRejectedValue(new Error('db_down'))
-    const res = await CREATE(req({ orderId: 'o1', reason: 'missing_item' }))
+    const res = await CREATE(req({ orderId: 'o1', reason: 'quality' })) // batch 2: ITEM_REQUIRED reasons need a selection; this case is about the ceiling
     expect(res.status).toBe(201)
     expect(db.claim.create).toHaveBeenCalledTimes(1)
     warnSpy.mockRestore()
@@ -228,7 +228,7 @@ describe("P10 — activation : le crash (aucune frontière d'erreur dans la rout
     vi.stubEnv('CLAIM_AUTO_APPROVE_MAX_CENTS', '1000')
     db.order.findUnique.mockResolvedValue(paidOrder({ total: 8 })) // C2-eligible amount
     db.claim.count.mockRejectedValue(new Error('db_down'))
-    await expect(CREATE(req({ orderId: 'o1', reason: 'missing_item' }))).rejects.toThrow('db_down')
+    await expect(CREATE(req({ orderId: 'o1', reason: 'quality' }))).rejects.toThrow('db_down') // batch 2: order-level reason — this case is about the post-create crash, not item authority
     expect(db.claim.create).toHaveBeenCalledTimes(1) // the claim WAS created before the crash
   })
 

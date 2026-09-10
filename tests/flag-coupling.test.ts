@@ -132,16 +132,32 @@ describe('checkFlagWarnings — LOT C', () => {
     expect(checkFlagWarnings({})).toEqual([])
   })
 
+  // T-48 : le drapeau seul n'autorise plus rien — une fenêtre est un BAIL qui expire.
+  // Un REFUNDS_ENABLED=true sans bail est donc INERTE, et doit être dit à l'opérateur.
+  const lease = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString()
+
   it('REFUNDS_ENABLED sans ADMIN_AUDIT_ENABLED → WARNING « refunds sans trace d\'audit » (mais couplage OK)', () => {
-    const env = { REFUNDS_ENABLED: 'true' }
+    const env = { REFUNDS_ENABLED: 'true', REFUNDS_WINDOW_UNTIL: lease(10) }
     expect(checkFlagCoupling(env).ok).toBe(true) // légal — jamais un exit 1
     const warnings = checkFlagWarnings(env)
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain('refunds sans trace d\'audit')
   })
 
-  it('REFUNDS_ENABLED + ADMIN_AUDIT_ENABLED → zéro warning (set bêta D3 complet)', () => {
-    expect(checkFlagWarnings({ REFUNDS_ENABLED: 'true', ADMIN_AUDIT_ENABLED: 'true' })).toEqual([])
+  it('REFUNDS_ENABLED + ADMIN_AUDIT_ENABLED + bail valide → zéro warning (set bêta D3 complet)', () => {
+    expect(checkFlagWarnings({ REFUNDS_ENABLED: 'true', ADMIN_AUDIT_ENABLED: 'true', REFUNDS_WINDOW_UNTIL: lease(10) })).toEqual([])
+  })
+
+  it('(T-48) REFUNDS_ENABLED=true SANS bail → warning explicite : la porte reste FERMÉE', () => {
+    const warnings = checkFlagWarnings({ REFUNDS_ENABLED: 'true', ADMIN_AUDIT_ENABLED: 'true' })
+    expect(warnings.some((w: string) => w.includes('sans REFUNDS_WINDOW_UNTIL'))).toBe(true)
+  })
+
+  it('(T-48) REFUNDS_ENABLED=true avec un bail EXPIRÉ ou illisible → warning « porte FERMÉE »', () => {
+    for (const until of [new Date(Date.now() - 60_000).toISOString(), 'bientôt']) {
+      const warnings = checkFlagWarnings({ REFUNDS_ENABLED: 'true', ADMIN_AUDIT_ENABLED: 'true', REFUNDS_WINDOW_UNTIL: until })
+      expect(warnings.some((w: string) => w.includes('expiré ou illisible'))).toBe(true)
+    }
   })
 
   it('ALLOW_PLATFORM_FALLBACK=true → WARNING rouge « QA uniquement — JAMAIS en production »', () => {

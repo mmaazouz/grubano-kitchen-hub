@@ -65,9 +65,28 @@ export async function computeAdminOverview(now: Date = new Date()): Promise<Admi
       _count: { _all: true },
     }),
     prisma.restaurant.count({ where: { isActive: false, approvedAt: null, archivedAt: null } }),
-    isClaimsEnabled()
-      ? prisma.claim.count({ where: { status: 'arbitration' } })
-      : Promise.resolve(0),
+    // CLAIMS BATCH 2 — the badge counted ONLY 'arbitration', so an admin saw 0 while claims
+    // needed a human: a restaurant that never answered, a refund stuck pending or failed, an
+    // approval never paid. Every ACTIONABLE state is counted now.
+    //
+    // MONEY STATES ARE COUNTED EVEN WHEN CLAIMS_ENABLED IS FALSE: a refund that is stuck is
+    // stuck whatever the feature flag says, and hiding it was how it stayed invisible. Only
+    // the WORKFLOW states (new claims awaiting arbitration / restaurant silence) follow the flag.
+    prisma.claim.count({
+      where: {
+        OR: [
+          ...(isClaimsEnabled()
+            ? [
+                { status: 'arbitration' },
+                { status: 'restaurant_review', responseDeadlineAt: { lte: new Date() } },
+              ]
+            : []),
+          { status: 'refunding' },                                   // money in flight or stuck
+          { status: 'approved', refundAttempted: false },            // approved, never paid
+          { status: 'approved', refundError: { not: null } },        // refund failed / mismatched
+        ],
+      },
+    }),
     prisma.order.count({ where: { status: 'expired', paymentStatus: { in: ['paid', 'reconcile_manual'] } } }),
   ])
 

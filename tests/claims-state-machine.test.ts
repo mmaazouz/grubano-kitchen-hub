@@ -6,7 +6,7 @@
 //   • the LEGACY FINALIZATION LOCK — an already-arbitrated claim cannot be re-arbitrated;
 //   • REFUND IDENTITY BINDING — a RESUME-FIRST mismatch never reports the claim settled;
 //   • REFUND → CLAIM RECONCILIATION, which must work with CLAIMS_ENABLED=false.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -19,7 +19,8 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
 vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag }))
 
-import { arbitrateClaim, reconcileClaimForRefund, listActionableRefundClaims, claimAuthority, isClaimsEnabled, resolveStuckClaim } from '@/lib/claims'
+import { arbitrateClaim, reconcileClaimForRefund, listActionableRefundClaims, claimAuthority, isClaimsEnabled, resolveStuckClaim, recoverStrandedClaimReconciliations, autoResolveSmallClaim, isStuckResolvable, runClaimAutoApproval, listArbitrationQueue } from '@/lib/claims'
+import { ACCEPTED_REASONS, isSafetyReason } from '@/lib/claim-reasons'
 
 const HOUR = 3600 * 1000
 const past = () => new Date(Date.now() - 2 * HOUR)
@@ -386,5 +387,257 @@ describe('RE-AUDIT FIX P1 — a stuck refund is no longer a dead end', () => {
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'refunded', refundError: 'x' })
     expect(await resolveStuckClaim({ claimId: 'cl1', adminId: 'admin1', resolution: 'closed_no_payment' })).toMatchObject({ ok: false, status: 409 })
     expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('BATCH 2 — RECOVERY when the reconciliation webhook never arrived', () => {
+  it('a claim stuck in refunding whose Refund row is SUCCEEDED is reconciled by the sweep', async () => {
+    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ scanned: 1, reconciled: 1 })
+    expect(db.claim.updateMany.mock.calls[0][0].data).toMatchObject({ status: 'refunded' })
+  })
+
+  it('a FAILED row is recovered too, without any retry', async () => {
+    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'failed', stripeRefundId: 're_1' }])
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ reconciled: 1 })
+    expect(String(db.claim.updateMany.mock.calls[0][0].data.refundError)).toMatch(/stripe_failed/)
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('a still-PENDING row is left alone — no outcome is ever invented', async () => {
+    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'pending', stripeRefundId: 're_1' }])
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ scanned: 1, reconciled: 0, skipped: 1 })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('it is IDEMPOTENT: a second pass over an already-reconciled claim changes nothing', async () => {
+    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunded', refundError: null }) // already done
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ reconciled: 0, skipped: 1 })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('it works with CLAIMS_ENABLED=false (financial truth is never flag-gated)', async () => {
+    process.env.CLAIMS_ENABLED = 'false'
+    db.claim.findMany.mockResolvedValue([{ id: 'cl1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
+    db.claim.findFirst.mockResolvedValue({ id: 'cl1', status: 'refunding', refundError: null })
+    db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+    expect(await recoverStrandedClaimReconciliations()).toMatchObject({ reconciled: 1 })
+  })
+
+  it('it never touches a claim with no bound refund identity', async () => {
+    db.claim.findMany.mockResolvedValue([])
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out).toMatchObject({ scanned: 0, reconciled: 0 })
+    expect(db.refund.findMany).not.toHaveBeenCalled()
+  })
+})
+
+// ── AUDIT FIX (batch 2) — SAFETY IS NOT A SMALL CLAIM ────────────────────────────
+// `autoResolveSmallClaim` is the machine path: under the ceiling, from a non-flagged
+// consumer, it approves and drives the refund with no human in the loop. An allergen
+// exposure or a foreign body is precisely the report that must NOT be closed that way —
+// and because such claims are usually SMALL, this was the most likely path for one to
+// take. The taxonomy already knew which reasons are safety reasons; nothing consulted it.
+describe('AUDIT FIX — a safety report never takes the machine path', () => {
+  const claim = (reason: string) => ({ id: 'c1', consumerId: 'u1', requestedAmountCents: 400, status: 'restaurant_review', reason })
+  beforeEach(() => {
+    process.env.CLAIM_AUTO_RESOLVE_ENABLED = 'true'
+    process.env.CLAIM_AUTO_APPROVE_MAX_CENTS = '1000'
+    db.claim.count.mockResolvedValue(0) // not abuse-flagged
+    fx.row = { status: 'restaurant_review', refundAttempted: false }
+  })
+  afterEach(() => {
+    delete process.env.CLAIM_AUTO_RESOLVE_ENABLED
+    delete process.env.CLAIM_AUTO_APPROVE_MAX_CENTS
+  })
+
+  it('allergen_safety is refused by the machine even when every other gate says go', async () => {
+    const r = await autoResolveSmallClaim(claim('allergen_safety'))
+    expect(r).toEqual({ state: 'not_eligible' })
+    expect(execMock).not.toHaveBeenCalled()      // no money
+    expect(db.claim.updateMany).not.toHaveBeenCalled() // and no approval transition either
+  })
+
+  it('EVERY reason the taxonomy calls a safety reason is excluded', async () => {
+    for (const reason of ACCEPTED_REASONS.filter((x) => isSafetyReason(x))) {
+      vi.clearAllMocks()
+      db.claim.count.mockResolvedValue(0)
+      expect(await autoResolveSmallClaim(claim(reason))).toEqual({ state: 'not_eligible' })
+      expect(execMock).not.toHaveBeenCalled()
+    }
+  })
+
+  it('the exclusion is by REASON, not by amount: 1 cent is still refused', async () => {
+    const r = await autoResolveSmallClaim({ ...claim('allergen_safety'), requestedAmountCents: 1 })
+    expect(r).toEqual({ state: 'not_eligible' })
+  })
+
+  it('a NON-safety small claim still takes the machine path (the fix is not a blanket kill)', async () => {
+    db.claim.findUnique.mockResolvedValue({ id: 'c1', status: 'approved', orderId: 'o1', consumerId: 'u1', requestedAmountCents: 400, refundAttempted: false })
+    const r = await autoResolveSmallClaim(claim('missing_item'))
+    expect(r).not.toEqual({ state: 'not_eligible' })
+    expect(db.claim.updateMany).toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — the pre-fix rule (amount + flags only) would have auto-approved it', () => {
+    const preFix = (c: { requestedAmountCents: number; status: string }) =>
+      c.status === 'restaurant_review' && c.requestedAmountCents <= 1000
+    expect(preFix(claim('allergen_safety'))).toBe(true) // ← the defect the audit found
+  })
+})
+
+// ── SELF-REVIEW FIX (batch 2) — THE UI MAY NOT OFFER WHAT THE SERVER REFUSES ─────
+// Wiring the stuck-money control revealed that the admin list carries SIX money states while
+// `resolveStuckClaim` accepts exactly ONE of them. A button on every card would have 409'd on
+// most rows. The list now carries the server's own verdict, from the same predicate the route
+// enforces, so the two cannot drift apart.
+describe('stuck-money resolvability is declared by the server, not guessed by the UI', () => {
+  const rows = [
+    { status: 'approved',  refundError: 'stripe_failed: …', expected: true  },
+    { status: 'refunding', refundError: 'boom',             expected: true  },
+    { status: 'refunding', refundError: null,               expected: false }, // may still pay out
+    { status: 'approved',  refundError: null,               expected: false }, // never driven — arbitrate it
+    { status: 'refunded',  refundError: 'stale',            expected: false }, // already terminal
+    { status: 'refused_final', refundError: 'stale',        expected: false },
+  ]
+
+  it('the predicate matches the route guard exactly', () => {
+    for (const r of rows) expect(isStuckResolvable(r)).toBe(r.expected)
+  })
+
+  it('a row the predicate rejects is also rejected by resolveStuckClaim itself', async () => {
+    for (const r of rows.filter((x) => !x.expected)) {
+      db.claim.findUnique.mockResolvedValue({ id: 'c1', status: r.status, refundError: r.refundError })
+      const res = await resolveStuckClaim({ claimId: 'c1', adminId: 'a1', resolution: 'closed_no_payment' })
+      expect(res.ok).toBe(false)
+      expect(db.claim.updateMany).not.toHaveBeenCalled()
+    }
+  })
+
+  it('a PENDING refund can never be closed by hand — it may still reach the customer', async () => {
+    db.claim.findUnique.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
+    const res = await resolveStuckClaim({ claimId: 'c1', adminId: 'a1', resolution: 'settled_out_of_band' })
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('NEGATIVE CONTROL — an always-true predicate would be caught here', () => {
+    const alwaysOffer = () => true
+    expect(alwaysOffer()).toBe(true)                                  // ← the button-on-every-row bug
+    expect(isStuckResolvable({ status: 'refunding', refundError: null })).toBe(false) // ← fixed
+  })
+})
+
+// ── AUDIT FIX (batch 2, defence in depth) — THE RULE HOLDS ON BOTH MACHINE PATHS ──
+// A refuter correctly argued that runClaimAutoApproval is unreachable in every authorized
+// configuration: CLAIMS_AUTO_APPROVE_ENABLED is documented OFF for the whole beta and founder
+// decision P0-07 deleted its scheduler. That makes it not a live hole — but "a machine never
+// closes a safety report" is either an invariant or it is a flag setting. It is now an invariant.
+describe('AUDIT FIX — the timeout sweep skips safety claims too', () => {
+  it('an expired allergen claim is skipped; the ordinary ones beside it still sweep', async () => {
+    db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(where.status === 'restaurant_review'
+        ? [{ id: 'safe1', reason: 'allergen_safety' }, { id: 'ord1', reason: 'quality' }]
+        : []))
+    // REFUNDS is closed (the real beta state): approveClaim wins its CAS, then the refund rests
+    // pending activation. That isolates what this test is about — WHICH claims get approved.
+    refundsFlag.mockReturnValue(false)
+    fx.row = { status: 'restaurant_review', refundAttempted: false }
+    const summary = await runClaimAutoApproval()
+    expect(summary.scannedExpired).toBe(2)
+    expect(summary.autoApproved).toBe(1) // the safety claim was NOT one of them
+    expect(summary.refundsPending).toBe(1) // …and no money moved: the rail is closed
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('a sweep of nothing but safety claims approves nothing and refunds nothing', async () => {
+    db.claim.findMany.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(where.status === 'restaurant_review'
+        ? [{ id: 's1', reason: 'allergen_safety' }, { id: 's2', reason: 'allergen_safety' }]
+        : []))
+    const summary = await runClaimAutoApproval()
+    expect(summary.autoApproved).toBe(0)
+    expect(summary.refundsTriggered).toBe(0)
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
+  it('the sweep actually SELECTS the reason — without it the guard would read undefined', async () => {
+    db.claim.findMany.mockResolvedValue([])
+    await runClaimAutoApproval()
+    const calls = db.claim.findMany.mock.calls as Array<[{ where: Record<string, unknown>; select: Record<string, unknown> }]>
+    const call = calls.find((c) => c[0].where.status === 'restaurant_review')
+    expect(call?.[0].select.reason).toBe(true)
+  })
+})
+
+// ── RE-AUDIT FIXES (batch 2) ─────────────────────────────────────────────────────
+// Five findings survived adversarial refutation after the first round of batch-2 fixes.
+// These pin the three that live in lib/claims.ts.
+describe('RE-AUDIT FIX — safety triage reaches the queue that carries the DECISION', () => {
+  const rows = [
+    { id: 'a', reason: 'quality',         status: 'arbitration', consumerId: 'u1', restaurantId: 'r1', refundAttempted: false, createdAt: new Date(1) },
+    { id: 'b', reason: 'allergen_safety', status: 'arbitration', consumerId: 'u2', restaurantId: 'r1', refundAttempted: false, createdAt: new Date(2) },
+    { id: 'c', reason: 'missing_item',    status: 'arbitration', consumerId: 'u3', restaurantId: 'r1', refundAttempted: false, createdAt: new Date(3) },
+  ]
+
+  it('an allergen claim filed LAST is listed FIRST, and says so', async () => {
+    db.claim.findMany.mockResolvedValue(rows)
+    const q = await listArbitrationQueue()
+    expect(q[0].id).toBe('b')
+    expect(q[0].safety).toBe(true)
+    expect(q[1].safety).toBe(false)
+  })
+
+  it('ordinary claims keep their own chronological order behind it', async () => {
+    db.claim.findMany.mockResolvedValue(rows)
+    const q = await listArbitrationQueue()
+    expect(q.map((r) => r.id)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('NEGATIVE CONTROL — plain createdAt ordering would have buried it', () => {
+    const chronological = [...rows].sort((x, y) => +x.createdAt - +y.createdAt).map((r) => r.id)
+    expect(chronological).toEqual(['a', 'b', 'c'])       // ← the safety row sits in the middle
+    expect(chronological[0]).not.toBe('b')               // ← the defect the re-audit found
+  })
+})
+
+describe('RE-AUDIT FIX — the recovery sweep retires a row instead of re-reconciling it daily', () => {
+  it('a claim already carrying a refundError is NOT selected again', async () => {
+    db.claim.findMany.mockResolvedValue([])
+    await recoverStrandedClaimReconciliations()
+    const where = db.claim.findMany.mock.calls[0][0].where as Record<string, unknown>
+    expect(where.refundError).toBeNull()
+  })
+
+  it('the sweep still picks up a genuinely stranded claim (the exclusion is not a blanket off)', async () => {
+    db.claim.findMany.mockResolvedValue([{ id: 'c1', refundId: 'rf1', status: 'refunding' }])
+    db.refund.findMany.mockResolvedValue([{ id: 'rf1', status: 'succeeded', stripeRefundId: 're_1' }])
+    db.claim.findUnique.mockResolvedValue({ id: 'c1', status: 'refunding', refundError: null })
+    fx.row = { status: 'refunding', refundError: null, refundId: 'rf1' }
+    const out = await recoverStrandedClaimReconciliations()
+    expect(out.scanned).toBe(1)
+    expect(out.reconciled).toBe(1)
+  })
+
+  it('NEGATIVE CONTROL — the old predicate re-matched a reconciled failure for ever', () => {
+    const reconciledFailure = { status: 'approved', refundId: 'rf1', refundError: 'stripe_failed: …' }
+    const oldPredicate = (c: { status: string; refundId: string | null }) =>
+      ['refunding', 'approved'].includes(c.status) && c.refundId !== null
+    const newPredicate = (c: { status: string; refundId: string | null; refundError: string | null }) =>
+      oldPredicate(c) && c.refundError === null
+    expect(oldPredicate(reconciledFailure)).toBe(true)  // ← re-swept every day
+    expect(newPredicate(reconciledFailure)).toBe(false) // ← fixed
   })
 })

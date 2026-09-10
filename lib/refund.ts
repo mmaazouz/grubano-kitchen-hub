@@ -76,8 +76,50 @@ import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
  *  rails admin — l'allumer (D3) n'ouvre aucun chemin restaurateur/machine.
  *  Il ne gouverne PAS la RÉCONCILIATION du webhook charge.refunded / refund.*
  *  (règle fondateur : le flag gate qui INITIE, jamais la vérité Stripe établie). */
+/* ── T-48 — EXPIRING REFUND AUTHORIZATION (LEASE) ──────────────────────────────────
+   A temporary refund window used to be a static boolean plus a promise that the process
+   that opened it would close it. The closeout audit proved that promise cannot hold: a
+   `finally` only runs if the process reaches it, and no process can clean up after it has
+   ceased to exist (SIGKILL, host crash, Passenger death, power cut). Worse, `.env.local`
+   survives a reboot, so a crashed window could come back OPEN and stay open indefinitely.
+
+   The gate is therefore no longer a boolean. Refunds are enabled only while an
+   AUTHORIZATION IS STILL VALID, and validity is re-checked by the application itself on
+   every single call:
+
+     REFUNDS_ENABLED=true            AND
+     REFUNDS_WINDOW_UNTIL=<ISO8601>  parses, is in the future,
+                                     and is at most REFUND_WINDOW_MAX_MS away.
+
+   Consequences that matter:
+     • DEFAULT CLOSED — a bare `REFUNDS_ENABLED=true` with no lease authorizes nothing.
+     • A RESTART DOES NOT EXTEND anything: the deadline is absolute, not a countdown.
+     • PROCESS DEATH CANNOT MAKE IT PERMANENT: nobody has to act for it to expire; time
+       passing is what closes it. Maximum exposure after a SIGKILL is the lease remainder.
+     • A far-future or unparsable deadline FAILS CLOSED rather than being trusted.
+   This is a GATE change only — no split, cursor, idempotency key or Stripe call is touched. */
+export const REFUND_WINDOW_MAX_MS = 30 * 60 * 1000
+
+export type RefundGateState =
+  | { open: false; reason: 'flag_off' | 'no_lease' | 'lease_unreadable' | 'lease_expired' | 'lease_too_long' }
+  | { open: true; expiresAt: Date; remainingMs: number }
+
+/** The single place that decides whether a refund may be executed right now. */
+export function refundGateState(nowMs: number = Date.now()): RefundGateState {
+  if (process.env.REFUNDS_ENABLED !== 'true') return { open: false, reason: 'flag_off' }
+  const raw = (process.env.REFUNDS_WINDOW_UNTIL ?? '').trim()
+  if (!raw) return { open: false, reason: 'no_lease' }
+  const t = Date.parse(raw)
+  if (!Number.isFinite(t)) return { open: false, reason: 'lease_unreadable' }
+  if (t <= nowMs) return { open: false, reason: 'lease_expired' }
+  // A deadline beyond the compiled ceiling is a configuration error or tampering, never a
+  // longer authorization: refuse it outright instead of silently clamping to the maximum.
+  if (t - nowMs > REFUND_WINDOW_MAX_MS) return { open: false, reason: 'lease_too_long' }
+  return { open: true, expiresAt: new Date(t), remainingMs: t - nowMs }
+}
+
 export function isRefundsEnabled(): boolean {
-  return process.env.REFUNDS_ENABLED === 'true'
+  return refundGateState().open
 }
 
 /** P0-04 (vague 1, principe fondateur) : « aucune automatisation produisant un

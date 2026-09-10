@@ -24,8 +24,8 @@ M9 : `présent/absent · ON/OFF · environnement` — jamais de valeur de secret
 | `AUTH_MONEY_STEPUP_ENABLED` | `lib/email-otp.ts` | Step-up OTP sur actions argent |
 | `CHARGEBACKS_ENABLED` | `lib/dispute.ts` | Cycle litiges/chargebacks |
 | `CLAIMS_ENABLED` | `lib/claims.ts` | Réclamations client (⚠️ exige la table `Claim` en base — cf. harnais P10) |
-| `CLAIMS_AUTO_APPROVE_ENABLED` | `lib/claims.ts` | Route d'auto-approbation des réclamations (P0-25 — défaut OFF **toute la bêta** : le sweep `auto_timeout` rembourse sans humain ; OFF → 403 explicite tracé) |
-| `CLAIM_AUTO_RESOLVE_ENABLED` | `lib/claims.ts` | Auto-résolution des PETITES réclamations `auto_small` (P0-27 — défaut OFF **toute la bêta** : elle remboursait sans humain dès 10 €). Verrou n°2 : `CLAIM_AUTO_APPROVE_MAX_CENTS` (plafond en centimes, **défaut 0 = désactivé**, valeur mal formée → 0 tracé, jamais permissif) |
+| `CLAIMS_AUTO_APPROVE_ENABLED` | `lib/claims.ts` | Route d'auto-approbation des réclamations (P0-25 — défaut OFF **toute la bêta** : le sweep `auto_timeout` rembourse sans humain ; OFF → 403 explicite tracé). **Claims batch 2 :** quel que soit ce flag, le sweep saute désormais les réclamations SÉCURITÉ/allergène — l’invariant « une machine ne clôt jamais un signalement sécurité » ne dépend plus d’un flag resté OFF. |
+| `CLAIM_AUTO_RESOLVE_ENABLED` | `lib/claims.ts` | Auto-résolution des PETITES réclamations `auto_small` (P0-27 — défaut OFF **toute la bêta** : elle remboursait sans humain dès 10 €). Verrou n°2 : `CLAIM_AUTO_APPROVE_MAX_CENTS` (plafond en centimes, **défaut 0 = désactivé**, valeur mal formée → 0 tracé, jamais permissif). **Claims batch 2 :** verrou n°0, évalué AVANT les deux autres — un motif SÉCURITÉ/allergène est refusé par le chemin machine, quel que soit le montant. |
 | `CONSUMER_REDESIGN_ENABLED` | `lib/consumer-redesign.ts` | Re-design conso |
 | `CREATOR_ENABLED` | `lib/creator-account.ts` | P0-06 (Q8) : rôle CRÉATEUR entier — 22 routes 404 OFF (apply/vetting/dishes/profil/pages publiques chef/earnings/connect + rails admin payout) |
 | `CREATOR_PAYOUT_ENABLED` | `lib/creator-payout.ts` | Versements créateurs |

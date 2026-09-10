@@ -4,7 +4,7 @@
 // LLM moderation chain BEFORE createClaim checked order ownership, with no rate limit.
 // Any authenticated user could therefore burn upload + moderation budget on ANY orderId.
 // Beta has no photo requirement, so the expensive path is REMOVED, not merely reordered.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -175,5 +175,98 @@ describe('negative control — upload-before-ownership would be caught', () => {
     const res = await post({ orderId: 'o1', reason: 'quality', imageBase64: BIG_IMAGE })
     expect(res.status).toBe(403)
     expect(processDishImageMock).not.toHaveBeenCalled() // shipped route: zero expensive work
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BATCH 2 — the reason's authority scope enforced at the route boundary.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('BATCH 2 — an item-specific reason cannot claim the whole order through the API', () => {
+  it('missing_item with NO selection → 400, nothing created', async () => {
+    const res = await post({ orderId: 'o1', reason: 'missing_item', requestedAmountCents: 3250 })
+    expect(res.status).toBe(400)
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('missing_item WITH a selection → 201, priced from server lines', async () => {
+    const res = await post({ orderId: 'o1', reason: 'missing_item', items: [{ index: 0, qty: 1 }] })
+    expect(res.status).toBe(201)
+    expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(1250)
+  })
+
+  it('the legacy alias wrong_order inherits the item requirement', async () => {
+    const res = await post({ orderId: 'o1', reason: 'wrong_order' })
+    expect(res.status).toBe(400)
+    expect(db.claim.create).not.toHaveBeenCalled()
+  })
+
+  it('a legacy reason is STORED in its canonical form', async () => {
+    const res = await post({ orderId: 'o1', reason: 'not_delivered' })
+    expect(res.status).toBe(201)
+    expect(db.claim.create.mock.calls[0][0].data.reason).toBe('not_received')
+  })
+
+  it('an order-level reason keeps the whole-order ceiling', async () => {
+    const res = await post({ orderId: 'o1', reason: 'restaurant_closed' })
+    expect(res.status).toBe(201)
+    expect(db.claim.create.mock.calls[0][0].data.requestedAmountCents).toBe(3250)
+  })
+
+  it('a safety claim is accepted, stored as allergen_safety, and triggers NO refund', async () => {
+    const res = await post({ orderId: 'o1', reason: 'allergen_safety', description: 'réaction allergique' })
+    expect(res.status).toBe(201)
+    const data = db.claim.create.mock.calls[0][0].data
+    expect(data.reason).toBe('allergen_safety')
+    expect(data.status).toBe('restaurant_review') // human review, never an automatic refund
+  })
+
+  it('an unknown reason is still rejected by the schema', async () => {
+    const res = await post({ orderId: 'o1', reason: 'give_me_money' })
+    expect(res.status).toBe(400)
+    expect(db.order.findUnique).not.toHaveBeenCalled()
+  })
+})
+
+// ── AUDIT FIX (batch 2) — THE SAFETY GUARD MUST NOT BE INERT ─────────────────────
+// A previous fix in this very batch looked correct and did nothing at runtime (a CAS whose
+// `where` could never match). `autoResolveSmallClaim` now refuses safety reasons — but only
+// if the reason actually REACHES it. This drives the REAL route end to end: the object the
+// route hands to the machine path is whatever `prisma.claim.create` returned, so if that
+// object has no `reason` field the guard silently evaporates. Assert the behaviour, through
+// the route, with the auto-resolve configuration deliberately switched ON.
+describe('AUDIT FIX — the safety exclusion survives the real route (not inert)', () => {
+  beforeEach(() => {
+    process.env.CLAIM_AUTO_RESOLVE_ENABLED = 'true'
+    process.env.CLAIM_AUTO_APPROVE_MAX_CENTS = '10000' // well above the order total
+    db.claim.updateMany.mockResolvedValue({ count: 1 })
+  })
+  afterEach(() => {
+    delete process.env.CLAIM_AUTO_RESOLVE_ENABLED
+    delete process.env.CLAIM_AUTO_APPROVE_MAX_CENTS
+  })
+
+  it('the created row really carries the CANONICAL reason (the guard has something to read)', async () => {
+    const res = await post({ orderId: 'o1', reason: 'not_delivered', description: 'x' }) // legacy alias
+    expect(res.status).toBe(201)
+    expect(db.claim.create.mock.calls[0][0].data.reason).toBe('not_received')
+  })
+
+  it('an allergen claim is created but NEVER approved by the machine', async () => {
+    const res = await post({ orderId: 'o1', reason: 'allergen_safety', description: 'réaction' })
+    expect(res.status).toBe(201)
+    expect(db.claim.create).toHaveBeenCalled()          // the claim is filed…
+    expect(db.claim.updateMany).not.toHaveBeenCalled()  // …and no approval transition happens
+  })
+
+  it('a comparable NON-safety claim DOES take the machine path — proving the test can tell them apart', async () => {
+    const res = await post({ orderId: 'o1', reason: 'quality', description: 'froid' })
+    expect(res.status).toBe(201)
+    expect(db.claim.updateMany).toHaveBeenCalled()
+  })
+
+  it('with auto-resolve OFF neither reason is auto-approved (the guard is not what carries this)', async () => {
+    delete process.env.CLAIM_AUTO_RESOLVE_ENABLED
+    await post({ orderId: 'o1', reason: 'quality', description: 'froid' })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 })

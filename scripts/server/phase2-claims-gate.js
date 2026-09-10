@@ -228,14 +228,21 @@ async function main() {
 
   if (MODE === 'precheck') {
     F('WINDOW READINESS', anomalies.length ? 'BLOCKED — see anomalies' : (TARGET_ORDER_ID ? (targetOk ? 'READY (needs the founder sentence)' : 'BLOCKED — target unusable') : 'READY once a target fixture is pinned'))
-    F('T-48 (external refund-window fail-safe)', 'OPEN — a claims rehearsal that must MOVE money needs REFUNDS_ENABLED=true, which is blocked until T-48 is closed. This operator only ever opens CLAIMS.')
+    F('REHEARSAL MODE A (claims only, no money)', 'this operator — opens CLAIMS_ENABLED only, requires the refund gate CLOSED and re-checks it throughout')
+    F('REHEARSAL MODE B (claims + refund)', 'NOT this operator — needs a separate founder-authorized refund window (phase2-refund-gate.js). The two authorities never merge.')
+    F('T-48 (expiring refund authorization)', 'IMPLEMENTED in lib/refund: a refund window now needs REFUNDS_ENABLED=true AND a valid REFUNDS_WINDOW_UNTIL deadline (max 30 min), re-checked by the app on every call — a killed process can no longer leave the money gate open for ever.')
     return done(anomalies.length ? 'FAIL' : 'PASS')
   }
 
   // ── WINDOW MODE — CLAIMS ONLY, TTL-BOUNDED, FAIL-CLOSED ─────────────────────────
   console.log('[3] claims window')
+  // TWO DISTINCT AUTHORITIES (batch 2). Mode A (this operator) rehearses the WORKFLOW with
+  // REFUNDS closed: creation, ownership, restaurant review, silence expiry, admin visibility,
+  // arbitration — no money can move. Mode B (claims + refund) needs a REFUND window, which is
+  // a SEPARATE authority granted only by the refund operator. A claims window must never open
+  // a refund window implicitly, so this operator refuses the request outright and says why.
   if (process.env.PHASE2_CLAIMS_WITH_REFUNDS === '1') {
-    return fail('3 window: PHASE2_CLAIMS_WITH_REFUNDS=1 requests a MONEY-MOVING claims rehearsal (REFUNDS_ENABLED=true). REFUSED while T-48 is OPEN — a refund window must have an external fail-safe that does not depend on this process surviving. Nothing changed.')
+    return fail('3 window: PHASE2_CLAIMS_WITH_REFUNDS=1 asks THIS operator to open a MONEY-MOVING rehearsal. REFUSED BY DESIGN — this operator only ever writes CLAIMS_ENABLED. A claims+refund rehearsal requires a separate, founder-authorized refund window (scripts/server/phase2-refund-gate.js), which now carries a T-48 expiring lease. Nothing changed.')
   }
   if (process.env.PHASE2_CLAIMS_WINDOW_CONFIRM !== CONFIRM_SENTENCE) return fail('3 window: confirm sentence missing — nothing changed')
   if (anomalies.length) return fail('3 window: precheck anomalies — window REFUSED, nothing changed')

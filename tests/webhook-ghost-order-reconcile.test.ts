@@ -59,6 +59,9 @@ afterEach(() => { delete process.env.STRIPE_WEBHOOK_SECRET })
 describe('after expiry · AUTO-REFUND ON (GHOST_ORDER_AUTO_REFUND_ENABLED — P0-04)', () => {
   it('auto-refunds via lib/refund, marks refunded, never reveals to resto', async () => {
     refund.isGhostOrderAutoRefundEnabled.mockReturnValue(true)
+    // T-48 (batch 2): an AUTOMATIC refund now also needs a live refund authorization —
+    // a standing flag can no longer move money while the refund rail is closed.
+    refund.isRefundsEnabled.mockReturnValue(true)
     db.order.findUnique.mockResolvedValue(expiredOrder())
     const res = await fire()
     expect(res.status).toBe(200)
@@ -71,6 +74,9 @@ describe('after expiry · AUTO-REFUND ON (GHOST_ORDER_AUTO_REFUND_ENABLED — P0
 
   it('refund returns not-ok → marks reconcile_manual (never final paid)', async () => {
     refund.isGhostOrderAutoRefundEnabled.mockReturnValue(true)
+    // T-48 (batch 2): an AUTOMATIC refund now also needs a live refund authorization —
+    // a standing flag can no longer move money while the refund rail is closed.
+    refund.isRefundsEnabled.mockReturnValue(true)
     refund.executeRefund.mockResolvedValue({ ok: false, status: 502, error: 'stripe down' })
     db.order.findUnique.mockResolvedValue(expiredOrder())
     const res = await fire()
@@ -80,6 +86,9 @@ describe('after expiry · AUTO-REFUND ON (GHOST_ORDER_AUTO_REFUND_ENABLED — P0
 
   it('executeRefund THROWS → caught, marks reconcile_manual, webhook still 200', async () => {
     refund.isGhostOrderAutoRefundEnabled.mockReturnValue(true)
+    // T-48 (batch 2): an AUTOMATIC refund now also needs a live refund authorization —
+    // a standing flag can no longer move money while the refund rail is closed.
+    refund.isRefundsEnabled.mockReturnValue(true)
     refund.executeRefund.mockRejectedValue(new Error('boom'))
     db.order.findUnique.mockResolvedValue(expiredOrder())
     const res = await fire()

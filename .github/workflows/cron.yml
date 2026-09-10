@@ -143,6 +143,15 @@ jobs:
       - name: Stale-claims heads-up (P0-39 — READ-ONLY, one idempotent alert per claim, NO auto action)
         run: |
           curl -sS "$BASE/api/admin/claims/stale-alerts" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-stale-alerts → HTTP %{http_code}\n"
+      # ── CLAIMS BATCH 2 — STRANDED-RECONCILIATION RECOVERY ─────────────────────────
+      # Stripe does not guarantee webhook delivery. Without a caller, a claim whose refund
+      # webhook was lost stays 'refunding' for ever while its Refund row is long terminal.
+      # This MOVES NO MONEY and never retries a refund: no engine call, no Stripe write —
+      # it applies the same idempotent CAS the webhook applies, from the Refund row that
+      # already exists. (Contrast the P0-07 step removed above, which DID pay out.)
+      - name: Claims refund reconciliation recovery (NO money action — replays a lost webhook only)
+        run: |
+          curl -sS -X POST "$BASE/api/admin/claims/reconcile-refunds" -H "X-Internal-Token: $TOK" -o /dev/null -w "claims-reconcile-refunds → HTTP %{http_code}\n"
 
   monthly:
     needs: guard

@@ -359,12 +359,12 @@
     },
     "customers": {
       "title": "Customers",
-      "subtitle": "Loyalty program active",
+      "subtitle": "Loyalty programme active",
       "searchPlaceholder": "Search for a customer…",
       "statMembers": "Loyalty members",
       "statNew": "New this month",
       "statActive": "Active customers",
-      "statAvg": "Average basket",
+      "statAvg": "Avg. basket",
       "filterAll": "All",
       "tier": {
         "bronze": "Bronze",
@@ -394,21 +394,14 @@
       "historyTitle": "Recent history",
       "historySoonTitle": "History coming soon",
       "historySoonBody": "Orders, reservations and rewards per customer will be shown here.",
-      "subtitle": "Loyalty programme active",
       "listTitle": "Top customers",
       "privacyListTitle": "Customer privacy.",
       "privacyListBody": "You see history, loyalty and preferences. Contact details (email, phone, address) stay protected by Grubano.",
       "colOrders": "Orders",
       "colAvg": "Avg. basket",
       "colTotal": "Total spent",
-      "colPoints": "Points",
       "colLastVisit": "Last visit",
-      "viewProfile": "View profile",
-      "statTotal": "Total customers",
-      "statNew": "New this month",
-      "statMembers": "Loyalty members",
-      "statAvg": "Avg. basket",
-      "filterAll": "All"
+      "statTotal": "Total customers"
     },
     "dinein": {
       "title": "Table service",
@@ -2998,6 +2991,7 @@
       "refundAddPhoto": "Add a photo (optional)",
       "refundEstimate": "Estimated refund: <b>{amount} €</b> within 3–5 days after review.",
       "refundPickToEstimate": "Select the affected items to estimate the refund.",
+      "refundEstimateCapped": "This amount is capped by what remains refundable on this order.",
       "refundSoon": "Refund requests are coming soon.",
       "refundSubmit": "Request a refund",
       "refundSubmittedSoon": "Coming soon",
@@ -7145,7 +7139,14 @@
       "quality": "Quality issue",
       "not_delivered": "Not delivered",
       "other": "Other",
-      "system_order_cancelled": "Cancellation of a paid order (system)"
+      "system_order_cancelled": "Cancellation of a paid order (system)",
+      "wrong_item": "Wrong item",
+      "wrong_quantity": "Wrong quantity",
+      "restaurant_closed": "Restaurant closed",
+      "excessive_wait": "Excessive wait",
+      "not_received": "Marked collected but not received",
+      "payment_issue": "Payment issue",
+      "allergen_safety": "Allergen / safety"
     },
     "status": {
       "restaurant_review": "Awaiting restaurant response",
@@ -7154,7 +7155,9 @@
       "refunded": "Refunded",
       "refused": "Refused",
       "arbitration": "Under Grubano arbitration",
-      "refused_final": "Refusal confirmed"
+      "refused_final": "Refusal confirmed",
+      "refund_failed": "Refund failed — being handled by our team",
+      "refund_pending_stripe": "Refund sent to your bank — awaiting confirmation"
     },
     "client": {
       "reportProblem": "Report a problem",
@@ -7223,6 +7226,10 @@
       "decisionReasonLabel": "Reasoning (optional)",
       "decisionReasonPlaceholder": "Explain your decision…",
       "approved": "Claim approved, refund triggered.",
+      "approvedRefunded": "Claim approved — refund of {amount} issued at Stripe.",
+      "approvedNotSent": "Claim approved — this action confirmed no refund. Check it under “Refunds to handle”.",
+      "approvedFailed": "Claim approved, but the refund FAILED: no money left. Handle it under “Refunds to handle”.",
+      "approvedResumeMismatch": "Claim approved, BUT the engine resumed an EARLIER refund on this order: money DID leave, for a different amount. Do not issue another refund — open “Refunds to handle”.",
       "refusedFinalDone": "Refusal confirmed.",
       "processing": "Processing…",
       "signalsTitle": "Signals",

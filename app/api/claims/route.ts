@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { z } from 'zod'
 import {
-  isClaimsEnabled, createClaim, listConsumerClaims, getClaimEligibility, CLAIM_REASONS,
+  isClaimsEnabled, createClaim, listConsumerClaims, getClaimEligibility, ACCEPTED_REASONS,
   autoResolveSmallClaim,
 } from '@/lib/claims'
 import { ALLOWED_IMAGE_TYPES } from '@/lib/dish-photo'
@@ -29,7 +29,9 @@ export const dynamic = 'force-dynamic'
 // requirement, and processing one before ownership was established was a real hole.
 const createSchema = z.object({
   orderId:              z.string().min(1),
-  reason:              z.enum(CLAIM_REASONS),
+  // Canonical taxonomy plus the two legacy aliases (wrong_order / not_delivered), so an older
+  // client keeps working; the server normalises to the canonical value before storing it.
+  reason:              z.string().refine((r) => ACCEPTED_REASONS.includes(r), 'Motif de réclamation invalide.'),
   description:         z.string().max(1000).optional(),
   requestedAmountCents: z.number().int().positive().optional(), // IGNORED — see below
   items:               z.array(z.object({ index: z.number().int(), qty: z.number().int() })).max(50).optional(),
@@ -80,7 +82,8 @@ export async function POST(req: NextRequest) {
   // C2 auto-resolution — a small, obvious claim from a non-flagged consumer is approved
   // immediately (→ engine refund). NO-OP for non-small/flagged → exactly the C1 flow.
   // The client refetches eligibility right after, so it sees the resolved status.
-  const auto = await autoResolveSmallClaim(result.claim as { id: string; consumerId: string; requestedAmountCents: number; status: string })
+  // The canonical reason travels with it: safety reports are excluded from the machine path.
+  const auto = await autoResolveSmallClaim(result.claim as { id: string; consumerId: string; requestedAmountCents: number; status: string; reason?: string | null })
 
   // ── T43 (vague 3) — accusé de réception au CLIENT, post-succès, BEST-EFFORT ──
   // Additif : la création/l'auto-résolution ci-dessus sont INTOUCHÉES ; un échec

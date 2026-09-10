@@ -149,11 +149,21 @@ export default function OrderHelpScreen() {
 
   const items = useMemo<OrderItem[]>(() => (Array.isArray(order?.items) ? order!.items : []), [order])
   const itemsCount = useMemo(() => items.reduce((s, it) => s + (it.qty ?? 1), 0), [items])
-  // Refund estimate = sum of the SELECTED real item prices (× qty). Real data, not invented.
-  const estimate = useMemo(
+  // RE-AUDIT FIX (batch 2). This figure is what the CUSTOMER is told they are asking for. It was
+  // summed from `Order.items[].price`, the MenuItem LIST price, and shown raw — so on a discounted
+  // order, or one already partly refunded (including from the Stripe Dashboard, which the rail's
+  // own Refund table never sees), it exceeded what the server actually records. The customer read
+  // one number and the acknowledgement e-mail then stated a smaller one. The server's ceiling is
+  // already fetched here; the displayed figure is now clamped to it, so the page cannot promise
+  // money the server will not grant. It can only ever shrink — never inflate.
+  const rawEstimate = useMemo(
     () => items.reduce((s, it, i) => (selected[i] ? s + it.price * (it.qty ?? 1) : s), 0),
     [items, selected],
   )
+  const ceilingEuros = (eligibility?.maxRefundableCents ?? 0) / 100
+  const estimate = eligibility ? Math.min(rawEstimate, ceilingEuros) : rawEstimate
+  /** True when the server ceiling, not the selection, is what caps the figure shown. */
+  const estimateCapped = !!eligibility && rawEstimate > ceilingEuros
   const anySelected = Object.values(selected).some(Boolean)
 
   // P0-19 — on a pickup order, 'picked_up'/'delivered' mean "collected by the
@@ -195,7 +205,15 @@ export default function OrderHelpScreen() {
           orderId,
           reason: 'missing_item',
           description: desc.trim() || undefined,
-          requestedAmountCents: Math.round(estimate * 100),
+          // CLAIMS BATCH 2 — 'missing_item' is ITEM_REQUIRED server-side: a whole-order ceiling
+          // is refused for it, so sending only an amount would now be rejected. This page
+          // ALREADY tracks which lines the customer ticked, so it sends that SELECTION
+          // (index + purchased quantity). The server prices it from the stored order; no price
+          // or total from this client is ever read.
+          items: items
+            .map((it, i) => ({ index: i, qty: it.qty ?? 1, picked: !!selected[i] }))
+            .filter((x) => x.picked)
+            .map(({ index, qty }) => ({ index, qty })),
         }),
       })
       if (res.status === 201) {
@@ -390,6 +408,9 @@ export default function OrderHelpScreen() {
                   ? t.rich('refundEstimate', { amount: formatAmount(estimate, locale), b: (c) => <b><bdi>{c} €</bdi></b> })
                   : t('refundPickToEstimate')}
               </p>
+              {estimateCapped && (
+                <p className="refund-note-cap">{t('refundEstimateCapped')}</p>
+              )}
             </div>
           )}
         </div>

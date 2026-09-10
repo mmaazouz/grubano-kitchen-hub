@@ -15,7 +15,9 @@ const { claims } = vi.hoisted(() => ({
     arbitrateClaim:        vi.fn(),
     listConsumerClaims:    vi.fn(),
     getClaimEligibility:   vi.fn(),
-    CLAIM_REASONS:         ['missing_item', 'wrong_order', 'quality', 'not_delivered', 'other'],
+    // CLAIMS BATCH 2 — canonical taxonomy plus the two legacy aliases the route accepts.
+    CLAIM_REASONS:         ['missing_item', 'wrong_item', 'wrong_quantity', 'quality', 'restaurant_closed', 'excessive_wait', 'not_received', 'payment_issue', 'allergen_safety', 'other'],
+    ACCEPTED_REASONS:      ['missing_item', 'wrong_item', 'wrong_quantity', 'quality', 'restaurant_closed', 'excessive_wait', 'not_received', 'payment_issue', 'allergen_safety', 'other', 'wrong_order', 'not_delivered'],
   },
 }))
 vi.mock('@/lib/claims', () => claims)

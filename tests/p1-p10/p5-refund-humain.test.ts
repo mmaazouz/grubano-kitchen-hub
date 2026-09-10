@@ -141,7 +141,10 @@ describe("P5 — Surface /finance : rembourser en tant qu'humain via l'UI", () =
 // ─────────────────────────────────────────────────────────────────────────────
 describe('P5 — Rail POST /api/orders/[id]/refund : rail ADMIN (P0-03) + kill-switch (P0-26)', () => {
   it('[PASS-ACTUEL P0-03] un RESTAURATEUR ne peut plus déclencher le rail — 403 + aucun appel Stripe + tentative auditée', async () => {
-    vi.stubEnv('REFUNDS_ENABLED', 'true') // le flag ouvert isole la garde de RÔLE
+    vi.stubEnv('REFUNDS_ENABLED', 'true')
+    // T-48: the flag alone no longer authorizes anything — a refund window is an EXPIRING
+    // lease the application re-checks itself. 'ON' therefore means flag + a valid deadline.
+    vi.stubEnv('REFUNDS_WINDOW_UNTIL', new Date(Date.now() + 10 * 60 * 1000).toISOString()) // le flag ouvert isole la garde de RÔLE
     sessionMock.mockResolvedValue({ user: { id: 'op1', email: 'resto@x.com', role: 'restaurant', roles: ['restaurant'] } })
     const res = await call()
     expect(res.status).toBe(403)
@@ -161,6 +164,9 @@ describe('P5 — Rail POST /api/orders/[id]/refund : rail ADMIN (P0-03) + kill-s
 
   it('[PASS-ACTUEL · PHASE 2 D-A] flag ON + admin : le rail rembourse réellement via le MOTEUR royalty-aware — 200 + refund Stripe créé (curseur cumul `refund:<orderId>:<déjà remboursé>`)', async () => {
     vi.stubEnv('REFUNDS_ENABLED', 'true')
+    // T-48: the flag alone no longer authorizes anything — a refund window is an EXPIRING
+    // lease the application re-checks itself. 'ON' therefore means flag + a valid deadline.
+    vi.stubEnv('REFUNDS_WINDOW_UNTIL', new Date(Date.now() + 10 * 60 * 1000).toISOString())
     const res = await call() // empty body = full refund of the remainder
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
@@ -180,6 +186,9 @@ describe('P5 — Rail POST /api/orders/[id]/refund : rail ADMIN (P0-03) + kill-s
 
   it('[PASS-ACTUEL] le rail ne mute jamais paymentStatus (le ledger webhook est la vérité)', async () => {
     vi.stubEnv('REFUNDS_ENABLED', 'true')
+    // T-48: the flag alone no longer authorizes anything — a refund window is an EXPIRING
+    // lease the application re-checks itself. 'ON' therefore means flag + a valid deadline.
+    vi.stubEnv('REFUNDS_WINDOW_UNTIL', new Date(Date.now() + 10 * 60 * 1000).toISOString())
     await call()
     expect(db.order.update).not.toHaveBeenCalled()
   })
@@ -199,6 +208,9 @@ describe('P5 — Contraste : le gate REFUNDS_ENABLED vit dans lib/refund (moteur
 
   it("[PASS-ACTUEL] isRefundsEnabled() : seul le string exact 'true' active — 'TRUE' et '1' → false", () => {
     vi.stubEnv('REFUNDS_ENABLED', 'true')
+    // T-48: the flag alone no longer authorizes anything — a refund window is an EXPIRING
+    // lease the application re-checks itself. 'ON' therefore means flag + a valid deadline.
+    vi.stubEnv('REFUNDS_WINDOW_UNTIL', new Date(Date.now() + 10 * 60 * 1000).toISOString())
     expect(isRefundsEnabled()).toBe(true)
 
     vi.stubEnv('REFUNDS_ENABLED', 'TRUE')

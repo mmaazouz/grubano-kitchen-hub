@@ -20,15 +20,67 @@
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { executeRefund, isRefundsEnabled } from '@/lib/refund'
-import { buildClaimScope, resolveClaimAmount, publicClaimScope, type ClaimScope, type ClaimSelection } from '@/lib/claim-scope'
+import { buildClaimScope, resolveClaimAmount, publicClaimScope, type ClaimScope, type ClaimSelection, type StripeCashTruth } from '@/lib/claim-scope'
+import { getStripe } from '@/lib/stripe'
+import { canonicalReason, authorityScope, isSafetyReason } from '@/lib/claim-reasons'
 
-export type { ClaimSelection } from '@/lib/claim-scope'
+export type { ClaimSelection, StripeCashTruth } from '@/lib/claim-scope'
+// The canonical reason taxonomy and its authority scopes live in lib/claim-reasons and are
+// re-exported here so existing importers of '@/lib/claims' keep working unchanged.
+export {
+  CLAIM_REASONS, ACCEPTED_REASONS, LEGACY_REASON_ALIASES, canonicalReason, authorityScope,
+  requiresItemSelection, isSafetyReason, reasonLabel, REASON_LABELS,
+} from '@/lib/claim-reasons'
+export type { ClaimReason, AuthorityScope } from '@/lib/claim-reasons'
 
-/** Authoritative scope for ONE order: server line values + what is already refunded. */
+/**
+ * Live Stripe cash truth for an order's charge (batch 2).
+ *
+ * The DB only knows refunds the rail itself created. A refund issued from the Stripe
+ * Dashboard leaves NO `Refund` row, so a DB-only ceiling overstates what is refundable.
+ * This reads Stripe directly and also subtracts refunds still PENDING there, so a claim
+ * cannot be authorized against cash that is already committed and in flight.
+ *
+ * Returns null when Stripe cannot be consulted — the caller then flags the ceiling as
+ * `db_only` rather than silently pretending it was verified.
+ */
+export async function stripeCashTruthForOrder(piId: string | null | undefined): Promise<StripeCashTruth | null> {
+  if (!piId) return null
+  try {
+    const stripe = getStripe()
+    const pi = await stripe.paymentIntents.retrieve(piId, { expand: ['latest_charge'] })
+    const charge = pi.latest_charge && typeof pi.latest_charge === 'object' ? pi.latest_charge : null
+    if (!charge) return null
+    const capturedCents = charge.amount_captured ?? charge.amount ?? 0
+    const refundedCents = charge.amount_refunded ?? 0
+    // AUDIT FIX (batch 2). This used to read "pending refunds are NOT in amount_refunded yet",
+    // which contradicts the project's own binding contract: REFUND-FINANCIAL-CONTRACT §66/§145
+    // and A9 all state that `charge.amount_refunded` ALREADY counts a still-pending refund
+    // (that is exactly why the ledger reconciles on Σ succeeded instead). Reported for its own
+    // sake — buildClaimScope uses it as a FLOOR, never as a second subtraction.
+    let pendingCents = 0
+    try {
+      const list = await stripe.refunds.list({ charge: charge.id, limit: 100 })
+      pendingCents = (list.data || [])
+        .filter((r) => r.status === 'pending' || r.status === 'requires_action')
+        .reduce((a, r) => a + (r.amount || 0), 0)
+    } catch { /* a refund list failure must not deny the captured/refunded truth we already hold */ }
+    return { capturedCents, refundedCents, pendingCents }
+  } catch (e) {
+    console.warn('[claims scope] Stripe cash truth unavailable —', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
+/** Authoritative scope for ONE order: server line values + everything already refunded. */
 export async function buildClaimScopeForOrder(input: {
   orderId: string
   items: unknown
   orderTotalEur: number
+  /** The order's PaymentIntent — required to consult Stripe's own cumulative truth. */
+  stripePaymentIntentId?: string | null
+  /** Test seam: inject the Stripe truth instead of calling Stripe. */
+  stripeTruth?: StripeCashTruth | null
 }): Promise<ClaimScope> {
   // Already-refunded = SUCCEEDED rows only. A pending row has not moved money yet and a
   // failed one never will; counting either would silently shrink a legitimate claim.
@@ -36,10 +88,14 @@ export async function buildClaimScopeForOrder(input: {
     where: { orderId: input.orderId, status: 'succeeded' },
     _sum:  { amountCents: true },
   })
+  const stripe = input.stripeTruth !== undefined
+    ? input.stripeTruth
+    : await stripeCashTruthForOrder(input.stripePaymentIntentId)
   return buildClaimScope({
     items: input.items,
     orderTotalEur: input.orderTotalEur,
     alreadyRefundedCents: agg._sum.amountCents ?? 0,
+    stripe,
   })
 }
 
@@ -100,8 +156,6 @@ function abuseWindowDays(): number {
   return Number.isFinite(v) && v > 0 ? v : 30
 }
 
-export const CLAIM_REASONS = ['missing_item', 'wrong_order', 'quality', 'not_delivered', 'other'] as const
-export type ClaimReason = (typeof CLAIM_REASONS)[number]
 
 // Active statuses (the order is "locked" against a second claim while in these).
 // C2 adds 'arbitration' (a contested claim is active). C1 never reaches it → byte-identical.
@@ -144,12 +198,11 @@ export async function createClaim(input: {
   requestedAmountCents?: number | null
   photoUrl?: string | null
 }): Promise<ClaimActionResult> {
-  if (!CLAIM_REASONS.includes(input.reason as ClaimReason)) {
-    return { ok: false, status: 400, error: 'Motif de réclamation invalide.' }
-  }
+  const reason = canonicalReason(input.reason)
+  if (!reason) return { ok: false, status: 400, error: 'Motif de réclamation invalide.' }
   const order = await prisma.order.findUnique({
     where:  { id: input.orderId },
-    select: { id: true, consumerId: true, restaurantId: true, paymentStatus: true, total: true, updatedAt: true, items: true },
+    select: { id: true, consumerId: true, restaurantId: true, paymentStatus: true, total: true, updatedAt: true, items: true, stripePaymentIntentId: true },
   })
   if (!order) return { ok: false, status: 404, error: 'Commande introuvable.' }
   // OWNER-SCOPING (client): the claimant must OWN the order. Resolved from the session
@@ -165,8 +218,9 @@ export async function createClaim(input: {
   if (Date.now() - order.updatedAt.getTime() > windowMs) {
     return { ok: false, status: 409, error: `Le délai de réclamation (${claimWindowHours()} h) est dépassé.` }
   }
-  const scope = await buildClaimScopeForOrder({ orderId: order.id, items: order.items, orderTotalEur: order.total })
-  const resolved = resolveClaimAmount(scope, input.items ?? null, input.requestedAmountCents ?? null)
+  const scope = await buildClaimScopeForOrder({ orderId: order.id, items: order.items, orderTotalEur: order.total, stripePaymentIntentId: order.stripePaymentIntentId })
+  // The REASON decides whether a whole-order ceiling is even available (batch 2).
+  const resolved = resolveClaimAmount(scope, input.items ?? null, input.requestedAmountCents ?? null, authorityScope(reason))
   if (!resolved.ok) return { ok: false, status: 400, error: resolved.error }
   const requested = resolved.amountCents
 
@@ -177,7 +231,7 @@ export async function createClaim(input: {
         orderId:              order.id,
         consumerId:           input.consumerId,
         restaurantId:         order.restaurantId,
-        reason:               input.reason,
+        reason:               reason, // canonical value (legacy aliases normalised)
         description:          input.description ?? null,
         requestedAmountCents: requested,
         photoUrl:             input.photoUrl ?? null,
@@ -219,7 +273,7 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   const windowHours = claimWindowHours()
   const order = await prisma.order.findUnique({
     where:  { id: input.orderId },
-    select: { consumerId: true, paymentStatus: true, total: true, updatedAt: true, items: true },
+    select: { consumerId: true, paymentStatus: true, total: true, updatedAt: true, items: true, stripePaymentIntentId: true },
   })
   if (!order || order.consumerId !== input.consumerId) {
     // Anti-IDOR: a non-owner learns nothing about the order (no total, no lines).
@@ -227,7 +281,10 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   }
   // Server-derived ceiling: order total MINUS what is already refunded (a second claim
   // on a partially refunded order can never ask for the whole order again).
-  const scope = await buildClaimScopeForOrder({ orderId: input.orderId, items: order.items, orderTotalEur: order.total })
+  // AUDIT FIX (batch 2): the ceiling SHOWN to the customer must use the same cumulative
+  // truth as the one enforced at creation, otherwise a Dashboard refund is invisible here and
+  // the form offers an amount the server will refuse.
+  const scope = await buildClaimScopeForOrder({ orderId: input.orderId, items: order.items, orderTotalEur: order.total, stripePaymentIntentId: order.stripePaymentIntentId })
   const maxRefundableCents = scope.maxAuthorityCents
   const publicScope = publicClaimScope(scope)
   const existing = await prisma.claim.findFirst({
@@ -251,13 +308,28 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   return { canClaim: true, maxRefundableCents, windowHours, existingClaim, scope: publicScope }
 }
 
+// ── SAFETY TRIAGE (batch 2 audit fix) ─────────────────────────────────────────────
+// A safety report was flagged only once it reached the STUCK-MONEY list — i.e. after the
+// refund had already failed. On the lists where a claim actually ARRIVES (the restaurant's
+// queue, the admin's pending and silence-expired lists) it was indistinguishable from a
+// missing side dish, so an allergen exposure could sit behind two hundred ordinary claims.
+// This changes VISIBILITY and ORDER only: no extra financial authority, no automatic
+// refund, no medical conclusion — a human still decides (see isSafetyReason).
+function triageBySafety<T extends { reason: string }>(rows: T[]): Array<T & { safety: boolean }> {
+  return rows
+    .map((r) => ({ ...r, safety: isSafetyReason(r.reason) }))
+    // Stable: safety rows float to the top, everything else keeps the query's own order.
+    .sort((a, b) => (b.safety ? 1 : 0) - (a.safety ? 1 : 0))
+}
+
 export async function listRestaurantClaims(restaurantIds: string[], opts?: { status?: string }) {
   if (restaurantIds.length === 0) return []
-  return prisma.claim.findMany({
+  const rows = await prisma.claim.findMany({
     where:   { restaurantId: { in: restaurantIds }, ...(opts?.status ? { status: opts.status } : {}) },
     orderBy: { createdAt: 'asc' },
     take:    200,
   })
+  return triageBySafety(rows)
 }
 
 // ── REFUND TRIGGER — executeRefund at most once per claim ─────────────────────────
@@ -429,13 +501,23 @@ export async function runClaimAutoApproval(): Promise<ClaimSweepSummary> {
   const now = new Date()
 
   // 1. Expired restaurant_review → auto-approve (and attempt the refund).
+  // AUDIT FIX (batch 2, defence in depth). This sweep is unreachable in every authorized
+  // configuration — CLAIMS_AUTO_APPROVE_ENABLED is documented OFF for the whole beta and its
+  // scheduler was deleted by founder decision P0-07 precisely because it pays out with no admin
+  // in the loop. But the batch's rule is "a machine never closes a safety report", and a rule
+  // that holds on one automatic path and not the other is not a rule. Safety claims are skipped
+  // here too, so the invariant does not depend on a flag staying off.
   const expired = await prisma.claim.findMany({
     where:  { status: 'restaurant_review', responseDeadlineAt: { lt: now } },
-    select: { id: true },
+    select: { id: true, reason: true },
     take:   500,
   })
   summary.scannedExpired = expired.length
   for (const c of expired) {
+    if (isSafetyReason(c.reason)) {
+      console.warn(`[claims auto-approval] SAFETY reason (${c.reason}) on claim ${c.id} — skipped by design; a human must decide.`)
+      continue
+    }
     const r = await approveClaim(c.id, 'auto_timeout')
     if (r.state !== 'already_handled') summary.autoApproved++
     if (r.state === 'refunded') summary.refundsTriggered++
@@ -488,8 +570,16 @@ export async function isConsumerAbuseFlagged(consumerId: string): Promise<boolea
 // automatique ne part : la réclamation suit le flux C1 (revue restaurant), et le
 // non-déclenchement est TRACÉ (console.warn), jamais silencieux.
 export async function autoResolveSmallClaim(
-  claim: { id: string; consumerId: string; requestedAmountCents: number; status: string },
+  claim: { id: string; consumerId: string; requestedAmountCents: number; status: string; reason?: string | null },
 ): Promise<RefundTriggerResult | { state: 'not_eligible' }> {
+  // AUDIT FIX (batch 2): a SAFETY report — allergen exposure, foreign body, illness — must
+  // never be closed by a machine paying out a few euros. Money is not the answer to it: a
+  // human has to see it. Small amounts made this the MOST likely path to auto-close, so the
+  // check comes FIRST, before every other gate, and routes the claim to human review.
+  if (claim.reason && isSafetyReason(claim.reason)) {
+    console.warn(`[claims auto-resolve] SAFETY reason (${claim.reason}) — auto-resolution refused by design; human review required.`)
+    return { state: 'not_eligible' }
+  }
   if (!isClaimAutoResolveEnabled()) {
     console.warn('[claims auto-resolve] [P0-27] CLAIM_AUTO_RESOLVE_ENABLED est OFF — aucune auto-résolution, la réclamation part en revue restaurant (validation humaine).')
     return { state: 'not_eligible' }
@@ -686,8 +776,15 @@ export async function listArbitrationQueue() {
     orderBy: { createdAt: 'asc' },
     take:    200,
   })
+  // RE-AUDIT FIX (batch 2). Safety triage stopped ONE STEP before the screen that matters: this
+  // is the only admin list carrying the approve / refuse buttons, and every safety claim the
+  // machine path refuses ends up here once the restaurant routes it. Ordered by createdAt alone,
+  // an allergen report sat among up to 200 rows indistinguishable from a missing side dish, at
+  // the exact moment a human decides it. Visibility and order only — no extra authority.
+  claims.sort((a, b) => (isSafetyReason(b.reason) ? 1 : 0) - (isSafetyReason(a.reason) ? 1 : 0))
   return Promise.all(claims.map(async (c) => ({
     ...c,
+    safety:          isSafetyReason(c.reason),
     authority:       claimAuthority(c, now),
     /** Why this row is in the queue — the admin should not have to infer it. */
     queueReason:
@@ -854,6 +951,8 @@ export async function listActionableRefundClaims() {
       })
     : []
   const byId = new Map(rows.map((r) => [r.id, r]))
+  // SAFETY FIRST (batch 2): visibility and ordering only — no extra financial authority.
+  claims.sort((a, b) => (isSafetyReason(b.reason) ? 1 : 0) - (isSafetyReason(a.reason) ? 1 : 0))
   return claims.map((c) => {
     const row = c.refundId ? byId.get(c.refundId) ?? null : null
     // Truthful classification — never "pending means success".
@@ -868,6 +967,9 @@ export async function listActionableRefundClaims() {
     return {
       ...c,
       moneyState,
+      safety: isSafetyReason(c.reason),
+      /** Whether the stuck-money escape hatch would ACCEPT this row (same predicate as the route). */
+      resolvable: isStuckResolvable(c),
       refund: row ? { id: row.id, status: row.status, actualAmountCents: row.amountCents, stripeRefundId: row.stripeRefundId, createdAt: row.createdAt } : null,
       /** The amount that ACTUALLY moved, or null while nothing succeeded. */
       actualRefundedCents: row && row.status === 'succeeded' ? row.amountCents : null,
@@ -889,6 +991,17 @@ export async function listActionableRefundClaims() {
  *   settled_out_of_band → the customer WAS paid another way (e.g. the admin refund rail) ⇒ refunded
  *   closed_no_payment   → no money is owed / the case is closed unpaid          ⇒ refused_final
  */
+/**
+ * The EXACT set of claims the stuck-money escape hatch may close. Exported so the admin list
+ * marks the same rows the route will accept: a control offered on a row the server then refuses
+ * is a lie told by the UI, and this batch exists to remove those. Deliberately narrow — a claim
+ * whose refund is still PENDING at Stripe, or that succeeded and merely needs reconciling, must
+ * NOT be closed by hand: the first may still pay out, the second already did.
+ */
+export function isStuckResolvable(claim: { status: string; refundError?: string | null }): boolean {
+  return !!claim.refundError && ['approved', 'refunding'].includes(claim.status)
+}
+
 export async function resolveStuckClaim(input: {
   claimId: string
   adminId: string
@@ -904,7 +1017,7 @@ export async function resolveStuckClaim(input: {
     return { ok: false, status: 409, error: 'Cette réclamation est déjà clôturée.' }
   }
   // Deliberately narrow: this is a STUCK-MONEY escape hatch, not a general reopen/close power.
-  if (!claim.refundError || !['approved', 'refunding'].includes(claim.status)) {
+  if (!isStuckResolvable(claim)) {
     return { ok: false, status: 409, error: 'Cette réclamation n’est pas bloquée sur un remboursement — utilisez l’arbitrage.' }
   }
   const status = input.resolution === 'settled_out_of_band' ? 'refunded' : 'refused_final'
@@ -925,9 +1038,59 @@ export async function resolveStuckClaim(input: {
   return { ok: true, claim: updated }
 }
 
+/**
+ * RECOVERY RECONCILER (batch 2) — the safety net for a webhook that never arrived.
+ *
+ * `reconcileClaimForRefund` is driven by `refund.updated` / `refund.failed`. Stripe does not
+ * guarantee delivery: an endpoint outage, a signature rejection or a dropped event would leave
+ * a claim stuck in `refunding` for ever even though its Refund row is long since terminal.
+ *
+ * This sweeps claims whose BOUND Refund row has reached a terminal state and applies exactly
+ * the same reconciliation. It is:
+ *   • IDEMPOTENT — it reuses the same CAS, so a second pass is a clean no-op;
+ *   • BOUND TO THE REAL IDENTITY — it only ever acts on `claim.refundId`, never on a guess;
+ *   • NOT gated by CLAIMS_ENABLED — the money is real whatever the feature flag says;
+ *   • INCAPABLE of moving money — it calls no engine and creates no Stripe object.
+ */
+export type ClaimRecoverySummary = { scanned: number; reconciled: number; skipped: number; details: string[] }
+
+export async function recoverStrandedClaimReconciliations(limit = 200): Promise<ClaimRecoverySummary> {
+  const out: ClaimRecoverySummary = { scanned: 0, reconciled: 0, skipped: 0, details: [] }
+  const stranded = await prisma.claim.findMany({
+    // RE-AUDIT FIX (batch 2). Without the refundError exclusion this sweep never RETIRED a row:
+    // reconcileClaimForRefund moves a failed refund to status 'approved' WITH a refundError, which
+    // is still inside this predicate, so the same claims were re-reconciled every single day —
+    // rewriting byte-identical values, reporting a fresh `reconciled: 1` for ever, and permanently
+    // occupying the take:200 window ahead of genuinely stranded claims. A row already carrying a
+    // refundError has been reconciled; it now needs an ADMIN, not another sweep.
+    where:  { status: { in: ['refunding', 'approved'] }, refundId: { not: null }, refundError: null },
+    select: { id: true, refundId: true, status: true },
+    take:   limit,
+  })
+  out.scanned = stranded.length
+  if (!stranded.length) return out
+  const rows = await prisma.refund.findMany({
+    where:  { id: { in: stranded.map((c) => c.refundId as string) } },
+    select: { id: true, status: true, stripeRefundId: true },
+  })
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  for (const c of stranded) {
+    const row = c.refundId ? byId.get(c.refundId) : null
+    // Still pending, or no row at all: nothing terminal to apply. Never invent an outcome.
+    if (!row || (row.status !== 'succeeded' && row.status !== 'failed')) { out.skipped++; continue }
+    const res = await reconcileClaimForRefund({
+      refundRowId:    row.id,
+      status:         row.status === 'succeeded' ? 'succeeded' : 'failed',
+      stripeRefundId: row.stripeRefundId,
+    })
+    if (res.reconciled) { out.reconciled++; out.details.push(`${c.id}: ${res.from} → ${res.to}`) } else out.skipped++
+  }
+  return out
+}
+
 /** Claims the restaurant never answered and whose deadline has passed — admin-actionable. */
 export async function listSilenceExpiredClaims() {
-  return prisma.claim.findMany({
+  const rows = await prisma.claim.findMany({
     where:  { status: 'restaurant_review', responseDeadlineAt: { lte: new Date() } },
     select: {
       id: true, orderId: true, restaurantId: true, reason: true, requestedAmountCents: true,
@@ -936,6 +1099,7 @@ export async function listSilenceExpiredClaims() {
     orderBy: { responseDeadlineAt: 'asc' },
     take:    200,
   })
+  return triageBySafety(rows)
 }
 
 /** Who currently holds the decision, and whether an admin may already act. */
@@ -967,7 +1131,7 @@ export function claimAuthority(claim: { status: string; responseDeadlineAt?: Dat
 }
 
 export async function listPendingRestaurantClaims() {
-  return prisma.claim.findMany({
+  const rows = await prisma.claim.findMany({
     where:   { status: 'restaurant_review' },
     // Revue P0-39 : SELECT curaté — la console n'affiche que ces champs, on
     // n'expose pas toute la ligne Claim (surface minimale, même esprit que la
@@ -979,4 +1143,5 @@ export async function listPendingRestaurantClaims() {
     orderBy: { createdAt: 'asc' },
     take:    200,
   })
+  return triageBySafety(rows)
 }

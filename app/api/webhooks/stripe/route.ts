@@ -7,7 +7,7 @@ import { releaseHold } from '@/lib/deposit'
 import { recordLedgerEntry, type LedgerEntryInput } from '@/lib/ledger'
 import { reconcileLoyaltyOnRefund } from '@/lib/loyalty-refund-apply'
 import { isChargebacksEnabled, handleDisputeEvent } from '@/lib/dispute'
-import { isGhostOrderAutoRefundEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
+import { isGhostOrderAutoRefundEnabled, isRefundsEnabled, executeRefund, computeRefundSplit, finalizeRefundRowFromStripe, markRefundRowFailed } from '@/lib/refund'
 import { recomputeRoyaltyRefundedCents } from '@/lib/royalty-refunded'
 import { reconcileClaimForRefund } from '@/lib/claims'
 import { matchFeeRefunds, predictFeeRefund, refundLedgerLine } from '@/lib/refund-fee-truth'
@@ -440,7 +440,14 @@ async function handleOrderPaid(pi: Stripe.PaymentIntent) {
         return NextResponse.json({ received: true, noop: true, order: order.paymentStatus })
       }
       const capturedCents = pi.amount_received ?? pi.amount ?? 0
-      const refundsOn = isGhostOrderAutoRefundEnabled()
+      // T-48 (batch 2): the ghost-order auto-refund used to reach executeRefund on its OWN
+      // standing flag alone — a permanent, never-expiring authorization to move money that
+      // completely bypassed the refund window and its expiring lease. An automatic refund must
+      // never be able to pay out while the refund rail is closed, so it now requires BOTH its
+      // own flag AND a currently-valid refund authorization. Fail-closed: with no live lease
+      // the money simply stays captured and the order goes to the manual reconciliation queue,
+      // which is exactly what happens today with the flag off.
+      const refundsOn = isGhostOrderAutoRefundEnabled() && isRefundsEnabled()
       // Admin alert (both cases) — best-effort, idempotent (never blocks).
       try {
         await sendAdminGhostOrderAlert({ orderId: order.id, paymentIntentId: pi.id, amountCents: capturedCents, refundsOn })
