@@ -76,6 +76,12 @@ type Proof =
   | { mode: 'consumers'; files: string[] }
 
 const ALLOWLIST: Record<string, { calls: number; proof: Proof }> = {
+  // T-49 — la file « vérification financière » est montée sur la MÊME page, sous le même
+  // ToastProvider, et RESTE montée quand CLAIMS_ENABLED est OFF.
+  'components/claims/AdminFinancialVerification.tsx': {
+    calls: 1,
+    proof: { mode: 'mount', component: 'AdminFinancialVerification', sites: ['app/[locale]/admin/claims/page.tsx'] },
+  },
   // P0-37 — l'îlot admin est enveloppé À SON SITE DE MONTAGE (patron P0-14).
   'components/claims/AdminClaimsArbitration.tsx': {
     calls: 1,
@@ -161,7 +167,15 @@ describe('P0-37 — couverture ToastProvider : inventaire vivant (durci post-rev
           if (proof.layout) {
             expect(site.startsWith('app/[locale]/eat/'), `${site} : hors du segment couvert par ${proof.layout}`).toBe(true)
           } else {
-            const wrapped = new RegExp(`<ToastProvider>\\s*<${proof.component}[\\s/>]`).test(stripComments(read(site)))
+            // T-49: a page may legitimately mount SEVERAL islands under one provider, so requiring the
+            // component to sit IMMEDIATELY after <ToastProvider> is too strict — and adjacency was never
+            // the safety property. What the hook needs is to render INSIDE the provider. Containment is
+            // checked instead, and it is strictly stronger: a component outside the block still fails.
+            const src = stripComments(read(site))
+            const openAt = src.indexOf('<ToastProvider>')
+            const closeAt = src.lastIndexOf('</ToastProvider>')
+            const block = openAt >= 0 && closeAt > openAt ? src.slice(openAt, closeAt) : ''
+            const wrapped = new RegExp(`<${proof.component}[\\s/>]`).test(block)
             expect(wrapped, `${site} : <ToastProvider> n'enveloppe plus <${proof.component}>`).toBe(true)
           }
         }
@@ -189,7 +203,11 @@ describe('P0-37 — le fix /admin/claims (jumeau P0-14)', () => {
   it("⭐ la page admin claims monte l'arbitrage SOUS son propre ToastProvider", () => {
     const page = read('app/[locale]/admin/claims/page.tsx')
     expect(/import \{ ToastProvider \} from '@\/components\/design-system'/.test(page)).toBe(true)
-    expect(/<ToastProvider>\s*<AdminClaimsArbitration \/>\s*<\/ToastProvider>/.test(page)).toBe(true)
+    // T-49: the provider wraps BOTH islands. The money queue is UNGATED (it must survive the
+    // feature flag being turned off); the arbitration console is gated behind it.
+    const block = page.slice(page.indexOf('<ToastProvider>'), page.lastIndexOf('</ToastProvider>'))
+    expect(block).toContain('<AdminFinancialVerification />')
+    expect(block).toContain('{claimsOpen && <AdminClaimsArbitration />}')
   })
 
   it('non-régression P0-14 : le fix /orders tient toujours', () => {

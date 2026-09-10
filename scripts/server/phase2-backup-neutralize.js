@@ -61,6 +61,25 @@ function effective(text, key) {
   const v = parsed && typeof parsed === 'object' ? (parsed.values ? parsed.values[key] : parsed[key]) : undefined
   return v === undefined ? undefined : String(v)
 }
+// T-54 (2026-09-10) — the neutraliser covered REFUNDS_ENABLED only. The claims operator also
+// backs up .env.local before every write, so the copy taken just before its close contains
+// CLAIMS_ENABLED=true and was equally restorable. Same defect class, second flag.
+//
+// This is DEFENCE IN DEPTH, not the authorization control: since T-53 a restored backup cannot
+// reopen the claims surface anyway, because the lease it carries is expired by the time anyone
+// restores it. Both layers are kept — the lease is the lock, this is the tidy-up.
+const GUARDED_FLAGS = ['REFUNDS_ENABLED', 'CLAIMS_ENABLED']
+
+/** The flags a backup would re-enable if it were copied over .env.local. */
+function dangerousFlags(text) {
+  return GUARDED_FLAGS.filter((k) => effective(text, k) === 'true')
+}
+
+/** Rewrite EVERY guarded flag to false, in one pass. */
+function neutralizeAll(text) {
+  return GUARDED_FLAGS.reduce((acc, k) => neutralize(acc, k), text)
+}
+
 /** Rewrite EVERY assignment of `key` to `key=false` (comments untouched). */
 function neutralize(text, key) {
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
@@ -92,6 +111,9 @@ async function main() {
   const liveFlag = merged.REFUNDS_ENABLED === undefined ? 'ABSENT→false' : merged.REFUNDS_ENABLED
   F('LIVE REFUNDS_ENABLED (Next merged view)', liveFlag)
   if (liveFlag !== 'false' && liveFlag !== 'ABSENT→false') return fail('1 env: live REFUNDS_ENABLED is not false — this script never edits .env.local; investigate first')
+  const liveClaims = merged.CLAIMS_ENABLED === undefined ? 'ABSENT→false' : merged.CLAIMS_ENABLED
+  F('LIVE CLAIMS_ENABLED (Next merged view)', liveClaims)
+  if (liveClaims !== 'false' && liveClaims !== 'ABSENT→false') return fail('1 env: live CLAIMS_ENABLED is not false — this script never edits .env.local; close the claims window first')
   const nextauthUrl = (merged.NEXTAUTH_URL || '').replace(/\/$/, '')
   const base = (process.env.PHASE2_BASE_URL || nextauthUrl).replace(/\/$/, '')
   try { const bu = new URL(base); const loop = bu.hostname === '127.0.0.1' || bu.hostname === 'localhost'; if (!(bu.protocol === 'https:' && bu.hostname === 'app.grubano.com') && !loop) return fail('1 env: probe base not staging') } catch { return fail('1 env: probe base invalid') }
@@ -103,9 +125,10 @@ async function main() {
   const dangerous = [], safe = [], unparsable = []
   for (const n of names) {
     try {
-      const v = effective(fs.readFileSync(path.join(APP_ROOT, n), 'utf8'), 'REFUNDS_ENABLED')
-      const eff = v === undefined ? 'ABSENT→false' : v
-      if (eff === 'true') dangerous.push(n); else safe.push(n + ' (' + eff + ')')
+      const text = fs.readFileSync(path.join(APP_ROOT, n), 'utf8')
+      const bad = dangerousFlags(text)
+      if (bad.length) dangerous.push(n)
+      else safe.push(n + ' (' + GUARDED_FLAGS.map((k) => k + '=' + (effective(text, k) ?? 'ABSENT→false')).join(' ') + ')')
     } catch (e) { unparsable.push(n); A('2 scan: cannot parse ' + n + ' — ' + scrub(e)) }
   }
   F('STALE TRUE-FLAG BACKUP EXISTS', dangerous.length ? 'YES (' + dangerous.join(', ') + ')' : 'NO')
@@ -120,9 +143,9 @@ async function main() {
       const src = path.join(APP_ROOT, n)
       try {
         const buf = fs.readFileSync(src); const st = fs.statSync(src); const text = buf.toString('utf8')
-        const neutralized = neutralize(text, 'REFUNDS_ENABLED')
-        if (effective(neutralized, 'REFUNDS_ENABLED') !== 'false') { A('3 ' + n + ': neutralized copy not proven false — left in place'); continue }
-        const manifest = { file: n, appRoot: APP_ROOT, originalSha256: sha256(buf), originalBytes: st.size, originalMtime: st.mtime.toISOString(), effectiveREFUNDS_ENABLED: 'true', neutralizedSha256: sha256(Buffer.from(neutralized, 'utf8')), archivedAt: new Date().toISOString(), note: 'Backup written by phase2-refund-gate.js right before the re-freeze write; original removed from the app root because it was restorable with REFUNDS_ENABLED=true. Secret values are NOT recorded here.' }
+        const neutralized = neutralizeAll(text)
+        if (dangerousFlags(neutralized).length) { A('3 ' + n + ': neutralized copy still enables ' + dangerousFlags(neutralized).join('/') + ' — left in place'); continue }
+        const manifest = { file: n, appRoot: APP_ROOT, originalSha256: sha256(buf), originalBytes: st.size, originalMtime: st.mtime.toISOString(), guardedFlagsEnabled: dangerousFlags(text).join(','), neutralizedSha256: sha256(Buffer.from(neutralized, 'utf8')), archivedAt: new Date().toISOString(), note: 'Backup written by a phase2 gate operator right before its close write; original removed from the app root because it was restorable with a money-bearing flag set to true (see guardedFlagsEnabled). Secret values are NOT recorded here.' }
         const manPath = path.join(EVIDENCE_DIR, n + '.manifest.json'), neuPath = path.join(EVIDENCE_DIR, n + '.neutralized')
         fs.writeFileSync(manPath, JSON.stringify(manifest, null, 2), { mode: 0o600 }); fs.writeFileSync(neuPath, neutralized, { mode: 0o600 })
         try { fs.chmodSync(manPath, 0o600); fs.chmodSync(neuPath, 0o600) } catch { /* best-effort */ }

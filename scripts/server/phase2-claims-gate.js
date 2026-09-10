@@ -258,6 +258,18 @@ async function main() {
     return fail('3 window: PHASE2_CLAIMS_WINDOW_MS=' + Math.round(TTL_MS / 60000) + ' min exceeds what the T-53 lease can cover (lease = window + 2 min, ceiling 60 min). Set it to 58 min or less. Nothing changed.')
   }
 
+  // §20 MODE A RESIDUE — every claim this rehearsal creates must be tracked by id, so a window
+  // that ends badly cannot leave rows nobody knows about. Turning CLAIMS_ENABLED back off HIDES
+  // non-terminal claims (arbitration and overdue restaurant_review drop out of the gated admin
+  // count), so 'nothing on screen afterwards' proves nothing. Ids are taken before and after,
+  // and the difference is reported whatever the outcome.
+  const idsBefore = new Set()
+  if (prisma) {
+    try { (await prisma.claim.findMany({ select: { id: true } })).forEach((c) => idsBefore.add(c.id)) }
+    catch (e) { A('3 residue: could not snapshot claim ids before the window — ' + scrub(e)) }
+  }
+  const TERMINAL = ['refunded', 'refused_final']
+
   const stamp = new Date().toISOString()
   try {
     armedClose = { envFile, stamp } // ARM BEFORE the write
@@ -303,6 +315,25 @@ async function main() {
       if (rg !== 'CLOSED') A('3 close: the REFUND gate is not CLOSED — HUMAN ATTENTION REQUIRED')
     } catch (e) { A('3 close: ' + scrub(e)) }
   }
+  console.log('[4] rehearsal residue (§20)')
+  if (!prisma) {
+    A('4 residue: NOT MEASURED — no DB handle; a rehearsal must not be declared clean without this')
+  } else {
+    try {
+      const after = await prisma.claim.findMany({ select: { id: true, status: true, orderId: true } })
+      const created = after.filter((c) => !idsBefore.has(c.id))
+      const residue = created.filter((c) => !TERMINAL.includes(c.status))
+      F('CLAIMS CREATED BY THIS REHEARSAL', created.length + (created.length ? ' — ' + created.map((c) => c.id + ':' + c.status).join(', ') : ''))
+      F('NON-TERMINAL RESIDUE', residue.length ? residue.length + ' — ' + residue.map((c) => c.id + ':' + c.status + ' (order ' + c.orderId + ')').join(', ') : 'NONE')
+      if (residue.length) {
+        A('4 residue: ' + residue.length + ' claim(s) left NON-TERMINAL by this rehearsal. Listed above BY ID because closing CLAIMS_ENABLED hides some of these states from the admin console. Resolve them in a later window; do NOT reopen claims now just to tidy up.')
+      }
+      const stuck = await prisma.claim.count({ where: { status: 'refunding' } })
+      const fv    = await prisma.claim.count({ where: { status: 'financial_verification' } })
+      F('POST-CLOSE MONEY STATES', 'refunding ' + stuck + ' · financial_verification ' + fv + ' (both stay visible with CLAIMS_ENABLED off — T-49)')
+    } catch (e) { A('4 residue: ' + scrub(e)) }
+  }
+
   return done(anomalies.length ? 'FAIL' : 'PASS')
 }
 
