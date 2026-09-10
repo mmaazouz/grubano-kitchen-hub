@@ -84,7 +84,9 @@ export default function AdminFinancialVerification() {
       const said: Record<string, string> = {
         refunded:               'Preuve trouvée : le remboursement a abouti. Réclamation réconciliée sur son identité exacte.',
         refund_failed:          'Preuve trouvée : le remboursement a ÉCHOUÉ. La réclamation redevient traitable.',
-        still_pending:          'Le remboursement est encore en attente chez Stripe. Rien n’est clos, aucun second remboursement.',
+        // AUDIT FIX: this branch reads OUR row, not Stripe. Say that, rather than asserting a
+        // Stripe state nobody consulted.
+        still_pending:          'La ligne de remboursement liée n’est pas encore terminale (ni aboutie, ni échouée). Rien n’est clos, aucun second remboursement. Vérifiez Stripe pour l’état réel.',
         no_refund_proven:       'Preuve d’absence : aucun remboursement n’existe et Stripe n’en rapporte aucun. La réclamation est de nouveau payable par le rail normal.',
         financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
       }
@@ -110,7 +112,7 @@ export default function AdminFinancialVerification() {
       const outcome = (body as { result?: { outcome?: string } }).result?.outcome
       toast.success(outcome === 'refunded' ? 'Remboursement attribué : la réclamation reflète désormais ce remboursement réel.'
         : outcome === 'refund_failed' ? 'Remboursement attribué : il avait ÉCHOUÉ. La réclamation redevient traitable.'
-        : 'Remboursement attribué : encore en attente chez Stripe. Rien n’est clos.')
+        : 'Remboursement attribué : la ligne n’est pas encore terminale. Rien n’est clos.')
       await load()
     } catch {
       toast.error('Attribution refusée.')
