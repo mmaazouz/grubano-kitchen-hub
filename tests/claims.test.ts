@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { updateManyMock } from './support/prisma-where'
 import { Prisma } from '@prisma/client'
 
 // ── P4.5-C1 — lib/claims (the claim cycle workflow) ──────────────────────────────
@@ -26,11 +27,11 @@ import { createClaim, respondToClaim, runClaimAutoApproval, getClaimEligibility,
 const paidOrder = (o: Record<string, unknown> = {}) => ({
   id: 'o1', consumerId: 'c1', restaurantId: 'r1', paymentStatus: 'paid', total: 50, updatedAt: new Date(), ...o,
 })
-const fx = { updateManyCount: 1 }
+const fx = { row: null as Record<string, unknown> | null, updateManyCount: 1 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  fx.updateManyCount = 1
+  fx.updateManyCount = 1; fx.row = null;
   db.order.findUnique.mockResolvedValue(paidOrder())
   // Claims batch 1: the claim amount is now DERIVED (order lines minus what is already refunded).
   db.refund.aggregate.mockResolvedValue({ _sum: { amountCents: 0 } })
@@ -40,7 +41,17 @@ beforeEach(() => {
   db.claim.findFirst.mockResolvedValue(null)
   db.claim.findMany.mockResolvedValue([])
   db.claim.update.mockResolvedValue({})
-  db.claim.updateMany.mockImplementation(() => Promise.resolve({ count: fx.updateManyCount }))
+  // GATE T-49: this mock used to ignore the where clause entirely, so every compare-and-set
+  // exercised here (approveClaim, contestClaim, arbitrateClaim) was unverified — the guard
+  // could match nothing and the test still passed. It now evaluates the clause whenever a
+  // simulated row is supplied via fx.row; with fx.row null it keeps the previous permissive
+  // behaviour so tests that never modelled a row are unaffected.
+  // These suites name the forced count `updateManyCount`; adapt it rather than rename it
+  // across every call site. Getters keep the fixture live between tests.
+  db.claim.updateMany.mockImplementation(updateManyMock({
+    get row() { return fx.row },
+    get forcedCount() { return fx.updateManyCount },
+  }))
   execMock.mockResolvedValue({ ok: true, refundId: 'rf1', stripeRefundId: 're_1' })
   refundsFlag.mockReturnValue(true)
 })
@@ -251,5 +262,38 @@ describe('getClaimEligibility', () => {
   it('not the owner → canClaim false (not_owner)', async () => {
     db.order.findUnique.mockResolvedValue(paidOrder({ consumerId: 'other' }))
     expect(await getClaimEligibility({ consumerId: 'c1', orderId: 'o1' })).toMatchObject({ canClaim: false, reason: 'not_owner' })
+  })
+})
+
+// ── GATE T-49 — THE CAS GUARDS IN THIS FILE ARE NOW ACTUALLY VERIFIED ────────────
+// Until now the updateMany mock in this suite ignored the where clause entirely, so every
+// compare-and-set it exercised was untested: the guard could match nothing and the test still
+// passed. These are DIFFERENTIAL controls — they drive shipped code with a simulated row and
+// assert an outcome the old blind mock could not produce.
+describe('respondToClaim — the status guard is enforced, not assumed', () => {
+  const claim = { id: 'cl1', orderId: 'o1', restaurantId: 'r1', status: 'restaurant_review', requestedAmountCents: 500, refundAttempted: false }
+
+  it('a claim ALREADY out of restaurant_review cannot be refused a second time', async () => {
+    // The CAS is `where: { id, status: 'restaurant_review' }`. Simulating a row that has moved
+    // on must make it match zero rows. Under the blind mock this returned ok:true.
+    db.claim.findUnique.mockResolvedValue({ ...claim, status: 'restaurant_review' })
+    fx.row = { status: 'arbitration' } // the real row already advanced
+    const res = await respondToClaim({ claimId: 'cl1', restaurantIds: ['r1'], action: 'refuse', reason: 'non' })
+    expect(res).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('…and a claim still IN restaurant_review is accepted, so the guard is not a blanket refusal', async () => {
+    db.claim.findUnique.mockResolvedValue({ ...claim })
+    fx.row = { status: 'restaurant_review' }
+    const res = await respondToClaim({ claimId: 'cl1', restaurantIds: ['r1'], action: 'refuse', reason: 'non' })
+    expect(res.ok).toBe(true)
+  })
+
+  it('accept is guarded by the same predicate and no money moves either way', async () => {
+    db.claim.findUnique.mockResolvedValue({ ...claim })
+    fx.row = { status: 'refused' } // already decided
+    const res = await respondToClaim({ claimId: 'cl1', restaurantIds: ['r1'], action: 'accept' })
+    expect(res).toMatchObject({ ok: false, status: 409 })
+    expect(execMock).not.toHaveBeenCalled()
   })
 })

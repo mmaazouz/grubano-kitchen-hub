@@ -7,6 +7,7 @@
 //   • REFUND IDENTITY BINDING — a RESUME-FIRST mismatch never reports the claim settled;
 //   • REFUND → CLAIM RECONCILIATION, which must work with CLAIMS_ENABLED=false.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { updateManyMock } from './support/prisma-where'
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -44,39 +45,7 @@ beforeEach(() => {
   // A fix that broke any of those stayed GREEN. Prisma's comparison operators are now
   // evaluated for real; an unsupported operator THROWS instead of passing silently, so the
   // suite can never again be quietly blind to a clause shape it does not understand.
-  const matchOp = (op: string, expected: unknown, actual: unknown): boolean => {
-    switch (op) {
-      case 'equals':  return actual === expected
-      case 'not':     return actual !== expected
-      case 'in':      return Array.isArray(expected) && expected.includes(actual as never)
-      case 'notIn':   return Array.isArray(expected) && !expected.includes(actual as never)
-      case 'lt':      return (actual as number) <  (expected as number)
-      case 'lte':     return (actual as number) <= (expected as number)
-      case 'gt':      return (actual as number) >  (expected as number)
-      case 'gte':     return (actual as number) >= (expected as number)
-      default: throw new Error(`prisma mock: unsupported operator '${op}' — extend matchOp instead of skipping it`)
-    }
-  }
-  const matchWhere = (where: Record<string, unknown>, row: Record<string, unknown>): boolean => {
-    for (const [k, v] of Object.entries(where)) {
-      if (k === 'id') continue // the id is the addressing, not the guard
-      const actual = row[k]
-      if (v !== null && typeof v === 'object' && !(v instanceof Date)) {
-        for (const [op, expected] of Object.entries(v as Record<string, unknown>)) {
-          if (!matchOp(op, expected, actual)) return false
-        }
-        continue
-      }
-      if (actual !== v) return false
-    }
-    return true
-  }
-  db.claim.updateMany.mockImplementation(({ where }: { where: Record<string, unknown> }) => {
-    const row = fx.row
-    if (!row) return Promise.resolve({ count: fx.forcedCount ?? 1 })
-    if (!matchWhere(where, row as Record<string, unknown>)) return Promise.resolve({ count: 0 })
-    return Promise.resolve({ count: fx.forcedCount ?? 1 })
-  })
+  db.claim.updateMany.mockImplementation(updateManyMock(fx))
   db.claim.update.mockResolvedValue({})
   db.claim.findMany.mockResolvedValue([])
   db.claim.count.mockResolvedValue(0)

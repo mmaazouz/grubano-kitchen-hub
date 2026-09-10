@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { updateManyMock } from './support/prisma-where'
 import { Prisma } from '@prisma/client'
 
 // ── P4.5-C2 — lib/claims extensions: auto-resolution, contest, arbitration, abuse ──
@@ -23,12 +24,22 @@ import {
   consumerClaimStats, restaurantRefusalStats,
 } from '@/lib/claims'
 
-const fx = { updateManyCount: 1, recent: 0 }
+const fx = { row: null as Record<string, unknown> | null, updateManyCount: 1, recent: 0 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  fx.updateManyCount = 1; fx.recent = 0
-  db.claim.updateMany.mockImplementation(() => Promise.resolve({ count: fx.updateManyCount }))
+  fx.updateManyCount = 1; fx.recent = 0; fx.row = null;
+  // GATE T-49: this mock used to ignore the where clause entirely, so every compare-and-set
+  // exercised here (approveClaim, contestClaim, arbitrateClaim) was unverified — the guard
+  // could match nothing and the test still passed. It now evaluates the clause whenever a
+  // simulated row is supplied via fx.row; with fx.row null it keeps the previous permissive
+  // behaviour so tests that never modelled a row are unaffected.
+  // These suites name the forced count `updateManyCount`; adapt it rather than rename it
+  // across every call site. Getters keep the fixture live between tests.
+  db.claim.updateMany.mockImplementation(updateManyMock({
+    get row() { return fx.row },
+    get forcedCount() { return fx.updateManyCount },
+  }))
   db.claim.update.mockResolvedValue({})
   db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', requestedAmountCents: 500 })
   db.claim.count.mockImplementation(({ where }: { where: Record<string, unknown> }) =>
@@ -238,5 +249,36 @@ describe('(d) abuse signals (read-only)', () => {
     expect(s).toMatchObject({ refused: 4, overturned: 2 })
     expect(s.overturnRate).toBeCloseTo(0.5)
     expect(s.flagged).toBe(true)
+  })
+})
+
+// ── GATE T-49 — DIFFERENTIAL CAS CONTROLS ────────────────────────────────────────
+// This suite's updateMany mock used to ignore the where clause, so contestClaim's and
+// arbitrateClaim's compare-and-set guards were exercised but never verified. These drive
+// shipped code with a simulated row and assert an outcome the blind mock could not produce.
+describe('the contest guard is enforced, not assumed', () => {
+  const refused = { id: 'cl1', consumerId: 'c1', orderId: 'o1', status: 'refused', decidedAt: new Date() }
+
+  it('a claim that already left `refused` cannot be contested a second time', async () => {
+    // The CAS is `where: { id, status: 'refused' }`. A row that already moved to arbitration
+    // must match zero. Under the blind mock this returned ok:true and re-acquired the lock.
+    db.claim.findUnique.mockResolvedValue(refused)
+    fx.row = { status: 'arbitration' }
+    const r = await contestClaim({ claimId: 'cl1', consumerId: 'c1', reason: 'encore' })
+    expect(r).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('…and a genuinely refused claim still contests, so the guard is not a blanket refusal', async () => {
+    db.claim.findUnique.mockResolvedValue(refused)
+    fx.row = { status: 'refused' }
+    const r = await contestClaim({ claimId: 'cl1', consumerId: 'c1', reason: 'pas d’accord' })
+    expect(r.ok).toBe(true)
+  })
+
+  it('contesting never moves money, whichever way the guard falls', async () => {
+    db.claim.findUnique.mockResolvedValue(refused)
+    fx.row = { status: 'arbitration' }
+    await contestClaim({ claimId: 'cl1', consumerId: 'c1' })
+    expect(execMock).not.toHaveBeenCalled()
   })
 })
