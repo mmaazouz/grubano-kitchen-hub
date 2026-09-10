@@ -82,6 +82,11 @@ export async function computeAdminOverview(now: Date = new Date()): Promise<Admi
               ]
             : []),
           { status: 'refunding' },                                   // money in flight or stuck
+          // T-49 — UNGATED ON PURPOSE. A claim whose money truth is unresolved must stay
+          // counted when CLAIMS_ENABLED is off: hiding an open MONEY case behind a feature
+          // flag is exactly how one disappears silently. Fail-closed financially requires
+          // fail-visible operationally.
+          { status: 'financial_verification' },
           { status: 'approved', refundAttempted: false },            // approved, never paid
           { status: 'approved', refundError: { not: null } },        // refund failed / mismatched
         ],

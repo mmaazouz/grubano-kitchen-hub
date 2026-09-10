@@ -87,6 +87,8 @@ beforeEach(() => {
   // comme TOUS les écrivains de Claim — les tests du chemin payé stubbent le set
   // bêta réel (CLAIMS ON) ; le test « flag OFF » couvre le chemin historique.
   vi.stubEnv('CLAIMS_ENABLED', 'true')
+  // T-53: the claims surface now needs a live lease as well as the flag.
+  vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() + 15 * 60 * 1000).toISOString())
   getToken.mockResolvedValue({ role: 'restaurant' })
   resolveScope.mockResolvedValue(scopeOk())
   db.order.findUnique.mockResolvedValue(paidOrder())

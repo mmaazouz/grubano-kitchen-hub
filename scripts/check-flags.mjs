@@ -13,7 +13,20 @@ const on = (env, k) => env[k] === 'true'
 
 /** The couplings. Flag names verified against the Phase-1 flag audit. */
 export const COUPLING_RULES = [
-  { flag: 'CLAIMS_ENABLED',              requires: 'REFUNDS_ENABLED',             why: 'un claim approuvé sans REFUNDS = approuvé-mais-non-remboursé (risque chargeback)' },
+  // ── NARROWED 2026-09-10 (founder decision, gate §19) — was an ERROR, now a WARNING ────
+  // ORIGINAL REASON: « un claim approuvé sans REFUNDS = approuvé-mais-non-remboursé (risque
+  // chargeback) » — a customer told their claim was approved, no money following, a chargeback.
+  // That reason was sound when the state was INVISIBLE. It no longer is:
+  //   • Claims batch 2 added the 'approved_not_driven' money state and surfaced it in the admin
+  //     money list, ungated, so an approved-but-unpaid claim is now counted and visible;
+  //   • the customer copy no longer promises a delay or says the refund is on its way;
+  //   • T-49 adds a durable, ungated FINANCIAL VERIFICATION queue with an alert on entry.
+  // Meanwhile the rule FORBADE the only safe way to rehearse the claims workflow: claims open,
+  // refunds shut, no money able to move. Keeping it as a hard error would have forced a
+  // money-capable rehearsal to test a non-money flow — strictly less safe.
+  // It stays a WARNING because the underlying product concern is real for a LIVE beta: shipping
+  // claims to real customers with no refund rail behind them is still a bad idea, and an
+  // operator should be told. It is no longer an automatic failure.
   // P0-04 (vague 1) : REFUNDS_ENABLED ne gouverne plus que l'OUTIL ADMIN ; l'auto-refund
   // ghost-order du webhook a son propre flag (défaut OFF, peut rester OFF toute la bêta).
   // S'il est allumé, il réutilise le moteur admin → exiger la cohérence du couple.
@@ -69,6 +82,17 @@ export function checkFlagCoupling(env) {
 // Contrairement aux COUPLING_RULES (exit 1), un WARNING laisse le check passer
 // (exit 0) : il signale un réglage risqué que le go-live doit voir en face.
 export const WARNING_RULES = [
+  // (T-53) Same shape as T-48, for the claims surface: the flag alone is inert without a live
+  // lease. Say it, or an operator will believe a window is open while every call is refused.
+  { when: (env) => on(env, 'CLAIMS_ENABLED') && !String(env.CLAIMS_WINDOW_UNTIL || '').trim(),
+    msg: 'CLAIMS_ENABLED=true SANS CLAIMS_WINDOW_UNTIL : la porte réclamations est FERMÉE (T-53 — le drapeau seul n autorise rien). Aucune réclamation ne passera.' },
+  { when: (env) => { if (!on(env, 'CLAIMS_ENABLED')) return false; const raw = String(env.CLAIMS_WINDOW_UNTIL || '').trim(); if (!raw) return false; const t = Date.parse(raw); return !Number.isFinite(t) || t <= Date.now() },
+    msg: 'CLAIMS_ENABLED=true avec un CLAIMS_WINDOW_UNTIL illisible ou EXPIRÉ : la porte réclamations est FERMÉE (fail-closed T-53).' },
+  // (gate §19, 2026-09-10) Claims open with refunds shut is the SAFE rehearsal configuration
+  // (no money can move: lib/claims triggerClaimRefund returns before the only writer of
+  // 'refunding'). It is NOT a good LIVE configuration, so say so instead of failing.
+  { when: (env) => on(env, 'CLAIMS_ENABLED') && !on(env, 'REFUNDS_ENABLED'),
+    msg: 'CLAIMS_ENABLED=true avec REFUNDS_ENABLED=false : configuration de RÉPÉTITION (aucun argent ne peut bouger). Sûre pour un test borné ; en bêta réelle une réclamation approuvée resterait non remboursée — visible dans la file « Remboursements à traiter », mais non payée.' },
   // (T-48) Le drapeau seul n'autorise PLUS rien : une fenêtre de remboursement est un BAIL
   // qui expire (REFUNDS_ENABLED=true ET REFUNDS_WINDOW_UNTIL valide, ≤ 30 min, revérifié par
   // l'application à chaque appel). Un drapeau vrai sans bail est inerte — c'est le

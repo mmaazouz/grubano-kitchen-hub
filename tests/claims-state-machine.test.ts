@@ -52,7 +52,10 @@ beforeEach(() => {
   db.claim.groupBy.mockResolvedValue([])
   db.refund.findMany.mockResolvedValue([])
   db.refund.aggregate.mockResolvedValue({ _sum: { amountCents: 0 } })
-  db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
+  // T-51: the default fixture row is stamped for the claim these suites drive ('cl1'). Without
+  // an identity the guard fails CLOSED and every binding becomes a resume_mismatch — which is
+  // exactly the intended behaviour, and why the stamp has to be explicit here.
+  db.refund.findUnique.mockResolvedValue({ status: 'succeeded', reason: 'claim:cl1' })
   execMock.mockResolvedValue({ ok: true, refundId: 'rf1', stripeRefundId: 're_1', amountCents: 500 })
   refundsFlag.mockReturnValue(true)
   delete process.env.CLAIMS_ENABLED

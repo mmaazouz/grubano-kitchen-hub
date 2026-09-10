@@ -31,6 +31,9 @@ type PendingClaim = {
 type MoneyState =
   | 'stripe_pending' | 'stripe_failed' | 'stripe_succeeded_claim_unreconciled'
   | 'stale_refunding_no_refund_row' | 'refund_error_recorded' | 'approved_not_driven'
+  // T-49: an interrupted attempt whose refund identity was never bound, or a claim parked
+  // in FINANCIAL VERIFICATION. Money truth unknown — never asserted either way.
+  | 'reconcile_required'
 type ActionableRefundClaim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number; status: string
   moneyState: MoneyState; safety?: boolean; refundError?: string | null
@@ -147,6 +150,7 @@ export default function AdminClaimsArbitration() {
     stale_refunding_no_refund_row:        { text: 'En remboursement sans aucun remboursement Stripe associé', tone: 'danger' },
     refund_error_recorded:                { text: 'Erreur de remboursement enregistrée — décision humaine requise', tone: 'danger' },
     approved_not_driven:                  { text: 'Approuvée mais jamais remboursée — en attente de traitement', tone: 'warning' },
+    reconcile_required:                   { text: 'Vérification financière requise — l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
   }
 
   return (

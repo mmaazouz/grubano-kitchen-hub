@@ -118,6 +118,7 @@ function emergencyClose(reason) {
   const { envFile, stamp } = armedClose
   armedClose = null
   try {
+    try { writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + '-emergency') } catch { /* the flag write below is the belt */ }
     const r = writeFlag(envFile, 'CLAIMS_ENABLED', 'false', stamp + '-emergency')
     touchRestart()
     console.log('  !! EMERGENCY CLAIMS CLOSE (' + reason + '): CLAIMS_ENABLED=false written' + (r.changed ? ' (backup ' + r.backup + ')' : ' (was already false)') + ' + restart touched.')
@@ -250,13 +251,26 @@ async function main() {
   if (claimsGate0 !== 'CLOSED') return fail('3 window: CLAIMS gate is not CLOSED before opening — refusing')
   if (refundGate0 !== 'CLOSED') return fail('3 window: REFUND gate is not CLOSED — refusing to open claims beside a money window')
   if (!Number.isFinite(TTL_MS) || TTL_MS <= 0 || TTL_MS > 60 * 60 * 1000) return fail('3 window: TTL must be a finite duration ≤ 60 min')
+  // The operator must not outlive its own authorization: the lease is capped by the compiled
+  // ceiling, so a TTL that needs more than the ceiling would leave this script polling and
+  // printing WINDOW OPEN on a surface the application had already closed.
+  if (TTL_MS + 120000 > 60 * 60 * 1000) {
+    return fail('3 window: PHASE2_CLAIMS_WINDOW_MS=' + Math.round(TTL_MS / 60000) + ' min exceeds what the T-53 lease can cover (lease = window + 2 min, ceiling 60 min). Set it to 58 min or less. Nothing changed.')
+  }
 
   const stamp = new Date().toISOString()
   try {
     armedClose = { envFile, stamp } // ARM BEFORE the write
+    // T-53 — the flag alone authorizes nothing any more. Write an ABSOLUTE deadline the
+    // application re-checks on every call, so the window dies of old age through SIGKILL, a
+    // host crash or a reboot, with nobody acting. Lease FIRST, flag second: the reverse order
+    // would leave a brief instant where the flag is true with no deadline behind it.
+    const leaseUntil = new Date(Date.now() + Math.min(TTL_MS + 120000, 60 * 60 * 1000)).toISOString()
+    writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', leaseUntil, stamp)
+    F('T-53 CLAIMS AUTHORIZATION LEASE', 'CLAIMS_WINDOW_UNTIL=' + leaseUntil + ' — after this instant the claims surface is CLOSED by the application itself, with nobody acting (SIGKILL / host crash included). It grants NO refund authority.')
     const opened = writeFlag(envFile, 'CLAIMS_ENABLED', 'true', stamp)
     F('CLAIMS WINDOW OPEN WRITE', opened.changed ? 'CLAIMS_ENABLED=true (backup ' + opened.backup + ')' : 'no change')
-    F('EMERGENCY CLOSE', 'ARMED (process-local: signals + uncaught throw. NOT proof against SIGKILL/host crash — see T-48)')
+    F('EMERGENCY CLOSE', 'ARMED (process-local: signals + uncaught throw). It is NOT and cannot be a SIGKILL handler — that is exactly why the T-53 lease exists: after the deadline the surface is denied even if this cleanup never ran.')
     touchRestart()
     const w1 = await waitGate(base, '/api/claims', 'OPEN', RELOAD_DEADLINE_MS, RELOAD_INTERVAL_MS)
     F('CLAIMS GATE AFTER OPEN', w1.last + ' after ' + Math.round(w1.elapsedMs / 1000) + ' s')
@@ -274,6 +288,9 @@ async function main() {
   } catch (e) { A('3 window: ' + scrub(e)) } finally {
     // UNCONDITIONAL CLOSE
     try {
+      // Expire the lease FIRST: even if the flag write below fails, the application is already
+      // refusing the surface. Order matters — belt before braces.
+      writeFlag(envFile, 'CLAIMS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString(), stamp + 'Z')
       const closed = writeFlag(envFile, 'CLAIMS_ENABLED', 'false', stamp + 'Z')
       armedClose = null // disarm ONLY once false is on disk
       F('CLAIMS WINDOW CLOSE WRITE', closed.changed ? 'CLAIMS_ENABLED=false (backup ' + closed.backup + ')' : 'no change')

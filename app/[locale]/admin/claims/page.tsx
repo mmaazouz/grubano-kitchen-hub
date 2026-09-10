@@ -8,6 +8,7 @@ import { isCourierActivationEnabled } from '@/lib/logistics-account'
 import { isClaimsEnabled } from '@/lib/claims'
 import AdminShell from '@/components/admin/AdminShell'
 import AdminClaimsArbitration from '@/components/claims/AdminClaimsArbitration'
+import AdminFinancialVerification from '@/components/claims/AdminFinancialVerification'
 import { ToastProvider } from '@/components/design-system'
 
 // ── /admin/claims — neutral admin arbitration console (P4.5-C2, Agent 53) ──────────
@@ -25,8 +26,17 @@ export default async function AdminClaimsPage(props: { params: { locale: string 
   const admin = await resolveAdmin()
   if (!admin) redirect('/eat')
 
-  // Flag OFF → no claims console (byte-identical: the feature is inert everywhere).
-  if (!isClaimsEnabled()) redirect('/admin/approvals')
+  // T-49 (founder decision 2026-09-10) — THE FLAG NO LONGER EMPTIES THIS PAGE UNCONDITIONALLY.
+  //
+  // Turning CLAIMS_ENABLED off used to redirect away from the whole console. That is correct
+  // for the FEATURE (creation, review, arbitration) and catastrophic for MONEY: a claim whose
+  // cash truth is unresolved would vanish from every surface the moment the flag flipped, which
+  // is exactly how a fail-closed state becomes a silent leak. The money question does not care
+  // about the feature flag.
+  //
+  // So with the flag off the page still renders, showing ONLY the financial-verification queue.
+  // No claim can be created, reviewed or arbitrated — those routes stay gated server-side.
+  const claimsOpen = isClaimsEnabled()
 
   const identity = buildAdminIdentity(admin)
   const flags = {
@@ -52,7 +62,9 @@ export default async function AdminClaimsPage(props: { params: { locale: string 
             global opérateur). Couverture verrouillée par
             tests/toast-provider-coverage.test.ts. */}
         <ToastProvider>
-          <AdminClaimsArbitration />
+          {/* Ungated: an unresolved MONEY case must be reachable whatever the feature flag says. */}
+          <AdminFinancialVerification />
+          {claimsOpen && <AdminClaimsArbitration />}
         </ToastProvider>
       </section>
     </AdminShell>

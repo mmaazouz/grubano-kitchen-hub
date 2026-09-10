@@ -107,7 +107,7 @@ describe('P10 — flag OFF (défaut production) : le gate', () => {
 
 // ════════════════════════════════════════════════════════════════════════════════════
 describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contrairement au verdict brut', () => {
-  beforeEach(() => { vi.stubEnv('CLAIMS_ENABLED', 'true') })
+  beforeEach(() => { vi.stubEnv('CLAIMS_ENABLED', 'true'); vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() + 15 * 60 * 1000).toISOString()) })
 
   it('[PASS-ACTUEL] flag ON sans session → 401 (le canal devient réel mais reste derrière auth)', async () => {
     tokenMock.mockResolvedValue(null)
@@ -189,7 +189,7 @@ describe('P10 — activation (CLAIMS_ENABLED=true) : la route tient, contraireme
 
 // ════════════════════════════════════════════════════════════════════════════════════
 describe("P10 — activation : le crash (aucune frontière d'erreur dans la route)", () => {
-  beforeEach(() => { vi.stubEnv('CLAIMS_ENABLED', 'true') })
+  beforeEach(() => { vi.stubEnv('CLAIMS_ENABLED', 'true'); vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() + 15 * 60 * 1000).toISOString()) })
 
   it('[FAIL-ATTENDU: activation sans migration → crash 500 brut] table Claim absente (P2021) → le handler POST REJETTE au lieu de répondre un JSON propre', async () => {
     // AUDIT: the most plausible "crash à l'activation": CLAIMS_ENABLED flipped ON

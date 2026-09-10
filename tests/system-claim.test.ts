@@ -73,6 +73,8 @@ describe('createSystemClaim — la demande système entre DIRECTEMENT en arbitra
 describe('P0-08 — le motif système est INACCESSIBLE depuis le schéma public (POST /api/claims)', () => {
   it('⭐ un client qui envoie reason=system_order_cancelled reçoit 400 (z.enum(CLAIM_REASONS)), aucune création', async () => {
     vi.stubEnv('CLAIMS_ENABLED', 'true')
+    // T-53: the claims surface needs a live lease as well as the flag.
+    vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() + 15 * 60 * 1000).toISOString())
     const { tokenMock } = { tokenMock: vi.fn().mockResolvedValue({ sub: 'c1' }) }
     vi.doMock('next-auth/jwt', () => ({ getToken: tokenMock }))
     vi.doMock('@/lib/dish-photo', () => ({ processDishImage: vi.fn(), ALLOWED_IMAGE_TYPES: ['image/jpeg'] }))

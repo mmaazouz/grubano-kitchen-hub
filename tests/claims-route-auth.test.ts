@@ -5,6 +5,7 @@
 // Any authenticated user could therefore burn upload + moderation budget on ANY orderId.
 // Beta has no photo requirement, so the expensive path is REMOVED, not merely reordered.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { openClaimsWindow } from './support/claims-window'
 
 const { db } = vi.hoisted(() => ({
   db: {
@@ -42,7 +43,7 @@ const BIG_IMAGE = 'data:image/jpeg;base64,' + 'A'.repeat(5000)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  process.env.CLAIMS_ENABLED = 'true'
+  openClaimsWindow() // T-53: the flag alone no longer opens the claims surface
   tokenMock.mockResolvedValue({ sub: 'owner' })
   rateLimitMock.mockReturnValue(null)
   db.order.findUnique.mockResolvedValue(ORDER)

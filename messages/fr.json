@@ -7157,7 +7157,8 @@
       "arbitration": "En arbitrage Grubano",
       "refused_final": "Refus confirmé",
       "refund_failed": "Remboursement échoué — en cours de traitement par notre équipe",
-      "refund_pending_stripe": "Remboursement envoyé à la banque — en attente de confirmation"
+      "refund_pending_stripe": "Remboursement envoyé à la banque — en attente de confirmation",
+      "financial_verification": "Votre remboursement nécessite une vérification manuelle. Aucun nouveau remboursement ne sera lancé tant que la transaction existante n’aura pas été vérifiée."
     },
     "client": {
       "reportProblem": "Signaler un problème",
@@ -7230,6 +7231,7 @@
       "approvedNotSent": "Réclamation approuvée — aucun remboursement confirmé par cette action. À vérifier dans « Remboursements à traiter ».",
       "approvedFailed": "Réclamation approuvée, mais le remboursement a ÉCHOUÉ : aucun argent n'est parti. À traiter dans « Remboursements à traiter ».",
       "approvedResumeMismatch": "Réclamation approuvée, MAIS le moteur a repris un remboursement ANTÉRIEUR de cette commande : de l’argent EST parti, pour un autre montant. Ne relancez aucun remboursement — ouvrez « Remboursements à traiter ».",
+      "financialVerificationRequired": "Vérification financière requise — action opérateur nécessaire.",
       "refusedFinalDone": "Refus confirmé.",
       "processing": "Traitement…",
       "signalsTitle": "Signaux",

@@ -164,10 +164,23 @@ describe('P6 — seul canal réel adjacent : /api/claims (remboursement), gaté 
     expect(isClaimsEnabled()).toBe(false)
   })
 
-  it("[PASS-ACTUEL] isClaimsEnabled() = true uniquement quand CLAIMS_ENABLED === 'true' (comparaison stricte)", () => {
+  // T-53 CONTRACT CHANGE (2026-09-10). This test used to pin "the flag alone opens claims".
+  // That is no longer true and must not be re-pinned: a static boolean survives SIGKILL, a
+  // crash and a reboot, so a rehearsal window could stay open for ever with nobody at fault.
+  // The surface now needs the flag AND a live, in-ceiling lease, re-checked on every call.
+  it('[T-53] isClaimsEnabled() needs the flag AND a live lease — the flag alone opens nothing', () => {
     vi.stubEnv('CLAIMS_ENABLED', 'true')
+    vi.stubEnv('CLAIMS_WINDOW_UNTIL', '')
+    expect(isClaimsEnabled()).toBe(false) // ← the T-53 change
+    vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() + 15 * 60 * 1000).toISOString())
     expect(isClaimsEnabled()).toBe(true)
     vi.stubEnv('CLAIMS_ENABLED', 'TRUE') // strict equality — any other spelling stays OFF
+    expect(isClaimsEnabled()).toBe(false)
+  })
+
+  it('[T-53] an EXPIRED lease closes the surface with nobody acting', () => {
+    vi.stubEnv('CLAIMS_ENABLED', 'true')
+    vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() - 1000).toISOString())
     expect(isClaimsEnabled()).toBe(false)
   })
 
@@ -180,6 +193,7 @@ describe('P6 — seul canal réel adjacent : /api/claims (remboursement), gaté 
 
   it('[PASS-ACTUEL] GET /api/claims flag ON sans session → 401 (le canal réclamation est réel mais derrière auth)', async () => {
     vi.stubEnv('CLAIMS_ENABLED', 'true')
+    vi.stubEnv('CLAIMS_WINDOW_UNTIL', new Date(Date.now() + 15 * 60 * 1000).toISOString())
     tokenMock.mockResolvedValue(null)
     const res = await CLAIMS_GET(claimsReq())
     expect(res.status).toBe(401)

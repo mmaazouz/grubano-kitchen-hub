@@ -189,6 +189,7 @@ export type MoneyReviewKind =
   | 'settlement_over_transfer'          // franchisor transferred more than the live net owed → human clawback owed
   | 'settlement_amount_drift'           // resume: frozen payout ≠ live lines, no transfer made → human decision
   | 'refund_reconciliation_incomplete'  // webhook could not list the charge's refunds → reconciliation deferred
+  | 'claim_financial_verification'      // T-49: a claim's money truth is unattributable → evidence-based human reconciliation, NEVER another refund
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

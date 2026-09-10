@@ -23,6 +23,7 @@ import { executeRefund, isRefundsEnabled } from '@/lib/refund'
 import { buildClaimScope, resolveClaimAmount, publicClaimScope, type ClaimScope, type ClaimSelection, type StripeCashTruth } from '@/lib/claim-scope'
 import { getStripe } from '@/lib/stripe'
 import { canonicalReason, authorityScope, isSafetyReason } from '@/lib/claim-reasons'
+import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 
 export type { ClaimSelection, StripeCashTruth } from '@/lib/claim-scope'
 // The canonical reason taxonomy and its authority scopes live in lib/claim-reasons and are
@@ -99,9 +100,43 @@ export async function buildClaimScopeForOrder(input: {
   })
 }
 
-/** Kill-switch — default OFF (mirrors isRefundsEnabled / isChargebacksEnabled). */
+/**
+ * T-53 — THE CLAIMS AUTHORIZATION IS A LEASE, NOT A BOOLEAN.
+ *
+ * Same core property as T-48 on the refund gate, for the same reason. A static flag survives
+ * everything: SIGKILL, a host crash, a power cut, a reboot — `.env.local` is still on disk and
+ * still says true. A rehearsal window opened for fifteen minutes could therefore stay open for
+ * ever, and nobody would have to make a mistake for that to happen.
+ *
+ * So the flag alone authorizes NOTHING. The application additionally requires an ABSOLUTE
+ * deadline that it re-checks on every call, which means the authorization dies of old age with
+ * nobody acting. A restart does not extend it: the deadline is absolute, not a countdown. A
+ * deadline beyond the compiled ceiling is refused outright rather than silently clamped, because
+ * a year-long "window" is a configuration error or tampering, never a longer window.
+ *
+ * This lease grants NO refund authority whatsoever. The refund gate is separate and stays shut.
+ */
+export const CLAIMS_WINDOW_MAX_MS = 60 * 60 * 1000
+
+export type ClaimsGateState =
+  | { open: false; reason: 'flag_off' | 'no_lease' | 'lease_unreadable' | 'lease_expired' | 'lease_too_long' }
+  | { open: true; expiresAt: Date; remainingMs: number }
+
+/** The single place that decides whether the claims surface is open right now. */
+export function claimsGateState(nowMs: number = Date.now()): ClaimsGateState {
+  if (process.env.CLAIMS_ENABLED !== 'true') return { open: false, reason: 'flag_off' }
+  const raw = (process.env.CLAIMS_WINDOW_UNTIL ?? '').trim()
+  if (!raw) return { open: false, reason: 'no_lease' }
+  const t = Date.parse(raw)
+  if (!Number.isFinite(t)) return { open: false, reason: 'lease_unreadable' }
+  if (t <= nowMs) return { open: false, reason: 'lease_expired' }
+  if (t - nowMs > CLAIMS_WINDOW_MAX_MS) return { open: false, reason: 'lease_too_long' }
+  return { open: true, expiresAt: new Date(t), remainingMs: t - nowMs }
+}
+
+/** Kill-switch — default OFF, and lease-bound since T-53. */
 export function isClaimsEnabled(): boolean {
-  return process.env.CLAIMS_ENABLED === 'true'
+  return claimsGateState().open
 }
 
 /** P0-25 (vague 1, principe fondateur) : « aucune automatisation à effet financier
@@ -159,7 +194,45 @@ function abuseWindowDays(): number {
 
 // Active statuses (the order is "locked" against a second claim while in these).
 // C2 adds 'arbitration' (a contested claim is active). C1 never reaches it → byte-identical.
-const ACTIVE_STATUSES = ['restaurant_review', 'approved', 'refunding', 'arbitration'] as const
+// FOUNDER DECISION T-49 (2026-09-10) — EVIDENCE-ONLY / FAIL-CLOSED AMBIGUITY.
+//
+// 'financial_verification' is the explicit state of a claim whose MONEY TRUTH cannot be
+// established from evidence. It is deliberately ACTIVE, never terminal:
+//   • active   ⇒ activeOrderKey stays held ⇒ the customer CANNOT re-file into overlapping
+//                financial authority while the first transaction is unattributed;
+//   • not terminal ⇒ nobody has declared the customer paid or unpaid. Neither is known.
+// Money safety and recovery liveness are BOTH required: fail-closed financially AND
+// fail-VISIBLE operationally. A safe state with no exit is not an acceptable beta design,
+// so this status carries a durable ungated admin queue and an alert on entry.
+const ACTIVE_STATUSES = ['restaurant_review', 'approved', 'refunding', 'arbitration', 'financial_verification'] as const
+
+/** Money truth unresolved; human, evidence-based reconciliation required. */
+export const FINANCIAL_VERIFICATION = 'financial_verification'
+
+/**
+ * T-49 CRASH-WINDOW SELF-LABELLING.
+ *
+ * `triggerClaimRefund` flips a claim to 'refunding' in one atomic CAS and only afterwards
+ * learns the refund identity. An infrastructure fault in between (uncaught throw, DB write
+ * failure, process death) used to leave 'refunding' + refundId null + refundError null: a state
+ * no route could classify, no reconciler could reach and no admin could exit — while a Stripe
+ * refund for that order may already have SUCCEEDED.
+ *
+ * The marker rides that SAME atomic transition, so there is no additional write and therefore
+ * no new crash window. It does NOT assert failure: it says only that an attempt started and its
+ * identity is not yet bound. Every terminal path already overwrites or clears `refundError`.
+ */
+export const RECONCILE_REQUIRED = 'reconcile_required'
+const reconcileRequiredMarker = (now: Date) =>
+  `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${now.toISOString()} — identité du remboursement pas encore liée. Ceci n'est PAS un échec : la vérité argent doit être PROUVÉE (Stripe), jamais devinée.`
+
+/** True when this refundError is the crash marker rather than a recorded failure. */
+export function isReconcileRequired(refundError?: string | null): boolean {
+  return typeof refundError === 'string' && refundError.startsWith(RECONCILE_REQUIRED)
+}
+
+/** The identity stamped on a Refund row created BY a claim (lib/refund.ts persists it). */
+export const claimRefundReason = (claimId: string) => `claim:${claimId}`
 /** Closed for good: money already moved, or the case was definitively refused.
  *  'refused' is NOT terminal — the client may still contest it within the window. */
 const TERMINAL_STATUSES: readonly string[] = ['refunded', 'refused_final']
@@ -333,6 +406,29 @@ export async function listRestaurantClaims(restaurantIds: string[], opts?: { sta
 }
 
 // ── REFUND TRIGGER — executeRefund at most once per claim ─────────────────────────
+/**
+ * T-51 — AMOUNT IS EVIDENCE; AMOUNT IS NOT IDENTITY.
+ *
+ * RESUME-FIRST re-drives the oldest PENDING Refund row of the ORDER, whoever created it. The
+ * engine flags a mismatch only when the AMOUNTS differ, and this module compared amounts too.
+ * Two legitimate refunds on one order can carry the same amount, so a claim could be bound to —
+ * and reported settled by — a refund created by the admin rail, the ghost-order path, or an
+ * earlier claim. Same money, wrong attribution, and a customer told their claim was settled by
+ * a payment that was never theirs.
+ *
+ * The binding is now checked against the row's OWN identity. An unreadable identity fails
+ * CLOSED: a binding we cannot verify is treated exactly like a wrong one.
+ */
+async function refundRowBelongsToClaim(refundRowId: string, claimId: string): Promise<boolean> {
+  try {
+    const row = await prisma.refund.findUnique({ where: { id: refundRowId }, select: { reason: true } })
+    return !!row && row.reason === claimRefundReason(claimId)
+  } catch (e) {
+    console.warn('[claims] refund identity check unavailable —', e instanceof Error ? e.message : e)
+    return false
+  }
+}
+
 async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult> {
   // REFUNDS gate: engine off → leave the claim 'approved', refund pending activation.
   if (!isRefundsEnabled()) return { state: 'pending', reason: 'refunds_disabled' }
@@ -340,7 +436,8 @@ async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult>
   // ATOMIC claim of the single refund attempt: only one caller flips the flag.
   const got = await prisma.claim.updateMany({
     where: { id: claimId, status: 'approved', refundAttempted: false },
-    data:  { refundAttempted: true, status: 'refunding' },
+    // T-49: the marker rides the SAME atomic write — no extra round trip, no new window.
+    data:  { refundAttempted: true, status: 'refunding', refundError: reconcileRequiredMarker(new Date()) },
   })
   if (got.count !== 1) return { state: 'already_handled' }
 
@@ -374,6 +471,18 @@ async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult>
       })
       return { state: 'failed', error: 'resume_mismatch' }
     }
+    // T-51: the engine can succeed on a row this claim did not create. Verify identity BEFORE
+    // telling the customer their claim was settled.
+    if (!(await refundRowBelongsToClaim(result.refundId, claimId))) {
+      await prisma.claim.update({
+        where: { id: claimId },
+        data:  {
+          refundId:    result.refundId,
+          refundError: `resume_mismatch: le moteur a abouti sur un remboursement (${result.refundId}) qui n'appartient PAS à cette réclamation — montant identique, identité différente. De l'argent A bougé, mais pas au titre de cette réclamation. Décision admin requise — aucun nouveau remboursement automatique.`,
+        },
+      })
+      return { state: 'failed', error: 'resume_mismatch' }
+    }
     await prisma.claim.update({
       where: { id: claimId },
       data:  { status: 'refunded', refundId: result.refundId, refundError: null, activeOrderKey: null },
@@ -395,6 +504,18 @@ async function triggerClaimRefund(claimId: string): Promise<RefundTriggerResult>
         data:  {
           refundId:    result.refundId,
           refundError: `resume_mismatch: le moteur a repris un remboursement antérieur (${result.amountCents} c, encore en attente chez Stripe) au lieu du montant de cette réclamation (${claim.requestedAmountCents} c). Décision admin requise — aucun nouveau remboursement automatique.`,
+        },
+      })
+      return { state: 'failed', error: 'resume_mismatch' }
+    }
+    // T-51: identical identity guard on the 202 path — a pending refund we did not create is
+    // still not ours to report as this claim's.
+    if (!(await refundRowBelongsToClaim(result.refundId, claimId))) {
+      await prisma.claim.update({
+        where: { id: claimId },
+        data:  {
+          refundId:    result.refundId,
+          refundError: `resume_mismatch: le moteur a repris un remboursement (${result.refundId}) qui n'appartient PAS à cette réclamation — montant identique, identité différente, encore en attente chez Stripe. Décision admin requise — aucun nouveau remboursement automatique.`,
         },
       })
       return { state: 'failed', error: 'resume_mismatch' }
@@ -959,7 +1080,12 @@ export async function listActionableRefundClaims() {
     let moneyState:
       | 'stripe_pending' | 'stripe_failed' | 'stripe_succeeded_claim_unreconciled'
       | 'stale_refunding_no_refund_row' | 'refund_error_recorded' | 'approved_not_driven'
-    if (c.refundError) moneyState = 'refund_error_recorded'
+      // T-49: an interrupted attempt whose refund identity was never bound. NOT a failure —
+      // money may have moved. Only evidence can say. Never closed by admin assertion.
+      | 'reconcile_required'
+    if (isReconcileRequired(c.refundError)) moneyState = 'reconcile_required'
+    else if (c.status === FINANCIAL_VERIFICATION) moneyState = 'reconcile_required'
+    else if (c.refundError) moneyState = 'refund_error_recorded'
     else if (!row) moneyState = c.status === 'refunding' ? 'stale_refunding_no_refund_row' : 'approved_not_driven'
     else if (row.status === 'pending') moneyState = 'stripe_pending'
     else if (row.status === 'failed') moneyState = 'stripe_failed'
@@ -999,6 +1125,11 @@ export async function listActionableRefundClaims() {
  * NOT be closed by hand: the first may still pay out, the second already did.
  */
 export function isStuckResolvable(claim: { status: string; refundError?: string | null }): boolean {
+  // FOUNDER DECISION T-49: this hatch closes a case by ADMIN ASSERTION ('paid another way' /
+  // 'nothing owed'). That is a judgement, not evidence, so it must never be offered on a claim
+  // whose money truth is unknown. The crash marker means exactly that — unknown — so it is
+  // excluded here and routed to the EVIDENCE-based reconciler instead.
+  if (isReconcileRequired(claim.refundError)) return false
   return !!claim.refundError && ['approved', 'refunding'].includes(claim.status)
 }
 
@@ -1053,6 +1184,233 @@ export async function resolveStuckClaim(input: {
  *   • INCAPABLE of moving money — it calls no engine and creates no Stripe object.
  */
 export type ClaimRecoverySummary = { scanned: number; reconciled: number; skipped: number; details: string[] }
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// T-49 — FINANCIAL VERIFICATION: FAIL-CLOSED FINANCIALLY, FAIL-VISIBLE OPERATIONALLY
+//
+// Founder decision, 2026-09-10: when authoritative evidence cannot establish whether the
+// customer was paid, the system must NOT guess. It must not close the claim, must not say
+// paid, must not say unpaid, must not authorize another refund, and must not release the
+// order for a second money claim. It parks the claim in an explicit state and escalates.
+//
+// That is only acceptable because the state is LIVE: a durable admin queue that survives the
+// claims feature flag being off, plus an alert on entry. Email is best effort; the queue is
+// the control. A safe state nobody can see is not safety, it is a leak.
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/** Why a claim could not be attributed. Recorded verbatim for the operator. */
+export type AmbiguityReason =
+  | 'stripe_unreadable'          // Stripe truth could not be read at all
+  | 'refund_moved_unattributed'  // money moved on the order, but not provably for THIS claim
+  | 'multiple_candidate_refunds' // more than one row claims this identity
+
+/**
+ * Park a claim in FINANCIAL VERIFICATION and escalate. Moves NO money, ever.
+ *
+ * The CAS only accepts a claim that is still in a pre-terminal money state, so a claim already
+ * reconciled by the webhook cannot be dragged backwards by a late reconciler.
+ */
+export async function enterFinancialVerification(input: {
+  claimId: string
+  reason:  AmbiguityReason
+  detail:  string
+  refundId?: string | null
+  stripeRefundId?: string | null
+}): Promise<{ entered: boolean }> {
+  const moved = await prisma.claim.updateMany({
+    where: { id: input.claimId, status: { in: ['refunding', 'approved'] } },
+    data:  {
+      status:      FINANCIAL_VERIFICATION,
+      refundError: `${FINANCIAL_VERIFICATION}:${input.reason}: ${input.detail}`,
+      // activeOrderKey is deliberately NOT cleared: the order stays locked against a second
+      // money claim while the first transaction is unattributed (founder rule).
+    },
+  })
+  if (moved.count !== 1) return { entered: false }
+
+  // Alert is BEST EFFORT and is never the liveness control — the queue is. A failed send
+  // must never make the claim invisible, so this cannot throw into the caller.
+  try {
+    const claim = await prisma.claim.findUnique({
+      where:  { id: input.claimId },
+      select: { orderId: true, requestedAmountCents: true, createdAt: true },
+    })
+    await sendAdminMoneyReviewAlert({
+      kind:      'claim_financial_verification',
+      // One alert per claim per ambiguity reason: a replayed reconciliation cannot storm.
+      dedupeKey: `claim_fv:${input.claimId}:${input.reason}`,
+      title:     `Vérification financière requise — réclamation ${input.claimId}`,
+      facts: {
+        claimId:        input.claimId,
+        orderId:        claim?.orderId ?? null,
+        claimState:     FINANCIAL_VERIFICATION,
+        ambiguity:      input.reason,
+        detail:         input.detail,
+        refundRowId:    input.refundId ?? null,
+        stripeRefundId: input.stripeRefundId ?? null,
+        requestedCents: claim?.requestedAmountCents ?? null,
+        // Deliberately NOT asserted: whether money moved. That is the open question.
+        moneyMoved:     'INDÉTERMINÉ — à établir par preuve Stripe',
+        nextAction:     'Réconciliation manuelle fondée sur la preuve. AUCUN nouveau remboursement.',
+      },
+    })
+  } catch (e) {
+    console.error('[claims] financial-verification alert failed (claim stays queued) —', e instanceof Error ? e.message : e)
+  }
+  return { entered: true }
+}
+
+/**
+ * The durable FINANCIAL VERIFICATION queue. Deliberately UNGATED by CLAIMS_ENABLED: the money
+ * question exists whatever the feature flag says, and hiding it behind the flag is precisely
+ * how a claim would disappear silently.
+ */
+export async function listFinancialVerificationClaims() {
+  const claims = await prisma.claim.findMany({
+    where:  { status: FINANCIAL_VERIFICATION },
+    select: {
+      id: true, orderId: true, reason: true, requestedAmountCents: true, refundId: true,
+      refundError: true, createdAt: true, decidedAt: true, restaurantId: true,
+    },
+    orderBy: { createdAt: 'asc' },
+    take:    200,
+  })
+  return triageBySafety(claims).map((c) => ({
+    ...c,
+    /** Never states whether money moved: that is exactly what is unresolved. */
+    moneyTruth: 'unresolved' as const,
+    ambiguity:  (c.refundError ?? '').split(':')[1] ?? 'unknown',
+  }))
+}
+
+/** Claims whose refund attempt was interrupted before its identity was bound (T-49). */
+export async function listReconcileRequiredClaims() {
+  const claims = await prisma.claim.findMany({
+    where:  { status: { in: ['refunding', 'approved'] }, refundError: { startsWith: RECONCILE_REQUIRED } },
+    select: {
+      id: true, orderId: true, reason: true, requestedAmountCents: true, refundId: true,
+      refundError: true, createdAt: true, restaurantId: true,
+    },
+    orderBy: { createdAt: 'asc' },
+    take:    200,
+  })
+  return triageBySafety(claims)
+}
+
+/**
+ * T-49 — EVIDENCE-BASED CLAIM RECONCILER. The real, reachable recovery exit.
+ *
+ * FOUNDER POLICY: evidence only, fail closed on ambiguity. This function therefore has exactly
+ * one authority — READ Stripe and our own Refund rows, IDENTIFY which refund (if any) belongs to
+ * this claim, and APPLY the truth that already exists. It has NO authority to create money:
+ * it never calls the refund engine, never touches Stripe with a write, never retries.
+ *
+ * Outcomes, in the founder's own terms:
+ *   proven succeeded  → bind the exact identity, reconcile claim/ledger/loyalty, record the
+ *                       ACTUAL amount (the engine's, never the requested one);
+ *   proven failed     → record the failure, land in the canonical recoverable state;
+ *   still pending     → stay pending. No terminal success, no terminal failure, no 2nd refund;
+ *   proven untouched  → nothing was ever created and no cash moved ⇒ safe to release for a
+ *                       fresh attempt. This is the ONLY branch that re-opens the attempt, and it
+ *                       requires POSITIVE proof of absence, not merely a missing binding;
+ *   ambiguous         → FINANCIAL VERIFICATION. No money, no closure, no re-file, no guess.
+ */
+export type ClaimEvidenceOutcome =
+  | { ok: true; outcome: 'refunded'; refundId: string; amountCents: number }
+  | { ok: true; outcome: 'refund_failed'; refundId: string }
+  | { ok: true; outcome: 'still_pending'; refundId: string }
+  | { ok: true; outcome: 'no_refund_proven' }
+  | { ok: true; outcome: 'financial_verification'; reason: AmbiguityReason; detail: string }
+  | { ok: false; status: 404 | 409 | 500; error: string }
+
+const RECONCILABLE_STATUSES = ['refunding', 'approved', FINANCIAL_VERIFICATION]
+
+export async function reconcileClaimEvidence(input: { claimId: string }): Promise<ClaimEvidenceOutcome> {
+  const claim = await prisma.claim.findUnique({
+    where:  { id: input.claimId },
+    select: { id: true, orderId: true, status: true, refundId: true, requestedAmountCents: true },
+  })
+  if (!claim) return { ok: false, status: 404, error: 'Réclamation introuvable.' }
+  if (!RECONCILABLE_STATUSES.includes(claim.status)) {
+    return { ok: false, status: 409, error: 'Cette réclamation n’est pas en attente de réconciliation.' }
+  }
+
+  // Every Refund row of the ORDER — including rows this claim is not bound to. `reason` is the
+  // identity stamp lib/refund.ts writes at creation; it is read here and nowhere else (T-52).
+  const rows = await prisma.refund.findMany({
+    where:  { orderId: claim.orderId },
+    select: { id: true, status: true, amountCents: true, stripeRefundId: true, reason: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  const mine = rows.filter((r) => r.reason === claimRefundReason(claim.id))
+
+  // ── AMBIGUOUS: more than one row stamped with this claim's identity ────────────
+  if (mine.length > 1) {
+    const detail = `${mine.length} lignes Refund portent l'identité de cette réclamation (${mine.map((r) => r.id).join(', ')}). Attribution impossible sans décision humaine.`
+    await enterFinancialVerification({ claimId: claim.id, reason: 'multiple_candidate_refunds', detail })
+    return { ok: true, outcome: 'financial_verification', reason: 'multiple_candidate_refunds', detail }
+  }
+
+  // ── PROVEN: exactly one row is ours. Apply ITS truth, whatever it is. ──────────
+  if (mine.length === 1) {
+    const row = mine[0]
+    // Bind the identity the crash prevented from being written. This is a BINDING, not a
+    // payment: it records which refund was already driven for this claim.
+    await prisma.claim.updateMany({
+      where: { id: claim.id, status: { in: RECONCILABLE_STATUSES } },
+      data:  { refundId: row.id, ...(claim.status === FINANCIAL_VERIFICATION ? { status: 'refunding' } : {}) },
+    })
+    if (row.status === 'succeeded' || row.status === 'failed') {
+      // Reuse the already-audited reconciler: same CAS, same guards, no new money code.
+      await reconcileClaimForRefund({ refundRowId: row.id, status: row.status, stripeRefundId: row.stripeRefundId })
+      return row.status === 'succeeded'
+        ? { ok: true, outcome: 'refunded', refundId: row.id, amountCents: row.amountCents }
+        : { ok: true, outcome: 'refund_failed', refundId: row.id }
+    }
+    // PENDING: money has not reached the customer and may still. Clear only the crash marker —
+    // the identity is now known — and leave the claim pending. No terminal state either way.
+    await prisma.claim.updateMany({
+      where: { id: claim.id, refundId: row.id, status: { in: ['refunding', 'approved'] } },
+      data:  { status: 'refunding', refundError: null },
+    })
+    return { ok: true, outcome: 'still_pending', refundId: row.id }
+  }
+
+  // ── NO ROW IS OURS. Absence of a binding is NOT absence of money: ask Stripe. ──
+  const order = await prisma.order.findUnique({
+    where:  { id: claim.orderId },
+    select: { stripePaymentIntentId: true },
+  })
+  const truth = await stripeCashTruthForOrder(order?.stripePaymentIntentId)
+  if (!truth) {
+    const detail = 'La vérité Stripe n’a pas pu être lue pour cette commande. Aucune conclusion n’est tirée : ni remboursé, ni non remboursé.'
+    await enterFinancialVerification({ claimId: claim.id, reason: 'stripe_unreadable', detail })
+    return { ok: true, outcome: 'financial_verification', reason: 'stripe_unreadable', detail }
+  }
+
+  const nothingAtStripe = (truth.refundedCents || 0) === 0 && (truth.pendingCents || 0) === 0
+  if (nothingAtStripe && rows.length === 0) {
+    // POSITIVE PROOF OF ABSENCE: no Refund row exists on this order at all, and Stripe reports
+    // zero refunded and zero pending. Nothing was created and no cash moved, so re-opening the
+    // attempt cannot double-pay anyone. This is the ONLY branch that resets refundAttempted,
+    // and it is gated on proof, never on a missing binding.
+    await prisma.claim.updateMany({
+      where: { id: claim.id, status: { in: RECONCILABLE_STATUSES } },
+      data:  {
+        status:          'approved',
+        refundAttempted: false,
+        refundId:        null,
+        refundError:     'no_refund_proven: aucune ligne Refund sur cette commande et Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation est de nouveau payable par le rail normal.',
+      },
+    })
+    return { ok: true, outcome: 'no_refund_proven' }
+  }
+
+  // Money moved on this order, but nothing proves it moved FOR THIS CLAIM. Fail closed.
+  const detail = `Des remboursements existent sur cette commande (Stripe : ${truth.refundedCents} c remboursés, ${truth.pendingCents} c en attente ; ${rows.length} ligne(s) Refund) mais aucune ne porte l'identité de cette réclamation. L'attribution ne peut pas être prouvée.`
+  await enterFinancialVerification({ claimId: claim.id, reason: 'refund_moved_unattributed', detail })
+  return { ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail }
+}
 
 export async function recoverStrandedClaimReconciliations(limit = 200): Promise<ClaimRecoverySummary> {
   const out: ClaimRecoverySummary = { scanned: 0, reconciled: 0, skipped: 0, details: [] }

@@ -7157,7 +7157,8 @@
       "arbitration": "En arbitraje de Grubano",
       "refused_final": "Rechazo confirmado",
       "refund_failed": "Reembolso fallido — nuestro equipo se encarga",
-      "refund_pending_stripe": "Reembolso enviado al banco — pendiente de confirmación"
+      "refund_pending_stripe": "Reembolso enviado al banco — pendiente de confirmación",
+      "financial_verification": "Su reembolso requiere una verificación manual. No se iniciará ningún reembolso nuevo hasta que se haya verificado la transacción existente."
     },
     "client": {
       "reportProblem": "Reportar un problema",
@@ -7230,6 +7231,7 @@
       "approvedNotSent": "Reclamación aprobada: esta acción no ha confirmado ningún reembolso. Compruébelo en «Reembolsos por tratar».",
       "approvedFailed": "Reclamación aprobada, pero el reembolso ha FALLADO: no ha salido dinero. Trátelo en «Reembolsos por tratar».",
       "approvedResumeMismatch": "Reclamación aprobada, PERO el motor ha reanudado un reembolso ANTERIOR de este pedido: sí ha salido dinero, por otro importe. No emita otro reembolso: abra «Reembolsos por tratar».",
+      "financialVerificationRequired": "Verificación financiera requerida: se necesita la acción de un operador.",
       "refusedFinalDone": "Rechazo confirmado.",
       "processing": "Procesando…",
       "signalsTitle": "Señales",

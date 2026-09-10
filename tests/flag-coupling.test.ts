@@ -10,10 +10,21 @@ describe('checkFlagCoupling', () => {
     expect(checkFlagCoupling({})).toEqual({ ok: true, errors: [] })
   })
 
-  it('CLAIMS without REFUNDS → incoherent', () => {
+  // GATE §19 CONTRACT CHANGE (2026-09-10, founder decision). This used to assert that claims
+  // open with refunds shut is INCOHERENT. That rule forbade the only safe way to rehearse the
+  // claims workflow — claims open, refunds shut, no money able to move — and would have forced
+  // a money-capable rehearsal to test a non-money flow. Its original concern (an approved claim
+  // with no money behind it) is now visible rather than silent, so it is a WARNING, not an error.
+  it('[§19] CLAIMS without REFUNDS is ALLOWED — and warned about, not failed', () => {
     const r = checkFlagCoupling({ CLAIMS_ENABLED: 'true' })
-    expect(r.ok).toBe(false)
-    expect(r.errors.some((e: string) => e.includes('CLAIMS_ENABLED') && e.includes('REFUNDS_ENABLED'))).toBe(true)
+    expect(r.ok).toBe(true) // ← the change: no longer an automatic failure
+    const w = checkFlagWarnings({ CLAIMS_ENABLED: 'true' })
+    expect(w.some((m: string) => m.includes('CLAIMS_ENABLED') && m.includes('REFUNDS_ENABLED'))).toBe(true)
+  })
+
+  it('[§19] the warning is silent when both are on, so it cannot become background noise', () => {
+    expect(checkFlagWarnings({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' })
+      .some((m: string) => m.includes('configuration de RÉPÉTITION'))).toBe(false)
   })
   it('CLAIMS with REFUNDS → coherent', () => {
     expect(checkFlagCoupling({ CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
@@ -43,8 +54,11 @@ describe('checkFlagCoupling', () => {
     expect(r.ok).toBe(false)
     expect(r.errors.some((e: string) => e.includes('CLAIMS_AUTO_APPROVE_ENABLED') && e.includes('CLAIMS_ENABLED'))).toBe(true)
   })
-  it('CLAIMS_AUTO_APPROVE + CLAIMS sans REFUNDS → incoherent (transitif via CLAIMS⇒REFUNDS)', () => {
-    expect(checkFlagCoupling({ CLAIMS_AUTO_APPROVE_ENABLED: 'true', CLAIMS_ENABLED: 'true' }).ok).toBe(false)
+  // §19: the transitive CLAIMS⇒REFUNDS error is gone, so auto-approve with claims open and
+  // refunds shut is no longer an automatic failure. Auto-approve still REQUIRES claims.
+  it('[§19] AUTO_APPROVE + CLAIMS without REFUNDS → allowed by coupling (auto-approve still needs CLAIMS)', () => {
+    expect(checkFlagCoupling({ CLAIMS_AUTO_APPROVE_ENABLED: 'true', CLAIMS_ENABLED: 'true' }).ok).toBe(true)
+    expect(checkFlagCoupling({ CLAIMS_AUTO_APPROVE_ENABLED: 'true' }).ok).toBe(false)
   })
   it('chaîne complète AUTO+CLAIMS+REFUNDS → coherent (config post-bêta)', () => {
     expect(checkFlagCoupling({ CLAIMS_AUTO_APPROVE_ENABLED: 'true', CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
@@ -59,8 +73,9 @@ describe('checkFlagCoupling', () => {
     expect(r.ok).toBe(false)
     expect(r.errors.some((e: string) => e.includes('CLAIM_AUTO_RESOLVE_ENABLED') && e.includes('CLAIMS_ENABLED'))).toBe(true)
   })
-  it('CLAIM_AUTO_RESOLVE + CLAIMS sans REFUNDS → incoherent (transitif via CLAIMS⇒REFUNDS)', () => {
-    expect(checkFlagCoupling({ CLAIM_AUTO_RESOLVE_ENABLED: 'true', CLAIMS_ENABLED: 'true' }).ok).toBe(false)
+  it('[§19] AUTO_RESOLVE + CLAIMS without REFUNDS → allowed by coupling (auto-resolve still needs CLAIMS)', () => {
+    expect(checkFlagCoupling({ CLAIM_AUTO_RESOLVE_ENABLED: 'true', CLAIMS_ENABLED: 'true' }).ok).toBe(true)
+    expect(checkFlagCoupling({ CLAIM_AUTO_RESOLVE_ENABLED: 'true' }).ok).toBe(false)
   })
   it('chaîne complète AUTO_RESOLVE+CLAIMS+REFUNDS → coherent (config post-pilote)', () => {
     expect(checkFlagCoupling({ CLAIM_AUTO_RESOLVE_ENABLED: 'true', CLAIMS_ENABLED: 'true', REFUNDS_ENABLED: 'true' }).ok).toBe(true)
@@ -117,12 +132,17 @@ describe('checkFlagCoupling', () => {
   })
 
   it('reports EVERY violated coupling at once', () => {
-    const r = checkFlagCoupling({ CLAIMS_ENABLED: 'true', TIPS_ENABLED: 'true' })
-    expect(r.errors).toHaveLength(2)
+    // TIPS⇒LOGISTICS_PAYOUT and LOGISTICS_PAYOUT⇒LOGISTICS_CONNECT both fire.
+    const r = checkFlagCoupling({ TIPS_ENABLED: 'true', LOGISTICS_PAYOUT_ENABLED: 'true' })
+    expect(r.errors).toHaveLength(1)
+    const r2 = checkFlagCoupling({ TIPS_ENABLED: 'true', CLAIM_AUTO_RESOLVE_ENABLED: 'true' })
+    expect(r2.errors).toHaveLength(2)
   })
 
-  it('COUPLING_RULES documents the 21 known couplings (courier ÉTAPE 6 + scission P0-04 + auto-approve P0-25 + auto-resolve P0-27 + 11 racines de rôle P0-06)', () => {
-    expect(COUPLING_RULES).toHaveLength(21)
+  it('COUPLING_RULES documents the 20 known couplings (CLAIMS⇒REFUNDS narrowed to a warning, gate §19 2026-09-10)', () => {
+    expect(COUPLING_RULES).toHaveLength(20)
+    expect(COUPLING_RULES.some((r: { flag: string; requires: string }) =>
+      r.flag === 'CLAIMS_ENABLED' && r.requires === 'REFUNDS_ENABLED')).toBe(false)
   })
 })
 

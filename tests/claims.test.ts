@@ -14,7 +14,7 @@ const { db } = vi.hoisted(() => ({
   db: {
     order: { findUnique: vi.fn() },
     claim: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-    refund: { aggregate: vi.fn(), findMany: vi.fn() },
+    refund: { findUnique: vi.fn(), aggregate: vi.fn(), findMany: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -35,6 +35,10 @@ beforeEach(() => {
   db.order.findUnique.mockResolvedValue(paidOrder())
   // Claims batch 1: the claim amount is now DERIVED (order lines minus what is already refunded).
   db.refund.aggregate.mockResolvedValue({ _sum: { amountCents: 0 } })
+  // T-51: a claim may only be reported settled by a refund carrying ITS identity. The engine
+  // mock returns row 'rf1', so the fixture row must be stamped for this claim — otherwise the
+  // guard fails closed (which is the point) and every binding becomes a resume_mismatch.
+  db.refund.findUnique.mockResolvedValue({ id: 'rf1', reason: 'claim:cl1', status: 'succeeded' })
   db.refund.findMany.mockResolvedValue([])
   db.claim.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'cl1', ...data }))
   db.claim.findUnique.mockResolvedValue({ id: 'cl1', orderId: 'o1', restaurantId: 'r1', status: 'restaurant_review', requestedAmountCents: 5000 })
