@@ -210,8 +210,10 @@ export default function AdminClaimsArbitration() {
                       locking the customer out of ever re-filing on that order. Neither button
                       moves money: they RECORD what is true and close the case. */}
                   {!r.resolvable ? (
-                    // The route refuses this row on purpose: a PENDING refund may still pay out,
-                    // and a SUCCEEDED one already did. Offering a button here would be a lie.
+                    // The route refuses this row on purpose, for two different reasons depending on
+                    // the state: a BOUND refund may still pay out or already did, while an UNBOUND
+                    // one means we do not know what happened. Offering a button here would be a lie
+                    // in the first case and a guess in the second.
                     <p className="mt-3 text-[13px] text-grubano-ink-muted">
                       {/* AUDIT FIX (gate T-49). This paragraph promised « réconciliation rejouée
                           chaque jour ». It rendered on FIVE of the six money states and was untrue
