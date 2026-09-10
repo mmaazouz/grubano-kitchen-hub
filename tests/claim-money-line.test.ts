@@ -16,9 +16,21 @@ import { moneyLineFor, isResumeMismatch, RESUME_MISMATCH } from '@/lib/claim-mon
 // no shipped writer — the same tautology that let the inert regex through in round 2. The strings
 // are now READ OUT OF lib/claims.ts, so a writer that stops emitting the marker fails this suite.
 const CLAIMS_SRC = readFileSync('lib/claims.ts', 'utf8')
-/** Every refundError literal the engine writes for a mismatch, taken from the source itself. */
-const SHIPPED_MISMATCH_WRITERS = (CLAIMS_SRC.match(/refundError: `resume_mismatch:[^`]*`/g) ?? [])
-  .map((m) => m.replace(/^refundError: `/, '').replace(/`$/, ''))
+// ROUND-6 AUDIT FIX (P3): the extractor used to pre-filter on the very prefix the predicate
+// tests (`resume_mismatch:`), so "every shipped writer is recognised" was a tautology. Writers
+// are now classified by the ENGINE'S OWN VERDICT next to them: a refundError template literal
+// whose NEXT `return {…}` carries `error: 'resume_mismatch'` is a mismatch writer; every other
+// refundError template literal is not. The predicate is then checked against BOTH sets — the
+// second half is what makes the first discriminating.
+const ALL_WRITERS = Array.from(CLAIMS_SRC.matchAll(/refundError:\s+`([^`]*)`/g)).map((m) => {
+  const after = CLAIMS_SRC.slice((m.index ?? 0) + m[0].length)
+  const nextReturn = after.match(/return \{[^}]*\}/)
+  return { text: m[1], engineSaysMismatch: !!nextReturn && /error: 'resume_mismatch'/.test(nextReturn[0]) }
+})
+/** Every refundError literal the engine writes for a mismatch, classified by the engine's return. */
+const SHIPPED_MISMATCH_WRITERS = ALL_WRITERS.filter((w) => w.engineSaysMismatch).map((w) => w.text)
+/** Every OTHER refundError literal — the predicate must say NO to each of these. */
+const SHIPPED_OTHER_WRITERS = ALL_WRITERS.filter((w) => !w.engineSaysMismatch).map((w) => w.text)
 const MISMATCH = SHIPPED_MISMATCH_WRITERS[0] ?? ''
 
 describe('the two ambiguous buckets never claim to know anything', () => {
@@ -146,8 +158,25 @@ describe('every mismatch string the engine actually writes is recognised', () =>
     // keyword match would fail on the correct text and pass on a reworded wrong one.
     const l = moneyLineFor({ kind: 'other_unsettled', refundId: 'rf9', refundError: MISMATCH })
     expect(l.text).not.toContain('de l’argent a bougé')       // the round-4 over-claim, verbatim
-    expect(l.text).not.toMatch(/^(?!.*ne dit rien).*a été versé/) // "was paid", outside a negation
+    // ROUND-6 AUDIT FIX (P3): the assertion here was /^(?!.*ne dit rien).*a été versé/, which the
+    // NEXT line made unmatchable — inert. The check is now on the text OUTSIDE the negation:
+    // remove the "il ne dit rien de …" clause, and nothing that remains may assert payment.
+    const NEGATION = /il ne dit rien de ce qui a été versé[^.]*/
+    const outsideNegation = l.text.replace(NEGATION, '')
+    expect(outsideNegation).not.toMatch(/a été versé|a bougé|a atteint|a reçu/)
     expect(l.text).toContain('ne dit rien')                    // it explicitly declines to say
+    // NEGATIVE CONTROL — a reworded over-claim that KEEPS the negation still fails this check,
+    // which the inert regex could never do.
+    const wrong = 'de l’argent a été versé à quelqu’un d’autre, et il ne dit rien de ce qui a été versé au titre de cette réclamation.'
+    expect(wrong.replace(NEGATION, '')).toMatch(/a été versé/)
+    expect(wrong).not.toMatch(/^(?!.*ne dit rien).*a été versé/) // ← the old assertion passes the WRONG text
+  })
+
+  it('…and says NO to every refundError literal the engine writes that is NOT a mismatch', () => {
+    // The discriminating half. Without it, a predicate that returned true for everything would
+    // pass "every mismatch writer is recognised".
+    expect(SHIPPED_OTHER_WRITERS.length).toBeGreaterThanOrEqual(2)
+    for (const w of SHIPPED_OTHER_WRITERS) expect(isResumeMismatch(w), w.slice(0, 60)).toBe(false)
   })
 
   it('NEGATIVE CONTROL — a hand-typed fixture would not have caught a writer change', () => {

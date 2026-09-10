@@ -7,14 +7,15 @@
 //                     cannot be proven; a claim never binds to another rail's refund;
 //   RECOVERY LIVENESS — the ambiguous claim lands in a durable queue that survives the feature
 //                     flag, raises an alert, and has a reachable evidence-based exit.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { updateManyMock } from './support/prisma-where'
 
 const { db } = vi.hoisted(() => ({
   db: {
     claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn() },
-    refund: { findMany: vi.fn(), findUnique: vi.fn() },
-    order:  { findUnique: vi.fn() },
+    refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
+    order:  { findUnique: vi.fn(), findMany: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -26,7 +27,9 @@ const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn() }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: alertMock }))
 
 const { stripeMock } = vi.hoisted(() => ({
-  stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn() } },
+  // `refunds.create` exists ONLY so a test can assert it was never called: this module has no
+  // Stripe write authority, and a mock that lacks the method would make that assertion vacuous.
+  stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } },
 }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
@@ -34,6 +37,8 @@ import {
   reconcileClaimEvidence, enterFinancialVerification, listFinancialVerificationClaims,
   listReconcileRequiredClaims, isStuckResolvable, isReconcileRequired, claimRefundReason, attributeClaimRefund, reconcileMarkerAge, RECONCILE_GRACE_MS, runClaimAutoApproval,
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
+  // round 7
+  adoptStripeRefundForClaim, reconcileClaimForRefund, isNoRefundProven, NO_REFUND_PROVEN, EXTERNAL_REFUND_KEY_PREFIX,
 } from '@/lib/claims'
 
 /** The simulated row the CAS clauses are evaluated against (tests/support/prisma-where). */
@@ -67,11 +72,16 @@ beforeEach(() => {
   db.claim.findMany.mockResolvedValue([])
   db.refund.findMany.mockResolvedValue([])
   db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
-  db.order.findUnique.mockResolvedValue({ stripePaymentIntentId: 'pi_1' })
+  db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', stripePaymentIntentId: 'pi_1' })
+  db.order.findMany.mockResolvedValue([])
+  db.refund.findFirst.mockResolvedValue(null)
+  db.refund.create.mockResolvedValue({ id: 'rf_ext' })
   stripeMock.paymentIntents.retrieve.mockResolvedValue({
     latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
   })
   stripeMock.refunds.list.mockResolvedValue({ data: [] })
+  stripeMock.refunds.retrieve.mockReset()
+  stripeMock.refunds.create.mockReset()
   alertMock.mockResolvedValue({ status: 'sent' })
   refundsFlag.mockReturnValue(false)
 })

@@ -34,11 +34,15 @@ type MoneyState =
   // T-49: an interrupted attempt whose refund identity was never bound, or a claim parked
   // in FINANCIAL VERIFICATION. Money truth unknown — never asserted either way.
   | 'reconcile_required'
+  // ROUND-6 AUDIT FIX (P2): the reconciler PROVED nothing ever left. A success, not an error.
+  | 'absence_proven_payable'
 type ActionableRefundClaim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number; status: string
   moneyState: MoneyState; safety?: boolean; refundError?: string | null
   /** The server says whether the escape hatch would accept this row — never guessed here. */
   resolvable?: boolean
+  /** ROUND-6 AUDIT FIX (P1): a refund is bound, and the engine established it is NOT this claim's. */
+  refundNotOurs?: boolean
   actualRefundedCents: number | null
   refund: { id: string; status: string; actualAmountCents: number; stripeRefundId: string | null } | null
 }
@@ -145,12 +149,15 @@ export default function AdminClaimsArbitration() {
   // failed refund never reads as "in progress".
   const MONEY_LABEL: Record<MoneyState, { text: string; tone: 'warning' | 'danger' | 'neutral' }> = {
     stripe_pending:                       { text: 'Remboursement envoyé à la banque — en attente de confirmation Stripe', tone: 'warning' },
-    stripe_failed:                        { text: 'Remboursement ÉCHOUÉ chez Stripe — le client n’a rien reçu', tone: 'danger' },
+    // ROUND-6 AUDIT FIX (P1 class): « le client n’a rien reçu » was a claim about the CUSTOMER read
+    // off ONE row's status. The row paid nothing; the order's other refunds are not read here.
+    stripe_failed:                        { text: 'Remboursement ÉCHOUÉ chez Stripe — cette ligne n’a rien versé (ne dit rien des autres remboursements de la commande)', tone: 'danger' },
     stripe_succeeded_claim_unreconciled:  { text: 'Remboursement réussi chez Stripe — réclamation non réconciliée', tone: 'warning' },
     stale_refunding_no_refund_row:        { text: 'En remboursement sans aucun remboursement Stripe associé', tone: 'danger' },
     refund_error_recorded:                { text: 'Erreur de remboursement enregistrée — décision humaine requise', tone: 'danger' },
     approved_not_driven:                  { text: 'Approuvée mais jamais remboursée — en attente de traitement', tone: 'warning' },
     reconcile_required:                   { text: 'Vérification financière requise — l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
+    absence_proven_payable:               { text: 'Absence de remboursement PROUVÉE (lignes + Stripe) — approuvée, non payée ; sera versée par le rail quand il sera ouvert', tone: 'warning' },
   }
 
   return (
@@ -185,11 +192,19 @@ export default function AdminClaimsArbitration() {
                     {/* The amount ACTUALLY refunded, which can differ from what was requested. */}
                     <p>
                       <span className="font-semibold">Montant réellement remboursé :</span>{' '}
-                      {r.actualRefundedCents === null
-                        ? 'non déterminé ici — aucun remboursement n’est LIÉ à cette réclamation'
-                        : formatEuros(r.actualRefundedCents / 100, locale)}
+                      {/* ROUND-6 AUDIT FIX (P1): `actualRefundedCents === null` covers THREE facts —
+                          nothing bound; something bound but not succeeded; something bound that
+                          succeeded for SOMEBODY ELSE (the engine disowned it). One sentence claimed
+                          the first for all three, two lines above « Statut Stripe : pending ». */}
+                      {r.actualRefundedCents !== null
+                        ? formatEuros(r.actualRefundedCents / 100, locale)
+                        : r.refund && r.refundNotOurs
+                          ? `non établi pour cette réclamation — un remboursement est lié (statut ${r.refund.status}), mais le moteur a établi qu’il n’appartient PAS à cette réclamation : son montant n’est pas le sien`
+                          : r.refund
+                            ? `rien n’a encore abouti sur la ligne liée (statut Stripe : ${r.refund.status})`
+                            : 'non déterminé ici — aucun remboursement n’est LIÉ à cette réclamation'}
                     </p>
-                    {r.actualRefundedCents === null && (
+                    {r.actualRefundedCents === null && !r.refund && (
                       // AUDIT FIX (gate T-49). This block used to read « aucun (rien n’a encore
                       // atteint le client) » — a positive statement about cash that nothing in the
                       // code had checked: the classifier resolves Refund rows ONLY by claim.refundId,
@@ -252,7 +267,9 @@ export default function AdminClaimsArbitration() {
                           disabled={busyId === r.id}
                           onClick={() => resolveStuck(r.id, 'settled_out_of_band')}
                         >
-                          Le client a été payé autrement
+                          {/* ROUND-7: this is the operator's DECLARATION, recorded as such — not a
+                              fact the system established. The label now says who is asserting. */}
+                          Je déclare : payé autrement, hors système
                         </Button>
                         <Button
                           size="sm"

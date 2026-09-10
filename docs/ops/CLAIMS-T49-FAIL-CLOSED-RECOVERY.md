@@ -257,3 +257,60 @@ Affirmation « client » retirée du gestionnaire d'attribution et remplacée pa
 « ligne ». Affirmation de mouvement retirée de la ligne de mésattribution. Contrat du module lié
 aux écrivains expédiés, plus une épingle source `not.toContain` sur la phrase retirée pour que sa
 réapparition fasse rougir la suite.
+
+---
+
+## 12. AUDIT ROND 6 (2026-09-10) — sur `e4707f9`
+
+5 auditeurs (véracité opérateur, instrument de test, contrat moteur, régression §7–§10, enveloppe
+Mode A), 23 constats, **15 confirmés / 8 réfutés. P0 = 0, P1 = 7, P2 = 4, P3 = 4.**
+
+**Le P0 déposé, ramené en P1 par les réfutateurs** : `financial_verification` n'a AUCUNE sortie
+quand la commande n'a pas de ligne `Refund` locale — le cas du remboursement fait depuis le
+**Dashboard Stripe**, qui ne laisse aucune ligne. `attributeClaimRefund` ne sait lier qu'une ligne
+existante ; la réconciliation re-gare ; l'échappatoire par assertion refuse le statut. Les deux
+corrections des réfutateurs sont retenues : `RECONCILABLE_STATUSES` inclut bien `financial_verification`,
+donc un `stripe_unreadable` TRANSITOIRE sort à la réconciliation suivante ; et la variante « commande
+sans PaymentIntent » est injoignable (`createClaim` refuse les commandes non payées, le moteur
+retourne avant de créer une ligne). Reste la population Dashboard, réelle, sans sortie honnête.
+
+**Les six autres P1** : le writer `stripe_failed` disait « aucun argent reçu par le client » depuis
+UNE ligne (la classe récurrente, encore) ; l'étiquette `refund_moved_unattributed` était FAUSSE sur
+l'un de ses deux écrivains (celui où une ligne porte bien l'identité) ; l'épingle contre la phrase
+retirée ne couvrait qu'un fichier ; la branche FAILED du réconciliateur de ligne ÉCRASAIT le
+marqueur `resume_mismatch` (seule entrée du prédicat « ce remboursement est-il le nôtre ») ; la file
+d'arbitrage imprimait l'argent d'une AUTRE réclamation sous « Montant réellement remboursé » sur les
+lignes désavouées ; et « aucun remboursement n'est LIÉ » s'affichait sur des lignes liées mais non
+abouties.
+
+### Corrigé (rond 7) — en audit
+
+- **Sortie ancrée Stripe** (`adoptStripeRefundForClaim`, même route `/attribute`, corps
+  `{ stripeRefundId }`) : conception choisie par un panel de 3 designs × 3 juges (aucune faille
+  fatale ; gagnant sur la sûreté argent). L'opérateur fournit un IDENTIFIANT `re_…`, jamais un
+  montant ni un résultat. Avant toute écriture, le serveur prouve chez Stripe que le remboursement
+  porte sur le PaymentIntent de la commande ET sur sa `latest_charge`, refuse un remboursement
+  créé par le moteur (`metadata.grubano_refund_row`), refuse pending/failed, borne le montant au
+  capturé. Une seule écriture : une ligne `Refund` MIROIR (statut/montant copiés de Stripe,
+  découpes à 0, `idempotencyKey external:<re_>` UNIQUE, `reason = claim:<id>`), puis la queue
+  auditée d'`attributeClaimRefund`. `dryRun` lit et n'écrit rien : le panneau montre les faits
+  avant l'unique écriture. Aucun appel moteur, aucune écriture Stripe/ledger/fidélité.
+- Writer `stripe_failed` ramené à la LIGNE ; garde `resume_mismatch` sur la branche FAILED ;
+  `reconcile_not_applied` et `no_payment_intent` comme causes propres ; `actualRefundedCents` nul
+  sur une liaison désavouée (+ `refundNotOurs`) ; carte d'arbitrage en trois cas ; preuve
+  d'absence portée par un marqueur `no_refund_proven:` reconnu par le classificateur (état
+  `absence_proven_payable`) et exclu de l'échappatoire ; message `already_parked_or_moved` ;
+  résidu rapporté sur les chemins d'abandon ; épingle de CLASSE sur les quatre fichiers (hors
+  commentaires) ; extracteur de writers classé par le RETOUR du moteur, plus le contrôle
+  discriminant ; regex inerte remplacée par un test hors négation avec contrôle négatif.
+- Durcissement retenu d'un constat RÉFUTÉ (deux réclamations actives par commande impossibles,
+  `activeOrderKey` unique) : le chemin par ligne refuse une ligne estampillée pour une AUTRE
+  réclamation (T-51 : `reason` EST l'identité).
+
+**Contrôles négatifs différentiels (rond 7) : 10/10 PROUVÉS.** Pour chaque correctif : le code
+livré est cassé (aiguille unique), la suite qui prétend l'épingler ROUGIT, le fichier est restauré
+depuis une copie (jamais `git checkout` — les correctifs n'étaient pas commités), prouvé
+byte-identique, la suite REVERDIT. Garde FAILED, montant désavoué, ancre PaymentIntent, règle
+« succeeded seulement », writer `stripe_failed`, message `already_parked_or_moved`, résidu sur
+abandon, moitié discriminante du prédicat, garde de provenance moteur, `dryRun` sans écriture.
+Suite complète : 400 fichiers / 4249 tests verts ; typecheck 41 = base, 0 hors `tests/`.

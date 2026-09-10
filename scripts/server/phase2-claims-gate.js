@@ -62,7 +62,16 @@ function done(result, failedStep) {
   process.exitCode = result.startsWith('PASS') ? 0 : 1
   setTimeout(() => process.exit(process.exitCode), 1500).unref()
 }
-const fail = (step) => done('FAIL', step)
+// ROUND-6 AUDIT FIX (P2): the design record said residue was reported "on the abort paths too".
+// It was not — every `return fail(...)` inside main() and the main().catch() skipped it, so an
+// abort AFTER the window opened (the case where residue is most likely) printed nothing. `fail`
+// now awaits the residue report whenever a DB handle exists, i.e. whenever the rehearsal got far
+// enough to have created anything. The SYNCHRONOUS signal / uncaught-exception paths still cannot
+// await a DB read (see emergencyClose) — that limit is stated, not papered over.
+const fail = async (step) => {
+  if (residuePrisma) await reportResidue()
+  return done('FAIL', step)
+}
 
 /** Unauthenticated probe of a gated route: 403 {gated|enabled:false} = CLOSED, 401 = OPEN. */
 async function probeGate(base, pathname) {
@@ -363,4 +372,12 @@ async function main() {
 
 if (require.main === module) main().catch((e) => fail('unexpected: ' + scrub(e)))
 
-module.exports = { writeFlag, emergencyClose, armClose: (envFile, stamp) => { armedClose = { envFile, stamp } }, isCloseArmed: () => armedClose !== null, CONFIRM_SENTENCE }
+module.exports = {
+  writeFlag, emergencyClose, armClose: (envFile, stamp) => { armedClose = { envFile, stamp } }, isCloseArmed: () => armedClose !== null, CONFIRM_SENTENCE,
+  // ROUND-6 test seams: the residue report and its inputs, so a test can prove the abort path
+  // reports residue WITHOUT calling done() (which sets process.exitCode and schedules exit).
+  reportResidue,
+  _setResidueForTests: (prismaHandle, baseline) => { residuePrisma = prismaHandle; residueBaseline = baseline },
+  // F()/A() append to the report printed by done(); a test reads them here instead of calling done().
+  _residueLinesForTests: () => ({ facts: facts.slice(), anomalies: anomalies.slice() }),
+}

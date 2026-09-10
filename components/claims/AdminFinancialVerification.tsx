@@ -26,6 +26,8 @@ type Row = {
   createdAt: string
   safety?: boolean
   ambiguity?: string
+  /** The PaymentIntent that paid this order — which payment to open in the Stripe Dashboard. */
+  orderStripePaymentIntentId?: string | null
   /** The refunds of THIS order, so the operator can attribute one without leaving the console. */
   candidateRefunds?: Array<{
     id: string; status: string; amountCents: number
@@ -43,9 +45,13 @@ type Payload = {
 
 /** Why attribution failed, in words an operator can act on. Never a money claim. */
 const AMBIGUITY_LABEL: Record<string, string> = {
-  stripe_unreadable:          'La vérité Stripe n’a pas pu être lue. Aucune conclusion tirée.',
+  stripe_unreadable:          'La vérité Stripe n’a pas pu être lue. Aucune conclusion tirée. Réévaluée à chaque « Réconcilier d’après la preuve ».',
   refund_moved_unattributed:  'Des remboursements existent sur la commande, mais aucun ne porte l’identité de cette réclamation.',
+  // ROUND-6 AUDIT FIX (P1): this path shared the label above, which is the OPPOSITE of its truth —
+  // here exactly one refund DOES carry the identity, the reconciler just could not apply it.
+  reconcile_not_applied:      'Un remboursement porte bien l’identité de cette réclamation, mais la réconciliation n’a pas pu être appliquée — relancez « Réconcilier d’après la preuve ».',
   multiple_candidate_refunds: 'Plusieurs remboursements portent l’identité de cette réclamation.',
+  no_payment_intent:          'Cette commande n’a aucun paiement Stripe enregistré : aucune preuve Stripe ne peut exister pour elle.',
   unknown:                    'Cause d’ambiguïté non renseignée.',
 }
 
@@ -81,14 +87,17 @@ export default function AdminFinancialVerification() {
       const res = await fetch(`/api/admin/claims/${id}/reconcile`, { method: 'POST' })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Échec de la réconciliation.'); return }
-      const outcome = (body as { result?: { outcome?: string } }).result?.outcome
+      const result = (body as { result?: { outcome?: string; reason?: string } }).result
+      const outcome = result?.outcome
       const said: Record<string, string> = {
         refunded:               'Preuve trouvée : le remboursement a abouti. Réclamation réconciliée sur son identité exacte.',
-        refund_failed:          'Preuve trouvée : le remboursement a ÉCHOUÉ. La réclamation redevient traitable.',
+        refund_failed:          'Preuve trouvée : cette ligne de remboursement a ÉCHOUÉ, elle n’a donc rien versé. La réclamation redevient traitable. (Cela ne dit rien des autres remboursements de la commande.)',
         // AUDIT FIX: this branch reads OUR row, not Stripe. Say that, rather than asserting a
         // Stripe state nobody consulted.
         still_pending:          'La ligne de remboursement liée n’est pas encore terminale (ni aboutie, ni échouée). Rien n’est clos, aucun second remboursement. Vérifiez Stripe pour l’état réel.',
-        no_refund_proven:       'Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun. La réclamation est de nouveau payable par le rail normal.',
+        // ROUND-6 AUDIT FIX (P2): « de nouveau payable par le rail normal » promised a payment the
+        // closed rail will refuse. Say the state it returns to, and the only thing that will pay it.
+        no_refund_proven:       'Preuve d’absence : aucun remboursement n’a jamais déplacé d’argent et Stripe n’en rapporte aucun. La réclamation repasse en « approuvée, non payée » ; elle ne sera versée que par le rail de remboursement, quand il sera ouvert.',
         // ROUND-3 AUDIT FIX: this case previously received the message above. Nothing moved, which
         // is true — but a FAILED refund with a Stripe id locks the engine against every later
         // refund on that order, so "payable again" was the opposite of what will happen. Three
@@ -103,7 +112,14 @@ export default function AdminFinancialVerification() {
       const needsAttention = outcome === 'financial_verification'
         || outcome === 'refund_failed'
         || outcome === 'no_refund_proven_rail_locked'
-      const text = said[outcome ?? ''] ?? 'Réconciliation terminée.'
+      // ROUND-6 AUDIT FIX (P2): the library reports 'already_parked_or_moved' precisely when its
+      // park CAS matched NOTHING — the claim was already parked, or a concurrent webhook moved it,
+      // possibly to a terminal state. This handler ignored `reason` and announced « aucune
+      // clôture » on the one outcome that means the claim may have just been closed. Say only
+      // what is established: nothing was modified here; read the row again.
+      const text = outcome === 'financial_verification' && result?.reason === 'already_parked_or_moved'
+        ? 'Rien n’a été modifié : la réclamation n’était plus dans un état modifiable (déjà garée, ou traitée entre-temps). Relisez sa ligne dans la file.'
+        : said[outcome ?? ''] ?? 'Réconciliation terminée.'
       if (needsAttention) toast.error(text)
       else toast.success(text)
       await load()
@@ -143,6 +159,46 @@ export default function AdminFinancialVerification() {
       toast.error('Attribution refusée.')
     } finally { setBusyId(null) }
   }, [load, toast])
+
+  // ── ROUND-6 AUDIT FIX (filed P0, confirmed P1) — THE STRIPE-ANCHORED EXIT ─────────────
+  // The attribution panel above needs a LOCAL refund row to offer. A refund issued from the Stripe
+  // Dashboard leaves none, so a claim parked because "money moved but no row is ours" had NO exit
+  // here short of paying twice. The operator now supplies the Stripe refund id they read in the
+  // Dashboard — an IDENTIFIER, never an amount or an outcome — and the server proves at Stripe
+  // that it sits on this order's payment before mirroring it. Two steps on purpose: « Vérifier »
+  // is read-only and shows the facts Stripe returned; « Lier » is the single write.
+  type StripeFacts = { stripeRefundId: string; stripeStatus: string; amountCents: number; paymentIntentId: string | null; chargeId: string | null; createdAt: string | null }
+  const [stripeIdDraft, setStripeIdDraft] = useState<Record<string, string>>({})
+  const [stripePreview, setStripePreview] = useState<Record<string, StripeFacts | null>>({})
+
+  const adoptStripe = useCallback(async (claimId: string, dryRun: boolean) => {
+    const stripeRefundId = (stripeIdDraft[claimId] ?? '').trim()
+    if (!stripeRefundId) { toast.error('Saisissez l’identifiant Stripe du remboursement (re_…).'); return }
+    setBusyId(claimId)
+    try {
+      const res = await fetch(`/api/admin/claims/${claimId}/attribute`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stripeRefundId, dryRun }),
+      })
+      const body = await res.json().catch(() => ({})) as { error?: string; facts?: StripeFacts | null; result?: { outcome?: string; facts?: StripeFacts } }
+      if (!res.ok) {
+        // A refusal still carries what Stripe said, so the operator learns the fact, not just "no".
+        setStripePreview((p) => ({ ...p, [claimId]: body.facts ?? null }))
+        toast.error(body.error || (dryRun ? 'Vérification refusée.' : 'Liaison refusée.'))
+        return
+      }
+      if (dryRun) {
+        setStripePreview((p) => ({ ...p, [claimId]: body.result?.facts ?? null }))
+        toast.success('Vérifié chez Stripe — rien n’a été écrit. Relisez les faits ci-dessous avant de lier.')
+        return
+      }
+      setStripePreview((p) => ({ ...p, [claimId]: null }))
+      toast.success('Remboursement Stripe lié : la réclamation reflète désormais ce remboursement réel, tel que Stripe le rapporte.')
+      await load()
+    } catch {
+      toast.error(dryRun ? 'Vérification impossible.' : 'Liaison impossible.')
+    } finally { setBusyId(null) }
+  }, [load, toast, stripeIdDraft])
 
   const rows = [
     ...(data?.reconcileRequired ?? []).map((r) => ({ ...r, kind: 'reconcile_required' as const })),
@@ -260,6 +316,43 @@ export default function AdminFinancialVerification() {
                 Son traitement se fait dans la file « Remboursements à traiter » de la console
                 d’arbitrage, qui n’est visible que lorsque les réclamations sont ouvertes.
               </p>
+            )}
+
+            {r.kind === 'financial_verification' && (
+              <div className="mt-3 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3">
+                <p className="text-[13px] font-semibold text-grubano-ink">
+                  Lier un remboursement fait depuis le Dashboard Stripe (re_…)
+                </p>
+                <p className="mt-1 text-[12px] text-grubano-ink-muted">
+                  Un remboursement lancé depuis le Dashboard Stripe ne laisse aucune ligne ici. Saisissez
+                  son identifiant : le serveur vérifie chez Stripe qu’il porte sur le paiement de cette
+                  commande{r.orderStripePaymentIntentId ? <> (<code>{r.orderStripePaymentIntentId}</code>)</> : null}
+                  {' '}et ne l’enregistre que s’il a ABOUTI. Vous fournissez un identifiant, jamais un
+                  montant ni un résultat. Aucun argent n’est déplacé.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">
+                  <input
+                    className="rounded border border-grubano-border px-2 py-1 font-mono text-[12px]"
+                    placeholder="re_…"
+                    value={stripeIdDraft[r.id] ?? ''}
+                    onChange={(e) => setStripeIdDraft((d) => ({ ...d, [r.id]: e.target.value }))}
+                    disabled={busyId === r.id}
+                  />
+                  <Button size="sm" variant="secondary" disabled={busyId === r.id} onClick={() => adoptStripe(r.id, true)}>
+                    Vérifier chez Stripe
+                  </Button>
+                  <Button size="sm" variant="secondary" disabled={busyId === r.id || !stripePreview[r.id]} onClick={() => adoptStripe(r.id, false)}>
+                    Lier
+                  </Button>
+                </div>
+                {stripePreview[r.id] && (
+                  <dl className="mt-2 space-y-0.5 text-[12px] text-grubano-ink-muted">
+                    <p><span className="font-semibold">Stripe dit :</span> statut <code>{stripePreview[r.id]!.stripeStatus}</code>, montant {formatEuros(stripePreview[r.id]!.amountCents / 100, locale)}</p>
+                    <p><span className="font-semibold">Paiement :</span> <code>{stripePreview[r.id]!.paymentIntentId ?? '—'}</code> · charge <code>{stripePreview[r.id]!.chargeId ?? '—'}</code></p>
+                    <p>Ce sont les valeurs qui seront liées telles quelles. « Lier » ne les modifie pas.</p>
+                  </dl>
+                )}
+              </div>
             )}
 
             {r.kind === 'financial_verification' && (r.candidateRefunds?.length ?? 0) > 0 && (

@@ -10,12 +10,15 @@ import { readFileSync } from 'node:fs'
 const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 
-const { reconcileMock, attributeMock, fvMock, rrMock, actionableMock } = vi.hoisted(() => ({
-  reconcileMock: vi.fn(), attributeMock: vi.fn(), fvMock: vi.fn(), rrMock: vi.fn(), actionableMock: vi.fn(),
+const { reconcileMock, attributeMock, adoptMock, fvMock, rrMock, actionableMock } = vi.hoisted(() => ({
+  reconcileMock: vi.fn(), attributeMock: vi.fn(), adoptMock: vi.fn(), fvMock: vi.fn(), rrMock: vi.fn(), actionableMock: vi.fn(),
 }))
 vi.mock('@/lib/claims', () => ({
   reconcileClaimEvidence:            reconcileMock,
   attributeClaimRefund:              attributeMock,
+  // round 7: the Stripe-anchored exit shares the attribute route
+  adoptStripeRefundForClaim:         adoptMock,
+  STRIPE_REFUND_ID_RE:               /^re_[A-Za-z0-9]{8,}$/,
   listFinancialVerificationClaims:   fvMock,
   listReconcileRequiredClaims:       rrMock,
   listActionableRefundClaims:        actionableMock,
