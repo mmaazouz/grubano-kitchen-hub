@@ -25,6 +25,10 @@ vi.mock('next-auth/jwt', () => ({ getToken: tokenMock }))
 const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
 vi.mock('next-auth', () => ({ getServerSession: sessionMock }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
+// ROUND-8 AUDIT FIX (P2): the arbitrate route now authorises through resolveAdmin — the role set
+// re-read from the DB — instead of the sign-in JWT claims. Only the arbitrate route imports it here.
+const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
+vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 
 import { POST as CONTEST } from '@/app/api/claims/[id]/contest/route'
 import { GET as ADMIN_LIST } from '@/app/api/admin/claims/route'
@@ -37,6 +41,7 @@ beforeEach(() => {
   flag.mockReturnValue(true)
   tokenMock.mockResolvedValue({ sub: 'c1' })
   sessionMock.mockResolvedValue({ user: { id: 'admin1', role: 'admin' } })
+  adminMock.mockResolvedValue({ id: 'admin1', role: 'admin', name: 'Admin', email: 'admin1@grubano.test' })
   contestMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', status: 'arbitration' } })
   arbitrateMock.mockResolvedValue({ ok: true, claim: { id: 'cl1', status: 'approved' }, refund: { state: 'refunded', refundId: 'rf1' } })
   queueMock.mockResolvedValue([])
@@ -93,10 +98,19 @@ describe('POST /api/admin/claims/[id]/arbitrate', () => {
   })
   it('non-admin → 403, no arbitration', async () => {
     sessionMock.mockResolvedValue({ user: { id: 'u1', role: 'consumer' } })
+    adminMock.mockResolvedValue(null)
     expect((await ARBITRATE(reqJson({ decision: 'approve' }), { params: { id: 'cl1' } })).status).toBe(403)
     expect(arbitrateMock).not.toHaveBeenCalled()
   })
-  it('admin approve → arbitrateClaim with adminId from session', async () => {
+  it('ROUND-8 (P2): a session JWT that still SAYS admin, for an operator whose admin role was removed → 403, no arbitration', async () => {
+    // The JWT is filled at sign-in and never refreshed; the approve that can move money must not
+    // trust it. resolveAdmin re-reads the role set from the DB and finds no admin.
+    sessionMock.mockResolvedValue({ user: { id: 'admin1', role: 'admin', roles: ['admin'] } })
+    adminMock.mockResolvedValue(null)
+    expect((await ARBITRATE(reqJson({ decision: 'approve' }), { params: { id: 'cl1' } })).status).toBe(403)
+    expect(arbitrateMock).not.toHaveBeenCalled()
+  })
+  it('admin approve → arbitrateClaim with adminId from resolveAdmin (role set re-read from the DB)', async () => {
     const res = await ARBITRATE(reqJson({ decision: 'approve' }), { params: { id: 'cl1' } })
     expect(res.status).toBe(200)
     expect(arbitrateMock).toHaveBeenCalledWith({ claimId: 'cl1', adminId: 'admin1', decision: 'approve', reason: undefined })

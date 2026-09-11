@@ -44,7 +44,10 @@ export function matchOp(op: string, expected: unknown, actual: unknown): boolean
  */
 export function matchWhere(where: Record<string, unknown>, row: Record<string, unknown>): boolean {
   for (const [field, expected] of Object.entries(where)) {
-    if (field === 'id') continue
+    // ROUND-8 AUDIT FIX (P3): `id` used to be skipped unconditionally, so a guard such as
+    // `id: { not: row.id }` was never evaluated. It is still skipped when it merely ADDRESSES the row
+    // (a scalar, or a fixture without an id), and evaluated when it is an operator on a row that has one.
+    if (field === 'id' && !(expected !== null && typeof expected === 'object' && 'id' in row)) continue
     const actual = row[field]
     if (expected !== null && typeof expected === 'object' && !(expected instanceof Date)) {
       for (const [op, operand] of Object.entries(expected as Record<string, unknown>)) {

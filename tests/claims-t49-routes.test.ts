@@ -5,7 +5,10 @@
 // rather than at the route and page a human actually reaches. Dead code is not a control, and an
 // untested control is not one either.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync as readRaw } from 'node:fs'
+// ROUND-8 AUDIT FIX (P3): core.autocrlf=true on the founder's checkout rewrites line endings — a
+// source pin must never go red on CRLF alone.
+const readFileSync = (p: string, enc: 'utf8') => readRaw(p, enc).replace(/\r\n/g, '\n')
 
 const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
@@ -205,9 +208,10 @@ describe('the money queue component keeps its audit fixes', () => {
 
   it('rows the attribution guard will refuse are flagged AND disabled', () => {
     expect(src).toContain('alreadyBoundToAnotherClaim')
-    // ROUND-7: the server refuses on the BINDING and on the STAMP (T-51), so the button must be
-    // disabled on both flags — the legend and the guard agree again.
-    expect(src).toContain('disabled={busyId === r.id || c.alreadyBoundToAnotherClaim || c.belongsToAnotherClaim}')
+    // ROUND-8: the server applies FIVE row refusals (lib/claim-attribution-rules). The console
+    // disables on the server's own verdict, never on a hand-picked subset of flags — the parity test
+    // in tests/claims-t49-round9.test.ts holds the two together.
+    expect(src).toContain('disabled={busyId === r.id || c.refusal != null}')
   })
 
   it('a failed load is distinguishable from an empty queue', () => {

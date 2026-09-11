@@ -36,6 +36,8 @@ type MoneyState =
   | 'reconcile_required'
   // ROUND-6 AUDIT FIX (P2): the reconciler PROVED nothing ever left. A success, not an error.
   | 'absence_proven_payable'
+  // ROUND-8 AUDIT FIX (P1): our row is pending with NO Stripe id — nothing is confirmed at Stripe.
+  | 'local_pending_unconfirmed'
 type ActionableRefundClaim = {
   id: string; orderId: string; reason: string; requestedAmountCents: number; status: string
   moneyState: MoneyState; safety?: boolean; refundError?: string | null
@@ -155,11 +157,17 @@ export default function AdminClaimsArbitration() {
   // failed refund never reads as "in progress".
   const MONEY_LABEL: Record<MoneyState, { text: string; tone: 'warning' | 'danger' | 'neutral' }> = {
     stripe_pending:                       { text: 'Remboursement envoyé à la banque — en attente de confirmation Stripe', tone: 'warning' },
+    // ROUND-8 AUDIT FIX (P1): « envoyé à la banque » was shown for OUR pending row with no Stripe id —
+    // the crash window, where nothing is confirmed at Stripe. Only a row with a Stripe id reached it.
+    local_pending_unconfirmed:            { text: 'Ligne de remboursement locale en attente, SANS identifiant Stripe — rien n’est confirmé chez Stripe ; l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
     // ROUND-6 AUDIT FIX (P1 class): « le client n’a rien reçu » was a claim about the CUSTOMER read
     // off ONE row's status. The row paid nothing; the order's other refunds are not read here.
     stripe_failed:                        { text: 'Remboursement ÉCHOUÉ chez Stripe — cette ligne n’a rien versé (ne dit rien des autres remboursements de la commande)', tone: 'danger' },
     stripe_succeeded_claim_unreconciled:  { text: 'Remboursement réussi chez Stripe — réclamation non réconciliée', tone: 'warning' },
-    stale_refunding_no_refund_row:        { text: 'En remboursement sans aucun remboursement Stripe associé', tone: 'danger' },
+    // ROUND-8 AUDIT FIX (P2): « sans aucun remboursement Stripe associé » asserted a Stripe fact nothing
+    // had checked. The unbound legacy shape is now classified reconcile_required (money unknown);
+    // this label only remains for a claim bound to a Refund row that cannot be found.
+    stale_refunding_no_refund_row:        { text: 'En remboursement, liée à une ligne de remboursement INTROUVABLE — l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
     refund_error_recorded:                { text: 'Erreur de remboursement enregistrée — décision humaine requise', tone: 'danger' },
     approved_not_driven:                  { text: 'Approuvée mais jamais remboursée — en attente de traitement', tone: 'warning' },
     reconcile_required:                   { text: 'Vérification financière requise — l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
@@ -209,7 +217,7 @@ export default function AdminClaimsArbitration() {
                         : r.refund && r.refundNotOurs
                           ? `non établi pour cette réclamation — un remboursement est lié (statut ${r.refund.status}), mais le moteur a établi qu’il n’appartient PAS à cette réclamation : son montant n’est pas le sien`
                           : r.refund
-                            ? `rien n’a encore abouti sur la ligne liée (statut Stripe : ${r.refund.status})`
+                            ? `rien n’a encore abouti sur la ligne liée (statut de notre ligne : ${r.refund.status})`
                             : 'non déterminé ici — aucun remboursement n’est LIÉ à cette réclamation'}
                     </p>
                     {r.actualRefundedCents === null && !r.refund && (
@@ -225,7 +233,8 @@ export default function AdminClaimsArbitration() {
                       </p>
                     )}
                     {r.refund && (
-                      <p><span className="font-semibold">Statut Stripe :</span> {r.refund.status}</p>
+                      // ROUND-8 AUDIT FIX (P1): this is OUR row's status, not a Stripe read.
+                      <p><span className="font-semibold">Statut de notre ligne :</span> {r.refund.status}</p>
                     )}
                     {r.refundError && (
                       <p className="text-red-700"><span className="font-semibold">Détail :</span> {r.refundError}</p>
@@ -251,6 +260,12 @@ export default function AdminClaimsArbitration() {
                         ? 'Rien à clôturer ici : réclamation saine, approuvée et non payée. Elle attend ' +
                           'une nouvelle approbation admin, réclamations et remboursements ouverts. Aucun ' +
                           'mouvement d’argent.'
+                        : r.moneyState === 'local_pending_unconfirmed'
+                        ? 'Aucune clôture manuelle sur cet état. La ligne liée est en attente SANS identifiant ' +
+                          'Stripe : rien n’est confirmé chez Stripe. Elle n’avancera que si Stripe a réellement ' +
+                          'créé ce remboursement (son webhook l’appliquera) ou si le moteur de remboursement la ' +
+                          'reprend (fenêtre remboursements ouverte). Le balayage de récupération ignore les lignes ' +
+                          'en attente. Aucun mouvement d’argent ici.'
                         : r.refund
                         ? 'Aucune clôture manuelle sur cet état : un remboursement est lié et son sort ' +
                           'sera appliqué par la réconciliation (webhook Stripe, ou le balayage de ' +
@@ -408,9 +423,17 @@ export default function AdminClaimsArbitration() {
                 </div>
               </div>
             ) : (
-              <div className="mt-3 flex gap-2">
-                <Button size="sm" variant="primary" loading={busyId === c.id} onClick={() => decide(c.id, 'approve')}>{t('admin.approve')}</Button>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {/* ROUND-8 AUDIT FIX (P1): on a rail-locked claim approve can only fail — the engine
+                    refuses every refund on that order, permanently. The server refuses it too
+                    (arbitrateClaim); the console disables on the same fact. */}
+                <Button size="sm" variant="primary" loading={busyId === c.id} disabled={(c as unknown as { railLocked?: boolean }).railLocked === true} onClick={() => decide(c.id, 'approve')}>{t('admin.approve')}</Button>
                 <Button size="sm" variant="secondary" disabled={busyId === c.id} onClick={() => setRefusingId(c.id)}>{t('admin.refuseFinal')}</Button>
+                {(c as unknown as { railLocked?: boolean }).railLocked === true && (
+                  <span className="text-[12px] text-red-700">
+                    Approbation impossible : un remboursement ÉCHOUÉ verrouille définitivement cette commande côté moteur. Clôturez le dossier depuis « Remboursements à traiter ».
+                  </span>
+                )}
               </div>
             )}
           </div>

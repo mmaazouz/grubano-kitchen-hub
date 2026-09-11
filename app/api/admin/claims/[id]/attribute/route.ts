@@ -33,16 +33,20 @@ export const dynamic = 'force-dynamic'
 // only if Stripe says it SUCCEEDED, then binds it through the same audited tail. `dryRun: true`
 // reads and returns the facts without writing, so the console can show them first. Neither shape
 // carries an amount or an outcome field: the operator cannot supply one.
+// ROUND-8 AUDIT FIX (P3): both branches are STRICT. Non-strict objects stripped unknown keys, so a
+// body carrying both shapes parsed as the row shape — dropping dryRun:true and performing a write
+// the caller had asked not to happen — and extras such as an amount were silently discarded
+// instead of refused.
 const schema = z.union([
   z.object({
     refundRowId: z.string().min(1).max(200),
     note:        z.string().max(1000).optional(),
-  }),
+  }).strict(),
   z.object({
     stripeRefundId: z.string().regex(STRIPE_REFUND_ID_RE),
     dryRun:         z.boolean().optional(),
     note:           z.string().max(1000).optional(),
-  }),
+  }).strict(),
 ])
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -61,7 +65,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       note:           parsed.data.note,
     })
     // The facts travel with a refusal too: the operator sees WHAT Stripe said, not just "no".
-    if (!result.ok) return NextResponse.json({ error: result.error, facts: result.facts ?? null }, { status: result.status })
+    if (!result.ok) return NextResponse.json({ error: result.error, facts: result.facts ?? null, wrote: result.wrote ?? null }, { status: result.status })
     return NextResponse.json({ result })
   }
 

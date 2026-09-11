@@ -49,6 +49,10 @@ const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: auditMock }))
 const { limitMock } = vi.hoisted(() => ({ limitMock: vi.fn(() => null) }))
 vi.mock('@/lib/rate-limit', () => ({ rateLimit: limitMock }))
+// ROUND-8 AUDIT FIX (P2): the arbitrate route authorises through resolveAdmin (role set re-read from
+// the DB), not the session JWT. Only the arbitrate route among those imported here uses it.
+const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
+vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 
 import { POST as CREATE } from '@/app/api/claims/route'
 import { POST as RESPOND } from '@/app/api/claims/[id]/respond/route'
@@ -69,6 +73,7 @@ beforeEach(() => {
   tokenMock.mockResolvedValue({ sub: 'c1' })
   scopeMock.mockResolvedValue({ ok: true, ownedIds: ['r1'] })
   sessionMock.mockResolvedValue({ user: { id: 'adm1', email: 'admin@grubano.com', role: 'admin' } })
+  adminMock.mockResolvedValue({ id: 'adm1', email: 'admin@grubano.com', role: 'admin', name: 'Admin' })
   auditMock.mockResolvedValue(undefined)
   db.restaurant.findUnique.mockResolvedValue({ name: 'Gnocchi Bar' })
   ackMock.mockResolvedValue({ status: 'sent' })

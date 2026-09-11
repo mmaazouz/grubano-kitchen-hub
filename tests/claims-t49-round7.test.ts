@@ -135,11 +135,9 @@ describe('adoptStripeRefundForClaim — the exit for a Dashboard refund with no 
     expect(auditMock).toHaveBeenCalledWith(expect.objectContaining({ action: 'claim.attribute_refund', metadata: expect.objectContaining({ refundRowId: 'rf_ext', moneyMoved: false }) }))
   })
 
-  it('NEGATIVE CONTROL — a direct terminal write that skipped the tail would be caught by the signature', () => {
-    const bypass = [{ where: { id: 'cl1' }, data: { status: 'refunded', refundId: 'rf_ext' } }]
-    expect(bypass[0]).not.toMatchObject({ where: { status: FINANCIAL_VERIFICATION } })
-    expect(bypass).toHaveLength(1) // ← not 2: the reconcile CAS is missing
-  })
+  // (ROUND-8 AUDIT FIX, P3: a "negative control" here asserted a hand-built array — it touched no
+  // shipped code. The signature assertions above are proven differentially by the round's control
+  // run: replacing the tail with a direct terminal write turns them red.)
 
   it('dryRun reads Stripe and returns the facts — and writes NOTHING', async () => {
     const r = await adoptStripeRefundForClaim({ claimId: 'cl1', stripeRefundId: RE, adminId: 'op1', dryRun: true })
@@ -358,6 +356,7 @@ describe('round-7 P1/P2 fixes in the library', () => {
     ]
     db.refund.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => rows.find((x) => x.id === where.id) ?? null)
     db.refund.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => rows.find((x) => matchWhere(where, x)) ?? null)
+    db.refund.findMany.mockResolvedValue(rows) // ROUND-8: the server reads the order's rows for the shared refusal rule
     db.claim.findFirst.mockResolvedValue(null)
     const refused = await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf_admin', adminId: 'op1' })
     expect(refused).toMatchObject({ ok: false, status: 409 })

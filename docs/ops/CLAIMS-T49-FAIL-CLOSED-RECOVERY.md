@@ -394,3 +394,67 @@ n'importe un module modifié, et le passage avait duré 162 s contre ~87 s d'hab
 machine). La suite a néanmoins été relancée sur l'arbre final, code de sortie lu directement.
 Quatre commentaires qui énonçaient encore la croyance « la reprise a abouti, l'argent est parti »
 pour les quatre écrivains ont été corrigés — c'est d'eux que la phrase fausse renaissait.
+
+---
+
+## 14. AUDIT ROND 8 (2026-09-11) — sur `66d6950`
+
+Run complet (le script sépare désormais « non vérifié » de « réfuté » : aucun réfutateur perdu).
+5 auditeurs, 22 constats, **17 confirmés / 5 réfutés. P0 = 0, P1 = 5, P2 = 5, P3 = 7.**
+
+**Les P1.** Le verrou rail était décrit comme levable « tant que la reprise manuelle Stripe n'a
+pas été faite » : aucun code ne sort une ligne `Refund` de `failed`, le verrou est définitif — et
+« Approuver & rembourser » restait offert sur ces réclamations, voué à l'échec. « Envoyé à la
+banque » s'affichait pour NOTRE ligne en attente sans identifiant Stripe (la fenêtre de crash),
+et la réconciliation la faisait sortir de la population « preuve » en la déclarant
+`still_pending`. Un échec moteur survenu APRÈS la création de la ligne de la réclamation
+(« Remboursement émis, reprise de la royalty… ») écrasait le marqueur de crash et rendait la
+réclamation clôturable par assertion. Et (deux constats, un défaut) ma garde du rond 8 « une ligne
+porte déjà l'identité de cette réclamation » n'avait pas sa désactivation console — la Classe 3
+pour la TROISIÈME fois, avec un test qui épinglait l'expression incomplète.
+
+**Les P2.** La route de réconciliation admettait une réclamation SAINE approuvée-non-payée —
+exactement l'état d'une approbation Mode A — et pouvait la garer. L'arbitrage autorisait
+l'approbation sur les claims JWT (jamais rafraîchis) au lieu de `resolveAdmin`. La copie CLIENT
+disait « remboursement en cours » pour une réclamation seulement approuvée (en/es/it/ar, et
+l'aide ×5), et `financial_verification` affirmait une « transaction existante ». La forme héritée
+non liée était étiquetée « sans aucun remboursement Stripe » (assertion Stripe négative non
+vérifiée). La légende « Rien n'a été écrit » s'affichait sur des refus postérieurs à l'écriture
+de la ligne miroir.
+
+### Corrigé (rond 9) — en audit
+
+- **Fin de la Classe 3 pour l'attribution** : une règle pure unique
+  (`lib/claim-attribution-rules.ts`, 5 refus) appliquée par `attributeClaimRefund` ET par la
+  liste que lit la console ; la console désactive sur le verdict serveur. **Test de PARITÉ** :
+  sur deux jeux couvrant les 5 codes, verdict console === refus serveur avant toute écriture.
+- Verrou rail : copie « DÉFINITIVEMENT » nommant la seule sortie réelle ; approbation refusée par
+  `arbitrateClaim` et désactivée en console (`railLocked`) ; libellé « Approuver » ×5 locales.
+- Ligne en attente sans identifiant Stripe : état `local_pending_unconfirmed`, « Statut de notre
+  ligne », réconciliation → `pending_unconfirmed` SANS écriture (la réclamation garde son bucket
+  et son bouton), attribution refusée.
+- Échec moteur avec la ligne de la réclamation présente et non échouée : reste `refunding` avec
+  le marqueur d'origine (texte moteur ajouté) ; `engine_failed` seulement si rien n'a été créé ou
+  si la ligne a échoué (alors liée).
+- Garde de réconciliation : n'admet que FV, marqueur, ou forme héritée — la population du bouton.
+- Arbitrage : `resolveAdmin`. Copie client/admin ×5 locales, mappage d'aide refunding/approved,
+  file nommée « Remboursements à traiter » telle que l'écran l'affiche. `wrote` sur chaque refus
+  d'adoption ; branches Zod strictes ; toast « Lier » selon la source ; « déjà garée » retiré ;
+  FR « s'est arrêté sur ».
+- Instrument : épingles sûres en CRLF ; `matchWhere` évalue un `id` opérateur ; épingle de classe
+  étendue à es/it/ar (constat réfuté en P3 mais exact, retenu) et rapportant TOUS les hits ;
+  épingles négatives lues hors commentaires ; contrôles-lambda supprimés.
+
+**Vérification du rond 9, avant commit.** Contrôles négatifs différentiels : **17/17 PROUVÉS**, en
+deux passes, consignées telles quelles. La première a donné 14/17 : deux contrôles n'ont pas pu
+s'appliquer — aiguille introuvable (`lib/claims.ts` est en CRLF sur disque, l'aiguille multi-ligne
+était en LF) et aiguille non unique (`"approve": "Approuver"` apparaît trois fois dans `fr.json`) —
+et un contrôle est ressorti **NON PROUVÉ** : revenir sur l'évaluation de `id` dans `matchWhere`
+laissait toute la suite verte, ce changement d'instrument n'était épinglé par rien. Corrections :
+aiguilles sûres en CRLF, mutation JSON par chemin, et un test unitaire direct de `matchWhere`.
+Seconde passe : 3/3 prouvés. Empreinte du `git diff` des chemins de code identique avant/après
+(`7b7ab71c01761ca8`) — **limite dite** : `git diff` ignore les fichiers NON SUIVIS, donc cette
+empreinte ne couvre ni `lib/claim-attribution-rules.ts` ni le test du rond 9 ; les contrôles ne
+mutent que des fichiers suivis et vérifient chacun leur restauration octet pour octet.
+Typecheck : 41 = base, 0 hors `tests/`. `check:i18n` : OK. Suite complète sur l'arbre final :
+**401 fichiers / 4301 tests verts**.

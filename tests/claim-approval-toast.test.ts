@@ -45,6 +45,7 @@ describe('RESUME-FIRST — money moved, and the admin must never be told otherwi
     expect(copy).toMatch(/Ne relancez aucun remboursement/) // do not pay again
     expect(copy).not.toMatch(/argent (EST|est|a) (parti|bougé)/i)
     expect(copy).not.toMatch(/autre montant/)
+    expect(copy).not.toMatch(/a abouti/) // ROUND-8 (P3): the console's SUCCESS verb, on two PENDING writers
     expect(copy).not.toMatch(/aucun argent n’est parti/)
   })
 
@@ -95,18 +96,16 @@ describe('everything else claims only what THIS action confirmed', () => {
   })
 })
 
-// ── NEGATIVE CONTROLS ────────────────────────────────────────────────────────────
-describe('negative controls — both pre-fix rules would be caught', () => {
-  it('the original rule said "remboursement déclenché" for a closed rail', () => {
-    const preFix = () => 'approved' // one message, unconditionally
-    expect(preFix()).toBe('approved')
-    expect(approvalToast({ state: 'pending' }).key).toBe('approvedNotSent') // ← fixed
+// ── REGRESSION PINS ON THE SHIPPED MAPPER ───────────────────────────────────────
+// ROUND-8 AUDIT FIX (P3): this block held "negative controls" that restated the pre-fix rules as
+// local lambdas and asserted the lambdas — they touched no shipped code. What is pinned is the
+// shipped mapper; the differential proof lives in the round's control run.
+describe('the two pre-fix rules stay fixed in the shipped mapper', () => {
+  it('a closed rail (pending) is never reported as a triggered refund', () => {
+    expect(approvalToast({ state: 'pending' }).key).toBe('approvedNotSent')
   })
 
-  it('the first fix folded resume_mismatch into "no money left"', () => {
-    const firstFix = (r: { state?: string }) => (r.state === 'failed' ? 'approvedFailed' : 'approvedNotSent')
-    expect(firstFix({ state: 'failed' })).toBe('approvedFailed')            // ← the defect the re-audit found
-    expect(approvalToast({ state: 'failed', error: 'resume_mismatch' }).key)
-      .toBe('approvedResumeMismatch')                                        // ← fixed
+  it('resume_mismatch is never folded into the generic failure', () => {
+    expect(approvalToast({ state: 'failed', error: 'resume_mismatch' }).key).toBe('approvedResumeMismatch')
   })
 })

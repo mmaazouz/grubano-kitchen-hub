@@ -412,7 +412,9 @@ describe('attributeClaimRefund — the escalation exit out of a permanent park',
   })
 
   it('a PENDING row is attributed without any terminal verdict', async () => {
-    db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'pending', amountCents: 500, stripeRefundId: null })
+    // ROUND-8: a pending row must carry a Stripe id to be attributable — without one nothing is
+    // confirmed at Stripe and the shared rule refuses it (pinned in tests/claims-t49-round9.test.ts).
+    db.refund.findUnique.mockResolvedValue({ id: 'rf9', orderId: 'o1', status: 'pending', amountCents: 500, stripeRefundId: 're_9' })
     expect(await attributeClaimRefund({ claimId: 'cl1', refundRowId: 'rf9', adminId: 'op1' }))
       .toMatchObject({ ok: true, outcome: 'still_pending' })
   })

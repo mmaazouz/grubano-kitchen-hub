@@ -3003,7 +3003,8 @@
       "claimNotPaid": "Cette commande n'est pas payée — aucune réclamation possible.",
       "claimAlreadyFiled": "Une réclamation est déjà en cours pour cette commande.",
       "claimNotEligible": "Cette commande n'est pas éligible à une réclamation.",
-      "claimApproved": "Réclamation approuvée — remboursement en cours.",
+      "claimApproved": "Réclamation approuvée — remboursement en attente de traitement.",
+      "claimRefunding": "Réclamation approuvée — remboursement en cours.",
       "claimRefunded": "Réclamation remboursée.",
       "claimRefused": "Réclamation refusée.",
       "claimInReview": "Réclamation en cours d'examen.",
@@ -7158,7 +7159,7 @@
       "refused_final": "Refus confirmé",
       "refund_failed": "Remboursement échoué — en cours de traitement par notre équipe",
       "refund_pending_stripe": "Remboursement envoyé à la banque — en attente de confirmation",
-      "financial_verification": "Votre remboursement nécessite une vérification manuelle. Aucun nouveau remboursement ne sera lancé tant que la transaction existante n’aura pas été vérifiée."
+      "financial_verification": "Votre demande nécessite une vérification manuelle par notre équipe."
     },
     "client": {
       "reportProblem": "Signaler un problème",
@@ -7222,7 +7223,7 @@
       "refusalReason": "Motif du refus (restaurant)",
       "contestReason": "Contestation du client",
       "viewPhoto": "Voir la photo",
-      "approve": "Approuver & rembourser",
+      "approve": "Approuver",
       "refuseFinal": "Confirmer le refus",
       "decisionReasonLabel": "Motivation (facultatif)",
       "decisionReasonPlaceholder": "Expliquez votre décision…",
@@ -7230,7 +7231,7 @@
       "approvedRefunded": "Réclamation approuvée — remboursement de {amount} émis chez Stripe.",
       "approvedNotSent": "Réclamation approuvée — aucun remboursement confirmé par cette action. À vérifier dans « Remboursements à traiter ».",
       "approvedFailed": "Réclamation approuvée, mais le moteur a REFUSÉ ou n’a pas pu confirmer le remboursement : aucun montant n’est établi par cette action. Détail dans « Remboursements à traiter ».",
-      "approvedResumeMismatch": "Réclamation approuvée, MAIS le moteur a abouti sur un remboursement de cette commande qui n’appartient PAS à cette réclamation : son état ne règle rien ici. Ne relancez aucun remboursement — ouvrez « Remboursements à traiter ».",
+      "approvedResumeMismatch": "Réclamation approuvée, MAIS le moteur s’est arrêté sur un remboursement de cette commande qui n’appartient PAS à cette réclamation : son état ne règle rien ici. Ne relancez aucun remboursement — ouvrez « Remboursements à traiter ».",
       "financialVerificationRequired": "Vérification financière requise — action opérateur nécessaire.",
       "refusedFinalDone": "Refus confirmé.",
       "processing": "Traitement…",

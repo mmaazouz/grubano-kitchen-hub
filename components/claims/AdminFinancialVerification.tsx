@@ -34,6 +34,8 @@ type Row = {
     stripeRefundId: string | null; createdAt: string; belongsToAnotherClaim: boolean; alreadyBoundToAnotherClaim: boolean
     /** The row the engine stamped for THIS claim — the one the row path prefers. */
     belongsToThisClaim?: boolean
+    /** ROUND-8 (parity): the server's own refusal code for this row, or null. */
+    refusal?: string | null
   }>
 }
 
@@ -55,6 +57,15 @@ const AMBIGUITY_LABEL: Record<string, string> = {
   multiple_candidate_refunds: 'Plusieurs remboursements portent l’identité de cette réclamation.',
   no_payment_intent:          'Cette commande n’a aucun paiement Stripe enregistré : aucune preuve Stripe ne peut exister pour elle.',
   unknown:                    'Cause d’ambiguïté non renseignée.',
+}
+
+/** ROUND-8 AUDIT FIX (P1, parity): one legend per SERVER refusal code (lib/claim-attribution-rules). */
+const REFUSAL_LEGEND: Record<string, string> = {
+  stamped_for_other_claim: 'porte l’identité d’une AUTRE réclamation — sera refusé',
+  own_stamp_exists:        'une autre ligne porte déjà l’identité de CETTE réclamation — sera refusé',
+  bound_to_other_claim:    'déjà LIÉ à une autre réclamation — sera refusé',
+  unusable_status:         'statut inexploitable — sera refusé',
+  pending_unconfirmed:     'en attente sans identifiant Stripe, rien n’est confirmé chez Stripe — sera refusé',
 }
 
 export default function AdminFinancialVerification() {
@@ -107,8 +118,12 @@ export default function AdminFinancialVerification() {
         // is true — but a FAILED refund with a Stripe id locks the engine against every later
         // refund on that order, so "payable again" was the opposite of what will happen. Three
         // auditors flagged that the honest reason was written to a field no human reads.
+        // ROUND-8 AUDIT FIX (P1): « tant que la reprise manuelle Stripe n’a pas été faite » said the
+        // lock lifts. It never does — no code moves a Refund row out of 'failed'.
         no_refund_proven_rail_locked:
-          'Preuve d’absence : rien n’est parti. MAIS un remboursement ÉCHOUÉ verrouille cette commande côté moteur — toute nouvelle tentative sera REFUSÉE tant que la reprise manuelle Stripe n’a pas été faite. Reprise humaine requise.',
+          'Preuve d’absence : rien n’est parti. MAIS un remboursement ÉCHOUÉ verrouille cette commande côté moteur, DÉFINITIVEMENT — aucun code ne lève ce verrou, même après une intervention dans Stripe. Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… » dans « Remboursements à traiter ») ; sinon clôturez sans paiement.',
+        // ROUND-8 AUDIT FIX (P1): our row is pending with NO Stripe id. Nothing was written.
+        pending_unconfirmed:    'La ligne de remboursement de cette réclamation est en attente SANS identifiant Stripe : rien n’est confirmé chez Stripe. Rien n’a été modifié. Elle n’avancera que si Stripe a réellement créé ce remboursement (son webhook l’appliquera) ou si le moteur de remboursement la reprend (fenêtre remboursements ouverte) ; réconciliez ensuite.',
         financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
       }
       // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still
@@ -117,13 +132,16 @@ export default function AdminFinancialVerification() {
       const needsAttention = outcome === 'financial_verification'
         || outcome === 'refund_failed'
         || outcome === 'no_refund_proven_rail_locked'
+        || outcome === 'pending_unconfirmed'
       // ROUND-6 AUDIT FIX (P2): the library reports 'already_parked_or_moved' precisely when its
       // park CAS matched NOTHING — the claim was already parked, or a concurrent webhook moved it,
       // possibly to a terminal state. This handler ignored `reason` and announced « aucune
       // clôture » on the one outcome that means the claim may have just been closed. Say only
       // what is established: nothing was modified here; read the row again.
       const text = outcome === 'financial_verification' && result?.reason === 'already_parked_or_moved'
-        ? 'Rien n’a été modifié : la réclamation n’était plus dans un état modifiable (déjà garée, ou traitée entre-temps). Relisez sa ligne dans la file.'
+        // ROUND-8 AUDIT FIX (P3): since the relabel CAS, an already-parked claim is refreshed, never
+        // reported here — this outcome now means the claim LEFT every modifiable state, maybe closed.
+        ? 'Rien n’a été modifié : la réclamation a quitté les états modifiables entre-temps (peut-être clôturée). Relisez sa ligne dans la file.'
         : said[outcome ?? ''] ?? 'Réconciliation terminée.'
       if (needsAttention) toast.error(text)
       else toast.success(text)
@@ -179,7 +197,7 @@ export default function AdminFinancialVerification() {
   // preview never authorises a different identifier typed afterwards.
   const [stripePreview, setStripePreview] = useState<Record<string, (StripeFacts & { wouldWrite: boolean }) | null>>({})
   /** What a REFUSED verification read — shown, but never arming « Lier ». */
-  const [refusedFacts, setRefusedFacts] = useState<Record<string, StripeFacts | null>>({})
+  const [refusedFacts, setRefusedFacts] = useState<Record<string, (StripeFacts & { wrote: boolean | null }) | null>>({})
 
   const adoptStripe = useCallback(async (claimId: string, dryRun: boolean) => {
     const stripeRefundId = (stripeIdDraft[claimId] ?? '').trim()
@@ -190,11 +208,11 @@ export default function AdminFinancialVerification() {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ stripeRefundId, dryRun }),
       })
-      const body = await res.json().catch(() => ({})) as { error?: string; facts?: StripeFacts | null; result?: { outcome?: string; facts?: StripeFacts; wouldWrite?: boolean } }
+      const body = await res.json().catch(() => ({})) as { error?: string; facts?: StripeFacts | null; wrote?: boolean | null; result?: { outcome?: string; facts?: StripeFacts; wouldWrite?: boolean } }
       if (!res.ok) {
         // A refusal shows what was read, but never arms « Lier »: the preview is cleared.
         setStripePreview((p) => ({ ...p, [claimId]: null }))
-        setRefusedFacts((p) => ({ ...p, [claimId]: body.facts ?? null }))
+        setRefusedFacts((p) => ({ ...p, [claimId]: body.facts ? { ...body.facts, wrote: body.wrote ?? null } : null }))
         toast.error(body.error || (dryRun ? 'Vérification refusée.' : 'Liaison refusée.'))
         return
       }
@@ -208,7 +226,10 @@ export default function AdminFinancialVerification() {
         return
       }
       setStripePreview((p) => ({ ...p, [claimId]: null }))
-      toast.success('Remboursement Stripe lié : la réclamation reflète désormais ce remboursement réel, tel que Stripe le rapporte.')
+      // ROUND-8 AUDIT FIX (P3): on the crash-resume branch Stripe is NOT re-read — say which it was.
+      toast.success(body.result?.facts?.source === 'local_row'
+        ? 'Remboursement lié : la réclamation reflète la ligne enregistrée plus tôt depuis Stripe. Stripe n’a pas été relu par cette action.'
+        : 'Remboursement Stripe lié : la réclamation reflète ce remboursement tel que Stripe vient de le rapporter.')
       await load()
     } catch {
       toast.error(dryRun ? 'Vérification impossible.' : 'Liaison impossible.')
@@ -381,7 +402,12 @@ export default function AdminFinancialVerification() {
                 )}
                 {refusedFacts[r.id] && (
                   <p className="mt-2 text-[12px] text-red-700">
-                    Refusé — ce qui a été lu : <code>{refusedFacts[r.id]!.stripeRefundId}</code>, statut <code>{refusedFacts[r.id]!.stripeStatus}</code>, paiement <code>{refusedFacts[r.id]!.paymentIntentId ?? '—'}</code>. Rien n’a été écrit.
+                    {/* ROUND-8 AUDIT FIX (P2): « Rien n’a été écrit » was printed on refusals that come AFTER
+                        the mirror row was created. It is said only when the server proved it. */}
+                    Refusé — ce qui a été lu : <code>{refusedFacts[r.id]!.stripeRefundId}</code>, statut <code>{refusedFacts[r.id]!.stripeStatus}</code>, paiement <code>{refusedFacts[r.id]!.paymentIntentId ?? '—'}</code>.{' '}
+                    {refusedFacts[r.id]!.wrote === false ? 'Rien n’a été écrit.'
+                      : refusedFacts[r.id]!.wrote === true ? 'La ligne miroir a été enregistrée ; la liaison n’a pas abouti — relisez la ligne dans la file.'
+                      : 'L’état a pu changer : relisez la ligne dans la file.'}
                   </p>
                 )}
               </div>
@@ -406,19 +432,16 @@ export default function AdminFinancialVerification() {
                       {c.belongsToThisClaim && (
                         <Badge tone="warning">porte l’identité de CETTE réclamation</Badge>
                       )}
-                      {/* ROUND-7 AUDIT FIX (P1): the server now refuses a row stamped for another
-                          claim (T-51), so the legend says so and the button is disabled — the
-                          round-3 rule again: never offer what the server refuses. */}
-                      {c.belongsToAnotherClaim && (
-                        <Badge tone="danger">porte l’identité d’une AUTRE réclamation — sera refusé</Badge>
-                      )}
-                      {c.alreadyBoundToAnotherClaim && (
-                        <Badge tone="danger">déjà LIÉ à une autre réclamation — sera refusé</Badge>
+                      {/* ROUND-8 AUDIT FIX (P1, Class 3 a third time): legend and disable come from the
+                          SERVER's own verdict for this row (lib/claim-attribution-rules), so a refusal
+                          can no longer be added on one side only. */}
+                      {c.refusal && (
+                        <Badge tone="danger">{REFUSAL_LEGEND[c.refusal] ?? 'sera refusé'}</Badge>
                       )}
                       <Button
                         size="sm"
                         variant="secondary"
-                        disabled={busyId === r.id || c.alreadyBoundToAnotherClaim || c.belongsToAnotherClaim}
+                        disabled={busyId === r.id || c.refusal != null}
                         onClick={() => attribute(r.id, c.id)}
                       >
                         Attribuer

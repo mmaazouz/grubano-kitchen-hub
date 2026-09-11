@@ -242,7 +242,10 @@ export default function OrderHelpScreen() {
     if (ex && (eligibility?.reason === 'active_claim' || !eligibility?.canClaim)) {
       // an existing claim takes precedence — show its review/decision status
       if (ex.status === 'restaurant_review') return t('claimAlreadyFiled')
-      if (ex.status === 'approved' || ex.status === 'refunding') return t('claimApproved')
+      // ROUND-8 AUDIT FIX (P2): an APPROVED claim was told « remboursement en cours » — nothing pays an
+      // approved claim until a refund is actually driven. Only 'refunding' is in progress.
+      if (ex.status === 'refunding') return t('claimRefunding')
+      if (ex.status === 'approved') return t('claimApproved')
       if (ex.status === 'refunded') return t('claimRefunded')
       if (ex.status === 'refused' || ex.status === 'refused_final') return t('claimRefused')
       if (ex.status === 'arbitration') return t('claimInReview')

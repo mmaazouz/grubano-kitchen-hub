@@ -7,7 +7,10 @@
 // every file that writes or renders an operator-visible money string, on the CLASS of sentence,
 // and ignore comments (the audit history quotes the removed sentences on purpose).
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync as readRaw } from 'node:fs'
+// ROUND-8 AUDIT FIX (P3): core.autocrlf=true on the founder's checkout rewrites line endings — the
+// placement pin went red on CRLF alone. Every source read here is normalised.
+const readFileSync = (p: string, enc: 'utf8') => readRaw(p, enc).replace(/\r\n/g, '\n')
 
 const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
@@ -61,15 +64,20 @@ describe('POST /attribute — the Stripe-anchored shape dispatches to the adopti
     expect(attributeMock).not.toHaveBeenCalled()
   })
 
-  it('the body cannot carry an amount or an outcome — extras are DROPPED before the library sees them', async () => {
-    // ROUND-7 AUDIT FIX (P3): the previous test refused on the malformed id, so the property in
-    // its title was never shown. A WELL-FORMED id with extras must reach the library WITHOUT them.
-    adoptMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf_ext', facts: { stripeRefundId: 're_dash12345678' } })
+  it('the body cannot carry an amount or an outcome — a body with extras is REFUSED outright (400), nothing called', async () => {
+    // ROUND-8 AUDIT FIX (P3): the branches were non-strict, so extras were silently stripped. Both
+    // branches are strict now: an amount or an outcome in the body is a 400, not a quiet drop.
     const res = await post({ stripeRefundId: 're_dash12345678', amountCents: 500, status: 'succeeded', refundId: 'rf_forged', outcome: 'refunded' })
-    expect(res.status).toBe(200)
-    const arg = adoptMock.mock.calls[0][0]
-    expect(arg).toMatchObject({ claimId: 'cl1', stripeRefundId: 're_dash12345678', dryRun: false })
-    for (const k of ['amountCents', 'status', 'refundId', 'outcome']) expect(arg).not.toHaveProperty(k)
+    expect(res.status).toBe(400)
+    expect(adoptMock).not.toHaveBeenCalled()
+    expect(attributeMock).not.toHaveBeenCalled()
+  })
+
+  it('a body carrying BOTH shapes with dryRun:true is refused — it can never silently write', async () => {
+    const res = await post({ stripeRefundId: 're_dash12345678', dryRun: true, refundRowId: 'rf_admin' })
+    expect(res.status).toBe(400)
+    expect(adoptMock).not.toHaveBeenCalled()
+    expect(attributeMock).not.toHaveBeenCalled()
   })
 
   it('still guarded: no admin → 403, nothing called', async () => {
@@ -98,6 +106,10 @@ const FILES = [
   'components/claims/AdminClaimsArbitration.tsx',
   'messages/fr.json',
   'messages/en.json',
+  // ROUND-8: the other three locales carry the same admin and customer money copy.
+  'messages/es.json',
+  'messages/it.json',
+  'messages/ar.json',
 ]
 const FORBIDDEN = [
   /aucun argent (n[’']a atteint|reçu par) le client/i,
@@ -112,13 +124,20 @@ const FORBIDDEN = [
   /money did NOT reach the customer/i,
   /money DID leave/i,
   /no money left/i,
+  // ROUND-8: the same assertions in es / it / ar.
+  /ha salido dinero|sí ha salido/i,
+  /(denaro|soldi) (È|è) partito/,
+  /خرج مال/,
 ]
 
 describe('no shipped money string asserts a CUSTOMER outcome from one row (comments excluded)', () => {
   for (const f of FILES) {
     it(`${f} is clean`, () => {
       const src = stripComments(readFileSync(f, 'utf8'))
-      for (const re of FORBIDDEN) expect(src, `${f} matches ${re}`).not.toMatch(re)
+      // ROUND-8: report EVERY hit at once, with the matched text — stopping at the first failing
+      // pattern hid any second defect in the same file until the next run.
+      const hits = FORBIDDEN.flatMap((re) => { const m = src.match(re); return m ? [`${re} → « ${m[0]} »`] : [] })
+      expect(hits, f).toEqual([])
     })
   }
 

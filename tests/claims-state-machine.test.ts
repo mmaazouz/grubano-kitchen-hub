@@ -233,8 +233,19 @@ describe('STUCK REFUNDING VISIBILITY — pending is never dressed up as success'
     expect(out[0].actualRefundedCents).toBe(480) // the REAL amount, not the requested 500
   })
 
-  it('a refunding claim with no Refund row at all is flagged stale, not silently fine', async () => {
+  it('a refunding claim with NO binding is money-unknown (reconcile_required), never silently fine', async () => {
+    // ROUND-8 AUDIT FIX (P2): this shape was labelled « sans aucun remboursement Stripe associé », a
+    // negative Stripe assertion nothing had checked, while the FV console lists the SAME population
+    // as money-unknown. Both consoles now agree, and it is not closable by assertion.
     db.claim.findMany.mockResolvedValue([claimRow({ refundId: null })])
+    const out = await listActionableRefundClaims()
+    expect(out[0].moneyState).toBe('reconcile_required')
+    expect(out[0].resolvable).toBe(false)
+  })
+
+  it('a refunding claim bound to a Refund row that cannot be found is still flagged stale', async () => {
+    db.claim.findMany.mockResolvedValue([claimRow({ refundId: 'rf_missing' })])
+    db.refund.findMany.mockResolvedValue([])
     const out = await listActionableRefundClaims()
     expect(out[0].moneyState).toBe('stale_refunding_no_refund_row')
   })
