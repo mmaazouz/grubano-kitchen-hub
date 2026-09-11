@@ -3007,6 +3007,7 @@
       "claimRefunding": "Claim approved — refund being processed.",
       "claimRefunded": "Claim refunded.",
       "claimRefused": "Claim declined.",
+      "claimClosedBySupport": "Case closed by our team — contact support with any questions.",
       "claimInReview": "Claim under review.",
       "soonBadge": "soon",
       "supportTitle": "Support",
@@ -7157,6 +7158,7 @@
       "refused": "Refused",
       "arbitration": "Under Grubano arbitration",
       "refused_final": "Refusal confirmed",
+      "closed_by_support": "Case closed by our team — contact support with any questions.",
       "refund_failed": "Refund failed — being handled by our team",
       "refund_pending_stripe": "Refund sent to your bank — awaiting confirmation",
       "financial_verification": "Your request requires a manual check by our team."

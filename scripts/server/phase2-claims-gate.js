@@ -238,8 +238,10 @@ async function main() {
     try {
       // Claim-table proof: the model must be reachable BEFORE any rehearsal is considered.
       const total = await prisma.claim.count()
-      const byStatus = await prisma.claim.groupBy({ by: ['status'], _count: true }).catch(() => [])
-      F('CLAIM TABLE (DB)', 'reachable · ' + total + ' row(s) · ' + (byStatus.length ? byStatus.map((g) => g.status + ':' + g._count).join(' ') : 'no rows'))
+      // ROUND-11 AUDIT FIX (P3): a failed groupBy printed « no rows » — a measured empty population. Not measured is said as such.
+      const byStatus = await prisma.claim.groupBy({ by: ['status'], _count: true }).catch(() => null)
+      F('CLAIM TABLE (DB)', 'reachable · ' + total + ' row(s) · ' + (byStatus === null ? 'byStatus NOT MEASURED (groupBy failed)' : byStatus.length ? byStatus.map((g) => g.status + ':' + g._count).join(' ') : 'no rows'))
+      if (byStatus === null) A('2 db: claim groupBy failed — the per-status population is NOT MEASURED')
       const stuck = await prisma.claim.count({ where: { status: 'refunding' } })
       // AUDIT FIX (T-49 audit): a claim parked in FINANCIAL VERIFICATION also holds activeOrderKey
       // and is an OPEN MONEY CASE. Ignoring it declared a locked fixture READY and would have added

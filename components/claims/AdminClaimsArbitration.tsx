@@ -134,6 +134,8 @@ export default function AdminClaimsArbitration() {
       toast.success(resolution === 'settled_out_of_band'
         ? 'Dossier clôturé sur votre déclaration (payé autrement, hors système). Cette action n’a déplacé aucun argent et n’a rien vérifié chez Stripe.'
         : 'Dossier clôturé sans paiement, sur votre déclaration. Cette action n’a déplacé aucun argent ; elle ne dit rien des remboursements déjà présents sur la commande.')
+      // ROUND-11 AUDIT FIX (P3): the note lives only in the admin audit, which is best effort.
+      if ((data as { noteRecorded?: boolean | null }).noteRecorded === false) toast.error('Votre note n’a pas pu être enregistrée dans le journal d’audit : conservez-la ailleurs.')
       setStuckId(null); setStuckReason('')
       await load()
     } catch {

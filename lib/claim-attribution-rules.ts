@@ -14,7 +14,6 @@ export type AttributionRefusalCode =
   | 'own_stamp_exists'
   | 'bound_to_other_claim'
   | 'unusable_status'
-  | 'pending_unconfirmed'
 
 export type AttributionRefusal = { code: AttributionRefusalCode; status: 409; message: string }
 
@@ -61,16 +60,10 @@ export function attributionRefusal(input: {
   if (row.status !== 'succeeded' && row.status !== 'failed' && row.status !== 'pending') {
     return { code: 'unusable_status', status: 409, message: 'Statut de remboursement inexploitable.' }
   }
-  // Our row pending with NO Stripe id is the crash window itself: nothing is confirmed at Stripe.
-  // Binding it would take the claim out of the evidence population (round-8 audit, P1).
-  if (row.status === 'pending' && !row.stripeRefundId) {
-    return {
-      code: 'pending_unconfirmed', status: 409,
-      // ROUND-9 AUDIT FIX (P1): this promised « son webhook l’appliquera » and « le moteur la reprend » —
-      // neither is reliable (no refund.updated for an immediately-succeeded refund; opening the refund
-      // window re-drives nothing by itself). It now names the action that reads the evidence.
-      message: 'Cette ligne est en attente sans identifiant Stripe enregistré : l’attribuer ne prouverait rien. « Réconcilier d’après la preuve » lit Stripe pour les lignes en attente de cette commande et n’en tire que ce qui est prouvé.',
-    }
-  }
+  // ROUND-11 AUDIT FIX (P1): a pending row with no Stripe id used to be refused here ('pending_unconfirmed',
+  // rounds 8 to 11). Reconcile could not attribute it either, and adoption refuses an engine refund, so a
+  // claim whose money was an engine row's SUCCEEDED refund had no exit at all. Binding such a row no longer
+  // takes the claim out of evidence: attributeClaimRefund reads Stripe for it (reconcileBoundClaim) and
+  // applies only what is proven, and a bound claim stays reconcilable.
   return null
 }

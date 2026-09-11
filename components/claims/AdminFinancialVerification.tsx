@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useLocale } from 'next-intl'
 import { Button, Badge, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
-import { moneyLineFor } from '@/lib/claim-money-line'
+import { moneyLineFor, financialVerificationCardVisible } from '@/lib/claim-money-line'
 import { moneyStateGuidance } from '@/lib/claim-action-rules'
 
 // ── T-49 — THE FINANCIAL VERIFICATION QUEUE (founder decision, 2026-09-10) ────────
@@ -33,6 +33,8 @@ type Row = {
   moneyState?: string
   resolvable?: boolean
   reconcilable?: boolean
+  /** ROUND-11 (other_unsettled rows): the bound Refund row, as our base records it. */
+  refund?: { id: string; status: string; stripeRefundId: string | null } | null
   /** The PaymentIntent that paid this order — which payment to open in the Stripe Dashboard. */
   orderStripePaymentIntentId?: string | null
   /** The refunds of THIS order, so the operator can attribute one without leaving the console. */
@@ -81,7 +83,6 @@ const REFUSAL_LEGEND: Record<string, string> = {
   own_stamp_exists:        'une autre ligne porte déjà l’identité de CETTE réclamation — sera refusé',
   bound_to_other_claim:    'déjà LIÉ à une autre réclamation — sera refusé',
   unusable_status:         'statut inexploitable — sera refusé',
-  pending_unconfirmed:     'en attente sans identifiant Stripe enregistré — sera refusé',
 }
 
 export default function AdminFinancialVerification() {
@@ -190,7 +191,8 @@ export default function AdminFinancialVerification() {
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Attribution refusée.'); return }
-      const outcome = (body as { result?: { outcome?: string } }).result?.outcome
+      const result = (body as { result?: { outcome?: string; until?: string } }).result
+      const outcome = result?.outcome
       // ROUND-4 AUDIT FIX: the tone fix was applied to reconcile() only, so attributing a FAILED
       // refund still announced itself with a green tick. Same rule on both handlers.
       const text = outcome === 'refunded'
@@ -201,8 +203,20 @@ export default function AdminFinancialVerification() {
           // failing means that refund paid nothing; it says nothing about other refunds on the
           // order. Four rounds were spent removing exactly this shape and I reintroduced it.
           ? 'Remboursement attribué : cette ligne de remboursement avait ÉCHOUÉ, elle n’a donc rien versé. La réclamation redevient traitable. (Cela ne dit rien des autres remboursements de la commande.)'
-          : 'Remboursement attribué : la ligne n’est pas encore terminale. Rien n’est clos.'
-      if (outcome === 'refund_failed') toast.error(text)
+          // ROUND-11 AUDIT FIX (P1): a pending row's link is now decided by Stripe's evidence for that row.
+          : outcome === 'still_pending'
+            ? 'Remboursement attribué : Stripe rapporte ce remboursement EN ATTENTE. Rien n’est clos ; relancez « Réconcilier d’après la preuve » lorsqu’il sera terminal.'
+            : outcome === 'unconfirmed_within_window'
+              ? `Remboursement attribué : Stripe ne connaît pas encore de remboursement pour cette ligne. Rien n’est clos ; conclusion possible à partir du ${result?.until ? new Date(result.until).toLocaleString('fr-FR') : '—'} (relancez alors la réconciliation).`
+              : outcome === 'engine_row_dead'
+                ? 'Remboursement attribué : Stripe ne connaît aucun remboursement pour cette ligne et le moteur ne la créera plus — elle n’a rien versé. Le dossier est clôturable (« Clôturer ce dossier… »).'
+                : outcome === 'stripe_unreadable_retry'
+                  ? 'Remboursement attribué : Stripe n’a pas pu être lu. Rien n’est conclu ; relancez « Réconcilier d’après la preuve ».'
+                  : outcome === 'financial_verification'
+                    ? 'Remboursement attribué, mais la preuve Stripe contredit cette ligne : la réclamation reste en vérification financière (voir la cause).'
+                    : 'Remboursement attribué.'
+      if (outcome === 'refund_failed' || outcome === 'unconfirmed_within_window' || outcome === 'engine_row_dead'
+        || outcome === 'stripe_unreadable_retry' || outcome === 'financial_verification') toast.error(text)
       else toast.success(text)
       await load()
     } catch {
@@ -243,6 +257,8 @@ export default function AdminFinancialVerification() {
       toast.success(resolution === 'settled_out_of_band'
         ? 'Dossier clôturé sur votre déclaration (payé autrement, hors système). Cette action n’a déplacé aucun argent et n’a rien vérifié chez Stripe.'
         : 'Dossier clôturé sans paiement, sur votre déclaration. Cette action n’a déplacé aucun argent ; elle ne dit rien des remboursements déjà présents sur la commande.')
+      // ROUND-11 AUDIT FIX (P3): the note lives only in the admin audit, which is best effort.
+      if ((data as { noteRecorded?: boolean | null }).noteRecorded === false) toast.error('Votre note n’a pas pu être enregistrée dans le journal d’audit : conservez-la ailleurs.')
       setStuckId(null); setStuckReason('')
       await load()
     } catch {
@@ -311,7 +327,7 @@ export default function AdminFinancialVerification() {
     )
   }
   const unfinalized = data?.unfinalizedRefundRows ?? []
-  if (!rows.length && !unfinalized.length) return null
+  if (!financialVerificationCardVisible({ claimRows: rows.length, unfinalizedRows: unfinalized.length })) return null
 
   return (
     <section className="mb-6">
@@ -345,7 +361,8 @@ export default function AdminFinancialVerification() {
           <p className="mt-1 text-[12px] text-grubano-ink-muted">
             Aucune réconciliation ne les a finalisées ni annulées : ni ligne de ledger ni reprise de royalty n’ont été
             appliquées par elle. Avant tout nouveau remboursement d’une commande, le moteur reprend la plus ancienne
-            ligne en attente de cette commande. Aucune action n’est proposée ici.
+            ligne en attente de cette commande. Une ligne reste listée tant qu’elle est « en attente » dans notre base.
+            Aucune action n’est proposée ici.
           </p>
           <ul className="mt-2 space-y-1 text-[12px] text-grubano-ink">
             {unfinalized.map((u) => (
@@ -400,6 +417,17 @@ export default function AdminFinancialVerification() {
                 <p><span className="font-semibold">Cause :</span> {AMBIGUITY_LABEL[r.ambiguity ?? 'unknown'] ?? AMBIGUITY_LABEL.unknown}</p>
               )}
               <p><span className="font-semibold">Remboursement lié :</span> {r.refundId ? <code>{r.refundId}</code> : 'aucun'}</p>
+              {/* ROUND-11 AUDIT FIX (P2 ×2): the money line says the bound row's state is what counts, and
+                  the toasts point to the claim's recorded detail — both are now on the card itself. */}
+              {r.kind === 'other_unsettled' && r.refund && (
+                <p>
+                  <span className="font-semibold">Statut de notre ligne liée :</span> {r.refund.status}
+                  {r.refund.stripeRefundId ? ` (Stripe ${r.refund.stripeRefundId})` : ' (sans identifiant Stripe enregistré)'}
+                </p>
+              )}
+              {r.kind !== 'financial_verification' && r.refundError && (
+                <p><span className="font-semibold">Détail enregistré :</span> {r.refundError}</p>
+              )}
             </dl>
 
             {/* ROUND-3 AUDIT FIX. I reported this button as scoped in the previous round; the
@@ -458,7 +486,7 @@ export default function AdminFinancialVerification() {
                 </Button>
               )
             )}
-            {r.kind === 'other_unsettled' && r.reconcilable !== true && r.resolvable !== true && (
+            {r.kind === 'other_unsettled' && (
               <p className="mt-3 text-[12px] text-grubano-ink-muted">{moneyStateGuidance(r.moneyState ?? '')}</p>
             )}
 

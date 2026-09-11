@@ -249,6 +249,8 @@ export default function OrderHelpScreen() {
       if (ex.status === 'refunding') return t('claimRefunding')
       if (ex.status === 'approved') return t('claimApproved')
       if (ex.status === 'refunded') return t('claimRefunded')
+      // ROUND-11 AUDIT FIX (P1): a declaration close is not a refusal (lib/claim-action-rules customerClaimStatus).
+      if (ex.status === 'closed_by_support') return t('claimClosedBySupport')
       if (ex.status === 'refused' || ex.status === 'refused_final') return t('claimRefused')
       if (ex.status === 'arbitration') return t('claimInReview')
     }

@@ -3007,6 +3007,7 @@
       "claimRefunding": "تمت الموافقة على المطالبة — جارٍ الاسترداد.",
       "claimRefunded": "تم استرداد المطالبة.",
       "claimRefused": "تم رفض المطالبة.",
+      "claimClosedBySupport": "أُغلق الملف من قِبل فريقنا — تواصل مع الدعم لأي استفسار.",
       "claimInReview": "المطالبة قيد المراجعة.",
       "soonBadge": "قريبًا",
       "supportTitle": "الدعم",
@@ -7157,6 +7158,7 @@
       "refused": "مرفوضة",
       "arbitration": "قيد تحكيم Grubano",
       "refused_final": "تم تأكيد الرفض",
+      "closed_by_support": "أُغلق الملف من قِبل فريقنا — تواصل مع الدعم لأي استفسار.",
       "refund_failed": "فشل الاسترداد — فريقنا يتولى الأمر",
       "refund_pending_stripe": "أُرسل الاسترداد إلى المصرف — في انتظار التأكيد",
       "financial_verification": "يتطلب طلبك تحققًا يدويًا من فريقنا."

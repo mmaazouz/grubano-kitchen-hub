@@ -144,6 +144,11 @@ export function customerClaimStatus(c: ClaimFacts, boundRowInProgress: boolean |
     return !c.refundError && !!c.refundId && boundRowInProgress === true ? 'refunding' : MARKERS.FINANCIAL_VERIFICATION
   }
   if (c.status === 'approved' && c.refundError) return MARKERS.FINANCIAL_VERIFICATION
+  // ROUND-11 AUDIT FIX (P1): 'refused_final' has two writers. arbitrateClaim's refusal records
+  // arbitrationDecision 'refused_final'; the declaration close (resolveStuckClaim, « Clôturer sans
+  // paiement ») leaves the decision as it was — often 'approved'. That second claim was never refused:
+  // telling the customer « Refus confirmé » was false. It reads as a closure by the team.
+  if (c.status === 'refused_final' && c.arbitrationDecision !== 'refused_final') return 'closed_by_support'
   return c.status
 }
 

@@ -3007,6 +3007,7 @@
       "claimRefunding": "Reclamo approvato — rimborso in corso.",
       "claimRefunded": "Reclamo rimborsato.",
       "claimRefused": "Reclamo rifiutato.",
+      "claimClosedBySupport": "Pratica chiusa dal nostro team — contatti l’assistenza per qualsiasi domanda.",
       "claimInReview": "Reclamo in fase di revisione.",
       "soonBadge": "presto",
       "supportTitle": "Assistenza",
@@ -7157,6 +7158,7 @@
       "refused": "Rifiutata",
       "arbitration": "In arbitrato Grubano",
       "refused_final": "Rifiuto confermato",
+      "closed_by_support": "Pratica chiusa dal nostro team — contatti l’assistenza per qualsiasi domanda.",
       "refund_failed": "Rimborso non riuscito — in carico al nostro team",
       "refund_pending_stripe": "Rimborso inviato alla banca — in attesa di conferma",
       "financial_verification": "La Sua richiesta richiede una verifica manuale da parte del nostro team."

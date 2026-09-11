@@ -243,7 +243,9 @@ describe('DEAD ROW COPY — the window end is the engine’s; the margin is said
     expect(e.startsWith(`${ENGINE_ROW_DEAD}:`)).toBe(true)
     expect(e).toContain(new Date(createdAt.getTime() + WINDOW).toISOString())
     expect(e).not.toContain(new Date(createdAt.getTime() + WINDOW + ENGINE_DEAD_MARGIN_MS).toISOString())
-    expect(e).toContain('annulation manuelle')
+    // ROUND-12 (round-11 audit, P2): cancelling the row by hand is not a proven remedy — no remedy is claimed.
+    expect(e).toContain('aucune procédure documentée')
+    expect(e).not.toContain('annulation manuelle')
   })
 
   it('the approve refusal no longer asserts a permanence that not every cause has', () => {

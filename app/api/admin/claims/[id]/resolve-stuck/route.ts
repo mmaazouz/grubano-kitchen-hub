@@ -52,6 +52,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
 
   // Closing a money case is an admin decision: it leaves a trail (best-effort, never throws).
+  // ROUND-11 AUDIT FIX (P3): the operator's note is kept only here, so a failed write is reported back.
+  let noteRecorded = false
   try {
     await recordAdminAudit({
       actorId:    operator.id,
@@ -64,7 +66,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       metadata:   { resolution: parsed.data.resolution, moneyMoved: false, note: parsed.data.reason ?? null },
       req,
     })
-  } catch { /* audit is best-effort */ }
+    noteRecorded = true
+  } catch { /* audit is best-effort — a lost note is reported below */ }
 
-  return NextResponse.json({ claim: result.claim })
+  return NextResponse.json({ claim: result.claim, noteRecorded: parsed.data.reason ? noteRecorded : null })
 }

@@ -549,10 +549,9 @@ describe('GUIDANCE — one fact-only line per money state, shared by both consol
     expect(caught('son sort sera appliqué par la réconciliation (webhook Stripe, ou le balayage de récupération lorsqu’il est déclenché)')).toBe(true)
   })
 
-  it('the attribution rule’s refusal names the action that reads the evidence', () => {
+  it('ROUND 12 (round-11 audit, P1): a pending row without a Stripe id is no longer refused — its evidence decides', () => {
     const r = attributionRefusal({ claimId: 'cl1', row: { id: 'rf1', status: 'pending', reason: claimRefundReason('cl1'), stripeRefundId: null }, orderRows: [{ id: 'rf1', reason: claimRefundReason('cl1') }], boundToOtherClaimId: null })
-    expect(r?.code).toBe('pending_unconfirmed')
-    expect(r?.message).toContain('Réconcilier d’après la preuve')
+    expect(r).toBeNull()
   })
 
   it('both consoles render the shared line', () => {
@@ -575,7 +574,8 @@ describe('CUSTOMER STATUS — never the raw recovery state', () => {
       [{ status: 'approved', refundError: null }, null, 'approved'],
       [{ status: FINANCIAL_VERIFICATION, refundError: 'x' }, null, FINANCIAL_VERIFICATION],
       [{ status: 'refunded' }, null, 'refunded'],
-      [{ status: 'refused_final' }, null, 'refused_final'],
+      // Round 12: only arbitrateClaim's refusal (which records the decision) reads as « refused ».
+      [{ status: 'refused_final', arbitrationDecision: 'refused_final' }, null, 'refused_final'],
       [{ status: 'restaurant_review' }, null, 'restaurant_review'],
     ]
     for (const [c, confirmed, want] of T) expect(customerClaimStatus(c, confirmed), `${JSON.stringify(c)} ${confirmed}`).toBe(want)

@@ -74,3 +74,12 @@ export function moneyLineFor(row: {
     text: 'NON SOLDÉ, et aucun remboursement n’est lié — l’état argent n’est pas établi ici.',
   }
 }
+
+/**
+ * ROUND-11 AUDIT FIX (P2): whether the financial-verification card renders at all. It must render when
+ * there are claims to act on OR only pending refund rows whose claim moved on — reverting the second half
+ * hid that list and stayed green. A pure predicate so the truth table is pinned.
+ */
+export function financialVerificationCardVisible(p: { claimRows: number; unfinalizedRows: number }): boolean {
+  return p.claimRows > 0 || p.unfinalizedRows > 0
+}

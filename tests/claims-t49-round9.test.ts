@@ -93,7 +93,8 @@ describe('attribution PARITY — the console disables exactly the rows the serve
         R('rMinePending', { reason: claimRefundReason('cl1'), status: 'pending', stripeRefundId: null }),
       ],
       bindings: [],
-      expected: { rMine: null, rAdmin: 'own_stamp_exists', rOther: 'stamped_for_other_claim', rMinePending: 'pending_unconfirmed' },
+      // ROUND-12: a pending row is attributable — Stripe's evidence for it decides (round-11 audit, P1).
+      expected: { rMine: null, rAdmin: 'own_stamp_exists', rOther: 'stamped_for_other_claim', rMinePending: null },
     },
     {
       name: 'no row is stamped for this claim',
@@ -105,7 +106,7 @@ describe('attribution PARITY — the console disables exactly the rows the serve
         R('rPendWithId', { status: 'pending' }),
       ],
       bindings: [{ id: 'cl_Z', refundId: 'rBound' }],
-      expected: { rFree: null, rBound: 'bound_to_other_claim', rCanceled: 'unusable_status', rPendNoId: 'pending_unconfirmed', rPendWithId: null },
+      expected: { rFree: null, rBound: 'bound_to_other_claim', rCanceled: 'unusable_status', rPendNoId: null, rPendWithId: null },
     },
   ]
 
@@ -140,7 +141,8 @@ describe('attribution PARITY — the console disables exactly the rows the serve
 
   it('the fixtures exercise EVERY refusal code — parity over a subset would prove nothing', () => {
     const seen = new Set(SETS.flatMap((s) => Object.values(s.expected)).filter(Boolean))
-    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status', 'pending_unconfirmed']) {
+    // ROUND-12: 'pending_unconfirmed' is gone — a pending row's link is decided by Stripe's evidence.
+    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status']) {
       expect(seen.has(code), code).toBe(true)
     }
   })
@@ -339,7 +341,8 @@ describe('round-9 source pins', () => {
 
   it('attribution disables on the server verdict and has a legend for every refusal code', () => {
     expect(fv).toContain('disabled={busyId === r.id || c.refusal != null}')
-    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status', 'pending_unconfirmed']) {
+    // ROUND-12: 'pending_unconfirmed' is gone — a pending row's link is decided by Stripe's evidence.
+    for (const code of ['stamped_for_other_claim', 'own_stamp_exists', 'bound_to_other_claim', 'unusable_status']) {
       expect(fv, code).toMatch(new RegExp(`^  ${code}:`, 'm'))
     }
   })

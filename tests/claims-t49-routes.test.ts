@@ -199,7 +199,8 @@ describe('the money queue component keeps its audit fixes', () => {
   })
 
   it('the money line comes from the tested pure function, not an inline ternary', () => {
-    expect(src).toContain("import { moneyLineFor } from '@/lib/claim-money-line'")
+    // ROUND-12: the same module also carries the card's visibility predicate.
+    expect(src).toContain("import { moneyLineFor, financialVerificationCardVisible } from '@/lib/claim-money-line'")
     expect(src).toContain('moneyLineFor({ kind: r.kind, refundId: r.refundId, refundError: r.refundError })')
     expect(src).not.toContain('état connu mais NON SOLDÉ')
   })
@@ -207,7 +208,8 @@ describe('the money queue component keeps its audit fixes', () => {
   it('BOTH handlers pick their tone from the outcome — not just reconcile', () => {
     // Round 4 fixed reconcile() and left attribute() green on a failed refund.
     expect(src).toContain("if (needsAttention) toast.error(text)")
-    expect(src).toContain("if (outcome === 'refund_failed') toast.error(text)")
+    // ROUND-12: attribution now returns the evidence outcomes too; every non-success one is an error tone.
+    expect(src).toContain("if (outcome === 'refund_failed' || outcome === 'unconfirmed_within_window' || outcome === 'engine_row_dead'")
     // ROUND-5: and neither handler may make a blanket cash claim about the CUSTOMER from one
     // ROW's status — the assertion I added in round 4 and the audit removed in round 5.
     expect(src).not.toContain('Aucun argent n’a atteint le client')

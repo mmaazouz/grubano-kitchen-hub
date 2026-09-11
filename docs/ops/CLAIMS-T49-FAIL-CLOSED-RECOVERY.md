@@ -654,3 +654,89 @@ refaite après relecture. Suites touchées : 16 fichiers / 443 verts. Typecheck 
 sortie lu directement). Empreintes : `git diff` des chemins de code `ccfca974fde87a96` ; le fichier NON
 SUIVI `tests/claims-t49-round11.test.ts` haché à part, `b69ec88510a67750`. Aucun changement de schéma ;
 aucun flag, gate, appel Stripe ou remboursement.
+
+Staging mesuré sur `76d2086` : `version.json` = `76d2086`, gates 403 `gated:true` ×2, recensement
+7 réclamations / 0 active / `nonTerminal` 3 (les `refused`) / `byStatusMeasured: true` / 0 `refunding` /
+0 `financial_verification` / 0 marquée / 0 forme T-49.
+
+---
+
+## 17. AUDIT ROND 11 (2026-09-11) — sur `76d2086`
+
+Run complet (43 agents, aucun perdu). 19 constats : **16 confirmés / 3 réfutés. P0 = 0, P1 = 2, P2 = 5,
+P3 = 9.** P1 sur les trois derniers rondes : 9 → 4 → 2.
+
+**Les P1.**
+1. **« Refus confirmé » sur une réclamation que personne n'a refusée.** Une réclamation APPROUVÉE que
+   l'application n'a pas pu payer (verrou du moteur, échec), puis close « sans paiement » sur déclaration
+   de l'opérateur, était lue par le client comme « Refus confirmé » / « Réclamation refusée », dans les
+   cinq langues — alors que la règle même du système dit qu'une réclamation approuvée ne peut plus être
+   refusée. Préexistant (lot 2) ; le rond 11 y envoyait davantage de réclamations. Un vérificateur l'a
+   classé P2, l'autre P1 : retenu au plus sévère.
+2. **Une réclamation garée sans sortie.** La commande est remboursée par une ligne du moteur hors
+   réclamation, encore « en attente » chez nous sans identifiant Stripe, dont le remboursement Stripe a
+   ABOUTI. Réconciliation → garée « non attribuée » ; attribution → ligne refusée
+   (`pending_unconfirmed`) ; adoption → remboursement moteur refusé, avec renvoi à « Attribuer ». Aucune
+   sortie.
+
+**Les P2.** La copie de ligne morte offrait l'annulation manuelle de la ligne comme remède, alors que la
+clé de reprise demeure. Le retour anticipé de la carte FV qui garde visible la liste des lignes non
+finalisées n'était épinglé par rien (déposé P1). Les toasts du verrou renvoyaient au « détail de la
+réclamation », qu'aucune carte n'affichait. La ligne d'argent « liée » renvoyait à une ligne suivante qui
+ne disait pas l'état de la ligne liée. Et la branche Stripe 0 / 0 garait sans sortie une réclamation
+quand la ligne contradictoire (aboutie ici, échouée ensuite chez Stripe — transition que le webhook laisse
+de côté) appartenait à une AUTRE réclamation.
+
+**Les P3.** Des lignes restent listées indéfiniment, et la ligne nommée par la copie de verrou n'est dans
+aucune liste (documenté ici). Lecture de réclamation de l'éligibilité non sensible au `select` (déposé
+P2). Épingle de promesses en regex françaises appliquée aux locales en/es/it/ar. Fixture du recensement
+encore incapable de discriminer trois formules. Précédence épinglée avec des lignes isolées seulement.
+`groupBy` en échec affiché « no rows » par le précheck de l'opérateur (deux constats). Note de clôture
+conservée dans un audit au mieux-effort seulement. Table des sorties accordant « attribuer / adopter »
+sur le seul statut.
+
+**Réfutés, consignés.** Ligne liée ni en attente ni échouée étiquetée « réussie » (P2) ; « la prochaine
+reprise la marquera » faux quand une ligne morte plus ancienne existe (P3) ; ligne PROPRE échouée chez
+Stripe sans énoncé de verrou (P2).
+
+### Corrigé (rond 12) — en audit
+
+- **Statut client `closed_by_support`.** `refused_final` n'a que deux écrivains, et seul le refus
+  d'`arbitrateClaim` enregistre `arbitrationDecision = 'refused_final'`. Toute autre `refused_final` —
+  la clôture sur déclaration — se lit « Dossier clôturé par notre équipe — contactez le support pour
+  toute question », dans les cinq langues (statut et page d'aide), sans motif de refus affiché.
+  L'éligibilité sélectionne `arbitrationDecision`.
+- **Attribution d'une ligne en attente = preuve.** Le refus `pending_unconfirmed` est retiré de la règle
+  partagée ; `attributeClaimRefund` lie la ligne choisie par l'opérateur puis lit Stripe pour elle
+  (`reconcileBoundClaim` → `applyRowTruth`) : abouti → remboursée ; échoué → clôturable ; pas encore →
+  la date ; illisible → relancer ; contradiction → vérification financière. Les toasts d'attribution
+  disent chaque issue.
+- **Stripe 0 / 0 et lignes d'AUTRES réclamations.** Une ligne marquée aboutie ici, estampillée pour une
+  autre réclamation ou liée à une autre, n'a pas pu payer celle-ci : elle ne bloque plus sa preuve
+  d'absence, avec une copie dédiée.
+- **Copie de ligne morte** : plus de remède affirmé (« aucune procédure documentée ne lève ce refus »).
+- **Carte FV** : prédicat de visibilité pur (`financialVerificationCardVisible`) épinglé ; « Détail
+  enregistré » et « Statut de notre ligne liée » affichés ; guidance sur toute ligne non soldée ; la
+  liste des lignes non finalisées dit qu'une ligne y reste tant qu'elle est « en attente ».
+- **Clôture par déclaration** : la route renvoie `noteRecorded` ; les deux consoles avertissent si la
+  note n'a pas pu être conservée. **Précheck de l'opérateur** : `groupBy` en échec → « NOT MEASURED » et
+  une anomalie.
+- **Instrument** : lecture de réclamation sensible au `select` (dont le cas `resume_mismatch`) ;
+  précédence en lignes MÊLÉES ; recensement dont chaque clause change un nombre ; épingle de promesses
+  par langue, avec un contrôle négatif par langue ; toasts d'attribution épinglés dans leur propre
+  gestionnaire.
+
+**Vérification du rond 12, avant commit.** Contrôles négatifs différentiels : **18/18 PROUVÉS, en deux
+passes consignées telles quelles.** La première a donné 17/18 : le contrôle E13 (retirer une branche des
+toasts d'attribution) est ressorti **NON PROUVÉ** — mon propre test cherchait
+`outcome === 'financial_verification'`, chaîne que la condition de ton du même gestionnaire contient aussi
+(Classe 2). Le test exige désormais chaque issue comme BRANCHE de la chaîne des toasts ; E13 relancé
+seul : prouvé. Quatre ajustements de tests en route, consignés : un test de reprise attendait « toujours
+en attente » sans lecture Stripe ; une fixture du rond 10 lisait `refused_final` sans la décision
+d'arbitrage ; deux épingles de console visaient l'ancien import et l'ancienne condition de ton.
+Typecheck : **41 = base, ensemble d'erreurs IDENTIQUE à celui de `76d2086` (0 nouvelle, 0 disparue)**,
+toutes dans des fichiers de test antérieurs au T-49. `check:i18n` : OK. Suites touchées : 17 fichiers /
+468 verts. Suite complète sur l'arbre final : **404 fichiers / 4421 tests verts** (code de sortie lu
+directement). Empreintes : `git diff` des chemins de code `34f27013eb2f1d70` ; le fichier NON SUIVI
+`tests/claims-t49-round12.test.ts` haché à part, `36814f4fa3566efb`. Aucun changement de schéma ; aucun
+flag, gate, appel Stripe ou remboursement.
