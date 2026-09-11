@@ -73,14 +73,17 @@ describe('GET /api/admin/claims', () => {
     flag.mockReturnValue(false)
     expect(await (await ADMIN_LIST()).json()).toEqual({ enabled: false })
   })
-  it('no session → 401', async () => {
-    sessionMock.mockResolvedValue(null)
-    expect((await ADMIN_LIST()).status).toBe(401)
-  })
-  it('non-admin → 403', async () => {
-    sessionMock.mockResolvedValue({ user: { id: 'u1', role: 'restaurant' } })
+  // ROUND-13 (round-12 audit, P3): the admin list authorises through resolveAdmin (role set re-read), like
+  // every other admin claims route — no session and a non-admin both resolve to null → 403.
+  it('not an admin (no session, or a non-admin role set) → 403', async () => {
+    adminMock.mockResolvedValue(null)
     expect((await ADMIN_LIST()).status).toBe(403)
     expect(queueMock).not.toHaveBeenCalled()
+  })
+  it('a sign-in JWT that still says admin is NOT enough — the re-read role set decides', async () => {
+    sessionMock.mockResolvedValue({ user: { id: 'u1', role: 'admin' } })
+    adminMock.mockResolvedValue(null)
+    expect((await ADMIN_LIST()).status).toBe(403)
   })
   it('admin → arbitration queue', async () => {
     const res = await ADMIN_LIST()

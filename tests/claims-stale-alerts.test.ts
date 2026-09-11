@@ -22,6 +22,10 @@ vi.mock('@/lib/prisma', () => ({ prisma: db }))
 const { sessionMock } = vi.hoisted(() => ({ sessionMock: vi.fn() }))
 vi.mock('next-auth', () => ({ getServerSession: sessionMock }))
 vi.mock('@/lib/auth', () => ({ authOptions: {} }))
+// T-49 round 13: GET /api/admin/claims authorises through resolveAdmin (role set re-read). The stale-alerts
+// route does not import it, so this mock only concerns the admin-list test below.
+const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
+vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 
 const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn() }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminStaleClaimAlert: alertMock }))
@@ -125,7 +129,7 @@ describe('GET /api/admin/claims/stale-alerts — la sonde est LECTURE SEULE (Q3)
 
 describe('GET /api/admin/claims — la file `pending` est ADDITIVE (P0-39)', () => {
   it('⭐ la réponse porte claims (arbitrage, inchangée) ET pending (attente resto)', async () => {
-    sessionMock.mockResolvedValue({ user: { role: 'admin' } })
+    adminMock.mockResolvedValue({ id: 'op1', role: 'admin', name: 'Admin', email: 'admin@grubano.com' })
     arbQueueMock.mockResolvedValue([{ id: 'arb1' }])
     pendingMock.mockResolvedValue([{ id: 'pen1', createdAt: new Date(), responseDeadlineAt: new Date() }])
     const res = await ADMIN_LIST()

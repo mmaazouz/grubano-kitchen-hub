@@ -43,8 +43,13 @@ function clientIp(req?: Request): string | null {
   return req.headers.get('x-real-ip')?.trim() || null
 }
 
-export async function recordAdminAudit(input: AdminAuditInput): Promise<void> {
-  if (!isAdminAuditEnabled()) return
+/**
+ * Returns whether the row was WRITTEN — false when auditing is disabled or the insert failed. Still never
+ * throws. (T-49 round 13, audit P2: a caller that must tell an operator whether their note was kept could
+ * not know, because a swallowed failure and a disabled flag both looked like success.)
+ */
+export async function recordAdminAudit(input: AdminAuditInput): Promise<boolean> {
+  if (!isAdminAuditEnabled()) return false
   try {
     await prisma.adminAuditLog.create({
       data: {
@@ -57,7 +62,9 @@ export async function recordAdminAudit(input: AdminAuditInput): Promise<void> {
         ip:         clientIp(input.req),
       },
     })
+    return true
   } catch {
     // best-effort — an audit write must never surface to the caller.
+    return false
   }
 }

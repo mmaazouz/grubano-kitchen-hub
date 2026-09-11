@@ -268,14 +268,17 @@ describe('CENSUS — every count clause changes a number', () => {
       R('refused'), R('refunded', { refundId: 'rf' }), R('refused_final'), R('arbitration'), R('legacy_unknown'),
       R('refunding', { refundError: OLD_MARKER }), R('refunding', { refundId: 'rf2' }), R('refunding'),
       R('restaurant_review', { responseDeadlineAt: PAST }), R('approved', { responseDeadlineAt: PAST }), R(FINANCIAL_VERIFICATION),
+      // Round 13 (round-12 audit, P3): a restaurant_review whose delay is still RUNNING — dropping the
+      // deadline clause from silenceExpired now changes a number.
+      R('restaurant_review'),
     ]
     db.claim.count.mockImplementation(async (args?: { where?: Record<string, unknown> }) => ROWS.filter((r) => !args?.where || matchWhere(args.where, r)).length)
     db.claim.groupBy.mockImplementation(async () =>
       Object.entries(ROWS.reduce<Record<string, number>>((m, r) => { m[r.status] = (m[r.status] ?? 0) + 1; return m }, {})).map(([status, _count]) => ({ status, _count })))
     const c = (await (await CENSUS(new Request('https://app.grubano.com/api/admin/claims/census') as never)).json()).claims
-    expect(c.total).toBe(11)
-    expect(c.nonTerminal).toBe(9)
-    expect(c.active).toBe(7)          // arbitration, refunding ×3, restaurant_review, approved, financial_verification
+    expect(c.total).toBe(12)
+    expect(c.nonTerminal).toBe(10)
+    expect(c.active).toBe(8)          // arbitration, refunding ×3, restaurant_review ×2, approved, financial_verification
     expect(c.refunding).toBe(3)
     expect(c.t49Shape).toBe(1)        // refunding, no binding, no error
     expect(c.reconcileMarked).toBe(1)
@@ -285,12 +288,18 @@ describe('CENSUS — every count clause changes a number', () => {
 })
 
 // ══ P3 — promise pin, per locale ═══════════════════════════════════════════════════════════
+// Round 13 (round-12 audit, P3): built from the vocabulary each locale really uses — a webhook, engine or
+// sweep that WILL act; a refund applied / refunded / paid by the system; « automatically » tied to a payment.
+// Negations present in the copy (« No automatic action will be taken ») stay uncaught on purpose.
 const PROMISES_BY_LOCALE: Record<string, RegExp[]> = {
   fr: [/l[’']appliquera/i, /sera appliqu[ée]e? par/i, /la reprend\b/i, /son webhook/i, /balayage de récupération/i, /sera (appliqué|remboursé|payé)e? automatiquement/i],
-  en: [/\b(webhook|sweep)\b[^.]{0,40}\bwill\b/i, /will be (applied|refunded|paid) automatically/i],
-  es: [/\b(webhook|barrido)\b[^.]{0,40}(aplicará|reembolsará|pagará)/i, /se (aplicará|reembolsará|pagará) automáticamente/i],
-  it: [/\b(webhook|scansione)\b[^.]{0,40}(applicherà|rimborserà|pagherà)/i, /verrà (applicat[oa]|rimborsat[oa]|pagat[oa]) automaticamente/i],
-  ar: [/سيتم (تطبيقه|استرداده|دفعه) تلقائي/],
+  en: [/\b(webhook|engine|sweep)\b[^.]{0,60}\bwill\b/i, /\bwill (apply|pick (it|this) up|refund|pay)\b/i, /\bwill be (applied|refunded|paid|reimbursed)\b/i, /\bautomatically (refund|pa(y|id)|appl)/i],
+  // `\b` is ASCII-only: after an accented ending (aplicará, applicherà) it never matches, so accented endings
+  // use a Unicode letter lookahead instead; Arabic accepts both word orders (verb first is the natural one).
+  // The `u` flag is built through RegExp: tsconfig sets no target, and tsc rejects a `u` regex literal below es6 (TS1501).
+  es: [new RegExp(String.raw`\b(webhook|motor|barrido)\b[^.]{0,60}\p{L}+ará(?!\p{L})`, 'iu'), new RegExp(String.raw`\bse (aplicará|reembolsará|pagará|abonará)(?!\p{L})`, 'iu'), new RegExp(String.raw`\bserá (aplicad|reembolsad|pagad|abonad)[oa]\b`, 'iu'), new RegExp(String.raw`\bautomáticamente[^.]{0,40}(reembols|pag|aplic|abon)`, 'iu')],
+  it: [new RegExp(String.raw`\b(webhook|motore|scansione)\b[^.]{0,60}\p{L}+rà(?!\p{L})`, 'iu'), new RegExp(String.raw`\b(verrà|sarà) (applicat|rimborsat|pagat|accreditat)[oa]\b`, 'iu'), new RegExp(String.raw`\bautomaticamente[^.]{0,40}(rimbors|pag|applic|accredit)`, 'iu')],
+  ar: [new RegExp(String.raw`(ويب\s?هوك|المحرك)[^.،]{0,60}سي`, 'u'), new RegExp(String.raw`سي\p{L}*[^.،]{0,30}(ويب\s?هوك|المحرك)`, 'u'), new RegExp('سيتم (تطبيق|استرداد|دفع)', 'u'), new RegExp(String.raw`تلقائي[اًا]?[^.،]{0,40}(استرداد|دفع|تطبيق)`, 'u')],
 }
 const flatten = (v: unknown): string[] => (typeof v === 'string' ? [v] : v && typeof v === 'object' ? Object.values(v).flatMap(flatten) : [])
 
@@ -304,14 +313,19 @@ describe('PROMISES — each locale scanned with its own language (round-11 P3)',
     })
   }
 
-  it('NEGATIVE CONTROL — an injected promise is caught in each language', () => {
+  it('NEGATIVE CONTROL — natural translations of the historical French promise are caught; the copy’s negations are not', () => {
     const caught = (loc: string, s: string) => PROMISES_BY_LOCALE[loc].some((re) => re.test(s))
-    expect(caught('fr', 'Le remboursement sera payé automatiquement.')).toBe(true)
-    expect(caught('en', 'The webhook will apply it.')).toBe(true)
-    expect(caught('en', 'It will be refunded automatically.')).toBe(true)
-    expect(caught('es', 'El webhook lo aplicará.')).toBe(true)
-    expect(caught('it', 'Il rimborso verrà pagato automaticamente.')).toBe(true)
-    expect(caught('ar', 'سيتم استرداده تلقائيًا')).toBe(true)
+    // « Elle n’avancera que si Stripe a réellement créé ce remboursement (son webhook l’appliquera) ou si le moteur de remboursement la reprend. »
+    expect(caught('fr', 'Elle n’avancera que si Stripe a réellement créé ce remboursement (son webhook l’appliquera).')).toBe(true)
+    expect(caught('en', 'It will only move forward if Stripe really created this refund (its webhook will apply it) or if the refund engine picks it up.')).toBe(true)
+    expect(caught('es', 'Solo avanzará si Stripe creó realmente este reembolso (su webhook lo aplicará) o si el motor de reembolsos lo retoma.')).toBe(true)
+    expect(caught('it', 'Avanzerà solo se Stripe ha davvero creato questo rimborso (il suo webhook lo applicherà) o se il motore di rimborso lo riprende.')).toBe(true)
+    expect(caught('ar', 'لن تتقدم إلا إذا أنشأت Stripe هذا الاسترداد فعلاً (سيطبقه الويب هوك الخاص بها) أو إذا استأنفه محرك الاسترداد.')).toBe(true)
+    // The negations the shipped copy really contains must NOT be caught.
+    expect(caught('en', 'No automatic action will be taken — the decision stays with the restaurant.')).toBe(false)
+    expect(caught('es', 'No se tomará ninguna acción automática — la decisión corresponde al restaurante.')).toBe(false)
+    expect(caught('it', 'Nessuna azione automatica sarà intrapresa — la decisione spetta al ristorante.')).toBe(false)
+    expect(caught('ar', 'لن يُتخذ أي إجراء تلقائي — القرار يعود إلى المطعم.')).toBe(false)
   })
 })
 
@@ -344,11 +358,12 @@ describe('STUCK CLOSE — a note that could not be recorded is reported', () => 
     fx.row = { status: 'approved', refundError: 'engine_failed: x' }
   })
 
-  it('audit write fails with a note → noteRecorded false; succeeds → true; no note → null', async () => {
-    auditMock.mockRejectedValue(new Error('audit down'))
+  it('audit not written with a note → noteRecorded false; written → true; no note → null', async () => {
+    // Round 13: recordAdminAudit RETURNS whether it wrote (it never throws); the route reports that value.
+    auditMock.mockResolvedValue(false)
     expect((await (await post({ resolution: 'closed_no_payment', reason: 'note' })).json()).noteRecorded).toBe(false)
     fx.row = { status: 'approved', refundError: 'engine_failed: x' }
-    auditMock.mockResolvedValue(undefined)
+    auditMock.mockResolvedValue(true)
     expect((await (await post({ resolution: 'closed_no_payment', reason: 'note' })).json()).noteRecorded).toBe(true)
     fx.row = { status: 'approved', refundError: 'engine_failed: x' }
     expect((await (await post({ resolution: 'closed_no_payment' })).json()).noteRecorded).toBeNull()

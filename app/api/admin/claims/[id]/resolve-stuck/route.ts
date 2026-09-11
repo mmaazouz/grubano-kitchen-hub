@@ -55,7 +55,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // ROUND-11 AUDIT FIX (P3): the operator's note is kept only here, so a failed write is reported back.
   let noteRecorded = false
   try {
-    await recordAdminAudit({
+    // ROUND-12 AUDIT FIX (P2): recordAdminAudit swallows every failure and is a no-op when auditing is off,
+    // so « the call returned » never meant « the note was kept ». Its return value says.
+    noteRecorded = await recordAdminAudit({
       actorId:    operator.id,
       actorEmail: operator.email,
       action:     'claim.resolve_stuck',
@@ -66,8 +68,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       metadata:   { resolution: parsed.data.resolution, moneyMoved: false, note: parsed.data.reason ?? null },
       req,
     })
-    noteRecorded = true
-  } catch { /* audit is best-effort — a lost note is reported below */ }
+  } catch { /* recordAdminAudit never throws; kept as a belt — a lost note is reported below */ }
 
   return NextResponse.json({ claim: result.claim, noteRecorded: parsed.data.reason ? noteRecorded : null })
 }

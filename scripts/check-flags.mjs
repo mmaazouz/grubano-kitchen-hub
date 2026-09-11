@@ -98,7 +98,7 @@ export const WARNING_RULES = [
   // (no money can move: lib/claims triggerClaimRefund returns before the only writer of
   // 'refunding'). It is NOT a good LIVE configuration, so say so instead of failing.
   { when: (env) => on(env, 'CLAIMS_ENABLED') && !on(env, 'REFUNDS_ENABLED'),
-    msg: 'CLAIMS_ENABLED=true avec REFUNDS_ENABLED=false : configuration de RÉPÉTITION (aucun argent ne peut bouger). Sûre pour un test borné ; en bêta réelle une réclamation approuvée resterait non remboursée — visible dans la file « Remboursements à traiter », mais non payée.' },
+    msg: 'CLAIMS_ENABLED=true avec REFUNDS_ENABLED=false : configuration de RÉPÉTITION (aucun argent ne peut bouger). Sûre pour un test borné ; en bêta réelle une réclamation approuvée resterait non remboursée — visible dans « Remboursements à traiter » tant que les réclamations sont ouvertes, puis dans « Vérification financière requise » une fois le bail fermé, mais non payée.' },
   // (T-48) Le drapeau seul n'autorise PLUS rien : une fenêtre de remboursement est un BAIL
   // qui expire (REFUNDS_ENABLED=true ET REFUNDS_WINDOW_UNTIL valide, ≤ 30 min, revérifié par
   // l'application à chaque appel). Un drapeau vrai sans bail est inerte — c'est le

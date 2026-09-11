@@ -163,16 +163,38 @@ async function reportResidue() {
     F('CLAIMS CREATED BY THIS REHEARSAL', created.length + (created.length ? ' - ' + created.map((c) => c.id + ':' + c.status).join(', ') : ''))
     F('NON-TERMINAL RESIDUE', residue.length ? residue.length + ' - ' + residue.map((c) => c.id + ':' + c.status + ' (order ' + c.orderId + ')').join(', ') : 'NONE')
     if (residue.length) A('4 residue: ' + residue.length + ' claim(s) left NON-TERMINAL by this rehearsal, listed above BY ID because closing CLAIMS_ENABLED hides some of these states from the arbitration console. Resolve them in a later window; do NOT reopen claims now just to tidy up.')
+    // ROUND-12 AUDIT FIX (P2): the baseline held ids only, so a PRE-EXISTING claim moved during the window
+    // (a refused claim contested, then approved and left unpaid) was reported as no residue at all. The
+    // snapshot keeps each claim's status and attempt flag; every claim that changed is reported too.
+    const before = residueBaseline instanceof Map ? residueBaseline : null
+    if (!before) A('4 residue: changes to PRE-EXISTING claims are NOT MEASURED — the before-snapshot holds no statuses')
+    const changed = before
+      ? after.filter((c) => before.has(c.id) && (before.get(c.id).status !== c.status || before.get(c.id).refundAttempted !== c.refundAttempted))
+      : []
+    F('PRE-EXISTING CLAIMS CHANGED DURING THIS REHEARSAL', changed.length ? changed.length + ' - ' + changed.map((c) => c.id + ':' + before.get(c.id).status + '→' + c.status + ' (order ' + c.orderId + ')').join(', ') : (before ? 'NONE' : 'NOT MEASURED'))
+    const changedResidue = changed.filter((c) => !TERMINAL.includes(c.status))
+    if (changedResidue.length) A('4 residue: ' + changedResidue.length + ' PRE-EXISTING claim(s) moved to a NON-TERMINAL state during this rehearsal, listed above BY ID. Resolve them in a later window.')
     // ROUND-9 AUDIT FIX (P2): an APPROVED-and-UNPAID claim is the residue a rehearsal with REFUNDS closed
     // can leave that nothing moves afterwards: re-approving pays only with a CLAIMS window AND a REFUNDS
     // window open together (neither operator opens both), and refuse_final is refused once approved.
     // Named separately so it is never read as ordinary residue.
-    const approvedUnpaid = residue.filter((c) => c.status === 'approved' && c.refundAttempted === false)
+    const approvedUnpaid = residue.concat(changedResidue).filter((c) => c.status === 'approved' && c.refundAttempted === false)
     if (approvedUnpaid.length) A('4 residue: ' + approvedUnpaid.length + ' claim(s) APPROVED and UNPAID (' + approvedUnpaid.map((c) => c.id).join(', ') + '). Nothing can pay them with REFUNDS closed and they can no longer be refused; paying them needs a CLAIMS window and a REFUNDS window open together, which neither operator opens. FOUNDER DECISION required before any rehearsal that approves a claim.')
     const stuck = await residuePrisma.claim.count({ where: { status: 'refunding' } })
     const fv    = await residuePrisma.claim.count({ where: { status: 'financial_verification' } })
     F('POST-CLOSE MONEY STATES', 'refunding ' + stuck + ' - financial_verification ' + fv)
   } catch (e) { A('4 residue: ' + scrub(e)) }
+}
+
+/**
+ * ROUND-12 AUDIT FIX (P3): the claim-table line of the precheck, pure so a test pins it. A failed groupBy is
+ * NOT MEASURED and raises an anomaly — and any anomaly refuses the window — never « no rows ».
+ */
+function claimTableReport(total, byStatus) {
+  if (byStatus === null) {
+    return { fact: 'reachable · ' + total + ' row(s) · byStatus NOT MEASURED (groupBy failed)', anomaly: '2 db: claim groupBy failed — the per-status population is NOT MEASURED' }
+  }
+  return { fact: 'reachable · ' + total + ' row(s) · ' + (byStatus.length ? byStatus.map((g) => g.status + ':' + g._count).join(' ') : 'no rows'), anomaly: null }
 }
 
 async function main() {
@@ -240,8 +262,13 @@ async function main() {
       const total = await prisma.claim.count()
       // ROUND-11 AUDIT FIX (P3): a failed groupBy printed « no rows » — a measured empty population. Not measured is said as such.
       const byStatus = await prisma.claim.groupBy({ by: ['status'], _count: true }).catch(() => null)
-      F('CLAIM TABLE (DB)', 'reachable · ' + total + ' row(s) · ' + (byStatus === null ? 'byStatus NOT MEASURED (groupBy failed)' : byStatus.length ? byStatus.map((g) => g.status + ':' + g._count).join(' ') : 'no rows'))
-      if (byStatus === null) A('2 db: claim groupBy failed — the per-status population is NOT MEASURED')
+      const tableReport = claimTableReport(total, byStatus)
+      F('CLAIM TABLE (DB)', tableReport.fact)
+      if (tableReport.anomaly) A(tableReport.anomaly)
+      // ROUND-12 AUDIT FIX (P2): a refused claim the customer contests during the window moves a PRE-EXISTING
+      // claim; the residue report now lists such changes by id — say up front how many could.
+      const refusedCount = byStatus ? ((byStatus.find((g) => g.status === 'refused') || {})._count || 0) : null
+      if (refusedCount) F('REFUSED CLAIMS A CUSTOMER MAY STILL CONTEST', refusedCount + ' — a contest during the window changes a pre-existing claim; the residue report lists such changes by id')
       const stuck = await prisma.claim.count({ where: { status: 'refunding' } })
       // AUDIT FIX (T-49 audit): a claim parked in FINANCIAL VERIFICATION also holds activeOrderKey
       // and is an OPEN MONEY CASE. Ignoring it declared a locked fixture READY and would have added
@@ -312,12 +339,15 @@ async function main() {
   // non-terminal claims (arbitration and overdue restaurant_review drop out of the gated admin
   // count), so 'nothing on screen afterwards' proves nothing. Ids are taken before and after,
   // and the difference is reported whatever the outcome.
-  const idsBefore = new Set()
+  // ROUND-12 AUDIT FIX (P2): status and attempt flag are kept with each id, so a pre-existing claim that moves
+  // during the window is reported, not only claims the window created.
+  const claimsBefore = new Map()
   if (prisma) {
     residuePrisma = prisma
     try {
-      ;(await prisma.claim.findMany({ select: { id: true } })).forEach((c) => idsBefore.add(c.id))
-      residueBaseline = idsBefore // set ONLY on success: a failed snapshot must not look like an empty one
+      ;(await prisma.claim.findMany({ select: { id: true, status: true, refundAttempted: true } }))
+        .forEach((c) => claimsBefore.set(c.id, { status: c.status, refundAttempted: c.refundAttempted }))
+      residueBaseline = claimsBefore // set ONLY on success: a failed snapshot must not look like an empty one
     } catch (e) { A('3 residue: could not snapshot claim ids before the window - ' + scrub(e)) }
   }
 
@@ -385,6 +415,7 @@ module.exports = {
   // ROUND-6 test seams: the residue report and its inputs, so a test can prove the abort path
   // reports residue WITHOUT calling done() (which sets process.exitCode and schedules exit).
   reportResidue,
+  claimTableReport,
   _setResidueForTests: (prismaHandle, baseline) => { residuePrisma = prismaHandle; residueBaseline = baseline },
   // F()/A() append to the report printed by done(); a test reads them here instead of calling done().
   _residueLinesForTests: () => ({ facts: facts.slice(), anomalies: anomalies.slice() }),

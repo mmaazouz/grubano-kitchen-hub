@@ -16,7 +16,8 @@ process.env.PHASE2_APP_ROOT = SANDBOX
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const GATE = require('../scripts/server/phase2-claims-gate.js') as {
   reportResidue: () => Promise<void>
-  _setResidueForTests: (prisma: unknown, baseline: Set<string> | null) => void
+  claimTableReport: (total: number, byStatus: Array<{ status: string; _count: number }> | null) => { fact: string; anomaly: string | null }
+  _setResidueForTests: (prisma: unknown, baseline: Set<string> | Map<string, { status: string; refundAttempted: boolean }> | null) => void
   _residueLinesForTests: () => { facts: string[]; anomalies: string[] }
 }
 
@@ -90,5 +91,52 @@ describe('reportResidue — the abort path has the same eyes as the happy path',
     expect(anomalies).toMatch(/1 claim\(s\) APPROVED and UNPAID \(appr1\)/)
     expect(anomalies).toContain('FOUNDER DECISION required')
     expect(anomalies).not.toMatch(/APPROVED and UNPAID \([^)]*rev1/)
+  })
+
+  it('ROUND-13 (P2): a PRE-EXISTING claim moved during the window is reported — ids alone hid it', async () => {
+    const before = GATE._residueLinesForTests()
+    const fakePrisma = {
+      claim: {
+        findMany: async () => [
+          { id: 'old_refused', status: 'approved', orderId: 'o0', refundAttempted: false, arbitrationDecision: 'approved' },
+          { id: 'old_done', status: 'refunded', orderId: 'o1', refundAttempted: true, arbitrationDecision: null },
+        ],
+        count: async () => 0,
+      },
+    }
+    GATE._setResidueForTests(fakePrisma, new Map([
+      ['old_refused', { status: 'refused', refundAttempted: false }],
+      ['old_done', { status: 'refunded', refundAttempted: true }],
+    ]))
+    await GATE.reportResidue()
+    const after = GATE._residueLinesForTests()
+    const facts = after.facts.slice(before.facts.length).join('\n')
+    const anomalies = after.anomalies.slice(before.anomalies.length).join('\n')
+    expect(facts).toMatch(/PRE-EXISTING CLAIMS CHANGED DURING THIS REHEARSAL[^\n]*old_refused:refused→approved/)
+    expect(facts).not.toMatch(/old_done:/)
+    expect(anomalies).toMatch(/1 PRE-EXISTING claim\(s\) moved to a NON-TERMINAL state/)
+    expect(anomalies).toMatch(/APPROVED and UNPAID \(old_refused\)/)
+    expect(anomalies).not.toMatch(/changes to PRE-EXISTING claims are NOT MEASURED/)
+  })
+
+  it('ROUND-13 (P2): a snapshot without statuses says the pre-existing changes are NOT MEASURED', async () => {
+    const before = GATE._residueLinesForTests()
+    GATE._setResidueForTests({ claim: { findMany: async () => [], count: async () => 0 } }, new Set(['x']))
+    await GATE.reportResidue()
+    expect(GATE._residueLinesForTests().anomalies.slice(before.anomalies.length).join('\n')).toMatch(/changes to PRE-EXISTING claims are NOT MEASURED/)
+  })
+
+  it('ROUND-13 (P3): the claim-table precheck line says NOT MEASURED and raises an anomaly when groupBy failed', () => {
+    expect(GATE.claimTableReport(7, null)).toEqual({
+      fact: 'reachable · 7 row(s) · byStatus NOT MEASURED (groupBy failed)',
+      anomaly: '2 db: claim groupBy failed — the per-status population is NOT MEASURED',
+    })
+    expect(GATE.claimTableReport(0, [])).toEqual({ fact: 'reachable · 0 row(s) · no rows', anomaly: null })
+    expect(GATE.claimTableReport(2, [{ status: 'refused', _count: 2 }]).fact).toBe('reachable · 2 row(s) · refused:2')
+    const src = fs.readFileSync('scripts/server/phase2-claims-gate.js', 'utf8').replace(/\r\n/g, '\n')
+    expect(src).toContain('const tableReport = claimTableReport(total, byStatus)')
+    expect(src).toContain('if (tableReport.anomaly) A(tableReport.anomaly)')
+    // …and an anomaly refuses the window.
+    expect(src).toContain("if (anomalies.length) return fail('3 window: precheck anomalies — window REFUSED, nothing changed')")
   })
 })

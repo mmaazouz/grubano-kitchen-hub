@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { resolveAdmin } from '@/lib/admin-guard'
 import { isClaimsEnabled, listArbitrationQueue, listPendingRestaurantClaims, listActionableRefundClaims, listSilenceExpiredClaims } from '@/lib/claims'
 
 export const runtime = 'nodejs'
@@ -13,11 +12,10 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   if (!isClaimsEnabled()) return NextResponse.json({ enabled: false })
 
-  const session = await getServerSession(authOptions)
-  const user = session?.user as { role?: string; roles?: string[] } | undefined
-  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
-  const isAdmin = user.role === 'admin' || (Array.isArray(user.roles) && user.roles.includes('admin'))
-  if (!isAdmin) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
+  // ROUND-12 AUDIT FIX (P3): this was the one admin claims route still authorizing from the sign-in JWT's
+  // roles, which are never refreshed. Like every other admin claims route, the role set is re-read.
+  const operator = await resolveAdmin()
+  if (!operator) return NextResponse.json({ error: 'Accès refusé' }, { status: 403 })
 
   // P0-39 (vague 3) — ADDITIF : la file d'arbitrage est inchangée ; `pending`
   // expose EN PLUS les réclamations en attente du restaurant (lecture seule,
