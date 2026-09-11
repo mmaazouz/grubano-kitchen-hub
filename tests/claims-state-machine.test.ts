@@ -696,7 +696,8 @@ describe('the CAS mock enforces comparison operators, not just scalar equality',
     // The mock throws SYNCHRONOUSLY, before any promise exists — that is deliberate: a clause
     // shape the harness cannot evaluate must stop the test, never be waved through.
     fx.row = { status: 'approved' }
-    expect(() => db.claim.updateMany({ where: { id: 'c1', status: { startsWith: 'app' } }, data: {} }))
+    // Round 11 modelled `startsWith` (the census counts crash markers with it); `endsWith` is still unmodelled.
+    expect(() => db.claim.updateMany({ where: { id: 'c1', status: { endsWith: 'ved' } }, data: {} }))
       .toThrow(/unsupported operator/)
   })
 })

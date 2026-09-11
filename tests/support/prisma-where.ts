@@ -26,6 +26,8 @@ export function matchOp(op: string, expected: unknown, actual: unknown): boolean
     case 'lte':    return (actual as number) <= (expected as number)
     case 'gt':     return (actual as number) >  (expected as number)
     case 'gte':    return (actual as number) >= (expected as number)
+    // Round 11: the census counts crash markers with `refundError: { startsWith }`.
+    case 'startsWith': return typeof actual === 'string' && actual.startsWith(String(expected))
     default:
       throw new Error(
         `prisma mock: unsupported operator '${op}' — extend tests/support/prisma-where.ts ` +

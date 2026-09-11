@@ -190,6 +190,7 @@ export type MoneyReviewKind =
   | 'settlement_amount_drift'           // resume: frozen payout ≠ live lines, no transfer made → human decision
   | 'refund_reconciliation_incomplete'  // webhook could not list the charge's refunds → reconciliation deferred
   | 'claim_financial_verification'      // T-49: a claim's money truth is unattributable → evidence-based human reconciliation, NEVER another refund
+  | 'claim_refunded_row_unfinalized'    // T-49 round 11: a claim was concluded from Stripe while its Refund row stays pending (engine row-side work not done)
 
 export async function sendAdminMoneyReviewAlert(p: {
   kind:      MoneyReviewKind

@@ -29,7 +29,9 @@ export async function GET(req: NextRequest) {
     const [total, byStatus, refunding, t49Shape, reconcileMarked, financialVerification, restaurantReview, arbitration, silenceExpired] =
       await Promise.all([
         prisma.claim.count(),
-        prisma.claim.groupBy({ by: ['status'], _count: true }).catch(() => [] as Array<{ status: string; _count: number }>),
+        // ROUND-10 AUDIT FIX (P3): a failed groupBy used to become [] — reported as a MEASURED empty
+        // population (active 0, byStatus {}). It is now reported as not measured.
+        prisma.claim.groupBy({ by: ['status'], _count: true }).catch(() => null),
         prisma.claim.count({ where: { status: 'refunding' } }),
         // The EXACT T-49 shape: refunding, no binding, no marker. A row of this shape predates
         // the self-labelling CAS, so it is the population that needs manual attention.
@@ -42,20 +44,22 @@ export async function GET(req: NextRequest) {
       ])
 
     const ACTIVE = ['restaurant_review', 'approved', 'refunding', 'arbitration', FINANCIAL_VERIFICATION]
-    const counts = Object.fromEntries((byStatus as Array<{ status: string; _count: number }>).map((g) => [g.status, g._count]))
-    const active = ACTIVE.reduce((n, s) => n + (counts[s] ?? 0), 0)
+    const grouped = byStatus as Array<{ status: string; _count: number }> | null
+    const counts: Record<string, number> | null = grouped ? Object.fromEntries(grouped.map((g) => [g.status, g._count])) : null
+    const active = counts ? ACTIVE.reduce((n, s) => n + (counts[s] ?? 0), 0) : null
     // ROUND-9 AUDIT FIX (P2): `nonTerminal` was `active`, silently dropping 'refused' — which the library
     // treats as NON-terminal (the customer may still contest). It is now total minus the library's own
     // terminal set, the set the rehearsal operator's residue report uses too.
-    const terminal = TERMINAL_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0)
+    const terminal = counts ? TERMINAL_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0) : null
 
     return NextResponse.json({
       measuredAt: new Date().toISOString(),
       claims: {
         total,
         active,
-        nonTerminal: total - terminal,
+        nonTerminal: terminal === null ? null : total - terminal,
         byStatus: counts,
+        byStatusMeasured: counts !== null,
         refunding,
         restaurantReview,
         arbitration,

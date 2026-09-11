@@ -32,7 +32,7 @@ import { isResumeMismatch } from '@/lib/claim-money-line'
 // ROUND-8 AUDIT FIX (P1, Class 3): the server and the console ask the SAME rule which row may be attributed.
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
 // ROUND-9 AUDIT FIX (Class 3/4): every "may a human do X on this claim?" has one shared answer.
-import { reconcileRefusal, arbitrationRefusal, customerClaimStatus } from '@/lib/claim-action-rules'
+import { reconcileRefusal, arbitrationRefusal, customerClaimStatus, boundRowShowsInProgress, RECONCILE_GRACE_MS, reconcileMarkerAge } from '@/lib/claim-action-rules'
 
 export type { ClaimSelection, StripeCashTruth } from '@/lib/claim-scope'
 // The canonical reason taxonomy and its authority scopes live in lib/claim-reasons and are
@@ -370,8 +370,8 @@ export async function listConsumerClaims(consumerId: string) {
   let confirmed = new Set<string>()
   if (boundIds.length) {
     try {
-      const rows = await prisma.refund.findMany({ where: { id: { in: boundIds } }, select: { id: true, stripeRefundId: true } })
-      confirmed = new Set(rows.filter((r) => !!r.stripeRefundId).map((r) => r.id))
+      const rows = await prisma.refund.findMany({ where: { id: { in: boundIds } }, select: { id: true, status: true, stripeRefundId: true } })
+      confirmed = new Set(rows.filter((r) => boundRowShowsInProgress(r) === true).map((r) => r.id))
     } catch { /* unknown → never « en cours » */ }
   }
   // The internal recovery fields never reach the customer: refundError carries engine and Stripe text and
@@ -433,8 +433,8 @@ export async function getClaimEligibility(input: { consumerId: string; orderId: 
   let existingBoundConfirmed: boolean | null = null
   if (existing && existing.status === 'refunding' && existing.refundId) {
     try {
-      const bound = await prisma.refund.findUnique({ where: { id: existing.refundId }, select: { stripeRefundId: true } })
-      existingBoundConfirmed = !!bound?.stripeRefundId
+      const bound = await prisma.refund.findUnique({ where: { id: existing.refundId }, select: { status: true, stripeRefundId: true } })
+      existingBoundConfirmed = boundRowShowsInProgress(bound)
     } catch { existingBoundConfirmed = null }
   }
   const existingClaim = existing
@@ -1228,6 +1228,37 @@ export async function listActionableRefundClaims() {
 }
 
 /**
+ * ROUND-10 AUDIT FIX (P2 ×2): reconciliation can conclude a CLAIM from Stripe's evidence while our own
+ * Refund row stays 'pending' (a succeeded refund applied to the claim, a failed one recorded, a dead
+ * row closed by declaration). The engine's row-side work — ledger, royalty clawback, the failed-row
+ * lock — is not done by reconciliation, and RESUME-FIRST takes the order's oldest pending row before
+ * any new refund on that order. Those rows are listed here, ungated, so they cannot go unseen.
+ * Read-only: nothing is written and no action is offered.
+ */
+export async function listUnfinalizedClaimRefundRows() {
+  const claims = await prisma.claim.findMany({
+    where:  { refundId: { not: null }, status: { not: 'refunding' } },
+    select: { id: true, status: true, refundId: true },
+  })
+  if (!claims.length) return []
+  const byRow = new Map(claims.map((c) => [c.refundId as string, c]))
+  const rows = await prisma.refund.findMany({
+    where:   { id: { in: Array.from(byRow.keys()) }, status: 'pending' },
+    select:  { id: true, orderId: true, amountCents: true, stripeRefundId: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  })
+  return rows.map((r) => ({
+    refundRowId:    r.id,
+    orderId:        r.orderId,
+    amountCents:    r.amountCents,
+    stripeRefundId: r.stripeRefundId,
+    rowCreatedAt:   r.createdAt,
+    claimId:        byRow.get(r.id)?.id ?? null,
+    claimStatus:    byRow.get(r.id)?.status ?? null,
+  }))
+}
+
+/**
  * ADMIN — terminate a claim whose refund is STUCK (RE-AUDIT FIX, P1).
  *
  * A claim left at `approved`/`refunding` with a `refundError` (engine failure, Stripe failure,
@@ -1286,7 +1317,9 @@ export async function resolveStuckClaim(input: {
       status,
       activeOrderKey:    null, // release the order: the customer is no longer locked out
       arbitratedBy:      input.adminId,
-      arbitrationReason: input.reason ?? null,
+      // ROUND-10 AUDIT FIX (P3): the operator's free-text note was stored here, and arbitrationReason is
+      // returned to the CUSTOMER. The note goes to the admin audit trail (resolve-stuck route) instead.
+      arbitrationReason: null,
       arbitratedAt:      new Date(),
       decidedBy:         'admin',
       decidedAt:         new Date(),
@@ -1502,31 +1535,11 @@ export async function listFinancialVerificationClaims() {
 }
 
 /** Claims whose refund attempt was interrupted before its identity was bound (T-49). */
-/**
- * How long a refund attempt may legitimately be in flight before its marker means something is
- * wrong. AUDIT FIX (T-49 audit): the marker is written at the START of every attempt, so without
- * this a perfectly healthy refund appears in the operator queue as "interrupted" for the seconds
- * it takes Stripe to answer — crying wolf on the one queue that must stay credible.
- */
-export const RECONCILE_GRACE_MS = 5 * 60 * 1000
-
-/** The instant a marker was written, or null when it cannot be read. */
-export function reconcileMarkerAge(refundError: string | null | undefined, nowMs = Date.now()): number | null {
-  if (!isReconcileRequired(refundError)) return null
-  // RE-AUDIT FIX: this shipped as /(d{4}-d{2}-d{2}T[d:.]+Z)/ — the backslashes were lost on the
-  // way in, so it never matched an ISO timestamp, reconcileMarkerAge always returned null, and
-  // the grace window was INERT: every marker, including a refund legitimately in flight one
-  // second earlier, was listed as stranded. A regex literal keeps the escapes visible.
-  const m = /(\d{4}-\d{2}-\d{2}T[\d:.]+Z)/.exec(refundError as string)
-  if (!m) return null
-  const t = Date.parse(m[1])
-  if (!Number.isFinite(t)) return null
-  // AUDIT FIX (round 3): clock skew can put a marker in the future, giving a NEGATIVE age that the
-  // grace filter read as 'still healthy' — hiding a stranded claim indefinitely. A future marker
-  // is not evidence of health; treat it as unreadable, which fails VISIBLE.
-  const age = nowMs - t
-  return age < 0 ? null : age
-}
+// The grace window and the marker-age parser (RE-AUDIT FIX: once shipped inert, its regex having lost
+// its backslashes; round 3: a future timestamp is unreadable, never healthy) moved to
+// lib/claim-action-rules in round 11 so the reconcile GATE applies them, not only this list.
+// Re-exported for existing importers.
+export { RECONCILE_GRACE_MS, reconcileMarkerAge }
 
 export async function listReconcileRequiredClaims() {
   const claims = await prisma.claim.findMany({
@@ -1662,8 +1675,8 @@ type RowTruth =
   | { kind: 'at_stripe'; refund: Stripe.Refund }
   | { kind: 'unreadable' }
   | { kind: 'contradiction'; detail: string }
-  | { kind: 'absent_within_window'; until: Date }
-  | { kind: 'absent_dead'; until: Date }
+  | { kind: 'absent_within_window'; until: Date; windowEnd: Date }
+  | { kind: 'absent_dead'; until: Date; windowEnd: Date }
 
 async function refundRowTruth(
   row: { id: string; status: string; stripeRefundId: string | null; createdAt: Date },
@@ -1706,8 +1719,9 @@ async function refundRowTruth(
   // inside its idempotency window; past it, driveRefund refuses (ResumeIdempotencyExpired) — and
   // RESUME-FIRST picks the oldest pending row again on every later refund of the order. Dead once the
   // window AND the margin have passed.
-  const until = new Date(new Date(row.createdAt).getTime() + RESUME_CREATE_WINDOW_MS + ENGINE_DEAD_MARGIN_MS)
-  return until.getTime() > Date.now() ? { kind: 'absent_within_window', until } : { kind: 'absent_dead', until }
+  const windowEnd = new Date(new Date(row.createdAt).getTime() + RESUME_CREATE_WINDOW_MS)
+  const until = new Date(windowEnd.getTime() + ENGINE_DEAD_MARGIN_MS)
+  return until.getTime() > Date.now() ? { kind: 'absent_within_window', until, windowEnd } : { kind: 'absent_dead', until, windowEnd }
 }
 
 /** Applies what a row proves to the claim. Every branch ends in an outcome with an exit. */
@@ -1751,6 +1765,20 @@ async function applyRowTruth(
         data:  { status: 'refunded', refundId: row.id, refundError: null, activeOrderKey: null, decidedAt: new Date() },
       })
       if (done.count !== 1) return movedOn(`Stripe rapporte le remboursement ${s.id} ABOUTI pour la ligne ${row.id}, mais la réclamation a changé d'état entre-temps. Rien n'a été modifié.`)
+      // ROUND-10 AUDIT FIX (P2 ×2): our row stays 'pending' — reconciliation does not do the engine's
+      // row-side work (ledger, royalty clawback). Say so now (best effort) and durably: the row is
+      // listed, ungated, by listUnfinalizedClaimRefundRows.
+      try {
+        await sendAdminMoneyReviewAlert({
+          kind:      'claim_refunded_row_unfinalized',
+          dedupeKey: `claim_row_unfinalized:${row.id}`,
+          title:     `Réclamation ${claim.id} soldée d’après Stripe — ligne de remboursement ${row.id} encore en attente`,
+          facts:     {
+            claimId: claim.id, refundRowId: row.id, stripeRefundId: s.id, stripeStatus: s.status ?? null, amountCents: s.amount,
+            action:  'La ligne reste « en attente » dans notre base : cette réconciliation n’a appliqué ni ligne de ledger ni reprise de royalty (si elles sont dues). Aucune action automatique n’a été prise.',
+          },
+        })
+      } catch { /* best effort — the ungated list is the durable signal */ }
       return { ok: true, outcome: 'refunded', refundId: row.id, amountCents: s.amount }
     }
     if (s.status === 'failed' || s.status === 'canceled') {
@@ -1792,7 +1820,7 @@ async function applyRowTruth(
     data:  {
       status:      'approved',
       refundId:    row.id,
-      refundError: `${ENGINE_ROW_DEAD}: Stripe ne connaît aucun remboursement pour la ligne ${row.id}, et le moteur ne la créera plus (fenêtre d’idempotence expirée le ${truth.until.toISOString()}). Cette ligne n’a donc rien versé. Tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande, et aucun code ne la retire. Rien ne sera payé par Grubano pour cette réclamation : clôturez le dossier (« Clôturer ce dossier… »).`,
+      refundError: `${ENGINE_ROW_DEAD}: Stripe ne connaît aucun remboursement portant la ligne ${row.id}, et le moteur ne la créera plus : sa fenêtre d’idempotence a expiré le ${truth.windowEnd.toISOString()} (conclusion tirée après une marge d’une heure). Cette ligne n’a donc rien versé. Tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande ; aucun code de l’application ne la retire (seule une annulation manuelle de la ligne, hors application, le ferait). Rien ne sera payé par l’application pour cette réclamation : clôturez le dossier (« Clôturer ce dossier… »).`,
     },
   })
   if (done.count !== 1) return movedOn(`La ligne ${row.id} n'existe pas chez Stripe et ne sera plus créée, mais la réclamation a changé d'état entre-temps. Rien n'a été modifié.`)
@@ -2285,6 +2313,14 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
   }
   const noRowEverMoved = !rows.some(mayMoveMoney)
   const deadRows = pendingRows.filter((r) => truths.get(r.id)?.kind === 'absent_dead')
+  // ROUND-10 AUDIT FIX (P1, three auditors): a row still 'pending' HERE whose Stripe refund FAILED or was
+  // canceled moved nothing — but it is not harmless. The engine's next resume on this order retrieves
+  // that refund and marks the row failed with its Stripe id (markRefundRowFailed): the permanent lock.
+  // Round 10 counted it as proof of absence and told the operator a re-approval would pay.
+  const failedAtStripeRows = pendingRows.filter((r) => {
+    const t = truths.get(r.id)
+    return t?.kind === 'at_stripe' && (t.refund.status === 'failed' || t.refund.status === 'canceled')
+  })
   // RE-AUDIT FIX: `executeRefund` refuses EVERY later refund on an order that carries a FAILED row with
   // a Stripe id (the fail-closed lock, lib/refund.ts). ROUND-9: a DEAD pending row blocks the engine
   // too — RESUME-FIRST re-drives the oldest pending row and refuses to create it. Say which it is.
@@ -2302,28 +2338,38 @@ export async function reconcileClaimEvidence(input: { claimId: string }): Promis
         refundError:     railLocked
           // ROUND-8 AUDIT FIX (P1): the lock never lifts — no code moves a Refund row out of 'failed'.
           // ROUND-9: the close control is on the card of this claim in BOTH consoles now.
-          ? 'no_refund_proven_rail_locked: Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente) — rien n’est parti. MAIS un remboursement ÉCHOUÉ verrouille cette commande côté moteur, DÉFINITIVEMENT : aucun code ne lève ce verrou, même après une intervention dans Stripe, et le moteur refusera tout remboursement sur cette commande. Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.'
+          ? 'no_refund_proven_rail_locked: Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente) sur ce paiement. MAIS un remboursement ÉCHOUÉ verrouille cette commande côté moteur, DÉFINITIVEMENT : aucun code ne lève ce verrou, même après une intervention dans Stripe, et le moteur refusera tout remboursement sur cette commande. Rien ne sera payé par le rail. Sur un paiement routé, un remboursement échoué a pu laisser le transfert du restaurant inversé : vérifiez-le dans le Dashboard Stripe. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.'
+          : failedAtStripeRows.length
+            ? `${NO_REFUND_PROVEN_RAIL_LOCKED}: Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente) sur ce paiement. MAIS le remboursement Stripe de la ligne ${failedAtStripeRows.map((r) => r.id).join(', ')} a ÉCHOUÉ ou a été annulé, alors que cette ligne est encore « en attente » dans notre base : à la prochaine reprise sur cette commande, le moteur la marquera en échec, ce qui verrouille la commande DÉFINITIVEMENT (aucun code ne lève ce verrou). Une nouvelle approbation ne pourrait donc rien payer. Sur un paiement routé, un remboursement échoué a pu laisser le transfert du restaurant inversé : vérifiez-le dans le Dashboard Stripe. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.`
           : deadRows.length
-            ? `${NO_REFUND_PROVEN_RAIL_LOCKED}: Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente) — rien n’est parti. MAIS la ligne de remboursement ${deadRows.map((r) => r.id).join(', ')} est en attente sans exister chez Stripe, et le moteur ne la créera plus (fenêtre d’idempotence expirée) : tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande, et aucun code ne la retire. Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.`
+            ? `${NO_REFUND_PROVEN_RAIL_LOCKED}: Stripe ne rapporte AUCUN remboursement (ni abouti, ni en attente) sur ce paiement. MAIS la ligne de remboursement ${deadRows.map((r) => r.id).join(', ')} est en attente sans remboursement correspondant chez Stripe, et le moteur ne la créera plus (fenêtre d’idempotence expirée) : tant qu’elle reste en attente, le moteur refusera les remboursements de cette commande, et aucun code de l’application ne la retire (seule une annulation manuelle de la ligne, hors application, le ferait). Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement. Décision humaine requise.`
             // ROUND-6/7 AUDIT FIX: nothing pays it automatically — a human approves it again.
             : `${NO_REFUND_PROVEN}: aucun remboursement n’a jamais déplacé d’argent sur cette commande et Stripe n’en rapporte aucun (ni abouti, ni en attente). La tentative interrompue n’a rien créé — la réclamation repasse en « approuvée, non payée ». Rien ne la paiera automatiquement : elle devra être approuvée à nouveau par un admin, réclamations et remboursements ouverts.`,
       },
     })
-    return { ok: true, outcome: railLocked || deadRows.length ? 'no_refund_proven_rail_locked' : 'no_refund_proven' }
+    return { ok: true, outcome: railLocked || failedAtStripeRows.length || deadRows.length ? 'no_refund_proven_rail_locked' : 'no_refund_proven' }
+  }
+  const park = async (reason: AmbiguityReason, detail: string): Promise<ClaimEvidenceOutcome> => {
+    const parked = await enterFinancialVerification({ claimId: claim.id, reason, detail })
+    if (!parked.entered && !parked.relabelled) return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved', detail }
+    return { ok: true, outcome: 'financial_verification', reason, detail }
   }
   if (nothingAtStripe) {
-    // Stripe holds nothing, but the only rows that could still move money are pending rows without a
-    // Stripe id: say that Stripe could not be read, or until when a conclusion is impossible — and
-    // write nothing. Re-running reconcile is the exit in both cases.
+    // ROUND-10 AUDIT FIX (P2): Stripe reports nothing on this payment, yet some row could still move
+    // money. Round 10 fell through to « Des remboursements existent … » — false on 0 / 0, including on a
+    // transient read error. Each case now gets its own truthful answer.
     const movers = rows.filter(mayMoveMoney)
-    if (movers.length > 0 && movers.every((r) => r.status === 'pending' && !r.stripeRefundId)) {
-      const moverTruths = movers.map((r) => truths.get(r.id))
-      if (moverTruths.some((t) => !t || t.kind === 'unreadable')) return { ok: true, outcome: 'stripe_unreadable_retry', refundId: null }
-      if (moverTruths.every((t) => t?.kind === 'absent_within_window')) {
-        const latest = moverTruths.reduce((ms, t) => Math.max(ms, (t as { until: Date }).until.getTime()), 0)
-        return { ok: true, outcome: 'unconfirmed_within_window', refundId: null, until: new Date(latest).toISOString() }
-      }
+    const moverTruths = movers.map((r) => ({ r, t: truths.get(r.id) }))
+    if (moverTruths.some(({ r, t }) => r.status === 'pending' && (!t || t.kind === 'unreadable'))) {
+      return { ok: true, outcome: 'stripe_unreadable_retry', refundId: null }
     }
+    const contradicted = moverTruths.find(({ t }) => t?.kind === 'contradiction')
+    if (contradicted && contradicted.t?.kind === 'contradiction') return park('stripe_refund_contradiction', contradicted.t.detail)
+    if (moverTruths.length > 0 && moverTruths.every(({ r, t }) => r.status === 'pending' && t?.kind === 'absent_within_window')) {
+      const latest = moverTruths.reduce((ms, { t }) => Math.max(ms, (t as { until: Date }).until.getTime()), 0)
+      return { ok: true, outcome: 'unconfirmed_within_window', refundId: null, until: new Date(latest).toISOString() }
+    }
+    return park('stripe_refund_contradiction', `Stripe ne rapporte aucun remboursement abouti ni en attente sur ce paiement, mais ${movers.length} ligne(s) de remboursement locale(s) (${movers.map((r) => `${r.id} : ${r.status}`).join(', ')}) indiquent un remboursement abouti ou en cours. Les deux sources se contredisent ; aucune conclusion tirée.`)
   }
 
   // Money moved on this order, but nothing proves it moved FOR THIS CLAIM. Fail closed.

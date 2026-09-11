@@ -63,8 +63,10 @@ export function moneyLineFor(row: {
   if (row.refundId) {
     return {
       certainty: 'bound',
-      text: 'un remboursement est LIÉ à cette réclamation — son état fait foi, voir la file '
-        + '« Remboursements à traiter ».',
+      // ROUND-10 AUDIT FIX (P2): this pointed to « Remboursements à traiter », which is not on screen
+      // while claims are closed. The card itself carries the next line (action or guidance).
+      text: 'un remboursement est LIÉ à cette réclamation — c’est l’état de la ligne liée qui fait foi, '
+        + 'pas ce libellé : lisez la ligne suivante de cette carte.',
     }
   }
   return {

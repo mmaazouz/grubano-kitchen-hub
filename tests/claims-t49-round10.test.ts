@@ -113,7 +113,9 @@ describe('the shared rules module speaks the library’s own markers', () => {
 })
 
 // ══ EXIT TABLE — every non-terminal state has a way out the server accepts ════════════════
-const NOW = new Date('2026-09-11T12:00:00.000Z')
+// Round 11: NOW follows the real clock (to the second), because the reconcile gate now reads a crash
+// marker's AGE — a fixed date would put fresh markers in the future relative to the routes' own clock.
+const NOW = new Date(Math.floor(Date.now() / 1000) * 1000)
 const PAST = new Date(NOW.getTime() - 3_600_000)
 const FUTURE = new Date(NOW.getTime() + 3_600_000)
 const S = (o: Partial<ClaimFacts> & { status: string }): ClaimFacts =>
@@ -123,7 +125,7 @@ type Exit = 'reconcile' | 'stuck_close' | 'approve' | 'refuse_final' | 'attribut
 /** What the SERVER accepts on this claim — computed from the same rules the routes apply. */
 function acceptedExits(c: ClaimFacts, now = NOW): Exit[] {
   const out: Exit[] = []
-  if (reconcileRefusal(c) === null) out.push('reconcile')
+  if (reconcileRefusal(c, now.getTime()) === null) out.push('reconcile')
   if (isStuckResolvable({ status: c.status, refundError: c.refundError ?? null })) out.push('stuck_close')
   if (arbitrationRefusal(c, 'approve', now) === null) out.push('approve')
   if (arbitrationRefusal(c, 'refuse_final', now) === null) out.push('refuse_final')
@@ -133,7 +135,9 @@ function acceptedExits(c: ClaimFacts, now = NOW): Exit[] {
 }
 
 const A = 'approved'
-const EXIT_TABLE: Array<{ state: string; claim: ClaimFacts; exits: Exit[]; note?: 'awaits_refund_rail' | 'deadline_then_arbitration' | 'decision_state_not_money' }> = [
+const EXIT_TABLE: Array<{ state: string; claim: ClaimFacts; exits: Exit[]; note?: 'awaits_refund_rail' | 'deadline_then_arbitration' | 'decision_state_not_money' | 'grace_then_reconcile' }> = [
+  // Round 11 (round-10 audit, P2): an attempt in flight is refused by the reconcile GATE until its grace passes.
+  { state: 'refunding — crash marker written a minute ago (attempt in flight)', claim: S({ status: 'refunding', refundAttempted: true, arbitrationDecision: 'approved', refundError: `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(NOW.getTime() - 60_000).toISOString()} — identité pas encore liée.` }), exits: [], note: 'grace_then_reconcile' },
   { state: 'restaurant_review — delay running', claim: S({ status: 'restaurant_review', responseDeadlineAt: FUTURE }), exits: [], note: 'deadline_then_arbitration' },
   { state: 'restaurant_review — delay expired', claim: S({ status: 'restaurant_review' }), exits: ['approve', 'refuse_final'] },
   { state: 'arbitration', claim: S({ status: 'arbitration' }), exits: ['approve', 'refuse_final'] },
@@ -165,6 +169,11 @@ describe('EXIT TABLE — every non-terminal claim state has a way out the server
 
   it('terminal states, and only they, carry neither an exit nor a note', () => {
     for (const status of TERMINAL_STATUSES) expect(acceptedExits(S({ status })), status).toEqual([])
+  })
+
+  it('the grace note is real: five minutes later the reconcile gate admits the same claim', () => {
+    const inFlight = EXIT_TABLE.find((r) => r.note === 'grace_then_reconcile')!.claim
+    expect(acceptedExits(inFlight, new Date(NOW.getTime() + 5 * 60 * 1000))).toEqual(['reconcile'])
   })
 
   it('the documented non-human path is real: once the restaurant’s delay passes, arbitration accepts both decisions', () => {
@@ -210,6 +219,33 @@ describe('ARBITRATION PARITY — the queue carries exactly the refusal the serve
     expect(execMock).not.toHaveBeenCalled()
   })
 
+  it('ROUND 11 (round-10 audit, P3): an ENABLED decision really succeeds — the CAS matches, the claim moves, no engine runs', async () => {
+    const shapes = EXIT_TABLE.map((r, i) => ({
+      ...r.claim, id: `cl${i}`, orderId: `o${i}`, consumerId: 'u1', restaurantId: 'r1', reason: 'wrong_item', requestedAmountCents: 500, createdAt: PAST,
+    }))
+    db.claim.findMany.mockImplementation(async (args?: { where?: { OR?: unknown } }) => (args?.where?.OR ? shapes : []))
+    const queue = await listArbitrationQueue()
+    refundsFlag.mockReturnValue(false)
+    let successes = 0
+    for (const listed of queue) {
+      const shape = shapes.find((s) => s.id === listed.id)!
+      const pairs: Array<['approve' | 'refuse_final', string | null, string]> = [
+        ['approve', listed.approveRefusal, 'approved'], ['refuse_final', listed.refuseFinalRefusal, 'refused_final'],
+      ]
+      for (const [decision, verdict, to] of pairs) {
+        if (verdict) continue
+        fx.row = { ...shape }; fx.forcedCount = null; fx.applyWrites = true
+        db.claim.findUnique.mockResolvedValue({ ...shape })
+        const server = await arbitrateClaim({ claimId: listed.id, adminId: 'op1', decision })
+        expect(server.ok, `${listed.id} ${decision}`).toBe(true)
+        expect(fx.row!.status, `${listed.id} ${decision}`).toBe(to)
+        successes++
+      }
+    }
+    expect(successes).toBeGreaterThanOrEqual(8)
+    expect(execMock).not.toHaveBeenCalled()
+  })
+
   it('the rail-locked claim that round 9 left with « Refuser » live: both decisions are refused, both are disabled', () => {
     const rail = EXIT_TABLE.find((r) => r.state === 'rail locked — admin-decided')!.claim
     expect(arbitrationRefusal(rail, 'approve', NOW)).not.toBeNull()
@@ -233,11 +269,16 @@ describe('RECONCILE PARITY — the button appears exactly where the server’s g
     let admitted = 0, refused = 0
     for (const l of listed) {
       db.claim.findUnique.mockResolvedValue(shapes.find((s) => s.id === l.id))
+      db.refund.findMany.mockClear(); db.refund.findUnique.mockClear()
       const server = await reconcileClaimEvidence({ claimId: l.id })
-      const refusedByGate = !server.ok && (server as { error?: string }).error === GATE
-      expect(refusedByGate, l.id).toBe(!l.reconcilable)
+      // Round 11: the gate has two refusals now (not reconcilable; attempt in flight) — both refuse
+      // before anything is read.
+      const refusedBeforeReading = !server.ok && (server as { status?: number }).status === 409
+        && db.refund.findMany.mock.calls.length === 0 && db.refund.findUnique.mock.calls.length === 0
+      expect(refusedBeforeReading, l.id).toBe(!l.reconcilable)
       if (l.reconcilable) { admitted++; expect(server.ok, l.id).toBe(true) } else refused++
     }
+    expect(GATE).toContain('pas en attente de réconciliation')
     expect(admitted).toBeGreaterThan(0)
     expect(refused).toBeGreaterThan(0)
   })
@@ -489,7 +530,12 @@ describe('GUIDANCE — one fact-only line per money state, shared by both consol
   })
 
   it('no shipped console or rule string promises that a webhook, the sweep or the engine will act (comments excluded)', () => {
-    for (const f of ['components/claims/AdminFinancialVerification.tsx', 'components/claims/AdminClaimsArbitration.tsx', 'lib/claim-attribution-rules.ts', 'lib/claim-action-rules.ts']) {
+    // Round 11 (round-10 audit, P3): the refundError strings in lib/claims.ts, the money line and the five
+    // locale files are shown to operators and customers too.
+    for (const f of [
+      'components/claims/AdminFinancialVerification.tsx', 'components/claims/AdminClaimsArbitration.tsx', 'lib/claim-attribution-rules.ts', 'lib/claim-action-rules.ts',
+      'lib/claims.ts', 'lib/claim-money-line.ts', ...LOCALES.map((l) => `messages/${l}.json`),
+    ]) {
       const code = stripComments(read(f))
       const hits = PROMISES.flatMap((re) => { const m = code.match(re); return m ? [`${re} → « ${m[0]} »`] : [] })
       expect(hits, f).toEqual([])
@@ -543,7 +589,8 @@ describe('CUSTOMER STATUS — never the raw recovery state', () => {
       { id: 'd', status: 'refunding', refundId: null, refundError: MARKER, refundAttempted: true, activeOrderKey: 'o4', arbitratedBy: null },
       { id: 'e', status: 'refunded', refundId: 'rfE', refundError: null, refundAttempted: true, activeOrderKey: null, arbitratedBy: null },
     ])
-    db.refund.findMany.mockResolvedValue([{ id: 'rfA', stripeRefundId: 're_A' }, { id: 'rfB', stripeRefundId: null }])
+    // Round 11: « en cours » needs the bound row PENDING and recorded at Stripe — the row read carries its status.
+    db.refund.findMany.mockResolvedValue([{ id: 'rfA', status: 'pending', stripeRefundId: 're_A' }, { id: 'rfB', status: 'pending', stripeRefundId: null }])
     const out = await listConsumerClaims('u1')
     expect(out.map((c) => [c.id, c.status])).toEqual([
       ['a', 'refunding'], ['b', FINANCIAL_VERIFICATION], ['c', FINANCIAL_VERIFICATION], ['d', FINANCIAL_VERIFICATION], ['e', 'refunded'],
@@ -568,16 +615,27 @@ describe('CUSTOMER STATUS — never the raw recovery state', () => {
 
 // ══ CENSUS — nonTerminal from the library's terminal set ═════════════════════════════════
 describe('CENSUS — nonTerminal is the total minus the library’s terminal set', () => {
-  it('a refused claim, non-terminal in the library, is counted', async () => {
-    db.claim.count.mockImplementation(async (args?: unknown) => (args ? 0 : 7))
-    db.claim.groupBy.mockResolvedValue([
-      { status: 'refused', _count: 2 }, { status: 'refunded', _count: 3 }, { status: 'refused_final', _count: 1 }, { status: 'arbitration', _count: 1 },
-    ])
+  it('a refused claim — and a status in NO hand-picked list — is counted; every filtered count is evaluated', async () => {
+    // Round 11 (round-10 audit, P3): the fixture returned 0 for every filtered count and could not tell
+    // total − TERMINAL from another formula. Counts are now evaluated over a row fixture.
+    const R = (status: string, o: Record<string, unknown> = {}) => ({ status, refundId: null, refundError: null, responseDeadlineAt: FUTURE, ...o })
+    const ROWS = [
+      R('refused'), R('refused'), R('refunded', { refundId: 'rf' }), R('refunded', { refundId: 'rf' }), R('refunded', { refundId: 'rf' }),
+      R('refused_final'), R('arbitration'), R('legacy_unknown'), R('refunding', { refundError: MARKER }), R('restaurant_review', { responseDeadlineAt: PAST }),
+    ]
+    db.claim.count.mockImplementation(async (args?: { where?: Record<string, unknown> }) =>
+      ROWS.filter((r) => !args?.where || matchWhere(args.where, r)).length)
+    db.claim.groupBy.mockImplementation(async () =>
+      Object.entries(ROWS.reduce<Record<string, number>>((m, r) => { m[r.status] = (m[r.status] ?? 0) + 1; return m }, {}))
+        .map(([status, _count]) => ({ status, _count })))
     const res = await CENSUS(new Request('https://app.grubano.com/api/admin/claims/census') as never)
     expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body.claims.nonTerminal).toBe(3)
-    expect(body.claims.active).toBe(1)
+    const c = (await res.json()).claims
+    expect(c.total).toBe(10)
+    expect(c.nonTerminal).toBe(6) // refused ×2, arbitration, legacy_unknown, refunding, restaurant_review
+    expect(c.active).toBe(3)      // arbitration, refunding, restaurant_review
+    expect([c.refunding, c.reconcileMarked, c.arbitration, c.restaurantReview, c.silenceExpired, c.t49Shape]).toEqual([1, 1, 1, 1, 1, 0])
+    expect(c.byStatusMeasured).toBe(true)
   })
 
   it('NEGATIVE CONTROL — the round-9 formula is gone', () => {

@@ -59,7 +59,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       action:     'claim.resolve_stuck',
       targetType: 'claim',
       targetId:   params.id,
-      metadata:   { resolution: parsed.data.resolution, moneyMoved: false },
+      // ROUND-10 AUDIT FIX (P3): the operator's note is kept HERE, admin-side; it is no longer written
+      // to the claim's arbitrationReason, which the customer's own claim payload carries.
+      metadata:   { resolution: parsed.data.resolution, moneyMoved: false, note: parsed.data.reason ?? null },
       req,
     })
   } catch { /* audit is best-effort */ }

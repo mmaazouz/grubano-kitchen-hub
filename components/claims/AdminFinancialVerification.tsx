@@ -51,7 +51,12 @@ type Payload = {
   reconcileRequired: Row[]
   /** Every other unsettled money state (pending, failed, unreconciled, never driven, legacy). */
   otherUnsettled: Row[]
-  counts: { financialVerification: number; reconcileRequired: number; otherUnsettled: number; total: number }
+  /** ROUND-10 AUDIT FIX (P2): pending Refund rows whose claim has moved on (read-only facts). */
+  unfinalizedRefundRows?: Array<{
+    refundRowId: string; orderId: string; amountCents: number; stripeRefundId: string | null
+    claimId: string | null; claimStatus: string | null
+  }>
+  counts: { financialVerification: number; reconcileRequired: number; otherUnsettled: number; total: number; unfinalizedRefundRows?: number }
 }
 
 /** Why attribution failed, in words an operator can act on. Never a money claim. */
@@ -137,8 +142,11 @@ export default function AdminFinancialVerification() {
         // ROUND-9: the lock has two causes now (a failed refund with a Stripe id, or a dead pending
         // row), so the toast states what holds for both; the claim's detail says which. The close
         // control is on this card too.
+        // ROUND-10 AUDIT FIX (P3): the lock has several causes, not all permanent in the same way — the
+        // claim's detail says which. And « rien n’est parti » ignored a transfer a failed refund may
+        // have reversed on a routed payment.
         no_refund_proven_rail_locked:
-          'Preuve d’absence : rien n’est parti. MAIS le moteur refusera tout remboursement sur cette commande, DÉFINITIVEMENT (voir le détail de la réclamation). Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement.',
+          'Stripe ne rapporte aucun remboursement abouti ni en attente sur ce paiement. MAIS le moteur refusera tout remboursement sur cette commande (la cause, et si elle est définitive, sont dans le détail de la réclamation). Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement.',
         financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
       }
       // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still
@@ -302,12 +310,13 @@ export default function AdminFinancialVerification() {
       </section>
     )
   }
-  if (!rows.length) return null
+  const unfinalized = data?.unfinalizedRefundRows ?? []
+  if (!rows.length && !unfinalized.length) return null
 
   return (
     <section className="mb-6">
       <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-red-800">
-        Vérification financière requise ({rows.length})
+        Vérification financière requise ({rows.length}){unfinalized.length ? ` · ${unfinalized.length} ligne(s) de remboursement encore en attente` : ''}
       </h2>
       <p className="mb-3 text-[13px] text-grubano-ink-muted">
         {/* RE-AUDIT FIX: this banner promised things that are only true of the AMBIGUOUS rows.
@@ -325,6 +334,29 @@ export default function AdminFinancialVerification() {
           la commande dans Stripe avant tout paiement.
         </strong>
       </p>
+
+      {/* ROUND-10 AUDIT FIX (P2): reconciliation can conclude a claim from Stripe while our own Refund
+          row stays pending. Facts only, no action: finalizing a row is the refund engine's work. */}
+      {unfinalized.length > 0 && (
+        <div className="mb-3 rounded-grubano-xl border border-red-300 bg-red-50 p-3">
+          <p className="text-[13px] font-semibold text-grubano-ink">
+            Lignes de remboursement encore « en attente » dont la réclamation n’est plus en cours de remboursement ({unfinalized.length})
+          </p>
+          <p className="mt-1 text-[12px] text-grubano-ink-muted">
+            Aucune réconciliation ne les a finalisées ni annulées : ni ligne de ledger ni reprise de royalty n’ont été
+            appliquées par elle. Avant tout nouveau remboursement d’une commande, le moteur reprend la plus ancienne
+            ligne en attente de cette commande. Aucune action n’est proposée ici.
+          </p>
+          <ul className="mt-2 space-y-1 text-[12px] text-grubano-ink">
+            {unfinalized.map((u) => (
+              <li key={u.refundRowId}>
+                Commande #{u.orderId.slice(-6)} — ligne {u.refundRowId} ({(u.amountCents / 100).toFixed(2)} €
+                {u.stripeRefundId ? `, Stripe ${u.stripeRefundId}` : ', sans identifiant Stripe enregistré'}) — réclamation {u.claimId ?? '—'} ({u.claimStatus ?? '—'})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="space-y-3">
         {rows.map((r) => (

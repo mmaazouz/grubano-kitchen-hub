@@ -13,8 +13,8 @@ const readFileSync = (p: string, enc: 'utf8') => readRaw(p, enc).replace(/\r\n/g
 const { adminMock } = vi.hoisted(() => ({ adminMock: vi.fn() }))
 vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: adminMock }))
 
-const { reconcileMock, attributeMock, adoptMock, fvMock, rrMock, actionableMock } = vi.hoisted(() => ({
-  reconcileMock: vi.fn(), attributeMock: vi.fn(), adoptMock: vi.fn(), fvMock: vi.fn(), rrMock: vi.fn(), actionableMock: vi.fn(),
+const { reconcileMock, attributeMock, adoptMock, fvMock, rrMock, actionableMock, unfinalizedMock } = vi.hoisted(() => ({
+  reconcileMock: vi.fn(), attributeMock: vi.fn(), adoptMock: vi.fn(), fvMock: vi.fn(), rrMock: vi.fn(), actionableMock: vi.fn(), unfinalizedMock: vi.fn(),
 }))
 vi.mock('@/lib/claims', () => ({
   reconcileClaimEvidence:            reconcileMock,
@@ -25,6 +25,8 @@ vi.mock('@/lib/claims', () => ({
   listFinancialVerificationClaims:   fvMock,
   listReconcileRequiredClaims:       rrMock,
   listActionableRefundClaims:        actionableMock,
+  // round 11: pending Refund rows whose claim moved on, listed on the same ungated payload
+  listUnfinalizedClaimRefundRows:    unfinalizedMock,
 }))
 
 const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
@@ -51,7 +53,7 @@ beforeEach(() => {
   reconcileMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 500 })
   attributeMock.mockResolvedValue({ ok: true, outcome: 'refunded', refundId: 'rf1' })
   auditMock.mockResolvedValue(undefined)
-  fvMock.mockResolvedValue([]); rrMock.mockResolvedValue([]); actionableMock.mockResolvedValue([])
+  fvMock.mockResolvedValue([]); rrMock.mockResolvedValue([]); actionableMock.mockResolvedValue([]); unfinalizedMock.mockResolvedValue([])
   delete process.env.CLAIMS_ENABLED
   delete process.env.CLAIMS_WINDOW_UNTIL
 })
@@ -147,6 +149,15 @@ describe('GET /financial-verification — ungated AT THE ROUTE, not just in the 
   it('a non-admin gets nothing', async () => {
     adminMock.mockResolvedValue(null)
     expect((await QUEUE()).status).toBe(403)
+  })
+
+  it('ROUND 11: pending Refund rows whose claim moved on are carried, ungated, and kept out of the claim total', async () => {
+    process.env.CLAIMS_ENABLED = 'false'
+    unfinalizedMock.mockResolvedValue([{ refundRowId: 'rf1', orderId: 'o1', amountCents: 500, stripeRefundId: 're_1', claimId: 'cl1', claimStatus: 'refunded' }])
+    const body = await (await QUEUE()).json()
+    expect(body.unfinalizedRefundRows).toHaveLength(1)
+    expect(body.counts.unfinalizedRefundRows).toBe(1)
+    expect(body.counts.total).toBe(0)
   })
 })
 

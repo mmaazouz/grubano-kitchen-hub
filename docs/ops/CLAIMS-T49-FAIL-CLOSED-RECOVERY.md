@@ -563,3 +563,94 @@ tests verts** (code de sortie lu directement). Empreintes : `git diff` des chemi
 `1d6fbb85431102c2` ; les deux fichiers NON SUIVIS (`lib/claim-action-rules.ts`,
 `tests/claims-t49-round10.test.ts`) hachés à part, `28ef64cc7993477d`. Aucun changement de schéma ;
 aucun flag, gate, appel Stripe ou remboursement.
+
+Staging mesuré sur `ec1a534` : `version.json` = `ec1a534`, gates 403 `gated:true` ×2, recensement
+7 réclamations / 0 active / 0 `refunding` / 0 `financial_verification` / 0 marquée / 0 forme T-49 ;
+`nonTerminal` = 3 (les trois `refused` contestables, que l'ancienne formule taisait — aucune donnée n'a
+changé).
+
+---
+
+## 16. AUDIT ROND 10 (2026-09-11) — sur `ec1a534`
+
+Run complet (49 agents, aucun perdu). 22 constats : **16 confirmés / 6 réfutés. P0 = 0, P1 = 4, P2 = 6,
+P3 = 6.** P1 : 9 → 4, et ces quatre ne sont que DEUX défauts, dont aucun dans les règles partagées ni
+dans la table des sorties. Quatre des six réfutations visaient justement ces nouveautés.
+
+**Les P1.**
+1. **Un remboursement ÉCHOUÉ chez Stripe compté comme absence (3 auditeurs, un défaut).** Une ligne
+   encore « en attente » chez nous, dont le remboursement Stripe a échoué ou a été annulé (webhook
+   perdu), sortait des « lignes pouvant déplacer de l'argent ». La réconciliation écrivait alors la
+   preuve d'absence SIMPLE (« elle devra être approuvée à nouveau ») et laissait « Approuver » actif.
+   L'approbation relance le moteur, qui reprend cette ligne, lit l'échec et la marque échouée avec son
+   identifiant Stripe — le verrou définitif de la commande — puis la réclamation passe en
+   `engine_failed`, et la route d'arbitrage a déjà écrit « approuvée » au client.
+2. **« Remboursement en cours » sur une ligne liée déjà ÉCHOUÉE.** Le statut client ne regardait que
+   l'identifiant Stripe de la ligne, pas son statut.
+
+**Les P2.** La guidance disait « en attente chez Stripe » d'après NOTRE ligne, jamais relue. Une
+réclamation écrite « remboursée » d'après Stripe laissait sa ligne en attente : le travail du moteur
+côté ligne (ledger, reprise de royalty) perdait son dernier signal visible (déposé P1, ramené P2), et la
+réclamation suivante sur la commande libérée serait reprise sur l'ancienne ligne. La branche « aucune
+ligne n'est à nous » garait en « Des remboursements existent » quand Stripe rapporte 0 / 0, y compris
+sur une erreur de lecture passagère. La ligne d'argent « liée » renvoyait à « Remboursements à
+traiter », absent de l'écran quand les réclamations sont fermées. Et la fenêtre de grâce du §7 était
+défaite : la carte FV non gatée offrait « Réconcilier » sur une tentative en vol.
+
+**Les P3.** Copie de ligne morte : fin de fenêtre décalée de la marge, et « définitivement » dans le
+refus d'approbation alors que le journal du moteur indique d'annuler la ligne. Parité d'arbitrage qui ne
+voyait jamais une décision permise RÉUSSIR. Épingle de promesses qui ne lisait ni `lib/claims.ts`, ni la
+ligne d'argent, ni les locales. Fixture du recensement incapable de distinguer `total − TERMINAL` d'une
+autre formule. `groupBy` en échec présenté comme une population mesurée vide. Note libre de l'opérateur
+(clôture) renvoyée au client comme `arbitrationReason`.
+
+**Réfutés, consignés.** Approbation « tentative prise, rien d'enregistré » lue par le client comme « en
+attente de traitement » (P2) ; `stripe_refund_contradiction` sans sortie (P1, deux constats — état
+atteignable par une clé Stripe erronée, dont la sortie existe : corriger la clé puis relancer, ou par
+des données qu'aucun écrivain ne produit) ; verrou de ligne morte dit permanent (P2) ; parité et table
+aveugles au `select` (P1) ; « en cours » de la page d'aide non épinglé (P1). Les deux derniers sont
+traités quand même : les lectures de ligne derrière le statut client sont simulées SENSIBLES au `select`
+dans le test du rond 11.
+
+### Corrigé (rond 11) — en audit
+
+- **Ligne échouée chez Stripe = cause de verrou.** `failedAtStripeRows` : une ligne en attente dont le
+  remboursement Stripe (lu par identifiant ou par étiquette) est `failed` ou `canceled` écrit
+  `no_refund_proven_rail_locked` avec sa propre copie (ligne nommée ; la prochaine reprise la marquera
+  en échec, verrou définitif ; une nouvelle approbation ne pourrait rien payer ; sur un paiement routé,
+  transfert du restaurant possiblement inversé). L'approbation est refusée, la clôture offerte.
+- **Statut client** : `boundRowShowsInProgress` — ligne liée EN ATTENTE et portant un identifiant
+  Stripe — lu avec `status` sélectionné dans les deux appelants.
+- **Stripe 0 / 0** : ligne illisible → relancer ; contradiction → garée avec son détail ; toutes dans la
+  fenêtre → la date ; sinon « les deux sources se contredisent ». « Des remboursements existent »
+  seulement quand Stripe rapporte de l'argent.
+- **Réclamation soldée d'après Stripe, ligne en attente** : alerte de revue argent nommant la ligne, et
+  liste durable non gatée `listUnfinalizedClaimRefundRows` (lignes en attente dont la réclamation n'est
+  plus « en remboursement »), affichée en faits seuls sur la carte FV. La réconciliation ne finalise
+  toujours rien : aucun appel moteur, aucune écriture Stripe.
+- **Grâce dans la GARDE** : `RECONCILE_GRACE_MS` et `reconcileMarkerAge` déplacés dans
+  `lib/claim-action-rules.ts` ; `reconcileRefusal` refuse une tentative de moins de 5 minutes — liste et
+  route d'accord par construction ; la guidance le dit.
+- **Copie** : ligne d'argent « liée » sans renvoi ; guidance « statut enregistré d'après Stripe » ; fin
+  de fenêtre du moteur imprimée, marge dite à part, « annulation manuelle hors application » ; refus
+  d'approbation sans permanence affirmée ; toasts et textes de verrou sans « rien n'est parti ».
+- **Recensement** : `groupBy` en échec → `byStatusMeasured: false`, comptes nuls. **Clôture par
+  déclaration** : la note va dans l'audit admin, plus dans `arbitrationReason`.
+- **Instrument** : parité d'arbitrage sur les SUCCÈS (CAS libre, réclamation déplacée, aucun moteur) ;
+  table des sorties avec l'état « tentative en vol » ; épingle de promesses étendue à `lib/claims.ts`, à
+  la ligne d'argent et aux cinq locales ; recensement évalué sur une fixture (statut hors listes
+  compris) ; `matchWhere` modélise `startsWith`.
+
+**Vérification du rond 11, avant commit.** Contrôles négatifs différentiels : **19/19 PROUVÉS** en
+une passe, dont deux contrôles d'INSTRUMENT (la parité d'arbitrage attrape un CAS qui ne correspond
+plus ; le recensement distingue `total − TERMINAL` d'une autre formule). Trois échecs de mes propres
+tests en route, consignés : le mock du nouveau test ne modélisait pas `refund.aggregate` (portée de la
+réclamation) ; la fixture client du rond 10 lisait des lignes sans `status`, que la règle du rond 11
+lit à juste titre comme « pas en cours » ; et le test d'instrument de `matchWhere` prenait
+`startsWith` comme exemple d'opérateur NON modélisé — il l'est désormais, l'exemple est `endsWith`.
+Une écriture refusée par l'outil (fichier réécrit par la restauration des contrôles du rond 10) a été
+refaite après relecture. Suites touchées : 16 fichiers / 443 verts. Typecheck : 41 = base.
+`check:i18n` : OK. Suite complète sur l'arbre final : **403 fichiers / 4396 tests verts** (code de
+sortie lu directement). Empreintes : `git diff` des chemins de code `ccfca974fde87a96` ; le fichier NON
+SUIVI `tests/claims-t49-round11.test.ts` haché à part, `b69ec88510a67750`. Aucun changement de schéma ;
+aucun flag, gate, appel Stripe ou remboursement.

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { resolveAdmin } from '@/lib/admin-guard'
-import { listFinancialVerificationClaims, listReconcileRequiredClaims, listActionableRefundClaims } from '@/lib/claims'
+import { listFinancialVerificationClaims, listReconcileRequiredClaims, listActionableRefundClaims, listUnfinalizedClaimRefundRows } from '@/lib/claims'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,10 +27,12 @@ export async function GET() {
   // marker cleared — and `/api/admin/claims` is gated, so with CLAIMS_ENABLED off the case became
   // invisible again. The same hole swallowed the LEGACY stranded rows that predate the marker.
   // The ungated queue therefore carries EVERY claim whose money is unsettled.
-  const [financialVerification, reconcileRequired, actionableRefunds] = await Promise.all([
+  const [financialVerification, reconcileRequired, actionableRefunds, unfinalizedRefundRows] = await Promise.all([
     listFinancialVerificationClaims(),
     listReconcileRequiredClaims(),
     listActionableRefundClaims(),
+    // ROUND-10 AUDIT FIX (P2): pending Refund rows whose claim has moved on — ungated, read-only.
+    listUnfinalizedClaimRefundRows(),
   ])
   // A claim can legitimately appear in more than one list; the operator should see it once.
   const markedIds = new Set([...financialVerification, ...reconcileRequired].map((c) => c.id))
@@ -42,10 +44,13 @@ export async function GET() {
     financialVerification,
     reconcileRequired,
     otherUnsettled,
+    unfinalizedRefundRows,
     counts: {
       financialVerification: financialVerification.length,
       reconcileRequired:     reconcileRequired.length,
       otherUnsettled:        otherUnsettled.length,
+      /** Refund ROWS, not claims — kept out of `total`, which counts claims. */
+      unfinalizedRefundRows: unfinalizedRefundRows.length,
       /** What an operator badge must show: every claim whose money truth is open. */
       total: financialVerification.length + reconcileRequired.length + otherUnsettled.length,
     },
