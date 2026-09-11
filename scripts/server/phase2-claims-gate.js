@@ -157,12 +157,18 @@ async function reportResidue() {
   if (!residueBaseline) { A('4 residue: NOT MEASURED — the before-snapshot failed, so nothing can be attributed to this window'); return }
   try {
     const TERMINAL = ['refunded', 'refused_final']
-    const after = await residuePrisma.claim.findMany({ select: { id: true, status: true, orderId: true } })
+    const after = await residuePrisma.claim.findMany({ select: { id: true, status: true, orderId: true, refundAttempted: true, arbitrationDecision: true } })
     const created = after.filter((c) => !residueBaseline.has(c.id))
     const residue = created.filter((c) => !TERMINAL.includes(c.status))
     F('CLAIMS CREATED BY THIS REHEARSAL', created.length + (created.length ? ' - ' + created.map((c) => c.id + ':' + c.status).join(', ') : ''))
     F('NON-TERMINAL RESIDUE', residue.length ? residue.length + ' - ' + residue.map((c) => c.id + ':' + c.status + ' (order ' + c.orderId + ')').join(', ') : 'NONE')
     if (residue.length) A('4 residue: ' + residue.length + ' claim(s) left NON-TERMINAL by this rehearsal, listed above BY ID because closing CLAIMS_ENABLED hides some of these states from the arbitration console. Resolve them in a later window; do NOT reopen claims now just to tidy up.')
+    // ROUND-9 AUDIT FIX (P2): an APPROVED-and-UNPAID claim is the residue a rehearsal with REFUNDS closed
+    // can leave that nothing moves afterwards: re-approving pays only with a CLAIMS window AND a REFUNDS
+    // window open together (neither operator opens both), and refuse_final is refused once approved.
+    // Named separately so it is never read as ordinary residue.
+    const approvedUnpaid = residue.filter((c) => c.status === 'approved' && c.refundAttempted === false)
+    if (approvedUnpaid.length) A('4 residue: ' + approvedUnpaid.length + ' claim(s) APPROVED and UNPAID (' + approvedUnpaid.map((c) => c.id).join(', ') + '). Nothing can pay them with REFUNDS closed and they can no longer be refused; paying them needs a CLAIMS window and a REFUNDS window open together, which neither operator opens. FOUNDER DECISION required before any rehearsal that approves a claim.')
     const stuck = await residuePrisma.claim.count({ where: { status: 'refunding' } })
     const fv    = await residuePrisma.claim.count({ where: { status: 'financial_verification' } })
     F('POST-CLOSE MONEY STATES', 'refunding ' + stuck + ' - financial_verification ' + fv)

@@ -28,7 +28,7 @@ const { db } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
-vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag }))
+vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
 
 const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn() }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: alertMock }))
@@ -158,7 +158,7 @@ describe('RAIL LOCK — permanent, said so, and approve refused on both sides', 
     db.claim.findUnique.mockResolvedValue({ id: 'cl1', status: 'approved', refundAttempted: false, responseDeadlineAt: new Date(0), arbitrationDecision: 'approved', refundError: RAIL })
     const r = await arbitrateClaim({ claimId: 'cl1', adminId: 'op1', decision: 'approve' })
     expect(r).toMatchObject({ ok: false, status: 409 })
-    expect(String((r as { error?: string }).error)).toContain('verrouille définitivement')
+    expect(String((r as { error?: string }).error)).toContain('refusera tout remboursement')
     expect(db.claim.updateMany).not.toHaveBeenCalled()
     expect(db.claim.update).not.toHaveBeenCalled()
     expect(execMock).not.toHaveBeenCalled()
@@ -179,7 +179,7 @@ describe('RAIL LOCK — permanent, said so, and approve refused on both sides', 
   it('the queue carries the flag, and the console disables approve on it', () => {
     expect(read('lib/claims.ts')).toContain('railLocked:      isRailLocked(c.refundError),')
     expect(read('components/claims/AdminClaimsArbitration.tsx'))
-      .toContain('disabled={(c as unknown as { railLocked?: boolean }).railLocked === true}')
+      .toContain('disabled={c.approveRefusal != null}')
   })
 
   it('the approve label no longer promises a refund, in any locale', () => {
@@ -269,15 +269,21 @@ describe('RECONCILE GATE — only the population the console offers the button o
 describe('PENDING WITHOUT A STRIPE ID', () => {
   const pendingRow = (stripeRefundId: string | null) => ({ id: 'rf1', status: 'pending', amountCents: 500, stripeRefundId, reason: claimRefundReason('cl1'), createdAt: new Date() })
 
-  it('reconcile writes NOTHING and reports pending_unconfirmed — the claim keeps its bucket and its button', async () => {
+  it('ROUND-9 FIX: no more no-write dead end — Stripe holds nothing and the row is young → it says until when, writes nothing', async () => {
+    // Round 9 returned 'pending_unconfirmed' here without reading Stripe, and the claim had no exit.
+    // The full outcome table is in tests/claims-t49-round10.test.ts.
     db.refund.findMany.mockResolvedValue([pendingRow(null)])
-    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: true, outcome: 'pending_unconfirmed', refundId: 'rf1' })
+    const r = await reconcileClaimEvidence({ claimId: 'cl1' })
+    expect(r).toMatchObject({ ok: true, outcome: 'unconfirmed_within_window', refundId: 'rf1' })
+    expect(typeof (r as { until?: string }).until).toBe('string')
     expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
-  it('…while a pending row WITH a Stripe id is genuinely pending', async () => {
+  it('…while a pending row WITH a Stripe id that Stripe reports pending is genuinely pending', async () => {
     fx.row = { status: 'refunding', refundId: 'rf1', refundError: null }
     db.refund.findMany.mockResolvedValue([pendingRow('re_1')])
+    // ROUND-10: a recorded Stripe id is read BY that id, as the engine's own resume does.
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'pending', amount: 500, payment_intent: 'pi_1', metadata: { grubano_refund_row: 'rf1' } })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: true, outcome: 'still_pending', refundId: 'rf1' })
   })
 
@@ -339,7 +345,7 @@ describe('round-9 source pins', () => {
   })
 
   it('reconcile: pending_unconfirmed has its own toast and needs attention; the rail lock no longer « lifts »', () => {
-    expect(fv).toContain("|| outcome === 'pending_unconfirmed'")
+    expect(fv).toContain("|| outcome === 'unconfirmed_within_window'")
     expect(fvCode).not.toMatch(/tant que la reprise manuelle/)
     expect(fvCode).not.toContain('déjà garée')
   })
@@ -353,7 +359,7 @@ describe('round-9 source pins', () => {
   it('arbitration console: our row is not « Stripe », a pending row without id is not « envoyé à la banque »', () => {
     expect(arb).toContain('Statut de notre ligne :')
     expect(arbCode).not.toContain('Statut Stripe :')
-    expect(arb).toMatch(/local_pending_unconfirmed:\s+\{ text: 'Ligne de remboursement locale en attente, SANS identifiant Stripe/)
+    expect(arb).toMatch(/local_pending_unconfirmed:\s+\{ text: 'Ligne de remboursement liée en attente, sans identifiant Stripe enregistré/)
     expect(arbCode).not.toContain('sans aucun remboursement Stripe associé')
   })
 

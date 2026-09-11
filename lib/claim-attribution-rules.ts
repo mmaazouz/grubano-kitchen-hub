@@ -66,7 +66,10 @@ export function attributionRefusal(input: {
   if (row.status === 'pending' && !row.stripeRefundId) {
     return {
       code: 'pending_unconfirmed', status: 409,
-      message: 'Cette ligne est en attente SANS identifiant Stripe : rien n’est confirmé chez Stripe. Elle n’avancera que si Stripe a réellement créé ce remboursement (son webhook l’appliquera) ou si le moteur de remboursement la reprend (fenêtre remboursements ouverte) ; réconciliez ensuite d’après la preuve.',
+      // ROUND-9 AUDIT FIX (P1): this promised « son webhook l’appliquera » and « le moteur la reprend » —
+      // neither is reliable (no refund.updated for an immediately-succeeded refund; opening the refund
+      // window re-drives nothing by itself). It now names the action that reads the evidence.
+      message: 'Cette ligne est en attente sans identifiant Stripe enregistré : l’attribuer ne prouverait rien. « Réconcilier d’après la preuve » lit Stripe pour les lignes en attente de cette commande et n’en tire que ce qui est prouvé.',
     }
   }
   return null

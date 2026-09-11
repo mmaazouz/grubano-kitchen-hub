@@ -244,6 +244,8 @@ export default function OrderHelpScreen() {
       if (ex.status === 'restaurant_review') return t('claimAlreadyFiled')
       // ROUND-8 AUDIT FIX (P2): an APPROVED claim was told « remboursement en cours » — nothing pays an
       // approved claim until a refund is actually driven. Only 'refunding' is in progress.
+      // ROUND-9: the server now derives the status a customer sees; a recovery state reads as a review.
+      if (ex.status === 'financial_verification') return t('claimInReview')
       if (ex.status === 'refunding') return t('claimRefunding')
       if (ex.status === 'approved') return t('claimApproved')
       if (ex.status === 'refunded') return t('claimRefunded')

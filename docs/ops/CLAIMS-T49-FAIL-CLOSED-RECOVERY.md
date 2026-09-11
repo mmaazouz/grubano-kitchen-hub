@@ -458,3 +458,108 @@ empreinte ne couvre ni `lib/claim-attribution-rules.ts` ni le test du rond 9 ; l
 mutent que des fichiers suivis et vérifient chacun leur restauration octet pour octet.
 Typecheck : 41 = base, 0 hors `tests/`. `check:i18n` : OK. Suite complète sur l'arbre final :
 **401 fichiers / 4301 tests verts**.
+
+---
+
+## 15. AUDIT ROND 9 (2026-09-11) — sur `7c459eb`
+
+Run complet. 17 constats, 34 vérifications (28 maintenues, 6 réfutations) : **15 confirmés / 2
+réfutés. P0 = 0, P1 = 9, P2 = 5, P3 = 1.**
+
+**Les P1 — cinq défauts, dont le plus grave est créé par le rond 9.**
+1. **Un état absorbant (4 constats ; l'un déposé P0, ramené P1).** Le rond 9 gardait en
+   `refunding` + marqueur une réclamation dont le moteur échouait APRÈS avoir créé sa ligne, et la
+   réconciliation répondait alors `pending_unconfirmed` sans rien écrire ni lire Stripe. Toutes les
+   sorties refusaient : attribution (ligne en attente sans identifiant), clôture par déclaration
+   (marqueur), arbitrage (déjà arbitrée). Une erreur Stripe ORDINAIRE, clôturable avant le rond 9,
+   devenait permanente — et au-delà de la fenêtre moteur de 20 h, la ligne bloquait aussi tout
+   remboursement de la commande. Le test du rond 9 épinglait cet état comme un succès (« garde son
+   bucket et son bouton »).
+2. **Une promesse de mécanisme (2 constats).** « son webhook l'appliquera » et « le moteur de
+   remboursement la reprend », dans la règle d'attribution, le toast de réconciliation et le
+   paragraphe de la console d'arbitrage. Un remboursement abouti immédiatement n'émet aucun
+   `refund.updated` ; ouvrir la fenêtre remboursements ne relance rien par soi-même.
+3. **Copie client, préexistante.** en/es/it/ar annonçaient un remboursement « sous 3–5 jours après
+   examen » ; seul le français avait été corrigé au lot 2.
+4. **Copie client, créée par le rond 9.** Le client d'une réclamation dont le moteur avait échoué
+   lisait « Remboursement en cours ».
+5. **Classe 3, quatrième fois.** Sur une réclamation verrouillée, « Approuver » était désactivé et
+   « Refuser définitivement » restait actif — ce que le serveur refuse toujours.
+
+**Les P2.** Une approbation en Mode A laisse une réclamation que seules une fenêtre CLAIMS et une
+fenêtre REFUNDS ouvertes ENSEMBLE peuvent payer, ce qu'aucun des deux opérateurs n'ouvre (déposé P1,
+ramené P2 : **décision fondateur**, portée dans le bloc du gate). Le recensement comptait
+`nonTerminal = active`, en omettant `refused`, que la bibliothèque tient pour non terminal. La copie
+du verrou renvoyait à « Remboursements à traiter », absent de l'écran quand les réclamations sont
+fermées. « Confirmer le refus » restait le seul bouton actif sur la carte verrouillée. La condition
+du paragraphe `local_pending_unconfirmed` n'était épinglée par rien.
+
+**P3.** Les tests d'échec moteur ne voyaient ni la clause `where` du CAS du marqueur, ni l'ordre de
+la requête de la ligne propre.
+
+**Réfutés, consignés.** « Le test de parité est aveugle au `where` de la requête serveur » et « les
+épingles de locale sont des listes noires » (motif du second : dette de qualité de test, sans effet
+sur ce qui est affiché). Une épingle de locale plus large est ajoutée quand même.
+
+**Le constat de méthode.** P1 confirmés sur cinq rondes : 1 → 7 → 9 → 5 → 9. Chaque rond corrigeait
+le constat précis en ajoutant une branche ou une phrase, et le suivant trouvait les mêmes classes
+dans l'ajout. Le rond 10 change de méthode plutôt que de corriger une dixième fois.
+
+### Corrigé (rond 10) — en audit
+
+- **Une règle par action humaine** (`lib/claim-action-rules.ts`, pur, sans I/O) :
+  `arbitrationRefusal` (mêmes vérifications, même ordre, mêmes messages ; `arbitrateClaim` n'en a
+  plus d'autres), `reconcileRefusal` (la garde de `reconcileClaimEvidence`), `customerClaimStatus`,
+  `moneyStateGuidance`. La file d'arbitrage émet `approveRefusal` / `refuseFinalRefusal`, la liste des
+  remboursements `reconcilable` ; les deux consoles désactivent sur ces verdicts. **Tests de PARITÉ** :
+  pour chaque état et chaque décision, le verdict listé est la réponse du serveur.
+- **Table des sorties** (test) : 19 états, chacun avec l'action que le serveur accepte ou un chemin
+  nommé (délai du restaurant → arbitrage ; « attend le rail » ; état de décision non financier).
+  **Elle a trouvé un état sans sortie dans mon propre code du rond 10** : une approbation dont la
+  tentative a été prise sans rien d'enregistré (ni liaison, ni erreur). Réconciliable désormais, et
+  classée `reconcile_required` au lieu de « jamais payée ».
+- **L'état absorbant est supprimé : la preuve décide.** Une ligne en attente est lue chez Stripe —
+  PAR son identifiant s'il est enregistré (comme la reprise du moteur), sinon dans la liste complète
+  des remboursements du paiement (paginée ; au-delà de 10 pages = illisible), par le tag
+  `metadata.grubano_refund_row`. Issues : **abouti** → réclamation remboursée, liée, commande libérée ;
+  **échoué / annulé** → `approved` + `stripe_failed` (clôturable) ; **en attente** → liée, marqueur
+  retiré, re-réconciliable ; **illisible** → rien d'écrit, relancer ; **introuvable avant la fenêtre
+  moteur (20 h) + 1 h de marge** (une création en vol peut arriver juste après la fenêtre) → rien
+  d'écrit, avec la date à partir de laquelle conclure ; **introuvable après** → `engine_row_dead:`
+  (clôturable par déclaration, jamais ré-approuvable ; la copie dit qu'aucun paiement Grubano n'est
+  possible) ; **contradiction** (identifiant inconnu de Stripe, autre paiement, statut inconnu) →
+  vérification financière, avec la vérification à faire. Même lecture dans la branche « aucune ligne
+  n'est à nous » : une ligne morte n'empêche plus la preuve d'absence, et le verrou qu'elle cause est
+  nommé. Une ligne `canceled` de notre table est traitée comme n'ayant rien versé.
+- **Réclamation liée, sans erreur** : la réconciliation applique la vérité de SA ligne (sans webhook,
+  elle n'avait aucune sortie humaine) ; ligne absente de la commande → vérification financière.
+- **Copie** : les promesses webhook / moteur / balayage sont retirées ; le paragraphe d'arbitrage et
+  la carte FV affichent la même ligne de guidance (fait + action acceptée). Épingle de promesses sur
+  les consoles et les deux modules de règles, avec contrôle négatif sur les phrases du rond 9.
+- **Client** : statut dérivé (« en cours » seulement pour une ligne liée qui porte un identifiant
+  Stripe), appliqué à l'éligibilité et à la liste ; page d'aide `financial_verification` → « en
+  examen » ; `refundEstimate` en/es/it/ar au sens du français. **Trouvé en cours de rond 10, hors
+  audit** : la liste client (`GET /api/claims`) renvoyait les lignes brutes, dont `refundError` (texte
+  moteur et identifiants Stripe écrits pour l'opérateur). Ces champs ne sont plus renvoyés ; aucune
+  interface ne les lisait.
+- **Console FV (non gatée)** : clôture par déclaration sur les lignes que la trappe accepte, bouton de
+  réconciliation où la garde l'admet, ligne de guidance sinon. La copie du verrou pointe vers
+  « Clôturer ce dossier… », présent sur cette carte.
+- **Recensement** : `nonTerminal = total − TERMINAL_STATUSES` (désormais exporté). **Opérateur** : le
+  résidu « APPROUVÉE et NON PAYÉE » est nommé, avec la décision fondateur requise.
+- **P3** : test de lecture périmée du marqueur ; requête de la ligne propre évaluée sur `where` et
+  `orderBy`.
+
+**Vérification du rond 10, avant commit.** Contrôles négatifs différentiels : **27/27 PROUVÉS** en
+une passe — casser le code livré → rouge ; restaurer depuis la copie → identique octet pour octet →
+vert. Dont un contrôle d'INSTRUMENT sur la table des sorties elle-même (15 rouges quand elle cesse
+d'interroger la garde de réconciliation). Deux défauts de mon propre travail trouvés en route,
+consignés : l'extracteur des écrivains `refundError` de `tests/claim-money-line.test.ts` a perdu la
+chaîne du verrou parce qu'une apostrophe dans MON commentaire (« claim's ») ouvrait une fausse
+chaîne — commentaire reformulé, test inchangé ; et une décomposition `...matchAll` non compilable
+dans le nouveau test (typecheck 42 → corrigé à 41). Suites touchées : 15 fichiers / 417 verts.
+Typecheck : 41 = base. `check:i18n` : OK. Suite complète sur l'arbre final : **402 fichiers / 4370
+tests verts** (code de sortie lu directement). Empreintes : `git diff` des chemins de code
+`1d6fbb85431102c2` ; les deux fichiers NON SUIVIS (`lib/claim-action-rules.ts`,
+`tests/claims-t49-round10.test.ts`) hachés à part, `28ef64cc7993477d`. Aucun changement de schéma ;
+aucun flag, gate, appel Stripe ou remboursement.

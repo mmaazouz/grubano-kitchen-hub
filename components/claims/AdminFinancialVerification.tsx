@@ -5,6 +5,7 @@ import { useLocale } from 'next-intl'
 import { Button, Badge, useToast } from '@/components/design-system'
 import { formatEuros } from '@/lib/format-money'
 import { moneyLineFor } from '@/lib/claim-money-line'
+import { moneyStateGuidance } from '@/lib/claim-action-rules'
 
 // ── T-49 — THE FINANCIAL VERIFICATION QUEUE (founder decision, 2026-09-10) ────────
 //
@@ -26,6 +27,12 @@ type Row = {
   createdAt: string
   safety?: boolean
   ambiguity?: string
+  /** ROUND-9 (other_unsettled rows): the claim status and money state, and the SERVER's own verdicts —
+   *  whether the reconcile gate admits it and whether the stuck-money hatch accepts it. */
+  status?: string
+  moneyState?: string
+  resolvable?: boolean
+  reconcilable?: boolean
   /** The PaymentIntent that paid this order — which payment to open in the Stripe Dashboard. */
   orderStripePaymentIntentId?: string | null
   /** The refunds of THIS order, so the operator can attribute one without leaving the console. */
@@ -53,9 +60,13 @@ const AMBIGUITY_LABEL: Record<string, string> = {
   refund_moved_unattributed:  'Des remboursements existent sur la commande, mais aucun ne porte l’identité de cette réclamation.',
   // ROUND-6 AUDIT FIX (P1): this path shared the label above, which is the OPPOSITE of its truth —
   // here exactly one refund DOES carry the identity, the reconciler just could not apply it.
-  reconcile_not_applied:      'Un remboursement porte bien l’identité de cette réclamation, mais la réconciliation n’a pas pu être appliquée — relancez « Réconcilier d’après la preuve ».',
+  // ROUND-9: the same reason now also comes from a claim BOUND to a row (which may not carry the
+  // claim's stamp), so the label states only what holds on both paths; the detail says which.
+  reconcile_not_applied:      'La réconciliation n’a pas pu être appliquée sur la ligne de remboursement retenue pour cette réclamation — relancez « Réconcilier d’après la preuve ».',
   multiple_candidate_refunds: 'Plusieurs remboursements portent l’identité de cette réclamation.',
   no_payment_intent:          'Cette commande n’a aucun paiement Stripe enregistré : aucune preuve Stripe ne peut exister pour elle.',
+  bound_row_missing:          'La réclamation est liée à une ligne de remboursement introuvable sur cette commande. Aucune conclusion tirée.',
+  stripe_refund_contradiction: 'Ce que Stripe rapporte contredit ce qu’enregistre une ligne de remboursement (voir le détail). Aucune conclusion tirée.',
   unknown:                    'Cause d’ambiguïté non renseignée.',
 }
 
@@ -65,7 +76,7 @@ const REFUSAL_LEGEND: Record<string, string> = {
   own_stamp_exists:        'une autre ligne porte déjà l’identité de CETTE réclamation — sera refusé',
   bound_to_other_claim:    'déjà LIÉ à une autre réclamation — sera refusé',
   unusable_status:         'statut inexploitable — sera refusé',
-  pending_unconfirmed:     'en attente sans identifiant Stripe, rien n’est confirmé chez Stripe — sera refusé',
+  pending_unconfirmed:     'en attente sans identifiant Stripe enregistré — sera refusé',
 }
 
 export default function AdminFinancialVerification() {
@@ -100,14 +111,17 @@ export default function AdminFinancialVerification() {
       const res = await fetch(`/api/admin/claims/${id}/reconcile`, { method: 'POST' })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { toast.error((body as { error?: string }).error || 'Échec de la réconciliation.'); return }
-      const result = (body as { result?: { outcome?: string; reason?: string } }).result
+      const result = (body as { result?: { outcome?: string; reason?: string; until?: string } }).result
       const outcome = result?.outcome
       const said: Record<string, string> = {
         refunded:               'Preuve trouvée : le remboursement a abouti. Réclamation réconciliée sur son identité exacte.',
         refund_failed:          'Preuve trouvée : cette ligne de remboursement a ÉCHOUÉ, elle n’a donc rien versé. La réclamation redevient traitable. (Cela ne dit rien des autres remboursements de la commande.)',
         // AUDIT FIX: this branch reads OUR row, not Stripe. Say that, rather than asserting a
         // Stripe state nobody consulted.
-        still_pending:          'La ligne de remboursement liée n’est pas encore terminale (ni aboutie, ni échouée). Rien n’est clos, aucun second remboursement. Vérifiez Stripe pour l’état réel.',
+        // ROUND-9: this outcome now comes from a Stripe read that found the refund pending.
+        still_pending:          'Stripe rapporte ce remboursement EN ATTENTE : rien n’est clos, aucun second remboursement. Relancez « Réconcilier d’après la preuve » lorsqu’il sera terminal.',
+        stripe_unreadable_retry: 'Stripe n’a pas pu être lu complètement : rien n’est conclu, rien n’a été modifié. Relancez la réconciliation.',
+        engine_row_dead:        'Stripe ne connaît aucun remboursement pour cette ligne, et le moteur ne la créera plus : elle n’a rien versé, et rien ne sera payé par Grubano pour cette réclamation. Le dossier est désormais clôturable (« Clôturer ce dossier… »).',
         // ROUND-6 AUDIT FIX (P2): « de nouveau payable par le rail normal » promised a payment the
         // closed rail will refuse. Say the state it returns to, and the only thing that will pay it.
         // ROUND-7 AUDIT FIX (P1): « ne sera versée que par le rail » still promised a payment no
@@ -120,10 +134,11 @@ export default function AdminFinancialVerification() {
         // auditors flagged that the honest reason was written to a field no human reads.
         // ROUND-8 AUDIT FIX (P1): « tant que la reprise manuelle Stripe n’a pas été faite » said the
         // lock lifts. It never does — no code moves a Refund row out of 'failed'.
+        // ROUND-9: the lock has two causes now (a failed refund with a Stripe id, or a dead pending
+        // row), so the toast states what holds for both; the claim's detail says which. The close
+        // control is on this card too.
         no_refund_proven_rail_locked:
-          'Preuve d’absence : rien n’est parti. MAIS un remboursement ÉCHOUÉ verrouille cette commande côté moteur, DÉFINITIVEMENT — aucun code ne lève ce verrou, même après une intervention dans Stripe. Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… » dans « Remboursements à traiter ») ; sinon clôturez sans paiement.',
-        // ROUND-8 AUDIT FIX (P1): our row is pending with NO Stripe id. Nothing was written.
-        pending_unconfirmed:    'La ligne de remboursement de cette réclamation est en attente SANS identifiant Stripe : rien n’est confirmé chez Stripe. Rien n’a été modifié. Elle n’avancera que si Stripe a réellement créé ce remboursement (son webhook l’appliquera) ou si le moteur de remboursement la reprend (fenêtre remboursements ouverte) ; réconciliez ensuite.',
+          'Preuve d’absence : rien n’est parti. MAIS le moteur refusera tout remboursement sur cette commande, DÉFINITIVEMENT (voir le détail de la réclamation). Rien ne sera payé par le rail. Si un remboursement a été fait hors système (Dashboard Stripe), déclarez-le (« Clôturer ce dossier… ») ; sinon clôturez sans paiement.',
         financial_verification: 'Toujours indéterminé. Aucune conclusion, aucun argent, aucune clôture. Escalade opérateur requise.',
       }
       // ROUND-3 AUDIT FIX: every outcome rendered as a green success, including "still
@@ -132,7 +147,9 @@ export default function AdminFinancialVerification() {
       const needsAttention = outcome === 'financial_verification'
         || outcome === 'refund_failed'
         || outcome === 'no_refund_proven_rail_locked'
-        || outcome === 'pending_unconfirmed'
+        || outcome === 'stripe_unreadable_retry'
+        || outcome === 'unconfirmed_within_window'
+        || outcome === 'engine_row_dead'
       // ROUND-6 AUDIT FIX (P2): the library reports 'already_parked_or_moved' precisely when its
       // park CAS matched NOTHING — the claim was already parked, or a concurrent webhook moved it,
       // possibly to a terminal state. This handler ignored `reason` and announced « aucune
@@ -142,7 +159,9 @@ export default function AdminFinancialVerification() {
         // ROUND-8 AUDIT FIX (P3): since the relabel CAS, an already-parked claim is refreshed, never
         // reported here — this outcome now means the claim LEFT every modifiable state, maybe closed.
         ? 'Rien n’a été modifié : la réclamation a quitté les états modifiables entre-temps (peut-être clôturée). Relisez sa ligne dans la file.'
-        : said[outcome ?? ''] ?? 'Réconciliation terminée.'
+        : outcome === 'unconfirmed_within_window'
+          ? `Stripe ne connaît aucun remboursement pour la ligne en attente, mais il est trop tôt pour conclure qu’il n’existera pas (fenêtre d’idempotence du moteur, plus une marge). Rien n’a été modifié. Conclusion possible à partir du ${result?.until ? new Date(result.until).toLocaleString('fr-FR') : '—'} : relancez alors la réconciliation.`
+          : said[outcome ?? ''] ?? 'Réconciliation terminée.'
       if (needsAttention) toast.error(text)
       else toast.success(text)
       await load()
@@ -198,6 +217,30 @@ export default function AdminFinancialVerification() {
   const [stripePreview, setStripePreview] = useState<Record<string, (StripeFacts & { wouldWrite: boolean }) | null>>({})
   /** What a REFUSED verification read — shown, but never arming « Lier ». */
   const [refusedFacts, setRefusedFacts] = useState<Record<string, (StripeFacts & { wrote: boolean | null }) | null>>({})
+
+  // ROUND-9 AUDIT FIX (P2): the declaration close existed only in the arbitration console, which is not
+  // rendered while claims are closed — yet the rail-locked and dead-row copy sends the operator to it.
+  // Same route (ungated), same toasts, on this card too.
+  const [stuckId, setStuckId] = useState<string | null>(null)
+  const [stuckReason, setStuckReason] = useState('')
+  const resolveStuck = useCallback(async (id: string, resolution: 'settled_out_of_band' | 'closed_no_payment') => {
+    setBusyId(id)
+    try {
+      const res = await fetch(`/api/admin/claims/${id}/resolve-stuck`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ resolution, reason: stuckReason || undefined }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast.error((data as { error?: string }).error || 'Échec de la clôture.'); return }
+      toast.success(resolution === 'settled_out_of_band'
+        ? 'Dossier clôturé sur votre déclaration (payé autrement, hors système). Cette action n’a déplacé aucun argent et n’a rien vérifié chez Stripe.'
+        : 'Dossier clôturé sans paiement, sur votre déclaration. Cette action n’a déplacé aucun argent ; elle ne dit rien des remboursements déjà présents sur la commande.')
+      setStuckId(null); setStuckReason('')
+      await load()
+    } catch {
+      toast.error('Échec de la clôture.')
+    } finally { setBusyId(null) }
+  }, [load, stuckReason, toast])
 
   const adoptStripe = useCallback(async (claimId: string, dryRun: boolean) => {
     const stripeRefundId = (stripeIdDraft[claimId] ?? '').trim()
@@ -331,7 +374,11 @@ export default function AdminFinancialVerification() {
                 string replacement silently no-oped and it shipped unconditional. Offered on an
                 ordinary approved-but-unpaid claim it stamps a recovery error onto a healthy case
                 and reconciles nothing. It belongs to the states whose money truth is open. */}
-            {r.kind !== 'other_unsettled' ? (
+            {/* ROUND-9 AUDIT FIX (Class 3/4): which action this card offers comes from the SERVER's own
+                rules, carried in the payload — reconcile where the reconcile gate admits the claim, the
+                declaration close where the stuck-money hatch accepts it, and otherwise the one fact-only
+                line for that money state (lib/claim-action-rules). */}
+            {(r.kind !== 'other_unsettled' || r.reconcilable === true) && (
               <>
                 <Button
                   size="sm"
@@ -346,12 +393,41 @@ export default function AdminFinancialVerification() {
                   remboursement, ne relance rien, ne déplace aucun argent.
                 </p>
               </>
-            ) : (
-              <p className="mt-3 text-[12px] text-grubano-ink-muted">
-                Listée ici pour qu’elle ne disparaisse pas quand les réclamations sont fermées.
-                Son traitement se fait dans la file « Remboursements à traiter » de la console
-                d’arbitrage, qui n’est visible que lorsque les réclamations sont ouvertes.
-              </p>
+            )}
+            {r.kind === 'other_unsettled' && r.resolvable === true && (
+              stuckId === r.id ? (
+                <div className="mt-3 space-y-2 rounded-grubano-lg border border-grubano-border bg-grubano-surface p-3">
+                  <p className="text-[13px] text-grubano-ink-muted">
+                    Aucune de ces actions ne rembourse ni ne relance quoi que ce soit. Elles enregistrent
+                    votre déclaration et libèrent la commande pour le client.
+                  </p>
+                  <textarea
+                    value={stuckReason}
+                    onChange={(e) => setStuckReason(e.target.value)}
+                    placeholder="Ce qui s’est réellement passé (facultatif)…"
+                    rows={2}
+                    className="w-full rounded-grubano-lg border border-grubano-border bg-grubano-surface p-2 text-[13px]"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" disabled={busyId === r.id} onClick={() => resolveStuck(r.id, 'settled_out_of_band')}>
+                      Je déclare : payé autrement, hors système
+                    </Button>
+                    <Button size="sm" variant="secondary" disabled={busyId === r.id} onClick={() => resolveStuck(r.id, 'closed_no_payment')}>
+                      Clôturer sans paiement
+                    </Button>
+                    <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => { setStuckId(null); setStuckReason('') }}>
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button size="sm" variant="secondary" className="mt-3" disabled={busyId === r.id} onClick={() => { setStuckId(r.id); setStuckReason('') }}>
+                  Clôturer ce dossier…
+                </Button>
+              )
+            )}
+            {r.kind === 'other_unsettled' && r.reconcilable !== true && r.resolvable !== true && (
+              <p className="mt-3 text-[12px] text-grubano-ink-muted">{moneyStateGuidance(r.moneyState ?? '')}</p>
             )}
 
             {r.kind === 'financial_verification' && (

@@ -71,4 +71,24 @@ describe('reportResidue — the abort path has the same eyes as the happy path',
     // and the limit is stated where it applies, not papered over
     expect(src).toMatch(/SYNCHRONOUS signal \/ uncaught-exception paths still cannot/)
   })
+
+  it('ROUND-9 (P2): an APPROVED-and-UNPAID claim left by the window is named as such — the residue nothing moves with REFUNDS closed', async () => {
+    const before = GATE._residueLinesForTests()
+    const fakePrisma = {
+      claim: {
+        findMany: async () => [
+          { id: 'old', status: 'refunded', orderId: 'o0', refundAttempted: true, arbitrationDecision: null },
+          { id: 'appr1', status: 'approved', orderId: 'o1', refundAttempted: false, arbitrationDecision: 'approved' },
+          { id: 'rev1', status: 'restaurant_review', orderId: 'o2', refundAttempted: false, arbitrationDecision: null },
+        ],
+        count: async () => 0,
+      },
+    }
+    GATE._setResidueForTests(fakePrisma, new Set(['old']))
+    await GATE.reportResidue()
+    const anomalies = GATE._residueLinesForTests().anomalies.slice(before.anomalies.length).join('\n')
+    expect(anomalies).toMatch(/1 claim\(s\) APPROVED and UNPAID \(appr1\)/)
+    expect(anomalies).toContain('FOUNDER DECISION required')
+    expect(anomalies).not.toMatch(/APPROVED and UNPAID \([^)]*rev1/)
+  })
 })

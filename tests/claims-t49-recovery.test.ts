@@ -21,7 +21,7 @@ const { db } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
 
 const { execMock, refundsFlag } = vi.hoisted(() => ({ execMock: vi.fn(), refundsFlag: vi.fn() }))
-vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag }))
+vi.mock('@/lib/refund', () => ({ executeRefund: execMock, isRefundsEnabled: refundsFlag, RESUME_CREATE_WINDOW_MS: 20 * 60 * 60 * 1000 }))
 
 const { alertMock } = vi.hoisted(() => ({ alertMock: vi.fn() }))
 vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: alertMock }))
@@ -105,6 +105,9 @@ describe('evidence PROVES what happened → apply it, and only it', () => {
 
   it('a PENDING refund stays pending — no terminal success, no terminal failure', async () => {
     db.refund.findMany.mockResolvedValue([row({ status: 'pending' })])
+    // ROUND-9: a pending row is decided by what Stripe proves about it — here, Stripe reports it pending.
+    // ROUND-10: a recorded Stripe id is read BY that id, as the engine's own resume does.
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'pending', amount: 500, payment_intent: 'pi_1', metadata: { grubano_refund_row: 'rf1' } })
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
     expect(r).toMatchObject({ ok: true, outcome: 'still_pending' })
     const wrote = db.claim.updateMany.mock.calls.map((c) => c[0].data)

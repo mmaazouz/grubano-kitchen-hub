@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { isInternalCronRequest } from '@/lib/safe-compare'
-import { isClaimsEnabled, claimsGateState, FINANCIAL_VERIFICATION, RECONCILE_REQUIRED } from '@/lib/claims'
+import { isClaimsEnabled, claimsGateState, FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, TERMINAL_STATUSES } from '@/lib/claims'
 import { isRefundsEnabled } from '@/lib/refund'
 
 export const runtime = 'nodejs'
@@ -44,13 +44,17 @@ export async function GET(req: NextRequest) {
     const ACTIVE = ['restaurant_review', 'approved', 'refunding', 'arbitration', FINANCIAL_VERIFICATION]
     const counts = Object.fromEntries((byStatus as Array<{ status: string; _count: number }>).map((g) => [g.status, g._count]))
     const active = ACTIVE.reduce((n, s) => n + (counts[s] ?? 0), 0)
+    // ROUND-9 AUDIT FIX (P2): `nonTerminal` was `active`, silently dropping 'refused' — which the library
+    // treats as NON-terminal (the customer may still contest). It is now total minus the library's own
+    // terminal set, the set the rehearsal operator's residue report uses too.
+    const terminal = TERMINAL_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0)
 
     return NextResponse.json({
       measuredAt: new Date().toISOString(),
       claims: {
         total,
         active,
-        nonTerminal: active,
+        nonTerminal: total - terminal,
         byStatus: counts,
         refunding,
         restaurantReview,

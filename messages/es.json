@@ -2989,7 +2989,7 @@
       "refundWhat": "¿Qué ha pasado?",
       "refundPlaceholder": "El artículo no estaba en la bolsa en la entrega.",
       "refundAddPhoto": "Añadir una foto (opcional)",
-      "refundEstimate": "Reembolso estimado: <b>{amount} €</b> en 3–5 días tras la verificación.",
+      "refundEstimate": "Importe solicitado: <b>{amount} €</b>. Su solicitud será examinada; no se garantiza ningún reembolso en esta fase, y el plazo en que aparezca en su cuenta depende después de su banco.",
       "refundPickToEstimate": "Selecciona los artículos afectados para estimar el reembolso.",
       "refundEstimateCapped": "Este importe está limitado por lo que queda reembolsable en este pedido.",
       "refundSoon": "Las solicitudes de reembolso llegan pronto.",

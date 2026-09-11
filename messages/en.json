@@ -2989,7 +2989,7 @@
       "refundWhat": "What happened?",
       "refundPlaceholder": "The item wasn't in the bag at delivery.",
       "refundAddPhoto": "Add a photo (optional)",
-      "refundEstimate": "Estimated refund: <b>{amount} €</b> within 3–5 days after review.",
+      "refundEstimate": "Amount requested: <b>{amount} €</b>. Your request will be reviewed; no refund is guaranteed at this stage, and how long any refund takes to appear on your account then depends on your bank.",
       "refundPickToEstimate": "Select the affected items to estimate the refund.",
       "refundEstimateCapped": "This amount is capped by what remains refundable on this order.",
       "refundSoon": "Refund requests are coming soon.",

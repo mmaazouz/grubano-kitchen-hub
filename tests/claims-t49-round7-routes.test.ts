@@ -102,6 +102,9 @@ const FILES = [
   'lib/claims.ts',
   'lib/claim-money-line.ts',
   'lib/claim-approval-toast.ts',
+  // ROUND-9: the shared rule modules write operator-visible messages too.
+  'lib/claim-attribution-rules.ts',
+  'lib/claim-action-rules.ts',
   'components/claims/AdminFinancialVerification.tsx',
   'components/claims/AdminClaimsArbitration.tsx',
   'messages/fr.json',

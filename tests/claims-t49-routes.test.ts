@@ -181,7 +181,8 @@ describe('the money queue component keeps its audit fixes', () => {
   const src = readFileSync('components/claims/AdminFinancialVerification.tsx', 'utf8')
 
   it('the reconcile button is scoped, not unconditional (the round-3 P1)', () => {
-    expect(src).toContain("{r.kind !== 'other_unsettled' ? (")
+    // ROUND-9: the button appears where the SERVER's reconcile gate admits the claim (payload flag).
+    expect(src).toContain("{(r.kind !== 'other_unsettled' || r.reconcilable === true) && (")
     // and its caption lives WITH it, rather than trailing every card
     expect(src.match(/Lit Stripe et les lignes/g) ?? []).toHaveLength(1)
   })
@@ -203,7 +204,8 @@ describe('the money queue component keeps its audit fixes', () => {
 
   it('the rail-locked outcome reaches an operator-visible message', () => {
     expect(src).toContain('no_refund_proven_rail_locked')
-    expect(src).toMatch(/verrouille cette commande/)
+    // ROUND-10: the lock has two causes now; the toast states what holds for both.
+    expect(src).toMatch(/refusera tout remboursement sur cette commande/)
   })
 
   it('rows the attribution guard will refuse are flagged AND disabled', () => {

@@ -2989,7 +2989,7 @@
       "refundWhat": "Cos'è successo?",
       "refundPlaceholder": "L'articolo non era nel sacchetto alla consegna.",
       "refundAddPhoto": "Aggiunga una foto (facoltativo)",
-      "refundEstimate": "Rimborso stimato: <b>{amount} €</b> entro 3–5 giorni dopo la verifica.",
+      "refundEstimate": "Importo richiesto: <b>{amount} €</b>. La Sua richiesta sarà esaminata; nessun rimborso è garantito in questa fase, e i tempi di accredito sul Suo conto dipendono poi dalla Sua banca.",
       "refundPickToEstimate": "Selezioni gli articoli interessati per stimare il rimborso.",
       "refundEstimateCapped": "Questo importo è limitato da ciò che resta rimborsabile su quest’ordine.",
       "refundSoon": "Le richieste di rimborso arrivano presto.",
