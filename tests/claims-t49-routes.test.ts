@@ -206,7 +206,20 @@ describe('the money queue component keeps its audit fixes', () => {
 
   it('the reconcile button is scoped, not unconditional (the round-3 P1)', () => {
     // ROUND-9: the button appears where the SERVER's reconcile gate admits the claim (payload flag).
-    expect(src).toContain("{(r.kind !== 'other_unsettled' || r.reconcilable === true) && (")
+    // ROUND 13 (D0 / D5, W3 round-1 fix): on every bucket — the reconcile_required list now carries the gate's verdict,
+    // which refuses an unreadable marker instant; the refusal text replaces the control.
+    expect(src).toContain('{r.reconcilable === true && (')
+    expect(src).toContain('{r.reconcilable !== true && r.reconcileRefusal && (')
+    // NEGATIVE CONTROL — an unconditional or bucket-wide control would render where the server answers 409.
+    const gateOf = (s: string) => {
+      const click = s.indexOf('onClick={() => reconcile(r.id)}')
+      const open = s.lastIndexOf('{r', click)
+      return s.slice(open, s.indexOf('\n', open)).trim()
+    }
+    expect(gateOf(src)).toBe('{r.reconcilable === true && (')
+    const regressed = src.replace('{r.reconcilable === true && (', "{(r.kind !== 'other_unsettled' || r.reconcilable === true) && (")
+    expect(regressed).not.toBe(src)
+    expect(gateOf(regressed)).not.toBe('{r.reconcilable === true && (')
     // and its caption lives WITH it, rather than trailing every card
     expect(src.match(/Lit Stripe et les lignes/g) ?? []).toHaveLength(1)
   })

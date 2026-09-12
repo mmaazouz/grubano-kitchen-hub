@@ -40,6 +40,8 @@ type MoneyState =
   // T-49: an interrupted attempt whose refund identity was never bound, or a claim parked
   // in FINANCIAL VERIFICATION. Money truth unknown — never asserted either way.
   | 'reconcile_required'
+  // W3 round-2 fix (D0 / D5): the marker's start instant cannot be read — reconcile refused, no exit.
+  | 'reconcile_marker_unreadable'
   // ROUND-6 AUDIT FIX (P2): the reconciler PROVED nothing ever left. A success, not an error.
   | 'absence_proven_payable'
   // ROUND-8 AUDIT FIX (P1): our row is pending with NO Stripe id — nothing is confirmed at Stripe.
@@ -187,6 +189,8 @@ export default function AdminClaimsArbitration() {
     refund_error_recorded:                { text: 'Erreur de remboursement enregistrée — décision humaine requise', tone: 'danger' },
     approved_not_driven:                  { text: 'Approuvée mais jamais remboursée — en attente de traitement', tone: 'warning' },
     reconcile_required:                   { text: 'Vérification financière requise — l’argent n’est pas établi (ni parti, ni non parti)', tone: 'danger' },
+    // W3 round-2 fix (D0 / D5): the refusal fact, no control named.
+    reconcile_marker_unreadable:          { text: 'Vérification financière requise — l’argent n’est pas établi (ni parti, ni non parti) ; heure de la tentative illisible, réconciliation refusée', tone: 'danger' },
     // ROUND-7 AUDIT FIX (P1): « sera versée par le rail » promised a payment nothing performs —
     // the auto-approve sweep is flag-gated OFF for the beta and its cron is gone. A human pays it.
     // ROUND 13 (F15): the proof's own instant is part of the label — the row lookup below renders it per claim.

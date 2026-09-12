@@ -118,16 +118,22 @@ describe('J-M12 — legacy resume_mismatch on the claim’s OWN row (B8)', () =>
     // cl1 (FV) owns the stamped row R; a legacy claim clB is ALSO bound to R and is the one the reconciler finds first.
     const x = payableWorld({ status: 'financial_verification', refundAttempted: true, refundError: 'financial_verification:refund_moved_unattributed: x' })
     x.refunds.push(refundRow('R', { reason: 'claim:cl1', stripeRefundId: 're_R' }))
+    // ROUND 13 (G2 (3) / G4, W3): the stamped row is re-read at Stripe on the mine path — its refund succeeded there.
+    x.stripeRefunds.push(stripeRefund('re_R'))
     x.claims.unshift({ id: 'clB', orderId: 'o1', status: 'refunding', refundAttempted: true, refundId: 'R', refundError: null })
     setWorld(x)
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
     expect(r).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'reconcile_not_applied' })
-    expect((r as { detail: string }).detail).toContain('a été appliquée à une autre réclamation liée à cette ligne (clB)')
+    // ROUND 13 (G2 / B9 (b), W3): the binder check now runs before EVERY settling write, so the park happens before
+    // the reconciler is reached, with the B9 (b) detail — and still nothing settles.
+    expect((r as { detail: string }).detail).toBe('La ligne R est liée à au moins une autre réclamation : cette réclamation ne peut pas être soldée sur elle sans décision humaine. Aucune conclusion tirée.')
+    expect(claimOf(w, 'clB')).toMatchObject({ status: 'refunding', refundError: null })
     expect(claimOf(w).status).toBe('financial_verification')
     expect(JSON.stringify(r)).not.toContain('"refunded"')
     // NEGATIVE CONTROL: with no other binder the same reconcile settles cl1 on R.
     const y = payableWorld({ status: 'financial_verification', refundAttempted: true, refundError: 'financial_verification:refund_moved_unattributed: x' })
     y.refunds.push(refundRow('R', { reason: 'claim:cl1', stripeRefundId: 're_R' }))
+    y.stripeRefunds.push(stripeRefund('re_R'))
     setWorld(y)
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'R' })
   })

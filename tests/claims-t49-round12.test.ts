@@ -21,6 +21,8 @@ const { db } = vi.hoisted(() => ({
     claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), aggregate: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
+    // ROUND 13 (G2 (3), W3): the no-row branch reads the ONE loader (G3), which reads the royalty status.
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -52,7 +54,13 @@ import {
   reconcileClaimEvidence, attributeClaimRefund, getClaimEligibility, claimRefundReason,
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, ENGINE_DEAD_MARGIN_MS,
 } from '@/lib/claims'
-import { customerClaimStatus, type ClaimFacts } from '@/lib/claim-action-rules'
+import { customerClaimStatus, isStuckResolvable, acceptedExits, type ClaimFacts } from '@/lib/claim-action-rules'
+
+/** ROUND 13 (D1 row 4): a lock written by reconcile keeps reconcile AND the declaration close. */
+const isStuckResolvableFacts = (e: string) => {
+  const c = { id: 'cl1', orderId: 'o1', status: 'approved', refundAttempted: false, refundId: null, refundError: e }
+  return isStuckResolvable(c) && acceptedExits({ claim: c, now: new Date() }).join(',') === 'reconcile,stuck_close'
+}
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
 import { financialVerificationCardVisible } from '@/lib/claim-money-line'
 import { GET as CENSUS } from '@/app/api/admin/claims/census/route'
@@ -95,8 +103,11 @@ beforeEach(() => {
   db.refund.findUnique.mockResolvedValue(null)
   db.refund.findFirst.mockResolvedValue(null)
   db.refund.aggregate.mockResolvedValue({ _sum: { amountCents: 0 } })
-  db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', stripePaymentIntentId: 'pi_1' })
-  stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
+  // ROUND 13 (G3 / G5 E1, W3): the loader reads the order's payment status; a claim's order is paid.
+  db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' })
+  db.franchiseRoyalty.findFirst.mockResolvedValue(null)
+  // ROUND 13 (G3, W3): the loader reads the intent status (E1b) — a paid order's intent is 'succeeded'.
+  stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
   stripeMock.refunds.list.mockResolvedValue({ data: [], has_more: false })
   alertMock.mockResolvedValue({ status: 'sent' })
   auditMock.mockResolvedValue(undefined)
@@ -216,23 +227,40 @@ describe('STRIPE 0 / 0 — a row marked succeeded for ANOTHER claim cannot have 
     fx.row = { status: FINANCIAL_VERIFICATION, refundAttempted: true, refundId: null, refundError: FV_CLAIM.refundError }
   })
 
-  it('stamped for another claim → proof of absence FOR THIS CLAIM (an exit), with its own copy', async () => {
+  // ROUND 13 (G2, A-S03 / A-S04, W3): the round-12 « relèvent d’AUTRES réclamations » proof is DELETED — it wrote a
+  // payable legacy proof without checking the engine or the holds. The row's refund is re-read at Stripe: failed
+  // there, it is H1 (reverted) and the claim gets a LOCK whose exits are reconcile and the declaration close (REG-1).
+  const reverted = { id: 're_O', status: 'failed', amount: 300, charge: 'ch_1', payment_intent: 'pi_1', metadata: {} }
+
+  it('stamped for another claim, its refund failed at Stripe → H1 lock FOR THIS CLAIM (reconcile + declaration), never a payable proof', async () => {
     db.refund.findMany.mockResolvedValue([engineRow('rf_o', { status: 'succeeded', stripeRefundId: 're_O', reason: claimRefundReason('cl_OTHER') })])
-    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven' })
+    stripeMock.refunds.retrieve.mockResolvedValue(reverted)
+    stripeMock.refunds.list.mockResolvedValue({ data: [reverted], has_more: false })
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven_rail_locked' })
     expect(fx.row).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
-    expect(String(fx.row!.refundError)).toContain('relèvent d’AUTRES réclamations')
-    expect(String(fx.row!.refundError)).toContain('rf_o')
+    const e = String(fx.row!.refundError)
+    expect(e.startsWith('no_refund_proven_rail_locked: ')).toBe(true)
+    expect(e).toContain('la ligne rf_o est marquée ABOUTIE dans notre base, mais Stripe ne la compte pas sur ce paiement (son remboursement re_O est « failed » chez Stripe)')
+    expect(e).toContain('blocage de sûreté')
+    expect(e).not.toContain('relèvent d’AUTRES réclamations')
+    expect(isStuckResolvableFacts(e)).toBe(true)
   })
 
-  it('bound to another claim → the same', async () => {
+  it('bound to another claim (unstamped), its refund failed at Stripe → the same lock', async () => {
     db.refund.findMany.mockResolvedValue([engineRow('rf_o', { status: 'succeeded', stripeRefundId: 're_O' })])
+    stripeMock.refunds.retrieve.mockResolvedValue(reverted)
+    stripeMock.refunds.list.mockResolvedValue({ data: [reverted], has_more: false })
     const CLAIMS = [{ id: 'cl_Z', refundId: 'rf_o' }, { id: 'cl1', refundId: null }]
     db.claim.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => CLAIMS.filter((c) => matchWhere(where, c)))
-    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven' })
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven_rail_locked' })
+    expect(String(fx.row!.refundError)).toContain('blocage de sûreté')
   })
 
-  it('NEGATIVE CONTROL — an admin row, no claim’s, still contradicts Stripe and is parked', async () => {
+  it('NEGATIVE CONTROL — an admin row whose refund Stripe lists as succeeded while it counts 0 c refunded is parked as a contradiction', async () => {
+    const reA = { id: 're_A', status: 'succeeded', amount: 300, charge: 'ch_1', payment_intent: 'pi_1', metadata: {} }
     db.refund.findMany.mockResolvedValue([engineRow('rf_a', { status: 'succeeded', stripeRefundId: 're_A' })])
+    stripeMock.refunds.retrieve.mockResolvedValue(reA)
+    stripeMock.refunds.list.mockResolvedValue({ data: [reA], has_more: false })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ outcome: 'financial_verification', reason: 'stripe_refund_contradiction' })
   })
 })
@@ -251,7 +279,7 @@ describe('PRECEDENCE — pinned with mixed rows, not single ones', () => {
     expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
-  it('a failed-at-Stripe row AND a dead row → the failed-at-Stripe cause is the one written (precedence pinned)', async () => {
+  it('a failed-at-Stripe row AND an OLDER dead row → the E3 sentence names the oldest row, as the engine resumes it (precedence pinned)', async () => {
     db.refund.findMany.mockResolvedValue([
       engineRow('rf_fail'),
       engineRow('rf_dead', { createdAt: new Date(Date.now() - WINDOW - ENGINE_DEAD_MARGIN_MS - 60_000) }),
@@ -259,8 +287,11 @@ describe('PRECEDENCE — pinned with mixed rows, not single ones', () => {
     stripeMock.refunds.list.mockResolvedValue({ data: [tagged('rf_fail', 'failed')], has_more: false })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven_rail_locked' })
     const e = String(fx.row!.refundError)
-    expect(e).toContain('rf_fail')
-    expect(e).toContain('a ÉCHOUÉ ou a été annulé')
+    // ROUND 13 (G5 / G8, W3): the precedence is the ENGINE's (refund.ts 765-780: the oldest pending row first), not
+    // the round-12 ladder's: rf_dead is resumed first, and rf_fail is named as another pending row.
+    expect(e).toContain('la plus ancienne ligne en attente de la commande, rf_dead, est reprise par le moteur avant tout nouveau remboursement')
+    expect(e).toContain('fenêtre d’idempotence expirée')
+    expect(e).toContain('(ligne(s) aussi en attente : rf_fail)')
   })
 })
 

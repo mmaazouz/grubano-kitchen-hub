@@ -162,6 +162,8 @@ describe('J-M17 — two concurrent writers, one write', () => {
   it('a reconcile race that reaches applyRowTruth (an own stamped row): one bind, one settle; the loser writes nothing more and says changed_during_read', async () => {
     const x = payableWorld({ status: 'financial_verification', refundAttempted: true, refundError: 'financial_verification:refund_moved_unattributed: x' })
     x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', stripeRefundId: 're_own' }))
+    // ROUND 13 (G2 (3) / G4, W3): the own stamped row settles only on its Stripe refund object.
+    x.stripeRefunds.push(stripeRefund('re_own'))
     setWorld(x)
     const [a, b] = await Promise.all([reconcileClaimEvidence({ claimId: 'cl1' }), reconcileClaimEvidence({ claimId: 'cl1' })])
     const outcomes = [a, b].map((r) => (r.ok ? r.outcome : `error:${r.status}`)).sort()
@@ -180,7 +182,8 @@ describe('J-M26 — a refundError changed between the decision read and the writ
   const FV_CLAIM = { status: 'financial_verification', refundAttempted: true, refundError: 'financial_verification:refund_moved_unattributed: x' }
 
   const APPLY: Array<[string, (x: World) => void]> = [
-    ['bind (row terminal)', (x) => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', stripeRefundId: 're_own' })) }],
+    // ROUND 13 (G2 (3) / G4, W3): the own stamped succeeded row is re-read at Stripe before its bind.
+    ['bind (row terminal)', (x) => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', stripeRefundId: 're_own' })); x.stripeRefunds.push(stripeRefund('re_own')) }],
     ['at_stripe succeeded', (x) => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_own' })); x.stripeRefunds.push(stripeRefund('re_own')) }],
     ['at_stripe failed', (x) => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_own' })); x.stripeRefunds.push(stripeRefund('re_own', { status: 'failed' })) }],
     ['pending at Stripe', (x) => { x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', status: 'pending', stripeRefundId: 're_own' })); x.stripeRefunds.push(stripeRefund('re_own', { status: 'pending' })) }],
@@ -275,6 +278,7 @@ describe('J-M26 — a refundError changed between the decision read and the writ
     // A mine row whose reconcile cannot be applied (our row succeeded, but the claim changes after the bind).
     const x = payableWorld(FV_CLAIM)
     x.refunds.push(refundRow('rf_own', { reason: 'claim:cl1', stripeRefundId: 're_own' }))
+    x.stripeRefunds.push(stripeRefund('re_own')) // ROUND 13 (G2 (3) / G4, W3): read at Stripe on the mine path
     setWorld(x)
     w.beforeClaimWrite = (n) => { if (n === 2) claimOf(w).refundError = CHANGED }
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
@@ -360,17 +364,18 @@ describe('J-M17 / J-M26 — the refund_moved_unattributed park: a lost CAS is ch
       const ret = m[1].trim()
       if (ret !== "{ ok: true, outcome: 'changed_during_read' }" && !/^changed\((?:row\.id)?\)$/.test(ret)) v.push(ret)
     }
-    if (n < 10) v.push(`only ${n} lost-park branches found`)
+    // ROUND 13 (G2, W3): the round-12 ladder's stripe_unreadable and last parks are deleted; 7 parks remain.
+    if (n < 7) v.push(`only ${n} lost-park branches found`)
     if (src.includes('already_parked_or_moved')) v.push('already_parked_or_moved still present')
     return v
   }
   it('source pin — every lost park answers changed_during_read; « already_parked_or_moved » exists nowhere in lib/claims.ts', () => {
     const src = stripComments(read('lib/claims.ts'))
     expect(lostParkViolations(src)).toEqual([])
-    // NEGATIVE CONTROL: the round-1 leftover, put back at the last park, is caught.
+    // NEGATIVE CONTROL: the round-1 leftover, put back at a reconcile park (G2 (3) mine > 1), is caught.
     const reverted = src.replace(
-      "  if (!parked.entered && !parked.relabelled) {\n    return { ok: true, outcome: 'changed_during_read' }\n  }\n  return { ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail }",
-      "  if (!parked.entered && !parked.relabelled) {\n    return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }\n  }\n  return { ok: true, outcome: 'financial_verification', reason: 'refund_moved_unattributed', detail }",
+      "    if (!parked.entered && !parked.relabelled) return { ok: true, outcome: 'changed_during_read' }\n    return { ok: true, outcome: 'financial_verification', reason: 'multiple_candidate_refunds', detail }",
+      "    if (!parked.entered && !parked.relabelled) return { ok: true, outcome: 'financial_verification', reason: 'already_parked_or_moved' as AmbiguityReason, detail }\n    return { ok: true, outcome: 'financial_verification', reason: 'multiple_candidate_refunds', detail }",
     )
     expect(reverted).not.toBe(src)
     expect(lostParkViolations(reverted).length).toBeGreaterThan(0)

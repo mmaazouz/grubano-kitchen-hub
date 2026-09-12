@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import {
   arbitrationRefusal, reconcileRefusal, moneyStateGuidance, absenceProvenPayableLabel, deriveNoRowOutcome, proofInstantFor,
   APPROVE_INSTANT_UNREADABLE, APPROVE_LEGACY_PROOF, REFUSE_APPROVED_AM_B3, approvePrematureText, approveRevisableText, approvePermanentText,
-  ATTEMPT_QUIESCENCE_MS, MARKERS, type ClaimFacts,
+  ATTEMPT_QUIESCENCE_MS, MARKERS, RECONCILE_MARKER_UNREADABLE_TEXT, acceptedExits, exitRegistry, type ClaimFacts,
 } from '@/lib/claim-action-rules'
 import { moneyLineFor, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
 import { attributionRefusal } from '@/lib/claim-attribution-rules'
@@ -61,6 +61,35 @@ describe('J-M31 — D14 (0)-(3) exact, selected in order', () => {
     expect(arbitrationRefusal(inGrace, 'approve', NOW)?.error).not.toContain('Clôturer')
   })
 
+  // W3 round-1 fix (D14 (2)/(3), D5, F16 (7)): reconcile refuses a marker whose instant cannot be read (malformed, or in
+  // the future). D14 (2) is reserved to reconcileRefusal === null or a grace-only refusal, so such a claim gets (3).
+  const MALFORMED = 'reconcile_required: tentative de remboursement démarrée à 2026-09-10Tzz:00Z (tentative 1a2b) — identité du remboursement pas encore liée.'
+  it('selection pin: an approved claim whose marker instant is malformed or in the future gets (3) — never a text naming « Réconcilier »', () => {
+    const malformed = approved(MALFORMED, { refundAttempted: true })
+    const future = approved(markerAt(new Date(NOW.getTime() + 3_600_000)), { refundAttempted: true })
+    for (const [name, c] of [['malformed', malformed], ['future', future]] as const) {
+      expect(reconcileRefusal(c, NOW.getTime())?.error, name).toBe(RECONCILE_MARKER_UNREADABLE_TEXT)
+      const text = arbitrationRefusal(c, 'approve', NOW)?.error
+      expect(text, name).toBe(approvePermanentText(false))
+      expect(text, name).not.toContain('Réconcilier')
+      expect(acceptedExits({ claim: c, now: NOW }), name).toEqual([])
+    }
+    // E registry: a malformed instant never becomes readable (E-04 founder acceptance); a future one does (E-05, D5 after grace).
+    expect(exitRegistry({ claim: malformed, now: NOW })).toBe('E-04:malformed_marker')
+    expect(exitRegistry({ claim: future, now: NOW })).toBe('E-05')
+    expect(RECONCILE_MARKER_UNREADABLE_TEXT).toContain('n’a pas pu être lue, ou est postérieure à maintenant')
+    expect(hits(RECONCILE_MARKER_UNREADABLE_TEXT)).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — the same approved claim with an AGED marker (reconcile admitted) or a marker in grace still gets (2)', () => {
+    const aged = approved(markerAt(new Date(NOW.getTime() - 3_600_000)), { refundAttempted: true })
+    expect(reconcileRefusal(aged, NOW.getTime())).toBeNull()
+    expect(arbitrationRefusal(aged, 'approve', NOW)?.error).toBe(approveRevisableText(false))
+    expect(acceptedExits({ claim: aged, now: NOW })).toEqual(['reconcile'])
+    const inGrace = approved(markerAt(new Date(NOW.getTime() - 60_000)), { refundAttempted: true })
+    expect(arbitrationRefusal(inGrace, 'approve', NOW)?.error).toBe(approveRevisableText(false))
+  })
+
   it('(3) PERMANENT otherwise — naming the close only when it is accepted', () => {
     expect(arbitrationRefusal(approved('stripe_failed: …', { refundAttempted: true, refundId: 'rf1' }), 'approve', NOW)?.error)
       .toBe('Approbation impossible : une nouvelle approbation ne paierait pas cette réclamation (la cause est dans le détail de la réclamation). Rien ne sera payé par le rail pour elle. Clôturez le dossier (« Clôturer ce dossier… »).')
@@ -109,7 +138,7 @@ describe('J-M31 — F15 texts verbatim (ER-R27: « abouti ou en attente »)', ()
 })
 
 describe('J-M31 — the phrase pin over the enumerated W1 texts', () => {
-  const GUIDED = ['reconcile_required', 'stripe_pending', 'local_pending_unconfirmed', 'stripe_failed', 'stripe_succeeded_claim_unreconciled', 'stale_refunding_no_refund_row', 'approved_not_driven', 'absence_proven_payable', 'refund_error_recorded']
+  const GUIDED = ['reconcile_required', 'stripe_pending', 'local_pending_unconfirmed', 'stripe_failed', 'stripe_succeeded_claim_unreconciled', 'stale_refunding_no_refund_row', 'approved_not_driven', 'absence_proven_payable', 'refund_error_recorded', 'reconcile_marker_unreadable']
   const facts = { orderId: 'o', requestedAmountCents: 500, orderPaymentStatus: 'paid', hasPaymentIntent: true, piStatus: 'succeeded', chargeId: 'ch_1', chargeAmountCents: 2000, amountCapturedCents: 2000, chargeDisputed: false, amountRefundedCents: 300, routed: false, royaltyStatus: null, stripeListLength: 1, rows: [], truths: {}, binders: {}, stampedClaims: {}, succeededNotCounted: [], rowContradictions: [] }
   const PARK_DETAILS = [
     deriveNoRowOutcome({ readable: false, permanent: null, refundedCents: 300 }, 'cl1'),

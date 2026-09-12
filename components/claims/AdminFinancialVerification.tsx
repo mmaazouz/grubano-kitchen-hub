@@ -33,6 +33,8 @@ type Row = {
   moneyState?: string
   resolvable?: boolean
   reconcilable?: boolean
+  /** ROUND 13 (reconcile_required rows, W3): the reconcile gate's own refusal text when it refuses the claim. */
+  reconcileRefusal?: string | null
   /** ROUND-11 (other_unsettled rows): the bound Refund row, as our base records it. */
   refund?: { id: string; status: string; stripeRefundId: string | null; reason?: string | null } | null
   /** The PaymentIntent that paid this order — which payment to open in the Stripe Dashboard. */
@@ -454,7 +456,12 @@ export default function AdminFinancialVerification() {
                 rules, carried in the payload — reconcile where the reconcile gate admits the claim, the
                 declaration close where the stuck-money hatch accepts it, and otherwise the one fact-only
                 line for that money state (lib/claim-action-rules). */}
-            {(r.kind !== 'other_unsettled' || r.reconcilable === true) && (
+            {/* ROUND 13 (D0 / D14 / D5, W3 round-1 fix): the control is rendered only where the server's reconcilable
+                flag is true, on every bucket; a refused reconcile shows the server's own refusal text and no control. */}
+            {r.reconcilable !== true && r.reconcileRefusal && (
+              <p className="mt-3 text-[12px] text-grubano-ink-muted">{r.reconcileRefusal}</p>
+            )}
+            {r.reconcilable === true && (
               <>
                 <Button
                   size="sm"

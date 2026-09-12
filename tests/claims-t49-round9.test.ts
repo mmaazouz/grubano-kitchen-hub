@@ -48,6 +48,7 @@ import {
   FINANCIAL_VERIFICATION, RECONCILE_REQUIRED, NO_REFUND_PROVEN,
 } from '@/lib/claims'
 import { claimStamp } from '@/lib/claim-attribution-rules'
+import { LOCKED_CLOSE } from '@/lib/claim-action-rules'
 import { payableWorld, wireWorld, refundRow, claimOf, type World } from './support/claims-world'
 
 const fx: { row: Record<string, unknown> | null; forcedCount: number | null; applyWrites: boolean } =
@@ -173,12 +174,14 @@ describe('RAIL LOCK — permanent, said so, and approve refused on both sides', 
     expect(execMock).not.toHaveBeenCalled()
   })
 
-  it('the persisted copy says the lock is PERMANENT and names only an exit that exists', () => {
-    const m = read('lib/claims.ts').match(/'no_refund_proven_rail_locked: ([^']*)'/)
-    expect(m).not.toBeNull()
-    expect(m![1]).not.toMatch(/tant que/)
-    expect(m![1]).toMatch(/DÉFINITIVEMENT/)
-    expect(m![1]).toMatch(/Clôturer ce dossier/)
+  it('the persisted lock copy never says a cause will cease, and names only an exit that exists', () => {
+    // ROUND 13 (G2, G8, G9, W3): the round-12 ladder literal (« DÉFINITIVEMENT », « aucun code ne lève ce verrou ») is
+    // deleted from lib/claims.ts; every lock text is rendered by absenceProofText with the LOCKED tail, which says that
+    // reconcile re-evaluates and that a cause depending on no later action will not cease — never that it will.
+    expect(stripComments(read('lib/claims.ts'))).not.toMatch(/'no_refund_proven_rail_locked: [^']*'/)
+    expect(LOCKED_CLOSE).toContain('une cause qui ne dépend d’aucune action ultérieure ne cessera pas')
+    expect(LOCKED_CLOSE).not.toMatch(/DÉFINITIVEMENT|dite définitive|aucun code ne lève/i)
+    expect(LOCKED_CLOSE).toMatch(/Clôturer ce dossier/)
     // …and that exit really exists on this claim: the stuck-money hatch accepts it.
     expect(isStuckResolvable({ status: 'approved', refundError: RAIL })).toBe(true)
     expect(isRailLocked(RAIL)).toBe(true)

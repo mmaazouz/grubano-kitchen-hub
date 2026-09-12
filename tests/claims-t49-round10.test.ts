@@ -117,10 +117,15 @@ describe('the shared rules module speaks the library’s own markers', () => {
   })
 
   it('the crash marker is recognised exactly as lib/claims recognises it', () => {
+    // ROUND 13 (D5, W3): a marker is recognised by the gate (never « pas en attente de réconciliation ») exactly when
+    // lib/claims recognises it; a marker whose instant cannot be read is recognised but refused, never read as aged.
+    const NOT_PENDING = 'Cette réclamation n’est pas en attente de réconciliation.'
     for (const e of [MARKER, RECONCILE_REQUIRED, 'engine_failed: x', 'financial_verification:x', 'resume_mismatch: x']) {
-      const admitted = reconcileRefusal({ status: 'refunding', refundId: 'rf1', refundError: e }) === null
-      expect(admitted, e).toBe(isReconcileRequired(e))
+      const recognised = reconcileRefusal({ status: 'refunding', refundId: 'rf1', refundError: e })?.error !== NOT_PENDING
+      expect(recognised, e).toBe(isReconcileRequired(e))
     }
+    expect(reconcileRefusal({ status: 'refunding', refundId: 'rf1', refundError: MARKER })).toBeNull()
+    expect(reconcileRefusal({ status: 'refunding', refundId: 'rf1', refundError: RECONCILE_REQUIRED })?.error).toContain('n’a pas pu être lue')
   })
 })
 
@@ -530,6 +535,11 @@ describe('NO ROW IS OURS — a dead pending row no longer blocks the proof of ab
   beforeEach(() => {
     db.claim.findUnique.mockResolvedValue({ ...MARKED })
     fx.row = { status: 'refunding', refundAttempted: true, refundId: null, refundError: MARKER }
+    // ROUND 13 (G2 (3), G3, W3): the marker pre-image is re-derived on the loader, which reads the order's payment
+    // status (E1), the royalty and the intent status (E1b).
+    db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' })
+    db.franchiseRoyalty.findFirst.mockResolvedValue(null)
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
   })
   const adminRow = (createdAt: Date) => ({ id: 'rf_admin', orderId: 'o1', status: 'pending', amountCents: 300, stripeRefundId: null, reason: 'admin:x', createdAt })
 
@@ -587,6 +597,8 @@ describe('RECONCILE GATE — an approval whose attempt was taken with nothing re
 const MONEY_STATES = [
   'reconcile_required', 'stripe_pending', 'local_pending_unconfirmed', 'stripe_failed', 'stripe_succeeded_claim_unreconciled',
   'stale_refunding_no_refund_row', 'approved_not_driven', 'absence_proven_payable', 'refund_error_recorded',
+  // W3 round-2 fix (D0 / D5): a marker whose start instant cannot be read.
+  'reconcile_marker_unreadable',
 ]
 const PROMISES = [/l[’']appliquera/i, /sera appliqu[ée]e? par/i, /la reprend/i, /son webhook/i, /balayage de récupération/i]
 
@@ -796,7 +808,15 @@ describe('round-10 source pins', () => {
 
   it('the financial-verification card offers reconcile and the declaration close on the server’s own flags', () => {
     const fv = read('components/claims/AdminFinancialVerification.tsx')
-    expect(fv).toContain("{(r.kind !== 'other_unsettled' || r.reconcilable === true) && (")
+    // ROUND 13 (D0 / D14 / D5, W3 round-1 fix): the reconcile control follows the server's reconcilable flag on EVERY
+    // bucket (a reconcile_required row whose marker instant is unreadable is refused by the gate), and a refused
+    // reconcile renders the server's refusal text instead of a control.
+    const code = stripComments(fv)
+    expect(code).toContain('{r.reconcilable === true && (')
+    expect(code).toContain('{r.reconcilable !== true && r.reconcileRefusal && (')
+    // NEGATIVE CONTROL — the bucket-wide admissions that rendered a control the server refuses are gone.
+    expect(code).not.toContain("r.kind !== 'other_unsettled' || r.reconcilable === true")
+    expect(code).not.toContain("r.kind === 'financial_verification' || r.reconcilable === true")
     expect(fv).toContain("{r.kind === 'other_unsettled' && r.resolvable === true && (")
     expect(fv).toContain('`/api/admin/claims/${id}/resolve-stuck`')
   })

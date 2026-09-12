@@ -239,17 +239,85 @@ describe('round-6 source pins — reverting a fix turns this red', () => {
   })
 })
 
-// ══ ROUND 13 (F16, J-C14 — W1 part) — the refundError and admin text rules ══════════════════════
-// The F16 (1) list applies to every file W1 owns now. lib/claims.ts and AdminFinancialVerification.tsx
-// still carry round-12 ladder, T3 and F14 toast strings that the reconcile, T3 and console slices
-// rewrite; they are the ONLY files allowed to hit until then (subset pin), and they join FILES_F16 then.
+// ══ ROUND 13 (F16, J-C14 — W1 part, extended in W3) — the refundError and admin text rules ═══════
+// The F16 (1) list applies to every file W1 owns and, since W3 deleted the round-12 ladder (G2), to lib/claims.ts
+// too. AdminFinancialVerification.tsx still carries F14 toast strings the console slice (W7) rewrites; it is the
+// ONLY file allowed to hit until then (subset pin), and it joins FILES_F16 then.
 const F16_FORBIDDEN = [
   /jamais déplacé/i, /aucun remboursement n[’']a déplacé d[’']argent/i, /relèvent d[’']AUTRES réclamations/i, /aucun code ne sort/i,
   /dite définitive/i, /le moteur refusera tout remboursement/i, /redevient traitable/i, /rien ne sera payé par Grubano/i,
   /quand le moteur la reprendra/i, /Le client lit désormais/i, /De l[’']argent A bougé/i, /exclusiveReason/,
 ]
-const FILES_F16 = FILES.filter((f) => f !== 'lib/claims.ts' && f !== 'components/claims/AdminFinancialVerification.tsx')
-const F16_PENDING_LATER_SLICES = ['lib/claims.ts', 'components/claims/AdminFinancialVerification.tsx']
+// IMPLEMENTATION NOTE (W3) on J-C14: lib/claim-email-toast.ts and app/api/admin/claims/[id]/closure-notice/route.ts
+// do not exist yet — the closure-notice slice (H) creates them and adds them here.
+const FILES_F16 = FILES.filter((f) => f !== 'components/claims/AdminFinancialVerification.tsx')
+const F16_PENDING_LATER_SLICES = ['components/claims/AdminFinancialVerification.tsx']
+
+describe('ROUND 13 (J-C14, W3) — lib/claims.ts joins the F16 scan once the round-12 ladder is deleted', () => {
+  const hits = (src: string) => F16_FORBIDDEN.flatMap((re) => { const m = src.match(re); return m ? [String(re)] : [] })
+
+  it('lib/claims.ts carries none of the F16 (1) sentences, and none of the round-12 ladder identifiers (G2)', () => {
+    const src = stripComments(readFileSync('lib/claims.ts', 'utf8'))
+    expect(hits(src)).toEqual([])
+    for (const id of ['boundElsewhere', 'otherClaimRows', 'mayMoveMoney', 'mayMoveMoneyHere', 'noRowEverMoved', 'nothingAtStripe']) expect(src, id).not.toContain(id)
+  })
+
+  const CANON = 'Quand les réclamations sont ouvertes, le client lit « vérification manuelle » ; sinon il ne voit aucune réclamation.'
+  // W3 round-1 fix: case-insensitive, so « Le client lit … » at the start of a sentence is caught too.
+  const visibilitySentences = (src: string) => Array.from(src.matchAll(/[^.`'»]*le client lit[^.]*\./gi)).map((m) => m[0].trim())
+  const visibilityViolations = (src: string) => visibilitySentences(src).filter((s) => s !== CANON)
+
+  it('every customer-visibility sentence in lib/claims.ts is the F16 (3) sentence', () => {
+    expect(visibilityViolations(stripComments(readFileSync('lib/claims.ts', 'utf8')))).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — a deviating visibility sentence is caught; the canonical one is found and accepted', () => {
+    const src = stripComments(readFileSync('lib/claims.ts', 'utf8'))
+    expect(visibilityViolations(`${src}\nconst a = 'Le client lit désormais « vérification manuelle ».'`)).toEqual(['Le client lit désormais « vérification manuelle ».'])
+    const withCanon = `${src}\nconst b = '${CANON}'`
+    expect(visibilitySentences(withCanon)).toContain(CANON)
+    expect(visibilityViolations(withCanon)).toEqual([])
+  })
+
+  // The exact guarded branches of the E1c quote, as one predicate so its negative control runs the same checks.
+  const E1C_DERIVE = ": read.piStatus !== 'succeeded' ? 'E1b' : 'E1c'"
+  const E1C_LOCK = ": o.noChargeStep === 'E1b' ? E1B_SENTENCE(s?.piStatus ?? '')\n        : 'le moteur refuserait (« Charge introuvable sur le paiement. »).'"
+  const E1C_CLAUSE = "  if (read.piStatus !== 'succeeded') return `${head} (« Paiement non débité — rien à rembourser. »).`\n  return `${head} (« Charge introuvable sur le paiement. »).`"
+  const e1cPinFailures = (rules: string): string[] => {
+    const out: string[] = []
+    if ((rules.match(/Charge introuvable sur le paiement\./g) ?? []).length !== 2) out.push('count')
+    // the derivation step: E1c only when neither E1 nor E1b applies
+    if (!rules.includes(E1C_DERIVE)) out.push('derive')
+    // the G6 lock text: the E1c sentence is the branch after E1 and E1b
+    if (!rules.includes(E1C_LOCK)) out.push('lock')
+    // the C3 (b') clause: the E1c return follows the piStatus-not-succeeded return
+    if (!rules.includes(E1C_CLAUSE)) out.push('clause')
+    return out
+  }
+  const rulesSrc = () => stripComments(readFileSync('lib/claim-action-rules.ts', 'utf8').replace(/\r\n/g, '\n'))
+
+  it('the E1c quote « Charge introuvable sur le paiement. » is written only in the branches guarded by piStatus succeeded', () => {
+    expect(e1cPinFailures(rulesSrc())).toEqual([])
+    expect(stripComments(readFileSync('lib/claims.ts', 'utf8'))).not.toContain('Charge introuvable sur le paiement.')
+  })
+
+  it('NEGATIVE CONTROL — the E1c branch moved before the E1b test (derivation or clause) turns the pin red', () => {
+    const rules = rulesSrc()
+    const deriveSwapped = rules.replace(E1C_DERIVE, ": read.piStatus === 'succeeded' ? 'E1b' : 'E1c'")
+    expect(deriveSwapped).not.toBe(rules)
+    expect(e1cPinFailures(deriveSwapped)).toEqual(['derive'])
+    const clauseSwapped = rules.replace(E1C_CLAUSE, "  return `${head} (« Charge introuvable sur le paiement. »).`\n  if (read.piStatus !== 'succeeded') return `${head} (« Paiement non débité — rien à rembourser. »).`")
+    expect(clauseSwapped).not.toBe(rules)
+    expect(e1cPinFailures(clauseSwapped)).toEqual(['clause'])
+  })
+
+  it('NEGATIVE CONTROL — the round-12 ladder sentences, put back into lib/claims.ts, are caught', () => {
+    const src = stripComments(readFileSync('lib/claims.ts', 'utf8'))
+    expect(hits(`${src}\nconst x = 'aucun remboursement n’a jamais déplacé d’argent sur cette commande'`)).toContain(String(/jamais déplacé/i))
+    expect(hits(`${src}\nconst y = \`Les lignes relèvent d’AUTRES réclamations\``)).toContain(String(/relèvent d[’']AUTRES réclamations/i))
+    expect(hits(`${src}\nconst z = 'le moteur refusera tout remboursement sur cette commande'`)).toContain(String(/le moteur refusera tout remboursement/i))
+  })
+})
 
 describe('ROUND 13 (F16) — refundError and admin text rules (W1 files)', () => {
   const f16Hits = (src: string) => F16_FORBIDDEN.flatMap((re) => { const m = src.match(re); return m ? [`${re} → « ${m[0]} »`] : [] })

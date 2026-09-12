@@ -271,6 +271,33 @@ describe('J-M45 — A-S17: attributing the row the derivation explained by settl
 })
 
 // ══ ER-M01 — registered in E-04 and routed to the founder acceptance list ═════════════════════════════
+describe('IMPLEMENTATION NOTE (W3) on G7 N7 — W1 verifier P3: a pending row stamped for THIS claim is never « rattaché ni à l’identité de cette réclamation »', () => {
+  // A row stamped claim:cl1, pending, whose refund Stripe reports pending but which is absent from L (read skew).
+  const skew = (reason: string) => facts({
+    amountRefundedCents: 0,
+    rows: [row('rf_own', { status: 'pending', stripeRefundId: 're_own', reason })],
+    truths: { rf_own: { kind: 'at_stripe', refundId: 're_own', status: 'pending' } },
+  })
+
+  it('own stamp, in flight at Stripe → the own-stamp outcome (changed during read), no DETAIL_UNATTRIBUTED', () => {
+    expect(derive(skew('claim:cl1'))).toEqual({ kind: 'no_write', outcome: 'changed_during_read' })
+  })
+
+  it('a succeeded row stamped for this claim that Stripe reports pending → the same own-stamp outcome', () => {
+    const f = facts({
+      rows: [row('rf_own', { stripeRefundId: 're_own', reason: 'claim:cl1' })],
+      succeededNotCounted: [{ rowId: 'rf_own', how: 'pending_at_stripe', refundId: 're_own', stripeStatus: 'pending' }],
+    })
+    expect(derive(f)).toEqual({ kind: 'no_write', outcome: 'changed_during_read' })
+  })
+
+  it('NEGATIVE CONTROL — the same in-flight row stamped for ANOTHER claim → DETAIL_UNATTRIBUTED naming it', () => {
+    const o = derive(skew('claim:cl_O'))
+    expect(o).toMatchObject({ kind: 'park', reason: 'refund_moved_unattributed' })
+    expect(parkOf(o)!.detail).toContain('Au moins un remboursement (re_own) n’est rattaché ni à l’identité de cette réclamation')
+  })
+})
+
 describe('ER-M01 — a first approval on an order with an unexplained admin-rail partial refund parks with no declaration exit (E-04)', () => {
   it('null pre-image facts: the admin-rail row explained by no settled claim → refund_moved_unattributed; FV has no stuck_close', () => {
     const o = parkOf(derive(facts({ amountRefundedCents: 300, rows: [row('rf_adm', { reason: 'admin:partial', stripeRefundId: 're_adm' })], L: [refund('re_adm')] })))

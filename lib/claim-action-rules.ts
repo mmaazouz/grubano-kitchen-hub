@@ -104,7 +104,7 @@ export function reconcileMarkerAge(refundError: string | null | undefined, nowMs
   return age < 0 ? null : age
 }
 
-// ══ C4 — QUIESCENCE INSTANT OF A PAYABLE PROOF (replaces E5b) ═══════════════════════════════════
+// ══ C4 — QUIESCENCE INSTANT OF A PAYABLE PROOF (replaces the withdrawn engine guard) ═══════════════════════════════════
 
 /** C4: at least 60 min (ENGINE_DEAD_MARGIN_MS), far above the ~4 min Stripe budget of the pre-insert path. */
 export const ATTEMPT_QUIESCENCE_MS = 60 * 60 * 1000
@@ -148,9 +148,11 @@ export function ownRowMismatch(c: ClaimFacts): boolean {
 
 const RECONCILE_NOT_PENDING = 'Cette réclamation n’est pas en attente de réconciliation.'
 const RECONCILE_GRACE_TEXT = 'Une tentative de remboursement a démarré il y a moins de 5 minutes : la réconciliation est refusée jusqu’à la fin de cette fenêtre.'
+/** D5 (IMPLEMENTATION NOTE (W3)): a marker whose start instant cannot be read is never treated as aged. */
+export const RECONCILE_MARKER_UNREADABLE_TEXT = 'L’heure de début de la tentative de remboursement enregistrée sur cette réclamation n’a pas pu être lue, ou est postérieure à maintenant : la réconciliation est refusée, car cette tentative n’est pas établie comme terminée. Vérifiez la commande dans Stripe.'
 
-/** G1: admitted, and whether the only refusal is the marker grace (D14 (2) reads it). */
-function reconcileVerdict(c: ClaimFacts, nowMs: number): { admitted: boolean; graceOnly: boolean } {
+/** G1: admitted, and whether the only refusal is the marker grace (D14 (2) reads it) or an unreadable marker instant (D5). */
+function reconcileVerdict(c: ClaimFacts, nowMs: number): { admitted: boolean; graceOnly: boolean; markerUnreadable?: boolean } {
   const e = c.refundError
   const reconcilable = c.status === 'refunding' || c.status === 'approved' || c.status === MARKERS.FINANCIAL_VERIFICATION
   const legacyStranded = c.status === 'refunding' && !c.refundId && !e
@@ -169,6 +171,9 @@ function reconcileVerdict(c: ClaimFacts, nowMs: number): { admitted: boolean; gr
   const admitted = existing || proofOrLock || safetyHold || ownRowMismatch(c) || settledBound
   if (!admitted) return { admitted: false, graceOnly: false }
   const age = reconcileMarkerAge(e, nowMs)
+  // D5: the marker admission is reconcileMarkerAge >= RECONCILE_GRACE_MS. An unreadable instant (malformed, or in
+  // the future) is refused — never read as an aged attempt (J-M34 negative control).
+  if (isReconcileMarker(e) && age === null) return { admitted: true, graceOnly: false, markerUnreadable: true }
   return { admitted: true, graceOnly: age !== null && age < RECONCILE_GRACE_MS }
 }
 
@@ -184,6 +189,7 @@ export function reconcileRefusal(c: ClaimFacts, nowMs: number = Date.now()): Ref
   const v = reconcileVerdict(c, nowMs)
   if (!v.admitted) return { status: 409, error: RECONCILE_NOT_PENDING }
   if (v.graceOnly) return { status: 409, error: RECONCILE_GRACE_TEXT }
+  if (v.markerUnreadable) return { status: 409, error: RECONCILE_MARKER_UNREADABLE_TEXT }
   return null
 }
 
@@ -244,7 +250,10 @@ export function arbitrationRefusal(c: ClaimFacts, decision: 'approve' | 'refuse_
       return { status: 409, error: APPROVE_LEGACY_PROOF }
     } else if (c.refundError) {
       const v = reconcileVerdict(c, now.getTime())
-      return { status: 409, error: v.admitted ? approveRevisableText(isStuckResolvable(c)) : approvePermanentText(isStuckResolvable(c)) }
+      // D14 (2) only when reconcile is admitted or refused for its grace alone; an unreadable marker instant is refused
+      // by reconcile (D5), so it gets (3) — never a text naming an exit the server refuses (W3 round-1 fix).
+      const revisable = v.admitted && !v.markerUnreadable
+      return { status: 409, error: revisable ? approveRevisableText(isStuckResolvable(c)) : approvePermanentText(isStuckResolvable(c)) }
     }
   }
   // FINALIZATION LOCK: a decided outcome is not rewritten — except an UNPAID approval, which may be re-driven.
@@ -280,6 +289,9 @@ export type RegistryId =
  *  decision states that are not money (IMPLEMENTATION NOTE (W1) on D1, ER-M06) carry their own note. */
 export type ExitNote =
   | RegistryId
+  /** W3 round-1 fix (E-04 founder acceptance list): a reconcile marker whose instant is malformed. Reconcile,
+   *  approve and the declaration all refuse it; no exit exists until the recorded data is corrected. */
+  | 'E-04:malformed_marker'
   | 'terminal'
   | 'not_money:awaiting_decision'
   | 'not_money:restaurant_delay'
@@ -340,13 +352,13 @@ export function exitRegistry(input: ExitInput): ExitNote | null {
     case MARKERS.FINANCIAL_VERIFICATION: return 'E-03' // E-03 ∪ E-04: the recorded reason decides
     case 'approved':
       if (!e) return c.refundAttempted || c.refundId ? null : 'E-10'
-      if (isReconcileMarker(e)) return 'E-05'
+      if (isReconcileMarker(e)) return markerTimestampMs(e) === null ? 'E-04:malformed_marker' : 'E-05'
       if (starts(e, MARKERS.PROOF_PAYABLE_V13)) return 'E-10'
       if (isNoRefundProofText(e) || isRailLockedText(e) || starts(e, MARKERS.SAFETY_HOLD)) return 'E-01'
       return 'E-02'
     case 'refunding':
       if (!e) return null
-      if (isReconcileMarker(e)) return 'E-05'
+      if (isReconcileMarker(e)) return markerTimestampMs(e) === null ? 'E-04:malformed_marker' : 'E-05'
       if (isResumeMismatchText(e)) {
         if (c.boundRow === undefined) return 'unread:bound_row'
         return ownRowMismatch(c) ? 'E-05' : 'E-02'
@@ -411,7 +423,7 @@ export type SucceededNotCounted = {
 /** G4/G5 H3: a row whose Stripe read contradicts itself. */
 export type RowContradiction = { rowId: string; rowStatus: string; detail: string }
 
-/** G3 ReapprovalFacts, the fields the pure derivation reads (no ownStampedRowIds: E5b is deleted). */
+/** G3 ReapprovalFacts, the fields the pure derivation reads (no ownStampedRowIds: the withdrawn engine guard is deleted). */
 export type ReapprovalFacts = {
   orderId: string
   requestedAmountCents: number
@@ -701,9 +713,18 @@ export function deriveNoRowOutcome(read: OrderMoneyRead, claimId: string): NoRow
   const inflight = new Set<string>(standing.filter((s) => s.status !== 'succeeded').map((s) => s.id))
   for (const row of pendingRows) {
     const t = f.truths[row.id]
-    if (t && t.kind === 'at_stripe' && (t.status === 'pending' || t.status === 'requires_action')) inflight.add(t.refundId)
+    if (t && t.kind === 'at_stripe' && (t.status === 'pending' || t.status === 'requires_action')) {
+      // IMPLEMENTATION NOTE (W3), W1 verifier P3: an in-flight refund of a row stamped for THIS claim (absent from L
+      // by read skew) is never « rattaché ni à l’identité de cette réclamation » — the own-stamp outcome applies.
+      if (stampedClaimId(row.reason) === claimId) return { kind: 'no_write', outcome: 'changed_during_read' }
+      inflight.add(t.refundId)
+    }
   }
-  for (const s of f.succeededNotCounted) if (s.how === 'pending_at_stripe' && s.refundId) inflight.add(s.refundId)
+  for (const s of f.succeededNotCounted) {
+    if (s.how !== 'pending_at_stripe' || !s.refundId) continue
+    if (stampedClaimId(f.rows.find((row) => row.id === s.rowId)?.reason) === claimId) return { kind: 'no_write', outcome: 'changed_during_read' }
+    inflight.add(s.refundId)
+  }
   if (inflight.size) {
     const ids = Array.from(inflight)
     // IMPLEMENTATION NOTE (W1) on G7 N7: an in-flight refund that no settled claim explains (a pending
@@ -818,6 +839,10 @@ export function customerClaimStatus(c: ClaimFacts, boundRowInProgress: boolean |
 const GUIDANCE: Record<string, string> = {
   reconcile_required:
     'Argent non établi. « Réconcilier d’après la preuve » (section « Vérification financière requise ») lit Stripe et nos lignes, et n’applique que ce qui est prouvé — refusé tant que la tentative a démarré il y a moins de 5 minutes.',
+  // W3 round-2 fix (D0 / D5 / F16 (7)): the marker instant cannot be read, so the reconcile gate refuses and no exit is
+  // accepted (acceptedExits []). The line states the server refusal and names no control.
+  reconcile_marker_unreadable:
+    `Argent non établi. ${RECONCILE_MARKER_UNREADABLE_TEXT} Aucune clôture manuelle sur cet état.`,
   stripe_pending:
     'Notre ligne liée est en attente et porte un identifiant de remboursement Stripe ; son statut actuel chez Stripe n’est pas relu dans cette liste. « Réconcilier d’après la preuve » le relit et applique un statut terminal. Aucune clôture manuelle sur cet état.',
   local_pending_unconfirmed:

@@ -309,7 +309,9 @@ describe('adoptStripeRefundForClaim — the exit for a Dashboard refund with no 
 
   it('POPULATION C REGRESSION PIN — a claim parked as stripe_unreadable exits on the next reconcile once Stripe reads zero', async () => {
     db.claim.findUnique.mockResolvedValue({ ...CLAIM, status: FINANCIAL_VERIFICATION })
-    stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
+    db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' })
+    // ROUND 13 (G2 (3), G3, W3): the FV pre-image is re-derived on the loader, which reads the order's payment status (E1) and the intent status (E1b).
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
     fx.row = { status: FINANCIAL_VERIFICATION, refundId: null, refundError: 'financial_verification:stripe_unreadable: …' }
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
     expect(r).toMatchObject({ outcome: 'no_refund_proven' })
@@ -395,6 +397,8 @@ describe('round-7 P1/P2 fixes in the library', () => {
 describe('round-6 P1/P2 fixes in the library', () => {
   it('reconcile_not_applied — exactly one row is ours but the CAS could not apply: parked under ITS OWN reason', async () => {
     db.refund.findMany.mockResolvedValue([row()])
+    // ROUND 13 (G2 (3) / G4, W3): the own stamped row is re-read at Stripe; its refund succeeded.
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'succeeded', amount: 500, payment_intent: 'pi_1', metadata: {} })
     // ROUND 13 (C9 (a)): the simulated row is the claim as read (unbound), so the bind CAS matches.
     fx.row = { status: 'refunding', refundId: null, refundError: null }
     // reconcileClaimForRefund finds the claim already TERMINAL → already_final → not applied

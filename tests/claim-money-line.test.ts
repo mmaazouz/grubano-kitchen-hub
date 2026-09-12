@@ -15,6 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { moneyLineFor, isResumeMismatch, RESUME_MISMATCH, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT, identityUnreadText, BOUND_REVERTED_TEXT } from '@/lib/claim-money-line'
 import { RECONCILE_REQUIRED } from '@/lib/claims'
+import { MARKERS } from '@/lib/claim-action-rules'
 
 // ROUND-5 AUDIT FIX: this fixture was a hand-typed string, so the module's contract was bound to
 // no shipped writer — the same tautology that let the inert regex through in round 2. The strings
@@ -45,7 +46,9 @@ const SHIPPED_MISMATCH_WRITERS = ALL_WRITERS.filter((w) => w.engineSaysMismatch)
 /** Every OTHER refundError literal — the predicate must say NO to each of these. */
 const SHIPPED_OTHER_WRITERS = ALL_WRITERS.filter((w) => !w.engineSaysMismatch).map((w) => w.text)
 /** The prefixes every writer family must start with. A family missing from the source is RED. */
-const EXPECTED_OTHER_PREFIXES = ['stripe_failed', '${FINANCIAL_VERIFICATION}', 'no_refund_proven_rail_locked', '${NO_REFUND_PROVEN}', 'engine_failed']
+// ROUND 13 (G2, W3): the round-12 ladder's proof-of-absence and rail-locked literals are deleted from lib/claims.ts;
+// those texts are rendered by lib/claim-action-rules absenceProofText with the MARKERS prefixes, checked below.
+const EXPECTED_OTHER_PREFIXES = ['stripe_failed', '${FINANCIAL_VERIFICATION}', 'engine_failed']
 const MISMATCH = SHIPPED_MISMATCH_WRITERS[0] ?? ''
 /** F15: the bound row as read, NOT stamped for the claim — the engine's disowned binding. */
 const NOT_OURS_ROW = { reason: 'claim:cl_OTHER' }
@@ -243,6 +246,8 @@ describe('every mismatch string the engine actually writes is recognised', () =>
     for (const w of SHIPPED_OTHER_WRITERS) expect(isResumeMismatch(w), w.slice(0, 60)).toBe(false)
     // and the constant-form crash marker, from the module itself
     expect(isResumeMismatch(RECONCILE_REQUIRED + ': tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z')).toBe(false)
+    // ROUND 13 (G2 / G8): every proof, lock and hold prefix the pure writers use
+    for (const p of Object.values(MARKERS)) expect(isResumeMismatch(`${p} texte`), p).toBe(false)
   })
 
   it('NEGATIVE CONTROL — a hand-typed fixture would not have caught a writer change', () => {

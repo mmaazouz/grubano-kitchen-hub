@@ -166,10 +166,12 @@ export function wireWorld(
     if (!pi) throw missing()
     return JSON.parse(JSON.stringify(pi))
   })
-  stripe.refunds.list.mockImplementation(async () => {
+  stripe.refunds.list.mockImplementation(async (args?: { payment_intent?: string }) => {
     if (w.fail.refundList) throw new Error('stripe unreachable')
     if (w.fail.listOverCap) return { data: [{ id: `re_page_${Math.random()}` }], has_more: true }
-    return { data: w.stripeRefunds.map((s) => ({ ...s })), has_more: false }
+    // W3: the list of a PaymentIntent holds only the refunds of that payment (a refund on pi_OTHER is not listed).
+    const pi = args?.payment_intent
+    return { data: w.stripeRefunds.filter((s) => !pi || !s.payment_intent || s.payment_intent === pi).map((s) => ({ ...s })), has_more: false }
   })
   stripe.refunds.retrieve.mockImplementation(async (id: string) => {
     const f = w.fail.refundRetrieve?.[id]

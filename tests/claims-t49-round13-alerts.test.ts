@@ -36,7 +36,7 @@ const { stripeMock } = vi.hoisted(() => ({
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
 import { sendAdminMoneyReviewAlert, type MoneyReviewKind } from '@/lib/admin-alerts'
-import { triggerClaimRefund, arbitrateClaim, runClaimAutoApproval, alertClaimPaymentBlocked, reconcileClaimEvidence, CLAIM_BLOCKED_TITLE, CLAIM_ATTEMPT_SUPERSEDED_TITLE } from '@/lib/claims'
+import { triggerClaimRefund, arbitrateClaim, runClaimAutoApproval, alertClaimPaymentBlocked, reconcileClaimEvidence, enterFinancialVerification, CLAIM_BLOCKED_TITLE, CLAIM_ATTEMPT_SUPERSEDED_TITLE } from '@/lib/claims'
 import { MARKERS, HEAD_A, reconcileMarkerAge } from '@/lib/claim-action-rules'
 import { approvalToast } from '@/lib/claim-approval-toast'
 
@@ -341,6 +341,81 @@ describe('J-C41 — claim_attempt_superseded and the T4 attempt-token CAS (I-03)
     w.pis.pi_1.latest_charge.disputed = true
     await triggerClaimRefund('cl1')
     expect(stripeMock.refunds.create).not.toHaveBeenCalled()
+  })
+})
+
+// ══ W3 — applyRowTruth's stripe_failed and engine_row_dead writes (G2, I-01 triggers) ═══════════════════════
+describe('I-01 — applyRowTruth: ALERT-B after the stripe_failed and engine_row_dead writes, never on a lost CAS (G2)', () => {
+  const OLD_MARKER = 'reconcile_required: tentative de remboursement démarrée à 2026-09-10T00:00:00.000Z (tentative 0) — identité pas encore liée.'
+  const marked = () => payableWorld({ status: 'refunding', refundAttempted: true, refundError: OLD_MARKER })
+  const CASES: Array<[string, (x: World) => void, string, string]> = [
+    ['own pending row, Stripe failed it (at_stripe failed)', (x) => {
+      x.refunds.push(refundRow('rf_own', { status: 'pending', reason: 'claim:cl1', stripeRefundId: 're_own' }))
+      x.stripeRefunds.push(stripeRefund('re_own', { status: 'failed' }))
+    }, 'stripe_failed', 'refund_failed'],
+    ['own row FAILED with its Stripe id (row_terminal failed, through reconcileClaimForRefund)', (x) => {
+      x.refunds.push(refundRow('rf_own', { status: 'failed', reason: 'claim:cl1', stripeRefundId: 're_own' }))
+    }, 'stripe_failed', 'refund_failed'],
+    ['own pending row with no Stripe refund past the window (absent_dead)', (x) => {
+      x.refunds.push(refundRow('rf_own', { status: 'pending', reason: 'claim:cl1', createdAt: new Date(Date.now() - 30 * HOURS) }))
+    }, 'engine_row_dead', 'engine_row_dead'],
+  ]
+  for (const [name, mutate, cause, outcome] of CASES) {
+    it(`${name} → ${cause} alert after count 1; the same write lost → no alert`, async () => {
+      w = marked(); mutate(w); wireWorld(w, db, stripeMock)
+      const r = await reconcileClaimEvidence({ claimId: 'cl1' })
+      expect(r).toMatchObject({ ok: true, outcome, refundId: 'rf_own' })
+      expectBlocked(cause, { status: 'approved', engineCalled: false, registry: 'E-02' })
+      // lost: the claim changes before the decisive write (the only write, or the reconciler's after the bind)
+      spy.mockClear()
+      w = marked(); mutate(w); wireWorld(w, db, stripeMock)
+      w.beforeClaimWrite = (_n, { data }) => { if (data.status === 'approved') claimOf(w).refundError = 'financial_verification:x: écrit entre-temps' }
+      await reconcileClaimEvidence({ claimId: 'cl1' })
+      expect(calls('claim_payment_blocked'), `${name} lost`).toEqual([])
+    })
+  }
+})
+
+// ══ J-C40 — claim_financial_verification on entry and on relabel with a NEW reason only (I-02) ═══════════════
+describe('J-C40 — claim_financial_verification on entry, and on relabel only with a new reason (I-02)', () => {
+  const FV_KEYS = ['claimId', 'orderId', 'claimState', 'ambiguity', 'detail', 'refundRowId', 'stripeRefundId', 'requestedCents', 'moneyMoved', 'nextAction']
+  const fvAlerts = () => calls('claim_financial_verification')
+  const checkFacts = (a: Alert, reason: string) => {
+    expect(a.dedupeKey).toBe(`claim_fv:cl1:${reason}`)
+    expect(a.title).toBe('Vérification financière requise — réclamation cl1')
+    expect(Object.keys(a.facts).sort()).toEqual([...FV_KEYS].sort())
+    expect(a.facts.ambiguity).toBe(reason)
+    expect(`${a.title} ${JSON.stringify(a.facts)}`).not.toMatch(/another refund|nouveau remboursement peut/i)
+  }
+
+  for (const status of ['approved', 'refunding'] as const) {
+    it(`entry from ${status} → one alert, dedupe claim_fv:<id>:<reason>, facts keys unchanged`, async () => {
+      w = payableWorld({ status, refundAttempted: true, refundError: 'x' }); wireWorld(w, db, stripeMock)
+      expect(await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_refund_contradiction', detail: 'd', expect: { status, refundError: 'x' } })).toEqual({ entered: true })
+      expect(fvAlerts()).toHaveLength(1)
+      checkFacts(fvAlerts()[0], 'stripe_refund_contradiction')
+    })
+  }
+
+  it('FV → FV with a NEW reason → one alert with the new reason', async () => {
+    w = payableWorld({ status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' }); wireWorld(w, db, stripeMock)
+    expect(await enterFinancialVerification({ claimId: 'cl1', reason: 'refund_moved_unattributed', detail: 'b', expect: { status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' } })).toEqual({ entered: false, relabelled: true })
+    expect(fvAlerts()).toHaveLength(1)
+    checkFacts(fvAlerts()[0], 'refund_moved_unattributed')
+  })
+
+  it('NEGATIVE CONTROL — FV → FV with the SAME reason relabels and sends 0 alerts', async () => {
+    w = payableWorld({ status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' }); wireWorld(w, db, stripeMock)
+    expect(await enterFinancialVerification({ claimId: 'cl1', reason: 'stripe_unreadable', detail: 'b', expect: { status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' } })).toEqual({ entered: false, relabelled: true })
+    expect(claimOf(w).refundError).toBe('financial_verification:stripe_unreadable: b')
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('a relabel CAS lost → nothing written, no alert', async () => {
+    w = payableWorld({ status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' }); wireWorld(w, db, stripeMock)
+    w.beforeClaimWrite = () => { claimOf(w).refundError = 'financial_verification:stripe_unreadable: écrit entre-temps' }
+    expect(await enterFinancialVerification({ claimId: 'cl1', reason: 'refund_moved_unattributed', detail: 'b', expect: { status: 'financial_verification', refundError: 'financial_verification:stripe_unreadable: a' } })).toEqual({ entered: false })
+    expect(spy).not.toHaveBeenCalled()
   })
 })
 

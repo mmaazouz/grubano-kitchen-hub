@@ -23,6 +23,8 @@ const { db } = vi.hoisted(() => ({
     // aggregate: the claim scope behind eligibility sums the order's succeeded refunds.
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), aggregate: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
+    // ROUND 13 (G2 (3), W3): the no-row branch reads the ONE loader (G3), which reads the royalty status.
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -96,8 +98,11 @@ beforeEach(() => {
   db.refund.findUnique.mockResolvedValue(null)
   db.refund.findFirst.mockResolvedValue(null)
   db.refund.aggregate.mockResolvedValue({ _sum: { amountCents: 0 } })
-  db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', stripePaymentIntentId: 'pi_1' })
-  stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
+  // ROUND 13 (G3 / G5 E1, W3): the loader reads the order's payment status; a claim's order is paid.
+  db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' })
+  db.franchiseRoyalty.findFirst.mockResolvedValue(null)
+  // ROUND 13 (G3, W3): the loader reads the intent status (E1b) — a paid order's intent is 'succeeded'.
+  stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 } })
   stripeMock.refunds.list.mockResolvedValue({ data: [], has_more: false })
   alertMock.mockResolvedValue({ status: 'sent' })
   auditMock.mockResolvedValue(undefined)
@@ -144,12 +149,16 @@ describe('FAILED AT STRIPE, STILL PENDING HERE — a lock cause, never proof of 
 
   it('NEGATIVE CONTROL — with nothing on the order, the same claim is the plain proof of absence, not a lock', async () => {
     db.refund.findMany.mockResolvedValue([])
-    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven' })
-    const after: ClaimFacts = { status: 'approved', refundAttempted: false, refundError: String(fx.row!.refundError), arbitrationDecision: 'approved' }
+    // ROUND 13 (G2, G8, C4, W3): the marker pre-image is re-derived by N0-N8 and written as a v13 payable proof whose
+    // instant is the marker timestamp + ATTEMPT_QUIESCENCE_MS (C4 rule (1)); the ladder's legacy proof is deleted.
+    const payableFrom = new Date(Date.parse('2026-09-10T00:00:00.000Z') + 60 * 60 * 1000).toISOString()
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven', payableFrom })
+    const after: ClaimFacts = { status: 'approved', refundAttempted: false, refundId: null, refundError: String(fx.row!.refundError), arbitrationDecision: 'approved' }
     expect(isRailLocked(after.refundError)).toBe(false)
-    // ROUND 13 (D14 (1), G1 (i)): a proof without the v13 tag was written by a ladder that did not check every
-    // engine condition — approval is suspended, and reconcile (which admits it) re-proves it first.
-    expect(arbitrationRefusal(after, 'approve', new Date())?.error).toContain('Approbation suspendue')
+    expect(String(after.refundError).startsWith('no_refund_proven:v13: ')).toBe(true)
+    expect(after.refundError).toContain(`payable au plus tôt le ${payableFrom} (UTC)`)
+    // the instant has passed: the gated approval is not refused by the proof itself (T2 re-derives before the engine)
+    expect(arbitrationRefusal(after, 'approve', new Date())).toBeNull()
     expect(reconcileRefusal(after)).toBeNull()
   })
 })
@@ -170,6 +179,11 @@ describe('STRIPE REPORTS NOTHING, A LOCAL ROW SAYS OTHERWISE — never « Des re
 
   it('a local row marked succeeded while Stripe reports 0 / 0 → parked as a contradiction, with a true detail', async () => {
     db.refund.findMany.mockResolvedValue([adminRow({ status: 'succeeded', stripeRefundId: 're_S' })])
+    // ROUND 13 (G3 / G7 N4, W3): the loader reads the row's refund and the complete list; Stripe counts 0 c refunded
+    // while its list holds a succeeded refund → the N4 bracket fails at 0 → contradiction.
+    const reS = { id: 're_S', status: 'succeeded', amount: 300, charge: 'ch_1', payment_intent: 'pi_1', metadata: {} }
+    stripeMock.refunds.retrieve.mockResolvedValue(reS)
+    stripeMock.refunds.list.mockResolvedValue({ data: [reS], has_more: false })
     const r = await reconcileClaimEvidence({ claimId: 'cl1' }) as { outcome?: string; reason?: string; detail?: string }
     expect(r).toMatchObject({ outcome: 'financial_verification', reason: 'stripe_refund_contradiction' })
     expect(r.detail).toContain('se contredisent')
@@ -185,8 +199,12 @@ describe('STRIPE REPORTS NOTHING, A LOCAL ROW SAYS OTHERWISE — never « Des re
   })
 
   it('money DOES show at Stripe → the unattributed park, and only then « Des remboursements existent »', async () => {
-    stripeMock.paymentIntents.retrieve.mockResolvedValue({ latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 300 } })
+    stripeMock.paymentIntents.retrieve.mockResolvedValue({ status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 300 } })
     db.refund.findMany.mockResolvedValue([adminRow({ status: 'succeeded', stripeRefundId: 're_S' })])
+    // ROUND 13 (G7 N5, W3): the admin row's refund stands at Stripe and no settled claim explains it.
+    const reS = { id: 're_S', status: 'succeeded', amount: 300, charge: 'ch_1', payment_intent: 'pi_1', metadata: {} }
+    stripeMock.refunds.retrieve.mockResolvedValue(reS)
+    stripeMock.refunds.list.mockResolvedValue({ data: [reS], has_more: false })
     const r = await reconcileClaimEvidence({ claimId: 'cl1' }) as { reason?: string; detail?: string }
     expect(r.reason).toBe('refund_moved_unattributed')
     expect(r.detail).toContain('Des remboursements existent')
@@ -305,11 +323,13 @@ describe('APPLIED FROM STRIPE WHILE OUR ROW STAYS PENDING — alerted, and liste
 describe('GRACE — an attempt in flight is refused by the GATE, so every list and route agree', () => {
   const fresh = () => `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(Date.now() - 60_000).toISOString()} — identité pas encore liée.`
 
-  it('the rule: a fresh marker is refused, an old one admitted, a future one admitted (fails visible)', () => {
+  it('the rule: a fresh marker is refused, an old one admitted, a future one refused (never read as aged)', () => {
     expect(reconcileRefusal({ status: 'refunding', refundError: fresh() })?.error).toContain('moins de 5 minutes')
     expect(reconcileRefusal({ status: 'refunding', refundError: OLD_MARKER })).toBeNull()
+    // ROUND 13 (D5, J-M34, W3): the marker admission is reconcileMarkerAge >= RECONCILE_GRACE_MS. A future instant is
+    // unreadable (age null) and is refused with its own text; the list still shows the claim (fails visible, E-05).
     const future = `${RECONCILE_REQUIRED}: démarrée à ${new Date(Date.now() + 3_600_000).toISOString()}`
-    expect(reconcileRefusal({ status: 'refunding', refundError: future })).toBeNull()
+    expect(reconcileRefusal({ status: 'refunding', refundError: future })?.error).toContain('n’a pas pu être lue')
     expect(RECONCILE_GRACE_MS).toBe(5 * 60 * 1000)
   })
 

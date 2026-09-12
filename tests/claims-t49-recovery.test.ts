@@ -16,6 +16,8 @@ const { db } = vi.hoisted(() => ({
     claim:  { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn() },
     refund: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     order:  { findUnique: vi.fn(), findMany: vi.fn() },
+    // ROUND 13 (G2 (3), W3): reconcile's no-row branch reads the ONE loader (G3), which reads the royalty status.
+    franchiseRoyalty: { findFirst: vi.fn() },
   },
 }))
 vi.mock('@/lib/prisma', () => ({ prisma: db }))
@@ -72,12 +74,15 @@ beforeEach(() => {
   db.claim.findMany.mockResolvedValue([])
   db.refund.findMany.mockResolvedValue([])
   db.refund.findUnique.mockResolvedValue({ status: 'succeeded' })
-  db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', stripePaymentIntentId: 'pi_1' })
+  // ROUND 13 (G3 / G5 E1, W3): the loader reads the order's payment status; a claim's order is paid.
+  db.order.findUnique.mockResolvedValue({ id: 'o1', restaurantId: 'r1', paymentStatus: 'paid', stripePaymentIntentId: 'pi_1' })
   db.order.findMany.mockResolvedValue([])
   db.refund.findFirst.mockResolvedValue(null)
   db.refund.create.mockResolvedValue({ id: 'rf_ext' })
+  db.franchiseRoyalty.findFirst.mockResolvedValue(null)
+  // ROUND 13 (G3, W3): the loader reads the PaymentIntent status (E1b) — a paid order's intent is 'succeeded'.
   stripeMock.paymentIntents.retrieve.mockResolvedValue({
-    latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
+    status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
   })
   stripeMock.refunds.list.mockResolvedValue({ data: [] })
   stripeMock.refunds.retrieve.mockReset()
@@ -93,8 +98,10 @@ describe('evidence PROVES what happened → apply it, and only it', () => {
 
   it('a succeeded refund carrying this claim identity → bound and reconciled', async () => {
     db.refund.findMany.mockResolvedValue([row()])
+    // ROUND 13 (G2 (3) / G4, W3): the claim's own stamped row is re-read at Stripe before it settles the claim.
+    stripeMock.refunds.retrieve.mockResolvedValue({ id: 're_1', status: 'succeeded', amount: 500, payment_intent: 'pi_1', metadata: {} })
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
-    expect(r).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 500 })
+    expect(r).toMatchObject({ ok: true, outcome: 'refunded', refundId: 'rf1', amountCents: 500, evidence: 'stripe_read' })
     expect(execMock).not.toHaveBeenCalled() // never re-drives the engine
   })
 
@@ -145,7 +152,10 @@ describe('evidence CANNOT prove it → fail closed, and stay visible', () => {
     db.refund.findMany.mockResolvedValue([])
     stripeMock.paymentIntents.retrieve.mockRejectedValue(new Error('stripe down'))
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
-    expect(r).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'stripe_unreadable' })
+    // ROUND 13 (G6 N1, W3): a transient unreadable read with refunded unknown writes NOTHING and asks for a retry —
+    // the round-12 stripe_unreadable park is deleted with the ladder (G2).
+    expect(r).toEqual({ ok: true, outcome: 'stripe_unreadable_retry', refundId: null })
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
   })
 
   it('two rows claim this identity → ambiguous, not "pick the first"', async () => {
@@ -338,7 +348,7 @@ describe('the identity guard and the crash marker, exercised where they REFUSE',
     // A failed row with NO Stripe id does not lock the engine, so the claim is genuinely payable.
     db.refund.findMany.mockResolvedValue([row({ status: 'failed', reason: 'admin:x', stripeRefundId: null })])
     stripeMock.paymentIntents.retrieve.mockResolvedValue({
-      latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
+      status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
     })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ outcome: 'no_refund_proven' })
   })
@@ -350,7 +360,7 @@ describe('the identity guard and the crash marker, exercised where they REFUSE',
     // the engine will do, and the honest reason was written to a field no human reads.
     db.refund.findMany.mockResolvedValue([row({ status: 'failed', reason: 'admin:x', stripeRefundId: 're_dead' })])
     stripeMock.paymentIntents.retrieve.mockResolvedValue({
-      latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
+      status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
     })
     const r = await reconcileClaimEvidence({ claimId: 'cl1' })
     expect(r).toMatchObject({ outcome: 'no_refund_proven_rail_locked' })
@@ -367,7 +377,7 @@ describe('the identity guard and the crash marker, exercised where they REFUSE',
     expect(collapsed()).toBe('no_refund_proven')
     db.refund.findMany.mockResolvedValue([row({ status: 'failed', reason: 'admin:x', stripeRefundId: 're_dead' })])
     stripeMock.paymentIntents.retrieve.mockResolvedValue({
-      latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
+      status: 'succeeded', latest_charge: { id: 'ch_1', amount: 2000, amount_captured: 2000, amount_refunded: 0 },
     })
     expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toMatchObject({ outcome: 'no_refund_proven_rail_locked' })
   })

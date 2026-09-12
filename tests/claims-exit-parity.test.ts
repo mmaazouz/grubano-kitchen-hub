@@ -27,14 +27,16 @@ vi.mock('@/lib/admin-alerts', () => ({ sendAdminMoneyReviewAlert: vi.fn().mockRe
 vi.mock('@/lib/admin-audit', () => ({ recordAdminAudit: vi.fn().mockResolvedValue(undefined) }))
 const { stripeMock } = vi.hoisted(() => ({ stripeMock: { paymentIntents: { retrieve: vi.fn() }, refunds: { list: vi.fn(), retrieve: vi.fn(), create: vi.fn() } } }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
+vi.mock('@/lib/admin-guard', () => ({ resolveAdmin: vi.fn(async () => ({ id: 'op1', role: 'admin', name: 'Admin', email: 'a@x.test' })) }))
 
+import { POST as RECONCILE_ROUTE } from '@/app/api/admin/claims/[id]/reconcile/route'
 import {
-  listActionableRefundClaims, listArbitrationQueue, listFinancialVerificationClaims, reconcileClaimEvidence, arbitrateClaim,
+  listActionableRefundClaims, listArbitrationQueue, listFinancialVerificationClaims, listReconcileRequiredClaims, reconcileClaimEvidence, arbitrateClaim,
   resolveStuckClaim, attributeClaimRefund, isStuckResolvable as serverStuckResolvable, boundToWhere, FINANCIAL_VERIFICATION, RECONCILE_REQUIRED,
 } from '@/lib/claims'
 import {
   reconcileRefusal, arbitrationRefusal, acceptedExits, isStuckResolvable as pureStuckResolvable, deriveNoRowOutcome,
-  moneyStateGuidance, absenceProvenPayableLabel,
+  moneyStateGuidance, absenceProvenPayableLabel, RECONCILE_MARKER_UNREADABLE_TEXT,
   type ClaimFacts, type ReapprovalFacts,
 } from '@/lib/claim-action-rules'
 import { amountLineKind, cardMoneyLine, identityUnreadText, IDENTITY_UNREAD_TEXT, IDENTITY_UNREAD_NO_EXIT_TEXT } from '@/lib/claim-money-line'
@@ -108,6 +110,57 @@ describe('J-M29 — reconcilable: the list flag equals the server gate, one fixt
       if (expected) expect(server.ok, name).toBe(true)
     }
     expect(execMock).not.toHaveBeenCalled()
+  })
+})
+
+// W3 round-1 fix (D0 / D14 / D5): the reconcile gate refuses a marker whose instant cannot be read. The
+// reconcile_required list keeps such a claim (fail visible) but carries the gate's verdict and text, so the console
+// renders the server refusal text and no control; the route answers 409 with that same text.
+describe('J-M29 / D5 — reconcile_required list: an unreadable marker instant is listed refused, with the server text', () => {
+  const MALFORMED = `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à 2026-09-10Tzz:00Z — identité pas encore liée.`
+  const futureMarker = () => `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(Date.now() + 3_600_000).toISOString()} — identité pas encore liée.`
+  const post = (id: string) => RECONCILE_ROUTE(new Request('https://app.grubano.com/x', { method: 'POST' }), { params: { id } })
+
+  it('malformed and future markers: list flag false with RECONCILE_MARKER_UNREADABLE_TEXT; the route answers 409 with that text, reading and writing nothing', async () => {
+    const rows = [
+      shape('u1', { status: 'refunding', refundAttempted: true, refundError: MALFORMED }),
+      shape('u2', { status: 'approved', refundAttempted: true, refundError: futureMarker() }),
+    ]
+    db.claim.findMany.mockResolvedValue(rows)
+    const listed = await listReconcileRequiredClaims()
+    expect(listed.map((l) => l.id).sort()).toEqual(['u1', 'u2'])
+    for (const s of rows) {
+      const l = listed.find((x) => x.id === s.id)!
+      expect(l.reconcilable, s.id).toBe(false)
+      expect(l.reconcileRefusal, s.id).toBe(RECONCILE_MARKER_UNREADABLE_TEXT)
+      expect(reconcileRefusal(s)?.error, s.id).toBe(l.reconcileRefusal)
+      db.claim.findUnique.mockResolvedValue(s)
+      const res = await post(s.id)
+      expect(res.status, s.id).toBe(409)
+      expect((await res.json()).error, s.id).toBe(RECONCILE_MARKER_UNREADABLE_TEXT)
+      expect(acceptedExits({ claim: s, now: new Date() }), s.id).toEqual([])
+    }
+    expect(db.refund.findMany).not.toHaveBeenCalled()
+    expect(stripeMock.paymentIntents.retrieve).not.toHaveBeenCalled()
+    expect(db.claim.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('NEGATIVE CONTROL — an aged marker: list flag true, no refusal text, and the route admits the claim (200)', async () => {
+    const s = shape('a1', { status: 'refunding', refundAttempted: true, refundError: OLD_MARKER })
+    db.claim.findMany.mockResolvedValue([s])
+    const [l] = await listReconcileRequiredClaims()
+    expect(l.reconcilable).toBe(true)
+    expect(l.reconcileRefusal).toBeNull()
+    fx.forcedCount = 0 // an admitted claim writes nothing either way
+    db.claim.findUnique.mockResolvedValue(s)
+    expect((await post('a1')).status).toBe(200)
+  })
+
+  it('G1: the financial-verification list carries the gate verdict too (a FV claim is reconcilable)', async () => {
+    db.claim.findMany.mockResolvedValue([{ id: 'fv1', orderId: 'o1', reason: 'wrong_item', requestedAmountCents: 500, refundId: null, refundError: `${FINANCIAL_VERIFICATION}:stripe_unreadable: x`, createdAt: new Date(), decidedAt: null, restaurantId: 'r1' }])
+    const [fv] = await listFinancialVerificationClaims()
+    expect(fv.reconcilable).toBe(true)
+    expect(reconcileRefusal({ ...fv, status: FINANCIAL_VERIFICATION })).toBeNull()
   })
 })
 
@@ -354,10 +407,22 @@ describe('D0 / F16 (7) — names « Réconcilier d’après la preuve » ⇒ rec
   const OWN = { id: 'rf_own', status: 'succeeded', amountCents: 500, stripeRefundId: 're_own', createdAt: new Date(), reason: 'claim:m_own' }
   const OTHER = { id: 'rf_oth', status: 'succeeded', amountCents: 500, stripeRefundId: 're_oth', createdAt: new Date(), reason: 'claim:someone_else' }
   const PENDING_RF1 = { id: 'rf1', status: 'pending', amountCents: 500, stripeRefundId: null, createdAt: new Date(), reason: null }
+  // W3 round-2 fix (D0 / D5): markers whose start instant cannot be read — malformed, or in the future — on both
+  // statuses the arbitration list carries. The gate refuses them with RECONCILE_MARKER_UNREADABLE_TEXT, not the grace.
+  const MALFORMED_MARKER = `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à 2026-09-10Tzz:00Z — identité pas encore liée.`
+  const futureMarker = () => `${RECONCILE_REQUIRED}: tentative de remboursement démarrée à ${new Date(Date.now() + 3_600_000).toISOString()} — identité pas encore liée.`
+  const UNREADABLE = () => [
+    shape('um_ref', { status: 'refunding', refundAttempted: true, refundError: MALFORMED_MARKER }),
+    shape('um_app', { status: 'approved', refundAttempted: true, refundError: MALFORMED_MARKER }),
+    shape('uf_ref', { status: 'refunding', refundAttempted: true, refundError: futureMarker() }),
+    shape('uf_app', { status: 'approved', refundAttempted: true, refundError: futureMarker() }),
+  ]
+  const UNREADABLE_IDS = ['uf_app', 'uf_ref', 'um_app', 'um_ref']
   const FIXTURES = () => [
     ...GATE.map(([, s]) => s),
     shape('m_own', { status: 'refunding', refundAttempted: true, refundId: 'rf_own', refundError: 'resume_mismatch: le moteur a repris un remboursement antérieur …' }),
     shape('m_oth', { status: 'refunding', refundAttempted: true, refundId: 'rf_oth', refundError: 'resume_mismatch: le moteur a abouti sur un remboursement …' }),
+    ...UNREADABLE(),
   ]
   type Listed = Awaited<ReturnType<typeof listActionableRefundClaims>>[number]
   const renderedTexts = (l: Listed, idText: (r: boolean | undefined) => string) => [
@@ -391,6 +456,31 @@ describe('D0 / F16 (7) — names « Réconcilier d’après la preuve » ⇒ rec
     const listed = (await arrange()).map((l) => (l.id === 'm_own' ? { ...l, reconcilable: false } : l))
     expect(violations(listed, () => IDENTITY_UNREAD_TEXT)).toEqual(['m_own'])
     expect(violations(listed)).toEqual([])
+  })
+
+  it('W3 round-2 fix — an unreadable marker instant (malformed or future, approved or refunding): reconcile_marker_unreadable, no exit, its guidance is the server refusal and names no control', async () => {
+    const listed = await arrange()
+    const now = new Date()
+    for (const s of UNREADABLE()) {
+      const l = listed.find((x) => x.id === s.id)!
+      expect(l.moneyState, s.id).toBe('reconcile_marker_unreadable')
+      expect(l.reconcilable, s.id).toBe(false)
+      expect(l.resolvable, s.id).toBe(false)
+      expect(reconcileRefusal(l)?.error, s.id).toBe(RECONCILE_MARKER_UNREADABLE_TEXT)
+      expect(acceptedExits({ claim: s, now }), s.id).toEqual([])
+      const g = moneyStateGuidance(l.moneyState)
+      expect(g, s.id).toContain(RECONCILE_MARKER_UNREADABLE_TEXT)
+      expect(g, s.id).not.toContain('Réconcilier')
+      expect(g, s.id).not.toBe(moneyStateGuidance('__unknown__'))
+    }
+    // the marker past its grace keeps reconcile_required and its control
+    expect(listed.find((l) => l.id === 'g1')!).toMatchObject({ moneyState: 'reconcile_required', reconcilable: true })
+    expect(violations(listed)).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — the round-1 mapping (every marker → reconcile_required) names reconcile on exactly the unreadable-marker rows (break/restore)', async () => {
+    const listed = (await arrange()).map((l) => (UNREADABLE_IDS.includes(l.id) ? { ...l, moneyState: 'reconcile_required' as const } : l))
+    expect(violations(listed).sort()).toEqual(UNREADABLE_IDS)
   })
 
   it('F15 card line: the own row → identity_unread naming reconcile only when the server admits it; another claim’s row → bound_but_not_ours; a payload without the reason → INDÉTERMINÉ', async () => {

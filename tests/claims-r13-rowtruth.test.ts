@@ -25,7 +25,8 @@ const { stripeMock } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/stripe', () => ({ getStripe: () => stripeMock }))
 
-import { refundRowTruth, attributeClaimRefund } from '@/lib/claims'
+import { refundRowTruth, attributeClaimRefund, reconcileClaimEvidence } from '@/lib/claims'
+import { sendAdminMoneyReviewAlert } from '@/lib/admin-alerts'
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
 const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
@@ -189,5 +190,43 @@ describe('J-M44 — only loadOrderMoneyFacts passes absenceIsEvidence', () => {
     expect(out).toMatchObject({ ok: true, outcome: 'financial_verification', reason: 'stripe_refund_contradiction' })
     expect(String(w.claims[0].refundError)).toContain('que Stripe ne connaît pas avec la clé de ce serveur')
     expect(JSON.stringify(out)).not.toMatch(/not_on_payment|stripe_unreadable_retry/)
+  })
+})
+
+// ══ J-M44 (W3 carry-over) — A-S05b-2 unstamped / A-S05c-2b stamped, the second reconcile ══════════════════════
+describe('J-M44 — the second reconcile of a contradiction park: unstamped → the no-row lock; stamped → relabel, same reason, no alert', () => {
+  const OTHER_PI_TEXT = 'Le remboursement Stripe re_X, enregistré comme ABOUTI sur la ligne rf_x, ne porte pas sur le paiement de cette commande. Anomalie de données à instruire. Aucune conclusion tirée.'
+  const FV = { status: 'financial_verification', refundAttempted: true, refundId: 'rf_x', refundError: `financial_verification:stripe_refund_contradiction: ${OTHER_PI_TEXT}` }
+  const alerts = () => (sendAdminMoneyReviewAlert as unknown as { mock: { calls: Array<[{ kind: string; dedupeKey: string }]> } }).mock.calls.map((c) => c[0])
+  const setup = (reason: string | null, cursorMoved: boolean) => {
+    w = payableWorld(FV)
+    w.refunds.push({ id: 'rf_x', orderId: 'o1', status: 'succeeded', amountCents: 300, stripeRefundId: 're_X', reason, idempotencyKey: 'refund:o1:0', createdAt: new Date(Date.now() - 3_600_000), royaltyRefundCents: 0 })
+    w.stripeRefunds.push(stripeRefund('re_X', { payment_intent: 'pi_OTHER' }))
+    if (cursorMoved) { w.pis.pi_1.latest_charge.amount_refunded = 300; w.stripeRefunds.push(stripeRefund('re_N')) }
+    wireWorld(w, db, stripeMock)
+  }
+
+  it('A-S05b-2 UNSTAMPED: the FV claim runs the no-row branch → not_on_payment → E6 + H1 lock, refundId null (the A-S05a-2 copy)', async () => {
+    setup(null, false)
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'no_refund_proven_rail_locked' })
+    const c = w.claims[0]
+    expect(c).toMatchObject({ status: 'approved', refundAttempted: false, refundId: null })
+    expect(String(c.refundError)).toContain('le moteur calculerait la clé refund:o1:0 pour un nouveau remboursement, et la ligne rf_x la détient déjà')
+    expect(String(c.refundError)).toContain('De plus, la ligne rf_x est marquée ABOUTIE dans notre base, mais Stripe ne la compte pas sur ce paiement (son remboursement re_X porte sur un autre paiement)')
+    expect(alerts().map((a) => a.dedupeKey)).toEqual(['claim_blocked:cl1:no_refund_proven_rail_locked:'])
+  })
+
+  it('A-S05c-2b STAMPED claim:<this>: every reconcile takes the mine path → the contradiction relabel, same reason, no new alert — never settled on our row alone', async () => {
+    setup('claim:cl1', true)
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'financial_verification', reason: 'stripe_refund_contradiction', detail: OTHER_PI_TEXT })
+    expect(w.claims[0]).toMatchObject({ status: 'financial_verification', refundId: 'rf_x', refundError: FV.refundError })
+    expect(w.writes.map((x) => x.count)).toEqual([1])
+    expect(alerts()).toEqual([])
+  })
+
+  it('NEGATIVE CONTROL — the stamped row whose refund Stripe reads succeeded on THIS payment settles on the mine path, with Stripe evidence', async () => {
+    setup('claim:cl1', true)
+    w.stripeRefunds = w.stripeRefunds.map((s) => (s.id === 're_X' ? { ...s, payment_intent: 'pi_1', amount: 250 } : s))
+    expect(await reconcileClaimEvidence({ claimId: 'cl1' })).toEqual({ ok: true, outcome: 'refunded', refundId: 'rf_x', amountCents: 250, evidence: 'stripe_read' })
   })
 })
